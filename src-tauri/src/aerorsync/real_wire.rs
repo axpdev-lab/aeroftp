@@ -452,10 +452,21 @@ fn read_u8_len_prefixed_ascii(
     let len = buf[offset] as usize;
     let start = offset + 1;
     let end = start + len;
+    // Z.1.6 fix (2026-05-12): when `end > buf.len()` the caller may simply
+    // not have read the rest of the wire frame yet. Returning a hard
+    // `InvalidAlgoListLen` here turned a "keep reading" condition into a
+    // terminal error, causing the `perform_preamble_exchange` loop to give
+    // up on ~2% of high-cardinality batch transfers (finding Z.1.1-A).
+    //
+    // The right semantics: signal `TruncatedBuffer` so the streaming
+    // decoder asks for more bytes. A genuinely impossible declared length
+    // (u8 max is 255 bytes of ASCII algo names, which fits any sane chunk)
+    // will surface as an ASCII validation error downstream, not here.
     if end > buf.len() {
-        return Err(RealWireError::InvalidAlgoListLen {
-            declared: len,
-            available: buf.len().saturating_sub(start),
+        return Err(RealWireError::TruncatedBuffer {
+            at: section,
+            needed: len + 1,
+            available: buf.len().saturating_sub(offset),
         });
     }
     let mut out = String::with_capacity(len);
@@ -3091,6 +3102,65 @@ mod tests {
     // -------------------------------------------------------------------------
     // Server preamble
     // -------------------------------------------------------------------------
+
+    // Z.1.6 regression pin (2026-05-12): mid-preamble truncation must
+    // surface as `TruncatedBuffer` (recoverable, "keep reading") rather
+    // than `InvalidAlgoListLen` (terminal). Pre-fix this returned
+    // InvalidAlgoListLen and produced 2-3% hard rejections on
+    // high-cardinality batch transfers (finding Z.1.1-A).
+    #[test]
+    fn server_preamble_truncated_mid_algo_list_signals_truncated_buffer() {
+        // Build a valid preamble, then truncate so the read sees the
+        // checksum_algos length byte (24) but only a few of the declared
+        // ASCII bytes. Pre-fix this exact shape leaked InvalidAlgoListLen.
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&encode_protocol_version(32));
+        buf.extend_from_slice(&[0x81, 0xFF]); // varint compat_flags
+        buf.push(24); // declares 24 ASCII bytes of checksum_algos
+                      // but only push 5 of them: the next read off the wire
+                      // is supposed to bring the rest.
+        buf.extend_from_slice(b"xxh12");
+
+        let err = decode_server_preamble(&buf).unwrap_err();
+        match err {
+            RealWireError::TruncatedBuffer { at, needed, available } => {
+                assert_eq!(at, "server_checksum_algos");
+                assert_eq!(needed, 25); // 1 len byte + 24 declared bytes
+                assert!(
+                    available < needed,
+                    "available={available} should be < needed={needed}"
+                );
+            }
+            other => panic!(
+                "expected TruncatedBuffer (recoverable), got {other:?} \
+                 -- pre-Z.1.6 this would be InvalidAlgoListLen"
+            ),
+        }
+    }
+
+    #[test]
+    fn server_preamble_truncated_mid_compression_list_signals_truncated_buffer() {
+        // Same recoverable-truncation guarantee on the SECOND length-
+        // prefixed section: checksum_algos complete, compression_algos
+        // length declared but bytes still missing.
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&encode_protocol_version(32));
+        buf.extend_from_slice(&[0x81, 0xFF]);
+        buf.push(7);
+        buf.extend_from_slice(b"xxh128 ");
+        buf.push(24); // compression_algos declares 24 bytes
+        buf.extend_from_slice(b"zstd");
+
+        let err = decode_server_preamble(&buf).unwrap_err();
+        match err {
+            RealWireError::TruncatedBuffer { at, needed, available } => {
+                assert_eq!(at, "server_compression_algos");
+                assert_eq!(needed, 25);
+                assert!(available < needed);
+            }
+            other => panic!("expected TruncatedBuffer, got {other:?}"),
+        }
+    }
 
     #[test]
     fn server_preamble_parses_observed_32_profile() {

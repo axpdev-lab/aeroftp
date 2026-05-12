@@ -17,7 +17,7 @@
 
 use async_trait::async_trait;
 use sha2::{Digest, Sha256};
-use ssh2::Session;
+use ssh2::{MethodType, Session};
 use std::io::Read;
 use std::net::{Shutdown, TcpStream};
 use std::path::PathBuf;
@@ -52,6 +52,25 @@ pub enum SshHostKeyPolicy {
     AcceptAny,
     PinnedFingerprintSha256 { sha256_hex: String },
 }
+
+/// Canonical host-key algorithm preference list, shared between the libssh2
+/// leg (`ssh_transport.rs`) and the russh leg (`russh_session_transport.rs`).
+///
+/// Why this exists (Z.1.4 host-key asymmetry fix, 2026-05-12): pinning the
+/// SHA-256 fingerprint of *the host key the server selected at handshake*
+/// only works if both SSH libraries negotiate the same algorithm. ssh2 (the
+/// classic SFTP leg) and russh (the native probe leg) had different default
+/// preferences, so a server exposing both `ssh-ed25519` and `rsa-sha2-512`
+/// would yield two different fingerprints depending on which library opened
+/// the channel — fingerprint pinning rejected the second one. Enforcing the
+/// same priority order on both legs makes the selection deterministic and
+/// the fingerprint pinnable across reconnects.
+///
+/// Order rationale: Ed25519 first (smallest, fastest, modern), then ECDSA
+/// (widely supported), then RSA SHA-2 variants. Legacy `ssh-rsa` with SHA-1
+/// is deliberately omitted.
+pub const AERORSYNC_HOST_KEY_ALGS: &str =
+    "ssh-ed25519,ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521,rsa-sha2-512,rsa-sha2-256";
 
 impl SshHostKeyPolicy {
     pub fn pinned_hex(hex: impl Into<String>) -> Self {
@@ -434,6 +453,19 @@ fn connect_and_auth(
         .map_err(|e| AerorsyncError::transport(format!("create ssh session: {e}")))?;
     session.set_tcp_stream(tcp);
     session.set_timeout(config.connect_timeout_ms as u32);
+
+    // Z.1.4: align host-key algorithm preference with the russh leg so both
+    // SSH libraries select the same host key on servers exposing multiple
+    // algorithms. Without this, pinned-fingerprint policy would reject the
+    // second library to reconnect.
+    session
+        .method_pref(MethodType::HostKey, AERORSYNC_HOST_KEY_ALGS)
+        .map_err(|e| {
+            AerorsyncError::transport(format!(
+                "ssh method_pref HostKey '{AERORSYNC_HOST_KEY_ALGS}': {e}"
+            ))
+        })?;
+
     session
         .handshake()
         .map_err(|e| AerorsyncError::transport(format!("ssh handshake: {e}")))?;

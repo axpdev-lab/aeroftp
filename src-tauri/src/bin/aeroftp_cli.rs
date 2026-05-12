@@ -980,6 +980,14 @@ enum Commands {
         /// Skip the initial full sync on startup
         #[arg(long)]
         watch_no_initial: bool,
+        /// Force local-to-local sync mode (no remote). Auto-detected when both
+        /// paths are absolute and no --profile / URL is given.
+        #[arg(long = "local", id = "local_only_flag")]
+        local_only: bool,
+        /// Disable LocalDeltaTransport for local-to-local sync; use plain copy
+        /// instead. No-op for remote sync.
+        #[arg(long)]
+        no_local_delta: bool,
     },
     /// Preflight checks and risk summary before sync
     SyncDoctor {
@@ -17562,6 +17570,312 @@ fn backup_file(
 }
 
 #[allow(clippy::too_many_arguments)]
+/// Z.2.2 detection: returns `true` when the sync command should resolve to
+/// a local-to-local sync (no remote provider opened). Triggered by the
+/// explicit `--local` flag, or auto-detected when no profile is given and
+/// the first two positionals both look like local filesystem paths.
+///
+/// The CLI surface for local-to-local is `aeroftp sync <SRC> <DST>`. The
+/// first positional (clap-named `url`) holds the source path; the second
+/// (clap-named `local`) holds the destination. Auto-detection collapses
+/// this into a single call to `cmd_sync_local_to_local`.
+fn is_local_to_local_sync(
+    explicit_local_flag: bool,
+    src_arg: &str,
+    cli_profile: Option<&str>,
+    dst_arg: &str,
+) -> bool {
+    if explicit_local_flag {
+        return true;
+    }
+    if cli_profile.is_some() {
+        return false;
+    }
+    fn looks_local(p: &str) -> bool {
+        if p.is_empty() || p == "_" {
+            return false;
+        }
+        if p.contains("://") {
+            return false;
+        }
+        let path = std::path::Path::new(p);
+        path.is_absolute() || path.exists()
+    }
+    looks_local(src_arg) && looks_local(dst_arg)
+}
+
+/// Z.2.2: mirror a local source tree to a local destination tree. Files
+/// above the delta threshold go through `LocalDeltaTransport` (when the
+/// `aerorsync` feature is compiled and `--no-local-delta` is not set);
+/// everything else falls through to a plain copy.
+#[allow(clippy::too_many_arguments, clippy::needless_lifetimes)]
+async fn cmd_sync_local_to_local(
+    local: &str,
+    remote: &str,
+    dry_run: bool,
+    exclude: &[String],
+    no_local_delta: bool,
+    cli: &Cli,
+    format: OutputFormat,
+    cancelled: Arc<AtomicBool>,
+) -> SyncCycleStats {
+    let local_root = std::path::PathBuf::from(local);
+    let remote_root = std::path::PathBuf::from(remote);
+
+    if !local_root.exists() {
+        print_error(
+            format,
+            &format!("Local source path not found: {}", local),
+            2,
+        );
+        return 2.into();
+    }
+    if !local_root.is_dir() {
+        print_error(
+            format,
+            &format!("Local source must be a directory: {}", local),
+            5,
+        );
+        return 5.into();
+    }
+    if let Err(e) = std::fs::create_dir_all(&remote_root) {
+        print_error(
+            format,
+            &format!("Cannot create local destination {}: {}", remote, e),
+            11,
+        );
+        return 11.into();
+    }
+
+    let quiet = cli.quiet || matches!(format, OutputFormat::Json);
+    let start = std::time::Instant::now();
+
+    if !quiet {
+        eprintln!("Local-to-local sync");
+        eprintln!("  src: {}", local_root.display());
+        eprintln!("  dst: {}", remote_root.display());
+        if no_local_delta {
+            eprintln!("  delta: disabled (--no-local-delta), using plain copy");
+        } else if cfg!(feature = "aerorsync") {
+            eprintln!("  delta: LocalDeltaTransport for files >= 1 MiB, plain copy otherwise");
+        } else {
+            eprintln!("  delta: not available (aerorsync feature off), plain copy");
+        }
+        if dry_run {
+            eprintln!("  mode: DRY RUN (no writes)");
+        }
+    }
+
+    let exclude_matchers: Vec<globset::GlobMatcher> = exclude
+        .iter()
+        .filter_map(|pat| globset::Glob::new(pat).ok().map(|g| g.compile_matcher()))
+        .collect();
+
+    let scan_depth = cli.max_depth.map(|d| d as usize).unwrap_or(100);
+    let walker = walkdir::WalkDir::new(&local_root)
+        .follow_links(false)
+        .max_depth(scan_depth);
+
+    let mut stats = SyncCycleStats::default();
+    let mut total_bytes_on_wire: u64 = 0;
+    let mut total_payload: u64 = 0;
+
+    #[cfg(feature = "aerorsync")]
+    let delta_transport: Option<ftp_client_gui_lib::aerorsync::local_transport::LocalDeltaTransport> =
+        if no_local_delta {
+            None
+        } else {
+            Some(
+                ftp_client_gui_lib::aerorsync::local_transport::LocalDeltaTransport::new(
+                    ftp_client_gui_lib::rsync_over_ssh::DEFAULT_MIN_FILE_SIZE,
+                ),
+            )
+        };
+    #[cfg(not(feature = "aerorsync"))]
+    let delta_transport: Option<()> = None;
+
+    for entry in walker {
+        if cancelled.load(Ordering::Relaxed) {
+            print_error(format, "Interrupted by signal", 130);
+            stats.exit_code = 130;
+            return stats;
+        }
+        let entry = match entry {
+            Ok(e) => e,
+            Err(e) => {
+                if !quiet {
+                    eprintln!("Skip (walk error): {}", e);
+                }
+                stats.error_count += 1;
+                continue;
+            }
+        };
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let relative = match entry.path().strip_prefix(&local_root) {
+            Ok(r) => r.to_path_buf(),
+            Err(_) => continue,
+        };
+        let rel_str = relative.to_string_lossy();
+        if rel_str.is_empty() {
+            continue;
+        }
+        let fname = entry.file_name().to_string_lossy();
+        let fname_ref: &str = fname.as_ref();
+        let rel_str_ref: &str = rel_str.as_ref();
+        if exclude_matchers
+            .iter()
+            .any(|m| m.is_match(rel_str_ref) || m.is_match(fname_ref))
+        {
+            stats.skipped += 1;
+            continue;
+        }
+
+        let src = entry.path().to_path_buf();
+        let dst = remote_root.join(&relative);
+
+        if dry_run {
+            if !quiet {
+                eprintln!("[dry-run] {} -> {}", src.display(), dst.display());
+            }
+            stats.uploaded += 1;
+            continue;
+        }
+
+        if let Some(parent) = dst.parent() {
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                if !quiet {
+                    eprintln!("Skip (mkdir {} failed): {}", parent.display(), e);
+                }
+                stats.error_count += 1;
+                continue;
+            }
+        }
+
+        let src_size = std::fs::metadata(&src).map(|m| m.len()).unwrap_or(0);
+        total_payload = total_payload.saturating_add(src_size);
+
+        // Try LocalDeltaTransport for files >= threshold. Fall through to
+        // plain copy on TooSmall, oversized, or any unexpected error so the
+        // user always gets a result.
+        let mut used_delta = false;
+        let mut delta_bytes: Option<u64> = None;
+
+        #[cfg(feature = "aerorsync")]
+        {
+            use ftp_client_gui_lib::delta_transport::DeltaTransport;
+            if let Some(transport) = delta_transport.as_ref() {
+                match transport
+                    .upload(&src, dst.to_string_lossy().as_ref())
+                    .await
+                {
+                    Ok(rsync_stats) => {
+                        used_delta = true;
+                        delta_bytes = Some(rsync_stats.bytes_sent);
+                        total_bytes_on_wire =
+                            total_bytes_on_wire.saturating_add(rsync_stats.bytes_sent);
+                    }
+                    Err(
+                        ftp_client_gui_lib::rsync_over_ssh::RsyncError::TooSmall { .. }
+                        | ftp_client_gui_lib::rsync_over_ssh::RsyncError::TransferFailed { .. },
+                    ) => {
+                        // Fallback to plain copy below.
+                    }
+                    Err(e) => {
+                        if !quiet {
+                            eprintln!(
+                                "Delta failed on {}: {}; falling back to plain copy",
+                                src.display(),
+                                e
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        if !used_delta {
+            match std::fs::copy(&src, &dst) {
+                Ok(n) => {
+                    total_bytes_on_wire = total_bytes_on_wire.saturating_add(n);
+                }
+                Err(e) => {
+                    if !quiet {
+                        eprintln!("Copy {} -> {} failed: {}", src.display(), dst.display(), e);
+                    }
+                    stats.error_count += 1;
+                    continue;
+                }
+            }
+        }
+
+        stats.uploaded += 1;
+        if !quiet {
+            let tag = if used_delta { "delta" } else { "copy" };
+            match delta_bytes {
+                Some(b) => eprintln!(
+                    "[{}] {} -> {} ({} bytes on wire)",
+                    tag,
+                    src.display(),
+                    dst.display(),
+                    b
+                ),
+                None => eprintln!("[{}] {} -> {}", tag, src.display(), dst.display()),
+            }
+        }
+    }
+
+    let elapsed = start.elapsed();
+    if matches!(format, OutputFormat::Json) {
+        #[derive(Serialize)]
+        struct LocalSyncJson<'a> {
+            status: &'a str,
+            uploaded: u32,
+            skipped: u32,
+            errors: u32,
+            elapsed_ms: u128,
+            total_payload_bytes: u64,
+            bytes_on_wire: u64,
+            savings_ratio: f64,
+        }
+        let ratio = if total_payload > 0 {
+            total_bytes_on_wire as f64 / total_payload as f64
+        } else {
+            0.0
+        };
+        let out = LocalSyncJson {
+            status: if stats.error_count == 0 { "ok" } else { "partial" },
+            uploaded: stats.uploaded,
+            skipped: stats.skipped,
+            errors: stats.error_count,
+            elapsed_ms: elapsed.as_millis(),
+            total_payload_bytes: total_payload,
+            bytes_on_wire: total_bytes_on_wire,
+            savings_ratio: ratio,
+        };
+        println!("{}", serde_json::to_string(&out).unwrap_or_default());
+    } else if !quiet {
+        eprintln!("---");
+        eprintln!(
+            "Done in {:?}: uploaded={} skipped={} errors={}",
+            elapsed, stats.uploaded, stats.skipped, stats.error_count
+        );
+        if total_payload > 0 {
+            eprintln!(
+                "Payload {} bytes, on-wire {} bytes (ratio {:.4})",
+                total_payload,
+                total_bytes_on_wire,
+                total_bytes_on_wire as f64 / total_payload as f64
+            );
+        }
+    }
+
+    stats.exit_code = if stats.error_count == 0 { 0 } else { 4 };
+    stats
+}
+
+#[allow(clippy::too_many_arguments)]
 async fn cmd_sync(
     url: &str,
     local: &str,
@@ -29855,13 +30169,56 @@ async fn main() {
             watch_cooldown,
             watch_rescan,
             watch_no_initial,
+            local_only,
+            no_local_delta,
         } => {
-            let (u, l, r) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str(), local.as_str())
+            // Z.2.2: local-to-local fast path. With `--local` the positional
+            // args become `<SRC> <DST>` (url=SRC, local=DST). Without
+            // `--local` the legacy 3-arg shape `<URL> <LOCAL> <REMOTE>`
+            // applies. Auto-detection also kicks in if both positional
+            // candidates look like real local fs paths (no scheme, exists or
+            // absolute) and no profile/URL was given.
+            let local_to_local_src;
+            let local_to_local_dst;
+            let local_to_local_match;
+            if *local_only {
+                local_to_local_src = url.as_str();
+                local_to_local_dst = local.as_str();
+                local_to_local_match = true;
+            } else if cli.profile.is_none()
+                && is_local_to_local_sync(false, url, cli.profile.as_deref(), local)
+            {
+                // Shape `<URL> <LOCAL> <REMOTE>` where URL is actually a path.
+                local_to_local_src = url.as_str();
+                local_to_local_dst = local.as_str();
+                local_to_local_match = true;
             } else {
-                (url.as_str(), local.as_str(), remote.as_str())
-            };
-            if *watch {
+                local_to_local_src = "";
+                local_to_local_dst = "";
+                local_to_local_match = false;
+            }
+
+            if local_to_local_match {
+                let stats = cmd_sync_local_to_local(
+                    local_to_local_src,
+                    local_to_local_dst,
+                    *dry_run,
+                    exclude,
+                    *no_local_delta,
+                    &cli,
+                    format,
+                    cancelled.clone(),
+                )
+                .await;
+                stats.exit_code
+            } else {
+                let (u, l, r) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                    ("_", url.as_str(), local.as_str())
+                } else {
+                    (url.as_str(), local.as_str(), remote.as_str())
+                };
+
+                if *watch {
                 cmd_sync_watch(
                     u,
                     l,
@@ -29940,6 +30297,7 @@ async fn main() {
                     }
                 }
                 last_code
+            }
             }
         }
         Commands::SyncDoctor {

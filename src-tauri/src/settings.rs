@@ -31,10 +31,13 @@ fn native_rsync_config_path() -> Result<PathBuf, String> {
 #[cfg(feature = "aerorsync")]
 /// Runtime gate for the `aerorsync` native rsync backend.
 ///
-/// Fresh installs default to OFF since the F5 revert in `aca4577c`; audit
-/// finding P3-06 keeps that distinction explicit: Cargo compiles the backend
-/// by default (feature `aerorsync`), but runtime dispatch stays opt-in until
-/// the host-key algorithm negotiation asymmetry is resolved.
+/// Fresh installs default to **ON** since Z.1.5 (2026-05-12): the host-key
+/// algorithm negotiation asymmetry that previously kept this OFF has been
+/// fixed by aligning the host-key algorithm preference between the libssh2
+/// leg (`ssh_transport.rs::AERORSYNC_HOST_KEY_ALGS`) and the russh leg
+/// (`russh_session_transport.rs` `Preferred.key`). Both legs now select the
+/// same host key on servers exposing multiple algorithms, so SHA-256
+/// fingerprint pinning is deterministic across reconnects.
 ///
 /// The function name, the persisted TOML filename (`native_rsync.toml`) and
 /// the `native_rsync_enabled` TOML key all retain the legacy naming that
@@ -50,21 +53,19 @@ pub fn load_native_rsync_enabled() -> bool {
     };
 
     if !path.exists() {
-        // Fresh-install default: OFF. The previous attempt to flip this
-        // to ON broke the Linux integration test lane because CI runs
-        // without the TOML present: the test expects the classic
-        // binary-rsync delta path, but default-on made the native
-        // prototype the preferred backend, and the native prototype's
-        // host-key pinning then rejected the Docker SFTP fixture (the
-        // fixture exposes multiple host-key algorithms and the two
-        // SSH libraries: `ssh2` for classic SFTP, `russh` for the
-        // native probe: negotiated different ones, producing a
-        // fingerprint mismatch). Until the native prototype tolerates
-        // that negotiation asymmetry, the default stays OFF and the
-        // Windows first-run UX relies on the Settings page toggle to
-        // flip it on once. See CI run `24865225219` for the regression
-        // fingerprint.
-        return false;
+        // Fresh-install default: ON since Z.1.5 (2026-05-12). Users who
+        // previously set the toggle (either ON or OFF) keep their stored
+        // value because the TOML exists; only first-run installs hit this
+        // branch and benefit from cross-OS delta sync out of the box.
+        //
+        // Historical context: from commit `aca4577c` (2026-04-XX) through
+        // Z.1.4 closure (2026-05-12), the default was OFF because the two
+        // SSH libraries (`ssh2` for classic SFTP, `russh` for the native
+        // probe) negotiated different host-key algorithms on servers
+        // exposing more than one, producing fingerprint pinning mismatches.
+        // The fix lives in `AERORSYNC_HOST_KEY_ALGS` (see ssh_transport.rs)
+        // and the russh `Preferred.key` override in russh_session_transport.
+        return true;
     }
 
     match fs::read_to_string(&path) {
@@ -181,9 +182,11 @@ mod tests {
     }
 
     #[test]
-    fn load_returns_false_when_config_absent() {
+    fn load_returns_true_when_config_absent() {
+        // Z.1.5 (2026-05-12): fresh-install default flipped to ON after the
+        // host-key algorithm negotiation asymmetry was fixed.
         let _g = ScopedXdg::new();
-        assert!(!load_native_rsync_enabled());
+        assert!(load_native_rsync_enabled());
     }
 
     #[test]

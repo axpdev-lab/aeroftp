@@ -13,8 +13,10 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use russh::client::{self, AuthResult, Config, Handle, Handler, Msg};
-use russh::keys::{self, Algorithm, HashAlg, PrivateKeyWithHashAlg, PublicKey};
+use russh::keys::{self, Algorithm, EcdsaCurve, HashAlg, PrivateKeyWithHashAlg, PublicKey};
+use russh::Preferred;
 use russh::{Channel, ChannelMsg};
+use std::borrow::Cow;
 use sha2::{Digest, Sha256};
 use tokio::sync::Mutex as AsyncMutex;
 
@@ -107,10 +109,38 @@ impl RusshSessionTransport {
         let handshake_count = Arc::new(AtomicU32::new(0));
         let raw_open_count = Arc::new(AtomicU32::new(0));
 
+        // Z.1.4: align host-key algorithm preference with the libssh2 leg
+        // (`AERORSYNC_HOST_KEY_ALGS` in `ssh_transport.rs`). Same order on
+        // both legs makes server-side host-key selection deterministic, so
+        // SHA-256 fingerprint pinning works across reconnects regardless of
+        // which library opens the channel first.
+        let preferred = Preferred {
+            key: Cow::Borrowed(&[
+                Algorithm::Ed25519,
+                Algorithm::Ecdsa {
+                    curve: EcdsaCurve::NistP256,
+                },
+                Algorithm::Ecdsa {
+                    curve: EcdsaCurve::NistP384,
+                },
+                Algorithm::Ecdsa {
+                    curve: EcdsaCurve::NistP521,
+                },
+                Algorithm::Rsa {
+                    hash: Some(HashAlg::Sha512),
+                },
+                Algorithm::Rsa {
+                    hash: Some(HashAlg::Sha256),
+                },
+            ]),
+            ..Preferred::DEFAULT
+        };
+
         let russh_config = Arc::new(Config {
             inactivity_timeout: Some(Duration::from_millis(config.io_timeout_ms.max(30_000) * 2)),
             keepalive_interval: Some(Duration::from_secs(15)),
             keepalive_max: 3,
+            preferred,
             ..Default::default()
         });
 
