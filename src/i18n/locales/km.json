@@ -4524,7 +4524,11 @@
             "copiedToOtherPanel": "បានចម្លងទៅបន្ទះមួយទៀត",
             "movedToOtherPanel": "បានផ្លាស់ទីទៅបន្ទះមួយទៀត",
             "itemsLower": "items",
-            "resizePanels": "Resize panels"
+            "resizePanels": "Resize panels",
+            "copyHere": "ចម្លង {count} មកទីនេះ",
+            "moveHere": "ផ្លាស់ទី {count} មកទីនេះ",
+            "copyHereFromOtherPanelTooltip": "ចម្លង {count} ដែលបានជ្រើសរើសពីផ្ទាំងផ្សេងទៀតមកក្នុងផ្ទាំងនេះ (F5)",
+            "moveHereFromOtherPanelTooltip": "ផ្លាស់ទី {count} ដែលបានជ្រើសរើសពីផ្ទាំងផ្សេងទៀតមកក្នុងផ្ទាំងនេះ (F6)"
         },
         "localSync": {
             "title": "AeroSync: ពីតំបន់ទៅតំបន់",

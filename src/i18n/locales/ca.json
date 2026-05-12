@@ -4524,7 +4524,11 @@
             "copiedToOtherPanel": "Copiat a l'altre panell",
             "movedToOtherPanel": "Mogut a l'altre panell",
             "itemsLower": "items",
-            "resizePanels": "Resize panels"
+            "resizePanels": "Resize panels",
+            "copyHere": "Copia {count} aquí",
+            "moveHere": "Mou {count} aquí",
+            "copyHereFromOtherPanelTooltip": "Copia {count} seleccionats de l'altre tauler en aquest tauler (F5)",
+            "moveHereFromOtherPanelTooltip": "Mou {count} seleccionats de l'altre tauler en aquest tauler (F6)"
         },
         "localSync": {
             "title": "AeroSync: de local a local",

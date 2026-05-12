@@ -4505,7 +4505,11 @@
             "copiedToOtherPanel": "もう一方のパネルにコピーしました",
             "movedToOtherPanel": "もう一方のパネルに移動しました",
             "itemsLower": "項目",
-            "resizePanels": "パネルのサイズを変更"
+            "resizePanels": "パネルのサイズを変更",
+            "copyHere": "{count} 件をここにコピー",
+            "moveHere": "{count} 件をここに移動",
+            "copyHereFromOtherPanelTooltip": "もう一方のパネルで選択された {count} 件をこのパネルにコピー (F5)",
+            "moveHereFromOtherPanelTooltip": "もう一方のパネルで選択された {count} 件をこのパネルに移動 (F6)"
         },
         "localSync": {
             "title": "AeroSync: ローカルからローカルへ",

@@ -4505,7 +4505,11 @@
             "copiedToOtherPanel": "Disalin ke panel lain",
             "movedToOtherPanel": "Dipindahkan ke panel lain",
             "itemsLower": "items",
-            "resizePanels": "Resize panels"
+            "resizePanels": "Resize panels",
+            "copyHere": "Salin {count} di sini",
+            "moveHere": "Pindahkan {count} di sini",
+            "copyHereFromOtherPanelTooltip": "Salin {count} yang dipilih dari panel lain ke panel ini (F5)",
+            "moveHereFromOtherPanelTooltip": "Pindahkan {count} yang dipilih dari panel lain ke panel ini (F6)"
         },
         "localSync": {
             "title": "AeroSync: lokal ke lokal",

@@ -4505,7 +4505,11 @@
             "copiedToOtherPanel": "คัดลอกไปยังแผงอีกด้านแล้ว",
             "movedToOtherPanel": "ย้ายไปยังแผงอีกด้านแล้ว",
             "itemsLower": "items",
-            "resizePanels": "Resize panels"
+            "resizePanels": "Resize panels",
+            "copyHere": "คัดลอก {count} ที่นี่",
+            "moveHere": "ย้าย {count} ที่นี่",
+            "copyHereFromOtherPanelTooltip": "คัดลอก {count} ที่เลือกจากแผงอื่นมายังแผงนี้ (F5)",
+            "moveHereFromOtherPanelTooltip": "ย้าย {count} ที่เลือกจากแผงอื่นมายังแผงนี้ (F6)"
         },
         "localSync": {
             "title": "AeroSync: ในเครื่องสู่ในเครื่อง",

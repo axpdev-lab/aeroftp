@@ -4505,7 +4505,11 @@
             "copiedToOtherPanel": "Đã sao chép sang bảng kia",
             "movedToOtherPanel": "Đã di chuyển sang bảng kia",
             "itemsLower": "items",
-            "resizePanels": "Resize panels"
+            "resizePanels": "Resize panels",
+            "copyHere": "Sao chép {count} vào đây",
+            "moveHere": "Di chuyển {count} vào đây",
+            "copyHereFromOtherPanelTooltip": "Sao chép {count} đã chọn từ bảng khác vào bảng này (F5)",
+            "moveHereFromOtherPanelTooltip": "Di chuyển {count} đã chọn từ bảng khác vào bảng này (F6)"
         },
         "localSync": {
             "title": "AeroSync: cục bộ tới cục bộ",

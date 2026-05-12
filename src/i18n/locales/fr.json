@@ -4505,7 +4505,11 @@
             "copiedToOtherPanel": "Copié vers l'autre panneau",
             "movedToOtherPanel": "Déplacé vers l'autre panneau",
             "itemsLower": "éléments",
-            "resizePanels": "Redimensionner les panneaux"
+            "resizePanels": "Redimensionner les panneaux",
+            "copyHere": "Copier {count} ici",
+            "moveHere": "Déplacer {count} ici",
+            "copyHereFromOtherPanelTooltip": "Copier les {count} sélectionnés de l'autre panneau vers ce panneau (F5)",
+            "moveHereFromOtherPanelTooltip": "Déplacer les {count} sélectionnés de l'autre panneau vers ce panneau (F6)"
         },
         "localSync": {
             "title": "AeroSync : local vers local",

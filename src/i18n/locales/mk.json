@@ -4524,7 +4524,11 @@
             "copiedToOtherPanel": "Копирано во другиот панел",
             "movedToOtherPanel": "Преместено во другиот панел",
             "itemsLower": "items",
-            "resizePanels": "Resize panels"
+            "resizePanels": "Resize panels",
+            "copyHere": "Копирај {count} тука",
+            "moveHere": "Премести {count} тука",
+            "copyHereFromOtherPanelTooltip": "Копирај {count} избрани од другиот панел во овој панел (F5)",
+            "moveHereFromOtherPanelTooltip": "Премести {count} избрани од другиот панел во овој панел (F6)"
         },
         "localSync": {
             "title": "AeroSync: локално кон локално",

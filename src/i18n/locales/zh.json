@@ -4505,7 +4505,11 @@
             "copiedToOtherPanel": "已复制到另一面板",
             "movedToOtherPanel": "已移动到另一面板",
             "itemsLower": "项",
-            "resizePanels": "调整面板大小"
+            "resizePanels": "调整面板大小",
+            "copyHere": "复制 {count} 项到此处",
+            "moveHere": "移动 {count} 项到此处",
+            "copyHereFromOtherPanelTooltip": "将另一面板中选中的 {count} 项复制到此面板 (F5)",
+            "moveHereFromOtherPanelTooltip": "将另一面板中选中的 {count} 项移动到此面板 (F6)"
         },
         "localSync": {
             "title": "AeroSync: 本地到本地",

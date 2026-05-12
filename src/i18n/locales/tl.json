@@ -4524,7 +4524,11 @@
             "copiedToOtherPanel": "Nakopya sa kabilang panel",
             "movedToOtherPanel": "Inilipat sa kabilang panel",
             "itemsLower": "items",
-            "resizePanels": "Resize panels"
+            "resizePanels": "Resize panels",
+            "copyHere": "Kopyahin ang {count} dito",
+            "moveHere": "Ilipat ang {count} dito",
+            "copyHereFromOtherPanelTooltip": "Kopyahin ang {count} napili mula sa kabilang panel papunta sa panel na ito (F5)",
+            "moveHereFromOtherPanelTooltip": "Ilipat ang {count} napili mula sa kabilang panel papunta sa panel na ito (F6)"
         },
         "localSync": {
             "title": "AeroSync: lokal sa lokal",

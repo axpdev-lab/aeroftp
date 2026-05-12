@@ -4505,7 +4505,11 @@
             "copiedToOtherPanel": "დაკოპირდა მეორე პანელში",
             "movedToOtherPanel": "გადატანილია მეორე პანელში",
             "itemsLower": "items",
-            "resizePanels": "Resize panels"
+            "resizePanels": "Resize panels",
+            "copyHere": "{count}-ის კოპირება აქ",
+            "moveHere": "{count}-ის გადატანა აქ",
+            "copyHereFromOtherPanelTooltip": "მეორე პანელიდან არჩეული {count}-ის კოპირება ამ პანელში (F5)",
+            "moveHereFromOtherPanelTooltip": "მეორე პანელიდან არჩეული {count}-ის გადატანა ამ პანელში (F6)"
         },
         "localSync": {
             "title": "AeroSync: ლოკალურიდან ლოკალურამდე",

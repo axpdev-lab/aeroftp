@@ -4505,7 +4505,11 @@
             "copiedToOtherPanel": "Kopierat till andra panelen",
             "movedToOtherPanel": "Flyttat till andra panelen",
             "itemsLower": "items",
-            "resizePanels": "Resize panels"
+            "resizePanels": "Resize panels",
+            "copyHere": "Kopiera {count} hit",
+            "moveHere": "Flytta {count} hit",
+            "copyHereFromOtherPanelTooltip": "Kopiera {count} valda från den andra panelen till denna panel (F5)",
+            "moveHereFromOtherPanelTooltip": "Flytta {count} valda från den andra panelen till denna panel (F6)"
         },
         "localSync": {
             "title": "AeroSync: lokalt till lokalt",

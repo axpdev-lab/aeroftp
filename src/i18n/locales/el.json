@@ -4505,7 +4505,11 @@
             "copiedToOtherPanel": "Αντιγράφηκε στο άλλο παράθυρο",
             "movedToOtherPanel": "Μετακινήθηκε στο άλλο παράθυρο",
             "itemsLower": "items",
-            "resizePanels": "Resize panels"
+            "resizePanels": "Resize panels",
+            "copyHere": "Αντιγραφή {count} εδώ",
+            "moveHere": "Μετακίνηση {count} εδώ",
+            "copyHereFromOtherPanelTooltip": "Αντιγραφή {count} επιλεγμένων από το άλλο πλαίσιο σε αυτό το πλαίσιο (F5)",
+            "moveHereFromOtherPanelTooltip": "Μετακίνηση {count} επιλεγμένων από το άλλο πλαίσιο σε αυτό το πλαίσιο (F6)"
         },
         "localSync": {
             "title": "AeroSync: τοπικό προς τοπικό",
