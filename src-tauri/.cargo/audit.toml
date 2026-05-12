@@ -151,6 +151,39 @@ ignore = [
     # russh/RSA decommission in APPENDIX-SIGSTORE.
     "GHSA-4v58-8p28-2rq3",  # tough delegated metadata validation
     "GHSA-8m7c-8m39-rv4x",  # tough delegated signature threshold
+
+    # ----------------------------------------------------------------
+    # Tauri 2.11.0 Origin Confusion (Windows/Android only) - intentional pin
+    # ----------------------------------------------------------------
+    # GHSA-7gmj-67g7-phm9 / CVE-2026-42184 (CVSS:4.0/AV:N/VI:H) flags Tauri's
+    # `is_local_url()` for accepting `http://<scheme>.attacker.com/` as a
+    # local origin on Windows and Android, because the check only inspects
+    # the first dot-separated label of the host. An attacker who entices a
+    # user to load such a page can invoke backend IPC commands that the
+    # developer intended to be reachable only from the bundled frontend.
+    #
+    # AeroFTP is NOT reachable through this vector:
+    #
+    #   1. AeroFTP's frontend is always served from the bundled localhost
+    #      server via `tauri-plugin-localhost` on `http://localhost:14321`.
+    #      We never load remote URLs into the main webview; there is no
+    #      `WebviewUrl::External` or `loadUrl` accepting attacker input.
+    #   2. The webview origin is `http://localhost:*`, not a custom scheme
+    #      mapped via `http://<scheme>.localhost/`, so the buggy first-dot
+    #      check does not apply to our origin shape.
+    #   3. Linux/macOS builds are not in the affected platform set at all.
+    #
+    # The 2.11.1 fix is incompatible with our localhost-served frontend
+    # because it introduces a stricter `is_local_url()` that classifies
+    # `http://127.0.0.1:*` as remote and rejects every custom command
+    # without a full app ACL manifest. Migrating to 2.11.1 would require
+    # auditing and gating the entire invoke_handler surface behind an ACL
+    # capability scope, which is tracked separately and is unrelated to
+    # this CVE's attack surface.
+    #
+    # The matching pin rationale lives inline on `tauri = "=2.11.0"` in
+    # src-tauri/Cargo.toml lines 44-50.
+    "GHSA-7gmj-67g7-phm9",  # Tauri Origin Confusion (not reachable, intentional pin)
 ]
 
 # We do NOT ignore "informational" advisories blanket-style. Each ignore is
