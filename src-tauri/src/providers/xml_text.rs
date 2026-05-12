@@ -58,21 +58,31 @@ fn decode_numeric_ref(rest: &[u8]) -> Option<String> {
     char::from_u32(codepoint).map(|c| c.to_string())
 }
 
-/// Decode an XML attribute value, applying entity unescape.
+/// Decode an XML attribute value, applying entity unescape and XML
+/// attribute-value normalization.
 ///
 /// quick-xml gives back attribute values verbatim (entities are NOT
 /// auto-resolved on `attr.value`). For payloads where file names are
 /// stored as attributes (e.g. Jottacloud `<file name="a&amp;b.txt">`),
 /// the raw bytes still contain `&amp;` etc. and a plain UTF-8 decode
-/// produces the literal `a&amp;b.txt` instead of `a&b.txt`. Calling
-/// `Attribute::unescape_value()` resolves the five XML-builtin entities
-/// and decimal/hex numeric references.
+/// produces the literal `a&amp;b.txt` instead of `a&b.txt`.
+///
+/// quick-xml 0.40 deprecated `unescape_value` in favour of
+/// `normalized_value`, which additionally implements the XML 1.0
+/// attribute-value normalization process (whitespace folding on
+/// non-CDATA attributes). The normalized variant is the spec-correct
+/// behaviour and resolves the same five builtin entities plus numeric
+/// references.
 ///
 /// Falls back to a lossy UTF-8 decode if unescape fails (e.g. unknown
 /// named reference): better to surface the raw value than to silently
 /// drop the attribute.
 pub fn attr_value(attr: &quick_xml::events::attributes::Attribute) -> String {
-    attr.unescape_value()
+    // `Implicit1_0` matches the XML 1.0 assumption used by the spec when
+    // the source has no `<?xml version="..."?>` prolog, which is the
+    // overwhelmingly common case for the WebDAV / S3 / Azure / Jottacloud
+    // payloads this helper feeds.
+    attr.normalized_value(quick_xml::XmlVersion::Implicit1_0)
         .map(|s| s.into_owned())
         .unwrap_or_else(|_| String::from_utf8_lossy(&attr.value).to_string())
 }
