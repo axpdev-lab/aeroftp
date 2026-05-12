@@ -14,6 +14,7 @@
 import React from 'react';
 import {
   RefreshCw, Search, HardDrive, AlertTriangle, X, ClipboardList, FolderUp, Loader2,
+  Copy, ArrowRightLeft,
 } from 'lucide-react';
 import { BreadcrumbBar } from './BreadcrumbBar';
 import { PlacesSidebar } from './PlacesSidebar';
@@ -66,6 +67,23 @@ export interface LocalFilePanelProps {
     onChooseLocalFolder: () => void;
     onChooseRemoteProfile: (profile: ServerProfile) => void;
   };
+  /**
+   * Cross-panel transfer affordance (Slice B/C, issue #162).
+   *
+   * When the OPPOSITE local panel has an active selection, the header
+   * surfaces an explicit "Copy →" / "Move →" pair of chips that opens
+   * the unified transfer plan dialog with this panel as destination. The
+   * affordance keeps the F5 / F6 / right-click / drag triggers
+   * discoverable without requiring keyboard shortcut knowledge.
+   *
+   * Pass `null` (or omit) when no selection on the other panel: the
+   * chips hide entirely so they never distract from single-panel work.
+   */
+  crossPanelTransfer?: {
+    selectionCount: number;
+    onCopyHere: () => void;
+    onMoveHere: () => void;
+  } | null;
 
   // --- Navigation ---
   currentPath: string;
@@ -206,6 +224,7 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
   onPanelFocus,
   style,
   endpointSelector,
+  crossPanelTransfer,
   currentPath,
   setCurrentPath,
   onNavigate,
@@ -423,6 +442,35 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
             onChooseLocalFolder={endpointSelector.onChooseLocalFolder}
             onChooseRemoteProfile={endpointSelector.onChooseRemoteProfile}
           />
+        )}
+        {crossPanelTransfer && crossPanelTransfer.selectionCount > 0 && (
+          // Discoverable trigger for the unified planner: appears only
+          // when the opposite local panel has an active selection, and
+          // surfaces "Copy here" / "Move here" as one-click counterparts
+          // to F5 / F6. Closes the gap reported on the endpoint selector
+          // where remote-profile picks would silently auto-open the plan
+          // dialog while local-folder picks would not, leaving the
+          // local-to-local path with no menu-driven trigger.
+          <div className="flex-shrink-0 inline-flex items-center gap-1">
+            <button
+              type="button"
+              onClick={crossPanelTransfer.onCopyHere}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-blue-100 hover:bg-blue-200 text-blue-700 dark:bg-blue-900/40 dark:hover:bg-blue-900/60 dark:text-blue-300 transition-colors"
+              title={t('aerofile.copyHereFromOtherPanelTooltip', { count: crossPanelTransfer.selectionCount })}
+            >
+              <Copy size={12} />
+              <span>{t('aerofile.copyHere', { count: crossPanelTransfer.selectionCount })}</span>
+            </button>
+            <button
+              type="button"
+              onClick={crossPanelTransfer.onMoveHere}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-amber-100 hover:bg-amber-200 text-amber-700 dark:bg-amber-900/40 dark:hover:bg-amber-900/60 dark:text-amber-300 transition-colors"
+              title={t('aerofile.moveHereFromOtherPanelTooltip', { count: crossPanelTransfer.selectionCount })}
+            >
+              <ArrowRightLeft size={12} />
+              <span>{t('aerofile.moveHere', { count: crossPanelTransfer.selectionCount })}</span>
+            </button>
+          </div>
         )}
         {isAeroFileMode ? (
           <div className="flex-1 flex items-center gap-1.5 min-w-0">
