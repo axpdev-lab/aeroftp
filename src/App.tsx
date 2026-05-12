@@ -115,6 +115,7 @@ import { WindowResizeEdges } from './components/WindowResizeEdges';
 import { DevToolsV2, PreviewFile, isPreviewable } from './components/DevTools';
 import { UniversalPreview, PreviewFileData, getPreviewCategory, isPreviewable as isMediaPreviewable } from './components/Preview';
 import { SyncPanel } from './components/SyncPanel';
+import { LocalSyncPanel } from './components/LocalSyncPanel';
 import { VaultPanel } from './components/VaultPanel';
 import { CryptomatorBrowser } from './components/CryptomatorBrowser';
 import { RcloneCryptUnlock } from './components/RcloneCryptUnlock';
@@ -631,6 +632,10 @@ const App: React.FC = () => {
 
   const [showDependenciesPanel, setShowDependenciesPanel] = useState(false);
   const [showSyncPanel, setShowSyncPanel] = useState(false);
+  // Z.2.3: local-to-local AeroSync. Independent from showSyncPanel
+  // because the local panel does not need a remote connection and
+  // exposes a different command surface (no direction toggle).
+  const [showLocalSyncPanel, setShowLocalSyncPanel] = useState(false);
   const [showVaultPanel, setShowVaultPanel] = useState<false | { mode?: 'home' | 'create' | 'open'; path?: string; files?: string[]; folderPath?: string }>(false);
   const [aeroVaultOverlaySession, setAeroVaultOverlaySession] = useState<AeroVaultOverlaySession | null>(null);
   const [showCryptomatorBrowser, setShowCryptomatorBrowser] = useState(false);
@@ -2179,6 +2184,7 @@ interface UpdateVerificationInfo {
     { id: 'tools-terminal', label: t('devtools.sshTerminal'), category: 'tools' as CommandCategory, icon: <Terminal size={14} />, action: () => window.dispatchEvent(new CustomEvent('devtools-panel-ensure', { detail: 'terminal' })), keywords: ['ssh', 'shell', 'console'] },
     // Sync
     { id: 'sync-panel', label: t('syncPanel.title'), category: 'sync' as CommandCategory, icon: <FolderSync size={14} />, action: () => setShowSyncPanel(true), keywords: ['synchronize', 'aerosync'] },
+    { id: 'local-sync-panel', label: t('localSync.title'), category: 'sync' as CommandCategory, icon: <FolderSync size={14} />, action: () => setShowLocalSyncPanel(true), keywords: ['synchronize', 'aerosync', 'local', 'delta'] },
     // AeroVault overlay
     {
       id: 'tools-aerovault-overlay',
@@ -9051,6 +9057,7 @@ interface UpdateVerificationInfo {
           onToggleAgent={() => { setDevToolsOpen(true); window.dispatchEvent(new CustomEvent('devtools-panel-solo', { detail: 'agent' })); }}
           onToggleActivityLog={() => setShowActivityLog(v => !v)}
           onToggleDebugPanel={() => setShowDebugPanel(v => !v)}
+          onShowLocalSync={() => setShowLocalSyncPanel(true)}
           onQuit={async () => { try { await getCurrentWindow().close(); } catch { /* noop */ } }}
           onCheckForUpdates={() => checkForUpdate(true)}
           hasActivity={hasActivity || hasQueueActivity}
@@ -9654,6 +9661,11 @@ interface UpdateVerificationInfo {
             await loadRemoteFiles();
             await loadLocalFiles(currentLocalPath);
           }}
+        />
+        <LocalSyncPanel
+          isOpen={showLocalSyncPanel}
+          onClose={() => setShowLocalSyncPanel(false)}
+          initialSource={currentLocalPath}
         />
         <CloudPanel
           isOpen={showCloudPanel}
