@@ -4996,30 +4996,19 @@ interface UpdateVerificationInfo {
   }, [currentLocalPath, currentLocalPath2, changeLocalDirectory2, notify, t]);
 
   const chooseEndpointRemoteProfile = useCallback((panelId: 'local' | 'local2', profile: ServerProfile) => {
+    // Selector endpoint is setup-only (Total Commander / RClone Browser
+    // pattern): picking a remote profile attaches that backend to the
+    // panel, it does NOT silently initiate a transfer. Transfer triggers
+    // live on F5 / F6, the right-click context menu, the explicit
+    // "Copy to other panel" header chip, and drag-and-drop.
     setActivePanel('local');
     setActiveLocalPanelId(panelId);
-    const targetPanel = panelId === 'local' ? localUnifiedPanel : local2UnifiedPanel;
     const selectedEndpoint = createRemoteEndpoint(profile, profile.initialPath?.trim() || '/');
-    const leftEndpoint = targetPanel?.id === 'left' ? selectedEndpoint : unifiedPanelController.left?.endpoint;
-    const rightEndpoint = targetPanel?.id === 'right' ? selectedEndpoint : unifiedPanelController.right?.endpoint;
-
-    if (leftEndpoint && rightEndpoint) {
-      setPendingUnifiedTransferPlan({
-        plan: createUnifiedTransferPlan({
-          mode: 'copy',
-          source: leftEndpoint,
-          destination: rightEndpoint,
-          preferDelta: true,
-        }),
-      });
-      return;
-    }
-
     setShowCrossProfilePanel({
       destId: profile.id,
       destPath: selectedEndpoint.path,
     });
-  }, [localUnifiedPanel, local2UnifiedPanel, unifiedPanelController.left, unifiedPanelController.right]);
+  }, []);
 
   // Safe local path navigation with fallback for invalid paths
   // (e.g. imported backup from another PC with different directory structure)
@@ -11542,6 +11531,11 @@ interface UpdateVerificationInfo {
                     onChooseLocalFolder: () => { void chooseEndpointLocalFolder('local'); },
                     onChooseRemoteProfile: (profile) => chooseEndpointRemoteProfile('local', profile),
                   } : undefined}
+                  crossPanelTransfer={showDualLocalPanel && selectedLocalFiles2.size > 0 ? {
+                    selectionCount: selectedLocalFiles2.size,
+                    onCopyHere: () => { void planLocalSelectionAcrossPanels('copy', 'local2'); },
+                    onMoveHere: () => { void planLocalSelectionAcrossPanels('move', 'local2'); },
+                  } : null}
                   className={isConnected && showRemotePanel ? (swapPanels ? 'order-1' : 'order-2') : undefined}
                   currentPath={currentLocalPath}
                   setCurrentPath={setCurrentLocalPath}
@@ -11677,6 +11671,11 @@ interface UpdateVerificationInfo {
                       onChooseLocalFolder: () => { void chooseEndpointLocalFolder('local2'); },
                       onChooseRemoteProfile: (profile) => chooseEndpointRemoteProfile('local2', profile),
                     } : undefined}
+                    crossPanelTransfer={selectedLocalFiles.size > 0 ? {
+                      selectionCount: selectedLocalFiles.size,
+                      onCopyHere: () => { void planLocalSelectionAcrossPanels('copy', 'local'); },
+                      onMoveHere: () => { void planLocalSelectionAcrossPanels('move', 'local'); },
+                    } : null}
                     className="border-l border-gray-200 dark:border-gray-700"
                     currentPath={currentLocalPath2}
                     setCurrentPath={setCurrentLocalPath2}
