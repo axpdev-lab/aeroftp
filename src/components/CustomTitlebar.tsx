@@ -78,6 +78,11 @@ interface TitlebarProps {
     onToggleAgent: () => void;
     onToggleActivityLog: () => void;
     onToggleDebugPanel: () => void;
+    /// AeroSync local-to-local (Z.2.3): pure in-process delta mirror
+    /// between two local paths. Exposed in the View menu next to the
+    /// other utility panels so power users can find it without leaving
+    /// the keyboard (also reachable via the command palette).
+    onShowLocalSync: () => void;
     onQuit: () => void;
     onCheckForUpdates: () => void;
     hasActivity: boolean;
@@ -189,7 +194,8 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
         onRefresh, onNewFolder, onToggleDevTools, onToggleTheme,
         onToggleDebugMode, onRename, onDelete, onSelectAll,
         onCut, onCopy, onPaste, hasSelection, hasClipboard,
-        onToggleEditor, onToggleTerminal, onToggleAgent, onToggleActivityLog, onToggleDebugPanel, onQuit,
+        onToggleEditor, onToggleTerminal, onToggleAgent, onToggleActivityLog, onToggleDebugPanel,
+        onShowLocalSync, onQuit,
         onCheckForUpdates, hasActivity,
         cardLayout, onToggleCardLayout,
     } = props;
@@ -282,6 +288,11 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
         { separator: true },
         { label: t('menu.activityLog'), shortcut: 'Ctrl+Shift+L', onClick: onToggleActivityLog },
         { label: t('menu.debugPanel'), shortcut: 'Ctrl+Shift+M', onClick: onToggleDebugPanel },
+        { separator: true },
+        // Z.2.3 entry point. Always enabled: the panel itself targets
+        // two local paths and does not depend on the remote connection
+        // or on any file panel being mounted.
+        { label: t('menu.localSync'), onClick: onShowLocalSync },
     ];
 
     const helpMenu: MenuEntry[] = [

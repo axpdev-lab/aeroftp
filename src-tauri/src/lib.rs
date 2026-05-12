@@ -57,6 +57,8 @@ mod delta_sync;
 // `delta_transport()` method can stay cross-OS.
 pub mod delta_sync_rsync;
 pub mod delta_transport;
+#[cfg(feature = "aerorsync")]
+pub mod local_sync;
 mod number_parsing;
 pub mod portable;
 pub mod profile_loader;
@@ -14149,6 +14151,8 @@ pub fn run() {
 
     builder
         .invoke_handler(tauri::generate_handler![
+            #[cfg(feature = "aerorsync")]
+            local_sync::local_sync_run,
             app_ready,
             set_close_to_tray,
             is_autostart_launch,
