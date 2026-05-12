@@ -3105,6 +3105,10 @@
       "moveToOtherPanel": "Move to other panel",
       "copiedToOtherPanel": "Copied to other panel",
       "movedToOtherPanel": "Moved to other panel",
+      "copyHere": "Copy {count} here",
+      "moveHere": "Move {count} here",
+      "copyHereFromOtherPanelTooltip": "Copy {count} selected from the other panel into this panel (F5)",
+      "moveHereFromOtherPanelTooltip": "Move {count} selected from the other panel into this panel (F6)",
       "itemsLower": "items",
       "resizePanels": "Resize panels"
     },

@@ -4505,7 +4505,11 @@
             "copiedToOtherPanel": "Nukopijuota į kitą skydelį",
             "movedToOtherPanel": "Perkelta į kitą skydelį",
             "itemsLower": "items",
-            "resizePanels": "Resize panels"
+            "resizePanels": "Resize panels",
+            "copyHere": "Kopijuoti {count} čia",
+            "moveHere": "Perkelti {count} čia",
+            "copyHereFromOtherPanelTooltip": "Kopijuoti {count} pasirinktų iš kito skydelio į šį skydelį (F5)",
+            "moveHereFromOtherPanelTooltip": "Perkelti {count} pasirinktų iš kito skydelio į šį skydelį (F6)"
         },
         "localSync": {
             "title": "AeroSync: iš vietinio į vietinį",

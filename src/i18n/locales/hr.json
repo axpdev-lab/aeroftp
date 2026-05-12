@@ -4505,7 +4505,11 @@
             "copiedToOtherPanel": "Kopirano u drugi panel",
             "movedToOtherPanel": "Premješteno u drugi panel",
             "itemsLower": "items",
-            "resizePanels": "Resize panels"
+            "resizePanels": "Resize panels",
+            "copyHere": "Kopiraj {count} ovdje",
+            "moveHere": "Premjesti {count} ovdje",
+            "copyHereFromOtherPanelTooltip": "Kopiraj {count} odabranih iz druge ploče u ovu ploču (F5)",
+            "moveHereFromOtherPanelTooltip": "Premjesti {count} odabranih iz druge ploče u ovu ploču (F6)"
         },
         "localSync": {
             "title": "AeroSync: lokalno na lokalno",

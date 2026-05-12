@@ -4524,7 +4524,11 @@
             "copiedToOtherPanel": "Afritað í hinn gluggann",
             "movedToOtherPanel": "Fært í hinn gluggann",
             "itemsLower": "items",
-            "resizePanels": "Resize panels"
+            "resizePanels": "Resize panels",
+            "copyHere": "Afrita {count} hingað",
+            "moveHere": "Færa {count} hingað",
+            "copyHereFromOtherPanelTooltip": "Afrita {count} valin atriði úr hinum glugganum yfir í þennan glugga (F5)",
+            "moveHereFromOtherPanelTooltip": "Færa {count} valin atriði úr hinum glugganum yfir í þennan glugga (F6)"
         },
         "localSync": {
             "title": "AeroSync: staðbundið í staðbundið",

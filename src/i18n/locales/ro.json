@@ -4505,7 +4505,11 @@
             "copiedToOtherPanel": "Copiat în celălalt panou",
             "movedToOtherPanel": "Mutat în celălalt panou",
             "itemsLower": "items",
-            "resizePanels": "Resize panels"
+            "resizePanels": "Resize panels",
+            "copyHere": "Copiază {count} aici",
+            "moveHere": "Mută {count} aici",
+            "copyHereFromOtherPanelTooltip": "Copiază {count} selectate din celălalt panou în acest panou (F5)",
+            "moveHereFromOtherPanelTooltip": "Mută {count} selectate din celălalt panou în acest panou (F6)"
         },
         "localSync": {
             "title": "AeroSync: de la local la local",

@@ -4505,7 +4505,11 @@
             "copiedToOtherPanel": "Diğer panele kopyalandı",
             "movedToOtherPanel": "Diğer panele taşındı",
             "itemsLower": "öğe",
-            "resizePanels": "Panelleri yeniden boyutlandır"
+            "resizePanels": "Panelleri yeniden boyutlandır",
+            "copyHere": "{count} öğeyi buraya kopyala",
+            "moveHere": "{count} öğeyi buraya taşı",
+            "copyHereFromOtherPanelTooltip": "Diğer panelden seçilen {count} öğeyi bu panele kopyala (F5)",
+            "moveHereFromOtherPanelTooltip": "Diğer panelden seçilen {count} öğeyi bu panele taşı (F6)"
         },
         "localSync": {
             "title": "AeroSync: yerelden yerele",

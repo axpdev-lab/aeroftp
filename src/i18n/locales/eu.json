@@ -4524,7 +4524,11 @@
             "copiedToOtherPanel": "Beste panelera kopiatuta",
             "movedToOtherPanel": "Beste panelera mugituta",
             "itemsLower": "items",
-            "resizePanels": "Resize panels"
+            "resizePanels": "Resize panels",
+            "copyHere": "Kopiatu {count} hona",
+            "moveHere": "Eraman {count} hona",
+            "copyHereFromOtherPanelTooltip": "Kopiatu beste paneletik hautatutako {count} panel honetara (F5)",
+            "moveHereFromOtherPanelTooltip": "Eraman beste paneletik hautatutako {count} panel honetara (F6)"
         },
         "localSync": {
             "title": "AeroSync: lokaletik lokalera",

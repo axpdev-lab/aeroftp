@@ -4524,7 +4524,11 @@
             "copiedToOtherPanel": "Copïwyd i'r panel arall",
             "movedToOtherPanel": "Symudwyd i'r panel arall",
             "itemsLower": "items",
-            "resizePanels": "Resize panels"
+            "resizePanels": "Resize panels",
+            "copyHere": "Copïo {count} yma",
+            "moveHere": "Symud {count} yma",
+            "copyHereFromOtherPanelTooltip": "Copïo {count} a ddewiswyd o'r panel arall i'r panel hwn (F5)",
+            "moveHereFromOtherPanelTooltip": "Symud {count} a ddewiswyd o'r panel arall i'r panel hwn (F6)"
         },
         "localSync": {
             "title": "AeroSync: o leol i leol",

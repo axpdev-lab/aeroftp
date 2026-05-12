@@ -4505,7 +4505,11 @@
             "copiedToOtherPanel": "Скопировано в другую панель",
             "movedToOtherPanel": "Перемещено в другую панель",
             "itemsLower": "элементов",
-            "resizePanels": "Изменить размер панелей"
+            "resizePanels": "Изменить размер панелей",
+            "copyHere": "Копировать {count} сюда",
+            "moveHere": "Переместить {count} сюда",
+            "copyHereFromOtherPanelTooltip": "Копировать {count} выбранных из другой панели в эту панель (F5)",
+            "moveHereFromOtherPanelTooltip": "Переместить {count} выбранных из другой панели в эту панель (F6)"
         },
         "localSync": {
             "title": "AeroSync: локально в локально",

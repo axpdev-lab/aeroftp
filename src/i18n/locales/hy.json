@@ -4505,7 +4505,11 @@
             "copiedToOtherPanel": "Պատճենված է մյուս պանելում",
             "movedToOtherPanel": "Տեղափոխված է մյուս պանելում",
             "itemsLower": "items",
-            "resizePanels": "Resize panels"
+            "resizePanels": "Resize panels",
+            "copyHere": "Պատճենել {count}-ը այստեղ",
+            "moveHere": "Տեղափոխել {count}-ը այստեղ",
+            "copyHereFromOtherPanelTooltip": "Պատճենել մյուս վահանակից ընտրված {count}-ը այս վահանակում (F5)",
+            "moveHereFromOtherPanelTooltip": "Տեղափոխել մյուս վահանակից ընտրված {count}-ը այս վահանակում (F6)"
         },
         "localSync": {
             "title": "AeroSync։ տեղականից տեղական",
