@@ -3302,7 +3302,8 @@
             "mountManager": "Pengelola Mount...",
             "activityLog": "Log Aktivitas",
             "detailedCards": "Kartu server terperinci",
-            "debugPanel": "Debug Panel"
+            "debugPanel": "Debug Panel",
+            "localSync": "Sinkronisasi lokal..."
         },
         "activityPanel": {
             "awaitingCommands": "Menunggu perintah...",
@@ -4505,6 +4506,29 @@
             "movedToOtherPanel": "Dipindahkan ke panel lain",
             "itemsLower": "items",
             "resizePanels": "Resize panels"
+        },
+        "localSync": {
+            "title": "AeroSync: lokal ke lokal",
+            "description": "Mencerminkan direktori sumber lokal ke tujuan lokal. File ≥ 1 MiB menggunakan mesin delta internal; file yang lebih kecil menggunakan salinan langsung.",
+            "source": "Sumber",
+            "destination": "Tujuan",
+            "browse": "Telusuri…",
+            "excludeLabel": "Pola pengecualian (dipisahkan koma atau baris baru)",
+            "useDelta": "Gunakan transport delta (file ≥ 1 MiB)",
+            "dryRun": "Uji coba (hanya pratinjau)",
+            "running": "Berjalan…",
+            "start": "Mulai sinkronisasi",
+            "resultOk": "Sinkronisasi selesai",
+            "resultPartial": "Sinkronisasi selesai dengan kesalahan",
+            "uploaded": "Diunggah",
+            "skipped": "Dilewati",
+            "errors": "Kesalahan",
+            "elapsed": "Waktu berlalu",
+            "payload": "Payload",
+            "bytesOnWire": "Byte di jaringan",
+            "savings": "Penghematan",
+            "errorDetails": "kesalahan, detail",
+            "errorPathsRequired": "Sumber dan tujuan wajib diisi"
         }
     }
 }

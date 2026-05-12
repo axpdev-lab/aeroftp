@@ -3302,7 +3302,8 @@
             "mountManager": "Muntaketa-kudeatzailea...",
             "activityLog": "Jarduera erregistroa",
             "detailedCards": "Zerbitzari-txartel zehatzak",
-            "debugPanel": "Debug Panel"
+            "debugPanel": "Debug Panel",
+            "localSync": "Sinkronizazio lokala..."
         },
         "activityPanel": {
             "awaitingCommands": "Komandoen zain...",
@@ -4524,6 +4525,29 @@
             "movedToOtherPanel": "Beste panelera mugituta",
             "itemsLower": "items",
             "resizePanels": "Resize panels"
+        },
+        "localSync": {
+            "title": "AeroSync: lokaletik lokalera",
+            "description": "Iturburu-direktorio lokal bat helmuga lokal batera ispilatzen du. ≥ 1 MiB-eko fitxategiek prozesuko delta motorra erabiltzen dute; fitxategi txikiagoek kopia zuzena erabiltzen dute.",
+            "source": "Iturburua",
+            "destination": "Helmuga",
+            "browse": "Arakatu…",
+            "excludeLabel": "Bazterketa-ereduak (komaz edo lerro berriz bereiziak)",
+            "useDelta": "Erabili delta garraioa (≥ 1 MiB-eko fitxategiak)",
+            "dryRun": "Saiakera (aurrebista soilik)",
+            "running": "Exekutatzen…",
+            "start": "Hasi sinkronizazioa",
+            "resultOk": "Sinkronizazioa amaitu da",
+            "resultPartial": "Sinkronizazioa erroreekin amaitu da",
+            "uploaded": "Igota",
+            "skipped": "Saltatuta",
+            "errors": "Erroreak",
+            "elapsed": "Igarotako denbora",
+            "payload": "Payload",
+            "bytesOnWire": "Sareko byteak",
+            "savings": "Aurrezpena",
+            "errorDetails": "errore(ak), xehetasunak",
+            "errorPathsRequired": "Iturburua eta helmuga beharrezkoak dira"
         }
     }
 }

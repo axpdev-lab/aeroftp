@@ -3302,7 +3302,8 @@
             "mountManager": "Montēšanas pārvaldnieks...",
             "activityLog": "Aktivitāšu žurnāls",
             "detailedCards": "Detalizētas serveru kartes",
-            "debugPanel": "Debug Panel"
+            "debugPanel": "Debug Panel",
+            "localSync": "Vietējā sinhronizācija..."
         },
         "activityPanel": {
             "awaitingCommands": "Gaida komandas...",
@@ -4505,6 +4506,29 @@
             "movedToOtherPanel": "Pārvietots uz otru paneli",
             "itemsLower": "items",
             "resizePanels": "Resize panels"
+        },
+        "localSync": {
+            "title": "AeroSync: no vietējā uz vietējo",
+            "description": "Atspoguļo vietējo avota direktoriju vietējā galamērķī. Faili ≥ 1 MiB izmanto iebūvēto delta dzinēju; mazāki faili izmanto tiešu kopēšanu.",
+            "source": "Avots",
+            "destination": "Galamērķis",
+            "browse": "Pārlūkot…",
+            "excludeLabel": "Izslēgšanas šabloni (atdalīti ar komatu vai jaunu rindu)",
+            "useDelta": "Izmantot delta transportu (faili ≥ 1 MiB)",
+            "dryRun": "Sausais palaidiens (tikai priekšskatījums)",
+            "running": "Notiek…",
+            "start": "Sākt sinhronizāciju",
+            "resultOk": "Sinhronizācija pabeigta",
+            "resultPartial": "Sinhronizācija pabeigta ar kļūdām",
+            "uploaded": "Augšupielādēts",
+            "skipped": "Izlaists",
+            "errors": "Kļūdas",
+            "elapsed": "Pagājušais laiks",
+            "payload": "Payload",
+            "bytesOnWire": "Baiti tīklā",
+            "savings": "Ietaupījums",
+            "errorDetails": "kļūda(s), informācija",
+            "errorPathsRequired": "Avots un galamērķis ir obligāti"
         }
     }
 }

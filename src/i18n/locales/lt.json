@@ -3302,7 +3302,8 @@
             "mountManager": "Prijungimo tvarkyklė...",
             "activityLog": "Veiklos zurnalas",
             "detailedCards": "Išsamios serverių kortelės",
-            "debugPanel": "Debug Panel"
+            "debugPanel": "Debug Panel",
+            "localSync": "Vietinė sinchronizacija..."
         },
         "activityPanel": {
             "awaitingCommands": "Laukiama komandų...",
@@ -4505,6 +4506,29 @@
             "movedToOtherPanel": "Perkelta į kitą skydelį",
             "itemsLower": "items",
             "resizePanels": "Resize panels"
+        },
+        "localSync": {
+            "title": "AeroSync: iš vietinio į vietinį",
+            "description": "Atspindi vietinį šaltinio katalogą į vietinę paskirties vietą. Failai ≥ 1 MiB naudoja vidinį delta variklį; mažesni failai naudoja tiesioginį kopijavimą.",
+            "source": "Šaltinis",
+            "destination": "Paskirties vieta",
+            "browse": "Naršyti…",
+            "excludeLabel": "Išskyrimo šablonai (atskirti kableliu arba nauja eilute)",
+            "useDelta": "Naudoti delta transportą (failai ≥ 1 MiB)",
+            "dryRun": "Bandomasis paleidimas (tik peržiūra)",
+            "running": "Vykdoma…",
+            "start": "Pradėti sinchronizaciją",
+            "resultOk": "Sinchronizacija baigta",
+            "resultPartial": "Sinchronizacija baigta su klaidomis",
+            "uploaded": "Įkelta",
+            "skipped": "Praleista",
+            "errors": "Klaidos",
+            "elapsed": "Praėjęs laikas",
+            "payload": "Payload",
+            "bytesOnWire": "Baitai tinkle",
+            "savings": "Sutaupymas",
+            "errorDetails": "klaida(os), išsami informacija",
+            "errorPathsRequired": "Šaltinis ir paskirties vieta yra privalomi"
         }
     }
 }

@@ -3302,7 +3302,8 @@
             "mountManager": "ตัวจัดการการเมาท์...",
             "activityLog": "บันทึกกิจกรรม",
             "detailedCards": "การ์ดเซิร์ฟเวอร์แบบละเอียด",
-            "debugPanel": "Debug Panel"
+            "debugPanel": "Debug Panel",
+            "localSync": "ซิงค์ในเครื่อง..."
         },
         "activityPanel": {
             "awaitingCommands": "รอคำสั่ง...",
@@ -4505,6 +4506,29 @@
             "movedToOtherPanel": "ย้ายไปยังแผงอีกด้านแล้ว",
             "itemsLower": "items",
             "resizePanels": "Resize panels"
+        },
+        "localSync": {
+            "title": "AeroSync: ในเครื่องสู่ในเครื่อง",
+            "description": "สะท้อนไดเรกทอรีต้นทางในเครื่องไปยังปลายทางในเครื่อง ไฟล์ขนาด ≥ 1 MiB ใช้เอนจิน delta ในตัว ไฟล์ที่เล็กกว่าใช้การคัดลอกตรง",
+            "source": "ต้นทาง",
+            "destination": "ปลายทาง",
+            "browse": "เรียกดู…",
+            "excludeLabel": "รูปแบบการยกเว้น (คั่นด้วยจุลภาคหรือบรรทัดใหม่)",
+            "useDelta": "ใช้การส่ง delta (ไฟล์ ≥ 1 MiB)",
+            "dryRun": "ทดลองรัน (ดูตัวอย่างเท่านั้น)",
+            "running": "กำลังทำงาน…",
+            "start": "เริ่มการซิงค์",
+            "resultOk": "ซิงค์เสร็จสมบูรณ์",
+            "resultPartial": "ซิงค์เสร็จสมบูรณ์โดยมีข้อผิดพลาด",
+            "uploaded": "อัปโหลดแล้ว",
+            "skipped": "ข้าม",
+            "errors": "ข้อผิดพลาด",
+            "elapsed": "เวลาที่ผ่านไป",
+            "payload": "Payload",
+            "bytesOnWire": "ไบต์บนเครือข่าย",
+            "savings": "ประหยัด",
+            "errorDetails": "ข้อผิดพลาด รายละเอียด",
+            "errorPathsRequired": "ต้องระบุต้นทางและปลายทาง"
         }
     }
 }

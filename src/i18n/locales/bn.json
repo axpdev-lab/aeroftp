@@ -3302,7 +3302,8 @@
             "mountManager": "মাউন্ট ম্যানেজার...",
             "activityLog": "অ্যাক্টিভিটি লগ",
             "detailedCards": "বিস্তারিত সার্ভার কার্ড",
-            "debugPanel": "Debug Panel"
+            "debugPanel": "Debug Panel",
+            "localSync": "লোকাল সিঙ্ক..."
         },
         "activityPanel": {
             "awaitingCommands": "কমান্ডের অপেক্ষায়...",
@@ -4505,6 +4506,29 @@
             "movedToOtherPanel": "অন্য প্যানেলে সরানো হয়েছে",
             "itemsLower": "items",
             "resizePanels": "Resize panels"
+        },
+        "localSync": {
+            "title": "AeroSync: লোকাল থেকে লোকাল",
+            "description": "একটি লোকাল উৎস ডিরেক্টরিকে লোকাল গন্তব্য ডিরেক্টরিতে মিরর করে। ১ MiB বা তার বেশি ফাইল ইন-প্রসেস delta ইঞ্জিন ব্যবহার করে; ছোট ফাইল সাধারণ কপি ব্যবহার করে।",
+            "source": "উৎস",
+            "destination": "গন্তব্য",
+            "browse": "ব্রাউজ…",
+            "excludeLabel": "এক্সক্লুড প্যাটার্ন (কমা বা নিউলাইন দ্বারা পৃথক)",
+            "useDelta": "Delta ট্রান্সপোর্ট ব্যবহার করুন (১ MiB বা তার বেশি ফাইল)",
+            "dryRun": "ড্রাই রান (শুধু প্রিভিউ)",
+            "running": "চলছে…",
+            "start": "সিঙ্ক শুরু করুন",
+            "resultOk": "সিঙ্ক সম্পন্ন হয়েছে",
+            "resultPartial": "ত্রুটির সাথে সিঙ্ক সম্পন্ন হয়েছে",
+            "uploaded": "আপলোড হয়েছে",
+            "skipped": "এড়ানো হয়েছে",
+            "errors": "ত্রুটি",
+            "elapsed": "অতিবাহিত সময়",
+            "payload": "Payload",
+            "bytesOnWire": "নেটওয়ার্কে বাইট",
+            "savings": "সঞ্চয়",
+            "errorDetails": "ত্রুটি, বিস্তারিত",
+            "errorPathsRequired": "উৎস এবং গন্তব্য আবশ্যক"
         }
     }
 }

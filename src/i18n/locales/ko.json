@@ -3302,7 +3302,8 @@
             "mountManager": "마운트 관리자...",
             "activityLog": "활동 로그",
             "detailedCards": "상세 서버 카드",
-            "debugPanel": "Debug Panel"
+            "debugPanel": "Debug Panel",
+            "localSync": "로컬 동기화..."
         },
         "activityPanel": {
             "awaitingCommands": "명령 대기 중...",
@@ -4505,6 +4506,29 @@
             "movedToOtherPanel": "다른 패널로 이동됨",
             "itemsLower": "항목",
             "resizePanels": "패널 크기 조정"
+        },
+        "localSync": {
+            "title": "AeroSync: 로컬 대 로컬",
+            "description": "로컬 원본 디렉터리를 로컬 대상으로 미러링합니다. 1 MiB 이상의 파일은 내장 delta 엔진을 사용하고, 더 작은 파일은 직접 복사를 사용합니다.",
+            "source": "원본",
+            "destination": "대상",
+            "browse": "찾아보기…",
+            "excludeLabel": "제외 패턴 (쉼표 또는 줄바꿈으로 구분)",
+            "useDelta": "Delta 전송 사용 (≥ 1 MiB 파일)",
+            "dryRun": "시험 실행 (미리 보기만)",
+            "running": "실행 중…",
+            "start": "동기화 시작",
+            "resultOk": "동기화 완료",
+            "resultPartial": "오류와 함께 동기화 완료",
+            "uploaded": "업로드됨",
+            "skipped": "건너뜀",
+            "errors": "오류",
+            "elapsed": "경과 시간",
+            "payload": "Payload",
+            "bytesOnWire": "네트워크 바이트",
+            "savings": "절약",
+            "errorDetails": "개의 오류, 세부 정보",
+            "errorPathsRequired": "원본과 대상은 필수입니다"
         }
     }
 }

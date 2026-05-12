@@ -3302,7 +3302,8 @@
             "mountManager": "Manager de montări...",
             "activityLog": "Jurnal activitate",
             "detailedCards": "Carduri server detaliate",
-            "debugPanel": "Debug Panel"
+            "debugPanel": "Debug Panel",
+            "localSync": "Sincronizare locală..."
         },
         "activityPanel": {
             "awaitingCommands": "Se asteapta comenzi...",
@@ -4505,6 +4506,29 @@
             "movedToOtherPanel": "Mutat în celălalt panou",
             "itemsLower": "items",
             "resizePanels": "Resize panels"
+        },
+        "localSync": {
+            "title": "AeroSync: de la local la local",
+            "description": "Oglindește un director sursă local într-o destinație locală. Fișierele ≥ 1 MiB folosesc motorul delta integrat; fișierele mai mici folosesc copierea directă.",
+            "source": "Sursă",
+            "destination": "Destinație",
+            "browse": "Răsfoiește…",
+            "excludeLabel": "Tipare de excludere (separate prin virgulă sau linie nouă)",
+            "useDelta": "Folosește transportul delta (fișiere ≥ 1 MiB)",
+            "dryRun": "Rulare de probă (doar previzualizare)",
+            "running": "În execuție…",
+            "start": "Pornește sincronizarea",
+            "resultOk": "Sincronizare finalizată",
+            "resultPartial": "Sincronizare finalizată cu erori",
+            "uploaded": "Încărcate",
+            "skipped": "Omise",
+            "errors": "Erori",
+            "elapsed": "Timp scurs",
+            "payload": "Payload",
+            "bytesOnWire": "Octeți în rețea",
+            "savings": "Economie",
+            "errorDetails": "eroare(eri), detalii",
+            "errorPathsRequired": "Sursa și destinația sunt obligatorii"
         }
     }
 }

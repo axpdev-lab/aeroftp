@@ -3302,7 +3302,8 @@
             "mountManager": "Rheolwr Mowntio...",
             "activityLog": "Log Gweithgaredd",
             "detailedCards": "Cardiau gweinydd manwl",
-            "debugPanel": "Debug Panel"
+            "debugPanel": "Debug Panel",
+            "localSync": "Cydweddu lleol..."
         },
         "activityPanel": {
             "awaitingCommands": "Yn aros am orchmynion...",
@@ -4524,6 +4525,29 @@
             "movedToOtherPanel": "Symudwyd i'r panel arall",
             "itemsLower": "items",
             "resizePanels": "Resize panels"
+        },
+        "localSync": {
+            "title": "AeroSync: o leol i leol",
+            "description": "Drycha gyfeiriadur ffynhonnell leol i gyfeiriadur cyrchfan lleol. Mae ffeiliau ≥ 1 MiB yn defnyddio'r peiriant delta mewnol; mae ffeiliau llai yn defnyddio copi uniongyrchol.",
+            "source": "Ffynhonnell",
+            "destination": "Cyrchfan",
+            "browse": "Pori…",
+            "excludeLabel": "Patrymau eithrio (wedi'u gwahanu gan goma neu linell newydd)",
+            "useDelta": "Defnyddio cludiant delta (ffeiliau ≥ 1 MiB)",
+            "dryRun": "Rhediad prawf (rhagolwg yn unig)",
+            "running": "Yn rhedeg…",
+            "start": "Cychwyn cydweddu",
+            "resultOk": "Cydweddu wedi'i gwblhau",
+            "resultPartial": "Cydweddu wedi'i gwblhau gyda gwallau",
+            "uploaded": "Wedi llwytho",
+            "skipped": "Wedi hepgor",
+            "errors": "Gwallau",
+            "elapsed": "Amser a aeth heibio",
+            "payload": "Payload",
+            "bytesOnWire": "Beitiau ar y rhwydwaith",
+            "savings": "Arbedion",
+            "errorDetails": "gwall(au), manylion",
+            "errorPathsRequired": "Mae angen ffynhonnell a chyrchfan"
         }
     }
 }

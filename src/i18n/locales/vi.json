@@ -3302,7 +3302,8 @@
             "mountManager": "Trình quản lý gắn kết...",
             "activityLog": "Nhật ký hoạt động",
             "detailedCards": "Thẻ máy chủ chi tiết",
-            "debugPanel": "Debug Panel"
+            "debugPanel": "Debug Panel",
+            "localSync": "Đồng bộ cục bộ..."
         },
         "activityPanel": {
             "awaitingCommands": "Đang chờ lệnh...",
@@ -4505,6 +4506,29 @@
             "movedToOtherPanel": "Đã di chuyển sang bảng kia",
             "itemsLower": "items",
             "resizePanels": "Resize panels"
+        },
+        "localSync": {
+            "title": "AeroSync: cục bộ tới cục bộ",
+            "description": "Phản chiếu thư mục nguồn cục bộ tới đích cục bộ. Tệp ≥ 1 MiB sử dụng công cụ delta tích hợp; tệp nhỏ hơn sử dụng sao chép trực tiếp.",
+            "source": "Nguồn",
+            "destination": "Đích",
+            "browse": "Duyệt…",
+            "excludeLabel": "Mẫu loại trừ (phân tách bằng dấu phẩy hoặc dòng mới)",
+            "useDelta": "Sử dụng truyền delta (tệp ≥ 1 MiB)",
+            "dryRun": "Chạy thử (chỉ xem trước)",
+            "running": "Đang chạy…",
+            "start": "Bắt đầu đồng bộ",
+            "resultOk": "Đồng bộ hoàn tất",
+            "resultPartial": "Đồng bộ hoàn tất với lỗi",
+            "uploaded": "Đã tải lên",
+            "skipped": "Đã bỏ qua",
+            "errors": "Lỗi",
+            "elapsed": "Thời gian đã trôi qua",
+            "payload": "Payload",
+            "bytesOnWire": "Byte trên mạng",
+            "savings": "Tiết kiệm",
+            "errorDetails": "lỗi, chi tiết",
+            "errorPathsRequired": "Nguồn và đích là bắt buộc"
         }
     }
 }

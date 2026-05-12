@@ -3267,7 +3267,8 @@
             "mountManager": "マウントマネージャー...",
             "activityLog": "アクティビティログ",
             "detailedCards": "詳細なサーバーカード",
-            "debugPanel": "Debug Panel"
+            "debugPanel": "Debug Panel",
+            "localSync": "ローカル同期..."
         },
         "activityPanel": {
             "awaitingCommands": "コマンド待機中...",
@@ -4505,6 +4506,29 @@
             "movedToOtherPanel": "もう一方のパネルに移動しました",
             "itemsLower": "項目",
             "resizePanels": "パネルのサイズを変更"
+        },
+        "localSync": {
+            "title": "AeroSync: ローカルからローカルへ",
+            "description": "ローカルのソースディレクトリをローカルの宛先にミラーします。1 MiB 以上のファイルは組み込みの delta エンジンを使用し、それより小さいファイルは直接コピーを使用します。",
+            "source": "ソース",
+            "destination": "宛先",
+            "browse": "参照…",
+            "excludeLabel": "除外パターン (カンマまたは改行で区切る)",
+            "useDelta": "Delta トランスポートを使用 (≥ 1 MiB のファイル)",
+            "dryRun": "ドライラン (プレビューのみ)",
+            "running": "実行中…",
+            "start": "同期を開始",
+            "resultOk": "同期が完了しました",
+            "resultPartial": "エラーありで同期が完了しました",
+            "uploaded": "アップロード済み",
+            "skipped": "スキップ",
+            "errors": "エラー",
+            "elapsed": "経過時間",
+            "payload": "Payload",
+            "bytesOnWire": "ネットワーク上のバイト数",
+            "savings": "節約量",
+            "errorDetails": "件のエラー、詳細",
+            "errorPathsRequired": "ソースと宛先は必須です"
         }
     }
 }

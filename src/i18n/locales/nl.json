@@ -3302,7 +3302,8 @@
             "mountManager": "Koppelingsbeheer...",
             "activityLog": "Activiteitenlog",
             "detailedCards": "Gedetailleerde serverkaarten",
-            "debugPanel": "Debug Panel"
+            "debugPanel": "Debug Panel",
+            "localSync": "Lokale synchronisatie..."
         },
         "activityPanel": {
             "awaitingCommands": "Wacht op opdrachten...",
@@ -4505,6 +4506,29 @@
             "movedToOtherPanel": "Verplaatst naar ander paneel",
             "itemsLower": "items",
             "resizePanels": "Panelen formaat wijzigen"
+        },
+        "localSync": {
+            "title": "AeroSync: lokaal naar lokaal",
+            "description": "Spiegelt een lokale bronmap naar een lokale bestemming. Bestanden ≥ 1 MiB gebruiken de ingebouwde delta-engine; kleinere bestanden gebruiken directe kopie.",
+            "source": "Bron",
+            "destination": "Bestemming",
+            "browse": "Bladeren…",
+            "excludeLabel": "Uitsluitingspatronen (gescheiden door komma of nieuwe regel)",
+            "useDelta": "Delta-transport gebruiken (bestanden ≥ 1 MiB)",
+            "dryRun": "Proefrun (alleen voorbeeld)",
+            "running": "Bezig…",
+            "start": "Synchronisatie starten",
+            "resultOk": "Synchronisatie voltooid",
+            "resultPartial": "Synchronisatie voltooid met fouten",
+            "uploaded": "Geüpload",
+            "skipped": "Overgeslagen",
+            "errors": "Fouten",
+            "elapsed": "Verstreken tijd",
+            "payload": "Payload",
+            "bytesOnWire": "Bytes op het netwerk",
+            "savings": "Besparing",
+            "errorDetails": "fout(en), details",
+            "errorPathsRequired": "Bron en bestemming zijn vereist"
         }
     }
 }

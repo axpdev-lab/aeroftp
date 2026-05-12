@@ -3302,7 +3302,8 @@
             "mountManager": "Ühenduste haldur...",
             "activityLog": "Tegevuslogi",
             "detailedCards": "Üksikasjalikud serverikaardid",
-            "debugPanel": "Debug Panel"
+            "debugPanel": "Debug Panel",
+            "localSync": "Kohalik sünkroonimine..."
         },
         "activityPanel": {
             "awaitingCommands": "Käskude ootamine...",
@@ -4505,6 +4506,29 @@
             "movedToOtherPanel": "Liigutatud teisele paneelile",
             "itemsLower": "items",
             "resizePanels": "Resize panels"
+        },
+        "localSync": {
+            "title": "AeroSync: kohalikust kohalikku",
+            "description": "Peegeldab kohaliku lähtekataloogi kohalikku sihtkohta. Failid ≥ 1 MiB kasutavad sisseehitatud delta-mootorit; väiksemad failid kasutavad otsest kopeerimist.",
+            "source": "Lähe",
+            "destination": "Sihtkoht",
+            "browse": "Sirvi…",
+            "excludeLabel": "Välistusmustrid (eraldatud koma või reavahetusega)",
+            "useDelta": "Kasuta delta-transporti (failid ≥ 1 MiB)",
+            "dryRun": "Testkäivitus (ainult eelvaade)",
+            "running": "Töötab…",
+            "start": "Alusta sünkroonimist",
+            "resultOk": "Sünkroonimine lõpetatud",
+            "resultPartial": "Sünkroonimine lõpetatud vigadega",
+            "uploaded": "Üles laaditud",
+            "skipped": "Vahele jäetud",
+            "errors": "Vead",
+            "elapsed": "Möödunud aeg",
+            "payload": "Payload",
+            "bytesOnWire": "Baidid võrgus",
+            "savings": "Sääst",
+            "errorDetails": "viga/vigu, üksikasjad",
+            "errorPathsRequired": "Lähe ja sihtkoht on kohustuslikud"
         }
     }
 }

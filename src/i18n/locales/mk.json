@@ -3302,7 +3302,8 @@
             "mountManager": "Управувач со монтирања...",
             "activityLog": "Дневник на активности",
             "detailedCards": "Детални картички за сервери",
-            "debugPanel": "Debug Panel"
+            "debugPanel": "Debug Panel",
+            "localSync": "Локална синхронизација..."
         },
         "activityPanel": {
             "awaitingCommands": "Чека команди...",
@@ -4524,6 +4525,29 @@
             "movedToOtherPanel": "Преместено во другиот панел",
             "itemsLower": "items",
             "resizePanels": "Resize panels"
+        },
+        "localSync": {
+            "title": "AeroSync: локално кон локално",
+            "description": "Огледалува локален изворен директориум кон локална дестинација. Датотеките ≥ 1 MiB го користат вградениот delta мотор; помалите датотеки користат директно копирање.",
+            "source": "Извор",
+            "destination": "Дестинација",
+            "browse": "Прелистај…",
+            "excludeLabel": "Шаблони за исклучување (одделени со запирка или нов ред)",
+            "useDelta": "Користи delta транспорт (датотеки ≥ 1 MiB)",
+            "dryRun": "Пробно извршување (само преглед)",
+            "running": "Се извршува…",
+            "start": "Започни синхронизација",
+            "resultOk": "Синхронизацијата е завршена",
+            "resultPartial": "Синхронизацијата е завршена со грешки",
+            "uploaded": "Подигнати",
+            "skipped": "Прескокнати",
+            "errors": "Грешки",
+            "elapsed": "Изминато време",
+            "payload": "Payload",
+            "bytesOnWire": "Бајти на мрежата",
+            "savings": "Заштеда",
+            "errorDetails": "грешка(и), детали",
+            "errorPathsRequired": "Изворот и дестинацијата се задолжителни"
         }
     }
 }

@@ -3295,7 +3295,8 @@
             "mountManager": "Միացման կառավարիչ...",
             "activityLog": "Գործունեության մատյան",
             "detailedCards": "Մանրամասն սերվերի քարտեր",
-            "debugPanel": "Debug Panel"
+            "debugPanel": "Debug Panel",
+            "localSync": "Տեղական համանքարկում..."
         },
         "activityPanel": {
             "awaitingCommands": "Սպասում է հրամանների...",
@@ -4505,6 +4506,29 @@
             "movedToOtherPanel": "Տեղափոխված է մյուս պանելում",
             "itemsLower": "items",
             "resizePanels": "Resize panels"
+        },
+        "localSync": {
+            "title": "AeroSync։ տեղականից տեղական",
+            "description": "Հայելի է տեղական աղբյուրի գրագրացուցակը տեղական նշանակետին։ ≥ 1 MiB ֆայլերը օգտագործում են ներքին delta շարժիչը, իսկ ավելի փոքր ֆայլերը՝ ուղիղ պատճենը։",
+            "source": "Աղբյուր",
+            "destination": "Նշանակետ",
+            "browse": "Բացել…",
+            "excludeLabel": "Բացառման շաբլոններ (ստորակետով կամ նոր տողով բաժանված)",
+            "useDelta": "Օգտագործել delta տրանսպորտ (≥ 1 MiB ֆայլեր)",
+            "dryRun": "Փորձարկում (միայն նախադիտում)",
+            "running": "Կատարվում է…",
+            "start": "Սկսել համանքարկումը",
+            "resultOk": "Համանքարկումը ավարտվեց",
+            "resultPartial": "Համանքարկումը ավարտվեց սխալներով",
+            "uploaded": "Վերբեռնված",
+            "skipped": "Բաց թողնված",
+            "errors": "Սխալներ",
+            "elapsed": "Անցած ժամանակ",
+            "payload": "Payload",
+            "bytesOnWire": "Բայթեր ցանցում",
+            "savings": "Խնայողություն",
+            "errorDetails": "սխալ(ներ), մանրամասներ",
+            "errorPathsRequired": "Աղբյուրը և նշանակետը պարտադիր են"
         }
     }
 }

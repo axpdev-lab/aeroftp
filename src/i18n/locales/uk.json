@@ -3302,7 +3302,8 @@
             "mountManager": "Менеджер монтування...",
             "activityLog": "Журнал активності",
             "detailedCards": "Детальні картки серверів",
-            "debugPanel": "Debug Panel"
+            "debugPanel": "Debug Panel",
+            "localSync": "Локальна синхронізація..."
         },
         "activityPanel": {
             "awaitingCommands": "Очікування команд...",
@@ -4505,6 +4506,29 @@
             "movedToOtherPanel": "Переміщено на іншу панель",
             "itemsLower": "items",
             "resizePanels": "Resize panels"
+        },
+        "localSync": {
+            "title": "AeroSync: локально в локально",
+            "description": "Дзеркалить локальний вихідний каталог у локальне призначення. Файли ≥ 1 MiB використовують вбудований delta-двигун, а менші файли використовують пряме копіювання.",
+            "source": "Джерело",
+            "destination": "Призначення",
+            "browse": "Огляд…",
+            "excludeLabel": "Шаблони виключення (розділені комою або новим рядком)",
+            "useDelta": "Використовувати delta-транспорт (файли ≥ 1 MiB)",
+            "dryRun": "Тестовий запуск (тільки попередній перегляд)",
+            "running": "Виконується…",
+            "start": "Запустити синхронізацію",
+            "resultOk": "Синхронізацію завершено",
+            "resultPartial": "Синхронізацію завершено з помилками",
+            "uploaded": "Завантажено",
+            "skipped": "Пропущено",
+            "errors": "Помилки",
+            "elapsed": "Минув час",
+            "payload": "Payload",
+            "bytesOnWire": "Байтів у мережі",
+            "savings": "Економія",
+            "errorDetails": "помилка(и), деталі",
+            "errorPathsRequired": "Джерело та призначення обов'язкові"
         }
     }
 }

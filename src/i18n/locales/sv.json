@@ -3302,7 +3302,8 @@
             "mountManager": "Monteringshanterare...",
             "activityLog": "Aktivitetslogg",
             "detailedCards": "Detaljerade serverkort",
-            "debugPanel": "Debug Panel"
+            "debugPanel": "Debug Panel",
+            "localSync": "Lokal synkronisering..."
         },
         "activityPanel": {
             "awaitingCommands": "Vantar pa kommandon...",
@@ -4505,6 +4506,29 @@
             "movedToOtherPanel": "Flyttat till andra panelen",
             "itemsLower": "items",
             "resizePanels": "Resize panels"
+        },
+        "localSync": {
+            "title": "AeroSync: lokalt till lokalt",
+            "description": "Speglar en lokal källkatalog till en lokal destination. Filer ≥ 1 MiB använder den inbyggda delta-motorn; mindre filer använder direkt kopiering.",
+            "source": "Källa",
+            "destination": "Destination",
+            "browse": "Bläddra…",
+            "excludeLabel": "Exkluderingsmönster (separerade med komma eller ny rad)",
+            "useDelta": "Använd delta-transport (filer ≥ 1 MiB)",
+            "dryRun": "Testkörning (endast förhandsvisning)",
+            "running": "Kör…",
+            "start": "Starta synkronisering",
+            "resultOk": "Synkronisering slutförd",
+            "resultPartial": "Synkronisering slutförd med fel",
+            "uploaded": "Uppladdade",
+            "skipped": "Hoppades över",
+            "errors": "Fel",
+            "elapsed": "Förfluten tid",
+            "payload": "Payload",
+            "bytesOnWire": "Byte på nätverket",
+            "savings": "Besparing",
+            "errorDetails": "fel, detaljer",
+            "errorPathsRequired": "Källa och destination krävs"
         }
     }
 }
