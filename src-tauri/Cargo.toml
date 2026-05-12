@@ -121,7 +121,7 @@ subtle = "2"
 ring = "0.17.14"
 
 # Box, pCloud, Azure, Filen providers (v1.4.1)
-pbkdf2 = "0.12"
+pbkdf2 = "0.13"
 num-bigint-dig = "0.8"
 uuid = { version = "1", features = ["v4"] }
 mime_guess = "2"

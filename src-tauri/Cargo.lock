@@ -81,7 +81,7 @@ dependencies = [
  "num-bigint-dig",
  "oauth2",
  "open",
- "pbkdf2 0.12.2",
+ "pbkdf2 0.13.0",
  "portable-pty",
  "quick-xml 0.40.0",
  "rand 0.10.1",
