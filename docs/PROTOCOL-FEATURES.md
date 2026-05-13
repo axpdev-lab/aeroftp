@@ -171,7 +171,7 @@ Three image / media-CDN integrations now share a dedicated tier in IntroHub Disc
 | Shipped | v3.7.2 (23rd protocol) | v3.7.2 (24th protocol) | v3.7.4 (25th protocol) |
 | Auth | Private key (HTTP Basic) | Public + Secret key | Cloudname + API key + secret |
 | REST endpoint | `api.imagekit.io` | `api.uploadcare.com` (REST) + `upload.uploadcare.com` (multipart) | `api.cloudinary.com/v1_1/{cloud_name}/` |
-| Free tier | 20 GB media + 20 GB BW/month | EU-based, GDPR-friendly | 25 GB / 25k transformations / 25 GB BW (free plan) |
+| Free tier | 20 GB media + 20 GB BW/month | 1 GB media + 5 GB BW/month | 25 GB / 25k transformations / 25 GB BW (free plan) |
 | Folder semantics | Native folders | Cursor-based listing, store-once mapped to directory model | Asset folders (paid) + tag-based pseudo-folders (all plans) |
 | Listing | `/files` with `type=all`, `null_to_default` deserializer | Cursor pagination | `/resources/by_asset_folder` and `/folders` |
 | Upload path | `/files/upload` (multipart) | `/base/` (multipart) + `/files/{uuid}/storage/` to commit | `/resources/{type}/upload` |

@@ -1122,11 +1122,11 @@ export const PROVIDERS: ProviderConfig[] = [
             sync: true,
         },
         healthCheckUrl: 'https://storage.kapsa.io',
-        helpUrl: 'https://docs.s3drive.app/Advanced/Setup-rclone/',
+        helpUrl: 'https://docs.s3drive.app/advanced/rclone_setup',
         signupUrl: 'https://s3drive.app',
         setupInstructions: [
             'Sign in to S3Drive (free plan includes 12 GB on Storj)',
-            'In the S3Drive desktop app open Settings, then "Setup with Rclone" (or visit docs.s3drive.app/Advanced/Setup-rclone)',
+            'In the S3Drive desktop app open Settings, then "Setup with Rclone"',
             'Generate the rclone configuration to reveal the S3 credentials issued for your account',
             'Copy access_key_id, secret_access_key and the bucket name into the fields here',
             'Endpoint and Region come from the same rclone snippet: open "Advanced" below if your values differ from the defaults (storage.kapsa.io / us-east-1)',
