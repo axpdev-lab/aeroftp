@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Plus, Server as ServerIcon, Play, Edit2, Copy, Trash2, Activity, Star, PencilLine, ArrowUpRight, ArrowDownLeft, Database, Globe, Cloud, Camera, Code, Gauge, HardDrive } from 'lucide-react';
-import { ServerProfile, ConnectionParams, ProviderType, isOAuthProvider, isFourSharedProvider } from '../../types';
+import { ServerProfile, ConnectionParams, ProviderType, getE2EBits, getProtocolClass, isOAuthProvider, isFourSharedProvider } from '../../types';
 import { MyServersViewMode, MyServersFilterBy, FILTER_CHIPS, CatalogCategoryId } from '../../types/catalog';
 import { MyServersToolbar } from './MyServersToolbar';
 import { ServerCard } from './ServerCard';
@@ -83,6 +83,44 @@ function deriveProviderId(server: ServerProfile): string | undefined {
         if (host.includes('tab.digital') || host.includes('tabdigital.cloud')) return 'tabdigital-webdav';
     }
     return undefined;
+}
+
+function getServerSearchText(server: ServerProfile): string {
+    const protocol = (server.protocol || 'ftp') as ProviderType;
+    const providerId = server.providerId || deriveProviderId(server);
+    const provider = providerId ? getProviderById(providerId) : undefined;
+    const protocolClass = getProtocolClass(protocol);
+    const e2eBits = protocolClass === 'E2E' ? getE2EBits(protocol) : null;
+    const protocolClassLabel = e2eBits ? `E2E ${e2eBits}-bit` : protocolClass;
+    const searchTokens = [
+        server.name,
+        server.host,
+        server.protocol,
+        server.username,
+        providerId,
+        provider?.name,
+        protocolClass,
+        protocolClassLabel,
+        protocolClass === 'OAuth' ? 'oauth2' : '',
+        protocolClass === 'S3' ? 's3-compatible' : '',
+        protocolClass === 'WebDAV' ? 'webdav' : '',
+    ];
+
+    if (e2eBits) {
+        searchTokens.push(`${e2eBits}-bit`, `${e2eBits} bit`, `e2e ${e2eBits}`, 'encryption');
+    }
+
+    if (
+        providerId === 'felicloud' || providerId === 'felicloud-webdav'
+        || providerId === 'tabdigital' || providerId === 'tabdigital-webdav'
+    ) {
+        searchTokens.push('api ocs', 'ocs');
+    }
+
+    return searchTokens
+        .filter((value): value is string => !!value)
+        .join(' ')
+        .toLowerCase();
 }
 
 function parseHealthEndpoint(input: string): { url: string; host: string; port?: number } | null {
@@ -527,12 +565,7 @@ export function MyServersPanel({
         let result = servers;
         if (searchQuery.trim()) {
             const q = searchQuery.toLowerCase();
-            result = result.filter(s =>
-                (s.name || '').toLowerCase().includes(q) ||
-                (s.host || '').toLowerCase().includes(q) ||
-                (s.protocol || '').toLowerCase().includes(q) ||
-                (s.username || '').toLowerCase().includes(q)
-            );
+            result = result.filter((server) => getServerSearchText(server).includes(q));
         }
         if (activeFilter === 'favorites') {
             result = result.filter(s => favorites.has(s.id));

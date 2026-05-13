@@ -166,9 +166,10 @@ While rclone requires manual CLI configuration, AeroFTP offers:
 
 ## Additional Resources
 
-- [Official Google Drive API documentation](https://developers.google.com/drive/api/v3/quickstart)
-- [rclone Google Drive guide](https://rclone.org/drive/)
-- [AeroFTP documentation](https://docs.aeroftp.app/)
+- [Google Drive API documentation](https://developers.google.com/workspace/drive/api/guides/about-sdk)
+- [Google Cloud APIs dashboard](https://console.cloud.google.com/apis/dashboard)
+- [rclone Google Drive guide: making your own client ID](https://rclone.org/drive/#making-your-own-client-id)
+- [AeroFTP Google Drive guide](https://docs.aeroftp.app/providers/google-drive.html)
 
 ---
 
