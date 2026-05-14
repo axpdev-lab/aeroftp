@@ -3214,6 +3214,7 @@ mod tests {
                 args: vec!["--version".into()],
                 environment: Vec::new(),
             },
+            auth_password: None,
         };
 
         let transport = SshRemoteShellTransport::new(ssh_config);
@@ -3318,6 +3319,7 @@ mod tests {
                 args: vec!["--version".into()],
                 environment: Vec::new(),
             },
+            auth_password: None,
         };
 
         let transport = SshRemoteShellTransport::new(ssh_config);

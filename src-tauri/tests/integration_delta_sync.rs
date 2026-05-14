@@ -1141,6 +1141,7 @@ mod native_against_stock_rsync {
                 args: vec!["--version".to_string()],
                 environment: Vec::new(),
             },
+            auth_password: None,
         };
         // 1 MiB min size so small test payloads still flow through.
         AerorsyncDeltaTransport::new(config, 1024)

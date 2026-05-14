@@ -75,16 +75,11 @@ pub struct RsyncCapability {
 }
 
 /// Authentication strategy for the rsync-over-SSH leg.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum AuthMethod {
+    #[default]
     SshKey,
     Password,
-}
-
-impl Default for AuthMethod {
-    fn default() -> Self {
-        Self::SshKey
-    }
 }
 
 /// Configuration for a single rsync transfer.

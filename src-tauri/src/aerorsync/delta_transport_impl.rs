@@ -147,6 +147,7 @@ impl AerorsyncDeltaTransport {
             worker_idle_poll_ms: 250,
             max_frame_size: 1 << 20,
             host_key_policy,
+            auth_password: cfg.ssh_password.clone(),
             // B.1/B.4: probe stock `rsync --version` on the remote. The
             // parser in `parse_probe_protocol` extracts the numeric
             // protocol version from the multi-line banner. A missing
@@ -1882,5 +1883,77 @@ mod tests {
             .expect("finalize should succeed");
 
         assert_eq!(stats.session_count, 2);
+    }
+
+    // -- from_rsync_config: Z.4.5 R1 wire-up --------------------------------
+
+    /// Z.4.5 R1: when the production [`RsyncConfig`] carries an SSH
+    /// password (e.g. a FileLu rsync profile), the constructor MUST
+    /// propagate it onto [`SshTransportConfig::auth_password`] so the
+    /// russh leg can pick it up. The propagation is independent of the
+    /// `auth_method` discriminant: a profile may legitimately carry
+    /// both a key and a password (e.g. for paranoid two-factor setups
+    /// in the future); the actual selection happens inside
+    /// `RusshSessionTransport::connect`.
+    #[test]
+    fn from_rsync_config_propagates_password_to_transport() {
+        use crate::rsync_over_ssh::AuthMethod;
+        use secrecy::{ExposeSecret, SecretString};
+        use std::path::PathBuf;
+        let dir = fresh_tempdir();
+        let key_path = dir.path().join("id_dummy");
+        std::fs::write(&key_path, b"-----BEGIN OPENSSH PRIVATE KEY-----\nfake\n").unwrap();
+
+        let cfg = RsyncConfig {
+            ssh_user: "tester".into(),
+            ssh_host: "example.invalid".into(),
+            ssh_port: Some(2222),
+            ssh_key_path: Some(key_path.clone()),
+            ssh_password: Some(SecretString::from("rsync-password".to_string())),
+            auth_method: AuthMethod::SshKey,
+            ..Default::default()
+        };
+        let transport = AerorsyncDeltaTransport::from_rsync_config(&cfg, SshHostKeyPolicy::AcceptAny)
+            .expect("from_rsync_config should accept SshKey method with both materials");
+        assert_eq!(transport.ssh_config.host, "example.invalid");
+        assert_eq!(transport.ssh_config.port, 2222);
+        assert_eq!(transport.ssh_config.private_key_path, key_path);
+        let propagated = transport
+            .ssh_config
+            .auth_password
+            .as_ref()
+            .expect("ssh_password must be propagated");
+        assert_eq!(propagated.expose_secret(), "rsync-password");
+        // And the helper agrees:
+        assert!(transport.ssh_config.usable_password().is_some());
+        let _ = PathBuf::from("placeholder"); // silence unused import warning on some CI configs
+    }
+
+    /// Z.4.5 R1 boundary: until the password-only flow is wired end-to-end,
+    /// `auth_method=Password` must still be rejected at this boundary so we
+    /// don't silently degrade a password-only login into a missing-key
+    /// failure that looks like a configuration bug. The guard removal is
+    /// the explicit task in the next phase of Z.4.5.
+    #[test]
+    fn from_rsync_config_still_rejects_password_only_method() {
+        use crate::rsync_over_ssh::AuthMethod;
+        use secrecy::SecretString;
+
+        let cfg = RsyncConfig {
+            ssh_user: "tester".into(),
+            ssh_host: "example.invalid".into(),
+            ssh_password: Some(SecretString::from("rsync-password".to_string())),
+            auth_method: AuthMethod::Password,
+            ..Default::default()
+        };
+        match AerorsyncDeltaTransport::from_rsync_config(&cfg, SshHostKeyPolicy::AcceptAny) {
+            Err(RsyncError::PasswordAuthUnsupported) => {}
+            Err(other) => panic!(
+                "expected PasswordAuthUnsupported until end-to-end wire-up lands, got Err({other:?})"
+            ),
+            Ok(_) => panic!(
+                "expected PasswordAuthUnsupported until end-to-end wire-up lands, got Ok(_)"
+            ),
+        }
     }
 }
