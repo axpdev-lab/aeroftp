@@ -3109,6 +3109,7 @@
       "rightPanel": "Right Panel",
       "copyToOtherPanel": "Copy to other panel",
       "moveToOtherPanel": "Move to other panel",
+      "syncToOtherPanel": "Sync to other panel (delta)",
       "copiedToOtherPanel": "Copied to other panel",
       "movedToOtherPanel": "Moved to other panel",
       "copyHere": "Copy {count} here",
