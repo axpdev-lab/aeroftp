@@ -198,7 +198,63 @@ pub fn native_rsync_mode_set(mode: String) -> Result<(), String> {
             ))
         }
     };
+    // Z.4.5 R2: refuse `classic` when no rsync binary is reachable on
+    // PATH (typical Windows install). Otherwise the GUI would persist
+    // a mode that every subsequent transfer has to silently work
+    // around. `auto` and `native` are always accepted because the
+    // native engine is built-in.
+    if matches!(mode, NativeRsyncMode::Classic) && detect_classic_rsync_path().is_none() {
+        return Err(
+            "classic mode rejected: no rsync binary on PATH. Install rsync (Linux/macOS \
+             package, Windows via WSL/cygwin/scoop) or use `native` / `auto`."
+                .to_string(),
+        );
+    }
     set_native_rsync_mode(mode)
+}
+
+/// Whether the classic `rsync` (or `rsync.exe` on Windows) binary is
+/// reachable on PATH. Used by the Settings panel to disable the
+/// `classic` toggle so the operator does not select a mode the
+/// machine cannot honor. Returns `(available, optional_path)` so the
+/// UI can tell the user *where* the binary was found when they hover
+/// the chip.
+#[cfg(feature = "aerorsync")]
+#[tauri::command]
+pub fn native_rsync_classic_available() -> ClassicRsyncAvailability {
+    match detect_classic_rsync_path() {
+        Some(path) => ClassicRsyncAvailability {
+            available: true,
+            path: Some(path.display().to_string()),
+        },
+        None => ClassicRsyncAvailability {
+            available: false,
+            path: None,
+        },
+    }
+}
+
+#[cfg(feature = "aerorsync")]
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ClassicRsyncAvailability {
+    pub available: bool,
+    pub path: Option<String>,
+}
+
+/// PATH walk for the classic rsync binary. Pure filesystem check, no
+/// subprocess, no version probe. Returns the first hit so the caller
+/// can render the resolved path back to the user.
+#[cfg(feature = "aerorsync")]
+fn detect_classic_rsync_path() -> Option<PathBuf> {
+    let exe_name = if cfg!(windows) { "rsync.exe" } else { "rsync" };
+    let path_env = std::env::var_os("PATH")?;
+    for dir in std::env::split_paths(&path_env) {
+        let candidate = dir.join(exe_name);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
 }
 
 // =============================================================================
