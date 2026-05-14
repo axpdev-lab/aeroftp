@@ -15,13 +15,17 @@ import {
 } from 'lucide-react';
 import type { CompareResult } from '../utils/compareEndpoints';
 import {
+    CONFLICT_POLICIES,
     derivePresetPlan,
     describeAction,
+    describeConflictPolicy,
     describePreset,
     type BucketAction,
+    type ConflictPolicy,
     type PresetDirection,
     type PresetPlan,
     type SyncPreset,
+    type VersionedBackupConfig,
 } from '../utils/syncPresets';
 import { formatBytes } from '../utils/formatters';
 
@@ -52,6 +56,8 @@ const ACTION_ICON: Record<BucketAction, React.ReactNode> = {
     'overwrite-left': <ArrowRight size={12} className="-scale-x-100" />,
     'delete-right': <Trash2 size={12} />,
     'delete-left': <Trash2 size={12} />,
+    'rename-to-right': <ArrowRight size={12} />,
+    'rename-to-left': <ArrowRight size={12} className="-scale-x-100" />,
     'conflict-skip': <AlertTriangle size={12} />,
 };
 
@@ -63,6 +69,8 @@ const ACTION_COLOR: Record<BucketAction, string> = {
     'overwrite-left': 'text-amber-600 dark:text-amber-300',
     'delete-right': 'text-rose-600 dark:text-rose-300',
     'delete-left': 'text-rose-600 dark:text-rose-300',
+    'rename-to-right': 'text-violet-600 dark:text-violet-300',
+    'rename-to-left': 'text-violet-600 dark:text-violet-300',
     'conflict-skip': 'text-rose-500 dark:text-rose-300',
 };
 
@@ -114,17 +122,23 @@ export const SyncPresetDialog: React.FC<SyncPresetDialogProps> = ({
 }) => {
     const [preset, setPreset] = React.useState<SyncPreset>('backup');
     const [direction, setDirection] = React.useState<PresetDirection>('left-to-right');
+    const [conflictPolicy, setConflictPolicy] = React.useState<ConflictPolicy>('skip');
+    const [versionedBackup, setVersionedBackup] = React.useState<VersionedBackupConfig>({
+        enabled: false,
+        backupDir: '.aeroftp-versions',
+    });
     const [confirmedDestructive, setConfirmedDestructive] = React.useState(false);
 
-    // Reset confirmation when preset/direction changes so the user re-affirms
-    // every destructive plan rather than carrying over a stale checkbox.
+    // Reset confirmation when ANY plan-shaping input changes so the user
+    // re-affirms every destructive plan rather than carrying over a stale
+    // checkbox.
     React.useEffect(() => {
         setConfirmedDestructive(false);
-    }, [preset, direction]);
+    }, [preset, direction, conflictPolicy, versionedBackup.enabled, versionedBackup.backupDir]);
 
     const plan = React.useMemo(
-        () => derivePresetPlan(result, { preset, direction }),
-        [result, preset, direction],
+        () => derivePresetPlan(result, { preset, direction, conflictPolicy, versionedBackup }),
+        [result, preset, direction, conflictPolicy, versionedBackup],
     );
 
     const bisyncMode = preset === 'bisync';
@@ -211,6 +225,68 @@ export const SyncPresetDialog: React.FC<SyncPresetDialogProps> = ({
                 </div>
 
                 <div className="border-t border-gray-200 px-4 py-3 dark:border-gray-700">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                            <div className="mb-1 flex items-center justify-between gap-2">
+                                <label className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                    Conflict policy
+                                </label>
+                                {preset === 'mirror' && (
+                                    <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                                        IGNORED FOR MIRROR
+                                    </span>
+                                )}
+                            </div>
+                            <select
+                                value={conflictPolicy}
+                                onChange={(event) => setConflictPolicy(event.target.value as ConflictPolicy)}
+                                disabled={preset === 'mirror'}
+                                className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-800 focus:border-blue-400 focus:outline-none disabled:opacity-50 dark:border-gray-600 dark:bg-gray-900/60 dark:text-gray-100"
+                            >
+                                {CONFLICT_POLICIES.map((policy) => {
+                                    const info = describeConflictPolicy(policy);
+                                    return (
+                                        <option key={policy} value={policy}>
+                                            {info.label}
+                                        </option>
+                                    );
+                                })}
+                            </select>
+                            <p className="mt-1 text-[10px] leading-snug text-gray-500 dark:text-gray-400">
+                                {describeConflictPolicy(conflictPolicy).tagline}
+                            </p>
+                        </div>
+                        <div>
+                            <div className="mb-1 flex items-center justify-between gap-2">
+                                <label className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                    Versioned backup
+                                </label>
+                                <label className="inline-flex cursor-pointer items-center gap-1 text-[10px] font-medium text-gray-500 dark:text-gray-400">
+                                    <input
+                                        type="checkbox"
+                                        checked={versionedBackup.enabled}
+                                        onChange={(event) => setVersionedBackup((prev) => ({ ...prev, enabled: event.target.checked }))}
+                                        className="h-3 w-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                    />
+                                    Enable
+                                </label>
+                            </div>
+                            <input
+                                type="text"
+                                value={versionedBackup.backupDir ?? ''}
+                                onChange={(event) => setVersionedBackup((prev) => ({ ...prev, backupDir: event.target.value || '.aeroftp-versions' }))}
+                                disabled={!versionedBackup.enabled}
+                                placeholder=".aeroftp-versions"
+                                className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 font-mono text-xs text-gray-800 focus:border-blue-400 focus:outline-none disabled:opacity-50 dark:border-gray-600 dark:bg-gray-900/60 dark:text-gray-100"
+                            />
+                            <p className="mt-1 text-[10px] leading-snug text-gray-500 dark:text-gray-400">
+                                Before each overwrite or delete, capture the destination copy under this directory. Capture execution lands with Z.3.9.2.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="border-t border-gray-200 px-4 py-3 dark:border-gray-700">
                     <div className="grid gap-3 sm:grid-cols-4">
                         <div className="rounded-md bg-gray-50 p-2 dark:bg-gray-900/40">
                             <div className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Actionable</div>
@@ -225,9 +301,13 @@ export const SyncPresetDialog: React.FC<SyncPresetDialogProps> = ({
                             <div className="text-base font-semibold text-gray-900 dark:text-white">{formatBytes(plan.totals.transferBytes)}</div>
                         </div>
                         <div className={`rounded-md p-2 ${plan.hasDestructive ? 'bg-amber-50 dark:bg-amber-900/30' : 'bg-gray-50 dark:bg-gray-900/40'}`}>
-                            <div className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Destructive</div>
+                            <div className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                {versionedBackup.enabled ? 'Versioned backup' : 'Destructive'}
+                            </div>
                             <div className={`text-base font-semibold ${plan.hasDestructive ? 'text-amber-700 dark:text-amber-200' : 'text-gray-900 dark:text-white'}`}>
-                                {plan.totals.deleteRight + plan.totals.deleteLeft + (plan.hasOverwritesNewer ? plan.totals.overwriteLeft + plan.totals.overwriteRight : 0)}
+                                {versionedBackup.enabled
+                                    ? formatBytes(plan.totals.versionedBackupBytes)
+                                    : (plan.totals.deleteRight + plan.totals.deleteLeft + (plan.hasOverwritesNewer ? plan.totals.overwriteLeft + plan.totals.overwriteRight : 0))}
                             </div>
                         </div>
                     </div>
@@ -295,8 +375,18 @@ export const SyncPresetDialog: React.FC<SyncPresetDialogProps> = ({
                 <div className="flex flex-col gap-2 border-t border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-700 dark:bg-gray-800/70 sm:flex-row sm:items-center sm:justify-between">
                     <p className="text-[11px] text-gray-500 dark:text-gray-400">
                         {canExecute
-                            ? 'Execute will stage the matching selection and dispatch via the unified transfer planner.'
+                            ? 'Execute stages the matching selection and dispatches via the unified transfer planner.'
                             : 'Execution is currently limited to local-local pairs; other pair kinds land with Z.3.8.2.'}
+                        {(plan.totals.renameToLeft + plan.totals.renameToRight) > 0 && (
+                            <span className="ml-1 text-violet-600 dark:text-violet-300">
+                                · {plan.totals.renameToLeft + plan.totals.renameToRight} rename(s) deferred to Z.3.9.2
+                            </span>
+                        )}
+                        {versionedBackup.enabled && plan.totals.versionedBackupBytes > 0 && (
+                            <span className="ml-1 text-amber-600 dark:text-amber-300">
+                                · {formatBytes(plan.totals.versionedBackupBytes)} versioned-backup capture deferred to Z.3.9.2
+                            </span>
+                        )}
                     </p>
                     <div className="flex flex-wrap justify-end gap-2">
                         <button

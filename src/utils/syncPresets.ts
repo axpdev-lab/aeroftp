@@ -45,16 +45,71 @@ export type BucketAction =
     | 'delete-right'
     | 'delete-left'
     /** Conflict surfaced but left untouched; user must resolve. */
-    | 'conflict-skip';
+    | 'conflict-skip'
+    /**
+     * Z.3.9 — keep BOTH copies: copy the source side to the destination
+     * under a timestamped suffix (e.g. `file.txt.20260514T143012.bak`).
+     * Non-destructive. Execution wiring lands with Z.3.9.2.
+     */
+    | 'rename-to-right'
+    | 'rename-to-left';
+
+/**
+ * Z.3.9 — Conflict policy: how to resolve the `conflict` compare bucket.
+ *   - `skip`         → leave both copies untouched (default for Update)
+ *   - `rename`       → copy the source-side entry with a timestamp suffix
+ *   - `newer-wins`   → the side with the more recent mtime overwrites the other
+ *   - `older-wins`   → the older side overwrites the newer (rare; archive use case)
+ *   - `larger-wins`  → the side with the larger size overwrites the smaller
+ *   - `smaller-wins` → the smaller side overwrites the larger
+ *
+ * `newer-wins` / `older-wins` / `larger-wins` / `smaller-wins` are
+ * per-entry decisions: BucketPlan.entryActions stores the resolved action
+ * for each entry, while `action` keeps the dominant action so the UI can
+ * render a one-shot summary. `skip` and `rename` are uniform.
+ */
+export type ConflictPolicy =
+    | 'skip'
+    | 'rename'
+    | 'newer-wins'
+    | 'older-wins'
+    | 'larger-wins'
+    | 'smaller-wins';
+
+/**
+ * Z.3.9 — Versioned backup: before an overwrite or delete fires, capture
+ * the destination copy under `backupDir/<timestamp>/<relative-path>`.
+ *
+ * The helper only flags the BucketPlan (and totals) with the predicted
+ * cost; actual backup-dir staging lives in the execution layer
+ * (Z.3.9.2) since it requires new IPC and per-pair semantics.
+ */
+export interface VersionedBackupConfig {
+    enabled: boolean;
+    /** Defaults to `.aeroftp-versions`. */
+    backupDir?: string;
+}
 
 export interface BucketPlan {
     bucket: CompareBucket;
+    /**
+     * Dominant action for the bucket. When the conflict policy resolves to
+     * different actions per entry (e.g. newer-wins on a mixed-mtime bucket)
+     * this carries the majority action; the per-entry detail lives in
+     * `entryActions`.
+     */
     action: BucketAction;
     entries: CompareResultEntry[];
-    /** True iff the action mutates an existing destination copy or deletes data. */
+    /** Parallel array to `entries`: action resolved for each row. */
+    entryActions: BucketAction[];
+    /** True iff at least one entry mutates an existing destination copy or deletes data. */
     destructive: boolean;
-    /** Bytes that will move on the wire (excludes skip / conflict-skip). */
+    /** Bytes that will move on the wire (excludes skip / conflict-skip / rename costs). */
     transferBytes: number;
+    /** Z.3.9 — bytes that need to be staged under the versioned backup dir for this bucket. */
+    versionedBackupBytes: number;
+    /** Z.3.9 — true iff at least one entry triggers a versioned backup capture. */
+    requiresVersionedBackup: boolean;
 }
 
 export interface PresetPlan {
@@ -77,8 +132,18 @@ export interface PresetPlan {
         overwriteLeft: number;
         deleteRight: number;
         deleteLeft: number;
+        /** Z.3.9 — renames produce a copy of the source under a timestamped suffix. */
+        renameToRight: number;
+        renameToLeft: number;
         conflicts: number;
         transferBytes: number;
+        /** Z.3.9 — total bytes that would land in the versioned backup dir. */
+        versionedBackupBytes: number;
+    };
+    /** Echo of the conflict + versioned-backup options actually applied. */
+    appliedOptions: {
+        conflictPolicy: ConflictPolicy;
+        versionedBackup: VersionedBackupConfig;
     };
 }
 
@@ -154,6 +219,8 @@ const PER_SIDE_FLIPS: Record<BucketAction, BucketAction> = {
     'overwrite-left': 'overwrite-right',
     'delete-right': 'delete-left',
     'delete-left': 'delete-right',
+    'rename-to-right': 'rename-to-left',
+    'rename-to-left': 'rename-to-right',
     skip: 'skip',
     'conflict-skip': 'conflict-skip',
 };
@@ -239,7 +306,107 @@ export interface DerivePresetPlanOptions {
     preset: SyncPreset;
     /** Ignored when preset === 'bisync'. Defaults to 'left-to-right'. */
     direction?: PresetDirection;
+    /**
+     * Z.3.9 — how to resolve the `conflict` bucket. When omitted the helper
+     * falls back to the preset's built-in default (Update / Backup → 'skip',
+     * Mirror → 'newer-wins' is NOT applied: mirror always force-overwrites
+     * with the source side; the conflictPolicy on mirror is therefore
+     * ignored). Bisync uses 'skip' unless the caller picks something else.
+     */
+    conflictPolicy?: ConflictPolicy;
+    /** Z.3.9 — versioned backup configuration. Default: disabled. */
+    versionedBackup?: VersionedBackupConfig;
 }
+
+/**
+ * Resolve a single conflict entry into a concrete action based on the
+ * active conflict policy + direction. Returns 'conflict-skip' when the
+ * policy lacks the data needed to decide (e.g. newer-wins on entries
+ * missing mtime metadata).
+ */
+const resolveConflictAction = (
+    entry: CompareResultEntry,
+    policy: ConflictPolicy,
+    direction: PresetDirection,
+): BucketAction => {
+    const isLeftToRight = direction === 'left-to-right';
+    if (policy === 'skip') return 'conflict-skip';
+    if (policy === 'rename') return isLeftToRight ? 'rename-to-right' : 'rename-to-left';
+
+    if (policy === 'newer-wins' || policy === 'older-wins') {
+        const lm = typeof entry.leftMtimeMs === 'number' ? entry.leftMtimeMs : null;
+        const rm = typeof entry.rightMtimeMs === 'number' ? entry.rightMtimeMs : null;
+        if (lm === null || rm === null || lm === rm) return 'conflict-skip';
+        const leftIsNewer = lm > rm;
+        const winnerIsLeft = policy === 'newer-wins' ? leftIsNewer : !leftIsNewer;
+        return winnerIsLeft ? 'overwrite-right' : 'overwrite-left';
+    }
+
+    if (policy === 'larger-wins' || policy === 'smaller-wins') {
+        const ls = typeof entry.leftSize === 'number' ? entry.leftSize : null;
+        const rs = typeof entry.rightSize === 'number' ? entry.rightSize : null;
+        if (ls === null || rs === null || ls === rs) return 'conflict-skip';
+        const leftIsLarger = ls > rs;
+        const winnerIsLeft = policy === 'larger-wins' ? leftIsLarger : !leftIsLarger;
+        return winnerIsLeft ? 'overwrite-right' : 'overwrite-left';
+    }
+
+    return 'conflict-skip';
+};
+
+/**
+ * Pick the dominant action across an array of per-entry actions. Used to
+ * keep BucketPlan.action coherent with `entryActions` so existing UI rows
+ * still surface a single label.
+ */
+const dominantAction = (actions: BucketAction[], fallback: BucketAction): BucketAction => {
+    if (actions.length === 0) return fallback;
+    const counts = new Map<BucketAction, number>();
+    for (const action of actions) {
+        counts.set(action, (counts.get(action) ?? 0) + 1);
+    }
+    let best: BucketAction = actions[0];
+    let bestCount = 0;
+    counts.forEach((count, action) => {
+        if (count > bestCount) {
+            best = action;
+            bestCount = count;
+        }
+    });
+    return best;
+};
+
+const wireBytesForAction = (entry: CompareResultEntry, action: BucketAction): number => {
+    switch (action) {
+        case 'copy-to-right':
+        case 'overwrite-right':
+        case 'rename-to-right':
+            return entryBytes(entry, 'left');
+        case 'copy-to-left':
+        case 'overwrite-left':
+        case 'rename-to-left':
+            return entryBytes(entry, 'right');
+        case 'delete-right':
+            return entryBytes(entry, 'right');
+        case 'delete-left':
+            return entryBytes(entry, 'left');
+        default:
+            return 0;
+    }
+};
+
+const versionedBackupBytesForAction = (entry: CompareResultEntry, action: BucketAction): number => {
+    switch (action) {
+        case 'overwrite-right':
+        case 'delete-right':
+            return entryBytes(entry, 'right');
+        case 'overwrite-left':
+        case 'delete-left':
+            return entryBytes(entry, 'left');
+        default:
+            return 0;
+    }
+};
 
 /**
  * Build the structured preset plan from a compare result. The returned
@@ -252,6 +419,11 @@ export const derivePresetPlan = (
 ): PresetPlan => {
     const direction = options.direction ?? 'left-to-right';
     const mapping = resolveMapping(options.preset, direction);
+    const conflictPolicy: ConflictPolicy = options.conflictPolicy
+        // Mirror always force-overwrites with the source side; the
+        // user-facing conflict policy is ignored for it.
+        ?? (options.preset === 'mirror' ? 'skip' : 'skip');
+    const versionedBackup: VersionedBackupConfig = options.versionedBackup ?? { enabled: false };
 
     const totals = {
         actionable: 0,
@@ -262,53 +434,112 @@ export const derivePresetPlan = (
         overwriteLeft: 0,
         deleteRight: 0,
         deleteLeft: 0,
+        renameToRight: 0,
+        renameToLeft: 0,
         conflicts: 0,
         transferBytes: 0,
+        versionedBackupBytes: 0,
+    };
+
+    const incrementTotalsFor = (action: BucketAction, entry: CompareResultEntry) => {
+        switch (action) {
+            case 'skip':
+                totals.skipped += 1;
+                break;
+            case 'conflict-skip':
+                totals.skipped += 1;
+                totals.conflicts += 1;
+                break;
+            case 'copy-to-right':
+                totals.copyToRight += 1;
+                totals.actionable += 1;
+                break;
+            case 'copy-to-left':
+                totals.copyToLeft += 1;
+                totals.actionable += 1;
+                break;
+            case 'overwrite-right':
+                totals.overwriteRight += 1;
+                totals.actionable += 1;
+                break;
+            case 'overwrite-left':
+                totals.overwriteLeft += 1;
+                totals.actionable += 1;
+                break;
+            case 'delete-right':
+                totals.deleteRight += 1;
+                totals.actionable += 1;
+                break;
+            case 'delete-left':
+                totals.deleteLeft += 1;
+                totals.actionable += 1;
+                break;
+            case 'rename-to-right':
+                totals.renameToRight += 1;
+                totals.actionable += 1;
+                break;
+            case 'rename-to-left':
+                totals.renameToLeft += 1;
+                totals.actionable += 1;
+                break;
+            default:
+                break;
+        }
+        totals.transferBytes += wireBytesForAction(entry, action);
+        if (versionedBackup.enabled) {
+            totals.versionedBackupBytes += versionedBackupBytesForAction(entry, action);
+        }
     };
 
     const bucketPlans: BucketPlan[] = BUCKETS.map((bucket) => {
-        const action = mapping[bucket];
         const entries = result.buckets[bucket];
-        const transferBytes = bytesForAction(entries, action);
-        totals.transferBytes += transferBytes;
+        const fallback = mapping[bucket];
+        // Conflict bucket honours the conflict policy when the preset
+        // exposes it as conflict-skip in the mapping (Update / Backup /
+        // Bisync). Mirror keeps its force-overwrite semantics.
+        const honourConflictPolicy =
+            bucket === 'conflict'
+            && options.preset !== 'mirror'
+            && (fallback === 'conflict-skip' || fallback === 'skip');
 
-        if (action === 'skip') {
-            totals.skipped += entries.length;
-        } else if (action === 'conflict-skip') {
-            totals.skipped += entries.length;
-            totals.conflicts += entries.length;
-        } else {
-            totals.actionable += entries.length;
-            switch (action) {
-                case 'copy-to-right':
-                    totals.copyToRight += entries.length;
-                    break;
-                case 'copy-to-left':
-                    totals.copyToLeft += entries.length;
-                    break;
-                case 'overwrite-right':
-                    totals.overwriteRight += entries.length;
-                    break;
-                case 'overwrite-left':
-                    totals.overwriteLeft += entries.length;
-                    break;
-                case 'delete-right':
-                    totals.deleteRight += entries.length;
-                    break;
-                case 'delete-left':
-                    totals.deleteLeft += entries.length;
-                    break;
-                default:
-                    break;
+        const entryActions: BucketAction[] = entries.map((entry) => {
+            if (honourConflictPolicy) {
+                return resolveConflictAction(entry, conflictPolicy, direction);
             }
+            return fallback;
+        });
+
+        let transferBytes = 0;
+        let versionedBackupBytes = 0;
+        let requiresVersionedBackup = false;
+        let destructive = false;
+
+        for (let i = 0; i < entries.length; i += 1) {
+            const action = entryActions[i];
+            const entry = entries[i];
+            incrementTotalsFor(action, entry);
+            transferBytes += wireBytesForAction(entry, action);
+            if (versionedBackup.enabled) {
+                const vBytes = versionedBackupBytesForAction(entry, action);
+                versionedBackupBytes += vBytes;
+                if (vBytes > 0) requiresVersionedBackup = true;
+            }
+            if (isDestructive(bucket, action)) destructive = true;
         }
+
+        const action = honourConflictPolicy
+            ? dominantAction(entryActions, fallback)
+            : fallback;
 
         return {
             bucket,
             action,
             entries,
-            destructive: entries.length > 0 && isDestructive(bucket, action),
+            entryActions,
+            destructive,
             transferBytes,
+            versionedBackupBytes,
+            requiresVersionedBackup,
         };
     });
 
@@ -318,8 +549,8 @@ export const derivePresetPlan = (
         (plan) =>
             plan.entries.length > 0
             && (
-                (plan.bucket === 'newer-right' && plan.action === 'overwrite-right')
-                || (plan.bucket === 'newer-left' && plan.action === 'overwrite-left')
+                (plan.bucket === 'newer-right' && plan.entryActions.includes('overwrite-right'))
+                || (plan.bucket === 'newer-left' && plan.entryActions.includes('overwrite-left'))
             ),
     );
 
@@ -331,6 +562,10 @@ export const derivePresetPlan = (
         hasDeletes,
         hasOverwritesNewer,
         totals,
+        appliedOptions: {
+            conflictPolicy,
+            versionedBackup,
+        },
     };
 };
 
@@ -346,9 +581,13 @@ export const namesFromBuckets = (
     const wanted: BucketAction[] = sourceSide === 'left'
         ? ['copy-to-right', 'overwrite-right']
         : ['copy-to-left', 'overwrite-left'];
-    return plan.bucketPlans
-        .filter((bp) => wanted.includes(bp.action))
-        .flatMap((bp) => bp.entries.map((entry) => entry.name));
+    const names: string[] = [];
+    for (const bp of plan.bucketPlans) {
+        bp.entries.forEach((entry, idx) => {
+            if (wanted.includes(bp.entryActions[idx])) names.push(entry.name);
+        });
+    }
+    return names;
 };
 
 export const namesToDelete = (
@@ -356,9 +595,31 @@ export const namesToDelete = (
     side: 'left' | 'right',
 ): string[] => {
     const target: BucketAction = side === 'right' ? 'delete-right' : 'delete-left';
-    return plan.bucketPlans
-        .filter((bp) => bp.action === target)
-        .flatMap((bp) => bp.entries.map((entry) => entry.name));
+    const names: string[] = [];
+    for (const bp of plan.bucketPlans) {
+        bp.entries.forEach((entry, idx) => {
+            if (bp.entryActions[idx] === target) names.push(entry.name);
+        });
+    }
+    return names;
+};
+
+/**
+ * Z.3.9 — return the names that should be renamed-on-copy (keep both)
+ * when the conflict policy is set to `rename`.
+ */
+export const namesToRename = (
+    plan: PresetPlan,
+    direction: 'to-right' | 'to-left',
+): string[] => {
+    const target: BucketAction = direction === 'to-right' ? 'rename-to-right' : 'rename-to-left';
+    const names: string[] = [];
+    for (const bp of plan.bucketPlans) {
+        bp.entries.forEach((entry, idx) => {
+            if (bp.entryActions[idx] === target) names.push(entry.name);
+        });
+    }
+    return names;
 };
 
 export const describePreset = (preset: SyncPreset): { name: string; tagline: string; safe: boolean } => {
@@ -408,12 +669,44 @@ export const describeAction = (action: BucketAction): string => {
             return 'Delete on right';
         case 'delete-left':
             return 'Delete on left';
+        case 'rename-to-right':
+            return 'Keep both → right';
+        case 'rename-to-left':
+            return 'Keep both ← left';
         case 'conflict-skip':
             return 'Conflict (skip)';
         default:
             return 'Unknown';
     }
 };
+
+export const describeConflictPolicy = (policy: ConflictPolicy): { label: string; tagline: string } => {
+    switch (policy) {
+        case 'skip':
+            return { label: 'Skip', tagline: 'Leave conflicts untouched on both sides.' };
+        case 'rename':
+            return { label: 'Keep both', tagline: 'Copy the source-side copy under a timestamped suffix.' };
+        case 'newer-wins':
+            return { label: 'Newer wins', tagline: 'The side with the more recent mtime overwrites the other.' };
+        case 'older-wins':
+            return { label: 'Older wins', tagline: 'The older side overwrites the newer (archive use case).' };
+        case 'larger-wins':
+            return { label: 'Larger wins', tagline: 'The side with the larger size overwrites the smaller.' };
+        case 'smaller-wins':
+            return { label: 'Smaller wins', tagline: 'The smaller side overwrites the larger.' };
+        default:
+            return { label: 'Unknown', tagline: 'Unrecognised policy.' };
+    }
+};
+
+export const CONFLICT_POLICIES: ConflictPolicy[] = [
+    'skip',
+    'rename',
+    'newer-wins',
+    'older-wins',
+    'larger-wins',
+    'smaller-wins',
+];
 
 export const __TEST_ONLY__ = {
     BUCKETS,
