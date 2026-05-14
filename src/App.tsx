@@ -287,6 +287,7 @@ import { maskCredential } from './utils/maskCredential';
 import { getOpenWithDefaultRoute } from './utils/openWithDefault';
 import { createRemoteEndpoint } from './utils/panelEndpoints';
 import { createUnifiedTransferPlan, UnifiedTransferPlan } from './utils/unifiedTransferPlanner';
+import { buildCrossProfileEntries, runCrossProfileTransfer } from './utils/crossProfileExecution';
 import { useTranslation } from './i18n';
 
 // Components
@@ -584,6 +585,12 @@ const App: React.FC = () => {
   const [pendingUnifiedTransferPlan, setPendingUnifiedTransferPlan] = useState<{
     plan: UnifiedTransferPlan;
     sourceLocalPanelId?: 'local' | 'local2';
+    // Z.3.5: remote-remote plans need the per-entry selection so we can issue
+    // one cross_profile_plan call per file/directory selected on the source
+    // panel. Populated by `chooseEndpointRemoteProfile` when the user already
+    // had files selected; left undefined when the user must pick paths inside
+    // the legacy CrossProfilePanel modal.
+    remoteRemoteEntries?: Array<{ name: string; is_dir: boolean; size?: number }>;
   } | null>(null);
   const [unifiedTransferExecuting, setUnifiedTransferExecuting] = useState(false);
   const [inputDialog, setInputDialog] = useState<{ title: string; defaultValue: string; onConfirm: (v: string) => void; isPassword?: boolean; placeholder?: string } | null>(null);
@@ -5026,11 +5033,68 @@ interface UpdateVerificationInfo {
     setActivePanel('local');
     setActiveLocalPanelId(panelId);
     const selectedEndpoint = createRemoteEndpoint(profile, profile.initialPath?.trim() || '/');
+
+    // Z.3.5: when the active connection is a saved profile and the user
+    // already has files selected on the remote panel, route the request
+    // through the unified planner so it can execute inline via
+    // `runCrossProfileTransfer`. The legacy CrossProfilePanel modal stays
+    // available as a fallback (and as the only path when there is no
+    // selection, since the modal lets the user pick paths interactively).
+    const activeSession = sessions.find(s => s.id === activeSessionId);
+    const sourceProfileId = connectionParams.savedServerId
+      || activeSession?.connectionParams?.savedServerId
+      || null;
+    const sourceFiles = remoteFiles.filter(f => selectedRemoteFiles.has(f.name));
+    if (
+      isConnected
+      && activeUnifiedRemoteProfile
+      && sourceProfileId
+      && sourceProfileId !== profile.id
+      && sourceFiles.length > 0
+    ) {
+      const sourceEndpoint = createRemoteEndpoint(
+        {
+          id: sourceProfileId,
+          name: activeUnifiedRemoteProfile.name,
+          protocol: activeUnifiedRemoteProfile.protocol,
+          providerId: activeUnifiedRemoteProfile.providerId,
+          initialPath: activeUnifiedRemoteProfile.initialPath,
+        },
+        currentRemotePath || activeUnifiedRemoteProfile.initialPath || '/',
+      );
+      const totalBytes = sourceFiles.reduce((sum, f) => sum + (f.size || 0), 0);
+      setPendingUnifiedTransferPlan({
+        plan: createUnifiedTransferPlan({
+          mode: 'copy',
+          source: sourceEndpoint,
+          destination: selectedEndpoint,
+          entryCount: sourceFiles.length,
+          totalBytes,
+          preferDelta: false,
+        }),
+        remoteRemoteEntries: sourceFiles.map(f => ({
+          name: f.name,
+          is_dir: f.is_dir,
+          size: f.size ?? undefined,
+        })),
+      });
+      return;
+    }
+
     setShowCrossProfilePanel({
       destId: profile.id,
       destPath: selectedEndpoint.path,
     });
-  }, []);
+  }, [
+    isConnected,
+    sessions,
+    activeSessionId,
+    connectionParams.savedServerId,
+    activeUnifiedRemoteProfile,
+    currentRemotePath,
+    remoteFiles,
+    selectedRemoteFiles,
+  ]);
 
   // Safe local path navigation with fallback for invalid paths
   // (e.g. imported backup from another PC with different directory structure)
@@ -5738,13 +5802,62 @@ interface UpdateVerificationInfo {
       }
 
       if (plan.pairKind === 'remote-remote' && plan.source.kind === 'remote' && plan.destination.kind === 'remote') {
-        setPendingUnifiedTransferPlan(null);
-        setShowCrossProfilePanel({
-          sourceId: plan.source.profileId,
-          sourcePath: plan.source.path,
-          destId: plan.destination.profileId,
-          destPath: plan.destination.path,
+        // Z.3.5: if the planner carries per-entry selection we issue the
+        // cross_profile_plan + cross_profile_execute pair inline so the
+        // user stays in the dual-panel flow. The TransferToast widget
+        // listens to the global `transfer_event` stream the backend
+        // already emits, so progress is reported there.
+        const remoteEntries = pendingUnifiedTransferPlan.remoteRemoteEntries ?? [];
+        if (remoteEntries.length === 0) {
+          setPendingUnifiedTransferPlan(null);
+          setShowCrossProfilePanel({
+            sourceId: plan.source.profileId,
+            sourcePath: plan.source.path,
+            destId: plan.destination.profileId,
+            destPath: plan.destination.path,
+          });
+          return;
+        }
+
+        const requests = buildCrossProfileEntries({
+          sourceDir: plan.source.path,
+          destDir: plan.destination.path,
+          selections: remoteEntries,
+          skipExisting: plan.mode === 'sync' || plan.mode === 'backup',
         });
+
+        const summary = await runCrossProfileTransfer(
+          plan.source.profileId,
+          plan.destination.profileId,
+          requests,
+          {
+            onEntryError: (entry, error) => {
+              notify.error(
+                t('toast.transferFailed') || 'Transfer failed',
+                `${entry.sourcePath}: ${error}`,
+              );
+            },
+          },
+        );
+
+        setPendingUnifiedTransferPlan(null);
+        if (summary.failed > 0) {
+          notify.warning(
+            'Cross-profile transfer',
+            `${summary.succeeded} ok / ${summary.failed} failed`,
+          );
+        } else if (summary.cancelled > 0) {
+          notify.info(
+            'Cross-profile transfer',
+            `${summary.succeeded} ok / ${summary.cancelled} cancelled`,
+          );
+        } else if (summary.succeeded > 0) {
+          notify.success(
+            'Cross-profile transfer',
+            t('toast.transferComplete', { count: summary.transferredFiles })
+              || `${summary.transferredFiles} file(s) copied`,
+          );
+        }
         return;
       }
 
@@ -5755,7 +5868,7 @@ interface UpdateVerificationInfo {
     } finally {
       setUnifiedTransferExecuting(false);
     }
-  }, [pendingUnifiedTransferPlan, transferLocalSelectionAcrossPanels, notify]);
+  }, [pendingUnifiedTransferPlan, transferLocalSelectionAcrossPanels, notify, t]);
 
   const clipboardCut = (files: { name: string; path: string; is_dir: boolean }[], isRemote: boolean, sourceDir: string) => {
     fileClipboardRef.current = { files, sourceDir, isRemote, operation: 'cut' };
