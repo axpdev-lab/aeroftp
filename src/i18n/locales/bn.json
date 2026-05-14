@@ -3303,7 +3303,9 @@
             "activityLog": "অ্যাক্টিভিটি লগ",
             "detailedCards": "বিস্তারিত সার্ভার কার্ড",
             "debugPanel": "Debug Panel",
-            "localSync": "লোকাল সিঙ্ক..."
+            "localSync": "লোকাল সিঙ্ক...",
+            "comparePanels": "[NEEDS TRANSLATION] Compare Panels...",
+            "syncPresets": "[NEEDS TRANSLATION] Sync Presets..."
         },
         "activityPanel": {
             "awaitingCommands": "কমান্ডের অপেক্ষায়...",
@@ -3803,7 +3805,8 @@
             "restore": "পুনরুদ্ধার করুন",
             "trashFooter": "পুনরুদ্ধার করা ফাইল তাদের মূল ফোল্ডারে আবার দেখা যাবে",
             "connectionNamePlaceholder": "সংযোগের নাম (যেমন আমার FileLu Cloud)",
-            "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
+            "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days",
+            "rsyncTransferOnly": "[NEEDS TRANSLATION] Transfer-only endpoint: browsing is not available on Rsync. Use Native API, WebDAV, S3 or FTP to navigate; switch to Rsync for high-bandwidth delta transfers."
         },
         "box": {
             "addComment": "মন্তব্য যোগ করুন",
@@ -4509,7 +4512,8 @@
             "copyHere": "{count} এখানে কপি করুন",
             "moveHere": "{count} এখানে সরান",
             "copyHereFromOtherPanelTooltip": "অন্য প্যানেল থেকে নির্বাচিত {count} এই প্যানেলে কপি করুন (F5)",
-            "moveHereFromOtherPanelTooltip": "অন্য প্যানেল থেকে নির্বাচিত {count} এই প্যানেলে সরান (F6)"
+            "moveHereFromOtherPanelTooltip": "অন্য প্যানেল থেকে নির্বাচিত {count} এই প্যানেলে সরান (F6)",
+            "syncToOtherPanel": "[NEEDS TRANSLATION] Sync to other panel (delta)"
         },
         "localSync": {
             "title": "AeroSync: লোকাল থেকে লোকাল",
@@ -4533,6 +4537,16 @@
             "savings": "সঞ্চয়",
             "errorDetails": "ত্রুটি, বিস্তারিত",
             "errorPathsRequired": "উৎস এবং গন্তব্য আবশ্যক"
+        },
+        "compare": {
+            "title": "[NEEDS TRANSLATION] Compare panels",
+            "notAvailable": "[NEEDS TRANSLATION] Open a second panel or a remote connection to compare."
+        },
+        "syncPresets": {
+            "title": "[NEEDS TRANSLATION] Sync presets",
+            "nothingToDo": "[NEEDS TRANSLATION] Sync presets",
+            "allSkipped": "[NEEDS TRANSLATION] No actionable entries for this preset.",
+            "deletesDeferred": "[NEEDS TRANSLATION] Sync presets"
         }
     }
 }

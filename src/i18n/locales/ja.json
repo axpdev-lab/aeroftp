@@ -3268,7 +3268,9 @@
             "activityLog": "アクティビティログ",
             "detailedCards": "詳細なサーバーカード",
             "debugPanel": "Debug Panel",
-            "localSync": "ローカル同期..."
+            "localSync": "ローカル同期...",
+            "comparePanels": "[NEEDS TRANSLATION] Compare Panels...",
+            "syncPresets": "[NEEDS TRANSLATION] Sync Presets..."
         },
         "activityPanel": {
             "awaitingCommands": "コマンド待機中...",
@@ -3803,7 +3805,8 @@
             "restore": "復元",
             "trashFooter": "復元されたファイルは元のフォルダーに再表示されます",
             "connectionNamePlaceholder": "接続名（例: マイ FileLu Cloud）",
-            "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
+            "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days",
+            "rsyncTransferOnly": "[NEEDS TRANSLATION] Transfer-only endpoint: browsing is not available on Rsync. Use Native API, WebDAV, S3 or FTP to navigate; switch to Rsync for high-bandwidth delta transfers."
         },
         "box": {
             "addComment": "コメントを追加",
@@ -4509,7 +4512,8 @@
             "copyHere": "{count} 件をここにコピー",
             "moveHere": "{count} 件をここに移動",
             "copyHereFromOtherPanelTooltip": "もう一方のパネルで選択された {count} 件をこのパネルにコピー (F5)",
-            "moveHereFromOtherPanelTooltip": "もう一方のパネルで選択された {count} 件をこのパネルに移動 (F6)"
+            "moveHereFromOtherPanelTooltip": "もう一方のパネルで選択された {count} 件をこのパネルに移動 (F6)",
+            "syncToOtherPanel": "[NEEDS TRANSLATION] Sync to other panel (delta)"
         },
         "localSync": {
             "title": "AeroSync: ローカルからローカルへ",
@@ -4533,6 +4537,16 @@
             "savings": "節約量",
             "errorDetails": "件のエラー、詳細",
             "errorPathsRequired": "ソースと宛先は必須です"
+        },
+        "compare": {
+            "title": "[NEEDS TRANSLATION] Compare panels",
+            "notAvailable": "[NEEDS TRANSLATION] Open a second panel or a remote connection to compare."
+        },
+        "syncPresets": {
+            "title": "[NEEDS TRANSLATION] Sync presets",
+            "nothingToDo": "[NEEDS TRANSLATION] Sync presets",
+            "allSkipped": "[NEEDS TRANSLATION] No actionable entries for this preset.",
+            "deletesDeferred": "[NEEDS TRANSLATION] Sync presets"
         }
     }
 }

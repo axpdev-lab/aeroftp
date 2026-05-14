@@ -3303,7 +3303,9 @@
             "activityLog": "Jarduera erregistroa",
             "detailedCards": "Zerbitzari-txartel zehatzak",
             "debugPanel": "Debug Panel",
-            "localSync": "Sinkronizazio lokala..."
+            "localSync": "Sinkronizazio lokala...",
+            "comparePanels": "[NEEDS TRANSLATION] Compare Panels...",
+            "syncPresets": "[NEEDS TRANSLATION] Sync Presets..."
         },
         "activityPanel": {
             "awaitingCommands": "Komandoen zain...",
@@ -3822,7 +3824,8 @@
             "restore": "Leheneratu",
             "trashFooter": "Leheneratutako fitxategiak jatorrizko karpetan berriro agertuko dira",
             "connectionNamePlaceholder": "Konexioaren izena (adib. Nire FileLu Cloud)",
-            "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
+            "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days",
+            "rsyncTransferOnly": "[NEEDS TRANSLATION] Transfer-only endpoint: browsing is not available on Rsync. Use Native API, WebDAV, S3 or FTP to navigate; switch to Rsync for high-bandwidth delta transfers."
         },
         "box": {
             "addComment": "Gehitu iruzkina",
@@ -4528,7 +4531,8 @@
             "copyHere": "Kopiatu {count} hona",
             "moveHere": "Eraman {count} hona",
             "copyHereFromOtherPanelTooltip": "Kopiatu beste paneletik hautatutako {count} panel honetara (F5)",
-            "moveHereFromOtherPanelTooltip": "Eraman beste paneletik hautatutako {count} panel honetara (F6)"
+            "moveHereFromOtherPanelTooltip": "Eraman beste paneletik hautatutako {count} panel honetara (F6)",
+            "syncToOtherPanel": "[NEEDS TRANSLATION] Sync to other panel (delta)"
         },
         "localSync": {
             "title": "AeroSync: lokaletik lokalera",
@@ -4552,6 +4556,16 @@
             "savings": "Aurrezpena",
             "errorDetails": "errore(ak), xehetasunak",
             "errorPathsRequired": "Iturburua eta helmuga beharrezkoak dira"
+        },
+        "compare": {
+            "title": "[NEEDS TRANSLATION] Compare panels",
+            "notAvailable": "[NEEDS TRANSLATION] Open a second panel or a remote connection to compare."
+        },
+        "syncPresets": {
+            "title": "[NEEDS TRANSLATION] Sync presets",
+            "nothingToDo": "[NEEDS TRANSLATION] Sync presets",
+            "allSkipped": "[NEEDS TRANSLATION] No actionable entries for this preset.",
+            "deletesDeferred": "[NEEDS TRANSLATION] Sync presets"
         }
     }
 }

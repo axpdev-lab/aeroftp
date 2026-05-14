@@ -3303,7 +3303,9 @@
             "activityLog": "Log ng Aktibidad",
             "detailedCards": "Mga detalyadong card ng server",
             "debugPanel": "Debug Panel",
-            "localSync": "Lokal na sync..."
+            "localSync": "Lokal na sync...",
+            "comparePanels": "[NEEDS TRANSLATION] Compare Panels...",
+            "syncPresets": "[NEEDS TRANSLATION] Sync Presets..."
         },
         "activityPanel": {
             "awaitingCommands": "Naghihintay ng mga command...",
@@ -3822,7 +3824,8 @@
             "restore": "I-restore",
             "trashFooter": "Ang mga na-restore na file ay muling lilitaw sa kanilang orihinal na folder",
             "connectionNamePlaceholder": "Pangalan ng koneksyon (hal. Aking FileLu Cloud)",
-            "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
+            "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days",
+            "rsyncTransferOnly": "[NEEDS TRANSLATION] Transfer-only endpoint: browsing is not available on Rsync. Use Native API, WebDAV, S3 or FTP to navigate; switch to Rsync for high-bandwidth delta transfers."
         },
         "box": {
             "addComment": "Magdagdag ng komento",
@@ -4528,7 +4531,8 @@
             "copyHere": "Kopyahin ang {count} dito",
             "moveHere": "Ilipat ang {count} dito",
             "copyHereFromOtherPanelTooltip": "Kopyahin ang {count} napili mula sa kabilang panel papunta sa panel na ito (F5)",
-            "moveHereFromOtherPanelTooltip": "Ilipat ang {count} napili mula sa kabilang panel papunta sa panel na ito (F6)"
+            "moveHereFromOtherPanelTooltip": "Ilipat ang {count} napili mula sa kabilang panel papunta sa panel na ito (F6)",
+            "syncToOtherPanel": "[NEEDS TRANSLATION] Sync to other panel (delta)"
         },
         "localSync": {
             "title": "AeroSync: lokal sa lokal",
@@ -4552,6 +4556,16 @@
             "savings": "Naipon",
             "errorDetails": "(mga) error, mga detalye",
             "errorPathsRequired": "Kinakailangan ang pinagmulan at destinasyon"
+        },
+        "compare": {
+            "title": "[NEEDS TRANSLATION] Compare panels",
+            "notAvailable": "[NEEDS TRANSLATION] Open a second panel or a remote connection to compare."
+        },
+        "syncPresets": {
+            "title": "[NEEDS TRANSLATION] Sync presets",
+            "nothingToDo": "[NEEDS TRANSLATION] Sync presets",
+            "allSkipped": "[NEEDS TRANSLATION] No actionable entries for this preset.",
+            "deletesDeferred": "[NEEDS TRANSLATION] Sync presets"
         }
     }
 }

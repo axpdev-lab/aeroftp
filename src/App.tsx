@@ -3191,7 +3191,7 @@ interface UpdateVerificationInfo {
   });
 
   // --- Connection step logging helpers ---
-  const CLOUD_API_PROTOCOLS = ['mega', 'googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'filen', 'internxt', 'kdrive', 'jottacloud', 'drime', 'zohoworkdrive', 'azure', 'filelu', 'koofr', 'opendrive', 'yandexdisk', 'github', 'gitlab'];
+  const CLOUD_API_PROTOCOLS = ['mega', 'googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'filen', 'internxt', 'kdrive', 'jottacloud', 'drime', 'zohoworkdrive', 'azure', 'filelu', 'filelu-rsync', 'koofr', 'opendrive', 'yandexdisk', 'github', 'gitlab'];
   // Providers that support server-side copy (for context menu)
   const SERVER_COPY_PROVIDERS = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 's3', 'webdav', 'zohoworkdrive', 'mega', 'kdrive', 'jottacloud', 'drime', 'koofr', 'yandexdisk'];
 
@@ -3213,6 +3213,8 @@ interface UpdateVerificationInfo {
         return 'filen.io';
       case 'filelu':
         return 'filelu.com';
+      case 'filelu-rsync':
+        return 'rsync.filelu.com';
       case 'koofr':
         return 'app.koofr.net';
       case 'opendrive':
@@ -3246,6 +3248,13 @@ interface UpdateVerificationInfo {
         server: params.server || 'filelu.com',
         port: params.port || 443,
         username: params.username || 'api-key',
+      };
+    }
+    if (protocol === 'filelu-rsync') {
+      return {
+        ...params,
+        server: params.server || 'rsync.filelu.com',
+        port: params.port || 2222,
       };
     }
     if (protocol === 'imagekit') {

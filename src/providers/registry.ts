@@ -1866,8 +1866,8 @@ export const PROVIDERS: ProviderConfig[] = [
     {
         id: 'filelu-rsync',
         name: 'FileLu Rsync',
-        description: 'FileLu rsync-over-SSH endpoint (port 2222, Linux/macOS rsync service)',
-        protocol: 'sftp',
+        description: 'FileLu rsync-over-SSH endpoint (port 2222, transfer-only, native aerorsync delta)',
+        protocol: 'filelu-rsync',
         category: 'ftp',
         icon: 'Server',
         color: '#8B5CF6',

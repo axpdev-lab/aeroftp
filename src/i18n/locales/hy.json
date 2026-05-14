@@ -3296,7 +3296,9 @@
             "activityLog": "Գործունեության մատյան",
             "detailedCards": "Մանրամասն սերվերի քարտեր",
             "debugPanel": "Debug Panel",
-            "localSync": "Տեղական համանքարկում..."
+            "localSync": "Տեղական համանքարկում...",
+            "comparePanels": "[NEEDS TRANSLATION] Compare Panels...",
+            "syncPresets": "[NEEDS TRANSLATION] Sync Presets..."
         },
         "activityPanel": {
             "awaitingCommands": "Սպասում է հրամանների...",
@@ -3803,7 +3805,8 @@
             "restore": "Վերականգնել",
             "trashFooter": "Վերականգնված ֆայլերը կհայտնվեն իրենց սկզբնական թղթապանակում",
             "connectionNamePlaceholder": "Կապակցության անունը (օր. Իմ FileLu Cloud-ը)",
-            "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
+            "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days",
+            "rsyncTransferOnly": "[NEEDS TRANSLATION] Transfer-only endpoint: browsing is not available on Rsync. Use Native API, WebDAV, S3 or FTP to navigate; switch to Rsync for high-bandwidth delta transfers."
         },
         "box": {
             "addComment": "Ավելացնել մեկնաբանություն",
@@ -4509,7 +4512,8 @@
             "copyHere": "Պատճենել {count}-ը այստեղ",
             "moveHere": "Տեղափոխել {count}-ը այստեղ",
             "copyHereFromOtherPanelTooltip": "Պատճենել մյուս վահանակից ընտրված {count}-ը այս վահանակում (F5)",
-            "moveHereFromOtherPanelTooltip": "Տեղափոխել մյուս վահանակից ընտրված {count}-ը այս վահանակում (F6)"
+            "moveHereFromOtherPanelTooltip": "Տեղափոխել մյուս վահանակից ընտրված {count}-ը այս վահանակում (F6)",
+            "syncToOtherPanel": "[NEEDS TRANSLATION] Sync to other panel (delta)"
         },
         "localSync": {
             "title": "AeroSync։ տեղականից տեղական",
@@ -4533,6 +4537,16 @@
             "savings": "Խնայողություն",
             "errorDetails": "սխալ(ներ), մանրամասներ",
             "errorPathsRequired": "Աղբյուրը և նշանակետը պարտադիր են"
+        },
+        "compare": {
+            "title": "[NEEDS TRANSLATION] Compare panels",
+            "notAvailable": "[NEEDS TRANSLATION] Open a second panel or a remote connection to compare."
+        },
+        "syncPresets": {
+            "title": "[NEEDS TRANSLATION] Sync presets",
+            "nothingToDo": "[NEEDS TRANSLATION] Sync presets",
+            "allSkipped": "[NEEDS TRANSLATION] No actionable entries for this preset.",
+            "deletesDeferred": "[NEEDS TRANSLATION] Sync presets"
         }
     }
 }
