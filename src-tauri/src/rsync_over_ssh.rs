@@ -11,8 +11,10 @@
 //! real delta savings with a fraction of the implementation cost. The cost: rsync
 //! must be installed locally.
 //!
-//! ## Scope (Fase 1)
-//! - **Auth**: SSH key only. Password auth falls back to classic transfer.
+//! ## Scope (Fase 1 / R1 foundation)
+//! - **Auth**: SSH key path is production; password auth has a typed,
+//!   secret-backed config state but intentionally refuses subprocess/argv
+//!   execution until the russh-mediated password channel lands.
 //! - **Platform**: Unix (Linux/macOS). Windows has no native rsync; falls back to classic.
 //! - **Providers**: SFTP only (this module is not reachable for other provider types).
 //! - **Probe**: `ssh_exec` is used to verify remote rsync presence and version before
@@ -41,6 +43,8 @@ use crate::providers::sftp::SharedSshHandle;
 use crate::rsync_output::{parse_line, RsyncEvent};
 #[cfg(unix)]
 use crate::ssh_exec::ssh_exec_collect;
+use secrecy::{ExposeSecret, SecretString};
+use std::fmt;
 #[cfg(unix)]
 use std::path::Path;
 use std::path::PathBuf;
@@ -70,8 +74,21 @@ pub struct RsyncCapability {
     pub protocol: u32,
 }
 
+/// Authentication strategy for the rsync-over-SSH leg.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuthMethod {
+    SshKey,
+    Password,
+}
+
+impl Default for AuthMethod {
+    fn default() -> Self {
+        Self::SshKey
+    }
+}
+
 /// Configuration for a single rsync transfer.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct RsyncConfig {
     pub compress: bool,
     pub preserve_times: bool,
@@ -81,6 +98,11 @@ pub struct RsyncConfig {
     pub min_file_size: u64,
     /// Absolute path to an SSH private key on the local filesystem. `None` → classic fallback.
     pub ssh_key_path: Option<PathBuf>,
+    /// Password for password-based rsync-over-SSH providers. Never log or
+    /// render this value; R1 uses [`SecretString`] so drops zeroize memory.
+    pub ssh_password: Option<SecretString>,
+    /// Requested SSH authentication method.
+    pub auth_method: AuthMethod,
     /// SSH port (defaults to 22 if `None`).
     pub ssh_port: Option<u16>,
     /// SSH username on the remote.
@@ -94,6 +116,28 @@ pub struct RsyncConfig {
     pub known_hosts_path: Option<PathBuf>,
 }
 
+impl fmt::Debug for RsyncConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RsyncConfig")
+            .field("compress", &self.compress)
+            .field("preserve_times", &self.preserve_times)
+            .field("progress", &self.progress)
+            .field("min_file_size", &self.min_file_size)
+            .field("ssh_key_path", &self.ssh_key_path)
+            .field(
+                "ssh_password",
+                &self.ssh_password.as_ref().map(|_| "<redacted>"),
+            )
+            .field("auth_method", &self.auth_method)
+            .field("ssh_port", &self.ssh_port)
+            .field("ssh_user", &self.ssh_user)
+            .field("ssh_host", &self.ssh_host)
+            .field("strict_host_key_check", &self.strict_host_key_check)
+            .field("known_hosts_path", &self.known_hosts_path)
+            .finish()
+    }
+}
+
 impl Default for RsyncConfig {
     fn default() -> Self {
         Self {
@@ -102,12 +146,51 @@ impl Default for RsyncConfig {
             progress: true,
             min_file_size: DEFAULT_MIN_FILE_SIZE,
             ssh_key_path: None,
+            ssh_password: None,
+            auth_method: AuthMethod::SshKey,
             ssh_port: None,
             ssh_user: String::new(),
             ssh_host: String::new(),
             strict_host_key_check: "accept-new".to_string(),
             known_hosts_path: None,
         }
+    }
+}
+
+impl RsyncConfig {
+    /// Validate auth material without spawning `ssh` or `rsync`.
+    ///
+    /// This is intentionally stricter than the old key-only fallback path:
+    /// if a caller constructs an explicit rsync-over-SSH config with no auth
+    /// material at all, that is an integration bug and should not silently
+    /// degrade into another transport.
+    pub fn validate_auth_material(&self) -> Result<(), RsyncError> {
+        if self.ssh_key_path.is_none() && self.ssh_password.is_none() {
+            return Err(RsyncError::HardRejection(
+                "rsync-over-SSH auth config has neither ssh_key_path nor ssh_password".into(),
+            ));
+        }
+
+        match self.auth_method {
+            AuthMethod::SshKey => {
+                if self.ssh_key_path.is_none() {
+                    return Err(RsyncError::MissingKey(
+                        "auth_method=ssh_key but no ssh_key_path is configured".into(),
+                    ));
+                }
+            }
+            AuthMethod::Password => {
+                let password = self
+                    .ssh_password
+                    .as_ref()
+                    .ok_or(RsyncError::MissingPassword)?;
+                if password.expose_secret().is_empty() {
+                    return Err(RsyncError::MissingPassword);
+                }
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -145,6 +228,8 @@ pub enum RsyncError {
     TransferFailed { exit: i32, stderr: String },
     /// Caller needs password auth but Fase 1 is key-only.
     PasswordAuthUnsupported,
+    /// Password auth was selected but no usable password was supplied.
+    MissingPassword,
     /// Required SSH key path is missing or unreadable.
     MissingKey(String),
     /// Operation was cancelled by the caller (future drop).
@@ -179,7 +264,10 @@ impl std::fmt::Display for RsyncError {
                 write!(f, "rsync exit {}: {}", exit, stderr.trim())
             }
             Self::PasswordAuthUnsupported => {
-                write!(f, "password-based SSH auth is not supported in Fase 1")
+                write!(f, "password-based SSH auth is not implemented yet")
+            }
+            Self::MissingPassword => {
+                write!(f, "password-based SSH auth requires a non-empty password")
             }
             Self::MissingKey(s) => write!(f, "ssh key unusable: {}", s),
             Self::Cancelled => write!(f, "cancelled"),
@@ -262,7 +350,9 @@ pub fn is_transient_for_reconnect(err: &RsyncError) -> bool {
                 "connection timed out",
                 "network is unreachable",
             ];
-            TRANSIENT_NEEDLES.iter().any(|needle| lower.contains(needle))
+            TRANSIENT_NEEDLES
+                .iter()
+                .any(|needle| lower.contains(needle))
         }
         // Z.1.2 (refined 2026-05-14 lane): `HardRejection` is the
         // formatter-injected envelope `"native hard rejection
@@ -279,6 +369,7 @@ pub fn is_transient_for_reconnect(err: &RsyncError) -> bool {
         // + atomic rename, so retrying the file is safe.
         RsyncError::HardRejection(msg) => is_transient_native_envelope(&msg.to_ascii_lowercase()),
         RsyncError::PasswordAuthUnsupported
+        | RsyncError::MissingPassword
         | RsyncError::MissingKey(_)
         | RsyncError::VersionTooOld { .. }
         | RsyncError::RemoteNotAvailable
@@ -418,8 +509,9 @@ mod is_transient_hard_rejection_tests {
     fn transfer_failed_native_fallback_transport_failure_is_transient() {
         let err = RsyncError::TransferFailed {
             exit: -1,
-            stderr: "native fallback (TransportFailure): next_data_frame: remote closed mid file list"
-                .to_string(),
+            stderr:
+                "native fallback (TransportFailure): next_data_frame: remote closed mid file list"
+                    .to_string(),
         };
         assert!(is_transient_for_reconnect(&err));
     }
@@ -430,8 +522,9 @@ mod is_transient_hard_rejection_tests {
         // an iptables REJECT pulse on the SSH port.
         let err = RsyncError::TransferFailed {
             exit: -1,
-            stderr: "native fallback (TransportFailure): russh channel_open_session: Channel send error"
-                .to_string(),
+            stderr:
+                "native fallback (TransportFailure): russh channel_open_session: Channel send error"
+                    .to_string(),
         };
         assert!(is_transient_for_reconnect(&err));
     }
@@ -489,7 +582,10 @@ mod is_transient_tests {
 
     #[test]
     fn io_broken_pipe_is_transient() {
-        let err = RsyncError::Io(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "pipe gone"));
+        let err = RsyncError::Io(std::io::Error::new(
+            std::io::ErrorKind::BrokenPipe,
+            "pipe gone",
+        ));
         assert!(is_transient_for_reconnect(&err));
     }
 
@@ -707,10 +803,19 @@ pub async fn probe_local_rsync() -> Result<String, RsyncError> {
 /// transport. Covers: port, identity file, known_hosts, StrictHostKeyChecking.
 #[cfg(unix)]
 fn build_ssh_e_arg(cfg: &RsyncConfig) -> Result<String, RsyncError> {
+    cfg.validate_auth_material()?;
+
+    if matches!(cfg.auth_method, AuthMethod::Password) {
+        // R1 foundation is in place, but the secure password transport must
+        // be russh-mediated. Do not regress to `sshpass`, env vars, or an
+        // argv-visible password.
+        return Err(RsyncError::PasswordAuthUnsupported);
+    }
+
     let key = cfg
         .ssh_key_path
         .as_ref()
-        .ok_or(RsyncError::PasswordAuthUnsupported)?;
+        .ok_or_else(|| RsyncError::MissingKey("no ssh key path configured".into()))?;
 
     if !key.exists() {
         return Err(RsyncError::MissingKey(format!(
@@ -983,8 +1088,10 @@ mod tests {
             ..Default::default()
         };
         match build_ssh_e_arg(&cfg) {
-            Err(RsyncError::PasswordAuthUnsupported) => {}
-            other => panic!("expected PasswordAuthUnsupported, got {:?}", other),
+            Err(RsyncError::HardRejection(message)) => {
+                assert!(message.contains("neither ssh_key_path nor ssh_password"));
+            }
+            other => panic!("expected hard rejection for empty auth, got {:?}", other),
         }
     }
 
@@ -1019,5 +1126,94 @@ mod tests {
         assert!(arg.contains("-i "));
         assert!(arg.contains("StrictHostKeyChecking=accept-new"));
         assert!(arg.contains("BatchMode=yes"));
+    }
+
+    #[test]
+    fn auth_validation_accepts_key_method_with_key() {
+        let cfg = RsyncConfig {
+            auth_method: AuthMethod::SshKey,
+            ssh_key_path: Some(PathBuf::from("/tmp/key")),
+            ..Default::default()
+        };
+        assert!(cfg.validate_auth_material().is_ok());
+    }
+
+    #[test]
+    fn auth_validation_rejects_key_method_without_key() {
+        let cfg = RsyncConfig {
+            auth_method: AuthMethod::SshKey,
+            ssh_password: Some(SecretString::from("pw".to_string())),
+            ..Default::default()
+        };
+        match cfg.validate_auth_material() {
+            Err(RsyncError::MissingKey(message)) => {
+                assert!(message.contains("auth_method=ssh_key"));
+            }
+            other => panic!("expected MissingKey, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn auth_validation_accepts_password_method_with_password() {
+        let cfg = RsyncConfig {
+            auth_method: AuthMethod::Password,
+            ssh_password: Some(SecretString::from("pw".to_string())),
+            ..Default::default()
+        };
+        assert!(cfg.validate_auth_material().is_ok());
+    }
+
+    #[test]
+    fn auth_validation_rejects_password_method_without_password() {
+        let cfg = RsyncConfig {
+            auth_method: AuthMethod::Password,
+            ssh_key_path: Some(PathBuf::from("/tmp/key")),
+            ssh_password: None,
+            ..Default::default()
+        };
+        match cfg.validate_auth_material() {
+            Err(RsyncError::MissingPassword) => {}
+            other => panic!("expected MissingPassword, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn auth_validation_hard_rejects_when_all_auth_material_absent() {
+        let cfg = RsyncConfig::default();
+        match cfg.validate_auth_material() {
+            Err(RsyncError::HardRejection(message)) => {
+                assert!(message.contains("neither ssh_key_path nor ssh_password"));
+            }
+            other => panic!("expected HardRejection, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn debug_redacts_password_secret() {
+        let cfg = RsyncConfig {
+            auth_method: AuthMethod::Password,
+            ssh_password: Some(SecretString::from(
+                "super-secret-filelu-password".to_string(),
+            )),
+            ..Default::default()
+        };
+        let debug = format!("{cfg:?}");
+        assert!(debug.contains("<redacted>"));
+        assert!(!debug.contains("super-secret-filelu-password"));
+    }
+
+    #[test]
+    fn ssh_e_arg_refuses_password_method_without_leaking_secret() {
+        let cfg = RsyncConfig {
+            auth_method: AuthMethod::Password,
+            ssh_password: Some(SecretString::from(
+                "super-secret-filelu-password".to_string(),
+            )),
+            ..Default::default()
+        };
+        match build_ssh_e_arg(&cfg) {
+            Err(RsyncError::PasswordAuthUnsupported) => {}
+            other => panic!("expected PasswordAuthUnsupported, got {:?}", other),
+        }
     }
 }

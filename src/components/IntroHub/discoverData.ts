@@ -49,7 +49,7 @@ const CLOUD_SERVICES: DiscoverItem[] = [
     { id: 'internxt', name: 'Internxt', description: 'Privacy-focused encrypted cloud (1 GB free)', protocol: 'internxt', badge: 'E2E 256-bit', signupUrl: 'https://internxt.com', healthCheckUrl: 'https://api.internxt.com', source: 'protocol' },
     { id: 'koofr-cloud', name: 'Koofr', description: 'EU-based privacy-friendly cloud (10 GB free)', protocol: 'koofr', badge: 'API', signupUrl: 'https://koofr.eu', healthCheckUrl: 'https://app.koofr.net', source: 'protocol' },
     { id: 'kdrive', name: 'kDrive', description: 'Infomaniak Swiss cloud (15 GB free)', protocol: 'kdrive', badge: 'API', signupUrl: 'https://www.infomaniak.com/en/kdrive', healthCheckUrl: 'https://api.infomaniak.com', source: 'protocol' },
-    { id: 'filelu', name: 'FileLu', description: 'Multi-protocol cloud storage (1 GB free)', protocol: 'filelu', badge: 'API', signupUrl: 'https://filelu.com', healthCheckUrl: 'https://filelu.com/api/', source: 'protocol' },
+    { id: 'filelu', name: 'FileLu', description: 'Multi-protocol cloud storage with API, FTP, WebDAV, S3 and Rsync (1 GB free)', protocol: 'filelu', badge: 'API', signupUrl: 'https://filelu.com', healthCheckUrl: 'https://filelu.com/api/', source: 'protocol' },
     { id: 'zohoworkdrive', name: 'Zoho WorkDrive', description: 'Team collaboration and storage (5 GB free)', protocol: 'zohoworkdrive', badge: 'OAuth', signupUrl: 'https://www.zoho.com/workdrive/', healthCheckUrl: 'https://www.zohoapis.com', source: 'protocol' },
     { id: 'drime', name: 'Drime Cloud', description: 'Cloud storage with API access (20 GB free)', protocol: 'drime', badge: 'API', signupUrl: 'https://drime.cloud', healthCheckUrl: 'https://app.drime.cloud', source: 'protocol' },
     { id: 'jottacloud', name: 'Jottacloud', description: 'Norwegian cloud storage (5 GB free)', protocol: 'jottacloud', badge: 'API', signupUrl: 'https://www.jottacloud.com', healthCheckUrl: 'https://jottacloud.com', source: 'protocol' },
@@ -200,6 +200,7 @@ export const DISCOVER_DESC_KEYS: Record<string, string> = {
 const BADGE_OVERRIDES: Record<string, string> = {
     'felicloud': 'API OCS',   // Nextcloud-based, OCS REST API for sharing
     'tabdigital': 'API OCS',  // Tab.digital is also Nextcloud-as-a-service
+    'filelu-rsync': 'RSYNC',
     'megacmd-webdav': 'LOCAL',
     'filen-desktop-webdav': 'LOCAL',
     'filen-desktop-s3': 'LOCAL',
@@ -285,9 +286,11 @@ export function buildDiscoverCategories(): DiscoverCategory[] {
 
     // Build protocol items: generics first, then Hetzner, then demos last
     const hetzner = ftpProviders.find(p => p.id === 'hetzner-storage-box');
+    const fileluRsync = ftpProviders.find(p => p.id === 'filelu-rsync');
     const protoItems = [
         ...PROTOCOL_ITEMS.filter(p => !p.demo),
         ...(hetzner ? [hetzner] : []),
+        ...(fileluRsync ? [fileluRsync] : []),
         ...PROTOCOL_ITEMS.filter(p => !!p.demo),
     ];
 

@@ -281,6 +281,8 @@ impl SftpProvider {
             progress: true,
             min_file_size: crate::rsync_over_ssh::DEFAULT_MIN_FILE_SIZE,
             ssh_key_path: Some(key_path),
+            ssh_password: None,
+            auth_method: crate::rsync_over_ssh::AuthMethod::SshKey,
             ssh_port: Some(self.config.port),
             ssh_user: self.config.username.clone(),
             ssh_host: self.config.host.clone(),
@@ -305,7 +307,8 @@ impl SftpProvider {
             // to enable native: the fresh SSH connection would otherwise
             // ride `AcceptAny`, which is a MITM window on a second
             // independent socket.
-            if crate::settings::load_native_rsync_enabled() {
+            let native_mode = crate::settings::load_native_rsync_mode();
+            if !matches!(native_mode, crate::settings::NativeRsyncMode::Classic) {
                 use crate::aerorsync::delta_transport_impl::AerorsyncDeltaTransport;
                 use crate::aerorsync::ssh_transport::SshHostKeyPolicy;
 
@@ -317,6 +320,12 @@ impl SftpProvider {
                              SFTP handshake did not capture a host key fingerprint (possible \
                              password-only auth or early error); falling back to classic"
                         );
+                        if matches!(native_mode, crate::settings::NativeRsyncMode::Native) {
+                            tracing::warn!(
+                                "providers::sftp: native-only rsync mode selected; skipping classic binary fallback"
+                            );
+                            return None;
+                        }
                         return classic_binary_fallback(rsync_config, handle);
                     }
                 };
@@ -332,6 +341,12 @@ impl SftpProvider {
                         tracing::warn!(
                             "providers::sftp: native rsync transport construction failed ({error}); falling back to classic"
                         );
+                        if matches!(native_mode, crate::settings::NativeRsyncMode::Native) {
+                            tracing::warn!(
+                                "providers::sftp: native-only rsync mode selected; skipping classic binary fallback"
+                            );
+                            return None;
+                        }
                     }
                 }
             }

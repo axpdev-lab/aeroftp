@@ -384,7 +384,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     const [showExportImport, setShowExportImport] = useState(false);
     const [credentialsMasked, setCredentialsMasked] = useState(true);
     const [nativeRsyncCompiled, setNativeRsyncCompiled] = useState<boolean | null>(null);
-    const [nativeRsyncEnabled, setNativeRsyncEnabled] = useState(false);
+    const [nativeRsyncMode, setNativeRsyncMode] = useState<'auto' | 'classic' | 'native'>('auto');
     const modalDrag = useDraggableModal();
     const panelRef = useRef<HTMLDivElement | null>(null);
     const sidebarButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -468,8 +468,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
             return;
         }
 
-        invoke<boolean>('native_rsync_enabled_get')
-            .then(setNativeRsyncEnabled)
+        invoke<'auto' | 'classic' | 'native'>('native_rsync_mode_get')
+            .then((mode) => {
+                if (mode === 'auto' || mode === 'classic' || mode === 'native') {
+                    setNativeRsyncMode(mode);
+                }
+            })
             .catch((error) => {
                 logger.error('Failed to load native rsync setting:', error);
             });
@@ -2772,26 +2776,36 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4">
                                                 <h4 className="font-medium">{t('settings.nativeRsync.title')}</h4>
                                                 <p className="text-sm text-gray-500 mt-1">{t('settings.nativeRsync.description')}</p>
-                                                <label className="flex items-center gap-2 mt-3">
-                                                    <input
-                                                        type="checkbox"
-                                                        className="accent-blue-600"
-                                                        checked={nativeRsyncEnabled}
-                                                        onChange={async (e) => {
-                                                            const enabled = e.target.checked;
-                                                            try {
-                                                                await invoke('native_rsync_enabled_set', {
-                                                                    enabled,
-                                                                });
-                                                                setNativeRsyncEnabled(enabled);
-                                                                flashSaved();
-                                                            } catch (error) {
-                                                                logger.error('Failed to update native rsync setting:', error);
-                                                            }
-                                                        }}
-                                                    />
-                                                    <span className="text-sm">{t('settings.nativeRsync.enableToggle')}</span>
-                                                </label>
+                                                <div className="mt-3 grid grid-cols-3 gap-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-1 max-w-md">
+                                                    {[
+                                                        { value: 'auto', label: 'Auto' },
+                                                        { value: 'classic', label: 'Classic' },
+                                                        { value: 'native', label: 'Native' },
+                                                    ].map((option) => (
+                                                        <button
+                                                            key={option.value}
+                                                            type="button"
+                                                            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                                                                nativeRsyncMode === option.value
+                                                                    ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-300 shadow-sm'
+                                                                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                                                            }`}
+                                                            onClick={async () => {
+                                                                try {
+                                                                    await invoke('native_rsync_mode_set', {
+                                                                        mode: option.value,
+                                                                    });
+                                                                    setNativeRsyncMode(option.value as 'auto' | 'classic' | 'native');
+                                                                    flashSaved();
+                                                                } catch (error) {
+                                                                    logger.error('Failed to update native rsync setting:', error);
+                                                                }
+                                                            }}
+                                                        >
+                                                            {option.label}
+                                                        </button>
+                                                    ))}
+                                                </div>
                                                 <p className="text-xs text-amber-600 mt-2">{t('settings.nativeRsync.experimental')}</p>
                                             </div>
                                         )}
