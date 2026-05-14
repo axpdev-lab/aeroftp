@@ -1243,6 +1243,65 @@ enum Commands {
         #[arg(long, short = 'i')]
         interactive: bool,
     },
+    /// Create a new server profile in the vault
+    ///
+    /// Scriptable alternative to the GUI's New Server flow and to the
+    /// interactive shell's `n` action: useful for CI setups that seed
+    /// throwaway profiles. Credentials still live in the GUI Edit modal
+    /// or the per-protocol vault keys, so this only writes the
+    /// configuration entry itself.
+    ProfileAdd {
+        /// Display name. Required, must be non-empty.
+        #[arg(long, value_name = "NAME")]
+        name: String,
+        /// Protocol identifier (lowercase). Matches the GUI registry:
+        /// ftp, ftps, sftp, webdav, webdavs, s3, mega, dropbox,
+        /// googledrive, onedrive, box, pcloud, zohoworkdrive, etc.
+        #[arg(long, value_name = "PROTOCOL")]
+        protocol: String,
+        /// Hostname or host:port. Optional for cloud providers that
+        /// resolve endpoints from the protocol alone.
+        #[arg(long, value_name = "HOST")]
+        host: Option<String>,
+        /// TCP port. Optional; the GUI default per protocol applies
+        /// when omitted (21 for FTP, 22 for SFTP, 443 for WebDAV/S, …).
+        #[arg(long, value_name = "PORT")]
+        port: Option<u16>,
+        /// Username for the new profile.
+        #[arg(long, value_name = "USERNAME")]
+        username: Option<String>,
+        /// Initial remote path the GUI uses when connecting.
+        #[arg(long, value_name = "PATH")]
+        initial_path: Option<String>,
+        /// Initial local path for AeroFile-style local↔remote workflows.
+        #[arg(long, value_name = "PATH")]
+        local_initial_path: Option<String>,
+        /// Optional color tag (matches the GUI swatch). Free text.
+        #[arg(long, value_name = "COLOR")]
+        color: Option<String>,
+        /// Provider id (matches `getProviderById` in the GUI). Optional;
+        /// auto-derived from the protocol when possible.
+        #[arg(long, value_name = "ID")]
+        provider_id: Option<String>,
+    },
+    /// Duplicate a saved server profile inside the vault
+    ///
+    /// Copies the profile (config + any stored credential) under a fresh
+    /// id and prepends `(copy)` to its display name unless `--name` is
+    /// provided. Mirrors the Duplicate action available from the GUI's
+    /// server context menu and is mostly useful for sandbox/test setups
+    /// where you want a sacrificial profile.
+    ProfileDuplicate {
+        /// Selector: profile index (1-based, as shown in `profiles`) or
+        /// (case-insensitive) name / id. Substring match falls back to a
+        /// unique row only.
+        #[arg(value_name = "SELECTOR")]
+        selector: String,
+        /// Optional display name for the new profile.
+        /// Defaults to `<original> (copy)`.
+        #[arg(long, value_name = "NAME")]
+        name: Option<String>,
+    },
     /// List configured AI providers and models from the encrypted vault
     AiModels,
     /// Show the canonical task-oriented quick-start for AI agents
@@ -4450,7 +4509,7 @@ impl ProfileColId {
         match self {
             ProfileColId::Index => "#",
             ProfileColId::Name => "Name",
-            ProfileColId::Badges => "Type",
+            ProfileColId::Badges => "Badges",
             ProfileColId::Subtitle => "Host",
             ProfileColId::Used => "Used",
             ProfileColId::Total => "Total",
@@ -4955,6 +5014,86 @@ fn parse_col_list(raw: &str) -> Result<Vec<ProfileColId>, String> {
     Ok(out)
 }
 
+/// Read the set of favourite profile IDs from the vault. The GUI persists
+/// them under `config_favorite_servers` so the table renderer can paint a
+/// `\u{2605}` glyph in the Fav column (issue #195). Returns an empty set on
+/// any failure: a missing or malformed entry collapses to "no favourites",
+/// which keeps the CLI working for new vaults and during the rollout.
+fn load_favorite_server_ids(store: &CredentialStore) -> std::collections::HashSet<String> {
+    use std::collections::HashSet;
+    let raw = match store.get("config_favorite_servers") {
+        Ok(v) => v,
+        Err(_) => return HashSet::new(),
+    };
+    serde_json::from_str::<Vec<String>>(&raw)
+        .map(|ids| ids.into_iter().collect())
+        .unwrap_or_default()
+}
+
+/// Toggle the favourite flag for a profile id. Reads the current set,
+/// flips membership, writes back. Returns the new state (`true` = now
+/// favoured). Errors if the vault write fails. Mirrors
+/// `MyServersPanel.toggleFavorite` so GUI and CLI converge on the same
+/// `config_favorite_servers` key without one clobbering the other.
+fn toggle_favorite_in_vault(store: &CredentialStore, profile_id: &str) -> Result<bool, String> {
+    let raw = store.get("config_favorite_servers").unwrap_or_default();
+    let mut ids: Vec<String> = if raw.is_empty() {
+        Vec::new()
+    } else {
+        serde_json::from_str(&raw).unwrap_or_default()
+    };
+    let now_favoured;
+    if let Some(pos) = ids.iter().position(|i| i == profile_id) {
+        ids.remove(pos);
+        now_favoured = false;
+    } else {
+        ids.push(profile_id.to_string());
+        now_favoured = true;
+    }
+    let payload = serde_json::to_string(&ids)
+        .map_err(|e| format!("Failed to serialize favourites: {}", e))?;
+    store
+        .store("config_favorite_servers", &payload)
+        .map_err(|e| format!("Failed to write favourites: {}", e))?;
+    Ok(now_favoured)
+}
+
+/// ANSI colour cues used by the interactive shell. Mirrors the colour
+/// language EhudKirsh asked for in issue #180: green for creation /
+/// rename, blue for copy / duplicate, red for delete. Tied to
+/// `use_color()` so non-TTY runs still emit plain text.
+fn paint_green(text: &str) -> String {
+    if use_color() {
+        format!("\x1b[32m{}\x1b[0m", text)
+    } else {
+        text.to_string()
+    }
+}
+
+fn paint_blue(text: &str) -> String {
+    if use_color() {
+        format!("\x1b[34m{}\x1b[0m", text)
+    } else {
+        text.to_string()
+    }
+}
+
+fn paint_red(text: &str) -> String {
+    if use_color() {
+        format!("\x1b[31m{}\x1b[0m", text)
+    } else {
+        text.to_string()
+    }
+}
+
+fn paint_yellow(text: &str) -> String {
+    if use_color() {
+        format!("\x1b[33m{}\x1b[0m", text)
+    } else {
+        text.to_string()
+    }
+}
+
 /// Compare two profiles for the requested column. Mirrors the comparators in
 /// `MyServersTable.tsx`. Profiles without the relevant data sort first in
 /// ascending order so the populated rows form a contiguous block.
@@ -4962,6 +5101,7 @@ fn compare_profiles(
     a: &serde_json::Value,
     b: &serde_json::Value,
     col: ProfileColId,
+    favorites: &std::collections::HashSet<String>,
 ) -> std::cmp::Ordering {
     use std::cmp::Ordering;
     fn used(p: &serde_json::Value) -> Option<u64> {
@@ -5015,7 +5155,21 @@ fn compare_profiles(
             (None, None) => Ordering::Equal,
         },
         ProfileColId::Time => time_ts(a).cmp(&time_ts(b)),
-        ProfileColId::Favorite => Ordering::Equal, // favorites live in localStorage, not the vault
+        ProfileColId::Favorite => {
+            // Sort favourites first in ascending order (true > false flipped
+            // so the marker rows surface at the top), then break ties on name.
+            let af = a
+                .get("id")
+                .and_then(|v| v.as_str())
+                .map(|id| favorites.contains(id))
+                .unwrap_or(false);
+            let bf = b
+                .get("id")
+                .and_then(|v| v.as_str())
+                .map(|id| favorites.contains(id))
+                .unwrap_or(false);
+            bf.cmp(&af)
+        }
         ProfileColId::Subtitle | ProfileColId::Paths => Ordering::Equal,
     }
 }
@@ -5067,6 +5221,7 @@ fn list_vault_profiles(cli: &Cli, format: OutputFormat, overrides: ProfilesViewO
             .unwrap_or_default()
             .into_iter()
             .collect();
+        let favorites = load_favorite_server_ids(&store);
         let safe: Vec<serde_json::Value> = profiles
             .iter()
             .map(|p| {
@@ -5093,6 +5248,7 @@ fn list_vault_profiles(cli: &Cli, format: OutputFormat, overrides: ProfilesViewO
                     "initialPath": p.get("initialPath").and_then(|v| v.as_str()).unwrap_or("/"),
                     "auth_state": auth_state,
                     "providerId": p.get("providerId").and_then(|v| v.as_str()),
+                    "favorite": !id.is_empty() && favorites.contains(id),
                     "lastQuota": match (used, total) {
                         (Some(u), Some(t)) if t > 0 => serde_json::json!({ "used": u, "total": t }),
                         _ => serde_json::Value::Null,
@@ -5189,6 +5345,7 @@ fn render_profiles_text(
 ) -> i32 {
     let color_on = use_color();
     let mut settings = read_ui_table_settings(store);
+    let favorites = load_favorite_server_ids(store);
 
     // Apply --hide / --show overrides for this run only.
     match overrides.hide.as_deref().map(parse_col_list) {
@@ -5232,7 +5389,7 @@ fn render_profiles_text(
     let mut sorted: Vec<(usize, serde_json::Value)> = profiles.into_iter().enumerate().collect();
     if let Some(sort) = settings.sort {
         sorted.sort_by(|a, b| {
-            let ord = compare_profiles(&a.1, &b.1, sort.col);
+            let ord = compare_profiles(&a.1, &b.1, sort.col, &favorites);
             let ord = if matches!(sort.dir, ProfileSortDir::Desc) {
                 ord.reverse()
             } else {
@@ -5463,14 +5620,29 @@ fn render_profiles_text(
                     format!("{:>w$}", raw, w = w)
                 }
                 ProfileColId::Favorite => {
-                    // Favourites live in localStorage today, not in the vault.
-                    // Phase 4 will move them to the vault; until then, render `-`.
-                    format!("{:^w$}", "-", w = w)
+                    // Vault key `config_favorite_servers` is the source of
+                    // truth, written by both the GUI toggle and the future
+                    // `f` action in interactive mode (issue #195).
+                    let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                    let marker = if !id.is_empty() && favorites.contains(id) {
+                        "\u{2605}"
+                    } else {
+                        "-"
+                    };
+                    format!("{:^w$}", marker, w = w)
                 }
             };
             cells.push(cell);
         }
-        println!("  {}", cells.join("  "));
+        // Zebra striping (rclone-style): when colour is enabled, dim
+        // every other row to make scanning long tables easier. Tied to
+        // `use_color()` so non-TTY runs remain pipe-safe.
+        let joined = cells.join("  ");
+        if color_on && display_idx % 2 == 1 {
+            println!("  \x1b[2m{}\x1b[22m", joined);
+        } else {
+            println!("  {}", joined);
+        }
     }
 
     // Footer: dedup-aware summary (Phase 4). Profiles backed by the same
@@ -5692,24 +5864,31 @@ fn render_profiles_text(
 
 /// rclone-config-style prompt loop on `aeroftp profiles -i`.
 ///
-/// Accepts compact tokens like `1l`, `2t`, `3d` (digits then action letter,
-/// either order) plus `q`/`quit`. After a destructive action the table is
-/// re-rendered from a fresh vault read so the user sees the new state. We
-/// reuse the running binary via subprocess for `l` and `t` so the listing /
-/// tree output stays bit-for-bit identical to the standalone command.
+/// Accepts compact tokens (`1l`, `l1`, `2t`, `3d`) and rclone-style action
+/// lines (`d 4 box 10`, `l 1 2 3`) that target multiple profiles in one
+/// shot, by index or by name. After a destructive action the table is
+/// reprinted with the deleted rows kept as red tombstones (`-` index) so
+/// the user can read the renumbered remainder before issuing the next
+/// command. `l`/`t` reuse the running binary so the listing/tree output
+/// stays bit-for-bit identical to the standalone command.
 fn interactive_profiles_loop(store: &CredentialStore, profiles: Vec<serde_json::Value>) -> i32 {
     use std::io::{self, BufRead, Write};
 
     let mut current = profiles;
+    let mut tombstones: Vec<(usize, serde_json::Value)> = Vec::new();
 
     loop {
+        if !tombstones.is_empty() {
+            print_profiles_summary_with_tombstones(&current, &tombstones);
+            tombstones.clear();
+        }
         if current.is_empty() {
             eprintln!("\nNo profiles left. Exiting interactive mode.");
             return 0;
         }
 
         eprintln!(
-            "\nInteractive: <n>l = ls, <n>t = tree, <n>d = delete, q = quit (e.g. '1l' or 'l1')"
+            "\nInteractive: l/t/d/f/c/r/e <N|name> [N|name ...]  ·  legacy 1l/l1 still works  ·  0/q = quit"
         );
         eprint!("profiles> ");
         let _ = io::stderr().flush();
@@ -5731,97 +5910,683 @@ fn interactive_profiles_loop(store: &CredentialStore, profiles: Vec<serde_json::
             continue;
         }
         let lower = raw.to_lowercase();
-        if lower == "q" || lower == "quit" || lower == "exit" {
+        if lower == "q" || lower == "quit" || lower == "exit" || lower == "0" || lower == "-1" {
             return 0;
         }
         if lower == "help" || lower == "?" {
-            eprintln!("  <n>l    list root of profile #n");
-            eprintln!("  <n>t    tree (depth 2) of profile #n");
-            eprintln!("  <n>d    delete profile #n from the vault");
-            eprintln!("  f       favourite toggle (planned for Phase 4 vault migration)");
-            eprintln!("  q       quit");
+            eprintln!("  l <selectors>   list root of each profile");
+            eprintln!("  t <selectors>   tree (depth 2) of each profile");
+            eprintln!("  d <selectors>   delete (red rendering, tombstone reprint)");
+            eprintln!("  f <selectors>   toggle favourite \u{2605} (green/yellow rendering)");
+            eprintln!("  c <selectors>   copy / duplicate (blue rendering)");
+            eprintln!("  r <selector>    rename (single target, prompts for new name, green rendering)");
+            eprintln!("  e <selector>    edit name/host/port/username/initialPath inline (green rendering)");
+            eprintln!("  Nl  Nt  Nd      legacy single-target compact form (e.g. '1l', 'l1')");
+            eprintln!("  0/q             quit");
+            eprintln!();
+            eprintln!("  Selectors are space-separated; use double quotes for names with spaces.");
+            eprintln!("  Example: c \"My Cloud Drive\" 7 box     d 4 box 10 7 mega     f mybox");
             continue;
         }
-        if lower.starts_with('f') || lower.ends_with('f') {
-            // Surface the same caveat already present in the table renderer.
+
+        // Multi-target rclone-style: action letter followed by selectors.
+        // Falls back to the legacy compact `1l`/`l1` parser when the input
+        // doesn't match the new shape (so existing muscle memory still
+        // works).
+        let (action, selectors) = match parse_interactive_action(raw) {
+            Some(v) => v,
+            None => {
+                if let Some((idx, act)) = parse_interactive_token(&lower) {
+                    (act, vec![idx.to_string()])
+                } else {
+                    eprintln!("Unrecognized command. Type '?' for help.");
+                    continue;
+                }
+            }
+        };
+
+        if !matches!(action, 'l' | 't' | 'd' | 'f' | 'r' | 'c' | 'e') {
             eprintln!(
-                "Favourite toggle is not yet wired to the vault: it currently lives in localStorage. Tracked under Phase 4 of CLI parity."
+                "Unknown action '{}'. Supported: l, t, d, f, r, c, e. Type '?' for help.",
+                action
             );
             continue;
         }
 
-        let (idx, action) = match parse_interactive_token(&lower) {
-            Some(v) => v,
-            None => {
-                eprintln!("Unrecognized command. Type '?' for help.");
-                continue;
+        // Resolve selectors against the current profile list. Quit
+        // selectors (`0`/`-1`) cut the line short: subsequent selectors are
+        // ignored and the loop exits cleanly after processing what came
+        // before, matching rclone semantics.
+        let mut targets: Vec<(usize, serde_json::Value)> = Vec::new();
+        let mut quit_after = false;
+        let mut seen_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for sel in selectors {
+            if sel == "0" || sel == "-1" {
+                quit_after = true;
+                break;
             }
-        };
-        let zero = match idx.checked_sub(1) {
-            Some(v) => v,
-            None => {
-                eprintln!("Profile numbers start at 1.");
-                continue;
+            match resolve_profile_selector(&current, &sel) {
+                Ok(zero) => {
+                    let profile = current[zero].clone();
+                    let id = profile
+                        .get("id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    if id.is_empty() || seen_ids.insert(id) {
+                        targets.push((zero, profile));
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Selector '{}' skipped: {}", sel, e);
+                }
             }
-        };
-        let target = match current.get(zero) {
-            Some(p) => p.clone(),
-            None => {
-                eprintln!("No profile at index {}. Range: 1..={}.", idx, current.len());
-                continue;
+        }
+
+        if targets.is_empty() {
+            if quit_after {
+                return 0;
             }
-        };
-        let name = target
-            .get("name")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-        let id = target
-            .get("id")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-        if name.is_empty() {
-            eprintln!("Profile #{} has no name; skipping.", idx);
+            eprintln!("No valid selectors. Type '?' for help.");
             continue;
         }
 
         match action {
             'l' => {
-                run_self_subcommand(&["ls", "/", "--profile", &name]);
+                for (zero, profile) in &targets {
+                    let name = profile
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    eprintln!("\n=== ls #{} {} ===", zero + 1, name);
+                    run_self_subcommand(&["ls", "/", "--profile", &name]);
+                }
             }
             't' => {
-                run_self_subcommand(&["tree", "/", "--profile", &name, "-d", "2"]);
+                for (zero, profile) in &targets {
+                    let name = profile
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    eprintln!("\n=== tree #{} {} ===", zero + 1, name);
+                    run_self_subcommand(&["tree", "/", "--profile", &name, "-d", "2"]);
+                }
             }
             'd' => {
+                let names: Vec<String> = targets
+                    .iter()
+                    .map(|(zero, p)| {
+                        format!(
+                            "#{} {}",
+                            zero + 1,
+                            p.get("name").and_then(|v| v.as_str()).unwrap_or("?")
+                        )
+                    })
+                    .collect();
                 eprintln!(
-                    "About to delete profile '{}' (#{}) from the vault. This removes the saved configuration only. Remote data is untouched.",
-                    name, idx
+                    "About to delete {} profile(s) from the vault: {}. Remote data is untouched.",
+                    targets.len(),
+                    names.join(", ")
                 );
-                eprint!("Type the profile name to confirm: ");
+                eprint!(
+                    "Type 'yes' to confirm (or the single profile name when deleting only one): "
+                );
                 let _ = io::stderr().flush();
                 let mut confirm = String::new();
                 if io::stdin().lock().read_line(&mut confirm).is_err() {
                     eprintln!("Read error. Aborting.");
                     continue;
                 }
-                if confirm.trim() != name {
-                    eprintln!("Confirmation did not match: profile NOT deleted.");
+                let confirm_trim = confirm.trim();
+                let allow = if targets.len() == 1 {
+                    let only = targets[0]
+                        .1
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    confirm_trim == only || confirm_trim.eq_ignore_ascii_case("yes")
+                } else {
+                    confirm_trim.eq_ignore_ascii_case("yes")
+                };
+                if !allow {
+                    eprintln!("Confirmation did not match: NO profile deleted.");
                     continue;
                 }
-                match delete_profile_in_vault(store, &id) {
-                    Ok(remaining) => {
-                        eprintln!("Profile '{}' removed.", name);
-                        current = remaining;
+                // Delete each target. Track tombstones at their original
+                // position in `current` so the re-render slots them back
+                // into the renumbered table. We delete top-down by index
+                // so the indices stay valid while we mutate `current`.
+                let mut deletes: Vec<(usize, serde_json::Value)> = targets.clone();
+                deletes.sort_by_key(|d| std::cmp::Reverse(d.0));
+                for (zero, profile) in deletes {
+                    let id = profile
+                        .get("id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let name = profile
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("?")
+                        .to_string();
+                    if id.is_empty() {
+                        eprintln!("Profile '{}' has no id; skipping.", name);
+                        continue;
                     }
-                    Err(e) => {
-                        eprintln!("Delete failed: {}", e);
+                    match delete_profile_in_vault(store, &id) {
+                        Ok(remaining) => {
+                            current = remaining;
+                            tombstones.push((zero, profile));
+                            eprintln!("Profile '{}' removed.", name);
+                        }
+                        Err(e) => {
+                            eprintln!("Delete '{}' failed: {}", name, e);
+                        }
+                    }
+                }
+                tombstones.sort_by_key(|(zero, _)| *zero);
+            }
+            'f' => {
+                // Favourite toggle. Writes `config_favorite_servers`
+                // directly so the GUI picks the change up on its next
+                // mount reconcile (issue #195 + wishlist follow-up).
+                for (zero, profile) in &targets {
+                    let id = profile
+                        .get("id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let name = profile
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("?")
+                        .to_string();
+                    if id.is_empty() {
+                        eprintln!("Profile '{}' has no id; skipping.", name);
+                        continue;
+                    }
+                    match toggle_favorite_in_vault(store, &id) {
+                        Ok(true) => eprintln!(
+                            "{}",
+                            paint_yellow(&format!("\u{2605} #{} '{}' marked as favourite.", zero + 1, name))
+                        ),
+                        Ok(false) => eprintln!(
+                            "#{} '{}' removed from favourites.",
+                            zero + 1,
+                            name
+                        ),
+                        Err(e) => eprintln!("{}", paint_red(&format!("Favourite toggle '{}' failed: {}", name, e))),
                     }
                 }
             }
-            _ => {
-                eprintln!("Unknown action '{}'. Type '?' for help.", action);
+            'c' => {
+                // Copy. Mirrors `aeroftp-cli profile-duplicate`: append
+                // ` (copy)` to the name unless the user passed one extra
+                // selector that doesn't resolve, in which case we treat
+                // it as the new name. Each duplicate is inserted at the
+                // top of the vault list and surfaces immediately at #1
+                // on the next iteration.
+                for (zero, profile) in &targets {
+                    let id = profile
+                        .get("id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let name = profile
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("?")
+                        .to_string();
+                    if id.is_empty() {
+                        eprintln!("Profile '{}' has no id; skipping.", name);
+                        continue;
+                    }
+                    match duplicate_profile_in_vault(store, &id, None) {
+                        Ok((new_id, new_name, updated)) => {
+                            current = updated;
+                            eprintln!(
+                                "{}",
+                                paint_blue(&format!(
+                                    "#{} '{}' duplicated as '{}' (id={}).",
+                                    zero + 1,
+                                    name,
+                                    new_name,
+                                    new_id
+                                ))
+                            );
+                        }
+                        Err(e) => eprintln!(
+                            "{}",
+                            paint_red(&format!("Duplicate '{}' failed: {}", name, e))
+                        ),
+                    }
+                }
             }
+            'r' => {
+                // Rename. Single-target by design (you can't sensibly
+                // batch-rename without a pattern, and that lives under
+                // `aeroftp-cli batch-rename`). Prompts for the new name.
+                if targets.len() != 1 {
+                    eprintln!(
+                        "Rename takes exactly one target. Got {}. Pick a single profile.",
+                        targets.len()
+                    );
+                    continue;
+                }
+                let (zero, profile) = &targets[0];
+                let id = profile
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let name = profile
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("?")
+                    .to_string();
+                eprint!("New name for #{} '{}' (empty to abort): ", zero + 1, name);
+                let _ = io::stderr().flush();
+                let mut new_name = String::new();
+                if io::stdin().lock().read_line(&mut new_name).is_err() {
+                    eprintln!("Read error. Aborting.");
+                    continue;
+                }
+                let new_name = new_name.trim().to_string();
+                if new_name.is_empty() {
+                    eprintln!("Empty input: rename aborted.");
+                    continue;
+                }
+                if new_name == name {
+                    eprintln!("Name unchanged: rename skipped.");
+                    continue;
+                }
+                match update_profile_field_in_vault(store, &id, "name", serde_json::Value::String(new_name.clone())) {
+                    Ok(updated) => {
+                        current = updated;
+                        eprintln!(
+                            "{}",
+                            paint_green(&format!("#{} '{}' renamed to '{}'.", zero + 1, name, new_name))
+                        );
+                    }
+                    Err(e) => eprintln!(
+                        "{}",
+                        paint_red(&format!("Rename '{}' failed: {}", name, e))
+                    ),
+                }
+            }
+            'e' => {
+                // Limited-scope edit: walks the user through name, host,
+                // port, username, initialPath. Empty input keeps the
+                // current value, `-` clears the field where allowed. Full
+                // protocol-aware editing (passwords, OAuth tokens, etc.)
+                // still lives in the GUI's Edit modal.
+                if targets.len() != 1 {
+                    eprintln!(
+                        "Edit takes exactly one target. Got {}. Pick a single profile.",
+                        targets.len()
+                    );
+                    continue;
+                }
+                let (zero, profile) = targets[0].clone();
+                let id = profile
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let original_name = profile
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("?")
+                    .to_string();
+                if id.is_empty() {
+                    eprintln!("Profile '{}' has no id; skipping.", original_name);
+                    continue;
+                }
+                eprintln!(
+                    "Editing #{} '{}'. Press <Enter> to keep the current value. Passwords/credentials remain in the GUI Edit modal.",
+                    zero + 1,
+                    original_name
+                );
+                let mut updates: Vec<(&str, serde_json::Value)> = Vec::new();
+                let fields: &[(&str, &str, bool)] = &[
+                    ("name", "Name", false),
+                    ("host", "Host", true),
+                    ("port", "Port", true),
+                    ("username", "Username", true),
+                    ("initialPath", "Initial path", true),
+                ];
+                let mut abort = false;
+                for (key, label, allow_clear) in fields {
+                    let current_value = profile.get(*key).cloned().unwrap_or(serde_json::Value::Null);
+                    let current_str = match &current_value {
+                        serde_json::Value::String(s) => s.clone(),
+                        serde_json::Value::Number(n) => n.to_string(),
+                        serde_json::Value::Null => String::new(),
+                        v => v.to_string(),
+                    };
+                    let suffix = if *allow_clear {
+                        " (`-` to clear)"
+                    } else {
+                        ""
+                    };
+                    eprint!("{} [{}]{}: ", label, current_str, suffix);
+                    let _ = io::stderr().flush();
+                    let mut buf = String::new();
+                    if io::stdin().lock().read_line(&mut buf).is_err() {
+                        eprintln!("Read error. Aborting edit.");
+                        abort = true;
+                        break;
+                    }
+                    let raw = buf.trim_end_matches(['\n', '\r']);
+                    if raw.is_empty() {
+                        continue;
+                    }
+                    if *allow_clear && raw == "-" {
+                        updates.push((*key, serde_json::Value::Null));
+                        continue;
+                    }
+                    // Port wants a u16; reject anything else to keep the
+                    // vault clean.
+                    if *key == "port" {
+                        match raw.parse::<u16>() {
+                            Ok(n) => updates.push((*key, serde_json::json!(n))),
+                            Err(_) => {
+                                eprintln!("Invalid port '{}': must be 0-65535. Aborting edit.", raw);
+                                abort = true;
+                                break;
+                            }
+                        }
+                    } else {
+                        updates.push((*key, serde_json::Value::String(raw.to_string())));
+                    }
+                }
+                if abort {
+                    continue;
+                }
+                if updates.is_empty() {
+                    eprintln!("No changes entered: edit skipped.");
+                    continue;
+                }
+                match apply_profile_updates_in_vault(store, &id, &updates) {
+                    Ok(updated) => {
+                        current = updated;
+                        let changed: Vec<String> =
+                            updates.iter().map(|(k, _)| (*k).to_string()).collect();
+                        eprintln!(
+                            "{}",
+                            paint_green(&format!(
+                                "#{} '{}' edited (fields: {}).",
+                                zero + 1,
+                                original_name,
+                                changed.join(", ")
+                            ))
+                        );
+                    }
+                    Err(e) => eprintln!(
+                        "{}",
+                        paint_red(&format!("Edit '{}' failed: {}", original_name, e))
+                    ),
+                }
+            }
+            _ => unreachable!(),
+        }
+
+        if quit_after {
+            return 0;
+        }
+    }
+}
+
+/// Resolve a single selector (integer or profile name) against the visible
+/// table, returning the zero-based index. Tries integer first, then exact
+/// (lowercase) name, then exact id, then disambiguated substring. Mirrors
+/// the same precedence used by `--profile` so the interactive flow stays
+/// consistent with scripted invocations.
+fn resolve_profile_selector(
+    profiles: &[serde_json::Value],
+    selector: &str,
+) -> Result<usize, String> {
+    if let Ok(n) = selector.parse::<usize>() {
+        if n == 0 {
+            return Err("0 is reserved for quit".into());
+        }
+        return n
+            .checked_sub(1)
+            .and_then(|z| if z < profiles.len() { Some(z) } else { None })
+            .ok_or_else(|| format!("no profile at index {} (range 1..={})", n, profiles.len()));
+    }
+    let lower = selector.to_lowercase();
+    let exact = profiles.iter().position(|p| {
+        p.get("name")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_lowercase() == lower)
+            .unwrap_or(false)
+    });
+    if let Some(idx) = exact {
+        return Ok(idx);
+    }
+    let by_id = profiles
+        .iter()
+        .position(|p| p.get("id").and_then(|v| v.as_str()) == Some(selector));
+    if let Some(idx) = by_id {
+        return Ok(idx);
+    }
+    let matches: Vec<usize> = profiles
+        .iter()
+        .enumerate()
+        .filter_map(|(i, p)| {
+            let name = p
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_lowercase();
+            if name.contains(&lower) {
+                Some(i)
+            } else {
+                None
+            }
+        })
+        .collect();
+    match matches.len() {
+        0 => Err(format!("no profile matches '{}'", selector)),
+        1 => Ok(matches[0]),
+        _ => {
+            let preview: Vec<String> = matches
+                .iter()
+                .take(5)
+                .map(|i| {
+                    format!(
+                        "#{} {}",
+                        i + 1,
+                        profiles[*i]
+                            .get("name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("?")
+                    )
+                })
+                .collect();
+            Err(format!(
+                "'{}' is ambiguous ({} matches: {}). Use the index instead.",
+                selector,
+                matches.len(),
+                preview.join(", ")
+            ))
+        }
+    }
+}
+
+/// Parse `<action> <selector> [selector ...]` lines (`d 4 box 10`). Returns
+/// the action letter and the selector list. Supports double-quoted and
+/// single-quoted selectors so names with whitespace work
+/// (`d "My Profile" 7`). Rejects inputs whose head is not a single ASCII
+/// letter so the legacy compact `1l`/`l1` parser can take over for
+/// back-compat.
+fn parse_interactive_action(s: &str) -> Option<(char, Vec<String>)> {
+    let trimmed = s.trim();
+    let tokens = tokenize_quoted(trimmed);
+    let head = tokens.first()?;
+    if head.chars().count() != 1 {
+        return None;
+    }
+    let action = head.chars().next()?;
+    if !action.is_ascii_alphabetic() {
+        return None;
+    }
+    let selectors: Vec<String> = tokens.into_iter().skip(1).collect();
+    if selectors.is_empty() {
+        return None;
+    }
+    Some((action.to_ascii_lowercase(), selectors))
+}
+
+/// Whitespace-split with shell-style `"…"` and `'…'` quoting. Embedded
+/// quotes are taken literally inside the other quote style; escape
+/// handling is intentionally minimal so a typo doesn't silently swallow
+/// the next character.
+fn tokenize_quoted(s: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    let mut in_dq = false;
+    let mut in_sq = false;
+    for ch in s.chars() {
+        match ch {
+            '"' if !in_sq => in_dq = !in_dq,
+            '\'' if !in_dq => in_sq = !in_sq,
+            c if c.is_whitespace() && !in_dq && !in_sq => {
+                if !cur.is_empty() {
+                    out.push(std::mem::take(&mut cur));
+                }
+            }
+            c => cur.push(c),
+        }
+    }
+    if !cur.is_empty() {
+        out.push(cur);
+    }
+    out
+}
+
+/// Render a one-shot summary of the renumbered profile table after a
+/// destructive action, splicing the deleted profiles back as red
+/// tombstones (`-` index) so the user can see what just disappeared and
+/// pick the next target. Columns shown: index, name, badges, host.
+fn print_profiles_summary_with_tombstones(
+    live: &[serde_json::Value],
+    tombstones: &[(usize, serde_json::Value)],
+) {
+    let color_on = use_color();
+    let red = |s: &str| {
+        if color_on {
+            format!("\x1b[31m{}\x1b[0m", s)
+        } else {
+            s.to_string()
+        }
+    };
+    let strikethrough = |s: &str| {
+        if color_on {
+            format!("\x1b[9m{}\x1b[29m", s)
+        } else {
+            s.to_string()
+        }
+    };
+
+    // Compose the display order. Tombstones go back at their original
+    // zero-based positions in the pre-delete table.
+    #[derive(Clone)]
+    struct Row<'a> {
+        live_index: Option<usize>, // 1-based
+        profile: &'a serde_json::Value,
+        tombstone: bool,
+    }
+    let mut rows: Vec<Row> = live
+        .iter()
+        .enumerate()
+        .map(|(i, p)| Row {
+            live_index: Some(i + 1),
+            profile: p,
+            tombstone: false,
+        })
+        .collect();
+    for (zero, p) in tombstones.iter() {
+        let pos = (*zero).min(rows.len());
+        rows.insert(
+            pos,
+            Row {
+                live_index: None,
+                profile: p,
+                tombstone: true,
+            },
+        );
+    }
+
+    let name_w = rows
+        .iter()
+        .map(|r| {
+            r.profile
+                .get("name")
+                .and_then(|v| v.as_str())
+                .map(|s| s.chars().count())
+                .unwrap_or(0)
+        })
+        .max()
+        .unwrap_or(4)
+        .clamp(4, 28);
+    let badge_w = rows
+        .iter()
+        .map(|r| badge_display_label(r.profile).chars().count())
+        .max()
+        .unwrap_or(4)
+        .clamp(4, 12);
+    let host_w = rows
+        .iter()
+        .map(|r| host_subtitle(r.profile).chars().count())
+        .max()
+        .unwrap_or(4)
+        .clamp(4, 28);
+
+    let idx_w = rows.len().to_string().len().max(2);
+    eprintln!();
+    eprintln!(
+        "  {:>idx$}  {:<nw$}  {:<bw$}  {:<hw$}",
+        "#",
+        "Name",
+        "Badges",
+        "Host",
+        idx = idx_w,
+        nw = name_w,
+        bw = badge_w,
+        hw = host_w,
+    );
+    let total_w = idx_w + 2 + name_w + 2 + badge_w + 2 + host_w;
+    eprintln!("  {}", "\u{2500}".repeat(total_w));
+    for r in &rows {
+        let idx_cell = match r.live_index {
+            Some(i) => format!("{:>w$}", i, w = idx_w),
+            None => format!("{:>w$}", "-", w = idx_w),
+        };
+        let name = truncate_cell(
+            r.profile.get("name").and_then(|v| v.as_str()).unwrap_or(""),
+            name_w,
+        );
+        let badge = truncate_cell(&badge_display_label(r.profile), badge_w);
+        let host = truncate_cell(&host_subtitle(r.profile), host_w);
+        let line = format!(
+            "  {:>idx$}  {:<nw$}  {:<bw$}  {:<hw$}",
+            idx_cell,
+            name,
+            badge,
+            host,
+            idx = idx_w,
+            nw = name_w,
+            bw = badge_w,
+            hw = host_w,
+        );
+        if r.tombstone {
+            eprintln!("{}", red(&strikethrough(&line)));
+        } else {
+            eprintln!("{}", line);
         }
     }
 }
@@ -5882,9 +6647,316 @@ fn run_self_subcommand(args: &[&str]) -> i32 {
     }
 }
 
+/// Create a brand-new profile entry from a set of CLI flags. Validates
+/// the protocol against the registry the GUI uses, applies the same
+/// default port table, and writes the resulting JSON object straight
+/// into `config_server_profiles`. Credentials still live in the
+/// per-protocol vault keys or the GUI Edit modal: this only seeds the
+/// config row so AeroFTP CI bootstraps stay scriptable.
+#[allow(clippy::too_many_arguments)]
+fn cmd_profile_add(
+    cli: &Cli,
+    format: OutputFormat,
+    name: &str,
+    protocol: &str,
+    host: Option<&str>,
+    port: Option<u16>,
+    username: Option<&str>,
+    initial_path: Option<&str>,
+    local_initial_path: Option<&str>,
+    color: Option<&str>,
+    provider_id: Option<&str>,
+) -> i32 {
+    let trimmed_name = name.trim();
+    if trimmed_name.is_empty() {
+        print_error(format, "Profile name cannot be empty", 5);
+        return 5;
+    }
+    let proto_lower = protocol.to_lowercase();
+    const KNOWN_PROTOCOLS: &[&str] = &[
+        "ftp",
+        "ftps",
+        "sftp",
+        "webdav",
+        "webdavs",
+        "s3",
+        "mega",
+        "dropbox",
+        "googledrive",
+        "onedrive",
+        "box",
+        "pcloud",
+        "zohoworkdrive",
+        "fourshared",
+        "filen",
+        "internxt",
+        "kdrive",
+        "koofr",
+        "drime",
+        "filelu",
+        "yandexdisk",
+        "opendrive",
+        "jottacloud",
+        "azure",
+        "b2",
+        "backblaze",
+        "imagekit",
+        "uploadcare",
+        "cloudinary",
+        "tabdigital",
+        "felicloud",
+        "github",
+        "gitlab",
+        "immich",
+        "pixelunion",
+        "blomp",
+    ];
+    if !KNOWN_PROTOCOLS.contains(&proto_lower.as_str()) {
+        print_error(
+            format,
+            &format!(
+                "Unknown protocol '{}'. Supported: {}",
+                protocol,
+                KNOWN_PROTOCOLS.join(", ")
+            ),
+            5,
+        );
+        return 5;
+    }
+    let resolved_port = port.unwrap_or(match proto_lower.as_str() {
+        "ftp" | "ftps" => 21,
+        "sftp" => 22,
+        "webdav" | "webdavs" => 443,
+        _ => 0,
+    });
+    let store = match open_vault(cli) {
+        Ok(s) => s,
+        Err(e) => {
+            print_error(format, &e, 5);
+            return 5;
+        }
+    };
+    let mut profiles: Vec<serde_json::Value> = store
+        .get("config_server_profiles")
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or_default();
+
+    let now_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;
+    let rand_suffix: String = {
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
+        (0..9)
+            .map(|_| {
+                let idx: u8 = rng.gen_range(0..36);
+                if idx < 10 {
+                    (b'0' + idx) as char
+                } else {
+                    (b'a' + (idx - 10)) as char
+                }
+            })
+            .collect()
+    };
+    let new_id = format!("srv_{}_{}", now_ms, rand_suffix);
+
+    let mut entry = serde_json::Map::new();
+    entry.insert("id".into(), serde_json::Value::String(new_id.clone()));
+    entry.insert("name".into(), serde_json::Value::String(trimmed_name.to_string()));
+    entry.insert("protocol".into(), serde_json::Value::String(proto_lower.clone()));
+    if let Some(h) = host {
+        entry.insert("host".into(), serde_json::Value::String(h.to_string()));
+    }
+    entry.insert("port".into(), serde_json::json!(resolved_port));
+    if let Some(u) = username {
+        entry.insert("username".into(), serde_json::Value::String(u.to_string()));
+    }
+    let resolved_initial_path = initial_path.unwrap_or("/");
+    entry.insert(
+        "initialPath".into(),
+        serde_json::Value::String(resolved_initial_path.to_string()),
+    );
+    if let Some(lp) = local_initial_path {
+        entry.insert(
+            "localInitialPath".into(),
+            serde_json::Value::String(lp.to_string()),
+        );
+    }
+    if let Some(c) = color {
+        entry.insert("color".into(), serde_json::Value::String(c.to_string()));
+    }
+    if let Some(pid) = provider_id {
+        entry.insert("providerId".into(), serde_json::Value::String(pid.to_string()));
+    }
+
+    profiles.insert(0, serde_json::Value::Object(entry));
+
+    let serialized = match serde_json::to_string(&profiles) {
+        Ok(s) => s,
+        Err(e) => {
+            print_error(format, &format!("Failed to serialize profiles: {}", e), 5);
+            return 5;
+        }
+    };
+    if let Err(e) = store.store("config_server_profiles", &serialized) {
+        print_error(format, &format!("Failed to write profiles: {}", e), 5);
+        return 5;
+    }
+
+    match format {
+        OutputFormat::Json => {
+            let out = serde_json::json!({
+                "id": new_id,
+                "name": trimmed_name,
+                "protocol": proto_lower,
+                "port": resolved_port,
+            });
+            println!("{}", serde_json::to_string_pretty(&out).unwrap_or_default());
+        }
+        _ => {
+            println!(
+                "Created profile '{}' ({}, port {}) with id={}",
+                trimmed_name, proto_lower, resolved_port, new_id
+            );
+        }
+    }
+    0
+}
+
+/// Duplicate a vault profile under a fresh id. Mirrors the GUI's
+/// `handleDuplicate` in `MyServersPanel.tsx`: appends ` (copy)` to the
+/// name (unless `new_name` is provided), drops `lastConnected`, clones any
+/// stored credential, and prepends the copy to the profile list so it
+/// surfaces at the top of the table. Always emits the new id on stdout
+/// in text mode for scripting (the JSON path wraps it in a struct).
+fn cmd_profile_duplicate(
+    cli: &Cli,
+    format: OutputFormat,
+    selector: &str,
+    new_name: Option<&str>,
+) -> i32 {
+    let store = match open_vault(cli) {
+        Ok(s) => s,
+        Err(e) => {
+            print_error(format, &e, 5);
+            return 5;
+        }
+    };
+
+    let raw = match store.get("config_server_profiles") {
+        Ok(r) => r,
+        Err(e) => {
+            print_error(format, &format!("Failed to read profiles: {}", e), 5);
+            return 5;
+        }
+    };
+    let mut profiles: Vec<serde_json::Value> = match serde_json::from_str(&raw) {
+        Ok(p) => p,
+        Err(e) => {
+            print_error(format, &format!("Failed to parse profiles: {}", e), 5);
+            return 5;
+        }
+    };
+
+    let source_idx = match resolve_profile_selector(&profiles, selector) {
+        Ok(i) => i,
+        Err(e) => {
+            print_error(format, &format!("Profile lookup failed: {}", e), 2);
+            return 2;
+        }
+    };
+
+    let source = profiles[source_idx].clone();
+    let source_id = source
+        .get("id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let source_name = source
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unnamed")
+        .to_string();
+
+    // Match the GUI id scheme: `srv_<ms>_<rand>` keeps the entry sortable
+    // and unique across machines without collisions in the vault.
+    let now_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;
+    let rand_suffix: String = {
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
+        (0..9)
+            .map(|_| {
+                let idx: u8 = rng.gen_range(0..36);
+                if idx < 10 {
+                    (b'0' + idx) as char
+                } else {
+                    (b'a' + (idx - 10)) as char
+                }
+            })
+            .collect()
+    };
+    let new_id = format!("srv_{}_{}", now_ms, rand_suffix);
+    let resolved_name = new_name
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| format!("{} (copy)", source_name));
+
+    let mut copy = source.clone();
+    if let serde_json::Value::Object(ref mut map) = copy {
+        map.insert("id".into(), serde_json::Value::String(new_id.clone()));
+        map.insert("name".into(), serde_json::Value::String(resolved_name.clone()));
+        map.remove("lastConnected");
+    }
+
+    // Insert at the top so the copy is visible without scrolling, just
+    // like the GUI's `handleDuplicate` (`[dup, ...servers]`).
+    profiles.insert(0, copy);
+
+    let serialized = match serde_json::to_string(&profiles) {
+        Ok(s) => s,
+        Err(e) => {
+            print_error(format, &format!("Failed to serialize profiles: {}", e), 5);
+            return 5;
+        }
+    };
+    if let Err(e) = store.store("config_server_profiles", &serialized) {
+        print_error(format, &format!("Failed to write profiles: {}", e), 5);
+        return 5;
+    }
+
+    // Best-effort credential clone. Missing credentials are valid for many
+    // protocols (OAuth, GitHub PAT-only flows) so we don't fail when the
+    // source key isn't present.
+    if !source_id.is_empty() {
+        if let Ok(cred) = store.get(&format!("server_{}", source_id)) {
+            let _ = store.store(&format!("server_{}", new_id), &cred);
+        }
+    }
+
+    match format {
+        OutputFormat::Json => {
+            let out = serde_json::json!({
+                "id": new_id,
+                "name": resolved_name,
+                "source_id": source_id,
+                "source_name": source_name,
+            });
+            println!("{}", serde_json::to_string_pretty(&out).unwrap_or_default());
+        }
+        _ => {
+            println!(
+                "Duplicated '{}' as '{}' (id={})",
+                source_name, resolved_name, new_id
+            );
+        }
+    }
+    0
+}
+
 /// Remove a single profile by id from `config_server_profiles` and write the
-/// updated list back. Returns the new profile list so the caller can update
-/// its in-memory state without re-reading the vault.
+/// updated list back. Also clears the per-profile credential key
+/// (`server_<id>`) and removes the id from `config_favorite_servers` so the
+/// CLI matches the GUI's confirmDelete behaviour in `MyServersPanel`. Without
+/// these companion deletes the GUI would see a stale credential ghost or a
+/// dangling favourite after the next vault → state reconcile (issue #194).
 fn delete_profile_in_vault(
     store: &CredentialStore,
     profile_id: &str,
@@ -5903,6 +6975,143 @@ fn delete_profile_in_vault(
         .map_err(|e| format!("Failed to serialize profiles: {}", e))?;
     store
         .store("config_server_profiles", &json)
+        .map_err(|e| format!("Failed to write profiles: {}", e))?;
+
+    // Orphan credential cleanup (matches MyServersPanel.tsx confirmDelete).
+    let _ = store.delete(&format!("server_{}", profile_id));
+
+    // Drop the id from the favourites set if present. Best-effort: a missing
+    // or malformed entry leaves the favourites list untouched.
+    if let Ok(fav_raw) = store.get("config_favorite_servers") {
+        if let Ok(mut ids) = serde_json::from_str::<Vec<String>>(&fav_raw) {
+            let before = ids.len();
+            ids.retain(|id| id != profile_id);
+            if ids.len() != before {
+                if let Ok(payload) = serde_json::to_string(&ids) {
+                    let _ = store.store("config_favorite_servers", &payload);
+                }
+            }
+        }
+    }
+
+    Ok(profiles)
+}
+
+/// Duplicate the profile identified by `source_id`. Returns `(new_id,
+/// new_name, updated_profile_list)`. Used by the `c` action in the
+/// interactive shell so it doesn't have to re-implement the GUI-style id
+/// scheme and credential clone logic. `new_name` overrides the default
+/// `"<original> (copy)"` when provided.
+fn duplicate_profile_in_vault(
+    store: &CredentialStore,
+    source_id: &str,
+    new_name: Option<&str>,
+) -> Result<(String, String, Vec<serde_json::Value>), String> {
+    let raw = store
+        .get("config_server_profiles")
+        .map_err(|e| format!("Failed to read profiles: {}", e))?;
+    let mut profiles: Vec<serde_json::Value> = serde_json::from_str(&raw)
+        .map_err(|e| format!("Failed to parse profiles: {}", e))?;
+    let source = profiles
+        .iter()
+        .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(source_id))
+        .cloned()
+        .ok_or_else(|| format!("Profile id '{}' not found in vault", source_id))?;
+    let original_name = source
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unnamed")
+        .to_string();
+    let now_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;
+    let rand_suffix: String = {
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
+        (0..9)
+            .map(|_| {
+                let idx: u8 = rng.gen_range(0..36);
+                if idx < 10 {
+                    (b'0' + idx) as char
+                } else {
+                    (b'a' + (idx - 10)) as char
+                }
+            })
+            .collect()
+    };
+    let new_id = format!("srv_{}_{}", now_ms, rand_suffix);
+    let resolved_name = new_name
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| format!("{} (copy)", original_name));
+    let mut copy = source.clone();
+    if let serde_json::Value::Object(ref mut map) = copy {
+        map.insert("id".into(), serde_json::Value::String(new_id.clone()));
+        map.insert("name".into(), serde_json::Value::String(resolved_name.clone()));
+        map.remove("lastConnected");
+    }
+    profiles.insert(0, copy);
+    let serialized = serde_json::to_string(&profiles)
+        .map_err(|e| format!("Failed to serialize profiles: {}", e))?;
+    store
+        .store("config_server_profiles", &serialized)
+        .map_err(|e| format!("Failed to write profiles: {}", e))?;
+    if let Ok(cred) = store.get(&format!("server_{}", source_id)) {
+        let _ = store.store(&format!("server_{}", new_id), &cred);
+    }
+    Ok((new_id, resolved_name, profiles))
+}
+
+/// Convenience wrapper around `apply_profile_updates_in_vault` for the
+/// common single-field case (rename, host swap, etc.).
+fn update_profile_field_in_vault(
+    store: &CredentialStore,
+    profile_id: &str,
+    field: &str,
+    value: serde_json::Value,
+) -> Result<Vec<serde_json::Value>, String> {
+    apply_profile_updates_in_vault(store, profile_id, &[(field, value)])
+}
+
+/// Apply a batch of field updates to a profile. `Value::Null` clears the
+/// field (the entry is removed). Other values overwrite. Returns the
+/// updated profile list. Caller is responsible for validating values
+/// against per-protocol rules; we only enforce that a `name` update
+/// doesn't collapse to an empty string, mirroring GUI guardrails.
+fn apply_profile_updates_in_vault(
+    store: &CredentialStore,
+    profile_id: &str,
+    updates: &[(&str, serde_json::Value)],
+) -> Result<Vec<serde_json::Value>, String> {
+    let raw = store
+        .get("config_server_profiles")
+        .map_err(|e| format!("Failed to read profiles: {}", e))?;
+    let mut profiles: Vec<serde_json::Value> = serde_json::from_str(&raw)
+        .map_err(|e| format!("Failed to parse profiles: {}", e))?;
+    let target = profiles
+        .iter_mut()
+        .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(profile_id))
+        .ok_or_else(|| format!("Profile id '{}' not found in vault", profile_id))?;
+    let map = target
+        .as_object_mut()
+        .ok_or_else(|| "Profile entry is not a JSON object".to_string())?;
+    for (key, value) in updates {
+        if *key == "name" {
+            if let serde_json::Value::String(s) = value {
+                if s.trim().is_empty() {
+                    return Err("Profile name cannot be empty".to_string());
+                }
+            } else if matches!(value, serde_json::Value::Null) {
+                return Err("Profile name cannot be cleared".to_string());
+            }
+        }
+        if matches!(value, serde_json::Value::Null) {
+            map.remove(*key);
+        } else {
+            map.insert((*key).to_string(), value.clone());
+        }
+    }
+    let serialized = serde_json::to_string(&profiles)
+        .map_err(|e| format!("Failed to serialize profiles: {}", e))?;
+    store
+        .store("config_server_profiles", &serialized)
         .map_err(|e| format!("Failed to write profiles: {}", e))?;
     Ok(profiles)
 }
@@ -7792,18 +9001,28 @@ async fn try_create_oauth_provider(
         _ => return None,
     };
 
-    // Check if tokens exist - if not, offer browser authorization
+    // Check if tokens exist - if not, offer browser authorization.
+    // Tokens are stored under `oauth_<protocol>` in the same vault both the
+    // GUI and CLI read. A missing key here usually means the user has not
+    // authorized this provider yet from the GUI on this machine (issue #196).
     let manager = OAuth2Manager::new();
     let needs_auth = !manager.has_tokens(oauth_provider);
 
     if needs_auth {
+        let token_key = format!("oauth_{}", protocol);
         if !std::io::stdin().is_terminal() {
-            eprintln!("Error: No OAuth tokens for {}. Run interactively to authorize, or authorize from AeroFTP GUI.", profile_name);
+            eprintln!(
+                "Error: No OAuth tokens for profile '{}' (vault key '{}' not found). \
+                 Authorize {} from the AeroFTP GUI (Connect via this profile or open Settings > Cloud Providers), \
+                 then re-run this command.",
+                profile_name, token_key, protocol
+            );
             return Some(Err(6));
         }
         eprintln!(
-            "No OAuth tokens found for {}. Starting browser authorization...",
-            profile_name
+            "No OAuth tokens found for profile '{}' (vault key '{}' not found). \
+             Starting browser authorization...",
+            profile_name, token_key
         );
         match cli_oauth_browser_auth(protocol, store).await {
             Ok(()) => eprintln!("Authorization successful!"),
@@ -30472,6 +31691,32 @@ async fn main() {
                 interactive: *interactive,
             },
         ),
+        Commands::ProfileAdd {
+            name,
+            protocol,
+            host,
+            port,
+            username,
+            initial_path,
+            local_initial_path,
+            color,
+            provider_id,
+        } => cmd_profile_add(
+            &cli,
+            format,
+            name,
+            protocol,
+            host.as_deref(),
+            *port,
+            username.as_deref(),
+            initial_path.as_deref(),
+            local_initial_path.as_deref(),
+            color.as_deref(),
+            provider_id.as_deref(),
+        ),
+        Commands::ProfileDuplicate { selector, name } => {
+            cmd_profile_duplicate(&cli, format, selector, name.as_deref())
+        }
         Commands::AiModels => list_ai_models(&cli, format),
         Commands::AgentBootstrap {
             task,
