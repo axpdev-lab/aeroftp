@@ -83,6 +83,11 @@ interface TitlebarProps {
     /// other utility panels so power users can find it without leaving
     /// the keyboard (also reachable via the command palette).
     onShowLocalSync: () => void;
+    /// Z.3.7: open the unified Compare dialog for the currently-loaded
+    /// dual panel. The handler decides whether the pair is comparable
+    /// (local-local or local-remote/remote-local) and falls back to a
+    /// notify.info when no second panel is mounted.
+    onShowComparePanels: () => void;
     onQuit: () => void;
     onCheckForUpdates: () => void;
     hasActivity: boolean;
@@ -195,7 +200,7 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
         onToggleDebugMode, onRename, onDelete, onSelectAll,
         onCut, onCopy, onPaste, hasSelection, hasClipboard,
         onToggleEditor, onToggleTerminal, onToggleAgent, onToggleActivityLog, onToggleDebugPanel,
-        onShowLocalSync, onQuit,
+        onShowLocalSync, onShowComparePanels, onQuit,
         onCheckForUpdates, hasActivity,
         cardLayout, onToggleCardLayout,
     } = props;
@@ -293,6 +298,11 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
         // two local paths and does not depend on the remote connection
         // or on any file panel being mounted.
         { label: t('menu.localSync'), onClick: onShowLocalSync },
+        // Z.3.7 entry point. Active whenever a comparable pair is mounted
+        // (dual local panel or one local + one remote). The handler
+        // emits a notify.info when the pair is not comparable yet
+        // (single panel, remote-remote).
+        { label: t('menu.comparePanels'), shortcut: 'F4', onClick: onShowComparePanels },
     ];
 
     const helpMenu: MenuEntry[] = [

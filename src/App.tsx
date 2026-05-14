@@ -118,6 +118,7 @@ import { UniversalPreview, PreviewFileData, getPreviewCategory, isPreviewable as
 import { SyncPanel } from './components/SyncPanel';
 import { LocalSyncPanel } from './components/LocalSyncPanel';
 import { UnifiedTransferPlanDialog } from './components/UnifiedTransferPlanDialog';
+import { UnifiedCompareDialog } from './components/UnifiedCompareDialog';
 import { VaultPanel } from './components/VaultPanel';
 import { CryptomatorBrowser } from './components/CryptomatorBrowser';
 import { RcloneCryptUnlock } from './components/RcloneCryptUnlock';
@@ -288,6 +289,7 @@ import { getOpenWithDefaultRoute } from './utils/openWithDefault';
 import { createRemoteEndpoint } from './utils/panelEndpoints';
 import { createUnifiedTransferPlan, UnifiedTransferPlan } from './utils/unifiedTransferPlanner';
 import { buildCrossProfileEntries, runCrossProfileTransfer } from './utils/crossProfileExecution';
+import { compareEntries, type CompareInputEntry, type CompareResult, type CompareResultEntry } from './utils/compareEndpoints';
 import { useTranslation } from './i18n';
 
 // Components
@@ -593,6 +595,21 @@ const App: React.FC = () => {
     remoteRemoteEntries?: Array<{ name: string; is_dir: boolean; size?: number }>;
   } | null>(null);
   const [unifiedTransferExecuting, setUnifiedTransferExecuting] = useState(false);
+  // Z.3.7: standalone compare-view dialog state. The result is pre-computed
+  // from the currently loaded panels, so the dialog never reaches back into
+  // IPC; mirror buttons stage a selection and reuse the existing transfer
+  // pathways. Limited to local-local in this slice; local-remote /
+  // remote-local mirror execution lands with Z.3.7.2 once Z.2.4 wires the
+  // local-remote planner execution.
+  const [pendingCompareView, setPendingCompareView] = useState<{
+    result: CompareResult;
+    leftLabel: string;
+    rightLabel: string;
+    pairKind: 'local-local' | 'local-remote' | 'remote-local' | string;
+    /** Local-panel id paired with the local sibling, used to drive F5/F6 plumbing. */
+    leftPanelId?: 'local' | 'local2';
+    rightPanelId?: 'local' | 'local2';
+  } | null>(null);
   const [inputDialog, setInputDialog] = useState<{ title: string; defaultValue: string; onConfirm: (v: string) => void; isPassword?: boolean; placeholder?: string } | null>(null);
   const [zohoShareLinksDialog, setZohoShareLinksDialog] = useState<{ fileName: string; links: Array<{ id: string; attributes: Record<string, unknown> }> } | null>(null);
   const [zohoDeletedLinkIds] = useState(() => new Set<string>());
@@ -819,7 +836,7 @@ const App: React.FC = () => {
   // later in this component but the F5/F6 keyboard handlers (declared before
   // it) need a way to call it. Updated each render below.
   const transferLocalSelectionAcrossPanelsRef = useRef<(mode: 'copy' | 'move') => void | Promise<void>>(() => {});
-  const planLocalSelectionAcrossPanelsRef = useRef<(mode: 'copy' | 'move') => void | Promise<void>>(() => {});
+  const planLocalSelectionAcrossPanelsRef = useRef<(mode: 'copy' | 'move', sourceOverride?: 'local' | 'local2') => void | Promise<void>>(() => {});
   React.useEffect(() => {
     localStorage.setItem('aerofile_dual_panel_split', String(dualPanelLeftFlex));
   }, [dualPanelLeftFlex]);
@@ -5870,6 +5887,122 @@ interface UpdateVerificationInfo {
     }
   }, [pendingUnifiedTransferPlan, transferLocalSelectionAcrossPanels, notify, t]);
 
+  // Z.3.7: open the unified Compare dialog for the currently-loaded panel
+  // pair. Local-local pairs use the two local listings; local-remote /
+  // remote-local pairs use the active remote listing. Returns silently
+  // when the pair is not comparable yet (remote-remote or single panel).
+  const openComparePanelsView = useCallback(() => {
+    const toCompareEntry = (item: { name: string; is_dir: boolean; size: number | null; modified: string | null }): CompareInputEntry => {
+      const mtimeMs = (() => {
+        if (!item.modified) return null;
+        const parsed = Date.parse(item.modified);
+        return Number.isFinite(parsed) ? parsed : null;
+      })();
+      return {
+        name: item.name,
+        isDir: item.is_dir,
+        size: item.size ?? null,
+        mtimeMs,
+      };
+    };
+
+    if (showDualLocalPanel && !showRemotePanel) {
+      const leftEntries = localFiles.map(toCompareEntry);
+      const rightEntries = localFiles2.map(toCompareEntry);
+      const result = compareEntries(leftEntries, rightEntries);
+      setPendingCompareView({
+        result,
+        leftLabel: currentLocalPath || 'Local',
+        rightLabel: currentLocalPath2 || currentLocalPath || 'Local (right)',
+        pairKind: 'local-local',
+        leftPanelId: 'local',
+        rightPanelId: 'local2',
+      });
+      return;
+    }
+
+    if (isConnected && showRemotePanel) {
+      const localEntries = localFiles.map(toCompareEntry);
+      const remoteEntries = remoteFiles.map(toCompareEntry);
+      // `swapPanels` decides whether the visual left slot is local or
+      // remote; the user reads the dialog header relative to that, so
+      // mirror direction labels match the rendering of the dual panel.
+      const leftLocal = !swapPanels;
+      const result = leftLocal
+        ? compareEntries(localEntries, remoteEntries)
+        : compareEntries(remoteEntries, localEntries);
+      setPendingCompareView({
+        result,
+        leftLabel: leftLocal ? (currentLocalPath || 'Local') : (activeUnifiedRemoteProfile?.name || 'Remote'),
+        rightLabel: leftLocal ? (activeUnifiedRemoteProfile?.name || 'Remote') : (currentLocalPath || 'Local'),
+        pairKind: leftLocal ? 'local-remote' : 'remote-local',
+      });
+      return;
+    }
+
+    notify.info(
+      t('compare.title') || 'Compare panels',
+      t('compare.notAvailable') || 'Open a second panel or a remote connection to compare.',
+    );
+  }, [
+    showDualLocalPanel,
+    showRemotePanel,
+    isConnected,
+    swapPanels,
+    localFiles,
+    localFiles2,
+    remoteFiles,
+    currentLocalPath,
+    currentLocalPath2,
+    activeUnifiedRemoteProfile,
+    notify,
+    t,
+  ]);
+
+  // Z.3.7: stage the names returned by the Compare dialog into the local
+  // selection state and route the copy through the existing transfer
+  // planner. Only the local-local pair has an executable path right now;
+  // the dialog disables the buttons for other pair kinds.
+  const stageLocalSelectionFromCompare = useCallback((
+    panelId: 'local' | 'local2',
+    entries: CompareResultEntry[],
+  ) => {
+    const names = entries.map((entry) => entry.name);
+    if (panelId === 'local') {
+      setSelectedLocalFiles(new Set(names));
+    } else {
+      setSelectedLocalFiles2(new Set(names));
+    }
+    setActiveLocalPanelId(panelId);
+    setActivePanel('local');
+  }, []);
+
+  const handleCompareMirrorLeftToRight = useCallback((entries: CompareResultEntry[]) => {
+    const context = pendingCompareView;
+    setPendingCompareView(null);
+    if (!context || entries.length === 0) return;
+    if (context.pairKind === 'local-local' && context.leftPanelId) {
+      stageLocalSelectionFromCompare(context.leftPanelId, entries);
+      // Defer the planner open one tick so React commits the selection update
+      // before the planner reads it.
+      Promise.resolve().then(() => {
+        void planLocalSelectionAcrossPanelsRef.current('copy', context.leftPanelId);
+      });
+    }
+  }, [pendingCompareView, stageLocalSelectionFromCompare]);
+
+  const handleCompareMirrorRightToLeft = useCallback((entries: CompareResultEntry[]) => {
+    const context = pendingCompareView;
+    setPendingCompareView(null);
+    if (!context || entries.length === 0) return;
+    if (context.pairKind === 'local-local' && context.rightPanelId) {
+      stageLocalSelectionFromCompare(context.rightPanelId, entries);
+      Promise.resolve().then(() => {
+        void planLocalSelectionAcrossPanelsRef.current('copy', context.rightPanelId);
+      });
+    }
+  }, [pendingCompareView, stageLocalSelectionFromCompare]);
+
   const clipboardCut = (files: { name: string; path: string; is_dir: boolean }[], isRemote: boolean, sourceDir: string) => {
     fileClipboardRef.current = { files, sourceDir, isRemote, operation: 'cut' };
     setHasClipboard(true);
@@ -9440,6 +9573,7 @@ interface UpdateVerificationInfo {
           onToggleActivityLog={() => setShowActivityLog(v => !v)}
           onToggleDebugPanel={() => setShowDebugPanel(v => !v)}
           onShowLocalSync={() => setShowLocalSyncPanel(true)}
+          onShowComparePanels={openComparePanelsView}
           onQuit={async () => { try { await getCurrentWindow().close(); } catch { /* noop */ } }}
           onCheckForUpdates={() => checkForUpdate(true)}
           hasActivity={hasActivity || hasQueueActivity}
@@ -9697,6 +9831,19 @@ interface UpdateVerificationInfo {
             executing={unifiedTransferExecuting}
             onExecute={() => { void executeUnifiedTransferPlan(); }}
             onClose={() => setPendingUnifiedTransferPlan(null)}
+          />
+        )}
+        {pendingCompareView && (
+          <UnifiedCompareDialog
+            result={pendingCompareView.result}
+            leftLabel={pendingCompareView.leftLabel}
+            rightLabel={pendingCompareView.rightLabel}
+            pairKind={pendingCompareView.pairKind}
+            canMirrorLeftToRight={pendingCompareView.pairKind === 'local-local'}
+            canMirrorRightToLeft={pendingCompareView.pairKind === 'local-local'}
+            onApplyMirrorLeftToRight={handleCompareMirrorLeftToRight}
+            onApplyMirrorRightToLeft={handleCompareMirrorRightToLeft}
+            onClose={() => setPendingCompareView(null)}
           />
         )}
         {inputDialog && <InputDialog title={inputDialog.title} defaultValue={inputDialog.defaultValue} onConfirm={inputDialog.onConfirm} onCancel={() => setInputDialog(null)} isPassword={inputDialog.isPassword} placeholder={inputDialog.placeholder} />}

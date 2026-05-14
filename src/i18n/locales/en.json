@@ -1054,6 +1054,10 @@
       "warning": "Warning",
       "yes": "Yes"
     },
+    "compare": {
+      "title": "Compare panels",
+      "notAvailable": "Open a second panel or a remote connection to compare."
+    },
     "compress": {
       "archiveName": "Archive Name",
       "compress": "Compress",
@@ -1869,6 +1873,7 @@
       "edit": "Edit",
       "file": "File",
       "help": "Help",
+      "comparePanels": "Compare Panels...",
       "localSync": "Local Sync...",
       "newFolder": "New Folder",
       "quit": "Quit AeroFTP",
