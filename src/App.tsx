@@ -119,6 +119,7 @@ import { SyncPanel } from './components/SyncPanel';
 import { LocalSyncPanel } from './components/LocalSyncPanel';
 import { UnifiedTransferPlanDialog } from './components/UnifiedTransferPlanDialog';
 import { UnifiedCompareDialog } from './components/UnifiedCompareDialog';
+import { SyncPresetDialog } from './components/SyncPresetDialog';
 import { VaultPanel } from './components/VaultPanel';
 import { CryptomatorBrowser } from './components/CryptomatorBrowser';
 import { RcloneCryptUnlock } from './components/RcloneCryptUnlock';
@@ -290,6 +291,7 @@ import { createRemoteEndpoint } from './utils/panelEndpoints';
 import { createUnifiedTransferPlan, UnifiedTransferPlan } from './utils/unifiedTransferPlanner';
 import { buildCrossProfileEntries, runCrossProfileTransfer } from './utils/crossProfileExecution';
 import { compareEntries, type CompareInputEntry, type CompareResult, type CompareResultEntry } from './utils/compareEndpoints';
+import { namesFromBuckets, namesToDelete, type PresetPlan } from './utils/syncPresets';
 import { useTranslation } from './i18n';
 
 // Components
@@ -607,6 +609,19 @@ const App: React.FC = () => {
     rightLabel: string;
     pairKind: 'local-local' | 'local-remote' | 'remote-local' | string;
     /** Local-panel id paired with the local sibling, used to drive F5/F6 plumbing. */
+    leftPanelId?: 'local' | 'local2';
+    rightPanelId?: 'local' | 'local2';
+  } | null>(null);
+  // Z.3.8: standalone Sync Presets dialog state. Re-uses the Z.3.7
+  // CompareResult and exposes the four canonical presets (mirror,
+  // backup [default], update, bisync). Execution today is limited to
+  // the local-local pair; other pair kinds surface the preview but
+  // disable Execute (see closure report Z.3.8.2).
+  const [pendingSyncPresets, setPendingSyncPresets] = useState<{
+    result: CompareResult;
+    leftLabel: string;
+    rightLabel: string;
+    pairKind: 'local-local' | 'local-remote' | 'remote-local' | string;
     leftPanelId?: 'local' | 'local2';
     rightPanelId?: 'local' | 'local2';
   } | null>(null);
@@ -6003,6 +6018,154 @@ interface UpdateVerificationInfo {
     }
   }, [pendingCompareView, stageLocalSelectionFromCompare]);
 
+  // Z.3.8: open the Sync Preset dialog. Same comparable-pair gate as
+  // the Compare view: we need either a dual local panel or one local
+  // plus one remote panel that already loaded their listings.
+  const openSyncPresetsView = useCallback(() => {
+    const toCompareEntry = (item: { name: string; is_dir: boolean; size: number | null; modified: string | null }): CompareInputEntry => {
+      const mtimeMs = (() => {
+        if (!item.modified) return null;
+        const parsed = Date.parse(item.modified);
+        return Number.isFinite(parsed) ? parsed : null;
+      })();
+      return {
+        name: item.name,
+        isDir: item.is_dir,
+        size: item.size ?? null,
+        mtimeMs,
+      };
+    };
+
+    if (showDualLocalPanel && !showRemotePanel) {
+      const result = compareEntries(
+        localFiles.map(toCompareEntry),
+        localFiles2.map(toCompareEntry),
+      );
+      setPendingSyncPresets({
+        result,
+        leftLabel: currentLocalPath || 'Local',
+        rightLabel: currentLocalPath2 || currentLocalPath || 'Local (right)',
+        pairKind: 'local-local',
+        leftPanelId: 'local',
+        rightPanelId: 'local2',
+      });
+      return;
+    }
+
+    if (isConnected && showRemotePanel) {
+      const leftLocal = !swapPanels;
+      const localEntries = localFiles.map(toCompareEntry);
+      const remoteEntries = remoteFiles.map(toCompareEntry);
+      const result = leftLocal
+        ? compareEntries(localEntries, remoteEntries)
+        : compareEntries(remoteEntries, localEntries);
+      setPendingSyncPresets({
+        result,
+        leftLabel: leftLocal ? (currentLocalPath || 'Local') : (activeUnifiedRemoteProfile?.name || 'Remote'),
+        rightLabel: leftLocal ? (activeUnifiedRemoteProfile?.name || 'Remote') : (currentLocalPath || 'Local'),
+        pairKind: leftLocal ? 'local-remote' : 'remote-local',
+      });
+      return;
+    }
+
+    notify.info(
+      t('syncPresets.title') || 'Sync presets',
+      t('compare.notAvailable') || 'Open a second panel or a remote connection to use sync presets.',
+    );
+  }, [
+    showDualLocalPanel,
+    showRemotePanel,
+    isConnected,
+    swapPanels,
+    localFiles,
+    localFiles2,
+    remoteFiles,
+    currentLocalPath,
+    currentLocalPath2,
+    activeUnifiedRemoteProfile,
+    notify,
+    t,
+  ]);
+
+  /**
+   * Z.3.8 — execute a preset plan returned by the SyncPresetDialog.
+   * Today only the local-local pair has an executable path: we stage
+   * the relevant source-side names into the matching local selection
+   * and dispatch through the existing `planLocalSelectionAcrossPanels`
+   * flow. For bisync we run two passes (L→R then R→L) so each direction
+   * goes through the unified planner separately. Destructive deletes
+   * are NOT executed in this slice — only the copy/overwrite legs of
+   * the preset land; deletes are listed in the dialog so the user can
+   * remove them manually with the existing context menu before Z.3.8.2
+   * adds backend support for batch deletes inside the planner.
+   */
+  const executeSyncPresetPlan = useCallback((plan: PresetPlan) => {
+    const context = pendingSyncPresets;
+    setPendingSyncPresets(null);
+    if (!context) return;
+    if (context.pairKind !== 'local-local' || !context.leftPanelId || !context.rightPanelId) return;
+
+    const sourceSidesToRun: Array<{ source: 'left' | 'right'; panelId: 'local' | 'local2' }> = [];
+    if (plan.preset === 'bisync') {
+      sourceSidesToRun.push({ source: 'left', panelId: context.leftPanelId });
+      sourceSidesToRun.push({ source: 'right', panelId: context.rightPanelId });
+    } else if (plan.direction === 'left-to-right') {
+      sourceSidesToRun.push({ source: 'left', panelId: context.leftPanelId });
+    } else {
+      sourceSidesToRun.push({ source: 'right', panelId: context.rightPanelId });
+    }
+
+    const deleteSummary = (() => {
+      const right = namesToDelete(plan, 'right');
+      const left = namesToDelete(plan, 'left');
+      return { right, left };
+    })();
+
+    const passes = sourceSidesToRun
+      .map(({ source, panelId }) => {
+        const names = namesFromBuckets(plan, source);
+        return { panelId, names: new Set(names) };
+      })
+      .filter((pass) => pass.names.size > 0);
+
+    if (passes.length === 0) {
+      notify.info(
+        t('syncPresets.nothingToDo') || 'Sync presets',
+        t('syncPresets.allSkipped') || 'No actionable entries for this preset.',
+      );
+      return;
+    }
+
+    // Stage + dispatch each pass with a small microtask gap so React
+    // commits the selection state before the planner reads it.
+    let i = 0;
+    const runNext = () => {
+      if (i >= passes.length) {
+        if (deleteSummary.right.length + deleteSummary.left.length > 0) {
+          notify.warning(
+            t('syncPresets.deletesDeferred') || 'Sync presets',
+            `${deleteSummary.right.length + deleteSummary.left.length} delete(s) skipped (Z.3.8.2): right ${deleteSummary.right.length}, left ${deleteSummary.left.length}`,
+          );
+        }
+        return;
+      }
+      const pass = passes[i];
+      i += 1;
+      if (pass.panelId === 'local') {
+        setSelectedLocalFiles(pass.names);
+      } else {
+        setSelectedLocalFiles2(pass.names);
+      }
+      setActiveLocalPanelId(pass.panelId);
+      setActivePanel('local');
+      Promise.resolve().then(() => {
+        const maybePromise = planLocalSelectionAcrossPanelsRef.current('copy', pass.panelId);
+        Promise.resolve(maybePromise).finally(runNext);
+      });
+    };
+    runNext();
+  }, [pendingSyncPresets, notify, t]);
+
   const clipboardCut = (files: { name: string; path: string; is_dir: boolean }[], isRemote: boolean, sourceDir: string) => {
     fileClipboardRef.current = { files, sourceDir, isRemote, operation: 'cut' };
     setHasClipboard(true);
@@ -9574,6 +9737,7 @@ interface UpdateVerificationInfo {
           onToggleDebugPanel={() => setShowDebugPanel(v => !v)}
           onShowLocalSync={() => setShowLocalSyncPanel(true)}
           onShowComparePanels={openComparePanelsView}
+          onShowSyncPresets={openSyncPresetsView}
           onQuit={async () => { try { await getCurrentWindow().close(); } catch { /* noop */ } }}
           onCheckForUpdates={() => checkForUpdate(true)}
           hasActivity={hasActivity || hasQueueActivity}
@@ -9844,6 +10008,17 @@ interface UpdateVerificationInfo {
             onApplyMirrorLeftToRight={handleCompareMirrorLeftToRight}
             onApplyMirrorRightToLeft={handleCompareMirrorRightToLeft}
             onClose={() => setPendingCompareView(null)}
+          />
+        )}
+        {pendingSyncPresets && (
+          <SyncPresetDialog
+            result={pendingSyncPresets.result}
+            leftLabel={pendingSyncPresets.leftLabel}
+            rightLabel={pendingSyncPresets.rightLabel}
+            pairKind={pendingSyncPresets.pairKind}
+            canExecute={pendingSyncPresets.pairKind === 'local-local'}
+            onExecute={executeSyncPresetPlan}
+            onClose={() => setPendingSyncPresets(null)}
           />
         )}
         {inputDialog && <InputDialog title={inputDialog.title} defaultValue={inputDialog.defaultValue} onConfirm={inputDialog.onConfirm} onCancel={() => setInputDialog(null)} isPassword={inputDialog.isPassword} placeholder={inputDialog.placeholder} />}

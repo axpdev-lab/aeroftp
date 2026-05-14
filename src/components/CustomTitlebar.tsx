@@ -88,6 +88,11 @@ interface TitlebarProps {
     /// (local-local or local-remote/remote-local) and falls back to a
     /// notify.info when no second panel is mounted.
     onShowComparePanels: () => void;
+    /// Z.3.8: open the Sync Presets dialog (mirror / backup / update /
+    /// bisync). Same comparable-pair gate as Compare Panels. Execution
+    /// today lands only for local-local; other pair kinds surface the
+    /// preview but disable Execute (Z.3.8.2 follow-up).
+    onShowSyncPresets: () => void;
     onQuit: () => void;
     onCheckForUpdates: () => void;
     hasActivity: boolean;
@@ -200,7 +205,7 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
         onToggleDebugMode, onRename, onDelete, onSelectAll,
         onCut, onCopy, onPaste, hasSelection, hasClipboard,
         onToggleEditor, onToggleTerminal, onToggleAgent, onToggleActivityLog, onToggleDebugPanel,
-        onShowLocalSync, onShowComparePanels, onQuit,
+        onShowLocalSync, onShowComparePanels, onShowSyncPresets, onQuit,
         onCheckForUpdates, hasActivity,
         cardLayout, onToggleCardLayout,
     } = props;
@@ -303,6 +308,11 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
         // emits a notify.info when the pair is not comparable yet
         // (single panel, remote-remote).
         { label: t('menu.comparePanels'), shortcut: 'F4', onClick: onShowComparePanels },
+        // Z.3.8 entry point. Same comparable-pair gate as Compare Panels.
+        // Surfaces the four FreeFileSync-style presets (mirror, backup,
+        // update, bisync) with explicit destructive confirm; execution
+        // is currently limited to the local-local pair.
+        { label: t('menu.syncPresets'), onClick: onShowSyncPresets },
     ];
 
     const helpMenu: MenuEntry[] = [
