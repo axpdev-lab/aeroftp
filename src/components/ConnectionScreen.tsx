@@ -17,7 +17,7 @@ import { SavedServers } from './SavedServers';
 import { ExportImportDialog } from './ExportImportDialog';
 import { useTranslation } from '../i18n';
 import { ProtocolSelector, ProtocolFields, getDefaultPort } from './ProtocolSelector';
-import { FileLuSubTabs } from './FileLuSubTabs';
+import { ProviderModeTabs } from './ProviderModeTabs';
 import { OAuthConnect } from './OAuthConnect';
 import { ProviderSelector } from './ProviderSelector';
 import { AlertDialog } from './Dialogs';
@@ -1155,13 +1155,30 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             }
         }
 
+        // Legacy-profile migration (Z.4.5 R2): when the saved profile
+        // has a providerId pointing at a known registry preset whose
+        // protocol value has since changed (e.g. FileLu Rsync moved
+        // from `sftp` to `filelu-rsync`), trust the registry. This
+        // makes ProtocolFields render the right fields and lets
+        // ProviderModeTabs surface the FileLu chip strip in edit mode.
+        // Filen native profiles have no providerId so they fall through
+        // and keep their saved protocol as-is.
+        let effectiveProtocol = profile.protocol || 'ftp';
+        if (profile.providerId) {
+            const presetProtocol = getProviderById(profile.providerId)?.protocol;
+            if (presetProtocol && presetProtocol !== effectiveProtocol) {
+                effectiveProtocol = presetProtocol;
+            }
+        }
+
         // Immediately update form with new profile data (password empty initially)
         onConnectionParamsChange({
             server: profile.host,
             port: profile.port,
             username: profile.username,
             password: profile.password || '', // Set immediately, will be updated if stored
-            protocol: profile.protocol || 'ftp',
+            protocol: effectiveProtocol,
+            providerId: profile.providerId,
             options: profileOptions
         });
 
@@ -1183,7 +1200,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         port: profile.port,
                         username: profile.username,
                         password: storedPassword,
-                        protocol: profile.protocol || 'ftp',
+                        protocol: effectiveProtocol,
+                        providerId: profile.providerId,
                         options: profileOptions
                     });
                 }
@@ -1766,11 +1784,15 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         />
                         )}
 
-                        {/* Z.4.5 R2: FileLu sub-tabs render when a filelu-* preset
-                            is active. Lets the operator swap between Native API,
-                            Rsync, WebDAV, S3 and FTP without leaving Connect. */}
-                        <FileLuSubTabs
+                        {/* Z.4.5 R2 generalized: provider mode tabs render when
+                            the active preset/protocol belongs to a registered
+                            mode group (FileLu, Filen, ...). Lets the operator
+                            swap surfaces (Native API, Rsync, WebDAV, S3, FTP,
+                            local bridges) without leaving Connect. Mode groups
+                            are declared in `providerModeGroups.tsx`. */}
+                        <ProviderModeTabs
                             activeProviderId={selectedProviderId || connectionParams.providerId}
+                            activeProtocol={protocol}
                             onSwitchMode={(newProtocol, newProviderId) => {
                                 handleProtocolChange(newProtocol as ProviderType, newProviderId);
                             }}
