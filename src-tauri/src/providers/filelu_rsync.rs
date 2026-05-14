@@ -180,6 +180,18 @@ impl StorageProvider for FileLuRsyncProvider {
                 .map_err(|e| ProviderError::ConnectionFailed(format!(
                     "FileLu Rsync transport construction failed: {}", e
                 )))?;
+            // Engine banner: surface which transfer engine the session
+            // will use, so the operator can read it back from the log
+            // without grepping crate code. FileLu Rsync always rides
+            // native aerorsync over russh password auth; the classic
+            // binary fallback is not wired here (FileLu doesn't ship
+            // a `rsync` on the local machine of every user, and
+            // protocol-version negotiation against the FileLu wrapper
+            // is the whole point of this test bench).
+            tracing::info!(
+                "FileLu Rsync: engine=native-aerorsync transport=russh auth=password endpoint={}:{}",
+                self.config.host, self.config.port
+            );
             match transport.probe_remote().await {
                 Ok(_) => {
                     tracing::info!(
@@ -291,6 +303,10 @@ impl StorageProvider for FileLuRsyncProvider {
             // password-only endpoint. The batch path opens one russh
             // session per call, which is what we want for a Native
             // delta transfer.
+            tracing::info!(
+                "FileLu Rsync download: engine=native-aerorsync remote={}",
+                remote_path
+            );
             let cfg = self.rsync_config();
             let transport = AerorsyncDeltaTransport::from_rsync_config(&cfg, SshHostKeyPolicy::AcceptAny)
                 .map_err(|e| ProviderError::TransferFailed(format!(
@@ -336,6 +352,10 @@ impl StorageProvider for FileLuRsyncProvider {
         #[cfg(feature = "aerorsync")]
         {
             // Same russh routing rationale as `download()` above.
+            tracing::info!(
+                "FileLu Rsync upload: engine=native-aerorsync remote={}",
+                remote_path
+            );
             let cfg = self.rsync_config();
             let transport = AerorsyncDeltaTransport::from_rsync_config(&cfg, SshHostKeyPolicy::AcceptAny)
                 .map_err(|e| ProviderError::TransferFailed(format!(
@@ -411,8 +431,11 @@ impl StorageProvider for FileLuRsyncProvider {
     }
 
     async fn server_info(&mut self) -> Result<String, ProviderError> {
+        // Engine banner mirrored from the connect-time tracing line so
+        // the operator can read the active transfer engine straight
+        // from the connection info panel without going through logs.
         Ok(format!(
-            "FileLu Rsync (rsync-over-SSH, port {}, transfer-only)",
+            "FileLu Rsync · engine: native aerorsync · transport: russh · auth: password · port {} · transfer-only",
             self.config.port
         ))
     }

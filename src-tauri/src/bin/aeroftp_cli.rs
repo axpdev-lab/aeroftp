@@ -16015,14 +16015,84 @@ fn cmd_keystore_info(input: &str, json: bool, format: OutputFormat) -> i32 {
 // AeroRsync subcommands (Z.4.5 R1 dispatch step + CLI parity)
 // =====================================================================
 
-/// `aeroftp aerorsync mode get` — print the current AeroRsync mode.
+/// `aeroftp aerorsync mode get` — print the current AeroRsync mode
+/// alongside local engine availability so the operator can see at a
+/// glance whether classic is reachable on this machine.
+///
+/// When the persisted mode is `classic` but no classic binary is
+/// reachable on this machine (typical Windows install), we surface an
+/// **effective** mode of `native` so the user knows what every next
+/// transfer will actually use. The persisted value is left untouched
+/// so the user's intent is preserved if they later install rsync.
 fn cmd_aerorsync_mode_get(format: OutputFormat) -> i32 {
-    let mode = ftp_client_gui_lib::settings::native_rsync_mode_get();
+    let stored = ftp_client_gui_lib::settings::native_rsync_mode_get();
+    let classic = detect_classic_rsync();
+    let classic_path = classic.as_ref().map(|p| p.display().to_string());
+
+    // `native_rsync_mode_get()` returns the persisted string ("auto"
+    // / "classic" / "native"). When the user opted for classic but no
+    // classic binary is reachable, declare the effective mode as
+    // native so each transfer call knows what to do, without
+    // rewriting the user's saved preference.
+    let downgraded = stored == "classic" && classic.is_none();
+    let effective: String = if downgraded {
+        "native".to_string()
+    } else {
+        stored.clone()
+    };
+
     match format {
-        OutputFormat::Json => println!(r#"{{"mode":"{}"}}"#, mode),
-        OutputFormat::Text => println!("{}", mode),
+        OutputFormat::Json => {
+            let path_field = classic_path.as_deref().unwrap_or("");
+            println!(
+                r#"{{"mode":"{}","effective":"{}","downgraded":{},"native_available":true,"classic_available":{},"classic_binary":"{}"}}"#,
+                stored,
+                effective,
+                downgraded,
+                classic.is_some(),
+                path_field
+            );
+        }
+        OutputFormat::Text => {
+            if downgraded {
+                println!("mode: {} (effective: {})", stored, effective);
+                println!(
+                    "  note: classic rsync not on PATH on this machine; falling back to native engine"
+                );
+            } else {
+                println!("mode: {}", stored);
+            }
+            println!("  native engine: available (built-in)");
+            if let Some(path) = classic_path {
+                println!("  classic binary: {}", path);
+            } else {
+                println!("  classic binary: not found on PATH");
+            }
+        }
     }
     0
+}
+
+/// Detect whether the classic `rsync` binary is available on PATH on
+/// this machine. Used to gate `aerorsync mode set classic` so the
+/// user does not persist an unreachable mode on a system that cannot
+/// honor it (Windows installs typically don't ship rsync).
+///
+/// Returns Some(path) when the binary resolves; None otherwise.
+/// Uses `which` semantics via the standard PATH walk: no subprocess
+/// is spawned, no version probe is performed (a non-zero exit on
+/// `rsync --version` would be a separate concern handled by the
+/// transfer layer).
+fn detect_classic_rsync() -> Option<std::path::PathBuf> {
+    let exe_name = if cfg!(windows) { "rsync.exe" } else { "rsync" };
+    let path_env = std::env::var_os("PATH")?;
+    for dir in std::env::split_paths(&path_env) {
+        let candidate = dir.join(exe_name);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
 }
 
 /// `aeroftp aerorsync mode set <mode>` — persist a new mode.
@@ -16044,6 +16114,30 @@ fn cmd_aerorsync_mode_set(mode: &str, format: OutputFormat) -> i32 {
             return 5;
         }
     };
+    // Z.4.5 R2: refuse `classic` when the local machine has no `rsync`
+    // binary on PATH. Without this guard the user could persist a mode
+    // that every subsequent transfer would silently downgrade or fail
+    // on (Windows installs of AeroFTP don't ship rsync by default). The
+    // `auto` mode is still safe on those machines because the auto
+    // policy falls back to native when the classic binary is missing.
+    if matches!(parsed, NativeRsyncMode::Classic) {
+        match detect_classic_rsync() {
+            Some(path) => {
+                tracing::info!(
+                    "aerorsync mode set classic: classic rsync binary detected at {}",
+                    path.display()
+                );
+            }
+            None => {
+                print_error(
+                    format,
+                    "classic mode rejected: no rsync binary on PATH. Install rsync (Linux/macOS package, or Windows via WSL/cygwin/scoop) or use `aerorsync mode set native` / `auto`.",
+                    7,
+                );
+                return 7;
+            }
+        }
+    }
     if let Err(e) = ftp_client_gui_lib::settings::set_native_rsync_mode(parsed) {
         print_error(format, &format!("failed to persist mode: {e}"), 5);
         return 5;
@@ -16051,10 +16145,21 @@ fn cmd_aerorsync_mode_set(mode: &str, format: OutputFormat) -> i32 {
     let stored = ftp_client_gui_lib::settings::native_rsync_mode_get();
     match format {
         OutputFormat::Json => {
-            println!(r#"{{"mode":"{}","persisted":true}}"#, stored);
+            let classic_path = detect_classic_rsync()
+                .map(|p| p.display().to_string())
+                .unwrap_or_default();
+            println!(
+                r#"{{"mode":"{}","persisted":true,"classic_binary":"{}"}}"#,
+                stored, classic_path
+            );
         }
         OutputFormat::Text => {
             println!("AeroRsync mode set to {}", stored);
+            if let Some(path) = detect_classic_rsync() {
+                println!("  classic binary: {}", path.display());
+            } else {
+                println!("  classic binary: not found on PATH (native engine only)");
+            }
         }
     }
     0
