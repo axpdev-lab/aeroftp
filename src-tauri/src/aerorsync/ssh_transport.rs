@@ -16,6 +16,7 @@
 //!   typed `Cancelled` error instead of a transport failure.
 
 use async_trait::async_trait;
+use secrecy::SecretString;
 use sha2::{Digest, Sha256};
 use ssh2::{MethodType, Session};
 use std::io::Read;
@@ -95,6 +96,23 @@ pub struct SshTransportConfig {
     pub max_frame_size: usize,
     pub host_key_policy: SshHostKeyPolicy,
     pub probe_request: RemoteExecRequest,
+    /// Z.4.5 R1 password transport: optional SSH password used by the
+    /// russh leg (`RusshSessionTransport`) when `private_key_path` is not
+    /// usable for the target host. The libssh2 leg
+    /// (`SshRemoteShellTransport`) ignores this field; it is always
+    /// pubkey-only by design.
+    ///
+    /// Wrapped in [`SecretString`] so:
+    /// 1. drop zeroizes the in-memory bytes;
+    /// 2. the `Debug` derive on this struct prints `[REDACTED ...]`
+    ///    instead of the raw password (verified by
+    ///    `russh_session_transport::tests::password_does_not_leak_in_debug`).
+    ///
+    /// `None` means "no password material configured": `RusshSessionTransport`
+    /// then falls back to the pubkey path. An empty `SecretString` is treated
+    /// the same as `None` by the connect path so callers cannot accidentally
+    /// auth as the empty user.
+    pub auth_password: Option<SecretString>,
 }
 
 impl SshTransportConfig {
@@ -117,6 +135,20 @@ impl SshTransportConfig {
                 args: vec!["--version".to_string()],
                 environment: Vec::new(),
             },
+            auth_password: None,
+        }
+    }
+
+    /// Z.4.5 R1: presence/non-empty check for the optional password
+    /// transport. Returns `Some(&SecretString)` only when the password
+    /// is actually usable; an empty `SecretString` is treated as no
+    /// password at all so the russh leg never sends a zero-length
+    /// authentication payload.
+    pub fn usable_password(&self) -> Option<&SecretString> {
+        use secrecy::ExposeSecret;
+        match &self.auth_password {
+            Some(secret) if !secret.expose_secret().is_empty() => Some(secret),
+            _ => None,
         }
     }
 }

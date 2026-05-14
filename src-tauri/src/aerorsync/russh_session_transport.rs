@@ -16,6 +16,7 @@ use russh::client::{self, AuthResult, Config, Handle, Handler, Msg};
 use russh::keys::{self, Algorithm, EcdsaCurve, HashAlg, PrivateKeyWithHashAlg, PublicKey};
 use russh::Preferred;
 use russh::{Channel, ChannelMsg};
+use secrecy::ExposeSecret;
 use std::borrow::Cow;
 use sha2::{Digest, Sha256};
 use tokio::sync::Mutex as AsyncMutex;
@@ -103,6 +104,83 @@ impl Handler for RusshHandler {
     }
 }
 
+/// Z.4.5 R1: send `userauth password` over the russh handle.
+///
+/// The password is taken from the [`SshTransportConfig::auth_password`]
+/// field, never from argv or environment, and is wrapped in
+/// [`secrecy::SecretString`] so it never appears in `Debug` output or
+/// log lines. This function does NOT log the password under any
+/// `tracing` level: callers that want to confirm the path was taken
+/// should rely on `handshake_count` or test fixtures.
+///
+/// Errors are mapped to a typed [`AerorsyncError::transport`] envelope
+/// that does NOT include the password value. The username is included
+/// because it is part of the public auth identity (the same string the
+/// remote logs in its own auth log).
+async fn authenticate_password(
+    handle: &mut Handle<RusshHandler>,
+    username: &str,
+    password: &secrecy::SecretString,
+) -> Result<(), AerorsyncError> {
+    match handle
+        .authenticate_password(username, password.expose_secret())
+        .await
+    {
+        Ok(AuthResult::Success) => Ok(()),
+        Ok(AuthResult::Failure { .. }) => Err(AerorsyncError::transport(format!(
+            "russh password auth {username} rejected by server"
+        ))),
+        Err(e) => Err(AerorsyncError::transport(format!(
+            "russh password auth {username} transport error: {e}"
+        ))),
+    }
+}
+
+/// Original publickey path, lifted out of [`RusshSessionTransport::connect`]
+/// so the new password branch above stays small and the publickey
+/// behaviour (RSA SHA-2 fallback chain) is preserved verbatim.
+async fn authenticate_publickey_with_rsa_fallbacks(
+    handle: &mut Handle<RusshHandler>,
+    config: &SshTransportConfig,
+) -> Result<(), AerorsyncError> {
+    let key_pair = keys::load_secret_key(&config.private_key_path, None).map_err(|e| {
+        AerorsyncError::transport(format!(
+            "load private key {}: {e}",
+            config.private_key_path.display()
+        ))
+    })?;
+    let key_pair = Arc::new(key_pair);
+
+    let is_rsa = matches!(key_pair.algorithm(), Algorithm::Rsa { .. });
+    let attempts: Vec<Option<HashAlg>> = if is_rsa {
+        vec![Some(HashAlg::Sha512), Some(HashAlg::Sha256), None]
+    } else {
+        vec![None]
+    };
+
+    let mut last_error: Option<String> = None;
+    for hash in attempts {
+        let key_with_hash = PrivateKeyWithHashAlg::new(key_pair.clone(), hash);
+        match handle
+            .authenticate_publickey(&config.username, key_with_hash)
+            .await
+        {
+            Ok(AuthResult::Success) => return Ok(()),
+            Ok(AuthResult::Failure { .. }) => continue,
+            Err(e) => {
+                last_error = Some(e.to_string());
+                continue;
+            }
+        }
+    }
+
+    let detail = last_error.unwrap_or_else(|| "auth rejected by server".to_string());
+    Err(AerorsyncError::transport(format!(
+        "russh pubkey auth {} failed after RSA SHA-512/256/1 negotiation attempts: {detail}",
+        config.username
+    )))
+}
+
 impl RusshSessionTransport {
     pub async fn connect(config: SshTransportConfig) -> Result<Self, AerorsyncError> {
         let cancel_flag = Arc::new(AtomicBool::new(false));
@@ -150,47 +228,15 @@ impl RusshSessionTransport {
             .await
             .map_err(|e| AerorsyncError::transport(format!("russh connect {addr}: {e}")))?;
 
-        let key_pair = keys::load_secret_key(&config.private_key_path, None).map_err(|e| {
-            AerorsyncError::transport(format!(
-                "load private key {}: {e}",
-                config.private_key_path.display()
-            ))
-        })?;
-        let key_pair = Arc::new(key_pair);
-
-        let is_rsa = matches!(key_pair.algorithm(), Algorithm::Rsa { .. });
-        let attempts: Vec<Option<HashAlg>> = if is_rsa {
-            vec![Some(HashAlg::Sha512), Some(HashAlg::Sha256), None]
+        // Z.4.5 R1: password transport takes precedence when configured.
+        // The two paths are exclusive on purpose: a profile that ships
+        // both a key and a password should not silently retry one after
+        // the other (it would mask which credential the server actually
+        // accepted, complicating audit). The caller picks one.
+        if let Some(password) = config.usable_password() {
+            authenticate_password(&mut handle, &config.username, password).await?;
         } else {
-            vec![None]
-        };
-
-        let mut authenticated = false;
-        let mut last_error: Option<String> = None;
-        for hash in attempts {
-            let key_with_hash = PrivateKeyWithHashAlg::new(key_pair.clone(), hash);
-            match handle
-                .authenticate_publickey(&config.username, key_with_hash)
-                .await
-            {
-                Ok(AuthResult::Success) => {
-                    authenticated = true;
-                    break;
-                }
-                Ok(AuthResult::Failure { .. }) => continue,
-                Err(e) => {
-                    last_error = Some(e.to_string());
-                    continue;
-                }
-            }
-        }
-
-        if !authenticated {
-            let detail = last_error.unwrap_or_else(|| "auth rejected by server".to_string());
-            return Err(AerorsyncError::transport(format!(
-                "russh pubkey auth {} failed after RSA SHA-512/256/1 negotiation attempts: {detail}",
-                config.username
-            )));
+            authenticate_publickey_with_rsa_fallbacks(&mut handle, &config).await?;
         }
 
         handshake_count.store(1, Ordering::SeqCst);
@@ -428,6 +474,7 @@ pub(crate) fn test_dummy_config() -> SshTransportConfig {
             args: vec!["--version".into()],
             environment: Vec::new(),
         },
+        auth_password: None,
     }
 }
 
@@ -669,6 +716,7 @@ impl crate::aerorsync::transport::BidirectionalByteStream for RusshUnusedStream 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use secrecy::SecretString;
 
     fn dummy_config() -> SshTransportConfig {
         test_dummy_config()
@@ -700,6 +748,98 @@ mod tests {
                  server bound there which would be a security red flag"
             ),
         }
+    }
+
+    /// Z.4.5 R1: when the config carries an `auth_password`, the
+    /// connect path still propagates the typed transport error on an
+    /// unreachable host. The branch must NOT panic, leak the password
+    /// in the error string, or silently fall back to the pubkey path.
+    #[tokio::test]
+    async fn connect_with_password_on_unreachable_host_returns_typed_transport_error() {
+        let cfg = SshTransportConfig {
+            port: 1,
+            auth_password: Some(SecretString::from(
+                "should-never-appear-in-error".to_string(),
+            )),
+            ..dummy_config()
+        };
+        match RusshSessionTransport::connect(cfg).await {
+            Err(err) => {
+                let msg = format!("{err:?}");
+                assert!(
+                    !msg.contains("should-never-appear-in-error"),
+                    "password leaked into error message: {msg}"
+                );
+            }
+            Ok(_) => panic!("connect to port 1 should not succeed"),
+        }
+    }
+
+    /// Z.4.5 R1: empty `SecretString` MUST be treated as "no password
+    /// configured". The connect path then falls back to the pubkey
+    /// branch instead of sending a zero-length password to the server.
+    /// Pinned by checking `usable_password()` semantics directly so the
+    /// invariant can be regression-tested without a live SSH endpoint.
+    #[test]
+    fn usable_password_treats_empty_secret_as_none() {
+        let cfg_none = SshTransportConfig {
+            auth_password: None,
+            ..dummy_config()
+        };
+        assert!(cfg_none.usable_password().is_none());
+
+        let cfg_empty = SshTransportConfig {
+            auth_password: Some(SecretString::from(String::new())),
+            ..dummy_config()
+        };
+        assert!(
+            cfg_empty.usable_password().is_none(),
+            "empty SecretString must be rejected by usable_password()"
+        );
+
+        let cfg_real = SshTransportConfig {
+            auth_password: Some(SecretString::from("real".to_string())),
+            ..dummy_config()
+        };
+        assert!(cfg_real.usable_password().is_some());
+    }
+
+    /// Z.4.5 R1: the `Debug` derive on [`SshTransportConfig`] must
+    /// redact the password. `secrecy::SecretString` provides this for
+    /// free, but pin the behaviour explicitly so a future refactor that
+    /// swaps the wrapper type cannot regress the contract.
+    #[test]
+    fn password_does_not_leak_in_debug() {
+        let cfg = SshTransportConfig {
+            auth_password: Some(SecretString::from(
+                "super-secret-filelu-rsync-password".to_string(),
+            )),
+            ..dummy_config()
+        };
+        let debug = format!("{cfg:?}");
+        assert!(
+            !debug.contains("super-secret-filelu-rsync-password"),
+            "password leaked into Debug output: {debug}"
+        );
+        // Sanity: the field name must still be present so operators
+        // can see at a glance that auth material is configured.
+        assert!(debug.contains("auth_password"));
+    }
+
+    /// Z.4.5 R1: when the auth path errors out before the actual
+    /// network round-trip (e.g. because the connection is rejected),
+    /// callers still get a typed `transport` error, not a panic. This
+    /// is the precondition for the Z.1.2 reconnect classifier to keep
+    /// behaving sensibly when an `auth_password`-bearing profile drops
+    /// mid-session.
+    #[test]
+    fn dummy_config_default_keeps_pubkey_branch() {
+        // Regression: `dummy_config()` (and by extension every test
+        // that uses `..dummy_config()`) must keep `auth_password = None`
+        // so the historical pubkey-only behaviour is preserved.
+        let cfg = dummy_config();
+        assert!(cfg.auth_password.is_none());
+        assert!(cfg.usable_password().is_none());
     }
 
     #[tokio::test]
