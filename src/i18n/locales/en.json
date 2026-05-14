@@ -1874,6 +1874,7 @@
       "file": "File",
       "help": "Help",
       "comparePanels": "Compare Panels...",
+      "syncPresets": "Sync Presets...",
       "localSync": "Local Sync...",
       "newFolder": "New Folder",
       "quit": "Quit AeroFTP",
@@ -3205,6 +3206,12 @@
       "noTags": "No tags",
       "removeTag": "Remove Tag",
       "tags": "Tags"
+    },
+    "syncPresets": {
+      "title": "Sync presets",
+      "nothingToDo": "Sync presets",
+      "allSkipped": "No actionable entries for this preset.",
+      "deletesDeferred": "Sync presets"
     },
     "syncPanel": {
       "cancel": "Cancel",
