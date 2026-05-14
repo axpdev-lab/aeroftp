@@ -208,6 +208,76 @@ impl RusshSessionTransport {
         self.handshake_count.load(Ordering::SeqCst)
     }
 
+    /// Z.1.2 — reconnect orchestration.
+    ///
+    /// Tear the current SSH handle down and re-run `connect()` using the
+    /// saved [`SshTransportConfig`]. The new handle is swapped into the
+    /// shared [`HandleSlot`] so every clone produced via
+    /// [`share_session`](Self::share_session) immediately uses it on the
+    /// next [`open_raw_channel`](Self::open_raw_channel) call. The
+    /// `handshake_count` is incremented so observers (i.e. `BatchStats`)
+    /// can detect that a reconnect happened.
+    ///
+    /// The function returns `Err` when the underlying re-connect fails:
+    /// in that case the handle is left empty and the next
+    /// `open_raw_channel` will surface "handle is closed". Callers must
+    /// classify the original transfer error before invoking this method
+    /// (see [`is_transient_for_reconnect`](crate::rsync_over_ssh::is_transient_for_reconnect));
+    /// reconnecting on a hard rejection (host-key mismatch, auth refused)
+    /// would silently mask a security-relevant fault.
+    pub async fn reconnect(&self) -> Result<(), AerorsyncError> {
+        if self.cancel_flag.load(Ordering::SeqCst) {
+            return Err(AerorsyncError::cancelled(
+                "RusshSessionTransport cancelled before reconnect",
+            ));
+        }
+
+        // Best-effort tear-down of the old handle so the server side does
+        // not see a stale connection holding the channel for a while.
+        // We hold the inner lock only long enough to swap the option:
+        // dropping the lock before the `connect()` call below avoids
+        // blocking concurrent reads of `handshake_count` and lets a
+        // racing cancel observe the empty slot.
+        let old = {
+            let mut guard = self.handle.inner.lock().await;
+            guard.take()
+        };
+        if let Some(handle) = old {
+            // Best-effort disconnect: ignore the result, we are about to
+            // open a new session anyway. russh's `disconnect` is a tiny
+            // protocol message + EOF, so this is bounded latency.
+            let _ = handle
+                .disconnect(russh::Disconnect::ByApplication, "reconnect", "en-US")
+                .await;
+        }
+
+        // Run a fresh connect using the saved config. This re-uses the
+        // existing `connect()` so all the host-key, algorithm pref, RSA
+        // hash retry logic remains the single source of truth.
+        let fresh = Self::connect(self.config.clone()).await?;
+        // Pull the new handle out of `fresh` so we can plant it on `self`.
+        // `fresh` is then dropped: its `Arc`s decrement to zero without
+        // surfacing in observers because none of them ever saw it.
+        let new_handle = {
+            let mut guard = fresh.handle.inner.lock().await;
+            guard.take()
+        };
+        if new_handle.is_none() {
+            return Err(AerorsyncError::transport(
+                "reconnect: fresh connect() returned without an authenticated handle",
+            ));
+        }
+
+        // Swap the new handle into the shared slot. From this point every
+        // existing clone produced via `share_session()` uses the new
+        // handle on the next `open_raw_channel` call.
+        let mut guard = self.handle.inner.lock().await;
+        *guard = new_handle;
+        drop(guard);
+        self.handshake_count.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }
+
     pub fn raw_open_count(&self) -> u32 {
         self.raw_open_count.load(Ordering::SeqCst)
     }
@@ -675,6 +745,68 @@ mod tests {
         transport.cancel().await;
         assert!(transport.cancel_flag.load(Ordering::SeqCst));
         transport.cancel().await;
+    }
+
+    /// Z.1.2 — reconnect refuses to fire when the cancel flag has
+    /// already been raised. This keeps cancel + reconnect race-free:
+    /// the user's cancel always wins, even if a transient drop fires
+    /// concurrently with `cancel()`.
+    #[tokio::test]
+    async fn reconnect_refuses_when_cancelled() {
+        let transport = RusshSessionTransport {
+            handle: Arc::new(HandleSlot::new(None)),
+            cancel_flag: Arc::new(AtomicBool::new(true)),
+            handshake_count: Arc::new(AtomicU32::new(0)),
+            raw_open_count: Arc::new(AtomicU32::new(0)),
+            config: dummy_config(),
+        };
+        match transport.reconnect().await {
+            Err(err) => {
+                assert_eq!(
+                    err.kind,
+                    crate::aerorsync::types::AerorsyncErrorKind::Cancelled,
+                    "expected Cancelled, got {err:?}"
+                );
+            }
+            Ok(_) => panic!("reconnect should not succeed when cancel flag is set"),
+        }
+        // Handshake counter must NOT have advanced: cancel short-circuit
+        // happens before any network-touching step.
+        assert_eq!(transport.handshake_count(), 0);
+    }
+
+    /// Z.1.2 — when reconnect cannot reach the server (port 1 is the
+    /// canary used elsewhere), the inner handle is left empty and the
+    /// handshake counter is NOT incremented. Callers can then surface
+    /// the original transfer error rather than a misleading
+    /// "reconnected ok" state.
+    #[tokio::test]
+    async fn reconnect_does_not_bump_counter_on_failure() {
+        let transport = RusshSessionTransport {
+            // Seed with a non-None placeholder so we can verify it gets
+            // cleared even when the fresh connect() below fails. We
+            // cannot construct a real russh `Handle` in unit tests, so
+            // we leave it None; the assertions below verify that the
+            // observable counter state (handshake_count) is what callers
+            // rely on for the BatchStats path.
+            handle: Arc::new(HandleSlot::new(None)),
+            cancel_flag: Arc::new(AtomicBool::new(false)),
+            handshake_count: Arc::new(AtomicU32::new(7)),
+            raw_open_count: Arc::new(AtomicU32::new(0)),
+            config: dummy_config(),
+        };
+        let before = transport.handshake_count();
+        match transport.reconnect().await {
+            Err(_) => {}
+            Ok(_) => panic!(
+                "reconnect to port 1 should not succeed in CI: see connect_refuses_port_1"
+            ),
+        }
+        assert_eq!(
+            transport.handshake_count(),
+            before,
+            "handshake_count must NOT advance when reconnect fails"
+        );
     }
 
     #[test]
