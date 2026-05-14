@@ -3304,8 +3304,8 @@
             "detailedCards": "Detaljerte serverkort",
             "debugPanel": "Debug Panel",
             "localSync": "Lokal synkronisering...",
-            "comparePanels": "[NEEDS TRANSLATION] Compare Panels...",
-            "syncPresets": "[NEEDS TRANSLATION] Sync Presets..."
+            "comparePanels": "Sammenlign paneler...",
+            "syncPresets": "Synkroniseringsforhåndsinnstillinger..."
         },
         "activityPanel": {
             "awaitingCommands": "Venter på kommandoer...",
@@ -3825,7 +3825,7 @@
             "trashFooter": "Gjenopprettede filer vil vises igjen i sin opprinnelige mappe",
             "connectionNamePlaceholder": "Tilkoblingsnavn (f.eks. Min FileLu Cloud)",
             "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days",
-            "rsyncTransferOnly": "[NEEDS TRANSLATION] Transfer-only endpoint: browsing is not available on Rsync. Use Native API, WebDAV, S3 or FTP to navigate; switch to Rsync for high-bandwidth delta transfers."
+            "rsyncTransferOnly": "Endepunkt kun for overføring: bla er ikke tilgjengelig på Rsync. Bruk Native API, WebDAV, S3 eller FTP for å navigere; bytt til Rsync for delta-overføringer med høy båndbredde."
         },
         "box": {
             "addComment": "Legg til kommentar",
@@ -4532,7 +4532,7 @@
             "moveHere": "Flytt {count} hit",
             "copyHereFromOtherPanelTooltip": "Kopier {count} valgte fra det andre panelet til dette panelet (F5)",
             "moveHereFromOtherPanelTooltip": "Flytt {count} valgte fra det andre panelet til dette panelet (F6)",
-            "syncToOtherPanel": "[NEEDS TRANSLATION] Sync to other panel (delta)"
+            "syncToOtherPanel": "Synkroniser til andre panel (delta)"
         },
         "localSync": {
             "title": "AeroSync: lokal til lokal",
@@ -4558,14 +4558,14 @@
             "errorPathsRequired": "Kilde og destinasjon er påkrevd"
         },
         "compare": {
-            "title": "[NEEDS TRANSLATION] Compare panels",
-            "notAvailable": "[NEEDS TRANSLATION] Open a second panel or a remote connection to compare."
+            "title": "Sammenlign paneler",
+            "notAvailable": "Åpne et andre panel eller en ekstern tilkobling for å sammenligne."
         },
         "syncPresets": {
-            "title": "[NEEDS TRANSLATION] Sync presets",
-            "nothingToDo": "[NEEDS TRANSLATION] Sync presets",
-            "allSkipped": "[NEEDS TRANSLATION] No actionable entries for this preset.",
-            "deletesDeferred": "[NEEDS TRANSLATION] Sync presets"
+            "title": "Synkroniseringsforhåndsinnstillinger",
+            "nothingToDo": "Synkroniseringsforhåndsinnstillinger",
+            "allSkipped": "Ingen kjørbare oppføringer for denne forhåndsinnstillingen.",
+            "deletesDeferred": "Synkroniseringsforhåndsinnstillinger"
         }
     }
 }

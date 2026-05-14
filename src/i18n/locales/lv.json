@@ -3304,8 +3304,8 @@
             "detailedCards": "Detalizētas serveru kartes",
             "debugPanel": "Debug Panel",
             "localSync": "Vietējā sinhronizācija...",
-            "comparePanels": "[NEEDS TRANSLATION] Compare Panels...",
-            "syncPresets": "[NEEDS TRANSLATION] Sync Presets..."
+            "comparePanels": "Salīdzināt paneļus...",
+            "syncPresets": "Sinhronizācijas iepriekšiestatījumi..."
         },
         "activityPanel": {
             "awaitingCommands": "Gaida komandas...",
@@ -3806,7 +3806,7 @@
             "trashFooter": "Atjaunotie faili atkal parādīsies savā sākotnējā mapē",
             "connectionNamePlaceholder": "Savienojuma nosaukums (piem., Mans FileLu Cloud)",
             "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days",
-            "rsyncTransferOnly": "[NEEDS TRANSLATION] Transfer-only endpoint: browsing is not available on Rsync. Use Native API, WebDAV, S3 or FTP to navigate; switch to Rsync for high-bandwidth delta transfers."
+            "rsyncTransferOnly": "Tikai pārsūtīšanas galapunkts: pārlūkošana Rsync nav pieejama. Navigācijai izmantojiet Native API, WebDAV, S3 vai FTP; pārslēdzieties uz Rsync ātrgaitas delta pārsūtīšanai."
         },
         "box": {
             "addComment": "Pievienot komentāru",
@@ -4513,7 +4513,7 @@
             "moveHere": "Pārvietot {count} šeit",
             "copyHereFromOtherPanelTooltip": "Kopēt {count} atlasītos no otra paneļa uz šo paneli (F5)",
             "moveHereFromOtherPanelTooltip": "Pārvietot {count} atlasītos no otra paneļa uz šo paneli (F6)",
-            "syncToOtherPanel": "[NEEDS TRANSLATION] Sync to other panel (delta)"
+            "syncToOtherPanel": "Sinhronizēt uz otru paneli (delta)"
         },
         "localSync": {
             "title": "AeroSync: no vietējā uz vietējo",
@@ -4539,14 +4539,14 @@
             "errorPathsRequired": "Avots un galamērķis ir obligāti"
         },
         "compare": {
-            "title": "[NEEDS TRANSLATION] Compare panels",
-            "notAvailable": "[NEEDS TRANSLATION] Open a second panel or a remote connection to compare."
+            "title": "Salīdzināt paneļus",
+            "notAvailable": "Atveriet otru paneli vai attālinātu savienojumu, lai salīdzinātu."
         },
         "syncPresets": {
-            "title": "[NEEDS TRANSLATION] Sync presets",
-            "nothingToDo": "[NEEDS TRANSLATION] Sync presets",
-            "allSkipped": "[NEEDS TRANSLATION] No actionable entries for this preset.",
-            "deletesDeferred": "[NEEDS TRANSLATION] Sync presets"
+            "title": "Sinhronizācijas iepriekšiestatījumi",
+            "nothingToDo": "Sinhronizācijas iepriekšiestatījumi",
+            "allSkipped": "Šim iepriekšiestatījumam nav izpildāmu ierakstu.",
+            "deletesDeferred": "Sinhronizācijas iepriekšiestatījumi"
         }
     }
 }

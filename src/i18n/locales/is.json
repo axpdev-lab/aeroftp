@@ -3304,8 +3304,8 @@
             "detailedCards": "Ítarleg netþjónakort",
             "debugPanel": "Debug Panel",
             "localSync": "Staðbundin samstilling...",
-            "comparePanels": "[NEEDS TRANSLATION] Compare Panels...",
-            "syncPresets": "[NEEDS TRANSLATION] Sync Presets..."
+            "comparePanels": "Bera saman glugga...",
+            "syncPresets": "Forstillingar samstillingar..."
         },
         "activityPanel": {
             "awaitingCommands": "Bíð eftir skipunum...",
@@ -3825,7 +3825,7 @@
             "trashFooter": "Endurheimtar skrár munu birtast aftur í upprunalegu möppunni sinni",
             "connectionNamePlaceholder": "Heiti tengingar (t.d. FileLu skýið mitt)",
             "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days",
-            "rsyncTransferOnly": "[NEEDS TRANSLATION] Transfer-only endpoint: browsing is not available on Rsync. Use Native API, WebDAV, S3 or FTP to navigate; switch to Rsync for high-bandwidth delta transfers."
+            "rsyncTransferOnly": "Aðeins flutningsendapunktur: vafur er ekki tiltækt á Rsync. Notaðu Native API, WebDAV, S3 eða FTP til að fletta; skiptu yfir í Rsync fyrir delta-flutninga með háu bandvíddinni."
         },
         "box": {
             "addComment": "Bæta við athugasemd",
@@ -4532,7 +4532,7 @@
             "moveHere": "Færa {count} hingað",
             "copyHereFromOtherPanelTooltip": "Afrita {count} valin atriði úr hinum glugganum yfir í þennan glugga (F5)",
             "moveHereFromOtherPanelTooltip": "Færa {count} valin atriði úr hinum glugganum yfir í þennan glugga (F6)",
-            "syncToOtherPanel": "[NEEDS TRANSLATION] Sync to other panel (delta)"
+            "syncToOtherPanel": "Samstilla við hinn glugga (delta)"
         },
         "localSync": {
             "title": "AeroSync: staðbundið í staðbundið",
@@ -4558,14 +4558,14 @@
             "errorPathsRequired": "Uppruni og áfangastaður eru nauðsynleg"
         },
         "compare": {
-            "title": "[NEEDS TRANSLATION] Compare panels",
-            "notAvailable": "[NEEDS TRANSLATION] Open a second panel or a remote connection to compare."
+            "title": "Bera saman glugga",
+            "notAvailable": "Opnaðu annan glugga eða fjartengingu til að bera saman."
         },
         "syncPresets": {
-            "title": "[NEEDS TRANSLATION] Sync presets",
-            "nothingToDo": "[NEEDS TRANSLATION] Sync presets",
-            "allSkipped": "[NEEDS TRANSLATION] No actionable entries for this preset.",
-            "deletesDeferred": "[NEEDS TRANSLATION] Sync presets"
+            "title": "Forstillingar samstillingar",
+            "nothingToDo": "Forstillingar samstillingar",
+            "allSkipped": "Engar framkvæmanlegar færslur fyrir þessa forstillingu.",
+            "deletesDeferred": "Forstillingar samstillingar"
         }
     }
 }

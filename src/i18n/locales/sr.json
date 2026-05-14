@@ -3304,8 +3304,8 @@
             "detailedCards": "Детаљне картице сервера",
             "debugPanel": "Debug Panel",
             "localSync": "Локална синхронизација...",
-            "comparePanels": "[NEEDS TRANSLATION] Compare Panels...",
-            "syncPresets": "[NEEDS TRANSLATION] Sync Presets..."
+            "comparePanels": "Упореди панеле...",
+            "syncPresets": "Подешавања синхронизације..."
         },
         "activityPanel": {
             "awaitingCommands": "Чекање на команде...",
@@ -3806,7 +3806,7 @@
             "trashFooter": "Враћене датотеке ће се поново појавити у свом оригиналном фолдеру",
             "connectionNamePlaceholder": "Назив везе (нпр. Мој FileLu Cloud)",
             "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days",
-            "rsyncTransferOnly": "[NEEDS TRANSLATION] Transfer-only endpoint: browsing is not available on Rsync. Use Native API, WebDAV, S3 or FTP to navigate; switch to Rsync for high-bandwidth delta transfers."
+            "rsyncTransferOnly": "Крајња тачка само за пренос: прегледање није доступно на Rsync-у. Користи Native API, WebDAV, S3 или FTP за навигацију; пређи на Rsync за delta преносе са великом пропусношћу."
         },
         "box": {
             "addComment": "Додај коментар",
@@ -4513,7 +4513,7 @@
             "moveHere": "Премести {count} овде",
             "copyHereFromOtherPanelTooltip": "Копирај {count} изабраних из другог панела у овај панел (F5)",
             "moveHereFromOtherPanelTooltip": "Премести {count} изабраних из другог панела у овај панел (F6)",
-            "syncToOtherPanel": "[NEEDS TRANSLATION] Sync to other panel (delta)"
+            "syncToOtherPanel": "Синхронизуј са другим панелом (delta)"
         },
         "localSync": {
             "title": "AeroSync: локално у локално",
@@ -4539,14 +4539,14 @@
             "errorPathsRequired": "Извор и дестинација су обавезни"
         },
         "compare": {
-            "title": "[NEEDS TRANSLATION] Compare panels",
-            "notAvailable": "[NEEDS TRANSLATION] Open a second panel or a remote connection to compare."
+            "title": "Упореди панеле",
+            "notAvailable": "Отвори други панел или удаљену везу за поређење."
         },
         "syncPresets": {
-            "title": "[NEEDS TRANSLATION] Sync presets",
-            "nothingToDo": "[NEEDS TRANSLATION] Sync presets",
-            "allSkipped": "[NEEDS TRANSLATION] No actionable entries for this preset.",
-            "deletesDeferred": "[NEEDS TRANSLATION] Sync presets"
+            "title": "Подешавања синхронизације",
+            "nothingToDo": "Подешавања синхронизације",
+            "allSkipped": "Нема извршивих ставки за ово подешавање.",
+            "deletesDeferred": "Подешавања синхронизације"
         }
     }
 }
