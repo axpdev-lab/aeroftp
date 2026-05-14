@@ -17,6 +17,7 @@ import { SavedServers } from './SavedServers';
 import { ExportImportDialog } from './ExportImportDialog';
 import { useTranslation } from '../i18n';
 import { ProtocolSelector, ProtocolFields, getDefaultPort } from './ProtocolSelector';
+import { FileLuSubTabs } from './FileLuSubTabs';
 import { OAuthConnect } from './OAuthConnect';
 import { ProviderSelector } from './ProviderSelector';
 import { AlertDialog } from './Dialogs';
@@ -1641,7 +1642,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     };
 
     // In formOnly mode: wider for 2-column protocols, narrower for single-column providers
-    const twoColProtocols = ['ftp', 'ftps', 'sftp', 's3', 'webdav', 'azure', 'filen', 'internxt', 'koofr', 'opendrive', 'kdrive', 'immich', 'imagekit', 'uploadcare', 'cloudinary', 'filelu', 'drime', 'jottacloud', 'backblaze'];
+    const twoColProtocols = ['ftp', 'ftps', 'sftp', 's3', 'webdav', 'azure', 'filen', 'internxt', 'koofr', 'opendrive', 'kdrive', 'immich', 'imagekit', 'uploadcare', 'cloudinary', 'filelu', 'filelu-rsync', 'drime', 'jottacloud', 'backblaze'];
     const isTwoColumnProtocol = protocol && twoColProtocols.includes(protocol);
     const formOnlyMaxW = formOnly ? (isTwoColumnProtocol ? 'max-w-4xl' : 'max-w-lg') : 'max-w-5xl';
 
@@ -1764,6 +1765,16 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                             allowedProtocols={editingProfileId && SWITCHABLE_PROTOCOLS.includes(protocol as ProviderType) ? SWITCHABLE_PROTOCOLS : undefined}
                         />
                         )}
+
+                        {/* Z.4.5 R2: FileLu sub-tabs render when a filelu-* preset
+                            is active. Lets the operator swap between Native API,
+                            Rsync, WebDAV, S3 and FTP without leaving Connect. */}
+                        <FileLuSubTabs
+                            activeProviderId={selectedProviderId || connectionParams.providerId}
+                            onSwitchMode={(newProtocol, newProviderId) => {
+                                handleProtocolChange(newProtocol as ProviderType, newProviderId);
+                            }}
+                        />
 
                         {/* Show form only when protocol is selected AND selector is closed */}
                         {!protocol || (isProtocolSelectorOpen && !formOnly) ? (

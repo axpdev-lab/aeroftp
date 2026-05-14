@@ -107,6 +107,9 @@ pub async fn create_cloud_provider(
         "kdrive" => create_via_factory(config, ProviderType::KDrive).await,
         "jottacloud" => create_via_factory(config, ProviderType::Jottacloud).await,
         "filelu" => create_via_factory(config, ProviderType::FileLu).await,
+        "filelu-rsync" | "filelu_rsync" | "filelurs" => {
+            create_via_factory(config, ProviderType::FileLuRsync).await
+        }
         "opendrive" => create_via_factory(config, ProviderType::OpenDrive).await,
         "yandexdisk" => create_via_factory(config, ProviderType::YandexDisk).await,
         "imagekit" => create_via_factory(config, ProviderType::ImageKit).await,

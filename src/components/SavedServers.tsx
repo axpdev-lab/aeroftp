@@ -527,7 +527,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
 
             // Build connection params - for providers, don't append port to host
             // SFTP/MEGA use provider_connect which handles port separately
-            const isProviderProtocol = server.protocol && ['s3', 'webdav', 'sftp', 'mega', 'filelu', 'koofr', 'yandexdisk', 'github', 'gitlab', 'immich'].includes(server.protocol);
+            const isProviderProtocol = server.protocol && ['s3', 'webdav', 'sftp', 'mega', 'filelu', 'filelu-rsync', 'koofr', 'yandexdisk', 'github', 'gitlab', 'immich'].includes(server.protocol);
             const defaultPort = server.protocol === 'sftp' ? 22 : server.protocol === 'ftps' ? 990 : 21;
             const serverString = server.host;
 

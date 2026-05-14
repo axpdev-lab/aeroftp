@@ -108,6 +108,7 @@ const SUPPORTED_URL_SCHEMES: &[&str] = &[
     "internxt",
     "jottacloud",
     "filelu",
+    "filelu-rsync",
     "koofr",
     "opendrive",
     "yandexdisk",
@@ -4352,6 +4353,9 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
         "internxt" => (ProviderType::Internxt, "drive.internxt.com".to_string()),
         "jottacloud" => (ProviderType::Jottacloud, "jfs.jottacloud.com".to_string()),
         "filelu" => (ProviderType::FileLu, "filelu.com".to_string()),
+        "filelu-rsync" | "filelu_rsync" | "filelurs" => {
+            (ProviderType::FileLuRsync, "rsync.filelu.com".to_string())
+        }
         "koofr" => (ProviderType::Koofr, "app.koofr.net".to_string()),
         "opendrive" => (ProviderType::OpenDrive, "dev.opendrive.com".to_string()),
         "yandexdisk" => (ProviderType::YandexDisk, "cloud-api.yandex.net".to_string()),
@@ -8200,7 +8204,7 @@ fn cmd_agent_info(cli: &Cli) -> i32 {
         "protocols": [
             "ftp", "ftps", "sftp", "webdav", "webdavs", "s3", "aerocloud",
             "mega", "filen", "internxt", "kdrive", "koofr",
-            "jottacloud", "filelu", "opendrive", "yandexdisk", "azure",
+            "jottacloud", "filelu", "filelu-rsync", "opendrive", "yandexdisk", "azure",
             "github", "gitlab", "googledrive", "dropbox", "onedrive", "box",
             "pcloud", "zohoworkdrive", "fourshared", "drime", "swift"
         ],
@@ -8234,6 +8238,7 @@ fn cmd_agent_info(cli: &Cli) -> i32 {
             "opendrive": ftp_client_gui_lib::agent_session::capabilities_for_protocol("opendrive"),
             "drime": ftp_client_gui_lib::agent_session::capabilities_for_protocol("drime"),
             "filelu": ftp_client_gui_lib::agent_session::capabilities_for_protocol("filelu"),
+            "filelu-rsync": ftp_client_gui_lib::agent_session::capabilities_for_protocol("filelu-rsync"),
             "fourshared": ftp_client_gui_lib::agent_session::capabilities_for_protocol("fourshared"),
             "swift": ftp_client_gui_lib::agent_session::capabilities_for_protocol("swift"),
             "immich": ftp_client_gui_lib::agent_session::capabilities_for_protocol("immich"),
@@ -9013,6 +9018,7 @@ fn profile_to_provider_config(
         "internxt" => ProviderType::Internxt,
         "jottacloud" => ProviderType::Jottacloud,
         "filelu" => ProviderType::FileLu,
+        "filelu-rsync" | "filelu_rsync" | "filelurs" => ProviderType::FileLuRsync,
         "koofr" => ProviderType::Koofr,
         "opendrive" => ProviderType::OpenDrive,
         "kdrive" => ProviderType::KDrive,

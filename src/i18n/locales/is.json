@@ -3303,7 +3303,9 @@
             "activityLog": "Aðgerðaskrá",
             "detailedCards": "Ítarleg netþjónakort",
             "debugPanel": "Debug Panel",
-            "localSync": "Staðbundin samstilling..."
+            "localSync": "Staðbundin samstilling...",
+            "comparePanels": "[NEEDS TRANSLATION] Compare Panels...",
+            "syncPresets": "[NEEDS TRANSLATION] Sync Presets..."
         },
         "activityPanel": {
             "awaitingCommands": "Bíð eftir skipunum...",
@@ -3822,7 +3824,8 @@
             "restore": "Endurheimta",
             "trashFooter": "Endurheimtar skrár munu birtast aftur í upprunalegu möppunni sinni",
             "connectionNamePlaceholder": "Heiti tengingar (t.d. FileLu skýið mitt)",
-            "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days"
+            "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days",
+            "rsyncTransferOnly": "[NEEDS TRANSLATION] Transfer-only endpoint: browsing is not available on Rsync. Use Native API, WebDAV, S3 or FTP to navigate; switch to Rsync for high-bandwidth delta transfers."
         },
         "box": {
             "addComment": "Bæta við athugasemd",
@@ -4528,7 +4531,8 @@
             "copyHere": "Afrita {count} hingað",
             "moveHere": "Færa {count} hingað",
             "copyHereFromOtherPanelTooltip": "Afrita {count} valin atriði úr hinum glugganum yfir í þennan glugga (F5)",
-            "moveHereFromOtherPanelTooltip": "Færa {count} valin atriði úr hinum glugganum yfir í þennan glugga (F6)"
+            "moveHereFromOtherPanelTooltip": "Færa {count} valin atriði úr hinum glugganum yfir í þennan glugga (F6)",
+            "syncToOtherPanel": "[NEEDS TRANSLATION] Sync to other panel (delta)"
         },
         "localSync": {
             "title": "AeroSync: staðbundið í staðbundið",
@@ -4552,6 +4556,16 @@
             "savings": "Sparnaður",
             "errorDetails": "villa/villur, nánar",
             "errorPathsRequired": "Uppruni og áfangastaður eru nauðsynleg"
+        },
+        "compare": {
+            "title": "[NEEDS TRANSLATION] Compare panels",
+            "notAvailable": "[NEEDS TRANSLATION] Open a second panel or a remote connection to compare."
+        },
+        "syncPresets": {
+            "title": "[NEEDS TRANSLATION] Sync presets",
+            "nothingToDo": "[NEEDS TRANSLATION] Sync presets",
+            "allSkipped": "[NEEDS TRANSLATION] No actionable entries for this preset.",
+            "deletesDeferred": "[NEEDS TRANSLATION] Sync presets"
         }
     }
 }

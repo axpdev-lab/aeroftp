@@ -4246,6 +4246,7 @@
       }
     },
     "filelu": {
+      "rsyncTransferOnly": "Transfer-only endpoint: browsing is not available on Rsync. Use Native API, WebDAV, S3 or FTP to navigate; switch to Rsync for high-bandwidth delta transfers.",
       "setFilePassword": "Set File Password",
       "enterFilePassword": "Enter password (leave blank to remove):",
       "filePasswordSet": "File password set",

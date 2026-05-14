@@ -56,6 +56,10 @@ pub enum ProviderType {
     DrimeCloud,
     /// FileLu Cloud Storage (API key authentication)
     FileLu,
+    /// FileLu Rsync-as-a-service (rsync-over-SSH, port 2222, transfer-only).
+    /// Z.4.5: native aerorsync test bench against a production endpoint.
+    #[serde(rename = "filelu-rsync")]
+    FileLuRsync,
     /// Koofr Cloud Storage (European, 10 GB free)
     Koofr,
     /// OpenDrive Cloud Storage
@@ -108,6 +112,7 @@ impl fmt::Display for ProviderType {
             ProviderType::Jottacloud => write!(f, "Jottacloud"),
             ProviderType::DrimeCloud => write!(f, "Drime Cloud"),
             ProviderType::FileLu => write!(f, "FileLu"),
+            ProviderType::FileLuRsync => write!(f, "FileLu Rsync"),
             ProviderType::Koofr => write!(f, "Koofr"),
             ProviderType::OpenDrive => write!(f, "OpenDrive"),
             ProviderType::YandexDisk => write!(f, "Yandex Disk"),
@@ -149,6 +154,7 @@ impl ProviderType {
             ProviderType::Jottacloud => 443,
             ProviderType::DrimeCloud => 443,
             ProviderType::FileLu => 443,
+            ProviderType::FileLuRsync => 2222,
             ProviderType::Koofr => 443,
             ProviderType::OpenDrive => 443,
             ProviderType::YandexDisk => 443,
@@ -189,6 +195,7 @@ impl ProviderType {
             ProviderType::Jottacloud |
             ProviderType::DrimeCloud |
             ProviderType::FileLu |
+            ProviderType::FileLuRsync |
             ProviderType::Koofr |
             ProviderType::OpenDrive |
             ProviderType::YandexDisk |

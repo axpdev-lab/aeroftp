@@ -41,6 +41,7 @@ export type ProviderType =
   | "jottacloud"
   | "drime"
   | "filelu"
+  | "filelu-rsync"
   | "koofr"
   | "opendrive"
   | "yandexdisk"

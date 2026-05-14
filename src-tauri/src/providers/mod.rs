@@ -30,6 +30,7 @@ pub mod cloudinary;
 pub mod drime_cloud;
 pub mod dropbox;
 pub mod filelu;
+pub mod filelu_rsync;
 pub mod filen;
 pub mod fourshared;
 pub mod ftp;
@@ -76,6 +77,7 @@ pub use cloudinary::CloudinaryProvider;
 pub use drime_cloud::DrimeCloudProvider;
 pub use dropbox::DropboxProvider;
 pub use filelu::FileLuProvider;
+pub use filelu_rsync::{FileLuRsyncConfig, FileLuRsyncProvider};
 pub use filen::FilenProvider;
 pub use fourshared::FourSharedProvider;
 pub use ftp::FtpProvider;
@@ -826,6 +828,10 @@ impl ProviderFactory {
                 let filelu_config = FileLuConfig::from_provider_config(config)?;
                 Ok(Box::new(FileLuProvider::new(filelu_config)))
             }
+            ProviderType::FileLuRsync => {
+                let cfg = FileLuRsyncConfig::from_provider_config(config)?;
+                Ok(Box::new(FileLuRsyncProvider::new(cfg)))
+            }
             ProviderType::Koofr => {
                 let koofr_config = koofr::KoofrConfig::from_provider_config(config)?;
                 Ok(Box::new(KoofrProvider::new(koofr_config)))
@@ -899,6 +905,7 @@ impl ProviderFactory {
             ProviderType::KDrive,
             ProviderType::DrimeCloud,
             ProviderType::FileLu,
+            ProviderType::FileLuRsync,
             ProviderType::Koofr,
             ProviderType::OpenDrive,
             ProviderType::YandexDisk,
