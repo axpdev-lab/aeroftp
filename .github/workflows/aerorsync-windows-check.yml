@@ -1,0 +1,63 @@
+name: Aerorsync Windows Check
+
+# Cross-build sanity job for the `aerorsync` native rsync module on Windows.
+# Z.4.3 (PR-T11 G8) audit chiuso 2026-05-14: i 15 `cfg(unix)` residui in
+# `src-tauri/src/aerorsync/` sono safe per il build Windows (5 test gated,
+# 10 code path con fallback non-Unix). Questo workflow valida quell'audit
+# automaticamente PRIMA di accendere la postazione Windows reale.
+#
+# Triggering policy: workflow_dispatch ONLY. Niente auto-trigger su push o
+# pull_request: la CI principale e' gia' satura. L'operatore lo lancia
+# manualmente dall'UI Actions quando un cambio Rust tocca `aerorsync/`,
+# `rsync_over_ssh.rs`, `delta_sync_rsync.rs`, `delta_transport.rs`, o le
+# dipendenze SSH (russh, ssh2). Quando la postazione Windows reale
+# diventa stabilmente disponibile e i runtime smoke sono parte del flusso
+# normale, questo workflow puo' essere rimosso (`git rm`).
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch / tag / SHA to check (default: current ref)"
+        required: false
+        default: ""
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  windows-check:
+    name: cargo check --target x86_64-pc-windows-msvc
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+
+      - name: Install stable Rust + windows-msvc target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cargo registry cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: aerorsync-windows-${{ runner.os }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            aerorsync-windows-${{ runner.os }}-
+
+      - name: cargo check --lib --features aerorsync
+        working-directory: src-tauri
+        run: cargo check --lib --features aerorsync --target x86_64-pc-windows-msvc
+
+      - name: cargo check --bin aeroftp-cli --features aerorsync
+        working-directory: src-tauri
+        run: cargo check --bin aeroftp-cli --features aerorsync --target x86_64-pc-windows-msvc

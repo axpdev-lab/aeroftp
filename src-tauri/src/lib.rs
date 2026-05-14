@@ -173,7 +173,7 @@ mod speech {
 mod cloud_filter_badge;
 mod image_edit;
 mod server_health;
-mod settings;
+pub mod settings;
 mod speedtest;
 mod vault_history;
 

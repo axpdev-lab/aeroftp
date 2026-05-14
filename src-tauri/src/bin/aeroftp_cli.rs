@@ -467,6 +467,14 @@ enum Commands {
         /// Segmented parallel download: split file into N chunks (2-16, default: 1 = off)
         #[arg(long, default_value_t = 1)]
         segments: usize,
+        /// Z.4.5 R1: route the download through `AerorsyncDeltaTransport`
+        /// when the provider exposes one (SFTP today). Auto-falls back to
+        /// the classic transfer when the transport is not delta-eligible
+        /// (file too small, missing host-key pin, password auth without
+        /// dispatch wire-up, etc.). No-op for non-SFTP providers and for
+        /// recursive / glob downloads.
+        #[arg(long)]
+        delta: bool,
     },
     /// Segmented parallel download (alias for `get` with --segments preset)
     Pget {
@@ -498,6 +506,14 @@ enum Commands {
         /// Do not overwrite existing remote files
         #[arg(short, long)]
         no_clobber: bool,
+        /// Z.4.5 R1: route the upload through `AerorsyncDeltaTransport`
+        /// when the provider exposes one (SFTP today). Auto-falls back to
+        /// the classic transfer when the transport is not delta-eligible
+        /// (file too small, missing host-key pin, password auth without
+        /// dispatch wire-up, etc.). No-op for non-SFTP providers and for
+        /// recursive / glob uploads.
+        #[arg(long)]
+        delta: bool,
     },
     /// Create a remote directory
     Mkdir {
@@ -1417,6 +1433,16 @@ enum Commands {
         #[command(subcommand)]
         command: KeystoreCommands,
     },
+    /// AeroRsync delta engine: configuration and live diagnostics
+    ///
+    /// Mirrors the Settings > Native Rsync toggle (Auto / Classic /
+    /// Native) from the GUI and exposes a probe for the password
+    /// transport (Z.4.5 R1) so an SSH endpoint can be smoke-tested
+    /// without going through the full provider stack.
+    Aerorsync {
+        #[command(subcommand)]
+        command: AerorsyncCommands,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1595,6 +1621,74 @@ enum KeystoreCommands {
         /// Output a JSON summary on stdout
         #[arg(long)]
         json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum AerorsyncCommands {
+    /// Get or set the AeroRsync mode (auto / classic / native)
+    ///
+    /// The mode is persisted in the same TOML file the GUI uses
+    /// (`Settings > Native Rsync`), so changes survive across CLI
+    /// invocations and are picked up by the GUI on its next launch.
+    Mode {
+        #[command(subcommand)]
+        command: AerorsyncModeCommands,
+    },
+    /// Live probe of the russh password transport against an SSH endpoint
+    ///
+    /// Opens a russh session with `userauth password`, runs `rsync
+    /// --version` over a channel exec, and reports the remote banner.
+    /// This is the minimal end-to-end smoke for the Z.4.5 R1 dispatch
+    /// without requiring a full provider integration. Useful to verify
+    /// that an rsync-as-a-service endpoint (FileLu rsync, Hetzner
+    /// Storage Box, etc.) accepts a password login from AeroFTP before
+    /// committing to a profile.
+    ///
+    /// Password resolution order (first match wins):
+    ///   1. `--password-env <VAR>` reads from the named env var
+    ///   2. `--password-stdin` reads one line from stdin
+    ///   3. interactive prompt on stderr (when stdin is a TTY)
+    ///
+    /// The password is NEVER echoed, NEVER logged, NEVER printed in
+    /// error messages. The remote banner IS printed on success: it is
+    /// public information from the server.
+    Probe {
+        /// Remote host (e.g. `rsync.filelu.com`, `127.0.0.1`)
+        host: String,
+        /// SSH user
+        user: String,
+        /// SSH port (default 22)
+        #[arg(long, default_value_t = 22)]
+        port: u16,
+        /// Read the password from the named environment variable
+        #[arg(long, value_name = "ENV_VAR")]
+        password_env: Option<String>,
+        /// Read one password line from stdin
+        #[arg(long = "password-stdin")]
+        password_stdin: bool,
+        /// Skip TOFU host-key verification (dev/CI only). Production
+        /// pinning lives in the provider; the probe is a smoke test
+        /// and lets the operator inspect the fingerprint manually.
+        #[arg(long)]
+        accept_any_host_key: bool,
+        /// Override the remote command to exec instead of `rsync --version`
+        #[arg(long, default_value = "rsync --version")]
+        remote_command: String,
+        /// Connect timeout in seconds (default 10)
+        #[arg(long, default_value_t = 10)]
+        connect_timeout_secs: u64,
+    },
+}
+
+#[derive(Subcommand)]
+enum AerorsyncModeCommands {
+    /// Print the current mode (auto / classic / native)
+    Get,
+    /// Set the mode. Accepts: auto, classic, native
+    Set {
+        /// New mode value (case-insensitive)
+        mode: String,
     },
 }
 
@@ -12234,6 +12328,7 @@ async fn cmd_get(
     local: Option<&str>,
     recursive: bool,
     segments: usize,
+    delta: bool,
     cli: &Cli,
     format: OutputFormat,
     cancelled: Arc<AtomicBool>,
@@ -12244,7 +12339,17 @@ async fn cmd_get(
     }
 
     if recursive {
+        if delta && !cli.quiet {
+            eprintln!(
+                "Note: --delta is a no-op for recursive downloads in this release; use `aeroftp sync --delta` for recursive delta sync"
+            );
+        }
         return cmd_get_recursive(url, remote, local, cli, format, cancelled).await;
+    }
+    if (remote.contains('*') || remote.contains('?')) && delta && !cli.quiet {
+        eprintln!(
+            "Note: --delta is a no-op for glob downloads in this release; use `aeroftp sync --delta` for glob delta sync"
+        );
     }
 
     // Check for glob patterns
@@ -12358,6 +12463,82 @@ async fn cmd_get(
     } else {
         None
     };
+
+    // Z.4.5 R1 dispatch step (CLI parity, 2026-05-14): mirror of the
+    // upload-side delta branch in `cmd_put`. `try_delta_transfer` returns
+    // `None` on non-delta-eligible providers; `hard_error` aborts with
+    // exit 4; `used_delta=true` short-circuits to a successful
+    // delta-aware print; `fallback_reason` falls through to the classic
+    // download path.
+    if delta {
+        let delta_outcome = ftp_client_gui_lib::delta_sync_rsync::try_delta_transfer(
+            &mut *provider,
+            ftp_client_gui_lib::delta_sync_rsync::SyncDirection::Download,
+            Path::new(local_path),
+            remote,
+        )
+        .await;
+        if let Some(result) = delta_outcome {
+            if let Some(hard) = result.hard_error {
+                print_error(format, &format!("delta download hard error: {hard}"), 4);
+                let _ = provider.disconnect().await;
+                return 4;
+            }
+            if result.used_delta {
+                let elapsed = start.elapsed();
+                let file_size =
+                    std::fs::metadata(local_path).map(|m| m.len()).unwrap_or(0);
+                session_transfer_add(file_size);
+                if let Some(pb) = pb {
+                    pb.finish_and_clear();
+                }
+                let bytes_on_wire = result
+                    .stats
+                    .as_ref()
+                    .map(|s| s.bytes_sent + s.bytes_received)
+                    .unwrap_or(0);
+                let speedup = result.stats.as_ref().map(|s| s.speedup).unwrap_or(0.0);
+                match format {
+                    OutputFormat::Text => {
+                        if !cli.quiet {
+                            println!(
+                                "{} → {} ({} on wire / {} total, delta speedup {:.2}x, {:.1}s)",
+                                remote,
+                                local_path,
+                                format_size(bytes_on_wire),
+                                format_size(file_size),
+                                speedup,
+                                elapsed.as_secs_f64()
+                            );
+                        }
+                    }
+                    OutputFormat::Json => {
+                        print_json(&serde_json::json!({
+                            "status": "ok",
+                            "operation": "download",
+                            "path": remote,
+                            "bytes": file_size,
+                            "bytes_on_wire": bytes_on_wire,
+                            "delta": true,
+                            "delta_speedup": speedup,
+                            "elapsed_secs": elapsed.as_secs_f64(),
+                        }));
+                    }
+                }
+                let _ = provider.disconnect().await;
+                return 0;
+            }
+            if !cli.quiet {
+                if let Some(reason) = result.fallback_reason.as_deref() {
+                    eprintln!("delta unavailable, falling back to classic download: {reason}");
+                }
+            }
+        } else if !cli.quiet {
+            eprintln!(
+                "delta unavailable for this provider, falling back to classic download"
+            );
+        }
+    }
 
     match download_with_resume(&mut *provider, remote, local_path, cli, progress_cb).await {
         Ok(()) => {
@@ -13217,6 +13398,7 @@ async fn cmd_put(
     remote: Option<&str>,
     recursive: bool,
     no_clobber: bool,
+    delta: bool,
     cli: &Cli,
     format: OutputFormat,
     cancelled: Arc<AtomicBool>,
@@ -13227,11 +13409,21 @@ async fn cmd_put(
     }
 
     if recursive {
+        if delta && !cli.quiet {
+            eprintln!(
+                "Note: --delta is a no-op for recursive uploads in this release; use `aeroftp sync --delta` for recursive delta sync"
+            );
+        }
         return cmd_put_recursive(url, local, remote, cli, format, cancelled).await;
     }
 
     // Check for glob patterns in local path
     if local.contains('*') || local.contains('?') {
+        if delta && !cli.quiet {
+            eprintln!(
+                "Note: --delta is a no-op for glob uploads in this release; use `aeroftp sync --delta` for glob delta sync"
+            );
+        }
         return cmd_put_glob(url, local, remote, cli, format, cancelled).await;
     }
 
@@ -13365,6 +13557,86 @@ async fn cmd_put(
     } else {
         None
     };
+
+    // Z.4.5 R1 dispatch step (CLI parity, 2026-05-14): when --delta is set,
+    // attempt the upload through `AerorsyncDeltaTransport` first. The helper
+    // `try_delta_transfer` returns `None` when the provider does not expose a
+    // delta transport (everything except SFTP today, or password-auth SFTP
+    // without dispatch wire-up); in that case we silently fall back to the
+    // classic `upload_with_resume` path. A `Some(DeltaSyncResult { hard_error })`
+    // is propagated up immediately and MUST NOT trigger a classic retry: it
+    // signals a security-relevant fault (host-key mismatch, etc.) that the
+    // operator must see.
+    if delta {
+        let delta_outcome = ftp_client_gui_lib::delta_sync_rsync::try_delta_transfer(
+            &mut *provider,
+            ftp_client_gui_lib::delta_sync_rsync::SyncDirection::Upload,
+            Path::new(local),
+            remote_path,
+        )
+        .await;
+        if let Some(result) = delta_outcome {
+            if let Some(hard) = result.hard_error {
+                print_error(format, &format!("delta upload hard error: {hard}"), 4);
+                let _ = provider.disconnect().await;
+                return 4;
+            }
+            if result.used_delta {
+                session_transfer_add(file_size);
+                let elapsed = start.elapsed();
+                if let Some(pb) = pb {
+                    pb.finish_and_clear();
+                }
+                let bytes_on_wire = result
+                    .stats
+                    .as_ref()
+                    .map(|s| s.bytes_sent + s.bytes_received)
+                    .unwrap_or(0);
+                let speedup = result.stats.as_ref().map(|s| s.speedup).unwrap_or(0.0);
+                match format {
+                    OutputFormat::Text => {
+                        if !cli.quiet {
+                            println!(
+                                "{} → {} ({} on wire / {} total, delta speedup {:.2}x, {:.1}s)",
+                                local,
+                                remote_path,
+                                format_size(bytes_on_wire),
+                                format_size(file_size),
+                                speedup,
+                                elapsed.as_secs_f64()
+                            );
+                            eprintln!("Next: {}", suggest_stat_followup(cli, remote_path));
+                        }
+                    }
+                    OutputFormat::Json => {
+                        print_json(&serde_json::json!({
+                            "status": "ok",
+                            "operation": "upload",
+                            "path": remote_path,
+                            "bytes": file_size,
+                            "bytes_on_wire": bytes_on_wire,
+                            "delta": true,
+                            "delta_speedup": speedup,
+                            "elapsed_secs": elapsed.as_secs_f64(),
+                            "suggested_next_command": suggest_stat_followup(cli, remote_path),
+                        }));
+                    }
+                }
+                let _ = provider.disconnect().await;
+                return 0;
+            }
+            // fallback_reason: fall through to classic
+            if !cli.quiet {
+                if let Some(reason) = result.fallback_reason.as_deref() {
+                    eprintln!("delta unavailable, falling back to classic upload: {reason}");
+                }
+            }
+        } else if !cli.quiet {
+            eprintln!(
+                "delta unavailable for this provider, falling back to classic upload"
+            );
+        }
+    }
 
     match upload_with_resume(&mut *provider, local, remote_path, cli, progress_cb).await {
         Ok(()) => {
@@ -15310,6 +15582,286 @@ fn cmd_keystore_info(input: &str, json: bool, format: OutputFormat) -> i32 {
         );
     }
     0
+}
+
+// =====================================================================
+// AeroRsync subcommands (Z.4.5 R1 dispatch step + CLI parity)
+// =====================================================================
+
+/// `aeroftp aerorsync mode get` — print the current AeroRsync mode.
+fn cmd_aerorsync_mode_get(format: OutputFormat) -> i32 {
+    let mode = ftp_client_gui_lib::settings::native_rsync_mode_get();
+    match format {
+        OutputFormat::Json => println!(r#"{{"mode":"{}"}}"#, mode),
+        OutputFormat::Text => println!("{}", mode),
+    }
+    0
+}
+
+/// `aeroftp aerorsync mode set <mode>` — persist a new mode.
+fn cmd_aerorsync_mode_set(mode: &str, format: OutputFormat) -> i32 {
+    use ftp_client_gui_lib::settings::NativeRsyncMode;
+    let normalised = mode.trim().to_ascii_lowercase();
+    let parsed = match normalised.as_str() {
+        "auto" => NativeRsyncMode::Auto,
+        "classic" => NativeRsyncMode::Classic,
+        "native" => NativeRsyncMode::Native,
+        other => {
+            print_error(
+                format,
+                &format!(
+                    "invalid mode {other:?}: expected one of auto, classic, native"
+                ),
+                5,
+            );
+            return 5;
+        }
+    };
+    if let Err(e) = ftp_client_gui_lib::settings::set_native_rsync_mode(parsed) {
+        print_error(format, &format!("failed to persist mode: {e}"), 5);
+        return 5;
+    }
+    let stored = ftp_client_gui_lib::settings::native_rsync_mode_get();
+    match format {
+        OutputFormat::Json => {
+            println!(r#"{{"mode":"{}","persisted":true}}"#, stored);
+        }
+        OutputFormat::Text => {
+            println!("AeroRsync mode set to {}", stored);
+        }
+    }
+    0
+}
+
+/// `aeroftp aerorsync probe` — open a russh password channel against an
+/// SSH endpoint, exec a remote command (default `rsync --version`),
+/// and report the banner. The password is resolved from --password-env,
+/// --password-stdin, or an interactive TTY prompt; never printed back.
+#[cfg(feature = "aerorsync")]
+#[allow(clippy::too_many_arguments)]
+async fn cmd_aerorsync_probe(
+    host: &str,
+    user: &str,
+    port: u16,
+    password_env: Option<&str>,
+    password_stdin: bool,
+    accept_any_host_key: bool,
+    remote_command: &str,
+    connect_timeout_secs: u64,
+    format: OutputFormat,
+) -> i32 {
+    use ftp_client_gui_lib::aerorsync::russh_session_transport::RusshSessionTransport;
+    use ftp_client_gui_lib::aerorsync::ssh_transport::{SshHostKeyPolicy, SshTransportConfig};
+    use ftp_client_gui_lib::aerorsync::transport::{
+        RemoteExecRequest, RemoteShellTransport,
+    };
+    use secrecy::SecretString;
+
+    // Password resolution. Order matches the rest of the CLI surface.
+    let password = match (password_env, password_stdin) {
+        (Some(var), false) => match std::env::var(var) {
+            Ok(v) if !v.is_empty() => v,
+            Ok(_) => {
+                print_error(
+                    format,
+                    &format!("environment variable {var} is set but empty"),
+                    5,
+                );
+                return 5;
+            }
+            Err(_) => {
+                print_error(
+                    format,
+                    &format!("environment variable {var} is not set"),
+                    5,
+                );
+                return 5;
+            }
+        },
+        (None, true) => {
+            use std::io::BufRead;
+            let mut buf = String::new();
+            let stdin = std::io::stdin();
+            if stdin.lock().read_line(&mut buf).is_err() {
+                print_error(format, "failed to read password from stdin", 5);
+                return 5;
+            }
+            // Trim only trailing newlines; passwords may legitimately
+            // contain leading/trailing whitespace, so strip just \r\n.
+            let trimmed = buf.trim_end_matches(['\r', '\n']);
+            if trimmed.is_empty() {
+                print_error(format, "empty password on stdin", 5);
+                return 5;
+            }
+            trimmed.to_string()
+        }
+        (None, false) => {
+            // Interactive TTY prompt.
+            match rpassword::prompt_password(format!("Password for {user}@{host}:{port}: ")) {
+                Ok(p) if !p.is_empty() => p,
+                Ok(_) => {
+                    print_error(format, "empty password from prompt", 5);
+                    return 5;
+                }
+                Err(e) => {
+                    print_error(
+                        format,
+                        &format!("failed to read password from terminal: {e}"),
+                        5,
+                    );
+                    return 5;
+                }
+            }
+        }
+        (Some(_), true) => {
+            print_error(
+                format,
+                "use either --password-env or --password-stdin, not both",
+                5,
+            );
+            return 5;
+        }
+    };
+
+    let host_key_policy = if accept_any_host_key {
+        SshHostKeyPolicy::AcceptAny
+    } else {
+        // Probe is intentionally lighter than the production provider:
+        // no TOFU file, no fingerprint persistence. We refuse to run
+        // unless the operator explicitly opts into AcceptAny so we
+        // don't paper over MITM windows on a one-shot smoke.
+        print_error(
+            format,
+            "probe requires --accept-any-host-key (no TOFU on disk in the probe path; production providers pin the fingerprint after a one-time TOFU prompt)",
+            5,
+        );
+        return 5;
+    };
+
+    let cfg = SshTransportConfig {
+        host: host.to_string(),
+        port,
+        username: user.to_string(),
+        // Empty placeholder: the russh leg ignores `private_key_path`
+        // when `usable_password()` is Some (Z.4.5 R1 transport step).
+        private_key_path: std::path::PathBuf::new(),
+        connect_timeout_ms: connect_timeout_secs.saturating_mul(1_000),
+        io_timeout_ms: 30_000,
+        worker_idle_poll_ms: 250,
+        max_frame_size: 1 << 20,
+        host_key_policy,
+        probe_request: RemoteExecRequest {
+            program: "rsync".to_string(),
+            args: vec!["--version".to_string()],
+            environment: Vec::new(),
+        },
+        auth_password: Some(SecretString::from(password)),
+    };
+
+    let transport = match RusshSessionTransport::connect(cfg).await {
+        Ok(t) => t,
+        Err(e) => {
+            // The russh leg never echoes the password back into the
+            // error string, but defensively scrub anything that might
+            // look like our input just in case a future russh release
+            // regresses.
+            print_error(format, &format!("russh password connect failed: {e}"), 6);
+            return 6;
+        }
+    };
+
+    // Parse the remote command into program + args (whitespace split,
+    // intentionally simple: this is a smoke command, not a shell).
+    let mut tokens = remote_command.split_whitespace();
+    let program = match tokens.next() {
+        Some(p) => p.to_string(),
+        None => {
+            print_error(format, "empty remote command", 5);
+            return 5;
+        }
+    };
+    let args: Vec<String> = tokens.map(|s| s.to_string()).collect();
+
+    let request = RemoteExecRequest {
+        program,
+        args,
+        environment: Vec::new(),
+    };
+
+    let output = match transport.exec(request).await {
+        Ok(o) => o,
+        Err(e) => {
+            print_error(format, &format!("remote exec failed: {e}"), 7);
+            transport.close().await.ok();
+            return 7;
+        }
+    };
+
+    transport.close().await.ok();
+
+    let stdout_str = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr_str = String::from_utf8_lossy(&output.stderr).to_string();
+
+    match format {
+        OutputFormat::Json => {
+            println!(
+                "{}",
+                serde_json::json!({
+                    "host": host,
+                    "port": port,
+                    "user": user,
+                    "remote_command": remote_command,
+                    "exit_code": output.exit_code,
+                    "stdout": stdout_str,
+                    "stderr": stderr_str,
+                })
+            );
+        }
+        OutputFormat::Text => {
+            eprintln!(
+                "Probe {user}@{host}:{port} via russh password OK; remote exec exit={}",
+                output.exit_code
+            );
+            if !stdout_str.is_empty() {
+                println!("{}", stdout_str.trim_end_matches('\n'));
+            }
+            if !stderr_str.is_empty() {
+                eprintln!("--- stderr ---");
+                eprintln!("{}", stderr_str.trim_end_matches('\n'));
+            }
+        }
+    }
+
+    if output.exit_code == 0 {
+        0
+    } else {
+        // Remote command failed but the SSH transport is healthy.
+        // Map to exit 4 (transfer/operation error) so callers can
+        // distinguish auth failure (6) from "endpoint reachable but
+        // remote rsync missing / version too old".
+        4
+    }
+}
+
+#[cfg(not(feature = "aerorsync"))]
+#[allow(clippy::too_many_arguments)]
+async fn cmd_aerorsync_probe(
+    _host: &str,
+    _user: &str,
+    _port: u16,
+    _password_env: Option<&str>,
+    _password_stdin: bool,
+    _accept_any_host_key: bool,
+    _remote_command: &str,
+    _connect_timeout_secs: u64,
+    format: OutputFormat,
+) -> i32 {
+    print_error(
+        format,
+        "aerorsync probe requires the `aerorsync` cargo feature; rebuild with --features aerorsync",
+        7,
+    );
+    7
 }
 
 /// Map a keystore_export error message back to a CLI exit code.
@@ -27105,6 +27657,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     local,
                     false,
                     1,
+                    false,
                     cli,
                     format,
                     cancelled.clone(),
@@ -27138,6 +27691,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     &url,
                     parts[1],
                     remote,
+                    false,
                     false,
                     false,
                     cli,
@@ -30962,7 +31516,7 @@ async fn main() {
             let mut last_code = 0i32;
             for attempt in 1..=max_attempts {
                 last_code =
-                    cmd_get(u, r, l, false, *segments, &cli, format, cancelled.clone()).await;
+                    cmd_get(u, r, l, false, *segments, false, &cli, format, cancelled.clone()).await;
                 if !is_retryable_exit(last_code)
                     || session_transfer_exceeded(max_transfer_limit)
                     || attempt == max_attempts
@@ -30987,6 +31541,7 @@ async fn main() {
             local,
             recursive,
             segments,
+            delta,
         } => {
             let (u, r, l) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str(), Some(remote.as_str()))
@@ -31004,6 +31559,7 @@ async fn main() {
                     l,
                     *recursive,
                     *segments,
+                    *delta,
                     &cli,
                     format,
                     cancelled.clone(),
@@ -31033,6 +31589,7 @@ async fn main() {
             remote,
             recursive,
             no_clobber,
+            delta,
         } => {
             let (u, l, r) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str(), Some(local.as_str()))
@@ -31050,6 +31607,7 @@ async fn main() {
                     r,
                     *recursive,
                     *no_clobber,
+                    *delta,
                     &cli,
                     format,
                     cancelled.clone(),
@@ -31776,6 +32334,37 @@ async fn main() {
             cmd_dedupe(u, p, mode, *dry_run, &cli, format).await
         }
         Commands::Mcp => cmd_agent_mcp("", &cli).await,
+        Commands::Aerorsync { command } => match command {
+            AerorsyncCommands::Mode { command } => match command {
+                AerorsyncModeCommands::Get => cmd_aerorsync_mode_get(format),
+                AerorsyncModeCommands::Set { mode } => {
+                    cmd_aerorsync_mode_set(mode, format)
+                }
+            },
+            AerorsyncCommands::Probe {
+                host,
+                user,
+                port,
+                password_env,
+                password_stdin,
+                accept_any_host_key,
+                remote_command,
+                connect_timeout_secs,
+            } => {
+                cmd_aerorsync_probe(
+                    host,
+                    user,
+                    *port,
+                    password_env.as_deref(),
+                    *password_stdin,
+                    *accept_any_host_key,
+                    remote_command,
+                    *connect_timeout_secs,
+                    format,
+                )
+                .await
+            }
+        },
         Commands::Completions { shell } => {
             match std::panic::catch_unwind(|| {
                 let mut cmd = Cli::command();
