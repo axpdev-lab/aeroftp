@@ -195,6 +195,14 @@ struct AeroVaultOverlaySessionRuntime {
     current_dir: String,
     idle_timeout_secs: u64,
     last_activity: Instant,
+    /// Non-zero while a batch transfer is acquiring this session.
+    /// The sweeper skips sessions with `busy_holds > 0` even past the
+    /// idle timeout so the unified planner (Z.3.6) can drive
+    /// long-running overlay↔fs / overlay↔remote transfers without the
+    /// background sweep evicting them mid-batch. Counted (rather than a
+    /// bool) so nested holds or concurrent transfers on the same vault
+    /// stay correct. See [APPENDIX-Z Z.3.6](../../docs/dev/roadmap/APPENDIX-Z_AeroRsync-and-AeroFile-Convergence.md).
+    busy_holds: u32,
 }
 
 struct AeroVaultOverlayState {
@@ -330,7 +338,18 @@ fn drain_expired_overlay_sessions(
     }
     let to_evict: Vec<String> = sessions
         .iter()
-        .filter(|(_, s)| now.duration_since(s.last_activity).as_secs() > s.idle_timeout_secs)
+        .filter(|(_, s)| {
+            // Busy sessions skip the sweep even past the idle timeout:
+            // a planner-driven batch transfer (Z.3.6) holds the lock for
+            // the duration of the operation. Stale holds (e.g. process
+            // crash mid-transfer) would resurface as soon as the next
+            // sweep arrives because the in-memory state is rebuilt on
+            // every restart.
+            if s.busy_holds > 0 {
+                return false;
+            }
+            now.duration_since(s.last_activity).as_secs() > s.idle_timeout_secs
+        })
         .map(|(id, _)| id.clone())
         .collect();
     to_evict
@@ -349,6 +368,47 @@ async fn aerovault_overlay_set_idle_timeout(seconds: u64) -> Result<u64, String>
     let clamped = seconds.clamp(OVERLAY_IDLE_TIMEOUT_MIN_SECS, OVERLAY_IDLE_TIMEOUT_MAX_SECS);
     persist_overlay_idle_timeout(clamped)?;
     Ok(clamped)
+}
+
+/// Acquire a busy hold on an overlay session: the sweeper will skip it
+/// even past the idle timeout until the matching `aerovault_overlay_busy_release`
+/// is called. Used by the unified transfer planner (Z.3.6) so an
+/// overlay↔fs or overlay↔remote batch can run for longer than the idle
+/// window without losing its session handle mid-flight. The counter is
+/// nested-safe: paired acquire/release calls bracket each transfer, so
+/// concurrent transfers on the same vault stay consistent.
+#[tauri::command]
+async fn aerovault_overlay_busy_acquire(
+    overlay_state: State<'_, AeroVaultOverlayState>,
+    session_id: String,
+) -> Result<u32, String> {
+    let mut sessions = overlay_state.sessions.lock().await;
+    let runtime = sessions
+        .get_mut(&session_id)
+        .ok_or_else(|| format!("overlay session '{}' not found", session_id))?;
+    runtime.busy_holds = runtime.busy_holds.saturating_add(1);
+    // Refresh activity so the sweeper sees a fresh timer when the lock
+    // is finally released, instead of immediately evicting on the next
+    // sweep after a long transfer.
+    runtime.last_activity = Instant::now();
+    Ok(runtime.busy_holds)
+}
+
+/// Release a previously-acquired busy hold. Saturating subtraction so
+/// a stray double-release doesn't underflow the counter; the matching
+/// `acquire` is responsible for getting the bookkeeping right.
+#[tauri::command]
+async fn aerovault_overlay_busy_release(
+    overlay_state: State<'_, AeroVaultOverlayState>,
+    session_id: String,
+) -> Result<u32, String> {
+    let mut sessions = overlay_state.sessions.lock().await;
+    let runtime = sessions
+        .get_mut(&session_id)
+        .ok_or_else(|| format!("overlay session '{}' not found", session_id))?;
+    runtime.busy_holds = runtime.busy_holds.saturating_sub(1);
+    runtime.last_activity = Instant::now();
+    Ok(runtime.busy_holds)
 }
 
 #[tauri::command]
@@ -415,6 +475,7 @@ async fn aerovault_overlay_unlock(
             current_dir: String::new(),
             idle_timeout_secs,
             last_activity: now,
+            busy_holds: 0,
         },
     );
 
@@ -14656,6 +14717,8 @@ pub fn run() {
             aerovault_overlay_copy_entry,
             aerovault_overlay_get_idle_timeout,
             aerovault_overlay_set_idle_timeout,
+            aerovault_overlay_busy_acquire,
+            aerovault_overlay_busy_release,
             // Cross-profile transfer commands
             cross_profile_commands::cross_profile_plan,
             cross_profile_commands::cross_profile_execute,
@@ -15170,6 +15233,7 @@ mod overlay_helpers_tests {
             current_dir: String::new(),
             idle_timeout_secs,
             last_activity,
+            busy_holds: 0,
         }
     }
 
@@ -15437,5 +15501,45 @@ mod overlay_helpers_tests {
         let evicted = drain_expired_overlay_sessions(&mut sessions, now);
         assert!(evicted.is_empty());
         assert!(sessions.contains_key("edge"));
+    }
+
+    #[test]
+    fn drain_skips_busy_session_even_when_expired() {
+        // Z.3.6 busy-lock: a session with `busy_holds > 0` must not be
+        // evicted even past the idle timeout so the planner can drive a
+        // long-running batch transfer without losing its overlay
+        // handle mid-flight.
+        let now = Instant::now();
+        let mut sessions: HashMap<String, AeroVaultOverlaySessionRuntime> = HashMap::new();
+        let mut busy = make_session(30, now - Duration::from_secs(300), "local");
+        busy.busy_holds = 1;
+        sessions.insert("busy".to_string(), busy);
+        sessions.insert(
+            "free".to_string(),
+            make_session(30, now - Duration::from_secs(300), "local"),
+        );
+        let evicted = drain_expired_overlay_sessions(&mut sessions, now);
+        assert_eq!(evicted.len(), 1, "free session evicts, busy stays");
+        assert_eq!(evicted[0].0, "free");
+        assert!(sessions.contains_key("busy"));
+        assert!(!sessions.contains_key("free"));
+    }
+
+    #[test]
+    fn drain_evicts_busy_session_after_release() {
+        // Releasing the busy hold (counter back to 0) lets the next
+        // sweep evict the session normally.
+        let now = Instant::now();
+        let mut sessions: HashMap<String, AeroVaultOverlaySessionRuntime> = HashMap::new();
+        let mut session = make_session(30, now - Duration::from_secs(120), "local");
+        session.busy_holds = 1;
+        sessions.insert("s".to_string(), session);
+        assert!(drain_expired_overlay_sessions(&mut sessions, now).is_empty());
+        if let Some(s) = sessions.get_mut("s") {
+            s.busy_holds = 0;
+        }
+        let evicted = drain_expired_overlay_sessions(&mut sessions, now);
+        assert_eq!(evicted.len(), 1);
+        assert!(sessions.is_empty());
     }
 }

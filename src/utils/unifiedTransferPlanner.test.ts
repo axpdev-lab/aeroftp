@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet -- AI-assisted (see AI-TRANSPARENCY.md)
 
 import { describe, expect, it } from 'vitest';
-import { createLocalEndpoint, createRemoteEndpoint } from './panelEndpoints';
+import { createLocalEndpoint, createOverlayEndpoint, createRemoteEndpoint } from './panelEndpoints';
 import { createUnifiedTransferPlan, selectUnifiedTransferEngine } from './unifiedTransferPlanner';
 import type { PanelEndpoint } from '../types/aerofile';
 import type { ServerProfile } from '../types';
@@ -53,5 +53,37 @@ describe('unified transfer planner', () => {
         expect(plan.canExecute).toBe(false);
         expect(plan.engine).toBe('unsupported');
         expect(plan.warnings).toContain('unsupported-endpoint-pair');
+    });
+
+    it('routes every overlay pair kind to the aerovault-overlay engine (Z.3.6)', () => {
+        const local = createLocalEndpoint('local', '/src');
+        const sftp = remote('prod', 'sftp');
+        const overlay = createOverlayEndpoint({
+            sessionId: 'avol_test',
+            vaultPath: '/tmp/x.aerovault',
+            source: 'local',
+            path: '/docs',
+        });
+
+        expect(selectUnifiedTransferEngine('overlay-local', 'copy', overlay, local)).toBe('aerovault-overlay');
+        expect(selectUnifiedTransferEngine('local-overlay', 'copy', local, overlay)).toBe('aerovault-overlay');
+        expect(selectUnifiedTransferEngine('overlay-overlay', 'copy', overlay, overlay)).toBe('aerovault-overlay');
+        expect(selectUnifiedTransferEngine('overlay-remote', 'copy', overlay, sftp)).toBe('aerovault-overlay');
+        expect(selectUnifiedTransferEngine('remote-overlay', 'copy', sftp, overlay)).toBe('aerovault-overlay');
+    });
+
+    it('emits the busy-lock-ready warning for overlay plans (Z.3.6)', () => {
+        const local = createLocalEndpoint('local', '/src');
+        const overlay = createOverlayEndpoint({
+            sessionId: 'avol_busy',
+            vaultPath: '/tmp/lock.aerovault',
+            source: 'local',
+        });
+        const plan = createUnifiedTransferPlan({ mode: 'copy', source: overlay, destination: local });
+
+        expect(plan.engine).toBe('aerovault-overlay');
+        expect(plan.warnings).toContain('aerovault-overlay-busy-lock-ready');
+        // The "required" placeholder used before Z.3.6 should be gone.
+        expect(plan.warnings).not.toContain('aerovault-overlay-busy-lock-required');
     });
 });

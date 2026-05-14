@@ -118,7 +118,13 @@ export const createUnifiedTransferPlan = (options: UnifiedTransferPlanOptions): 
         warnings.push('mirror-may-delete-destination-files');
     }
     if (engine === 'aerovault-overlay') {
-        warnings.push('aerovault-overlay-busy-lock-required');
+        // The lock is now exposed: callers must wrap execution in
+        // `withOverlayBusyLock` (see `src/utils/aerovaultOverlayBusy.ts`)
+        // so the backend sweeper skips the session for the duration of
+        // the batch. The warning stays so the planner UI surfaces it,
+        // but the wording switches from "required" (TODO) to "ready"
+        // now that Z.3.6 has shipped the acquire/release helpers.
+        warnings.push('aerovault-overlay-busy-lock-ready');
     }
 
     return {
