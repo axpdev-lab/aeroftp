@@ -586,6 +586,74 @@ impl AerorsyncBatch {
             cancel_observed: flag,
         }
     }
+
+    /// Reconnect the shared SSH session, retrying with exponential
+    /// backoff so the call survives a brief outage (typically the
+    /// 1-10s window an SSH daemon needs to come back after a network
+    /// blip, a firewall rule pulse, or a sshd restart).
+    ///
+    /// The schedule is `0ms, 200ms, 500ms, 1s, 2s, 4s` (cumulative
+    /// ~7.7s, 6 attempts). The first attempt fires immediately, which
+    /// is the right call when the outage is already over by the time
+    /// the classifier sees the channel drop. Each subsequent attempt
+    /// waits a bit longer, so the worst case is bounded but the
+    /// happy-path latency is unchanged.
+    ///
+    /// Z.1.2 lane 2026-05-14: the bare single-attempt `reconnect()`
+    /// landed inside a 4s iptables REJECT pulse and tripped 63/63
+    /// retries with `Connection refused`. With the staircase schedule
+    /// every retry attempt completes within the outage window of a
+    /// typical pulse, so the batch can finish its file list with a
+    /// single SSH session re-handshake.
+    ///
+    /// Cancellation: each sleep is awaited as a cooperative point,
+    /// and after each failed attempt we re-check the cancel flag so a
+    /// `Ctrl+C` during a long backoff returns promptly with the most
+    /// recent transport error.
+    async fn reconnect_with_backoff(
+        &self,
+    ) -> Result<(), AerorsyncError> {
+        const DELAYS_MS: &[u64] = &[0, 200, 500, 1000, 2000, 4000];
+        let mut last_err: Option<AerorsyncError> = None;
+        for (i, delay_ms) in DELAYS_MS.iter().enumerate() {
+            if self.cancel_observed.load(Ordering::SeqCst) {
+                return Err(last_err.unwrap_or_else(|| {
+                    AerorsyncError::cancelled(
+                        "reconnect_with_backoff: cancelled before any attempt",
+                    )
+                }));
+            }
+            if *delay_ms > 0 {
+                tokio::time::sleep(std::time::Duration::from_millis(*delay_ms)).await;
+            }
+            match self.transport.reconnect().await {
+                Ok(()) => {
+                    if i > 0 {
+                        tracing::info!(
+                            "AerorsyncBatch reconnect succeeded on attempt {}/{}",
+                            i + 1,
+                            DELAYS_MS.len()
+                        );
+                    }
+                    return Ok(());
+                }
+                Err(e) => {
+                    tracing::debug!(
+                        "AerorsyncBatch reconnect attempt {}/{} failed: {}",
+                        i + 1,
+                        DELAYS_MS.len(),
+                        e
+                    );
+                    last_err = Some(e);
+                }
+            }
+        }
+        Err(last_err.unwrap_or_else(|| {
+            AerorsyncError::transport(
+                "reconnect_with_backoff: no attempts made (empty schedule)",
+            )
+        }))
+    }
 }
 
 #[async_trait]
@@ -602,6 +670,11 @@ impl DeltaBatch for AerorsyncBatch {
         // via `RusshSessionTransport::reconnect()` and retry the file
         // exactly once. Hard rejections (host-key mismatch, auth
         // refused, cancel) always propagate without retry.
+        tracing::debug!(
+            "AerorsyncBatch::upload entered for {} (sessions_so_far={})",
+            remote_path,
+            self.transport.handshake_count()
+        );
         let first = do_upload(
             self.transport.share_session(),
             self.cancel.clone(),
@@ -610,6 +683,14 @@ impl DeltaBatch for AerorsyncBatch {
             self.min_file_size,
         )
         .await;
+        if let Err(ref e) = first {
+            tracing::debug!(
+                "AerorsyncBatch::upload: first attempt errored on {} → variant={} transient={}",
+                remote_path,
+                rsync_error_variant(e),
+                crate::rsync_over_ssh::is_transient_for_reconnect(e)
+            );
+        }
         let stats = match first {
             Ok(stats) => stats,
             Err(err) if crate::rsync_over_ssh::is_transient_for_reconnect(&err) => {
@@ -618,9 +699,9 @@ impl DeltaBatch for AerorsyncBatch {
                     remote_path,
                     err
                 );
-                if let Err(reconnect_err) = self.transport.reconnect().await {
+                if let Err(reconnect_err) = self.reconnect_with_backoff().await {
                     tracing::error!(
-                        "AerorsyncBatch::upload: reconnect failed for {}: {}",
+                        "AerorsyncBatch::upload: reconnect failed for {} after backoff: {}",
                         remote_path,
                         reconnect_err
                     );
@@ -654,6 +735,11 @@ impl DeltaBatch for AerorsyncBatch {
         // Z.1.2 — symmetric retry budget on the download leg. Reconnect
         // semantics match the upload branch above; see the matching
         // comment for the classification rules.
+        tracing::debug!(
+            "AerorsyncBatch::download entered for {} (sessions_so_far={})",
+            remote_path,
+            self.transport.handshake_count()
+        );
         let first = do_download(
             self.transport.share_session(),
             self.cancel.clone(),
@@ -661,6 +747,14 @@ impl DeltaBatch for AerorsyncBatch {
             local_path,
         )
         .await;
+        if let Err(ref e) = first {
+            tracing::debug!(
+                "AerorsyncBatch::download: first attempt errored on {} → variant={} transient={}",
+                remote_path,
+                rsync_error_variant(e),
+                crate::rsync_over_ssh::is_transient_for_reconnect(e)
+            );
+        }
         let stats = match first {
             Ok(stats) => stats,
             Err(err) if crate::rsync_over_ssh::is_transient_for_reconnect(&err) => {
@@ -669,9 +763,9 @@ impl DeltaBatch for AerorsyncBatch {
                     remote_path,
                     err
                 );
-                if let Err(reconnect_err) = self.transport.reconnect().await {
+                if let Err(reconnect_err) = self.reconnect_with_backoff().await {
                     tracing::error!(
-                        "AerorsyncBatch::download: reconnect failed for {}: {}",
+                        "AerorsyncBatch::download: reconnect failed for {} after backoff: {}",
                         remote_path,
                         reconnect_err
                     );
@@ -1018,6 +1112,29 @@ fn map_native_probe_error_to_rsync(err: AerorsyncError) -> RsyncError {
         return map_native_error_to_rsync(err, false);
     }
     RsyncError::RemoteNotAvailable
+}
+
+/// Diagnostic helper: stable short tag for a [`RsyncError`] variant so
+/// `tracing::debug!` calls can log "which arm of the enum did we see"
+/// without dragging the full `Debug` impl (which can spill stderr blobs
+/// onto a single line and confuse log scrapers). Used by Z.1.2 lane
+/// captures to confirm the first attempt's error path matches the
+/// classifier's expectation.
+fn rsync_error_variant(err: &RsyncError) -> &'static str {
+    match err {
+        RsyncError::Io(_) => "Io",
+        RsyncError::TransferFailed { .. } => "TransferFailed",
+        RsyncError::HardRejection(_) => "HardRejection",
+        RsyncError::PasswordAuthUnsupported => "PasswordAuthUnsupported",
+        RsyncError::MissingKey(_) => "MissingKey",
+        RsyncError::VersionTooOld { .. } => "VersionTooOld",
+        RsyncError::RemoteNotAvailable => "RemoteNotAvailable",
+        RsyncError::LocalNotAvailable => "LocalNotAvailable",
+        RsyncError::Cancelled => "Cancelled",
+        RsyncError::TooSmall { .. } => "TooSmall",
+        RsyncError::SpawnFailed(_) => "SpawnFailed",
+        RsyncError::ProbeFailed(_) => "ProbeFailed",
+    }
 }
 
 fn map_write_atomic_error(err: WriteAtomicError) -> RsyncError {
