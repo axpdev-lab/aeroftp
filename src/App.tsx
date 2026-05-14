@@ -281,7 +281,7 @@ import { useIconTheme, getDefaultIconTheme } from './hooks/useIconTheme';
 import { getIconThemeProvider } from './utils/iconThemes';
 import { logger } from './utils/logger';
 import { initCspReporter } from './utils/cspReporter';
-import { secureGetWithFallback, secureStoreAndClean } from './utils/secureStorage';
+import { secureGet, secureGetWithFallback, secureStoreAndClean } from './utils/secureStorage';
 import { loadSavedServerProfiles, mergeSavedServerProfile, storeSavedServerProfiles } from './utils/serverProfileStore';
 import { maskCredential } from './utils/maskCredential';
 import { getOpenWithDefaultRoute } from './utils/openWithDefault';
@@ -1079,14 +1079,20 @@ const App: React.FC = () => {
       } catch (err) {
         console.error('Failed to initialize credential vault:', err);
       } finally {
-        // Pre-warm vault: fetch server profiles so data is ready for SavedServers
-        // If vault has data but localStorage is empty (Windows vault.db recovery), restore it
+        // Pre-warm vault: fetch server profiles so SavedServers can paint
+        // without a flash. The vault is the source of truth, so when the
+        // vault read succeeds we overwrite the localStorage backup
+        // unconditionally. This recovers from out-of-band edits made by
+        // `aeroftp-cli profiles -i` while the GUI was running, where the
+        // localStorage cache lags the vault. A null/error vault response
+        // (locked, file lock contention on Windows) leaves the localStorage
+        // backup untouched (issue #194).
         try {
-          const vaultServers = await secureGetWithFallback<unknown[]>('server_profiles', 'aeroftp-saved-servers');
-          if (vaultServers && vaultServers.length > 0) {
-            const localStored = localStorage.getItem('aeroftp-saved-servers');
-            if (!localStored || localStored === '[]') {
-              localStorage.setItem('aeroftp-saved-servers', JSON.stringify(vaultServers));
+          const vaultServers = await secureGet<unknown[]>('server_profiles');
+          if (Array.isArray(vaultServers)) {
+            const nextStored = JSON.stringify(vaultServers);
+            if (localStorage.getItem('aeroftp-saved-servers') !== nextStored) {
+              localStorage.setItem('aeroftp-saved-servers', nextStored);
             }
           }
         } catch { /* non-critical */ }

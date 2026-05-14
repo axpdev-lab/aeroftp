@@ -11,7 +11,7 @@ import { MyServersTableFooter } from './MyServersTableFooter';
 import { useTranslation } from '../../i18n';
 import { ContextMenu, useContextMenu } from '../ContextMenu';
 import type { ContextMenuItem } from '../ContextMenu';
-import { secureGetWithFallback, secureStoreAndClean } from '../../utils/secureStorage';
+import { secureGet, secureGetWithFallback, secureStoreAndClean } from '../../utils/secureStorage';
 import { getProviderById } from '../../providers';
 import { logger } from '../../utils/logger';
 import { ServerHealthCheck } from '../ServerHealthCheck';
@@ -27,6 +27,8 @@ import { PROVIDER_HEALTH_URLS } from './discoverData';
 import { mergeSavedServerProfile } from '../../utils/serverProfileStore';
 
 const STORAGE_KEY = 'aeroftp-saved-servers';
+const FAVORITES_STORAGE_KEY = 'aeroftp-favorite-servers';
+const FAVORITES_VAULT_KEY = 'favorite_servers';
 const VIEW_MODE_KEY = 'aeroftp-intro-view-mode';
 const HEALTH_SCAN_CHUNK_SIZE = 12;
 const HEALTH_SCAN_CHUNK_DELAY_MS = 180;
@@ -294,12 +296,44 @@ export function MyServersPanel({
     // Drag & reorder
     const [dragIdx, setDragIdx] = useState<number | null>(null);
     const [overIdx, setOverIdx] = useState<number | null>(null);
+    // Favorites live in the vault (key `config_favorite_servers`) so the CLI
+    // can read them and render the ⭐ column. Boot synchronously from
+    // localStorage to avoid an empty first paint, then reconcile from the
+    // vault in the effect below (issue #195).
     const [favorites, setFavorites] = useState<Set<string>>(() => {
         try {
-            const stored = localStorage.getItem('aeroftp-favorite-servers');
+            const stored = localStorage.getItem(FAVORITES_STORAGE_KEY);
             return stored ? new Set(JSON.parse(stored)) : new Set();
         } catch { return new Set(); }
     });
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                const vaultFavs = await secureGetWithFallback<string[]>(
+                    FAVORITES_VAULT_KEY,
+                    FAVORITES_STORAGE_KEY,
+                );
+                if (cancelled || !Array.isArray(vaultFavs)) return;
+                setFavorites(prev => {
+                    if (prev.size === vaultFavs.length && vaultFavs.every(id => prev.has(id))) {
+                        return prev;
+                    }
+                    return new Set(vaultFavs);
+                });
+                // First-run migration: backfill the vault from any legacy
+                // localStorage-only payload. Idempotent.
+                try {
+                    const legacy = localStorage.getItem(FAVORITES_STORAGE_KEY);
+                    const legacyArr: string[] = legacy ? JSON.parse(legacy) : [];
+                    if (legacyArr.length > 0 && vaultFavs.length === 0) {
+                        await secureStoreAndClean(FAVORITES_VAULT_KEY, FAVORITES_STORAGE_KEY, legacyArr);
+                    }
+                } catch { /* ignore legacy migration errors */ }
+            } catch { /* vault unreachable: keep localStorage view */ }
+        })();
+        return () => { cancelled = true; };
+    }, []);
     const [renamingId, setRenamingId] = useState<string | null>(null);
     // Cross-Profile selection: ephemeral, max 2. selection[0] = source, selection[1] = destination.
     const [crossProfileSelection, setCrossProfileSelection] = useState<string[]>([]);
@@ -332,16 +366,17 @@ export function MyServersPanel({
         // Always read localStorage first (sync, fast) so an unmount/remount
         // cycle keeps the visible list stable.
         setServers(getSavedServers());
-        // Then reconcile with the vault. This recovers the list when
-        // localStorage was cleared/corrupted but the vault still has the
-        // profiles (Windows vault.db ACL recovery path, or a stale tab where
-        // localStorage went out of sync). Skip the update if both sources
-        // agree to avoid an unnecessary re-render.
+        // Reconcile with the vault, which is the source of truth. Uses
+        // `secureGet` (not `secureGetWithFallback`) so a vault-locked
+        // response stays distinguishable from "vault returned the empty
+        // list": the latter must propagate to the state and the localStorage
+        // backup so a CLI-driven delete of the last profile is honoured
+        // instead of being hidden by the stale localStorage cache (#194).
         let cancelled = false;
         (async () => {
             try {
-                const vaultServers = await secureGetWithFallback<ServerProfile[]>('server_profiles', STORAGE_KEY);
-                if (cancelled || !vaultServers || vaultServers.length === 0) return;
+                const vaultServers = await secureGet<ServerProfile[]>('server_profiles');
+                if (cancelled || !Array.isArray(vaultServers)) return;
                 let migrated = false;
                 for (const s of vaultServers) {
                     if (!s.providerId) {
@@ -349,8 +384,9 @@ export function MyServersPanel({
                         if (derived) { s.providerId = derived; migrated = true; }
                     }
                 }
-                if (migrated) {
-                    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(vaultServers)); } catch { /* quota */ }
+                const serialized = JSON.stringify(vaultServers);
+                if (migrated || localStorage.getItem(STORAGE_KEY) !== serialized) {
+                    try { localStorage.setItem(STORAGE_KEY, serialized); } catch { /* quota */ }
                 }
                 setServers(prev => {
                     if (prev.length === vaultServers.length && prev.every((p, i) => p.id === vaultServers[i].id)) {
@@ -406,7 +442,11 @@ export function MyServersPanel({
             const next = new Set(prev);
             if (next.has(serverId)) next.delete(serverId);
             else next.add(serverId);
-            localStorage.setItem('aeroftp-favorite-servers', JSON.stringify([...next]));
+            const payload = [...next];
+            secureStoreAndClean(FAVORITES_VAULT_KEY, FAVORITES_STORAGE_KEY, payload).catch(() => {
+                // Vault write failed: secureStoreAndClean already persisted to
+                // localStorage as a backup, so the UI stays consistent.
+            });
             return next;
         });
     }, []);
