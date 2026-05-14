@@ -9048,7 +9048,13 @@ async fn try_create_oauth_provider(
         quiet,
     );
 
-    // Connect - if token expired, offer re-authorization
+    // Connect - if token expired, offer re-authorization. We always
+    // print the underlying error so the user can tell `invalid_grant`
+    // (genuine refresh expiry, re-auth is the right answer) from
+    // transient causes (rate limit, 5xx, network) where re-auth doesn't
+    // help. Investigated under issue #196 (Windows OAuth-rerun bug):
+    // the catch-all branch used to swallow Box / Google `400 invalid_grant`
+    // responses and just say "Token expired or invalid".
     if let Err(e) = provider.connect().await {
         if !std::io::stdin().is_terminal() {
             eprintln!(
@@ -9057,7 +9063,8 @@ async fn try_create_oauth_provider(
             );
             return Some(Err(6));
         }
-        eprintln!("Token expired or invalid. Starting browser re-authorization...");
+        eprintln!("OAuth connect failed: {}", e);
+        eprintln!("Starting browser re-authorization (Ctrl+C to cancel if the cause above is not an expired/revoked token)...");
         match cli_oauth_browser_auth(protocol, store).await {
             Ok(()) => {
                 eprintln!("Re-authorization successful! Reconnecting...");
