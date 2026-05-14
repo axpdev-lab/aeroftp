@@ -235,6 +235,8 @@ pub fn build_rsync_config(ctx: &DeltaSyncContext) -> RsyncConfig {
         progress: true,
         min_file_size: ctx.min_file_size,
         ssh_key_path: ctx.ssh_key_path.clone(),
+        ssh_password: None,
+        auth_method: crate::rsync_over_ssh::AuthMethod::SshKey,
         ssh_port: ctx.ssh_port,
         ssh_user: ctx.ssh_user.clone(),
         ssh_host: ctx.ssh_host.clone(),
@@ -752,6 +754,8 @@ mod tests {
         assert_eq!(cfg.ssh_host, "example.com");
         assert_eq!(cfg.ssh_port, Some(2222));
         assert_eq!(cfg.ssh_key_path.unwrap(), PathBuf::from("/tmp/key"));
+        assert!(cfg.ssh_password.is_none());
+        assert_eq!(cfg.auth_method, crate::rsync_over_ssh::AuthMethod::SshKey);
         assert_eq!(cfg.strict_host_key_check, "accept-new");
         assert_eq!(cfg.min_file_size, 4096);
         assert!(!cfg.compress);

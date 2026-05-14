@@ -2449,7 +2449,7 @@
       "discoverNextcloud": "Self-hosted cloud storage platform",
       "discoverBlomp": "Blomp (40 GB free, OpenStack Swift)",
       "discoverFilen": "Secure cloud storage with client-side encryption",
-      "discoverFileLu": "Cloud storage with FTP, WebDAV, S3 and native API (1 GB free)",
+      "discoverFileLu": "Cloud storage with FTP, WebDAV, S3, Rsync and native API (1 GB free)",
       "discoverFileLuFtp": "FileLu via FTP (port 21)",
       "discoverFileLuFtps": "FileLu via secure FTPS Implicit (port 990)",
       "discoverGoogleDrive": "Google cloud storage (15 GB free)",
@@ -2468,7 +2468,7 @@
       "discoverInternxt": "Privacy-focused encrypted cloud (1 GB free)",
       "discoverZohoWorkDrive": "Team collaboration and storage (5 GB free)",
       "discoverKDrive": "Infomaniak Swiss cloud (15 GB free)",
-      "discoverFileLuCloud": "Multi-protocol cloud storage (1 GB free)",
+      "discoverFileLuCloud": "Multi-protocol cloud storage with API, FTP, WebDAV, S3 and Rsync (1 GB free)",
       "discoverKoofr": "EU-based privacy-friendly cloud (10 GB free)",
       "discoverDrimeCloud": "Cloud storage with API access (20 GB free)",
       "discoverJottacloud": "Norwegian cloud storage (5 GB free)",
@@ -2992,9 +2992,9 @@
       "transferSettings": "Transfer Settings",
       "nativeRsync": {
         "title": "Native rsync (experimental)",
-        "description": "Use AeroFTP's built-in rsync protocol implementation instead of spawning the system rsync binary. Reduces process overhead; may be less battle-tested.",
+        "description": "Choose how SFTP Delta Sync dispatches rsync transfers.",
         "enableToggle": "Enable native rsync for SFTP delta sync",
-        "experimental": "Experimental: falls back to classic rsync automatically on any error. Host-key mismatches surface as hard errors with no silent fallback."
+        "experimental": "Auto prefers AeroRsync with classic fallback; Classic uses the system rsync binary where available; Native skips the classic binary fallback."
       },
       "uninstallBadges": "Uninstall",
       "updateAvailable": "Update Available!",

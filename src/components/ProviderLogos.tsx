@@ -528,6 +528,7 @@ export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     'jottacloud': JottacloudLogo,
     'drime': DrimeCloudLogo,
     'filelu': FileLuLogo,
+    'filelu-rsync': FileLuLogo,
     'filelu-ftp': FileLuLogo,
     'filelu-ftps': FileLuLogo,
     'filelu-webdav': FileLuLogo,

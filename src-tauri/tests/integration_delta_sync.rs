@@ -1254,4 +1254,53 @@ mod native_against_stock_rsync {
         // Cleanup.
         let _ = ssh_exec_shell(&format!("rm -f {}", remote_path));
     }
+
+    /// Z.4.4 / S8j download-side live gate: mirror the upload smoke against
+    /// the same stock `rsync --server` fixture, but run the sender side and
+    /// verify the downloaded bytes against the remote sha256.
+    #[tokio::test]
+    #[ignore = "requires docker fixture"]
+    async fn native_rsync_download_against_stock_rsync_preserves_bytes() {
+        if !fixture_ready_or_skip("native_rsync_download_against_stock_rsync_preserves_bytes") {
+            return;
+        }
+
+        let remote_path = format!("{}.bin", unique_remote_root("z44-native-download"));
+        let seed = "dd if=/dev/urandom of={remote} bs=1024 count=1024 status=none";
+        ssh_exec_shell(&seed.replace("{remote}", &remote_path))
+            .expect("seed remote payload through fixture shell");
+
+        let remote_hash = ssh_exec_shell(&format!("sha256sum {}", remote_path))
+            .expect("remote sha256sum must succeed")
+            .split_whitespace()
+            .next()
+            .unwrap_or_default()
+            .to_string();
+
+        let payload_dir = tempfile::tempdir().expect("tempdir");
+        let local = payload_dir.path().join("native-download.bin");
+
+        let transport = native_transport();
+        let stats = transport
+            .download(&remote_path, &local)
+            .await
+            .expect("native download against stock rsync must succeed");
+
+        eprintln!(
+            "native download ok: sent={}B, received={}B, speedup={:.2}x, duration={}ms",
+            stats.bytes_sent, stats.bytes_received, stats.speedup, stats.duration_ms
+        );
+
+        let local_bytes = std::fs::read(&local).unwrap();
+        let local_hash = {
+            use sha2::{Digest, Sha256};
+            format!("{:x}", Sha256::digest(&local_bytes))
+        };
+        assert_eq!(
+            remote_hash, local_hash,
+            "wire-level byte mismatch between native download and stock rsync server"
+        );
+
+        let _ = ssh_exec_shell(&format!("rm -f {}", remote_path));
+    }
 }

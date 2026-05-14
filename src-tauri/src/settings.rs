@@ -18,6 +18,28 @@ static SETTINGS_WRITE_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()
 struct NativeRsyncSettings {
     #[serde(default)]
     enabled: bool,
+    #[serde(default)]
+    mode: Option<NativeRsyncMode>,
+}
+
+#[cfg(feature = "aerorsync")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum NativeRsyncMode {
+    Auto,
+    Classic,
+    Native,
+}
+
+#[cfg(feature = "aerorsync")]
+impl NativeRsyncSettings {
+    fn effective_mode(&self) -> NativeRsyncMode {
+        self.mode.unwrap_or(if self.enabled {
+            NativeRsyncMode::Auto
+        } else {
+            NativeRsyncMode::Classic
+        })
+    }
 }
 
 #[cfg(feature = "aerorsync")]
@@ -44,11 +66,16 @@ fn native_rsync_config_path() -> Result<PathBuf, String> {
 /// predated the `aerorsync` rebrand: renaming them would break upgrade
 /// paths for users who already toggled the flag on.
 pub fn load_native_rsync_enabled() -> bool {
+    !matches!(load_native_rsync_mode(), NativeRsyncMode::Classic)
+}
+
+#[cfg(feature = "aerorsync")]
+pub fn load_native_rsync_mode() -> NativeRsyncMode {
     let path = match native_rsync_config_path() {
         Ok(path) => path,
         Err(error) => {
             tracing::warn!("native rsync settings path unavailable: {}", error);
-            return false;
+            return NativeRsyncMode::Classic;
         }
     };
 
@@ -65,19 +92,19 @@ pub fn load_native_rsync_enabled() -> bool {
         // exposing more than one, producing fingerprint pinning mismatches.
         // The fix lives in `AERORSYNC_HOST_KEY_ALGS` (see ssh_transport.rs)
         // and the russh `Preferred.key` override in russh_session_transport.
-        return true;
+        return NativeRsyncMode::Auto;
     }
 
     match fs::read_to_string(&path) {
         Ok(content) => match toml::from_str::<NativeRsyncSettings>(&content) {
-            Ok(settings) => settings.enabled,
+            Ok(settings) => settings.effective_mode(),
             Err(error) => {
                 tracing::warn!(
                     "native rsync settings parse failed ({}): {}",
                     path.display(),
                     error
                 );
-                false
+                NativeRsyncMode::Classic
             }
         },
         Err(error) => {
@@ -86,13 +113,22 @@ pub fn load_native_rsync_enabled() -> bool {
                 path.display(),
                 error
             );
-            false
+            NativeRsyncMode::Classic
         }
     }
 }
 
 #[cfg(feature = "aerorsync")]
 pub fn set_native_rsync_enabled(enabled: bool) -> Result<(), String> {
+    set_native_rsync_mode(if enabled {
+        NativeRsyncMode::Auto
+    } else {
+        NativeRsyncMode::Classic
+    })
+}
+
+#[cfg(feature = "aerorsync")]
+pub fn set_native_rsync_mode(mode: NativeRsyncMode) -> Result<(), String> {
     let _lock = SETTINGS_WRITE_LOCK
         .lock()
         .map_err(|_| "Native rsync settings write lock poisoned".to_string())?;
@@ -103,8 +139,11 @@ pub fn set_native_rsync_enabled(enabled: bool) -> Result<(), String> {
             .map_err(|e| format!("Failed to create config directory: {}", e))?;
     }
 
-    let content = toml::to_string_pretty(&NativeRsyncSettings { enabled })
-        .map_err(|e| format!("Failed to serialize native rsync settings: {}", e))?;
+    let content = toml::to_string_pretty(&NativeRsyncSettings {
+        enabled: !matches!(mode, NativeRsyncMode::Classic),
+        mode: Some(mode),
+    })
+    .map_err(|e| format!("Failed to serialize native rsync settings: {}", e))?;
 
     let tmp_path = path.with_extension("tmp");
     fs::write(&tmp_path, content).map_err(|e| format!("Failed to write temp config: {}", e))?;
@@ -133,6 +172,33 @@ pub fn native_rsync_enabled_get() -> bool {
 #[tauri::command]
 pub fn native_rsync_enabled_set(enabled: bool) -> Result<(), String> {
     set_native_rsync_enabled(enabled)
+}
+
+#[cfg(feature = "aerorsync")]
+#[tauri::command]
+pub fn native_rsync_mode_get() -> String {
+    match load_native_rsync_mode() {
+        NativeRsyncMode::Auto => "auto",
+        NativeRsyncMode::Classic => "classic",
+        NativeRsyncMode::Native => "native",
+    }
+    .to_string()
+}
+
+#[cfg(feature = "aerorsync")]
+#[tauri::command]
+pub fn native_rsync_mode_set(mode: String) -> Result<(), String> {
+    let mode = match mode.as_str() {
+        "auto" => NativeRsyncMode::Auto,
+        "classic" => NativeRsyncMode::Classic,
+        "native" => NativeRsyncMode::Native,
+        other => {
+            return Err(format!(
+                "Invalid native rsync mode `{other}`; expected auto, classic or native"
+            ))
+        }
+    };
+    set_native_rsync_mode(mode)
 }
 
 // =============================================================================
@@ -187,6 +253,7 @@ mod tests {
         // host-key algorithm negotiation asymmetry was fixed.
         let _g = ScopedXdg::new();
         assert!(load_native_rsync_enabled());
+        assert_eq!(load_native_rsync_mode(), NativeRsyncMode::Auto);
     }
 
     #[test]
@@ -194,6 +261,7 @@ mod tests {
         let _g = ScopedXdg::new();
         set_native_rsync_enabled(true).expect("write ok");
         assert!(load_native_rsync_enabled());
+        assert_eq!(load_native_rsync_mode(), NativeRsyncMode::Auto);
     }
 
     #[test]
@@ -202,6 +270,33 @@ mod tests {
         set_native_rsync_enabled(true).expect("enable ok");
         set_native_rsync_enabled(false).expect("disable ok");
         assert!(!load_native_rsync_enabled());
+        assert_eq!(load_native_rsync_mode(), NativeRsyncMode::Classic);
+    }
+
+    #[test]
+    fn set_then_load_roundtrips_native_mode() {
+        let _g = ScopedXdg::new();
+        set_native_rsync_mode(NativeRsyncMode::Native).expect("native ok");
+        assert!(load_native_rsync_enabled());
+        assert_eq!(load_native_rsync_mode(), NativeRsyncMode::Native);
+    }
+
+    #[test]
+    fn legacy_enabled_toml_maps_to_auto() {
+        let _g = ScopedXdg::new();
+        let path = native_rsync_config_path().expect("path");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, b"enabled = true\n").unwrap();
+        assert_eq!(load_native_rsync_mode(), NativeRsyncMode::Auto);
+    }
+
+    #[test]
+    fn legacy_disabled_toml_maps_to_classic() {
+        let _g = ScopedXdg::new();
+        let path = native_rsync_config_path().expect("path");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, b"enabled = false\n").unwrap();
+        assert_eq!(load_native_rsync_mode(), NativeRsyncMode::Classic);
     }
 
     #[test]

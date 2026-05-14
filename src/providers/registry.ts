@@ -1831,12 +1831,12 @@ export const PROVIDERS: ProviderConfig[] = [
     },
 
     // =========================================================================
-    // FILELU: Native REST API + FTP/FTPS/WebDAV/S3 presets
+    // FILELU: Native REST API + FTP/FTPS/WebDAV/S3/Rsync presets
     // =========================================================================
     {
         id: 'filelu',
         name: 'FileLu',
-        description: 'Cloud storage with FTP, WebDAV, S3 and native API (1 GB free)',
+        description: 'Cloud storage with FTP, WebDAV, S3, Rsync and native API (1 GB free)',
         protocol: 'filelu',
         category: 'oauth',
         icon: 'Cloud',
@@ -1861,6 +1861,52 @@ export const PROVIDERS: ProviderConfig[] = [
         },
         healthCheckUrl: 'https://filelu.com/api/',
         helpUrl: 'https://filelu.com/pages/api',
+        signupUrl: 'https://filelu.com/register/',
+    },
+    {
+        id: 'filelu-rsync',
+        name: 'FileLu Rsync',
+        description: 'FileLu rsync-over-SSH endpoint (port 2222, Linux/macOS rsync service)',
+        protocol: 'sftp',
+        category: 'ftp',
+        icon: 'Server',
+        color: '#8B5CF6',
+        stable: false,
+        contactVerified: true,
+        fields: [
+            {
+                key: 'username',
+                label: 'Rsync Login',
+                type: 'text',
+                required: true,
+                placeholder: 'Your FileLu username',
+                helpText: 'Account Settings -> FTP/Rsync Login',
+                group: 'credentials',
+            },
+            {
+                key: 'password',
+                label: 'Rsync Password',
+                type: 'password',
+                required: true,
+                helpText: 'FileLu account password unless you configured a protocol-specific password',
+                group: 'credentials',
+            },
+        ],
+        defaults: {
+            server: 'rsync.filelu.com',
+            port: 2222,
+        },
+        features: {
+            shareLink: false,
+            sync: true,
+        },
+        setupInstructions: [
+            'Requires rsync >= 3.0 on the local machine.',
+            'Password-based rsync-over-SSH support is tracked in Appendix Z.4.5 / R1.',
+            'Use this preset for live endpoint profiling and future rsync-as-a-service validation.',
+        ],
+        healthCheckUrl: 'https://filelu.com/api/',
+        helpUrl: 'https://filelu.com/pages/faq/',
         signupUrl: 'https://filelu.com/register/',
     },
     {

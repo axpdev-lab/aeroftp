@@ -129,6 +129,10 @@ impl AerorsyncDeltaTransport {
         cfg: &RsyncConfig,
         host_key_policy: SshHostKeyPolicy,
     ) -> Result<Self, RsyncError> {
+        if matches!(cfg.auth_method, crate::rsync_over_ssh::AuthMethod::Password) {
+            return Err(RsyncError::PasswordAuthUnsupported);
+        }
+
         let key_path = cfg
             .ssh_key_path
             .clone()
@@ -1126,6 +1130,7 @@ fn rsync_error_variant(err: &RsyncError) -> &'static str {
         RsyncError::TransferFailed { .. } => "TransferFailed",
         RsyncError::HardRejection(_) => "HardRejection",
         RsyncError::PasswordAuthUnsupported => "PasswordAuthUnsupported",
+        RsyncError::MissingPassword => "MissingPassword",
         RsyncError::MissingKey(_) => "MissingKey",
         RsyncError::VersionTooOld { .. } => "VersionTooOld",
         RsyncError::RemoteNotAvailable => "RemoteNotAvailable",
