@@ -191,6 +191,177 @@ impl std::fmt::Display for RsyncError {
 
 impl std::error::Error for RsyncError {}
 
+/// Z.1.2 — classify a [`RsyncError`] as a transient SSH channel drop
+/// (worth a single reconnect-then-retry) versus a terminal failure that
+/// MUST propagate.
+///
+/// The retry window is intentionally narrow:
+///
+/// - `Io` whose `ErrorKind` is one of `BrokenPipe`, `ConnectionAborted`,
+///   `ConnectionReset`, `UnexpectedEof`, `TimedOut`, `WouldBlock` → the
+///   wire was healthy enough to authenticate but the SSH channel
+///   dropped mid-transfer. Re-authing on the saved
+///   [`crate::aerorsync::ssh_transport::SshTransportConfig`] gets a new
+///   channel without surfacing the blip to the user.
+/// - `TransferFailed` whose stderr mentions a recognisable channel-drop
+///   string (server logs vary slightly across OpenSSH versions, so we
+///   match on a small allowlist of substrings).
+///
+/// Everything else is terminal:
+///
+/// - `HardRejection` — host-key mismatch or other security-flagged
+///   condition. Retrying would silently mask a fault.
+/// - `PasswordAuthUnsupported`, `MissingKey`, `VersionTooOld`,
+///   `RemoteNotAvailable`, `LocalNotAvailable` — credential or capability
+///   issues that no retry can fix.
+/// - `Cancelled` — caller intent, must not be overridden.
+/// - `TooSmall`, `SpawnFailed`, `ProbeFailed` — non-recoverable for this
+///   file (caller should treat as "skip and continue", not "retry").
+pub fn is_transient_for_reconnect(err: &RsyncError) -> bool {
+    use std::io::ErrorKind;
+
+    match err {
+        RsyncError::Io(io_err) => matches!(
+            io_err.kind(),
+            ErrorKind::BrokenPipe
+                | ErrorKind::ConnectionAborted
+                | ErrorKind::ConnectionReset
+                | ErrorKind::UnexpectedEof
+                | ErrorKind::TimedOut
+                | ErrorKind::WouldBlock
+        ),
+        RsyncError::TransferFailed { stderr, .. } => {
+            // OpenSSH/rsync produce a handful of stable substrings when
+            // the channel drops. Keep the list narrow so we never retry
+            // on "Permission denied" or "Host key verification failed".
+            let lower = stderr.to_ascii_lowercase();
+            const TRANSIENT_NEEDLES: &[&str] = &[
+                "connection reset by peer",
+                "connection closed by remote",
+                "broken pipe",
+                "channel closed",
+                "unexpected eof",
+                "connection timed out",
+                "network is unreachable",
+            ];
+            TRANSIENT_NEEDLES.iter().any(|needle| lower.contains(needle))
+        }
+        // Hard rejections and credential/capability faults: never retry.
+        RsyncError::HardRejection(_)
+        | RsyncError::PasswordAuthUnsupported
+        | RsyncError::MissingKey(_)
+        | RsyncError::VersionTooOld { .. }
+        | RsyncError::RemoteNotAvailable
+        | RsyncError::LocalNotAvailable
+        | RsyncError::Cancelled
+        | RsyncError::TooSmall { .. }
+        | RsyncError::SpawnFailed(_)
+        | RsyncError::ProbeFailed(_) => false,
+    }
+}
+
+#[cfg(test)]
+mod is_transient_tests {
+    use super::*;
+
+    #[test]
+    fn io_broken_pipe_is_transient() {
+        let err = RsyncError::Io(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "pipe gone"));
+        assert!(is_transient_for_reconnect(&err));
+    }
+
+    #[test]
+    fn io_connection_reset_is_transient() {
+        let err = RsyncError::Io(std::io::Error::new(
+            std::io::ErrorKind::ConnectionReset,
+            "RST",
+        ));
+        assert!(is_transient_for_reconnect(&err));
+    }
+
+    #[test]
+    fn io_unexpected_eof_is_transient() {
+        let err = RsyncError::Io(std::io::Error::new(
+            std::io::ErrorKind::UnexpectedEof,
+            "EOF mid-stream",
+        ));
+        assert!(is_transient_for_reconnect(&err));
+    }
+
+    #[test]
+    fn io_permission_denied_is_not_transient() {
+        let err = RsyncError::Io(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "perm",
+        ));
+        assert!(!is_transient_for_reconnect(&err));
+    }
+
+    #[test]
+    fn transfer_failed_with_connection_reset_substring_is_transient() {
+        let err = RsyncError::TransferFailed {
+            exit: 12,
+            stderr: "rsync error: connection reset by peer\n".to_string(),
+        };
+        assert!(is_transient_for_reconnect(&err));
+    }
+
+    #[test]
+    fn transfer_failed_with_permission_denied_is_not_transient() {
+        let err = RsyncError::TransferFailed {
+            exit: 12,
+            stderr: "rsync error: Permission denied (publickey)\n".to_string(),
+        };
+        assert!(!is_transient_for_reconnect(&err));
+    }
+
+    #[test]
+    fn transfer_failed_with_host_key_mismatch_is_not_transient() {
+        let err = RsyncError::TransferFailed {
+            exit: 255,
+            stderr: "Host key verification failed.\n".to_string(),
+        };
+        assert!(!is_transient_for_reconnect(&err));
+    }
+
+    #[test]
+    fn hard_rejection_is_never_transient() {
+        let err = RsyncError::HardRejection("host key mismatch".into());
+        assert!(!is_transient_for_reconnect(&err));
+    }
+
+    #[test]
+    fn cancelled_is_never_transient() {
+        assert!(!is_transient_for_reconnect(&RsyncError::Cancelled));
+    }
+
+    #[test]
+    fn missing_key_is_never_transient() {
+        let err = RsyncError::MissingKey("~/.ssh/id_rsa".into());
+        assert!(!is_transient_for_reconnect(&err));
+    }
+
+    #[test]
+    fn empty_transfer_failed_stderr_is_not_transient() {
+        // Empty stderr → no needle match → terminal. We don't blindly
+        // retry on exit code alone.
+        let err = RsyncError::TransferFailed {
+            exit: 1,
+            stderr: String::new(),
+        };
+        assert!(!is_transient_for_reconnect(&err));
+    }
+
+    #[test]
+    fn transient_needle_match_is_case_insensitive() {
+        let err = RsyncError::TransferFailed {
+            exit: 12,
+            stderr: "Connection Reset By Peer".to_string(),
+        };
+        assert!(is_transient_for_reconnect(&err));
+    }
+}
+
 // ===== Unix-only orchestration =====
 //
 // The helpers below drive the system `rsync` binary over an SSH pipe. They

@@ -595,14 +595,51 @@ impl DeltaBatch for AerorsyncBatch {
         local_path: &Path,
         remote_path: &str,
     ) -> Result<RsyncStats, RsyncError> {
-        let stats = do_upload(
+        // Z.1.2 — single retry budget on transient SSH channel drops.
+        // The first attempt uses the existing shared session; if it
+        // fails with a transient I/O error or a `TransferFailed` whose
+        // stderr matches the channel-drop allowlist, we re-authenticate
+        // via `RusshSessionTransport::reconnect()` and retry the file
+        // exactly once. Hard rejections (host-key mismatch, auth
+        // refused, cancel) always propagate without retry.
+        let first = do_upload(
             self.transport.share_session(),
             self.cancel.clone(),
             local_path,
             remote_path,
             self.min_file_size,
         )
-        .await?;
+        .await;
+        let stats = match first {
+            Ok(stats) => stats,
+            Err(err) if crate::rsync_over_ssh::is_transient_for_reconnect(&err) => {
+                tracing::warn!(
+                    "AerorsyncBatch::upload: transient drop on {} ({}); attempting reconnect",
+                    remote_path,
+                    err
+                );
+                if let Err(reconnect_err) = self.transport.reconnect().await {
+                    tracing::error!(
+                        "AerorsyncBatch::upload: reconnect failed for {}: {}",
+                        remote_path,
+                        reconnect_err
+                    );
+                    // Propagate the ORIGINAL transfer error rather than
+                    // the reconnect error so journals and callers
+                    // diagnose the right symptom.
+                    return Err(err);
+                }
+                do_upload(
+                    self.transport.share_session(),
+                    self.cancel.clone(),
+                    local_path,
+                    remote_path,
+                    self.min_file_size,
+                )
+                .await?
+            }
+            Err(err) => return Err(err),
+        };
         self.files_transferred.fetch_add(1, Ordering::SeqCst);
         let on_wire = stats.bytes_sent.saturating_add(stats.bytes_received);
         self.bytes_on_wire.fetch_add(on_wire, Ordering::SeqCst);
@@ -614,13 +651,42 @@ impl DeltaBatch for AerorsyncBatch {
         remote_path: &str,
         local_path: &Path,
     ) -> Result<RsyncStats, RsyncError> {
-        let stats = do_download(
+        // Z.1.2 — symmetric retry budget on the download leg. Reconnect
+        // semantics match the upload branch above; see the matching
+        // comment for the classification rules.
+        let first = do_download(
             self.transport.share_session(),
             self.cancel.clone(),
             remote_path,
             local_path,
         )
-        .await?;
+        .await;
+        let stats = match first {
+            Ok(stats) => stats,
+            Err(err) if crate::rsync_over_ssh::is_transient_for_reconnect(&err) => {
+                tracing::warn!(
+                    "AerorsyncBatch::download: transient drop on {} ({}); attempting reconnect",
+                    remote_path,
+                    err
+                );
+                if let Err(reconnect_err) = self.transport.reconnect().await {
+                    tracing::error!(
+                        "AerorsyncBatch::download: reconnect failed for {}: {}",
+                        remote_path,
+                        reconnect_err
+                    );
+                    return Err(err);
+                }
+                do_download(
+                    self.transport.share_session(),
+                    self.cancel.clone(),
+                    remote_path,
+                    local_path,
+                )
+                .await?
+            }
+            Err(err) => return Err(err),
+        };
         self.files_transferred.fetch_add(1, Ordering::SeqCst);
         let on_wire = stats.bytes_sent.saturating_add(stats.bytes_received);
         self.bytes_on_wire.fetch_add(on_wire, Ordering::SeqCst);
