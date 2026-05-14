@@ -84,6 +84,21 @@ export const createRemoteEndpoint = (
     tabId,
 });
 
+export const createOverlayEndpoint = (params: {
+    sessionId: string;
+    vaultPath: string;
+    source: 'local' | 'remote';
+    path?: string;
+    tabId?: string | null;
+}): PanelEndpoint => ({
+    kind: 'aerovaultOverlay',
+    sessionId: params.sessionId,
+    vaultPath: params.vaultPath,
+    source: params.source,
+    path: normalizePanelPath(params.path, ''),
+    tabId: params.tabId,
+});
+
 export const getEndpointCapabilities = (endpoint: PanelEndpoint): PanelCapabilities => {
     if (endpoint.kind === 'local') return { ...DEFAULT_LOCAL_CAPABILITIES };
     if (endpoint.kind === 'aerovaultOverlay') return { ...DEFAULT_OVERLAY_CAPABILITIES };
