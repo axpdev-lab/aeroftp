@@ -225,9 +225,14 @@ aeroftp-cli get sftp://user@host "/data/*.csv"
 
 # Recursive directory download
 aeroftp-cli get sftp://user@host /var/www/ ./backup/ -r
+
+# Delta-aware single-file download (Z.4.5 R1, SFTP only today)
+aeroftp-cli get sftp://user@host /var/www/index.html ./local-copy.html --delta
 ```
 
 > **Glob patterns**: Quote the remote path to prevent shell expansion. The CLI expands `*` and `?` patterns server-side.
+
+> **`--delta`**: routes the transfer through `AerorsyncDeltaTransport` (native rsync wire protocol 31 over SSH). Falls back to the classic transfer when the provider does not expose a delta transport (everything except SFTP today), the file is too small (< 1 MiB), or the SFTP session is not delta-eligible (no host-key pin, password auth without dispatch wire-up). No-op for recursive / glob downloads (use `aeroftp sync --delta` for those). See [AeroRsync section](#aerorsync---delta-sync-engine) for the full surface.
 
 ### pget - Segmented Parallel Download
 
@@ -255,7 +260,12 @@ aeroftp-cli put sftp://user@host "./*.json" /data/
 
 # Recursive upload
 aeroftp-cli put sftp://user@host ./project/ /var/www/project/ -r
+
+# Delta-aware single-file upload (Z.4.5 R1, SFTP only today)
+aeroftp-cli put sftp://user@host ./report.pdf /uploads/report.pdf --delta
 ```
+
+> **`--delta`**: same semantics as on `get` (see above). On a successful delta upload the CLI prints `bytes_on_wire / total` and the rsync speedup ratio so you can confirm the saving.
 
 ### mkdir - Create Directory
 
@@ -837,6 +847,88 @@ aeroftp-cli mcp
 ```
 
 `aeroftp-cli mcp` is a top-level alias for `aeroftp-cli agent --mcp` (added in v3.5.4). The official VS Code extension `axpdev-lab.aeroftp-mcp` registers exactly this argv, so the shortcut keeps the extension self-contained without nested subcommands. The server initializes the Universal Vault automatically (or falls back to `AEROFTP_MASTER_PASSWORD` when set) so saved profiles work out-of-the-box, serializes per-profile tool calls, and validates `inputSchema.required` before dispatch.
+
+### aerorsync - Delta Sync Engine
+
+`aerorsync` is the configuration + diagnostics surface for the AeroFTP native delta sync engine (rsync wire protocol 31 implemented in Rust via `russh` and `xxhash`). It mirrors the GUI **Settings → Native Rsync** toggle so headless deployments and AI agents have the same controls available.
+
+#### `aerorsync mode` — get / set the engine mode
+
+```bash
+# Print the current mode (auto / classic / native)
+aeroftp-cli aerorsync mode get
+
+# Persist a new mode (writes the same TOML the GUI uses)
+aeroftp-cli aerorsync mode set native
+aeroftp-cli aerorsync mode set classic
+aeroftp-cli aerorsync mode set auto       # default
+
+# JSON output for scripts
+aeroftp-cli --json aerorsync mode get
+# {"mode":"auto"}
+```
+
+**Modes**:
+
+| Mode | Behaviour |
+|---|---|
+| `auto` | Try the native russh transport first; transparently fall back to the classic `rsync` binary path when not delta-eligible. Default. |
+| `classic` | Always use the classic `rsync -e ssh` subprocess path (Unix only). Use when troubleshooting native protocol regressions. |
+| `native` | Always use the native russh path; refuse the classic fallback. Use to enforce the cross-OS path on Windows or to validate native-only regressions in CI. |
+
+The mode is process-global (persisted in `~/.config/aeroftp/native-rsync.toml`) so a `set` here is immediately picked up by the GUI on its next launch and by every subsequent CLI invocation.
+
+#### `aerorsync probe` — live test of the russh password transport
+
+Z.4.5 R1 dispatch step (2026-05-14): smoke-test that an SSH endpoint accepts the AeroFTP russh password authentication and runs the requested remote command. Useful to validate an `rsync.<provider>.com:2222` endpoint **before** committing to a full profile. Does NOT consult the vault; credentials are passed explicitly so the probe is a pure diagnostics tool.
+
+```bash
+# Probe the password fixture (tests/fixtures/sftp-rsync/docker-compose.password.yml)
+docker compose -f src-tauri/tests/fixtures/sftp-rsync/docker-compose.password.yml up -d
+AEROFTP_PROBE_PW="testpass" aeroftp-cli aerorsync probe \
+    127.0.0.1 testuser \
+    --port 2223 \
+    --password-env AEROFTP_PROBE_PW \
+    --accept-any-host-key
+
+# Probe a real rsync-as-a-service endpoint (FileLu, Hetzner Storage Box, etc.)
+read -s -p "Password: " FILELU_RSYNC_PW && export FILELU_RSYNC_PW
+aeroftp-cli aerorsync probe \
+    rsync.filelu.com aleimob \
+    --port 2222 \
+    --password-env FILELU_RSYNC_PW \
+    --accept-any-host-key
+
+# Custom remote command + JSON output
+aeroftp-cli --json aerorsync probe 127.0.0.1 testuser \
+    --port 2223 \
+    --password-env AEROFTP_PROBE_PW \
+    --accept-any-host-key \
+    --remote-command "whoami"
+# {"exit_code":0,"host":"127.0.0.1","port":2223,"remote_command":"whoami","stderr":"","stdout":"testuser\n","user":"testuser"}
+```
+
+**Password sources** (resolution order, first match wins):
+
+1. `--password-env <VAR>` reads from the named environment variable
+2. `--password-stdin` reads one line from stdin (`echo "pass" | aeroftp-cli aerorsync probe ... --password-stdin`)
+3. Interactive `rpassword` prompt on stderr (when stdin is a TTY)
+
+The password is **never** echoed, **never** logged, **never** included in error messages. The remote banner IS printed on success: it is public information from the server.
+
+**`--accept-any-host-key`**: the probe is intentionally lighter than the production provider and does NOT pin host keys to a TOFU file. The flag is required to acknowledge that the operator is opting into a one-shot smoke; production providers always pin the SHA-256 fingerprint after the first connection.
+
+**Exit codes**:
+
+| Code | Meaning |
+|---|---|
+| 0 | Connect + remote exec succeeded with exit 0 |
+| 4 | Endpoint reachable + auth OK, but the remote command exited non-zero (e.g. `rsync` not installed on the server) |
+| 5 | Configuration error (missing password env var, empty password, invalid mode, conflicting flags) |
+| 6 | SSH transport failure: connection refused, timeout, or password rejected by server |
+| 7 | `aerorsync` cargo feature is not compiled in this binary |
+
+**Build requirement**: the probe requires the binary to be compiled with `--features aerorsync`. The release `.deb`/`.rpm`/`.AppImage` bundles ship with the feature on by default; a custom build that omits it surfaces exit 7 with a clear message.
 
 ### speed - Bandwidth Benchmark
 
