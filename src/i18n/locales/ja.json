@@ -3269,8 +3269,8 @@
             "detailedCards": "詳細なサーバーカード",
             "debugPanel": "Debug Panel",
             "localSync": "ローカル同期...",
-            "comparePanels": "[NEEDS TRANSLATION] Compare Panels...",
-            "syncPresets": "[NEEDS TRANSLATION] Sync Presets..."
+            "comparePanels": "パネルを比較...",
+            "syncPresets": "同期プリセット..."
         },
         "activityPanel": {
             "awaitingCommands": "コマンド待機中...",
@@ -3806,7 +3806,7 @@
             "trashFooter": "復元されたファイルは元のフォルダーに再表示されます",
             "connectionNamePlaceholder": "接続名（例: マイ FileLu Cloud）",
             "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days",
-            "rsyncTransferOnly": "[NEEDS TRANSLATION] Transfer-only endpoint: browsing is not available on Rsync. Use Native API, WebDAV, S3 or FTP to navigate; switch to Rsync for high-bandwidth delta transfers."
+            "rsyncTransferOnly": "転送専用エンドポイント: Rsync では参照できません。ナビゲートには Native API、WebDAV、S3 または FTP を使用してください。高帯域幅の delta 転送には Rsync に切り替えてください。"
         },
         "box": {
             "addComment": "コメントを追加",
@@ -4513,7 +4513,7 @@
             "moveHere": "{count} 件をここに移動",
             "copyHereFromOtherPanelTooltip": "もう一方のパネルで選択された {count} 件をこのパネルにコピー (F5)",
             "moveHereFromOtherPanelTooltip": "もう一方のパネルで選択された {count} 件をこのパネルに移動 (F6)",
-            "syncToOtherPanel": "[NEEDS TRANSLATION] Sync to other panel (delta)"
+            "syncToOtherPanel": "もう一方のパネルに同期 (delta)"
         },
         "localSync": {
             "title": "AeroSync: ローカルからローカルへ",
@@ -4539,14 +4539,14 @@
             "errorPathsRequired": "ソースと宛先は必須です"
         },
         "compare": {
-            "title": "[NEEDS TRANSLATION] Compare panels",
-            "notAvailable": "[NEEDS TRANSLATION] Open a second panel or a remote connection to compare."
+            "title": "パネルを比較",
+            "notAvailable": "比較するにはもう一つのパネルまたはリモート接続を開いてください。"
         },
         "syncPresets": {
-            "title": "[NEEDS TRANSLATION] Sync presets",
-            "nothingToDo": "[NEEDS TRANSLATION] Sync presets",
-            "allSkipped": "[NEEDS TRANSLATION] No actionable entries for this preset.",
-            "deletesDeferred": "[NEEDS TRANSLATION] Sync presets"
+            "title": "同期プリセット",
+            "nothingToDo": "同期プリセット",
+            "allSkipped": "このプリセットには実行可能なエントリがありません。",
+            "deletesDeferred": "同期プリセット"
         }
     }
 }

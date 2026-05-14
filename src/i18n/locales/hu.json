@@ -3304,8 +3304,8 @@
             "detailedCards": "Részletes szerverkártyák",
             "debugPanel": "Debug Panel",
             "localSync": "Helyi szinkronizálás...",
-            "comparePanels": "[NEEDS TRANSLATION] Compare Panels...",
-            "syncPresets": "[NEEDS TRANSLATION] Sync Presets..."
+            "comparePanels": "Panelek összehasonlítása...",
+            "syncPresets": "Szinkronizációs beállítások..."
         },
         "activityPanel": {
             "awaitingCommands": "Parancsokra vár...",
@@ -3806,7 +3806,7 @@
             "trashFooter": "A visszaállított fájlok az eredeti mappájukban jelennek meg újra",
             "connectionNamePlaceholder": "Kapcsolat neve (pl. FileLu Felhőm)",
             "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days",
-            "rsyncTransferOnly": "[NEEDS TRANSLATION] Transfer-only endpoint: browsing is not available on Rsync. Use Native API, WebDAV, S3 or FTP to navigate; switch to Rsync for high-bandwidth delta transfers."
+            "rsyncTransferOnly": "Csak átvitelt végző végpont: a böngészés nem érhető el Rsyncon. Használj Native API-t, WebDAV-ot, S3-at vagy FTP-t a navigációhoz; válts Rsyncre nagy sávszélességű delta átvitelhez."
         },
         "box": {
             "addComment": "Hozzászólás hozzáadása",
@@ -4513,7 +4513,7 @@
             "moveHere": "{count} áthelyezése ide",
             "copyHereFromOtherPanelTooltip": "{count} kiválasztott elem másolása a másik panelről erre a panelre (F5)",
             "moveHereFromOtherPanelTooltip": "{count} kiválasztott elem áthelyezése a másik panelről erre a panelre (F6)",
-            "syncToOtherPanel": "[NEEDS TRANSLATION] Sync to other panel (delta)"
+            "syncToOtherPanel": "Szinkronizálás a másik panellel (delta)"
         },
         "localSync": {
             "title": "AeroSync: helyiről helyire",
@@ -4539,14 +4539,14 @@
             "errorPathsRequired": "A forrás és a cél kötelező"
         },
         "compare": {
-            "title": "[NEEDS TRANSLATION] Compare panels",
-            "notAvailable": "[NEEDS TRANSLATION] Open a second panel or a remote connection to compare."
+            "title": "Panelek összehasonlítása",
+            "notAvailable": "Nyiss meg egy második panelt vagy egy távoli kapcsolatot az összehasonlításhoz."
         },
         "syncPresets": {
-            "title": "[NEEDS TRANSLATION] Sync presets",
-            "nothingToDo": "[NEEDS TRANSLATION] Sync presets",
-            "allSkipped": "[NEEDS TRANSLATION] No actionable entries for this preset.",
-            "deletesDeferred": "[NEEDS TRANSLATION] Sync presets"
+            "title": "Szinkronizációs beállítások",
+            "nothingToDo": "Szinkronizációs beállítások",
+            "allSkipped": "Nincs végrehajtható bejegyzés ehhez a beállításhoz.",
+            "deletesDeferred": "Szinkronizációs beállítások"
         }
     }
 }

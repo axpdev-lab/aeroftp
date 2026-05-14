@@ -3304,8 +3304,8 @@
             "detailedCards": "Ayrıntılı sunucu kartları",
             "debugPanel": "Debug Panel",
             "localSync": "Yerel eşitleme...",
-            "comparePanels": "[NEEDS TRANSLATION] Compare Panels...",
-            "syncPresets": "[NEEDS TRANSLATION] Sync Presets..."
+            "comparePanels": "Panelleri Karşılaştır...",
+            "syncPresets": "Senkronizasyon Önayarları..."
         },
         "activityPanel": {
             "awaitingCommands": "Komut bekleniyor...",
@@ -3806,7 +3806,7 @@
             "trashFooter": "Geri yüklenen dosyalar orijinal klasörlerinde yeniden görünecektir",
             "connectionNamePlaceholder": "Bağlantı adı (ör. FileLu Cloud'um)",
             "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days",
-            "rsyncTransferOnly": "[NEEDS TRANSLATION] Transfer-only endpoint: browsing is not available on Rsync. Use Native API, WebDAV, S3 or FTP to navigate; switch to Rsync for high-bandwidth delta transfers."
+            "rsyncTransferOnly": "Yalnızca aktarım uç noktası: Rsync'te göz atma kullanılamaz. Gezinmek için Native API, WebDAV, S3 veya FTP kullan; yüksek bant genişlikli delta aktarımları için Rsync'e geç."
         },
         "box": {
             "addComment": "Yorum ekle",
@@ -4513,7 +4513,7 @@
             "moveHere": "{count} öğeyi buraya taşı",
             "copyHereFromOtherPanelTooltip": "Diğer panelden seçilen {count} öğeyi bu panele kopyala (F5)",
             "moveHereFromOtherPanelTooltip": "Diğer panelden seçilen {count} öğeyi bu panele taşı (F6)",
-            "syncToOtherPanel": "[NEEDS TRANSLATION] Sync to other panel (delta)"
+            "syncToOtherPanel": "Diğer panele senkronize et (delta)"
         },
         "localSync": {
             "title": "AeroSync: yerelden yerele",
@@ -4539,14 +4539,14 @@
             "errorPathsRequired": "Kaynak ve hedef gereklidir"
         },
         "compare": {
-            "title": "[NEEDS TRANSLATION] Compare panels",
-            "notAvailable": "[NEEDS TRANSLATION] Open a second panel or a remote connection to compare."
+            "title": "Panelleri karşılaştır",
+            "notAvailable": "Karşılaştırmak için ikinci bir panel veya uzak bağlantı açın."
         },
         "syncPresets": {
-            "title": "[NEEDS TRANSLATION] Sync presets",
-            "nothingToDo": "[NEEDS TRANSLATION] Sync presets",
-            "allSkipped": "[NEEDS TRANSLATION] No actionable entries for this preset.",
-            "deletesDeferred": "[NEEDS TRANSLATION] Sync presets"
+            "title": "Senkronizasyon önayarları",
+            "nothingToDo": "Senkronizasyon önayarları",
+            "allSkipped": "Bu önayar için yürütülebilir giriş yok.",
+            "deletesDeferred": "Senkronizasyon önayarları"
         }
     }
 }

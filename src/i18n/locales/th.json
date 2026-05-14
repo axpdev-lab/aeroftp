@@ -3304,8 +3304,8 @@
             "detailedCards": "การ์ดเซิร์ฟเวอร์แบบละเอียด",
             "debugPanel": "Debug Panel",
             "localSync": "ซิงค์ในเครื่อง...",
-            "comparePanels": "[NEEDS TRANSLATION] Compare Panels...",
-            "syncPresets": "[NEEDS TRANSLATION] Sync Presets..."
+            "comparePanels": "เปรียบเทียบแผง...",
+            "syncPresets": "ค่าที่ตั้งล่วงหน้าการซิงค์..."
         },
         "activityPanel": {
             "awaitingCommands": "รอคำสั่ง...",
@@ -3806,7 +3806,7 @@
             "trashFooter": "ไฟล์ที่กู้คืนจะปรากฏขึ้นอีกครั้งในโฟลเดอร์เดิม",
             "connectionNamePlaceholder": "ชื่อการเชื่อมต่อ (เช่น FileLu Cloud ของฉัน)",
             "trashAutoExpiry": "Trashed files are automatically deleted by FileLu after 7 days",
-            "rsyncTransferOnly": "[NEEDS TRANSLATION] Transfer-only endpoint: browsing is not available on Rsync. Use Native API, WebDAV, S3 or FTP to navigate; switch to Rsync for high-bandwidth delta transfers."
+            "rsyncTransferOnly": "จุดสิ้นสุดสำหรับการถ่ายโอนเท่านั้น: ไม่สามารถเรียกดูบน Rsync ได้ ใช้ Native API, WebDAV, S3 หรือ FTP เพื่อนำทาง; สลับเป็น Rsync สำหรับการถ่ายโอน delta แบนด์วิดท์สูง"
         },
         "box": {
             "addComment": "เพิ่มความคิดเห็น",
@@ -4513,7 +4513,7 @@
             "moveHere": "ย้าย {count} ที่นี่",
             "copyHereFromOtherPanelTooltip": "คัดลอก {count} ที่เลือกจากแผงอื่นมายังแผงนี้ (F5)",
             "moveHereFromOtherPanelTooltip": "ย้าย {count} ที่เลือกจากแผงอื่นมายังแผงนี้ (F6)",
-            "syncToOtherPanel": "[NEEDS TRANSLATION] Sync to other panel (delta)"
+            "syncToOtherPanel": "ซิงค์ไปยังแผงอีกอัน (delta)"
         },
         "localSync": {
             "title": "AeroSync: ในเครื่องสู่ในเครื่อง",
@@ -4539,14 +4539,14 @@
             "errorPathsRequired": "ต้องระบุต้นทางและปลายทาง"
         },
         "compare": {
-            "title": "[NEEDS TRANSLATION] Compare panels",
-            "notAvailable": "[NEEDS TRANSLATION] Open a second panel or a remote connection to compare."
+            "title": "เปรียบเทียบแผง",
+            "notAvailable": "เปิดแผงที่สองหรือการเชื่อมต่อระยะไกลเพื่อเปรียบเทียบ"
         },
         "syncPresets": {
-            "title": "[NEEDS TRANSLATION] Sync presets",
-            "nothingToDo": "[NEEDS TRANSLATION] Sync presets",
-            "allSkipped": "[NEEDS TRANSLATION] No actionable entries for this preset.",
-            "deletesDeferred": "[NEEDS TRANSLATION] Sync presets"
+            "title": "ค่าที่ตั้งล่วงหน้าการซิงค์",
+            "nothingToDo": "ค่าที่ตั้งล่วงหน้าการซิงค์",
+            "allSkipped": "ไม่มีรายการที่สามารถดำเนินการได้สำหรับค่าที่ตั้งล่วงหน้านี้",
+            "deletesDeferred": "ค่าที่ตั้งล่วงหน้าการซิงค์"
         }
     }
 }

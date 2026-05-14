@@ -2991,7 +2991,7 @@
       "transfers": "Transfers",
       "transferSettings": "Transfer Settings",
       "nativeRsync": {
-        "title": "Native rsync (experimental)",
+        "title": "Native rsync (beta)",
         "description": "Choose how SFTP Delta Sync dispatches rsync transfers.",
         "enableToggle": "Enable native rsync for SFTP delta sync",
         "experimental": "Auto prefers AeroRsync with classic fallback; Classic uses the system rsync binary where available; Native skips the classic binary fallback."

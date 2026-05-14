@@ -196,7 +196,7 @@ export const securityLevels = {
         color: 'text-amber-400',
         bgColor: 'bg-amber-600',
         borderColor: 'border-amber-500',
-        label: 'Experimental',
+        label: 'Beta',
         version: 3,
         cascade: false,
         features: ['Gear-CDC chunking', 'Chunk deduplication', 'Zstd per chunk', 'AES-256-GCM-SIV'],
