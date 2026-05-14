@@ -1873,6 +1873,12 @@ export const PROVIDERS: ProviderConfig[] = [
         color: '#8B5CF6',
         stable: false,
         contactVerified: true,
+        // Z.4.5 R1 (2026-05-14): the FileLu Rsync endpoint is fully
+        // managed by AeroFTP (`rsync.filelu.com:2222`). Surfacing the
+        // host/port row would confuse rather than help (the user has no
+        // reason to change either). Server/port are auto-applied at
+        // preset-select time and hidden from the form.
+        serverLocked: true,
         fields: [
             {
                 key: 'username',

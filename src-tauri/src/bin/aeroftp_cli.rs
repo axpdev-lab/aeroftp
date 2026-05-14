@@ -1328,6 +1328,66 @@ enum Commands {
         #[arg(long, value_name = "NAME")]
         name: Option<String>,
     },
+    /// Delete a saved server profile from the vault
+    ///
+    /// Mirrors the GUI `MyServersPanel` confirmDelete action: removes the
+    /// profile config entry, the per-profile credential blob
+    /// (`server_<id>`), and any membership in
+    /// `config_favorite_servers`. Without `--yes` the command prompts
+    /// for confirmation on stderr (skipped automatically when stdin is
+    /// not a TTY).
+    ProfileDelete {
+        /// Selector: profile index (1-based, as shown in `profiles`) or
+        /// (case-insensitive) name / id. Substring match falls back to a
+        /// unique row only.
+        #[arg(value_name = "SELECTOR")]
+        selector: String,
+        /// Skip the interactive confirmation prompt
+        #[arg(long, short = 'y')]
+        yes: bool,
+    },
+    /// Set or update the credential blob for a saved server profile
+    ///
+    /// Writes the per-protocol credential (typically a JSON object with
+    /// fields like `password`, `apiKey`, `tokens`, ...) into the vault
+    /// key `server_<id>`, exactly the same place the GUI Edit modal
+    /// writes to. Use this when the CLI needs to seed credentials into a
+    /// vault without opening the GUI.
+    ///
+    /// Two write modes:
+    ///   - `--password` / `--password-env` / `--password-stdin`: store
+    ///     the raw secret as the credential value (legacy single-secret
+    ///     shape; matches the FTP/SFTP/WebDAV `password` field on the
+    ///     GUI side).
+    ///   - `--credential-json` / `--credential-json-file`: store an
+    ///     arbitrary JSON object verbatim (use this for OAuth tokens,
+    ///     API keys, or any structured credential blob).
+    ProfileSetPassword {
+        /// Selector: profile index (1-based, as shown in `profiles`) or
+        /// (case-insensitive) name / id. Substring match falls back to a
+        /// unique row only.
+        #[arg(value_name = "SELECTOR")]
+        selector: String,
+        /// Inline password (visible in `ps`; prefer --password-stdin or
+        /// --password-env). Mutually exclusive with the other --password*
+        /// and --credential-json* sources.
+        #[arg(long)]
+        password: Option<String>,
+        /// Read one password line from the named environment variable
+        #[arg(long, value_name = "ENV_VAR")]
+        password_env: Option<String>,
+        /// Read one password line from stdin
+        #[arg(long = "password-stdin")]
+        password_stdin: bool,
+        /// JSON credential blob (string). Stored verbatim under
+        /// `server_<id>`. Mutually exclusive with the --password* flags.
+        #[arg(long, value_name = "JSON")]
+        credential_json: Option<String>,
+        /// Read JSON credential blob from a file. Mutually exclusive
+        /// with --credential-json and the --password* flags.
+        #[arg(long, value_name = "PATH")]
+        credential_json_file: Option<String>,
+    },
     /// List configured AI providers and models from the encrypted vault
     AiModels,
     /// Show the canonical task-oriented quick-start for AI agents
@@ -1645,20 +1705,32 @@ enum AerorsyncCommands {
     /// Storage Box, etc.) accepts a password login from AeroFTP before
     /// committing to a profile.
     ///
-    /// Password resolution order (first match wins):
-    ///   1. `--password-env <VAR>` reads from the named env var
-    ///   2. `--password-stdin` reads one line from stdin
-    ///   3. interactive prompt on stderr (when stdin is a TTY)
+    /// Two invocation modes:
+    ///
+    /// 1. **Explicit args**: `aerorsync probe rsync.filelu.com aleimob
+    ///    --port 2222 --password-env FILELU_PW --accept-any-host-key`.
+    ///    Pass HOST and USER positionally; resolve the password from
+    ///    --password-env, --password-stdin, or a TTY prompt.
+    ///
+    /// 2. **Profile-backed**: `aerorsync probe --profile-rsync "FileLu
+    ///    Rsync"` reads host / port / user from the saved profile and
+    ///    pulls the password from the matching vault credential
+    ///    (`server_<id>`). HOST and USER positionals are then optional
+    ///    overrides; --port overrides the profile's port. If a vault
+    ///    credential is missing the command falls back to the prompt /
+    ///    --password-* sources.
     ///
     /// The password is NEVER echoed, NEVER logged, NEVER printed in
     /// error messages. The remote banner IS printed on success: it is
     /// public information from the server.
     Probe {
-        /// Remote host (e.g. `rsync.filelu.com`, `127.0.0.1`)
-        host: String,
-        /// SSH user
-        user: String,
-        /// SSH port (default 22)
+        /// Remote host (e.g. `rsync.filelu.com`, `127.0.0.1`).
+        /// Optional when `--profile-rsync` is set; the profile's host is used.
+        host: Option<String>,
+        /// SSH user.
+        /// Optional when `--profile-rsync` is set; the profile's username is used.
+        user: Option<String>,
+        /// SSH port (default 22; overridden by `--profile-rsync` when set).
         #[arg(long, default_value_t = 22)]
         port: u16,
         /// Read the password from the named environment variable
@@ -1667,6 +1739,14 @@ enum AerorsyncCommands {
         /// Read one password line from stdin
         #[arg(long = "password-stdin")]
         password_stdin: bool,
+        /// Use a saved server profile to resolve host / port / user /
+        /// password. The credential is looked up in vault key
+        /// `server_<id>` exactly like the rest of the CLI. Use a
+        /// distinct flag name (`--profile-rsync`) to avoid clashing
+        /// with the global `--profile / -P` flag that the entire CLI
+        /// surface forwards through `clap`.
+        #[arg(long, value_name = "PROFILE")]
+        profile_rsync: Option<String>,
         /// Skip TOFU host-key verification (dev/CI only). Production
         /// pinning lives in the provider; the probe is a smoke test
         /// and lets the operator inspect the fingerprint manually.
@@ -6798,6 +6878,14 @@ fn cmd_profile_add(
         "koofr",
         "drime",
         "filelu",
+        // Z.4.5 R1: rsync-as-a-service preset (rsync.filelu.com:2222).
+        // The frontend registry already exposes the preset (commit
+        // 057d81c8); the protocol identifier is registered here so
+        // `profile-add --protocol filelu-rsync` accepts it. The actual
+        // provider end-to-end (StorageProvider impl + dispatch site)
+        // is the next milestone — until then a profile created with
+        // this protocol is a placeholder readable by `aerorsync probe`.
+        "filelu-rsync",
         "yandexdisk",
         "opendrive",
         "jottacloud",
@@ -7099,6 +7187,339 @@ fn delete_profile_in_vault(
     }
 
     Ok(profiles)
+}
+
+/// `aeroftp profile-delete <SELECTOR> [--yes]` — public CLI surface for
+/// `delete_profile_in_vault`. Resolves the selector exactly like
+/// `profile-duplicate` so name / id / 1-based index / unique substring
+/// all work. Without `--yes` and with stdin attached to a TTY, prompts
+/// for `y/N` on stderr; in non-TTY contexts (CI / pipe) the absence of
+/// `--yes` is a hard error so a script never silently consumes stdin.
+fn cmd_profile_delete(
+    cli: &Cli,
+    format: OutputFormat,
+    selector: &str,
+    skip_confirm: bool,
+) -> i32 {
+    let store = match open_vault(cli) {
+        Ok(s) => s,
+        Err(e) => {
+            print_error(format, &e, 5);
+            return 5;
+        }
+    };
+
+    let raw = match store.get("config_server_profiles") {
+        Ok(r) => r,
+        Err(e) => {
+            print_error(format, &format!("Failed to read profiles: {}", e), 5);
+            return 5;
+        }
+    };
+    let profiles: Vec<serde_json::Value> = match serde_json::from_str(&raw) {
+        Ok(p) => p,
+        Err(e) => {
+            print_error(format, &format!("Failed to parse profiles: {}", e), 5);
+            return 5;
+        }
+    };
+
+    let target_idx = match resolve_profile_selector(&profiles, selector) {
+        Ok(i) => i,
+        Err(e) => {
+            print_error(format, &format!("Profile lookup failed: {}", e), 2);
+            return 2;
+        }
+    };
+    let target = &profiles[target_idx];
+    let target_id = target
+        .get("id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let target_name = target
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unnamed")
+        .to_string();
+    if target_id.is_empty() {
+        print_error(
+            format,
+            &format!("Profile '{}' has no id; cannot delete", target_name),
+            5,
+        );
+        return 5;
+    }
+
+    if !skip_confirm {
+        use std::io::IsTerminal;
+        if !std::io::stdin().is_terminal() {
+            print_error(
+                format,
+                "refusing to delete without --yes when stdin is not a TTY (running under CI / pipe)",
+                5,
+            );
+            return 5;
+        }
+        eprint!(
+            "Delete profile '{}' (id={})? [y/N] ",
+            target_name, target_id
+        );
+        use std::io::{BufRead, Write};
+        std::io::stderr().flush().ok();
+        let mut answer = String::new();
+        if std::io::stdin().lock().read_line(&mut answer).is_err() {
+            print_error(format, "failed to read confirmation from stdin", 5);
+            return 5;
+        }
+        let trimmed = answer.trim().to_ascii_lowercase();
+        if trimmed != "y" && trimmed != "yes" {
+            match format {
+                OutputFormat::Json => {
+                    print_json(&serde_json::json!({
+                        "status": "cancelled",
+                        "id": target_id,
+                        "name": target_name,
+                    }));
+                }
+                OutputFormat::Text => {
+                    eprintln!("Cancelled.");
+                }
+            }
+            return 0;
+        }
+    }
+
+    match delete_profile_in_vault(&store, &target_id) {
+        Ok(remaining) => match format {
+            OutputFormat::Json => {
+                print_json(&serde_json::json!({
+                    "status": "deleted",
+                    "id": target_id,
+                    "name": target_name,
+                    "remaining": remaining.len(),
+                }));
+                0
+            }
+            OutputFormat::Text => {
+                println!(
+                    "Deleted '{}' (id={}). {} profile(s) remaining.",
+                    target_name,
+                    target_id,
+                    remaining.len()
+                );
+                0
+            }
+        },
+        Err(e) => {
+            print_error(format, &format!("Delete failed: {}", e), 5);
+            5
+        }
+    }
+}
+
+/// `aeroftp profile-set-password <SELECTOR> [--password... | --credential-json...]`
+/// — write the per-profile credential blob into the vault key
+/// `server_<id>`. Mirrors the GUI Edit modal save path. Mutually
+/// exclusive sources: pick exactly one of --password / --password-env /
+/// --password-stdin / --credential-json / --credential-json-file.
+#[allow(clippy::too_many_arguments)]
+fn cmd_profile_set_password(
+    cli: &Cli,
+    format: OutputFormat,
+    selector: &str,
+    password: Option<&str>,
+    password_env: Option<&str>,
+    password_stdin: bool,
+    credential_json: Option<&str>,
+    credential_json_file: Option<&str>,
+) -> i32 {
+    // Mutex on credential sources: exactly one MUST be set.
+    let sources_count = [
+        password.is_some(),
+        password_env.is_some(),
+        password_stdin,
+        credential_json.is_some(),
+        credential_json_file.is_some(),
+    ]
+    .iter()
+    .filter(|s| **s)
+    .count();
+    if sources_count == 0 {
+        print_error(
+            format,
+            "no credential source: pass exactly one of --password, --password-env, --password-stdin, --credential-json, --credential-json-file",
+            5,
+        );
+        return 5;
+    }
+    if sources_count > 1 {
+        print_error(
+            format,
+            "multiple credential sources: pass exactly one of --password, --password-env, --password-stdin, --credential-json, --credential-json-file",
+            5,
+        );
+        return 5;
+    }
+
+    if password.is_some() {
+        eprintln!(
+            "Warning: --password is visible in `ps` output and shell history; prefer --password-stdin or --password-env"
+        );
+    }
+
+    let credential_value: String = if let Some(p) = password {
+        p.to_string()
+    } else if let Some(var) = password_env {
+        match std::env::var(var) {
+            Ok(v) if !v.is_empty() => v,
+            Ok(_) => {
+                print_error(
+                    format,
+                    &format!("environment variable {var} is set but empty"),
+                    5,
+                );
+                return 5;
+            }
+            Err(_) => {
+                print_error(
+                    format,
+                    &format!("environment variable {var} is not set"),
+                    5,
+                );
+                return 5;
+            }
+        }
+    } else if password_stdin {
+        use std::io::BufRead;
+        let mut buf = String::new();
+        if std::io::stdin().lock().read_line(&mut buf).is_err() {
+            print_error(format, "failed to read password from stdin", 5);
+            return 5;
+        }
+        let trimmed = buf.trim_end_matches(['\r', '\n']);
+        if trimmed.is_empty() {
+            print_error(format, "empty password on stdin", 5);
+            return 5;
+        }
+        trimmed.to_string()
+    } else if let Some(json_str) = credential_json {
+        // Validate JSON shape upfront to catch typos before vault write.
+        if let Err(e) = serde_json::from_str::<serde_json::Value>(json_str) {
+            print_error(
+                format,
+                &format!("--credential-json is not valid JSON: {e}"),
+                5,
+            );
+            return 5;
+        }
+        json_str.to_string()
+    } else if let Some(path) = credential_json_file {
+        let raw = match std::fs::read_to_string(path) {
+            Ok(s) => s,
+            Err(e) => {
+                print_error(
+                    format,
+                    &format!("Cannot read credential file '{}': {}", path, e),
+                    2,
+                );
+                return 2;
+            }
+        };
+        if let Err(e) = serde_json::from_str::<serde_json::Value>(&raw) {
+            print_error(
+                format,
+                &format!("File '{}' is not valid JSON: {}", path, e),
+                5,
+            );
+            return 5;
+        }
+        raw
+    } else {
+        unreachable!("checked sources_count above");
+    };
+
+    let store = match open_vault(cli) {
+        Ok(s) => s,
+        Err(e) => {
+            print_error(format, &e, 5);
+            return 5;
+        }
+    };
+
+    let raw = match store.get("config_server_profiles") {
+        Ok(r) => r,
+        Err(e) => {
+            print_error(format, &format!("Failed to read profiles: {}", e), 5);
+            return 5;
+        }
+    };
+    let profiles: Vec<serde_json::Value> = match serde_json::from_str(&raw) {
+        Ok(p) => p,
+        Err(e) => {
+            print_error(format, &format!("Failed to parse profiles: {}", e), 5);
+            return 5;
+        }
+    };
+
+    let target_idx = match resolve_profile_selector(&profiles, selector) {
+        Ok(i) => i,
+        Err(e) => {
+            print_error(format, &format!("Profile lookup failed: {}", e), 2);
+            return 2;
+        }
+    };
+    let target = &profiles[target_idx];
+    let target_id = target
+        .get("id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let target_name = target
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unnamed")
+        .to_string();
+    if target_id.is_empty() {
+        print_error(
+            format,
+            &format!("Profile '{}' has no id; cannot set credential", target_name),
+            5,
+        );
+        return 5;
+    }
+
+    let key = format!("server_{}", target_id);
+    if let Err(e) = store.store(&key, &credential_value) {
+        print_error(
+            format,
+            &format!("Failed to write credential to vault: {}", e),
+            5,
+        );
+        return 5;
+    }
+
+    match format {
+        OutputFormat::Json => {
+            print_json(&serde_json::json!({
+                "status": "ok",
+                "id": target_id,
+                "name": target_name,
+                "vault_key": key,
+                "bytes": credential_value.len(),
+            }));
+        }
+        OutputFormat::Text => {
+            println!(
+                "Credential stored for '{}' (id={}, vault key={}, {} bytes)",
+                target_name,
+                target_id,
+                key,
+                credential_value.len()
+            );
+        }
+    }
+    0
 }
 
 /// Duplicate the profile identified by `source_id`. Returns `(new_id,
@@ -15640,14 +16061,16 @@ fn cmd_aerorsync_mode_set(mode: &str, format: OutputFormat) -> i32 {
 #[cfg(feature = "aerorsync")]
 #[allow(clippy::too_many_arguments)]
 async fn cmd_aerorsync_probe(
-    host: &str,
-    user: &str,
+    host: Option<&str>,
+    user: Option<&str>,
     port: u16,
     password_env: Option<&str>,
     password_stdin: bool,
+    profile_rsync: Option<&str>,
     accept_any_host_key: bool,
     remote_command: &str,
     connect_timeout_secs: u64,
+    cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
     use ftp_client_gui_lib::aerorsync::russh_session_transport::RusshSessionTransport;
@@ -15657,7 +16080,122 @@ async fn cmd_aerorsync_probe(
     };
     use secrecy::SecretString;
 
-    // Password resolution. Order matches the rest of the CLI surface.
+    // Profile-backed lookup: when `--profile-rsync` is set, read the
+    // host/port/user/credential from the vault. Explicit args still
+    // override (e.g. probe a different host with the same credentials).
+    let mut effective_host: Option<String> = host.map(|s| s.to_string());
+    let mut effective_user: Option<String> = user.map(|s| s.to_string());
+    let mut effective_port: u16 = port;
+    let mut profile_password: Option<String> = None;
+
+    if let Some(profile_name) = profile_rsync {
+        let store = match open_vault(cli) {
+            Ok(s) => s,
+            Err(e) => {
+                print_error(format, &e, 5);
+                return 5;
+            }
+        };
+        let raw = match store.get("config_server_profiles") {
+            Ok(r) => r,
+            Err(e) => {
+                print_error(format, &format!("Failed to read profiles: {}", e), 5);
+                return 5;
+            }
+        };
+        let profiles: Vec<serde_json::Value> = match serde_json::from_str(&raw) {
+            Ok(p) => p,
+            Err(e) => {
+                print_error(format, &format!("Failed to parse profiles: {}", e), 5);
+                return 5;
+            }
+        };
+        let target_idx = match resolve_profile_selector(&profiles, profile_name) {
+            Ok(i) => i,
+            Err(e) => {
+                print_error(format, &format!("Profile lookup failed: {}", e), 2);
+                return 2;
+            }
+        };
+        let target = &profiles[target_idx];
+        let target_id = target
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        if effective_host.is_none() {
+            effective_host = target
+                .get("host")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+        }
+        if effective_user.is_none() {
+            effective_user = target
+                .get("username")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+        }
+        // Profile port wins over the default 22 only if the user did not
+        // override --port explicitly. We can't distinguish "default" from
+        // "explicit 22" via clap, so the rule is: any non-22 --port wins;
+        // when --port is 22 (default) and the profile carries a port,
+        // prefer the profile's port.
+        if effective_port == 22 {
+            if let Some(profile_port) = target.get("port").and_then(|v| v.as_u64()) {
+                if profile_port > 0 && profile_port < u16::MAX as u64 {
+                    effective_port = profile_port as u16;
+                }
+            }
+        }
+        // Pull the credential. The vault stores either a raw password
+        // string or a JSON object: try JSON first and pluck `password`,
+        // fall back to the raw string. Missing credential is not a hard
+        // error: we let the regular --password-* / TTY path take over.
+        if !target_id.is_empty() {
+            if let Ok(blob) = store.get(&format!("server_{}", target_id)) {
+                let trimmed = blob.trim();
+                if !trimmed.is_empty() {
+                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(trimmed) {
+                        if let Some(pw) = parsed.get("password").and_then(|v| v.as_str()) {
+                            if !pw.is_empty() {
+                                profile_password = Some(pw.to_string());
+                            }
+                        }
+                    }
+                    if profile_password.is_none() {
+                        profile_password = Some(trimmed.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    let host = match effective_host.as_deref() {
+        Some(h) if !h.is_empty() => h,
+        _ => {
+            print_error(
+                format,
+                "missing HOST: pass it positionally or use --profile-rsync to read it from a saved profile",
+                5,
+            );
+            return 5;
+        }
+    };
+    let user = match effective_user.as_deref() {
+        Some(u) if !u.is_empty() => u,
+        _ => {
+            print_error(
+                format,
+                "missing USER: pass it positionally or use --profile-rsync to read it from a saved profile",
+                5,
+            );
+            return 5;
+        }
+    };
+    let port = effective_port;
+
+    // Password resolution. Order: explicit --password-env / --password-stdin
+    // first, profile vault credential next, TTY prompt last.
     let password = match (password_env, password_stdin) {
         (Some(var), false) => match std::env::var(var) {
             Ok(v) if !v.is_empty() => v,
@@ -15696,20 +16234,27 @@ async fn cmd_aerorsync_probe(
             trimmed.to_string()
         }
         (None, false) => {
-            // Interactive TTY prompt.
-            match rpassword::prompt_password(format!("Password for {user}@{host}:{port}: ")) {
-                Ok(p) if !p.is_empty() => p,
-                Ok(_) => {
-                    print_error(format, "empty password from prompt", 5);
-                    return 5;
-                }
-                Err(e) => {
-                    print_error(
-                        format,
-                        &format!("failed to read password from terminal: {e}"),
-                        5,
-                    );
-                    return 5;
+            // Profile vault credential takes precedence over the TTY
+            // prompt: if the operator passed --profile-rsync we honor
+            // the saved password silently. Falls back to the prompt
+            // when the vault entry is missing or empty.
+            if let Some(pw) = profile_password.take() {
+                pw
+            } else {
+                match rpassword::prompt_password(format!("Password for {user}@{host}:{port}: ")) {
+                    Ok(p) if !p.is_empty() => p,
+                    Ok(_) => {
+                        print_error(format, "empty password from prompt", 5);
+                        return 5;
+                    }
+                    Err(e) => {
+                        print_error(
+                            format,
+                            &format!("failed to read password from terminal: {e}"),
+                            5,
+                        );
+                        return 5;
+                    }
                 }
             }
         }
@@ -32334,6 +32879,26 @@ async fn main() {
             cmd_dedupe(u, p, mode, *dry_run, &cli, format).await
         }
         Commands::Mcp => cmd_agent_mcp("", &cli).await,
+        Commands::ProfileDelete { selector, yes } => {
+            cmd_profile_delete(&cli, format, selector, *yes)
+        }
+        Commands::ProfileSetPassword {
+            selector,
+            password,
+            password_env,
+            password_stdin,
+            credential_json,
+            credential_json_file,
+        } => cmd_profile_set_password(
+            &cli,
+            format,
+            selector,
+            password.as_deref(),
+            password_env.as_deref(),
+            *password_stdin,
+            credential_json.as_deref(),
+            credential_json_file.as_deref(),
+        ),
         Commands::Aerorsync { command } => match command {
             AerorsyncCommands::Mode { command } => match command {
                 AerorsyncModeCommands::Get => cmd_aerorsync_mode_get(format),
@@ -32347,19 +32912,22 @@ async fn main() {
                 port,
                 password_env,
                 password_stdin,
+                profile_rsync,
                 accept_any_host_key,
                 remote_command,
                 connect_timeout_secs,
             } => {
                 cmd_aerorsync_probe(
-                    host,
-                    user,
+                    host.as_deref(),
+                    user.as_deref(),
                     *port,
                     password_env.as_deref(),
                     *password_stdin,
+                    profile_rsync.as_deref(),
                     *accept_any_host_key,
                     remote_command,
                     *connect_timeout_secs,
+                    &cli,
                     format,
                 )
                 .await
