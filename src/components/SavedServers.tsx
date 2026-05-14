@@ -531,11 +531,25 @@ export const SavedServers: React.FC<SavedServersProps> = ({
             const defaultPort = server.protocol === 'sftp' ? 22 : server.protocol === 'ftps' ? 990 : 21;
             const serverString = server.host;
 
+            // Z.4.5 R2 legacy-profile migration: when the registry
+            // preset's protocol changed since the profile was saved
+            // (FileLu Rsync moved from 'sftp' to 'filelu-rsync'), trust
+            // the registry. Without this, connect tries SFTP against
+            // FileLu's rsync endpoint and times out because ForceCommand
+            // blocks the SFTP subsystem.
+            let effectiveProtocol: ProviderType = (server.protocol || 'ftp') as ProviderType;
+            if (server.providerId) {
+                const preset = getProviderById(server.providerId);
+                if (preset?.protocol && preset.protocol !== effectiveProtocol) {
+                    effectiveProtocol = preset.protocol as ProviderType;
+                }
+            }
+
             await onConnect({
                 server: serverString,
                 username: server.username,
                 password,
-                protocol: server.protocol || 'ftp',
+                protocol: effectiveProtocol,
                 port: server.port,
                 displayName: server.name,
                 options: server.options,
