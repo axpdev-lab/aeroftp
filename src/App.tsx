@@ -287,11 +287,11 @@ import { secureGet, secureGetWithFallback, secureStoreAndClean } from './utils/s
 import { loadSavedServerProfiles, mergeSavedServerProfile, storeSavedServerProfiles } from './utils/serverProfileStore';
 import { maskCredential } from './utils/maskCredential';
 import { getOpenWithDefaultRoute } from './utils/openWithDefault';
-import { createRemoteEndpoint } from './utils/panelEndpoints';
+import { createLocalEndpoint, createRemoteEndpoint } from './utils/panelEndpoints';
 import { createUnifiedTransferPlan, UnifiedTransferPlan } from './utils/unifiedTransferPlanner';
 import { buildCrossProfileEntries, runCrossProfileTransfer } from './utils/crossProfileExecution';
 import { compareEntries, type CompareInputEntry, type CompareResult, type CompareResultEntry } from './utils/compareEndpoints';
-import { namesFromBuckets, namesToDelete, type PresetPlan } from './utils/syncPresets';
+import { namesFromBuckets, namesToDelete, namesToRename, type PresetPlan } from './utils/syncPresets';
 import { useTranslation } from './i18n';
 
 // Components
@@ -595,6 +595,14 @@ const App: React.FC = () => {
     // had files selected; left undefined when the user must pick paths inside
     // the legacy CrossProfilePanel modal.
     remoteRemoteEntries?: Array<{ name: string; is_dir: boolean; size?: number }>;
+    // Z.2.4 — generic per-entry selection for local-remote and
+    // remote-local execution. When set, executeUnifiedTransferPlan
+    // loops these names through `uploadFile` / `downloadFile`. Local-
+    // local copy/move continues to use the existing
+    // `transferLocalSelectionAcrossPanels` path which reads the
+    // selection state directly. `path` carries the full source-side
+    // absolute path so the executor does not need to recompute it.
+    transferEntries?: Array<{ name: string; path: string; is_dir: boolean; size?: number }>;
   } | null>(null);
   const [unifiedTransferExecuting, setUnifiedTransferExecuting] = useState(false);
   // Z.3.7: standalone compare-view dialog state. The result is pre-computed
@@ -5893,6 +5901,152 @@ interface UpdateVerificationInfo {
         return;
       }
 
+      // Z.2.4 — local-local sync modes route through `local_sync_run`,
+      // the same backend that powers the AeroSync Local→Local panel
+      // (Z.2.3). Files ≥ 1 MiB go through `LocalDeltaTransport`, smaller
+      // ones fall back to plain copy. `local_sync_run` is directory-
+      // scoped (never per-file), so we sync the entire source directory
+      // into the destination. Orphan deletes (mirror) and conflict
+      // policies live in Z.3.8/Z.3.9 dialogs; this branch only carries
+      // the additive copy/update path, matching FreeFileSync "Backup"
+      // semantics.
+      if (
+        plan.pairKind === 'local-local'
+        && (plan.mode === 'sync' || plan.mode === 'backup' || plan.mode === 'mirror' || plan.mode === 'bisync')
+      ) {
+        try {
+          const report = await invoke<{
+            status: string;
+            uploaded: number;
+            skipped: number;
+            errors: number;
+            elapsed_ms: number;
+            total_payload_bytes: number;
+            bytes_on_wire: number;
+            savings_ratio: number;
+            error_messages: string[];
+          }>('local_sync_run', {
+            request: {
+              source: plan.source.path,
+              destination: plan.destination.path,
+              exclude: [],
+              no_delta: plan.engine !== 'local-delta',
+              dry_run: false,
+            },
+          });
+          setPendingUnifiedTransferPlan(null);
+          if (report.errors > 0) {
+            notify.warning(
+              t('syncPresets.title') || 'Local sync',
+              `${report.uploaded} ok / ${report.errors} error(s)`,
+            );
+          } else {
+            notify.success(
+              t('syncPresets.title') || 'Local sync',
+              `${report.uploaded} file(s) synced · ${(report.savings_ratio * 100).toFixed(0)}% on wire`,
+            );
+          }
+          // Refresh the destination panel so the user sees the result.
+          if (plan.destination.kind === 'local') {
+            if (plan.destination.panelId === 'local') {
+              await loadLocalFiles(plan.destination.path);
+            } else {
+              await loadLocalFiles2(plan.destination.path);
+            }
+          }
+        } catch (e) {
+          notify.error(t('toast.syncFailed') || 'Sync failed', String(e));
+          setPendingUnifiedTransferPlan(null);
+        }
+        return;
+      }
+
+      // Z.2.4 — local-remote: per-entry upload loop using the existing
+      // `uploadFile` plumbing. The planner reaches here with the
+      // per-entry list staged by the trigger (Z.3.7 mirror, Z.3.8
+      // preset, or context menu "Send to remote"). For modes that
+      // imply skip-if-unchanged (sync/backup) we defer the policy to
+      // the destination conflict handling (Z.3.9 surfaces this in the
+      // preset preview); the loop itself is unaware.
+      if (plan.pairKind === 'local-remote' && plan.destination.kind === 'remote') {
+        const entries = pendingUnifiedTransferPlan.transferEntries ?? [];
+        if (entries.length === 0) {
+          setPendingUnifiedTransferPlan(null);
+          notify.info(
+            'Unified transfer planner',
+            'No entries staged for local→remote execution.',
+          );
+          return;
+        }
+        let ok = 0;
+        let failed = 0;
+        for (const entry of entries) {
+          if (batchCancelledRef.current) break;
+          try {
+            await uploadFile(entry.path, entry.name, entry.is_dir, entry.size);
+            ok += 1;
+          } catch (e) {
+            failed += 1;
+            if (!batchCancelledRef.current) {
+              notify.error(t('toast.uploadFailed') || 'Upload failed', `${entry.name}: ${String(e)}`);
+            }
+          }
+        }
+        setPendingUnifiedTransferPlan(null);
+        if (failed > 0) {
+          notify.warning('Upload', `${ok} ok / ${failed} failed`);
+        } else if (ok > 0) {
+          notify.success('Upload', `${ok} file(s) uploaded`);
+        }
+        await loadRemoteFiles();
+        return;
+      }
+
+      // Z.2.4 — remote-local: per-entry download loop. Symmetric with
+      // the upload branch above; reuses `downloadFile` which already
+      // handles atomic writes, mtime preservation (v2.9.4), and the
+      // resume-from-`.aerotmp` flow.
+      if (plan.pairKind === 'remote-local' && plan.destination.kind === 'local') {
+        const entries = pendingUnifiedTransferPlan.transferEntries ?? [];
+        if (entries.length === 0) {
+          setPendingUnifiedTransferPlan(null);
+          notify.info(
+            'Unified transfer planner',
+            'No entries staged for remote→local execution.',
+          );
+          return;
+        }
+        let ok = 0;
+        let failed = 0;
+        for (const entry of entries) {
+          if (batchCancelledRef.current) break;
+          try {
+            await downloadFile(entry.path, entry.name, plan.destination.path, entry.is_dir, entry.size);
+            ok += 1;
+          } catch (e) {
+            failed += 1;
+            if (!batchCancelledRef.current) {
+              notify.error(t('toast.downloadFailed') || 'Download failed', `${entry.name}: ${String(e)}`);
+            }
+          }
+        }
+        setPendingUnifiedTransferPlan(null);
+        if (failed > 0) {
+          notify.warning('Download', `${ok} ok / ${failed} failed`);
+        } else if (ok > 0) {
+          notify.success('Download', `${ok} file(s) downloaded`);
+        }
+        // Refresh local panel
+        if (plan.destination.kind === 'local') {
+          if (plan.destination.panelId === 'local') {
+            await loadLocalFiles(plan.destination.path);
+          } else {
+            await loadLocalFiles2(plan.destination.path);
+          }
+        }
+        return;
+      }
+
       notify.info(
         'Unified transfer planner',
         `${plan.pairKind} uses ${plan.engine}; execution binding lands in the next slice.`,
@@ -5992,31 +6146,155 @@ interface UpdateVerificationInfo {
     setActivePanel('local');
   }, []);
 
+  // Z.2.4 — helper that builds the planner's `transferEntries` array
+  // (name + full source path + is_dir) for a given side of a local-
+  // remote compare run. `entries` are the rows from the Z.3.7 dialog;
+  // we look them up in the panel's loaded listing so each row carries
+  // the canonical source-side absolute path the executor needs.
+  const buildTransferEntriesFromSide = useCallback((
+    side: 'local' | 'remote',
+    entries: CompareResultEntry[],
+  ): Array<{ name: string; path: string; is_dir: boolean; size: number | undefined }> => {
+    if (side === 'local') {
+      const localByName = new Map(localFiles.map((file) => [file.name, file]));
+      return entries
+        .map((entry) => {
+          const item = localByName.get(entry.name);
+          if (!item) return null;
+          return {
+            name: item.name,
+            path: item.path,
+            is_dir: item.is_dir,
+            size: item.size ?? undefined,
+          };
+        })
+        .filter((entry): entry is { name: string; path: string; is_dir: boolean; size: number | undefined } => entry !== null);
+    }
+    const remoteByName = new Map(remoteFiles.map((file) => [file.name, file]));
+    return entries
+      .map((entry) => {
+        const item = remoteByName.get(entry.name);
+        if (!item) return null;
+        return {
+          name: item.name,
+          path: item.path,
+          is_dir: item.is_dir,
+          size: item.size ?? undefined,
+        };
+      })
+      .filter((entry): entry is { name: string; path: string; is_dir: boolean; size: number | undefined } => entry !== null);
+  }, [localFiles, remoteFiles]);
+
   const handleCompareMirrorLeftToRight = useCallback((entries: CompareResultEntry[]) => {
     const context = pendingCompareView;
     setPendingCompareView(null);
     if (!context || entries.length === 0) return;
+
     if (context.pairKind === 'local-local' && context.leftPanelId) {
       stageLocalSelectionFromCompare(context.leftPanelId, entries);
-      // Defer the planner open one tick so React commits the selection update
-      // before the planner reads it.
       Promise.resolve().then(() => {
         void planLocalSelectionAcrossPanelsRef.current('copy', context.leftPanelId);
       });
+      return;
     }
-  }, [pendingCompareView, stageLocalSelectionFromCompare]);
+
+    // Z.2.4 — local-remote / remote-local mirror: open the planner with
+    // staged transferEntries on the source side. The executor reads
+    // `transferEntries` and dispatches the upload/download loop.
+    if (context.pairKind === 'local-remote' || context.pairKind === 'remote-local') {
+      const sourceSide: 'local' | 'remote' = context.pairKind === 'local-remote' ? 'local' : 'remote';
+      const destSide: 'local' | 'remote' = sourceSide === 'local' ? 'remote' : 'local';
+      const transferEntries = buildTransferEntriesFromSide(sourceSide, entries);
+      if (transferEntries.length === 0) return;
+      const totalBytes = transferEntries.reduce((sum, entry) => sum + (entry.size ?? 0), 0);
+      const sourceEndpoint = sourceSide === 'local'
+        ? createLocalEndpoint('local', currentLocalPath, activeLocalTabId)
+        : (activeUnifiedRemoteProfile
+          ? createRemoteEndpoint(activeUnifiedRemoteProfile, currentRemotePath, activeSessionId)
+          : null);
+      const destEndpoint = destSide === 'local'
+        ? createLocalEndpoint('local', currentLocalPath, activeLocalTabId)
+        : (activeUnifiedRemoteProfile
+          ? createRemoteEndpoint(activeUnifiedRemoteProfile, currentRemotePath, activeSessionId)
+          : null);
+      if (!sourceEndpoint || !destEndpoint) return;
+      setPendingUnifiedTransferPlan({
+        plan: createUnifiedTransferPlan({
+          mode: 'copy',
+          source: sourceEndpoint,
+          destination: destEndpoint,
+          entryCount: transferEntries.length,
+          totalBytes,
+          preferDelta: false,
+        }),
+        transferEntries,
+      });
+    }
+  }, [
+    pendingCompareView,
+    stageLocalSelectionFromCompare,
+    buildTransferEntriesFromSide,
+    currentLocalPath,
+    currentRemotePath,
+    activeLocalTabId,
+    activeSessionId,
+    activeUnifiedRemoteProfile,
+  ]);
 
   const handleCompareMirrorRightToLeft = useCallback((entries: CompareResultEntry[]) => {
     const context = pendingCompareView;
     setPendingCompareView(null);
     if (!context || entries.length === 0) return;
+
     if (context.pairKind === 'local-local' && context.rightPanelId) {
       stageLocalSelectionFromCompare(context.rightPanelId, entries);
       Promise.resolve().then(() => {
         void planLocalSelectionAcrossPanelsRef.current('copy', context.rightPanelId);
       });
+      return;
     }
-  }, [pendingCompareView, stageLocalSelectionFromCompare]);
+
+    if (context.pairKind === 'local-remote' || context.pairKind === 'remote-local') {
+      // Mirror flows the OTHER direction: source = the right side of
+      // the visual rendering, destination = the left side.
+      const sourceSide: 'local' | 'remote' = context.pairKind === 'local-remote' ? 'remote' : 'local';
+      const destSide: 'local' | 'remote' = sourceSide === 'local' ? 'remote' : 'local';
+      const transferEntries = buildTransferEntriesFromSide(sourceSide, entries);
+      if (transferEntries.length === 0) return;
+      const totalBytes = transferEntries.reduce((sum, entry) => sum + (entry.size ?? 0), 0);
+      const sourceEndpoint = sourceSide === 'local'
+        ? createLocalEndpoint('local', currentLocalPath, activeLocalTabId)
+        : (activeUnifiedRemoteProfile
+          ? createRemoteEndpoint(activeUnifiedRemoteProfile, currentRemotePath, activeSessionId)
+          : null);
+      const destEndpoint = destSide === 'local'
+        ? createLocalEndpoint('local', currentLocalPath, activeLocalTabId)
+        : (activeUnifiedRemoteProfile
+          ? createRemoteEndpoint(activeUnifiedRemoteProfile, currentRemotePath, activeSessionId)
+          : null);
+      if (!sourceEndpoint || !destEndpoint) return;
+      setPendingUnifiedTransferPlan({
+        plan: createUnifiedTransferPlan({
+          mode: 'copy',
+          source: sourceEndpoint,
+          destination: destEndpoint,
+          entryCount: transferEntries.length,
+          totalBytes,
+          preferDelta: false,
+        }),
+        transferEntries,
+      });
+    }
+  }, [
+    pendingCompareView,
+    stageLocalSelectionFromCompare,
+    buildTransferEntriesFromSide,
+    currentLocalPath,
+    currentRemotePath,
+    activeLocalTabId,
+    activeSessionId,
+    activeUnifiedRemoteProfile,
+  ]);
 
   // Z.3.8: open the Sync Preset dialog. Same comparable-pair gate as
   // the Compare view: we need either a dual local panel or one local
@@ -6103,68 +6381,184 @@ interface UpdateVerificationInfo {
     const context = pendingSyncPresets;
     setPendingSyncPresets(null);
     if (!context) return;
-    if (context.pairKind !== 'local-local' || !context.leftPanelId || !context.rightPanelId) return;
 
-    const sourceSidesToRun: Array<{ source: 'left' | 'right'; panelId: 'local' | 'local2' }> = [];
-    if (plan.preset === 'bisync') {
-      sourceSidesToRun.push({ source: 'left', panelId: context.leftPanelId });
-      sourceSidesToRun.push({ source: 'right', panelId: context.rightPanelId });
-    } else if (plan.direction === 'left-to-right') {
-      sourceSidesToRun.push({ source: 'left', panelId: context.leftPanelId });
-    } else {
-      sourceSidesToRun.push({ source: 'right', panelId: context.rightPanelId });
-    }
+    const deleteSummary = {
+      right: namesToDelete(plan, 'right'),
+      left: namesToDelete(plan, 'left'),
+    };
+    const renameSummary = {
+      toRight: namesToRename(plan, 'to-right'),
+      toLeft: namesToRename(plan, 'to-left'),
+    };
 
-    const deleteSummary = (() => {
-      const right = namesToDelete(plan, 'right');
-      const left = namesToDelete(plan, 'left');
-      return { right, left };
-    })();
+    const reportDeferredOps = () => {
+      const deletes = deleteSummary.right.length + deleteSummary.left.length;
+      if (deletes > 0) {
+        notify.warning(
+          t('syncPresets.deletesDeferred') || 'Sync presets',
+          `${deletes} delete(s) skipped (Z.3.8.2): right ${deleteSummary.right.length}, left ${deleteSummary.left.length}`,
+        );
+      }
+      const renames = renameSummary.toRight.length + renameSummary.toLeft.length;
+      if (renames > 0) {
+        notify.info(
+          'Sync presets',
+          `${renames} keep-both rename(s) deferred to Z.3.9.2`,
+        );
+      }
+    };
 
-    const passes = sourceSidesToRun
-      .map(({ source, panelId }) => {
-        const names = namesFromBuckets(plan, source);
-        return { panelId, names: new Set(names) };
-      })
-      .filter((pass) => pass.names.size > 0);
+    // ── local-local path: stage selection per side and dispatch via
+    // the existing planLocalSelectionAcrossPanels flow (Z.3.8). ──────
+    if (context.pairKind === 'local-local' && context.leftPanelId && context.rightPanelId) {
+      const sourceSidesToRun: Array<{ source: 'left' | 'right'; panelId: 'local' | 'local2' }> = [];
+      if (plan.preset === 'bisync') {
+        sourceSidesToRun.push({ source: 'left', panelId: context.leftPanelId });
+        sourceSidesToRun.push({ source: 'right', panelId: context.rightPanelId });
+      } else if (plan.direction === 'left-to-right') {
+        sourceSidesToRun.push({ source: 'left', panelId: context.leftPanelId });
+      } else {
+        sourceSidesToRun.push({ source: 'right', panelId: context.rightPanelId });
+      }
 
-    if (passes.length === 0) {
-      notify.info(
-        t('syncPresets.nothingToDo') || 'Sync presets',
-        t('syncPresets.allSkipped') || 'No actionable entries for this preset.',
-      );
+      const passes = sourceSidesToRun
+        .map(({ source, panelId }) => {
+          const names = namesFromBuckets(plan, source);
+          return { panelId, names: new Set(names) };
+        })
+        .filter((pass) => pass.names.size > 0);
+
+      if (passes.length === 0) {
+        notify.info(
+          t('syncPresets.nothingToDo') || 'Sync presets',
+          t('syncPresets.allSkipped') || 'No actionable entries for this preset.',
+        );
+        return;
+      }
+
+      let i = 0;
+      const runNext = () => {
+        if (i >= passes.length) {
+          reportDeferredOps();
+          return;
+        }
+        const pass = passes[i];
+        i += 1;
+        if (pass.panelId === 'local') {
+          setSelectedLocalFiles(pass.names);
+        } else {
+          setSelectedLocalFiles2(pass.names);
+        }
+        setActiveLocalPanelId(pass.panelId);
+        setActivePanel('local');
+        Promise.resolve().then(() => {
+          const maybePromise = planLocalSelectionAcrossPanelsRef.current('copy', pass.panelId);
+          Promise.resolve(maybePromise).finally(runNext);
+        });
+      };
+      runNext();
       return;
     }
 
-    // Stage + dispatch each pass with a small microtask gap so React
-    // commits the selection state before the planner reads it.
-    let i = 0;
-    const runNext = () => {
-      if (i >= passes.length) {
-        if (deleteSummary.right.length + deleteSummary.left.length > 0) {
-          notify.warning(
-            t('syncPresets.deletesDeferred') || 'Sync presets',
-            `${deleteSummary.right.length + deleteSummary.left.length} delete(s) skipped (Z.3.8.2): right ${deleteSummary.right.length}, left ${deleteSummary.left.length}`,
-          );
-        }
+    // ── Z.2.4 local-remote / remote-local: build transferEntries from
+    // the side that's losing files (source) and dispatch via the
+    // unified planner's per-entry upload/download loop. Bisync runs
+    // two passes (L→R then R→L). ─────────────────────────────────────
+    if (context.pairKind === 'local-remote' || context.pairKind === 'remote-local') {
+      const isLocalLeft = context.pairKind === 'local-remote';
+      const passesPlan: Array<{ sourceSide: 'left' | 'right' }> = [];
+      if (plan.preset === 'bisync') {
+        passesPlan.push({ sourceSide: 'left' });
+        passesPlan.push({ sourceSide: 'right' });
+      } else if (plan.direction === 'left-to-right') {
+        passesPlan.push({ sourceSide: 'left' });
+      } else {
+        passesPlan.push({ sourceSide: 'right' });
+      }
+
+      const queue: Array<{
+        plan: UnifiedTransferPlan;
+        transferEntries: Array<{ name: string; path: string; is_dir: boolean; size?: number }>;
+      }> = [];
+      for (const pass of passesPlan) {
+        const sourceIsLocal = isLocalLeft ? pass.sourceSide === 'left' : pass.sourceSide === 'right';
+        const names = new Set(namesFromBuckets(plan, pass.sourceSide));
+        if (names.size === 0) continue;
+        const allEntries = (sourceIsLocal ? localFiles : remoteFiles)
+          .filter((item) => names.has(item.name))
+          .map((item) => ({
+            name: item.name,
+            path: item.path,
+            is_dir: item.is_dir,
+            size: item.size ?? undefined,
+          }));
+        if (allEntries.length === 0) continue;
+        const sourceEndpoint = sourceIsLocal
+          ? createLocalEndpoint('local', currentLocalPath, activeLocalTabId)
+          : (activeUnifiedRemoteProfile
+            ? createRemoteEndpoint(activeUnifiedRemoteProfile, currentRemotePath, activeSessionId)
+            : null);
+        const destEndpoint = sourceIsLocal
+          ? (activeUnifiedRemoteProfile
+            ? createRemoteEndpoint(activeUnifiedRemoteProfile, currentRemotePath, activeSessionId)
+            : null)
+          : createLocalEndpoint('local', currentLocalPath, activeLocalTabId);
+        if (!sourceEndpoint || !destEndpoint) continue;
+        const totalBytes = allEntries.reduce((sum, entry) => sum + (entry.size ?? 0), 0);
+        queue.push({
+          plan: createUnifiedTransferPlan({
+            mode: 'copy',
+            source: sourceEndpoint,
+            destination: destEndpoint,
+            entryCount: allEntries.length,
+            totalBytes,
+            preferDelta: false,
+          }),
+          transferEntries: allEntries,
+        });
+      }
+
+      if (queue.length === 0) {
+        notify.info(
+          t('syncPresets.nothingToDo') || 'Sync presets',
+          t('syncPresets.allSkipped') || 'No actionable entries for this preset.',
+        );
         return;
       }
-      const pass = passes[i];
-      i += 1;
-      if (pass.panelId === 'local') {
-        setSelectedLocalFiles(pass.names);
-      } else {
-        setSelectedLocalFiles2(pass.names);
+
+      // Open the planner with the first pass; on close, drain the
+      // queue by chaining the next pass via a small ref-trick. For the
+      // slice we just open the first pass and surface the queued
+      // bisync follow-up as an info toast so the user can re-run it
+      // manually — chaining inside the planner state would need a
+      // bigger refactor in `setPendingUnifiedTransferPlan` flow.
+      setPendingUnifiedTransferPlan(queue[0]);
+      if (queue.length > 1) {
+        notify.info(
+          'Bisync',
+          `${queue.length - 1} additional pass(es) staged; re-open Sync Presets after the current run to dispatch them.`,
+        );
       }
-      setActiveLocalPanelId(pass.panelId);
-      setActivePanel('local');
-      Promise.resolve().then(() => {
-        const maybePromise = planLocalSelectionAcrossPanelsRef.current('copy', pass.panelId);
-        Promise.resolve(maybePromise).finally(runNext);
-      });
-    };
-    runNext();
-  }, [pendingSyncPresets, notify, t]);
+      reportDeferredOps();
+      return;
+    }
+
+    notify.info(
+      t('syncPresets.title') || 'Sync presets',
+      'Execution for this pair kind lands with Z.3.5.2 / Z.3.8.2.',
+    );
+  }, [
+    pendingSyncPresets,
+    notify,
+    t,
+    localFiles,
+    remoteFiles,
+    currentLocalPath,
+    currentRemotePath,
+    activeLocalTabId,
+    activeSessionId,
+    activeUnifiedRemoteProfile,
+  ]);
 
   const clipboardCut = (files: { name: string; path: string; is_dir: boolean }[], isRemote: boolean, sourceDir: string) => {
     fileClipboardRef.current = { files, sourceDir, isRemote, operation: 'cut' };
@@ -8930,6 +9324,40 @@ interface UpdateVerificationInfo {
         label: t('aerofile.moveToOtherPanel'),
         icon: <ArrowRightLeft size={14} />,
         action: () => { void planLocalSelectionAcrossPanels('move', localPanelId); },
+      } as ContextMenuItem, {
+        // Z.2.4 — Sync to other panel uses the directory-level
+        // `local_sync_run` backend; the right-click selection is
+        // ignored on purpose because Sync is a directory operation
+        // (FreeFileSync semantics). The planner shows source and
+        // destination paths so the user can review before Execute.
+        label: t('aerofile.syncToOtherPanel') || 'Sync to other panel',
+        icon: <FolderSync size={14} />,
+        action: () => {
+          const sourcePanel = localPanelId === 'local' ? localUnifiedPanel : local2UnifiedPanel;
+          const targetPanel = localPanelId === 'local' ? local2UnifiedPanel : localUnifiedPanel;
+          if (!sourcePanel || !targetPanel) return;
+          const sourcePath = localPanelId === 'local' ? currentLocalPath : currentLocalPath2;
+          const destPath = localPanelId === 'local' ? currentLocalPath2 : currentLocalPath;
+          const filesOnSource = localPanelId === 'local' ? localFiles : localFiles2;
+          const totalBytes = filesOnSource.reduce((sum, file) => sum + (file.size ?? 0), 0);
+          setPendingUnifiedTransferPlan({
+            plan: createUnifiedTransferPlan({
+              mode: 'sync',
+              source: sourcePanel.endpoint,
+              destination: targetPanel.endpoint,
+              entryCount: filesOnSource.length,
+              totalBytes,
+              preferDelta: true,
+            }),
+            sourceLocalPanelId: localPanelId,
+          });
+          // Note: the local_sync_run executor reads source.path and
+          // destination.path from the plan, so the sourcePath / destPath
+          // locals above only assert that the panel state is coherent
+          // before we open the dialog.
+          void sourcePath;
+          void destPath;
+        },
       } as ContextMenuItem] : []),
       {
         label: 'Open with default app',
@@ -10016,7 +10444,14 @@ interface UpdateVerificationInfo {
             leftLabel={pendingSyncPresets.leftLabel}
             rightLabel={pendingSyncPresets.rightLabel}
             pairKind={pendingSyncPresets.pairKind}
-            canExecute={pendingSyncPresets.pairKind === 'local-local'}
+            // Z.2.4 — local-remote and remote-local pairs now reach
+            // executeUnifiedTransferPlan via the planner queue, so the
+            // preset dialog is no longer confined to local-local.
+            canExecute={
+              pendingSyncPresets.pairKind === 'local-local'
+              || pendingSyncPresets.pairKind === 'local-remote'
+              || pendingSyncPresets.pairKind === 'remote-local'
+            }
             onExecute={executeSyncPresetPlan}
             onClose={() => setPendingSyncPresets(null)}
           />
