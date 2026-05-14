@@ -648,11 +648,17 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
     }, [height, onResizePointerDown]);
 
     // Filter entries: empty filterTypes = show all operation types.
+    // When ERROR is in the selected set we also pull in any entry whose
+    // status is 'error' regardless of its operation tag. Without this
+    // override a failed CONNECT/INFO row would be hidden when the user
+    // narrows the panel down to "Errors" even though it visibly renders
+    // red, which is what EhudKirsh reported.
     const filteredEntries = useMemo(() => {
         let result = entries;
 
         if (filterTypes.size > 0) {
-            result = result.filter(e => filterTypes.has(e.operation));
+            const errorActive = filterTypes.has('ERROR');
+            result = result.filter(e => filterTypes.has(e.operation) || (errorActive && e.status === 'error'));
         }
 
         if (!showCloudSync) {
