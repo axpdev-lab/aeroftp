@@ -461,6 +461,21 @@ aeroftp-cli cryptcheck --profile "server" /local/ /remote/ --json
 
 Verifies the integrity of files stored on a remote encrypted with `rclone crypt`. Stream-decrypts the remote files (without saving to disk) and computes their hash to compare against local cleartext files. Supports `sha256` and `md5`. Reports: matches, differences, files missing on either side. Exit codes: `0` (success), `4` (differences found), `5` (invalid usage).
 
+### audit - Autonomous Server Audits
+
+```bash
+# Storage quota: alert when used/total exceeds 80%
+aeroftp-cli audit storage-quota --profile-glob '*' --threshold 0.80 --json
+
+# Backup freshness: newest file under /backups must be < 7 days old
+aeroftp-cli audit backup-freshness --profile "NAS" --path /backups --max-age 7d --json
+
+# File presence: confirm /www/index.html exists and is at least 1KB
+aeroftp-cli audit file-exists --profile "Production" --path /www/index.html --min-size 1024
+```
+
+Predefined audit checks that run deterministic, parallel inspections across one or more saved profiles selected by glob. Designed for monitoring pipelines and on-demand spot-checks. Exit codes signal severity: `0` ok, `1` warning (e.g. quota close to threshold), `2` critical (threshold exceeded, file missing), `5` invalid usage. Output is JSON or markdown. Use `aeroftp-cli audit help` to list every check; new checks are added incrementally.
+
 ### about - Server Info & Storage Quota
 
 ```bash
@@ -790,6 +805,20 @@ AEROFTP_CRYPT_PASSWORD=MySecret aeroftp-cli --profile "S3" crypt ls _ /encrypted
 
 Encryption: AES-256-GCM (content, 64KB blocks) + AES-256-SIV (filenames) + Argon2id (key derivation). The cloud provider never sees file names or content.
 
+### rclone-crypt - rclone-Compatible Encrypted Upload
+
+```bash
+# Encrypt + upload a file using the rclone crypt format (Standard mode)
+AEROFTP_CRYPT_PASSWORD=MySecret \
+    aeroftp-cli --profile "S3" rclone-crypt put ./report.pdf /backups/report.pdf
+
+# Obfuscate filename mode (for providers with case-folding issues)
+AEROFTP_CRYPT_PASSWORD=MySecret AEROFTP_CRYPT_PASSWORD2=Salt \
+    aeroftp-cli --profile "S3" rclone-crypt put ./report.pdf /backups/report.pdf --filename-encryption obfuscate
+```
+
+Drop-in compatible with the format produced by [`rclone crypt`](https://rclone.org/crypt/), so a file uploaded here can be read back with `rclone` and vice versa. Separate from the `crypt` subcommand above (which is the AeroFTP-native overlay): use `rclone-crypt` when the bucket must remain interoperable with the rclone toolchain, use `crypt` for AeroFTP-only flows.
+
 ### batch - Execute Script
 
 ```bash
@@ -961,6 +990,22 @@ aeroftp-cli speed-compare sftp://user@host1 sftp://user@host2 \
 
 Benchmarks two or more servers in parallel and emits a ranked comparison table with download/upload throughput, TTFB, and SHA-256 integrity status. Up to 4 parallel runs (`--parallel`, default 2). Schema `aeroftp.speedtest.v1` stable across single (`speed`) and multi-server (`speed-compare`) reports. Passwords are redacted from every output path; CSV cells are spreadsheet-formula-safe; Markdown cells escape pipes/newlines/backslashes.
 
+### benchmark - Community Benchmark Suite
+
+```bash
+# Default level (light): a few representative ops
+aeroftp-cli benchmark --profile "server"
+
+# Heavier levels stress more operations
+aeroftp-cli benchmark --profile "server" medium
+aeroftp-cli benchmark --profile "server" heavy
+
+# JSON for scripts / community submission
+aeroftp-cli benchmark --profile "server" --json
+```
+
+Runs a deterministic benchmark across upload, download, list, and stat operations and emits a sanitized, opt-in report shaped after the public schema `aeroftp.benchmark.v1`. **The output is intentionally credential-free**: hostnames, paths, bucket names, and credentials are NOT recorded; only protocol family, region (when known), file sizes, and timings. Use this command to compare providers honestly, to file regression reports against AeroFTP, or to contribute results to the community benchmark.
+
 ### import - Import Server Profiles
 
 `import` ingests server profiles from external tools and stores them in the AeroFTP encrypted vault. Three sources today: `rclone`, `winscp`, `filezilla`. Use `--json` on any subcommand for scripting; passwords are decoded from each tool's native obfuscation and re-wrapped in AES-256-GCM by the vault on commit (commit happens through the GUI import flow today).
@@ -1035,6 +1080,53 @@ Two non-fatal warnings are surfaced (text on stderr, JSON in the `warnings` arra
 
 Exit codes: `0` ok, `2` input file not found, `9` output file exists without `--force`, `11` I/O error reading stdin or writing output.
 
+### export - Export Server Profiles
+
+The reverse direction of `import`: takes the AeroFTP vault and emits a configuration file in the dialect of an external tool, so you can hand off a connection bundle to operators or migrate away. Three targets:
+
+```bash
+# rclone.conf format (S3, SFTP, FTP, WebDAV, MEGA)
+aeroftp-cli export rclone --output ./rclone.conf
+
+# WinSCP.ini format (FTP/FTPS/SFTP)
+aeroftp-cli export winscp --output ./WinSCP.ini
+
+# FileZilla sitemanager.xml format
+aeroftp-cli export filezilla --output ./sitemanager.xml
+```
+
+OAuth-based providers (pCloud, Dropbox, Google Drive, Box, OneDrive, Yandex, Zoho, Koofr, Internxt, kDrive) **cannot be exported to rclone** because rclone uses its own OAuth flow with provider-issued client IDs; those entries are emitted as `# manual setup required` comments instead. Passwords for non-OAuth profiles are re-encoded in the target tool's native obfuscation (rclone reversible obscure, WinSCP password mask, FileZilla base64). Use `--json` on any subcommand for a machine-readable summary of what was exported and what was skipped.
+
+### keystore - Encrypted Full-State Backup
+
+The keystore is AeroFTP's portable backup format: a single encrypted `.aeroftp-keystore` file that bundles the entire installation state (vault entries, SQLite databases, plugins, sync snapshots, UI preferences) under a single password. The same envelope is produced and consumed by the GUI **Settings → Backup** flow, so a CLI export can be imported through the GUI and vice versa.
+
+```bash
+# Export full state to an encrypted backup
+AEROFTP_KEYSTORE_PASSWORD=MyBackupPassword \
+    aeroftp-cli keystore export --output ./aeroftp-2026-05-14.aeroftp-keystore
+
+# Vault-only export (skip SQLite + files)
+aeroftp-cli keystore export --output ./vault-only.aeroftp-keystore --mode vault-only \
+    --password-stdin <<< "$BACKUP_PW"
+
+# Inspect a backup WITHOUT decrypting (cleartext envelope metadata only)
+aeroftp-cli keystore info --input ./aeroftp-2026-05-14.aeroftp-keystore --json
+
+# Import a backup, skipping a section if you don't want to overwrite it
+AEROFTP_KEYSTORE_PASSWORD=MyBackupPassword \
+    aeroftp-cli keystore import --input ./aeroftp-2026-05-14.aeroftp-keystore \
+    --merge skip --skip-local-storage
+```
+
+**Password resolution chain** for both `export` and `import`: `AEROFTP_KEYSTORE_PASSWORD` env var, then `--password-stdin`, then `--password <pw>` (visible in `ps`, prints a warning), then an interactive `rpassword` prompt on stderr when stdin is a TTY. Backend enforces a minimum password length of 8 characters.
+
+**Modes**: `full` (everything), `vault-only` (server profiles + AI keys + OAuth tokens), `sqlite-only` (chat history, agent memory, file tags, vault history), `files-only` (plugins, sync snapshots).
+
+**Merge strategies on import**: `skip` (default, never overwrite existing vault entries), `overwrite` (force replace), `keep-newer` (compare timestamps). The `--skip-*` flags let you opt out of an entire section per import (vault, sqlite, files, local-storage).
+
+After a successful import that touched SQLite or files, the CLI prints `requires_restart=true` on stdout and exits 0. The AeroFTP GUI must be restarted before the restored databases become visible.
+
 ### completions - Generate Shell Completion Scripts
 
 ```bash
@@ -1055,6 +1147,90 @@ aeroftp-cli profiles --json
 ```
 
 Lists every server profile in the encrypted vault: display name, protocol, host, optional saved path, and a credential indicator (passwords are never printed). The JSON form is the canonical input for AI agents that need to discover what's available before running anything else.
+
+The bare `profiles` command also opens an **interactive shell** when stdin is a TTY: it prints the list and accepts single-letter actions like `l <selector>` (list root), `t <selector>` (tree depth 2), `d <selector>` (delete with tombstone), `f <selector>` (toggle favourite), `c <selector>` (duplicate), `r <selector>` (rename), `e <selector>` (inline edit). Type `?` for the full reference. Selectors can be 1-based indices, exact names, exact ids, or unique substrings.
+
+### profile-add - Create a New Profile
+
+```bash
+# SFTP with explicit host
+aeroftp-cli profile-add \
+    --name "My NAS" \
+    --protocol sftp \
+    --host nas.local \
+    --port 22 \
+    --username admin \
+    --initial-path /volume1/backups
+
+# Cloud preset (no host required)
+aeroftp-cli profile-add \
+    --name "FileLu Rsync" \
+    --protocol filelu-rsync \
+    --username myuser
+```
+
+Scriptable equivalent of the GUI **New Server** flow and of the interactive shell's `n` action. Writes only the configuration entry; credentials live in a separate vault key set with `profile-set-password` (below) or via the GUI Edit modal.
+
+`--protocol` accepts the lowercase protocol identifier: `ftp`, `ftps`, `sftp`, `webdav`, `webdavs`, `s3`, `mega`, `dropbox`, `googledrive`, `onedrive`, `box`, `pcloud`, `zohoworkdrive`, `fourshared`, `filen`, `internxt`, `kdrive`, `koofr`, `drime`, `filelu`, `filelu-rsync`, `yandexdisk`, `opendrive`, `jottacloud`, `azure`, `b2`, `backblaze`, `imagekit`, `uploadcare`, `cloudinary`, `tabdigital`, `felicloud`, `github`, `gitlab`, `immich`, `pixelunion`, `blomp`. Cloud providers that resolve their endpoint from the protocol alone do not require `--host`.
+
+### profile-duplicate - Duplicate a Saved Profile
+
+```bash
+# Duplicate "Production" as "Production (copy)"
+aeroftp-cli profile-duplicate "Production"
+
+# Duplicate with a custom name
+aeroftp-cli profile-duplicate 4 --name "Production - sandbox"
+```
+
+Mirrors the **Duplicate** action in the GUI server context menu and the `c` action in the interactive shell. Copies both the configuration entry and any stored credential (`server_<id>` vault key) under a fresh `srv_<ms>_<rand>` id so the copy is identical, including the password, until you change it.
+
+### profile-delete - Delete a Saved Profile
+
+```bash
+# Interactive: prompts for y/N on stderr
+aeroftp-cli profile-delete "Production - sandbox"
+
+# Skip the prompt (CI / scripts)
+aeroftp-cli profile-delete "Production - sandbox" --yes
+
+# JSON output for pipelines
+aeroftp-cli --json profile-delete 4 --yes
+```
+
+Headless equivalent of the GUI **MyServersPanel** confirmDelete action and of the interactive shell's `d` action. Removes three pieces of state in one atomic step: the profile config entry in `config_server_profiles`, the per-profile credential blob (`server_<id>`), and any membership in `config_favorite_servers`.
+
+Without `--yes` and with stdin attached to a TTY, the command prompts for `y/N` on stderr. **In non-TTY contexts** (CI, pipes, daemons) the absence of `--yes` is a hard error (exit 5) so a script never silently consumes stdin. Exit codes: 0 success or user cancellation, 2 selector not found, 5 vault read/write failure or missing `--yes` in a non-TTY shell.
+
+### profile-set-password - Write Credential into the Vault
+
+```bash
+# Single-secret shape: read from env var (recommended)
+read -s -p "FileLu password: " FILELU_PW && export FILELU_PW
+aeroftp-cli profile-set-password "FileLu Rsync" --password-env FILELU_PW
+
+# Read from stdin (good for piping from a secret manager)
+op read "op://AeroFTP/FileLu/password" \
+    | aeroftp-cli profile-set-password "FileLu Rsync" --password-stdin
+
+# Inline (not recommended: visible in `ps` and shell history)
+aeroftp-cli profile-set-password "Test Server" --password "weak-test-pw"
+
+# JSON credential blob (OAuth tokens, API keys, structured creds)
+aeroftp-cli profile-set-password "Backblaze B2" \
+    --credential-json '{"applicationKeyId":"K001...","applicationKey":"K001...secret"}'
+
+# JSON blob from a file
+aeroftp-cli profile-set-password "Google Drive" \
+    --credential-json-file ./oauth-tokens.json
+```
+
+Writes the per-protocol credential blob into the vault key `server_<id>`, **the exact same place** the GUI Edit modal writes to. A credential written via the CLI is read back by the GUI on the next reload (verified end-to-end against the FileLu Rsync profile). Two write modes:
+
+- **Single-secret** (`--password*`): stores the raw secret as the credential value. Matches the FTP / SFTP / WebDAV / `filelu-rsync` `password` field on the GUI side.
+- **JSON blob** (`--credential-json*`): stores an arbitrary JSON object verbatim. Use this for OAuth tokens, multi-field API key envelopes, or any structured credential. Shape is validated upfront so a typo in the JSON surfaces as exit 5 before the vault write.
+
+The two modes are **mutually exclusive**: pass exactly one source. Inline `--password` emits a "visible in ps" warning; prefer `--password-env` or `--password-stdin` for production.
 
 ### ai-models - List Configured AI Providers
 
