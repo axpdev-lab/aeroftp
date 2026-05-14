@@ -129,14 +129,29 @@ impl AerorsyncDeltaTransport {
         cfg: &RsyncConfig,
         host_key_policy: SshHostKeyPolicy,
     ) -> Result<Self, RsyncError> {
-        if matches!(cfg.auth_method, crate::rsync_over_ssh::AuthMethod::Password) {
-            return Err(RsyncError::PasswordAuthUnsupported);
-        }
+        // Z.4.5 R1 dispatch step (2026-05-14): the previous boundary
+        // refusal `Err(PasswordAuthUnsupported)` was a placeholder while
+        // the russh transport gained password auth. Now that
+        // `RusshSessionTransport::connect` branches on
+        // `SshTransportConfig::usable_password()`, the gate moves to
+        // `RsyncConfig::validate_auth_material()` which enforces:
+        //   - SshKey  → ssh_key_path required (else MissingKey)
+        //   - Password → ssh_password required and non-empty (else MissingPassword)
+        //   - Neither → HardRejection (integration bug, never silently retry)
+        // Callers that want password-based delta sync can now construct
+        // an `RsyncConfig { auth_method: Password, ssh_password: Some(_), .. }`
+        // and the russh leg picks it up. Subprocess `rsync_over_ssh::build_ssh_e_arg`
+        // still refuses Password upfront so the binary path never accidentally
+        // shells out without auth material.
+        cfg.validate_auth_material()?;
 
-        let key_path = cfg
-            .ssh_key_path
-            .clone()
-            .ok_or_else(|| RsyncError::MissingKey("no ssh key path configured".into()))?;
+        // Password-only profiles legitimately have no key path. The
+        // russh leg ignores `private_key_path` when `usable_password()`
+        // is Some, so an empty placeholder is safe; it is never opened
+        // or dereferenced. We MUST NOT default to `~/.ssh/id_rsa` or
+        // any other concrete path: that would silently load credentials
+        // the user did not opt into.
+        let key_path = cfg.ssh_key_path.clone().unwrap_or_default();
         let ssh_config = SshTransportConfig {
             host: cfg.ssh_host.clone(),
             port: cfg.ssh_port.unwrap_or(22),
@@ -1929,15 +1944,15 @@ mod tests {
         let _ = PathBuf::from("placeholder"); // silence unused import warning on some CI configs
     }
 
-    /// Z.4.5 R1 boundary: until the password-only flow is wired end-to-end,
-    /// `auth_method=Password` must still be rejected at this boundary so we
-    /// don't silently degrade a password-only login into a missing-key
-    /// failure that looks like a configuration bug. The guard removal is
-    /// the explicit task in the next phase of Z.4.5.
+    /// Z.4.5 R1 dispatch step (2026-05-14): the boundary refusal of
+    /// `auth_method=Password` is gone. A password-only `RsyncConfig`
+    /// now produces a transport whose `auth_password` is set and whose
+    /// `private_key_path` is the empty placeholder (the russh leg
+    /// ignores the key path when `usable_password()` is Some).
     #[test]
-    fn from_rsync_config_still_rejects_password_only_method() {
+    fn from_rsync_config_accepts_password_only_method() {
         use crate::rsync_over_ssh::AuthMethod;
-        use secrecy::SecretString;
+        use secrecy::{ExposeSecret, SecretString};
 
         let cfg = RsyncConfig {
             ssh_user: "tester".into(),
@@ -1946,14 +1961,95 @@ mod tests {
             auth_method: AuthMethod::Password,
             ..Default::default()
         };
+        let transport = AerorsyncDeltaTransport::from_rsync_config(&cfg, SshHostKeyPolicy::AcceptAny)
+            .expect("password-only RsyncConfig should now produce a transport");
+        // Empty placeholder (NOT a default ~/.ssh path): russh leg ignores it.
+        assert_eq!(
+            transport.ssh_config.private_key_path,
+            std::path::PathBuf::new(),
+            "password-only profile must not silently inject a default key path"
+        );
+        let propagated = transport
+            .ssh_config
+            .auth_password
+            .as_ref()
+            .expect("ssh_password must be propagated");
+        assert_eq!(propagated.expose_secret(), "rsync-password");
+        assert!(transport.ssh_config.usable_password().is_some());
+    }
+
+    /// Z.4.5 R1 dispatch step: `validate_auth_material()` now gates the
+    /// boundary instead of the old hard refusal. A `Password` method
+    /// without a non-empty password surfaces `MissingPassword`, NOT
+    /// `PasswordAuthUnsupported` (which has been removed from the
+    /// boundary as of this step).
+    #[test]
+    fn from_rsync_config_password_method_without_password_returns_missing_password() {
+        use crate::rsync_over_ssh::AuthMethod;
+
+        let cfg = RsyncConfig {
+            ssh_user: "tester".into(),
+            ssh_host: "example.invalid".into(),
+            ssh_password: None,
+            ssh_key_path: Some(std::path::PathBuf::from("/tmp/key")),
+            auth_method: AuthMethod::Password,
+            ..Default::default()
+        };
         match AerorsyncDeltaTransport::from_rsync_config(&cfg, SshHostKeyPolicy::AcceptAny) {
-            Err(RsyncError::PasswordAuthUnsupported) => {}
+            Err(RsyncError::MissingPassword) => {}
             Err(other) => panic!(
-                "expected PasswordAuthUnsupported until end-to-end wire-up lands, got Err({other:?})"
+                "expected MissingPassword via validate_auth_material, got Err({other:?})"
             ),
-            Ok(_) => panic!(
-                "expected PasswordAuthUnsupported until end-to-end wire-up lands, got Ok(_)"
-            ),
+            Ok(_) => panic!("expected MissingPassword, got Ok(_)"),
+        }
+    }
+
+    /// Z.4.5 R1 dispatch step: empty SecretString must be rejected by
+    /// `validate_auth_material()` so a misconfigured profile cannot
+    /// reach the russh leg with a zero-length password.
+    #[test]
+    fn from_rsync_config_password_method_with_empty_password_returns_missing_password() {
+        use crate::rsync_over_ssh::AuthMethod;
+        use secrecy::SecretString;
+
+        let cfg = RsyncConfig {
+            ssh_user: "tester".into(),
+            ssh_host: "example.invalid".into(),
+            ssh_password: Some(SecretString::from(String::new())),
+            auth_method: AuthMethod::Password,
+            ..Default::default()
+        };
+        match AerorsyncDeltaTransport::from_rsync_config(&cfg, SshHostKeyPolicy::AcceptAny) {
+            Err(RsyncError::MissingPassword) => {}
+            Err(other) => panic!("expected MissingPassword, got Err({other:?})"),
+            Ok(_) => panic!("expected MissingPassword, got Ok(_)"),
+        }
+    }
+
+    /// Z.4.5 R1 dispatch step: a config that carries neither key nor
+    /// password is still rejected as `HardRejection`. This is the
+    /// "integration bug" guard from `validate_auth_material()`: it is
+    /// not a credential failure (which the user can fix with input) but
+    /// a wiring bug (the call site forgot to attach material). The
+    /// dispatch must not silently fall back to another transport.
+    #[test]
+    fn from_rsync_config_with_no_auth_material_is_hard_rejection() {
+        use crate::rsync_over_ssh::AuthMethod;
+
+        let cfg = RsyncConfig {
+            ssh_user: "tester".into(),
+            ssh_host: "example.invalid".into(),
+            ssh_password: None,
+            ssh_key_path: None,
+            auth_method: AuthMethod::SshKey,
+            ..Default::default()
+        };
+        match AerorsyncDeltaTransport::from_rsync_config(&cfg, SshHostKeyPolicy::AcceptAny) {
+            Err(RsyncError::HardRejection(message)) => {
+                assert!(message.contains("neither ssh_key_path nor ssh_password"));
+            }
+            Err(other) => panic!("expected HardRejection, got Err({other:?})"),
+            Ok(_) => panic!("expected HardRejection, got Ok(_)"),
         }
     }
 }
