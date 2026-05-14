@@ -256,6 +256,7 @@ impl ProviderConnectionParams {
             "jottacloud" => ProviderType::Jottacloud,
             "drime" => ProviderType::DrimeCloud,
             "filelu" => ProviderType::FileLu,
+            "filelu-rsync" | "filelu_rsync" | "filelurs" => ProviderType::FileLuRsync,
             "koofr" => ProviderType::Koofr,
             "opendrive" => ProviderType::OpenDrive,
             "yandexdisk" => ProviderType::YandexDisk,

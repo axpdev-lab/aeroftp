@@ -124,6 +124,7 @@ export const isNonFtpProvider = (type: ProviderType): boolean => {
     "jottacloud",
     "drime",
     "filelu",
+    "filelu-rsync",
     "koofr",
     "opendrive",
     "yandexdisk",
