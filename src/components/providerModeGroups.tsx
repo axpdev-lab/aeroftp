@@ -158,6 +158,31 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
                 'Requires Filen Desktop running and signed in on this machine. On first connect the bridge auto-creates a top-level folder named "filen" on your account: existing files live one level above the bridge view.',
         },
     },
+    {
+        id: 'opendrive',
+        headerLabel: 'OpenDrive Modes',
+        modes: [
+            {
+                // OpenDrive native API selected via ProtocolSelector
+                // (`type: 'opendrive'`); no registry preset is involved.
+                protocol: 'opendrive',
+                icon: <Cloud size={14} />,
+                activeColor: 'text-cyan-500',
+                label: 'Native API',
+                description:
+                    'REST API with username + password. Full feature set: trash, storage quota, share links, recursive disk usage.',
+            },
+            {
+                providerId: 'opendrive-webdav',
+                protocol: 'webdav',
+                icon: <Globe size={14} />,
+                activeColor: 'text-blue-500',
+                label: 'WebDAV',
+                description:
+                    'WebDAV access via webdav.opendrive.com on port 443. Use for legacy clients or to mount as a network drive.',
+            },
+        ],
+    },
 ];
 
 /**
