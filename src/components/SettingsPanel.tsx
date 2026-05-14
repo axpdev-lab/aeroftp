@@ -385,6 +385,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     const [credentialsMasked, setCredentialsMasked] = useState(true);
     const [nativeRsyncCompiled, setNativeRsyncCompiled] = useState<boolean | null>(null);
     const [nativeRsyncMode, setNativeRsyncMode] = useState<'auto' | 'classic' | 'native'>('auto');
+    // Z.4.5 R2: classic rsync binary availability. When false we
+    // disable the "Classic" chip in the mode toggle so the user does
+    // not persist a mode this machine cannot honor (typical Windows
+    // install without WSL/cygwin/scoop). The PATH walk happens
+    // backend-side via `native_rsync_classic_available`.
+    const [classicRsyncAvailable, setClassicRsyncAvailable] = useState<boolean>(true);
+    const [classicRsyncPath, setClassicRsyncPath] = useState<string | null>(null);
     const modalDrag = useDraggableModal();
     const panelRef = useRef<HTMLDivElement | null>(null);
     const sidebarButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -476,6 +483,23 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
             })
             .catch((error) => {
                 logger.error('Failed to load native rsync setting:', error);
+            });
+
+        // Z.4.5 R2: probe classic rsync binary availability so the
+        // mode toggle disables the Classic chip when the machine
+        // cannot honor it (typical Windows install).
+        invoke<{ available: boolean; path: string | null }>('native_rsync_classic_available')
+            .then(({ available, path }) => {
+                setClassicRsyncAvailable(available);
+                setClassicRsyncPath(path);
+            })
+            .catch((error) => {
+                logger.error('Failed to probe classic rsync availability:', error);
+                // Pessimistic default: assume not available so user is
+                // never able to persist a broken state. The CLI can
+                // still set classic from a shell on this machine if
+                // they really want.
+                setClassicRsyncAvailable(false);
             });
     }, [isOpen, nativeRsyncCompiled]);
 
@@ -2781,31 +2805,50 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         { value: 'auto', label: 'Auto' },
                                                         { value: 'classic', label: 'Classic' },
                                                         { value: 'native', label: 'Native' },
-                                                    ].map((option) => (
-                                                        <button
-                                                            key={option.value}
-                                                            type="button"
-                                                            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                                                                nativeRsyncMode === option.value
-                                                                    ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-300 shadow-sm'
-                                                                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-                                                            }`}
-                                                            onClick={async () => {
-                                                                try {
-                                                                    await invoke('native_rsync_mode_set', {
-                                                                        mode: option.value,
-                                                                    });
-                                                                    setNativeRsyncMode(option.value as 'auto' | 'classic' | 'native');
-                                                                    flashSaved();
-                                                                } catch (error) {
-                                                                    logger.error('Failed to update native rsync setting:', error);
-                                                                }
-                                                            }}
-                                                        >
-                                                            {option.label}
-                                                        </button>
-                                                    ))}
+                                                    ].map((option) => {
+                                                        const isClassic = option.value === 'classic';
+                                                        const isDisabled = isClassic && !classicRsyncAvailable;
+                                                        const tooltip = isDisabled
+                                                            ? 'Classic rsync binary not found on PATH. Install rsync (Linux/macOS package, Windows via WSL/cygwin/scoop) to enable this mode.'
+                                                            : isClassic && classicRsyncPath
+                                                                ? `Classic rsync at ${classicRsyncPath}`
+                                                                : undefined;
+                                                        return (
+                                                            <button
+                                                                key={option.value}
+                                                                type="button"
+                                                                disabled={isDisabled}
+                                                                title={tooltip}
+                                                                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                                                                    isDisabled
+                                                                        ? 'opacity-40 cursor-not-allowed text-gray-400 dark:text-gray-500'
+                                                                        : nativeRsyncMode === option.value
+                                                                            ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-300 shadow-sm'
+                                                                            : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                                                                }`}
+                                                                onClick={async () => {
+                                                                    if (isDisabled) return;
+                                                                    try {
+                                                                        await invoke('native_rsync_mode_set', {
+                                                                            mode: option.value,
+                                                                        });
+                                                                        setNativeRsyncMode(option.value as 'auto' | 'classic' | 'native');
+                                                                        flashSaved();
+                                                                    } catch (error) {
+                                                                        logger.error('Failed to update native rsync setting:', error);
+                                                                    }
+                                                                }}
+                                                            >
+                                                                {option.label}
+                                                            </button>
+                                                        );
+                                                    })}
                                                 </div>
+                                                {!classicRsyncAvailable && (
+                                                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                                                        Classic rsync binary not detected on PATH. Native is the only engine available on this machine.
+                                                    </p>
+                                                )}
                                                 <p className="text-xs text-amber-600 mt-2">{t('settings.nativeRsync.experimental')}</p>
                                             </div>
                                         )}

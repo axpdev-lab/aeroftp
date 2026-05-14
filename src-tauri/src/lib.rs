@@ -14558,6 +14558,8 @@ pub fn run() {
             settings::native_rsync_mode_get,
             #[cfg(feature = "aerorsync")]
             settings::native_rsync_mode_set,
+            #[cfg(feature = "aerorsync")]
+            settings::native_rsync_classic_available,
             // Profile Export/Import
             export_server_profiles,
             import_server_profiles,
