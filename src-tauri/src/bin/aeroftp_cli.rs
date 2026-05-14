@@ -988,6 +988,16 @@ enum Commands {
         /// instead. No-op for remote sync.
         #[arg(long)]
         no_local_delta: bool,
+        /// Route remote SFTP uploads/downloads through the AerorsyncBatch
+        /// session-reuse path (1 SSH handshake + N channel-execs across the
+        /// whole batch). Auto-falls back to classic SFTP per-file when the
+        /// transport reports `TooSmall` or the SFTP provider does not expose
+        /// a delta transport (e.g. password auth, missing host-key pin). On
+        /// transient SSH channel drops the batch transparently reconnects
+        /// once (Z.1.2). No-op for non-SFTP backends and for local-to-local
+        /// sync (which uses LocalDeltaTransport via --no-local-delta).
+        #[arg(long)]
+        delta: bool,
     },
     /// Preflight checks and risk summary before sync
     SyncDoctor {
@@ -19125,6 +19135,10 @@ async fn cmd_sync(
     format: OutputFormat,
     cancelled: Arc<AtomicBool>,
     precomputed_local: Option<Vec<(String, u64, Option<String>)>>,
+    // Z.1.2 lane: when true, attempt to route remote SFTP uploads
+    // through the AerorsyncBatch session-reuse path. No-op (warn-only)
+    // when the provider does not expose a delta transport.
+    use_aerorsync_batch: bool,
 ) -> SyncCycleStats {
     if !is_valid_sync_direction(direction) {
         print_error(
@@ -19938,43 +19952,128 @@ async fn cmd_sync(
         None
     };
 
-    let upload_results = futures_util::stream::iter(upload_jobs.into_iter().map(
-        |(path, local_path, remote_path, _size)| {
-            let cancelled = cancelled.clone();
-            let aggregate = aggregate.clone();
-            let overall_pb = overall_pb.clone();
-            async move {
-                if cancelled.load(Ordering::Relaxed) {
-                    return Err(format!("upload {}: cancelled", path));
+    // Z.1.2: when --delta is set, attempt to route every upload through
+    // AerorsyncBatch (session-reuse + reconnect-once on transient SSH
+    // channel drops). The batch path is inherently sequential because
+    // it shares a single SSH session, so parallel workers do not apply.
+    // Falls through to the classic parallel stream below when:
+    //   - the provider is not SFTP (no delta transport)
+    //   - the SFTP provider has no pinned host-key (Z.1.5 security gate)
+    //   - open_delta_batch returns NoopBatch (transport opted out)
+    //   - a per-file delta call returns `fallback` (e.g. TooSmall)
+    let mut used_batch_for_uploads = false;
+    let mut leftover_upload_jobs: Vec<(String, String, String, u64)> = upload_jobs.clone();
+    #[cfg(feature = "aerorsync")]
+    if use_aerorsync_batch && !leftover_upload_jobs.is_empty() {
+        use ftp_client_gui_lib::delta_sync_rsync::{
+            open_delta_batch, try_delta_transfer_with_batch, SyncDirection as DeltaDir,
+        };
+        match open_delta_batch(provider.as_mut()).await {
+            Some(mut batch) => {
+                if !quiet {
+                    eprintln!(
+                        "AerorsyncBatch engaged: 1 SSH session for {} upload(s)",
+                        leftover_upload_jobs.len()
+                    );
                 }
-                match upload_transfer_task(
-                    url,
-                    local_path,
-                    remote_path,
-                    cli,
-                    format,
-                    Some(aggregate),
-                    overall_pb,
-                    resolve_max_transfer(cli),
-                )
-                .await
-                {
-                    Ok(()) => Ok(path),
-                    Err(err) => Err(format!("upload {}: {}", path, err)),
+                let mut pending: Vec<(String, String, String, u64)> = Vec::new();
+                for (rel, local_path_s, remote_path, _size) in leftover_upload_jobs.drain(..) {
+                    if cancelled.load(Ordering::Relaxed) {
+                        errors.push(format!("upload {}: cancelled", rel));
+                        continue;
+                    }
+                    let local_path = Path::new(&local_path_s);
+                    let res = try_delta_transfer_with_batch(
+                        batch.as_mut(),
+                        DeltaDir::Upload,
+                        local_path,
+                        &remote_path,
+                    )
+                    .await;
+                    if res.used_delta {
+                        uploaded += 1;
+                    } else if let Some(hard) = res.hard_error.as_ref() {
+                        errors.push(format!("upload {}: hard rejection: {}", rel, hard));
+                    } else {
+                        // Soft fallback (TooSmall, NoopBatch, etc.):
+                        // re-queue for the classic stream below so the
+                        // user still gets the file.
+                        pending.push((rel, local_path_s, remote_path, _size));
+                    }
+                }
+                // Finalize the batch even when some files fell back so
+                // session_count + bytes_on_wire are reported.
+                match batch.finalize().await {
+                    Ok(stats) => {
+                        if !quiet {
+                            eprintln!(
+                                "AerorsyncBatch finalize: session_count={}, bytes_on_wire={}, files_transferred={}",
+                                stats.session_count, stats.bytes_on_wire, stats.files_transferred
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        if !quiet {
+                            eprintln!("AerorsyncBatch finalize error: {}", e);
+                        }
+                    }
+                }
+                leftover_upload_jobs = pending;
+                used_batch_for_uploads = true;
+            }
+            None => {
+                if !quiet {
+                    eprintln!(
+                        "--delta requested but the provider/transport is not delta-eligible \
+                         (non-SFTP, password auth, or missing host-key pin); falling back to \
+                         classic SFTP for this batch"
+                    );
                 }
             }
-        },
-    ))
-    .buffer_unordered(effective_parallel_workers(cli))
-    .collect::<Vec<_>>()
-    .await;
-
-    for result in upload_results {
-        match result {
-            Ok(_) => uploaded += 1,
-            Err(err) => errors.push(err),
         }
     }
+
+    if !leftover_upload_jobs.is_empty() {
+        let _ = used_batch_for_uploads; // already logged above; flag retained for follow-up reporting
+        let upload_results = futures_util::stream::iter(leftover_upload_jobs.into_iter().map(
+            |(path, local_path, remote_path, _size)| {
+                let cancelled = cancelled.clone();
+                let aggregate = aggregate.clone();
+                let overall_pb = overall_pb.clone();
+                async move {
+                    if cancelled.load(Ordering::Relaxed) {
+                        return Err(format!("upload {}: cancelled", path));
+                    }
+                    match upload_transfer_task(
+                        url,
+                        local_path,
+                        remote_path,
+                        cli,
+                        format,
+                        Some(aggregate),
+                        overall_pb,
+                        resolve_max_transfer(cli),
+                    )
+                    .await
+                    {
+                        Ok(()) => Ok(path),
+                        Err(err) => Err(format!("upload {}: {}", path, err)),
+                    }
+                }
+            },
+        ))
+        .buffer_unordered(effective_parallel_workers(cli))
+        .collect::<Vec<_>>()
+        .await;
+
+        for result in upload_results {
+            match result {
+                Ok(_) => uploaded += 1,
+                Err(err) => errors.push(err),
+            }
+        }
+    }
+    let _ = upload_jobs; // original collection is consumed via leftover_upload_jobs above
 
     let (normal_download_paths, gated_conflict_download_paths) =
         partition_conflict_rename_downloads(to_download.clone(), &to_conflict_upload);
@@ -24010,6 +24109,7 @@ async fn cmd_sync_watch(
                 format,
                 cancelled.clone(),
                 $precomputed,
+                false, // Z.1.2: watch loops keep classic path until --delta plumbing is wired through watch flags
             )
             .await;
 
@@ -27263,6 +27363,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     format,
                     cancelled.clone(),
                     None,
+                    false, // Z.1.2: batch script SYNC keeps classic path; users opt in via dedicated CLI invocation
                 )
                 .await
                 .exit_code;
@@ -30763,16 +30864,25 @@ async fn main() {
         JSON_MODE.store(true, Ordering::Relaxed);
     }
 
-    // Setup tracing based on verbosity
-    if cli.verbose >= 2 {
+    // Setup tracing based on verbosity. -vv forces TRACE; -v OR a non-empty
+    // RUST_LOG forces DEBUG. The env-filter feature is not enabled, so the
+    // RUST_LOG *value* is ignored — its mere presence flips the subscriber
+    // on so live diagnostic captures work without --verbose.
+    let rust_log_present = std::env::var("RUST_LOG")
+        .ok()
+        .is_some_and(|v| !v.is_empty());
+    let level = if cli.verbose >= 2 {
+        Some(tracing::Level::TRACE)
+    } else if cli.verbose == 1 || rust_log_present {
+        Some(tracing::Level::DEBUG)
+    } else {
+        None
+    };
+    if let Some(level) = level {
         tracing_subscriber::fmt()
-            .with_max_level(tracing::Level::TRACE)
-            .with_target(false)
-            .init();
-    } else if cli.verbose == 1 {
-        tracing_subscriber::fmt()
-            .with_max_level(tracing::Level::DEBUG)
-            .with_target(false)
+            .with_max_level(level)
+            .with_target(true)
+            .with_writer(std::io::stderr)
             .init();
     }
 
@@ -31397,6 +31507,7 @@ async fn main() {
             watch_no_initial,
             local_only,
             no_local_delta,
+            delta,
         } => {
             // Z.2.2: local-to-local fast path. With `--local` the positional
             // args become `<SRC> <DST>` (url=SRC, local=DST). Without
@@ -31503,6 +31614,7 @@ async fn main() {
                         format,
                         cancelled.clone(),
                         None,
+                        *delta,
                     )
                     .await
                     .exit_code;
