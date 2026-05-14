@@ -1305,3 +1305,141 @@ mod native_against_stock_rsync {
         let _ = ssh_exec_shell(&format!("rm -f {}", remote_path));
     }
 }
+
+/// Z.4.5 R1 dispatch step (2026-05-14): live gates for the russh
+/// password transport against the password-auth Docker fixture
+/// (`docker-compose.password.yml`, container
+/// `aeroftp-delta-sync-fixture-password`, port 2223, user
+/// `testuser:testpass`). These tests verify END-TO-END that
+/// `RusshSessionTransport::connect()` + `RemoteShellTransport::exec()`
+/// works over a real SSH session opened with `userauth password`.
+///
+/// Boot the fixture before running:
+/// ```text
+/// cd src-tauri/tests/fixtures/sftp-rsync
+/// docker compose -f docker-compose.password.yml up -d --build
+/// cargo test --test integration_delta_sync --features aerorsync \
+///     -- --ignored native_rsync_password_auth
+/// ```
+#[cfg(feature = "aerorsync")]
+mod native_rsync_password_auth {
+    use super::*;
+    use ftp_client_gui_lib::aerorsync::russh_session_transport::RusshSessionTransport;
+    use ftp_client_gui_lib::aerorsync::ssh_transport::{SshHostKeyPolicy, SshTransportConfig};
+    use ftp_client_gui_lib::aerorsync::transport::{RemoteExecRequest, RemoteShellTransport};
+    use secrecy::SecretString;
+    use std::path::PathBuf;
+
+    /// Build a russh transport config that targets the password fixture.
+    /// `private_key_path` is intentionally `PathBuf::new()` (the empty
+    /// placeholder used by the dispatch step in `from_rsync_config`)
+    /// to pin that the russh leg never opens / dereferences it when
+    /// `usable_password()` is Some.
+    fn password_transport_config(password: &str) -> SshTransportConfig {
+        SshTransportConfig {
+            host: "127.0.0.1".to_string(),
+            port: 2223,
+            username: "testuser".to_string(),
+            // PR-T11 cross-OS pin: the empty placeholder must NOT be
+            // opened. If russh ever regresses and tries to load this,
+            // `keys::load_secret_key("")` surfaces a typed error and
+            // the test fails loudly instead of silently passing.
+            private_key_path: PathBuf::new(),
+            connect_timeout_ms: 5_000,
+            io_timeout_ms: 10_000,
+            worker_idle_poll_ms: 250,
+            max_frame_size: 1 << 20,
+            host_key_policy: SshHostKeyPolicy::AcceptAny,
+            probe_request: RemoteExecRequest {
+                program: "rsync".to_string(),
+                args: vec!["--version".to_string()],
+                environment: Vec::new(),
+            },
+            auth_password: Some(SecretString::from(password.to_string())),
+        }
+    }
+
+    /// Z.4.5 R1: connect + exec round trip via password auth.
+    ///
+    /// Pin: the russh leg authenticates the test user with a password
+    /// rather than a key, opens a channel, runs `whoami`, and gets back
+    /// `testuser` on stdout with exit 0. This is the minimal end-to-end
+    /// proof that the dispatch step works against a real SSH server.
+    /// Heavy upload/download lanes already cover the rsync wire path on
+    /// the key-auth fixture; once the dispatch is wired into a concrete
+    /// FileLu-rsync provider, those lanes can be parameterised over
+    /// password too.
+    #[tokio::test]
+    #[ignore = "requires docker fixture aeroftp-delta-sync-fixture-password"]
+    async fn password_auth_round_trip_runs_remote_command() {
+        if !password_fixture_ready_or_skip("password_auth_round_trip_runs_remote_command") {
+            return;
+        }
+
+        let cfg = password_transport_config("testpass");
+        let transport = RusshSessionTransport::connect(cfg)
+            .await
+            .expect("russh password connect against fixture must succeed");
+
+        let request = RemoteExecRequest {
+            program: "whoami".to_string(),
+            args: vec![],
+            environment: Vec::new(),
+        };
+        let output = transport
+            .exec(request)
+            .await
+            .expect("remote whoami via password auth must succeed");
+
+        assert_eq!(
+            output.exit_code, 0,
+            "whoami exit must be 0; stderr was: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            stdout.trim() == "testuser",
+            "expected `testuser`, got {stdout:?}"
+        );
+
+        transport.close().await.ok();
+    }
+
+    /// Z.4.5 R1: connect must fail (and surface a typed transport
+    /// error) when the password is wrong. The error message must NOT
+    /// include the wrong password value: server-rejected passwords are
+    /// still secrets even when invalid (they often differ from the
+    /// real password by one character; leaking them in logs invites
+    /// shoulder-surfing through ops dashboards).
+    #[tokio::test]
+    #[ignore = "requires docker fixture aeroftp-delta-sync-fixture-password"]
+    async fn password_auth_with_wrong_password_is_rejected_without_leaking_secret() {
+        if !password_fixture_ready_or_skip(
+            "password_auth_with_wrong_password_is_rejected_without_leaking_secret",
+        ) {
+            return;
+        }
+
+        let wrong = "definitely-not-the-real-password-XYZ123";
+        let cfg = password_transport_config(wrong);
+        let result = RusshSessionTransport::connect(cfg).await;
+        match result {
+            Ok(_) => panic!(
+                "russh password connect with wrong password must NOT succeed against fixture"
+            ),
+            Err(err) => {
+                let msg = format!("{err:?}");
+                assert!(
+                    !msg.contains(wrong),
+                    "wrong password leaked in error message: {msg}"
+                );
+                // Server-side rejection should be reported as a transport
+                // error, not a panic.
+                assert!(
+                    msg.contains("transport") || msg.contains("Transport"),
+                    "expected transport-typed error, got {msg}"
+                );
+            }
+        }
+    }
+}
