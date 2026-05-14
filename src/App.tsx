@@ -325,6 +325,7 @@ import { useCloudSync } from './hooks/useCloudSync';
 import { useFileTags } from './hooks/useFileTags';
 import { useFaviconDetection } from './hooks/useFaviconDetection';
 import { useLocalPanel } from './hooks/useLocalPanel';
+import { useTerminalCwd } from './hooks/useTerminalCwd';
 import { useUnifiedPanelController } from './hooks/useUnifiedPanelController';
 
 // ============================================================================
@@ -2410,6 +2411,21 @@ interface UpdateVerificationInfo {
   const statusBarLocalFileCount = isDualLocalAeroFileMode && activeLocalPanelId === 'local2'
     ? localFiles2.length
     : localFiles.length;
+
+  // AeroTools terminal cwd binding (Z.3.10): a new local PTY tab spawns
+  // in the focused panel's path; an active remote panel with a running
+  // mount uses the mountpoint; an unmounted remote leaves the cwd at the
+  // home dir so the user can run remote-native commands instead of
+  // pretending the remote tree is local.
+  const terminalCwd = useTerminalCwd({
+    activePanel,
+    activeLocalPanelId,
+    currentLocalPath,
+    currentLocalPath2,
+    isDualLocalAeroFileMode,
+    isConnected,
+    connectionParams,
+  });
 
   function handleSidebarNavigate(path: string) {
     setActivePanel('local');
@@ -11948,7 +11964,11 @@ interface UpdateVerificationInfo {
         <DevToolsV2
           isOpen={devToolsOpen}
           previewFile={devToolsPreviewFile}
-          localPath={currentLocalPath}
+          // Z.3.10: terminal cwd follows the focused panel. For an
+          // unmounted remote panel we forward '~' so SSHTerminal opens
+          // in the user's home dir instead of pretending the remote
+          // tree is a local path.
+          localPath={terminalCwd.cwd ?? (terminalCwd.source === 'remote-unmounted' ? '~' : currentLocalPath)}
           remotePath={currentRemotePath}
           onMaximizeChange={setDevToolsMaximized}
           onClose={() => setDevToolsOpen(false)}
