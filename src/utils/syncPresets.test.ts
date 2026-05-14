@@ -8,11 +8,14 @@
 import { describe, expect, it } from 'vitest';
 import { compareEntries } from './compareEndpoints';
 import {
+    CONFLICT_POLICIES,
     derivePresetPlan,
     describeAction,
+    describeConflictPolicy,
     describePreset,
     namesFromBuckets,
     namesToDelete,
+    namesToRename,
 } from './syncPresets';
 
 /**
@@ -67,7 +70,10 @@ describe('derivePresetPlan — bucket mappings', () => {
             'only-right': 'skip',
             'newer-right': 'skip',
             same: 'skip',
-            conflict: 'skip',
+            // Z.3.9 — conflict bucket now resolves via conflict policy.
+            // Default policy is 'skip' which surfaces 'conflict-skip' so
+            // the dialog can keep the conflict badge visible.
+            conflict: 'conflict-skip',
         });
         expect(plan.hasDestructive).toBe(false);
         expect(plan.hasDeletes).toBe(false);
@@ -203,6 +209,191 @@ describe('namesFromBuckets / namesToDelete selectors', () => {
     });
 });
 
+// ── Z.3.9 — conflict policy + versioned backup ─────────────────────────
+
+/**
+ * Build a fixture aimed at the conflict bucket: two entries with diverging
+ * sizes and CLEAR mtime drift so newer/older and larger/smaller policies
+ * route them to opposite sides.
+ */
+const buildConflictFixture = () => {
+    const left = [
+        // entry A: left has newer mtime and larger size
+        { name: 'a.bin', isDir: false, size: 200, mtimeMs: 100_000 },
+        // entry B: left has older mtime and smaller size
+        { name: 'b.bin', isDir: false, size: 50, mtimeMs: 1_000 },
+    ];
+    const right = [
+        { name: 'a.bin', isDir: false, size: 100, mtimeMs: 100_500 }, // mtime within tol with 100_000 → conflict
+        { name: 'b.bin', isDir: false, size: 150, mtimeMs: 1_500 },
+    ];
+    return compareEntries(left, right);
+};
+
+describe('Z.3.9 — conflict policies', () => {
+    it('skip policy keeps every conflict in conflict-skip', () => {
+        const plan = derivePresetPlan(buildConflictFixture(), {
+            preset: 'update',
+            conflictPolicy: 'skip',
+        });
+        const conflict = plan.bucketPlans.find((bp) => bp.bucket === 'conflict');
+        expect(conflict?.entryActions).toEqual(['conflict-skip', 'conflict-skip']);
+        expect(plan.totals.conflicts).toBe(2);
+        expect(plan.hasDestructive).toBe(false);
+    });
+
+    it('rename policy resolves every conflict to rename-to-right (L→R)', () => {
+        const plan = derivePresetPlan(buildConflictFixture(), {
+            preset: 'update',
+            conflictPolicy: 'rename',
+            direction: 'left-to-right',
+        });
+        const conflict = plan.bucketPlans.find((bp) => bp.bucket === 'conflict');
+        expect(conflict?.entryActions).toEqual(['rename-to-right', 'rename-to-right']);
+        expect(plan.totals.renameToRight).toBe(2);
+        expect(plan.hasDestructive).toBe(false);
+        expect(namesToRename(plan, 'to-right').sort()).toEqual(['a.bin', 'b.bin']);
+    });
+
+    it('rename policy flips for right-to-left direction', () => {
+        const plan = derivePresetPlan(buildConflictFixture(), {
+            preset: 'update',
+            conflictPolicy: 'rename',
+            direction: 'right-to-left',
+        });
+        const conflict = plan.bucketPlans.find((bp) => bp.bucket === 'conflict');
+        expect(conflict?.entryActions.every((action) => action === 'rename-to-left')).toBe(true);
+        expect(plan.totals.renameToLeft).toBe(2);
+    });
+
+    it('newer-wins policy resolves per-entry based on mtime', () => {
+        const plan = derivePresetPlan(buildConflictFixture(), {
+            preset: 'update',
+            conflictPolicy: 'newer-wins',
+        });
+        const conflict = plan.bucketPlans.find((bp) => bp.bucket === 'conflict')!;
+        const byName = Object.fromEntries(
+            conflict.entries.map((entry, idx) => [entry.name, conflict.entryActions[idx]]),
+        );
+        // a.bin: right mtime 100_500 > left 100_000 → right wins
+        expect(byName['a.bin']).toBe('overwrite-left');
+        // b.bin: right mtime 1_500 > left 1_000 → right wins
+        expect(byName['b.bin']).toBe('overwrite-left');
+        expect(plan.hasDestructive).toBe(true);
+    });
+
+    it('older-wins policy is the inverse of newer-wins', () => {
+        const plan = derivePresetPlan(buildConflictFixture(), {
+            preset: 'update',
+            conflictPolicy: 'older-wins',
+        });
+        const conflict = plan.bucketPlans.find((bp) => bp.bucket === 'conflict')!;
+        const byName = Object.fromEntries(
+            conflict.entries.map((entry, idx) => [entry.name, conflict.entryActions[idx]]),
+        );
+        expect(byName['a.bin']).toBe('overwrite-right');
+        expect(byName['b.bin']).toBe('overwrite-right');
+    });
+
+    it('larger-wins policy resolves per-entry based on size', () => {
+        const plan = derivePresetPlan(buildConflictFixture(), {
+            preset: 'update',
+            conflictPolicy: 'larger-wins',
+        });
+        const conflict = plan.bucketPlans.find((bp) => bp.bucket === 'conflict')!;
+        const byName = Object.fromEntries(
+            conflict.entries.map((entry, idx) => [entry.name, conflict.entryActions[idx]]),
+        );
+        // a.bin: left 200 > right 100 → left wins
+        expect(byName['a.bin']).toBe('overwrite-right');
+        // b.bin: right 150 > left 50 → right wins
+        expect(byName['b.bin']).toBe('overwrite-left');
+    });
+
+    it('smaller-wins policy is the inverse of larger-wins', () => {
+        const plan = derivePresetPlan(buildConflictFixture(), {
+            preset: 'update',
+            conflictPolicy: 'smaller-wins',
+        });
+        const conflict = plan.bucketPlans.find((bp) => bp.bucket === 'conflict')!;
+        const byName = Object.fromEntries(
+            conflict.entries.map((entry, idx) => [entry.name, conflict.entryActions[idx]]),
+        );
+        expect(byName['a.bin']).toBe('overwrite-left');
+        expect(byName['b.bin']).toBe('overwrite-right');
+    });
+
+    it('newer-wins gracefully degrades to conflict-skip when mtimes match', () => {
+        const result = compareEntries(
+            [{ name: 'a.bin', isDir: false, size: 100, mtimeMs: 1_000 }],
+            [{ name: 'a.bin', isDir: false, size: 200, mtimeMs: 1_000 }],
+        );
+        const plan = derivePresetPlan(result, {
+            preset: 'update',
+            conflictPolicy: 'newer-wins',
+        });
+        const conflict = plan.bucketPlans.find((bp) => bp.bucket === 'conflict')!;
+        expect(conflict.entryActions).toEqual(['conflict-skip']);
+    });
+
+    it('mirror preset ignores the conflict policy and force-overwrites with source', () => {
+        const plan = derivePresetPlan(buildConflictFixture(), {
+            preset: 'mirror',
+            conflictPolicy: 'rename', // should be ignored
+        });
+        const conflict = plan.bucketPlans.find((bp) => bp.bucket === 'conflict')!;
+        // Mirror's PRESET_RULES sets conflict → 'overwrite-right' for L→R.
+        expect(conflict.entryActions.every((action) => action === 'overwrite-right')).toBe(true);
+    });
+
+    it('exposes appliedOptions echoing the resolved policy', () => {
+        const plan = derivePresetPlan(buildConflictFixture(), {
+            preset: 'update',
+            conflictPolicy: 'newer-wins',
+            versionedBackup: { enabled: true, backupDir: '.versions' },
+        });
+        expect(plan.appliedOptions.conflictPolicy).toBe('newer-wins');
+        expect(plan.appliedOptions.versionedBackup).toEqual({ enabled: true, backupDir: '.versions' });
+    });
+});
+
+describe('Z.3.9 — versioned backup signals', () => {
+    it('disabled by default: zero versioned backup bytes', () => {
+        const plan = derivePresetPlan(buildFixture(), { preset: 'mirror' });
+        expect(plan.totals.versionedBackupBytes).toBe(0);
+        expect(plan.bucketPlans.every((bp) => !bp.requiresVersionedBackup)).toBe(true);
+    });
+
+    it('enabled: tracks bytes for every overwrite + delete bucket', () => {
+        const plan = derivePresetPlan(buildFixture(), {
+            preset: 'mirror',
+            versionedBackup: { enabled: true },
+        });
+        // The fixture's mirror plan overwrites newer-left (left side has 20B
+        // moving over the wire, but versioned backup captures the OLD right
+        // copy = 20B), overwrites newer-right (right 30B → captured 30B),
+        // deletes only-right (right 60B → captured), and force-overwrites
+        // conflict (right 999B → captured).
+        expect(plan.totals.versionedBackupBytes).toBe(20 + 30 + 60 + 999);
+        const flagged = plan.bucketPlans.filter((bp) => bp.requiresVersionedBackup).map((bp) => bp.bucket).sort();
+        expect(flagged).toEqual(['conflict', 'newer-left', 'newer-right', 'only-right']);
+    });
+
+    it('backup preset with versioned backup off has no destructive captures', () => {
+        const plan = derivePresetPlan(buildFixture(), {
+            preset: 'backup',
+            versionedBackup: { enabled: true },
+        });
+        // Backup never deletes/overwrites a newer dest → no versioned bytes.
+        // But it overwrites the OLDER right copy when newer-left moves;
+        // that's still a destination overwrite, so versioned backup
+        // captures the old right copy.
+        const newerLeft = plan.bucketPlans.find((bp) => bp.bucket === 'newer-left')!;
+        expect(newerLeft.requiresVersionedBackup).toBe(true);
+        expect(plan.totals.versionedBackupBytes).toBeGreaterThan(0);
+    });
+});
+
 describe('preset descriptors', () => {
     it('marks backup as the only "safe" preset', () => {
         expect(describePreset('backup').safe).toBe(true);
@@ -216,5 +407,15 @@ describe('preset descriptors', () => {
         expect(describeAction('delete-right')).toMatch(/Delete/);
         expect(describeAction('conflict-skip')).toMatch(/Conflict/);
         expect(describeAction('skip')).toBe('Skip');
+        expect(describeAction('rename-to-right')).toMatch(/Keep both/);
+    });
+
+    it('exposes all six conflict policies with stable labels', () => {
+        expect(CONFLICT_POLICIES).toHaveLength(6);
+        for (const policy of CONFLICT_POLICIES) {
+            const { label, tagline } = describeConflictPolicy(policy);
+            expect(label).toBeTruthy();
+            expect(tagline).toBeTruthy();
+        }
     });
 });
