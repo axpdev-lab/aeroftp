@@ -1,0 +1,328 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet -- AI-assisted (see AI-TRANSPARENCY.md)
+
+import * as React from 'react';
+import {
+    ArrowLeftRight,
+    ArrowRight,
+    ChevronDown,
+    ChevronRight,
+    Equal,
+    FileWarning,
+    GitCompare,
+    type LucideIcon,
+    X,
+} from 'lucide-react';
+import type { CompareBucket, CompareResult, CompareResultEntry } from '../utils/compareEndpoints';
+import { formatBytes } from '../utils/formatters';
+
+interface UnifiedCompareDialogProps {
+    /** Pre-computed compare result (the dialog never reaches back into IPC). */
+    result: CompareResult;
+    /** Human-readable label for the left endpoint (used in headers). */
+    leftLabel: string;
+    /** Human-readable label for the right endpoint. */
+    rightLabel: string;
+    /** Optional pair kind hint, mainly to drive Apply button labels. */
+    pairKind?: 'local-local' | 'local-remote' | 'remote-local' | 'remote-remote' | string;
+    /** Whether the parent can execute a left→right mirror in the current pair. */
+    canMirrorLeftToRight: boolean;
+    /** Whether the parent can execute a right→left mirror in the current pair. */
+    canMirrorRightToLeft: boolean;
+    /** Mirror-left action: receives the entry names the parent should transfer. */
+    onApplyMirrorLeftToRight: (entries: CompareResultEntry[]) => void;
+    /** Mirror-right action: same contract, opposite direction. */
+    onApplyMirrorRightToLeft: (entries: CompareResultEntry[]) => void;
+    onClose: () => void;
+}
+
+const BUCKET_ORDER: CompareBucket[] = [
+    'only-left',
+    'newer-left',
+    'only-right',
+    'newer-right',
+    'conflict',
+    'same',
+];
+
+const BUCKET_META: Record<CompareBucket, {
+    label: string;
+    description: string;
+    accentClass: string;
+    icon: LucideIcon;
+}> = {
+    'only-left': {
+        label: 'Only on left',
+        description: 'Present on the source panel, missing from the destination.',
+        accentClass: 'border-l-emerald-400 bg-emerald-50/60 dark:border-l-emerald-500 dark:bg-emerald-900/20',
+        icon: ArrowRight,
+    },
+    'newer-left': {
+        label: 'Newer on left',
+        description: 'Present on both sides, the source copy has the more recent timestamp.',
+        accentClass: 'border-l-sky-400 bg-sky-50/60 dark:border-l-sky-500 dark:bg-sky-900/20',
+        icon: ArrowRight,
+    },
+    'only-right': {
+        label: 'Only on right',
+        description: 'Present on the destination, missing from the source panel.',
+        accentClass: 'border-l-amber-400 bg-amber-50/60 dark:border-l-amber-500 dark:bg-amber-900/20',
+        icon: ArrowRight,
+    },
+    'newer-right': {
+        label: 'Newer on right',
+        description: 'Present on both sides, the destination copy has the more recent timestamp.',
+        accentClass: 'border-l-orange-400 bg-orange-50/60 dark:border-l-orange-500 dark:bg-orange-900/20',
+        icon: ArrowRight,
+    },
+    conflict: {
+        label: 'Conflict',
+        description: 'Both sides have the entry but they disagree on size with comparable timestamps.',
+        accentClass: 'border-l-rose-400 bg-rose-50/60 dark:border-l-rose-500 dark:bg-rose-900/20',
+        icon: FileWarning,
+    },
+    same: {
+        label: 'Same',
+        description: 'Entries match according to the active comparison policy.',
+        accentClass: 'border-l-gray-300 bg-gray-50/60 dark:border-l-gray-600 dark:bg-gray-800/40',
+        icon: Equal,
+    },
+};
+
+const MAX_PREVIEW_ROWS = 80;
+
+const formatTimestamp = (mtime?: number | null): string => {
+    if (typeof mtime !== 'number' || !Number.isFinite(mtime) || mtime <= 0) return '—';
+    try {
+        return new Date(mtime).toLocaleString();
+    } catch {
+        return '—';
+    }
+};
+
+const formatSize = (size?: number | null): string => {
+    if (typeof size !== 'number' || !Number.isFinite(size)) return '—';
+    return formatBytes(Math.max(0, size));
+};
+
+interface BucketSectionProps {
+    bucket: CompareBucket;
+    entries: CompareResultEntry[];
+    bytes: number;
+    initiallyOpen: boolean;
+}
+
+const BucketSection: React.FC<BucketSectionProps> = ({ bucket, entries, bytes, initiallyOpen }) => {
+    const [open, setOpen] = React.useState(initiallyOpen);
+    const meta = BUCKET_META[bucket];
+    const Icon = meta.icon;
+    const truncated = entries.length > MAX_PREVIEW_ROWS;
+    const visible = truncated ? entries.slice(0, MAX_PREVIEW_ROWS) : entries;
+
+    return (
+        <div className={`rounded-md border-l-4 border border-gray-200 dark:border-gray-700 ${meta.accentClass}`}>
+            <button
+                type="button"
+                onClick={() => setOpen((value) => !value)}
+                className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left"
+                aria-expanded={open}
+            >
+                <div className="flex min-w-0 items-center gap-2">
+                    <Icon size={14} className="shrink-0 text-gray-600 dark:text-gray-300" />
+                    <span className="truncate text-sm font-semibold text-gray-800 dark:text-gray-100">
+                        {meta.label}
+                    </span>
+                    <span className="rounded-full bg-white/70 px-2 py-0.5 text-[11px] font-medium text-gray-700 shadow-sm dark:bg-gray-900/40 dark:text-gray-200">
+                        {entries.length}
+                    </span>
+                    <span className="text-[11px] text-gray-500 dark:text-gray-400">{formatBytes(bytes)}</span>
+                </div>
+                {open ? (
+                    <ChevronDown size={14} className="text-gray-500 dark:text-gray-400" />
+                ) : (
+                    <ChevronRight size={14} className="text-gray-500 dark:text-gray-400" />
+                )}
+            </button>
+            {open && (
+                <div className="border-t border-gray-200 px-3 py-2 dark:border-gray-700">
+                    <p className="mb-2 text-[11px] text-gray-500 dark:text-gray-400">{meta.description}</p>
+                    {entries.length === 0 ? (
+                        <p className="text-xs italic text-gray-400 dark:text-gray-500">No entries.</p>
+                    ) : (
+                        <div className="max-h-48 overflow-y-auto rounded-md border border-gray-200 bg-white/60 dark:border-gray-700 dark:bg-gray-900/30">
+                            <table className="w-full text-[11px]">
+                                <thead className="sticky top-0 bg-gray-100 text-left text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                                    <tr>
+                                        <th className="px-2 py-1 font-medium">Name</th>
+                                        <th className="px-2 py-1 font-medium text-right">Left size</th>
+                                        <th className="px-2 py-1 font-medium text-right">Right size</th>
+                                        <th className="px-2 py-1 font-medium">Left mtime</th>
+                                        <th className="px-2 py-1 font-medium">Right mtime</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {visible.map((entry) => (
+                                        <tr key={entry.name} className="border-t border-gray-100 dark:border-gray-700/60">
+                                            <td className="px-2 py-1 font-mono text-gray-800 dark:text-gray-200">
+                                                {entry.name}
+                                            </td>
+                                            <td className="px-2 py-1 text-right text-gray-600 dark:text-gray-300">
+                                                {entry.leftIsDir ? 'dir' : formatSize(entry.leftSize)}
+                                            </td>
+                                            <td className="px-2 py-1 text-right text-gray-600 dark:text-gray-300">
+                                                {entry.rightIsDir ? 'dir' : formatSize(entry.rightSize)}
+                                            </td>
+                                            <td className="px-2 py-1 text-gray-500 dark:text-gray-400">
+                                                {formatTimestamp(entry.leftMtimeMs)}
+                                            </td>
+                                            <td className="px-2 py-1 text-gray-500 dark:text-gray-400">
+                                                {formatTimestamp(entry.rightMtimeMs)}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                            {truncated && (
+                                <p className="border-t border-gray-200 px-3 py-1 text-[11px] text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                                    Showing first {MAX_PREVIEW_ROWS} of {entries.length} entries.
+                                </p>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
+
+export const UnifiedCompareDialog: React.FC<UnifiedCompareDialogProps> = ({
+    result,
+    leftLabel,
+    rightLabel,
+    pairKind,
+    canMirrorLeftToRight,
+    canMirrorRightToLeft,
+    onApplyMirrorLeftToRight,
+    onApplyMirrorRightToLeft,
+    onClose,
+}) => {
+    const policyLabel = React.useMemo(() => {
+        switch (result.appliedOptions.policy) {
+            case 'size-only':
+                return 'Size only';
+            case 'mtime-only':
+                return 'Timestamp only';
+            default:
+                return 'Size + timestamp';
+        }
+    }, [result.appliedOptions.policy]);
+
+    const leftToRightEntries = React.useMemo(
+        () => [...result.buckets['only-left'], ...result.buckets['newer-left']],
+        [result.buckets],
+    );
+    const rightToLeftEntries = React.useMemo(
+        () => [...result.buckets['only-right'], ...result.buckets['newer-right']],
+        [result.buckets],
+    );
+
+    return (
+        <div
+            className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/55 px-4 backdrop-blur-sm"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Compare panels"
+            onClick={(event) => {
+                if (event.target === event.currentTarget) onClose();
+            }}
+        >
+            <div className="w-full max-w-3xl overflow-hidden rounded-lg bg-white shadow-2xl dark:bg-gray-800">
+                <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+                    <div className="flex items-center gap-2">
+                        <GitCompare size={18} className="text-blue-500" />
+                        <div>
+                            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Compare panels</h2>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                                {leftLabel} <ArrowLeftRight size={11} className="inline align-middle" /> {rightLabel} · {policyLabel}
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="rounded p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+                        aria-label="Close"
+                    >
+                        <X size={16} />
+                    </button>
+                </div>
+
+                <div className="grid gap-3 px-4 py-3 sm:grid-cols-3">
+                    <div className="rounded-md bg-gray-50 p-3 dark:bg-gray-900/40">
+                        <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Total entries</div>
+                        <div className="font-semibold text-gray-900 dark:text-white">{result.totals.count}</div>
+                    </div>
+                    <div className="rounded-md bg-gray-50 p-3 dark:bg-gray-900/40">
+                        <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Differences</div>
+                        <div className="font-semibold text-gray-900 dark:text-white">
+                            {result.totals.count - result.stats.same.count}
+                        </div>
+                    </div>
+                    <div className="rounded-md bg-gray-50 p-3 dark:bg-gray-900/40">
+                        <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Total bytes</div>
+                        <div className="font-semibold text-gray-900 dark:text-white">{formatBytes(result.totals.bytes)}</div>
+                    </div>
+                </div>
+
+                <div className="max-h-[60vh] space-y-2 overflow-y-auto px-4 pb-4">
+                    {BUCKET_ORDER.map((bucket) => (
+                        <BucketSection
+                            key={bucket}
+                            bucket={bucket}
+                            entries={result.buckets[bucket]}
+                            bytes={result.stats[bucket].bytes}
+                            initiallyOpen={bucket !== 'same' && result.buckets[bucket].length > 0}
+                        />
+                    ))}
+                </div>
+
+                <div className="flex flex-col gap-2 border-t border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-700 dark:bg-gray-800/70 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                        Mirror buttons stage the matching entries in the unified transfer planner for review.
+                        Inline highlighting of file rows lands with Z.3.7.2.
+                        {pairKind ? ` · pair: ${pairKind}` : ''}
+                    </p>
+                    <div className="flex flex-wrap justify-end gap-2">
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="rounded-lg px-3 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
+                        >
+                            Close
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => onApplyMirrorRightToLeft(rightToLeftEntries)}
+                            disabled={!canMirrorRightToLeft || rightToLeftEntries.length === 0}
+                            className="inline-flex items-center gap-2 rounded-lg bg-gray-700 px-3 py-2 text-sm text-white transition-colors hover:bg-gray-800 disabled:opacity-40"
+                            title="Stage only-right + newer-right entries for a right→left transfer"
+                        >
+                            ← Mirror right→left ({rightToLeftEntries.length})
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => onApplyMirrorLeftToRight(leftToRightEntries)}
+                            disabled={!canMirrorLeftToRight || leftToRightEntries.length === 0}
+                            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm text-white transition-colors hover:bg-blue-700 disabled:opacity-40"
+                            title="Stage only-left + newer-left entries for a left→right transfer"
+                        >
+                            Mirror left→right ({leftToRightEntries.length}) →
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export default UnifiedCompareDialog;
