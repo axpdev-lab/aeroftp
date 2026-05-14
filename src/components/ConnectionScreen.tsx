@@ -4175,8 +4175,14 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             const isNonGenericS3 = protocol === 's3' && selectedProviderId && !getProviderById(selectedProviderId)?.isGeneric;
                                             const hasPresetServer = selectedProvider && selectedProvider.defaults?.server && !selectedProvider.isGeneric;
                                             const hideServerField = hasPresetServer && !editingProfileId;
+                                            // Z.4.5 R1: providers that mark `serverLocked: true` keep
+                                            // the server/port row hidden in EVERY mode (including edit),
+                                            // because their endpoint is fully managed by AeroFTP and
+                                            // exposing it would confuse rather than help.
+                                            const serverLocked = !!selectedProvider?.serverLocked;
                                             if (isNonGenericS3) return null;
                                             if (hideServerField) return null; // Shown in Advanced Options below
+                                            if (serverLocked) return null;
                                             if (selectedProviderId === 'infinicloud') return null; // Rendered inside InfiniCloud mode selector block
                                             return (
                                                 <div className="flex gap-2">
@@ -4348,7 +4354,14 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         {/* Advanced Options: hidden server/port for preset WebDAV, hidden endpoint for preset S3 */}
                                         {(() => {
                                             const hasPresetServer = selectedProvider && selectedProvider.defaults?.server && !selectedProvider.isGeneric && !editingProfileId;
-                                            if (!hasPresetServer || protocol === 's3') return null;
+                                            // Z.4.5 R1: providers marked `serverLocked` ALWAYS surface the
+                                            // accordion (even in edit mode) because the main Server/Port
+                                            // row is unconditionally hidden for them. Without this branch
+                                            // the operator would have no way to inspect or override the
+                                            // managed endpoint at all.
+                                            const serverLocked = !!selectedProvider?.serverLocked;
+                                            const showForLocked = serverLocked && selectedProvider?.defaults?.server;
+                                            if ((!hasPresetServer && !showForLocked) || protocol === 's3') return null;
                                             return (
                                                 <div className="pt-1">
                                                     <button

@@ -84,6 +84,20 @@ export interface ProviderConfig {
     /** Is this a generic/custom provider? */
     isGeneric?: boolean;
 
+    /**
+     * Z.4.5 R1: when true, the Quick Connect form hides the Server / Port
+     * row entirely (including in edit mode), so an integration whose
+     * endpoint is fully managed by AeroFTP (FileLu Rsync, Hetzner Storage
+     * Box presets, ...) does not surface implementation details to the
+     * user. The defaults.server / defaults.port pair is still applied to
+     * the connection params at preset-select time.
+     *
+     * Use sparingly: only for presets where exposing host/port would
+     * confuse rather than help (e.g. fixed rsync-as-a-service endpoints
+     * that the user must NOT change).
+     */
+    serverLocked?: boolean;
+
     /** Form fields for connection */
     fields: ProviderField[];
 
