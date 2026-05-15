@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Edit2, Trash2, Copy, Loader2, Star, Clock, ShieldCheck, Lock, Check, X, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
-import { ServerProfile, ProviderType, getProtocolClass, getE2EBits, supportsStorageQuota } from '../../types';
+import { ServerProfile, ProviderType, getProtocolClass, getE2EBits, profileHasQuota } from '../../types';
 import { ProtocolIcon } from '../ProtocolSelector';
 import { PROVIDER_LOGOS } from '../ProviderLogos';
 import { getGitHubConnectionBadge, getMegaConnectionBadge, getInfiniCloudConnectionBadge } from '../../utils/providerConnectionMeta';
@@ -390,8 +390,7 @@ export const ServerCard = React.memo(function ServerCard({
             + (onRetryHealth ? ` · ${t('introHub.health.clickToRetry')}` : '')
         : undefined;
     const handleRetry = onRetryHealth ? () => onRetryHealth(server) : undefined;
-    const proto = server.protocol || 'ftp';
-    const quotaSupported = supportsStorageQuota(proto as ProviderType);
+    const quotaSupported = profileHasQuota(server);
     const timeAgo = getTimeAgo(server.lastConnected);
     const handleMouseEnter = onHoverChange ? () => onHoverChange(server) : undefined;
     const handleMouseLeave = onHoverChange ? () => onHoverChange(null) : undefined;

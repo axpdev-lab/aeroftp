@@ -274,6 +274,13 @@ export interface ProviderOptions {
   githubTokenExpiresAt?: string; // ISO timestamp returned by GitHub for installation token expiry
   githubBranch?: string; // Optional branch override for repository browsing
 
+  // Manual storage cap (item 4a). Many backends expose no quota-total
+  // endpoint (raw FTP/FTPS/SFTP, most S3/WebDAV) and a few expose USED but
+  // not TOTAL (Backblaze B2). This optional override (in bytes) lets the
+  // user declare the account/plan cap so the usage bar and columns render.
+  // The API total always wins; this is only the fallback when it is 0.
+  manualTotalBytes?: number;
+
   // InfiniCloud-specific
   infinicloud_mode?: "webdav" | "api"; // Connection mode: standard WebDAV or REST API with auto-discovery
   apiKey?: string; // InfiniCloud developer API key (128-bit hex)
@@ -407,9 +414,59 @@ export interface ServerProfile {
   skipDeltaEligibilityPrompt?: boolean; // Suppress the classic fallback modal for this saved server
   // Last known storage quota cached after a successful connection. Used by the
   // detailed My Servers card layout to render a usage bar without requiring
-  // a fresh authentication round-trip on every render.
-  lastQuota?: { used: number; total: number; fetched_at: string };
+  // a fresh authentication round-trip on every render. `totalSource` records
+  // whether the cap came from the provider API or the manual override
+  // (item 4a); `usedSource` whether `used` is an API figure or an explicit
+  // recursive scan (item 4b). `used_at` timestamps the scan.
+  lastQuota?: {
+    used: number;
+    total: number;
+    fetched_at: string;
+    totalSource?: "api" | "manual";
+    usedSource?: "api" | "scan";
+    used_at?: string;
+  };
 }
+
+/**
+ * Resolve the effective storage quota under the single rule shared by GUI
+ * and CLI (item 4a): the provider API total wins when it reports one,
+ * otherwise the user's manual override is used. `used` is passed through
+ * unchanged (it may come from the API or, for no-quota backends, an
+ * explicit recursive scan: item 4b).
+ */
+export interface EffectiveQuota {
+  used: number;
+  total: number;
+  totalSource: "api" | "manual" | "none";
+}
+
+export const resolveEffectiveQuota = (
+  apiUsed: number,
+  apiTotal: number,
+  manualTotalBytes?: number,
+): EffectiveQuota => {
+  if (apiTotal > 0) {
+    return { used: apiUsed, total: apiTotal, totalSource: "api" };
+  }
+  if (manualTotalBytes && manualTotalBytes > 0) {
+    return { used: apiUsed, total: manualTotalBytes, totalSource: "manual" };
+  }
+  return { used: apiUsed, total: 0, totalSource: "none" };
+};
+
+/**
+ * A profile is quota-capable for the My Servers bar/columns when its
+ * protocol natively exposes a quota OR the user set a manual total
+ * override. This lets no-quota backends (FTP/FTPS/SFTP/S3/WebDAV) show a
+ * bar once a manual cap (and a scanned `used`) exists.
+ */
+export const profileHasQuota = (server: {
+  protocol?: ProviderType;
+  options?: ProviderOptions;
+}): boolean =>
+  supportsStorageQuota((server.protocol || "ftp") as ProviderType) ||
+  !!(server.options?.manualTotalBytes && server.options.manualTotalBytes > 0);
 
 // Session status for multi-tab management
 export type SessionStatus =

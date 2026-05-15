@@ -26,6 +26,7 @@ import { getProviderById, resolveS3Endpoint, ProviderConfig } from '../providers
 import { getMegaConnectionMode, normalizeMegaOptions } from '../utils/providerConnectionMeta';
 import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStorage';
 import { getStorageDedupKey } from '../utils/storageDedup';
+import { formatBytes, parseHumanSize } from '../utils/formatters';
 import { useActivityLog } from '../hooks/useActivityLog';
 import { logger } from '../utils/logger';
 import { Checkbox } from './ui/Checkbox';
@@ -1621,6 +1622,42 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                     {showIcon && renderIconPicker()}
+                </div>
+                {/* Total storage (manual): optional cap for backends with no
+                    quota API (raw FTP/FTPS/SFTP, most S3/WebDAV) or that
+                    expose USED but not TOTAL (Backblaze B2). The provider API
+                    total always wins; this is only the fallback so the My
+                    Servers usage bar and % can render (item 4a). Always shown
+                    as an override regardless of protocol. */}
+                <div>
+                    <label className="block text-sm font-medium mb-1.5 flex items-center gap-1.5">
+                        <HardDrive size={14} />
+                        {t('connection.manualTotalStorage')}
+                    </label>
+                    <input
+                        key={`mtb-${editingProfileId || 'new'}`}
+                        type="text"
+                        defaultValue={connectionParams.options?.manualTotalBytes
+                            ? formatBytes(connectionParams.options.manualTotalBytes)
+                            : ''}
+                        onChange={(e) => {
+                            const raw = e.target.value.trim();
+                            const opts = { ...(connectionParams.options || {}) };
+                            if (!raw) {
+                                delete opts.manualTotalBytes;
+                            } else {
+                                const bytes = parseHumanSize(raw);
+                                if (bytes && bytes > 0) opts.manualTotalBytes = bytes;
+                                else delete opts.manualTotalBytes;
+                            }
+                            onConnectionParamsChange({ ...connectionParams, options: opts });
+                        }}
+                        placeholder={t('connection.manualTotalStoragePlaceholder')}
+                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                    />
+                    <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                        {t('connection.manualTotalStorageHint')}
+                    </p>
                 </div>
                 {/* Action Buttons */}
                 <div className={showCancelSaveAsNew ? 'flex gap-2' : 'pt-2'}>
