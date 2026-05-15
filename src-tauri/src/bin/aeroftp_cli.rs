@@ -16367,6 +16367,17 @@ fn cmd_keystore_info(input: &str, json: bool, format: OutputFormat) -> i32 {
 /// **effective** mode of `native` so the user knows what every next
 /// transfer will actually use. The persisted value is left untouched
 /// so the user's intent is preserved if they later install rsync.
+#[cfg(not(feature = "aerorsync"))]
+fn cmd_aerorsync_mode_get(format: OutputFormat) -> i32 {
+    print_error(
+        format,
+        "aerorsync mode requires the `aerorsync` cargo feature; rebuild with --features aerorsync",
+        7,
+    );
+    7
+}
+
+#[cfg(feature = "aerorsync")]
 fn cmd_aerorsync_mode_get(format: OutputFormat) -> i32 {
     let stored = ftp_client_gui_lib::settings::native_rsync_mode_get();
     let classic = detect_classic_rsync();
@@ -16439,6 +16450,17 @@ fn detect_classic_rsync() -> Option<std::path::PathBuf> {
 }
 
 /// `aeroftp aerorsync mode set <mode>` — persist a new mode.
+#[cfg(not(feature = "aerorsync"))]
+fn cmd_aerorsync_mode_set(_mode: &str, format: OutputFormat) -> i32 {
+    print_error(
+        format,
+        "aerorsync mode requires the `aerorsync` cargo feature; rebuild with --features aerorsync",
+        7,
+    );
+    7
+}
+
+#[cfg(feature = "aerorsync")]
 fn cmd_aerorsync_mode_set(mode: &str, format: OutputFormat) -> i32 {
     use ftp_client_gui_lib::settings::NativeRsyncMode;
     let normalised = mode.trim().to_ascii_lowercase();
@@ -16846,14 +16868,16 @@ async fn cmd_aerorsync_probe(
 #[cfg(not(feature = "aerorsync"))]
 #[allow(clippy::too_many_arguments)]
 async fn cmd_aerorsync_probe(
-    _host: &str,
-    _user: &str,
+    _host: Option<&str>,
+    _user: Option<&str>,
     _port: u16,
     _password_env: Option<&str>,
     _password_stdin: bool,
+    _profile_rsync: Option<&str>,
     _accept_any_host_key: bool,
     _remote_command: &str,
     _connect_timeout_secs: u64,
+    _cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
     print_error(
