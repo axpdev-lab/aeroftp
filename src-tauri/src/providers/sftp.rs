@@ -13,8 +13,8 @@ use super::{ProviderError, ProviderType, RemoteEntry, SftpConfig, StorageProvide
 use async_trait::async_trait;
 use russh::client::AuthResult;
 use russh::client::{self, Config, Handle, Handler};
-use russh::keys::{self, known_hosts, Algorithm, HashAlg, PrivateKeyWithHashAlg, PublicKey};
-use russh::{compression, Preferred};
+use russh::keys::{self, Algorithm, HashAlg, PrivateKeyWithHashAlg, PublicKey, known_hosts};
+use russh::{Preferred, compression};
 use russh_sftp::client::SftpSession;
 use std::path::Path;
 use std::sync::Arc;
@@ -152,7 +152,8 @@ impl Handler for SshHandler {
             Err(keys::Error::KeyChanged { line }) => {
                 tracing::error!(
                     "SFTP: REJECTING connection to {} - host key changed at known_hosts line {} (possible MITM attack)",
-                    self.host, line
+                    self.host,
+                    line
                 );
                 Ok(false)
             }
@@ -249,8 +250,8 @@ impl SftpProvider {
     ///
     /// Eligibility conditions (all must hold):
     /// - Provider is connected (shared handle present)
-    /// - SSH authentication uses a private key path on disk (Fase 1 limits itself
-    ///   to key-based auth; password auth falls back to classic transfer)
+    /// - SSH authentication has either a private key path on disk or a
+    ///   non-empty password saved in the profile.
     ///
     /// This method is the single choke point where an `SftpProvider` becomes a
     /// `dyn DeltaTransport`. The adapter layer (`delta_sync_rsync`) never reaches
@@ -270,27 +271,8 @@ impl SftpProvider {
     ///   already accepts for non-SFTP providers).
     pub fn delta_transport(&self) -> Option<Box<dyn crate::delta_transport::DeltaTransport>> {
         let handle = self.ssh_handle.clone()?;
-        let key_path_str = self.config.private_key_path.as_ref()?;
-        let key_path = std::path::PathBuf::from(Self::expand_home_path(key_path_str));
-
         let known_hosts_path = dirs::home_dir().map(|h| h.join(".ssh").join("known_hosts"));
-
-        let rsync_config = crate::rsync_over_ssh::RsyncConfig {
-            compress: true,
-            preserve_times: true,
-            progress: true,
-            min_file_size: crate::rsync_over_ssh::DEFAULT_MIN_FILE_SIZE,
-            ssh_key_path: Some(key_path),
-            ssh_password: None,
-            auth_method: crate::rsync_over_ssh::AuthMethod::SshKey,
-            ssh_port: Some(self.config.port),
-            ssh_user: self.config.username.clone(),
-            ssh_host: self.config.host.clone(),
-            // Classic SFTP flow already verified the host key via `SshHandler::check_server_key`;
-            // rsync's SSH transport can trust that verification for the same session.
-            strict_host_key_check: "accept-new".to_string(),
-            known_hosts_path,
-        };
+        let rsync_config = self.rsync_config_for_delta(known_hosts_path)?;
 
         #[cfg(feature = "aerorsync")]
         {
@@ -363,6 +345,50 @@ impl SftpProvider {
         }
 
         path.to_string()
+    }
+
+    fn rsync_config_for_delta(
+        &self,
+        known_hosts_path: Option<std::path::PathBuf>,
+    ) -> Option<crate::rsync_over_ssh::RsyncConfig> {
+        use crate::rsync_over_ssh::AuthMethod;
+        use secrecy::ExposeSecret;
+
+        let (ssh_key_path, ssh_password, auth_method) =
+            if let Some(key_path_str) = self.config.private_key_path.as_ref() {
+                (
+                    Some(std::path::PathBuf::from(Self::expand_home_path(
+                        key_path_str,
+                    ))),
+                    None,
+                    AuthMethod::SshKey,
+                )
+            } else {
+                let password = self
+                    .config
+                    .password
+                    .as_ref()
+                    .filter(|secret| !secret.expose_secret().is_empty())?;
+                (None, Some(password.clone()), AuthMethod::Password)
+            };
+
+        Some(crate::rsync_over_ssh::RsyncConfig {
+            compress: true,
+            preserve_times: true,
+            progress: true,
+            min_file_size: crate::rsync_over_ssh::DEFAULT_MIN_FILE_SIZE,
+            ssh_key_path,
+            ssh_password,
+            auth_method,
+            ssh_port: Some(self.config.port),
+            ssh_user: self.config.username.clone(),
+            ssh_host: self.config.host.clone(),
+            // Classic SFTP flow already verified the host key via
+            // `SshHandler::check_server_key`; rsync's SSH transport can
+            // trust that verification for the same session.
+            strict_host_key_check: "accept-new".to_string(),
+            known_hosts_path,
+        })
     }
 }
 
@@ -1542,6 +1568,54 @@ mod tests {
         let provider = SftpProvider::new(config);
         assert_eq!(provider.provider_type(), ProviderType::Sftp);
         assert!(!provider.is_connected());
+    }
+
+    #[test]
+    fn delta_rsync_config_accepts_password_only_profile() {
+        use crate::rsync_over_ssh::AuthMethod;
+        use secrecy::ExposeSecret;
+
+        let config = SftpConfig {
+            host: "nas.local".to_string(),
+            port: 2222,
+            username: "alice".to_string(),
+            password: Some(secrecy::SecretString::from("secret".to_string())),
+            private_key_path: None,
+            key_passphrase: None,
+            initial_path: None,
+            timeout_secs: 30,
+            trust_unknown_hosts: false,
+        };
+
+        let provider = SftpProvider::new(config);
+        let cfg = provider
+            .rsync_config_for_delta(Some(std::path::PathBuf::from("/tmp/known_hosts")))
+            .expect("password-only profile should be delta-config eligible");
+
+        assert_eq!(cfg.auth_method, AuthMethod::Password);
+        assert!(cfg.ssh_key_path.is_none());
+        assert_eq!(cfg.ssh_host, "nas.local");
+        assert_eq!(cfg.ssh_port, Some(2222));
+        assert_eq!(cfg.ssh_password.as_ref().unwrap().expose_secret(), "secret");
+        assert!(cfg.validate_auth_material().is_ok());
+    }
+
+    #[test]
+    fn delta_rsync_config_rejects_empty_password_without_key() {
+        let config = SftpConfig {
+            host: "nas.local".to_string(),
+            port: 22,
+            username: "alice".to_string(),
+            password: Some(secrecy::SecretString::from(String::new())),
+            private_key_path: None,
+            key_passphrase: None,
+            initial_path: None,
+            timeout_secs: 30,
+            trust_unknown_hosts: false,
+        };
+
+        let provider = SftpProvider::new(config);
+        assert!(provider.rsync_config_for_delta(None).is_none());
     }
 
     #[test]

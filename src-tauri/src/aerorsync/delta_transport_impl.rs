@@ -66,7 +66,7 @@ use tokio::io::AsyncWriteExt;
 use crate::aerorsync::engine_adapter::{
     BaselineSource, CurrentDeltaSyncBridge, FileBaseline, MemoryBaseline,
 };
-use crate::aerorsync::fallback_policy::{classify_fallback, FallbackVerdict};
+use crate::aerorsync::fallback_policy::{FallbackVerdict, classify_fallback};
 use crate::aerorsync::native_driver::AerorsyncDriver;
 use crate::aerorsync::real_wire::FileListEntry;
 use crate::aerorsync::remote_command::RemoteCommandSpec;
@@ -194,8 +194,16 @@ impl DeltaTransport for AerorsyncDeltaTransport {
         // file in a multi-file sync would enter the native path, pay a
         // fresh SSH setup, fail at `open_raw_stream`, and only then
         // fall back to classic.
-        let transport = SshRemoteShellTransport::new(self.ssh_config.clone());
-        let probe = match transport.probe().await {
+        let probe_result = if self.ssh_config.usable_password().is_some() {
+            let transport = RusshSessionTransport::connect(self.ssh_config.clone())
+                .await
+                .map_err(map_native_probe_error_to_rsync)?;
+            transport.probe().await
+        } else {
+            let transport = SshRemoteShellTransport::new(self.ssh_config.clone());
+            transport.probe().await
+        };
+        let probe = match probe_result {
             Ok(p) => p,
             Err(error) => {
                 let rsync_error = map_native_probe_error_to_rsync(error);
@@ -271,16 +279,30 @@ impl AerorsyncDeltaTransport {
         local_path: &Path,
         remote_path: &str,
     ) -> Result<RsyncStats, RsyncError> {
-        let transport = SshRemoteShellTransport::new(self.ssh_config.clone());
         let cancel = CancelHandle::inert();
-        do_upload(
-            transport,
-            cancel,
-            local_path,
-            remote_path,
-            self.min_file_size,
-        )
-        .await
+        if self.ssh_config.usable_password().is_some() {
+            let transport = RusshSessionTransport::connect(self.ssh_config.clone())
+                .await
+                .map_err(|e| map_native_error_to_rsync(e, false))?;
+            do_upload(
+                transport,
+                cancel,
+                local_path,
+                remote_path,
+                self.min_file_size,
+            )
+            .await
+        } else {
+            let transport = SshRemoteShellTransport::new(self.ssh_config.clone());
+            do_upload(
+                transport,
+                cancel,
+                local_path,
+                remote_path,
+                self.min_file_size,
+            )
+            .await
+        }
     }
 }
 
@@ -394,9 +416,16 @@ impl AerorsyncDeltaTransport {
         remote_path: &str,
         local_path: &Path,
     ) -> Result<RsyncStats, RsyncError> {
-        let transport = SshRemoteShellTransport::new(self.ssh_config.clone());
         let cancel = CancelHandle::inert();
-        do_download(transport, cancel, remote_path, local_path).await
+        if self.ssh_config.usable_password().is_some() {
+            let transport = RusshSessionTransport::connect(self.ssh_config.clone())
+                .await
+                .map_err(|e| map_native_error_to_rsync(e, false))?;
+            do_download(transport, cancel, remote_path, local_path).await
+        } else {
+            let transport = SshRemoteShellTransport::new(self.ssh_config.clone());
+            do_download(transport, cancel, remote_path, local_path).await
+        }
     }
 }
 
@@ -630,9 +659,7 @@ impl AerorsyncBatch {
     /// and after each failed attempt we re-check the cancel flag so a
     /// `Ctrl+C` during a long backoff returns promptly with the most
     /// recent transport error.
-    async fn reconnect_with_backoff(
-        &self,
-    ) -> Result<(), AerorsyncError> {
+    async fn reconnect_with_backoff(&self) -> Result<(), AerorsyncError> {
         const DELAYS_MS: &[u64] = &[0, 200, 500, 1000, 2000, 4000];
         let mut last_err: Option<AerorsyncError> = None;
         for (i, delay_ms) in DELAYS_MS.iter().enumerate() {
@@ -669,9 +696,7 @@ impl AerorsyncBatch {
             }
         }
         Err(last_err.unwrap_or_else(|| {
-            AerorsyncError::transport(
-                "reconnect_with_backoff: no attempts made (empty schedule)",
-            )
+            AerorsyncError::transport("reconnect_with_backoff: no attempts made (empty schedule)")
         }))
     }
 }
@@ -1928,8 +1953,9 @@ mod tests {
             auth_method: AuthMethod::SshKey,
             ..Default::default()
         };
-        let transport = AerorsyncDeltaTransport::from_rsync_config(&cfg, SshHostKeyPolicy::AcceptAny)
-            .expect("from_rsync_config should accept SshKey method with both materials");
+        let transport =
+            AerorsyncDeltaTransport::from_rsync_config(&cfg, SshHostKeyPolicy::AcceptAny)
+                .expect("from_rsync_config should accept SshKey method with both materials");
         assert_eq!(transport.ssh_config.host, "example.invalid");
         assert_eq!(transport.ssh_config.port, 2222);
         assert_eq!(transport.ssh_config.private_key_path, key_path);
@@ -1961,8 +1987,9 @@ mod tests {
             auth_method: AuthMethod::Password,
             ..Default::default()
         };
-        let transport = AerorsyncDeltaTransport::from_rsync_config(&cfg, SshHostKeyPolicy::AcceptAny)
-            .expect("password-only RsyncConfig should now produce a transport");
+        let transport =
+            AerorsyncDeltaTransport::from_rsync_config(&cfg, SshHostKeyPolicy::AcceptAny)
+                .expect("password-only RsyncConfig should now produce a transport");
         // Empty placeholder (NOT a default ~/.ssh path): russh leg ignores it.
         assert_eq!(
             transport.ssh_config.private_key_path,
@@ -1997,9 +2024,9 @@ mod tests {
         };
         match AerorsyncDeltaTransport::from_rsync_config(&cfg, SshHostKeyPolicy::AcceptAny) {
             Err(RsyncError::MissingPassword) => {}
-            Err(other) => panic!(
-                "expected MissingPassword via validate_auth_material, got Err({other:?})"
-            ),
+            Err(other) => {
+                panic!("expected MissingPassword via validate_auth_material, got Err({other:?})")
+            }
             Ok(_) => panic!("expected MissingPassword, got Ok(_)"),
         }
     }

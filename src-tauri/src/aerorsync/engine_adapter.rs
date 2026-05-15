@@ -26,13 +26,14 @@ use crate::aerorsync::protocol::{
     DeltaInstruction as ProtocolDeltaInstruction, SignatureBlock as ProtocolSignatureBlock,
 };
 use crate::delta_sync;
-use crate::delta_sync::{strong_hash, RollingChecksum};
+use crate::delta_sync::{RollingChecksum, strong_hash};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EngineSignatureBlock {
     pub index: u32,
     pub rolling: u32,
     pub strong: [u8; 32],
+    pub strong_len: u8,
     pub block_len: u32,
 }
 
@@ -50,6 +51,7 @@ impl From<ProtocolSignatureBlock> for EngineSignatureBlock {
             index: sb.index,
             rolling: sb.rolling,
             strong: sb.strong,
+            strong_len: 32,
             block_len: sb.block_len,
         }
     }
@@ -142,6 +144,7 @@ impl From<delta_sync::BlockSignature> for EngineSignatureBlock {
             index: bs.index,
             rolling: bs.rolling,
             strong: bs.strong,
+            strong_len: 32,
             block_len: bs.size,
         }
     }
@@ -246,6 +249,34 @@ impl DeltaEngineAdapter for CurrentDeltaSyncBridge {
         destination_signatures: &[EngineSignatureBlock],
         block_size: usize,
     ) -> EngineDeltaPlan {
+        if destination_signatures.iter().any(|sig| sig.strong_len < 32) {
+            let mut producer =
+                RollingDeltaPlanProducer::new(block_size, destination_signatures.to_vec());
+            let mut ops = Vec::new();
+            producer.drive_chunk(source_data, &mut ops);
+            producer.finalize(&mut ops);
+            let copy_blocks = producer.stats().copy_blocks;
+            let literal_bytes = producer.stats().literal_bytes;
+            let total_delta_bytes = literal_bytes + (copy_blocks as u64 * 8);
+            let file_size: u64 = destination_signatures
+                .iter()
+                .map(|s| s.block_len as u64)
+                .sum();
+            let savings_ratio = if file_size > 0 {
+                1.0 - (total_delta_bytes as f64 / file_size as f64)
+            } else {
+                0.0
+            };
+            return EngineDeltaPlan {
+                ops,
+                copy_blocks,
+                literal_bytes,
+                total_delta_bytes,
+                savings_ratio,
+                should_use_delta: savings_ratio > 0.20,
+            };
+        }
+
         // Reconstruct the engine's SignatureTable from the engine-form input.
         // `file_size` is recovered as the sum of per-block lengths: which is
         // exact because `delta_sync::compute_signatures` always produces full
@@ -415,7 +446,10 @@ impl RollingDeltaPlanProducer {
         let strong = strong_hash(window);
         candidates
             .iter()
-            .find(|&&idx| self.signatures[idx].strong == strong)
+            .find(|&&idx| {
+                let sig = &self.signatures[idx];
+                sig.strong_len < 32 || sig.strong == strong
+            })
             .copied()
     }
 }
@@ -1312,6 +1346,17 @@ mod producer_tests {
         ops_to_engine(ops)
     }
 
+    fn wire_short_sigs_from_dest(dest: &[u8], block_size: usize) -> Vec<EngineSignatureBlock> {
+        engine_sigs_from_dest(dest, block_size)
+            .into_iter()
+            .map(|mut sig| {
+                sig.strong = [0u8; 32];
+                sig.strong_len = 2;
+                sig
+            })
+            .collect()
+    }
+
     #[test]
     fn producer_empty_source_matches_bulk_literal_empty() {
         let block_size = 512;
@@ -1471,6 +1516,45 @@ mod producer_tests {
         assert_eq!(stats.copy_blocks, bulk_result.copy_blocks);
         assert_eq!(stats.literal_bytes, bulk_result.literal_bytes);
         assert_eq!(stats.source_bytes_consumed, source.len() as u64);
+    }
+
+    #[test]
+    fn producer_matches_rsync_wire_short_signatures_for_localized_tail_change() {
+        let block_size = 1024;
+        let dest_len = 1024 * 1024;
+        let mut dest = vec![0u8; dest_len];
+        for (i, b) in dest.iter_mut().enumerate() {
+            *b = ((i.wrapping_mul(131) ^ (i >> 3) ^ 0x5A) & 0xFF) as u8;
+        }
+        let mut source = dest.clone();
+        let changed_start = dest_len - 100 * 1024;
+        for (i, b) in source[changed_start..].iter_mut().enumerate() {
+            *b = ((i.wrapping_mul(97) ^ 0xC3) & 0xFF) as u8;
+        }
+
+        let sigs = wire_short_sigs_from_dest(&dest, block_size);
+        let (streaming, stats) = run_producer(block_size, sigs.clone(), &source, 4096);
+        assert!(
+            stats.copy_blocks >= 900,
+            "expected most leading blocks to match, got {}",
+            stats.copy_blocks
+        );
+        assert!(
+            stats.literal_bytes <= 110 * 1024,
+            "localized tail should stay near 100 KiB literal, got {}",
+            stats.literal_bytes
+        );
+        assert!(
+            streaming
+                .iter()
+                .any(|op| matches!(op, EngineDeltaOp::CopyBlock(_))),
+            "wire-short signatures must produce CopyBlock ops"
+        );
+
+        let bridge = CurrentDeltaSyncBridge::new();
+        let bulk_plan = bridge.compute_delta(&source, &sigs, block_size);
+        assert_eq!(bulk_plan.copy_blocks, stats.copy_blocks);
+        assert_eq!(bulk_plan.literal_bytes, stats.literal_bytes);
     }
 
     #[test]
