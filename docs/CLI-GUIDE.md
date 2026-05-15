@@ -352,9 +352,16 @@ Searches recursively for files matching the glob pattern. Uses server-side searc
 
 ```bash
 aeroftp-cli df sftp://user@host
+
+# Recursive used-storage scan for no-quota backends (FTP/FTPS/SFTP/S3/WebDAV).
+# Scans the profile initialPath subtree; --full scans from the account root.
+aeroftp-cli df --profile "My S3" --scan
+aeroftp-cli df --profile "My S3" --scan --full
 ```
 
 Displays used/total storage with a visual progress bar. Returns exit code 7 if the protocol doesn't support storage info.
+
+`--scan` computes `used` recursively for backends with no quota API (S3 list-recursive, WebDAV `Depth:infinity` with a BFS fallback, generic BFS elsewhere) and caches it on the profile so a later `df` / `profiles` shows it without rescanning. A user-set manual total cap (`options.manualTotalBytes` on the profile, also accepted via `--manual-total "50 GB"` on `profile-add` / `profile-duplicate`) is a TRUE override: it wins even over an API-reported total, because SFTP `statfs` reports the whole server disk rather than the user's allotment. The effective used/total/% follows the single `resolveEffectiveQuota` rule shared with the GUI, with a source marker (api / manual / scan).
 
 ### tree - Directory Tree
 
@@ -807,35 +814,53 @@ Encryption: AES-256-GCM (content, 64KB blocks) + AES-256-SIV (filenames) + Argon
 
 ### vault - AeroVault Encrypted Container
 
-Create and manage a single-file `.aerovault` v3 container directly from the
-CLI. This calls the exact backend the desktop app uses, so a CLI round-trip
-proves the format end to end.
+Create and manage a single-file `.aerovault` container directly from the
+CLI, for every AeroVault format: v3 (the wrapper-stack default), v2
+(AES-256-GCM-SIV) and the legacy v1 WinZip-AES container. This calls the
+exact backend the desktop app uses, so a CLI round-trip proves the format
+end to end.
 
 ```bash
-# Create an empty v3 vault (profiles: fast | balanced | archive)
+# Create an empty v3 vault (compression profile: fast | balanced | archive)
 AEROFTP_VAULT_PASSWORD=secret aeroftp-cli vault create my.aerovault --profile balanced
 
-# Add files (sub-256KB files are batched into shared packs before chunking)
+# Create a v2 vault (--cascade enables the ChaCha20-Poly1305 paranoid mode)
+AEROFTP_VAULT_PASSWORD=secret aeroftp-cli vault create v2.aerovault --vault-version v2 --cascade
+
+# Create a legacy v1 vault
+AEROFTP_VAULT_PASSWORD=secret aeroftp-cli vault create v1.aerovault --vault-version v1
+
+# Add files (v3 batches sub-256KB files into shared packs before chunking).
+# The version is auto-detected from the file header; --vault-version forces it.
 AEROFTP_VAULT_PASSWORD=secret aeroftp-cli vault add my.aerovault ./a.txt ./b.bin
 
 # Add files and export the behind-the-scenes technical receipt
 AEROFTP_VAULT_PASSWORD=secret aeroftp-cli vault add my.aerovault ./*.csv --receipt receipt.json
 
-# Show vault info (file / chunk / dedup counts) as JSON
+# Show vault info (auto-detects v1/v2/v3) as JSON
 AEROFTP_VAULT_PASSWORD=secret aeroftp-cli vault info my.aerovault
 
-# Extract an entry to a destination path
-AEROFTP_VAULT_PASSWORD=secret aeroftp-cli vault extract my.aerovault a.txt ./out/a.txt
+# Extract an entry to a file or a directory destination (all versions)
+AEROFTP_VAULT_PASSWORD=secret aeroftp-cli vault extract my.aerovault a.txt ./out/
 ```
 
-Pipeline: small-file batching, Gear-CDC chunking, keyed BLAKE3-128 chunk
-ids (dedup), per-chunk zstd, AES-256-GCM-SIV, BLAKE3-256 cipher-block
-hashes. The `archive` profile widens the CDC bounds for a better
-compression ratio at the cost of finer-grained dedup. Password resolves
-from `--password` / `-p`, `AEROFTP_VAULT_PASSWORD`, or a TTY prompt.
-`vault add --receipt <path>` writes a machine-readable JSON receipt and
-prints a human-readable summary to stderr (stdout stays clean JSON for
-piping). Exit codes: 5 create, 4 add, 1 open/info, 2 extract.
+`--vault-version` accepts `v1` | `v2` | `v3` (and `auto`, the default for
+`info`/`add`/`extract`, which reads the file header: v3 magic, v2
+self-describing, else v1). `create` defaults to v3. v3 pipeline:
+small-file batching, Gear-CDC chunking, keyed BLAKE3-128 chunk ids
+(dedup), per-chunk zstd, AES-256-GCM-SIV, BLAKE3-256 cipher-block hashes;
+the `archive` compression profile widens the CDC bounds for a better
+ratio at the cost of finer-grained dedup. Password resolves from
+`--password` / `-p`, `AEROFTP_VAULT_PASSWORD`, or a TTY prompt. `vault
+add --receipt <path>` writes a machine-readable JSON receipt and prints a
+human-readable summary to stderr (stdout stays clean JSON for piping).
+Exit codes: 5 create, 4 add, 1 open/info, 2 extract.
+
+When the global `--profile <name>` is set, `vault add` also records a
+per-profile compression aggregate on that saved profile (plaintext vs
+compressed bytes and ratio). It surfaces in the optional, default-hidden
+`Saved` / `Saved%` columns: `aeroftp-cli profiles --show saved,saved%`
+(text and `--json`) and the My Servers table column picker in the GUI.
 
 ### rclone-crypt - rclone-Compatible Encrypted Upload
 
@@ -1176,9 +1201,14 @@ aeroftp-cli profiles
 
 # Same payload as JSON for scripting
 aeroftp-cli profiles --json
+
+# Show the optional, default-hidden compression columns
+aeroftp-cli profiles --show name,saved,saved%
 ```
 
 Lists every server profile in the encrypted vault: display name, protocol, host, optional saved path, and a credential indicator (passwords are never printed). The JSON form is the canonical input for AI agents that need to discover what's available before running anything else.
+
+`--show` is an exclusive allowlist (the pinned `#`/`Name` plus the listed columns), `--hide` is subtractive, and both accept `*`/`all`. Column aliases include `used`, `total`, `pct`, `saved`, `saved%` (alias `savedpct`), `path`, `last`, `fav`. `saved` and `saved%` are the compression telemetry columns (Ehud [#162](https://github.com/axpdev-lab/aeroftp/issues/162)), hidden by default and populated by `aeroftp-cli --profile <name> vault add`; they also appear in `--json` as `lastCompression`.
 
 The bare `profiles` command also opens an **interactive shell** when stdin is a TTY: it prints the list and accepts single-letter actions like `l <selector>` (list root), `t <selector>` (tree depth 2), `d <selector>` (delete with tombstone), `f <selector>` (toggle favourite), `c <selector>` (duplicate), `r <selector>` (rename), `e <selector>` (inline edit). Type `?` for the full reference. Selectors can be 1-based indices, exact names, exact ids, or unique substrings.
 
