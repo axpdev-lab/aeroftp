@@ -30,9 +30,6 @@ const MIN_BLOCK_SIZE: usize = 512;
 /// If delta exceeds this ratio of file size, fall back to full transfer
 const DELTA_RATIO_THRESHOLD: f64 = 0.80;
 
-/// Adler-32 modulus constant
-const ADLER_MOD: u32 = 65521;
-
 /// Compute adaptive block size based on file size
 pub fn compute_block_size(file_size: u64) -> usize {
     let bs = (file_size as f64).sqrt() as usize;
@@ -47,14 +44,19 @@ pub struct RollingChecksum {
     window_size: usize,
 }
 
+#[inline]
+fn rsync_signed_byte(byte: u8) -> u32 {
+    (byte as i8 as i32) as u32
+}
+
 impl RollingChecksum {
     /// Initialize from a data block
     pub fn new(data: &[u8]) -> Self {
-        let mut a: u32 = 1;
+        let mut a: u32 = 0;
         let mut b: u32 = 0;
         for &byte in data {
-            a = (a + byte as u32) % ADLER_MOD;
-            b = (b + a) % ADLER_MOD;
+            a = a.wrapping_add(rsync_signed_byte(byte));
+            b = b.wrapping_add(a);
         }
         Self {
             a,
@@ -65,18 +67,18 @@ impl RollingChecksum {
 
     /// Get the current checksum value
     pub fn value(&self) -> u32 {
-        (self.b << 16) | self.a
+        ((self.b & 0xFFFF) << 16) | (self.a & 0xFFFF)
     }
 
     /// Roll the window: remove old_byte from front, add new_byte to end
     pub fn roll(&mut self, old_byte: u8, new_byte: u8) {
-        let old = old_byte as u32;
-        let new = new_byte as u32;
-        // Update a: add new byte, remove old byte (mod ADLER_MOD)
-        self.a = (self.a + ADLER_MOD + new - old) % ADLER_MOD;
-        // Update b: remove contribution of old byte * window_size + 1, add new a
-        let remove = (self.window_size as u32 * old + 1) % ADLER_MOD;
-        self.b = (self.b + ADLER_MOD + self.a - remove) % ADLER_MOD;
+        let old = rsync_signed_byte(old_byte);
+        let new = rsync_signed_byte(new_byte);
+        self.a = self.a.wrapping_add(new).wrapping_sub(old);
+        self.b = self
+            .b
+            .wrapping_add(self.a)
+            .wrapping_sub((self.window_size as u32).wrapping_mul(old));
     }
 }
 

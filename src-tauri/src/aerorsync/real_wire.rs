@@ -2141,15 +2141,16 @@ pub fn encode_file_checksum(bytes: &[u8]) -> Vec<u8> {
 // Wire tags (matches `token.c:321-327`):
 //   END_FLAG       0x00            end-of-tokens for this file
 //   TOKEN_LONG     0x20            absolute 32-bit token_index (int32 LE follows)
-//   TOKENRUN_LONG  0x21            absolute token_index + 16-bit run_count
+//   TOKENRUN_LONG  0x21            absolute token_index + 16-bit extra-run count
 //   DEFLATED_DATA  0x40 | hi6(len) compressed literal: (len=(hi6<<8)|lo8), lo8 byte follows, then `len` raw bytes
 //                                  valid len range: 1..=16383
 //   TOKEN_REL      0x80 | rel6     relative offset in [0,63] from last token_index, single-block match
-//   TOKENRUN_REL   0xC0 | rel6     relative offset + 16-bit run_count little-endian
+//   TOKENRUN_REL   0xC0 | rel6     relative offset + 16-bit extra-run count little-endian
 //
 // State carried across successive records on the SAME file is the
-// `last_token_end` value: rsync's `last_run_end + run_len`: used to
-// resolve relative tokens. A fresh `DeltaStreamState` starts at 0.
+// last token index (`last_run_end` in rsync's sender, `rx_token` in
+// its receiver): used to resolve relative tokens. A fresh
+// `DeltaStreamState` starts at 0.
 
 /// Outer token framing tags from `token.c:321-327`. Copied as runtime
 /// constants for use in pattern matching and error messages.
@@ -2188,9 +2189,9 @@ pub enum DeltaOp {
 /// tokens (`TOKEN_REL` / `TOKENRUN_REL`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct DeltaStreamState {
-    /// The token index one past the end of the most recently decoded
-    /// CopyRun. Starts at 0 per `token.c::send_deflated_token` (static
-    /// `last_run_end = 0` after token_init).
+    /// The last token index emitted by the most recent decoded CopyRun.
+    /// Starts at 0 per `token.c::send_deflated_token` / `recv_*_token`
+    /// (`last_run_end = 0`, `rx_token = 0` after token init).
     last_run_end: i32,
 }
 
@@ -2289,7 +2290,10 @@ pub fn decode_delta_op(
         ));
     }
 
-    // TOKENRUN_REL: tag = 0xC0 | rel6; next 2 bytes = run_count LE u16.
+    // TOKENRUN_REL: tag = 0xC0 | rel6; next 2 bytes = extra run count
+    // LE u16. Rsync returns the first token immediately and then
+    // returns `run_extra` more tokens from r_running, so the semantic
+    // run length is `run_extra + 1`.
     // Relative forms must come BEFORE the TOKEN_REL test because 0xC0 also
     // has the 0x80 bit set.
     if (tag & 0xC0) == TOKENRUN_REL {
@@ -2301,13 +2305,14 @@ pub fn decode_delta_op(
             });
         }
         let rel = i32::from(tag & 0x3F);
-        let run = u16::from_le_bytes([buf[1], buf[2]]);
+        let run_extra = u16::from_le_bytes([buf[1], buf[2]]);
+        let run_length = run_extra.saturating_add(1);
         let start = state.last_run_end.wrapping_add(rel);
-        state.last_run_end = start.wrapping_add(i32::from(run));
+        state.last_run_end = start.wrapping_add(i32::from(run_extra));
         return Ok((
             DeltaOpOutcome::Op(DeltaOp::CopyRun {
                 start_token_index: start,
-                run_length: run,
+                run_length,
             }),
             3,
         ));
@@ -2317,7 +2322,7 @@ pub fn decode_delta_op(
     if (tag & 0xC0) == TOKEN_REL {
         let rel = i32::from(tag & 0x3F);
         let start = state.last_run_end.wrapping_add(rel);
-        state.last_run_end = start.wrapping_add(1);
+        state.last_run_end = start;
         return Ok((
             DeltaOpOutcome::Op(DeltaOp::CopyRun {
                 start_token_index: start,
@@ -2327,7 +2332,7 @@ pub fn decode_delta_op(
         ));
     }
 
-    // TOKENRUN_LONG: 0x21 + int32 LE absolute token + u16 LE run.
+    // TOKENRUN_LONG: 0x21 + int32 LE absolute token + u16 LE extra run.
     if tag == TOKENRUN_LONG {
         if buf.len() < 7 {
             return Err(RealWireError::DeltaTokenTruncated {
@@ -2337,12 +2342,13 @@ pub fn decode_delta_op(
             });
         }
         let start = i32::from_le_bytes(buf[1..5].try_into().unwrap());
-        let run = u16::from_le_bytes([buf[5], buf[6]]);
-        state.last_run_end = start.wrapping_add(i32::from(run));
+        let run_extra = u16::from_le_bytes([buf[5], buf[6]]);
+        let run_length = run_extra.saturating_add(1);
+        state.last_run_end = start.wrapping_add(i32::from(run_extra));
         return Ok((
             DeltaOpOutcome::Op(DeltaOp::CopyRun {
                 start_token_index: start,
-                run_length: run,
+                run_length,
             }),
             7,
         ));
@@ -2358,7 +2364,7 @@ pub fn decode_delta_op(
             });
         }
         let start = i32::from_le_bytes(buf[1..5].try_into().unwrap());
-        state.last_run_end = start.wrapping_add(1);
+        state.last_run_end = start;
         return Ok((
             DeltaOpOutcome::Op(DeltaOp::CopyRun {
                 start_token_index: start,
@@ -2434,16 +2440,17 @@ pub fn encode_delta_op(op: &DeltaOp, state: &mut DeltaStreamState) -> Vec<u8> {
         } => {
             let rel = start_token_index.wrapping_sub(state.last_run_end);
             let use_rel = (0..=63).contains(&rel);
-            let new_end = start_token_index.wrapping_add(i32::from(*run_length));
-            state.last_run_end = new_end;
+            let run_extra = run_length.saturating_sub(1);
+            let last_token = start_token_index.wrapping_add(i32::from(run_extra));
+            state.last_run_end = last_token;
             if use_rel && *run_length == 1 {
                 // TOKEN_REL: single byte 0x80 | rel6
                 vec![TOKEN_REL | (rel as u8)]
             } else if use_rel {
-                // TOKENRUN_REL: 0xC0 | rel6 + 2-byte run LE
+                // TOKENRUN_REL: 0xC0 | rel6 + 2-byte extra-run LE
                 let mut out = Vec::with_capacity(3);
                 out.push(TOKENRUN_REL | (rel as u8));
-                out.extend_from_slice(&run_length.to_le_bytes());
+                out.extend_from_slice(&run_extra.to_le_bytes());
                 out
             } else if *run_length == 1 {
                 // TOKEN_LONG: 0x20 + 4-byte int32 LE
@@ -2452,11 +2459,11 @@ pub fn encode_delta_op(op: &DeltaOp, state: &mut DeltaStreamState) -> Vec<u8> {
                 out.extend_from_slice(&start_token_index.to_le_bytes());
                 out
             } else {
-                // TOKENRUN_LONG: 0x21 + 4-byte int32 LE + 2-byte run LE
+                // TOKENRUN_LONG: 0x21 + 4-byte int32 LE + 2-byte extra-run LE
                 let mut out = Vec::with_capacity(7);
                 out.push(TOKENRUN_LONG);
                 out.extend_from_slice(&start_token_index.to_le_bytes());
-                out.extend_from_slice(&run_length.to_le_bytes());
+                out.extend_from_slice(&run_extra.to_le_bytes());
                 out
             }
         }
@@ -4312,16 +4319,16 @@ mod tests {
     #[test]
     fn decode_delta_op_tokenrun_rel_matches_frozen_oracle_header() {
         // The first record the sender emits on the frozen upload client
-        // stream is `C0 0A 00`: TOKENRUN_REL with rel=0, run=10.
+        // stream is `C0 0A 00`: TOKENRUN_REL with rel=0, extra-run=10.
         // With fresh state (last_run_end=0) this resolves to
-        // CopyRun { start=0, run=10 } and advances last_run_end to 10.
+        // CopyRun { start=0, run=11 } and advances last_run_end to 10.
         let mut state = DeltaStreamState::new();
         let (outcome, consumed) = decode_delta_op(&[0xC0, 0x0A, 0x00], &mut state).unwrap();
         assert_eq!(
             outcome,
             DeltaOpOutcome::Op(DeltaOp::CopyRun {
                 start_token_index: 0,
-                run_length: 10,
+                run_length: 11,
             })
         );
         assert_eq!(consumed, 3);
@@ -4329,9 +4336,9 @@ mod tests {
     }
 
     #[test]
-    fn decode_delta_op_token_rel_advances_last_run_end_by_one() {
+    fn decode_delta_op_token_rel_advances_last_run_end_to_token() {
         // TOKEN_REL with rel=5 after last_run_end=10 → start=15, run=1,
-        // last_run_end advances to 16.
+        // last_run_end advances to 15.
         let mut state = DeltaStreamState { last_run_end: 10 };
         let tag = TOKEN_REL | 5;
         let (outcome, consumed) = decode_delta_op(&[tag], &mut state).unwrap();
@@ -4343,7 +4350,7 @@ mod tests {
             })
         );
         assert_eq!(consumed, 1);
-        assert_eq!(state.last_run_end(), 16);
+        assert_eq!(state.last_run_end(), 15);
     }
 
     #[test]
@@ -4407,8 +4414,8 @@ mod tests {
 
     #[test]
     fn decode_delta_op_tokenrun_long_uses_absolute_index() {
-        // TOKENRUN_LONG (0x21) + int32 LE absolute + u16 LE run
-        // token_index = 0x0001_1223 = 70179, run = 0x0005 = 5.
+        // TOKENRUN_LONG (0x21) + int32 LE absolute + u16 LE extra-run
+        // token_index = 0x0001_1223 = 70179, extra-run = 0x0005.
         let mut state = DeltaStreamState::new();
         let wire = [0x21, 0x23, 0x12, 0x01, 0x00, 0x05, 0x00];
         let (outcome, consumed) = decode_delta_op(&wire, &mut state).unwrap();
@@ -4416,11 +4423,11 @@ mod tests {
             outcome,
             DeltaOpOutcome::Op(DeltaOp::CopyRun {
                 start_token_index: 70_179,
-                run_length: 5,
+                run_length: 6,
             })
         );
         assert_eq!(consumed, 7);
-        // last_run_end = start + run
+        // last_run_end = start + extra-run
         assert_eq!(state.last_run_end(), 70_184);
     }
 
@@ -4437,7 +4444,7 @@ mod tests {
             })
         );
         assert_eq!(consumed, 5);
-        assert_eq!(state.last_run_end(), 43);
+        assert_eq!(state.last_run_end(), 42);
     }
 
     #[test]
@@ -4462,7 +4469,7 @@ mod tests {
     fn decode_delta_op_tokenrun_rel_truncated_body_is_rejected() {
         let mut state = DeltaStreamState::new();
         // TOKENRUN_REL tag with only one following byte (needs two for
-        // the u16 run_count).
+        // the u16 extra-run count).
         let err = decode_delta_op(&[0xC0, 0x05], &mut state).unwrap_err();
         match err {
             RealWireError::DeltaTokenTruncated {
@@ -4482,12 +4489,12 @@ mod tests {
 
     #[test]
     fn decode_delta_stream_iterates_and_captures_file_checksum() {
-        // Fabricated short stream: TOKENRUN_REL rel=0 run=3, then
-        // TOKEN_REL rel=0 (single block match), then END_FLAG, then a
-        // 4-byte file checksum.
+        // Fabricated short stream: TOKENRUN_REL rel=0 extra-run=3, then
+        // TOKEN_REL rel=1 (next single block match), then END_FLAG,
+        // then a 4-byte file checksum.
         let mut wire: Vec<u8> = Vec::new();
-        wire.extend_from_slice(&[0xC0, 0x03, 0x00]); // run of 3 @ 0
-        wire.push(TOKEN_REL); // rel=0 single match → start=3
+        wire.extend_from_slice(&[0xC0, 0x03, 0x00]); // run of 4 @ 0
+        wire.push(TOKEN_REL | 1); // rel=1 single match → start=4
         wire.push(TOKEN_END_FLAG);
         wire.extend_from_slice(&[0xDE, 0xAD, 0xBE, 0xEF]);
 
@@ -4497,13 +4504,13 @@ mod tests {
             report.ops[0],
             DeltaOp::CopyRun {
                 start_token_index: 0,
-                run_length: 3
+                run_length: 4
             }
         );
         assert_eq!(
             report.ops[1],
             DeltaOp::CopyRun {
-                start_token_index: 3,
+                start_token_index: 4,
                 run_length: 1
             }
         );
@@ -4533,7 +4540,7 @@ mod tests {
         // Boundary: run of 10 starting at 0 with sum_head.count=10 is
         // valid (ends exactly at count). One past that (end=11) was
         // rejected by the previous test.
-        let wire = [0xC0, 0x0A, 0x00, TOKEN_END_FLAG];
+        let wire = [0xC0, 0x09, 0x00, TOKEN_END_FLAG];
         let (report, consumed) = decode_delta_stream(&wire, 0, Some(10)).unwrap();
         assert_eq!(report.ops.len(), 1);
         assert_eq!(consumed, 4);
@@ -5555,13 +5562,13 @@ mod tests {
             },
             &mut state,
         );
-        assert_eq!(state.last_run_end(), 60);
+        assert_eq!(state.last_run_end(), 59);
     }
 
     #[test]
     fn encode_delta_op_chain_of_relative_ops_uses_correct_baselines() {
         let mut state = DeltaStreamState::new();
-        // First: rel 0, run 1 => last_run_end = 1
+        // First: rel 0, run 1 => last_run_end = 0
         let bytes = encode_delta_op(
             &DeltaOp::CopyRun {
                 start_token_index: 0,
@@ -5570,8 +5577,8 @@ mod tests {
             &mut state,
         );
         assert_eq!(bytes, vec![TOKEN_REL]);
-        assert_eq!(state.last_run_end(), 1);
-        // Second: rel 5, run 1 => start_token_index = 6, last_run_end = 7
+        assert_eq!(state.last_run_end(), 0);
+        // Second: rel 6, run 1 => start_token_index = 6, last_run_end = 6
         let bytes = encode_delta_op(
             &DeltaOp::CopyRun {
                 start_token_index: 6,
@@ -5579,8 +5586,8 @@ mod tests {
             },
             &mut state,
         );
-        assert_eq!(bytes, vec![TOKEN_REL | 5]);
-        assert_eq!(state.last_run_end(), 7);
+        assert_eq!(bytes, vec![TOKEN_REL | 6]);
+        assert_eq!(state.last_run_end(), 6);
         // Third: same relative op decoded should match symmetric position.
     }
 

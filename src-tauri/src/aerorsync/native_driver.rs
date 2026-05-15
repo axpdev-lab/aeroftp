@@ -47,25 +47,25 @@
 //! checkpoint doc.
 
 use crate::aerorsync::engine_adapter::{
-    apply_delta_streaming, BaselineSource, DeltaEngineAdapter, DeltaPlanProducer, EngineDeltaOp,
-    EngineSignatureBlock, RollingDeltaPlanProducer,
+    BaselineSource, DeltaEngineAdapter, DeltaPlanProducer, EngineDeltaOp, EngineSignatureBlock,
+    RollingDeltaPlanProducer, apply_delta_streaming,
 };
 use crate::aerorsync::events::EventSink;
 use crate::aerorsync::real_wire::{
+    ClientPreamble, DeltaOp, DeltaStreamReport, FileListDecodeOptions, FileListDecodeOutcome,
+    FileListEntry, MAX_DELTA_LITERAL_LEN, MuxHeader, MuxPoll, MuxStreamReader, MuxTag, NDX_DONE,
+    NDX_FLIST_EOF, NdxState, RealWireError, SumBlock, SumHead, SummaryFrame,
     compress_zstd_literal_stream, decode_delta_stream, decode_file_list_entry, decode_item_flags,
     decode_ndx, decode_server_preamble, decode_sum_block, decode_sum_head, decode_summary_frame,
     decompress_zstd_literal_stream_boundaries, encode_client_preamble, encode_delta_stream,
     encode_file_list_entry, encode_file_list_terminator, encode_item_flags, encode_ndx,
-    encode_sum_block, encode_sum_head, encode_summary_frame, ClientPreamble, DeltaOp,
-    DeltaStreamReport, FileListDecodeOptions, FileListDecodeOutcome, FileListEntry, MuxHeader,
-    MuxPoll, MuxStreamReader, MuxTag, NdxState, RealWireError, SumBlock, SumHead, SummaryFrame,
-    MAX_DELTA_LITERAL_LEN, NDX_DONE, NDX_FLIST_EOF,
+    encode_sum_block, encode_sum_head, encode_summary_frame,
 };
 use crate::aerorsync::remote_command::{RemoteCommandFlavor, RemoteCommandSpec};
 use crate::aerorsync::transport::{CancelHandle, RawByteStream, RawRemoteShellTransport};
 use crate::aerorsync::types::{AerorsyncError, AerorsyncErrorKind, SessionRole, SessionStats};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite};
-use xxhash_rust::xxh3::{xxh3_128, Xxh3Default};
+use xxhash_rust::xxh3::{Xxh3Default, xxh3_128, xxh3_128_with_seed};
 
 /// Compute the 16-byte file-level strong checksum rsync verifies at the
 /// end of the delta stream when `xxh128` is the negotiated algo.
@@ -81,7 +81,15 @@ use xxhash_rust::xxh3::{xxh3_128, Xxh3Default};
 /// where `(hi, lo)` come from splitting the xxh3_128 `u128` at the
 /// 64-bit boundary.
 fn compute_xxh128_wire(data: &[u8]) -> Vec<u8> {
-    let hash = xxh3_128(data);
+    compute_xxh128_wire_with_seed(data, 0)
+}
+
+fn compute_xxh128_wire_with_seed(data: &[u8], seed: u64) -> Vec<u8> {
+    let hash = if seed == 0 {
+        xxh3_128(data)
+    } else {
+        xxh3_128_with_seed(data, seed)
+    };
     let lo = hash as u64;
     let hi = (hash >> 64) as u64;
     let mut out = Vec::with_capacity(16);
@@ -128,6 +136,17 @@ const A2_2_DOWNLOAD_S2LENGTH: i32 = 2;
 /// The per-file ndx the driver expects/emits in the single-file A2.2
 /// scope. First file of the list, baseline `-1` → diff `+2` → `+1`.
 const A2_2_FIRST_FILE_NDX: i32 = 1;
+/// Frozen download client->server stream starts with four zero bytes
+/// before the server sends the file list and before the receiver's
+/// first per-file signature header. Stock rsync emits this
+/// receiver-side housekeeping prefix before `write_sum_head`; without
+/// it the remote sender waits and never produces the file list.
+const A2_2_DOWNLOAD_SIGNATURE_PREFIX_ZEROS: usize = 4;
+/// Frozen download client->server stream appends five `NDX_DONE`
+/// markers after the receiver's per-file signatures. These finish the
+/// receiver-side phase bookkeeping before the remote sender starts
+/// producing delta bytes.
+const A2_2_DOWNLOAD_SIGNATURE_TAIL_NDX_DONE_COUNT: usize = 5;
 /// File-level strong checksum length (xxh128 / md5 / md4). Hardcoded to
 /// 16 for A2.3; real xxh128 computation over `source_data` deferred to
 /// S8j when the driver is wired against a live rsync server.
@@ -197,6 +216,16 @@ pub enum AerorsyncSessionPhase {
     Failed,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SignatureHeader {
+    Transfer {
+        ndx: i32,
+        iflags: u16,
+        head: SumHead,
+    },
+    NoopDone,
+}
+
 /// Real-wire rsync session driver. Parameterised on the raw-capable
 /// remote-shell transport so both mock and SSH paths share the machinery.
 pub struct AerorsyncDriver<T: RawRemoteShellTransport> {
@@ -257,6 +286,12 @@ pub struct AerorsyncDriver<T: RawRemoteShellTransport> {
     /// sum_blocks stream. Used as a prefix by `read_signature_blocks`
     /// so MSG_DATA payload bytes never get dropped on the floor.
     sig_residual_after_header: Vec<u8>,
+    /// Upload path: stock rsync can answer the file-list with NDX_DONE
+    /// when every file is already up to date. In that case there is no
+    /// signature or delta payload to exchange, but the sender phase loop
+    /// has already consumed one marker.
+    upload_noop_transfer: bool,
+    sender_phase_markers_seen: i32,
 
     // A2.3 delta-phase state.
     /// Download path: reconstructed destination file bytes after
@@ -301,6 +336,11 @@ pub struct AerorsyncDriver<T: RawRemoteShellTransport> {
     /// that belong to the following `SummaryFrame`. `receive_summary_phase`
     /// prepends them to its decode buffer.
     summary_seed: Vec<u8>,
+    /// Download path: stock rsync can close cleanly after receiving
+    /// receiver signatures when the local baseline is already identical.
+    /// In that case no delta or summary bytes follow; `finish_session`
+    /// completes from local counters.
+    download_clean_eof_noop: bool,
     /// Remote command family currently being driven. WrapperParity is the
     /// ONLY flavor used in production (`AerorsyncDeltaTransport::upload` /
     /// `::download` pin it via `RemoteCommandSpec::upload` / `download`,
@@ -337,6 +377,8 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             last_iflags: 0,
             last_received_ndx: -1,
             sig_residual_after_header: Vec::new(),
+            upload_noop_transfer: false,
+            sender_phase_markers_seen: 0,
             reconstructed: None,
             received_file_checksum: None,
             emitted_delta_ops: Vec::new(),
@@ -346,6 +388,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             session_role: None,
             received_raw_bytes: 0,
             summary_seed: Vec::new(),
+            download_clean_eof_noop: false,
             remote_command_flavor: RemoteCommandFlavor::WrapperParity,
         }
     }
@@ -671,8 +714,10 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             .await?;
         self.send_file_list_single_file(&source_entry).await?;
         self.receive_signature_phase_single_file(bridge).await?;
-        self.send_delta_phase_single_file(source_data, adapter)
-            .await?;
+        if !self.upload_noop_transfer {
+            self.send_delta_phase_single_file(source_data, adapter)
+                .await?;
+        }
         Ok(())
     }
 
@@ -700,8 +745,10 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             .await?;
         self.send_file_list_single_file(&source_entry).await?;
         self.receive_signature_phase_single_file(bridge).await?;
-        self.send_delta_phase_streaming(source_reader, source_len, adapter)
-            .await?;
+        if !self.upload_noop_transfer {
+            self.send_delta_phase_streaming(source_reader, source_len, adapter)
+                .await?;
+        }
         Ok(())
     }
 
@@ -722,6 +769,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         // `capture/artifacts_real/frozen/upload/capture_in.bin` shape.
         self.perform_preamble_exchange(31, "xxh128 xxh3 xxh64 md5 md4", "zstd lz4 zlibx zlib")
             .await?;
+        self.send_download_receiver_phase_prefix().await?;
         self.receive_file_list_single_file(bridge).await?;
         self.send_signature_phase_single_file(destination_data, adapter)
             .await?;
@@ -750,6 +798,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         self.open_raw_stream_internal(&command_spec).await?;
         self.perform_preamble_exchange(31, "xxh128 xxh3 xxh64 md5 md4", "zstd lz4 zlibx zlib")
             .await?;
+        self.send_download_receiver_phase_prefix().await?;
         self.receive_file_list_single_file(bridge).await?;
         self.send_signature_phase_single_file(destination_data, adapter)
             .await?;
@@ -1043,7 +1092,17 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         bridge: &mut dyn EventSink,
     ) -> Result<(), AerorsyncError> {
         self.phase = AerorsyncSessionPhase::SumHeadReceiving;
-        let (ndx, iflags, head) = self.read_signature_header(bridge).await?;
+        let SignatureHeader::Transfer { ndx, iflags, head } =
+            self.read_signature_header(bridge).await?
+        else {
+            self.upload_noop_transfer = true;
+            self.received_sum_head = None;
+            self.received_signatures.clear();
+            self.sender_phase_markers_seen = 1;
+            self.emit_ndx_done_marker().await?;
+            self.phase = AerorsyncSessionPhase::DeltaSent;
+            return Ok(());
+        };
         if !(0..=i32::MAX).contains(&ndx) {
             return Err(AerorsyncError::invalid_frame(format!(
                 "unexpected ndx sentinel before signature phase: {ndx}"
@@ -1082,7 +1141,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     async fn read_signature_header(
         &mut self,
         bridge: &mut dyn EventSink,
-    ) -> Result<(i32, u16, SumHead), AerorsyncError> {
+    ) -> Result<SignatureHeader, AerorsyncError> {
         let mut buf: Vec<u8> = Vec::new();
         // 1. ndx
         let ndx = loop {
@@ -1102,7 +1161,11 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             let payload = self.next_data_frame(bridge).await?;
             buf.extend_from_slice(&payload);
         };
-        if ndx == NDX_DONE || ndx == NDX_FLIST_EOF {
+        if ndx == NDX_DONE {
+            self.summary_seed = std::mem::take(&mut buf);
+            return Ok(SignatureHeader::NoopDone);
+        }
+        if ndx == NDX_FLIST_EOF {
             return Err(AerorsyncError::invalid_frame(format!(
                 "unexpected ndx sentinel at start of signature phase: {ndx}"
             )));
@@ -1147,7 +1210,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         // Implementation choice: pass `buf` to `read_signature_blocks`
         // as the prefix of its own accumulator. Getters stay clean.
         self.sig_residual_after_header = std::mem::take(&mut buf);
-        Ok((ndx, iflags, head))
+        Ok(SignatureHeader::Transfer { ndx, iflags, head })
     }
 
     /// Read exactly `count` sum_blocks from the data stream, using the
@@ -1198,7 +1261,13 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         let s2length_usize = s2length as usize;
         let mut sum_blocks: Vec<SumBlock> = Vec::with_capacity(engine_sigs.len());
         for sig in &engine_sigs {
-            let strong = sig.strong[..s2length_usize.min(sig.strong.len())].to_vec();
+            let start = sig.index as usize * block_size;
+            let end = start
+                .saturating_add(sig.block_len as usize)
+                .min(destination_data.len());
+            let block = destination_data.get(start..end).unwrap_or(&[]);
+            let strong_wire = compute_xxh128_wire_with_seed(block, self.checksum_seed as u64);
+            let strong = strong_wire[..s2length_usize.min(strong_wire.len())].to_vec();
             sum_blocks.push(SumBlock {
                 rolling: sig.rolling,
                 strong,
@@ -1223,9 +1292,11 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         };
         self.sent_sum_head = Some(head);
 
-        // Build a single MSG_DATA payload that concatenates everything.
+        // Build a single MSG_DATA payload that concatenates the per-file
+        // signature header, blocks, and receiver phase tail.
         let mut payload: Vec<u8> = Vec::with_capacity(
-            16 /* sum_head worst */ + 4 /* ndx upper bound */ + 2 /* iflags */
+            A2_2_DOWNLOAD_SIGNATURE_TAIL_NDX_DONE_COUNT
+                + 16 /* sum_head worst */ + 4 /* ndx upper bound */ + 2 /* iflags */
                 + sum_blocks.len() * (4 + s2length_usize),
         );
         payload.extend_from_slice(&encode_ndx(
@@ -1237,6 +1308,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         for block in &sum_blocks {
             payload.extend_from_slice(&encode_sum_block(block));
         }
+        payload.extend_from_slice(&[0x00; A2_2_DOWNLOAD_SIGNATURE_TAIL_NDX_DONE_COUNT]);
 
         self.last_iflags = A2_2_DOWNLOAD_IFLAGS;
         self.write_data_frame(&payload).await?;
@@ -1248,6 +1320,11 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
 
         self.phase = AerorsyncSessionPhase::SumBlocksSent;
         Ok(())
+    }
+
+    async fn send_download_receiver_phase_prefix(&mut self) -> Result<(), AerorsyncError> {
+        self.write_data_frame(&[0x00; A2_2_DOWNLOAD_SIGNATURE_PREFIX_ZEROS])
+            .await
     }
 
     // --- A2.3 delta phase (upload: send, download: receive) --------------
@@ -1709,6 +1786,10 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         loop {
             self.check_cancel("receive_delta_phase")?;
             if !buf.is_empty() {
+                if self.take_download_noop_delta_marker(&mut buf) {
+                    self.install_download_noop_reconstructed(destination_data);
+                    return Ok(());
+                }
                 match decode_delta_stream(&buf, A2_3_FILE_CHECKSUM_LEN, sum_head_count) {
                     Ok((report, consumed)) => {
                         buf.drain(..consumed);
@@ -1729,9 +1810,24 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                     }
                 }
             }
-            let payload = self.next_data_frame(bridge).await?;
-            buf.extend_from_slice(&payload);
+            match self.next_data_frame(bridge).await {
+                Ok(payload) => buf.extend_from_slice(&payload),
+                Err(e) if Self::is_download_clean_eof_noop(&e) => {
+                    self.download_clean_eof_noop = true;
+                    self.install_download_noop_reconstructed(destination_data);
+                    return Ok(());
+                }
+                Err(e) => return Err(e),
+            }
         }
+    }
+
+    fn is_download_clean_eof_noop(err: &AerorsyncError) -> bool {
+        if err.kind != AerorsyncErrorKind::TransportFailure {
+            return false;
+        }
+        err.detail.contains("remote closed (exit 0)")
+            || err.detail.contains("simulated remote close")
     }
 
     fn install_reconstructed_from_wire(
@@ -1784,6 +1880,11 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         loop {
             self.check_cancel("receive_delta_phase")?;
             if !buf.is_empty() {
+                if self.take_download_noop_delta_marker(&mut buf) {
+                    self.install_download_noop_streaming(baseline, writer)
+                        .await?;
+                    return Ok(());
+                }
                 match decode_delta_stream(&buf, A2_3_FILE_CHECKSUM_LEN, sum_head_count) {
                     Ok((report, consumed)) => {
                         buf.drain(..consumed);
@@ -1803,9 +1904,69 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                     }
                 }
             }
-            let payload = self.next_data_frame(bridge).await?;
-            buf.extend_from_slice(&payload);
+            match self.next_data_frame(bridge).await {
+                Ok(payload) => buf.extend_from_slice(&payload),
+                Err(e) if Self::is_download_clean_eof_noop(&e) => {
+                    self.download_clean_eof_noop = true;
+                    self.install_download_noop_streaming(baseline, writer)
+                        .await?;
+                    return Ok(());
+                }
+                Err(e) => return Err(e),
+            }
         }
+    }
+
+    fn take_download_noop_delta_marker(&mut self, buf: &mut Vec<u8>) -> bool {
+        if !Self::looks_like_download_noop_delta_marker(buf) {
+            return false;
+        }
+        buf.drain(..1);
+        self.summary_seed.extend_from_slice(buf);
+        buf.clear();
+        true
+    }
+
+    fn looks_like_download_noop_delta_marker(buf: &[u8]) -> bool {
+        buf.first().copied() == Some(0x00)
+    }
+
+    fn install_download_noop_reconstructed(&mut self, destination_data: &[u8]) {
+        self.reconstructed = Some(destination_data.to_vec());
+        self.received_file_checksum = None;
+        self.phase = AerorsyncSessionPhase::DeltaReceived;
+    }
+
+    async fn install_download_noop_streaming(
+        &mut self,
+        baseline: &mut dyn BaselineSource,
+        writer: &mut (dyn AsyncWrite + Send + Unpin),
+    ) -> Result<(), AerorsyncError> {
+        let (ops, block_size) = self.download_noop_copy_ops()?;
+        apply_delta_streaming(baseline, ops, block_size, writer)
+            .await
+            .map_err(|e| AerorsyncError::invalid_frame(format!("apply_delta_streaming: {e}")))?;
+        self.received_file_checksum = None;
+        self.phase = AerorsyncSessionPhase::DeltaReceived;
+        Ok(())
+    }
+
+    fn download_noop_copy_ops(&self) -> Result<(Vec<EngineDeltaOp>, usize), AerorsyncError> {
+        let head = self.sent_sum_head.as_ref().ok_or_else(|| {
+            AerorsyncError::invalid_frame(
+                "receive_delta_phase: missing local sum_head for no-op download",
+            )
+        })?;
+        let block_size = head.block_length as usize;
+        if block_size == 0 && head.count > 0 {
+            return Err(AerorsyncError::invalid_frame(
+                "receive_delta_phase: block_size is zero (missing local sum_head)",
+            ));
+        }
+        let ops = (0..head.count)
+            .map(|idx| EngineDeltaOp::CopyBlock(idx as u32))
+            .collect();
+        Ok((ops, block_size))
     }
 
     /// P3-T01 W2.4/W2.5: streaming sibling of
@@ -1830,9 +1991,9 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         let zstd_on = self.zstd_negotiated();
         let engine_ops = self.delta_wire_to_engine_ops(&wire_ops, zstd_on)?;
         let _ = adapter; // adapter is unused on the streaming path -
-                         // engine ops carry everything apply_delta_streaming needs.
-                         // Kept in the signature for parity with the bulk twin and
-                         // to leave room for future adapter-driven dispatch.
+        // engine ops carry everything apply_delta_streaming needs.
+        // Kept in the signature for parity with the bulk twin and
+        // to leave room for future adapter-driven dispatch.
         let block_size = self
             .sent_sum_head
             .as_ref()
@@ -1871,6 +2032,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                 index: idx as u32,
                 rolling: wire.rolling,
                 strong,
+                strong_len: take as u8,
                 block_len,
             });
         }
@@ -2028,6 +2190,11 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         //   as a marker.
         match self.session_role {
             Some(SessionRole::Receiver) => {
+                if self.download_clean_eof_noop {
+                    self.session_stats.bytes_sent = self.sent_data_bytes;
+                    self.session_stats.bytes_received = self.received_raw_bytes;
+                    return Ok(());
+                }
                 // Download against real rsync: drain the 3 leading
                 // NDX_DONE markers, decode the summary the server
                 // emitted, send our own NDX_DONE ACK, and consume the
@@ -2089,10 +2256,12 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         bridge: &mut dyn EventSink,
     ) -> Result<(), AerorsyncError> {
         let want = PRE_SUMMARY_NDX_DONE_COUNT_DOWNLOAD;
-        let mut buf: Vec<u8> = Vec::new();
-        // Pull at least one frame to peek.
-        let first = self.next_data_frame(bridge).await?;
-        buf.extend_from_slice(&first);
+        let mut buf: Vec<u8> = std::mem::take(&mut self.summary_seed);
+        if buf.is_empty() {
+            // Pull at least one frame to peek.
+            let first = self.next_data_frame(bridge).await?;
+            buf.extend_from_slice(&first);
+        }
 
         // Empty-drain: if the first byte is not NDX_DONE, rsync did not
         // emit leading markers on this profile (synthesised mocks). Pass
@@ -2241,7 +2410,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         bridge: &mut dyn EventSink,
     ) -> Result<(), AerorsyncError> {
         let max_phase: i32 = if self.protocol_version >= 29 { 2 } else { 1 };
-        let mut phase: i32 = 0;
+        let mut phase: i32 = self.sender_phase_markers_seen;
         loop {
             self.check_cancel("sender_phase_loop")?;
             let Some(()) = self
@@ -2253,6 +2422,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                 ));
             };
             phase += 1;
+            self.sender_phase_markers_seen = phase;
             if phase > max_phase {
                 break;
             }
@@ -2470,10 +2640,12 @@ mod tests {
     use crate::aerorsync::engine_adapter::{
         DeltaEngineAdapter, EngineDeltaOp, EngineDeltaPlan, EngineSignatureBlock,
     };
-    use crate::aerorsync::events::{classify_oob_frame, AerorsyncEvent, CollectingSink};
+    use crate::aerorsync::events::{AerorsyncEvent, CollectingSink, classify_oob_frame};
     use crate::aerorsync::fixtures::RealRsyncBaselineByteTranscript;
     use crate::aerorsync::mock::{MockRemoteShellTransport, MockTransportConfig};
-    use crate::aerorsync::real_wire::{encode_server_preamble, ServerPreamble};
+    use crate::aerorsync::real_wire::{
+        ServerPreamble, decode_client_preamble, encode_server_preamble, reassemble_msg_data,
+    };
 
     /// Mock adapter used by A2.2/A2.3 tests. Returns a configurable
     /// block size, pre-fabricated signatures, and a pre-canned delta
@@ -2585,7 +2757,7 @@ mod tests {
         blocks: &[SumBlock],
     ) -> Vec<u8> {
         use crate::aerorsync::real_wire::{
-            encode_item_flags, encode_ndx, encode_sum_block, encode_sum_head, NdxState,
+            NdxState, encode_item_flags, encode_ndx, encode_sum_block, encode_sum_head,
         };
         let mut st = NdxState::new();
         let mut out = Vec::new();
@@ -2619,11 +2791,12 @@ mod tests {
             index,
             rolling,
             strong,
+            strong_len: 32,
             block_len,
         }
     }
-    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     // ---- helpers ---------------------------------------------------------
 
@@ -3481,16 +3654,122 @@ mod tests {
         assert_eq!(d.sent_signatures().len(), 4);
         assert_eq!(d.last_iflags(), 0x8002);
 
-        // The outbound capture must contain a mux-wrapped signature blob
-        // after the client preamble. Check that the sent_signatures
-        // rolling bytes appear somewhere in the outbound.
+        // The outbound capture must contain the receiver prefix frame
+        // before the file list read, then the exact mux-wrapped
+        // signature blob: first-file header, truncated strong sums, and
+        // the five NDX_DONE phase markers.
         let guard = last_raw_outbound.lock().unwrap();
         let outbound_arc = guard.as_ref().expect("raw stream must have been opened");
         let outbound = outbound_arc.lock().unwrap().clone();
-        let rolling_le = 0xA0A0A0A0u32.to_le_bytes();
+
+        let expected_prefix_frame =
+            mux_frame(MuxTag::Data, &[0x00; A2_2_DOWNLOAD_SIGNATURE_PREFIX_ZEROS]);
         assert!(
-            outbound.windows(4).any(|w| w == rolling_le),
-            "sent signature rolling bytes must appear in the outbound capture"
+            outbound
+                .windows(expected_prefix_frame.len())
+                .any(|w| w == expected_prefix_frame.as_slice()),
+            "download receiver prefix frame must be sent before signature bytes"
+        );
+
+        let mut ndx_state = NdxState::default();
+        let head = SumHead {
+            count: 4,
+            block_length: 1024,
+            checksum_length: A2_2_DOWNLOAD_S2LENGTH,
+            remainder_length: 512,
+        };
+        let blocks = vec![
+            SumBlock {
+                rolling: 0xA0A0A0A0,
+                strong: compute_xxh128_wire_with_seed(
+                    &destination_data[0..1024],
+                    d.checksum_seed() as u64,
+                )[..A2_2_DOWNLOAD_S2LENGTH as usize]
+                    .to_vec(),
+            },
+            SumBlock {
+                rolling: 0xB0B0B0B0,
+                strong: compute_xxh128_wire_with_seed(
+                    &destination_data[1024..2048],
+                    d.checksum_seed() as u64,
+                )[..A2_2_DOWNLOAD_S2LENGTH as usize]
+                    .to_vec(),
+            },
+            SumBlock {
+                rolling: 0xC0C0C0C0,
+                strong: compute_xxh128_wire_with_seed(
+                    &destination_data[2048..3072],
+                    d.checksum_seed() as u64,
+                )[..A2_2_DOWNLOAD_S2LENGTH as usize]
+                    .to_vec(),
+            },
+            SumBlock {
+                rolling: 0xD0D0D0D0,
+                strong: compute_xxh128_wire_with_seed(
+                    &destination_data[3072..3584],
+                    d.checksum_seed() as u64,
+                )[..A2_2_DOWNLOAD_S2LENGTH as usize]
+                    .to_vec(),
+            },
+        ];
+        let mut expected_payload = Vec::new();
+        expected_payload.extend_from_slice(&encode_ndx(A2_2_FIRST_FILE_NDX, &mut ndx_state));
+        expected_payload.extend_from_slice(&encode_item_flags(A2_2_DOWNLOAD_IFLAGS));
+        expected_payload.extend_from_slice(&encode_sum_head(&head));
+        for block in &blocks {
+            expected_payload.extend_from_slice(&encode_sum_block(block));
+        }
+        expected_payload.extend_from_slice(&[0x00; A2_2_DOWNLOAD_SIGNATURE_TAIL_NDX_DONE_COUNT]);
+        let expected_frame = mux_frame(MuxTag::Data, &expected_payload);
+
+        assert!(
+            outbound
+                .windows(expected_frame.len())
+                .any(|w| w == expected_frame.as_slice()),
+            "download receiver signature frame must match frozen prefix + NDX_DONE tail"
+        );
+    }
+
+    #[test]
+    fn download_signature_strong_uses_seeded_xxh128_like_frozen_oracle() {
+        let Some(frozen) = RealRsyncBaselineByteTranscript::try_load_frozen() else {
+            eprintln!("frozen oracle missing: download signature strong pin skipped");
+            return;
+        };
+
+        let server_pre = decode_server_preamble(&frozen.download_server_to_client)
+            .expect("download server preamble");
+        let client_pre = decode_client_preamble(&frozen.download_client_to_server)
+            .expect("download client preamble");
+        let app = reassemble_msg_data(&frozen.download_client_to_server[client_pre.consumed..])
+            .expect("download client app stream")
+            .app_stream;
+
+        let mut cursor = A2_2_DOWNLOAD_SIGNATURE_PREFIX_ZEROS;
+        let mut ndx_state = NdxState::default();
+        let (_ndx, n) = decode_ndx(&app[cursor..], &mut ndx_state).expect("file ndx");
+        cursor += n;
+        let (_iflags, n) = decode_item_flags(&app[cursor..]).expect("iflags");
+        cursor += n;
+        let (head, n) = decode_sum_head(&app[cursor..]).expect("sum head");
+        cursor += n;
+        let (first_block, _) = decode_sum_block(&app[cursor..], head.checksum_length as usize)
+            .expect("first sum block");
+
+        let baseline = std::fs::read(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("src/aerorsync/capture/workspace/real/local/download.bin"),
+        )
+        .expect("frozen download baseline");
+        let expected = compute_xxh128_wire_with_seed(
+            &baseline[..head.block_length as usize],
+            server_pre.checksum_seed as u64,
+        );
+
+        assert_eq!(
+            first_block.strong,
+            expected[..head.checksum_length as usize],
+            "download receiver signatures must use rsync's seeded xxh128 per-block strong bytes"
         );
     }
 
@@ -3519,6 +3798,62 @@ mod tests {
         assert!(err.detail.contains("sig explode"));
         assert!(!d.committed(), "signature phase must stay PreCommit");
         assert_eq!(d.phase(), AerorsyncSessionPhase::Failed);
+    }
+
+    #[tokio::test]
+    async fn driver_upload_treats_ndx_done_signature_as_noop() {
+        let mut inbound = canonical_server_preamble_bytes();
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &[0x00; 5]));
+
+        let transport = mock_transport_with_raw_inbound(inbound);
+        let mut d = make_driver(transport);
+        let mut sink = CollectingSink::default();
+        d.drive_upload_through_delta(
+            RemoteCommandSpec::upload("/remote/target.bin"),
+            sample_file_list_entry("target.bin"),
+            b"already present",
+            &MockSigAdapter::default(),
+            &mut sink,
+        )
+        .await
+        .unwrap();
+
+        assert!(d.upload_noop_transfer);
+        assert!(!d.committed(), "no delta bytes are emitted for a no-op");
+        assert!(d.received_sum_head().is_none());
+        assert!(d.received_signatures().is_empty());
+        assert!(d.emitted_delta_ops().is_empty());
+
+        d.finish_session(&mut sink).await.unwrap();
+        assert_eq!(d.phase(), AerorsyncSessionPhase::Complete);
+        assert!(d.session_stats().bytes_sent > 0);
+    }
+
+    #[tokio::test]
+    async fn streaming_upload_treats_ndx_done_signature_as_noop() {
+        let mut inbound = canonical_server_preamble_bytes();
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &[0x00; 5]));
+
+        let transport = mock_transport_with_raw_inbound(inbound);
+        let mut d = make_driver(transport);
+        let mut sink = CollectingSink::default();
+
+        d.drive_upload_through_delta_streaming(
+            RemoteCommandSpec::upload("/remote/target.bin"),
+            sample_file_list_entry("target.bin"),
+            tokio::io::empty(),
+            123,
+            &MockSigAdapter::default(),
+            &mut sink,
+        )
+        .await
+        .unwrap();
+
+        assert!(d.upload_noop_transfer);
+        assert!(!d.committed());
+        assert!(d.emitted_delta_ops().is_empty());
+        d.finish_session(&mut sink).await.unwrap();
+        assert_eq!(d.phase(), AerorsyncSessionPhase::Complete);
     }
 
     #[tokio::test]
@@ -4078,6 +4413,116 @@ mod tests {
              even when the logical literal arrives across {} DEFLATED_DATA chunks",
             wire_literal_chunks.len()
         );
+    }
+
+    #[tokio::test]
+    async fn driver_download_delta_treats_ndx_done_as_noop_and_finishes() {
+        let opts = FileListDecodeOptions {
+            protocol: 31,
+            xfer_flags_as_varint: true,
+            always_checksum: true,
+            csum_len: 16,
+            preserve_uid: true,
+            preserve_gid: true,
+            previous_name: None,
+        };
+        let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
+        let term_bytes = encode_file_list_terminator(&opts);
+        let summary_bytes = build_summary_frame_bytes(31);
+
+        let mut noop_and_tail = Vec::new();
+        noop_and_tail.push(0x00);
+        noop_and_tail.extend_from_slice(&[0x00; PRE_SUMMARY_NDX_DONE_COUNT_DOWNLOAD]);
+        noop_and_tail.extend_from_slice(&summary_bytes);
+
+        let mut inbound = canonical_server_preamble_bytes();
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &entry_bytes));
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &term_bytes));
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &noop_and_tail));
+
+        let transport = mock_transport_with_raw_inbound(inbound);
+        let adapter = MockSigAdapter::with_fixed_signatures(
+            4,
+            vec![
+                make_engine_sig(0, 0xA0, 0x01, 4),
+                make_engine_sig(1, 0xA1, 0x02, 4),
+            ],
+        );
+        let destination_data: Vec<u8> = b"BLK1BLK2".to_vec();
+        let mut d = make_driver(transport);
+        let mut sink = CollectingSink::default();
+
+        d.drive_download_through_delta(
+            RemoteCommandSpec::download("/remote/target.bin"),
+            &destination_data,
+            &adapter,
+            &mut sink,
+        )
+        .await
+        .expect("download no-op delta succeeds");
+
+        assert_eq!(d.reconstructed(), Some(destination_data.as_slice()));
+        assert!(
+            d.received_file_checksum().is_none(),
+            "NDX_DONE no-op carries no file checksum trailer"
+        );
+        assert_eq!(d.phase(), AerorsyncSessionPhase::DeltaReceived);
+
+        d.finish_session(&mut sink)
+            .await
+            .expect("summary tail after no-op delta is preserved");
+        assert_eq!(d.phase(), AerorsyncSessionPhase::Complete);
+        assert!(d.received_summary().is_some());
+    }
+
+    #[tokio::test]
+    async fn driver_download_delta_treats_clean_eof_as_noop_and_finishes() {
+        let opts = FileListDecodeOptions {
+            protocol: 31,
+            xfer_flags_as_varint: true,
+            always_checksum: true,
+            csum_len: 16,
+            preserve_uid: true,
+            preserve_gid: true,
+            previous_name: None,
+        };
+        let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
+        let term_bytes = encode_file_list_terminator(&opts);
+
+        let mut inbound = canonical_server_preamble_bytes();
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &entry_bytes));
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &term_bytes));
+
+        let transport = mock_transport_with_raw_inbound(inbound);
+        let adapter = MockSigAdapter::with_fixed_signatures(
+            4,
+            vec![
+                make_engine_sig(0, 0xA0, 0x01, 4),
+                make_engine_sig(1, 0xA1, 0x02, 4),
+            ],
+        );
+        let destination_data: Vec<u8> = b"BLK1BLK2".to_vec();
+        let mut d = make_driver(transport);
+        let mut sink = CollectingSink::default();
+
+        d.drive_download_through_delta(
+            RemoteCommandSpec::download("/remote/target.bin"),
+            &destination_data,
+            &adapter,
+            &mut sink,
+        )
+        .await
+        .expect("clean EOF after signatures is a no-op download");
+
+        assert_eq!(d.reconstructed(), Some(destination_data.as_slice()));
+        assert!(d.received_file_checksum().is_none());
+
+        d.finish_session(&mut sink)
+            .await
+            .expect("clean EOF no-op has no summary tail to drain");
+        assert_eq!(d.phase(), AerorsyncSessionPhase::Complete);
+        assert!(d.received_summary().is_none());
+        assert!(d.session_stats().bytes_sent > 0);
     }
 
     #[tokio::test]
@@ -5721,6 +6166,126 @@ mod tests {
             d.received_file_checksum(),
             Some(vec![0xCC; A2_3_FILE_CHECKSUM_LEN].as_slice())
         );
+    }
+
+    #[tokio::test]
+    async fn driver_download_streaming_treats_ndx_done_as_noop_and_writes_baseline() {
+        use crate::aerorsync::engine_adapter::MemoryBaseline;
+
+        let opts = FileListDecodeOptions {
+            protocol: 31,
+            xfer_flags_as_varint: true,
+            always_checksum: true,
+            csum_len: 16,
+            preserve_uid: true,
+            preserve_gid: true,
+            previous_name: None,
+        };
+        let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
+        let term_bytes = encode_file_list_terminator(&opts);
+        let summary_bytes = build_summary_frame_bytes(31);
+
+        let mut noop_and_tail = Vec::new();
+        noop_and_tail.push(0x00);
+        noop_and_tail.extend_from_slice(&[0x00; PRE_SUMMARY_NDX_DONE_COUNT_DOWNLOAD]);
+        noop_and_tail.extend_from_slice(&summary_bytes);
+
+        let mut inbound = canonical_server_preamble_bytes();
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &entry_bytes));
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &term_bytes));
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &noop_and_tail));
+
+        let transport = mock_transport_with_raw_inbound(inbound);
+        let adapter = MockSigAdapter::with_fixed_signatures(
+            4,
+            vec![
+                make_engine_sig(0, 0xA0, 0x01, 4),
+                make_engine_sig(1, 0xA1, 0x02, 4),
+            ],
+        );
+        let destination_data: Vec<u8> = b"BLK1BLK2".to_vec();
+        let mut baseline = MemoryBaseline::new(destination_data.clone());
+        let (mut writer, captured) = MockAsyncWriter::new();
+        let mut d = make_driver(transport);
+        let mut sink = CollectingSink::default();
+
+        d.drive_download_through_delta_streaming(
+            RemoteCommandSpec::download("/remote/target.bin"),
+            &destination_data,
+            &mut baseline,
+            &mut writer,
+            &adapter,
+            &mut sink,
+        )
+        .await
+        .expect("streaming no-op delta succeeds");
+
+        let on_writer = captured.lock().expect("captured lock").clone();
+        assert_eq!(on_writer, destination_data);
+        assert!(d.reconstructed().is_none());
+        assert!(d.received_file_checksum().is_none());
+
+        d.finish_session(&mut sink)
+            .await
+            .expect("summary tail after no-op delta is preserved");
+        assert_eq!(d.phase(), AerorsyncSessionPhase::Complete);
+    }
+
+    #[tokio::test]
+    async fn driver_download_streaming_treats_clean_eof_as_noop_and_writes_baseline() {
+        use crate::aerorsync::engine_adapter::MemoryBaseline;
+
+        let opts = FileListDecodeOptions {
+            protocol: 31,
+            xfer_flags_as_varint: true,
+            always_checksum: true,
+            csum_len: 16,
+            preserve_uid: true,
+            preserve_gid: true,
+            previous_name: None,
+        };
+        let entry_bytes = encode_file_list_entry(&sample_file_list_entry("target.bin"), &opts);
+        let term_bytes = encode_file_list_terminator(&opts);
+
+        let mut inbound = canonical_server_preamble_bytes();
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &entry_bytes));
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &term_bytes));
+
+        let transport = mock_transport_with_raw_inbound(inbound);
+        let adapter = MockSigAdapter::with_fixed_signatures(
+            4,
+            vec![
+                make_engine_sig(0, 0xA0, 0x01, 4),
+                make_engine_sig(1, 0xA1, 0x02, 4),
+            ],
+        );
+        let destination_data: Vec<u8> = b"BLK1BLK2".to_vec();
+        let mut baseline = MemoryBaseline::new(destination_data.clone());
+        let (mut writer, captured) = MockAsyncWriter::new();
+        let mut d = make_driver(transport);
+        let mut sink = CollectingSink::default();
+
+        d.drive_download_through_delta_streaming(
+            RemoteCommandSpec::download("/remote/target.bin"),
+            &destination_data,
+            &mut baseline,
+            &mut writer,
+            &adapter,
+            &mut sink,
+        )
+        .await
+        .expect("streaming clean EOF no-op succeeds");
+
+        let on_writer = captured.lock().expect("captured lock").clone();
+        assert_eq!(on_writer, destination_data);
+        assert!(d.reconstructed().is_none());
+        assert!(d.received_file_checksum().is_none());
+
+        d.finish_session(&mut sink)
+            .await
+            .expect("streaming clean EOF no-op has no summary tail");
+        assert_eq!(d.phase(), AerorsyncSessionPhase::Complete);
+        assert!(d.session_stats().bytes_sent > 0);
     }
 
     /// W2.4 test 2: pin that the driver dispatches `CopyBlock(idx)`
