@@ -256,7 +256,12 @@
       "b2NativeAdvVersions": "Целосна историја на верзии на датотека по објект",
       "totpSecret": "TOTP Secret (optional, saved)",
       "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
-      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
+      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
+      "manualTotalStorage": "Вкупен простор (рачно)",
+      "manualTotalStoragePlaceholder": "пр. 10 GB, 500 GB, 2 TB",
+      "manualTotalStorageHint": "По избор. Ограничување на планот или сметката за заднини без API за квота (FTP, S3, WebDAV) или што пријавуваат само искористен простор (Backblaze B2). Сопствениот вкупен износ на давателот секогаш има предност.",
+      "autoScanUsedOnConnect": "Пресметај искористен простор при поврзување",
+      "autoScanUsedOnConnectHint": "Само за заднини без API за искористен простор (FTP, S3, WebDAV). Стандардно исклучено: големо стебло (пр. веб проект) се обиколува рекурзивно, што може да биде бавно. Во спротивно, користете го дејството во StatusBar по потреба."
     },
     "browser": {
       "remote": "Далечински",
@@ -1131,7 +1136,15 @@
       "insecureConnectionUnencrypted": "Оваа врска не е шифрирана. Акредитивите се испраќаат како обичен текст.",
       "secureConnection": "Сигурна",
       "secureConnectionTitle": "Шифрирана врска преку {protocol}",
-      "usedNoCap": "искористено (без ограничување на квота)"
+      "usedNoCap": "искористено (без ограничување на квота)",
+      "usedScanAction": "Пресметај искористен простор",
+      "usedScanHint": "Рекурзивно скенирај го стеблото за да се пресмета искористениот простор. Во комбинација со рачен вкупен износ покажува искористено/вкупно/%. Се извршува само кога вие ќе го активирате.",
+      "usedScanRunning": "Скенирање на искористен простор...",
+      "usedScanDone": "Искористениот простор е пресметан",
+      "usedScanDoneDetail": "{used} во {files} датотеки",
+      "usedScanTruncated": "делумно: достигнато е ограничувањето на скенирањето",
+      "usedScanFailed": "Скенирањето на искористениот простор не успеа",
+      "usedScanEmpty": "Скенирањето на {path} не најде датотеки; кешираната вредност беше задржана. Проверете ја патеката или поддршката на серверот за рекурзивно прикажување."
     },
     "dialogs": {
       "confirmTitle": "Потврди",
@@ -4319,7 +4332,10 @@
           "time": "Last used",
           "health": "Health",
           "actions": "Actions",
-          "favorite": "Favorite"
+          "favorite": "Favorite",
+          "saved": "Заштедено",
+          "savedPct": "Заштедено %",
+          "savedTitle": "Компресија: {plaintext} во {compressed} ({ratio}% заштедено)"
         },
         "footerSummaryNoQuota": "{count} профили · {unique} уникатни облак-дискови",
         "footerDedupExplained": "Профилите што го делат истиот физички диск (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi сегменти со истиот пристапен клуч) се спојуваат во еден диск за квотите да се бројат само еднаш.",

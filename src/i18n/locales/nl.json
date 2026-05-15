@@ -256,7 +256,12 @@
       "b2NativeAdvVersions": "Volledige bestandsversiegeschiedenis per object",
       "totpSecret": "TOTP-geheim (optioneel, opgeslagen)",
       "totpSecretPlaceholder": "Base32-geheim, bijv. JBSWY3DPEHPK3PXP",
-      "totpSecretHelp": "Sla je 2FA-geheim één keer op. AeroFTP genereert automatisch de 6-cijferige code bij elke herverbinding, net als een authenticator-app."
+      "totpSecretHelp": "Sla je 2FA-geheim één keer op. AeroFTP genereert automatisch de 6-cijferige code bij elke herverbinding, net als een authenticator-app.",
+      "manualTotalStorage": "Totale opslag (handmatig)",
+      "manualTotalStoragePlaceholder": "bijv. 10 GB, 500 GB, 2 TB",
+      "manualTotalStorageHint": "Optioneel. Abonnement- of accountlimiet voor backends zonder quota-API (FTP, S3, WebDAV) of die alleen gebruikte ruimte rapporteren (Backblaze B2). Het eigen totaal van de provider heeft altijd voorrang.",
+      "autoScanUsedOnConnect": "Gebruikte opslag berekenen bij verbinden",
+      "autoScanUsedOnConnectHint": "Alleen voor backends zonder API voor gebruikte ruimte (FTP, S3, WebDAV). Standaard uit: een grote boom (bijv. een webproject) wordt recursief doorlopen, wat traag kan zijn. Gebruik anders de StatusBar-actie wanneer nodig."
     },
     "browser": {
       "remote": "Extern",
@@ -1131,7 +1136,15 @@
       "insecureConnectionUnencrypted": "Deze verbinding is niet versleuteld. Inloggegevens worden als platte tekst verzonden.",
       "secureConnection": "Beveiligd",
       "secureConnectionTitle": "Versleutelde verbinding via {protocol}",
-      "usedNoCap": "gebruikt (geen quotalimiet)"
+      "usedNoCap": "gebruikt (geen quotalimiet)",
+      "usedScanAction": "Gebruikte opslag berekenen",
+      "usedScanHint": "Scan de boom recursief om de gebruikte ruimte te berekenen. Gecombineerd met een handmatig totaal toont het gebruikt/totaal/%. Wordt alleen uitgevoerd wanneer u het start.",
+      "usedScanRunning": "Gebruikte opslag scannen...",
+      "usedScanDone": "Gebruikte opslag berekend",
+      "usedScanDoneDetail": "{used} over {files} bestanden",
+      "usedScanTruncated": "gedeeltelijk: scanlimiet bereikt",
+      "usedScanFailed": "Scan van gebruikte opslag mislukt",
+      "usedScanEmpty": "Scan van {path} vond geen bestanden; de gecachte waarde is behouden. Controleer het pad of de ondersteuning van de server voor recursieve weergave."
     },
     "dialogs": {
       "confirmTitle": "Bevestigen",
@@ -4300,7 +4313,10 @@
           "time": "Last used",
           "health": "Health",
           "actions": "Actions",
-          "favorite": "Favorite"
+          "favorite": "Favorite",
+          "saved": "Bespaard",
+          "savedPct": "Bespaard %",
+          "savedTitle": "Compressie: {plaintext} naar {compressed} ({ratio}% bespaard)"
         },
         "footerSummaryNoQuota": "{count} profielen · {unique} unieke cloudschijven",
         "footerDedupExplained": "Profielen die dezelfde fysieke schijf delen (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi-buckets onder dezelfde toegangssleutel) worden samengevoegd tot één schijf, zodat quota maar één keer worden geteld.",

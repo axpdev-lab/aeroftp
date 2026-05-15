@@ -256,7 +256,12 @@
       "b2NativeAdvVersions": "Täysi tiedostoversiohistoria objektikohtaisesti",
       "totpSecret": "TOTP Secret (optional, saved)",
       "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
-      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
+      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
+      "manualTotalStorage": "Tallennustila yhteensä (manuaalinen)",
+      "manualTotalStoragePlaceholder": "esim. 10 GB, 500 GB, 2 TB",
+      "manualTotalStorageHint": "Valinnainen. Paketti- tai tilirajan arvo taustajärjestelmille, joilla ei ole quota API:a (FTP, S3, WebDAV) tai jotka raportoivat vain käytetyn tilan (Backblaze B2). Palveluntarjoajan oma kokonaisarvo on aina ensisijainen.",
+      "autoScanUsedOnConnect": "Laske käytetty tallennustila yhdistettäessä",
+      "autoScanUsedOnConnectHint": "Vain taustajärjestelmille, joilla ei ole käytetyn tilan API:a (FTP, S3, WebDAV). Oletuksena pois käytöstä: suuri puu (esim. verkkoprojekti) käydään läpi rekursiivisesti, mikä voi olla hidasta. Käytä muutoin StatusBar-toimintoa tarpeen mukaan."
     },
     "browser": {
       "remote": "Etä",
@@ -1131,7 +1136,15 @@
       "insecureConnectionUnencrypted": "Tämä yhteys ei ole salattu. Tunnistetiedot lähetetään selkokielisenä tekstinä.",
       "secureConnection": "Suojattu",
       "secureConnectionTitle": "Salattu yhteys {protocol} kautta",
-      "usedNoCap": "käytetty (ei kiintiörajaa)"
+      "usedNoCap": "käytetty (ei kiintiörajaa)",
+      "usedScanAction": "Laske käytetty tallennustila",
+      "usedScanHint": "Skannaa puu rekursiivisesti käytetyn tilan laskemiseksi. Manuaalisen kokonaisarvon kanssa se näyttää käytetty/yhteensä/%. Suoritetaan vain, kun käynnistät sen.",
+      "usedScanRunning": "Skannataan käytettyä tallennustilaa...",
+      "usedScanDone": "Käytetty tallennustila laskettu",
+      "usedScanDoneDetail": "{used} yhteensä {files} tiedostossa",
+      "usedScanTruncated": "osittainen: skannausraja saavutettu",
+      "usedScanFailed": "Käytetyn tallennustilan skannaus epäonnistui",
+      "usedScanEmpty": "Polun {path} skannaus ei löytänyt tiedostoja; välimuistissa ollut arvo säilytettiin. Tarkista polku tai palvelimen rekursiivisen listauksen tuki."
     },
     "dialogs": {
       "confirmTitle": "Vahvista",
@@ -4300,7 +4313,10 @@
           "time": "Last used",
           "health": "Health",
           "actions": "Actions",
-          "favorite": "Favorite"
+          "favorite": "Favorite",
+          "saved": "Säästetty",
+          "savedPct": "Säästetty %",
+          "savedTitle": "Pakkaus: {plaintext} kokoon {compressed} ({ratio}% säästetty)"
         },
         "footerSummaryNoQuota": "{count} profiilia · {unique} ainutlaatuista pilvilevyä",
         "footerDedupExplained": "Profiilit, jotka jakavat saman fyysisen levyn (Koofr WebDAV + REST, OpenDrive WebDAV + REST, samalla access keyllä toimivat Wasabi-bucketit), yhdistetään yhdeksi levyksi, jotta kiintiöt lasketaan vain kerran.",

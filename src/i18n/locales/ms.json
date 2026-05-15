@@ -256,7 +256,12 @@
       "b2NativeAdvVersions": "Sejarah versi fail penuh setiap objek",
       "totpSecret": "TOTP Secret (optional, saved)",
       "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
-      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
+      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
+      "manualTotalStorage": "Jumlah storan (manual)",
+      "manualTotalStoragePlaceholder": "cth. 10 GB, 500 GB, 2 TB",
+      "manualTotalStorageHint": "Pilihan. Had pelan atau akaun untuk bahagian belakang tanpa API kuota (FTP, S3, WebDAV) atau yang hanya melaporkan ruang digunakan (Backblaze B2). Jumlah milik penyedia sendiri sentiasa diutamakan.",
+      "autoScanUsedOnConnect": "Kira storan digunakan semasa menyambung",
+      "autoScanUsedOnConnectHint": "Hanya untuk bahagian belakang tanpa API ruang digunakan (FTP, S3, WebDAV). Dimatikan secara lalai: pepohon yang besar (cth. projek web) dilalui secara rekursif, yang boleh menjadi perlahan. Jika tidak, gunakan tindakan StatusBar mengikut keperluan."
     },
     "browser": {
       "remote": "Jauh",
@@ -1131,7 +1136,15 @@
       "insecureConnectionUnencrypted": "Sambungan ini tidak disulitkan. Kelayakan dihantar dalam teks biasa.",
       "secureConnection": "Selamat",
       "secureConnectionTitle": "Sambungan disulitkan melalui {protocol}",
-      "usedNoCap": "digunakan (tiada had kuota)"
+      "usedNoCap": "digunakan (tiada had kuota)",
+      "usedScanAction": "Kira storan digunakan",
+      "usedScanHint": "Imbas pepohon secara rekursif untuk mengira ruang digunakan. Digabungkan dengan jumlah manual, ia memaparkan digunakan/jumlah/%. Berjalan hanya apabila anda mencetuskannya.",
+      "usedScanRunning": "Mengimbas storan digunakan...",
+      "usedScanDone": "Storan digunakan telah dikira",
+      "usedScanDoneDetail": "{used} merentas {files} fail",
+      "usedScanTruncated": "separa: had imbasan dicapai",
+      "usedScanFailed": "Imbasan storan digunakan gagal",
+      "usedScanEmpty": "Imbasan {path} tidak menjumpai fail; nilai dalam cache dikekalkan. Semak laluan atau sokongan penyenaraian rekursif pelayan."
     },
     "dialogs": {
       "confirmTitle": "Sahkan",
@@ -4300,7 +4313,10 @@
           "time": "Last used",
           "health": "Health",
           "actions": "Actions",
-          "favorite": "Favorite"
+          "favorite": "Favorite",
+          "saved": "Dijimat",
+          "savedPct": "Dijimat %",
+          "savedTitle": "Pemampatan: {plaintext} ke {compressed} ({ratio}% dijimat)"
         },
         "footerSummaryNoQuota": "{count} profil · {unique} pemacu awan unik",
         "footerDedupExplained": "Profil yang berkongsi cakera fizikal yang sama (Koofr WebDAV + REST, OpenDrive WebDAV + REST, baldi Wasabi dengan kunci akses yang sama) digabungkan menjadi satu pemacu supaya kuota dikira sekali sahaja.",

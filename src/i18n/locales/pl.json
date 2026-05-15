@@ -256,7 +256,12 @@
       "b2NativeAdvVersions": "Pełna historia wersji plików dla każdego obiektu",
       "totpSecret": "Sekret TOTP (opcjonalny, zapisany)",
       "totpSecretPlaceholder": "Sekret base32, np. JBSWY3DPEHPK3PXP",
-      "totpSecretHelp": "Zapisz swój sekret 2FA raz. AeroFTP automatycznie wygeneruje 6-cyfrowy kod przy każdym ponownym połączeniu, tak jak aplikacja uwierzytelniająca."
+      "totpSecretHelp": "Zapisz swój sekret 2FA raz. AeroFTP automatycznie wygeneruje 6-cyfrowy kod przy każdym ponownym połączeniu, tak jak aplikacja uwierzytelniająca.",
+      "manualTotalStorage": "Łączna pojemność (ręcznie)",
+      "manualTotalStoragePlaceholder": "np. 10 GB, 500 GB, 2 TB",
+      "manualTotalStorageHint": "Opcjonalne. Limit planu lub konta dla backendów bez API limitu (FTP, S3, WebDAV) lub zgłaszających tylko zajęte miejsce (Backblaze B2). Całkowita pojemność podana przez dostawcę zawsze ma pierwszeństwo.",
+      "autoScanUsedOnConnect": "Oblicz zajęte miejsce przy łączeniu",
+      "autoScanUsedOnConnectHint": "Tylko dla backendów bez API zajętego miejsca (FTP, S3, WebDAV). Domyślnie wyłączone: duże drzewo (np. projekt webowy) jest przeszukiwane rekurencyjnie, co może być wolne. W przeciwnym razie użyj akcji w pasku StatusBar na żądanie."
     },
     "browser": {
       "remote": "Zdalny",
@@ -1131,7 +1136,15 @@
       "insecureConnectionUnencrypted": "To połączenie nie jest szyfrowane. Dane logowania są wysyłane jako zwykły tekst.",
       "secureConnection": "Bezpieczne",
       "secureConnectionTitle": "Szyfrowane połączenie przez {protocol}",
-      "usedNoCap": "wykorzystane (bez limitu)"
+      "usedNoCap": "wykorzystane (bez limitu)",
+      "usedScanAction": "Oblicz zajęte miejsce",
+      "usedScanHint": "Rekurencyjnie przeskanuj drzewo, aby obliczyć zajęte miejsce. W połączeniu z ręczną pojemnością całkowitą pokazuje zajęte/łącznie/%. Uruchamia się tylko po wywołaniu.",
+      "usedScanRunning": "Skanowanie zajętego miejsca...",
+      "usedScanDone": "Zajęte miejsce obliczone",
+      "usedScanDoneDetail": "{used} w {files} plikach",
+      "usedScanTruncated": "częściowo: osiągnięto limit skanowania",
+      "usedScanFailed": "Skanowanie zajętego miejsca nie powiodło się",
+      "usedScanEmpty": "Skan ścieżki {path} nie znalazł plików; zachowano wartość z pamięci podręcznej. Sprawdź ścieżkę lub obsługę listowania rekurencyjnego przez serwer."
     },
     "dialogs": {
       "confirmTitle": "Potwierdź",
@@ -4300,7 +4313,10 @@
           "time": "Last used",
           "health": "Health",
           "actions": "Actions",
-          "favorite": "Favorite"
+          "favorite": "Favorite",
+          "saved": "Zaoszczędzone",
+          "savedPct": "Zaoszczędzone %",
+          "savedTitle": "Kompresja: {plaintext} do {compressed} (zaoszczędzono {ratio}%)"
         },
         "footerSummaryNoQuota": "{count} profili · {unique} unikalnych dysków chmurowych",
         "footerDedupExplained": "Profile współdzielące ten sam dysk fizyczny (Koofr WebDAV + REST, OpenDrive WebDAV + REST, kubełki Wasabi pod tym samym kluczem dostępu) są łączone w jeden dysk, więc limity są liczone tylko raz.",

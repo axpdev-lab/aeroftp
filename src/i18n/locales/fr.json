@@ -256,7 +256,12 @@
       "b2NativeAdvVersions": "Historique complet des versions de fichier par objet",
       "totpSecret": "Secret TOTP (optionnel, enregistré)",
       "totpSecretPlaceholder": "Secret base32, par ex. JBSWY3DPEHPK3PXP",
-      "totpSecretHelp": "Enregistrez votre secret 2FA une seule fois. AeroFTP générera le code à 6 chiffres automatiquement à chaque reconnexion, comme une application d'authentification."
+      "totpSecretHelp": "Enregistrez votre secret 2FA une seule fois. AeroFTP générera le code à 6 chiffres automatiquement à chaque reconnexion, comme une application d'authentification.",
+      "manualTotalStorage": "Stockage total (manuel)",
+      "manualTotalStoragePlaceholder": "ex. 10 GB, 500 GB, 2 TB",
+      "manualTotalStorageHint": "Facultatif. Limite du forfait ou du compte pour les backends sans quota API (FTP, S3, WebDAV) ou qui ne signalent que l'espace utilisé (Backblaze B2). Le total propre du fournisseur a toujours priorité.",
+      "autoScanUsedOnConnect": "Calculer le stockage utilisé à la connexion",
+      "autoScanUsedOnConnectHint": "Uniquement pour les backends sans API d'espace utilisé (FTP, S3, WebDAV). Désactivé par défaut : une grande arborescence (ex. un projet web) est parcourue récursivement, ce qui peut être lent. Sinon, utilisez l'action de la StatusBar à la demande."
     },
     "browser": {
       "remote": "Distant",
@@ -1131,7 +1136,15 @@
       "insecureConnectionUnencrypted": "Cette connexion n'est pas chiffrée. Les identifiants sont envoyés en clair.",
       "secureConnection": "Sécurisée",
       "secureConnectionTitle": "Connexion chiffrée via {protocol}",
-      "usedNoCap": "utilisé (sans limite de quota)"
+      "usedNoCap": "utilisé (sans limite de quota)",
+      "usedScanAction": "Calculer le stockage utilisé",
+      "usedScanHint": "Analyser l'arborescence de façon récursive pour calculer l'espace utilisé. Combiné à un total manuel, il affiche utilisé/total/%. Ne s'exécute que lorsque vous le déclenchez.",
+      "usedScanRunning": "Analyse du stockage utilisé...",
+      "usedScanDone": "Stockage utilisé calculé",
+      "usedScanDoneDetail": "{used} répartis sur {files} fichiers",
+      "usedScanTruncated": "partiel : limite d'analyse atteinte",
+      "usedScanFailed": "Échec de l'analyse du stockage utilisé",
+      "usedScanEmpty": "L'analyse de {path} n'a trouvé aucun fichier ; la valeur en cache a été conservée. Vérifiez le chemin ou la prise en charge du listage récursif par le serveur."
     },
     "dialogs": {
       "confirmTitle": "Confirmer",
@@ -4300,7 +4313,10 @@
           "time": "Last used",
           "health": "Health",
           "actions": "Actions",
-          "favorite": "Favorite"
+          "favorite": "Favorite",
+          "saved": "Économisé",
+          "savedPct": "Économisé %",
+          "savedTitle": "Compression : {plaintext} vers {compressed} ({ratio}% économisé)"
         },
         "footerSummaryNoQuota": "{count} profils · {unique} disques cloud uniques",
         "footerDedupExplained": "Les profils qui partagent le même disque physique (Koofr WebDAV + REST, OpenDrive WebDAV + REST, buckets Wasabi sous la même access key) sont regroupés en un seul disque afin que les quotas soient comptés une seule fois.",

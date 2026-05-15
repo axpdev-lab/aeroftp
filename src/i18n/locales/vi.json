@@ -256,7 +256,12 @@
       "b2NativeAdvVersions": "Lịch sử phiên bản tệp đầy đủ cho mỗi đối tượng",
       "totpSecret": "TOTP Secret (optional, saved)",
       "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
-      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
+      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
+      "manualTotalStorage": "Tổng dung lượng (thủ công)",
+      "manualTotalStoragePlaceholder": "vd. 10 GB, 500 GB, 2 TB",
+      "manualTotalStorageHint": "Tùy chọn. Giới hạn gói hoặc tài khoản cho các backend không có API hạn ngạch (FTP, S3, WebDAV) hoặc chỉ báo cáo dung lượng đã dùng (Backblaze B2). Tổng dung lượng do nhà cung cấp báo luôn được ưu tiên.",
+      "autoScanUsedOnConnect": "Tính dung lượng đã dùng khi kết nối",
+      "autoScanUsedOnConnectHint": "Chỉ dành cho các backend không có API dung lượng đã dùng (FTP, S3, WebDAV). Mặc định tắt: một cây lớn (vd. một dự án web) được duyệt đệ quy, có thể chậm. Nếu không, hãy dùng tác vụ trên StatusBar khi cần."
     },
     "browser": {
       "remote": "Từ xa",
@@ -1131,7 +1136,15 @@
       "insecureConnectionUnencrypted": "Kết nối này không được mã hóa. Thông tin đăng nhập được gửi dưới dạng văn bản thuần.",
       "secureConnection": "Bảo mật",
       "secureConnectionTitle": "Kết nối được mã hóa qua {protocol}",
-      "usedNoCap": "đã dùng (không có giới hạn quota)"
+      "usedNoCap": "đã dùng (không có giới hạn quota)",
+      "usedScanAction": "Tính dung lượng đã dùng",
+      "usedScanHint": "Quét cây đệ quy để tính dung lượng đã dùng. Kết hợp với tổng nhập thủ công sẽ hiển thị đã dùng/tổng/%. Chỉ chạy khi bạn kích hoạt.",
+      "usedScanRunning": "Đang quét dung lượng đã dùng...",
+      "usedScanDone": "Đã tính dung lượng đã dùng",
+      "usedScanDoneDetail": "{used} trong {files} tệp",
+      "usedScanTruncated": "một phần: đã đạt giới hạn quét",
+      "usedScanFailed": "Quét dung lượng đã dùng thất bại",
+      "usedScanEmpty": "Quét đường dẫn {path} không tìm thấy tệp nào; đã giữ giá trị trong bộ nhớ đệm. Hãy kiểm tra đường dẫn hoặc khả năng liệt kê đệ quy của máy chủ."
     },
     "dialogs": {
       "confirmTitle": "Xác nhận",
@@ -4300,7 +4313,10 @@
           "time": "Last used",
           "health": "Health",
           "actions": "Actions",
-          "favorite": "Favorite"
+          "favorite": "Favorite",
+          "saved": "Đã tiết kiệm",
+          "savedPct": "Đã tiết kiệm %",
+          "savedTitle": "Nén: {plaintext} thành {compressed} (tiết kiệm {ratio}%)"
         },
         "footerSummaryNoQuota": "{count} hồ sơ · {unique} ổ đám mây duy nhất",
         "footerDedupExplained": "Các hồ sơ dùng chung một ổ đĩa vật lý (Koofr WebDAV + REST, OpenDrive WebDAV + REST, các bucket Wasabi dưới cùng một khóa truy cập) được gộp thành một ổ duy nhất để hạn mức chỉ được tính một lần.",

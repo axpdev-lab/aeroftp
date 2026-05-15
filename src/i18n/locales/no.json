@@ -256,7 +256,12 @@
       "b2NativeAdvVersions": "Komplett filversjonshistorikk per objekt",
       "totpSecret": "TOTP Secret (optional, saved)",
       "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
-      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
+      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
+      "manualTotalStorage": "Total lagring (manuell)",
+      "manualTotalStoragePlaceholder": "f.eks. 10 GB, 500 GB, 2 TB",
+      "manualTotalStorageHint": "Valgfritt. Abonnements- eller kontogrense for bakgrunnssystemer uten kvote-API (FTP, S3, WebDAV) eller som bare rapporterer brukt plass (Backblaze B2). Leverandørens eget totaltall har alltid forrang.",
+      "autoScanUsedOnConnect": "Beregn brukt lagring ved tilkobling",
+      "autoScanUsedOnConnectHint": "Kun for bakgrunnssystemer uten API for brukt plass (FTP, S3, WebDAV). Av som standard: et stort tre (f.eks. et webprosjekt) gjennomgås rekursivt, noe som kan være tregt. Ellers bruk StatusBar-handlingen ved behov."
     },
     "browser": {
       "remote": "Ekstern",
@@ -1131,7 +1136,15 @@
       "insecureConnectionUnencrypted": "Denne tilkoblingen er ikke kryptert. Påloggingsopplysninger sendes som ren tekst.",
       "secureConnection": "Sikker",
       "secureConnectionTitle": "Kryptert tilkobling via {protocol}",
-      "usedNoCap": "brukt (ingen kvotegrense)"
+      "usedNoCap": "brukt (ingen kvotegrense)",
+      "usedScanAction": "Beregn brukt lagring",
+      "usedScanHint": "Skann treet rekursivt for å beregne brukt plass. Kombinert med et manuelt totaltall viser det brukt/total/%. Kjøres bare når du starter det.",
+      "usedScanRunning": "Skanner brukt lagring...",
+      "usedScanDone": "Brukt lagring beregnet",
+      "usedScanDoneDetail": "{used} på tvers av {files} filer",
+      "usedScanTruncated": "delvis: skannegrense nådd",
+      "usedScanFailed": "Skanning av brukt lagring mislyktes",
+      "usedScanEmpty": "Skanning av {path} fant ingen filer; den bufrede verdien ble beholdt. Sjekk banen eller serverens støtte for rekursiv listing."
     },
     "dialogs": {
       "confirmTitle": "Bekreft",
@@ -4319,7 +4332,10 @@
           "time": "Last used",
           "health": "Health",
           "actions": "Actions",
-          "favorite": "Favorite"
+          "favorite": "Favorite",
+          "saved": "Spart",
+          "savedPct": "Spart %",
+          "savedTitle": "Komprimering: {plaintext} til {compressed} ({ratio}% spart)"
         },
         "footerSummaryNoQuota": "{count} profiler · {unique} unike skystasjoner",
         "footerDedupExplained": "Profiler som deler den samme fysiske disken (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi-bøtter under samme tilgangsnøkkel) slås sammen til én stasjon slik at kvoter telles kun én gang.",

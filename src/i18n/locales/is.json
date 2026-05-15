@@ -256,7 +256,12 @@
       "b2NativeAdvVersions": "Heildarútgáfusaga skrár fyrir hvert hlutdeild",
       "totpSecret": "TOTP Secret (optional, saved)",
       "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
-      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
+      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
+      "manualTotalStorage": "Heildargeymsla (handvirkt)",
+      "manualTotalStoragePlaceholder": "t.d. 10 GB, 500 GB, 2 TB",
+      "manualTotalStorageHint": "Valfrjálst. Áskriftar- eða reikningsmörk fyrir bakenda án kvóta-API (FTP, S3, WebDAV) eða sem tilkynna aðeins notað pláss (Backblaze B2). Heildartala þjónustuveitunnar hefur alltaf forgang.",
+      "autoScanUsedOnConnect": "Reikna notaða geymslu við tengingu",
+      "autoScanUsedOnConnectHint": "Aðeins fyrir bakenda án API fyrir notað pláss (FTP, S3, WebDAV). Sjálfgefið slökkt: stórt tré (t.d. vefverkefni) er gengið endurkvæmt, sem getur verið hægt. Annars notaðu StatusBar-aðgerðina eftir þörfum."
     },
     "browser": {
       "remote": "Fjartengdur",
@@ -1131,7 +1136,15 @@
       "insecureConnectionUnencrypted": "Þessi tenging er ekki dulkóðuð. Innskráningarupplýsingar eru sendar sem ódulkóðaður texti.",
       "secureConnection": "Örugg",
       "secureConnectionTitle": "Dulkóðuð tenging í gegnum {protocol}",
-      "usedNoCap": "notað (engin kvótatakmörkun)"
+      "usedNoCap": "notað (engin kvótatakmörkun)",
+      "usedScanAction": "Reikna notaða geymslu",
+      "usedScanHint": "Skanna tréð endurkvæmt til að reikna notað pláss. Sameinað handvirkri heildartölu sýnir það notað/heild/%. Keyrir aðeins þegar þú ræsir það.",
+      "usedScanRunning": "Skanna notaða geymslu...",
+      "usedScanDone": "Notuð geymsla reiknuð",
+      "usedScanDoneDetail": "{used} í {files} skrám",
+      "usedScanTruncated": "að hluta: skönnunarmörkum náð",
+      "usedScanFailed": "Skönnun á notaðri geymslu mistókst",
+      "usedScanEmpty": "Skönnun á {path} fann engar skrár; gildið í skyndiminni var haldið. Athugaðu slóðina eða stuðning þjónsins við endurkvæma upptalningu."
     },
     "dialogs": {
       "confirmTitle": "Staðfesta",
@@ -4319,7 +4332,10 @@
           "time": "Last used",
           "health": "Health",
           "actions": "Actions",
-          "favorite": "Favorite"
+          "favorite": "Favorite",
+          "saved": "Sparað",
+          "savedPct": "Sparað %",
+          "savedTitle": "Þjöppun: {plaintext} í {compressed} ({ratio}% sparað)"
         },
         "footerSummaryNoQuota": "{count} snið · {unique} einstök skýjadrif",
         "footerDedupExplained": "Snið sem deila sama eðlislæga diski (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi-fötur undir sama aðgangslykli) eru sameinuð í eitt drif svo kvótar séu taldir aðeins einu sinni.",

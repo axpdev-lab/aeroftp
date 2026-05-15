@@ -256,7 +256,12 @@
       "b2NativeAdvVersions": "Kumpletong kasaysayan ng bersyon ng file kada bagay",
       "totpSecret": "TOTP Secret (optional, saved)",
       "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
-      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
+      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
+      "manualTotalStorage": "Kabuuang storage (manu-mano)",
+      "manualTotalStoragePlaceholder": "hal. 10 GB, 500 GB, 2 TB",
+      "manualTotalStorageHint": "Opsyonal. Limitasyon ng plan o account para sa mga backend na walang quota API (FTP, S3, WebDAV) o nag-uulat lamang ng nagamit na espasyo (Backblaze B2). Ang sariling kabuuan ng provider ang palaging mauuna.",
+      "autoScanUsedOnConnect": "Kalkulahin ang nagamit na storage kapag kumonekta",
+      "autoScanUsedOnConnectHint": "Para lamang sa mga backend na walang API ng nagamit na espasyo (FTP, S3, WebDAV). Naka-off bilang default: ang malaking tree (hal. isang web project) ay nire-recurse nang paulit-ulit, na maaaring mabagal. Kung hindi, gamitin ang aksyon sa StatusBar kapag kailangan."
     },
     "browser": {
       "remote": "Remote",
@@ -1131,7 +1136,15 @@
       "insecureConnectionUnencrypted": "Ang koneksyon na ito ay hindi naka-encrypt. Ang mga kredensyal ay ipinapadala bilang plain text.",
       "secureConnection": "Ligtas",
       "secureConnectionTitle": "Naka-encrypt na koneksyon sa pamamagitan ng {protocol}",
-      "usedNoCap": "ginamit (walang limitasyon ng quota)"
+      "usedNoCap": "ginamit (walang limitasyon ng quota)",
+      "usedScanAction": "Kalkulahin ang nagamit na storage",
+      "usedScanHint": "Paulit-ulit na ini-scan ang tree para kalkulahin ang nagamit na espasyo. Kasama ang manu-manong kabuuan, ipinapakita ang nagamit/kabuuan/%. Tatakbo lamang kapag pinatakbo mo.",
+      "usedScanRunning": "Sina-scan ang nagamit na storage...",
+      "usedScanDone": "Nakalkula ang nagamit na storage",
+      "usedScanDoneDetail": "{used} sa {files} na file",
+      "usedScanTruncated": "bahagya: naabot na ang limitasyon ng pag-scan",
+      "usedScanFailed": "Nabigo ang pag-scan ng nagamit na storage",
+      "usedScanEmpty": "Walang nakitang file ang pag-scan ng {path}; pinanatili ang naka-cache na halaga. Suriin ang path o ang suporta ng server sa recursive listing."
     },
     "dialogs": {
       "confirmTitle": "Kumpirmahin",
@@ -4319,7 +4332,10 @@
           "time": "Last used",
           "health": "Health",
           "actions": "Actions",
-          "favorite": "Favorite"
+          "favorite": "Favorite",
+          "saved": "Naitipid",
+          "savedPct": "Naitipid %",
+          "savedTitle": "Compression: {plaintext} sa {compressed} ({ratio}% naitipid)"
         },
         "footerSummaryNoQuota": "{count} na profile · {unique} na natatanging cloud drive",
         "footerDedupExplained": "Ang mga profile na nagbabahagi ng parehong pisikal na disk (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi buckets sa ilalim ng parehong access key) ay pinagsasama sa isang drive upang ang quota ay mabilang minsan lamang.",

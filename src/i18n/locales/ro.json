@@ -256,7 +256,12 @@
       "b2NativeAdvVersions": "Istoric complet al versiunilor pentru fiecare obiect",
       "totpSecret": "TOTP Secret (optional, saved)",
       "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
-      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
+      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
+      "manualTotalStorage": "Spațiu total (manual)",
+      "manualTotalStoragePlaceholder": "ex.: 10 GB, 500 GB, 2 TB",
+      "manualTotalStorageHint": "Opțional. Limita planului/contului pentru backend-uri fără API de cotă (FTP, S3, WebDAV) sau care raportează doar spațiul folosit (Backblaze B2). Totalul raportat de furnizor are întotdeauna prioritate.",
+      "autoScanUsedOnConnect": "Calculează spațiul folosit la conectare",
+      "autoScanUsedOnConnectHint": "Doar pentru backend-uri fără API de spațiu folosit (FTP, S3, WebDAV). Dezactivat implicit: un arbore mare (ex.: un proiect web) este parcurs recursiv, ceea ce poate fi lent. În caz contrar, folosește acțiunea din StatusBar la cerere."
     },
     "browser": {
       "remote": "La distanță",
@@ -1131,7 +1136,15 @@
       "insecureConnectionUnencrypted": "Această conexiune nu este criptată. Datele de autentificare sunt trimise ca text simplu.",
       "secureConnection": "Securizată",
       "secureConnectionTitle": "Conexiune criptată prin {protocol}",
-      "usedNoCap": "utilizat (fără limită de cotă)"
+      "usedNoCap": "utilizat (fără limită de cotă)",
+      "usedScanAction": "Calculează spațiul folosit",
+      "usedScanHint": "Scanează recursiv arborele pentru a calcula spațiul folosit. Combinat cu un total manual, afișează folosit/total/%. Rulează doar când îl declanșezi.",
+      "usedScanRunning": "Se scanează spațiul folosit...",
+      "usedScanDone": "Spațiul folosit a fost calculat",
+      "usedScanDoneDetail": "{used} în {files} fișiere",
+      "usedScanTruncated": "parțial: limita de scanare atinsă",
+      "usedScanFailed": "Scanarea spațiului folosit a eșuat",
+      "usedScanEmpty": "Scanarea căii {path} nu a găsit fișiere; valoarea din cache a fost păstrată. Verifică calea sau suportul serverului pentru listarea recursivă."
     },
     "dialogs": {
       "confirmTitle": "Confirmă",
@@ -4300,7 +4313,10 @@
           "time": "Last used",
           "health": "Health",
           "actions": "Actions",
-          "favorite": "Favorite"
+          "favorite": "Favorite",
+          "saved": "Economisit",
+          "savedPct": "Economisit %",
+          "savedTitle": "Compresie: {plaintext} la {compressed} ({ratio}% economisit)"
         },
         "footerSummaryNoQuota": "{count} profiluri · {unique} drive-uri cloud unice",
         "footerDedupExplained": "Profilurile care partajează același disc fizic (Koofr WebDAV + REST, OpenDrive WebDAV + REST, bucket-uri Wasabi sub aceeași cheie de acces) se unesc într-un singur drive, astfel încât cotele sunt numărate o singură dată.",

@@ -256,7 +256,12 @@
       "b2NativeAdvVersions": "Fuld filversionshistorik pr. objekt",
       "totpSecret": "TOTP Secret (optional, saved)",
       "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
-      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
+      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
+      "manualTotalStorage": "Samlet lagerplads (manuelt)",
+      "manualTotalStoragePlaceholder": "f.eks. 10 GB, 500 GB, 2 TB",
+      "manualTotalStorageHint": "Valgfrit. Plan- eller kontogrænse for backends uden quota API (FTP, S3, WebDAV) eller som kun rapporterer brugt plads (Backblaze B2). Udbyderens eget samlede tal har altid forrang.",
+      "autoScanUsedOnConnect": "Beregn brugt lagerplads ved forbindelse",
+      "autoScanUsedOnConnectHint": "Kun for backends uden API for brugt plads (FTP, S3, WebDAV). Slået fra som standard: et stort træ (f.eks. et webprojekt) gennemløbes rekursivt, hvilket kan være langsomt. Brug ellers StatusBar-handlingen efter behov."
     },
     "browser": {
       "remote": "Ekstern",
@@ -1131,7 +1136,15 @@
       "insecureConnectionUnencrypted": "Denne forbindelse er ikke krypteret. Loginoplysninger sendes som almindelig tekst.",
       "secureConnection": "Sikker",
       "secureConnectionTitle": "Krypteret forbindelse via {protocol}",
-      "usedNoCap": "brugt (ingen kvotegrænse)"
+      "usedNoCap": "brugt (ingen kvotegrænse)",
+      "usedScanAction": "Beregn brugt lagerplads",
+      "usedScanHint": "Scan træet rekursivt for at beregne brugt plads. Kombineret med et manuelt samlet tal viser det brugt/samlet/%. Kører kun, når du udløser det.",
+      "usedScanRunning": "Scanner brugt lagerplads...",
+      "usedScanDone": "Brugt lagerplads beregnet",
+      "usedScanDoneDetail": "{used} fordelt på {files} filer",
+      "usedScanTruncated": "delvist: scanningsgrænse nået",
+      "usedScanFailed": "Scanning af brugt lagerplads mislykkedes",
+      "usedScanEmpty": "Scanningen af {path} fandt ingen filer; det cachelagrede tal blev bevaret. Tjek stien eller serverens understøttelse af rekursiv visning."
     },
     "dialogs": {
       "confirmTitle": "Bekræft",
@@ -4300,7 +4313,10 @@
           "time": "Last used",
           "health": "Health",
           "actions": "Actions",
-          "favorite": "Favorite"
+          "favorite": "Favorite",
+          "saved": "Sparet",
+          "savedPct": "Sparet %",
+          "savedTitle": "Komprimering: {plaintext} til {compressed} ({ratio}% sparet)"
         },
         "footerSummaryNoQuota": "{count} profiler · {unique} unikke cloud-drev",
         "footerDedupExplained": "Profiler, der deler den samme fysiske disk (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi buckets under samme access key), samles til ét drev, så kvoter kun tælles én gang.",

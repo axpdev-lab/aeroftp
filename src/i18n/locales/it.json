@@ -284,7 +284,12 @@
       "b2NativeAdvVersions": "Cronologia versioni completa per ogni file",
       "totpSecret": "Secret TOTP (opzionale, salvato)",
       "totpSecretPlaceholder": "Secret base32, es. JBSWY3DPEHPK3PXP",
-      "totpSecretHelp": "Salva il tuo secret 2FA una sola volta. AeroFTP genererà il codice a 6 cifre automaticamente ad ogni riconnessione, come fa un'app di autenticazione."
+      "totpSecretHelp": "Salva il tuo secret 2FA una sola volta. AeroFTP genererà il codice a 6 cifre automaticamente ad ogni riconnessione, come fa un'app di autenticazione.",
+      "manualTotalStorage": "Spazio totale (manuale)",
+      "manualTotalStoragePlaceholder": "es. 10 GB, 500 GB, 2 TB",
+      "manualTotalStorageHint": "Facoltativo. Limite del piano o dell'account per i backend senza API di quota (FTP, S3, WebDAV) o che riportano solo lo spazio usato (Backblaze B2). Il totale fornito dal provider ha sempre la precedenza.",
+      "autoScanUsedOnConnect": "Calcola lo spazio usato alla connessione",
+      "autoScanUsedOnConnectHint": "Solo per i backend senza API per lo spazio usato (FTP, S3, WebDAV). Disattivato per impostazione predefinita: un albero di grandi dimensioni (es. un progetto web) viene percorso ricorsivamente, operazione che può essere lenta. In alternativa usa l'azione nella StatusBar quando serve."
     },
     "twoFactor": {
       "title": "Autenticazione a due fattori richiesta",
@@ -1437,7 +1442,15 @@
       "secureConnection": "Sicura",
       "secureConnectionTitle": "Connessione cifrata via {protocol}",
       "insecureConnectionUnencrypted": "Questa connessione non è cifrata. Le credenziali vengono inviate in chiaro.",
-      "usedNoCap": "utilizzati (provider senza quota)"
+      "usedNoCap": "utilizzati (provider senza quota)",
+      "usedScanAction": "Calcola lo spazio usato",
+      "usedScanHint": "Scansiona ricorsivamente l'albero per calcolare lo spazio usato. Combinato con un totale manuale mostra usato/totale/%. Viene eseguito solo quando lo avvii.",
+      "usedScanRunning": "Scansione dello spazio usato...",
+      "usedScanDone": "Spazio usato calcolato",
+      "usedScanDoneDetail": "{used} su {files} file",
+      "usedScanTruncated": "parziale: limite di scansione raggiunto",
+      "usedScanFailed": "Scansione dello spazio usato non riuscita",
+      "usedScanEmpty": "La scansione di {path} non ha trovato file; il valore in cache è stato mantenuto. Verifica il percorso o il supporto dell'elenco ricorsivo del server."
     },
     "aerofile": {
       "dualPanel": "Doppio pannello",
@@ -4404,7 +4417,10 @@
           "time": "Ultimo uso",
           "health": "Stato",
           "actions": "Azioni",
-          "favorite": "Preferito"
+          "favorite": "Preferito",
+          "saved": "Risparmiato",
+          "savedPct": "Risparmiato %",
+          "savedTitle": "Compressione: {plaintext} a {compressed} ({ratio}% risparmiato)"
         },
         "footerSummaryNoQuota": "{count} profili · {unique} drive cloud unici",
         "footerUniqueCount": "{count} unici",

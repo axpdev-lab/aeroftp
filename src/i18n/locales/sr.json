@@ -256,7 +256,12 @@
       "b2NativeAdvVersions": "Потпуна историја верзија за сваки објекат",
       "totpSecret": "TOTP Secret (optional, saved)",
       "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
-      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
+      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
+      "manualTotalStorage": "Укупно складиште (ручно)",
+      "manualTotalStoragePlaceholder": "нпр. 10 GB, 500 GB, 2 TB",
+      "manualTotalStorageHint": "Опционо. Ограничење плана или налога за позадине без API-ја за квоту (FTP, S3, WebDAV) или које пријављују само заузет простор (Backblaze B2). Укупна вредност добављача увек има предност.",
+      "autoScanUsedOnConnect": "Израчунај заузето складиште при повезивању",
+      "autoScanUsedOnConnectHint": "Само за позадине без API-ја за заузет простор (FTP, S3, WebDAV). Подразумевано искључено: велико стабло (нпр. веб пројекат) се рекурзивно обилази, што може бити споро. У супротном користите радњу у StatusBar по потреби."
     },
     "browser": {
       "remote": "Удаљено",
@@ -1131,7 +1136,15 @@
       "insecureConnectionUnencrypted": "Ova veza nije šifrovana. Akreditivi se šalju kao običan tekst.",
       "secureConnection": "Sigurna",
       "secureConnectionTitle": "Šifrovana veza putem {protocol}",
-      "usedNoCap": "искоришћено (без ограничења квоте)"
+      "usedNoCap": "искоришћено (без ограничења квоте)",
+      "usedScanAction": "Израчунај заузето складиште",
+      "usedScanHint": "Рекурзивно скенира стабло ради израчунавања заузетог простора. У комбинацији са ручно унетим укупним приказује заузето/укупно/%. Покреће се само када га ви активирате.",
+      "usedScanRunning": "Скенирање заузетог складишта...",
+      "usedScanDone": "Заузето складиште израчунато",
+      "usedScanDoneDetail": "{used} у {files} датотека",
+      "usedScanTruncated": "делимично: достигнут лимит скенирања",
+      "usedScanFailed": "Скенирање заузетог складишта није успело",
+      "usedScanEmpty": "Скенирање путање {path} није пронашло датотеке; задржана је кеширана вредност. Проверите путању или подршку сервера за рекурзивно листање."
     },
     "dialogs": {
       "confirmTitle": "Потврди",
@@ -4300,7 +4313,10 @@
           "time": "Last used",
           "health": "Health",
           "actions": "Actions",
-          "favorite": "Favorite"
+          "favorite": "Favorite",
+          "saved": "Уштеђено",
+          "savedPct": "Уштеђено %",
+          "savedTitle": "Компресија: {plaintext} на {compressed} (уштеђено {ratio}%)"
         },
         "footerSummaryNoQuota": "{count} профила · {unique} јединствених облак дискова",
         "footerDedupExplained": "Профили који деле исти физички диск (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi кофе под истим приступним кључем) се спајају у један диск, тако да се квоте броје само једном.",

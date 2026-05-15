@@ -256,7 +256,12 @@
       "b2NativeAdvVersions": "Popolna zgodovina različic za vsak objekt",
       "totpSecret": "TOTP Secret (optional, saved)",
       "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
-      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
+      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
+      "manualTotalStorage": "Skupna shramba (ročno)",
+      "manualTotalStoragePlaceholder": "npr. 10 GB, 500 GB, 2 TB",
+      "manualTotalStorageHint": "Izbirno. Omejitev paketa ali računa za zaledja brez API-ja za kvoto (FTP, S3, WebDAV) ali ki sporočajo le porabljen prostor (Backblaze B2). Skupna vrednost ponudnika ima vedno prednost.",
+      "autoScanUsedOnConnect": "Izračunaj porabljeno shrambo ob povezavi",
+      "autoScanUsedOnConnectHint": "Samo za zaledja brez API-ja za porabljen prostor (FTP, S3, WebDAV). Privzeto izklopljeno: veliko drevo (npr. spletni projekt) se rekurzivno prehodi, kar je lahko počasno. Sicer uporabite dejanje v StatusBar po potrebi."
     },
     "browser": {
       "remote": "Oddaljeno",
@@ -1131,7 +1136,15 @@
       "insecureConnectionUnencrypted": "Ta povezava ni šifrirana. Poverilnice se pošiljajo kot navadno besedilo.",
       "secureConnection": "Varna",
       "secureConnectionTitle": "Šifrirana povezava prek {protocol}",
-      "usedNoCap": "porabljeno (brez omejitve kvote)"
+      "usedNoCap": "porabljeno (brez omejitve kvote)",
+      "usedScanAction": "Izračunaj porabljeno shrambo",
+      "usedScanHint": "Rekurzivno preišče drevo za izračun porabljenega prostora. V kombinaciji z ročno skupno vrednostjo prikaže porabljeno/skupaj/%. Zažene se le, ko ga sprožite.",
+      "usedScanRunning": "Pregledovanje porabljene shrambe...",
+      "usedScanDone": "Porabljena shramba izračunana",
+      "usedScanDoneDetail": "{used} v {files} datotekah",
+      "usedScanTruncated": "delno: dosežena meja pregledovanja",
+      "usedScanFailed": "Pregledovanje porabljene shrambe ni uspelo",
+      "usedScanEmpty": "Pregled poti {path} ni našel datotek; ohranjena je bila predpomnjena vrednost. Preverite pot ali podporo strežnika za rekurzivni izpis."
     },
     "dialogs": {
       "confirmTitle": "Potrdi",
@@ -4300,7 +4313,10 @@
           "time": "Last used",
           "health": "Health",
           "actions": "Actions",
-          "favorite": "Favorite"
+          "favorite": "Favorite",
+          "saved": "Prihranjeno",
+          "savedPct": "Prihranjeno %",
+          "savedTitle": "Stiskanje: {plaintext} na {compressed} (prihranjeno {ratio}%)"
         },
         "footerSummaryNoQuota": "{count} profilov · {unique} edinstvenih oblačnih pogonov",
         "footerDedupExplained": "Profili, ki si delijo isti fizični disk (Koofr WebDAV + REST, OpenDrive WebDAV + REST, vedra Wasabi pod istim ključem za dostop), se združijo v en pogon, tako da se kvote štejejo samo enkrat.",

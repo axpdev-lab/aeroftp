@@ -256,7 +256,12 @@
       "b2NativeAdvVersions": "每个对象的完整文件版本历史",
       "totpSecret": "TOTP 密钥（可选，已保存）",
       "totpSecretPlaceholder": "Base32 密钥，例如 JBSWY3DPEHPK3PXP",
-      "totpSecretHelp": "保存您的 2FA 密钥一次。AeroFTP 将在每次重新连接时自动生成 6 位代码，就像身份验证器应用一样。"
+      "totpSecretHelp": "保存您的 2FA 密钥一次。AeroFTP 将在每次重新连接时自动生成 6 位代码，就像身份验证器应用一样。",
+      "manualTotalStorage": "总存储空间（手动）",
+      "manualTotalStoragePlaceholder": "例如 10 GB、500 GB、2 TB",
+      "manualTotalStorageHint": "可选。适用于没有配额 API 的后端（FTP、S3、WebDAV），或仅报告已用空间的后端（Backblaze B2）的套餐或账户上限。提供商自身的总量始终优先。",
+      "autoScanUsedOnConnect": "连接时计算已用存储",
+      "autoScanUsedOnConnectHint": "仅适用于没有已用空间 API 的后端（FTP、S3、WebDAV）。默认关闭：大型目录树（例如一个网站项目）会被递归遍历，可能较慢。否则请按需使用 StatusBar 中的操作。"
     },
     "browser": {
       "remote": "远程",
@@ -1131,7 +1136,15 @@
       "insecureConnectionUnencrypted": "此连接未加密。凭据以纯文本形式发送。",
       "secureConnection": "安全",
       "secureConnectionTitle": "通过 {protocol} 加密连接",
-      "usedNoCap": "已使用（无配额上限）"
+      "usedNoCap": "已使用（无配额上限）",
+      "usedScanAction": "计算已用存储",
+      "usedScanHint": "递归扫描目录树以计算已用空间。与手动设置的总量结合后会显示已用/总量/%。仅在你触发时运行。",
+      "usedScanRunning": "正在扫描已用存储...",
+      "usedScanDone": "已计算出已用存储",
+      "usedScanDoneDetail": "{files} 个文件中共 {used}",
+      "usedScanTruncated": "部分完成：已达到扫描上限",
+      "usedScanFailed": "已用存储扫描失败",
+      "usedScanEmpty": "扫描路径 {path} 未找到任何文件；已保留缓存中的数值。请检查路径或服务器对递归列目录的支持。"
     },
     "dialogs": {
       "confirmTitle": "确认",
@@ -4300,7 +4313,10 @@
           "time": "Last used",
           "health": "Health",
           "actions": "Actions",
-          "favorite": "Favorite"
+          "favorite": "Favorite",
+          "saved": "已节省",
+          "savedPct": "已节省 %",
+          "savedTitle": "压缩：{plaintext} 至 {compressed}（节省 {ratio}%）"
         },
         "footerSummaryNoQuota": "{count} 个配置 · {unique} 个独立云盘",
         "footerDedupExplained": "共享同一物理磁盘的配置(Koofr WebDAV + REST、OpenDrive WebDAV + REST、同一访问密钥下的 Wasabi 存储桶)会合并为一个云盘,因此配额只计算一次。",

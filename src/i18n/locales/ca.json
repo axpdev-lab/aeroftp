@@ -256,7 +256,12 @@
       "b2NativeAdvVersions": "Historial complet de versions per cada objecte",
       "totpSecret": "TOTP Secret (optional, saved)",
       "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
-      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
+      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
+      "manualTotalStorage": "Emmagatzematge total (manual)",
+      "manualTotalStoragePlaceholder": "p. ex. 10 GB, 500 GB, 2 TB",
+      "manualTotalStorageHint": "Opcional. Límit del pla o compte per a backends sense quota API (FTP, S3, WebDAV) o que només informen de l'espai utilitzat (Backblaze B2). El total propi del proveïdor sempre té prioritat.",
+      "autoScanUsedOnConnect": "Calcular l'emmagatzematge utilitzat en connectar",
+      "autoScanUsedOnConnectHint": "Només per a backends sense API d'espai utilitzat (FTP, S3, WebDAV). Desactivat per defecte: un arbre gran (p. ex. un projecte web) es recorre recursivament, cosa que pot ser lenta. Si no, useu l'acció de la StatusBar quan calgui."
     },
     "browser": {
       "remote": "Remot",
@@ -1131,7 +1136,15 @@
       "insecureConnectionUnencrypted": "Aquesta connexió no està xifrada. Les credencials s'envien en text pla.",
       "secureConnection": "Segura",
       "secureConnectionTitle": "Connexió xifrada via {protocol}",
-      "usedNoCap": "utilitzat (sense límit de quota)"
+      "usedNoCap": "utilitzat (sense límit de quota)",
+      "usedScanAction": "Calcular l'emmagatzematge utilitzat",
+      "usedScanHint": "Escaneja l'arbre recursivament per calcular l'espai utilitzat. Combinat amb un total manual mostra utilitzat/total/%. S'executa només quan l'activeu.",
+      "usedScanRunning": "Escanejant l'emmagatzematge utilitzat...",
+      "usedScanDone": "Emmagatzematge utilitzat calculat",
+      "usedScanDoneDetail": "{used} en {files} fitxers",
+      "usedScanTruncated": "parcial: s'ha assolit el límit d'escaneig",
+      "usedScanFailed": "L'escaneig de l'emmagatzematge utilitzat ha fallat",
+      "usedScanEmpty": "L'escaneig de {path} no ha trobat cap fitxer; s'ha mantingut el valor de la memòria cau. Comproveu el camí o el suport de llistat recursiu del servidor."
     },
     "dialogs": {
       "confirmTitle": "Confirmar",
@@ -4319,7 +4332,10 @@
           "time": "Last used",
           "health": "Health",
           "actions": "Actions",
-          "favorite": "Favorite"
+          "favorite": "Favorite",
+          "saved": "Estalviat",
+          "savedPct": "Estalviat %",
+          "savedTitle": "Compressió: {plaintext} a {compressed} ({ratio}% estalviat)"
         },
         "footerSummaryNoQuota": "{count} perfils · {unique} unitats al núvol úniques",
         "footerDedupExplained": "Els perfils que comparteixen el mateix disc físic (Koofr WebDAV + REST, OpenDrive WebDAV + REST, cubs de Wasabi amb la mateixa access key) s'agrupen en una sola unitat per comptar les quotes una única vegada.",

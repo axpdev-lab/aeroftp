@@ -256,7 +256,12 @@
       "b2NativeAdvVersions": "প্রতি অবজেক্টে সম্পূর্ণ ফাইল সংস্করণ ইতিহাস",
       "totpSecret": "TOTP Secret (optional, saved)",
       "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
-      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
+      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
+      "manualTotalStorage": "মোট স্টোরেজ (ম্যানুয়াল)",
+      "manualTotalStoragePlaceholder": "যেমন 10 GB, 500 GB, 2 TB",
+      "manualTotalStorageHint": "ঐচ্ছিক। কোটা API নেই এমন ব্যাকএন্ড (FTP, S3, WebDAV) বা শুধুমাত্র ব্যবহৃত স্থান রিপোর্ট করে এমন ব্যাকএন্ডের (Backblaze B2) জন্য প্ল্যান/অ্যাকাউন্ট সীমা। প্রদানকারীর নিজস্ব মোট সবসময় অগ্রাধিকার পায়।",
+      "autoScanUsedOnConnect": "সংযোগের সময় ব্যবহৃত স্টোরেজ গণনা করুন",
+      "autoScanUsedOnConnectHint": "শুধুমাত্র ব্যবহৃত-স্থান API নেই এমন ব্যাকএন্ডের (FTP, S3, WebDAV) জন্য। ডিফল্টভাবে বন্ধ: একটি বড় ট্রি (যেমন একটি ওয়েব প্রকল্প) রিকার্সিভভাবে স্ক্যান করা হয়, যা ধীর হতে পারে। অন্যথায় প্রয়োজনে StatusBar অ্যাকশন ব্যবহার করুন।"
     },
     "browser": {
       "remote": "রিমোট",
@@ -1131,7 +1136,15 @@
       "insecureConnectionUnencrypted": "এই সংযোগটি এনক্রিপ্ট করা নেই। শংসাপত্রগুলি সাধারণ পাঠ্যে পাঠানো হয়।",
       "secureConnection": "নিরাপদ",
       "secureConnectionTitle": "{protocol} এর মাধ্যমে এনক্রিপ্টেড সংযোগ",
-      "usedNoCap": "ব্যবহৃত (কোটা সীমা নেই)"
+      "usedNoCap": "ব্যবহৃত (কোটা সীমা নেই)",
+      "usedScanAction": "ব্যবহৃত স্টোরেজ গণনা করুন",
+      "usedScanHint": "ব্যবহৃত স্থান গণনা করতে ট্রি রিকার্সিভভাবে স্ক্যান করুন। ম্যানুয়াল মোটের সাথে মিলিয়ে এটি ব্যবহৃত/মোট/% দেখায়। আপনি ট্রিগার করলেই কেবল চলে।",
+      "usedScanRunning": "ব্যবহৃত স্টোরেজ স্ক্যান করা হচ্ছে...",
+      "usedScanDone": "ব্যবহৃত স্টোরেজ গণনা করা হয়েছে",
+      "usedScanDoneDetail": "{files} টি ফাইলে {used}",
+      "usedScanTruncated": "আংশিক: স্ক্যান সীমা পৌঁছেছে",
+      "usedScanFailed": "ব্যবহৃত-স্টোরেজ স্ক্যান ব্যর্থ হয়েছে",
+      "usedScanEmpty": "{path} এর স্ক্যানে কোনো ফাইল পাওয়া যায়নি; ক্যাশ করা মান রাখা হয়েছে। পথটি বা সার্ভারের রিকার্সিভ-লিস্টিং সমর্থন পরীক্ষা করুন।"
     },
     "dialogs": {
       "confirmTitle": "নিশ্চিত করুন",
@@ -4300,7 +4313,10 @@
           "time": "Last used",
           "health": "Health",
           "actions": "Actions",
-          "favorite": "Favorite"
+          "favorite": "Favorite",
+          "saved": "সংরক্ষিত",
+          "savedPct": "সংরক্ষিত %",
+          "savedTitle": "কম্প্রেশন: {plaintext} থেকে {compressed} ({ratio}% সংরক্ষিত)"
         },
         "footerSummaryNoQuota": "{count} প্রোফাইল · {unique} অনন্য ক্লাউড ড্রাইভ",
         "footerDedupExplained": "যে প্রোফাইলগুলি একই ফিজিক্যাল ডিস্ক ভাগ করে (Koofr WebDAV + REST, OpenDrive WebDAV + REST, একই access key-এর অধীনে Wasabi বাকেট) সেগুলি একটি ড্রাইভে একত্রিত হয় যাতে কোটা একবারই গণনা করা হয়।",

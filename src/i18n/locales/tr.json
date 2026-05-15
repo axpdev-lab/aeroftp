@@ -256,7 +256,12 @@
       "b2NativeAdvVersions": "Her nesne için tam dosya sürüm geçmişi",
       "totpSecret": "TOTP Gizli Anahtarı (isteğe bağlı, kaydedilir)",
       "totpSecretPlaceholder": "Base32 gizli anahtar, ör. JBSWY3DPEHPK3PXP",
-      "totpSecretHelp": "2FA gizli anahtarınızı bir kez kaydedin. AeroFTP, bir kimlik doğrulayıcı uygulama gibi her yeniden bağlanmada 6 haneli kodu otomatik olarak üretir."
+      "totpSecretHelp": "2FA gizli anahtarınızı bir kez kaydedin. AeroFTP, bir kimlik doğrulayıcı uygulama gibi her yeniden bağlanmada 6 haneli kodu otomatik olarak üretir.",
+      "manualTotalStorage": "Toplam depolama (manuel)",
+      "manualTotalStoragePlaceholder": "ör. 10 GB, 500 GB, 2 TB",
+      "manualTotalStorageHint": "İsteğe bağlı. Kota API'si olmayan (FTP, S3, WebDAV) veya yalnızca kullanılan alanı bildiren (Backblaze B2) arka uçlar için plan veya hesap sınırı. Sağlayıcının kendi toplam değeri her zaman önceliklidir.",
+      "autoScanUsedOnConnect": "Bağlanırken kullanılan depolamayı hesapla",
+      "autoScanUsedOnConnectHint": "Yalnızca kullanılan alan API'si olmayan arka uçlar için (FTP, S3, WebDAV). Varsayılan olarak kapalı: büyük bir ağaç (ör. bir web projesi) özyinelemeli olarak gezilir ve bu yavaş olabilir. Aksi halde StatusBar eylemini gerektiğinde kullanın."
     },
     "browser": {
       "remote": "Uzak",
@@ -1131,7 +1136,15 @@
       "insecureConnectionUnencrypted": "Bu bağlantı şifrelenmemiştir. Kimlik bilgileri düz metin olarak gönderilmektedir.",
       "secureConnection": "Güvenli",
       "secureConnectionTitle": "{protocol} üzerinden şifreli bağlantı",
-      "usedNoCap": "kullanılan (kota sınırı yok)"
+      "usedNoCap": "kullanılan (kota sınırı yok)",
+      "usedScanAction": "Kullanılan depolamayı hesapla",
+      "usedScanHint": "Kullanılan alanı hesaplamak için ağacı özyinelemeli tarar. Manuel bir toplamla birlikte kullanılan/toplam/% gösterir. Yalnızca siz tetiklediğinizde çalışır.",
+      "usedScanRunning": "Kullanılan depolama taranıyor...",
+      "usedScanDone": "Kullanılan depolama hesaplandı",
+      "usedScanDoneDetail": "{files} dosyada {used}",
+      "usedScanTruncated": "kısmi: tarama sınırına ulaşıldı",
+      "usedScanFailed": "Kullanılan depolama taraması başarısız oldu",
+      "usedScanEmpty": "{path} yolunun taraması hiç dosya bulamadı; önbellekteki değer korundu. Yolu veya sunucunun özyinelemeli listeleme desteğini kontrol edin."
     },
     "dialogs": {
       "confirmTitle": "Onayla",
@@ -4300,7 +4313,10 @@
           "time": "Last used",
           "health": "Health",
           "actions": "Actions",
-          "favorite": "Favorite"
+          "favorite": "Favorite",
+          "saved": "Kazanılan",
+          "savedPct": "Kazanılan %",
+          "savedTitle": "Sıkıştırma: {plaintext} yerine {compressed} (%{ratio} kazanıldı)"
         },
         "footerSummaryNoQuota": "{count} profil · {unique} benzersiz bulut sürücü",
         "footerDedupExplained": "Aynı fiziksel diski paylaşan profiller (Koofr WebDAV + REST, OpenDrive WebDAV + REST, aynı erişim anahtarı altındaki Wasabi kovaları) tek bir sürücüde birleştirilir, böylece kotalar yalnızca bir kez sayılır.",
