@@ -363,9 +363,18 @@ export function MyServersPanel({
     }, [viewMode]); // re-attach when container swaps between grid/list
 
     useEffect(() => {
-        // Always read localStorage first (sync, fast) so an unmount/remount
-        // cycle keeps the visible list stable.
-        setServers(getSavedServers());
+        // Fast first paint from localStorage ONLY when it has data. v3.8.0
+        // calls storeSavedServerProfiles (which localStorage.removeItem's
+        // the key) on every upload/scan via persistQuotaToProfile, then
+        // bumps lastUpdate re-running this effect; a blanket
+        // setServers(getSavedServers()) would read the just-removed key,
+        // return [], and flash the whole list empty for a frame before the
+        // async vault read repopulates it. Keeping the prior state when the
+        // cache is absent removes the flicker. The async reconcile below
+        // still propagates a genuine empty vault (CLI delete of the last
+        // profile, #194), so that behaviour is preserved.
+        const cached = getSavedServers();
+        if (cached.length > 0) setServers(cached);
         // Reconcile with the vault, which is the source of truth. Uses
         // `secureGet` (not `secureGetWithFallback`) so a vault-locked
         // response stays distinguishable from "vault returned the empty

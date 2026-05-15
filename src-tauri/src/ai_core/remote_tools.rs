@@ -895,7 +895,12 @@ async fn storage_quota(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
             if entry.is_dir {
                 queue.push_back((entry.path, depth + 1));
             } else {
-                used_bytes += entry.size;
+                // saturating_add: entry.size is fully server-controlled
+                // (SFTP attrs, WebDAV getcontentlength, S3 Size). A hostile
+                // server returning sizes near u64::MAX must not overflow
+                // (debug panic / release wrap). Matches used_scan.rs and
+                // provider_commands.rs.
+                used_bytes = used_bytes.saturating_add(entry.size);
                 file_count += 1;
             }
         }

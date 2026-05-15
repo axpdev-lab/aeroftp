@@ -6,13 +6,21 @@
  */
 
 /**
- * Format bytes to human-readable string (supports up to TB)
+ * Format bytes to human-readable string.
+ *
+ * Covers up to EB and clamps the unit index so a value at or above the
+ * largest unit never renders "X undefined" (parseHumanSize accepts a PB
+ * suffix for the manual total-storage override, so PB/EB inputs reach
+ * here).
  */
 export const formatBytes = (bytes: number | null): string => {
     if (bytes === null || bytes === 0) return '0 B';
     const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB'];
+    const i = Math.min(
+        Math.floor(Math.log(bytes) / Math.log(k)),
+        sizes.length - 1,
+    );
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 };
 

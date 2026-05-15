@@ -3525,6 +3525,12 @@ impl S3Provider {
 
 // ── S3 fast-list (recursive listing without delimiter) ────────────────────
 
+/// Hard cap on entries materialized by `list_recursive` so a bucket with
+/// millions of objects (or a hostile endpoint) cannot grow `all_entries`
+/// without bound. Matches the project-wide scan entry cap; consumers treat
+/// a capped result as a lower bound (truncated).
+const S3_LIST_RECURSIVE_MAX_ENTRIES: usize = 500_000;
+
 impl S3Provider {
     /// List all objects recursively under a prefix in a single API call sequence.
     /// Uses ListObjectsV2 WITHOUT Delimiter, returning a flat list of all files.
@@ -3582,6 +3588,14 @@ impl S3Provider {
                     let (entries, next_token) = self.parse_list_response(&xml)?;
                     all_entries.extend(entries);
 
+                    // Bound memory on a huge or hostile bucket: stop
+                    // paginating once the project-wide scan cap is reached.
+                    // Consumers (used_scan / provider_scan_used) treat a
+                    // capped result as a lower bound (truncated), so this
+                    // never produces a silently-wrong larger figure.
+                    if all_entries.len() >= S3_LIST_RECURSIVE_MAX_ENTRIES {
+                        break;
+                    }
                     if let Some(token) = next_token {
                         continuation_token = Some(token);
                     } else {

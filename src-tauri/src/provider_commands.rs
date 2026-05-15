@@ -6406,14 +6406,23 @@ pub async fn provider_scan_used(
             }
         };
         for entry in entries {
+            // Skip symlinks: a symlink-to-dir is reported with both is_dir
+            // and is_symlink (sftp.rs), so following it lets cur->. / up->..
+            // cycles inflate the figure and exhaust the budget. Matches the
+            // MCP scan, used_scan.rs and the sftp rmdir_recursive precedent.
+            if entry.is_symlink {
+                continue;
+            }
+            // Cap inside the loop (not only between directories) so one
+            // hostile listing cannot grow the queue past MAX_ENTRIES.
+            if (file_count + dir_count) >= MAX_ENTRIES {
+                truncated = true;
+                break;
+            }
             if entry.is_dir {
                 dir_count += 1;
                 queue.push((entry.path.clone(), depth + 1));
             } else {
-                if file_count >= MAX_ENTRIES {
-                    truncated = true;
-                    break;
-                }
                 used = used.saturating_add(entry.size);
                 file_count += 1;
             }

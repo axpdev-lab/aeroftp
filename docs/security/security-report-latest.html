@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>AeroFTP Security Report - 2026-05-08</title>
+<title>AeroFTP Security Report - 2026-05-15</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   :root {
@@ -59,16 +59,16 @@
 <div class="wrap">
   <h1>AeroFTP Security Report</h1>
   <div class="meta">
-    Frontend version: <strong>3.7.4</strong> ·
-    Backend (src-tauri) version: <strong>3.7.4</strong> ·
-    Generated: 2026-05-08T11:34:21.352Z ·
+    Frontend version: <strong>3.8.0</strong> ·
+    Backend (src-tauri) version: <strong>3.8.0</strong> ·
+    Generated: 2026-05-15T20:22:59.433Z ·
     Host: axpnet-ubuntu linux-x64
   </div>
 
   <div class="summary all-clean">
     <div>
       <div class="label">No open vulnerabilities</div>
-      <div class="muted">25 additional advisory(ies) suppressed via documented audit.toml rationale</div>
+      <div class="muted">26 additional advisory(ies) suppressed via documented audit.toml rationale</div>
     </div>
   </div>
 
@@ -98,11 +98,11 @@
         <header>
           <h2>osv-scanner <span class="muted">(Google OSV DB - includes RustSec, GHSA, CVE)</span></h2>
           <span class="badge badge-ok">
-            0 open · 25 suppressed
+            0 open · 26 suppressed
           </span>
         </header>
         <p class="ok">No open findings. All known advisories in scope are documented in the audit.toml suppression list with written rationales.</p>
-        <details><summary>Suppressed via <a href="../../src-tauri/.cargo/audit.toml">src-tauri/.cargo/audit.toml</a> (25) - documented rationale required</summary>
+        <details><summary>Suppressed via <a href="../../src-tauri/.cargo/audit.toml">src-tauri/.cargo/audit.toml</a> (26) - documented rationale required</summary>
               <table><thead><tr><th>Ecosystem</th><th>Package</th><th>ID</th><th>CVSS</th><th>Fixed in</th><th>Summary</th></tr></thead><tbody>
       <tr class="sev-info">
         <td>crates.io</td>
@@ -247,6 +247,14 @@
         <td>CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N</td>
         <td></td>
         <td>Marvin Attack: potential key recovery through timing sidechannels</td>
+      </tr>
+      <tr class="sev-info">
+        <td>crates.io</td>
+        <td>tauri <span class="muted">2.11.0</span></td>
+        <td><a href="https://osv.dev/vulnerability/GHSA-7gmj-67g7-phm9" target="_blank" rel="noopener">GHSA-7gmj-67g7-phm9</a></td>
+        <td>CVSS:4.0/AV:N/AC:H/AT:P/PR:N/UI:P/VC:L/VI:H/VA:L/SC:N/SI:N/SA:N</td>
+        <td>2.11.1</td>
+        <td>Tauri has an Origin Confusion Issue that Allows Remote Pages to Invoke Local-Only IPC Commands</td>
       </tr>
       <tr class="sev-info">
         <td>crates.io</td>

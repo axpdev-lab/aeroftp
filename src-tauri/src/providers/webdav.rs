@@ -901,10 +901,17 @@ impl WebDavProvider {
         let status = response.status();
         match status {
             StatusCode::OK | StatusCode::MULTI_STATUS => {
-                let xml = response
-                    .text()
-                    .await
-                    .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+                // Depth:infinity returns the whole subtree in one body, which
+                // is server-controlled. Bound it so a pathological or hostile
+                // server cannot OOM the process by streaming an unbounded
+                // PROPFIND response. On overflow the Err propagates and the
+                // callers (used_scan / provider_scan_used) fall back to the
+                // bounded BFS rather than producing a wrong figure.
+                const MAX_PROPFIND_INFINITY_BYTES: u64 = 256 * 1024 * 1024;
+                let body =
+                    super::response_bytes_with_limit(response, MAX_PROPFIND_INFINITY_BYTES)
+                        .await?;
+                let xml = String::from_utf8_lossy(&body);
                 self.parse_propfind_response(&xml, &list_path)
             }
             other => Err(ProviderError::ServerError(format!(
