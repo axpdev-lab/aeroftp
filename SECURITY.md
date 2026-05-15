@@ -34,13 +34,13 @@ AeroFTP uses encryption at multiple layers:
 | Layer | Algorithm | Purpose |
 | ----- | --------- | ------- |
 | AeroVault v2 containers | AES-256-GCM-SIV (RFC 8452) + Argon2id + HMAC-SHA512 | Encrypted file containers with nonce misuse resistance |
-| AeroVault v3 containers (Experimental, v3.7.9) | Gear-CDC chunking + zstd per chunk + AES-256-GCM-SIV per chunk + BLAKE3-128 chunk id + BLAKE3-256 cipher hash + Argon2id KEKs (HKDF + AES-KW) + HMAC-SHA512 header | Draft format, opt-in via the Experimental tier; reserves an extension area for the future v4 ECC layer |
+| AeroVault v3 containers (Beta, v3.8.0) | Gear-CDC chunking + zstd per chunk + AES-256-GCM-SIV per chunk + BLAKE3-128 chunk id + BLAKE3-256 cipher hash + Argon2id KEKs (HKDF + AES-KW) + HMAC-SHA512 header | Draft format, opt-in via the Experimental tier; reserves an extension area for the future v4 ECC layer |
 | Archive encryption | AES-256 (ZIP, 7z) | Password-protected archives |
 | rclone crypt interoperability | XSalsa20-Poly1305 content + EME filename decryption | Compatible access to existing rclone crypt remotes |
 | Credential storage | AES-256-GCM + HKDF-SHA256 | Per-entry vault encryption |
 | Transport | TLS 1.2/1.3, SSH | Wire encryption for all protocols |
 
-Key derivation parameters exceed OWASP 2024 minimums (128 MiB vs 47 MiB, 4 iterations vs 1). AeroVault v2 is available as the standalone [`aerovault`](https://crates.io/crates/aerovault) crate on crates.io. AeroVault v3 is a draft format and ships in the desktop binary only at this stage; the published crate continues to expose v2 until v3 leaves the Experimental tier. Specifications: [v2](docs/AEROVAULT-V2-SPEC.md), [v3 draft](docs/AEROVAULT-V3-SPEC.md).
+Key derivation parameters exceed OWASP 2024 minimums (128 MiB vs 47 MiB, 4 iterations vs 1). AeroVault v2 is available as the standalone [`aerovault`](https://crates.io/crates/aerovault) crate on crates.io. AeroVault v3 is a draft format and ships in the desktop binary and the bundled `aeroftp-cli` (the `vault` subcommand covers v1/v2/v3); the published crate continues to expose v2 until v3 leaves the Beta tier. Specifications: [v2](docs/AEROVAULT-V2-SPEC.md), [v3 draft](docs/AEROVAULT-V3-SPEC.md).
 
 ### rclone crypt interoperability
 
@@ -184,4 +184,4 @@ For the full disclosure policy, bug bounty scope, and Security Hall of Fame, see
 
 ---
 
-*AeroFTP v3.7.4 - 7 May 2026*
+*AeroFTP v3.8.0 - 15 May 2026*

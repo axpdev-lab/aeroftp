@@ -15,7 +15,7 @@ Welcome to the AeroFTP documentation folder. This contains all technical documen
 | **[SECURITY-AUDIT-SUMMARY.md](./SECURITY-AUDIT-SUMMARY.md)** | Independent security and quality audit reports (v2.5.0 + v2.6.0 provider audit) |
 | **[AEROAGENT.md](./AEROAGENT.md)** | AeroAgent AI assistant - architecture, tool catalog, safety system, CLI/MCP modes |
 | **[AEROVAULT-V2-SPEC.md](./AEROVAULT-V2-SPEC.md)** | AeroVault v2.1 encrypted container format - cryptography, operations, security, application integration (Recent Vaults, folder encryption, OS integration, Tauri commands reference) |
-| **[AEROVAULT-V3-SPEC.md](./AEROVAULT-V3-SPEC.md)** | AeroVault v3 draft (Experimental, v3.7.9) - chunk-then-compress pipeline (gear-CDC + zstd profiles + AES-256-GCM-SIV per chunk), BLAKE3-128 chunk id / BLAKE3-256 cipher hash, HMAC-SHA512 header, reserved extension directory + payload region for the future v4 ECC layer |
+| **[AEROVAULT-V3-SPEC.md](./AEROVAULT-V3-SPEC.md)** | AeroVault v3 draft (Beta, v3.8.0) - chunk-then-compress pipeline (gear-CDC + zstd profiles + AES-256-GCM-SIV per chunk), BLAKE3-128 chunk id / BLAKE3-256 cipher hash, HMAC-SHA512 header, reserved extension directory + payload region for the future v4 ECC layer |
 | **[CLI-GUIDE.md](./CLI-GUIDE.md)** | AeroFTP CLI - command guide, profiles, batch scripting, aliases, completions, agent integration |
 | **[COMMUNITY-BENCHMARK.md](./COMMUNITY-BENCHMARK.md)** | Privacy-preserving community benchmark guide and report submission flow |
 | **[PROVIDER-INTEGRATION-GUIDE.md](./PROVIDER-INTEGRATION-GUIDE.md)** | Provider integration reference - StorageProvider trait, auth patterns, upload/pagination/XML parsing, adding new providers |
@@ -99,8 +99,8 @@ AeroAgent provides a broad built-in tool catalog across local files, remote oper
 
 ---
 
-- **Documentation Version**: 3.7.4
-- **Last Update**: 8 May 2026
+- **Documentation Version**: 3.8.0
+- **Last Update**: 15 May 2026
 
 ---
 

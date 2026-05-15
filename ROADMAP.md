@@ -17,6 +17,14 @@ A continuous flow rather than a calendar. Items move from right to left as they 
 
 ### 🟢 Just Shipped
 
+- **AeroVault wrapper-stack hardening, telemetry, and full CLI vault parity** (v3.8.0)
+  Real small-file packing exercised by the v3 write path, a behind-the-scenes technical receipt (`vault_telemetry::VaultReport`), and the `aeroftp-cli vault` subcommand extended to every format: `create/add/info/extract` for v1, v2 and v3 with header auto-detect, `--vault-version`, `--cascade` (v2 paranoid), `--receipt`. Sustained design contribution by **Ehud Kirsh** ([#162](https://github.com/axpdev-lab/aeroftp/issues/162)).
+- **Storage quota override, recursive used-storage scan, and compression columns** (v3.8.0)
+  Manual total-cap override per profile (a TRUE override beating an API total), an explicit user-triggered recursive `used` scan for no-quota FTP/FTPS/SFTP/S3/WebDAV (CLI `df --scan`/`--full`, GUI click-to-rescan with file count + Activity Log tracking, cached and incrementally updated on upload), and the optional default-hidden `Saved`/`Saved%` compression columns in `profiles` and the My Servers table. Closes the `T-MANUAL-QUOTA` carry-over. Ehud batch 2.
+- **AeroRsync native streaming, default ON, local-to-local** (v3.8.0)
+  256 MiB cap removed on both ends, batch SSH session reuse, host-key pinning symmetric across transports, native delta engine enabled by default on fresh installs, and a local-to-local `LocalDeltaTransport` with a dedicated AeroSync panel and CLI auto-detection.
+- **AeroFile Dual Panel — Slice B + Slice C bridge** (v3.8.0)
+  Unified panel controller with an endpoint selector and a transfer planner routing local/local, local/remote and remote/local through the correct engine; FreeFileSync-style compare panel (6-bucket classifier), sync presets, conflict policy with versioned backup, inline cross-profile transfer, terminal cwd follows the focused panel.
 - **AeroFile Dual Panel — Slice A** (v3.7.9)
   Two local panels side by side in AeroFile mode, with full keyboard parity on the second panel (F2 / Delete / Enter / Backspace / clipboard / Quick Look / properties / arrows / Shift+arrow / Home / End all dispatch to the focused pane, Tab cycles between local and local2). Total-Commander shortcuts: F5 copy to other panel, F6 move to other panel, F7 new folder in the focused panel. Drag-and-drop between panes uses `rename_local_file` / `copy_local_file`; Ctrl+drag switches from move to copy. The separator is resizable from mouse and from keyboard (Arrow Left/Right ±10%, Home/End to extremes, Enter/Space to reset, `aria-valuenow` + `tabIndex=0`). Unified tab bar in the top strip with L/R markers and per-panel persistence. Slice B (each pane configurable as a local path or a saved remote profile) and Slice C (FreeFileSync-style mirror/backup/bisync workflows on top) follow in their own release windows.
 - **AeroVault v3 (Experimental tier)** (v3.7.9)
@@ -67,7 +75,7 @@ A continuous flow rather than a calendar. Items move from right to left as they 
 ### 🟡 In Flight
 
 - **AeroFile Dual Panel — Slice B + Slice C**
-  Slice B promotes each pane from "local only" to "any saved endpoint" (local path or saved remote profile), with a unified transfer planner that routes inside the same trait the existing remote↔local DnD already uses. Slice C lands FreeFileSync-style compare / mirror / backup / bisync workflows on top of the dual-pane surface. Slice A shipped in v3.7.9.
+  Slice B promotes each pane from "local only" to "any saved endpoint" (local path or saved remote profile), with a unified transfer planner that routes inside the same trait the existing remote↔local DnD already uses. Slice C lands FreeFileSync-style compare / mirror / backup / bisync workflows on top of the dual-pane surface. Slice A shipped in v3.7.9; the Slice B + Slice C bridge (unified panel controller, endpoint selector, transfer planner, 6-bucket compare panel, conflict policy) shipped in v3.8.0, with full workflow polish continuing.
 - **AeroVault v4 — ECC layer**
   Reed-Solomon / Parchive-style redundancy applied to the encrypted chunks produced by AeroVault v3, on top of the extension directory and payload region already reserved by v3. A v3 vault opened by a v4-aware reader is byte-equivalent to "v4 with ECC turned off" (forward-compat contract pinned in the v3 spec). Tracked as `T-AEROVAULT-ECC` in [issue #162](https://github.com/axpdev-lab/aeroftp/issues/162) section 4.
 - **Local Transport for AeroRsync**
@@ -166,15 +174,15 @@ A continuous flow rather than a calendar. Items move from right to left as they 
 
 A continuous stream of fixes and small features driven by GitHub Issues. From v3.7.2 onward the community input is split across two thread types:
 
-- **Wishlist** (one per release cycle): small UX paper cuts, quick wins, provider polish, CLI flags. Closes when the corresponding release ships. The v3.7.2 wishlist closed with this release (#161); the next thread will open with the v3.7.3 cycle.
+- **Wishlist** (one per release cycle): small UX paper cuts, quick wins, provider polish, CLI flags. Closes when the corresponding release ships. The v3.8.0 wishlist closed with this release ([#180](https://github.com/axpdev-lab/aeroftp/issues/180), [#194](https://github.com/axpdev-lab/aeroftp/issues/194), [#195](https://github.com/axpdev-lab/aeroftp/issues/195), [#196](https://github.com/axpdev-lab/aeroftp/issues/196)), together with the Ehud [#162](https://github.com/axpdev-lab/aeroftp/issues/162) batch 2 (storage quota override, CLI vault parity, MEGA speed-test fix, compression telemetry columns); the next thread opens with the following cycle.
 - **COMMUNITY ROADMAP** (permanent): big features that need multi-day or multi-week scope. Stays open across releases. Priority is shaped by comments (mentioning the codename), not by per-section voting prompts. Find it [here](https://github.com/axpdev-lab/aeroftp/issues).
 
 Recent contributors include **[@EhudKirsh](https://github.com/EhudKirsh)**, whose detailed wishlists across multiple releases shaped the IntroHub polish, Activity Log filtering, OAuth Edit form parity, AeroFile auto-refresh, keyboard accessibility (Enter/Space activation, font-size shortcuts, terminal focus-aware Ctrl+- / Ctrl+= / Ctrl+0), the Choose Icon dialog, the detailed server cards with storage bar + Health Check radial, the GUI Mount Manager push that paid off in v3.7.1, and the v3.7.2 batch (per-column table alignment, sticky header, sentence-case headers, CLI profiles dynamic width, unified `--breakdown`, `--hide=fav` aliases, Esc-closes-Quick-Connect, grammatical Delete confirmation, modal X-click first time fix, T-TOPBAR-3-CLUSTER restructure, T-EDITOR-DRAG-RUN flow). **[@coolfocks](https://github.com/coolfocks)** raised the SFTP idle-reconnect issue (T-AUTO-RECONNECT-IDLE, #161) that ships in v3.7.2, and **[@legion1978](https://github.com/legion1978)** reported the Ctrl+T / Ctrl+S binding miss (#171) closed in the same release.
 
-Carry-over community items still open after the v3.7.2 cut:
+Carry-over community items still open after the v3.8.0 cut:
 
 - `T-PROTOCOL-COMPARISON-DOCS`: per-protocol comparison page in the docs site (API vs WebDAV qualitative trade-offs). Requires real test runs against each backend before the matrix can be written; carries over to v3.7.3.
-- `T-MANUAL-QUOTA`: optional `manualQuota` field per saved server for providers that do not expose `storage_info`. Filed for the v3.7.3 wishlist.
+- ~~`T-MANUAL-QUOTA`: optional manual total-storage cap per saved server for providers that do not expose `storage_info`.~~ Shipped in v3.8.0 as a TRUE override (`options.manualTotalBytes`, `--manual-total`) plus an explicit recursive used-storage scan.
 
 `T-EDITOR-DRAG-RUN` and `T-TOPBAR-3-CLUSTER` shipped in v3.7.2 (closed). Big-feature community items live in the COMMUNITY ROADMAP thread (`T-MULTI-USER`, `T-DUAL-PANEL-UNIFICATION`, `T-MOBILE-WINDOW`).
 

@@ -291,9 +291,9 @@ Create, manage, and browse encrypted containers that protect your files with a s
 
 > **Open format**: The `.aerovault` binary format is fully documented in the [AeroVault v2 Specification](docs/AEROVAULT-V2-SPEC.md) with implementation guides for Rust, Java, Python, Go, C, and JavaScript.
 
-**AeroVault v3 (Experimental, v3.7.9)**
+**AeroVault v3 (Beta, v3.8.0)**
 
-A draft container format that ships alongside v2 and is opt-in via the Experimental tier in the create dialog. v2 remains the default; there is no automatic v2 → v3 migration in this release.
+A draft container format that ships alongside v2 and is opt-in via the Beta tier in the create dialog. v2 remains the default in the GUI and there is no automatic v2 → v3 migration; the full lifecycle is scriptable from the CLI for every format (`aeroftp-cli vault create/add/info/extract`, `--vault-version v1|v2|v3` with header auto-detect, `--cascade` for the v2 paranoid mode, `--receipt` for the technical telemetry).
 
 | Component | Algorithm | Details |
 | --------- | --------- | ------- |
@@ -307,7 +307,7 @@ A draft container format that ships alongside v2 and is opt-in via the Experimen
 | **Header integrity** | HMAC-SHA512 | 1024-byte header, MAC verified before any key unwrap |
 | **Extension area** | Reserved | Extension directory + payload region for the future v4 ECC layer; v3 readers skip non-critical unknown entries, reject critical unknown entries |
 
-The wire layout, the wrapper IDs, and the forward-compat contract (`v3 + ECC = v4`, the v3 vault is byte-equivalent to "v4 with ECC turned off") are pinned in the [AeroVault v3 Specification (draft)](docs/AEROVAULT-V3-SPEC.md). Tracked in [issue #162](https://github.com/axpdev-lab/aeroftp/issues/162) section 4 / T-AEROVAULT-ECC. The v4 ECC layer (Reed-Solomon / Parchive blocks for single-bit-rot recovery on the encrypted chunks) is on the roadmap but not in v3.7.9.
+The wire layout, the wrapper IDs, and the forward-compat contract (`v3 + ECC = v4`, the v3 vault is byte-equivalent to "v4 with ECC turned off") are pinned in the [AeroVault v3 Specification (draft)](docs/AEROVAULT-V3-SPEC.md). Tracked in [issue #162](https://github.com/axpdev-lab/aeroftp/issues/162) section 4 / T-AEROVAULT-ECC. The v4 ECC layer (Reed-Solomon / Parchive blocks for single-bit-rot recovery on the encrypted chunks) is on the roadmap but not in v3.8.0.
 
 **Additional encryption features**:
 - **Overlay session model (v3.7.0)**: open an `.aerovault` once, then route every list/upload/download/rename through the encrypted overlay transparently. The provider sees only opaque vault chunks; the UI shows plaintext entries and folders. A status badge in the header marks when the overlay is active.
@@ -346,7 +346,7 @@ AeroFTP is built for both humans and AI agents. As agentic AI, computer use, and
 
 > [Full documentation →](https://docs.aeroftp.app/cli/installation.html)
 
-Production CLI sharing the same Rust backend as the GUI. 49 subcommands across 7 transport protocols and 25+ native provider integrations, encrypted vault profiles, JSON output, batch scripting, daemon mode with job queue, FUSE filesystem mounting, ncdu TUI explorer, zero-knowledge crypt overlay, and native MCP server mode for AI integration.
+Production CLI sharing the same Rust backend as the GUI. 49 subcommands across 7 transport protocols and 25+ native provider integrations, encrypted vault profiles, JSON output, batch scripting, daemon mode with job queue, FUSE filesystem mounting, ncdu TUI explorer, zero-knowledge crypt overlay, single-file AeroVault containers (`vault`, all formats v1/v2/v3), recursive used-storage scan (`df --scan`) with a manual total-cap override, and native MCP server mode for AI integration.
 
 ```bash
 aeroftp-cli ls --profile "My Server" /var/www/ -l        # Vault profile (no credentials exposed)
