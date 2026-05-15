@@ -195,6 +195,22 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
         return a === 'right' ? 'justify-end' : a === 'center' ? 'justify-center' : 'justify-start';
     };
 
+    // Optional, default-hidden compression columns (Ehud #162): fed by the
+    // aggregate written when an AeroVault op runs against this profile.
+    const lc = server.lastCompression;
+    const savedBytes = lc ? lc.plaintext - lc.compressed : undefined;
+    const compressionCells = {
+        saved: lc && savedBytes != null && savedBytes > 0 ? formatBytes(savedBytes) : '-',
+        savedpct: lc ? `${lc.ratio >= 10 ? Math.round(lc.ratio) : Math.round(lc.ratio * 10) / 10}%` : '-',
+    };
+    const compressionTitle = lc
+        ? t('introHub.table.columns.savedTitle', {
+            plaintext: formatBytes(lc.plaintext),
+            compressed: formatBytes(lc.compressed),
+            ratio: String(Math.round(lc.ratio * 10) / 10),
+        })
+        : t('introHub.storageQuotaUnavailable');
+
     const renderCell = (id: MyServersTableColId): React.ReactNode => {
         switch (id) {
             case 'index':
@@ -278,6 +294,10 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
                 return <td key="total" className={`${cellClass} ${alignTd('total', 'right')} text-[11px] text-gray-400 dark:text-gray-500 tabular-nums`} title={quotaTitle}>{quotaCells.total}</td>;
             case 'pct':
                 return <td key="pct" className={`${cellClass} ${alignTd('pct', 'right')} text-[11px] font-medium tabular-nums ${quotaCells.toneText}`} title={quotaTitle}>{quotaCells.pct}</td>;
+            case 'saved':
+                return <td key="saved" className={`${cellClass} ${alignTd('saved', 'right')} text-[11px] text-gray-500 dark:text-gray-400 tabular-nums`} title={compressionTitle}>{compressionCells.saved}</td>;
+            case 'savedpct':
+                return <td key="savedpct" className={`${cellClass} ${alignTd('savedpct', 'right')} text-[11px] text-gray-400 dark:text-gray-500 tabular-nums`} title={compressionTitle}>{compressionCells.savedpct}</td>;
             case 'paths':
                 return (
                     <td key="paths" className={`${cellClass} ${alignTd('paths', 'right')}`}>

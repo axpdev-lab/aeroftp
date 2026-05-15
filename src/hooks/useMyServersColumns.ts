@@ -18,6 +18,8 @@ export type MyServersTableColId =
     | 'used'
     | 'total'
     | 'pct'
+    | 'saved'
+    | 'savedpct'
     | 'paths'
     | 'time'
     | 'health'
@@ -47,6 +49,8 @@ export const MY_SERVERS_TABLE_COLUMNS: MyServersTableColumn[] = [
     { id: 'used', labelKey: 'introHub.table.columns.used', sortable: true, className: 'w-24 text-right tabular-nums' },
     { id: 'total', labelKey: 'introHub.table.columns.total', sortable: true, className: 'w-24 text-right tabular-nums' },
     { id: 'pct', labelKey: 'introHub.table.columns.pct', sortable: true, className: 'w-20 text-right tabular-nums' },
+    { id: 'saved', labelKey: 'introHub.table.columns.saved', sortable: false, className: 'w-24 text-right tabular-nums' },
+    { id: 'savedpct', labelKey: 'introHub.table.columns.savedPct', sortable: false, className: 'w-20 text-right tabular-nums' },
     { id: 'paths', labelKey: 'introHub.table.columns.paths', sortable: false, className: 'min-w-[220px] text-right' },
     { id: 'time', labelKey: 'introHub.table.columns.time', sortable: true, className: 'w-24 text-right tabular-nums' },
     { id: 'health', labelKey: 'introHub.table.columns.health', sortable: false, className: 'w-20 text-center' },
@@ -71,6 +75,8 @@ const TABLE_COLUMN_DEFS: TableColumnDef<MyServersTableColId>[] = [
     { id: 'used', labelKey: 'introHub.table.columns.used', sortable: true, defaultVisible: true, defaultWidth: 96, minWidth: 80, defaultAlign: 'right' },
     { id: 'total', labelKey: 'introHub.table.columns.total', sortable: true, defaultVisible: true, defaultWidth: 96, minWidth: 80, defaultAlign: 'right' },
     { id: 'pct', labelKey: 'introHub.table.columns.pct', sortable: true, defaultVisible: true, defaultWidth: 80, minWidth: 60, defaultAlign: 'right' },
+    { id: 'saved', labelKey: 'introHub.table.columns.saved', sortable: false, defaultVisible: false, defaultWidth: 96, minWidth: 72, defaultAlign: 'right' },
+    { id: 'savedpct', labelKey: 'introHub.table.columns.savedPct', sortable: false, defaultVisible: false, defaultWidth: 80, minWidth: 60, defaultAlign: 'right' },
     { id: 'paths', labelKey: 'introHub.table.columns.paths', sortable: false, defaultVisible: false, defaultWidth: 240, minWidth: 140, defaultAlign: 'right' },
     { id: 'time', labelKey: 'introHub.table.columns.time', sortable: true, defaultVisible: true, defaultWidth: 96, minWidth: 80, defaultAlign: 'right' },
     { id: 'health', labelKey: 'introHub.table.columns.health', sortable: false, defaultVisible: false, defaultWidth: 80, minWidth: 60, detailedOnly: true, defaultAlign: 'center' },

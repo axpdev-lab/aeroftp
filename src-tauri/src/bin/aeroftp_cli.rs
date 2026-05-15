@@ -4840,6 +4840,8 @@ enum ProfileColId {
     Used,
     Total,
     Pct,
+    Saved,
+    SavedPct,
     Paths,
     Time,
     Favorite,
@@ -4855,6 +4857,8 @@ impl ProfileColId {
             ProfileColId::Used => "Used",
             ProfileColId::Total => "Total",
             ProfileColId::Pct => "%",
+            ProfileColId::Saved => "Saved",
+            ProfileColId::SavedPct => "Saved%",
             ProfileColId::Paths => "Path",
             ProfileColId::Time => "Last",
             ProfileColId::Favorite => "Fav",
@@ -4877,6 +4881,10 @@ impl ProfileColId {
             "used" => Some(ProfileColId::Used),
             "total" => Some(ProfileColId::Total),
             "pct" | "%" | "percent" => Some(ProfileColId::Pct),
+            "saved" | "compression" | "compressed" => Some(ProfileColId::Saved),
+            "saved%" | "savedpct" | "saved_pct" | "savedpercent" | "ratio" => {
+                Some(ProfileColId::SavedPct)
+            }
             "path" | "paths" => Some(ProfileColId::Paths),
             "last" | "time" => Some(ProfileColId::Time),
             "fav" | "favorite" | "favourite" | "favs" => Some(ProfileColId::Favorite),
@@ -4893,6 +4901,8 @@ const PROFILE_COL_ORDER: &[ProfileColId] = &[
     ProfileColId::Used,
     ProfileColId::Total,
     ProfileColId::Pct,
+    ProfileColId::Saved,
+    ProfileColId::SavedPct,
     ProfileColId::Paths,
     ProfileColId::Time,
     ProfileColId::Favorite,
@@ -5210,7 +5220,14 @@ struct UiTableSettings {
 fn read_ui_table_settings(store: &CredentialStore) -> UiTableSettings {
     let mut out = UiTableSettings {
         thresholds: CliThresholds::default(),
-        hidden: [ProfileColId::Paths].iter().copied().collect(),
+        hidden: [
+            ProfileColId::Paths,
+            ProfileColId::Saved,
+            ProfileColId::SavedPct,
+        ]
+        .iter()
+        .copied()
+        .collect(),
         sort: None,
     };
 
@@ -5261,6 +5278,8 @@ fn read_ui_table_settings(store: &CredentialStore) -> UiTableSettings {
                 ProfileColId::Used => "used",
                 ProfileColId::Total => "total",
                 ProfileColId::Pct => "pct",
+                ProfileColId::Saved => "saved",
+                ProfileColId::SavedPct => "savedPct",
                 ProfileColId::Paths => "paths",
                 ProfileColId::Time => "time",
                 ProfileColId::Favorite => "favorite",
@@ -5271,8 +5290,16 @@ fn read_ui_table_settings(store: &CredentialStore) -> UiTableSettings {
                 }
                 Some(true) => {} // explicitly visible
                 None => {
-                    // Missing key: fall back to defaultVisibility().
-                    if matches!(col, ProfileColId::Paths) {
+                    // Missing key: fall back to defaultVisibility(). Paths
+                    // and the optional compression columns are hidden by
+                    // default (Ehud #162: opt-in via --show or the GUI
+                    // column picker).
+                    if matches!(
+                        col,
+                        ProfileColId::Paths
+                            | ProfileColId::Saved
+                            | ProfileColId::SavedPct
+                    ) {
                         out.hidden.insert(*col);
                     }
                 }
@@ -5508,6 +5535,24 @@ fn profile_quota_marker<'a>(p: &'a serde_json::Value, key: &str) -> Option<&'a s
         .and_then(|v| v.as_str())
 }
 
+/// Bytes saved by compression on the last AeroVault op against this profile
+/// (Ehud #162). `plaintext - compressed`; can be negative when a wrapper
+/// added overhead, so the caller decides how to render that.
+fn profile_saved_bytes(p: &serde_json::Value) -> Option<i64> {
+    let c = p.get("lastCompression")?;
+    let plain = c.get("plaintext").and_then(|v| v.as_u64())? as i64;
+    let comp = c.get("compressed").and_then(|v| v.as_u64())? as i64;
+    Some(plain - comp)
+}
+
+/// Percent saved by compression on the last AeroVault op against this
+/// profile (the telemetry `compression_ratio_pct`).
+fn profile_saved_pct(p: &serde_json::Value) -> Option<f64> {
+    p.get("lastCompression")
+        .and_then(|c| c.get("ratio"))
+        .and_then(|v| v.as_f64())
+}
+
 /// Compare two profiles for the requested column. Mirrors the comparators in
 /// `MyServersTable.tsx`. Profiles without the relevant data sort first in
 /// ascending order so the populated rows form a contiguous block.
@@ -5555,6 +5600,13 @@ fn compare_profiles(
         ProfileColId::Used => used(a).cmp(&used(b)),
         ProfileColId::Total => total(a).cmp(&total(b)),
         ProfileColId::Pct => match (pct(a), pct(b)) {
+            (Some(x), Some(y)) => x.partial_cmp(&y).unwrap_or(Ordering::Equal),
+            (Some(_), None) => Ordering::Greater,
+            (None, Some(_)) => Ordering::Less,
+            (None, None) => Ordering::Equal,
+        },
+        ProfileColId::Saved => profile_saved_bytes(a).cmp(&profile_saved_bytes(b)),
+        ProfileColId::SavedPct => match (profile_saved_pct(a), profile_saved_pct(b)) {
             (Some(x), Some(y)) => x.partial_cmp(&y).unwrap_or(Ordering::Equal),
             (Some(_), None) => Ordering::Greater,
             (None, Some(_)) => Ordering::Less,
@@ -5675,6 +5727,8 @@ fn list_vault_profiles(cli: &Cli, format: OutputFormat, overrides: ProfilesViewO
                         }),
                         _ => serde_json::Value::Null,
                     },
+                    "lastCompression": p.get("lastCompression").cloned()
+                        .unwrap_or(serde_json::Value::Null),
                 })
             })
             .collect();
@@ -5877,6 +5931,8 @@ fn render_profiles_text(
             ProfileColId::Used => used_width,
             ProfileColId::Total => total_width,
             ProfileColId::Pct => pct_width,
+            ProfileColId::Saved => used_width,
+            ProfileColId::SavedPct => c.header().chars().count().max(pct_width),
             ProfileColId::Time => last_width,
             ProfileColId::Favorite => fav_width,
             _ => 0,
@@ -5954,6 +6010,8 @@ fn render_profiles_text(
             ProfileColId::Used => used_width,
             ProfileColId::Total => total_width,
             ProfileColId::Pct => pct_width,
+            ProfileColId::Saved => used_width,
+            ProfileColId::SavedPct => c.header().chars().count().max(pct_width),
             ProfileColId::Paths => path_width.max(c.header().chars().count()),
             ProfileColId::Time => last_width,
             ProfileColId::Favorite => fav_width,
@@ -5970,6 +6028,8 @@ fn render_profiles_text(
             | ProfileColId::Used
             | ProfileColId::Total
             | ProfileColId::Pct
+            | ProfileColId::Saved
+            | ProfileColId::SavedPct
             | ProfileColId::Time => format!("{:>w$}", label, w = w),
             ProfileColId::Favorite => format!("{:^w$}", label, w = w),
             _ => format!("{:<w$}", label, w = w),
@@ -6032,6 +6092,20 @@ fn render_profiles_text(
                     };
                     let padded = format!("{:>w$}", raw, w = w);
                     paint_tone(&padded, tone, color_on)
+                }
+                ProfileColId::Saved => {
+                    let s = match profile_saved_bytes(p) {
+                        Some(b) if b > 0 => format_size(b as u64),
+                        _ => "-".to_string(),
+                    };
+                    format!("{:>w$}", s, w = w)
+                }
+                ProfileColId::SavedPct => {
+                    let raw = match profile_saved_pct(p) {
+                        Some(r) => format!("{:>5.1}%", r),
+                        None => format!("{:>6}", "-"),
+                    };
+                    format!("{:>w$}", raw, w = w)
                 }
                 ProfileColId::Paths => {
                     let path = p.get("initialPath").and_then(|v| v.as_str()).unwrap_or("/");
@@ -17640,6 +17714,44 @@ fn persist_scanned_quota_to_profile(
             q.insert("totalSource".into(), serde_json::json!(src));
         }
         p.insert("lastQuota".into(), serde_json::Value::Object(q));
+    }
+    if let Ok(serialized) = serde_json::to_string(&profiles) {
+        let _ = store.store("config_server_profiles", &serialized);
+    }
+}
+
+/// Persist the aggregate compression telemetry of a vault op into the
+/// profile selected with the global `--profile` (Ehud #162), so the
+/// optional "Saved"/"Saved%" columns in `profiles` and the GUI My Servers
+/// table populate without re-running the op. Best-effort and no-op when
+/// `--profile` is unset: URL-mode runs and vault failures simply skip it.
+fn persist_compression_to_profile(
+    cli: &Cli,
+    plaintext: u64,
+    compressed: u64,
+    ratio: f64,
+) {
+    let Some(profile_name) = cli.profile.as_ref() else {
+        return;
+    };
+    let Ok(store) = open_vault(cli) else { return };
+    let Ok(raw) = store.get("config_server_profiles") else {
+        return;
+    };
+    let Ok(mut profiles): Result<Vec<serde_json::Value>, _> = serde_json::from_str(&raw) else {
+        return;
+    };
+    let Ok(idx) = resolve_profile_selector(&profiles, profile_name) else {
+        return;
+    };
+    let now = chrono::Utc::now().to_rfc3339();
+    if let Some(serde_json::Value::Object(p)) = profiles.get_mut(idx) {
+        let mut c = serde_json::Map::new();
+        c.insert("plaintext".into(), serde_json::json!(plaintext));
+        c.insert("compressed".into(), serde_json::json!(compressed));
+        c.insert("ratio".into(), serde_json::json!(ratio));
+        c.insert("at".into(), serde_json::json!(now));
+        p.insert("lastCompression".into(), serde_json::Value::Object(c));
     }
     if let Ok(serialized) = serde_json::to_string(&profiles) {
         let _ = store.store("config_server_profiles", &serialized);
@@ -33633,6 +33745,14 @@ async fn main() {
                                     // Behind-the-scenes log to stderr
                                     // (stdout stays clean JSON for piping).
                                     eprintln!("{}", rep.render_text());
+                                    // Tie the aggregate to --profile (Ehud
+                                    // #162): no-op when --profile is unset.
+                                    persist_compression_to_profile(
+                                        &cli,
+                                        rep.plaintext_bytes,
+                                        rep.compressed_bytes,
+                                        rep.compression_ratio_pct,
+                                    );
                                     if let Some(rpath) = receipt {
                                         match serde_json::to_string_pretty(rep) {
                                             Ok(j) => {
@@ -33690,6 +33810,26 @@ async fn main() {
                         };
                         match res {
                             Ok(value) => {
+                                // v2/v1 embed the VaultReport in the result.
+                                // Tie the aggregate to --profile (Ehud #162);
+                                // no-op when --profile is unset.
+                                if let Some(rep) = value.get("report") {
+                                    let pt = rep
+                                        .get("plaintext_bytes")
+                                        .and_then(|v| v.as_u64())
+                                        .unwrap_or(0);
+                                    let cb = rep
+                                        .get("compressed_bytes")
+                                        .and_then(|v| v.as_u64())
+                                        .unwrap_or(0);
+                                    let rt = rep
+                                        .get("compression_ratio_pct")
+                                        .and_then(|v| v.as_f64())
+                                        .unwrap_or(0.0);
+                                    persist_compression_to_profile(
+                                        &cli, pt, cb, rt,
+                                    );
+                                }
                                 if let Some(rpath) = receipt {
                                     if let Ok(j) =
                                         serde_json::to_string_pretty(&value)
