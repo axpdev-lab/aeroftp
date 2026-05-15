@@ -6228,6 +6228,219 @@ pub async fn provider_cancel_folder_size() -> Result<(), String> {
     Ok(())
 }
 
+static USED_SCAN_CANCEL: AtomicBool = AtomicBool::new(false);
+
+/// Result of the explicit "used storage" scan (item 4b).
+#[derive(Clone, Serialize)]
+pub struct UsedScanResult {
+    pub used: u64,
+    pub file_count: u64,
+    pub dir_count: u64,
+    pub truncated: bool,
+    pub method: String,
+}
+
+/// Progress payload emitted on `used-scan-progress` while the scan runs.
+#[derive(Clone, Serialize)]
+pub struct UsedScanProgress {
+    pub used: u64,
+    pub file_count: u64,
+    pub scanning: bool,
+}
+
+/// Explicit recursive "used storage" scan for the connected provider
+/// (item 4b). Shares `used_scan::scan_used_bytes` with the CLI so the
+/// method (S3 flat listing, WebDAV Depth:infinity, generic BFS) and caps
+/// are identical. NEVER called automatically: the GUI "Calculate used
+/// storage" action invokes it. Persisting the figure into the profile's
+/// lastQuota is done frontend-side (same path as the cached API quota).
+#[tauri::command]
+pub async fn provider_scan_used(
+    state: State<'_, ProviderState>,
+    app: AppHandle,
+    path: String,
+) -> Result<UsedScanResult, String> {
+    USED_SCAN_CANCEL.store(false, Ordering::Relaxed);
+
+    const MAX_DEPTH: usize = 100;
+    const MAX_ENTRIES: u64 = 500_000;
+    let root = if path.trim().is_empty() {
+        "/".to_string()
+    } else {
+        path
+    };
+
+    let emit_progress = |files: u64, bytes: u64, scanning: bool| {
+        let _ = app.emit(
+            "used-scan-progress",
+            UsedScanProgress {
+                used: bytes,
+                file_count: files,
+                scanning,
+            },
+        );
+    };
+
+    // --- Single-shot specializations (one short lock each) -------------
+    // S3: flat ListObjectsV2; WebDAV: PROPFIND Depth:infinity. These are a
+    // single request, so holding the lock briefly does not freeze the UI.
+    {
+        let mut guard = state.provider.lock().await;
+        let provider = guard
+            .as_mut()
+            .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+        if let Some(s3) = provider
+            .as_any_mut()
+            .downcast_mut::<crate::providers::S3Provider>()
+        {
+            let entries = s3
+                .list_recursive(&root)
+                .await
+                .map_err(|e| format!("Used-storage scan failed: {}", e))?;
+            let mut used = 0u64;
+            let mut files = 0u64;
+            let mut dirs = 0u64;
+            let mut truncated = false;
+            for e in entries {
+                if e.is_dir {
+                    dirs += 1;
+                    continue;
+                }
+                if files >= MAX_ENTRIES {
+                    truncated = true;
+                    break;
+                }
+                used = used.saturating_add(e.size);
+                files += 1;
+            }
+            emit_progress(files, used, false);
+            return Ok(UsedScanResult {
+                used,
+                file_count: files,
+                dir_count: dirs,
+                truncated,
+                method: "s3-list-recursive".to_string(),
+            });
+        }
+
+        if let Some(dav) = provider
+            .as_any_mut()
+            .downcast_mut::<crate::providers::WebDavProvider>()
+        {
+            if let Ok(entries) = dav.list_recursive(&root).await {
+                let mut used = 0u64;
+                let mut files = 0u64;
+                let mut dirs = 0u64;
+                let mut truncated = false;
+                for e in entries {
+                    if e.is_dir {
+                        dirs += 1;
+                        continue;
+                    }
+                    if files >= MAX_ENTRIES {
+                        truncated = true;
+                        break;
+                    }
+                    used = used.saturating_add(e.size);
+                    files += 1;
+                }
+                // Some servers (CloudMe, DriveHQ, jianguoyun) answer 207 to
+                // Depth:infinity without recursing (only the requested
+                // collection, maybe its immediate subdirs), so files==0
+                // even though the tree has files. Trust infinity ONLY when
+                // it actually found files; otherwise fall through to the
+                // per-directory BFS, which returns the true figure (a
+                // genuinely file-less tree also yields 0 via BFS).
+                if files > 0 {
+                    emit_progress(files, used, false);
+                    return Ok(UsedScanResult {
+                        used,
+                        file_count: files,
+                        dir_count: dirs,
+                        truncated,
+                        method: "webdav-infinity".to_string(),
+                    });
+                }
+            }
+            // infinity rejected/limited/non-recursive: fall through to BFS.
+        }
+    }
+
+    // --- Generic BFS: re-lock the provider per directory ---------------
+    // Mirrors provider_calculate_folder_size so cancel stays responsive
+    // and other remote operations on this session can interleave instead
+    // of blocking for the whole (possibly huge) walk.
+    let mut used = 0u64;
+    let mut file_count = 0u64;
+    let mut dir_count = 0u64;
+    let mut truncated = false;
+    let mut queue: Vec<(String, usize)> = vec![(root.clone(), 0)];
+    let mut last_emit = std::time::Instant::now()
+        .checked_sub(std::time::Duration::from_millis(400))
+        .unwrap_or_else(std::time::Instant::now);
+
+    while let Some((dir, depth)) = queue.pop() {
+        if USED_SCAN_CANCEL.load(Ordering::Relaxed) {
+            truncated = true;
+            break;
+        }
+        if depth >= MAX_DEPTH || (file_count + dir_count) >= MAX_ENTRIES {
+            truncated = true;
+            continue;
+        }
+        let entries = {
+            let mut guard = state.provider.lock().await;
+            let provider = guard
+                .as_mut()
+                .ok_or_else(|| "Not connected to any provider".to_string())?;
+            match provider.list(&dir).await {
+                Ok(e) => e,
+                Err(e) => {
+                    // A single unreadable directory must not abort the
+                    // whole figure: the result is a lower bound.
+                    tracing::warn!("[provider_scan_used] failed to list {}: {}", dir, e);
+                    truncated = true;
+                    continue;
+                }
+            }
+        };
+        for entry in entries {
+            if entry.is_dir {
+                dir_count += 1;
+                queue.push((entry.path.clone(), depth + 1));
+            } else {
+                if file_count >= MAX_ENTRIES {
+                    truncated = true;
+                    break;
+                }
+                used = used.saturating_add(entry.size);
+                file_count += 1;
+            }
+        }
+        if last_emit.elapsed() >= std::time::Duration::from_millis(250) {
+            emit_progress(file_count, used, true);
+            last_emit = std::time::Instant::now();
+        }
+    }
+
+    emit_progress(file_count, used, false);
+    Ok(UsedScanResult {
+        used,
+        file_count,
+        dir_count,
+        truncated,
+        method: "bfs".to_string(),
+    })
+}
+
+/// Cancel an in-progress used-storage scan.
+#[tauri::command]
+pub async fn provider_cancel_used_scan() -> Result<(), String> {
+    USED_SCAN_CANCEL.store(true, Ordering::Relaxed);
+    Ok(())
+}
+
 // ── GitHub-specific commands ──────────────────────────────────────
 
 /// List all branches of the connected GitHub repository

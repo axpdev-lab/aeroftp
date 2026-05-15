@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { useState, useEffect } from 'react';
-import { Globe, HardDrive, Wifi, WifiOff, Code, FolderSync, Cloud, ArrowUpDown, ScrollText, Download, Bug, FolderOpen, Bot, AlertTriangle, ShieldCheck, Loader2 } from 'lucide-react';
+import { Globe, HardDrive, Wifi, WifiOff, Code, FolderSync, Cloud, ArrowUpDown, ScrollText, Download, Bug, FolderOpen, Bot, AlertTriangle, ShieldCheck, Loader2, Calculator, X } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { formatBytes } from '../utils/formatters';
 import {
@@ -20,6 +20,9 @@ interface StorageQuota {
     used: number;
     total: number;
     free: number;
+    /** Files counted by the last explicit scan (item 4b), shown next to the
+     *  byte figure so the user can sanity-check the result. */
+    files?: number;
 }
 
 interface StatusBarProps {
@@ -60,6 +63,10 @@ interface StatusBarProps {
     onReopenTransferToast?: () => void;
     onToggleActivityLog?: () => void;
     onShowUpdateToast?: () => void;
+    // Item 4b: explicit "used storage" scan for no-quota backends.
+    onScanUsed?: () => void;
+    onCancelUsedScan?: () => void;
+    usedScanStatus?: { running: boolean; files: number; bytes: number } | null;
 }
 
 export const StatusBar: React.FC<StatusBarProps> = ({
@@ -100,6 +107,9 @@ export const StatusBar: React.FC<StatusBarProps> = ({
     connectionSecurity,
     secureProtocol,
     swapPanels = false,
+    onScanUsed,
+    onCancelUsedScan,
+    usedScanStatus,
 }) => {
     const t = useTranslation();
     const { thresholds: quotaThresholds } = useStorageThresholds();
@@ -217,8 +227,19 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                 {isConnected && storageQuota && storageQuota.total > 0 && (() => {
                     const { tone } = getStorageTone(storageQuota.used, storageQuota.total, quotaThresholds);
                     const pct = Math.min(100, (storageQuota.used / storageQuota.total) * 100);
+                    // The whole quota chip is a click target to FORCE a fresh
+                    // recursive scan (item 4b). Without this a stale cached
+                    // figure stayed stuck because the standalone scan action
+                    // only appeared when no value was shown at all.
+                    const canScan = !!onScanUsed && !usedScanStatus?.running;
+                    const baseTitle = `${formatBytes(storageQuota.used)} / ${formatBytes(storageQuota.total)}${storageQuota.files != null ? ` · ${storageQuota.files} ${t('browser.files')}` : ''}`;
                     return (
-                        <div className="flex items-center gap-1.5" title={`${formatBytes(storageQuota.used)} / ${formatBytes(storageQuota.total)}`}>
+                        <button
+                            type="button"
+                            onClick={canScan ? onScanUsed : undefined}
+                            className={`flex items-center gap-1.5 ${canScan ? 'cursor-pointer hover:opacity-80' : 'cursor-default'}`}
+                            title={canScan ? `${baseTitle} · ${t('statusBar.usedScanHint')}` : baseTitle}
+                        >
                             <HardDrive size={12} className={TONE_TEXT_CLASS[tone]} />
                             <div className="w-20 h-1.5 bg-gray-300 dark:bg-gray-600 rounded-full overflow-hidden">
                                 <div
@@ -226,19 +247,68 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                                     style={{ width: `${pct}%` }}
                                 />
                             </div>
-                            <span className="text-[10px]">{formatBytes(storageQuota.used)} / {formatBytes(storageQuota.total)}</span>
-                        </div>
+                            <span className="text-[10px]">
+                                {formatBytes(storageQuota.used)} / {formatBytes(storageQuota.total)}
+                                {storageQuota.files != null && <span className="text-gray-400 dark:text-gray-500"> · {storageQuota.files} {t('browser.files')}</span>}
+                            </span>
+                        </button>
                     );
                 })()}
 
-                {isConnected && storageQuota && storageQuota.total === 0 && storageQuota.used > 0 && (
-                    <div className="flex items-center gap-1.5" title={`${formatBytes(storageQuota.used)} ${t('statusBar.usedNoCap')}`}>
-                        <HardDrive size={12} className="text-emerald-500" />
-                        <div className="w-20 h-1.5 bg-gray-300 dark:bg-gray-600 rounded-full overflow-hidden">
-                            <div className="h-full w-full rounded-full bg-emerald-500/60" />
-                        </div>
-                        <span className="text-[10px]">{formatBytes(storageQuota.used)}</span>
+                {isConnected && storageQuota && storageQuota.total === 0 && storageQuota.used > 0 && (() => {
+                    const canScan = !!onScanUsed && !usedScanStatus?.running;
+                    const baseTitle = `${formatBytes(storageQuota.used)} ${t('statusBar.usedNoCap')}${storageQuota.files != null ? ` · ${storageQuota.files} ${t('browser.files')}` : ''}`;
+                    return (
+                        <button
+                            type="button"
+                            onClick={canScan ? onScanUsed : undefined}
+                            className={`flex items-center gap-1.5 ${canScan ? 'cursor-pointer hover:opacity-80' : 'cursor-default'}`}
+                            title={canScan ? `${baseTitle} · ${t('statusBar.usedScanHint')}` : baseTitle}
+                        >
+                            <HardDrive size={12} className="text-emerald-500" />
+                            <div className="w-20 h-1.5 bg-gray-300 dark:bg-gray-600 rounded-full overflow-hidden">
+                                <div className="h-full w-full rounded-full bg-emerald-500/60" />
+                            </div>
+                            <span className="text-[10px]">
+                                {formatBytes(storageQuota.used)}
+                                {storageQuota.files != null && <span className="text-gray-400 dark:text-gray-500"> · {storageQuota.files} {t('browser.files')}</span>}
+                            </span>
+                        </button>
+                    );
+                })()}
+
+                {/* Item 4b: explicit "used storage" scan trigger. Shown when
+                    connected to a backend with no usable quota bar yet
+                    (no-quota S3/WebDAV/FTP, or B2 before a manual cap). */}
+                {isConnected && onScanUsed && usedScanStatus?.running && (
+                    <div className="flex items-center gap-1.5" title={t('statusBar.usedScanRunning')}>
+                        <Loader2 size={12} className="text-blue-500 animate-spin" />
+                        <span className="text-[10px] tabular-nums">
+                            {usedScanStatus.files} · {formatBytes(usedScanStatus.bytes)}
+                        </span>
+                        {onCancelUsedScan && (
+                            <button
+                                type="button"
+                                onClick={onCancelUsedScan}
+                                className="text-gray-400 hover:text-red-500"
+                                title={t('common.cancel')}
+                            >
+                                <X size={11} />
+                            </button>
+                        )}
                     </div>
+                )}
+                {isConnected && onScanUsed && !usedScanStatus?.running
+                    && (!storageQuota || (storageQuota.total <= 0 && storageQuota.used <= 0)) && (
+                    <button
+                        type="button"
+                        onClick={onScanUsed}
+                        className="flex items-center gap-1 text-[10px] text-gray-500 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-400"
+                        title={t('statusBar.usedScanHint')}
+                    >
+                        <Calculator size={12} />
+                        <span>{t('statusBar.usedScanAction')}</span>
+                    </button>
                 )}
 
                 {swapPanels ? (

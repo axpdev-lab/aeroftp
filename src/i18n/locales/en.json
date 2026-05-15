@@ -1177,6 +1177,8 @@
       "manualTotalStorage": "Total storage (manual)",
       "manualTotalStoragePlaceholder": "e.g. 10 GB, 500 GB, 2 TB",
       "manualTotalStorageHint": "Optional. Plan/account cap for backends with no quota API (FTP, S3, WebDAV) or that report only used space (Backblaze B2). The provider's own total always takes precedence.",
+      "autoScanUsedOnConnect": "Calculate used storage on connect",
+      "autoScanUsedOnConnectHint": "Only for backends with no used-space API (FTP, S3, WebDAV). Off by default: a large tree (e.g. a web project) is walked recursively, which can be slow. Otherwise use the StatusBar action on demand.",
       "localPathPlaceholder": "/home/user/projects",
       "logoutOnDisconnect": "Logout on disconnect",
       "logoutOnDisconnectDesc": "Terminate MEGAcmd session when closing connection",
@@ -3144,7 +3146,15 @@
       "insecureConnectionUnencrypted": "This connection is not encrypted. Credentials are sent in plain text.",
       "secureConnection": "Secure",
       "secureConnectionTitle": "Encrypted connection via {protocol}",
-      "usedNoCap": "used (no quota cap)"
+      "usedNoCap": "used (no quota cap)",
+      "usedScanAction": "Calculate used storage",
+      "usedScanHint": "Recursively scan the tree to compute used space. Combined with a manual total it shows used/total/%. Runs only when you trigger it.",
+      "usedScanRunning": "Scanning used storage...",
+      "usedScanDone": "Used storage calculated",
+      "usedScanDoneDetail": "{used} across {files} files",
+      "usedScanTruncated": "partial: scan limit reached",
+      "usedScanFailed": "Used-storage scan failed",
+      "usedScanEmpty": "Scan of {path} found no files; the cached figure was kept. Check the path or the server's recursive-listing support."
     },
     "support": {
       "buyMeACoffee": "Buy Me a Coffee",

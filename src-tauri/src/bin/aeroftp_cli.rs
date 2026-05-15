@@ -788,6 +788,17 @@ enum Commands {
         /// Server URL (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
+        /// Compute "used" by recursively scanning the tree (item 4b).
+        /// Needed for backends with no quota API (FTP/S3/WebDAV): combined
+        /// with an API or manual total it yields used/total/%. Never run
+        /// automatically; this is the explicit opt-in.
+        #[arg(long)]
+        scan: bool,
+        /// With --scan, scan from the account root instead of the
+        /// profile's initial path. Slower; may hit the entry cap on large
+        /// accounts.
+        #[arg(long, requires = "scan")]
+        full: bool,
     },
     /// Show detailed server info, account, and storage quota
     About {
@@ -5447,18 +5458,19 @@ fn profile_effective_used(p: &serde_json::Value) -> Option<u64> {
 }
 
 /// Effective `total` for a saved profile under the single rule shared with
-/// the GUI (item 4a): the cached API total wins; when it is absent/zero the
-/// user's `options.manualTotalBytes` override is used so the bar/columns
-/// render for backends with no quota API (FTP/S3/WebDAV) and B2.
+/// the GUI (item 4a): a user-set `options.manualTotalBytes` is a TRUE
+/// override and wins even over a cached API total (SFTP statfs reports the
+/// whole disk, not the user's allotment). Without a manual value the
+/// cached API total is used; else nothing.
+fn profile_manual_total(p: &serde_json::Value) -> Option<u64> {
+    p.get("options")
+        .and_then(|o| o.get("manualTotalBytes"))
+        .and_then(json_u64_flexible)
+        .filter(|&t| t > 0)
+}
+
 fn profile_effective_total(p: &serde_json::Value) -> Option<u64> {
-    match profile_api_total(p) {
-        Some(t) if t > 0 => Some(t),
-        _ => p
-            .get("options")
-            .and_then(|o| o.get("manualTotalBytes"))
-            .and_then(json_u64_flexible)
-            .filter(|&t| t > 0),
-    }
+    profile_manual_total(p).or_else(|| profile_api_total(p).filter(|&t| t > 0))
 }
 
 /// The cached API total only, ignoring any manual override.
@@ -5466,6 +5478,16 @@ fn profile_api_total(p: &serde_json::Value) -> Option<u64> {
     p.get("lastQuota")
         .and_then(|q| q.get("total"))
         .and_then(|v| v.as_u64())
+}
+
+/// Read a stored `lastQuota` provenance marker ("totalSource" or
+/// "usedSource") written by the GUI (item 4a) or the CLI scan (item 4b).
+/// Preferred over re-deriving the source from the numbers, which cannot
+/// tell a manual cap baked into `total` apart from a real API total.
+fn profile_quota_marker<'a>(p: &'a serde_json::Value, key: &str) -> Option<&'a str> {
+    p.get("lastQuota")
+        .and_then(|q| q.get(key))
+        .and_then(|v| v.as_str())
 }
 
 /// Compare two profiles for the requested column. Mirrors the comparators in
@@ -5598,11 +5620,22 @@ fn list_vault_profiles(cli: &Cli, format: OutputFormat, overrides: ProfilesViewO
                 );
                 let used = profile_effective_used(p);
                 let total = profile_effective_total(p);
-                let total_source = match (profile_api_total(p), total) {
-                    (Some(a), _) if a > 0 => "api",
-                    (_, Some(t)) if t > 0 => "manual",
-                    _ => "none",
-                };
+                // Honor the provenance the GUI/scan persisted; only fall
+                // back to the numeric heuristic when none was stored (older
+                // profiles, API-only quota).
+                let total_source = profile_quota_marker(p, "totalSource").unwrap_or({
+                    if profile_manual_total(p).is_some() {
+                        "manual"
+                    } else if matches!(profile_api_total(p), Some(a) if a > 0) {
+                        "api"
+                    } else if matches!(total, Some(t) if t > 0) {
+                        "manual"
+                    } else {
+                        "none"
+                    }
+                });
+                let used_source = profile_quota_marker(p, "usedSource");
+                let used_at = profile_quota_marker(p, "used_at");
                 serde_json::json!({
                     "id": id,
                     "name": p.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed"),
@@ -5619,6 +5652,8 @@ fn list_vault_profiles(cli: &Cli, format: OutputFormat, overrides: ProfilesViewO
                             "used": u,
                             "total": t,
                             "totalSource": total_source,
+                            "usedSource": used_source,
+                            "used_at": used_at,
                         }),
                         _ => serde_json::Value::Null,
                     },
@@ -17552,22 +17587,196 @@ fn resolve_profile_manual_total(cli: &Cli) -> Option<u64> {
         .filter(|&t| t > 0)
 }
 
-async fn cmd_df(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
+/// Persist a scanned `used` figure into the active `--profile`'s
+/// `lastQuota` (item 4b) so the GUI My Servers card/row, `profiles` and a
+/// later `df` show it without rescanning. Best-effort: URL-mode runs and
+/// vault failures simply skip persistence.
+fn persist_scanned_quota_to_profile(
+    cli: &Cli,
+    used: u64,
+    total: u64,
+    total_source: Option<&str>,
+) {
+    let Some(profile_name) = cli.profile.as_ref() else {
+        return;
+    };
+    let Ok(store) = open_vault(cli) else { return };
+    let Ok(raw) = store.get("config_server_profiles") else {
+        return;
+    };
+    let Ok(mut profiles): Result<Vec<serde_json::Value>, _> = serde_json::from_str(&raw) else {
+        return;
+    };
+    let Ok(idx) = resolve_profile_selector(&profiles, profile_name) else {
+        return;
+    };
+    let now = chrono::Utc::now().to_rfc3339();
+    if let Some(serde_json::Value::Object(p)) = profiles.get_mut(idx) {
+        let mut q = serde_json::Map::new();
+        q.insert("used".into(), serde_json::json!(used));
+        q.insert("total".into(), serde_json::json!(total));
+        q.insert("fetched_at".into(), serde_json::json!(now));
+        q.insert("usedSource".into(), serde_json::json!("scan"));
+        q.insert("used_at".into(), serde_json::json!(now));
+        if let Some(src) = total_source {
+            q.insert("totalSource".into(), serde_json::json!(src));
+        }
+        p.insert("lastQuota".into(), serde_json::Value::Object(q));
+    }
+    if let Ok(serialized) = serde_json::to_string(&profiles) {
+        let _ = store.store("config_server_profiles", &serialized);
+    }
+}
+
+async fn cmd_df(url: &str, scan: bool, full: bool, cli: &Cli, format: OutputFormat) -> i32 {
     let manual_total = resolve_profile_manual_total(cli);
-    let (mut provider, _) = match create_and_connect(url, cli, format).await {
+    let (mut provider, resolved_path) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
         Err(code) => return code,
     };
 
+    if scan {
+        let root = if full || resolved_path.trim().is_empty() {
+            "/".to_string()
+        } else {
+            resolved_path.clone()
+        };
+
+        // An API total still wins for the cap even in scan mode; the scan
+        // only ever supplies `used`. storage_info erroring is expected for
+        // the no-quota backends this targets, so it is non-fatal.
+        let api_total = provider
+            .storage_info()
+            .await
+            .ok()
+            .map(|i| i.total)
+            .filter(|t| *t > 0);
+        // Manual cap is a true override: it wins even over an API total.
+        let (eff_total, total_source) = match (manual_total, api_total) {
+            (Some(m), _) => (m, Some("manual")),
+            (None, Some(t)) => (t, Some("api")),
+            (None, None) => (0u64, None),
+        };
+
+        let cancel = std::sync::Arc::new(AtomicBool::new(false));
+        let cancel_sig = cancel.clone();
+        tokio::spawn(async move {
+            let _ = shutdown_signal().await;
+            cancel_sig.store(true, Ordering::Relaxed);
+        });
+
+        let spinner = create_spinner(&format!("Scanning {} for used storage...", root));
+        let scan_depth = cli.max_depth.map(|d| d as usize).unwrap_or(MAX_SCAN_DEPTH);
+        let mut last_tick = Instant::now()
+            .checked_sub(std::time::Duration::from_millis(400))
+            .unwrap_or_else(Instant::now);
+        let result = ftp_client_gui_lib::used_scan::scan_used_bytes(
+            &mut provider,
+            &root,
+            scan_depth,
+            MAX_SCAN_ENTRIES,
+            &cancel,
+            |files, bytes| {
+                if last_tick.elapsed() >= std::time::Duration::from_millis(300) {
+                    spinner.set_message(format!(
+                        "Scanning... {} files, {} so far",
+                        files,
+                        format_size(bytes)
+                    ));
+                    last_tick = Instant::now();
+                }
+            },
+        )
+        .await;
+        spinner.finish_and_clear();
+
+        match result {
+            Ok(s) => {
+                let used = s.used_bytes;
+                let pct = if eff_total > 0 {
+                    (used as f64 / eff_total as f64) * 100.0
+                } else {
+                    0.0
+                };
+                let scope = if full { "account-root" } else { "initial-path" };
+                if cli.profile.is_some() {
+                    persist_scanned_quota_to_profile(cli, used, eff_total, total_source);
+                }
+                match format {
+                    OutputFormat::Text => {
+                        println!("Storage usage (scanned):");
+                        println!(
+                            "  Used:  {} ({} files via {}{})",
+                            format_size(used),
+                            s.file_count,
+                            s.method,
+                            if s.truncated { ", TRUNCATED" } else { "" }
+                        );
+                        if eff_total > 0 {
+                            let label = if total_source == Some("manual") {
+                                " (manual)"
+                            } else {
+                                ""
+                            };
+                            println!("  Total: {}{}", format_size(eff_total), label);
+                            let bar_width: usize = 40;
+                            let filled =
+                                (((pct.min(100.0)) / 100.0) * bar_width as f64) as usize;
+                            let empty = bar_width.saturating_sub(filled);
+                            println!(
+                                "  [{}{}] {:.1}%",
+                                "━".repeat(filled),
+                                "─".repeat(empty),
+                                pct
+                            );
+                        } else {
+                            println!(
+                                "  Total: unmetered (set a manual cap in the profile to show %)"
+                            );
+                        }
+                        eprintln!("  Scope: {} ({})", scope, root);
+                    }
+                    OutputFormat::Json => {
+                        print_json(&serde_json::json!({
+                            "status": "ok",
+                            "scanned": true,
+                            "used": used,
+                            "total": eff_total,
+                            "used_percent": pct,
+                            "total_source": total_source,
+                            "scan_method": s.method,
+                            "scan_files": s.file_count,
+                            "scan_dirs": s.dir_count,
+                            "scan_truncated": s.truncated,
+                            "scan_scope": scope,
+                            "scan_root": root,
+                        }));
+                    }
+                }
+                let _ = provider.disconnect().await;
+                return 0;
+            }
+            Err(e) => {
+                print_error(
+                    format,
+                    &format!("df --scan failed: {}", e),
+                    provider_error_to_exit_code(&e),
+                );
+                let _ = provider.disconnect().await;
+                return provider_error_to_exit_code(&e);
+            }
+        }
+    }
+
     match provider.storage_info().await {
         Ok(info) => {
-            // Single effective-quota rule (item 4a): the provider total wins;
-            // otherwise fall back to the profile's manual override so the
-            // figure/% render for B2 and no-quota S3/WebDAV/FTP profiles.
-            let (eff_total, total_source) = if info.total > 0 {
-                (info.total, Some("api"))
-            } else if let Some(mt) = manual_total {
+            // Single effective-quota rule (item 4a): a user-set manual cap
+            // is a TRUE override and wins even over the provider total
+            // (SFTP statfs = whole disk, not the user's allotment).
+            let (eff_total, total_source) = if let Some(mt) = manual_total {
                 (mt, Some("manual"))
+            } else if info.total > 0 {
+                (info.total, Some("api"))
             } else {
                 (0u64, None)
             };
@@ -28767,7 +28976,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     Ok(u) => u,
                     Err(code) => return code,
                 };
-                exit_code = cmd_df(&url, cli, format).await;
+                exit_code = cmd_df(&url, false, false, cli, format).await;
                 if let Some(code) = check_exit(
                     exit_code,
                     line_num,
@@ -32908,7 +33117,7 @@ async fn main() {
             };
             cmd_find(u, p, pat, *files_only, *dirs_only, *limit, &cli, format).await
         }
-        Commands::Df { url } => cmd_df(url, &cli, format).await,
+        Commands::Df { url, scan, full } => cmd_df(url, *scan, *full, &cli, format).await,
         Commands::Tree { url, path, depth } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str())
@@ -33935,15 +34144,21 @@ mod tests {
     }
 
     #[test]
-    fn profile_effective_total_prefers_api_then_manual() {
-        // API total present and non-zero: manual override ignored.
+    fn profile_effective_total_manual_is_a_true_override() {
+        // Manual cap set: it WINS even when the API also reports a total
+        // (SFTP statfs = whole disk, not the user's allotment).
         let api = json!({
             "lastQuota": { "used": 100, "total": 2_000 },
             "options": { "manualTotalBytes": 9_999 }
         });
-        assert_eq!(profile_effective_total(&api), Some(2_000));
+        assert_eq!(profile_effective_total(&api), Some(9_999));
+        assert_eq!(profile_manual_total(&api), Some(9_999));
         assert_eq!(profile_api_total(&api), Some(2_000));
         assert_eq!(profile_effective_used(&api), Some(100));
+
+        // API total, no manual: API total used (unchanged behaviour).
+        let api_only = json!({ "lastQuota": { "used": 10, "total": 2_000 }, "options": {} });
+        assert_eq!(profile_effective_total(&api_only), Some(2_000));
 
         // No API total (B2 / no-quota S3/WebDAV/FTP): manual override wins.
         let manual = json!({

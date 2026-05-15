@@ -481,7 +481,9 @@ const App: React.FC = () => {
   const [showRemotePanel, setShowRemotePanel] = useState(true);
   const [previewPanelWidth, setPreviewPanelWidth] = useState(280);
   const previewResizing = useRef(false);
-  const [storageQuota, setStorageQuota] = useState<{ used: number; total: number; free: number } | null>(null);
+  const [storageQuota, setStorageQuota] = useState<{ used: number; total: number; free: number; files?: number } | null>(null);
+  // Item 4b: state of the explicit "used storage" scan (null = idle).
+  const [usedScanStatus, setUsedScanStatus] = useState<{ running: boolean; files: number; bytes: number } | null>(null);
   const quotaVersionRef = useRef(0); // Guard against stale async quota responses
   const [remoteSearchQuery, setRemoteSearchQuery] = useState('');
   const [remoteSearchResults, setRemoteSearchResults] = useState<RemoteFile[] | null>(null);
@@ -1964,6 +1966,7 @@ interface UpdateVerificationInfo {
       total: number;
       usedSource?: 'api' | 'scan';
       used_at?: string;
+      fileCount?: number;
     },
   ) => {
     if (!profileId) return;
@@ -1987,6 +1990,7 @@ interface UpdateVerificationInfo {
             totalSource: eff.totalSource === 'none' ? undefined : eff.totalSource,
             usedSource: quota.usedSource ?? prev?.usedSource,
             used_at: quota.used_at ?? prev?.used_at,
+            fileCount: quota.fileCount ?? prev?.fileCount,
           },
         };
       });
@@ -2026,6 +2030,52 @@ interface UpdateVerificationInfo {
     } catch { /* best-effort */ }
   };
 
+  // Resolve the saved profile that corresponds to the CURRENTLY LIVE
+  // connection `cp`. The id carried by the LIVE SESSION (cp is the active
+  // session's connectionParams) is the user's explicit choice of which
+  // saved card was connected (set by MyServersPanel -> createSession). It
+  // is the ONLY reliable key when several profiles share the same
+  // protocol+username+host: Aruba multi-domain shared hosting (one FTP
+  // account, many sites) and the lab FTP/FTPS "potential duplicate"
+  // profiles. So a session-scoped id is trusted DIRECTLY (no fragile
+  // host-string equality check, which wrongly rejected Aruba/lab profiles
+  // and left the card showing the cap but no scanned `used`).
+  //
+  // The cross-profile contamination (paolella.it's 566 MB landing on the
+  // axpbuntu lab FTPS card) came from the GLOBAL connectionParams
+  // .savedServerId being used as a fallback: it goes stale across open
+  // sessions. That global fallback is intentionally NOT consulted here;
+  // only session-scoped ids are. When there is no session id (quick
+  // connect / legacy path) a UNIQUE identity match is the last resort,
+  // and an ambiguous/absent match returns undefined so callers skip
+  // persisting rather than writing quota onto the wrong card.
+  const resolveLiveProfile = (
+    all: ServerProfile[],
+    cp: ConnectionParams,
+    activeSession: FtpSession | undefined,
+  ): ServerProfile | undefined => {
+    for (const cand of [
+      cp.savedServerId,
+      activeSession?.savedServerId,
+      activeSession?.connectionParams?.savedServerId,
+    ]) {
+      if (!cand) continue;
+      const byId = all.find(s => s.id === cand);
+      if (byId) return byId;
+    }
+    const liveProto = cp.protocol || 'ftp';
+    const liveUser = cp.username;
+    const liveHostRaw = cp.server || '';
+    const liveHost = liveHostRaw.split('/')[0].split(':')[0];
+    const matchesLive = (s: ServerProfile): boolean =>
+      (s.protocol || 'ftp') === liveProto
+      && s.username === liveUser
+      && (s.host === liveHostRaw
+        || (s.host || '').split('/')[0].split(':')[0] === liveHost);
+    const matches = all.filter(matchesLive);
+    return matches.length === 1 ? matches[0] : undefined;
+  };
+
   // Fetch storage quota for a given protocol (call after successful connection/reconnection)
   const fetchStorageQuota = async (protocol?: string, freshSessionParams?: ConnectionParams) => {
     const version = ++quotaVersionRef.current;
@@ -2047,7 +2097,12 @@ interface UpdateVerificationInfo {
         if (version === quotaVersionRef.current) {
           setStorageQuota({ used: quota.used, total: quota.total, free: quota.available });
         }
-        const profileId = freshSessionParams?.savedServerId || activeSession?.connectionParams?.savedServerId || connectionParams.savedServerId;
+        // Resolve the target profile against the LIVE connection (never
+        // the stale global savedServerId) so the API figure is not
+        // written onto a different profile's card across open sessions.
+        const all = await loadSavedServerProfiles().catch(() => [] as ServerProfile[]);
+        const liveCp = freshSessionParams || activeSession?.connectionParams || connectionParams;
+        const profileId = resolveLiveProfile(all, liveCp, activeSession)?.id;
         void persistQuotaToProfile(profileId, { used: quota.used, total: quota.total, usedSource: 'api' });
       } catch (e) {
         console.warn('[StorageQuota] InfiniCloud quota failed:', e);
@@ -2059,15 +2114,54 @@ interface UpdateVerificationInfo {
     if (protocol && supportsStorageQuota(protocol as ProviderType)) {
       try {
         const info = await invoke<{ used: number; total: number; free: number }>('provider_storage_info');
-        // Effective-quota rule (item 4a): when the provider reports USED but
-        // no TOTAL (B2), inject the profile's manual override so the live
-        // StatusBar bar and % render, not just the cached card.
-        const eff = resolveEffectiveQuota(info.used, info.total, opts?.manualTotalBytes);
+        // Resolve the target profile against the LIVE connection (never
+        // the stale global savedServerId) so the API figure and the
+        // manual-cap override come from the RIGHT profile, not another
+        // open session's.
+        const all = await loadSavedServerProfiles().catch(() => [] as ServerProfile[]);
+        const liveCp = freshSessionParams || activeSession?.connectionParams || connectionParams;
+        const prof = resolveLiveProfile(all, liveCp, activeSession);
+        const profileId = prof?.id;
+        // A user-set manual cap is a TRUE override and wins even over an
+        // API total (SFTP statfs = whole server disk, not the user's
+        // allotment), so resolve it from the matched profile (source of
+        // truth) and let resolveEffectiveQuota apply the precedence.
+        const manualTotal = (typeof prof?.options?.manualTotalBytes === 'number'
+          && prof.options.manualTotalBytes > 0)
+          ? prof.options.manualTotalBytes
+          : opts?.manualTotalBytes;
+        // Many providers ARE in supportsStorageQuota yet a given server
+        // exposes no real quota (DriveHQ / CloudMe / jianguoyun WebDAV
+        // all answer 0/0; SFTP statfs can too). Persisting that 0 wiped
+        // the cached scan on every reconnect (card "zeroed", StatusBar
+        // flashed to 0 B). When the API has no usable figure, treat it
+        // like a no-quota backend: seed from the cached scan / manual
+        // cap and DON'T persist (never downgrade a 'scan' used to 0).
+        const apiHasData = info.used > 0 || info.total > 0;
+        if (!apiHasData) {
+          const q = prof?.lastQuota;
+          if (version === quotaVersionRef.current) {
+            if (q && (q.used > 0 || q.total > 0)) {
+              const cached = resolveEffectiveQuota(q.used, q.total, manualTotal);
+              setStorageQuota({
+                used: cached.used,
+                total: cached.total,
+                free: cached.total > cached.used ? cached.total - cached.used : 0,
+                files: q.fileCount,
+              });
+            } else if (manualTotal && manualTotal > 0) {
+              setStorageQuota({ used: 0, total: manualTotal, free: manualTotal });
+            } else {
+              setStorageQuota(null);
+            }
+          }
+          return;
+        }
+        const eff = resolveEffectiveQuota(info.used, info.total, manualTotal);
         // Discard stale response if a newer fetch was triggered (e.g., session switch)
         if (version === quotaVersionRef.current) {
           setStorageQuota({ used: eff.used, total: eff.total, free: info.free });
         }
-        const profileId = freshSessionParams?.savedServerId || activeSession?.connectionParams?.savedServerId || connectionParams.savedServerId;
         void persistQuotaToProfile(profileId, { used: info.used, total: info.total, usedSource: 'api' });
       } catch (e) {
         console.warn('[StorageQuota] Failed to fetch:', e);
@@ -2076,8 +2170,256 @@ interface UpdateVerificationInfo {
         }
       }
     } else {
-      setStorageQuota(null);
+      // No-quota backend (FTP/S3/WebDAV): no API `used`. Seed the
+      // StatusBar from a previously cached scan (item 4b cache) so a
+      // reconnect shows it instantly; never auto-rescan unless the
+      // profile opted in. The figure's age lives in lastQuota.used_at.
+      // Resolve the profile against the LIVE connection identity: a stale
+      // global savedServerId previously seeded a DIFFERENT profile's
+      // cache here, so e.g. DriveHQ showed 0 B (or another server's
+      // figure) right after connecting.
+      let seeded = false;
+      try {
+        const all = await loadSavedServerProfiles();
+        const liveCp = freshSessionParams || activeSession?.connectionParams || connectionParams;
+        const prof = resolveLiveProfile(all, liveCp, activeSession);
+        if (prof) {
+          const q = prof.lastQuota;
+          // The saved profile is the source of truth for the manual cap
+          // and the opt-in (the form persists them there), not the live
+          // session options which may be stale after edit+reconnect.
+          const manualTotal = (typeof prof.options?.manualTotalBytes === 'number'
+            && prof.options.manualTotalBytes > 0)
+            ? prof.options.manualTotalBytes
+            : opts?.manualTotalBytes;
+          if (q && (q.used > 0 || q.total > 0)) {
+            const eff = resolveEffectiveQuota(q.used, q.total, manualTotal);
+            if (version === quotaVersionRef.current) {
+              setStorageQuota({
+                used: eff.used,
+                total: eff.total,
+                free: eff.total > eff.used ? eff.total - eff.used : 0,
+                files: q.fileCount,
+              });
+            }
+            seeded = true;
+          } else if (manualTotal && manualTotal > 0) {
+            // A manual cap is configured but nothing scanned yet: show
+            // "- / cap" instead of clearing the StatusBar to nothing.
+            if (version === quotaVersionRef.current) {
+              setStorageQuota({ used: 0, total: manualTotal, free: manualTotal });
+            }
+            seeded = true;
+          } else if (prof.options?.autoScanUsedOnConnect || opts?.autoScanUsedOnConnect) {
+            // Per-profile opt-in (default OFF): compute it once now.
+            void scanUsedStorage();
+            seeded = true;
+          }
+        }
+      } catch { /* best-effort: fall through to clearing */ }
+      if (!seeded && version === quotaVersionRef.current) {
+        setStorageQuota(null);
+      }
     }
+  };
+
+  // Item 4b: explicit "used storage" scan for the connected provider.
+  // NEVER automatic: triggered by the StatusBar action. Computes `used`
+  // recursively (shared used_scan helper: S3 flat / WebDAV infinity / BFS),
+  // turns it into a real bar via the item 4a effective-total rule, and
+  // caches it into the profile (usedSource:'scan') so My Servers/profiles
+  // show it without rescanning.
+  const scanUsedStorage = async () => {
+    if (usedScanStatus?.running) return;
+    const activeSession = sessions.find(s => s.id === activeSessionId);
+    const cp = activeSession?.connectionParams || connectionParams;
+    const opts = cp.options || connectionParams.options;
+    // Resolve the saved profile against the LIVE connection identity (see
+    // resolveLiveProfile). A stale connectionParams.savedServerId must
+    // never win here: it caused the scanned `used` to be written onto a
+    // different profile's card (cross-profile contamination). When no
+    // profile matches confidently the result is still shown live but is
+    // NOT persisted (profileId stays undefined) rather than corrupting
+    // another card.
+    let manualTotal: number | undefined;
+    let scanRoot = currentRemotePath || '/';
+    let profileId: string | undefined;
+    try {
+      const all = await loadSavedServerProfiles();
+      const prof = resolveLiveProfile(all, cp, activeSession);
+      if (prof) {
+        profileId = prof.id;
+        if (prof.initialPath?.trim()) scanRoot = prof.initialPath.trim();
+        const m = prof.options?.manualTotalBytes;
+        if (typeof m === 'number' && m > 0) manualTotal = m;
+      }
+    } catch { /* fall back to currentRemotePath + session opts */ }
+    if (manualTotal === undefined) manualTotal = opts?.manualTotalBytes;
+    const provisional = (used: number) => {
+      // Show the cap live while scanning so the StatusBar/card are not
+      // blank: the bar fills against the manual total as `used` grows.
+      if (manualTotal && manualTotal > 0) {
+        setStorageQuota({
+          used,
+          total: manualTotal,
+          free: manualTotal > used ? manualTotal - used : 0,
+        });
+      }
+    };
+    setUsedScanStatus({ running: true, files: 0, bytes: 0 });
+    provisional(0);
+    // Track the whole scan lifecycle (start -> result) in the Activity Log
+    // for EVERY backend: the scan path is shared, so S3 (list-recursive),
+    // WebDAV (Depth:infinity / bfs) and FTP/SFTP (bfs) all funnel here.
+    // res.method is surfaced in the details so the user sees which method
+    // actually ran.
+    const scanLogId = activityLog.log(
+      'INFO',
+      `${t('statusBar.usedScanRunning')} ${scanRoot}`,
+      'running',
+    );
+    const unlisten = await listen<{ used: number; file_count: number; scanning: boolean }>(
+      'used-scan-progress',
+      (event) => {
+        const p = event.payload;
+        setUsedScanStatus({ running: p.scanning, files: p.file_count, bytes: p.used });
+        provisional(p.used);
+      },
+    );
+    try {
+      const res = await invoke<{
+        used: number; file_count: number; dir_count: number;
+        truncated: boolean; method: string;
+      }>('provider_scan_used', { path: scanRoot });
+      if (res.used === 0 && res.file_count === 0) {
+        // A 0-byte / 0-file result is almost always a scope or
+        // server-quirk artefact (e.g. WebDAV Depth:infinity not recursed
+        // on an old backend build), not a real empty account. Do NOT
+        // overwrite a previously good cached figure with 0: keep the
+        // cache and tell the user instead.
+        notify.error(
+          t('statusBar.usedScanFailed'),
+          t('statusBar.usedScanEmpty', { path: scanRoot }),
+        );
+        activityLog.updateEntry(scanLogId, {
+          status: 'error',
+          message: t('statusBar.usedScanFailed'),
+          details: `${t('statusBar.usedScanEmpty', { path: scanRoot })} [${res.method}]`,
+        });
+      } else {
+        const eff = resolveEffectiveQuota(res.used, 0, manualTotal);
+        setStorageQuota({
+          used: eff.used,
+          total: eff.total,
+          free: eff.total > eff.used ? eff.total - eff.used : 0,
+          files: res.file_count,
+        });
+        void persistQuotaToProfile(profileId, {
+          used: res.used,
+          total: 0,
+          usedSource: 'scan',
+          used_at: new Date().toISOString(),
+          fileCount: res.file_count,
+        });
+        const doneDetail = t('statusBar.usedScanDoneDetail', {
+          used: formatBytes(res.used),
+          files: String(res.file_count),
+        }) + (res.truncated ? ` (${t('statusBar.usedScanTruncated')})` : '');
+        notify.success(t('statusBar.usedScanDone'), doneDetail);
+        activityLog.updateEntry(scanLogId, {
+          status: 'success',
+          message: t('statusBar.usedScanDone'),
+          details: `${doneDetail} [${res.method}] ${scanRoot}`,
+        });
+      }
+    } catch (err) {
+      notify.error(t('statusBar.usedScanFailed'), String(err));
+      activityLog.updateEntry(scanLogId, {
+        status: 'error',
+        message: t('statusBar.usedScanFailed'),
+        details: String(err),
+      });
+    } finally {
+      unlisten();
+      setUsedScanStatus(null);
+    }
+  };
+
+  const cancelUsedStorageScan = () => {
+    void invoke('provider_cancel_used_scan').catch(() => { /* best-effort */ });
+  };
+
+  // Keep the storage "used" figure live after a transfer completes.
+  // - API-quota providers (Drive/Dropbox/...): one debounced re-fetch so a
+  //   whole batch costs a single extra API round-trip, not one per file.
+  // - No-quota backends on the item 4a/4b system (FTP/FTPS/SFTP/S3/WebDAV
+  //   with a manual cap and/or a cached scan): adjust the cached `used` by
+  //   the uploaded bytes instead of forcing a recursive rescan (the scan
+  //   stays explicit-only by design). Folder transfers report a file count,
+  //   not bytes (bytes==0): skipped so the cache is never corrupted.
+  const quotaRefreshTimer = useRef<number | null>(null);
+  const handleQuotaAfterTransfer = (info: { direction: string; bytes: number }) => {
+    if (info.direction !== 'upload') return;
+    const activeSession = sessions.find(s => s.id === activeSessionId);
+    const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+    if (protocol && supportsStorageQuota(protocol as ProviderType)) {
+      if (quotaRefreshTimer.current) window.clearTimeout(quotaRefreshTimer.current);
+      quotaRefreshTimer.current = window.setTimeout(() => {
+        quotaRefreshTimer.current = null;
+        const s = sessions.find(x => x.id === activeSessionId);
+        void fetchStorageQuota(protocol, s?.connectionParams);
+      }, 1500);
+      return;
+    }
+    const bytes = info.bytes;
+    if (!bytes || bytes <= 0) return;
+    // Live StatusBar bump for the connected session (+1 file when a count
+    // is being tracked).
+    setStorageQuota(prev => {
+      if (!prev) return prev;
+      const used = prev.used + bytes;
+      return {
+        used,
+        total: prev.total,
+        free: prev.total > used ? prev.total - used : 0,
+        files: prev.files != null ? prev.files + 1 : prev.files,
+      };
+    });
+    // Persist the incremented figure to the saved profile so the My Servers
+    // card/table reflect it without a reconnect. The profile is resolved
+    // via resolveLiveProfile (NOT the stale global savedServerId) so the
+    // delta is never written onto a different profile's card. Only adjust
+    // when a scan/manual baseline already exists: never fabricate a `used`
+    // for a profile that never produced one.
+    const cp = activeSession?.connectionParams || connectionParams;
+    void (async () => {
+      try {
+        const all = await loadSavedServerProfiles();
+        const target = resolveLiveProfile(all, cp, activeSession);
+        if (!target) return;
+        await mergeSavedServerProfile(target.id, server => {
+          const prev = server.lastQuota;
+          const hasManual = !!(server.options?.manualTotalBytes && server.options.manualTotalBytes > 0);
+          const hasScanBaseline = !!prev && (prev.usedSource === 'scan' || (prev.used ?? 0) > 0);
+          if (!hasManual && !hasScanBaseline) return server;
+          const newUsed = (prev?.used ?? 0) + bytes;
+          const e = resolveEffectiveQuota(newUsed, prev?.total ?? 0, server.options?.manualTotalBytes);
+          return {
+            ...server,
+            lastQuota: {
+              used: e.used,
+              total: e.total,
+              fetched_at: new Date().toISOString(),
+              totalSource: e.totalSource === 'none' ? undefined : e.totalSource,
+              usedSource: prev?.usedSource ?? 'scan',
+              used_at: new Date().toISOString(),
+              fileCount: prev?.fileCount != null ? prev.fileCount + 1 : prev?.fileCount,
+            },
+          };
+        });
+        setServersRefreshKey(k => k + 1);
+      } catch { /* best-effort */ }
+    })();
   };
 
   // Check provider capabilities when connected
@@ -3061,6 +3403,7 @@ interface UpdateVerificationInfo {
       if (!showActivityLog) setShowActivityLog(true);
     },
     onScanningUpdate: setScanningState,
+    onTransferComplete: handleQuotaAfterTransfer,
     maxChannels: (connectionParams.protocol && isFtpProtocol(connectionParams.protocol as ProviderType))
       ? TRANSFER_SPEED_PRESETS[sessionTransferSpeedPreset].channels
       : 1,
@@ -13046,6 +13389,9 @@ interface UpdateVerificationInfo {
             debugMode={debugMode}
             onToggleDebug={() => { setShowDebugPanel(!showDebugPanel); }}
             storageQuota={storageQuota}
+            onScanUsed={scanUsedStorage}
+            onCancelUsedScan={cancelUsedStorageScan}
+            usedScanStatus={usedScanStatus}
           />
         )}
 

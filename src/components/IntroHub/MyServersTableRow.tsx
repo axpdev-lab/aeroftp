@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { ArrowDownLeft, ArrowUpRight, Clock, Copy, Edit2, Folder, GripVertical, HardDrive, Loader2, Star, Trash2 } from 'lucide-react';
-import { ServerProfile, profileHasQuota } from '../../types';
+import { ServerProfile, profileHasQuota, resolveEffectiveQuota } from '../../types';
 import { getServerSubtitle } from '../../utils/serverSubtitle';
 import { formatBytes } from '../../utils/formatters';
 import {
@@ -130,50 +130,59 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
         if (target?.closest('button, input, a, [role="menuitem"]')) return;
         onSelect(server);
     } : undefined;
+    // Resolve the effective quota with the item 4a precedence (a user-set
+    // manual cap is a TRUE override) so the table stays consistent with the
+    // card and the StatusBar even when the cached lastQuota was persisted
+    // with total:0 (scan ran before the cap, or against a duplicate profile
+    // lacking options.manualTotalBytes).
+    const q = server.lastQuota;
+    const manual = server.options?.manualTotalBytes;
+    const rawUsed = q?.used && q.used > 0 ? q.used : 0;
+    const rawTotal = q?.total && q.total > 0 ? q.total : 0;
+    const eff = resolveEffectiveQuota(rawUsed, rawTotal, manual);
+    const usedKnown = !!q && q.used > 0;
     const quotaCells = (() => {
         if (!quotaSupported) {
             return { used: '-', total: '-', pct: '-', toneText: TONE_TEXT_CLASS.unknown };
         }
-        const q = server.lastQuota;
-        // Fetch hasn't completed yet: show ellipsis (loading state).
-        if (!q) {
-            return { used: '…', total: '…', pct: '…', toneText: TONE_TEXT_CLASS.unknown };
-        }
-        // Provider supports quota but the response has no byte cap (B2 native,
-        // Cloudinary free / credit-based plans): show the usage figure and
-        // mark the totals as not applicable, instead of looking like a stuck
-        // loader or an unsupported provider.
-        if (!q.total || q.total <= 0) {
-            if (q.used && q.used > 0) {
-                return {
-                    used: formatBytes(q.used),
-                    total: '∞',
-                    pct: '-',
-                    toneText: TONE_TEXT_CLASS.unknown,
-                };
+        if (!usedKnown) {
+            // A cap exists (manual or API) but `used` has not been scanned
+            // yet: show "- / cap" so it is visible once configured.
+            if (eff.total > 0) {
+                return { used: '-', total: formatBytes(eff.total), pct: '-', toneText: TONE_TEXT_CLASS.unknown };
+            }
+            // Fetch hasn't completed and no cap: ellipsis (loading state).
+            if (!q) {
+                return { used: '…', total: '…', pct: '…', toneText: TONE_TEXT_CLASS.unknown };
             }
             return { used: '-', total: '-', pct: '-', toneText: TONE_TEXT_CLASS.unknown };
         }
-        const { tone, pct } = getStorageTone(q.used, q.total, thresholds);
+        // `used` known but no cap at all (no API total, no manual): show the
+        // usage figure with "∞" instead of looking like a stuck loader.
+        if (eff.total <= 0) {
+            return { used: formatBytes(eff.used), total: '∞', pct: '-', toneText: TONE_TEXT_CLASS.unknown };
+        }
+        const { tone, pct } = getStorageTone(eff.used, eff.total, thresholds);
         const pctText = pct === null
             ? '-'
             : pct >= 10
                 ? `${Math.round(pct)}%`
                 : `${Math.round(pct * 10) / 10}%`;
         return {
-            used: formatBytes(q.used),
-            total: formatBytes(q.total),
+            used: formatBytes(eff.used),
+            total: formatBytes(eff.total),
             pct: pctText,
             toneText: TONE_TEXT_CLASS[tone],
         };
     })();
-    const quotaTitle = quotaSupported && server.lastQuota && server.lastQuota.total > 0
-        ? t('introHub.storageUsedOf', {
-            used: formatBytes(server.lastQuota.used),
-            total: formatBytes(server.lastQuota.total),
-        })
-        : quotaSupported && server.lastQuota && server.lastQuota.used > 0
-            ? `${formatBytes(server.lastQuota.used)} ${t('statusBar.usedNoCap')}`
+    const filesSuffix = q?.fileCount != null ? ` · ${q.fileCount} ${t('browser.files')}` : '';
+    const quotaTitle = quotaSupported && usedKnown && eff.total > 0
+        ? `${t('introHub.storageUsedOf', {
+            used: formatBytes(eff.used),
+            total: formatBytes(eff.total),
+        })}${filesSuffix}`
+        : quotaSupported && usedKnown
+            ? `${formatBytes(eff.used)} ${t('statusBar.usedNoCap')}${filesSuffix}`
             : t('introHub.storageQuotaUnavailable');
     const cellClass = `px-3 ${rowPadY} align-middle border-b border-gray-100 dark:border-gray-700/50`;
 
