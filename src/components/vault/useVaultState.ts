@@ -92,6 +92,35 @@ interface VaultV2Info {
     files: { name: string; size: number; is_dir: boolean; modified: string }[];
 }
 
+/**
+ * Behind-the-scenes technical receipt emitted by the Rust vault_telemetry
+ * module (shared across AeroVault v1/v2/v3). Mirrors `VaultReport` in
+ * `src-tauri/src/vault_telemetry.rs`. All fields optional-tolerant: v2/v1
+ * leave chunk/dedup at 0.
+ */
+export interface VaultReport {
+    operation: string;
+    vault_format: number;
+    profile?: string;
+    algorithms: string[];
+    cdc_min?: number;
+    cdc_avg?: number;
+    cdc_max?: number;
+    files: number;
+    packed_files: number;
+    packs: number;
+    logical_chunks: number;
+    new_physical_chunks: number;
+    dedup_hits: number;
+    plaintext_bytes: number;
+    compressed_bytes: number;
+    encrypted_bytes: number;
+    compression_ratio_pct: number;
+    ms_total: number;
+    steps: string[];
+    attribution: string;
+}
+
 interface VaultV3Info {
     version: number;
     file_count: number;
@@ -99,6 +128,7 @@ interface VaultV3Info {
     dedup_chunks: number;
     compression_level: number;
     files: { name: string; size: number; is_dir: boolean; modified: string; chunk_count: number }[];
+    report?: VaultReport;
 }
 
 function mapV2InfoToEntries(info: VaultV2Info): ArchiveEntry[] {
@@ -239,6 +269,10 @@ export interface VaultState {
     success: string | null;
     setSuccess: (msg: string | null) => void;
 
+    // Behind-the-scenes technical receipt (last create/add); null when none
+    lastReport: VaultReport | null;
+    clearReport: () => void;
+
     // Entries
     entries: ArchiveEntry[];
     meta: AeroVaultMeta | null;
@@ -356,6 +390,9 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
     const [remoteLocalPath, setRemoteLocalPath] = useState('');
     const [remoteLoading, setRemoteLoading] = useState(false);
     const [showRemoteInput, setShowRemoteInput] = useState(false);
+
+    // Behind-the-scenes technical receipt of the last create/add operation
+    const [lastReport, setLastReport] = useState<VaultReport | null>(null);
 
     // Security state
     const [securityLevel, setSecurityLevel] = useState<SecurityLevel>('advanced');
@@ -562,6 +599,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
                     });
                     setEntries(mapV3InfoToEntries(info));
                     setMeta(mapV3InfoToMeta(info));
+                    setLastReport(info.report ?? null);
                     setSuccess(t('vault.created') + `: ${initialFiles.length} ${initialFiles.length === 1 ? 'file' : 'files'}`);
                 } else {
                     setSuccess(t('vault.created'));
@@ -603,7 +641,8 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
                     setFolderProgress(null);
                 } else if (initialFiles?.length) {
                     // Auto-add selected files
-                    await invoke('vault_v2_add_files', { vaultPath: savePath, password, filePaths: initialFiles });
+                    const v2add = await invoke<{ report?: VaultReport }>('vault_v2_add_files', { vaultPath: savePath, password, filePaths: initialFiles });
+                    setLastReport(v2add.report ?? null);
                     const info = await invoke<VaultV2Info>('vault_v2_open', { vaultPath: savePath, password });
                     setEntries(mapV2InfoToEntries(info));
                     setSuccess(t('vault.created') + `: ${initialFiles.length} ${initialFiles.length === 1 ? 'file' : 'files'}`);
@@ -792,26 +831,29 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
                     });
                     setEntries(mapV3InfoToEntries(info));
                     setMeta(mapV3InfoToMeta(info, meta));
+                    setLastReport(info.report ?? null);
                     setSuccess(t('vault.filesAdded', { count: paths.length.toString() }));
                 }
             } else if (vaultSecurity?.version === 2) {
                 const result = currentDir
-                    ? await invoke<{ added: number; total: number }>('vault_v2_add_files_to_dir', {
+                    ? await invoke<{ added: number; total: number; report?: VaultReport }>('vault_v2_add_files_to_dir', {
                         vaultPath,
                         password,
                         filePaths: paths,
                         targetDir: currentDir
                     })
-                    : await invoke<{ added: number; total: number }>('vault_v2_add_files', {
+                    : await invoke<{ added: number; total: number; report?: VaultReport }>('vault_v2_add_files', {
                         vaultPath,
                         password,
                         filePaths: paths
                     });
                 await refreshVaultEntries();
+                setLastReport(result.report ?? null);
                 setSuccess(t('vault.filesAdded', { count: result.added.toString() }));
             } else {
-                await invoke('vault_add_files', { vaultPath, password, filePaths: paths });
+                const v1res = await invoke<{ report?: VaultReport }>('vault_add_files', { vaultPath, password, filePaths: paths });
                 await refreshVaultEntries();
+                setLastReport(v1res.report ?? null);
                 setSuccess(t('vault.filesAdded', { count: paths.length.toString() }));
             }
         } catch (e) {
@@ -846,26 +888,29 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
                     });
                     setEntries(mapV3InfoToEntries(info));
                     setMeta(mapV3InfoToMeta(info, meta));
+                    setLastReport(info.report ?? null);
                     setSuccess(t('vault.filesAdded', { count: paths.length.toString() }));
                 }
             } else if (vaultSecurity?.version === 2) {
                 const result = targetDir
-                    ? await invoke<{ added: number; total: number }>('vault_v2_add_files_to_dir', {
+                    ? await invoke<{ added: number; total: number; report?: VaultReport }>('vault_v2_add_files_to_dir', {
                         vaultPath,
                         password,
                         filePaths: paths,
                         targetDir
                     })
-                    : await invoke<{ added: number; total: number }>('vault_v2_add_files', {
+                    : await invoke<{ added: number; total: number; report?: VaultReport }>('vault_v2_add_files', {
                         vaultPath,
                         password,
                         filePaths: paths
                     });
                 await refreshVaultEntries();
+                setLastReport(result.report ?? null);
                 setSuccess(t('vault.filesAdded', { count: result.added.toString() }));
             } else {
-                await invoke('vault_add_files', { vaultPath, password, filePaths: paths });
+                const v1res = await invoke<{ report?: VaultReport }>('vault_add_files', { vaultPath, password, filePaths: paths });
                 await refreshVaultEntries();
+                setLastReport(v1res.report ?? null);
                 setSuccess(t('vault.filesAdded', { count: paths.length.toString() }));
             }
         } catch (e) {
@@ -1099,6 +1144,8 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         loading,
         error, setError,
         success, setSuccess,
+        lastReport,
+        clearReport: () => setLastReport(null),
         entries,
         meta,
         currentDir, setCurrentDir,

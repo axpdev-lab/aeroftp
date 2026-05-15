@@ -11,8 +11,10 @@ import { VaultHome } from './vault/VaultHome';
 import { VaultCreate } from './vault/VaultCreate';
 import { VaultOpen } from './vault/VaultOpen';
 import { VaultBrowse } from './vault/VaultBrowse';
+import { VaultReceipt } from './vault/VaultReceipt';
 import type { AeroVaultOverlaySession } from '../types';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useActivityLog } from '../hooks/useActivityLog';
 
 interface VaultPanelProps {
     onClose: () => void;
@@ -39,6 +41,20 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
         isConnected,
         onClose,
     });
+
+    const { log } = useActivityLog();
+    const loggedReportRef = React.useRef<unknown>(null);
+    React.useEffect(() => {
+        const r = state.lastReport;
+        if (!r || loggedReportRef.current === r) return;
+        loggedReportRef.current = r;
+        log(
+            'SUCCESS',
+            t('vault.receipt.activity', { op: r.operation, files: String(r.files), fmt: String(r.vault_format) }),
+            'success',
+            `pipeline=${r.algorithms.join(' -> ')} | plaintext=${r.plaintext_bytes} encrypted=${r.encrypted_bytes} ratio=${r.compression_ratio_pct.toFixed(1)}% ms=${r.ms_total}`,
+        );
+    }, [state.lastReport, log, t]);
 
     const vaultName = state.vaultPath.split(/[\\/]/).pop() || 'Vault';
     const currentLevelConfig = state.vaultSecurity ? securityLevels[state.vaultSecurity.level] : null;
@@ -178,6 +194,11 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
                     <div className="absolute inset-0 bg-black/30 flex items-center justify-center rounded-lg">
                         <Loader2 size={24} className="animate-spin text-blue-400" />
                     </div>
+                )}
+
+                {/* Behind-the-scenes technical receipt (create/add) */}
+                {state.lastReport && (
+                    <VaultReceipt report={state.lastReport} t={t} onClose={state.clearReport} />
                 )}
             </div>
         </div>

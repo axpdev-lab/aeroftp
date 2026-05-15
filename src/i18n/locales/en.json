@@ -3979,6 +3979,21 @@
         "directoryTooLarge": "Directory exceeds size limit",
         "invalidPath": "Invalid file path",
         "diskFull": "Not enough disk space"
+      },
+      "receipt": {
+        "title": "Technical Receipt",
+        "operation": "Operation",
+        "profile": "Profile",
+        "files": "Files",
+        "elapsed": "Elapsed",
+        "chunks": "Chunks (logical/new/dedup)",
+        "plaintext": "Plaintext",
+        "encrypted": "Encrypted",
+        "ratio": "Compression",
+        "pipeline": "Pipeline",
+        "exportTxt": "Export .txt",
+        "exportJson": "Export .json",
+        "activity": "AeroVault {op}: {files} file(s), format v{fmt}"
       }
     },
     "vaultSync": {
