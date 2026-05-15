@@ -1996,6 +1996,48 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             match self.next_data_frame(bridge).await {
                 Ok(payload) => buf.extend_from_slice(&payload),
                 Err(e) if Self::is_download_clean_eof_noop(&e) => {
+                    // See the streaming sibling: a clean "remote closed
+                    // (exit 0)" is only an identical-baseline no-op when
+                    // the server sent no payload. A non-empty `buf` is a
+                    // complete full/delta stream terminated by the EOF;
+                    // decode and reconstruct it instead of discarding it
+                    // for the empty baseline (24658dad regression).
+                    if !buf.is_empty() {
+                        if self.take_download_noop_delta_marker(&mut buf) {
+                            self.download_clean_eof_noop = true;
+                            self.install_download_noop_reconstructed(
+                                destination_data,
+                            );
+                            return Ok(());
+                        }
+                        match decode_delta_stream(
+                            &buf,
+                            A2_3_FILE_CHECKSUM_LEN,
+                            sum_head_count,
+                        ) {
+                            Ok((report, _consumed)) => {
+                                self.received_file_checksum =
+                                    Some(report.file_checksum.clone());
+                                self.install_reconstructed_from_wire(
+                                    destination_data,
+                                    adapter,
+                                    report.ops,
+                                )?;
+                                self.phase =
+                                    AerorsyncSessionPhase::DeltaReceived;
+                                return Ok(());
+                            }
+                            Err(RealWireError::DeltaTokenTruncated { .. }) => {
+                                return Err(e);
+                            }
+                            Err(other) => {
+                                return Err(map_realwire_error(
+                                    other,
+                                    "delta stream",
+                                ));
+                            }
+                        }
+                    }
                     self.download_clean_eof_noop = true;
                     self.install_download_noop_reconstructed(destination_data);
                     return Ok(());
@@ -2090,6 +2132,52 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             match self.next_data_frame(bridge).await {
                 Ok(payload) => buf.extend_from_slice(&payload),
                 Err(e) if Self::is_download_clean_eof_noop(&e) => {
+                    // A clean "remote closed (exit 0)" is only an
+                    // identical-baseline no-op when the server sent NO
+                    // delta/literal payload. If `buf` still holds bytes
+                    // the EOF simply terminates a complete full/delta
+                    // stream that the loop-top decode could not consume
+                    // earlier solely because it was still truncated:
+                    // decode it now and reconstruct, exactly as the
+                    // loop-top path would. Unconditionally treating this
+                    // as a no-op (24658dad) discarded a full download
+                    // and wrote the empty local baseline instead.
+                    if !buf.is_empty() {
+                        if self.take_download_noop_delta_marker(&mut buf) {
+                            self.download_clean_eof_noop = true;
+                            self.install_download_noop_streaming(baseline, writer)
+                                .await?;
+                            return Ok(());
+                        }
+                        match decode_delta_stream(
+                            &buf,
+                            A2_3_FILE_CHECKSUM_LEN,
+                            sum_head_count,
+                        ) {
+                            Ok((report, _consumed)) => {
+                                self.received_file_checksum =
+                                    Some(report.file_checksum.clone());
+                                self.install_reconstructed_from_wire_streaming(
+                                    baseline, writer, adapter, report.ops,
+                                )
+                                .await?;
+                                self.phase = AerorsyncSessionPhase::DeltaReceived;
+                                return Ok(());
+                            }
+                            Err(RealWireError::DeltaTokenTruncated { .. }) => {
+                                // Stream genuinely incomplete at EOF: a
+                                // real truncation, not a no-op. Surface
+                                // the original clean-EOF error.
+                                return Err(e);
+                            }
+                            Err(other) => {
+                                return Err(map_realwire_error(
+                                    other,
+                                    "delta stream",
+                                ));
+                            }
+                        }
+                    }
                     self.download_clean_eof_noop = true;
                     self.install_download_noop_streaming(baseline, writer)
                         .await?;
