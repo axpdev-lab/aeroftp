@@ -181,6 +181,90 @@ async fn authenticate_publickey_with_rsa_fallbacks(
     )))
 }
 
+/// Delegate authentication to a running SSH agent (`SSH_AUTH_SOCK`).
+///
+/// The agent holds the private keys; AeroFTP never sees key material.
+/// We enumerate the agent's identities and try each public key in turn,
+/// applying the same RSA SHA-2 hash fallback chain as the key-file path
+/// so an `rsa-sha2-512`-only server still authenticates against an RSA
+/// agent key. Certificate identities are skipped (only plain public
+/// keys are attempted in this first cut).
+///
+/// Unix only: `connect_env()` resolves a `UnixStream` from
+/// `SSH_AUTH_SOCK`. On other platforms this returns a typed transport
+/// error (soft, so the auto policy can still fall back) rather than
+/// failing the build. Windows agent transports (Pageant / OpenSSH
+/// named pipe) are a separate follow-up.
+#[cfg(unix)]
+async fn authenticate_agent(
+    handle: &mut Handle<RusshHandler>,
+    username: &str,
+) -> Result<(), AerorsyncError> {
+    use russh::keys::agent::client::AgentClient;
+    use russh::keys::agent::AgentIdentity;
+
+    let mut agent = AgentClient::connect_env().await.map_err(|e| {
+        AerorsyncError::transport(format!(
+            "ssh-agent connect (SSH_AUTH_SOCK): {e}; is an agent running and SSH_AUTH_SOCK set?"
+        ))
+    })?;
+    let identities = agent.request_identities().await.map_err(|e| {
+        AerorsyncError::transport(format!("ssh-agent request_identities: {e}"))
+    })?;
+    if identities.is_empty() {
+        return Err(AerorsyncError::transport(
+            "ssh-agent has no identities loaded (run `ssh-add` first)",
+        ));
+    }
+
+    let mut last_error: Option<String> = None;
+    for identity in &identities {
+        let public_key = match identity {
+            AgentIdentity::PublicKey { key, .. } => key.clone(),
+            // Certificate auth via agent is out of scope for this first
+            // cut: skip and let a plain-key identity (if any) succeed.
+            AgentIdentity::Certificate { .. } => continue,
+        };
+        let is_rsa = matches!(public_key.algorithm(), Algorithm::Rsa { .. });
+        let attempts: Vec<Option<HashAlg>> = if is_rsa {
+            vec![Some(HashAlg::Sha512), Some(HashAlg::Sha256), None]
+        } else {
+            vec![None]
+        };
+        for hash in attempts {
+            match handle
+                .authenticate_publickey_with(username, public_key.clone(), hash, &mut agent)
+                .await
+            {
+                Ok(AuthResult::Success) => return Ok(()),
+                Ok(AuthResult::Failure { .. }) => continue,
+                Err(e) => {
+                    last_error = Some(e.to_string());
+                    continue;
+                }
+            }
+        }
+    }
+
+    let detail =
+        last_error.unwrap_or_else(|| "all agent identities rejected by server".to_string());
+    Err(AerorsyncError::transport(format!(
+        "ssh-agent auth {username} failed against all {} agent identities: {detail}",
+        identities.len()
+    )))
+}
+
+#[cfg(not(unix))]
+async fn authenticate_agent(
+    _handle: &mut Handle<RusshHandler>,
+    _username: &str,
+) -> Result<(), AerorsyncError> {
+    Err(AerorsyncError::transport(
+        "SSH agent auth is not available on this platform yet \
+         (Unix SSH_AUTH_SOCK only; Windows Pageant/named-pipe is a follow-up)",
+    ))
+}
+
 impl RusshSessionTransport {
     pub async fn connect(config: SshTransportConfig) -> Result<Self, AerorsyncError> {
         let cancel_flag = Arc::new(AtomicBool::new(false));
@@ -228,13 +312,15 @@ impl RusshSessionTransport {
             .await
             .map_err(|e| AerorsyncError::transport(format!("russh connect {addr}: {e}")))?;
 
-        // Z.4.5 R1: password transport takes precedence when configured.
-        // The two paths are exclusive on purpose: a profile that ships
-        // both a key and a password should not silently retry one after
-        // the other (it would mask which credential the server actually
-        // accepted, complicating audit). The caller picks one.
+        // Auth precedence: password > agent > key-file. The paths are
+        // exclusive on purpose: a profile that ships several credentials
+        // should not silently retry one after the other (it would mask
+        // which credential the server actually accepted, complicating
+        // audit). The caller picks one via the profile's auth method.
         if let Some(password) = config.usable_password() {
             authenticate_password(&mut handle, &config.username, password).await?;
+        } else if config.auth_agent {
+            authenticate_agent(&mut handle, &config.username).await?;
         } else {
             authenticate_publickey_with_rsa_fallbacks(&mut handle, &config).await?;
         }
@@ -252,6 +338,13 @@ impl RusshSessionTransport {
 
     pub fn handshake_count(&self) -> u32 {
         self.handshake_count.load(Ordering::SeqCst)
+    }
+
+    /// Endpoint host of the underlying SSH session config. Used by the
+    /// batch path to pick a per-endpoint [`PreambleProfile`] without
+    /// threading the host through every call site.
+    pub fn endpoint_host(&self) -> &str {
+        &self.config.host
     }
 
     /// Z.1.2 — reconnect orchestration.
@@ -378,6 +471,21 @@ impl RusshSessionTransport {
             .await
             .map_err(|e| AerorsyncError::transport(format!("russh channel_open_session: {e}")))?;
         let cmd = request.full_command_line();
+        // Diagnostic: record the exact remote command line the server's
+        // ForceCommand wrapper will see. Env-gated, best-effort, no
+        // behaviour change when unset.
+        if let Ok(dir) = std::env::var("AEROFTP_WIRE_DUMP_DIR") {
+            if !dir.is_empty() {
+                use std::io::Write as _;
+                if let Ok(mut f) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(std::path::Path::new(&dir).join("remote_command.txt"))
+                {
+                    let _ = writeln!(f, "{cmd}");
+                }
+            }
+        }
         channel
             .exec(true, cmd.as_str())
             .await
@@ -475,6 +583,7 @@ pub(crate) fn test_dummy_config() -> SshTransportConfig {
             environment: Vec::new(),
         },
         auth_password: None,
+        auth_agent: false,
     }
 }
 
@@ -775,6 +884,24 @@ mod tests {
         }
     }
 
+    /// SSH agent: when `auth_agent` is set and the host is unreachable,
+    /// connect must surface a typed transport error (no panic). The
+    /// agent branch is selected only after the TCP/SSH transport is up,
+    /// so on an unreachable host the failure is the connect error, not
+    /// an agent error: either way the contract is "typed Err, no panic".
+    #[tokio::test]
+    async fn connect_with_agent_on_unreachable_host_returns_typed_transport_error() {
+        let cfg = SshTransportConfig {
+            port: 1,
+            auth_agent: true,
+            ..dummy_config()
+        };
+        match RusshSessionTransport::connect(cfg).await {
+            Err(_) => {}
+            Ok(_) => panic!("connect to port 1 should not succeed"),
+        }
+    }
+
     /// Z.4.5 R1: empty `SecretString` MUST be treated as "no password
     /// configured". The connect path then falls back to the pubkey
     /// branch instead of sending a zero-length password to the server.
@@ -812,13 +939,13 @@ mod tests {
     fn password_does_not_leak_in_debug() {
         let cfg = SshTransportConfig {
             auth_password: Some(SecretString::from(
-                "super-secret-filelu-rsync-password".to_string(),
+                "super-secret-ssh-test-password".to_string(),
             )),
             ..dummy_config()
         };
         let debug = format!("{cfg:?}");
         assert!(
-            !debug.contains("super-secret-filelu-rsync-password"),
+            !debug.contains("super-secret-ssh-test-password"),
             "password leaked into Debug output: {debug}"
         );
         // Sanity: the field name must still be present so operators

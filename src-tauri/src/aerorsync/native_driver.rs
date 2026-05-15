@@ -226,11 +226,154 @@ enum SignatureHeader {
     NoopDone,
 }
 
+/// Per-endpoint capability advertisement used in the preamble exchange.
+///
+/// rsync's preamble carries a space-separated, priority-descending list
+/// of checksum and compression algorithms. Stock rsync 3.2.x/3.4.x
+/// accepts the full default advertisement (byte-pinned in CI lane 3).
+/// This type exists so the driver can advertise a reduced list to a
+/// non-stock `rsync --server` wrapper if a future endpoint needs it,
+/// without touching the byte-pinned default path.
+///
+/// The default keeps the historical values verbatim so every existing
+/// caller, frozen-byte fixture and the byte-identical CI lane are
+/// unaffected. [`Self::for_host`] returns the default for every host
+/// today; the per-host hook and the [`Self::with_env_overrides`]
+/// live-tuning knobs are the supported way to deviate.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PreambleProfile {
+    pub checksum_algos: String,
+    pub compression_algos: String,
+}
+
+impl Default for PreambleProfile {
+    fn default() -> Self {
+        // B.2: SPACE-separated, priority-descending. Byte-pinned against
+        // the frozen rsync 3.2.7 capture and CI lane 3 (rsync 3.4.1).
+        Self {
+            checksum_algos: "xxh128 xxh3 xxh64 md5 md4".to_string(),
+            compression_algos: "zstd lz4 zlibx zlib".to_string(),
+        }
+    }
+}
+
+impl PreambleProfile {
+    /// Select a profile from the endpoint host. Every host (rsync.net,
+    /// Hetzner, stock SFTP+rsync, the dev fixtures) currently keeps the
+    /// default that is byte-pinned in CI. The per-host hook is preserved
+    /// so a future non-stock endpoint can be mapped to a reduced
+    /// advertisement here without disturbing the byte-pinned path; the
+    /// `with_env_overrides` knobs cover live tuning in the meantime.
+    pub fn for_host(_host: &str) -> Self {
+        Self::default().with_env_overrides()
+    }
+
+    /// Live-tuning escape hatch: `AEROFTP_RSYNC_CSUM_ALGOS` and
+    /// `AEROFTP_RSYNC_COMPRESS_ALGOS` override the resolved profile at
+    /// runtime so the exact algorithm set a stripped remote rsync
+    /// wrapper accepts can be found against a live endpoint without a
+    /// rebuild per attempt. No-op when unset (the common path), so
+    /// production behaviour and the byte-pinned default are unchanged.
+    pub fn with_env_overrides(mut self) -> Self {
+        if let Ok(v) = std::env::var("AEROFTP_RSYNC_CSUM_ALGOS") {
+            if !v.trim().is_empty() {
+                self.checksum_algos = v.trim().to_string();
+            }
+        }
+        if let Ok(v) = std::env::var("AEROFTP_RSYNC_COMPRESS_ALGOS") {
+            if !v.trim().is_empty() {
+                self.compression_algos = v.trim().to_string();
+            }
+        }
+        self
+    }
+}
+
+/// Append a hex + ASCII annotated record to a file under
+/// `$AEROFTP_WIRE_DUMP_DIR`. Best-effort and env-gated: a single
+/// `env::var` miss on the normal path, no panic, no behaviour change
+/// when the variable is unset. Intended for isolating wire-protocol
+/// drift against a real remote rsync (blocco-B methodology) and for
+/// producing a concrete artifact to hand to a remote rsync operator.
+fn wire_dump_append(file: &str, header: &str, bytes: &[u8]) {
+    let dir = match std::env::var("AEROFTP_WIRE_DUMP_DIR") {
+        Ok(d) if !d.is_empty() => d,
+        _ => return,
+    };
+    use std::fmt::Write as _;
+    let mut out = String::with_capacity(bytes.len() * 4 + 128);
+    let _ = writeln!(out, "=== {header} ({} bytes) ===", bytes.len());
+    for (i, chunk) in bytes.chunks(16).enumerate() {
+        let _ = write!(out, "{:08x}  ", i * 16);
+        for b in chunk {
+            let _ = write!(out, "{b:02x} ");
+        }
+        for _ in chunk.len()..16 {
+            let _ = write!(out, "   ");
+        }
+        let _ = write!(out, " |");
+        for b in chunk {
+            let c = *b;
+            let _ = write!(
+                out,
+                "{}",
+                if (0x20..0x7f).contains(&c) { c as char } else { '.' }
+            );
+        }
+        let _ = writeln!(out, "|");
+    }
+    let _ = writeln!(out);
+    let path = std::path::Path::new(&dir).join(file);
+    use std::io::Write as _;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        let _ = f.write_all(out.as_bytes());
+    }
+}
+
+/// Record the exact client preamble (decoded fields + raw bytes) we put
+/// on the wire. Env-gated via `wire_dump_append`.
+fn wire_dump_client_preamble(
+    protocol_version: u32,
+    checksum_algos: &str,
+    compression_algos: &str,
+    raw: &[u8],
+) {
+    if std::env::var("AEROFTP_WIRE_DUMP_DIR")
+        .map(|d| d.is_empty())
+        .unwrap_or(true)
+    {
+        return;
+    }
+    let summary = format!(
+        "protocol_version={protocol_version}\nchecksum_algos={checksum_algos:?}\ncompression_algos={compression_algos:?}",
+    );
+    wire_dump_append("client_preamble.txt", &summary, raw);
+}
+
+/// Record whatever the server sent before the preamble decoded (or
+/// before it closed the channel). `state` distinguishes a clean decode
+/// from a premature close so the artifact is self-describing.
+fn wire_dump_server_response(received: &[u8], state: &str) {
+    wire_dump_append(
+        "server_response.txt",
+        &format!("server-bytes-before-preamble state={state}"),
+        received,
+    );
+}
+
 /// Real-wire rsync session driver. Parameterised on the raw-capable
 /// remote-shell transport so both mock and SSH paths share the machinery.
 pub struct AerorsyncDriver<T: RawRemoteShellTransport> {
     transport: T,
     cancel_handle: CancelHandle,
+    /// Preamble capability advertisement. Defaults to
+    /// [`PreambleProfile::default`]; production overrides via
+    /// [`Self::with_preamble_profile`] using [`PreambleProfile::for_host`].
+    preamble_profile: PreambleProfile,
 
     // Populated by `perform_preamble_exchange`.
     protocol_version: u32,
@@ -358,6 +501,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         Self {
             transport,
             cancel_handle,
+            preamble_profile: PreambleProfile::default(),
             protocol_version: 0,
             compat_flags: 0,
             checksum_seed: 0,
@@ -393,12 +537,28 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         }
     }
 
+    /// Override the preamble capability advertisement. Production wires
+    /// this from [`PreambleProfile::for_host`] so a future endpoint
+    /// running a non-stock `rsync --server` wrapper can advertise a
+    /// reduced, accepted algo list. The default keeps the byte-pinned
+    /// stock advertisement, so callers that do not opt in are unchanged.
+    pub fn with_preamble_profile(mut self, profile: PreambleProfile) -> Self {
+        self.preamble_profile = profile;
+        self
+    }
+
     pub fn cancel_handle(&self) -> CancelHandle {
         self.cancel_handle.clone()
     }
 
     pub fn phase(&self) -> AerorsyncSessionPhase {
         self.phase
+    }
+    /// Test-only view of the configured preamble profile so the
+    /// builder wiring can be regression-pinned without a live wire.
+    #[cfg(test)]
+    pub(crate) fn preamble_profile_for_test(&self) -> &PreambleProfile {
+        &self.preamble_profile
     }
     pub fn protocol_version(&self) -> u32 {
         self.protocol_version
@@ -710,7 +870,9 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         // 3.4.1 to parse the whole list as a single unknown algorithm
         // and close the stream. Values cribbed from the frozen capture
         // `capture/artifacts_real/frozen/upload/capture_in.bin` shape.
-        self.perform_preamble_exchange(31, "xxh128 xxh3 xxh64 md5 md4", "zstd lz4 zlibx zlib")
+        let csum_algos = self.preamble_profile.checksum_algos.clone();
+        let comp_algos = self.preamble_profile.compression_algos.clone();
+        self.perform_preamble_exchange(31, &csum_algos, &comp_algos)
             .await?;
         self.send_file_list_single_file(&source_entry).await?;
         self.receive_signature_phase_single_file(bridge).await?;
@@ -741,7 +903,9 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         self.session_role = Some(SessionRole::Sender);
         self.remote_command_flavor = command_spec.flavor;
         self.open_raw_stream_internal(&command_spec).await?;
-        self.perform_preamble_exchange(31, "xxh128 xxh3 xxh64 md5 md4", "zstd lz4 zlibx zlib")
+        let csum_algos = self.preamble_profile.checksum_algos.clone();
+        let comp_algos = self.preamble_profile.compression_algos.clone();
+        self.perform_preamble_exchange(31, &csum_algos, &comp_algos)
             .await?;
         self.send_file_list_single_file(&source_entry).await?;
         self.receive_signature_phase_single_file(bridge).await?;
@@ -767,7 +931,9 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         // 3.4.1 to parse the whole list as a single unknown algorithm
         // and close the stream. Values cribbed from the frozen capture
         // `capture/artifacts_real/frozen/upload/capture_in.bin` shape.
-        self.perform_preamble_exchange(31, "xxh128 xxh3 xxh64 md5 md4", "zstd lz4 zlibx zlib")
+        let csum_algos = self.preamble_profile.checksum_algos.clone();
+        let comp_algos = self.preamble_profile.compression_algos.clone();
+        self.perform_preamble_exchange(31, &csum_algos, &comp_algos)
             .await?;
         self.send_download_receiver_phase_prefix().await?;
         self.receive_file_list_single_file(bridge).await?;
@@ -796,7 +962,9 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         self.session_role = Some(SessionRole::Receiver);
         self.remote_command_flavor = command_spec.flavor;
         self.open_raw_stream_internal(&command_spec).await?;
-        self.perform_preamble_exchange(31, "xxh128 xxh3 xxh64 md5 md4", "zstd lz4 zlibx zlib")
+        let csum_algos = self.preamble_profile.checksum_algos.clone();
+        let comp_algos = self.preamble_profile.compression_algos.clone();
+        self.perform_preamble_exchange(31, &csum_algos, &comp_algos)
             .await?;
         self.send_download_receiver_phase_prefix().await?;
         self.receive_file_list_single_file(bridge).await?;
@@ -851,6 +1019,16 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             compression_algos: compression_algos.to_string(),
             consumed: 0,
         });
+        // Diagnostic wire dump (env-gated, zero cost when unset): records
+        // the exact client preamble we put on the wire so it can be
+        // diffed against what a remote `rsync --server` expects when
+        // isolating wire-protocol drift against a live endpoint.
+        wire_dump_client_preamble(
+            protocol_version,
+            checksum_algos,
+            compression_algos,
+            &outbound,
+        );
         {
             self.check_cancel("perform_preamble_exchange send")?;
             let stream = self.stream.as_mut().ok_or_else(|| {
@@ -866,6 +1044,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             self.check_cancel("perform_preamble_exchange recv")?;
             match decode_server_preamble(&scratch) {
                 Ok(preamble) => {
+                    wire_dump_server_response(&scratch, "decoded-ok");
                     // Mirror `compat.c::setup_protocol` line 605:
                     //   if (protocol_version > remote_protocol)
                     //       protocol_version = remote_protocol;
@@ -892,6 +1071,10 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                     })?;
                     let chunk = stream.read_bytes(RAW_READ_CHUNK).await?;
                     if chunk.is_empty() {
+                        wire_dump_server_response(
+                            &scratch,
+                            "remote-closed-before-server-preamble",
+                        );
                         return Err(AerorsyncError::transport(
                             "perform_preamble_exchange: remote closed before server preamble",
                         ));
@@ -2874,6 +3057,7 @@ mod tests {
             // 16 bytes filled with a sentinel; xxh128 length, never
             // validated against file content in unit tests.
             checksum: vec![0xAA; 16],
+            symlink_target: None,
         }
     }
 
@@ -2906,6 +3090,85 @@ mod tests {
         assert_eq!(decoded.checksum_algos, "md5,xxh64");
         assert_eq!(decoded.compression_algos, "none,zstd");
         assert_eq!(d.phase(), AerorsyncSessionPhase::ServerPreambleSent);
+    }
+
+    #[test]
+    fn preamble_profile_default_is_byte_pinned() {
+        // The default advertisement is byte-pinned against the frozen
+        // rsync 3.2.7 capture and CI lane 3 (rsync 3.4.1). Any change
+        // here is a wire-format change and must be reviewed against the
+        // frozen oracle, not silently accepted.
+        let d = PreambleProfile::default();
+        assert_eq!(d.checksum_algos, "xxh128 xxh3 xxh64 md5 md4");
+        assert_eq!(d.compression_algos, "zstd lz4 zlibx zlib");
+    }
+
+    #[test]
+    fn preamble_profile_for_host_returns_byte_pinned_default() {
+        // Every host keeps the byte-pinned default today. The per-host
+        // hook exists for a future non-stock endpoint but must not
+        // silently deviate the default path for any current host.
+        for host in [
+            "rsync.net",
+            "u123.your-storagebox.de",
+            "127.0.0.1",
+            "host.example.com",
+            "",
+        ] {
+            assert_eq!(
+                PreambleProfile::for_host(host),
+                PreambleProfile::default(),
+                "host {host:?} must keep the byte-pinned default profile"
+            );
+        }
+    }
+
+    #[test]
+    fn preamble_profile_env_overrides_are_noop_when_unset() {
+        // The common path (no env knobs) must leave the resolved profile
+        // exactly equal to the byte-pinned default. The override branch
+        // itself is exercised live, not in a parallel unit test (process
+        // env is global and would race other tests).
+        std::env::remove_var("AEROFTP_RSYNC_CSUM_ALGOS");
+        std::env::remove_var("AEROFTP_RSYNC_COMPRESS_ALGOS");
+        assert_eq!(
+            PreambleProfile::default().with_env_overrides(),
+            PreambleProfile::default()
+        );
+    }
+
+    #[tokio::test]
+    async fn driver_with_preamble_profile_stores_custom() {
+        // Builder applies an arbitrary reduced profile; a
+        // default-constructed driver keeps the byte-pinned default.
+        let custom = PreambleProfile {
+            checksum_algos: "xxh128 md5".to_string(),
+            compression_algos: "zlib none".to_string(),
+        };
+        let d = make_driver(mock_transport()).with_preamble_profile(custom.clone());
+        assert_eq!(d.preamble_profile_for_test(), &custom);
+        let d2 = make_driver(mock_transport());
+        assert_eq!(d2.preamble_profile_for_test(), &PreambleProfile::default());
+    }
+
+    #[tokio::test]
+    async fn custom_reduced_preamble_round_trips_through_wire_encoder() {
+        // A reduced advertisement must still be a legal client preamble:
+        // encode then decode returns the same strings. Proves profile
+        // values flow through the real wire encoder unchanged.
+        use crate::aerorsync::real_wire::decode_client_preamble;
+        let p = PreambleProfile {
+            checksum_algos: "xxh128 md5 md4".to_string(),
+            compression_algos: "zlib none".to_string(),
+        };
+        let mut d = make_driver(mock_transport());
+        let mut sink = Vec::new();
+        d.send_client_preamble(&mut sink, 31, &p.checksum_algos, &p.compression_algos)
+            .await
+            .unwrap();
+        let decoded = decode_client_preamble(&sink).unwrap();
+        assert_eq!(decoded.checksum_algos, p.checksum_algos);
+        assert_eq!(decoded.compression_algos, p.compression_algos);
     }
 
     #[tokio::test]
@@ -3388,6 +3651,7 @@ mod tests {
                 environment: Vec::new(),
             },
             auth_password: None,
+            auth_agent: false,
         };
 
         let transport = SshRemoteShellTransport::new(ssh_config);
@@ -3493,6 +3757,7 @@ mod tests {
                 environment: Vec::new(),
             },
             auth_password: None,
+            auth_agent: false,
         };
 
         let transport = SshRemoteShellTransport::new(ssh_config);

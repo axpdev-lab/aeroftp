@@ -113,6 +113,13 @@ pub struct SshTransportConfig {
     /// the same as `None` by the connect path so callers cannot accidentally
     /// auth as the empty user.
     pub auth_password: Option<SecretString>,
+    /// When true, the russh leg delegates authentication to a running SSH
+    /// agent (`SSH_AUTH_SOCK`) instead of loading `private_key_path`. The
+    /// libssh2 single-shot leg ignores this field (pubkey-file-only by
+    /// design); an agent profile is therefore always routed through the
+    /// russh leg via [`SshTransportConfig::prefers_russh_leg`]. Password
+    /// auth still takes precedence when both are configured.
+    pub auth_agent: bool,
 }
 
 impl SshTransportConfig {
@@ -136,6 +143,7 @@ impl SshTransportConfig {
                 environment: Vec::new(),
             },
             auth_password: None,
+            auth_agent: false,
         }
     }
 
@@ -150,6 +158,18 @@ impl SshTransportConfig {
             Some(secret) if !secret.expose_secret().is_empty() => Some(secret),
             _ => None,
         }
+    }
+
+    /// Whether this profile must be driven through the russh leg rather
+    /// than the libssh2 single-shot leg. True for password auth (libssh2
+    /// leg is pubkey-only) and for agent auth (libssh2 leg cannot reach
+    /// `SSH_AUTH_SOCK` in this codebase). Pubkey-file profiles return
+    /// false and keep using the historical libssh2 single-shot path for
+    /// non-batch transfers. Probe and single-shot upload/download share
+    /// this predicate so leg selection is consistent across the call
+    /// sites in `delta_transport_impl.rs`.
+    pub fn prefers_russh_leg(&self) -> bool {
+        self.usable_password().is_some() || self.auth_agent
     }
 }
 
@@ -878,6 +898,41 @@ mod tests {
             abc,
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
+    }
+
+    #[test]
+    fn prefers_russh_leg_true_for_agent_and_password_false_for_pubkey() {
+        use super::SshTransportConfig;
+        use secrecy::SecretString;
+        use std::path::PathBuf;
+
+        let base = SshTransportConfig::localhost_test(PathBuf::from("/dev/null"), 1 << 20);
+
+        // Pure pubkey-file profile: stays on the libssh2 single-shot leg.
+        assert!(!base.prefers_russh_leg());
+
+        // Agent profile: must route through russh (libssh2 leg cannot
+        // reach SSH_AUTH_SOCK in this codebase).
+        let agent = SshTransportConfig {
+            auth_agent: true,
+            ..SshTransportConfig::localhost_test(PathBuf::from("/dev/null"), 1 << 20)
+        };
+        assert!(agent.prefers_russh_leg());
+
+        // Password profile: russh leg (unchanged behaviour).
+        let pw = SshTransportConfig {
+            auth_password: Some(SecretString::from("pw".to_string())),
+            ..SshTransportConfig::localhost_test(PathBuf::from("/dev/null"), 1 << 20)
+        };
+        assert!(pw.prefers_russh_leg());
+
+        // Empty password is treated as no password; with no agent flag
+        // the profile stays on the pubkey leg.
+        let empty_pw = SshTransportConfig {
+            auth_password: Some(SecretString::from(String::new())),
+            ..SshTransportConfig::localhost_test(PathBuf::from("/dev/null"), 1 << 20)
+        };
+        assert!(!empty_pw.prefers_russh_leg());
     }
 
     #[test]

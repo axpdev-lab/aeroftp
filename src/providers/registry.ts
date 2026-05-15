@@ -1864,58 +1864,6 @@ export const PROVIDERS: ProviderConfig[] = [
         signupUrl: 'https://filelu.com/register/',
     },
     {
-        id: 'filelu-rsync',
-        name: 'FileLu Rsync',
-        description: 'FileLu rsync-over-SSH endpoint (port 2222, transfer-only, native aerorsync delta)',
-        protocol: 'filelu-rsync',
-        category: 'ftp',
-        icon: 'Server',
-        color: '#8B5CF6',
-        stable: false,
-        contactVerified: true,
-        // Z.4.5 R1 (2026-05-14): the FileLu Rsync endpoint is fully
-        // managed by AeroFTP (`rsync.filelu.com:2222`). Surfacing the
-        // host/port row would confuse rather than help (the user has no
-        // reason to change either). Server/port are auto-applied at
-        // preset-select time and hidden from the form.
-        serverLocked: true,
-        fields: [
-            {
-                key: 'username',
-                label: 'Rsync Login',
-                type: 'text',
-                required: true,
-                placeholder: 'Your FileLu username',
-                helpText: 'Account Settings -> FTP/Rsync Login',
-                group: 'credentials',
-            },
-            {
-                key: 'password',
-                label: 'Rsync Password',
-                type: 'password',
-                required: true,
-                helpText: 'FileLu account password unless you configured a protocol-specific password',
-                group: 'credentials',
-            },
-        ],
-        defaults: {
-            server: 'rsync.filelu.com',
-            port: 2222,
-        },
-        features: {
-            shareLink: false,
-            sync: true,
-        },
-        setupInstructions: [
-            'Requires rsync >= 3.0 on the local machine.',
-            'Password-based rsync-over-SSH support is tracked in Appendix Z.4.5 / R1.',
-            'Use this preset for live endpoint profiling and future rsync-as-a-service validation.',
-        ],
-        healthCheckUrl: 'https://filelu.com/api/',
-        helpUrl: 'https://filelu.com/pages/faq/',
-        signupUrl: 'https://filelu.com/register/',
-    },
-    {
         id: 'filelu-ftp',
         name: 'FileLu FTP',
         description: 'FileLu via FTP (port 21)',

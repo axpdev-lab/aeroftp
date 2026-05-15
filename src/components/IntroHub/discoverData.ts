@@ -200,7 +200,6 @@ export const DISCOVER_DESC_KEYS: Record<string, string> = {
 const BADGE_OVERRIDES: Record<string, string> = {
     'felicloud': 'API OCS',   // Nextcloud-based, OCS REST API for sharing
     'tabdigital': 'API OCS',  // Tab.digital is also Nextcloud-as-a-service
-    'filelu-rsync': 'RSYNC',
     'megacmd-webdav': 'LOCAL',
     'filen-desktop-webdav': 'LOCAL',
     'filen-desktop-s3': 'LOCAL',
@@ -286,11 +285,9 @@ export function buildDiscoverCategories(): DiscoverCategory[] {
 
     // Build protocol items: generics first, then Hetzner, then demos last
     const hetzner = ftpProviders.find(p => p.id === 'hetzner-storage-box');
-    const fileluRsync = ftpProviders.find(p => p.id === 'filelu-rsync');
     const protoItems = [
         ...PROTOCOL_ITEMS.filter(p => !p.demo),
         ...(hetzner ? [hetzner] : []),
-        ...(fileluRsync ? [fileluRsync] : []),
         ...PROTOCOL_ITEMS.filter(p => !!p.demo),
     ];
 

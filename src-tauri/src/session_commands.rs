@@ -99,7 +99,6 @@ pub async fn session_connect(
         "webdav" => ProviderType::WebDav,
         "s3" => ProviderType::S3,
         "filelu" => ProviderType::FileLu,
-        "filelu-rsync" | "filelu_rsync" | "filelurs" => ProviderType::FileLuRsync,
         "opendrive" => ProviderType::OpenDrive,
         "github" => ProviderType::GitHub,
         "gitlab" => ProviderType::GitLab,

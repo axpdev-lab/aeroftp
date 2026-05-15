@@ -1454,7 +1454,6 @@ export const ProtocolBadge: React.FC<{ protocol?: ProviderType; className?: stri
         fourshared: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
         zohoworkdrive: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
         filelu: 'bg-sky-100 text-sky-700 dark:bg-sky-900 dark:text-sky-300',
-        'filelu-rsync': 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300',
         koofr: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
         opendrive: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900 dark:text-cyan-300',
         yandexdisk: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300',

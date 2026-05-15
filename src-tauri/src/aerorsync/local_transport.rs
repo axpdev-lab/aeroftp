@@ -26,7 +26,7 @@ use std::time::Instant;
 use async_trait::async_trait;
 use tokio::fs;
 
-use crate::aerorsync::delta_transport_impl::write_atomic_chunked;
+use crate::aerorsync::delta_transport_impl::{write_atomic_chunked, write_atomic_chunked_sparse};
 use crate::delta_sync;
 use crate::delta_transport::DeltaTransport;
 use crate::rsync_over_ssh::{RsyncCapability, RsyncError, RsyncStats};
@@ -43,13 +43,30 @@ const ATOMIC_WRITE_CHUNK_SIZE: usize = 64 * 1024;
 /// Local-to-local delta transport. Bypasses SSH / wire protocol entirely.
 pub struct LocalDeltaTransport {
     min_file_size: u64,
+    /// When true, reconstructed output is written with hole punching
+    /// (rsync `--sparse` analogue): all-zero chunks become filesystem
+    /// holes instead of allocated zero blocks. Opt-in; the default
+    /// preserves the historical dense write so existing callers and the
+    /// kill-9 atomicity tests are unaffected.
+    sparse: bool,
 }
 
 impl LocalDeltaTransport {
     /// Construct with a minimum file size below which `TooSmall` is returned.
     /// Caller typically uses [`crate::rsync_over_ssh::DEFAULT_MIN_FILE_SIZE`].
     pub fn new(min_file_size: u64) -> Self {
-        Self { min_file_size }
+        Self {
+            min_file_size,
+            sparse: false,
+        }
+    }
+
+    /// Builder: enable sparse (hole-punched) destination writes. Use for
+    /// workloads with large zero regions (VM images, pre-allocated DB
+    /// files, core dumps) where the dense representation wastes blocks.
+    pub fn with_sparse(mut self, sparse: bool) -> Self {
+        self.sparse = sparse;
+        self
     }
 
     async fn transfer_inner(&self, src: &Path, dst: &Path) -> Result<RsyncStats, RsyncError> {
@@ -130,15 +147,27 @@ impl LocalDeltaTransport {
             .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
             .map(|d| (d.as_secs() as i64, Some(d.subsec_nanos() as i32)));
 
-        write_atomic_chunked(
-            dst,
-            &reconstructed,
-            ATOMIC_WRITE_CHUNK_SIZE,
-            None,
-            preserve_mode,
-            preserve_mtime,
-        )
-        .await
+        if self.sparse {
+            write_atomic_chunked_sparse(
+                dst,
+                &reconstructed,
+                ATOMIC_WRITE_CHUNK_SIZE,
+                None,
+                preserve_mode,
+                preserve_mtime,
+            )
+            .await
+        } else {
+            write_atomic_chunked(
+                dst,
+                &reconstructed,
+                ATOMIC_WRITE_CHUNK_SIZE,
+                None,
+                preserve_mode,
+                preserve_mtime,
+            )
+            .await
+        }
         .map_err(|e| RsyncError::TransferFailed {
             exit: 0,
             stderr: format!("local atomic write failed: {e:?}"),
@@ -378,6 +407,68 @@ mod tests {
         let cap = transport.probe_remote().await.expect("probe");
         assert_eq!(cap.protocol, 31);
         assert!(cap.version.contains("local"));
+    }
+
+    #[tokio::test]
+    async fn sparse_transport_output_is_byte_identical() {
+        let dir = tmp_dir();
+        let src = dir.path().join("src.bin");
+        let dst = dir.path().join("dst.bin");
+        // 2 MiB with a large interior zero region; dense markers at the
+        // ends so the file is not trivially empty.
+        let mut payload = vec![0u8; 2 * 1024 * 1024];
+        payload[..1024].fill(0x33);
+        let n = payload.len();
+        payload[n - 1024..].fill(0x44);
+        tokio::fs::write(&src, &payload).await.unwrap();
+
+        let transport = LocalDeltaTransport::new(1024).with_sparse(true);
+        transport
+            .transfer_inner(src.as_path(), dst.as_path())
+            .await
+            .expect("sparse transfer");
+
+        assert_eq!(
+            tokio::fs::read(&dst).await.unwrap(),
+            payload,
+            "sparse transport must reconstruct byte-identical content"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn sparse_transport_allocates_fewer_blocks_than_dense() {
+        use std::os::unix::fs::MetadataExt;
+        let dir = tmp_dir();
+        let src = dir.path().join("src.bin");
+        let dense_dst = dir.path().join("dense.bin");
+        let sparse_dst = dir.path().join("sparse.bin");
+        let mut payload = vec![0u8; 2 * 1024 * 1024];
+        payload[..16].fill(0x55);
+        let n = payload.len();
+        payload[n - 16..].fill(0x66);
+        tokio::fs::write(&src, &payload).await.unwrap();
+
+        LocalDeltaTransport::new(1024)
+            .transfer_inner(src.as_path(), dense_dst.as_path())
+            .await
+            .expect("dense transfer");
+        LocalDeltaTransport::new(1024)
+            .with_sparse(true)
+            .transfer_inner(src.as_path(), sparse_dst.as_path())
+            .await
+            .expect("sparse transfer");
+
+        assert_eq!(
+            tokio::fs::read(&dense_dst).await.unwrap(),
+            tokio::fs::read(&sparse_dst).await.unwrap()
+        );
+        let dense_blocks = std::fs::metadata(&dense_dst).unwrap().blocks();
+        let sparse_blocks = std::fs::metadata(&sparse_dst).unwrap().blocks();
+        assert!(
+            sparse_blocks < dense_blocks,
+            "sparse transport must allocate fewer blocks: sparse={sparse_blocks} dense={dense_blocks}"
+        );
     }
 
     #[cfg(unix)]

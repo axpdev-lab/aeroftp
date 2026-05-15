@@ -1142,6 +1142,7 @@ mod native_against_stock_rsync {
                 environment: Vec::new(),
             },
             auth_password: None,
+            auth_agent: false,
         };
         // 1 MiB min size so small test payloads still flow through.
         AerorsyncDeltaTransport::new(config, 1024)
@@ -1356,6 +1357,7 @@ mod native_rsync_password_auth {
                 environment: Vec::new(),
             },
             auth_password: Some(SecretString::from(password.to_string())),
+            auth_agent: false,
         }
     }
 
@@ -1367,8 +1369,8 @@ mod native_rsync_password_auth {
     /// proof that the dispatch step works against a real SSH server.
     /// Heavy upload/download lanes already cover the rsync wire path on
     /// the key-auth fixture; once the dispatch is wired into a concrete
-    /// FileLu-rsync provider, those lanes can be parameterised over
-    /// password too.
+    /// password-auth rsync provider, those lanes can be parameterised
+    /// over password too.
     #[tokio::test]
     #[ignore = "requires docker fixture aeroftp-delta-sync-fixture-password"]
     async fn password_auth_round_trip_runs_remote_command() {

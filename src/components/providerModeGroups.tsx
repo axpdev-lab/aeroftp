@@ -18,7 +18,7 @@
  * group automatically based on the form's current providerId+protocol.
  */
 import React from 'react';
-import { Key, Globe, Database, Server, Zap, Cloud, Layers } from 'lucide-react';
+import { Key, Globe, Database, Server, Cloud, Layers } from 'lucide-react';
 import type { ProviderType } from '../types';
 
 export interface ProviderMode {
@@ -70,16 +70,6 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
                 label: 'Native API',
                 description:
                     'REST API with API key. Full feature set (trash, share links, password-protected files).',
-            },
-            {
-                providerId: 'filelu-rsync',
-                protocol: 'filelu-rsync',
-                icon: <Zap size={14} />,
-                activeColor: 'text-purple-500',
-                label: 'Rsync',
-                description:
-                    'rsync-over-SSH on port 2222. Transfer-only, native aerorsync delta engine. Best for high-bandwidth syncs.',
-                badge: 'BETA',
             },
             {
                 providerId: 'filelu-webdav',

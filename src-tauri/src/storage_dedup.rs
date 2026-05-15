@@ -211,7 +211,7 @@ fn dedup_family(provider_id: Option<&str>, protocol: &str) -> Option<&'static st
             Some("yandex")
         }
         (_, "yandexdisk") => Some("yandex"),
-        (Some("filelu-webdav") | Some("filelu-rsync") | Some("filelu"), _) => Some("filelu"),
+        (Some("filelu-webdav") | Some("filelu"), _) => Some("filelu"),
         (_, "filelu") => Some("filelu"),
         // FileLu S3 deliberately omitted: its access-key-based dedup cannot
         // reconcile with username-based WebDAV/REST without leaking the key.
