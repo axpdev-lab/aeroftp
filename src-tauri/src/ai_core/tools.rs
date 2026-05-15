@@ -1063,10 +1063,15 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
         },
         ToolDef {
             name: "aeroftp_storage_quota",
-            description: "Get storage usage and quota information for a remote server.",
+            description: "Get storage usage and quota for a remote server. By default returns the provider's reported quota (fast, one API call). For backends with no quota API (raw FTP/FTPS, most S3/WebDAV) set scan:true to recursively sum file sizes and get a real used figure (mirrors CLI `df --scan`); combined with a provider total it yields used/total/used_percent. The scan is bounded (depth 100, 500k entries; scan_truncated:true when a cap is hit) and never runs unless you opt in. Use full:true to scan from the account root, or path to scan a specific subtree (default '/').",
             input_schema: json!({
                 "type": "object",
-                "properties": { "server": {"type": "string"} },
+                "properties": {
+                    "server": {"type": "string"},
+                    "scan": {"type": "boolean", "description": "Recursively scan the tree to compute used bytes. Default false (use the provider quota API)."},
+                    "full": {"type": "boolean", "description": "With scan:true, scan from the account root '/' instead of the path argument."},
+                    "path": {"type": "string", "description": "With scan:true and full unset, the subtree root to scan. Default '/'."}
+                },
                 "required": ["server"],
             }),
             danger: DangerLevel::ReadOnly,
@@ -1074,10 +1079,15 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
         },
         ToolDef {
             name: "remote_storage_quota",
-            description: "Alias of aeroftp_storage_quota.",
+            description: "Alias of aeroftp_storage_quota (supports the same scan/full/path arguments).",
             input_schema: json!({
                 "type": "object",
-                "properties": { "server": {"type": "string"} },
+                "properties": {
+                    "server": {"type": "string"},
+                    "scan": {"type": "boolean", "description": "Recursively scan the tree to compute used bytes. Default false."},
+                    "full": {"type": "boolean", "description": "With scan:true, scan from the account root '/'."},
+                    "path": {"type": "string", "description": "With scan:true and full unset, the subtree root to scan. Default '/'."}
+                },
                 "required": ["server"],
             }),
             danger: DangerLevel::ReadOnly,

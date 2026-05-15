@@ -802,15 +802,132 @@ async fn rename(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     Ok(json!({ "server": server, "from": from, "to": to, "renamed": true }))
 }
 
+/// Depth / entry caps for the optional `scan` mode of `aeroftp_storage_quota`.
+/// Mirrors the CLI `df --scan` project-wide scan caps so an agent gets the
+/// same bounded BFS. The walk only retains the directory queue (not every
+/// entry), so memory stays bounded by tree breadth.
+const MAX_QUOTA_SCAN_DEPTH: usize = 100;
+const MAX_QUOTA_SCAN_ENTRIES: usize = 500_000;
+
 async fn storage_quota(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     let server = normalize_server(args)?;
+    let scan = args
+        .get("scan")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
-    let info = backend.storage_info().await.map_err(ToolError::Exec)?;
+
+    if !scan {
+        let info = backend.storage_info().await.map_err(ToolError::Exec)?;
+        return Ok(json!({
+            "server": server,
+            "scanned": false,
+            "used_bytes": info.used,
+            "total_bytes": info.total,
+            "free_bytes": info.available,
+        }));
+    }
+
+    // --- Explicit recursive used-storage scan (CLI `df --scan` parity) ----
+    // For backends with no quota-total API (raw FTP/FTPS, most S3/WebDAV)
+    // the only way to a real used/total/% is to sum file sizes. Never run
+    // automatically: the agent opts in with scan:true.
+    let full = args
+        .get("full")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let root = if full {
+        "/".to_string()
+    } else {
+        get_str_opt(args, "path")
+            .filter(|p| !p.trim().is_empty())
+            .unwrap_or_else(|| "/".to_string())
+    };
+
+    // An API total still wins for the cap even in scan mode; the scan only
+    // ever supplies `used`. storage_info erroring is expected for the
+    // no-quota backends this targets, so it is non-fatal.
+    let api_total = backend
+        .storage_info()
+        .await
+        .ok()
+        .map(|i| i.total)
+        .filter(|t| *t > 0)
+        .unwrap_or(0);
+
+    let mut used_bytes: u64 = 0;
+    let mut file_count: u64 = 0;
+    let mut dir_count: u64 = 0;
+    let mut visited: usize = 0;
+    let mut truncated = false;
+    // BFS queue of (path, depth). Only directories are queued; entries are
+    // summed in-place so memory stays bounded by tree breadth.
+    let mut queue: std::collections::VecDeque<(String, usize)> =
+        std::collections::VecDeque::new();
+    queue.push_back((root.clone(), 0));
+
+    while let Some((dir, depth)) = queue.pop_front() {
+        if depth > MAX_QUOTA_SCAN_DEPTH {
+            truncated = true;
+            continue;
+        }
+        let entries = match backend.list(&dir).await {
+            Ok(e) => e,
+            // A single unreadable directory is non-fatal: skip it, keep the
+            // running total as a lower bound rather than failing the tool.
+            Err(_) => {
+                truncated = true;
+                continue;
+            }
+        };
+        dir_count += 1;
+        for entry in entries {
+            visited += 1;
+            if visited > MAX_QUOTA_SCAN_ENTRIES {
+                truncated = true;
+                break;
+            }
+            // Skip symlinks to avoid traversal loops and double-counting,
+            // matching the CLI used-scan behavior.
+            if entry.is_symlink {
+                continue;
+            }
+            if entry.is_dir {
+                queue.push_back((entry.path, depth + 1));
+            } else {
+                used_bytes += entry.size;
+                file_count += 1;
+            }
+        }
+        if visited > MAX_QUOTA_SCAN_ENTRIES {
+            truncated = true;
+            break;
+        }
+    }
+
+    let used_percent = if api_total > 0 {
+        (used_bytes as f64 / api_total as f64) * 100.0
+    } else {
+        0.0
+    };
+    let total_source = if api_total > 0 {
+        Value::String("api".to_string())
+    } else {
+        Value::Null
+    };
+
     Ok(json!({
         "server": server,
-        "used_bytes": info.used,
-        "total_bytes": info.total,
-        "free_bytes": info.available,
+        "scanned": true,
+        "used_bytes": used_bytes,
+        "total_bytes": api_total,
+        "used_percent": used_percent,
+        "total_source": total_source,
+        "scan_files": file_count,
+        "scan_dirs": dir_count,
+        "scan_truncated": truncated,
+        "scan_scope": if full { "account-root" } else { "initial-path" },
+        "scan_root": root,
     }))
 }
 
