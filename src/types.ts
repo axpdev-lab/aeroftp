@@ -436,6 +436,16 @@ export interface ServerProfile {
     // next to the byte figure so the user can sanity-check the result.
     fileCount?: number;
   };
+  // Aggregate compression telemetry from the last AeroVault op run against
+  // this profile (Ehud #162). Feeds the optional, default-hidden "Saved"
+  // and "Saved%" columns in My Servers and `aeroftp-cli profiles`.
+  // `plaintext`/`compressed` are bytes; `ratio` is percent saved.
+  lastCompression?: {
+    plaintext: number;
+    compressed: number;
+    ratio: number;
+    at: string;
+  };
 }
 
 /**
