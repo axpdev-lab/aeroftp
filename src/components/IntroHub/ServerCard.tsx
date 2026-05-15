@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Edit2, Trash2, Copy, Loader2, Star, Clock, ShieldCheck, Lock, Check, X, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
-import { ServerProfile, ProviderType, getProtocolClass, getE2EBits, profileHasQuota } from '../../types';
+import { ServerProfile, ProviderType, getProtocolClass, getE2EBits, profileHasQuota, resolveEffectiveQuota } from '../../types';
 import { ProtocolIcon } from '../ProtocolSelector';
 import { PROVIDER_LOGOS } from '../ProviderLogos';
 import { getGitHubConnectionBadge, getMegaConnectionBadge, getInfiniCloudConnectionBadge } from '../../utils/providerConnectionMeta';
@@ -28,17 +28,30 @@ function StorageUsageBar({
     quota,
     supported,
     thresholds,
+    manualTotal,
 }: {
     quota: ServerProfile['lastQuota'] | undefined;
     supported: boolean;
     thresholds: StorageThresholds;
+    manualTotal?: number;
 }) {
     const t = useTranslation();
-    // No quota cached at all: provider supports quota but we haven't fetched
-    // yet (or the fetch failed transiently): show the placeholder so the user
-    // knows the slot exists. Provider that doesn't support quota: render
-    // nothing.
-    if (!quota) {
+    // Apply the item 4a precedence (a user-set manual cap is a TRUE
+    // override) here too, so the card stays consistent with the StatusBar
+    // even when the cached lastQuota was persisted with total:0: e.g. a
+    // scan that ran before the manual cap was set, or that was persisted
+    // against a duplicate profile that lacked options.manualTotalBytes.
+    // Without this the card showed "X / ∞" while the StatusBar correctly
+    // showed "X / 80 GB".
+    const filesSuffix = quota?.fileCount != null ? ` · ${quota.fileCount} ${t('browser.files')}` : '';
+    const rawUsed = quota?.used && quota.used > 0 ? quota.used : 0;
+    const rawTotal = quota?.total && quota.total > 0 ? quota.total : 0;
+    const eff = resolveEffectiveQuota(rawUsed, rawTotal, manualTotal);
+    const usedKnown = !!quota && quota.used > 0;
+
+    // Nothing cached and no cap configured: faint placeholder for
+    // quota-capable providers, nothing for the rest.
+    if (!usedKnown && eff.total <= 0) {
         if (!supported) return null;
         const title = t('introHub.storageQuotaUnavailable');
         return (
@@ -50,20 +63,29 @@ function StorageUsageBar({
             </div>
         );
     }
-    // Fetched but provider doesn't expose a byte-based cap (B2 native,
-    // Cloudinary free / credit-based plans). When usage is non-zero we
-    // show "X" with a filled emerald bar as a presence indicator: hiding
-    // the slot would look like a fetch failure on providers that just
-    // don't have a cap. Zero-or-missing usage still hides the slot.
-    if (!quota.total || quota.total <= 0) {
-        if (!quota.used || quota.used <= 0) {
-            return null;
-        }
-        const title = `${formatBytes(quota.used)} (no quota cap reported)`;
+    // A cap exists (manual or API) but `used` has not been scanned yet:
+    // show "- / cap" so the slot is informative instead of blank.
+    if (!usedKnown && eff.total > 0) {
+        const title = `${t('introHub.storageUsedOf', { used: '-', total: formatBytes(eff.total) })}`;
+        return (
+            <div className="leading-tight" title={title}>
+                <div className="flex items-center justify-between text-[10px] text-gray-500 dark:text-gray-400 tabular-nums">
+                    <span className="truncate">- / {formatBytes(eff.total)}</span>
+                    <span className="shrink-0 ml-1 tabular-nums text-gray-400">-</span>
+                </div>
+                <div className="h-1 mt-1 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden" />
+            </div>
+        );
+    }
+    // `used` known but no cap at all (no API total, no manual): presence
+    // indicator with a filled emerald bar, "X / ∞". Hiding the slot would
+    // look like a fetch failure on providers that just don't have a cap.
+    if (eff.total <= 0) {
+        const title = `${formatBytes(eff.used)} (no quota cap reported)${filesSuffix}`;
         return (
             <div className="leading-tight" title={title} aria-label={title}>
                 <div className="flex items-center justify-between text-[10px] text-gray-500 dark:text-gray-400 tabular-nums">
-                    <span className="truncate">{formatBytes(quota.used)}</span>
+                    <span className="truncate">{formatBytes(eff.used)}</span>
                     <span className="shrink-0 ml-1 tabular-nums text-gray-400">∞</span>
                 </div>
                 <div className="h-1 mt-1 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
@@ -72,14 +94,14 @@ function StorageUsageBar({
             </div>
         );
     }
-    const { used, total } = quota;
+    const { used, total } = eff;
     const { tone, pct } = getStorageTone(used, total, thresholds);
     const pctClamped = pct === null ? 0 : Math.max(0, Math.min(100, pct));
     const pctLabel = pct === null ? '-' : pct >= 10 ? `${Math.round(pct)}` : `${Math.round(pct * 10) / 10}`;
     return (
         <div
             className="leading-tight"
-            title={t('introHub.storageUsedOf', { used: formatBytes(used), total: formatBytes(total) })}
+            title={`${t('introHub.storageUsedOf', { used: formatBytes(used), total: formatBytes(total) })}${filesSuffix}`}
         >
             <div className="flex items-center justify-between text-[10px] text-gray-500 dark:text-gray-400 tabular-nums">
                 <span className="truncate">{formatBytes(used)} / {formatBytes(total)}</span>
@@ -522,7 +544,7 @@ export const ServerCard = React.memo(function ServerCard({
             {cardLayout === 'detailed' && (
                 <div className="mt-2.5 pt-2 border-t border-gray-100 dark:border-gray-700/60 grid grid-cols-[1fr_auto] items-center gap-2 min-h-[20px]">
                     <div className="min-w-0">
-                        <StorageUsageBar quota={server.lastQuota} supported={quotaSupported} thresholds={thresholds} />
+                        <StorageUsageBar quota={server.lastQuota} supported={quotaSupported} thresholds={thresholds} manualTotal={server.options?.manualTotalBytes} />
                     </div>
                     <div className="shrink-0 text-gray-300 dark:text-gray-600">
                         <HealthRadial

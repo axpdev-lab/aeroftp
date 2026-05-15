@@ -281,6 +281,13 @@ export interface ProviderOptions {
   // The API total always wins; this is only the fallback when it is 0.
   manualTotalBytes?: number;
 
+  // Item 4b: per-profile opt-in. When true, the explicit recursive "used
+  // storage" scan runs once automatically on connect for backends with no
+  // `used` API (FTP/S3/WebDAV). Default OFF: a no-quota profile with a
+  // huge tree (e.g. a web project on FTP) must not pay a full walk on
+  // every connect unless the user asked for it.
+  autoScanUsedOnConnect?: boolean;
+
   // InfiniCloud-specific
   infinicloud_mode?: "webdav" | "api"; // Connection mode: standard WebDAV or REST API with auto-discovery
   apiKey?: string; // InfiniCloud developer API key (128-bit hex)
@@ -425,15 +432,20 @@ export interface ServerProfile {
     totalSource?: "api" | "manual";
     usedSource?: "api" | "scan";
     used_at?: string;
+    // Number of files counted by the last explicit scan (item 4b). Shown
+    // next to the byte figure so the user can sanity-check the result.
+    fileCount?: number;
   };
 }
 
 /**
  * Resolve the effective storage quota under the single rule shared by GUI
- * and CLI (item 4a): the provider API total wins when it reports one,
- * otherwise the user's manual override is used. `used` is passed through
- * unchanged (it may come from the API or, for no-quota backends, an
- * explicit recursive scan: item 4b).
+ * and CLI (item 4a). A user-set manual total is a TRUE override: when
+ * present it wins even over an API-reported total. Rationale: SFTP statfs
+ * (and similar) often reports the whole server disk, not the user's
+ * allotment, so the explicit manual value must take precedence. Without a
+ * manual value, behaviour is unchanged (API total, else nothing). `used`
+ * is passed through (API value, or an explicit recursive scan: item 4b).
  */
 export interface EffectiveQuota {
   used: number;
@@ -446,6 +458,9 @@ export const resolveEffectiveQuota = (
   apiTotal: number,
   manualTotalBytes?: number,
 ): EffectiveQuota => {
+  if (manualTotalBytes && manualTotalBytes > 0) {
+    return { used: apiUsed, total: manualTotalBytes, totalSource: "manual" };
+  }
   if (apiTotal > 0) {
     return { used: apiUsed, total: apiTotal, totalSource: "api" };
   }

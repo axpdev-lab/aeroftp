@@ -1658,6 +1658,29 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
                         {t('connection.manualTotalStorageHint')}
                     </p>
+                    {/* Item 4b opt-in: auto-run the recursive used-storage
+                        scan on connect for no-quota backends. Default OFF so
+                        a huge tree (web project on FTP) is not walked on
+                        every connect unless the user asked for it. */}
+                    <div className="mt-2.5">
+                        <Checkbox
+                            checked={!!connectionParams.options?.autoScanUsedOnConnect}
+                            onChange={(checked) => {
+                                const opts = { ...(connectionParams.options || {}) };
+                                if (checked) {
+                                    opts.autoScanUsedOnConnect = true;
+                                } else {
+                                    delete opts.autoScanUsedOnConnect;
+                                }
+                                onConnectionParamsChange({ ...connectionParams, options: opts });
+                            }}
+                            label={t('connection.autoScanUsedOnConnect')}
+                            labelClassName="text-sm"
+                        />
+                        <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                            {t('connection.autoScanUsedOnConnectHint')}
+                        </p>
+                    </div>
                 </div>
                 {/* Action Buttons */}
                 <div className={showCancelSaveAsNew ? 'flex gap-2' : 'pt-2'}>

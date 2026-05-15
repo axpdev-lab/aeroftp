@@ -851,6 +851,69 @@ impl WebDavProvider {
         Ok(())
     }
 
+    /// Single-request recursive listing via `PROPFIND Depth: infinity`
+    /// (item 4b "used storage" scan). Returns every descendant of `path`
+    /// flat (files at any depth + collections), reusing the same prop set
+    /// and parser as `list()`. Servers that forbid or limit infinity
+    /// (403/400, or a non-multistatus status) yield an `Err` so the caller
+    /// falls back to the recursive Depth:1 BFS. Only `size`/`is_dir` are
+    /// relied on downstream, so the flat `name`/`path` (computed against
+    /// the root) being approximate for deep entries does not matter.
+    pub async fn list_recursive(
+        &mut self,
+        path: &str,
+    ) -> Result<Vec<RemoteEntry>, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+
+        let list_path = if path.is_empty() || path == "." {
+            self.current_path.clone()
+        } else if path == "/" {
+            self.server_root
+                .clone()
+                .unwrap_or_else(|| self.current_path.clone())
+        } else {
+            path.to_string()
+        };
+
+        let response = self
+            .request(webdav_methods::propfind(), &list_path)
+            .header("Depth", "infinity")
+            .header("Content-Type", "application/xml")
+            .body(
+                r#"<?xml version="1.0" encoding="utf-8"?>
+                <d:propfind xmlns:d="DAV:">
+                    <d:prop>
+                        <d:resourcetype/>
+                        <d:getcontentlength/>
+                        <d:getlastmodified/>
+                        <d:getcontenttype/>
+                        <d:getetag/>
+                        <d:displayname/>
+                    </d:prop>
+                </d:propfind>"#,
+            )
+            .send()
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        let status = response.status();
+        match status {
+            StatusCode::OK | StatusCode::MULTI_STATUS => {
+                let xml = response
+                    .text()
+                    .await
+                    .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+                self.parse_propfind_response(&xml, &list_path)
+            }
+            other => Err(ProviderError::ServerError(format!(
+                "Depth:infinity not available (HTTP {})",
+                other
+            ))),
+        }
+    }
+
     /// Parse PROPFIND XML response into RemoteEntry list using quick-xml
     fn parse_propfind_response(
         &self,

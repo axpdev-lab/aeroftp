@@ -65,6 +65,7 @@ pub mod portable;
 pub mod profile_loader;
 mod rsync_output;
 pub mod storage_dedup;
+pub mod used_scan;
 #[cfg(windows)]
 pub mod windows_update_helper;
 // `pub` transitively so integration tests can construct `RsyncStats`
@@ -14868,6 +14869,8 @@ pub fn run() {
             provider_commands::provider_disk_usage,
             provider_commands::provider_calculate_folder_size,
             provider_commands::provider_cancel_folder_size,
+            provider_commands::provider_scan_used,
+            provider_commands::provider_cancel_used_scan,
             // GitHub-specific commands
             provider_commands::github_list_branches,
             provider_commands::github_get_info,

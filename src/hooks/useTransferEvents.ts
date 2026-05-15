@@ -50,6 +50,12 @@ interface UseTransferEventsOptions {
   onTransferStart?: () => void;
   /** Called when scanning state changes (folder scan for delete/download/upload) */
   onScanningUpdate?: (update: ScanningUpdate) => void;
+  /** Called once per completed transfer so the caller can keep the storage
+   *  "used" figure live (item 4a/4b): API-quota providers re-fetch, scan/
+   *  manual-cap providers get an incremental byte adjustment instead of a
+   *  full recursive rescan. `bytes` is 0 when the size is not a byte count
+   *  (folder transfer reporting file counts). */
+  onTransferComplete?: (info: { direction: string; bytes: number }) => void;
   /** Max concurrent transfers (from speed preset: 1/3/5): controls visible channel slots */
   maxChannels?: number;
 }
@@ -666,6 +672,14 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
 
         if (data.direction === 'upload') optRef.current.loadRemoteFiles();
         else if (data.direction === 'download') optRef.current.loadLocalFiles(optRef.current.currentLocalPath);
+
+        // Keep the storage "used" figure live after a transfer. `total` is a
+        // byte count for single-file transfers and a FILE COUNT for folder
+        // transfers (total_files set): pass 0 in the latter case so the
+        // caller skips the byte adjustment rather than corrupting the cache.
+        const prog = data.progress;
+        const bytes = prog && prog.total_files == null && prog.total > 0 ? prog.total : 0;
+        optRef.current.onTransferComplete?.({ direction: data.direction, bytes });
       } else if (data.event_type === 'error') {
         setActiveTransfer(null);
         dispatchTransferToast(null);
