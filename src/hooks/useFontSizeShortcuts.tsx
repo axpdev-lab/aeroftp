@@ -39,22 +39,26 @@ export const useFontSizeShortcuts = (
             }
         };
 
-        const change = (delta: number) => {
-            const next = clampAppFontSize(fontSizeRef.current + delta);
-            if (next === fontSizeRef.current) return;
-            setFontSize(next);
-            void persist(next);
+        // Always surface the indicator, even when the size did not change
+        // because we are already clamped at the min or max bound. Skipping it
+        // there left the user unsure whether the shortcut still worked when
+        // they hit the boundary (issue #180). The no-op state write is the
+        // only thing we skip; the popup still flashes with its min/max badge.
+        const reveal = (next: number) => {
+            if (next !== fontSizeRef.current) {
+                setFontSize(next);
+                void persist(next);
+            }
             seqRef.current += 1;
             setIndicator({ size: next, seq: seqRef.current });
         };
 
+        const change = (delta: number) => {
+            reveal(clampAppFontSize(fontSizeRef.current + delta));
+        };
+
         const setExact = (size: number) => {
-            const next = clampAppFontSize(size);
-            if (next === fontSizeRef.current) return;
-            setFontSize(next);
-            void persist(next);
-            seqRef.current += 1;
-            setIndicator({ size: next, seq: seqRef.current });
+            reveal(clampAppFontSize(size));
         };
 
         const isEditableTarget = (t: EventTarget | null): boolean => {

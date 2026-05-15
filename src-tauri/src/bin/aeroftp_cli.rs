@@ -1246,13 +1246,15 @@ enum Commands {
 
         /// Comma-separated columns to hide for this run only (not persisted).
         /// Available (case-insensitive): name, type, host, used, total, pct,
-        /// path, last, fav (also accepts `favorite`/`favourite`).
+        /// path, last, fav (also accepts `favorite`/`favourite`). `*` or `all`
+        /// hides every optional column (`#` and Name always stay pinned).
         #[arg(long, value_name = "COLS")]
         hide: Option<String>,
 
-        /// Comma-separated columns to force-show for this run only (not persisted).
-        /// Available (case-insensitive): name, type, host, used, total, pct,
-        /// path, last, fav (also accepts `favorite`/`favourite`).
+        /// Show only these columns for this run only (not persisted). This is
+        /// an exclusive allowlist: every other optional column is hidden, like
+        /// the My Servers Table view in the GUI. `#` and Name always stay
+        /// pinned. `*` or `all` shows every column. Same names as `--hide`.
         #[arg(long, value_name = "COLS")]
         show: Option<String>,
 
@@ -4799,6 +4801,11 @@ const PROFILE_COL_ORDER: &[ProfileColId] = &[
     ProfileColId::Favorite,
 ];
 
+/// Columns the table renderer never hides: `#` and `Name` stay pinned exactly
+/// like the My Servers Table view in the GUI keeps them. `--hide '*'` and an
+/// exclusive `--show` selection both keep these visible (issue #180).
+const PINNED_COLS: &[ProfileColId] = &[ProfileColId::Index, ProfileColId::Name];
+
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 enum ProfileSortDir {
     Asc,
@@ -5242,18 +5249,34 @@ fn parse_sort_override(raw: &str) -> Result<Option<Option<ProfileSort>>, String>
     Ok(Some(Some(ProfileSort { col, dir })))
 }
 
-fn parse_col_list(raw: &str) -> Result<Vec<ProfileColId>, String> {
+/// A column selection that may be the literal `*` / `all` wildcard.
+enum ColSpec {
+    /// `*` or `all`: every column.
+    All,
+    /// An explicit list of columns.
+    List(Vec<ProfileColId>),
+}
+
+/// Parse a `--hide` / `--show` value. Accepts the same column aliases as
+/// `ProfileColId::from_cli_alias`, plus `*` or `all` (case-insensitive) as a
+/// wildcard meaning "every column". Mixing the wildcard with explicit names
+/// resolves to the wildcard (broadest intent wins), so `--hide '*'` and
+/// `--hide name,*` both mean "all". An empty value yields an empty list.
+fn parse_col_spec(raw: &str) -> Result<ColSpec, String> {
     let mut out = Vec::new();
     for token in raw.split(',') {
         let t = token.trim();
         if t.is_empty() {
             continue;
         }
+        if t == "*" || t.eq_ignore_ascii_case("all") {
+            return Ok(ColSpec::All);
+        }
         let col =
             ProfileColId::from_cli_alias(t).ok_or_else(|| format!("unknown column `{}`", t))?;
         out.push(col);
     }
-    Ok(out)
+    Ok(ColSpec::List(out))
 }
 
 /// Read the set of favourite profile IDs from the vault. The GUI persists
@@ -5589,11 +5612,24 @@ fn render_profiles_text(
     let mut settings = read_ui_table_settings(store);
     let favorites = load_favorite_server_ids(store);
 
-    // Apply --hide / --show overrides for this run only.
-    match overrides.hide.as_deref().map(parse_col_list) {
-        Some(Ok(cols)) => {
+    // Apply --hide / --show overrides for this run only. `--hide` is
+    // subtractive (add columns to the hidden set). `--show` is an exclusive
+    // allowlist: when present, only the pinned columns plus the listed ones
+    // stay visible, matching the My Servers Table view in the GUI (issue
+    // #180). When both are given, `--show` defines the final visible set.
+    match overrides.hide.as_deref().map(parse_col_spec) {
+        Some(Ok(ColSpec::All)) => {
+            for c in PROFILE_COL_ORDER {
+                if !PINNED_COLS.contains(c) {
+                    settings.hidden.insert(*c);
+                }
+            }
+        }
+        Some(Ok(ColSpec::List(cols))) => {
             for c in cols {
-                settings.hidden.insert(c);
+                if !PINNED_COLS.contains(&c) {
+                    settings.hidden.insert(c);
+                }
             }
         }
         Some(Err(e)) => {
@@ -5601,10 +5637,20 @@ fn render_profiles_text(
         }
         None => {}
     }
-    match overrides.show.as_deref().map(parse_col_list) {
-        Some(Ok(cols)) => {
-            for c in cols {
-                settings.hidden.remove(&c);
+    match overrides.show.as_deref().map(parse_col_spec) {
+        Some(Ok(ColSpec::All)) => {
+            settings.hidden.clear();
+        }
+        Some(Ok(ColSpec::List(cols))) => {
+            let keep: std::collections::HashSet<ProfileColId> = cols
+                .into_iter()
+                .chain(PINNED_COLS.iter().copied())
+                .collect();
+            settings.hidden.clear();
+            for c in PROFILE_COL_ORDER {
+                if !keep.contains(c) {
+                    settings.hidden.insert(*c);
+                }
             }
         }
         Some(Err(e)) => {
