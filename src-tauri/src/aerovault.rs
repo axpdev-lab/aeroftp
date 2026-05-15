@@ -114,11 +114,30 @@ pub async fn vault_add_files(
     vault_path: String,
     password: String,
     file_paths: Vec<String>,
-) -> Result<String, String> {
+) -> Result<serde_json::Value, String> {
+    use crate::vault_telemetry::VaultReport;
+    let started = std::time::Instant::now();
+    let mut report = VaultReport::new("add_files", 1);
+    report.set_algorithms(vec![
+        "compression:zip-deflate(level6)".to_string(),
+        "crypt:aes-256(zip winzip-aes)".to_string(),
+    ]);
+    let plaintext_bytes: u64 = file_paths
+        .iter()
+        .filter_map(|p| std::fs::metadata(p).ok().map(|m| m.len()))
+        .sum();
+    let size_before = std::fs::metadata(&vault_path).map(|m| m.len()).unwrap_or(0);
+    report.step(format!(
+        "scan: {} file(s), {} plaintext byte(s)",
+        file_paths.len(),
+        plaintext_bytes
+    ));
+
     let pwd = SecretString::from(password);
 
     // Read all existing entries
     let mut existing = read_all_entries(&vault_path, &pwd)?;
+    report.step("rebuild: deflate(level 6) + AES-256 re-encrypt full container");
 
     // Add new files
     for path_str in &file_paths {
@@ -146,7 +165,22 @@ pub async fn vault_add_files(
     for (_, data) in &mut existing {
         data.zeroize();
     }
-    result
+    let path = result?;
+
+    for _ in &file_paths {
+        report.on_file(false);
+    }
+    let size_after = std::fs::metadata(&vault_path).map(|m| m.len()).unwrap_or(0);
+    report.plaintext_bytes = plaintext_bytes;
+    report.encrypted_bytes = size_after.saturating_sub(size_before);
+    report.step(format!(
+        "done: {} file(s) added, container now {} byte(s)",
+        file_paths.len(),
+        size_after
+    ));
+    report.finish(started.elapsed().as_millis() as u64);
+
+    Ok(serde_json::json!({ "vault_path": path, "report": report }))
 }
 
 /// Remove a file from an AeroVault (rebuilds the archive)

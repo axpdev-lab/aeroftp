@@ -14,6 +14,7 @@ use hmac::{Hmac, Mac};
 use rand::RngCore;
 use secrecy::zeroize::Zeroize;
 use serde::{Deserialize, Serialize};
+use crate::vault_telemetry::VaultReport;
 use sha2::Sha512;
 use std::collections::{BTreeMap, HashSet};
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -39,6 +40,13 @@ const CDC_MIN: usize = 256 * 1024;
 const CDC_AVG: usize = 1024 * 1024;
 const CDC_MAX: usize = 4 * 1024 * 1024;
 
+/// Files strictly smaller than this are batched into shared packs before the
+/// CDC chunker runs, so a tree of tiny files still yields multi-MiB chunks.
+const PACK_SMALL_FILE_THRESHOLD: usize = CDC_MIN;
+/// A pack is flushed once it reaches this size; the CDC chunker then runs over
+/// the whole pack rather than per tiny file.
+const PACK_TARGET: usize = CDC_MAX;
+
 const HKDF_MASTER: &[u8] = b"AeroVault v3 KEK for master key";
 const HKDF_MAC: &[u8] = b"AeroVault v3 KEK for MAC key";
 const HKDF_CHUNK_ID: &[u8] = b"AeroVault v3 keyed BLAKE3 chunk ids";
@@ -63,12 +71,67 @@ struct VaultHeaderV3 {
     header_mac: [u8; MAC_SIZE],
 }
 
+/// Content-defined-chunking bounds. Recorded on the `chunking` wrapper so a
+/// reader uses the exact bounds the writer used. Absent in pre-GAP-5 v3 vaults
+/// and in non-`chunking` wrappers: callers fall back to the const defaults,
+/// which keeps every existing vault byte-identical.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+struct CdcBounds {
+    min: usize,
+    avg: usize,
+    max: usize,
+}
+
+impl CdcBounds {
+    fn defaults() -> Self {
+        Self {
+            min: CDC_MIN,
+            avg: CDC_AVG,
+            max: CDC_MAX,
+        }
+    }
+
+    /// Profile-driven defaults. `archive` widens the per-chunk zstd window
+    /// (bigger avg/max) for ratio at the cost of finer-grained dedup; the
+    /// other profiles keep the original bounds.
+    fn for_level(level: i32) -> Self {
+        if level >= 19 {
+            Self {
+                min: 1024 * 1024,
+                avg: 4 * 1024 * 1024,
+                max: 16 * 1024 * 1024,
+            }
+        } else {
+            Self::defaults()
+        }
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        if self.min < 4096
+            || self.min > self.avg
+            || self.avg > self.max
+            || self.max > 256 * 1024 * 1024
+            || !self.avg.is_power_of_two()
+        {
+            return Err(format!(
+                "Invalid AeroVault v3 CDC bounds: min={} avg={} max={}",
+                self.min, self.avg, self.max
+            ));
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct AlgorithmSpec {
     algorithm_id: String,
     algorithm_version: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     level: Option<i32>,
+    /// Only set on the `chunking` wrapper (GAP-5). Additive, serde-default so
+    /// older v3 vaults deserialize to `None` and use the const bounds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    bounds: Option<CdcBounds>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -88,6 +151,11 @@ struct ManifestEntryV3 {
     modified: String,
     is_dir: bool,
     chunks: Vec<String>,
+    /// Byte offset of this file inside the concatenation of its listed chunks.
+    /// `None` (or absent in older v3 vaults) means the file owns its chunks
+    /// whole, starting at offset 0: identical to pre-packing behaviour.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pack_offset: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -129,6 +197,11 @@ pub struct VaultV3Info {
     pub dedup_chunks: usize,
     pub compression_level: i32,
     pub files: Vec<VaultV3FileInfo>,
+    /// Behind-the-scenes technical receipt for the operation that produced
+    /// this info (additive: `None` for plain open/listing). Serde-skipped
+    /// when absent so the frontend TS interface only gains an optional field.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub report: Option<VaultReport>,
 }
 
 #[derive(Debug, Serialize)]
@@ -149,6 +222,9 @@ struct OpenVaultV3 {
     manifest: VaultManifestV3,
     extensions: Vec<ExtensionEntryV3>,
     data: Vec<u8>,
+    /// Behind-the-scenes technical telemetry accumulated by the current
+    /// operation (compression / encryption / chunking / dedup). Not persisted.
+    report: VaultReport,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -318,32 +394,50 @@ fn default_wrappers(level: i32) -> WrapperManifest {
             algorithm_id: "small-file-batching".to_string(),
             algorithm_version: 1,
             level: None,
+            bounds: None,
         },
         chunking: AlgorithmSpec {
             algorithm_id: "gear-cdc".to_string(),
             algorithm_version: 1,
             level: None,
+            bounds: Some(CdcBounds::for_level(level)),
         },
         chunk_id: AlgorithmSpec {
             algorithm_id: "blake3-keyed-128".to_string(),
             algorithm_version: 1,
             level: None,
+            bounds: None,
         },
         compression: AlgorithmSpec {
             algorithm_id: "zstd".to_string(),
             algorithm_version: 1,
             level: Some(level),
+            bounds: None,
         },
         crypt: AlgorithmSpec {
             algorithm_id: "aes-256-gcm-siv".to_string(),
             algorithm_version: 1,
             level: None,
+            bounds: None,
         },
         cipher_hash: AlgorithmSpec {
             algorithm_id: "blake3-256".to_string(),
             algorithm_version: 1,
             level: None,
+            bounds: None,
         },
+    }
+}
+
+/// Effective CDC bounds for a manifest: the recorded `chunking.bounds` if
+/// present and valid, otherwise the const defaults (pre-GAP-5 vaults).
+fn manifest_cdc_bounds(manifest: &VaultManifestV3) -> Result<CdcBounds, String> {
+    match manifest.wrappers.chunking.bounds {
+        Some(b) => {
+            b.validate()?;
+            Ok(b)
+        }
+        None => Ok(CdcBounds::defaults()),
     }
 }
 
@@ -437,16 +531,16 @@ fn gear_table() -> [u64; 256] {
     table
 }
 
-fn chunk_ranges(data: &[u8]) -> Vec<(usize, usize)> {
+fn chunk_ranges_with(data: &[u8], bounds: &CdcBounds) -> Vec<(usize, usize)> {
     if data.is_empty() {
         return Vec::new();
     }
-    if data.len() <= CDC_MIN {
+    if data.len() <= bounds.min {
         return vec![(0, data.len())];
     }
 
     let table = gear_table();
-    let mask = (CDC_AVG as u64) - 1;
+    let mask = (bounds.avg as u64) - 1;
     let mut ranges = Vec::new();
     let mut start = 0usize;
     let mut rolling = 0u64;
@@ -454,7 +548,7 @@ fn chunk_ranges(data: &[u8]) -> Vec<(usize, usize)> {
     for (idx, byte) in data.iter().enumerate() {
         rolling = rolling.rotate_left(1).wrapping_add(table[*byte as usize]);
         let len = idx + 1 - start;
-        if len >= CDC_MIN && ((rolling & mask) == 0 || len >= CDC_MAX) {
+        if len >= bounds.min && ((rolling & mask) == 0 || len >= bounds.max) {
             ranges.push((start, idx + 1));
             start = idx + 1;
             rolling = 0;
@@ -465,6 +559,7 @@ fn chunk_ranges(data: &[u8]) -> Vec<(usize, usize)> {
     }
     ranges
 }
+
 
 fn validate_vault_path(path: &str) -> Result<(), String> {
     if path.is_empty()
@@ -599,6 +694,7 @@ fn create_directory_in_manifest(manifest: &mut VaultManifestV3, dir_path: &str) 
         modified: now_iso(),
         is_dir: true,
         chunks: Vec::new(),
+        pack_offset: None,
     });
     sort_entries(manifest);
     manifest.modified = now_iso();
@@ -620,6 +716,52 @@ fn next_block_index(manifest: &VaultManifestV3) -> u64 {
         .max()
         .map(|max| max + 1)
         .unwrap_or(0)
+}
+
+/// Compress + encrypt + dedup of one already-delimited plaintext chunk.
+/// Returns the chunk id. Shared by the per-file path and the pack path so the
+/// wrapper chain stays single-sourced.
+fn ingest_chunk(
+    vault: &mut OpenVaultV3,
+    chunk: &[u8],
+    chunk_key: &[u8; KEY_SIZE],
+    level: i32,
+) -> Result<String, String> {
+    let chunk_id = keyed_chunk_id(chunk_key, chunk);
+    if !vault.manifest.chunks.contains_key(&chunk_id) {
+        let compressed = zstd::stream::encode_all(chunk, level)
+            .map_err(|e| format!("zstd compress failed: {e}"))?;
+        let block_index = next_block_index(&vault.manifest);
+        let aad = block_aad(block_index, &chunk_id);
+        let encrypted = encrypt_with_aad(&vault.master_key, &compressed, &aad)?;
+        let cipher_hash = blake3::hash(&encrypted).to_hex().to_string();
+        let data_offset = vault.data.len() as u64;
+        vault
+            .data
+            .extend_from_slice(&(encrypted.len() as u64).to_le_bytes());
+        vault.data.extend_from_slice(&encrypted);
+        let (pt, cz, enc) = (
+            chunk.len() as u64,
+            compressed.len() as u64,
+            encrypted.len() as u64,
+        );
+        vault.manifest.chunks.insert(
+            chunk_id.clone(),
+            ChunkRecordV3 {
+                id: chunk_id.clone(),
+                block_index,
+                data_offset,
+                block_len: enc,
+                plaintext_len: pt,
+                compressed_len: cz,
+                cipher_hash,
+            },
+        );
+        vault.report.on_chunk(true, pt, cz, enc);
+    } else {
+        vault.report.on_chunk(false, chunk.len() as u64, 0, 0);
+    }
+    Ok(chunk_id)
 }
 
 fn append_file_at(vault: &mut OpenVaultV3, source: &Path, entry_path: &str) -> Result<(), String> {
@@ -645,36 +787,12 @@ fn append_file_at(vault: &mut OpenVaultV3, source: &Path, entry_path: &str) -> R
     let size = plaintext.len() as u64;
     let chunk_key = hkdf_expand::<KEY_SIZE>(&vault.master_key, HKDF_CHUNK_ID)?;
     let level = manifest_zstd_level(&vault.manifest);
+    let bounds = manifest_cdc_bounds(&vault.manifest)?;
     let mut entry_chunks = Vec::new();
 
-    for (start, end) in chunk_ranges(&plaintext) {
-        let chunk = &plaintext[start..end];
-        let chunk_id = keyed_chunk_id(&chunk_key, chunk);
-        if !vault.manifest.chunks.contains_key(&chunk_id) {
-            let compressed = zstd::stream::encode_all(chunk, level)
-                .map_err(|e| format!("zstd compress failed: {e}"))?;
-            let block_index = next_block_index(&vault.manifest);
-            let aad = block_aad(block_index, &chunk_id);
-            let encrypted = encrypt_with_aad(&vault.master_key, &compressed, &aad)?;
-            let cipher_hash = blake3::hash(&encrypted).to_hex().to_string();
-            let data_offset = vault.data.len() as u64;
-            vault
-                .data
-                .extend_from_slice(&(encrypted.len() as u64).to_le_bytes());
-            vault.data.extend_from_slice(&encrypted);
-            vault.manifest.chunks.insert(
-                chunk_id.clone(),
-                ChunkRecordV3 {
-                    id: chunk_id.clone(),
-                    block_index,
-                    data_offset,
-                    block_len: encrypted.len() as u64,
-                    plaintext_len: chunk.len() as u64,
-                    compressed_len: compressed.len() as u64,
-                    cipher_hash,
-                },
-            );
-        }
+    let ranges = chunk_ranges_with(&plaintext, &bounds);
+    for (start, end) in ranges {
+        let chunk_id = ingest_chunk(vault, &plaintext[start..end], &chunk_key, level)?;
         entry_chunks.push(chunk_id);
     }
     plaintext.zeroize();
@@ -685,7 +803,159 @@ fn append_file_at(vault: &mut OpenVaultV3, source: &Path, entry_path: &str) -> R
         modified: now_iso(),
         is_dir: false,
         chunks: entry_chunks,
+        pack_offset: None,
     });
+    vault.report.on_file(false);
+    sort_entries(&mut vault.manifest);
+    vault.manifest.modified = now_iso();
+    Ok(())
+}
+
+/// Chunk one assembled pack, ingest its chunks, then map every member file to
+/// the chunks that cover its byte span plus the offset of its first byte inside
+/// the first covering chunk. The manifest is the index: the pack itself carries
+/// no per-file framing.
+fn flush_pack(
+    vault: &mut OpenVaultV3,
+    pack: &[u8],
+    members: &[(String, u64, u64)],
+    chunk_key: &[u8; KEY_SIZE],
+    level: i32,
+    bounds: &CdcBounds,
+) -> Result<(), String> {
+    if members.is_empty() {
+        return Ok(());
+    }
+    vault.report.on_pack();
+
+    let ranges = chunk_ranges_with(pack, bounds);
+    let mut chunks: Vec<(String, u64, u64)> = Vec::with_capacity(ranges.len());
+    for (start, end) in &ranges {
+        let id = ingest_chunk(vault, &pack[*start..*end], chunk_key, level)?;
+        chunks.push((id, *start as u64, *end as u64));
+    }
+    vault.report.step(format!(
+        "pack: {} file(s), {} B -> chunk+compress+encrypt {} chunk(s)",
+        members.len(),
+        pack.len(),
+        chunks.len()
+    ));
+
+    for (entry_path, fstart, flen) in members {
+        let fstart_v = *fstart;
+        let flen_v = *flen;
+        let fend = fstart_v + flen_v;
+
+        ensure_parent_directories(&mut vault.manifest, entry_path)?;
+        if let Some(kind) = entry_kind(&vault.manifest, entry_path) {
+            match kind {
+                EntryKindV3::Directory => {
+                    return Err(format!(
+                        "Destination already exists as directory: {entry_path}"
+                    ));
+                }
+                EntryKindV3::File => {
+                    vault.manifest.entries.retain(|e| &e.path != entry_path);
+                }
+            }
+        }
+
+        let (covering, pack_offset) = if flen_v == 0 {
+            (Vec::new(), Some(0u64))
+        } else {
+            let mut cov = Vec::new();
+            let mut first: Option<u64> = None;
+            for (id, cstart, cend) in &chunks {
+                if *cstart < fend && fstart_v < *cend {
+                    if first.is_none() {
+                        first = Some(*cstart);
+                    }
+                    cov.push(id.clone());
+                }
+            }
+            let fc = first
+                .ok_or_else(|| format!("Packing failed to cover file: {entry_path}"))?;
+            (cov, Some(fstart_v - fc))
+        };
+
+        vault.manifest.entries.push(ManifestEntryV3 {
+            path: entry_path.clone(),
+            size: flen_v,
+            modified: now_iso(),
+            is_dir: false,
+            chunks: covering,
+            pack_offset,
+        });
+        vault.report.on_file(true);
+    }
+    Ok(())
+}
+
+/// Add a set of sources, batching sub-threshold files into shared packs before
+/// chunking and routing large files through the per-file path. The deterministic
+/// path ordering keeps packs (and therefore dedup) stable across identical adds.
+fn append_sources_batched(
+    vault: &mut OpenVaultV3,
+    sources: &[(PathBuf, String)],
+) -> Result<(), String> {
+    let chunk_key = hkdf_expand::<KEY_SIZE>(&vault.master_key, HKDF_CHUNK_ID)?;
+    let level = manifest_zstd_level(&vault.manifest);
+    let bounds = manifest_cdc_bounds(&vault.manifest)?;
+    vault.report.set_cdc(bounds.min, bounds.avg, bounds.max);
+    vault
+        .report
+        .step(format!("scan: {} source(s) to add", sources.len()));
+
+    let mut small_meta: Vec<(PathBuf, String)> = Vec::new();
+    let mut large_count = 0usize;
+    for (source, entry_path) in sources {
+        let entry_path = normalize_vault_relative_path(entry_path)?;
+        if !source.is_file() {
+            return Err(format!("Not a regular file: {}", source.display()));
+        }
+        let len = std::fs::metadata(source)
+            .map_err(|e| format!("Stat {}: {e}", source.display()))?
+            .len();
+        if (len as usize) < PACK_SMALL_FILE_THRESHOLD {
+            small_meta.push((source.clone(), entry_path));
+        } else {
+            large_count += 1;
+            append_file_at(vault, source, &entry_path)?;
+        }
+    }
+    vault.report.step(format!(
+        "partition: {} small (< {} B, batched) / {} large (per-file)",
+        small_meta.len(),
+        PACK_SMALL_FILE_THRESHOLD,
+        large_count
+    ));
+
+    if !small_meta.is_empty() {
+        small_meta.sort_by(|a, b| a.1.cmp(&b.1));
+
+        let mut pack: Vec<u8> = Vec::new();
+        let mut members: Vec<(String, u64, u64)> = Vec::new();
+        for (source, entry_path) in &small_meta {
+            let mut data = std::fs::read(source)
+                .map_err(|e| format!("Read {}: {e}", source.display()))?;
+            let start = pack.len() as u64;
+            pack.extend_from_slice(&data);
+            let len = data.len() as u64;
+            data.zeroize();
+            members.push((entry_path.clone(), start, len));
+            if pack.len() >= PACK_TARGET {
+                flush_pack(vault, &pack, &members, &chunk_key, level, &bounds)?;
+                pack.zeroize();
+                pack.clear();
+                members.clear();
+            }
+        }
+        if !members.is_empty() {
+            flush_pack(vault, &pack, &members, &chunk_key, level, &bounds)?;
+            pack.zeroize();
+        }
+    }
+
     sort_entries(&mut vault.manifest);
     vault.manifest.modified = now_iso();
     Ok(())
@@ -948,9 +1218,21 @@ fn extract_file_entry(
         }
         out.extend_from_slice(&plaintext);
     }
-    out.truncate(entry.size as usize);
-    atomic_write(output_path, &out)?;
+    let offset = entry.pack_offset.unwrap_or(0) as usize;
+    let size = entry.size as usize;
+    let end = offset
+        .checked_add(size)
+        .ok_or_else(|| "Entry slice range overflow".to_string())?;
+    if end > out.len() {
+        return Err(format!(
+            "Entry slice [{offset}..{end}] exceeds decoded data ({})",
+            out.len()
+        ));
+    }
+    let mut sliced = out[offset..end].to_vec();
     out.zeroize();
+    atomic_write(output_path, &sliced)?;
+    sliced.zeroize();
     Ok(output_path.to_path_buf())
 }
 
@@ -1141,6 +1423,7 @@ fn open_vault(path: impl Into<PathBuf>, password: &str) -> Result<OpenVaultV3, S
         manifest,
         extensions,
         data,
+        report: VaultReport::new("open", VERSION),
     })
 }
 
@@ -1171,11 +1454,6 @@ fn validate_ranges(header: &VaultHeaderV3, file_len: u64) -> Result<(), String> 
         }
     }
     Ok(())
-}
-
-fn append_file(vault: &mut OpenVaultV3, source: &Path) -> Result<(), String> {
-    let name = safe_entry_name(source)?;
-    append_file_at(vault, source, &name)
 }
 
 fn save_open_vault(vault: &OpenVaultV3) -> Result<(), String> {
@@ -1285,7 +1563,24 @@ fn info_from_manifest(manifest: &VaultManifestV3) -> VaultV3Info {
                 chunk_count: entry.chunks.len(),
             })
             .collect(),
+        report: None,
     }
+}
+
+/// Algorithm chain for the receipt, derived from the manifest wrappers.
+fn algorithm_chain(m: &VaultManifestV3) -> Vec<String> {
+    let w = &m.wrappers;
+    let line = |name: &str, s: &AlgorithmSpec| {
+        format!("{name}:{} v{}", s.algorithm_id, s.algorithm_version)
+    };
+    vec![
+        line("packing", &w.packing),
+        line("chunking", &w.chunking),
+        line("chunk_id", &w.chunk_id),
+        line("compression", &w.compression),
+        line("crypt", &w.crypt),
+        line("cipher_hash", &w.cipher_hash),
+    ]
 }
 
 #[tauri::command]
@@ -1329,16 +1624,43 @@ pub async fn vault_v3_add_files(
     password: String,
     file_paths: Vec<String>,
 ) -> Result<VaultV3Info, String> {
+    let started = std::time::Instant::now();
     let mut vault = open_vault(&vault_path, &password)?;
-    for file_path in file_paths {
-        let path = PathBuf::from(&file_path);
+    vault.report = VaultReport::new("add_files", VERSION);
+    vault.report.set_profile(match manifest_zstd_level(&vault.manifest) {
+        3 => "fast",
+        19 => "archive",
+        _ => "balanced",
+    });
+    vault.report.set_algorithms(algorithm_chain(&vault.manifest));
+
+    let mut sources: Vec<(PathBuf, String)> = Vec::with_capacity(file_paths.len());
+    for file_path in &file_paths {
+        let path = PathBuf::from(file_path);
         if !path.is_file() {
             return Err(format!("Not a regular file: {file_path}"));
         }
-        append_file(&mut vault, &path)?;
+        let name = safe_entry_name(&path)?;
+        sources.push((path, name));
     }
+    append_sources_batched(&mut vault, &sources)?;
+    vault.report.step("seal: rebuild manifest + atomic write");
     save_open_vault(&vault)?;
-    Ok(info_from_manifest(&vault.manifest))
+    vault
+        .report
+        .finish(started.elapsed().as_millis() as u64);
+    let (np, dh, ratio) = (
+        vault.report.new_physical_chunks,
+        vault.report.dedup_hits,
+        vault.report.compression_ratio_pct,
+    );
+    vault.report.step(format!(
+        "done: {np} new physical chunk(s), {dh} dedup hit(s), {ratio:.1}% compressed"
+    ));
+
+    let mut info = info_from_manifest(&vault.manifest);
+    info.report = Some(vault.report.clone());
+    Ok(info)
 }
 
 #[tauri::command]
@@ -1351,13 +1673,14 @@ pub async fn vault_v3_add_files_to_dir(
     let target_dir = normalize_vault_relative_path(&target_dir)?;
     let mut vault = open_vault(&vault_path, &password)?;
     create_directory_in_manifest(&mut vault.manifest, &target_dir)?;
-    let mut added = 0usize;
-    for file_path in file_paths {
-        let path = PathBuf::from(&file_path);
+    let mut sources: Vec<(PathBuf, String)> = Vec::with_capacity(file_paths.len());
+    for file_path in &file_paths {
+        let path = PathBuf::from(file_path);
         let name = safe_entry_name(&path)?;
-        append_file_at(&mut vault, &path, &join_vault_path(&target_dir, &name))?;
-        added += 1;
+        sources.push((path, join_vault_path(&target_dir, &name)));
     }
+    let added = sources.len();
+    append_sources_batched(&mut vault, &sources)?;
     save_open_vault(&vault)?;
     Ok(serde_json::json!({
         "added": added,
@@ -1560,25 +1883,20 @@ pub async fn vault_v3_add_directory(
     }
 
     let total_files = files.len();
-    let mut added_files = 0usize;
-    let mut last_emit = std::time::Instant::now();
-    let throttle = std::time::Duration::from_millis(150);
-
-    for file_entry in files {
-        append_file_at(&mut vault, &file_entry.abs_path, &file_entry.rel_path)?;
-        added_files += 1;
-        if last_emit.elapsed() >= throttle || added_files == total_files {
-            let _ = app.emit(
-                "vault-add-progress",
-                serde_json::json!({
-                    "current": added_files,
-                    "total": total_files,
-                    "current_file": file_entry.rel_path
-                }),
-            );
-            last_emit = std::time::Instant::now();
-        }
-    }
+    let sources: Vec<(PathBuf, String)> = files
+        .iter()
+        .map(|f| (f.abs_path.clone(), f.rel_path.clone()))
+        .collect();
+    append_sources_batched(&mut vault, &sources)?;
+    let added_files = total_files;
+    let _ = app.emit(
+        "vault-add-progress",
+        serde_json::json!({
+            "current": added_files,
+            "total": total_files,
+            "current_file": ""
+        }),
+    );
 
     save_open_vault(&vault)?;
     Ok(serde_json::json!({
@@ -1629,7 +1947,7 @@ mod tests {
     #[test]
     fn cdc_ranges_cover_input() {
         let data = vec![7u8; CDC_MAX + 1234];
-        let ranges = chunk_ranges(&data);
+        let ranges = chunk_ranges_with(&data, &CdcBounds::defaults());
         assert!(ranges.len() >= 2);
         let mut cursor = 0usize;
         for (start, end) in ranges {
@@ -1656,8 +1974,8 @@ mod tests {
         )
         .unwrap();
         let mut vault = open_vault(&vault_path, "correct horse battery staple").unwrap();
-        append_file(&mut vault, &a).unwrap();
-        append_file(&mut vault, &b).unwrap();
+        append_file_at(&mut vault, &a, "a.txt").unwrap();
+        append_file_at(&mut vault, &b, "b.txt").unwrap();
         save_open_vault(&vault).unwrap();
 
         let reopened = open_vault(&vault_path, "correct horse battery staple").unwrap();
@@ -1727,5 +2045,244 @@ mod tests {
 
         let err = open_vault(&vault_path, "correct horse battery staple").unwrap_err();
         assert!(err.contains("header MAC mismatch"));
+    }
+
+    #[test]
+    fn v3_packs_small_files_with_stable_dedup() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("small");
+        std::fs::create_dir_all(&src).unwrap();
+        let mut sources: Vec<(PathBuf, String)> = Vec::new();
+        for i in 0..200 {
+            let p = src.join(format!("f{i:03}.txt"));
+            std::fs::write(&p, format!("small-file-{i}\n").repeat(64)).unwrap();
+            sources.push((p, format!("f{i:03}.txt")));
+        }
+
+        let vault_path = dir.path().join("pack.aerovault");
+        create_empty_vault(&vault_path, "pack-password", DEFAULT_ZSTD_LEVEL).unwrap();
+
+        let mut vault = open_vault(&vault_path, "pack-password").unwrap();
+        append_sources_batched(&mut vault, &sources).unwrap();
+        save_open_vault(&vault).unwrap();
+
+        let reopened = open_vault(&vault_path, "pack-password").unwrap();
+        let info = info_from_manifest(&reopened.manifest);
+        assert_eq!(info.file_count, 200);
+        // 200 tiny files must collapse into far fewer physical chunks.
+        assert!(
+            info.chunk_count < info.file_count,
+            "expected packing: {} chunks for {} files",
+            info.chunk_count,
+            info.file_count
+        );
+        assert!(info.dedup_chunks >= 1);
+
+        for i in [0usize, 1, 99, 150, 199] {
+            let out = dir.path().join(format!("out{i}.txt"));
+            extract_entry(&reopened, &format!("f{i:03}.txt"), &out).unwrap();
+            assert_eq!(
+                std::fs::read(&out).unwrap(),
+                std::fs::read(src.join(format!("f{i:03}.txt"))).unwrap(),
+                "packed file {i} round-trip mismatch"
+            );
+        }
+
+        // Re-adding the identical set must not grow the physical chunk store.
+        let mut v2 = open_vault(&vault_path, "pack-password").unwrap();
+        let before = v2.manifest.chunks.len();
+        append_sources_batched(&mut v2, &sources).unwrap();
+        assert_eq!(v2.manifest.chunks.len(), before, "dedup unstable across adds");
+    }
+
+    #[test]
+    fn v3_pack_multi_chunk_straddle_round_trip() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("many");
+        std::fs::create_dir_all(&src).unwrap();
+        let mut sources: Vec<(PathBuf, String)> = Vec::new();
+        // ~6 MiB of distinct small files forces a pack past CDC_MAX, so the
+        // CDC chunker produces multiple chunks and some files straddle a
+        // chunk boundary (covering chunks == 2, pack_offset > 0).
+        for i in 0..600 {
+            let p = src.join(format!("d{i:04}.bin"));
+            let body = format!("DISTINCT-{i:04}-").repeat(700);
+            std::fs::write(&p, &body).unwrap();
+            sources.push((p, format!("d{i:04}.bin")));
+        }
+
+        let vault_path = dir.path().join("multi.aerovault");
+        create_empty_vault(&vault_path, "multi-password", DEFAULT_ZSTD_LEVEL).unwrap();
+        let mut vault = open_vault(&vault_path, "multi-password").unwrap();
+        append_sources_batched(&mut vault, &sources).unwrap();
+        save_open_vault(&vault).unwrap();
+
+        let reopened = open_vault(&vault_path, "multi-password").unwrap();
+        assert!(reopened.manifest.chunks.len() >= 2, "expected multi-chunk pack");
+        let straddlers = reopened
+            .manifest
+            .entries
+            .iter()
+            .filter(|e| !e.is_dir && e.chunks.len() >= 2)
+            .count();
+        assert!(straddlers >= 1, "expected at least one boundary-straddling file");
+
+        for i in [0usize, 1, 250, 599] {
+            let out = dir.path().join(format!("m{i}.bin"));
+            extract_entry(&reopened, &format!("d{i:04}.bin"), &out).unwrap();
+            assert_eq!(
+                std::fs::read(&out).unwrap(),
+                std::fs::read(src.join(format!("d{i:04}.bin"))).unwrap(),
+                "straddling file {i} round-trip mismatch"
+            );
+        }
+    }
+
+    #[test]
+    fn v3_delete_inside_shared_pack_keeps_others() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("shared");
+        std::fs::create_dir_all(&src).unwrap();
+        let mut sources: Vec<(PathBuf, String)> = Vec::new();
+        for i in 0..10 {
+            let p = src.join(format!("s{i}.txt"));
+            std::fs::write(&p, format!("shared-pack-{i}\n").repeat(32)).unwrap();
+            sources.push((p, format!("s{i}.txt")));
+        }
+
+        let vault_path = dir.path().join("shared.aerovault");
+        create_empty_vault(&vault_path, "shared-password", DEFAULT_ZSTD_LEVEL).unwrap();
+        let mut vault = open_vault(&vault_path, "shared-password").unwrap();
+        append_sources_batched(&mut vault, &sources).unwrap();
+        // All ten tiny files share one physical pack chunk.
+        assert!(vault.manifest.chunks.len() < 10);
+        delete_entries_from_manifest(&mut vault, &["s3.txt".to_string()], false).unwrap();
+        save_open_vault(&vault).unwrap();
+
+        let reopened = open_vault(&vault_path, "shared-password").unwrap();
+        assert!(entry_kind(&reopened.manifest, "s3.txt").is_none());
+        assert!(!reopened.manifest.chunks.is_empty(), "shared chunk wrongly GCd");
+        for i in [0usize, 5, 9] {
+            let out = dir.path().join(format!("k{i}.txt"));
+            extract_entry(&reopened, &format!("s{i}.txt"), &out).unwrap();
+            assert_eq!(
+                std::fs::read(&out).unwrap(),
+                std::fs::read(src.join(format!("s{i}.txt"))).unwrap()
+            );
+        }
+    }
+
+    // --- GAP-3: corruption-injection harness ---------------------------------
+    // Reusable scaffolding for the v4 ECC scrub work: deterministic ways to
+    // damage a sealed vault so integrity / recovery paths can be tested.
+
+    /// Flip one bit at an absolute byte offset inside a sealed vault file.
+    fn flip_byte_in_file(path: &Path, offset: usize) {
+        let mut bytes = std::fs::read(path).unwrap();
+        assert!(offset < bytes.len(), "offset {offset} past EOF {}", bytes.len());
+        bytes[offset] ^= 0x01;
+        std::fs::write(path, bytes).unwrap();
+    }
+
+    /// Truncate a sealed vault file to `keep` bytes (data loss at the tail).
+    fn truncate_vault(path: &Path, keep: u64) {
+        let f = std::fs::OpenOptions::new().write(true).open(path).unwrap();
+        f.set_len(keep).unwrap();
+    }
+
+    fn build_filled_vault(dir: &Path, name: &str, password: &str, payload_kib: usize) -> PathBuf {
+        let src = dir.join("payload.bin");
+        // Distinct, low-redundancy bytes so the cipher block is sizeable.
+        let body: Vec<u8> = (0..payload_kib * 1024).map(|i| (i * 31 + 7) as u8).collect();
+        std::fs::write(&src, &body).unwrap();
+        let vault_path = dir.join(name);
+        create_empty_vault(&vault_path, password, DEFAULT_ZSTD_LEVEL).unwrap();
+        let mut v = open_vault(&vault_path, password).unwrap();
+        append_file_at(&mut v, &src, "payload.bin").unwrap();
+        save_open_vault(&v).unwrap();
+        vault_path
+    }
+
+    #[test]
+    fn v3_tampered_cipher_block_detected_pre_decrypt() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault_path = build_filled_vault(dir.path(), "tamper-block.aerovault", "scrub-pw", 200);
+
+        // HEADER_SIZE + 8-byte block-length prefix, then well into the
+        // ciphertext body of the first stored block.
+        flip_byte_in_file(&vault_path, HEADER_SIZE + 8 + 256);
+
+        let v = open_vault(&vault_path, "scrub-pw").unwrap();
+        let out = dir.path().join("out.bin");
+        let err = extract_entry(&v, "payload.bin", &out).unwrap_err();
+        // cipher_hash mismatch is caught BEFORE AEAD decrypt: this is the
+        // exact hook the v4 ECC scrub will hang off.
+        assert!(
+            err.contains("Cipher block hash mismatch")
+                || err.contains("Chunk length metadata mismatch"),
+            "unexpected error for tampered block: {err}"
+        );
+    }
+
+    #[test]
+    fn v3_truncated_vault_rejected_cleanly() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault_path = build_filled_vault(dir.path(), "truncated.aerovault", "scrub-pw", 200);
+        let full = std::fs::metadata(&vault_path).unwrap().len();
+
+        // Cut the tail (manifest / extension dir / part of the data section).
+        truncate_vault(&vault_path, full / 2);
+
+        // Must be a clean Err, never a panic.
+        let result = std::panic::catch_unwind(|| open_vault(&vault_path, "scrub-pw"));
+        assert!(result.is_ok(), "open_vault panicked on a truncated vault");
+        assert!(result.unwrap().is_err(), "truncated vault opened as valid");
+    }
+
+    #[test]
+    fn v3_custom_and_archive_cdc_bounds_round_trip() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("big.bin");
+        let body: Vec<u8> = (0..6 * 1024 * 1024).map(|i| (i * 131 + 17) as u8).collect();
+        std::fs::write(&src, &body).unwrap();
+
+        // archive profile (level 19) widens CDC bounds.
+        let archive_path = dir.path().join("archive.aerovault");
+        create_empty_vault(&archive_path, "bounds-pw", 19).unwrap();
+        let mut av = open_vault(&archive_path, "bounds-pw").unwrap();
+        let b = manifest_cdc_bounds(&av.manifest).unwrap();
+        assert_eq!(b.avg, 4 * 1024 * 1024, "archive must widen CDC avg");
+        append_file_at(&mut av, &src, "big.bin").unwrap();
+        save_open_vault(&av).unwrap();
+
+        // balanced profile keeps the const bounds.
+        let bal_path = dir.path().join("balanced.aerovault");
+        create_empty_vault(&bal_path, "bounds-pw", DEFAULT_ZSTD_LEVEL).unwrap();
+        let mut bv = open_vault(&bal_path, "bounds-pw").unwrap();
+        assert_eq!(manifest_cdc_bounds(&bv.manifest).unwrap().avg, CDC_AVG);
+        append_file_at(&mut bv, &src, "big.bin").unwrap();
+        save_open_vault(&bv).unwrap();
+
+        // Wider bounds => fewer, larger chunks for the same 6 MiB input.
+        let archive_chunks = open_vault(&archive_path, "bounds-pw").unwrap().manifest.chunks.len();
+        let balanced_chunks = open_vault(&bal_path, "bounds-pw").unwrap().manifest.chunks.len();
+        assert!(
+            archive_chunks <= balanced_chunks,
+            "archive bounds should not produce more chunks ({archive_chunks} vs {balanced_chunks})"
+        );
+
+        // Both must round-trip byte-identically regardless of bounds.
+        for (vp, tag) in [(&archive_path, "a"), (&bal_path, "b")] {
+            let v = open_vault(vp, "bounds-pw").unwrap();
+            let out = dir.path().join(format!("out-{tag}.bin"));
+            extract_entry(&v, "big.bin", &out).unwrap();
+            assert_eq!(std::fs::read(&out).unwrap(), body, "bounds round-trip {tag}");
+        }
+
+        // Invalid bounds are rejected (defence against a hostile manifest).
+        assert!(CdcBounds { min: 0, avg: 1024, max: 2048 }.validate().is_err());
+        assert!(CdcBounds { min: 4096, avg: 3000, max: 8192 }.validate().is_err());
+        assert!(CdcBounds::defaults().validate().is_ok());
+        assert!(CdcBounds::for_level(19).validate().is_ok());
     }
 }

@@ -30,6 +30,7 @@ plaintext files
 
 The ordering is deliberate:
 
+- `packing` concatenates files smaller than the small-file threshold (v3 default: the CDC minimum, 256 KiB) into shared packs before chunking, so a tree of tiny files still yields multi-MiB chunks. The pack carries no per-file framing: the manifest is the index. Each packed file records the chunks that cover its byte span and `pack_offset`, the offset of its first byte inside the first covering chunk. Files at or above the threshold take the per-file path (`pack_offset` absent, equivalent to offset 0);
 - chunking precedes compression so deduplication, resume, and future AeroSync range semantics stay chunk-aligned;
 - compression is per chunk/frame so a reader can decompress one logical block without inflating the whole archive;
 - encryption is last among v3 data-transforming wrappers;
@@ -49,13 +50,34 @@ Every wrapper layer has both an algorithm id and an algorithm version. Readers d
 | `cipher_hash` | `blake3-256` | `1` |
 | `ecc` | absent in v3 | reserved |
 
-The default zstd level is profile based:
+The `chunking` wrapper carries an optional `bounds` object recording the
+content-defined-chunking parameters the writer used:
 
-| Profile | Level | Intended use |
-|---|---:|---|
-| `fast` | 3 | quick local work |
-| `balanced` | 9 | default v3 vaults |
-| `archive` | 19 | cold storage / export |
+```json
+"chunking": { "algorithm_id": "gear-cdc", "algorithm_version": 1,
+              "bounds": { "min": 262144, "avg": 1048576, "max": 4194304 } }
+```
+
+`avg` MUST be a power of two. A reader uses the recorded `bounds`; when the
+field is absent (pre-GAP-5 v3 vaults, or any non-`chunking` wrapper) it falls
+back to the const defaults `min = 256 KiB, avg = 1 MiB, max = 4 MiB`, which
+keeps every existing vault byte-identical. Bounds only affect the write path
+(chunk boundaries and therefore chunk ids); extraction never re-chunks.
+
+The default zstd level and CDC bounds are profile based:
+
+| Profile | Level | CDC min / avg / max | Intended use |
+|---|---:|---|---|
+| `fast` | 3 | 256 KiB / 1 MiB / 4 MiB | quick local work |
+| `balanced` | 9 | 256 KiB / 1 MiB / 4 MiB | default v3 vaults |
+| `archive` | 19 | 1 MiB / 4 MiB / 16 MiB | cold storage / export |
+
+`archive` widens the per-chunk zstd window for ratio at the cost of
+finer-grained dedup; the wrapper-id/version surface is unchanged so older v3
+readers that predate GAP-5 still dispatch correctly (they just apply the const
+bounds, which is wrong only for `archive` vaults and is a forward-compat
+limitation noted here rather than a silent corruption: ids would differ on a
+re-add, never on extraction).
 
 ## 4. File Layout
 
@@ -149,7 +171,7 @@ The manifest is AES-256-GCM-SIV encrypted. Its plaintext is JSON:
 }
 ```
 
-`entries` describe user-visible files and directories. `chunks` is keyed by the 128-bit keyed-BLAKE3 chunk id and stores block location metadata.
+`entries` describe user-visible files and directories. Each file entry carries `path`, `size`, `modified`, `is_dir`, `chunks` (the ordered chunk ids that contain its bytes) and an optional `pack_offset`. `pack_offset` is the byte offset of the file inside the concatenation of its listed chunks; when absent the file owns its chunks whole from offset 0 (the per-file path and all pre-packing v3 vaults). `chunks` is keyed by the 128-bit keyed-BLAKE3 chunk id and stores block location metadata.
 
 ## 8. Hash Separation
 

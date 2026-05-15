@@ -119,14 +119,67 @@ pub async fn vault_v2_add_files(
     password: String,
     file_paths: Vec<String>,
 ) -> Result<serde_json::Value, String> {
+    use crate::vault_telemetry::VaultReport;
+    let started = std::time::Instant::now();
+
+    let mut report = VaultReport::new("add_files", 2);
+    let cascade = Vault::peek(&vault_path)
+        .map(|p| p.mode == EncryptionMode::Cascade)
+        .unwrap_or(false);
+    let mut algos = vec![
+        "kdf:argon2id(128MiB,t4,p4)".to_string(),
+        "key_wrap:aes-256-kw".to_string(),
+        "crypt:aes-256-gcm-siv".to_string(),
+        "filenames:aes-256-siv".to_string(),
+        "integrity:hmac-sha512".to_string(),
+        "chunk:64KiB".to_string(),
+    ];
+    if cascade {
+        algos.push("cascade:chacha20-poly1305".to_string());
+    }
+    report.set_algorithms(algos);
+    report.set_profile(if cascade { "paranoid" } else { "advanced" });
+
+    let plaintext_bytes: u64 = file_paths
+        .iter()
+        .filter_map(|p| std::fs::metadata(p).ok().map(|m| m.len()))
+        .sum();
+    let size_before = std::fs::metadata(&vault_path).map(|m| m.len()).unwrap_or(0);
+    report.step(format!(
+        "scan: {} file(s), {} plaintext byte(s)",
+        file_paths.len(),
+        plaintext_bytes
+    ));
+
     let vault = Vault::open(&vault_path, &password).map_err(|e| e.to_string())?;
     let paths: Vec<std::path::PathBuf> = file_paths.iter().map(std::path::PathBuf::from).collect();
+    report.step(format!(
+        "encrypt+seal: AES-256-GCM-SIV{} over 64KiB chunks, rebuild container",
+        if cascade { " + ChaCha20-Poly1305 cascade" } else { "" }
+    ));
     let added = vault.add_files(&paths).map_err(|e| e.to_string())?;
     let total = vault.list().map_err(|e| e.to_string())?.len();
 
+    let size_after = std::fs::metadata(&vault_path).map(|m| m.len()).unwrap_or(0);
+    for _ in 0..added {
+        report.on_file(false);
+    }
+    // v2 is an external-crate engine: per-chunk internals are not exposed, so
+    // the receipt reports observable accounting (plaintext in, ciphertext
+    // growth on disk, timing) rather than chunk/dedup detail.
+    report.plaintext_bytes = plaintext_bytes;
+    report.encrypted_bytes = size_after.saturating_sub(size_before);
+    report.step(format!(
+        "done: {} file(s) added, container grew {} byte(s)",
+        added,
+        report.encrypted_bytes
+    ));
+    report.finish(started.elapsed().as_millis() as u64);
+
     Ok(serde_json::json!({
         "added": added,
-        "total": total
+        "total": total,
+        "report": report
     }))
 }
 
