@@ -1529,12 +1529,15 @@ enum Commands {
         #[command(subcommand)]
         command: AerorsyncCommands,
     },
-    /// AeroVault v3 encrypted container operations (.aerovault)
+    /// AeroVault encrypted container operations (.aerovault), all formats
     ///
     /// Calls the exact backend the GUI invokes through Tauri commands.
-    /// A working CLI round-trip means the format and the small-file
-    /// packing path are sound, and only frontend wiring remains for
-    /// the GUI to behave the same way.
+    /// v3 (default) is the wrapper-stack format; v2 is the
+    /// AES-256-GCM-SIV format; v1 is the legacy WinZip-AES container.
+    /// For an existing file the version is auto-detected from its
+    /// header, so `info`/`add`/`extract` work without `--vault-version`.
+    /// A working CLI round-trip proves the format and packing paths are
+    /// sound and only frontend wiring remains for the GUI.
     Vault {
         #[command(subcommand)]
         command: VaultCommands,
@@ -1543,19 +1546,25 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum VaultCommands {
-    /// Create a new empty AeroVault v3 container
+    /// Create a new empty AeroVault container (v3 default; v1/v2 selectable)
     Create {
         /// Path to the .aerovault file to create
         path: String,
         /// Vault password (or set AEROFTP_VAULT_PASSWORD)
         #[arg(long, short = 'p')]
         password: Option<String>,
-        /// Compression profile: fast | balanced | archive
+        /// Compression profile (v3 only): fast | balanced | archive
         #[arg(long, default_value = "balanced")]
         profile: String,
+        /// Vault format: v1 | v2 | v3
+        #[arg(long = "vault-version", short = 'V', default_value = "v3")]
+        vault_version: String,
+        /// v2 only: enable the ChaCha20-Poly1305 cascade (paranoid) mode
+        #[arg(long)]
+        cascade: bool,
     },
-    /// Add files to a vault. Sub-threshold files are batched into
-    /// shared packs before chunking (the v3 small-file-batching path).
+    /// Add files to a vault. v3 batches sub-threshold files into shared
+    /// packs before chunking; v2/v1 add each file as its own entry.
     Add {
         /// Path to the .aerovault file
         path: String,
@@ -1568,6 +1577,9 @@ enum VaultCommands {
         /// path. The plain-text rendering is printed to stderr regardless.
         #[arg(long)]
         receipt: Option<String>,
+        /// Vault format: auto (detect from file) | v1 | v2 | v3
+        #[arg(long = "vault-version", short = 'V', default_value = "auto")]
+        vault_version: String,
     },
     /// Open a vault and print its info (file / chunk / dedup counts)
     Info {
@@ -1575,6 +1587,9 @@ enum VaultCommands {
         path: String,
         #[arg(long, short = 'p')]
         password: Option<String>,
+        /// Vault format: auto (detect from file) | v1 | v2 | v3
+        #[arg(long = "vault-version", short = 'V', default_value = "auto")]
+        vault_version: String,
     },
     /// Extract an entry from a vault to a destination path
     Extract {
@@ -1586,6 +1601,9 @@ enum VaultCommands {
         entry: String,
         /// Destination file or directory
         dest: String,
+        /// Vault format: auto (detect from file) | v1 | v2 | v3
+        #[arg(long = "vault-version", short = 'V', default_value = "auto")]
+        vault_version: String,
     },
 }
 
@@ -33494,7 +33512,7 @@ async fn main() {
             credential_json_file.as_deref(),
         ),
         Commands::Vault { command } => {
-            use ftp_client_gui_lib::aerovault_v3;
+            use ftp_client_gui_lib::{aerovault, aerovault_v2, aerovault_v3};
             let resolve_pw = |p: &Option<String>| -> String {
                 if let Some(pw) = p {
                     return pw.clone();
@@ -33510,26 +33528,75 @@ async fn main() {
                     String::new()
                 }
             };
+            // Detect the on-disk format so info/add/extract work without
+            // an explicit --vault-version: v3 has a 10-byte magic, v2 is
+            // self-describing (aes_vault header), anything else is the
+            // legacy v1 WinZip-AES container.
+            async fn detect_vault_version(path: &str) -> String {
+                use std::io::Read;
+                if let Ok(mut f) = std::fs::File::open(path) {
+                    let mut magic = [0u8; 10];
+                    if f.read_exact(&mut magic).is_ok() && &magic == b"AEROVAULT3" {
+                        return "v3".to_string();
+                    }
+                }
+                if aerovault_v2::is_vault_v2(path.to_string())
+                    .await
+                    .unwrap_or(false)
+                {
+                    return "v2".to_string();
+                }
+                "v1".to_string()
+            }
+            let resolve_ver = |raw: &str| -> String {
+                match raw.trim().to_lowercase().as_str() {
+                    "v1" | "1" => "v1".to_string(),
+                    "v2" | "2" => "v2".to_string(),
+                    _ => "v3".to_string(),
+                }
+            };
             match command {
                 VaultCommands::Create {
                     path,
                     password,
                     profile,
+                    vault_version,
+                    cascade,
                 } => {
                     let pw = resolve_pw(password);
-                    match aerovault_v3::vault_v3_create(
-                        path.clone(),
-                        pw,
-                        Some(profile.clone()),
-                    )
-                    .await
-                    {
+                    // "auto" has no file to inspect on create: default v3.
+                    let ver = resolve_ver(vault_version);
+                    let res: Result<String, String> = match ver.as_str() {
+                        "v1" => {
+                            aerovault::vault_create(path.clone(), pw, None).await
+                        }
+                        "v2" => {
+                            aerovault_v2::vault_v2_create(
+                                path.clone(),
+                                pw,
+                                None,
+                                *cascade,
+                            )
+                            .await
+                        }
+                        _ => {
+                            aerovault_v3::vault_v3_create(
+                                path.clone(),
+                                pw,
+                                Some(profile.clone()),
+                            )
+                            .await
+                        }
+                    };
+                    match res {
                         Ok(p) => {
                             match format {
-                                OutputFormat::Json => print_json(
-                                    &serde_json::json!({"status": "ok", "created": p}),
-                                ),
-                                OutputFormat::Text => println!("Created vault: {p}"),
+                                OutputFormat::Json => print_json(&serde_json::json!({
+                                    "status": "ok", "created": p, "version": ver
+                                })),
+                                OutputFormat::Text => {
+                                    println!("Created {ver} vault: {p}")
+                                }
                             }
                             0
                         }
@@ -33544,58 +33611,135 @@ async fn main() {
                     password,
                     files,
                     receipt,
+                    vault_version,
                 } => {
                     let pw = resolve_pw(password);
-                    match aerovault_v3::vault_v3_add_files(
-                        path.clone(),
-                        pw,
-                        files.clone(),
-                    )
-                    .await
-                    {
-                        Ok(info) => {
-                            let mut code = 0;
-                            if let Some(rep) = &info.report {
-                                // Behind-the-scenes log to stderr (stdout
-                                // stays clean JSON for piping).
-                                eprintln!("{}", rep.render_text());
-                                if let Some(rpath) = receipt {
-                                    match serde_json::to_string_pretty(rep) {
-                                        Ok(j) => {
-                                            if let Err(e) = std::fs::write(rpath, j) {
+                    let ver = if vault_version.trim().eq_ignore_ascii_case("auto") {
+                        detect_vault_version(path).await
+                    } else {
+                        resolve_ver(vault_version)
+                    };
+                    if ver == "v3" {
+                        match aerovault_v3::vault_v3_add_files(
+                            path.clone(),
+                            pw,
+                            files.clone(),
+                        )
+                        .await
+                        {
+                            Ok(info) => {
+                                let mut code = 0;
+                                if let Some(rep) = &info.report {
+                                    // Behind-the-scenes log to stderr
+                                    // (stdout stays clean JSON for piping).
+                                    eprintln!("{}", rep.render_text());
+                                    if let Some(rpath) = receipt {
+                                        match serde_json::to_string_pretty(rep) {
+                                            Ok(j) => {
+                                                if let Err(e) =
+                                                    std::fs::write(rpath, j)
+                                                {
+                                                    print_error(
+                                                        format,
+                                                        &format!(
+                                                            "write receipt: {e}"
+                                                        ),
+                                                        4,
+                                                    );
+                                                    code = 4;
+                                                }
+                                            }
+                                            Err(e) => {
                                                 print_error(
                                                     format,
-                                                    &format!("write receipt: {e}"),
+                                                    &format!(
+                                                        "serialize receipt: {e}"
+                                                    ),
                                                     4,
                                                 );
                                                 code = 4;
                                             }
                                         }
-                                        Err(e) => {
-                                            print_error(
-                                                format,
-                                                &format!("serialize receipt: {e}"),
-                                                4,
-                                            );
-                                            code = 4;
-                                        }
                                     }
                                 }
+                                if code == 0 {
+                                    print_json(&info);
+                                }
+                                code
                             }
-                            if code == 0 {
-                                print_json(&info);
+                            Err(e) => {
+                                print_error(format, &e, 4);
+                                4
                             }
-                            code
                         }
-                        Err(e) => {
-                            print_error(format, &e, 4);
-                            4
+                    } else {
+                        let res = if ver == "v1" {
+                            aerovault::vault_add_files(
+                                path.clone(),
+                                pw,
+                                files.clone(),
+                            )
+                            .await
+                        } else {
+                            aerovault_v2::vault_v2_add_files(
+                                path.clone(),
+                                pw,
+                                files.clone(),
+                            )
+                            .await
+                        };
+                        match res {
+                            Ok(value) => {
+                                if let Some(rpath) = receipt {
+                                    if let Ok(j) =
+                                        serde_json::to_string_pretty(&value)
+                                    {
+                                        let _ = std::fs::write(rpath, j);
+                                    }
+                                }
+                                print_json(&value);
+                                0
+                            }
+                            Err(e) => {
+                                print_error(format, &e, 4);
+                                4
+                            }
                         }
                     }
                 }
-                VaultCommands::Info { path, password } => {
+                VaultCommands::Info {
+                    path,
+                    password,
+                    vault_version,
+                } => {
                     let pw = resolve_pw(password);
-                    match aerovault_v3::vault_v3_open(path.clone(), pw).await {
+                    let ver = if vault_version.trim().eq_ignore_ascii_case("auto") {
+                        detect_vault_version(path).await
+                    } else {
+                        resolve_ver(vault_version)
+                    };
+                    let res: Result<serde_json::Value, String> = match ver.as_str() {
+                        "v1" => {
+                            match aerovault::vault_list(path.clone(), pw).await {
+                                Ok(entries) => Ok(serde_json::json!({
+                                    "version": 1,
+                                    "file_count": entries.len(),
+                                    "files": entries,
+                                })),
+                                Err(e) => Err(e),
+                            }
+                        }
+                        "v2" => {
+                            aerovault_v2::vault_v2_open(path.clone(), pw).await
+                        }
+                        _ => aerovault_v3::vault_v3_open(path.clone(), pw)
+                            .await
+                            .and_then(|i| {
+                                serde_json::to_value(&i)
+                                    .map_err(|e| e.to_string())
+                            }),
+                    };
+                    match res {
                         Ok(info) => {
                             print_json(&info);
                             0
@@ -33611,22 +33755,67 @@ async fn main() {
                     password,
                     entry,
                     dest,
+                    vault_version,
                 } => {
                     let pw = resolve_pw(password);
-                    match aerovault_v3::vault_v3_extract_entry(
-                        path.clone(),
-                        pw,
-                        entry.clone(),
-                        dest.clone(),
-                    )
-                    .await
-                    {
+                    let ver = if vault_version.trim().eq_ignore_ascii_case("auto") {
+                        detect_vault_version(path).await
+                    } else {
+                        resolve_ver(vault_version)
+                    };
+                    let res: Result<String, String> = match ver.as_str() {
+                        "v1" => {
+                            // v1 extract writes to the literal output path;
+                            // v2/v3 accept a directory. Normalise so a
+                            // directory dest works for v1 too: append the
+                            // entry basename when dest is a dir or ends "/".
+                            let d = std::path::Path::new(dest.as_str());
+                            let dest_final = if d.is_dir() || dest.ends_with('/')
+                            {
+                                let base = std::path::Path::new(entry.as_str())
+                                    .file_name()
+                                    .map(|s| s.to_string_lossy().to_string())
+                                    .unwrap_or_else(|| entry.clone());
+                                d.join(base).to_string_lossy().to_string()
+                            } else {
+                                dest.clone()
+                            };
+                            aerovault::vault_extract_entry(
+                                path.clone(),
+                                pw,
+                                entry.clone(),
+                                dest_final,
+                            )
+                            .await
+                        }
+                        "v2" => {
+                            aerovault_v2::vault_v2_extract_entry(
+                                path.clone(),
+                                pw,
+                                entry.clone(),
+                                dest.clone(),
+                            )
+                            .await
+                        }
+                        _ => {
+                            aerovault_v3::vault_v3_extract_entry(
+                                path.clone(),
+                                pw,
+                                entry.clone(),
+                                dest.clone(),
+                            )
+                            .await
+                        }
+                    };
+                    match res {
                         Ok(out) => {
                             match format {
-                                OutputFormat::Json => print_json(
-                                    &serde_json::json!({"status": "ok", "extracted": out}),
-                                ),
-                                OutputFormat::Text => println!("Extracted to: {out}"),
+                                OutputFormat::Json => print_json(&serde_json::json!({
+                                    "status": "ok", "extracted": out, "version": ver
+                                })),
+                                OutputFormat::Text => {
+                                    println!("Extracted to: {out}")
+                                }
                             }
                             0
                         }

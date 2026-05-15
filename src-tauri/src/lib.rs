@@ -23,8 +23,8 @@ use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
 use url::Url;
 
-mod aerovault;
-mod aerovault_v2;
+pub mod aerovault;
+pub mod aerovault_v2;
 pub mod aerovault_v3;
 pub mod vault_telemetry;
 pub mod agent_memory_db;
