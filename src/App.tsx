@@ -14,6 +14,7 @@ import {
   FileListResponse, ConnectionParams, DownloadParams, UploadParams,
   LocalFile, TransferEvent, TransferProgress, RemoteFile, FtpSession, ServerProfile,
   ProviderType, isOAuthProvider, isFourSharedProvider, isNonFtpProvider, isFtpProtocol, supportsStorageQuota, supportsNativeShareLink,
+  resolveEffectiveQuota,
   AeroVaultOverlaySession
 } from './types';
 
@@ -1958,14 +1959,37 @@ interface UpdateVerificationInfo {
   // round-trip on every render.
   const persistQuotaToProfile = async (
     profileId: string | undefined,
-    quota: { used: number; total: number },
+    quota: {
+      used: number;
+      total: number;
+      usedSource?: 'api' | 'scan';
+      used_at?: string;
+    },
   ) => {
     if (!profileId) return;
     try {
-      await mergeSavedServerProfile(profileId, server => ({
-        ...server,
-        lastQuota: { used: quota.used, total: quota.total, fetched_at: new Date().toISOString() },
-      }));
+      await mergeSavedServerProfile(profileId, server => {
+        // Single effective-quota rule (item 4a): the API total wins; when
+        // it is 0 (B2, no-quota S3/WebDAV/FTP) fall back to the profile's
+        // manual override so the cached My Servers bar still renders.
+        const eff = resolveEffectiveQuota(
+          quota.used,
+          quota.total,
+          server.options?.manualTotalBytes,
+        );
+        const prev = server.lastQuota;
+        return {
+          ...server,
+          lastQuota: {
+            used: eff.used,
+            total: eff.total,
+            fetched_at: new Date().toISOString(),
+            totalSource: eff.totalSource === 'none' ? undefined : eff.totalSource,
+            usedSource: quota.usedSource ?? prev?.usedSource,
+            used_at: quota.used_at ?? prev?.used_at,
+          },
+        };
+      });
       // Refresh the My Servers panel so the card reflects the new quota
       // without requiring a full app reload.
       setServersRefreshKey(k => k + 1);
@@ -2024,7 +2048,7 @@ interface UpdateVerificationInfo {
           setStorageQuota({ used: quota.used, total: quota.total, free: quota.available });
         }
         const profileId = freshSessionParams?.savedServerId || activeSession?.connectionParams?.savedServerId || connectionParams.savedServerId;
-        void persistQuotaToProfile(profileId, { used: quota.used, total: quota.total });
+        void persistQuotaToProfile(profileId, { used: quota.used, total: quota.total, usedSource: 'api' });
       } catch (e) {
         console.warn('[StorageQuota] InfiniCloud quota failed:', e);
         if (version === quotaVersionRef.current) setStorageQuota(null);
@@ -2035,12 +2059,16 @@ interface UpdateVerificationInfo {
     if (protocol && supportsStorageQuota(protocol as ProviderType)) {
       try {
         const info = await invoke<{ used: number; total: number; free: number }>('provider_storage_info');
+        // Effective-quota rule (item 4a): when the provider reports USED but
+        // no TOTAL (B2), inject the profile's manual override so the live
+        // StatusBar bar and % render, not just the cached card.
+        const eff = resolveEffectiveQuota(info.used, info.total, opts?.manualTotalBytes);
         // Discard stale response if a newer fetch was triggered (e.g., session switch)
         if (version === quotaVersionRef.current) {
-          setStorageQuota(info);
+          setStorageQuota({ used: eff.used, total: eff.total, free: info.free });
         }
         const profileId = freshSessionParams?.savedServerId || activeSession?.connectionParams?.savedServerId || connectionParams.savedServerId;
-        void persistQuotaToProfile(profileId, { used: info.used, total: info.total });
+        void persistQuotaToProfile(profileId, { used: info.used, total: info.total, usedSource: 'api' });
       } catch (e) {
         console.warn('[StorageQuota] Failed to fetch:', e);
         if (version === quotaVersionRef.current) {

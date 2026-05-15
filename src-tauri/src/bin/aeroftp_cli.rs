@@ -1311,6 +1311,13 @@ enum Commands {
         /// auto-derived from the protocol when possible.
         #[arg(long, value_name = "ID")]
         provider_id: Option<String>,
+        /// Manual total-storage cap for backends with no quota API
+        /// (FTP/S3/WebDAV) or that report only used space (Backblaze B2).
+        /// Accepts "10 GB", "2TB", "5368709120". The provider's own total
+        /// always takes precedence; this is the fallback so `df` and
+        /// `profiles` can show used/total/% (item 4a).
+        #[arg(long, value_name = "SIZE")]
+        manual_total: Option<String>,
     },
     /// Duplicate a saved server profile inside the vault
     ///
@@ -1329,6 +1336,12 @@ enum Commands {
         /// Defaults to `<original> (copy)`.
         #[arg(long, value_name = "NAME")]
         name: Option<String>,
+        /// Set (or override) the copy's manual total-storage cap. Accepts
+        /// "10 GB", "2TB", "5368709120". Useful for sandbox/test profiles
+        /// that exercise the item 4a quota fallback (the provider's own
+        /// total still wins when it reports one).
+        #[arg(long, value_name = "SIZE")]
+        manual_total: Option<String>,
     },
     /// Delete a saved server profile from the vault
     ///
@@ -2325,6 +2338,11 @@ struct CliStorageResult {
     total: u64,
     free: u64,
     used_percent: f64,
+    /// "api" when the cap came from the provider, "manual" when it came
+    /// from the profile's manualTotalBytes override (item 4a). Omitted when
+    /// there is no cap at all, keeping the JSON shape back-compatible.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    total_source: Option<&'static str>,
 }
 
 #[derive(Serialize)]
@@ -3317,6 +3335,56 @@ fn parse_age_filter(s: &str) -> Result<u64, String> {
         .parse::<f64>()
         .map(|n| (n * multiplier as f64) as u64)
         .map_err(|e| format!("Invalid duration '{}': {}", s, e))
+}
+
+/// Parse a human storage size into bytes for the manual quota override
+/// (item 4a). Accepts plain integers ("1073741824") and decimal values with
+/// a unit ("10 GB", "1.5tb", "512MiB"), case-insensitively, with optional
+/// whitespace. Both decimal (KB/MB/GB/TB) and binary (KiB/MiB/GiB/TiB)
+/// suffixes are powers of 1024, matching the GUI `parseHumanSize` and
+/// `format_size`. Mirrors the frontend so a value typed in either place
+/// round-trips identically.
+fn parse_manual_total_size(s: &str) -> Result<u64, String> {
+    let s = s.trim();
+    if s.is_empty() {
+        return Err("Empty size".into());
+    }
+    let mut split = s.len();
+    for (i, c) in s.char_indices() {
+        if c.is_ascii_alphabetic() {
+            split = i;
+            break;
+        }
+    }
+    let (num_part, unit_part) = s.split_at(split);
+    let value: f64 = num_part
+        .trim()
+        .replace(',', ".")
+        .parse()
+        .map_err(|_| format!("Invalid size '{}'", s))?;
+    if !value.is_finite() || value < 0.0 {
+        return Err(format!("Invalid size '{}'", s));
+    }
+    let unit = unit_part.trim().to_ascii_lowercase();
+    // Strip a trailing "ib"/"b" so "GiB", "GB" and "G" all map to the same.
+    let unit = unit
+        .strip_suffix("ib")
+        .or_else(|| unit.strip_suffix('b'))
+        .unwrap_or(&unit);
+    let exp: u32 = match unit {
+        "" => 0,
+        "k" => 1,
+        "m" => 2,
+        "g" => 3,
+        "t" => 4,
+        "p" => 5,
+        _ => return Err(format!("Unknown size unit in '{}'", s)),
+    };
+    let bytes = value * 1024f64.powi(exp as i32);
+    if !bytes.is_finite() || bytes < 0.0 || bytes > u64::MAX as f64 {
+        return Err(format!("Size out of range '{}'", s));
+    }
+    Ok(bytes.round() as u64)
 }
 
 /// Load patterns from a file (one per line, # comments, blank lines skipped).
@@ -5359,6 +5427,47 @@ fn paint_yellow(text: &str) -> String {
     }
 }
 
+/// Read a JSON value as a u64 whether it was serialized as a number or a
+/// numeric string. The GUI persists `options.manualTotalBytes` as a number,
+/// but profile import/export and older writes can stringify it.
+fn json_u64_flexible(v: &serde_json::Value) -> Option<u64> {
+    v.as_u64().or_else(|| {
+        v.as_str()
+            .and_then(|s| s.trim().parse::<u64>().ok())
+            .or_else(|| v.as_f64().filter(|n| *n >= 0.0).map(|n| n as u64))
+    })
+}
+
+/// Cached/raw `used` figure for a saved profile (API value or an explicit
+/// recursive scan: item 4b). No manual fallback exists for `used`.
+fn profile_effective_used(p: &serde_json::Value) -> Option<u64> {
+    p.get("lastQuota")
+        .and_then(|q| q.get("used"))
+        .and_then(|v| v.as_u64())
+}
+
+/// Effective `total` for a saved profile under the single rule shared with
+/// the GUI (item 4a): the cached API total wins; when it is absent/zero the
+/// user's `options.manualTotalBytes` override is used so the bar/columns
+/// render for backends with no quota API (FTP/S3/WebDAV) and B2.
+fn profile_effective_total(p: &serde_json::Value) -> Option<u64> {
+    match profile_api_total(p) {
+        Some(t) if t > 0 => Some(t),
+        _ => p
+            .get("options")
+            .and_then(|o| o.get("manualTotalBytes"))
+            .and_then(json_u64_flexible)
+            .filter(|&t| t > 0),
+    }
+}
+
+/// The cached API total only, ignoring any manual override.
+fn profile_api_total(p: &serde_json::Value) -> Option<u64> {
+    p.get("lastQuota")
+        .and_then(|q| q.get("total"))
+        .and_then(|v| v.as_u64())
+}
+
 /// Compare two profiles for the requested column. Mirrors the comparators in
 /// `MyServersTable.tsx`. Profiles without the relevant data sort first in
 /// ascending order so the populated rows form a contiguous block.
@@ -5369,18 +5478,10 @@ fn compare_profiles(
     favorites: &std::collections::HashSet<String>,
 ) -> std::cmp::Ordering {
     use std::cmp::Ordering;
-    fn used(p: &serde_json::Value) -> Option<u64> {
-        p.get("lastQuota")
-            .and_then(|q| q.get("used"))
-            .and_then(|v| v.as_u64())
-    }
-    fn total(p: &serde_json::Value) -> Option<u64> {
-        p.get("lastQuota")
-            .and_then(|q| q.get("total"))
-            .and_then(|v| v.as_u64())
-    }
+    let used = profile_effective_used;
+    let total = profile_effective_total;
     fn pct(p: &serde_json::Value) -> Option<f64> {
-        let (Some(u), Some(t)) = (used(p), total(p)) else {
+        let (Some(u), Some(t)) = (profile_effective_used(p), profile_effective_total(p)) else {
             return None;
         };
         if t == 0 {
@@ -5495,14 +5596,13 @@ fn list_vault_profiles(cli: &Cli, format: OutputFormat, overrides: ProfilesViewO
                 let auth_state = ftp_client_gui_lib::profile_auth_state::derive_profile_auth_state(
                     &store, &accounts, id, proto,
                 );
-                let used = p
-                    .get("lastQuota")
-                    .and_then(|q| q.get("used"))
-                    .and_then(|v| v.as_u64());
-                let total = p
-                    .get("lastQuota")
-                    .and_then(|q| q.get("total"))
-                    .and_then(|v| v.as_u64());
+                let used = profile_effective_used(p);
+                let total = profile_effective_total(p);
+                let total_source = match (profile_api_total(p), total) {
+                    (Some(a), _) if a > 0 => "api",
+                    (_, Some(t)) if t > 0 => "manual",
+                    _ => "none",
+                };
                 serde_json::json!({
                     "id": id,
                     "name": p.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed"),
@@ -5515,7 +5615,11 @@ fn list_vault_profiles(cli: &Cli, format: OutputFormat, overrides: ProfilesViewO
                     "providerId": p.get("providerId").and_then(|v| v.as_str()),
                     "favorite": !id.is_empty() && favorites.contains(id),
                     "lastQuota": match (used, total) {
-                        (Some(u), Some(t)) if t > 0 => serde_json::json!({ "used": u, "total": t }),
+                        (Some(u), Some(t)) if t > 0 => serde_json::json!({
+                            "used": u,
+                            "total": t,
+                            "totalSource": total_source,
+                        }),
                         _ => serde_json::Value::Null,
                     },
                 })
@@ -5591,14 +5695,8 @@ fn build_profile_views(
             host: p.get("host").and_then(|v| v.as_str()).unwrap_or(""),
             port: p.get("port").and_then(|v| v.as_u64()).unwrap_or(0),
             username: p.get("username").and_then(|v| v.as_str()).unwrap_or(""),
-            used: p
-                .get("lastQuota")
-                .and_then(|q| q.get("used"))
-                .and_then(|v| v.as_u64()),
-            total: p
-                .get("lastQuota")
-                .and_then(|q| q.get("total"))
-                .and_then(|v| v.as_u64()),
+            used: profile_effective_used(p),
+            total: profile_effective_total(p),
         })
         .collect()
 }
@@ -5862,30 +5960,18 @@ fn render_profiles_text(
                     format!("{:<w$}", truncate_cell(&display, host_width.max(1)), w = w)
                 }
                 ProfileColId::Used => {
-                    let used = p
-                        .get("lastQuota")
-                        .and_then(|q| q.get("used"))
-                        .and_then(|v| v.as_u64());
+                    let used = profile_effective_used(p);
                     let s = used.map(format_size).unwrap_or_else(|| "-".to_string());
                     format!("{:>w$}", s, w = w)
                 }
                 ProfileColId::Total => {
-                    let total = p
-                        .get("lastQuota")
-                        .and_then(|q| q.get("total"))
-                        .and_then(|v| v.as_u64());
+                    let total = profile_effective_total(p);
                     let s = total.map(format_size).unwrap_or_else(|| "-".to_string());
                     format!("{:>w$}", s, w = w)
                 }
                 ProfileColId::Pct => {
-                    let used = p
-                        .get("lastQuota")
-                        .and_then(|q| q.get("used"))
-                        .and_then(|v| v.as_u64());
-                    let total = p
-                        .get("lastQuota")
-                        .and_then(|q| q.get("total"))
-                        .and_then(|v| v.as_u64());
+                    let used = profile_effective_used(p);
+                    let total = profile_effective_total(p);
                     let (tone, pct) = storage_tone(used, total, settings.thresholds);
                     let raw = match pct {
                         Some(p) => format!("{:>5.1}%", p),
@@ -5946,14 +6032,8 @@ fn render_profiles_text(
             host: p.get("host").and_then(|v| v.as_str()).unwrap_or(""),
             port: p.get("port").and_then(|v| v.as_u64()).unwrap_or(0),
             username: p.get("username").and_then(|v| v.as_str()).unwrap_or(""),
-            used: p
-                .get("lastQuota")
-                .and_then(|q| q.get("used"))
-                .and_then(|v| v.as_u64()),
-            total: p
-                .get("lastQuota")
-                .and_then(|q| q.get("total"))
-                .and_then(|v| v.as_u64()),
+            used: profile_effective_used(p),
+            total: profile_effective_total(p),
         })
         .collect();
     let summary = ftp_client_gui_lib::storage_dedup::aggregate(&views);
@@ -6954,6 +7034,7 @@ fn cmd_profile_add(
     local_initial_path: Option<&str>,
     color: Option<&str>,
     provider_id: Option<&str>,
+    manual_total: Option<&str>,
 ) -> i32 {
     let trimmed_name = name.trim();
     if trimmed_name.is_empty() {
@@ -7011,6 +7092,20 @@ fn cmd_profile_add(
         );
         return 5;
     }
+    let manual_total_bytes = match manual_total {
+        Some(s) => match parse_manual_total_size(s) {
+            Ok(b) if b > 0 => Some(b),
+            Ok(_) => {
+                print_error(format, "Manual total must be greater than zero", 5);
+                return 5;
+            }
+            Err(e) => {
+                print_error(format, &format!("Invalid --manual-total: {}", e), 5);
+                return 5;
+            }
+        },
+        None => None,
+    };
     let resolved_port = port.unwrap_or(match proto_lower.as_str() {
         "ftp" | "ftps" => 21,
         "sftp" => 22,
@@ -7075,6 +7170,11 @@ fn cmd_profile_add(
     if let Some(pid) = provider_id {
         entry.insert("providerId".into(), serde_json::Value::String(pid.to_string()));
     }
+    if let Some(mtb) = manual_total_bytes {
+        let mut options = serde_json::Map::new();
+        options.insert("manualTotalBytes".into(), serde_json::json!(mtb));
+        entry.insert("options".into(), serde_json::Value::Object(options));
+    }
 
     profiles.insert(0, serde_json::Value::Object(entry));
 
@@ -7121,7 +7221,22 @@ fn cmd_profile_duplicate(
     format: OutputFormat,
     selector: &str,
     new_name: Option<&str>,
+    manual_total: Option<&str>,
 ) -> i32 {
+    let manual_total_bytes = match manual_total {
+        Some(s) => match parse_manual_total_size(s) {
+            Ok(b) if b > 0 => Some(b),
+            Ok(_) => {
+                print_error(format, "Manual total must be greater than zero", 5);
+                return 5;
+            }
+            Err(e) => {
+                print_error(format, &format!("Invalid --manual-total: {}", e), 5);
+                return 5;
+            }
+        },
+        None => None,
+    };
     let store = match open_vault(cli) {
         Ok(s) => s,
         Err(e) => {
@@ -7192,6 +7307,17 @@ fn cmd_profile_duplicate(
         map.insert("id".into(), serde_json::Value::String(new_id.clone()));
         map.insert("name".into(), serde_json::Value::String(resolved_name.clone()));
         map.remove("lastConnected");
+        if let Some(mtb) = manual_total_bytes {
+            // The source's cached quota no longer matches the new (manual)
+            // cap: drop it so the copy re-resolves cleanly under item 4a.
+            map.remove("lastQuota");
+            let options = map
+                .entry("options")
+                .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
+            if let serde_json::Value::Object(opt_map) = options {
+                opt_map.insert("manualTotalBytes".into(), serde_json::json!(mtb));
+            }
+        }
     }
 
     // Insert at the top so the copy is visible without scrolling, just
@@ -17408,7 +17534,26 @@ async fn cmd_find(
     0
 }
 
+/// Resolve the active `--profile`'s `options.manualTotalBytes` override
+/// (item 4a). Returns None for URL-mode invocations, when the vault cannot
+/// be opened, or when the profile sets no manual cap. Best-effort and
+/// side-effect free: a failure here just means no fallback total.
+fn resolve_profile_manual_total(cli: &Cli) -> Option<u64> {
+    let profile_name = cli.profile.as_ref()?;
+    let store = open_vault(cli).ok()?;
+    let raw = store.get("config_server_profiles").ok()?;
+    let profiles: Vec<serde_json::Value> = serde_json::from_str(&raw).ok()?;
+    let idx = resolve_profile_selector(&profiles, profile_name).ok()?;
+    profiles
+        .get(idx)?
+        .get("options")
+        .and_then(|o| o.get("manualTotalBytes"))
+        .and_then(json_u64_flexible)
+        .filter(|&t| t > 0)
+}
+
 async fn cmd_df(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
+    let manual_total = resolve_profile_manual_total(cli);
     let (mut provider, _) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
         Err(code) => return code,
@@ -17416,8 +17561,23 @@ async fn cmd_df(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
 
     match provider.storage_info().await {
         Ok(info) => {
-            let pct = if info.total > 0 {
-                (info.used as f64 / info.total as f64) * 100.0
+            // Single effective-quota rule (item 4a): the provider total wins;
+            // otherwise fall back to the profile's manual override so the
+            // figure/% render for B2 and no-quota S3/WebDAV/FTP profiles.
+            let (eff_total, total_source) = if info.total > 0 {
+                (info.total, Some("api"))
+            } else if let Some(mt) = manual_total {
+                (mt, Some("manual"))
+            } else {
+                (0u64, None)
+            };
+            let eff_free = if eff_total > info.used {
+                eff_total - info.used
+            } else {
+                info.free
+            };
+            let pct = if eff_total > 0 {
+                (info.used as f64 / eff_total as f64) * 100.0
             } else {
                 0.0
             };
@@ -17425,10 +17585,14 @@ async fn cmd_df(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
             match format {
                 OutputFormat::Text => {
                     println!("Storage usage:");
-                    if info.total > 0 {
+                    if eff_total > 0 {
                         println!("  Used:  {} ({:.1}%)", format_size(info.used), pct);
-                        println!("  Free:  {}", format_size(info.free));
-                        println!("  Total: {}", format_size(info.total));
+                        println!("  Free:  {}", format_size(eff_free));
+                        if total_source == Some("manual") {
+                            println!("  Total: {} (manual)", format_size(eff_total));
+                        } else {
+                            println!("  Total: {}", format_size(eff_total));
+                        }
 
                         // Visual bar (only meaningful when there is a cap)
                         let bar_width: usize = 40;
@@ -17441,19 +17605,21 @@ async fn cmd_df(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
                             pct
                         );
                     } else {
-                        // Provider exposes usage but no quota cap (e.g. B2, Cloudinary).
-                        // Print the figure and a hint instead of a misleading 0% bar.
+                        // Provider exposes usage but no quota cap (e.g. B2, Cloudinary)
+                        // and no manual override is set. Print the figure and a
+                        // hint instead of a misleading 0% bar.
                         println!("  Used:  {}", format_size(info.used));
-                        println!("  Total: unmetered (no quota cap reported)");
+                        println!("  Total: unmetered (set a manual cap in the profile to show %)");
                     }
                 }
                 OutputFormat::Json => {
                     print_json(&CliStorageResult {
                         status: "ok",
                         used: info.used,
-                        total: info.total,
-                        free: info.free,
+                        total: eff_total,
+                        free: eff_free,
                         used_percent: pct,
+                        total_source,
                     });
                 }
             }
@@ -33324,6 +33490,7 @@ async fn main() {
             local_initial_path,
             color,
             provider_id,
+            manual_total,
         } => cmd_profile_add(
             &cli,
             format,
@@ -33336,10 +33503,19 @@ async fn main() {
             local_initial_path.as_deref(),
             color.as_deref(),
             provider_id.as_deref(),
+            manual_total.as_deref(),
         ),
-        Commands::ProfileDuplicate { selector, name } => {
-            cmd_profile_duplicate(&cli, format, selector, name.as_deref())
-        }
+        Commands::ProfileDuplicate {
+            selector,
+            name,
+            manual_total,
+        } => cmd_profile_duplicate(
+            &cli,
+            format,
+            selector,
+            name.as_deref(),
+            manual_total.as_deref(),
+        ),
         Commands::AiModels => list_ai_models(&cli, format),
         Commands::AgentBootstrap {
             task,
@@ -33713,6 +33889,69 @@ mod tests {
     use super::*;
     use ftp_client_gui_lib::profile_loader::insert_profile_option;
     use serde_json::json;
+
+    #[test]
+    fn parse_manual_total_size_matches_frontend() {
+        assert_eq!(parse_manual_total_size("1073741824"), Ok(1_073_741_824));
+        assert_eq!(parse_manual_total_size("10 GB"), Ok(10 * 1024 * 1024 * 1024));
+        assert_eq!(parse_manual_total_size("10gb"), Ok(10 * 1024 * 1024 * 1024));
+        assert_eq!(parse_manual_total_size("2TB"), Ok(2u64 * 1024 * 1024 * 1024 * 1024));
+        assert_eq!(parse_manual_total_size("512MiB"), Ok(512 * 1024 * 1024));
+        assert_eq!(parse_manual_total_size("1.5 gb"), Ok((1.5 * 1024.0 * 1024.0 * 1024.0) as u64));
+        assert_eq!(parse_manual_total_size("1,5gb"), Ok((1.5 * 1024.0 * 1024.0 * 1024.0) as u64));
+        assert_eq!(parse_manual_total_size("500 K"), Ok(500 * 1024));
+        assert!(parse_manual_total_size("").is_err());
+        assert!(parse_manual_total_size("abc").is_err());
+        assert!(parse_manual_total_size("10 XB").is_err());
+        assert!(parse_manual_total_size("-5GB").is_err());
+    }
+
+    #[test]
+    fn json_u64_flexible_accepts_number_and_string() {
+        assert_eq!(json_u64_flexible(&json!(10_737_418_240u64)), Some(10_737_418_240));
+        assert_eq!(json_u64_flexible(&json!("536870912")), Some(536_870_912));
+        assert_eq!(json_u64_flexible(&json!("  42 ")), Some(42));
+        assert_eq!(json_u64_flexible(&json!(2.0)), Some(2));
+        assert_eq!(json_u64_flexible(&json!(-1)), None);
+        assert_eq!(json_u64_flexible(&json!("abc")), None);
+        assert_eq!(json_u64_flexible(&json!(null)), None);
+    }
+
+    #[test]
+    fn profile_effective_total_prefers_api_then_manual() {
+        // API total present and non-zero: manual override ignored.
+        let api = json!({
+            "lastQuota": { "used": 100, "total": 2_000 },
+            "options": { "manualTotalBytes": 9_999 }
+        });
+        assert_eq!(profile_effective_total(&api), Some(2_000));
+        assert_eq!(profile_api_total(&api), Some(2_000));
+        assert_eq!(profile_effective_used(&api), Some(100));
+
+        // No API total (B2 / no-quota S3/WebDAV/FTP): manual override wins.
+        let manual = json!({
+            "lastQuota": { "used": 222_248_087, "total": 0 },
+            "options": { "manualTotalBytes": 10_737_418_240u64 }
+        });
+        assert_eq!(profile_effective_total(&manual), Some(10_737_418_240));
+        assert_eq!(profile_api_total(&manual), Some(0));
+        assert_eq!(profile_effective_used(&manual), Some(222_248_087));
+
+        // manualTotalBytes serialized as a string still resolves.
+        let manual_str = json!({
+            "lastQuota": { "used": 1, "total": 0 },
+            "options": { "manualTotalBytes": "5368709120" }
+        });
+        assert_eq!(profile_effective_total(&manual_str), Some(5_368_709_120));
+
+        // Neither: no effective total.
+        let none = json!({ "lastQuota": { "used": 5, "total": 0 }, "options": {} });
+        assert_eq!(profile_effective_total(&none), None);
+
+        // Zero manual override is treated as unset.
+        let zero = json!({ "options": { "manualTotalBytes": 0 } });
+        assert_eq!(profile_effective_total(&zero), None);
+    }
 
     #[test]
     fn redact_url_strips_password_for_well_formed_inputs() {

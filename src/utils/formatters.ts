@@ -17,6 +17,32 @@ export const formatBytes = (bytes: number | null): string => {
 };
 
 /**
+ * Parse a human-readable size string into bytes.
+ *
+ * Accepts plain integers ("1073741824"), decimal values with a unit
+ * ("10 GB", "1.5tb", "512MiB"), case-insensitively and with optional
+ * whitespace. Both decimal (KB/MB/GB/TB) and binary (KiB/MiB/GiB/TiB)
+ * suffixes are treated as powers of 1024, matching `formatBytes`. Returns
+ * null for empty or unparseable input so callers can clear the field.
+ * Used by the optional "Total storage (manual)" profile override.
+ */
+export const parseHumanSize = (input: string | null | undefined): number | null => {
+    if (input == null) return null;
+    const s = String(input).trim();
+    if (!s) return null;
+    const m = s.match(/^([0-9]+(?:[.,][0-9]+)?)\s*([a-zA-Z]*)$/);
+    if (!m) return null;
+    const value = parseFloat(m[1].replace(',', '.'));
+    if (!Number.isFinite(value) || value < 0) return null;
+    const unit = m[2].toLowerCase().replace(/i?b$/, '');
+    const pow: Record<string, number> = { '': 0, k: 1, m: 2, g: 3, t: 4, p: 5 };
+    const exp = pow[unit];
+    if (exp === undefined) return null;
+    const bytes = Math.round(value * Math.pow(1024, exp));
+    return Number.isSafeInteger(bytes) ? bytes : null;
+};
+
+/**
  * Format bytes for display: returns em-dash for zero (vault/archive/crypto panels)
  */
 export const formatSize = (bytes: number): string => {

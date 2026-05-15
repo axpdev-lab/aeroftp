@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { ArrowDownLeft, ArrowUpRight, Clock, Copy, Edit2, Folder, GripVertical, HardDrive, Loader2, Star, Trash2 } from 'lucide-react';
-import { ServerProfile, ProviderType, supportsStorageQuota } from '../../types';
+import { ServerProfile, profileHasQuota } from '../../types';
 import { getServerSubtitle } from '../../utils/serverSubtitle';
 import { formatBytes } from '../../utils/formatters';
 import {
@@ -98,8 +98,7 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
     const rowPadY = isCompact ? 'py-1' : 'py-2';
     const iconBoxSize = isCompact ? 'w-8 h-8' : 'w-10 h-10';
     const iconSize = isCompact ? 16 : 18;
-    const proto = server.protocol || 'ftp';
-    const quotaSupported = supportsStorageQuota(proto as ProviderType);
+    const quotaSupported = profileHasQuota(server);
     const timeAgo = getTimeAgo(server.lastConnected);
     const subtitle = React.useMemo(() => getServerSubtitle(server, {
         credentialsMasked,
