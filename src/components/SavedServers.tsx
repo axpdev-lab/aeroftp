@@ -527,16 +527,13 @@ export const SavedServers: React.FC<SavedServersProps> = ({
 
             // Build connection params - for providers, don't append port to host
             // SFTP/MEGA use provider_connect which handles port separately
-            const isProviderProtocol = server.protocol && ['s3', 'webdav', 'sftp', 'mega', 'filelu', 'filelu-rsync', 'koofr', 'yandexdisk', 'github', 'gitlab', 'immich'].includes(server.protocol);
+            const isProviderProtocol = server.protocol && ['s3', 'webdav', 'sftp', 'mega', 'filelu', 'koofr', 'yandexdisk', 'github', 'gitlab', 'immich'].includes(server.protocol);
             const defaultPort = server.protocol === 'sftp' ? 22 : server.protocol === 'ftps' ? 990 : 21;
             const serverString = server.host;
 
-            // Z.4.5 R2 legacy-profile migration: when the registry
-            // preset's protocol changed since the profile was saved
-            // (FileLu Rsync moved from 'sftp' to 'filelu-rsync'), trust
-            // the registry. Without this, connect tries SFTP against
-            // FileLu's rsync endpoint and times out because ForceCommand
-            // blocks the SFTP subsystem.
+            // Legacy-profile migration: when the registry preset's
+            // protocol changed since the profile was saved, trust the
+            // registry so connect dispatches to the right provider.
             let effectiveProtocol: ProviderType = (server.protocol || 'ftp') as ProviderType;
             if (server.providerId) {
                 const preset = getProviderById(server.providerId);

@@ -61,13 +61,13 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use tokio::fs::{self, OpenOptions};
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
 use crate::aerorsync::engine_adapter::{
     BaselineSource, CurrentDeltaSyncBridge, FileBaseline, MemoryBaseline,
 };
 use crate::aerorsync::fallback_policy::{FallbackVerdict, classify_fallback};
-use crate::aerorsync::native_driver::AerorsyncDriver;
+use crate::aerorsync::native_driver::{AerorsyncDriver, PreambleProfile};
 use crate::aerorsync::real_wire::FileListEntry;
 use crate::aerorsync::remote_command::RemoteCommandSpec;
 use crate::aerorsync::rsync_event_bridge::RsyncEventBridge;
@@ -163,6 +163,14 @@ impl AerorsyncDeltaTransport {
             max_frame_size: 1 << 20,
             host_key_policy,
             auth_password: cfg.ssh_password.clone(),
+            // An Agent profile carries no key/password; the russh leg
+            // resolves SSH_AUTH_SOCK at connect time. `prefers_russh_leg`
+            // then routes probe + single-shot through russh (libssh2 is
+            // pubkey-file-only).
+            auth_agent: matches!(
+                cfg.auth_method,
+                crate::rsync_over_ssh::AuthMethod::Agent
+            ),
             // B.1/B.4: probe stock `rsync --version` on the remote. The
             // parser in `parse_probe_protocol` extracts the numeric
             // protocol version from the multi-line banner. A missing
@@ -194,7 +202,7 @@ impl DeltaTransport for AerorsyncDeltaTransport {
         // file in a multi-file sync would enter the native path, pay a
         // fresh SSH setup, fail at `open_raw_stream`, and only then
         // fall back to classic.
-        let probe_result = if self.ssh_config.usable_password().is_some() {
+        let probe_result = if self.ssh_config.prefers_russh_leg() {
             let transport = RusshSessionTransport::connect(self.ssh_config.clone())
                 .await
                 .map_err(map_native_probe_error_to_rsync)?;
@@ -280,7 +288,8 @@ impl AerorsyncDeltaTransport {
         remote_path: &str,
     ) -> Result<RsyncStats, RsyncError> {
         let cancel = CancelHandle::inert();
-        if self.ssh_config.usable_password().is_some() {
+        let preamble_profile = PreambleProfile::for_host(&self.ssh_config.host);
+        if self.ssh_config.prefers_russh_leg() {
             let transport = RusshSessionTransport::connect(self.ssh_config.clone())
                 .await
                 .map_err(|e| map_native_error_to_rsync(e, false))?;
@@ -290,6 +299,7 @@ impl AerorsyncDeltaTransport {
                 local_path,
                 remote_path,
                 self.min_file_size,
+                preamble_profile,
             )
             .await
         } else {
@@ -300,6 +310,7 @@ impl AerorsyncDeltaTransport {
                 local_path,
                 remote_path,
                 self.min_file_size,
+                preamble_profile,
             )
             .await
         }
@@ -319,12 +330,14 @@ impl AerorsyncDeltaTransport {
 ///
 /// Pinned by `cargo test --features aerorsync --lib aerorsync::` 453/453;
 /// any semantic change must surface as a test diff.
+#[allow(clippy::too_many_arguments)]
 async fn do_upload<T>(
     transport: T,
     cancel: CancelHandle,
     local_path: &Path,
     remote_path: &str,
     min_file_size: u64,
+    preamble_profile: PreambleProfile,
 ) -> Result<RsyncStats, RsyncError>
 where
     T: RawRemoteShellTransport + 'static,
@@ -366,7 +379,8 @@ where
 
     let source_file = fs::File::open(local_path).await.map_err(RsyncError::Io)?;
 
-    let mut driver = AerorsyncDriver::new(transport, cancel);
+    let mut driver =
+        AerorsyncDriver::new(transport, cancel).with_preamble_profile(preamble_profile);
     let adapter = CurrentDeltaSyncBridge::new();
     let warnings = new_warnings_sink();
     let mut bridge = build_event_bridge(warnings.clone());
@@ -417,14 +431,15 @@ impl AerorsyncDeltaTransport {
         local_path: &Path,
     ) -> Result<RsyncStats, RsyncError> {
         let cancel = CancelHandle::inert();
-        if self.ssh_config.usable_password().is_some() {
+        let preamble_profile = PreambleProfile::for_host(&self.ssh_config.host);
+        if self.ssh_config.prefers_russh_leg() {
             let transport = RusshSessionTransport::connect(self.ssh_config.clone())
                 .await
                 .map_err(|e| map_native_error_to_rsync(e, false))?;
-            do_download(transport, cancel, remote_path, local_path).await
+            do_download(transport, cancel, remote_path, local_path, preamble_profile).await
         } else {
             let transport = SshRemoteShellTransport::new(self.ssh_config.clone());
-            do_download(transport, cancel, remote_path, local_path).await
+            do_download(transport, cancel, remote_path, local_path, preamble_profile).await
         }
     }
 }
@@ -444,6 +459,7 @@ async fn do_download<T>(
     cancel: CancelHandle,
     remote_path: &str,
     local_path: &Path,
+    preamble_profile: PreambleProfile,
 ) -> Result<RsyncStats, RsyncError>
 where
     T: RawRemoteShellTransport + 'static,
@@ -529,7 +545,8 @@ where
                 ),
             })?;
 
-    let mut driver = AerorsyncDriver::new(transport, cancel);
+    let mut driver =
+        AerorsyncDriver::new(transport, cancel).with_preamble_profile(preamble_profile);
     let adapter = CurrentDeltaSyncBridge::new();
     let warnings = new_warnings_sink();
     let mut bridge = build_event_bridge(warnings.clone());
@@ -720,12 +737,14 @@ impl DeltaBatch for AerorsyncBatch {
             remote_path,
             self.transport.handshake_count()
         );
+        let preamble_profile = PreambleProfile::for_host(self.transport.endpoint_host());
         let first = do_upload(
             self.transport.share_session(),
             self.cancel.clone(),
             local_path,
             remote_path,
             self.min_file_size,
+            preamble_profile.clone(),
         )
         .await;
         if let Err(ref e) = first {
@@ -761,6 +780,7 @@ impl DeltaBatch for AerorsyncBatch {
                     local_path,
                     remote_path,
                     self.min_file_size,
+                    preamble_profile,
                 )
                 .await?
             }
@@ -785,11 +805,13 @@ impl DeltaBatch for AerorsyncBatch {
             remote_path,
             self.transport.handshake_count()
         );
+        let preamble_profile = PreambleProfile::for_host(self.transport.endpoint_host());
         let first = do_download(
             self.transport.share_session(),
             self.cancel.clone(),
             remote_path,
             local_path,
+            preamble_profile.clone(),
         )
         .await;
         if let Err(ref e) = first {
@@ -821,6 +843,7 @@ impl DeltaBatch for AerorsyncBatch {
                     self.cancel.clone(),
                     remote_path,
                     local_path,
+                    preamble_profile,
                 )
                 .await?
             }
@@ -909,6 +932,16 @@ fn build_source_entry(
         gid: Some(gid_value as i64),
         gid_name: Some(gid_name),
         checksum: file_checksum,
+        // Symlink source detection is deliberately not wired here: the
+        // single-file delta path is only reached with regular-file
+        // metadata today, and transferring a symlink also requires
+        // bypassing the data/delta phase (a symlink carries no content
+        // stream) plus a byte-fixture capture against stock rsync to
+        // validate the end-to-end flow. The wire codec
+        // (`encode/decode_file_list_entry`) already round-trips symlink
+        // entries; wiring the source builder + receiver is the tracked
+        // follow-up (see PROTOCOL-RSYNC-COMPARE.md).
+        symlink_target: None,
     }
 }
 
@@ -1288,6 +1321,61 @@ pub async fn write_atomic_chunked(
     preserve_mode: Option<u32>,
     preserve_mtime: Option<(i64, Option<i32>)>,
 ) -> Result<(), WriteAtomicError> {
+    write_atomic_chunked_core(
+        local_path,
+        data,
+        chunk_size,
+        inter_chunk_delay,
+        preserve_mode,
+        preserve_mtime,
+        false,
+    )
+    .await
+}
+
+/// Sparse variant of [`write_atomic_chunked`]. Identical atomicity,
+/// metadata-preservation and kill-9 invariants, but chunks that are
+/// entirely zero are turned into filesystem holes (`seek` past them
+/// instead of writing zeros) and the final length is fixed with
+/// `set_len`, so a trailing run of zeros is also a hole.
+///
+/// This is the AeroRsync analogue of rsync's `--sparse`: the output is
+/// byte-identical on read (a hole reads back as zeros) but consumes
+/// fewer allocated blocks for files with large zero regions (VM images,
+/// pre-allocated DB files, core dumps). Hole granularity is `chunk_size`
+/// (sub-chunk zero runs are written literally), matching rsync's
+/// block-granular sparse behaviour. Opt-in only: callers that want the
+/// dense representation keep using [`write_atomic_chunked`].
+pub async fn write_atomic_chunked_sparse(
+    local_path: &Path,
+    data: &[u8],
+    chunk_size: usize,
+    inter_chunk_delay: Option<Duration>,
+    preserve_mode: Option<u32>,
+    preserve_mtime: Option<(i64, Option<i32>)>,
+) -> Result<(), WriteAtomicError> {
+    write_atomic_chunked_core(
+        local_path,
+        data,
+        chunk_size,
+        inter_chunk_delay,
+        preserve_mode,
+        preserve_mtime,
+        true,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn write_atomic_chunked_core(
+    local_path: &Path,
+    data: &[u8],
+    chunk_size: usize,
+    inter_chunk_delay: Option<Duration>,
+    preserve_mode: Option<u32>,
+    preserve_mtime: Option<(i64, Option<i32>)>,
+    sparse: bool,
+) -> Result<(), WriteAtomicError> {
     if chunk_size == 0 {
         return Err(WriteAtomicError::PreOpen(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
@@ -1327,18 +1415,45 @@ pub async fn write_atomic_chunked(
         let mut offset = 0usize;
         while offset < data.len() {
             let end = (offset + chunk_size).min(data.len());
-            file.write_all(&data[offset..end])
-                .await
-                .map_err(|e| WriteAtomicError::PostOpen {
-                    stage: "write",
-                    source: e,
-                })?;
+            let chunk = &data[offset..end];
+            if sparse && chunk.iter().all(|&b| b == 0) {
+                // Hole: advance the file cursor without writing. The gap
+                // becomes an unallocated extent on sparse-capable
+                // filesystems. `set_len` below fixes the final size so a
+                // trailing hole keeps the correct length. Reads still
+                // return zeros, so the file is byte-identical to `data`.
+                file.seek(std::io::SeekFrom::Current(chunk.len() as i64))
+                    .await
+                    .map_err(|e| WriteAtomicError::PostOpen {
+                        stage: "seek",
+                        source: e,
+                    })?;
+            } else {
+                file.write_all(chunk)
+                    .await
+                    .map_err(|e| WriteAtomicError::PostOpen {
+                        stage: "write",
+                        source: e,
+                    })?;
+            }
             offset = end;
             if let Some(d) = inter_chunk_delay {
                 if offset < data.len() {
                     tokio::time::sleep(d).await;
                 }
             }
+        }
+        if sparse {
+            // Materialise the exact file length. Required when the file
+            // ends on a hole (the last op was a seek, not a write, so
+            // the on-disk size would stop at the last written byte). A
+            // no-op when the final chunk was written densely.
+            file.set_len(data.len() as u64)
+                .await
+                .map_err(|e| WriteAtomicError::PostOpen {
+                    stage: "set_len",
+                    source: e,
+                })?;
         }
         file.flush().await.map_err(|e| WriteAtomicError::PostOpen {
             stage: "flush",
@@ -1695,6 +1810,78 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn write_atomic_sparse_roundtrip_is_byte_identical() {
+        // head non-zero, large middle hole, tail non-zero, then a fully
+        // trailing hole. The file read back MUST equal the input bytes:
+        // holes read as zeros. chunk_size 4096 so the middle and trailing
+        // zero regions span whole chunks and are punched.
+        let dir = fresh_tempdir();
+        let target = dir.path().join("sparse.bin");
+        let mut data = Vec::new();
+        data.extend_from_slice(&[0xAB; 4096]); // dense head
+        data.extend_from_slice(&[0u8; 4096 * 8]); // interior hole
+        data.extend_from_slice(&[0xCD; 4096]); // dense tail
+        data.extend_from_slice(&[0u8; 4096 * 4]); // trailing hole (exercises set_len)
+
+        write_atomic_chunked_sparse(&target, &data, 4096, None, None, None)
+            .await
+            .expect("sparse write");
+
+        let back = std::fs::read(&target).unwrap();
+        assert_eq!(back.len(), data.len(), "size must match (set_len fixed trailing hole)");
+        assert_eq!(back, data, "sparse output must be byte-identical (holes read as zeros)");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn write_atomic_sparse_allocates_fewer_blocks_than_dense() {
+        use std::os::unix::fs::MetadataExt;
+
+        // 2 MiB of zeros bracketed by small dense markers. Sparse must
+        // allocate strictly fewer 512-byte blocks than the dense write
+        // for the same logical content on a hole-capable filesystem.
+        let dir = fresh_tempdir();
+        let dense = dir.path().join("dense.bin");
+        let sparse = dir.path().join("sparse.bin");
+        let mut data = vec![0u8; 2 * 1024 * 1024];
+        data[..16].fill(0x11);
+        let n = data.len();
+        data[n - 16..].fill(0x22);
+
+        write_atomic_chunked(&dense, &data, 64 * 1024, None, None, None)
+            .await
+            .expect("dense write");
+        write_atomic_chunked_sparse(&sparse, &data, 64 * 1024, None, None, None)
+            .await
+            .expect("sparse write");
+
+        // Logical content identical.
+        assert_eq!(std::fs::read(&dense).unwrap(), std::fs::read(&sparse).unwrap());
+
+        let dense_blocks = std::fs::metadata(&dense).unwrap().blocks();
+        let sparse_blocks = std::fs::metadata(&sparse).unwrap().blocks();
+        assert!(
+            sparse_blocks < dense_blocks,
+            "sparse must allocate fewer blocks: sparse={sparse_blocks} dense={dense_blocks}"
+        );
+    }
+
+    #[tokio::test]
+    async fn write_atomic_sparse_all_zero_file_keeps_correct_length() {
+        // A file that is entirely a hole: every chunk is seeked, nothing
+        // is written, and set_len must still produce the exact length.
+        let dir = fresh_tempdir();
+        let target = dir.path().join("allzero.bin");
+        let data = vec![0u8; 4096 * 5];
+        write_atomic_chunked_sparse(&target, &data, 4096, None, None, None)
+            .await
+            .expect("all-zero sparse write");
+        let back = std::fs::read(&target).unwrap();
+        assert_eq!(back.len(), data.len());
+        assert!(back.iter().all(|&b| b == 0));
+    }
+
+    #[tokio::test]
     async fn write_atomic_happy_path_cleans_its_own_temp() {
         // Complement to the stale-temp scenario now that the suffix is
         // per-invocation: on success the rename consumes the temp.
@@ -1928,7 +2115,8 @@ mod tests {
     // -- from_rsync_config: Z.4.5 R1 wire-up --------------------------------
 
     /// Z.4.5 R1: when the production [`RsyncConfig`] carries an SSH
-    /// password (e.g. a FileLu rsync profile), the constructor MUST
+    /// password (a password-auth rsync-over-SSH profile), the
+    /// constructor MUST
     /// propagate it onto [`SshTransportConfig::auth_password`] so the
     /// russh leg can pick it up. The propagation is independent of the
     /// `auth_method` discriminant: a profile may legitimately carry
@@ -2003,6 +2191,45 @@ mod tests {
             .expect("ssh_password must be propagated");
         assert_eq!(propagated.expose_secret(), "rsync-password");
         assert!(transport.ssh_config.usable_password().is_some());
+    }
+
+    /// SSH agent auth: a `RsyncConfig { auth_method: Agent }` with no key
+    /// and no password must produce a transport whose `auth_agent` flag
+    /// is set, no password propagated, and an empty key placeholder. The
+    /// russh leg resolves SSH_AUTH_SOCK at connect time; nothing static
+    /// is validated or injected here.
+    #[test]
+    fn from_rsync_config_agent_method_sets_auth_agent_flag() {
+        use crate::rsync_over_ssh::AuthMethod;
+
+        let cfg = RsyncConfig {
+            ssh_user: "tester".into(),
+            ssh_host: "example.invalid".into(),
+            ssh_key_path: None,
+            ssh_password: None,
+            auth_method: AuthMethod::Agent,
+            ..Default::default()
+        };
+        let transport =
+            AerorsyncDeltaTransport::from_rsync_config(&cfg, SshHostKeyPolicy::AcceptAny)
+                .expect("agent RsyncConfig should produce a transport");
+        assert!(
+            transport.ssh_config.auth_agent,
+            "auth_agent must be set for AuthMethod::Agent"
+        );
+        assert!(
+            transport.ssh_config.auth_password.is_none(),
+            "agent profile must not carry a password"
+        );
+        assert_eq!(
+            transport.ssh_config.private_key_path,
+            std::path::PathBuf::new(),
+            "agent profile must not inject a default key path"
+        );
+        assert!(
+            transport.ssh_config.prefers_russh_leg(),
+            "agent profile must route through the russh leg"
+        );
     }
 
     /// Z.4.5 R1 dispatch step: `validate_auth_material()` now gates the

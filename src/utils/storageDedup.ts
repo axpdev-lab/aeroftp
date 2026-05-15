@@ -144,8 +144,8 @@ const dedupFamily = (
         || providerId === 'yandexdisk'
     ) return 'yandex';
     if (protocol === 'yandexdisk') return 'yandex';
-    if (providerId === 'filelu-webdav' || providerId === 'filelu-rsync' || providerId === 'filelu') return 'filelu';
-    if (protocol === 'filelu' || protocol === 'filelu-rsync') return 'filelu';
+    if (providerId === 'filelu-webdav' || providerId === 'filelu') return 'filelu';
+    if (protocol === 'filelu') return 'filelu';
     return undefined;
 };
 

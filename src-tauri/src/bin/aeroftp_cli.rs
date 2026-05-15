@@ -108,7 +108,6 @@ const SUPPORTED_URL_SCHEMES: &[&str] = &[
     "internxt",
     "jottacloud",
     "filelu",
-    "filelu-rsync",
     "koofr",
     "opendrive",
     "yandexdisk",
@@ -1700,21 +1699,21 @@ enum AerorsyncCommands {
     ///
     /// Opens a russh session with `userauth password`, runs `rsync
     /// --version` over a channel exec, and reports the remote banner.
-    /// This is the minimal end-to-end smoke for the Z.4.5 R1 dispatch
+    /// This is the minimal end-to-end smoke for the password transport
     /// without requiring a full provider integration. Useful to verify
-    /// that an rsync-as-a-service endpoint (FileLu rsync, Hetzner
-    /// Storage Box, etc.) accepts a password login from AeroFTP before
-    /// committing to a profile.
+    /// that an rsync-over-SSH endpoint (Hetzner Storage Box or any
+    /// password-auth SSH+rsync host) accepts a password login from
+    /// AeroFTP before committing to a profile.
     ///
     /// Two invocation modes:
     ///
-    /// 1. **Explicit args**: `aerorsync probe rsync.filelu.com aleimob
-    ///    --port 2222 --password-env FILELU_PW --accept-any-host-key`.
+    /// 1. **Explicit args**: `aerorsync probe host.example.com user
+    ///    --port 2222 --password-env SSH_PW --accept-any-host-key`.
     ///    Pass HOST and USER positionally; resolve the password from
     ///    --password-env, --password-stdin, or a TTY prompt.
     ///
-    /// 2. **Profile-backed**: `aerorsync probe --profile-rsync "FileLu
-    ///    Rsync"` reads host / port / user from the saved profile and
+    /// 2. **Profile-backed**: `aerorsync probe --profile-rsync "My SSH
+    ///    Server"` reads host / port / user from the saved profile and
     ///    pulls the password from the matching vault credential
     ///    (`server_<id>`). HOST and USER positionals are then optional
     ///    overrides; --port overrides the profile's port. If a vault
@@ -1725,7 +1724,7 @@ enum AerorsyncCommands {
     /// error messages. The remote banner IS printed on success: it is
     /// public information from the server.
     Probe {
-        /// Remote host (e.g. `rsync.filelu.com`, `127.0.0.1`).
+        /// Remote host (e.g. `host.example.com`, `127.0.0.1`).
         /// Optional when `--profile-rsync` is set; the profile's host is used.
         host: Option<String>,
         /// SSH user.
@@ -4353,9 +4352,6 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
         "internxt" => (ProviderType::Internxt, "drive.internxt.com".to_string()),
         "jottacloud" => (ProviderType::Jottacloud, "jfs.jottacloud.com".to_string()),
         "filelu" => (ProviderType::FileLu, "filelu.com".to_string()),
-        "filelu-rsync" | "filelu_rsync" | "filelurs" => {
-            (ProviderType::FileLuRsync, "rsync.filelu.com".to_string())
-        }
         "koofr" => (ProviderType::Koofr, "app.koofr.net".to_string()),
         "opendrive" => (ProviderType::OpenDrive, "dev.opendrive.com".to_string()),
         "yandexdisk" => (ProviderType::YandexDisk, "cloud-api.yandex.net".to_string()),
@@ -6882,14 +6878,6 @@ fn cmd_profile_add(
         "koofr",
         "drime",
         "filelu",
-        // Z.4.5 R1: rsync-as-a-service preset (rsync.filelu.com:2222).
-        // The frontend registry already exposes the preset (commit
-        // 057d81c8); the protocol identifier is registered here so
-        // `profile-add --protocol filelu-rsync` accepts it. The actual
-        // provider end-to-end (StorageProvider impl + dispatch site)
-        // is the next milestone — until then a profile created with
-        // this protocol is a placeholder readable by `aerorsync probe`.
-        "filelu-rsync",
         "yandexdisk",
         "opendrive",
         "jottacloud",
@@ -8204,7 +8192,7 @@ fn cmd_agent_info(cli: &Cli) -> i32 {
         "protocols": [
             "ftp", "ftps", "sftp", "webdav", "webdavs", "s3", "aerocloud",
             "mega", "filen", "internxt", "kdrive", "koofr",
-            "jottacloud", "filelu", "filelu-rsync", "opendrive", "yandexdisk", "azure",
+            "jottacloud", "filelu", "opendrive", "yandexdisk", "azure",
             "github", "gitlab", "googledrive", "dropbox", "onedrive", "box",
             "pcloud", "zohoworkdrive", "fourshared", "drime", "swift"
         ],
@@ -8238,7 +8226,6 @@ fn cmd_agent_info(cli: &Cli) -> i32 {
             "opendrive": ftp_client_gui_lib::agent_session::capabilities_for_protocol("opendrive"),
             "drime": ftp_client_gui_lib::agent_session::capabilities_for_protocol("drime"),
             "filelu": ftp_client_gui_lib::agent_session::capabilities_for_protocol("filelu"),
-            "filelu-rsync": ftp_client_gui_lib::agent_session::capabilities_for_protocol("filelu-rsync"),
             "fourshared": ftp_client_gui_lib::agent_session::capabilities_for_protocol("fourshared"),
             "swift": ftp_client_gui_lib::agent_session::capabilities_for_protocol("swift"),
             "immich": ftp_client_gui_lib::agent_session::capabilities_for_protocol("immich"),
@@ -9018,7 +9005,6 @@ fn profile_to_provider_config(
         "internxt" => ProviderType::Internxt,
         "jottacloud" => ProviderType::Jottacloud,
         "filelu" => ProviderType::FileLu,
-        "filelu-rsync" | "filelu_rsync" | "filelurs" => ProviderType::FileLuRsync,
         "koofr" => ProviderType::Koofr,
         "opendrive" => ProviderType::OpenDrive,
         "kdrive" => ProviderType::KDrive,
@@ -16412,6 +16398,7 @@ async fn cmd_aerorsync_probe(
             environment: Vec::new(),
         },
         auth_password: Some(SecretString::from(password)),
+        auth_agent: false,
     };
 
     let transport = match RusshSessionTransport::connect(cfg).await {

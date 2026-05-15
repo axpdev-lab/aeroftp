@@ -94,7 +94,17 @@ impl RemoteCommandSpec {
                 if self.remote_role == SessionRole::Sender {
                     args.push("--sender".to_string());
                 }
-                args.push(OBSERVED_COMPACT_FLAGS.to_string());
+                // Live-tuning escape hatch: `AEROFTP_RSYNC_SERVER_FLAGS`
+                // overrides the byte-pinned compact flag string so a
+                // non-stock remote `rsync --server` wrapper whose
+                // ForceCommand whitelists a different argv can be probed
+                // live without a rebuild per attempt. No-op when unset,
+                // so the default stays byte-pinned against rsync 3.2.7.
+                let compact_flags = std::env::var("AEROFTP_RSYNC_SERVER_FLAGS")
+                    .ok()
+                    .filter(|v| !v.trim().is_empty())
+                    .unwrap_or_else(|| OBSERVED_COMPACT_FLAGS.to_string());
+                args.push(compact_flags);
                 if self.emit_stats {
                     args.push("--stats".to_string());
                 }

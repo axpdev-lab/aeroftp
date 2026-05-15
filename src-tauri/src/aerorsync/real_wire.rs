@@ -1261,6 +1261,28 @@ pub struct FileListEntry {
     /// Raw checksum bytes when `always_checksum` is active. Length
     /// equals `options.csum_len`; empty otherwise.
     pub checksum: Vec<u8>,
+    /// Symlink target, present iff this entry's `mode` is `S_IFLNK`.
+    /// `None` for every regular file / directory, so the encoder emits
+    /// zero extra bytes for non-symlink entries and the byte-pinned
+    /// regular-file path is provably unchanged (the frozen-oracle tests
+    /// are the regression proof). rsync proto >= 30 wire shape:
+    /// `write_varint(len)` then `len` raw target bytes, placed after the
+    /// uid/gid block and before the trailing checksum (mirrors
+    /// `flist.c::send_file_entry`'s `S_ISLNK` branch).
+    pub symlink_target: Option<String>,
+}
+
+/// POSIX `S_IFMT` mask and `S_IFLNK` value. Used to gate symlink wire
+/// handling on the entry mode exactly like rsync's `S_ISLNK(mode)`.
+pub const S_IFMT: u32 = 0o170000;
+pub const S_IFLNK: u32 = 0o120000;
+
+/// True when `mode`'s file-type bits mark a symbolic link. Mirrors the
+/// libc `S_ISLNK` macro so the wire codec keys symlink-target presence
+/// on exactly the same condition stock rsync does.
+#[inline]
+pub fn is_symlink_mode(mode: u32) -> bool {
+    (mode & S_IFMT) == S_IFLNK
 }
 
 /// Read `len` bytes from `buf[offset..]` and interpret them as UTF-8.
@@ -1516,6 +1538,33 @@ pub fn decode_file_list_entry(
         (None, None)
     };
 
+    // --- 8.5 Symlink target (proto >= 30, gated on S_ISLNK(mode)) ---------
+    // Mirrors `flist.c::recv_file_entry`:
+    //   if (preserve_links && S_ISLNK(mode)) {
+    //       len = read_varint30(f); read `len` raw bytes
+    //   }
+    // Placed after the uid/gid block and before the trailing checksum,
+    // exactly like `send_file_entry`. Regular files and directories
+    // never set S_IFLNK, so they skip this branch and their wire bytes
+    // are identical to before this change (the frozen-oracle round-trip
+    // tests are the regression proof).
+    //
+    // Note: when `XMIT_SAME_MODE` is set the decoder above yields
+    // `mode == 0`, so a SAME_MODE symlink would be missed. That cannot
+    // happen on the single-file path (the sole entry has no previous
+    // entry to SAME against); multi-entry SAME_MODE symlink handling is
+    // out of scope until the recursive file-list lands.
+    let symlink_target = if is_symlink_mode(mode) {
+        let (len, consumed) = decode_varint(&buf[cursor..])?;
+        cursor += consumed;
+        let len = len as usize;
+        let s = read_utf8_slice(buf, cursor, len)?;
+        cursor += len;
+        Some(s)
+    } else {
+        None
+    };
+
     // --- 9. Checksum (always_checksum active) ------------------------------
     let checksum = if options.always_checksum && options.csum_len > 0 {
         if cursor + options.csum_len > buf.len() {
@@ -1545,6 +1594,7 @@ pub fn decode_file_list_entry(
             gid,
             gid_name,
             checksum,
+            symlink_target,
         }),
         cursor,
     ))
@@ -1688,6 +1738,16 @@ pub fn encode_file_list_entry(entry: &FileListEntry, options: &FileListDecodeOpt
             out.push(name.len() as u8);
             out.extend_from_slice(name.as_bytes());
         }
+    }
+
+    // --- 8.5 Symlink target (proto >= 30, gated on S_ISLNK(mode)) ---------
+    // Exact mirror of the decoder: `write_varint(len)` then `len` raw
+    // bytes, only for symlink entries. Non-symlink entries skip this and
+    // emit the identical byte sequence as before this change.
+    if is_symlink_mode(entry.mode) {
+        let target = entry.symlink_target.as_deref().unwrap_or("");
+        out.extend_from_slice(&encode_varint(target.len() as i32));
+        out.extend_from_slice(target.as_bytes());
     }
 
     // --- 9. Checksum (always_checksum) ------------------------------------
@@ -5119,6 +5179,10 @@ mod tests {
                 assert_eq!(decoded.gid, entry.gid, "gid drift");
                 assert_eq!(decoded.gid_name, entry.gid_name, "gid_name drift");
                 assert_eq!(decoded.checksum, entry.checksum, "checksum drift");
+                assert_eq!(
+                    decoded.symlink_target, entry.symlink_target,
+                    "symlink_target drift"
+                );
             }
             other => panic!("expected Entry, got {other:?}"),
         }
@@ -5139,6 +5203,7 @@ mod tests {
             gid: Some(1000),
             gid_name: Some("axpnet".to_string()),
             checksum: vec![0xAB; 16],
+            symlink_target: None,
         }
     }
 
@@ -5146,6 +5211,107 @@ mod tests {
     fn encode_file_list_entry_round_trip_baseline() {
         let opts = frozen_oracle_options_for_test(None);
         assert_flist_entry_round_trip(baseline_entry(), &opts);
+    }
+
+    #[test]
+    fn is_symlink_mode_matches_posix_s_islnk() {
+        assert!(is_symlink_mode(S_IFLNK | 0o777));
+        assert!(is_symlink_mode(0o120000));
+        assert!(!is_symlink_mode(0o100_644)); // S_IFREG
+        assert!(!is_symlink_mode(0o040_755)); // S_IFDIR
+        assert!(!is_symlink_mode(0)); // SAME_MODE sentinel
+    }
+
+    #[test]
+    fn symlink_entry_round_trips_through_codec() {
+        // A symlink file-list entry: S_IFLNK mode, target carried in
+        // `symlink_target`, size = target length (rsync F_LENGTH
+        // convention for links). The round-trip helper also asserts
+        // `symlink_target` equality.
+        let target = "../relative/path/to/target.bin".to_string();
+        let entry = FileListEntry {
+            flags: XMIT_USER_NAME_FOLLOWS | XMIT_GROUP_NAME_FOLLOWS,
+            path: "link.lnk".to_string(),
+            size: target.len() as i64,
+            mtime: 1_700_000_000,
+            mtime_nsec: None,
+            mode: S_IFLNK | 0o777,
+            uid: Some(1000),
+            uid_name: Some("axpnet".to_string()),
+            gid: Some(1000),
+            gid_name: Some("axpnet".to_string()),
+            checksum: vec![0x7Fu8; 16],
+            symlink_target: Some(target),
+        };
+        let opts = frozen_oracle_options_for_test(None);
+        assert_flist_entry_round_trip(entry, &opts);
+    }
+
+    #[test]
+    fn symlink_target_adds_exactly_varint_len_plus_bytes_over_regular() {
+        // Regression: the encoder must emit the symlink target ONLY for
+        // S_IFLNK entries, and exactly `varint(len) + len` extra bytes
+        // versus the identical entry encoded as a regular file. This
+        // proves non-symlink entries are byte-identical to before the
+        // symlink codec was added (the frozen-oracle tests are the
+        // companion proof on real captured bytes).
+        let opts = frozen_oracle_options_for_test(None);
+        let target = "target/over/here".to_string();
+
+        let mut reg = baseline_entry();
+        reg.symlink_target = None;
+        reg.mode = 0o100_644; // S_IFREG
+        let reg_bytes = encode_file_list_entry(&reg, &opts);
+
+        let mut lnk = baseline_entry();
+        lnk.mode = S_IFLNK | 0o777;
+        lnk.symlink_target = Some(target.clone());
+        let lnk_bytes = encode_file_list_entry(&lnk, &opts);
+
+        let expected_extra = encode_varint(target.len() as i32).len() + target.len();
+        assert_eq!(
+            lnk_bytes.len(),
+            reg_bytes.len() + expected_extra,
+            "symlink entry must add exactly varint(len)+len bytes"
+        );
+
+        // And a regular entry decodes back with no symlink target.
+        let (outcome, _) = decode_file_list_entry(&reg_bytes, &opts).unwrap();
+        match outcome {
+            FileListDecodeOutcome::Entry(d) => {
+                assert!(d.symlink_target.is_none(), "regular file must have no symlink target");
+            }
+            other => panic!("expected Entry, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn empty_symlink_target_round_trips() {
+        // Degenerate but legal: a zero-length link target. varint(0) +
+        // zero bytes. Must decode back to Some(empty), not None.
+        // flags MUST be non-zero: a zero flags byte is the file-list
+        // terminator, not an entry. XMIT_TOP_DIR is a pure marker bit
+        // with no extra-field implications in the decoder.
+        let entry = FileListEntry {
+            flags: XMIT_TOP_DIR,
+            path: "e.lnk".to_string(),
+            size: 0,
+            mtime: 0,
+            mtime_nsec: None,
+            mode: S_IFLNK | 0o777,
+            uid: None,
+            uid_name: None,
+            gid: None,
+            gid_name: None,
+            checksum: vec![],
+            symlink_target: Some(String::new()),
+        };
+        let mut opts = frozen_oracle_options_for_test(None);
+        opts.always_checksum = false;
+        opts.csum_len = 0;
+        opts.preserve_uid = false;
+        opts.preserve_gid = false;
+        assert_flist_entry_round_trip(entry, &opts);
     }
 
     #[test]
@@ -5213,6 +5379,7 @@ mod tests {
             gid: None,
             gid_name: None,
             checksum: vec![0; 16],
+            symlink_target: None,
         };
         let mut opts = FileListDecodeOptions::frozen_oracle_default();
         opts.preserve_uid = false;
@@ -5246,6 +5413,7 @@ mod tests {
             gid: None, // gated out by SAME_GID
             gid_name: None,
             checksum: vec![],
+            symlink_target: None,
         };
         let mut opts = FileListDecodeOptions::frozen_oracle_default();
         opts.xfer_flags_as_varint = false;
@@ -5270,6 +5438,7 @@ mod tests {
             gid: Some(1000),
             gid_name: None,
             checksum: vec![],
+            symlink_target: None,
         };
         let mut opts = FileListDecodeOptions::frozen_oracle_default();
         opts.xfer_flags_as_varint = false;
@@ -5350,6 +5519,7 @@ mod tests {
                 0x0c, 0x22, 0x11, 0xc6, 0xe2, 0xe7, 0xc9, 0x9c, 0x96, 0xc3, 0xfd, 0xfb, 0x51, 0x2c,
                 0x82, 0xc9,
             ],
+            symlink_target: None,
         }
     }
 

@@ -1155,12 +1155,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             }
         }
 
-        // Legacy-profile migration (Z.4.5 R2): when the saved profile
-        // has a providerId pointing at a known registry preset whose
-        // protocol value has since changed (e.g. FileLu Rsync moved
-        // from `sftp` to `filelu-rsync`), trust the registry. This
-        // makes ProtocolFields render the right fields and lets
-        // ProviderModeTabs surface the FileLu chip strip in edit mode.
+        // Legacy-profile migration: when the saved profile has a
+        // providerId pointing at a known registry preset whose protocol
+        // value has since changed, trust the registry. This makes
+        // ProtocolFields render the right fields and lets
+        // ProviderModeTabs surface the provider chip strip in edit mode.
         // Filen native profiles have no providerId so they fall through
         // and keep their saved protocol as-is.
         let effectiveProtocol = profile.protocol || 'ftp';
@@ -1660,7 +1659,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     };
 
     // In formOnly mode: wider for 2-column protocols, narrower for single-column providers
-    const twoColProtocols = ['ftp', 'ftps', 'sftp', 's3', 'webdav', 'azure', 'filen', 'internxt', 'koofr', 'opendrive', 'kdrive', 'immich', 'imagekit', 'uploadcare', 'cloudinary', 'filelu', 'filelu-rsync', 'drime', 'jottacloud', 'backblaze'];
+    const twoColProtocols = ['ftp', 'ftps', 'sftp', 's3', 'webdav', 'azure', 'filen', 'internxt', 'koofr', 'opendrive', 'kdrive', 'immich', 'imagekit', 'uploadcare', 'cloudinary', 'filelu', 'drime', 'jottacloud', 'backblaze'];
     const isTwoColumnProtocol = protocol && twoColProtocols.includes(protocol);
     const formOnlyMaxW = formOnly ? (isTwoColumnProtocol ? 'max-w-4xl' : 'max-w-lg') : 'max-w-5xl';
 

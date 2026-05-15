@@ -858,13 +858,11 @@ export function MyServersPanel({
             } catch { /* not found */ }
 
             // Build connection params - for provider protocols, use host only (no port append)
-            // Z.4.5 R2 legacy-profile migration: when the registry preset
-            // for this providerId reports a protocol different from what
-            // the profile persisted (FileLu Rsync moved from `sftp` to
-            // `filelu-rsync`), trust the registry. Without this, legacy
-            // profiles fail to connect because the backend dispatches to
-            // the wrong provider (SFTP subsystem against FileLu's
-            // ForceCommand wrapper, which closes the channel).
+            // Legacy-profile migration: when the registry preset for
+            // this providerId reports a protocol different from what the
+            // profile persisted, trust the registry. Without this,
+            // legacy profiles can fail to connect because the backend
+            // dispatches to the wrong provider for the saved protocol.
             let proto = server.protocol || 'ftp';
             if (server.providerId) {
                 const presetProto = getProviderById(server.providerId)?.protocol;
@@ -872,7 +870,7 @@ export function MyServersPanel({
                     proto = presetProto;
                 }
             }
-            const isProviderProtocol = ['s3', 'webdav', 'sftp', 'mega', 'filelu', 'filelu-rsync', 'koofr', 'yandexdisk', 'github', 'gitlab', 'opendrive', 'internxt', 'filen', 'drime', 'jottacloud', 'kdrive', 'swift', 'backblaze'].includes(proto);
+            const isProviderProtocol = ['s3', 'webdav', 'sftp', 'mega', 'filelu', 'koofr', 'yandexdisk', 'github', 'gitlab', 'opendrive', 'internxt', 'filen', 'drime', 'jottacloud', 'kdrive', 'swift', 'backblaze'].includes(proto);
             const defaultPort = proto === 'sftp' ? 22 : proto === 'ftps' ? 990 : 21;
             const serverString = server.host;
 

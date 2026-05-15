@@ -36,7 +36,6 @@ export const PROTOCOL_CATEGORY_MAP: Record<string, CatalogCategoryId> = {
     ftp: 'protocols',
     ftps: 'protocols',
     sftp: 'protocols',
-    'filelu-rsync': 'protocols',
     azure: 'protocols',
 
     // Object Storage (S3)

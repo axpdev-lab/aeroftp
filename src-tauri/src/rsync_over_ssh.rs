@@ -80,6 +80,13 @@ pub enum AuthMethod {
     #[default]
     SshKey,
     Password,
+    /// Delegate signing to a running SSH agent (`SSH_AUTH_SOCK`). No key
+    /// file or password is held by AeroFTP: the agent performs the
+    /// challenge-response. Only the russh leg honours this; the libssh2
+    /// single-shot leg stays pubkey-file-only by design, so an Agent
+    /// profile is always routed through russh (see
+    /// `SshTransportConfig::prefers_russh_leg`).
+    Agent,
 }
 
 /// Configuration for a single rsync transfer.
@@ -160,6 +167,15 @@ impl RsyncConfig {
     /// material at all, that is an integration bug and should not silently
     /// degrade into another transport.
     pub fn validate_auth_material(&self) -> Result<(), RsyncError> {
+        // Agent auth carries no static credential material: the running
+        // SSH agent holds the keys and performs the signature. There is
+        // nothing to validate offline, so this path is exempt from the
+        // "neither key nor password" hard guard below. SSH_AUTH_SOCK
+        // reachability is checked at connect time by the russh leg.
+        if matches!(self.auth_method, AuthMethod::Agent) {
+            return Ok(());
+        }
+
         if self.ssh_key_path.is_none() && self.ssh_password.is_none() {
             return Err(RsyncError::HardRejection(
                 "rsync-over-SSH auth config has neither ssh_key_path nor ssh_password".into(),
@@ -167,6 +183,7 @@ impl RsyncConfig {
         }
 
         match self.auth_method {
+            AuthMethod::Agent => unreachable!("Agent handled above"),
             AuthMethod::SshKey => {
                 if self.ssh_key_path.is_none() {
                     return Err(RsyncError::MissingKey(
@@ -807,6 +824,33 @@ fn build_ssh_e_arg(cfg: &RsyncConfig) -> Result<String, RsyncError> {
         return Err(RsyncError::PasswordAuthUnsupported);
     }
 
+    if matches!(cfg.auth_method, AuthMethod::Agent) {
+        // Classic Unix fallback for an agent profile: build the ssh
+        // command WITHOUT `-i`. ssh(1) consults `SSH_AUTH_SOCK`
+        // automatically; BatchMode=yes keeps it from prompting if the
+        // agent has no usable identity (the auto policy then surfaces a
+        // typed failure instead of a hung TTY prompt). The primary,
+        // verified path for agent profiles is the russh native leg; this
+        // branch only matters if the engine falls back to the binary.
+        let mut parts: Vec<String> = vec!["ssh".to_string()];
+        if let Some(port) = cfg.ssh_port {
+            parts.push("-p".into());
+            parts.push(port.to_string());
+        }
+        parts.push("-o".into());
+        parts.push(format!("StrictHostKeyChecking={}", cfg.strict_host_key_check));
+        if let Some(kh) = &cfg.known_hosts_path {
+            parts.push("-o".into());
+            parts.push(format!(
+                "UserKnownHostsFile={}",
+                shell_escape(&kh.display().to_string())
+            ));
+        }
+        parts.push("-o".into());
+        parts.push("BatchMode=yes".into());
+        return Ok(parts.join(" "));
+    }
+
     let key = cfg
         .ssh_key_path
         .as_ref()
@@ -1184,17 +1228,59 @@ mod tests {
     }
 
     #[test]
+    fn auth_validation_accepts_agent_method_without_any_material() {
+        // Agent auth carries no static key/password: the running SSH
+        // agent holds the keys. validate_auth_material must NOT trip the
+        // "neither key nor password" hard guard for this method.
+        let cfg = RsyncConfig {
+            auth_method: AuthMethod::Agent,
+            ssh_key_path: None,
+            ssh_password: None,
+            ..Default::default()
+        };
+        assert!(
+            cfg.validate_auth_material().is_ok(),
+            "Agent auth must be exempt from the static-material hard guard"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ssh_e_arg_agent_method_omits_identity_flag() {
+        // Classic Unix fallback for an agent profile: ssh command must
+        // be built WITHOUT `-i` (agent-mediated), keep BatchMode=yes,
+        // and still honour port + StrictHostKeyChecking.
+        let cfg = RsyncConfig {
+            auth_method: AuthMethod::Agent,
+            ssh_key_path: None,
+            ssh_password: None,
+            ssh_port: Some(2222),
+            strict_host_key_check: "accept-new".into(),
+            ..Default::default()
+        };
+        let arg = build_ssh_e_arg(&cfg).expect("agent ssh arg");
+        assert!(arg.starts_with("ssh"));
+        assert!(arg.contains("-p 2222"));
+        assert!(
+            !arg.contains("-i "),
+            "agent profile must not pass an identity file: {arg}"
+        );
+        assert!(arg.contains("StrictHostKeyChecking=accept-new"));
+        assert!(arg.contains("BatchMode=yes"));
+    }
+
+    #[test]
     fn debug_redacts_password_secret() {
         let cfg = RsyncConfig {
             auth_method: AuthMethod::Password,
             ssh_password: Some(SecretString::from(
-                "super-secret-filelu-password".to_string(),
+                "super-secret-ssh-password".to_string(),
             )),
             ..Default::default()
         };
         let debug = format!("{cfg:?}");
         assert!(debug.contains("<redacted>"));
-        assert!(!debug.contains("super-secret-filelu-password"));
+        assert!(!debug.contains("super-secret-ssh-password"));
     }
 
     #[test]
@@ -1202,7 +1288,7 @@ mod tests {
         let cfg = RsyncConfig {
             auth_method: AuthMethod::Password,
             ssh_password: Some(SecretString::from(
-                "super-secret-filelu-password".to_string(),
+                "super-secret-ssh-password".to_string(),
             )),
             ..Default::default()
         };

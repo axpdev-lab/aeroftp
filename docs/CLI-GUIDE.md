@@ -1164,14 +1164,14 @@ aeroftp-cli profile-add \
 
 # Cloud preset (no host required)
 aeroftp-cli profile-add \
-    --name "FileLu Rsync" \
-    --protocol filelu-rsync \
+    --name "My Koofr" \
+    --protocol koofr \
     --username myuser
 ```
 
 Scriptable equivalent of the GUI **New Server** flow and of the interactive shell's `n` action. Writes only the configuration entry; credentials live in a separate vault key set with `profile-set-password` (below) or via the GUI Edit modal.
 
-`--protocol` accepts the lowercase protocol identifier: `ftp`, `ftps`, `sftp`, `webdav`, `webdavs`, `s3`, `mega`, `dropbox`, `googledrive`, `onedrive`, `box`, `pcloud`, `zohoworkdrive`, `fourshared`, `filen`, `internxt`, `kdrive`, `koofr`, `drime`, `filelu`, `filelu-rsync`, `yandexdisk`, `opendrive`, `jottacloud`, `azure`, `b2`, `backblaze`, `imagekit`, `uploadcare`, `cloudinary`, `tabdigital`, `felicloud`, `github`, `gitlab`, `immich`, `pixelunion`, `blomp`. Cloud providers that resolve their endpoint from the protocol alone do not require `--host`.
+`--protocol` accepts the lowercase protocol identifier: `ftp`, `ftps`, `sftp`, `webdav`, `webdavs`, `s3`, `mega`, `dropbox`, `googledrive`, `onedrive`, `box`, `pcloud`, `zohoworkdrive`, `fourshared`, `filen`, `internxt`, `kdrive`, `koofr`, `drime`, `filelu`, `yandexdisk`, `opendrive`, `jottacloud`, `azure`, `b2`, `backblaze`, `imagekit`, `uploadcare`, `cloudinary`, `tabdigital`, `felicloud`, `github`, `gitlab`, `immich`, `pixelunion`, `blomp`. Cloud providers that resolve their endpoint from the protocol alone do not require `--host`.
 
 ### profile-duplicate - Duplicate a Saved Profile
 
@@ -1206,12 +1206,12 @@ Without `--yes` and with stdin attached to a TTY, the command prompts for `y/N` 
 
 ```bash
 # Single-secret shape: read from env var (recommended)
-read -s -p "FileLu password: " FILELU_PW && export FILELU_PW
-aeroftp-cli profile-set-password "FileLu Rsync" --password-env FILELU_PW
+read -s -p "SSH password: " SSH_PW && export SSH_PW
+aeroftp-cli profile-set-password "My NAS" --password-env SSH_PW
 
 # Read from stdin (good for piping from a secret manager)
-op read "op://AeroFTP/FileLu/password" \
-    | aeroftp-cli profile-set-password "FileLu Rsync" --password-stdin
+op read "op://AeroFTP/My NAS/password" \
+    | aeroftp-cli profile-set-password "My NAS" --password-stdin
 
 # Inline (not recommended: visible in `ps` and shell history)
 aeroftp-cli profile-set-password "Test Server" --password "weak-test-pw"
@@ -1225,9 +1225,9 @@ aeroftp-cli profile-set-password "Google Drive" \
     --credential-json-file ./oauth-tokens.json
 ```
 
-Writes the per-protocol credential blob into the vault key `server_<id>`, **the exact same place** the GUI Edit modal writes to. A credential written via the CLI is read back by the GUI on the next reload (verified end-to-end against the FileLu Rsync profile). Two write modes:
+Writes the per-protocol credential blob into the vault key `server_<id>`, **the exact same place** the GUI Edit modal writes to. A credential written via the CLI is read back by the GUI on the next reload. Two write modes:
 
-- **Single-secret** (`--password*`): stores the raw secret as the credential value. Matches the FTP / SFTP / WebDAV / `filelu-rsync` `password` field on the GUI side.
+- **Single-secret** (`--password*`): stores the raw secret as the credential value. Matches the FTP / SFTP / WebDAV `password` field on the GUI side.
 - **JSON blob** (`--credential-json*`): stores an arbitrary JSON object verbatim. Use this for OAuth tokens, multi-field API key envelopes, or any structured credential. Shape is validated upfront so a typo in the JSON surfaces as exit 5 before the vault write.
 
 The two modes are **mutually exclusive**: pass exactly one source. Inline `--password` emits a "visible in ps" warning; prefer `--password-env` or `--password-stdin` for production.

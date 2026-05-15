@@ -12,7 +12,7 @@
 // Protocol Types
 // ============================================================================
 
-export type BaseProtocol = 'ftp' | 'ftps' | 'sftp' | 's3' | 'webdav' | 'googledrive' | 'dropbox' | 'onedrive' | 'mega' | 'fourshared' | 'filelu' | 'filelu-rsync' | 'swift' | 'imagekit' | 'uploadcare' | 'cloudinary' | 'backblaze';
+export type BaseProtocol = 'ftp' | 'ftps' | 'sftp' | 's3' | 'webdav' | 'googledrive' | 'dropbox' | 'onedrive' | 'mega' | 'fourshared' | 'filelu' | 'swift' | 'imagekit' | 'uploadcare' | 'cloudinary' | 'backblaze';
 
 export type ProviderCategory = 'ftp' | 'oauth' | 's3' | 'webdav' | 'mega' | 'swift' | 'object';
 
@@ -85,12 +85,12 @@ export interface ProviderConfig {
     isGeneric?: boolean;
 
     /**
-     * Z.4.5 R1: when true, the Quick Connect form hides the Server / Port
-     * row entirely (including in edit mode), so an integration whose
-     * endpoint is fully managed by AeroFTP (FileLu Rsync, Hetzner Storage
-     * Box presets, ...) does not surface implementation details to the
-     * user. The defaults.server / defaults.port pair is still applied to
-     * the connection params at preset-select time.
+     * When true, the Quick Connect form hides the Server / Port row
+     * entirely (including in edit mode), so an integration whose
+     * endpoint is fully managed by AeroFTP (e.g. the Hetzner Storage
+     * Box preset) does not surface implementation details to the user.
+     * The defaults.server / defaults.port pair is still applied to the
+     * connection params at preset-select time.
      *
      * Use sparingly: only for presets where exposing host/port would
      * confuse rather than help (e.g. fixed rsync-as-a-service endpoints
