@@ -1503,6 +1503,64 @@ enum Commands {
         #[command(subcommand)]
         command: AerorsyncCommands,
     },
+    /// AeroVault v3 encrypted container operations (.aerovault)
+    ///
+    /// Calls the exact backend the GUI invokes through Tauri commands.
+    /// A working CLI round-trip means the format and the small-file
+    /// packing path are sound, and only frontend wiring remains for
+    /// the GUI to behave the same way.
+    Vault {
+        #[command(subcommand)]
+        command: VaultCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum VaultCommands {
+    /// Create a new empty AeroVault v3 container
+    Create {
+        /// Path to the .aerovault file to create
+        path: String,
+        /// Vault password (or set AEROFTP_VAULT_PASSWORD)
+        #[arg(long, short = 'p')]
+        password: Option<String>,
+        /// Compression profile: fast | balanced | archive
+        #[arg(long, default_value = "balanced")]
+        profile: String,
+    },
+    /// Add files to a vault. Sub-threshold files are batched into
+    /// shared packs before chunking (the v3 small-file-batching path).
+    Add {
+        /// Path to the .aerovault file
+        path: String,
+        #[arg(long, short = 'p')]
+        password: Option<String>,
+        /// One or more files to add
+        #[arg(required = true)]
+        files: Vec<String>,
+        /// Also write the behind-the-scenes technical receipt (JSON) to this
+        /// path. The plain-text rendering is printed to stderr regardless.
+        #[arg(long)]
+        receipt: Option<String>,
+    },
+    /// Open a vault and print its info (file / chunk / dedup counts)
+    Info {
+        /// Path to the .aerovault file
+        path: String,
+        #[arg(long, short = 'p')]
+        password: Option<String>,
+    },
+    /// Extract an entry from a vault to a destination path
+    Extract {
+        /// Path to the .aerovault file
+        path: String,
+        #[arg(long, short = 'p')]
+        password: Option<String>,
+        /// Entry path inside the vault
+        entry: String,
+        /// Destination file or directory
+        dest: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -32997,6 +33055,151 @@ async fn main() {
             credential_json.as_deref(),
             credential_json_file.as_deref(),
         ),
+        Commands::Vault { command } => {
+            use ftp_client_gui_lib::aerovault_v3;
+            let resolve_pw = |p: &Option<String>| -> String {
+                if let Some(pw) = p {
+                    return pw.clone();
+                }
+                if let Ok(pw) = std::env::var("AEROFTP_VAULT_PASSWORD") {
+                    return pw;
+                }
+                if std::io::stdin().is_terminal() {
+                    eprint!("Vault password: ");
+                    let _ = std::io::stderr().flush();
+                    rpassword::read_password().unwrap_or_default()
+                } else {
+                    String::new()
+                }
+            };
+            match command {
+                VaultCommands::Create {
+                    path,
+                    password,
+                    profile,
+                } => {
+                    let pw = resolve_pw(password);
+                    match aerovault_v3::vault_v3_create(
+                        path.clone(),
+                        pw,
+                        Some(profile.clone()),
+                    )
+                    .await
+                    {
+                        Ok(p) => {
+                            match format {
+                                OutputFormat::Json => print_json(
+                                    &serde_json::json!({"status": "ok", "created": p}),
+                                ),
+                                OutputFormat::Text => println!("Created vault: {p}"),
+                            }
+                            0
+                        }
+                        Err(e) => {
+                            print_error(format, &e, 5);
+                            5
+                        }
+                    }
+                }
+                VaultCommands::Add {
+                    path,
+                    password,
+                    files,
+                    receipt,
+                } => {
+                    let pw = resolve_pw(password);
+                    match aerovault_v3::vault_v3_add_files(
+                        path.clone(),
+                        pw,
+                        files.clone(),
+                    )
+                    .await
+                    {
+                        Ok(info) => {
+                            let mut code = 0;
+                            if let Some(rep) = &info.report {
+                                // Behind-the-scenes log to stderr (stdout
+                                // stays clean JSON for piping).
+                                eprintln!("{}", rep.render_text());
+                                if let Some(rpath) = receipt {
+                                    match serde_json::to_string_pretty(rep) {
+                                        Ok(j) => {
+                                            if let Err(e) = std::fs::write(rpath, j) {
+                                                print_error(
+                                                    format,
+                                                    &format!("write receipt: {e}"),
+                                                    4,
+                                                );
+                                                code = 4;
+                                            }
+                                        }
+                                        Err(e) => {
+                                            print_error(
+                                                format,
+                                                &format!("serialize receipt: {e}"),
+                                                4,
+                                            );
+                                            code = 4;
+                                        }
+                                    }
+                                }
+                            }
+                            if code == 0 {
+                                print_json(&info);
+                            }
+                            code
+                        }
+                        Err(e) => {
+                            print_error(format, &e, 4);
+                            4
+                        }
+                    }
+                }
+                VaultCommands::Info { path, password } => {
+                    let pw = resolve_pw(password);
+                    match aerovault_v3::vault_v3_open(path.clone(), pw).await {
+                        Ok(info) => {
+                            print_json(&info);
+                            0
+                        }
+                        Err(e) => {
+                            print_error(format, &e, 1);
+                            1
+                        }
+                    }
+                }
+                VaultCommands::Extract {
+                    path,
+                    password,
+                    entry,
+                    dest,
+                } => {
+                    let pw = resolve_pw(password);
+                    match aerovault_v3::vault_v3_extract_entry(
+                        path.clone(),
+                        pw,
+                        entry.clone(),
+                        dest.clone(),
+                    )
+                    .await
+                    {
+                        Ok(out) => {
+                            match format {
+                                OutputFormat::Json => print_json(
+                                    &serde_json::json!({"status": "ok", "extracted": out}),
+                                ),
+                                OutputFormat::Text => println!("Extracted to: {out}"),
+                            }
+                            0
+                        }
+                        Err(e) => {
+                            print_error(format, &e, 2);
+                            2
+                        }
+                    }
+                }
+            }
+        }
         Commands::Aerorsync { command } => match command {
             AerorsyncCommands::Mode { command } => match command {
                 AerorsyncModeCommands::Get => cmd_aerorsync_mode_get(format),

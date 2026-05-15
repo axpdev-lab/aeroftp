@@ -25,7 +25,8 @@ use url::Url;
 
 mod aerovault;
 mod aerovault_v2;
-mod aerovault_v3;
+pub mod aerovault_v3;
+pub mod vault_telemetry;
 pub mod agent_memory_db;
 pub mod ai;
 pub mod ai_core;
