@@ -938,7 +938,7 @@ aeroftp-cli mcp
 
 `aerorsync` is the configuration + diagnostics surface for the AeroFTP native delta sync engine (rsync wire protocol 31 implemented in Rust via `russh` and `xxhash`). It mirrors the GUI **Settings → Native Rsync** toggle so headless deployments and AI agents have the same controls available.
 
-#### `aerorsync mode` — get / set the engine mode
+#### `aerorsync mode`: get / set the engine mode
 
 ```bash
 # Print the current mode (auto / classic / native)
@@ -964,7 +964,7 @@ aeroftp-cli --json aerorsync mode get
 
 The mode is process-global (persisted in `~/.config/aeroftp/native-rsync.toml`) so a `set` here is immediately picked up by the GUI on its next launch and by every subsequent CLI invocation.
 
-#### `aerorsync probe` — live test of the russh password transport
+#### `aerorsync probe`: live test of the russh password transport
 
 Z.4.5 R1 dispatch step (2026-05-14): smoke-test that an SSH endpoint accepts the AeroFTP russh password authentication and runs the requested remote command. Useful to validate an `rsync.<provider>.com:2222` endpoint **before** committing to a full profile. Does NOT consult the vault; credentials are passed explicitly so the probe is a pure diagnostics tool.
 

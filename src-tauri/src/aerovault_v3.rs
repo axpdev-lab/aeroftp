@@ -227,6 +227,18 @@ struct OpenVaultV3 {
     report: VaultReport,
 }
 
+impl Drop for OpenVaultV3 {
+    /// Wipe the long-lived key material when the open vault is dropped.
+    /// Ephemeral KEKs and plaintext/pack buffers are already zeroized at
+    /// every use site; the master/MAC keys live for the whole command, so
+    /// without this they would linger in freed memory (swap / core dump)
+    /// after every add/extract/delete/move/rename/copy/change-password.
+    fn drop(&mut self) {
+        self.master_key.zeroize();
+        self.mac_key.zeroize();
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum EntryKindV3 {
     File,

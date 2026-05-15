@@ -17731,6 +17731,19 @@ fn persist_compression_to_profile(
     compressed: u64,
     ratio: f64,
 ) {
+    // Only persist a real, self-consistent compression measurement. v1
+    // (ZIP) and v2 (AES-256-GCM-SIV, no compression stage) leave
+    // compressed_bytes = 0; persisting that made `saved = plaintext -
+    // compressed` claim the whole plaintext was saved while `Saved%`
+    // showed 0.0% (internally contradictory, surfaced in the CLI table
+    // and the public My Servers table). When there is no measured
+    // compressed size, skip persistence so the column renders "-" instead
+    // of a fabricated value. Known limitation (accepted): for v3 with
+    // heavy dedup the figure only credits new physical chunks, so it
+    // understates the real saving; it is never fabricated.
+    if compressed == 0 || plaintext == 0 || compressed > plaintext {
+        return;
+    }
     let Some(profile_name) = cli.profile.as_ref() else {
         return;
     };
@@ -33627,6 +33640,13 @@ async fn main() {
             use ftp_client_gui_lib::{aerovault, aerovault_v2, aerovault_v3};
             let resolve_pw = |p: &Option<String>| -> String {
                 if let Some(pw) = p {
+                    // The vault password is the sole secret protecting the
+                    // container. Warn that the inline arg is visible in
+                    // ps / /proc/<pid>/cmdline / shell history, consistent
+                    // with the --token / --key-passphrase warnings above.
+                    if std::env::var("AEROFTP_VAULT_PASSWORD").is_err() && !cli.quiet {
+                        eprintln!("Warning: --password on command line is visible in process list. Use AEROFTP_VAULT_PASSWORD env var or the interactive prompt instead.");
+                    }
                     return pw.clone();
                 }
                 if let Ok(pw) = std::env::var("AEROFTP_VAULT_PASSWORD") {
@@ -33674,8 +33694,20 @@ async fn main() {
                     profile,
                     vault_version,
                     cascade,
-                } => {
+                } => 'create: {
                     let pw = resolve_pw(password);
+                    // v3 rejects < 8 internally; v1/v2 had no minimum, so a
+                    // non-interactive run with no password silently created
+                    // an effectively unprotected container. Enforce the same
+                    // floor for every format before dispatch.
+                    if pw.len() < 8 {
+                        print_error(
+                            format,
+                            "Vault password must be at least 8 characters. Set -p/--password, AEROFTP_VAULT_PASSWORD, or run interactively.",
+                            6,
+                        );
+                        break 'create 6;
+                    }
                     // "auto" has no file to inspect on create: default v3.
                     let ver = resolve_ver(vault_version);
                     let res: Result<String, String> = match ver.as_str() {

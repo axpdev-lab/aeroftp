@@ -474,9 +474,6 @@ export const resolveEffectiveQuota = (
   if (apiTotal > 0) {
     return { used: apiUsed, total: apiTotal, totalSource: "api" };
   }
-  if (manualTotalBytes && manualTotalBytes > 0) {
-    return { used: apiUsed, total: manualTotalBytes, totalSource: "manual" };
-  }
   return { used: apiUsed, total: 0, totalSource: "none" };
 };
 

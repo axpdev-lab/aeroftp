@@ -172,14 +172,25 @@ async fn bfs_used_bytes(
         match provider.list(&dir).await {
             Ok(entries) => {
                 for entry in entries {
+                    // Skip symlinks: a symlink-to-dir is reported with both
+                    // is_dir and is_symlink (sftp.rs), so following it allows
+                    // cur->. / up->.. cycles to inflate the figure and burn
+                    // the depth/entry budget. Matches the MCP scan and the
+                    // sftp rmdir_recursive GAP-A02 precedent.
+                    if entry.is_symlink {
+                        continue;
+                    }
+                    // Cap is enforced inside the loop (not only between
+                    // directories) so one hostile listing with millions of
+                    // subdir entries cannot grow the queue past max_entries.
+                    if (files + dirs) >= max_entries as u64 {
+                        truncated = true;
+                        break;
+                    }
                     if entry.is_dir {
                         dirs += 1;
                         queue.push((entry.path.clone(), depth + 1));
                         continue;
-                    }
-                    if files >= max_entries as u64 {
-                        truncated = true;
-                        break;
                     }
                     used = used.saturating_add(entry.size);
                     files += 1;

@@ -15,7 +15,7 @@ The AeroVault wrapper-stack design (the `compression -> chunking -> crypt -> err
 
 ### AeroRsync Native Streaming, Session Reuse, Default ON, and Local-to-Local Sync
 
-This release closes the P3-T01 cap and the Track Z.1 + Z.2 work in [APPENDIX-Z](docs/dev/roadmap/APPENDIX-Z_AeroRsync-and-AeroFile-Convergence.md). It is the first release where the native rsync delta-sync engine ships enabled by default on fresh installs and no longer caps file size at 256 MiB.
+This release closes the P3-T01 cap and the Track Z.1 + Z.2 AeroRsync/AeroFile convergence work (internal roadmap APPENDIX-Z). It is the first release where the native rsync delta-sync engine ships enabled by default on fresh installs and no longer caps file size at 256 MiB.
 
 **Streaming end-to-end**. The upload and download paths now stream delta plans through iterator-style state machines (`send_delta_phase_streaming` on the upload side, `apply_delta_streaming` + `StreamingAtomicWriter` on the download side). The 256 MiB in-memory cap that previously gated multi-gigabyte files is gone. A 4 GB cold upload and a 4 GB file re-synced after a 5% mutation both completed end-to-end against a real WD My Cloud NAS over residential SSH (862s / 846s wall clock respectively), confirming feature parity with the wire protocol and headroom for arbitrary file sizes. The writer ensures kill-9 safety by writing to a `.aerotmp` temp file and renaming atomically on completion.
 

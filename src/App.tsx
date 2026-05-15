@@ -485,6 +485,7 @@ const App: React.FC = () => {
   // Item 4b: state of the explicit "used storage" scan (null = idle).
   const [usedScanStatus, setUsedScanStatus] = useState<{ running: boolean; files: number; bytes: number } | null>(null);
   const quotaVersionRef = useRef(0); // Guard against stale async quota responses
+  const scanInFlightRef = useRef(false); // Synchronous re-entry latch for scanUsedStorage
   const [remoteSearchQuery, setRemoteSearchQuery] = useState('');
   const [remoteSearchResults, setRemoteSearchResults] = useState<RemoteFile[] | null>(null);
   const [remoteSearching, setRemoteSearching] = useState(false);
@@ -1981,16 +1982,31 @@ interface UpdateVerificationInfo {
           server.options?.manualTotalBytes,
         );
         const prev = server.lastQuota;
+        // Never let an API quota read downgrade a recursive-scan baseline.
+        // SFTP statfs reports whole-disk used (not the user's allotment)
+        // and many quota WebDAV servers return used=0; both pass the
+        // apiHasData guard. Without this, reconnecting after an explicit
+        // "Calculate used storage" scan + manual cap would clobber the
+        // accurate scanned `used` with the whole-disk figure or 0,
+        // regressing the headline item 4a/4b promise. Keep the scan
+        // figures for `used`; still refresh `total` (cap can legitimately
+        // come from API/manual).
+        const keepScanUsed =
+          quota.usedSource === 'api' &&
+          prev?.usedSource === 'scan' &&
+          typeof prev.used === 'number' &&
+          prev.used > 0 &&
+          eff.used < prev.used;
         return {
           ...server,
           lastQuota: {
-            used: eff.used,
+            used: keepScanUsed ? prev.used : eff.used,
             total: eff.total,
             fetched_at: new Date().toISOString(),
             totalSource: eff.totalSource === 'none' ? undefined : eff.totalSource,
-            usedSource: quota.usedSource ?? prev?.usedSource,
-            used_at: quota.used_at ?? prev?.used_at,
-            fileCount: quota.fileCount ?? prev?.fileCount,
+            usedSource: keepScanUsed ? 'scan' : (quota.usedSource ?? prev?.usedSource),
+            used_at: keepScanUsed ? prev.used_at : (quota.used_at ?? prev?.used_at),
+            fileCount: keepScanUsed ? prev.fileCount : (quota.fileCount ?? prev?.fileCount),
           },
         };
       });
@@ -2054,8 +2070,15 @@ interface UpdateVerificationInfo {
     cp: ConnectionParams,
     activeSession: FtpSession | undefined,
   ): ServerProfile | undefined => {
+    // Only SESSION-SCOPED ids, matching the contract documented above.
+    // cp.savedServerId is intentionally NOT a candidate: callers fall
+    // back to the GLOBAL connectionParams for cp, whose savedServerId
+    // goes stale across open sessions and was the paolella.it -> lab
+    // FTPS contamination vector. When cp IS the active session's
+    // connectionParams the same id is still reached via
+    // activeSession.connectionParams.savedServerId, so no legitimate
+    // session-scoped resolution is lost.
     for (const cand of [
-      cp.savedServerId,
       activeSession?.savedServerId,
       activeSession?.connectionParams?.savedServerId,
     ]) {
@@ -2230,7 +2253,16 @@ interface UpdateVerificationInfo {
   // caches it into the profile (usedSource:'scan') so My Servers/profiles
   // show it without rescanning.
   const scanUsedStorage = async () => {
-    if (usedScanStatus?.running) return;
+    // Synchronous re-entry latch: usedScanStatus?.running is React state
+    // captured from the render closure, so a fast double-click / Enter
+    // repeat in the same frame passes the guard twice, registering two
+    // listeners and two concurrent provider_scan_used invocations. The ref
+    // flips synchronously before any await. Capture a quota version so a
+    // session switch mid-scan discards the stale result (consistent with
+    // fetchStorageQuota).
+    if (scanInFlightRef.current || usedScanStatus?.running) return;
+    scanInFlightRef.current = true;
+    const version = ++quotaVersionRef.current;
     const activeSession = sessions.find(s => s.id === activeSessionId);
     const cp = activeSession?.connectionParams || connectionParams;
     const opts = cp.options || connectionParams.options;
@@ -2258,6 +2290,8 @@ interface UpdateVerificationInfo {
     const provisional = (used: number) => {
       // Show the cap live while scanning so the StatusBar/card are not
       // blank: the bar fills against the manual total as `used` grows.
+      // Drop the update if the session was switched mid-scan.
+      if (version !== quotaVersionRef.current) return;
       if (manualTotal && manualTotal > 0) {
         setStorageQuota({
           used,
@@ -2308,12 +2342,17 @@ interface UpdateVerificationInfo {
         });
       } else {
         const eff = resolveEffectiveQuota(res.used, 0, manualTotal);
-        setStorageQuota({
-          used: eff.used,
-          total: eff.total,
-          free: eff.total > eff.used ? eff.total - eff.used : 0,
-          files: res.file_count,
-        });
+        // Only touch the live display if this session is still active;
+        // the persisted card is resolved by profile id so it stays
+        // correct regardless.
+        if (version === quotaVersionRef.current) {
+          setStorageQuota({
+            used: eff.used,
+            total: eff.total,
+            free: eff.total > eff.used ? eff.total - eff.used : 0,
+            files: res.file_count,
+          });
+        }
         void persistQuotaToProfile(profileId, {
           used: res.used,
           total: 0,
@@ -2342,6 +2381,7 @@ interface UpdateVerificationInfo {
     } finally {
       unlisten();
       setUsedScanStatus(null);
+      scanInFlightRef.current = false;
     }
   };
 
