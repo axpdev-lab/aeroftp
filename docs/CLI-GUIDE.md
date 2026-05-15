@@ -8,7 +8,7 @@
 
 ## Overview
 
-AeroFTP CLI is a production command-line client for multi-protocol file transfers. It shares the same Rust backend as the AeroFTP desktop app, with direct URL support for core protocols and `--profile` access for saved GUI-authorized providers. Beyond basic transfer commands, the CLI also covers cross-profile copy planning and execution, continuous bidirectional sync (`sync --watch`), reconcile/sync-doctor preflights for agents, stdin upload, remote copy/share/edit flows, batch scripting, shell completions, aliases, encrypted overlays (`crypt`), local server bridges (`serve http/webdav/ftp/sftp`), MCP server mode for the official VS Code extension, and AI agent discovery/orchestration.
+AeroFTP CLI is a production command-line client for multi-protocol file transfers. It shares the same Rust backend as the AeroFTP desktop app, with direct URL support for core protocols and `--profile` access for saved GUI-authorized providers. Beyond basic transfer commands, the CLI also covers cross-profile copy planning and execution, continuous bidirectional sync (`sync --watch`), reconcile/sync-doctor preflights for agents, stdin upload, remote copy/share/edit flows, batch scripting, shell completions, aliases, encrypted overlays (`crypt`), single-file AeroVault containers (`vault`), local server bridges (`serve http/webdav/ftp/sftp`), MCP server mode for the official VS Code extension, and AI agent discovery/orchestration.
 
 ### Direct URL Protocols
 
@@ -804,6 +804,38 @@ AEROFTP_CRYPT_PASSWORD=MySecret aeroftp-cli --profile "S3" crypt ls _ /encrypted
 ```
 
 Encryption: AES-256-GCM (content, 64KB blocks) + AES-256-SIV (filenames) + Argon2id (key derivation). The cloud provider never sees file names or content.
+
+### vault - AeroVault Encrypted Container
+
+Create and manage a single-file `.aerovault` v3 container directly from the
+CLI. This calls the exact backend the desktop app uses, so a CLI round-trip
+proves the format end to end.
+
+```bash
+# Create an empty v3 vault (profiles: fast | balanced | archive)
+AEROFTP_VAULT_PASSWORD=secret aeroftp-cli vault create my.aerovault --profile balanced
+
+# Add files (sub-256KB files are batched into shared packs before chunking)
+AEROFTP_VAULT_PASSWORD=secret aeroftp-cli vault add my.aerovault ./a.txt ./b.bin
+
+# Add files and export the behind-the-scenes technical receipt
+AEROFTP_VAULT_PASSWORD=secret aeroftp-cli vault add my.aerovault ./*.csv --receipt receipt.json
+
+# Show vault info (file / chunk / dedup counts) as JSON
+AEROFTP_VAULT_PASSWORD=secret aeroftp-cli vault info my.aerovault
+
+# Extract an entry to a destination path
+AEROFTP_VAULT_PASSWORD=secret aeroftp-cli vault extract my.aerovault a.txt ./out/a.txt
+```
+
+Pipeline: small-file batching, Gear-CDC chunking, keyed BLAKE3-128 chunk
+ids (dedup), per-chunk zstd, AES-256-GCM-SIV, BLAKE3-256 cipher-block
+hashes. The `archive` profile widens the CDC bounds for a better
+compression ratio at the cost of finer-grained dedup. Password resolves
+from `--password` / `-p`, `AEROFTP_VAULT_PASSWORD`, or a TTY prompt.
+`vault add --receipt <path>` writes a machine-readable JSON receipt and
+prints a human-readable summary to stderr (stdout stays clean JSON for
+piping). Exit codes: 5 create, 4 add, 1 open/info, 2 extract.
 
 ### rclone-crypt - rclone-Compatible Encrypted Upload
 
