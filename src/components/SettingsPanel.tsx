@@ -1397,7 +1397,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                     onServersChanged?.();
                                                                 }}
                                                                 className="p-2 text-gray-500 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded-lg transition-colors"
-                                                                title={t('common.duplicate')}
+                                                                title={t('common.copy')}
                                                             >
                                                                 <Copy size={14} />
                                                             </button>

@@ -1038,7 +1038,7 @@ export function MyServersPanel({
             { label: t('common.connect'), icon: <Play size={14} />, action: () => handleConnect(server) },
             { label: t('common.edit'), icon: <Edit2 size={14} />, action: () => onEdit(server) },
             { label: t('introHub.renameWithHotkey'), icon: <PencilLine size={14} />, action: () => handleRenameStart(server) },
-            { label: t('common.duplicate'), icon: <Copy size={14} />, action: () => handleDuplicate(server) },
+            { label: t('common.copy'), icon: <Copy size={14} />, action: () => handleDuplicate(server) },
             { label: isFav ? t('introHub.removeFavorite') : t('introHub.addFavorite'), icon: <Star size={14} />, action: () => toggleFavorite(server.id) },
         ];
         if (onOpenCrossProfile && servers.length > 1) {
