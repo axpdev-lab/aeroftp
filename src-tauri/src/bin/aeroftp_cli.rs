@@ -17950,8 +17950,13 @@ async fn run_single_speed_test(
     // Failure here cannot leak a remote file or a live provider connection.
     let local_upload =
         NamedTempFile::new().map_err(|e| (format!("Cannot create upload temp: {}", e), 5))?;
-    let upload_sha256 =
-        write_speed_test_file_random(local_upload.path(), size).map_err(|e| (e, 5))?;
+    // Fresh random content is (re)generated per iteration inside the loop, not
+    // once here: re-uploading an identical payload lets content-addressed
+    // backends (MEGA dedups by content hash server-side) short-circuit
+    // iterations 2+ to a near-instant no-op, which inflated the measured
+    // throughput by orders of magnitude (observed 300+ MB/s on MEGA). A unique
+    // payload per iteration forces every iteration to be a real transfer.
+    let mut upload_sha256 = String::new();
     let local_download =
         NamedTempFile::new().map_err(|e| (format!("Cannot create download temp: {}", e), 5))?;
     let download_path = local_download.path().to_path_buf();
@@ -17979,6 +17984,18 @@ async fn run_single_speed_test(
     let mut integrity_verified = false;
 
     for iteration in 0..iterations {
+        // Unique payload per iteration so content-dedup backends cannot
+        // short-circuit the upload. The integrity check (last iteration only)
+        // compares against this iteration's freshly recomputed SHA-256.
+        upload_sha256 = match write_speed_test_file_random(local_upload.path(), size) {
+            Ok(sha) => sha,
+            Err(e) => {
+                let _ = provider.delete(remote_test_path).await;
+                let _ = provider.disconnect().await;
+                return Err((e, 5));
+            }
+        };
+
         let upload_start = Instant::now();
         if let Err(e) = provider
             .upload(
