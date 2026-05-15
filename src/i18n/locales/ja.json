@@ -256,7 +256,12 @@
       "b2NativeAdvVersions": "オブジェクトごとの完全なファイルバージョン履歴",
       "totpSecret": "TOTP シークレット（任意、保存）",
       "totpSecretPlaceholder": "Base32 シークレット、例: JBSWY3DPEHPK3PXP",
-      "totpSecretHelp": "2FA シークレットを一度保存してください。AeroFTP は認証アプリと同じように、再接続のたびに 6 桁のコードを自動生成します。"
+      "totpSecretHelp": "2FA シークレットを一度保存してください。AeroFTP は認証アプリと同じように、再接続のたびに 6 桁のコードを自動生成します。",
+      "manualTotalStorage": "合計ストレージ (手動)",
+      "manualTotalStoragePlaceholder": "例: 10 GB、500 GB、2 TB",
+      "manualTotalStorageHint": "任意。クォータ API がないバックエンド (FTP、S3、WebDAV)、または使用容量のみを報告するバックエンド (Backblaze B2) 向けのプラン/アカウント上限です。プロバイダー自身の合計値が常に優先されます。",
+      "autoScanUsedOnConnect": "接続時に使用ストレージを計算する",
+      "autoScanUsedOnConnectHint": "使用容量 API がないバックエンド (FTP、S3、WebDAV) のみ。既定ではオフです: 大きなツリー (例: Web プロジェクト) を再帰的にたどるため、処理が遅くなる場合があります。それ以外の場合は必要に応じて StatusBar の操作を使用してください。"
     },
     "browser": {
       "remote": "リモート",
@@ -1131,7 +1136,15 @@
       "insecureConnectionUnencrypted": "この接続は暗号化されていません。資格情報がプレーンテキストで送信されます。",
       "secureConnection": "安全",
       "secureConnectionTitle": "{protocol} による暗号化接続",
-      "usedNoCap": "使用済み (クォータ上限なし)"
+      "usedNoCap": "使用済み (クォータ上限なし)",
+      "usedScanAction": "使用ストレージを計算",
+      "usedScanHint": "ツリーを再帰的にスキャンして使用容量を計算します。手動の合計値と組み合わせると 使用/合計/% を表示します。実行は手動で開始したときのみ行われます。",
+      "usedScanRunning": "使用ストレージをスキャン中...",
+      "usedScanDone": "使用ストレージを計算しました",
+      "usedScanDoneDetail": "{files} 個のファイルで {used}",
+      "usedScanTruncated": "一部のみ: スキャン上限に達しました",
+      "usedScanFailed": "使用ストレージのスキャンに失敗しました",
+      "usedScanEmpty": "{path} のスキャンでファイルが見つかりませんでした。キャッシュされた値が保持されました。パス、またはサーバーの再帰的リスト表示のサポートを確認してください。"
     },
     "dialogs": {
       "confirmTitle": "確認",
@@ -4300,7 +4313,10 @@
           "time": "Last used",
           "health": "Health",
           "actions": "Actions",
-          "favorite": "Favorite"
+          "favorite": "Favorite",
+          "saved": "節約",
+          "savedPct": "節約 %",
+          "savedTitle": "圧縮: {plaintext} から {compressed} ({ratio}% 節約)"
         },
         "footerSummaryNoQuota": "{count} 個のプロファイル · {unique} 個の固有クラウドドライブ",
         "footerDedupExplained": "同じ物理ディスクを共有するプロファイル(Koofr WebDAV + REST、OpenDrive WebDAV + REST、同じアクセスキーの Wasabi バケット)は 1 つのドライブにまとめられ、クォータは 1 回だけカウントされます。",

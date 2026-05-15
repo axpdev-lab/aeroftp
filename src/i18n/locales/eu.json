@@ -256,7 +256,12 @@
       "b2NativeAdvVersions": "Fitxategien bertsio-historial osoa objektu bakoitzeko",
       "totpSecret": "TOTP Secret (optional, saved)",
       "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
-      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
+      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
+      "manualTotalStorage": "Biltegiratze osoa (eskuz)",
+      "manualTotalStoragePlaceholder": "adib. 10 GB, 500 GB, 2 TB",
+      "manualTotalStorageHint": "Aukerakoa. Plan edo kontuaren muga quota API-rik ez duten backend-entzat (FTP, S3, WebDAV) edo erabilitako espazioa soilik jakinarazten dutenentzat (Backblaze B2). Hornitzailearen guztizkoak beti du lehentasuna.",
+      "autoScanUsedOnConnect": "Kalkulatu erabilitako biltegiratzea konektatzean",
+      "autoScanUsedOnConnectHint": "Erabilitako espazioaren API-rik ez duten backend-entzat soilik (FTP, S3, WebDAV). Lehenetsita desaktibatuta: zuhaitz handi bat (adib. web proiektu bat) modu errekurtsiboan zeharkatzen da, eta hori motela izan daiteke. Bestela, erabili StatusBar ekintza behar denean."
     },
     "browser": {
       "remote": "Urrunekoa",
@@ -1131,7 +1136,15 @@
       "insecureConnectionUnencrypted": "Konexio hau ez dago enkriptatuta. Kredentzialak testu arrunt gisa bidaltzen dira.",
       "secureConnection": "Segurua",
       "secureConnectionTitle": "Konexio enkriptatua {protocol} bidez",
-      "usedNoCap": "erabilita (kuota mugarik gabe)"
+      "usedNoCap": "erabilita (kuota mugarik gabe)",
+      "usedScanAction": "Kalkulatu erabilitako biltegiratzea",
+      "usedScanHint": "Eskaneatu zuhaitza modu errekurtsiboan erabilitako espazioa kalkulatzeko. Eskuzko guztizko batekin konbinatuta erabilia/guztira/% erakusten du. Zuk abiarazten duzunean soilik exekutatzen da.",
+      "usedScanRunning": "Erabilitako biltegiratzea eskaneatzen...",
+      "usedScanDone": "Erabilitako biltegiratzea kalkulatuta",
+      "usedScanDoneDetail": "{used} {files} fitxategitan",
+      "usedScanTruncated": "partziala: eskaneatze-muga gainditu da",
+      "usedScanFailed": "Erabilitako biltegiratzearen eskaneatzeak huts egin du",
+      "usedScanEmpty": "{path} eskaneatzeak ez du fitxategirik aurkitu; cacheko balioa mantendu da. Egiaztatu bidea edo zerbitzariaren zerrendatze errekurtsiboaren euskarria."
     },
     "dialogs": {
       "confirmTitle": "Berretsi",
@@ -4319,7 +4332,10 @@
           "time": "Last used",
           "health": "Health",
           "actions": "Actions",
-          "favorite": "Favorite"
+          "favorite": "Favorite",
+          "saved": "Aurreztua",
+          "savedPct": "Aurreztua %",
+          "savedTitle": "Konpresioa: {plaintext} hona {compressed} ({ratio}% aurreztua)"
         },
         "footerSummaryNoQuota": "{count} profil · {unique} hodeiko unitate esklusibo",
         "footerDedupExplained": "Disko fisiko bera partekatzen duten profilak (Koofr WebDAV + REST, OpenDrive WebDAV + REST, access key bera duten Wasabi bucket-ak) unitate bakarrean batzen dira, kuotak behin bakarrik zenbatu daitezen.",

@@ -256,7 +256,12 @@
       "b2NativeAdvVersions": "Hanes fersiwn ffeil llawn fesul gwrthrych",
       "totpSecret": "TOTP Secret (optional, saved)",
       "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
-      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
+      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
+      "manualTotalStorage": "Cyfanswm storfa (â llaw)",
+      "manualTotalStoragePlaceholder": "e.e. 10 GB, 500 GB, 2 TB",
+      "manualTotalStorageHint": "Dewisol. Cap cynllun neu gyfrif ar gyfer ôl-bennau heb quota API (FTP, S3, WebDAV) neu rai sy'n adrodd am ofod a ddefnyddiwyd yn unig (Backblaze B2). Mae cyfanswm y darparwr ei hun bob amser yn cael blaenoriaeth.",
+      "autoScanUsedOnConnect": "Cyfrifo'r storfa a ddefnyddiwyd wrth gysylltu",
+      "autoScanUsedOnConnectHint": "Ar gyfer ôl-bennau heb API gofod a ddefnyddiwyd yn unig (FTP, S3, WebDAV). I ffwrdd yn ddiofyn: cerddir trwy goeden fawr (e.e. prosiect gwe) yn ailadroddus, a all fod yn araf. Fel arall, defnyddiwch weithred y StatusBar yn ôl y galw."
     },
     "browser": {
       "remote": "Pell",
@@ -1131,7 +1136,15 @@
       "insecureConnectionUnencrypted": "Nid yw'r cysylltiad hwn wedi'i amgryptio. Mae manylion mewngofnodi yn cael eu hanfon fel testun plaen.",
       "secureConnection": "Diogel",
       "secureConnectionTitle": "Cysylltiad wedi'i amgryptio trwy {protocol}",
-      "usedNoCap": "wedi'i ddefnyddio (dim terfyn cwota)"
+      "usedNoCap": "wedi'i ddefnyddio (dim terfyn cwota)",
+      "usedScanAction": "Cyfrifo'r storfa a ddefnyddiwyd",
+      "usedScanHint": "Sganio'r goeden yn ailadroddus i gyfrifo'r gofod a ddefnyddiwyd. Wedi'i gyfuno â chyfanswm â llaw mae'n dangos a ddefnyddiwyd/cyfanswm/%. Yn rhedeg dim ond pan fyddwch chi'n ei sbarduno.",
+      "usedScanRunning": "Sganio'r storfa a ddefnyddiwyd...",
+      "usedScanDone": "Storfa a ddefnyddiwyd wedi'i chyfrifo",
+      "usedScanDoneDetail": "{used} ar draws {files} ffeil",
+      "usedScanTruncated": "rhannol: cyrhaeddwyd y terfyn sganio",
+      "usedScanFailed": "Methodd sgan y storfa a ddefnyddiwyd",
+      "usedScanEmpty": "Ni chanfu sgan {path} unrhyw ffeiliau; cadwyd y ffigur o'r storfa. Gwiriwch y llwybr neu gefnogaeth rhestru ailadroddus y gweinydd."
     },
     "dialogs": {
       "confirmTitle": "Cadarnhau",
@@ -4319,7 +4332,10 @@
           "time": "Last used",
           "health": "Health",
           "actions": "Actions",
-          "favorite": "Favorite"
+          "favorite": "Favorite",
+          "saved": "Arbedwyd",
+          "savedPct": "Arbedwyd %",
+          "savedTitle": "Cywasgu: {plaintext} i {compressed} ({ratio}% wedi'i arbed)"
         },
         "footerSummaryNoQuota": "{count} proffil · {unique} gyriant cwmwl unigryw",
         "footerDedupExplained": "Mae proffiliau sy'n rhannu'r un disg ffisegol (Koofr WebDAV + REST, OpenDrive WebDAV + REST, bwcedi Wasabi o dan yr un access key) yn cael eu cyfuno'n un gyriant fel bod cwotâu'n cael eu cyfrif unwaith yn unig.",

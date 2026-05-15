@@ -256,7 +256,12 @@
       "b2NativeAdvVersions": "Úplná historie verzí souboru pro každý objekt",
       "totpSecret": "TOTP Secret (optional, saved)",
       "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
-      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
+      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
+      "manualTotalStorage": "Celkové úložiště (ručně)",
+      "manualTotalStoragePlaceholder": "např. 10 GB, 500 GB, 2 TB",
+      "manualTotalStorageHint": "Volitelné. Limit tarifu nebo účtu pro backendy bez quota API (FTP, S3, WebDAV) nebo takové, které hlásí pouze využité místo (Backblaze B2). Vlastní celková hodnota poskytovatele má vždy přednost.",
+      "autoScanUsedOnConnect": "Vypočítat využité úložiště při připojení",
+      "autoScanUsedOnConnectHint": "Pouze pro backendy bez API pro využité místo (FTP, S3, WebDAV). Ve výchozím nastavení vypnuto: velký strom (např. webový projekt) se prochází rekurzivně, což může být pomalé. Jinak použijte akci v StatusBar podle potřeby."
     },
     "browser": {
       "remote": "Vzdálený",
@@ -1131,7 +1136,15 @@
       "insecureConnectionUnencrypted": "Toto připojení není šifrované. Přihlašovací údaje jsou odesílány jako prostý text.",
       "secureConnection": "Zabezpečené",
       "secureConnectionTitle": "Šifrované připojení přes {protocol}",
-      "usedNoCap": "využito (bez limitu kvóty)"
+      "usedNoCap": "využito (bez limitu kvóty)",
+      "usedScanAction": "Vypočítat využité úložiště",
+      "usedScanHint": "Rekurzivně prohledat strom pro výpočet využitého místa. V kombinaci s ručně zadaným celkem zobrazuje využité/celkem/%. Spustí se pouze, když to vyvoláte.",
+      "usedScanRunning": "Prohledávání využitého úložiště...",
+      "usedScanDone": "Využité úložiště vypočítáno",
+      "usedScanDoneDetail": "{used} v {files} souborech",
+      "usedScanTruncated": "částečně: dosažen limit prohledávání",
+      "usedScanFailed": "Prohledání využitého úložiště selhalo",
+      "usedScanEmpty": "Prohledání cesty {path} nenašlo žádné soubory; uložená hodnota byla zachována. Zkontrolujte cestu nebo podporu rekurzivního výpisu na serveru."
     },
     "dialogs": {
       "confirmTitle": "Potvrdit",
@@ -4300,7 +4313,10 @@
           "time": "Last used",
           "health": "Health",
           "actions": "Actions",
-          "favorite": "Favorite"
+          "favorite": "Favorite",
+          "saved": "Ušetřeno",
+          "savedPct": "Ušetřeno %",
+          "savedTitle": "Komprese: {plaintext} na {compressed} ({ratio}% ušetřeno)"
         },
         "footerSummaryNoQuota": "{count} profilů · {unique} unikátních cloudových disků",
         "footerDedupExplained": "Profily, které sdílejí stejný fyzický disk (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi buckety pod stejným access key), se sloučí do jednoho disku, aby se kvóty počítaly jen jednou.",

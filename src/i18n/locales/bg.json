@@ -256,7 +256,12 @@
       "b2NativeAdvVersions": "Пълна история на версиите на файловете за всеки обект",
       "totpSecret": "TOTP Secret (optional, saved)",
       "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
-      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
+      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
+      "manualTotalStorage": "Общо хранилище (ръчно)",
+      "manualTotalStoragePlaceholder": "напр. 10 GB, 500 GB, 2 TB",
+      "manualTotalStorageHint": "Незадължително. Лимит на плана/акаунта за бекенди без quota API (FTP, S3, WebDAV) или такива, които отчитат само използваното пространство (Backblaze B2). Собственото общо на доставчика винаги има предимство.",
+      "autoScanUsedOnConnect": "Изчисляване на използваното хранилище при свързване",
+      "autoScanUsedOnConnectHint": "Само за бекенди без API за използвано пространство (FTP, S3, WebDAV). Изключено по подразбиране: голямо дърво (напр. уеб проект) се обхожда рекурсивно, което може да е бавно. В противен случай използвайте действието в StatusBar при поискване."
     },
     "browser": {
       "remote": "Отдалечен",
@@ -1131,7 +1136,15 @@
       "insecureConnectionUnencrypted": "Тази връзка не е криптирана. Идентификационните данни се изпращат като обикновен текст.",
       "secureConnection": "Сигурна",
       "secureConnectionTitle": "Криптирана връзка чрез {protocol}",
-      "usedNoCap": "използвано (без ограничение на квотата)"
+      "usedNoCap": "използвано (без ограничение на квотата)",
+      "usedScanAction": "Изчисляване на използваното хранилище",
+      "usedScanHint": "Рекурсивно сканиране на дървото за изчисляване на използваното пространство. В съчетание с ръчно зададено общо показва използвано/общо/%. Изпълнява се само когато го стартирате.",
+      "usedScanRunning": "Сканиране на използваното хранилище...",
+      "usedScanDone": "Използваното хранилище е изчислено",
+      "usedScanDoneDetail": "{used} в {files} файла",
+      "usedScanTruncated": "частично: достигнат е лимитът на сканиране",
+      "usedScanFailed": "Сканирането на използваното хранилище е неуспешно",
+      "usedScanEmpty": "Сканирането на {path} не намери файлове; кешираната стойност беше запазена. Проверете пътя или поддръжката на рекурсивно листване от сървъра."
     },
     "dialogs": {
       "confirmTitle": "Потвърждение",
@@ -4300,7 +4313,10 @@
           "time": "Last used",
           "health": "Health",
           "actions": "Actions",
-          "favorite": "Favorite"
+          "favorite": "Favorite",
+          "saved": "Спестено",
+          "savedPct": "Спестено %",
+          "savedTitle": "Компресия: {plaintext} към {compressed} ({ratio}% спестени)"
         },
         "footerSummaryNoQuota": "{count} профила · {unique} уникални облачни диска",
         "footerDedupExplained": "Профилите, които споделят един и същ физически диск (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi бъкети с един и същ access key), се обединяват в един диск, така че квотите се броят само веднъж.",

@@ -256,7 +256,12 @@
       "b2NativeAdvVersions": "오브젝트별 전체 파일 버전 기록",
       "totpSecret": "TOTP 시크릿(선택, 저장됨)",
       "totpSecretPlaceholder": "Base32 시크릿, 예: JBSWY3DPEHPK3PXP",
-      "totpSecretHelp": "2FA 시크릿을 한 번만 저장하세요. AeroFTP는 인증 앱과 동일하게 재연결할 때마다 6자리 코드를 자동으로 생성합니다."
+      "totpSecretHelp": "2FA 시크릿을 한 번만 저장하세요. AeroFTP는 인증 앱과 동일하게 재연결할 때마다 6자리 코드를 자동으로 생성합니다.",
+      "manualTotalStorage": "전체 저장 용량 (수동)",
+      "manualTotalStoragePlaceholder": "예: 10 GB, 500 GB, 2 TB",
+      "manualTotalStorageHint": "선택 사항. 할당량 API가 없는 백엔드(FTP, S3, WebDAV)나 사용 용량만 보고하는 백엔드(Backblaze B2)를 위한 요금제/계정 한도입니다. 공급자가 제공하는 전체 용량이 항상 우선합니다.",
+      "autoScanUsedOnConnect": "연결 시 사용 용량 계산",
+      "autoScanUsedOnConnectHint": "사용 용량 API가 없는 백엔드(FTP, S3, WebDAV)에만 해당됩니다. 기본적으로 꺼져 있습니다: 큰 트리(예: 웹 프로젝트)를 재귀적으로 탐색하므로 느릴 수 있습니다. 그 외에는 필요할 때 StatusBar 작업을 사용하세요."
     },
     "browser": {
       "remote": "원격",
@@ -1131,7 +1136,15 @@
       "insecureConnectionUnencrypted": "이 연결은 암호화되지 않았습니다. 자격 증명이 일반 텍스트로 전송됩니다.",
       "secureConnection": "보안",
       "secureConnectionTitle": "{protocol}을 통한 암호화 연결",
-      "usedNoCap": "사용됨 (할당량 제한 없음)"
+      "usedNoCap": "사용됨 (할당량 제한 없음)",
+      "usedScanAction": "사용 용량 계산",
+      "usedScanHint": "트리를 재귀적으로 스캔하여 사용 용량을 계산합니다. 수동 전체 용량과 결합하면 사용/전체/%를 표시합니다. 직접 실행할 때만 동작합니다.",
+      "usedScanRunning": "사용 용량 스캔 중...",
+      "usedScanDone": "사용 용량 계산 완료",
+      "usedScanDoneDetail": "{files}개 파일에서 {used}",
+      "usedScanTruncated": "부분: 스캔 한도에 도달함",
+      "usedScanFailed": "사용 용량 스캔 실패",
+      "usedScanEmpty": "{path} 스캔에서 파일을 찾지 못했습니다. 캐시된 값이 유지되었습니다. 경로 또는 서버의 재귀 목록 지원을 확인하세요."
     },
     "dialogs": {
       "confirmTitle": "확인",
@@ -4300,7 +4313,10 @@
           "time": "Last used",
           "health": "Health",
           "actions": "Actions",
-          "favorite": "Favorite"
+          "favorite": "Favorite",
+          "saved": "절약됨",
+          "savedPct": "절약 %",
+          "savedTitle": "압축: {plaintext}에서 {compressed} ({ratio}% 절약)"
         },
         "footerSummaryNoQuota": "프로필 {count}개 · 고유 클라우드 드라이브 {unique}개",
         "footerDedupExplained": "동일한 물리 디스크를 공유하는 프로필(Koofr WebDAV + REST, OpenDrive WebDAV + REST, 동일한 액세스 키의 Wasabi 버킷)은 하나의 드라이브로 통합되어 할당량이 한 번만 계산됩니다.",

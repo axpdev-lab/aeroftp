@@ -256,7 +256,12 @@
       "b2NativeAdvVersions": "ប្រវត្តិកំណែឯកសារពេញលេញសម្រាប់វត្ថុនីមួយៗ",
       "totpSecret": "TOTP Secret (optional, saved)",
       "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
-      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
+      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
+      "manualTotalStorage": "ឧបករណ៍ផ្ទុកសរុប (ដោយដៃ)",
+      "manualTotalStoragePlaceholder": "ឧ. 10 GB, 500 GB, 2 TB",
+      "manualTotalStorageHint": "ស្រេចចិត្ត។ ដែនកំណត់គម្រោង ឬគណនីសម្រាប់ backend ដែលគ្មាន API កូតា (FTP, S3, WebDAV) ឬដែលរាយការណ៍តែទំហំដែលប្រើ (Backblaze B2)។ តម្លៃសរុបរបស់អ្នកផ្ដល់សេវាតែងតែមានអាទិភាព។",
+      "autoScanUsedOnConnect": "គណនាទំហំផ្ទុកដែលប្រើនៅពេលភ្ជាប់",
+      "autoScanUsedOnConnectHint": "សម្រាប់តែ backend ដែលគ្មាន API ទំហំដែលប្រើ (FTP, S3, WebDAV)។ បិទតាមលំនាំដើម៖ មែកធាងធំ (ឧ. គម្រោងវេប) ត្រូវបានឆ្លងកាត់ដោយ recursive ដែលអាចយឺត។ បើមិនដូច្នេះទេ សូមប្រើសកម្មភាព StatusBar តាមតម្រូវការ។"
     },
     "browser": {
       "remote": "ពីចម្ងាយ",
@@ -1131,7 +1136,15 @@
       "insecureConnectionUnencrypted": "ការតភ្ជាប់នេះមិនត្រូវបានអ៊ិនគ្រីបទេ។ អត្តសញ្ញាណត្រូវបានផ្ញើជាអត្ថបទធម្មតា។",
       "secureConnection": "សុវត្ថិភាព",
       "secureConnectionTitle": "ការតភ្ជាប់បានអ៊ិនគ្រីបតាមរយៈ {protocol}",
-      "usedNoCap": "បានប្រើ (មិនមានដែនកំណត់កូតា)"
+      "usedNoCap": "បានប្រើ (មិនមានដែនកំណត់កូតា)",
+      "usedScanAction": "គណនាទំហំផ្ទុកដែលប្រើ",
+      "usedScanHint": "ស្កេនមែកធាងដោយ recursive ដើម្បីគណនាទំហំដែលប្រើ។ បញ្ចូលគ្នាជាមួយតម្លៃសរុបដោយដៃ វាបង្ហាញ ប្រើ/សរុប/%។ ដំណើរការតែនៅពេលអ្នកចាប់ផ្ដើមវា។",
+      "usedScanRunning": "កំពុងស្កេនទំហំផ្ទុកដែលប្រើ...",
+      "usedScanDone": "បានគណនាទំហំផ្ទុកដែលប្រើ",
+      "usedScanDoneDetail": "{used} ក្នុង {files} ឯកសារ",
+      "usedScanTruncated": "មិនពេញលេញ៖ បានឈានដល់ដែនកំណត់ស្កេន",
+      "usedScanFailed": "ការស្កេនទំហំផ្ទុកដែលប្រើបានបរាជ័យ",
+      "usedScanEmpty": "ការស្កេន {path} រកមិនឃើញឯកសារ; តម្លៃក្នុង cache ត្រូវបានរក្សាទុក។ សូមពិនិត្យផ្លូវ ឬការគាំទ្ររាយឈ្មោះ recursive របស់ម៉ាស៊ីនមេ។"
     },
     "dialogs": {
       "confirmTitle": "បញ្ជាក់",
@@ -4319,7 +4332,10 @@
           "time": "Last used",
           "health": "Health",
           "actions": "Actions",
-          "favorite": "Favorite"
+          "favorite": "Favorite",
+          "saved": "បានសន្សំ",
+          "savedPct": "បានសន្សំ %",
+          "savedTitle": "ការបង្ហាប់៖ {plaintext} ទៅ {compressed} ({ratio}% បានសន្សំ)"
         },
         "footerSummaryNoQuota": "{count} ប្រវត្តិរូប · {unique} ដ្រាយ Cloud តែមួយ",
         "footerDedupExplained": "ប្រវត្តិរូបដែលប្រើថាសរូបវន្តដូចគ្នា (Koofr WebDAV + REST, OpenDrive WebDAV + REST, ធុង Wasabi ដែលប្រើ access key ដូចគ្នា) ត្រូវបានបញ្ចូលគ្នាជាដ្រាយតែមួយ ដើម្បីឱ្យកូតាត្រូវបានរាប់តែម្តងគត់។",

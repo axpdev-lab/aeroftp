@@ -256,7 +256,12 @@
       "b2NativeAdvVersions": "प्रत्येक ऑब्जेक्ट के लिए पूर्ण फ़ाइल संस्करण इतिहास",
       "totpSecret": "TOTP Secret (optional, saved)",
       "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
-      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
+      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
+      "manualTotalStorage": "कुल भंडारण (मैनुअल)",
+      "manualTotalStoragePlaceholder": "उदा. 10 GB, 500 GB, 2 TB",
+      "manualTotalStorageHint": "वैकल्पिक। उन बैकएंड के लिए प्लान/खाता सीमा जिनमें quota API नहीं है (FTP, S3, WebDAV) या जो केवल उपयोग किया गया स्थान बताते हैं (Backblaze B2)। प्रदाता का अपना कुल हमेशा प्राथमिकता लेता है।",
+      "autoScanUsedOnConnect": "कनेक्ट करते समय उपयोग किया गया भंडारण गणना करें",
+      "autoScanUsedOnConnectHint": "केवल उन बैकएंड के लिए जिनमें उपयोग-स्थान API नहीं है (FTP, S3, WebDAV)। डिफ़ॉल्ट रूप से बंद: एक बड़ा ट्री (उदा. एक वेब प्रोजेक्ट) पुनरावर्ती रूप से स्कैन किया जाता है, जो धीमा हो सकता है। अन्यथा आवश्यकता पड़ने पर StatusBar क्रिया का उपयोग करें।"
     },
     "browser": {
       "remote": "दूरस्थ",
@@ -1131,7 +1136,15 @@
       "insecureConnectionUnencrypted": "यह कनेक्शन एन्क्रिप्टेड नहीं है। प्रमाणपत्र सादे पाठ में भेजे जाते हैं।",
       "secureConnection": "सुरक्षित",
       "secureConnectionTitle": "{protocol} के माध्यम से एन्क्रिप्टेड कनेक्शन",
-      "usedNoCap": "उपयोग किया गया (कोटा सीमा नहीं)"
+      "usedNoCap": "उपयोग किया गया (कोटा सीमा नहीं)",
+      "usedScanAction": "उपयोग किया गया भंडारण गणना करें",
+      "usedScanHint": "उपयोग किए गए स्थान की गणना के लिए ट्री को पुनरावर्ती रूप से स्कैन करें। मैनुअल कुल के साथ संयुक्त होने पर यह उपयोग/कुल/% दिखाता है। केवल तभी चलता है जब आप इसे ट्रिगर करते हैं।",
+      "usedScanRunning": "उपयोग किया गया भंडारण स्कैन हो रहा है...",
+      "usedScanDone": "उपयोग किया गया भंडारण गणना किया गया",
+      "usedScanDoneDetail": "{files} फ़ाइलों में {used}",
+      "usedScanTruncated": "आंशिक: स्कैन सीमा तक पहुँच गया",
+      "usedScanFailed": "उपयोग-भंडारण स्कैन विफल रहा",
+      "usedScanEmpty": "{path} के स्कैन में कोई फ़ाइल नहीं मिली; कैश किया गया मान बनाए रखा गया। पथ या सर्वर के पुनरावर्ती-सूचीकरण समर्थन की जाँच करें।"
     },
     "dialogs": {
       "confirmTitle": "पुष्टिी करें",
@@ -4300,7 +4313,10 @@
           "time": "Last used",
           "health": "Health",
           "actions": "Actions",
-          "favorite": "Favorite"
+          "favorite": "Favorite",
+          "saved": "बचाया गया",
+          "savedPct": "बचाया गया %",
+          "savedTitle": "संपीड़न: {plaintext} से {compressed} ({ratio}% बचाया गया)"
         },
         "footerSummaryNoQuota": "{count} प्रोफ़ाइल · {unique} अद्वितीय क्लाउड ड्राइव",
         "footerDedupExplained": "वे प्रोफ़ाइल जो एक ही भौतिक डिस्क साझा करती हैं (Koofr WebDAV + REST, OpenDrive WebDAV + REST, समान access key के अंतर्गत Wasabi बकेट) एक ही ड्राइव में संयोजित हो जाती हैं ताकि कोटा केवल एक बार गिना जाए।",

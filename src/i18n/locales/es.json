@@ -256,7 +256,12 @@
       "b2NativeAdvVersions": "Historial completo de versiones de archivo por objeto",
       "totpSecret": "Secreto TOTP (opcional, guardado)",
       "totpSecretPlaceholder": "Secreto base32, p. ej. JBSWY3DPEHPK3PXP",
-      "totpSecretHelp": "Guarda tu secreto 2FA una sola vez. AeroFTP generará el código de 6 dígitos automáticamente en cada reconexión, como una aplicación de autenticación."
+      "totpSecretHelp": "Guarda tu secreto 2FA una sola vez. AeroFTP generará el código de 6 dígitos automáticamente en cada reconexión, como una aplicación de autenticación.",
+      "manualTotalStorage": "Almacenamiento total (manual)",
+      "manualTotalStoragePlaceholder": "p. ej. 10 GB, 500 GB, 2 TB",
+      "manualTotalStorageHint": "Opcional. Límite del plan o cuenta para backends sin quota API (FTP, S3, WebDAV) o que solo informan del espacio usado (Backblaze B2). El total propio del proveedor siempre tiene prioridad.",
+      "autoScanUsedOnConnect": "Calcular el almacenamiento usado al conectar",
+      "autoScanUsedOnConnectHint": "Solo para backends sin API de espacio usado (FTP, S3, WebDAV). Desactivado por defecto: un árbol grande (p. ej. un proyecto web) se recorre de forma recursiva, lo que puede ser lento. De lo contrario, use la acción de la StatusBar cuando lo necesite."
     },
     "browser": {
       "remote": "Remoto",
@@ -1131,7 +1136,15 @@
       "insecureConnectionUnencrypted": "Esta conexión no está cifrada. Las credenciales se envían en texto plano.",
       "secureConnection": "Segura",
       "secureConnectionTitle": "Conexión cifrada vía {protocol}",
-      "usedNoCap": "usado (sin límite de cuota)"
+      "usedNoCap": "usado (sin límite de cuota)",
+      "usedScanAction": "Calcular el almacenamiento usado",
+      "usedScanHint": "Escanear el árbol de forma recursiva para calcular el espacio usado. Combinado con un total manual muestra usado/total/%. Solo se ejecuta cuando lo activa.",
+      "usedScanRunning": "Escaneando el almacenamiento usado...",
+      "usedScanDone": "Almacenamiento usado calculado",
+      "usedScanDoneDetail": "{used} en {files} archivos",
+      "usedScanTruncated": "parcial: se alcanzó el límite de escaneo",
+      "usedScanFailed": "El escaneo del almacenamiento usado falló",
+      "usedScanEmpty": "El escaneo de {path} no encontró archivos; se mantuvo el valor en caché. Compruebe la ruta o el soporte de listado recursivo del servidor."
     },
     "dialogs": {
       "confirmTitle": "Confirmar",
@@ -4300,7 +4313,10 @@
           "time": "Last used",
           "health": "Health",
           "actions": "Actions",
-          "favorite": "Favorite"
+          "favorite": "Favorite",
+          "saved": "Ahorrado",
+          "savedPct": "Ahorrado %",
+          "savedTitle": "Compresión: {plaintext} a {compressed} ({ratio}% ahorrado)"
         },
         "footerSummaryNoQuota": "{count} perfiles · {unique} unidades en la nube únicas",
         "footerDedupExplained": "Los perfiles que comparten el mismo disco físico (Koofr WebDAV + REST, OpenDrive WebDAV + REST, buckets de Wasabi con la misma access key) se agrupan en una sola unidad para que las cuotas se cuenten una única vez.",

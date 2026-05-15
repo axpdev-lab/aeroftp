@@ -256,7 +256,12 @@
       "b2NativeAdvVersions": "Pilna faila versiju vēsture katram objektam",
       "totpSecret": "TOTP Secret (optional, saved)",
       "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
-      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
+      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
+      "manualTotalStorage": "Kopējā krātuve (manuāli)",
+      "manualTotalStoragePlaceholder": "piem. 10 GB, 500 GB, 2 TB",
+      "manualTotalStorageHint": "Neobligāti. Plāna vai konta ierobežojums aizmugursistēmām bez kvotas API (FTP, S3, WebDAV) vai kas ziņo tikai par izmantoto vietu (Backblaze B2). Pakalpojuma sniedzēja paša kopējam apjomam vienmēr ir prioritāte.",
+      "autoScanUsedOnConnect": "Aprēķināt izmantoto krātuvi, izveidojot savienojumu",
+      "autoScanUsedOnConnectHint": "Tikai aizmugursistēmām bez izmantotās vietas API (FTP, S3, WebDAV). Pēc noklusējuma izslēgts: liels koks (piem. tīmekļa projekts) tiek apstaigāts rekursīvi, kas var būt lēni. Pretējā gadījumā izmantojiet StatusBar darbību pēc pieprasījuma."
     },
     "browser": {
       "remote": "Attālināts",
@@ -1131,7 +1136,15 @@
       "insecureConnectionUnencrypted": "Šis savienojums nav šifrēts. Akreditācijas dati tiek sūtīti vienkāršā tekstā.",
       "secureConnection": "Droša",
       "secureConnectionTitle": "Šifrēts savienojums caur {protocol}",
-      "usedNoCap": "izmantots (bez kvotas ierobežojuma)"
+      "usedNoCap": "izmantots (bez kvotas ierobežojuma)",
+      "usedScanAction": "Aprēķināt izmantoto krātuvi",
+      "usedScanHint": "Rekursīvi skenēt koku, lai aprēķinātu izmantoto vietu. Kopā ar manuālo kopapjomu rāda izmantots/kopā/%. Tiek izpildīts tikai tad, kad jūs to palaižat.",
+      "usedScanRunning": "Notiek izmantotās krātuves skenēšana...",
+      "usedScanDone": "Izmantotā krātuve aprēķināta",
+      "usedScanDoneDetail": "{used} {files} failos",
+      "usedScanTruncated": "daļēji: sasniegts skenēšanas ierobežojums",
+      "usedScanFailed": "Izmantotās krātuves skenēšana neizdevās",
+      "usedScanEmpty": "{path} skenēšanā netika atrasts neviens fails; kešatmiņā saglabātais skaitlis tika paturēts. Pārbaudiet ceļu vai servera rekursīvā saraksta atbalstu."
     },
     "dialogs": {
       "confirmTitle": "Apstiprināt",
@@ -4300,7 +4313,10 @@
           "time": "Last used",
           "health": "Health",
           "actions": "Actions",
-          "favorite": "Favorite"
+          "favorite": "Favorite",
+          "saved": "Ietaupīts",
+          "savedPct": "Ietaupīts %",
+          "savedTitle": "Saspiešana: {plaintext} uz {compressed} ({ratio}% ietaupīts)"
         },
         "footerSummaryNoQuota": "{count} profili · {unique} unikāli mākoņdiski",
         "footerDedupExplained": "Profili, kas izmanto vienu un to pašu fizisko disku (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi grozi ar vienu piekļuves atslēgu), tiek apvienoti vienā diskā, lai kvotas tiktu skaitītas tikai vienreiz.",

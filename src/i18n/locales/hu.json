@@ -256,7 +256,12 @@
       "b2NativeAdvVersions": "Teljes fájlverzió-előzmény objektumonként",
       "totpSecret": "TOTP Secret (optional, saved)",
       "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
-      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
+      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
+      "manualTotalStorage": "Teljes tárhely (kézi)",
+      "manualTotalStoragePlaceholder": "pl. 10 GB, 500 GB, 2 TB",
+      "manualTotalStorageHint": "Választható. Csomag- vagy fiókkorlát olyan háttérrendszerekhez, amelyeknek nincs kvóta API-ja (FTP, S3, WebDAV), vagy csak a használt helyet jelentik (Backblaze B2). A szolgáltató saját összértéke mindig elsőbbséget élvez.",
+      "autoScanUsedOnConnect": "Használt tárhely kiszámítása csatlakozáskor",
+      "autoScanUsedOnConnectHint": "Csak olyan háttérrendszerekhez, amelyeknek nincs használthely-API-juk (FTP, S3, WebDAV). Alapértelmezés szerint kikapcsolva: egy nagy fát (pl. egy webprojektet) rekurzívan bejár, ami lassú lehet. Egyébként használd a StatusBar műveletét igény szerint."
     },
     "browser": {
       "remote": "Távoli",
@@ -1131,7 +1136,15 @@
       "insecureConnectionUnencrypted": "Ez a kapcsolat nem titkosított. A hitelesítő adatok egyszerű szövegként kerülnek elküldésre.",
       "secureConnection": "Biztonságos",
       "secureConnectionTitle": "Titkosított kapcsolat {protocol} protokollon",
-      "usedNoCap": "használt (nincs kvótakorlát)"
+      "usedNoCap": "használt (nincs kvótakorlát)",
+      "usedScanAction": "Használt tárhely kiszámítása",
+      "usedScanHint": "A fa rekurzív vizsgálata a használt hely kiszámításához. Kézi összértékkel kombinálva a használt/teljes/%-ot mutatja. Csak akkor fut, amikor elindítod.",
+      "usedScanRunning": "Használt tárhely vizsgálata...",
+      "usedScanDone": "Használt tárhely kiszámítva",
+      "usedScanDoneDetail": "{used} összesen {files} fájlban",
+      "usedScanTruncated": "részleges: elérted a vizsgálati korlátot",
+      "usedScanFailed": "A használt tárhely vizsgálata sikertelen",
+      "usedScanEmpty": "A(z) {path} vizsgálata nem talált fájlt; a gyorsítótárazott érték megmaradt. Ellenőrizd az útvonalat vagy a szerver rekurzív listázási támogatását."
     },
     "dialogs": {
       "confirmTitle": "Megerősítés",
@@ -4300,7 +4313,10 @@
           "time": "Last used",
           "health": "Health",
           "actions": "Actions",
-          "favorite": "Favorite"
+          "favorite": "Favorite",
+          "saved": "Megtakarítva",
+          "savedPct": "Megtakarítva %",
+          "savedTitle": "Tömörítés: {plaintext} erről {compressed} méretre ({ratio}% megtakarítva)"
         },
         "footerSummaryNoQuota": "{count} profil · {unique} egyedi felhőmeghajtó",
         "footerDedupExplained": "Az azonos fizikai lemezt használó profilok (Koofr WebDAV + REST, OpenDrive WebDAV + REST, ugyanazon hozzáférési kulcs alatti Wasabi tárolók) egyetlen meghajtóvá olvadnak össze, így a kvóták csak egyszer számítanak.",

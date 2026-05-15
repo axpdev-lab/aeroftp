@@ -256,7 +256,12 @@
       "b2NativeAdvVersions": "Täielik failiversioonide ajalugu objekti kohta",
       "totpSecret": "TOTP Secret (optional, saved)",
       "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
-      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
+      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
+      "manualTotalStorage": "Salvestusruum kokku (käsitsi)",
+      "manualTotalStoragePlaceholder": "nt 10 GB, 500 GB, 2 TB",
+      "manualTotalStorageHint": "Valikuline. Paketi või konto piir backendide jaoks, millel pole quota API-t (FTP, S3, WebDAV) või mis raporteerivad ainult kasutatud ruumi (Backblaze B2). Teenusepakkuja enda kogusumma on alati ülimuslik.",
+      "autoScanUsedOnConnect": "Arvuta kasutatud salvestusruum ühendumisel",
+      "autoScanUsedOnConnectHint": "Ainult backendide jaoks, millel pole kasutatud ruumi API-t (FTP, S3, WebDAV). Vaikimisi väljas: suurt puud (nt veebiprojekt) läbitakse rekursiivselt, mis võib olla aeglane. Vastasel juhul kasutage vajadusel StatusBar toimingut."
     },
     "browser": {
       "remote": "Kaugserver",
@@ -1131,7 +1136,15 @@
       "insecureConnectionUnencrypted": "See ühendus ei ole krüpteeritud. Sisselogimisandmed saadetakse lihttekstina.",
       "secureConnection": "Turvaline",
       "secureConnectionTitle": "Krüpteeritud ühendus {protocol} kaudu",
-      "usedNoCap": "kasutatud (kvoodipiiranguta)"
+      "usedNoCap": "kasutatud (kvoodipiiranguta)",
+      "usedScanAction": "Arvuta kasutatud salvestusruum",
+      "usedScanHint": "Skanni puud rekursiivselt kasutatud ruumi arvutamiseks. Koos käsitsi sisestatud kogusummaga kuvab see kasutatud/kokku/%. Käivitub ainult siis, kui te selle käivitate.",
+      "usedScanRunning": "Kasutatud salvestusruumi skannimine...",
+      "usedScanDone": "Kasutatud salvestusruum arvutatud",
+      "usedScanDoneDetail": "{used} {files} failis",
+      "usedScanTruncated": "osaline: skannimispiir saavutatud",
+      "usedScanFailed": "Kasutatud salvestusruumi skannimine ebaõnnestus",
+      "usedScanEmpty": "Tee {path} skannimisel ei leitud faile; vahemällu salvestatud väärtus säilitati. Kontrollige teed või serveri rekursiivse loendamise tuge."
     },
     "dialogs": {
       "confirmTitle": "Kinnita",
@@ -4300,7 +4313,10 @@
           "time": "Last used",
           "health": "Health",
           "actions": "Actions",
-          "favorite": "Favorite"
+          "favorite": "Favorite",
+          "saved": "Säästetud",
+          "savedPct": "Säästetud %",
+          "savedTitle": "Tihendus: {plaintext} kuni {compressed} ({ratio}% säästetud)"
         },
         "footerSummaryNoQuota": "{count} profiili · {unique} unikaalset pilvedraivi",
         "footerDedupExplained": "Profiilid, mis jagavad sama füüsilist ketast (Koofr WebDAV + REST, OpenDrive WebDAV + REST, sama access key alla kuuluvad Wasabi ämbrid), liidetakse üheks draiviks, et kvoote loetaks ainult üks kord.",

@@ -256,7 +256,12 @@
       "b2NativeAdvVersions": "Historia kamili ya matoleo ya faili kwa kila kitu",
       "totpSecret": "TOTP Secret (optional, saved)",
       "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
-      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
+      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
+      "manualTotalStorage": "Hifadhi jumla (mwenyewe)",
+      "manualTotalStoragePlaceholder": "mf. 10 GB, 500 GB, 2 TB",
+      "manualTotalStorageHint": "Si lazima. Kikomo cha mpango au akaunti kwa backend zisizo na API ya kiwango (FTP, S3, WebDAV) au zinazoripoti tu nafasi iliyotumika (Backblaze B2). Jumla ya mtoa huduma daima inapewa kipaumbele.",
+      "autoScanUsedOnConnect": "Kokotoa hifadhi iliyotumika unapounganisha",
+      "autoScanUsedOnConnectHint": "Kwa backend zisizo na API ya nafasi iliyotumika tu (FTP, S3, WebDAV). Imezimwa kwa chaguo-msingi: mti mkubwa (mf. mradi wa wavuti) hupitiwa kwa kujirudia, jambo ambalo linaweza kuwa polepole. Vinginevyo tumia kitendo cha StatusBar unapohitaji."
     },
     "browser": {
       "remote": "Mbali",
@@ -1131,7 +1136,15 @@
       "insecureConnectionUnencrypted": "Muunganisho huu haujasimbwa. Vitambulisho vinatumwa kama maandishi wazi.",
       "secureConnection": "Salama",
       "secureConnectionTitle": "Muunganisho uliosimbwa kupitia {protocol}",
-      "usedNoCap": "imetumika (bila kikomo cha quota)"
+      "usedNoCap": "imetumika (bila kikomo cha quota)",
+      "usedScanAction": "Kokotoa hifadhi iliyotumika",
+      "usedScanHint": "Changanua mti kwa kujirudia ili kukokotoa nafasi iliyotumika. Ikiunganishwa na jumla iliyowekwa mwenyewe inaonyesha iliyotumika/jumla/%. Hufanya kazi tu unapoianzisha.",
+      "usedScanRunning": "Inachanganua hifadhi iliyotumika...",
+      "usedScanDone": "Hifadhi iliyotumika imekokotolewa",
+      "usedScanDoneDetail": "{used} katika faili {files}",
+      "usedScanTruncated": "kwa sehemu: kikomo cha uchanganuzi kimefikiwa",
+      "usedScanFailed": "Uchanganuzi wa hifadhi iliyotumika umeshindwa",
+      "usedScanEmpty": "Uchanganuzi wa njia {path} haukupata faili; thamani iliyohifadhiwa kwenye akiba ilihifadhiwa. Angalia njia au usaidizi wa seva kwa orodha ya kujirudia."
     },
     "dialogs": {
       "confirmTitle": "Thibitisha",
@@ -4300,7 +4313,10 @@
           "time": "Last used",
           "health": "Health",
           "actions": "Actions",
-          "favorite": "Favorite"
+          "favorite": "Favorite",
+          "saved": "Imehifadhiwa",
+          "savedPct": "Imehifadhiwa %",
+          "savedTitle": "Mbano: {plaintext} hadi {compressed} ({ratio}% imehifadhiwa)"
         },
         "footerSummaryNoQuota": "Wasifu {count} · diski za wingu {unique} za kipekee",
         "footerDedupExplained": "Wasifu unaoshiriki diski moja ya kimwili (Koofr WebDAV + REST, OpenDrive WebDAV + REST, ndoo za Wasabi chini ya ufunguo mmoja wa ufikiaji) huunganishwa kuwa diski moja ili kiasi kihesabiwe mara moja tu.",

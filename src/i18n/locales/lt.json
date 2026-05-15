@@ -256,7 +256,12 @@
       "b2NativeAdvVersions": "Pilna failo versijų istorija kiekvienam objektui",
       "totpSecret": "TOTP Secret (optional, saved)",
       "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
-      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
+      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
+      "manualTotalStorage": "Bendra saugykla (rankiniu būdu)",
+      "manualTotalStoragePlaceholder": "pvz. 10 GB, 500 GB, 2 TB",
+      "manualTotalStorageHint": "Neprivaloma. Plano arba paskyros riba vidinėms sistemoms be kvotos API (FTP, S3, WebDAV) arba kurios praneša tik naudojamą vietą (Backblaze B2). Tiekėjo paties pateiktas bendras dydis visada turi pirmenybę.",
+      "autoScanUsedOnConnect": "Apskaičiuoti naudojamą saugyklą prisijungus",
+      "autoScanUsedOnConnectHint": "Tik vidinėms sistemoms be naudojamos vietos API (FTP, S3, WebDAV). Pagal numatymą išjungta: didelis medis (pvz. žiniatinklio projektas) apeinamas rekursyviai, o tai gali būti lėta. Kitu atveju naudokite StatusBar veiksmą pagal poreikį."
     },
     "browser": {
       "remote": "Nuotolinis",
@@ -1131,7 +1136,15 @@
       "insecureConnectionUnencrypted": "Šis ryšys nėra šifruotas. Prisijungimo duomenys siunčiami paprastu tekstu.",
       "secureConnection": "Saugi",
       "secureConnectionTitle": "Šifruotas ryšys per {protocol}",
-      "usedNoCap": "panaudota (be kvotos limito)"
+      "usedNoCap": "panaudota (be kvotos limito)",
+      "usedScanAction": "Apskaičiuoti naudojamą saugyklą",
+      "usedScanHint": "Rekursyviai nuskaityti medį, kad būtų apskaičiuota naudojama vieta. Kartu su rankiniu bendru dydžiu rodo naudojama/bendra/%. Vykdoma tik kai jūs paleidžiate.",
+      "usedScanRunning": "Nuskaitoma naudojama saugykla...",
+      "usedScanDone": "Naudojama saugykla apskaičiuota",
+      "usedScanDoneDetail": "{used} per {files} failus",
+      "usedScanTruncated": "dalinis: pasiekta nuskaitymo riba",
+      "usedScanFailed": "Naudojamos saugyklos nuskaitymas nepavyko",
+      "usedScanEmpty": "Nuskaitant {path} failų nerasta; talpykloje saugotas skaičius išliko. Patikrinkite kelią arba serverio rekursyvaus sąrašo palaikymą."
     },
     "dialogs": {
       "confirmTitle": "Patvirtinti",
@@ -4300,7 +4313,10 @@
           "time": "Last used",
           "health": "Health",
           "actions": "Actions",
-          "favorite": "Favorite"
+          "favorite": "Favorite",
+          "saved": "Sutaupyta",
+          "savedPct": "Sutaupyta %",
+          "savedTitle": "Glaudinimas: {plaintext} į {compressed} ({ratio}% sutaupyta)"
         },
         "footerSummaryNoQuota": "{count} profiliai · {unique} unikalūs debesų diskai",
         "footerDedupExplained": "Profiliai, kurie naudoja tą patį fizinį diską (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi krepšiai su tuo pačiu prieigos raktu), sujungiami į vieną diską, kad kvotos būtų skaičiuojamos tik vieną kartą.",

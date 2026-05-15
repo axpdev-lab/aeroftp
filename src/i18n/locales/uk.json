@@ -256,7 +256,12 @@
       "b2NativeAdvVersions": "Повна історія версій файлів для кожного об'єкта",
       "totpSecret": "TOTP Secret (optional, saved)",
       "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
-      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
+      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
+      "manualTotalStorage": "Загальний обсяг (вручну)",
+      "manualTotalStoragePlaceholder": "напр. 10 GB, 500 GB, 2 TB",
+      "manualTotalStorageHint": "Необов'язково. Ліміт тарифу або облікового запису для бекендів без API квоти (FTP, S3, WebDAV) або які повідомляють лише зайняте місце (Backblaze B2). Загальний обсяг від провайдера завжди має пріоритет.",
+      "autoScanUsedOnConnect": "Обчислювати зайняте місце під час підключення",
+      "autoScanUsedOnConnectHint": "Лише для бекендів без API зайнятого місця (FTP, S3, WebDAV). Типово вимкнено: велике дерево (напр. вебпроєкт) обходиться рекурсивно, що може бути повільним. Інакше використовуйте дію в StatusBar за потреби."
     },
     "browser": {
       "remote": "Віддалений",
@@ -1131,7 +1136,15 @@
       "insecureConnectionUnencrypted": "Це з'єднання не зашифроване. Облікові дані надсилаються відкритим текстом.",
       "secureConnection": "Захищено",
       "secureConnectionTitle": "Зашифроване з'єднання через {protocol}",
-      "usedNoCap": "використано (без обмеження квоти)"
+      "usedNoCap": "використано (без обмеження квоти)",
+      "usedScanAction": "Обчислити зайняте місце",
+      "usedScanHint": "Рекурсивно сканує дерево для обчислення зайнятого місця. У поєднанні із заданим вручну обсягом показує зайнято/усього/%. Запускається лише за вашим запитом.",
+      "usedScanRunning": "Сканування зайнятого місця...",
+      "usedScanDone": "Зайняте місце обчислено",
+      "usedScanDoneDetail": "{used} у {files} файлах",
+      "usedScanTruncated": "частково: досягнуто ліміт сканування",
+      "usedScanFailed": "Не вдалося просканувати зайняте місце",
+      "usedScanEmpty": "Сканування шляху {path} не знайшло файлів; збережено кешоване значення. Перевірте шлях або підтримку рекурсивного переліку на сервері."
     },
     "dialogs": {
       "confirmTitle": "Підтвердження",
@@ -4300,7 +4313,10 @@
           "time": "Last used",
           "health": "Health",
           "actions": "Actions",
-          "favorite": "Favorite"
+          "favorite": "Favorite",
+          "saved": "Заощаджено",
+          "savedPct": "Заощаджено %",
+          "savedTitle": "Стиснення: {plaintext} до {compressed} (заощаджено {ratio}%)"
         },
         "footerSummaryNoQuota": "{count} профілів · {unique} унікальних хмарних дисків",
         "footerDedupExplained": "Профілі, що використовують один і той самий фізичний диск (Koofr WebDAV + REST, OpenDrive WebDAV + REST, бакети Wasabi під одним ключем доступу), об’єднуються в один диск, тож квоти враховуються лише один раз.",

@@ -256,7 +256,12 @@
       "b2NativeAdvVersions": "Riwayat versi file lengkap per objek",
       "totpSecret": "TOTP Secret (optional, saved)",
       "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
-      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
+      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
+      "manualTotalStorage": "Total penyimpanan (manual)",
+      "manualTotalStoragePlaceholder": "mis. 10 GB, 500 GB, 2 TB",
+      "manualTotalStorageHint": "Opsional. Batas paket atau akun untuk backend tanpa API kuota (FTP, S3, WebDAV) atau yang hanya melaporkan ruang terpakai (Backblaze B2). Total milik penyedia selalu diutamakan.",
+      "autoScanUsedOnConnect": "Hitung penyimpanan terpakai saat terhubung",
+      "autoScanUsedOnConnectHint": "Hanya untuk backend tanpa API ruang terpakai (FTP, S3, WebDAV). Nonaktif secara bawaan: pohon yang besar (mis. proyek web) ditelusuri secara rekursif, yang bisa lambat. Jika tidak, gunakan tindakan StatusBar sesuai kebutuhan."
     },
     "browser": {
       "remote": "Jarak Jauh",
@@ -1131,7 +1136,15 @@
       "insecureConnectionUnencrypted": "Koneksi ini tidak terenkripsi. Kredensial dikirim dalam teks biasa.",
       "secureConnection": "Aman",
       "secureConnectionTitle": "Koneksi terenkripsi melalui {protocol}",
-      "usedNoCap": "terpakai (tanpa batas kuota)"
+      "usedNoCap": "terpakai (tanpa batas kuota)",
+      "usedScanAction": "Hitung penyimpanan terpakai",
+      "usedScanHint": "Pindai pohon secara rekursif untuk menghitung ruang terpakai. Digabungkan dengan total manual, menampilkan terpakai/total/%. Berjalan hanya saat Anda memicunya.",
+      "usedScanRunning": "Memindai penyimpanan terpakai...",
+      "usedScanDone": "Penyimpanan terpakai dihitung",
+      "usedScanDoneDetail": "{used} di {files} berkas",
+      "usedScanTruncated": "parsial: batas pemindaian tercapai",
+      "usedScanFailed": "Pemindaian penyimpanan terpakai gagal",
+      "usedScanEmpty": "Pemindaian {path} tidak menemukan berkas; angka yang tersimpan di cache dipertahankan. Periksa jalur atau dukungan daftar rekursif server."
     },
     "dialogs": {
       "confirmTitle": "Konfirmasi",
@@ -4300,7 +4313,10 @@
           "time": "Last used",
           "health": "Health",
           "actions": "Actions",
-          "favorite": "Favorite"
+          "favorite": "Favorite",
+          "saved": "Dihemat",
+          "savedPct": "Dihemat %",
+          "savedTitle": "Kompresi: {plaintext} menjadi {compressed} ({ratio}% dihemat)"
         },
         "footerSummaryNoQuota": "{count} profil · {unique} drive cloud unik",
         "footerDedupExplained": "Profil yang berbagi disk fisik yang sama (Koofr WebDAV + REST, OpenDrive WebDAV + REST, bucket Wasabi dengan access key yang sama) digabungkan menjadi satu drive sehingga kuota dihitung hanya sekali.",

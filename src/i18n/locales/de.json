@@ -256,7 +256,12 @@
       "b2NativeAdvVersions": "Vollständiger Dateiversionsverlauf pro Objekt",
       "totpSecret": "TOTP-Geheimnis (optional, gespeichert)",
       "totpSecretPlaceholder": "Base32-Geheimnis, z. B. JBSWY3DPEHPK3PXP",
-      "totpSecretHelp": "Speichern Sie Ihr 2FA-Geheimnis einmal. AeroFTP generiert den 6-stelligen Code bei jeder erneuten Verbindung automatisch, wie eine Authentifizierungs-App."
+      "totpSecretHelp": "Speichern Sie Ihr 2FA-Geheimnis einmal. AeroFTP generiert den 6-stelligen Code bei jeder erneuten Verbindung automatisch, wie eine Authentifizierungs-App.",
+      "manualTotalStorage": "Gesamtspeicher (manuell)",
+      "manualTotalStoragePlaceholder": "z. B. 10 GB, 500 GB, 2 TB",
+      "manualTotalStorageHint": "Optional. Tarif- oder Kontolimit für Backends ohne quota API (FTP, S3, WebDAV) oder die nur den belegten Speicher melden (Backblaze B2). Der vom Anbieter gemeldete Gesamtwert hat immer Vorrang.",
+      "autoScanUsedOnConnect": "Belegten Speicher beim Verbinden berechnen",
+      "autoScanUsedOnConnectHint": "Nur für Backends ohne API für belegten Speicher (FTP, S3, WebDAV). Standardmäßig deaktiviert: ein großer Baum (z. B. ein Webprojekt) wird rekursiv durchlaufen, was langsam sein kann. Verwenden Sie andernfalls die StatusBar-Aktion bei Bedarf."
     },
     "browser": {
       "remote": "Remote",
@@ -1131,7 +1136,15 @@
       "insecureConnectionUnencrypted": "Diese Verbindung ist nicht verschlüsselt. Anmeldedaten werden im Klartext gesendet.",
       "secureConnection": "Sicher",
       "secureConnectionTitle": "Verschlüsselte Verbindung über {protocol}",
-      "usedNoCap": "belegt (kein Kontingentlimit)"
+      "usedNoCap": "belegt (kein Kontingentlimit)",
+      "usedScanAction": "Belegten Speicher berechnen",
+      "usedScanHint": "Den Baum rekursiv scannen, um den belegten Speicher zu berechnen. Zusammen mit einem manuellen Gesamtwert zeigt es belegt/gesamt/%. Wird nur ausgeführt, wenn Sie es auslösen.",
+      "usedScanRunning": "Belegter Speicher wird gescannt...",
+      "usedScanDone": "Belegter Speicher berechnet",
+      "usedScanDoneDetail": "{used} in {files} Dateien",
+      "usedScanTruncated": "teilweise: Scan-Limit erreicht",
+      "usedScanFailed": "Scan des belegten Speichers fehlgeschlagen",
+      "usedScanEmpty": "Der Scan von {path} fand keine Dateien; der zwischengespeicherte Wert wurde beibehalten. Prüfen Sie den Pfad oder die Unterstützung rekursiver Auflistung durch den Server."
     },
     "dialogs": {
       "confirmTitle": "Bestätigen",
@@ -4300,7 +4313,10 @@
           "time": "Last used",
           "health": "Health",
           "actions": "Actions",
-          "favorite": "Favorite"
+          "favorite": "Favorite",
+          "saved": "Gespart",
+          "savedPct": "Gespart %",
+          "savedTitle": "Komprimierung: {plaintext} auf {compressed} ({ratio}% gespart)"
         },
         "footerSummaryNoQuota": "{count} Profile · {unique} eindeutige Cloud-Laufwerke",
         "footerDedupExplained": "Profile, die sich denselben physischen Speicher teilen (Koofr WebDAV + REST, OpenDrive WebDAV + REST, Wasabi-Buckets unter demselben Access Key), werden zu einem Laufwerk zusammengefasst, sodass Kontingente nur einmal gezählt werden.",

@@ -256,7 +256,12 @@
       "b2NativeAdvVersions": "Πλήρες ιστορικό εκδόσεων αρχείου ανά αντικείμενο",
       "totpSecret": "TOTP Secret (optional, saved)",
       "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
-      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
+      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
+      "manualTotalStorage": "Συνολικός αποθηκευτικός χώρος (χειροκίνητα)",
+      "manualTotalStoragePlaceholder": "π.χ. 10 GB, 500 GB, 2 TB",
+      "manualTotalStorageHint": "Προαιρετικό. Όριο προγράμματος ή λογαριασμού για backend χωρίς quota API (FTP, S3, WebDAV) ή που αναφέρουν μόνο τον χρησιμοποιημένο χώρο (Backblaze B2). Το συνολικό μέγεθος του ίδιου του παρόχου έχει πάντα προτεραιότητα.",
+      "autoScanUsedOnConnect": "Υπολογισμός χρησιμοποιημένου χώρου κατά τη σύνδεση",
+      "autoScanUsedOnConnectHint": "Μόνο για backend χωρίς API χρησιμοποιημένου χώρου (FTP, S3, WebDAV). Απενεργοποιημένο από προεπιλογή: ένα μεγάλο δέντρο (π.χ. ένα έργο ιστού) διασχίζεται αναδρομικά, κάτι που μπορεί να είναι αργό. Διαφορετικά, χρησιμοποιήστε την ενέργεια του StatusBar κατ' απαίτηση."
     },
     "browser": {
       "remote": "Απομακρυσμένο",
@@ -1131,7 +1136,15 @@
       "insecureConnectionUnencrypted": "Αυτή η σύνδεση δεν είναι κρυπτογραφημένη. Τα διαπιστευτήρια αποστέλλονται ως απλό κείμενο.",
       "secureConnection": "Ασφαλής",
       "secureConnectionTitle": "Κρυπτογραφημένη σύνδεση μέσω {protocol}",
-      "usedNoCap": "χρησιμοποιείται (χωρίς όριο ποσόστωσης)"
+      "usedNoCap": "χρησιμοποιείται (χωρίς όριο ποσόστωσης)",
+      "usedScanAction": "Υπολογισμός χρησιμοποιημένου χώρου",
+      "usedScanHint": "Αναδρομική σάρωση του δέντρου για υπολογισμό του χρησιμοποιημένου χώρου. Σε συνδυασμό με ένα χειροκίνητο σύνολο εμφανίζει χρησιμοποιημένο/σύνολο/%. Εκτελείται μόνο όταν το ενεργοποιήσετε.",
+      "usedScanRunning": "Σάρωση χρησιμοποιημένου χώρου...",
+      "usedScanDone": "Ο χρησιμοποιημένος χώρος υπολογίστηκε",
+      "usedScanDoneDetail": "{used} σε {files} αρχεία",
+      "usedScanTruncated": "μερικό: επιτεύχθηκε το όριο σάρωσης",
+      "usedScanFailed": "Η σάρωση χρησιμοποιημένου χώρου απέτυχε",
+      "usedScanEmpty": "Η σάρωση του {path} δεν βρήκε αρχεία· η αποθηκευμένη τιμή διατηρήθηκε. Ελέγξτε τη διαδρομή ή την υποστήριξη αναδρομικής παράθεσης του διακομιστή."
     },
     "dialogs": {
       "confirmTitle": "Επιβεβαίωση",
@@ -4300,7 +4313,10 @@
           "time": "Last used",
           "health": "Health",
           "actions": "Actions",
-          "favorite": "Favorite"
+          "favorite": "Favorite",
+          "saved": "Εξοικονόμηση",
+          "savedPct": "Εξοικονόμηση %",
+          "savedTitle": "Συμπίεση: {plaintext} σε {compressed} ({ratio}% εξοικονόμηση)"
         },
         "footerSummaryNoQuota": "{count} προφίλ · {unique} μοναδικοί δίσκοι cloud",
         "footerDedupExplained": "Τα προφίλ που μοιράζονται τον ίδιο φυσικό δίσκο (Koofr WebDAV + REST, OpenDrive WebDAV + REST, κάδοι Wasabi με το ίδιο access key) συγχωνεύονται σε έναν δίσκο, ώστε τα όρια να μετρώνται μόνο μία φορά.",

@@ -256,7 +256,12 @@
       "b2NativeAdvVersions": "Ֆայլի վերսիաների լիարժեք պատմություն՝ յուրաքանչյուր օբյեկտի համար",
       "totpSecret": "TOTP Secret (optional, saved)",
       "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
-      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does."
+      "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
+      "manualTotalStorage": "Ընդհանուր հիշողություն (ձեռքով)",
+      "manualTotalStoragePlaceholder": "օր. 10 GB, 500 GB, 2 TB",
+      "manualTotalStorageHint": "ըստ ցանկության. Փաթեթի կամ հաշվի սահմանաչափը այն հետնամասերի համար, որոնք չունեն քվոտայի API (FTP, S3, WebDAV) կամ հաղորդում են միայն օգտագործված տարածքը (Backblaze B2). Մատակարարի սեփական ընդհանուր տվյալը միշտ ունի առաջնահերթություն.",
+      "autoScanUsedOnConnect": "Հաշվել օգտագործված տարածքը միացման ժամանակ",
+      "autoScanUsedOnConnectHint": "Միայն այն հետնամասերի համար, որոնք չունեն օգտագործված տարածքի API (FTP, S3, WebDAV). Կանխավ անջատված է. մեծ ծառը (օր. վեբ նախագիծ) անցվում է ռեկուրսիվ կերպով, ինչը կարող է դանդաղ լինել. Հակառակ դեպքում օգտագործեք StatusBar-ի գործողությունը ըստ անհրաժեշտության."
     },
     "browser": {
       "remote": "Հեռավոր",
@@ -1131,7 +1136,15 @@
       "secureConnection": "Ապահով",
       "secureConnectionTitle": "Գաղտնագրված կապ {protocol}-ով",
       "insecureConnectionUnencrypted": "Այս կապը գաղտնագրված չէ: Հավատարմագրերը ուղարկվում են բաց տեքստով:",
-      "usedNoCap": "օգտագործված (առանց քվոտայի սահմանափակումի)"
+      "usedNoCap": "օգտագործված (առանց քվոտայի սահմանափակումի)",
+      "usedScanAction": "Հաշվել օգտագործված տարածքը",
+      "usedScanHint": "Ռեկուրսիվ սկանավորել ծառը օգտագործված տարածքը հաշվելու համար. Ձեռքով ընդհանուրի հետ համատեղ ցույց է տալիս օգտագործված/ընդհանուր/%. Աշխատում է միայն այն դեպքում, երբ դուք գործարկեք.",
+      "usedScanRunning": "օգտագործված տարածքի սկանավորում...",
+      "usedScanDone": "Օգտագործված տարածքը հաշվարկված է",
+      "usedScanDoneDetail": "{used} {files} ֆայլում",
+      "usedScanTruncated": "մասնակի. սկանավորման սահմանաչափը հասավ է",
+      "usedScanFailed": "Օգտագործված տարածքի սկանավորումը ձախողվեց",
+      "usedScanEmpty": "{path}-ի սկանավորումը ֆայլ չգտավ. քեշավորված արժեքը պահպանվեց. Անցկացրեք ուղին կամ սերվերի ռեկուրսիվ ցուցակագրման աջակցումը."
     },
     "toast": {
       "connectionSuccess": "Միացված է՝ {server}",
@@ -4300,7 +4313,10 @@
           "time": "Last used",
           "health": "Health",
           "actions": "Actions",
-          "favorite": "Favorite"
+          "favorite": "Favorite",
+          "saved": "Խնայված",
+          "savedPct": "Խնայված %",
+          "savedTitle": "Սեղմում. {plaintext} այստեղից {compressed} ({ratio}% խնայված)"
         },
         "footerSummaryNoQuota": "{count} պրոֆիլ · {unique} ուրույն ամպային սկավառակներ",
         "footerDedupExplained": "Նույն ֆիզիկական սկավառակն կիսող պրոֆիլները (Koofr WebDAV + REST, OpenDrive WebDAV + REST, նույն access key-ով Wasabi bucket-ներ) միավորվում են մեկ սկավառակի մեջ, որպեսզի քվոտաները հաշվարկվեն միայն մեկ անգամ։",
