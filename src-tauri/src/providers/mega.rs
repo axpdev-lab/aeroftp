@@ -583,6 +583,26 @@ impl StorageProvider for MegaCmdProvider {
             cb(0, 0);
         }
 
+        // MEGAcmd's `mega-get` does NOT overwrite an existing local target: it
+        // writes to a ` (1)`-suffixed sibling and leaves the original file
+        // untouched. Callers that pre-create the destination (a NamedTempFile
+        // in the speed test, an atomic temp, a plain re-download) would then
+        // read stale or empty bytes from the original path while the real data
+        // sits next to it. Remove a pre-existing regular file at the target so
+        // MEGAcmd writes exactly where the caller asked, matching the
+        // overwrite-on-download semantics every other provider already has. A
+        // directory target is left alone (valid MEGAcmd "into dir" usage).
+        if let Ok(meta) = std::fs::symlink_metadata(l) {
+            if meta.file_type().is_file() || meta.file_type().is_symlink() {
+                if let Err(e) = std::fs::remove_file(l) {
+                    self.log_debug(&format!(
+                        "[MEGAcmd] Could not remove pre-existing target '{}': {}",
+                        l, e
+                    ));
+                }
+            }
+        }
+
         // Download file (--resume removed: not supported by all MEGAcmd versions)
         match self
             .run_mega_cmd_with_reauth("mega-get", &[&abs_remote, l])
@@ -614,8 +634,18 @@ impl StorageProvider for MegaCmdProvider {
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| format!("mega_tmp_{}", uuid::Uuid::new_v4()));
 
+        // The temp target MUST be a fresh, unique, non-existing path. MEGAcmd's
+        // `mega-get` does NOT overwrite an existing local target: when the path
+        // already exists it writes to a ` (1)`-suffixed sibling and leaves the
+        // original untouched, so reading back the fixed path would return stale
+        // bytes from a previous call (observed as a spurious integrity
+        // "CORRUPTED" in the speed test, and as wrong content for previews /
+        // hashing that go through download_to_bytes). A per-call UUID prefix
+        // guarantees the path does not pre-exist, so MEGAcmd writes exactly
+        // where we then read.
         let temp_dir = std::env::temp_dir();
-        let temp_path = temp_dir.join(format!("aeroftp_mega_{}", file_name));
+        let temp_path =
+            temp_dir.join(format!("aeroftp_mega_{}_{}", uuid::Uuid::new_v4(), file_name));
         let temp_str = temp_path.to_string_lossy().to_string();
 
         self.run_mega_cmd_with_reauth("mega-get", &[&abs_remote, &temp_str])
