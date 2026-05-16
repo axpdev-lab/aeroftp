@@ -32,10 +32,12 @@ updates:
         update-types: ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
       - dependency-name: "rusqlite"
         update-types: ["version-update:semver-major"]
-      # ── RustCrypto digest 0.11 migration block ──────────────────────
-      # sha1/sha2/md-5/ripemd 0.11+ require digest 0.11, but hmac 0.12
-      # and hkdf 0.12 still depend on digest 0.10. Unblock when hmac 0.13
-      # and hkdf 0.13 reach stable release.
+      # ── RustCrypto digest 0.11 / hmac 0.13 migration block ──────────
+      # sha1/sha2/md-5/ripemd 0.11+, hkdf 0.13 and pbkdf2 0.13 all pull
+      # digest 0.11, but the wider graph (hmac, the aes-* AEAD wrappers)
+      # is still on digest 0.10 / aes 0.8. Taking any one of these in
+      # isolation forks the trait crates and breaks the build. Unblock
+      # only when the whole RustCrypto stack moves together.
       - dependency-name: "sha1"
         versions: [">=0.11.0"]
       - dependency-name: "sha2"
@@ -44,6 +46,10 @@ updates:
         versions: [">=0.11.0"]
       - dependency-name: "ripemd"
         versions: [">=0.2.0"]
+      - dependency-name: "hkdf"
+        versions: [">=0.13.0"]
+      - dependency-name: "pbkdf2"
+        versions: [">=0.13.0"]
       # num-bigint-dig 0.9 requires rand 0.9, incompatible with rsa 0.9
       # which depends on num-bigint-dig 0.8. Unblock when rsa 0.10 stable.
       - dependency-name: "num-bigint-dig"
@@ -74,6 +80,17 @@ updates:
       - dependency-name: "@vitejs/plugin-react"
         update-types: ["version-update:semver-major"]
       - dependency-name: "@xterm/xterm"
+        update-types: ["version-update:semver-major"]
+      # React 19 is a deliberate framework migration, not an auto-bump.
+      # Hold the major (and its @types, bumped in the same PR) until the
+      # migration is scheduled; minor/patch still flow.
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/react-dom"
         update-types: ["version-update:semver-major"]
 
   # GitHub Actions
