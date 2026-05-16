@@ -33,7 +33,7 @@ name = "aeroftp"
 version = "3.8.1"
 dependencies = [
  "aerovault",
- "aes 0.8.4",
+ "aes 0.9.0",
  "aes-gcm 0.10.3",
  "aes-gcm-siv",
  "aes-kw",

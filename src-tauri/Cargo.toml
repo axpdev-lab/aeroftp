@@ -109,7 +109,7 @@ sigstore = { version = "0.13", default-features = false, features = ["bundle", "
 # Secure Credential Storage (v1.3.2 hotfix)
 argon2 = "0.5"
 aes-gcm = "0.10"
-aes = "0.8"                                                            # AES block cipher (Internxt)
+aes = "0.9"                                                            # AES block cipher (Internxt)
 cbc = "0.1"                                                            # AES-CBC mode (Internxt mnemonic decryption)
 ctr = "0.9"                                                            # AES-CTR mode (Internxt file encryption)
 crypto_secretbox = "0.1"                                               # XSalsa20-Poly1305 NaCl secretbox (rclone crypt)
