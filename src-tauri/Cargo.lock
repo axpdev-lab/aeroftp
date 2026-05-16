@@ -64,7 +64,7 @@ dependencies = [
  "globset",
  "hex",
  "hkdf 0.12.4",
- "hmac 0.12.1",
+ "hmac 0.13.0",
  "hound",
  "http",
  "image",
