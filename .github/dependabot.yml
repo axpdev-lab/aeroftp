@@ -50,6 +50,8 @@ updates:
         versions: [">=0.13.0"]
       - dependency-name: "pbkdf2"
         versions: [">=0.13.0"]
+      - dependency-name: "hmac"
+        versions: [">=0.13.0"]
       # num-bigint-dig 0.9 requires rand 0.9, incompatible with rsa 0.9
       # which depends on num-bigint-dig 0.8. Unblock when rsa 0.10 stable.
       - dependency-name: "num-bigint-dig"
