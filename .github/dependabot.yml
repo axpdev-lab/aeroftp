@@ -48,6 +48,13 @@ updates:
       # which depends on num-bigint-dig 0.8. Unblock when rsa 0.10 stable.
       - dependency-name: "num-bigint-dig"
         versions: [">=0.9.0"]
+      # aes 0.9 is a breaking RustCrypto block-cipher bump. aes-gcm 0.10,
+      # aes-kw 0.2, aes-siv 0.7 and aes-gcm-siv 0.11 (AeroVault v3) all
+      # still depend on aes 0.8; taking aes 0.9 directly forks the cipher
+      # crate and breaks the AEAD wrappers. Unblock when aes-gcm/aes-kw/
+      # aes-siv/aes-gcm-siv ship releases built on aes 0.9.
+      - dependency-name: "aes"
+        versions: [">=0.9.0"]
 
   # npm dependencies
   - package-ecosystem: "npm"
