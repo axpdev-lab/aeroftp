@@ -836,6 +836,40 @@ enum Commands {
         #[arg(default_value = "/")]
         path: String,
     },
+    /// Machine-readable JSON listing with a stable record schema
+    Lsjson {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_", hide_default_value = true)]
+        url: String,
+        /// Remote path (default: /)
+        #[arg(default_value = "/")]
+        path: String,
+        /// Recurse into subdirectories
+        #[arg(short = 'R', long)]
+        recursive: bool,
+        /// List files only
+        #[arg(long)]
+        files_only: bool,
+        /// List directories only
+        #[arg(long, conflicts_with = "files_only")]
+        dirs_only: bool,
+        /// Emit a single object describing the path itself, not its contents
+        #[arg(long)]
+        stat: bool,
+        /// Omit the ModTime field entirely
+        #[arg(long)]
+        no_modtime: bool,
+        /// Omit the MimeType field entirely
+        #[arg(long)]
+        no_mimetype: bool,
+        /// Include per-file Hashes. Downloads each file to hash it; slow on
+        /// large trees. Omitted for directories.
+        #[arg(long)]
+        hash: bool,
+        /// Hash algorithm used by --hash
+        #[arg(long, value_enum, default_value = "sha256")]
+        hash_type: HashAlgorithm,
+    },
     /// Remove a path and all of its contents (recursive delete)
     Purge {
         /// Server URL (omit when using --profile)
@@ -18276,6 +18310,291 @@ async fn cmd_rmdir(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i3
     }
 }
 
+/// One record of the `lsjson` output. Field names and order are a stable
+/// public contract (scripts/CI parse this): keep them as declared. Optional
+/// fields are skipped entirely (not emitted as empty) when their flag is set.
+#[derive(Serialize)]
+struct LsjsonEntry {
+    #[serde(rename = "Path")]
+    path: String,
+    #[serde(rename = "Name")]
+    name: String,
+    /// Byte size; directories are reported as `-1` by convention.
+    #[serde(rename = "Size")]
+    size: i64,
+    #[serde(rename = "MimeType", skip_serializing_if = "Option::is_none")]
+    mime_type: Option<String>,
+    /// Provider-native modification time, passed through verbatim (RFC3339
+    /// where the provider supplies it). Empty string when unknown.
+    #[serde(rename = "ModTime", skip_serializing_if = "Option::is_none")]
+    mod_time: Option<String>,
+    #[serde(rename = "IsDir")]
+    is_dir: bool,
+    #[serde(rename = "Hashes", skip_serializing_if = "Option::is_none")]
+    hashes: Option<std::collections::BTreeMap<&'static str, String>>,
+}
+
+/// Digest `data` with `algo`, returning the canonical algorithm name and the
+/// lowercase hex digest. Mirrors the exact match arms used by `hashsum`.
+fn lsjson_hash(algo: HashAlgorithm, data: &[u8]) -> (&'static str, String) {
+    match algo {
+        HashAlgorithm::Md5 => {
+            use md5::Digest;
+            ("md5", format!("{:x}", md5::Md5::digest(data)))
+        }
+        HashAlgorithm::Sha1 => {
+            use sha1::Digest;
+            ("sha1", format!("{:x}", sha1::Sha1::digest(data)))
+        }
+        HashAlgorithm::Sha256 => {
+            use sha2::Digest;
+            ("sha256", format!("{:x}", sha2::Sha256::digest(data)))
+        }
+        HashAlgorithm::Sha512 => {
+            use sha2::Digest;
+            ("sha512", format!("{:x}", sha2::Sha512::digest(data)))
+        }
+        HashAlgorithm::Blake3 => ("blake3", blake3::hash(data).to_hex().to_string()),
+    }
+}
+
+/// `lsjson`: machine-readable JSON listing with a stable record schema.
+///
+/// Always writes a pretty-printed JSON array to stdout regardless of the
+/// global `--json`/text format (an empty listing is `[]`). `--stat` writes a
+/// single object describing the path itself. `MimeType`/`ModTime` are opt-out;
+/// `Hashes` is opt-in (downloads each file to digest it locally, slow on large
+/// trees, omitted for directories).
+#[allow(clippy::too_many_arguments)]
+async fn cmd_lsjson(
+    url: &str,
+    path: &str,
+    recursive: bool,
+    files_only: bool,
+    dirs_only: bool,
+    stat: bool,
+    no_modtime: bool,
+    no_mimetype: bool,
+    hash: bool,
+    hash_type: HashAlgorithm,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+
+    let resolved = resolve_cli_remote_path(&initial_path, path);
+
+    // --stat: a single object for the path itself, not its contents. Path and
+    // Name are the leaf of the requested path (root resolves to "").
+    if stat {
+        match provider.stat(&resolved).await {
+            Ok(e) => {
+                let leaf = resolved
+                    .trim_matches('/')
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or("")
+                    .to_string();
+                let mime_type = if no_mimetype {
+                    None
+                } else if e.is_dir {
+                    Some("inode/directory".to_string())
+                } else {
+                    Some(guess_content_type(&e))
+                };
+                let mod_time = if no_modtime {
+                    None
+                } else {
+                    Some(e.modified.clone().unwrap_or_default())
+                };
+                let hashes = if hash && !e.is_dir {
+                    match provider.download_to_bytes(&resolved).await {
+                        Ok(data) => {
+                            let (n, h) = lsjson_hash(hash_type, &data);
+                            let mut m = std::collections::BTreeMap::new();
+                            m.insert(n, h);
+                            Some(m)
+                        }
+                        Err(err) => {
+                            if !cli.quiet {
+                                eprintln!("Warning: cannot hash {}: {}", resolved, err);
+                            }
+                            None
+                        }
+                    }
+                } else {
+                    None
+                };
+                let entry = LsjsonEntry {
+                    path: leaf.clone(),
+                    name: leaf,
+                    size: if e.is_dir { -1 } else { e.size as i64 },
+                    mime_type,
+                    mod_time,
+                    is_dir: e.is_dir,
+                    hashes,
+                };
+                print_json(&entry);
+                let _ = provider.disconnect().await;
+                0
+            }
+            Err(err) => {
+                let code = provider_error_to_exit_code(&err);
+                print_error(format, &format!("lsjson failed: {}", err), code);
+                let _ = provider.disconnect().await;
+                code
+            }
+        }
+    } else {
+        let max_depth = cli.max_depth.map(|d| d as usize).unwrap_or(MAX_SCAN_DEPTH);
+        let mut out: Vec<LsjsonEntry> = Vec::new();
+        let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut entry_count: usize = 0;
+        let mut truncated = false;
+
+        // (provider path to list, root-relative prefix built from names, depth).
+        // The relative prefix is accumulated from entry names rather than from
+        // provider paths so it is correct regardless of how each backend roots
+        // entry.path (S3 bucket-root, SFTP absolute, WebDAV collection).
+        let mut stack: Vec<(String, String, usize)> =
+            vec![(resolved.clone(), String::new(), 1)];
+        let mut is_root_list = true;
+
+        while let Some((dir_path, rel_prefix, depth)) = stack.pop() {
+            if entry_count >= MAX_SCAN_ENTRIES {
+                truncated = true;
+                break;
+            }
+            if !visited.insert(dir_path.clone()) {
+                continue;
+            }
+            let entries = match provider.list(&dir_path).await {
+                Ok(e) => e,
+                Err(e) => {
+                    if is_root_list {
+                        let code = provider_error_to_exit_code(&e);
+                        print_error(format, &format!("lsjson failed: {}", e), code);
+                        let _ = provider.disconnect().await;
+                        return code;
+                    }
+                    // A sub-listing failure is non-fatal (mirrors `tree`):
+                    // skip the unreadable subtree, keep the rest.
+                    continue;
+                }
+            };
+
+            if is_root_list {
+                is_root_list = false;
+                // FTP/FTPS may answer a missing directory with an empty
+                // listing instead of an error, collapsing "missing" into
+                // "empty". Confirm with a follow-up stat (mirrors `ls`).
+                if entries.is_empty()
+                    && !path.is_empty()
+                    && path != "/"
+                    && path != "."
+                    && matches!(
+                        provider.provider_type(),
+                        ProviderType::Ftp | ProviderType::Ftps
+                    )
+                {
+                    if let Err(ProviderError::NotFound(_)) = provider.stat(&dir_path).await {
+                        print_error(
+                            format,
+                            &format!("lsjson failed: Path not found: {}", path),
+                            2,
+                        );
+                        let _ = provider.disconnect().await;
+                        return 2;
+                    }
+                }
+            }
+
+            for e in entries {
+                if entry_count >= MAX_SCAN_ENTRIES {
+                    truncated = true;
+                    break;
+                }
+                let rel = if rel_prefix.is_empty() {
+                    e.name.clone()
+                } else {
+                    format!("{}/{}", rel_prefix, e.name)
+                };
+                // Directories are still descended even when filtered out of
+                // the output, so `--files-only -R` still finds nested files.
+                let descend = recursive && e.is_dir && depth < max_depth;
+                let emit = if files_only {
+                    !e.is_dir
+                } else if dirs_only {
+                    e.is_dir
+                } else {
+                    true
+                };
+                if emit {
+                    entry_count += 1;
+                    let mime_type = if no_mimetype {
+                        None
+                    } else if e.is_dir {
+                        Some("inode/directory".to_string())
+                    } else {
+                        Some(guess_content_type(&e))
+                    };
+                    let mod_time = if no_modtime {
+                        None
+                    } else {
+                        Some(e.modified.clone().unwrap_or_default())
+                    };
+                    let hashes = if hash && !e.is_dir {
+                        match provider.download_to_bytes(&e.path).await {
+                            Ok(data) => {
+                                let (n, h) = lsjson_hash(hash_type, &data);
+                                let mut m = std::collections::BTreeMap::new();
+                                m.insert(n, h);
+                                Some(m)
+                            }
+                            Err(err) => {
+                                if !cli.quiet {
+                                    eprintln!("Warning: cannot hash {}: {}", e.path, err);
+                                }
+                                None
+                            }
+                        }
+                    } else {
+                        None
+                    };
+                    out.push(LsjsonEntry {
+                        path: if recursive { rel.clone() } else { e.name.clone() },
+                        name: e.name.clone(),
+                        size: if e.is_dir { -1 } else { e.size as i64 },
+                        mime_type,
+                        mod_time,
+                        is_dir: e.is_dir,
+                        hashes,
+                    });
+                }
+                if descend {
+                    stack.push((e.path.clone(), rel, depth + 1));
+                }
+            }
+        }
+
+        // Deterministic, stable order so script/CI diffs are reproducible.
+        out.sort_by(|a, b| a.path.cmp(&b.path).then(a.name.cmp(&b.name)));
+
+        if truncated && !cli.quiet {
+            eprintln!(
+                "Warning: listing capped at {} entries; output is incomplete",
+                MAX_SCAN_ENTRIES
+            );
+        }
+        print_json(&out);
+        let _ = provider.disconnect().await;
+        0
+    }
+}
+
 async fn cmd_about(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
     let (mut provider, _) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
@@ -33583,6 +33902,39 @@ async fn main() {
             // format already prints one entry per line and routes the
             // human summary to stderr, so stdout stays pipe-clean.
             cmd_ls(u, p, false, "name", false, false, None, false, false, &cli, format).await
+        }
+        Commands::Lsjson {
+            url,
+            path,
+            recursive,
+            files_only,
+            dirs_only,
+            stat,
+            no_modtime,
+            no_mimetype,
+            hash,
+            hash_type,
+        } => {
+            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                ("_", url.as_str())
+            } else {
+                (url.as_str(), path.as_str())
+            };
+            cmd_lsjson(
+                u,
+                p,
+                *recursive,
+                *files_only,
+                *dirs_only,
+                *stat,
+                *no_modtime,
+                *no_mimetype,
+                *hash,
+                *hash_type,
+                &cli,
+                format,
+            )
+            .await
         }
         Commands::Purge { url, path, force } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {

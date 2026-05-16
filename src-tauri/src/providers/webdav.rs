@@ -2129,12 +2129,7 @@ impl StorageProvider for WebDavProvider {
             return Err(ProviderError::NotConnected);
         }
 
-        let response = self
-            .request(webdav_methods::propfind(), path)
-            .header("Depth", "0")
-            .header("Content-Type", "application/xml")
-            .body(
-                r#"<?xml version="1.0" encoding="utf-8"?>
+        const PROPFIND_BODY: &str = r#"<?xml version="1.0" encoding="utf-8"?>
                 <d:propfind xmlns:d="DAV:">
                     <d:prop>
                         <d:resourcetype/>
@@ -2143,53 +2138,93 @@ impl StorageProvider for WebDavProvider {
                         <d:getcontenttype/>
                         <d:getetag/>
                     </d:prop>
-                </d:propfind>"#,
-            )
-            .send()
-            .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+                </d:propfind>"#;
 
-        match response.status() {
-            StatusCode::OK | StatusCode::MULTI_STATUS => {
-                let xml = response
-                    .text()
-                    .await
-                    .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+        // `stat` is path-type-ambiguous (it is called for both files and
+        // directories). Try the path verbatim first: that is correct for
+        // files, where a trailing slash would instead point at a
+        // non-existent collection. If the server answers `404` or a
+        // redirect-stripped `401` (Apache mod_dav `301`s a slash-less
+        // *collection* to a scheme-downgraded URL that loses the
+        // `Authorization` header: the same class fixed for
+        // `list`/`mkdir`/`rmdir`, see `collection_path`), retry once in the
+        // collection (trailing-slash) form, which is what real directories
+        // need. `name` always derives from the original `path`.
+        let collection_form = Self::collection_path(path);
+        let mut attempts: Vec<&str> = vec![path];
+        if collection_form != path {
+            attempts.push(collection_form.as_str());
+        }
 
-                let props = self.extract_xml_properties(&xml);
-                let is_dir = props.contains_key("_is_collection");
-                let size: u64 = props
-                    .get("getcontentlength")
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(0);
-                let modified = props.get("getlastmodified").cloned();
-                let mime_type = props.get("getcontenttype").cloned();
+        let mut last_status = StatusCode::NOT_FOUND;
+        for attempt in attempts {
+            let response = self
+                .request(webdav_methods::propfind(), attempt)
+                .header("Depth", "0")
+                .header("Content-Type", "application/xml")
+                .body(PROPFIND_BODY)
+                .send()
+                .await
+                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
-                let name = std::path::Path::new(path)
-                    .file_name()
-                    .map(|n| n.to_string_lossy().to_string())
-                    .unwrap_or_else(|| path.to_string());
+            match response.status() {
+                StatusCode::OK | StatusCode::MULTI_STATUS => {
+                    let xml = response
+                        .text()
+                        .await
+                        .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
-                Ok(RemoteEntry {
-                    name,
-                    path: path.to_string(),
-                    is_dir,
-                    size,
-                    modified,
-                    permissions: None,
-                    owner: None,
-                    group: None,
-                    is_symlink: false,
-                    link_target: None,
-                    mime_type,
-                    metadata: Default::default(),
-                })
+                    let props = self.extract_xml_properties(&xml);
+                    let is_dir = props.contains_key("_is_collection");
+                    let size: u64 = props
+                        .get("getcontentlength")
+                        .and_then(|s| s.parse().ok())
+                        .unwrap_or(0);
+                    let modified = props.get("getlastmodified").cloned();
+                    let mime_type = props.get("getcontenttype").cloned();
+
+                    let name = std::path::Path::new(path)
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_else(|| path.to_string());
+
+                    return Ok(RemoteEntry {
+                        name,
+                        path: path.to_string(),
+                        is_dir,
+                        size,
+                        modified,
+                        permissions: None,
+                        owner: None,
+                        group: None,
+                        is_symlink: false,
+                        link_target: None,
+                        mime_type,
+                        metadata: Default::default(),
+                    });
+                }
+                StatusCode::NOT_FOUND | StatusCode::UNAUTHORIZED => {
+                    // Ambiguous: may be a collection that needs the
+                    // trailing-slash form. Fall through to the retry.
+                    last_status = response.status();
+                    continue;
+                }
+                status => {
+                    return Err(ProviderError::ServerError(format!(
+                        "PROPFIND failed with status: {}",
+                        status
+                    )));
+                }
             }
-            StatusCode::NOT_FOUND => Err(ProviderError::NotFound(path.to_string())),
-            status => Err(ProviderError::ServerError(format!(
+        }
+
+        if last_status == StatusCode::NOT_FOUND {
+            Err(ProviderError::NotFound(path.to_string()))
+        } else {
+            Err(ProviderError::ServerError(format!(
                 "PROPFIND failed with status: {}",
-                status
-            ))),
+                last_status
+            )))
         }
     }
 
