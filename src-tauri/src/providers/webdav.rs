@@ -12,6 +12,7 @@
 use async_trait::async_trait;
 use futures_util::StreamExt;
 use md5::{Digest as _, Md5};
+use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
 use quick_xml::events::Event;
 use quick_xml::Reader;
 use rand::Rng;
@@ -294,18 +295,98 @@ impl WebDavProvider {
         }
     }
 
+    /// Compose a caller path under the auto-detected `server_root`.
+    ///
+    /// On Nextcloud / ownCloud the real WebDAV root lives under a versioned
+    /// prefix (`/remote.php/dav/files/<user>/`) discovered at connect time.
+    /// Before this, only `list()`/`cd()` rewrote the literal `/` to that
+    /// root; every other verb (`mkdir`, `put`, `get`, `delete`, `stat`,
+    /// `move`, ...) sent the bare caller path, which on Nextcloud bypasses
+    /// the DAV root and hits the front controller as `404`/`405`. This
+    /// centralizes the rewrite at the single URL chokepoint.
+    ///
+    /// Idempotent: a path already at or under `server_root` (the GUI
+    /// drill-down case, where `list()` returns fully-rooted entry paths) is
+    /// returned unchanged, so no double-prefix occurs. A no-op when there is
+    /// no distinct root (traditional servers, `server_root` `None` or `/`),
+    /// so non-Nextcloud backends and the connect-time auto-detection probes
+    /// (which run before `server_root` is set) are unaffected.
+    fn resolve_root(&self, path: &str) -> String {
+        let root = match self.server_root.as_deref() {
+            Some(r) if !r.is_empty() && r != "/" => r,
+            _ => return path.to_string(),
+        };
+        let root_trim = root.trim_end_matches('/');
+        let p = if path.is_empty() { "/" } else { path };
+        let p_norm = p.trim_end_matches('/');
+
+        if p_norm == root_trim || p.starts_with(&format!("{}/", root_trim)) {
+            return p.to_string();
+        }
+
+        let rel = p.trim_start_matches('/');
+        if rel.is_empty() {
+            format!("{}/", root_trim)
+        } else if p.ends_with('/') {
+            format!("{}/{}/", root_trim, rel.trim_end_matches('/'))
+        } else {
+            format!("{}/{}", root_trim, rel)
+        }
+    }
+
     /// Build full URL for a path
     fn build_url(&self, path: &str) -> String {
         let base = self.config.url.trim_end_matches('/');
-        let path = path.trim_start_matches('/');
+        let rooted = self.resolve_root(path);
+        let path = rooted.trim_start_matches('/');
 
         if path.is_empty() || path == "/" {
             // For root/empty path, ensure trailing slash (required by some WebDAV servers
             // for Digest auth URI matching on directory endpoints)
             format!("{}/", base)
         } else {
-            format!("{}/{}", base, path)
+            format!("{}/{}", base, Self::encode_path(path))
         }
+    }
+
+    /// Percent-encode a remote path so reserved characters in file names
+    /// (`#`, `?`, `%`, space, non-ASCII, ...) survive intact.
+    ///
+    /// Without this, `#`/`?` were parsed by the `url` crate as fragment /
+    /// query delimiters (truncating the request target) and a literal
+    /// space, while transport-encoded to `%20` on the wire, was hashed
+    /// raw into the Digest `uri`, producing a mismatch the server
+    /// rejected. rclone shipped the equivalent fix in v1.73.2.
+    ///
+    /// The encode set is deliberately conservative: structural and unsafe
+    /// characters only. `pchar` sub-delims (`! $ & ' ( ) * + , ; = : @`)
+    /// are left literal, because percent-encoding those is exactly the
+    /// over-escaping rclone had to revert in v1.73.3 ("URLPathEscapeAll
+    /// broke strict path-matching servers"). `/` is never in the set:
+    /// segments are encoded individually and rejoined, so a trailing
+    /// slash (collection form) is preserved.
+    fn encode_path(path: &str) -> String {
+        const WEBDAV_SEGMENT: &AsciiSet = &CONTROLS
+            .add(b' ')
+            .add(b'"')
+            .add(b'#')
+            .add(b'%')
+            .add(b'<')
+            .add(b'>')
+            .add(b'?')
+            .add(b'[')
+            .add(b'\\')
+            .add(b']')
+            .add(b'^')
+            .add(b'`')
+            .add(b'{')
+            .add(b'|')
+            .add(b'}');
+
+        path.split('/')
+            .map(|seg| utf8_percent_encode(seg, WEBDAV_SEGMENT).to_string())
+            .collect::<Vec<_>>()
+            .join("/")
     }
 
     /// Make an authenticated request (Basic or Digest depending on server)
@@ -2827,22 +2908,22 @@ mod tests {
     fn boundary_pure_drill_down_into_nextcloud_root_is_allowed() {
         // Real-world Tab.digital / Nextcloud: server_root resolved at connect
         // time to /remote.php/dav/files/<user>/, user clicks "Documents".
-        let root = Some("/remote.php/dav/files/raelb/");
+        let root = Some("/remote.php/dav/files/testuser/");
         assert!(!path_violates_root(
-            "/remote.php/dav/files/raelb/Documents",
+            "/remote.php/dav/files/testuser/Documents",
             root
         ));
         assert!(!path_violates_root(
-            "/remote.php/dav/files/raelb/Documents/Invoices",
+            "/remote.php/dav/files/testuser/Documents/Invoices",
             root
         ));
         // Equality is also fine (cd to the root itself).
-        assert!(!path_violates_root("/remote.php/dav/files/raelb", root));
+        assert!(!path_violates_root("/remote.php/dav/files/testuser", root));
     }
 
     #[test]
     fn boundary_pure_paths_above_or_outside_root_are_rejected() {
-        let root = Some("/remote.php/dav/files/raelb/");
+        let root = Some("/remote.php/dav/files/testuser/");
         // Going above
         assert!(path_violates_root("/remote.php/dav/files", root));
         // Sibling user
@@ -2865,8 +2946,8 @@ mod tests {
         // the rewrite directly.
         let mut provider = WebDavProvider::new(test_config("https://cloud.example.com")).unwrap();
         provider.connected = true;
-        provider.current_path = "/remote.php/dav/files/raelb/".to_string();
-        provider.server_root = Some("/remote.php/dav/files/raelb/".to_string());
+        provider.current_path = "/remote.php/dav/files/testuser/".to_string();
+        provider.server_root = Some("/remote.php/dav/files/testuser/".to_string());
 
         // Reproduce the rewrite logic: ensure "/" maps to server_root.
         let resolved = match "/" {
@@ -2877,7 +2958,7 @@ mod tests {
                 .unwrap_or_else(|| provider.current_path.clone()),
             other => other.to_string(),
         };
-        assert_eq!(resolved, "/remote.php/dav/files/raelb/");
+        assert_eq!(resolved, "/remote.php/dav/files/testuser/");
     }
 
     #[test]
@@ -2888,7 +2969,7 @@ mod tests {
         let mut config = test_config("https://cloud.example.com");
         config.initial_path = Some("/Documents".to_string());
         let mut provider = WebDavProvider::new(config).unwrap();
-        provider.server_root = Some("/remote.php/dav/files/raelb/".to_string());
+        provider.server_root = Some("/remote.php/dav/files/testuser/".to_string());
 
         let chosen = provider
             .server_root
@@ -2896,6 +2977,44 @@ mod tests {
             .or(provider.config.initial_path.as_deref())
             .filter(|p| !p.is_empty())
             .unwrap_or("/");
-        assert_eq!(chosen, "/remote.php/dav/files/raelb/");
+        assert_eq!(chosen, "/remote.php/dav/files/testuser/");
+    }
+
+    #[test]
+    fn resolve_root_composes_relative_paths_under_nextcloud_root() {
+        let mut p = WebDavProvider::new(test_config("https://cloud.example.com")).unwrap();
+        p.server_root = Some("/remote.php/dav/files/testuser/".to_string());
+
+        // Bare caller paths get composed under the auto-detected root
+        // (the mkdir/put/delete bug: previously bypassed it -> 404/405).
+        assert_eq!(
+            p.resolve_root("/aeroftp-utest"),
+            "/remote.php/dav/files/testuser/aeroftp-utest"
+        );
+        // Collection form keeps its trailing slash.
+        assert_eq!(
+            p.resolve_root("/aeroftp-utest/"),
+            "/remote.php/dav/files/testuser/aeroftp-utest/"
+        );
+        // Literal root maps to the server root.
+        assert_eq!(p.resolve_root("/"), "/remote.php/dav/files/testuser/");
+
+        // Idempotent: already-rooted paths (GUI drill-down, where list()
+        // returns fully-rooted entry paths) are not double-prefixed.
+        assert_eq!(
+            p.resolve_root("/remote.php/dav/files/testuser/Documents"),
+            "/remote.php/dav/files/testuser/Documents"
+        );
+        assert_eq!(
+            p.resolve_root("/remote.php/dav/files/testuser/"),
+            "/remote.php/dav/files/testuser/"
+        );
+
+        // No distinct root => exact no-op (traditional servers, and the
+        // connect-time probes that run before server_root is set).
+        let mut t = WebDavProvider::new(test_config("https://dav.example.com")).unwrap();
+        assert_eq!(t.resolve_root("/aeroftp-utest"), "/aeroftp-utest");
+        t.server_root = Some("/".to_string());
+        assert_eq!(t.resolve_root("/aeroftp-utest"), "/aeroftp-utest");
     }
 }
