@@ -48,7 +48,7 @@ futures-util = "0.3"
 # origin-scoped state (localStorage, IndexedDB, server filters, theme, etc.).
 # The CVE vector requires loading remote/untrusted content, which AeroFTP
 # does not do, so the residual risk is not applicable to our surface.
-tauri = { version = "=2.11.0", features = ["tray-icon", "protocol-asset"] }
+tauri = { version = "=2.11.1", features = ["tray-icon", "protocol-asset"] }
 tauri-plugin-log = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-dialog = "2"
