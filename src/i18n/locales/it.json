@@ -1444,7 +1444,7 @@
             "insecureConnectionUnencrypted": "Questa connessione non è cifrata. Le credenziali vengono inviate in chiaro.",
             "usedNoCap": "utilizzati (provider senza quota)",
             "usedScanAction": "Calcola lo spazio usato",
-            "usedScanHint": "Scansiona ricorsivamente l'albero per calcolare lo spazio usato. Combinato con un totale manuale mostra usato/totale/%. Viene eseguito solo quando lo avvii.",
+            "usedScanHint": "Scansiona ricorsivamente l'albero per calcolare lo spazio usato. Combinato con un totale manuale mostra usato/totale/%. Parte su richiesta o quando il profilo salvato ha l'auto-scan attivo.",
             "usedScanRunning": "Scansione dello spazio usato...",
             "usedScanDone": "Spazio usato calcolato",
             "usedScanDoneDetail": "{used} su {files} file",

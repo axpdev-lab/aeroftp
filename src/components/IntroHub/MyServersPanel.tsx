@@ -398,9 +398,13 @@ export function MyServersPanel({
                     try { localStorage.setItem(STORAGE_KEY, serialized); } catch { /* quota */ }
                 }
                 setServers(prev => {
-                    if (prev.length === vaultServers.length && prev.every((p, i) => p.id === vaultServers[i].id)) {
-                        return prev;
-                    }
+                    // Same rows can still have fresh card data (lastQuota,
+                    // auth badges, lastConnected). Compare the content, not
+                    // only ids, or detailed cards keep stale quota until a
+                    // full app reload.
+                    try {
+                        if (JSON.stringify(prev) === serialized) return prev;
+                    } catch { /* fall through to replacing state */ }
                     return vaultServers;
                 });
             } catch { /* vault not ready / locked, localStorage value stays */ }

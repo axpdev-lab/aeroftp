@@ -2069,16 +2069,17 @@ interface UpdateVerificationInfo {
     all: ServerProfile[],
     cp: ConnectionParams,
     activeSession: FtpSession | undefined,
+    trustedSavedServerId?: string,
   ): ServerProfile | undefined => {
-    // Only SESSION-SCOPED ids, matching the contract documented above.
-    // cp.savedServerId is intentionally NOT a candidate: callers fall
-    // back to the GLOBAL connectionParams for cp, whose savedServerId
-    // goes stale across open sessions and was the paolella.it -> lab
-    // FTPS contamination vector. When cp IS the active session's
-    // connectionParams the same id is still reached via
-    // activeSession.connectionParams.savedServerId, so no legitimate
-    // session-scoped resolution is lost.
+    // Only SESSION-SCOPED ids, matching the contract documented above, plus
+    // a caller-supplied trusted id from a freshly clicked saved-server card.
+    // cp.savedServerId is intentionally NOT used implicitly: callers may pass
+    // the stale GLOBAL connectionParams, whose savedServerId caused the
+    // paolella.it -> lab FTPS contamination vector. When a fresh
+    // ConnectionParams object came directly from My Servers, callers opt in
+    // by passing trustedSavedServerId explicitly.
     for (const cand of [
+      trustedSavedServerId,
       activeSession?.savedServerId,
       activeSession?.connectionParams?.savedServerId,
     ]) {
@@ -2125,7 +2126,7 @@ interface UpdateVerificationInfo {
         // written onto a different profile's card across open sessions.
         const all = await loadSavedServerProfiles().catch(() => [] as ServerProfile[]);
         const liveCp = freshSessionParams || activeSession?.connectionParams || connectionParams;
-        const profileId = resolveLiveProfile(all, liveCp, activeSession)?.id;
+        const profileId = resolveLiveProfile(all, liveCp, activeSession, freshSessionParams?.savedServerId)?.id;
         void persistQuotaToProfile(profileId, { used: quota.used, total: quota.total, usedSource: 'api' });
       } catch (e) {
         console.warn('[StorageQuota] InfiniCloud quota failed:', e);
@@ -2143,7 +2144,7 @@ interface UpdateVerificationInfo {
         // open session's.
         const all = await loadSavedServerProfiles().catch(() => [] as ServerProfile[]);
         const liveCp = freshSessionParams || activeSession?.connectionParams || connectionParams;
-        const prof = resolveLiveProfile(all, liveCp, activeSession);
+        const prof = resolveLiveProfile(all, liveCp, activeSession, freshSessionParams?.savedServerId);
         const profileId = prof?.id;
         // A user-set manual cap is a TRUE override and wins even over an
         // API total (SFTP statfs = whole server disk, not the user's
@@ -2163,6 +2164,8 @@ interface UpdateVerificationInfo {
         const apiHasData = info.used > 0 || info.total > 0;
         if (!apiHasData) {
           const q = prof?.lastQuota;
+          const autoScan = !!(prof?.options?.autoScanUsedOnConnect || opts?.autoScanUsedOnConnect);
+          const hasScanBaseline = !!q && (q.usedSource === 'scan' || q.used > 0);
           if (version === quotaVersionRef.current) {
             if (q && (q.used > 0 || q.total > 0)) {
               const cached = resolveEffectiveQuota(q.used, q.total, manualTotal);
@@ -2178,6 +2181,13 @@ interface UpdateVerificationInfo {
               setStorageQuota(null);
             }
           }
+          if (autoScan && !hasScanBaseline) {
+            void scanUsedStorage({
+              automatic: true,
+              connectionParams: liveCp,
+              profileHint: prof,
+            });
+          }
           return;
         }
         const eff = resolveEffectiveQuota(info.used, info.total, manualTotal);
@@ -2186,6 +2196,16 @@ interface UpdateVerificationInfo {
           setStorageQuota({ used: eff.used, total: eff.total, free: info.free });
         }
         void persistQuotaToProfile(profileId, { used: info.used, total: info.total, usedSource: 'api' });
+        const autoScan = !!(prof?.options?.autoScanUsedOnConnect || opts?.autoScanUsedOnConnect);
+        const hasScanBaseline = !!prof?.lastQuota && (prof.lastQuota.usedSource === 'scan' || prof.lastQuota.used > 0);
+        const scanEligibleProtocol = ['ftp', 'ftps', 'sftp', 's3', 'webdav'].includes(protocol);
+        if (autoScan && scanEligibleProtocol && !hasScanBaseline) {
+          void scanUsedStorage({
+            automatic: true,
+            connectionParams: liveCp,
+            profileHint: prof,
+          });
+        }
       } catch (e) {
         console.warn('[StorageQuota] Failed to fetch:', e);
         if (version === quotaVersionRef.current) {
@@ -2205,7 +2225,7 @@ interface UpdateVerificationInfo {
       try {
         const all = await loadSavedServerProfiles();
         const liveCp = freshSessionParams || activeSession?.connectionParams || connectionParams;
-        const prof = resolveLiveProfile(all, liveCp, activeSession);
+        const prof = resolveLiveProfile(all, liveCp, activeSession, freshSessionParams?.savedServerId);
         if (prof) {
           const q = prof.lastQuota;
           // The saved profile is the source of truth for the manual cap
@@ -2215,6 +2235,8 @@ interface UpdateVerificationInfo {
             && prof.options.manualTotalBytes > 0)
             ? prof.options.manualTotalBytes
             : opts?.manualTotalBytes;
+          const autoScan = !!(prof.options?.autoScanUsedOnConnect || opts?.autoScanUsedOnConnect);
+          const hasScanBaseline = !!q && (q.usedSource === 'scan' || q.used > 0);
           if (q && (q.used > 0 || q.total > 0)) {
             const eff = resolveEffectiveQuota(q.used, q.total, manualTotal);
             if (version === quotaVersionRef.current) {
@@ -2226,16 +2248,26 @@ interface UpdateVerificationInfo {
               });
             }
             seeded = true;
-          } else if (manualTotal && manualTotal > 0) {
+          }
+          if (autoScan && !hasScanBaseline) {
+            // The user explicitly opted in. Seed the manual cap first (when
+            // present), then start the recursive walk so FTP/S3/WebDAV cards
+            // get their first real `used` value on this connection.
+            if (manualTotal && manualTotal > 0 && version === quotaVersionRef.current && !q) {
+              setStorageQuota({ used: 0, total: manualTotal, free: manualTotal });
+            }
+            void scanUsedStorage({
+              automatic: true,
+              connectionParams: liveCp,
+              profileHint: prof,
+            });
+            seeded = true;
+          } else if (manualTotal && manualTotal > 0 && !q) {
             // A manual cap is configured but nothing scanned yet: show
             // "- / cap" instead of clearing the StatusBar to nothing.
             if (version === quotaVersionRef.current) {
               setStorageQuota({ used: 0, total: manualTotal, free: manualTotal });
             }
-            seeded = true;
-          } else if (prof.options?.autoScanUsedOnConnect || opts?.autoScanUsedOnConnect) {
-            // Per-profile opt-in (default OFF): compute it once now.
-            void scanUsedStorage();
             seeded = true;
           }
         }
@@ -2247,12 +2279,16 @@ interface UpdateVerificationInfo {
   };
 
   // Item 4b: explicit "used storage" scan for the connected provider.
-  // NEVER automatic: triggered by the StatusBar action. Computes `used`
-  // recursively (shared used_scan helper: S3 flat / WebDAV infinity / BFS),
+  // Triggered by the StatusBar action or by the per-profile opt-in on first
+  // connect. Computes `used` recursively (S3 flat / WebDAV infinity / BFS),
   // turns it into a real bar via the item 4a effective-total rule, and
   // caches it into the profile (usedSource:'scan') so My Servers/profiles
   // show it without rescanning.
-  const scanUsedStorage = async () => {
+  const scanUsedStorage = async (scanOptions?: {
+    automatic?: boolean;
+    connectionParams?: ConnectionParams;
+    profileHint?: ServerProfile;
+  }) => {
     // Synchronous re-entry latch: usedScanStatus?.running is React state
     // captured from the render closure, so a fast double-click / Enter
     // repeat in the same frame passes the guard twice, registering two
@@ -2264,7 +2300,7 @@ interface UpdateVerificationInfo {
     scanInFlightRef.current = true;
     const version = ++quotaVersionRef.current;
     const activeSession = sessions.find(s => s.id === activeSessionId);
-    const cp = activeSession?.connectionParams || connectionParams;
+    const cp = scanOptions?.connectionParams || activeSession?.connectionParams || connectionParams;
     const opts = cp.options || connectionParams.options;
     // Resolve the saved profile against the LIVE connection identity (see
     // resolveLiveProfile). A stale connectionParams.savedServerId must
@@ -2278,10 +2314,14 @@ interface UpdateVerificationInfo {
     let profileId: string | undefined;
     try {
       const all = await loadSavedServerProfiles();
-      const prof = resolveLiveProfile(all, cp, activeSession);
+      const prof = scanOptions?.profileHint
+        || resolveLiveProfile(all, cp, activeSession, scanOptions?.connectionParams?.savedServerId);
       if (prof) {
         profileId = prof.id;
-        if (prof.initialPath?.trim()) scanRoot = prof.initialPath.trim();
+        if (prof.initialPath?.trim()) {
+          const resolved = resolveUsernameTemplate(prof.initialPath.trim(), cp.username);
+          scanRoot = stripLegacyNextcloudWebdavRoot(resolved, prof.providerId, cp.username) || resolved || prof.initialPath.trim();
+        }
         const m = prof.options?.manualTotalBytes;
         if (typeof m === 'number' && m > 0) manualTotal = m;
       }
@@ -2302,6 +2342,9 @@ interface UpdateVerificationInfo {
     };
     setUsedScanStatus({ running: true, files: 0, bytes: 0 });
     provisional(0);
+    if (scanOptions?.automatic) {
+      notify.info(t('statusBar.usedScanRunning'), t('connection.autoScanUsedOnConnectHint'));
+    }
     // Track the whole scan lifecycle (start -> result) in the Activity Log
     // for EVERY backend: the scan path is shared, so S3 (list-recursive),
     // WebDAV (Depth:infinity / bfs) and FTP/SFTP (bfs) all funnel here.
@@ -2353,7 +2396,7 @@ interface UpdateVerificationInfo {
             files: res.file_count,
           });
         }
-        void persistQuotaToProfile(profileId, {
+        await persistQuotaToProfile(profileId, {
           used: res.used,
           total: 0,
           usedSource: 'scan',
