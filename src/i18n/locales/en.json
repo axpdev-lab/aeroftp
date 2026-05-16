@@ -3148,7 +3148,7 @@
       "secureConnectionTitle": "Encrypted connection via {protocol}",
       "usedNoCap": "used (no quota cap)",
       "usedScanAction": "Calculate used storage",
-      "usedScanHint": "Recursively scan the tree to compute used space. Combined with a manual total it shows used/total/%. Runs only when you trigger it.",
+      "usedScanHint": "Recursively scan the tree to compute used space. Combined with a manual total it shows used/total/%. Runs on demand or when the saved profile has auto-scan enabled.",
       "usedScanRunning": "Scanning used storage...",
       "usedScanDone": "Used storage calculated",
       "usedScanDoneDetail": "{used} across {files} files",
