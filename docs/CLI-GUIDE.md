@@ -211,6 +211,21 @@ aeroftp-cli ls sftp://user@host / -l --sort size --reverse
 aeroftp-cli ls sftp://user@host / --all
 ```
 
+### lsd / lsl / lsf - rclone-style List Variants
+
+```bash
+# Directories only
+aeroftp-cli lsd --profile "My S3" /
+
+# Long listing (permissions, size, date, name)
+aeroftp-cli lsl --profile "My S3" /backups
+
+# Flat names, one entry per line (pipe-friendly)
+aeroftp-cli lsf --profile "My S3" / | grep '\.tar\.gz$'
+```
+
+Predictable list shapes for shell users coming from rclone. `lsd` shows only directories, `lsl` is the long format, and `lsf` prints bare entries one per line. The human summary always goes to stderr, so `lsf` stdout stays clean for pipelines. All three accept the same path and `--profile` rules as `ls`.
+
 ### get - Download Files
 
 ```bash
@@ -282,6 +297,24 @@ aeroftp-cli rm sftp://user@host /var/www/old-file.txt
 # Delete a directory recursively
 aeroftp-cli rm sftp://user@host /var/www/old-folder/ -rf
 ```
+
+### rmdir - Remove an Empty Directory
+
+```bash
+aeroftp-cli rmdir --profile "My S3" /backups/2024-archived
+```
+
+Removes a single directory only when it is empty. A non-empty target is refused with exit code 9 (the emptiness check counts every entry, including dotfiles), so `rmdir` is safe to script against where `rm -r` / `purge` would wipe the whole subtree. Returns exit 2 if the path does not exist.
+
+### purge - Recursive Delete of a Path
+
+```bash
+# Confirms interactively unless --force
+aeroftp-cli purge --profile "My S3" /tmp/old-namespace
+aeroftp-cli purge --profile "My S3" /tmp/old-namespace --force
+```
+
+Removes a path and everything under it (rclone-style `purge`). It routes through the same engine as `rm -r`, so it inherits the root guard (refuses to purge `/`), the confirmation prompt, and the shared error / exit-code mapping.
 
 ### mv - Rename / Move
 
@@ -374,6 +407,18 @@ aeroftp-cli tree sftp://user@host /var/www/ -d 2
 ```
 
 Renders a tree with Unicode connectors (├──, └──) showing the directory hierarchy. Cycle-safe with visited-path tracking.
+
+### size - Total Size and Object Count
+
+```bash
+# Scan the profile initialPath subtree
+aeroftp-cli size --profile "My S3" /
+
+# A specific subtree, JSON output
+aeroftp-cli --json size --profile "My S3" /backups
+```
+
+Reports the recursive object count and total bytes under a path (rclone-style `size`). It reuses the same scan engine as `df --scan`: S3 flat list-recursive, WebDAV `Depth:infinity` with a BFS fallback, generic BFS elsewhere, and the same depth/entry caps. Files and directories are reported separately because SFTP/FTP/WebDAV model real directories that object stores do not. A capped scan sets `truncated: true` (JSON) or prints a `TRUNCATED` marker, so the figure is a clear lower bound. Never issues a per-file `stat()`.
 
 ### head - First N Lines
 
