@@ -273,6 +273,27 @@ impl WebDavProvider {
         })
     }
 
+    /// Normalize a collection (directory) path to the trailing-slash form.
+    ///
+    /// Apache mod_dav answers a collection request (PROPFIND/MKCOL/DELETE/
+    /// MOVE) whose path lacks a trailing slash with `301 Moved Permanently`
+    /// to the slash form. Behind a TLS-terminating reverse proxy that 301
+    /// carries an `http://` Location, so reqwest sees a scheme downgrade,
+    /// treats the hop as cross-origin, strips the `Authorization` header,
+    /// and the redirected request 401s: this is what surfaced as
+    /// `Session expired` on `check`/`tree` and as a 401 on directory
+    /// delete. Callers that always target collections normalize through
+    /// this so the redirect never happens. File verbs (GET/PUT/file
+    /// DELETE) must NOT use it: a trailing slash there would point at a
+    /// non-existent collection.
+    fn collection_path(path: &str) -> String {
+        if path.is_empty() || path == "/" || path.ends_with('/') {
+            path.to_string()
+        } else {
+            format!("{}/", path)
+        }
+    }
+
     /// Build full URL for a path
     fn build_url(&self, path: &str) -> String {
         let base = self.config.url.trim_end_matches('/');
@@ -348,6 +369,75 @@ impl WebDavProvider {
         }
 
         unreachable!("retry loop must return on final attempt")
+    }
+
+    /// Send a PROPFIND and, on a `401` that carries a fresh
+    /// `WWW-Authenticate: Digest` challenge, re-negotiate the Digest state
+    /// once and retry the request.
+    ///
+    /// Long recursive scans (`check` / `tree` right after `sync`) issue many
+    /// sequential PROPFIND requests reusing one cached `nonce`. Servers and
+    /// reverse proxies expire that nonce by TTL or by use count and answer
+    /// `401 ... stale=true` with a brand-new nonce, expecting the client to
+    /// re-handshake (RFC 2617 section 3.3). Without this, the first stale
+    /// `401` was surfaced as `Session expired` even though the credentials
+    /// were still valid: the WebDAV recursive-scan defect reproduced against
+    /// `dav.lab.axpdev.it`. Basic-auth servers never emit a Digest challenge,
+    /// so a genuine `401` there still propagates unchanged for the caller to
+    /// map.
+    async fn send_propfind(
+        &mut self,
+        path: &str,
+        depth: &str,
+        body: &'static str,
+    ) -> Result<reqwest::Response, ProviderError> {
+        // `list()` and `list_recursive()` always target collections;
+        // normalize to the trailing-slash form so Apache does not 301 to a
+        // scheme-downgraded URL that loses auth. See `collection_path`.
+        let dir_path = Self::collection_path(path);
+        let path = dir_path.as_str();
+
+        let response = self
+            .request(webdav_methods::propfind(), path)
+            .header("Depth", depth)
+            .header("Content-Type", "application/xml")
+            .body(body)
+            .send()
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        if response.status() != StatusCode::UNAUTHORIZED {
+            return Ok(response);
+        }
+
+        let www_auth = response
+            .headers()
+            .get("www-authenticate")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string();
+
+        let Some(state) = DigestState::parse(&www_auth) else {
+            // No Digest challenge (Basic auth, or a genuine credential
+            // failure): keep the existing behaviour and let the caller map
+            // the 401.
+            return Ok(response);
+        };
+
+        tracing::debug!(
+            "[WebDAV] PROPFIND 401 with Digest challenge, re-negotiating stale nonce (realm={}, nonce={}...)",
+            state.realm,
+            &state.nonce[..state.nonce.len().min(12)]
+        );
+        self.digest_auth = Some(state);
+
+        self.request(webdav_methods::propfind(), path)
+            .header("Depth", depth)
+            .header("Content-Type", "application/xml")
+            .body(body)
+            .send()
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))
     }
 
     // ─── Nextcloud OCS / Trashbin helpers ─────────────────────────────
@@ -878,10 +968,9 @@ impl WebDavProvider {
         };
 
         let response = self
-            .request(webdav_methods::propfind(), &list_path)
-            .header("Depth", "infinity")
-            .header("Content-Type", "application/xml")
-            .body(
+            .send_propfind(
+                &list_path,
+                "infinity",
                 r#"<?xml version="1.0" encoding="utf-8"?>
                 <d:propfind xmlns:d="DAV:">
                     <d:prop>
@@ -894,9 +983,7 @@ impl WebDavProvider {
                     </d:prop>
                 </d:propfind>"#,
             )
-            .send()
-            .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .await?;
 
         let status = response.status();
         match status {
@@ -1563,10 +1650,9 @@ impl StorageProvider for WebDavProvider {
         tracing::debug!("[WebDAV] Listing path: {}", list_path);
 
         let response = self
-            .request(webdav_methods::propfind(), &list_path)
-            .header("Depth", "1")
-            .header("Content-Type", "application/xml")
-            .body(
+            .send_propfind(
+                &list_path,
+                "1",
                 r#"<?xml version="1.0" encoding="utf-8"?>
                 <d:propfind xmlns:d="DAV:">
                     <d:prop>
@@ -1579,9 +1665,7 @@ impl StorageProvider for WebDavProvider {
                     </d:prop>
                 </d:propfind>"#,
             )
-            .send()
-            .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .await?;
 
         let status = response.status();
         tracing::debug!("[WebDAV] List response status: {}", status);
@@ -1867,8 +1951,11 @@ impl StorageProvider for WebDavProvider {
             return Err(ProviderError::NotConnected);
         }
 
+        // MKCOL always targets a collection: use the trailing-slash form so
+        // Apache does not 301 to a scheme-downgraded URL that loses auth.
+        let col = Self::collection_path(path);
         let response = self
-            .request(webdav_methods::mkcol(), path)
+            .request(webdav_methods::mkcol(), &col)
             .send()
             .await
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
@@ -1915,13 +2002,16 @@ impl StorageProvider for WebDavProvider {
     }
 
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
-        // WebDAV DELETE works for both files and directories
-        self.delete(path).await
+        // WebDAV DELETE works for both files and directories, but a
+        // directory DELETE without a trailing slash triggers the same
+        // scheme-downgrading 301 that strips auth (see `collection_path`).
+        self.delete(&Self::collection_path(path)).await
     }
 
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
-        // WebDAV DELETE automatically deletes recursively
-        self.delete(path).await
+        // WebDAV DELETE automatically deletes recursively. Trailing-slash
+        // form for the same reason as `rmdir`.
+        self.delete(&Self::collection_path(path)).await
     }
 
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
