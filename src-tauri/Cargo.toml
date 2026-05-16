@@ -149,7 +149,7 @@ scrypt = "0.11"                                                        # Cryptom
 aes-kw = "0.2"                                                         # AES Key Wrap (RFC 3394)
 aes-siv = "0.7"                                                        # AES-SIV filename encryption
 data-encoding = "2"                                                    # Base32/Base64 encoding
-jsonwebtoken = { version = "10.3", default-features = false, features = ["aws-lc-rs", "hmac", "use_pem"] } # JWT HS256 + GitHub App RS256 without RustCrypto rsa
+jsonwebtoken = { version = "10.4", default-features = false, features = ["aws-lc-rs", "hmac", "use_pem"] } # JWT HS256 + GitHub App RS256 without RustCrypto rsa
 
 # AeroVault v2 - Military-Grade Encryption (v1.8.0)
 aerovault = "0.3.5"                                                    # AeroVault v2 standalone crate (crates.io)
