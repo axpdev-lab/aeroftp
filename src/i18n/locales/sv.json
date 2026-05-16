@@ -971,7 +971,11 @@
             "keystoreExportModeFull": "Fullständig backup (rekommenderas)",
             "keystoreExportModeFullDesc": "Valvinloggningar, AI-chatthistorik, agentminne, filtaggar, installerade plugins, synkroniseringsögonblicksbilder och sparade inställningar. Hela applikationens tillstånd i en enda krypterad fil.",
             "keystoreExportModeVaultOnly": "Endast valv (legacy)",
-            "keystoreExportModeVaultOnlyDesc": "Endast krypterade inloggningsuppgifter och serverprofiler. Mindre, snabbare, identisk med exporter före v3.7.8. Användbart när du migrerar servrar mellan datorer utan att ta med chatthistoriken."
+            "keystoreExportModeVaultOnlyDesc": "Endast krypterade inloggningsuppgifter och serverprofiler. Mindre, snabbare, identisk med exporter före v3.7.8. Användbart när du migrerar servrar mellan datorer utan att ta med chatthistoriken.",
+            "themeIceDesc": "Frisk isblå-vit palett för ett lugnt, frostigt utseende",
+            "themeIceLabel": "Is",
+            "themeRedlavaDesc": "Smält lavaröd på nästan svart för ett djärvt, eldigt utseende",
+            "themeRedlavaLabel": "Red Lava"
         },
         "devtools": {
             "title": "AeroTools",

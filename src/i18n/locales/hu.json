@@ -971,7 +971,11 @@
             "keystoreExportModeFull": "Teljes biztonsági mentés (ajánlott)",
             "keystoreExportModeFullDesc": "Trezor hitelesítő adatok, AI beszélgetési előzmények, ügynök memória, fájlcímkék, telepített pluginok, szinkronizációs pillanatképek és mentett beállítások. A teljes alkalmazásállapot egyetlen titkosított fájlban.",
             "keystoreExportModeVaultOnly": "Csak trezor (örökölt)",
-            "keystoreExportModeVaultOnlyDesc": "Csak a titkosított hitelesítő adatok és szerverprofilok. Kisebb, gyorsabb, megegyezik a v3.7.8 előtti exportokkal. Hasznos, ha szervereket költöztet gépek között a beszélgetési előzmények nélkül."
+            "keystoreExportModeVaultOnlyDesc": "Csak a titkosított hitelesítő adatok és szerverprofilok. Kisebb, gyorsabb, megegyezik a v3.7.8 előtti exportokkal. Hasznos, ha szervereket költöztet gépek között a beszélgetési előzmények nélkül.",
+            "themeIceDesc": "Friss jeges fehér-kék paletta nyugodt, zúzmarás megjelenéshez",
+            "themeIceLabel": "Jég",
+            "themeRedlavaDesc": "Olvadt lávavörös majdnem feketén merész, tüzes megjelenéshez",
+            "themeRedlavaLabel": "Red Lava"
         },
         "devtools": {
             "title": "AeroTools",

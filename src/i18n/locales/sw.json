@@ -971,7 +971,11 @@
             "keystoreExportModeFull": "Backup kamili (inapendekezwa)",
             "keystoreExportModeFullDesc": "Vitambulisho vya vault, historia ya mazungumzo ya AI, kumbukumbu ya wakala, lebo za faili, plugins zilizosakinishwa, picha za usawazishaji, na mapendeleo yaliyohifadhiwa. Hali kamili ya programu katika faili moja iliyosimbwa.",
             "keystoreExportModeVaultOnly": "Vault tu (legacy)",
-            "keystoreExportModeVaultOnlyDesc": "Vitambulisho vilivyosimbwa na wasifu wa seva tu. Ndogo, haraka zaidi, sawa na ku-export kabla ya v3.7.8. Inafaa wakati wa kuhamisha seva kati ya mashine bila kubeba historia ya mazungumzo."
+            "keystoreExportModeVaultOnlyDesc": "Vitambulisho vilivyosimbwa na wasifu wa seva tu. Ndogo, haraka zaidi, sawa na ku-export kabla ya v3.7.8. Inafaa wakati wa kuhamisha seva kati ya mashine bila kubeba historia ya mazungumzo.",
+            "themeIceDesc": "Paleti angavu nyeupe-bluu kama barafu kwa mwonekano tulivu, wenye umande",
+            "themeIceLabel": "Barafu",
+            "themeRedlavaDesc": "Nyekundu ya lava iliyoyeyuka juu ya karibu nyeusi kwa mwonekano jasiri, wa moto",
+            "themeRedlavaLabel": "Red Lava"
         },
         "devtools": {
             "title": "AeroTools",

@@ -971,7 +971,11 @@
             "keystoreExportModeFull": "Vollständiges Backup (empfohlen)",
             "keystoreExportModeFullDesc": "Tresor-Zugangsdaten, AI-Chatverlauf, Agentenspeicher, Datei-Tags, installierte Plugins, Sync-Snapshots und gespeicherte Einstellungen. Der komplette Anwendungszustand in einer einzigen verschlüsselten Datei.",
             "keystoreExportModeVaultOnly": "Nur Tresor (Legacy)",
-            "keystoreExportModeVaultOnlyDesc": "Nur die verschlüsselten Zugangsdaten und Serverprofile. Kleiner, schneller, identisch mit Exporten vor v3.7.8. Nützlich, wenn Sie Server zwischen Rechnern migrieren, ohne den Chatverlauf mitzunehmen."
+            "keystoreExportModeVaultOnlyDesc": "Nur die verschlüsselten Zugangsdaten und Serverprofile. Kleiner, schneller, identisch mit Exporten vor v3.7.8. Nützlich, wenn Sie Server zwischen Rechnern migrieren, ohne den Chatverlauf mitzunehmen.",
+            "themeIceDesc": "Klare, eisig weiß-blaue Palette für einen ruhigen, frostigen Look",
+            "themeIceLabel": "Eis",
+            "themeRedlavaDesc": "Geschmolzenes Lavarot auf Fast-Schwarz für einen kühnen, feurigen Look",
+            "themeRedlavaLabel": "Red Lava"
         },
         "devtools": {
             "title": "AeroTools",

@@ -971,7 +971,11 @@
             "keystoreExportModeFull": "Pełny backup (zalecane)",
             "keystoreExportModeFullDesc": "Dane uwierzytelniające skarbca, historia czatów AI, pamięć agenta, tagi plików, zainstalowane pluginy, migawki synchronizacji oraz zapisane preferencje. Kompletny stan aplikacji w jednym zaszyfrowanym pliku.",
             "keystoreExportModeVaultOnly": "Tylko skarbiec (legacy)",
-            "keystoreExportModeVaultOnlyDesc": "Tylko zaszyfrowane dane uwierzytelniające i profile serwerów. Mniejszy, szybszy, identyczny z eksportami sprzed v3.7.8. Przydatny przy migracji serwerów między komputerami bez przenoszenia historii czatów."
+            "keystoreExportModeVaultOnlyDesc": "Tylko zaszyfrowane dane uwierzytelniające i profile serwerów. Mniejszy, szybszy, identyczny z eksportami sprzed v3.7.8. Przydatny przy migracji serwerów między komputerami bez przenoszenia historii czatów.",
+            "themeIceDesc": "Świeża lodowa biało-niebieska paleta dla spokojnego, oszronionego wyglądu",
+            "themeIceLabel": "Lód",
+            "themeRedlavaDesc": "Roztopiona lawowa czerwień na niemal czarnym dla śmiałego, ognistego wyglądu",
+            "themeRedlavaLabel": "Red Lava"
         },
         "devtools": {
             "title": "AeroTools",

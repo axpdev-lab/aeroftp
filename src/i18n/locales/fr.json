@@ -971,7 +971,11 @@
             "keystoreExportModeFull": "Sauvegarde complète (recommandé)",
             "keystoreExportModeFullDesc": "Identifiants du coffre, historique des conversations AI, mémoire de l'agent, étiquettes de fichiers, plugins installés, instantanés de synchronisation et préférences enregistrées. L'état complet de l'application dans un seul fichier chiffré.",
             "keystoreExportModeVaultOnly": "Coffre uniquement (hérité)",
-            "keystoreExportModeVaultOnlyDesc": "Uniquement les identifiants chiffrés et les profils de serveurs. Plus petit, plus rapide, identique aux exports antérieurs à la v3.7.8. Utile lors de la migration de serveurs entre machines sans emporter l'historique des conversations."
+            "keystoreExportModeVaultOnlyDesc": "Uniquement les identifiants chiffrés et les profils de serveurs. Plus petit, plus rapide, identique aux exports antérieurs à la v3.7.8. Utile lors de la migration de serveurs entre machines sans emporter l'historique des conversations.",
+            "themeIceDesc": "Palette blanc-bleu glacé et nette pour un rendu calme et givré",
+            "themeIceLabel": "Glace",
+            "themeRedlavaDesc": "Rouge lave en fusion sur presque noir pour un rendu audacieux et ardent",
+            "themeRedlavaLabel": "Red Lava"
         },
         "devtools": {
             "title": "AeroTools",

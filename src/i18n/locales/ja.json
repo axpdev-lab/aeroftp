@@ -971,7 +971,11 @@
             "keystoreExportModeFull": "完全バックアップ (推奨)",
             "keystoreExportModeFullDesc": "ボルト認証情報、AI チャット履歴、エージェントメモリ、ファイルタグ、インストール済みプラグイン、同期スナップショット、保存された設定。アプリケーション全体の状態を 1 つの暗号化ファイルにまとめます。",
             "keystoreExportModeVaultOnly": "ボルトのみ (レガシー)",
-            "keystoreExportModeVaultOnlyDesc": "暗号化された認証情報とサーバープロファイルのみ。より小さく、より高速で、v3.7.8 以前のエクスポートと同一です。チャット履歴を持ち込まずにマシン間でサーバーを移行する場合に便利です。"
+            "keystoreExportModeVaultOnlyDesc": "暗号化された認証情報とサーバープロファイルのみ。より小さく、より高速で、v3.7.8 以前のエクスポートと同一です。チャット履歴を持ち込まずにマシン間でサーバーを移行する場合に便利です。",
+            "themeIceDesc": "穏やかで霜のような印象のための、澄んだ氷の白青パレット",
+            "themeIceLabel": "アイス",
+            "themeRedlavaDesc": "大胆で燃えるような印象のための、ほぼ黒に映える溶岩レッド",
+            "themeRedlavaLabel": "Red Lava"
         },
         "devtools": {
             "title": "AeroTools",

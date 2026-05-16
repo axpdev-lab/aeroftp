@@ -971,7 +971,11 @@
             "keystoreExportModeFull": "Visa atsarginė kopija (rekomenduojama)",
             "keystoreExportModeFullDesc": "Saugyklos prisijungimo duomenys, AI pokalbių istorija, agento atmintis, failų žymos, įdiegti įskiepiai, sinchronizavimo momentinės kopijos ir išsaugotos nuostatos. Visa programos būsena viename užšifruotame faile.",
             "keystoreExportModeVaultOnly": "Tik saugykla (pasenusi)",
-            "keystoreExportModeVaultOnlyDesc": "Tik užšifruoti prisijungimo duomenys ir serverių profiliai. Mažesnė, greitesnė, identiška iki v3.7.8 versijų eksportams. Naudinga perkeliant serverius tarp kompiuterių be pokalbių istorijos."
+            "keystoreExportModeVaultOnlyDesc": "Tik užšifruoti prisijungimo duomenys ir serverių profiliai. Mažesnė, greitesnė, identiška iki v3.7.8 versijų eksportams. Naudinga perkeliant serverius tarp kompiuterių be pokalbių istorijos.",
+            "themeIceDesc": "Gaivi ledinė balta-mėlyna paletė ramiam, šerkšnotam vaizdui",
+            "themeIceLabel": "Ledas",
+            "themeRedlavaDesc": "Išsilydžiusi lavos raudona ant beveik juodos drąsiam, ugningam vaizdui",
+            "themeRedlavaLabel": "Red Lava"
         },
         "devtools": {
             "title": "AeroTools",

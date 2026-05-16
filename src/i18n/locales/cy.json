@@ -971,7 +971,11 @@
             "keystoreExportModeFull": "Copi wrth gefn llawn (argymhellir)",
             "keystoreExportModeFullDesc": "Manylion mewngofnodi'r gladdgell, hanes sgyrsiau AI, cof yr asiant, tagiau ffeiliau, ategion wedi'u gosod, ciplluniau cydamseru a dewisiadau sydd wedi'u cadw. Cyflwr cyflawn y rhaglen mewn un ffeil wedi'i hamgryptio.",
             "keystoreExportModeVaultOnly": "Claddgell yn unig (etifeddol)",
-            "keystoreExportModeVaultOnlyDesc": "Dim ond y manylion mewngofnodi wedi'u hamgryptio a phroffiliau'r gweinyddion. Llai, cyflymach, yr un fath ag allforion cyn v3.7.8. Defnyddiol wrth fudo gweinyddion rhwng peiriannau heb lusgo hanes sgyrsiau gyda chi."
+            "keystoreExportModeVaultOnlyDesc": "Dim ond y manylion mewngofnodi wedi'u hamgryptio a phroffiliau'r gweinyddion. Llai, cyflymach, yr un fath ag allforion cyn v3.7.8. Defnyddiol wrth fudo gweinyddion rhwng peiriannau heb lusgo hanes sgyrsiau gyda chi.",
+            "themeIceDesc": "Palet gwyn-las rhewllyd, clir am olwg dawel, barugog",
+            "themeIceLabel": "Iâ",
+            "themeRedlavaDesc": "Coch lafa tawdd ar ddu bron am olwg feiddgar, danllyd",
+            "themeRedlavaLabel": "Red Lava"
         },
         "devtools": {
             "title": "AeroTools",

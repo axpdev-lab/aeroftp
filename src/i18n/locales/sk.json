@@ -971,7 +971,11 @@
             "keystoreExportModeFull": "Úplný backup (odporúčané)",
             "keystoreExportModeFullDesc": "Prihlasovacie údaje trezoru, história AI konverzácií, pamäť agenta, značky súborov, nainštalované pluginy, snímky synchronizácie a uložené predvoľby. Kompletný stav aplikácie v jednom šifrovanom súbore.",
             "keystoreExportModeVaultOnly": "Iba trezor (legacy)",
-            "keystoreExportModeVaultOnlyDesc": "Iba šifrované prihlasovacie údaje a profily serverov. Menší, rýchlejší, identický s exportmi pred v3.7.8. Užitočné pri migrácii serverov medzi počítačmi bez prenášania histórie konverzácií."
+            "keystoreExportModeVaultOnlyDesc": "Iba šifrované prihlasovacie údaje a profily serverov. Menší, rýchlejší, identický s exportmi pred v3.7.8. Užitočné pri migrácii serverov medzi počítačmi bez prenášania histórie konverzácií.",
+            "themeIceDesc": "Svieža ľadovo bielo-modrá paleta pre pokojný, zamrznutý vzhľad",
+            "themeIceLabel": "Ľad",
+            "themeRedlavaDesc": "Roztavená lávová červeň na takmer čiernej pre odvážny, ohnivý vzhľad",
+            "themeRedlavaLabel": "Red Lava"
         },
         "devtools": {
             "title": "AeroTools",

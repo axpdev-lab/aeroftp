@@ -7,7 +7,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { sendNotification } from '@tauri-apps/plugin-notification';
 import { readFile } from '@tauri-apps/plugin-fs';
-import { X, Settings, Server, Upload, Download, Palette, Trash2, Edit, Plus, FolderOpen, Wifi, FileCheck, Cloud, ExternalLink, Key, Clock, Shield, Lock, Eye, EyeOff, ShieldCheck, AlertCircle, CheckCircle2, MonitorCheck, Power, Sun, Moon, MoonStar, Leaf, Monitor, Image, Shapes, Info, Copy, Link2 } from 'lucide-react';
+import { X, Settings, Server, Upload, Download, Palette, Trash2, Edit, Plus, FolderOpen, Wifi, FileCheck, Cloud, ExternalLink, Key, Clock, Shield, Lock, Eye, EyeOff, ShieldCheck, AlertCircle, CheckCircle2, MonitorCheck, Power, Sun, Moon, MoonStar, Leaf, Snowflake, Flame, Monitor, Image, Shapes, Info, Copy, Link2 } from 'lucide-react';
 import type { Theme } from '../hooks/useTheme';
 import { getEffectiveTheme } from '../hooks/useTheme';
 import { useIconTheme } from '../hooks/useIconTheme';
@@ -3203,6 +3203,26 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         selectedIcon: 'text-green-500',
                                                         checkBg: 'bg-green-500',
                                                         desc: t('settings.themeGreenDesc'),
+                                                    },
+                                                    {
+                                                        id: 'ice' as Theme,
+                                                        label: t('settings.themeIceLabel'),
+                                                        icon: <Snowflake size={20} />,
+                                                        colors: ['#f4f9ff', '#e8f2fc', '#0ea5e9'],
+                                                        selectedBorder: 'border-sky-500 ring-1 ring-sky-500/30 bg-sky-500/5',
+                                                        selectedIcon: 'text-sky-500',
+                                                        checkBg: 'bg-sky-500',
+                                                        desc: t('settings.themeIceDesc'),
+                                                    },
+                                                    {
+                                                        id: 'redlava' as Theme,
+                                                        label: t('settings.themeRedlavaLabel'),
+                                                        icon: <Flame size={20} />,
+                                                        colors: ['#120406', '#0a0203', '#db282e'],
+                                                        selectedBorder: 'border-red-600 ring-1 ring-red-600/30 bg-red-600/5',
+                                                        selectedIcon: 'text-red-600',
+                                                        checkBg: 'bg-red-600',
+                                                        desc: t('settings.themeRedlavaDesc'),
                                                     },
                                                 ].map((themeOption) => {
                                                     const isSelected = appThemeProp === themeOption.id;

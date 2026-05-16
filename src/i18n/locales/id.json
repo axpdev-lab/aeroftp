@@ -971,7 +971,11 @@
             "keystoreExportModeFull": "Cadangan lengkap (direkomendasikan)",
             "keystoreExportModeFullDesc": "Kredensial brankas, riwayat obrolan AI, memori agen, tag file, plugin terpasang, snapshot sinkronisasi, dan preferensi tersimpan. Keadaan aplikasi lengkap dalam satu file terenkripsi.",
             "keystoreExportModeVaultOnly": "Brankas saja (lama)",
-            "keystoreExportModeVaultOnlyDesc": "Hanya kredensial terenkripsi dan profil server. Lebih kecil, lebih cepat, identik dengan ekspor sebelum v3.7.8. Berguna saat memigrasikan server antar mesin tanpa membawa riwayat obrolan."
+            "keystoreExportModeVaultOnlyDesc": "Hanya kredensial terenkripsi dan profil server. Lebih kecil, lebih cepat, identik dengan ekspor sebelum v3.7.8. Berguna saat memigrasikan server antar mesin tanpa membawa riwayat obrolan.",
+            "themeIceDesc": "Palet putih-biru sebening es untuk tampilan tenang dan berembun",
+            "themeIceLabel": "Es",
+            "themeRedlavaDesc": "Merah lava cair di atas nyaris hitam untuk tampilan berani dan berapi",
+            "themeRedlavaLabel": "Red Lava"
         },
         "devtools": {
             "title": "AeroTools",

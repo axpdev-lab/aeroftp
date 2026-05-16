@@ -971,7 +971,11 @@
             "keystoreExportModeFull": "Còpia de seguretat completa (recomanat)",
             "keystoreExportModeFullDesc": "Credencials de la caixa forta, historial de xats d'AI, memòria de l'agent, etiquetes de fitxers, plugins instal·lats, instantànies de sincronització i preferències desades. L'estat complet de l'aplicació en un únic fitxer xifrat.",
             "keystoreExportModeVaultOnly": "Només la caixa forta (heretat)",
-            "keystoreExportModeVaultOnlyDesc": "Només les credencials xifrades i els perfils de servidor. Més petit, més ràpid, idèntic a les exportacions anteriors a la v3.7.8. Útil per migrar servidors entre màquines sense arrossegar l'historial de xats."
+            "keystoreExportModeVaultOnlyDesc": "Només les credencials xifrades i els perfils de servidor. Més petit, més ràpid, idèntic a les exportacions anteriors a la v3.7.8. Útil per migrar servidors entre màquines sense arrossegar l'historial de xats.",
+            "themeIceDesc": "Paleta blanc-blau gèlid i nítida per a un aspecte tranquil i gebrat",
+            "themeIceLabel": "Gel",
+            "themeRedlavaDesc": "Vermell de lava roent sobre negre profund per a un aspecte atrevit i ardent",
+            "themeRedlavaLabel": "Red Lava"
         },
         "devtools": {
             "title": "AeroTools",

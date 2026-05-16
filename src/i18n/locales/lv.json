@@ -971,7 +971,11 @@
             "keystoreExportModeFull": "Pilna dublējumkopija (ieteicams)",
             "keystoreExportModeFullDesc": "Glabātavas akreditācijas dati, AI sarunu vēsture, aģenta atmiņa, failu birkas, instalētie spraudņi, sinhronizācijas momentuzņēmumi un saglabātie iestatījumi. Pilnīgs lietojumprogrammas stāvoklis vienā šifrētā failā.",
             "keystoreExportModeVaultOnly": "Tikai glabātava (mantotā)",
-            "keystoreExportModeVaultOnlyDesc": "Tikai šifrēti akreditācijas dati un serveru profili. Mazāks, ātrāks, identisks pirms v3.7.8 eksportiem. Noderīgs, pārvietojot serverus starp iekārtām bez sarunu vēstures pārvietošanas."
+            "keystoreExportModeVaultOnlyDesc": "Tikai šifrēti akreditācijas dati un serveru profili. Mazāks, ātrāks, identisks pirms v3.7.8 eksportiem. Noderīgs, pārvietojot serverus starp iekārtām bez sarunu vēstures pārvietošanas.",
+            "themeIceDesc": "Svaiga ledaini balti zila palete mierīgam, sarmas klātam izskatam",
+            "themeIceLabel": "Ledus",
+            "themeRedlavaDesc": "Izkususi lavas sarkana uz gandrīz melnas drosmīgam, ugunīgam izskatam",
+            "themeRedlavaLabel": "Red Lava"
         },
         "devtools": {
             "title": "AeroTools",

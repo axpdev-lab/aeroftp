@@ -1652,6 +1652,261 @@ html.green::-webkit-scrollbar-thumb:hover {
   background: var(--green-leaf);
 }
 
+/* ======================================
+   Ice Theme
+   Icy white-blue, light theme (no .dark)
+   ====================================== */
+
+html.ice {
+  --ice-bg: #f4f9ff;
+  --ice-bg-soft: #e8f2fc;
+  --ice-bg-strong: #d6e8f8;
+  --ice-fg: #0b2942;
+  --ice-fg-secondary: #3b6789;
+  --ice-fg-muted: #6b95b5;
+  --ice-accent: #0ea5e9;
+  --ice-accent-hover: #0284c7;
+  --ice-frost: #38bdf8;
+  --ice-border: rgba(14, 165, 233, 0.20);
+
+  /* Light theme: tint the root palette directly */
+  --color-bg-primary: var(--ice-bg);
+  --color-bg-secondary: var(--ice-bg-soft);
+  --color-bg-tertiary: var(--ice-bg-strong);
+  --color-surface: rgba(244, 249, 255, 0.78);
+  --color-surface-hover: rgba(232, 242, 252, 0.9);
+  --color-text-primary: var(--ice-fg);
+  --color-text-secondary: var(--ice-fg-secondary);
+  --color-text-tertiary: var(--ice-fg-muted);
+  --color-border: var(--ice-border);
+  --color-border-strong: rgba(14, 165, 233, 0.32);
+  --color-accent: var(--ice-accent);
+  --color-accent-hover: var(--ice-accent-hover);
+}
+
+/* Ice - tint the neutral light surfaces */
+html.ice .bg-white {
+  background-color: var(--ice-bg) !important;
+}
+
+html.ice .bg-gray-50,
+html.ice .bg-gray-100 {
+  background-color: var(--ice-bg-soft) !important;
+}
+
+html.ice .bg-gray-200 {
+  background-color: var(--ice-bg-strong) !important;
+}
+
+html.ice .border-gray-200,
+html.ice .border-gray-300 {
+  border-color: var(--ice-border) !important;
+}
+
+html.ice .text-gray-900,
+html.ice .text-gray-800 {
+  color: var(--ice-fg) !important;
+}
+
+html.ice .text-gray-600,
+html.ice .text-gray-500 {
+  color: var(--ice-fg-secondary) !important;
+}
+
+/* Ice accents - remap blue to frost cyan */
+html.ice .text-blue-500,
+html.ice .text-blue-600 {
+  color: var(--ice-accent) !important;
+}
+
+html.ice .bg-blue-500,
+html.ice .bg-blue-600 {
+  background-color: var(--ice-accent) !important;
+}
+
+html.ice .bg-blue-500:hover,
+html.ice .hover\:bg-blue-600:hover {
+  background-color: var(--ice-accent-hover) !important;
+}
+
+/* Ice scrollbar */
+html.ice::-webkit-scrollbar-track {
+  background: var(--ice-bg-soft);
+}
+
+html.ice::-webkit-scrollbar-thumb {
+  background: var(--ice-frost);
+}
+
+html.ice::-webkit-scrollbar-thumb:hover {
+  background: var(--ice-accent);
+}
+
+/* ======================================
+   Red Lava Theme
+   Molten lava red on near-black, dark theme
+   ====================================== */
+
+html.redlava {
+  /* Near-black so the brilliant lava red pops */
+  --rl-bg: #120406;
+  --rl-bg-dark: #0a0203;
+  --rl-bg-highlight: #20070a;
+  /* Crisp white text, NOT pink - red stays reserved for accents */
+  --rl-fg: #ffffff;
+  --rl-fg-secondary: #f1d6d8;
+  --rl-fg-muted: #b08488;
+  /* MEGA-style brilliant crimson red */
+  --rl-accent: #db282e;
+  --rl-accent-hover: #f23b41;
+  /* Status bar: slightly darker red than the titlebar for depth */
+  --rl-chrome-dim: #c2242a;
+  --rl-blood: #b01f24;
+  --rl-shield-yellow: #ffcd00;
+  --rl-amber: #f59e0b;
+  --rl-border: rgba(219, 40, 46, 0.34);
+}
+
+/* Red Lava - Override dark mode colors */
+html.redlava.dark {
+  --color-bg-primary: var(--rl-bg);
+  --color-bg-secondary: var(--rl-bg-dark);
+  --color-bg-tertiary: var(--rl-bg-highlight);
+  --color-text-primary: var(--rl-fg);
+  --color-text-secondary: var(--rl-fg-secondary);
+  --color-text-muted: var(--rl-fg-muted);
+  --color-accent: var(--rl-accent);
+  --color-accent-hover: var(--rl-accent-hover);
+  --color-border: var(--rl-border);
+}
+
+/* Red Lava specific styling */
+html.redlava .dark\:bg-gray-900 {
+  background-color: var(--rl-bg-dark) !important;
+}
+
+html.redlava .dark\:bg-gray-800 {
+  background-color: var(--rl-bg) !important;
+}
+
+html.redlava .dark\:bg-gray-700 {
+  background-color: var(--rl-bg-highlight) !important;
+}
+
+html.redlava .dark\:border-gray-700,
+html.redlava .dark\:border-gray-600 {
+  border-color: var(--rl-border) !important;
+}
+
+html.redlava .dark\:text-gray-100,
+html.redlava .dark\:text-white {
+  color: var(--rl-fg) !important;
+}
+
+html.redlava .dark\:text-gray-400,
+html.redlava .dark\:text-gray-300 {
+  color: var(--rl-fg-secondary) !important;
+}
+
+/* Red Lava accents - remap blue to lava red */
+html.redlava .text-blue-500,
+html.redlava .dark\:text-blue-400 {
+  color: var(--rl-accent) !important;
+}
+
+html.redlava .bg-blue-500,
+html.redlava .dark\:bg-blue-600 {
+  background-color: var(--rl-accent) !important;
+}
+
+html.redlava .bg-blue-500:hover,
+html.redlava .hover\:bg-blue-600:hover {
+  background-color: var(--rl-accent-hover) !important;
+}
+
+/* Red Lava folder icons - molten amber */
+html.redlava .text-yellow-500 {
+  color: var(--rl-shield-yellow) !important;
+}
+
+/* Red Lava success/error colors */
+html.redlava .text-green-500,
+html.redlava .text-green-600 {
+  color: #16a34a !important;
+}
+
+html.redlava .text-red-500,
+html.redlava .text-red-600 {
+  color: var(--rl-accent-hover) !important;
+}
+
+/* Red Lava gradient override for header */
+html.redlava .dark\:from-gray-900 {
+  --tw-gradient-from: var(--rl-bg-dark) !important;
+}
+
+html.redlava .dark\:to-gray-800 {
+  --tw-gradient-to: var(--rl-bg) !important;
+}
+
+/* Red Lava scrollbar */
+html.redlava::-webkit-scrollbar-track {
+  background: var(--rl-bg-dark);
+}
+
+html.redlava::-webkit-scrollbar-thumb {
+  background: var(--rl-blood);
+}
+
+html.redlava::-webkit-scrollbar-thumb:hover {
+  background: var(--rl-accent);
+}
+
+/* Red Lava: glowing-red chrome - titlebar + status bar are the
+   molten "crust", the panels/cards stay dark like cooled rock.
+   White text for contrast on the red surfaces. */
+html.redlava .aero-titlebar {
+  background-color: var(--rl-accent) !important;
+  border-color: var(--rl-accent-hover) !important;
+  color: #ffffff !important;
+}
+
+html.redlava [role="status"][aria-label="Status bar"] {
+  background-color: var(--rl-chrome-dim) !important;
+  border-color: var(--rl-accent) !important;
+  color: #ffffff !important;
+}
+
+/* Every titlebar icon goes white on the red crust for contrast,
+   including the support heart (which is text-blue-500, otherwise
+   remapped to red-on-red) and the master-password padlock (muted
+   tertiary/emerald, otherwise low-contrast). */
+html.redlava .aero-titlebar svg,
+html.redlava .aero-titlebar .text-blue-500,
+html.redlava .aero-titlebar .text-emerald-500,
+html.redlava .aero-titlebar .text-emerald-400,
+html.redlava .aero-titlebar [class*="text-[var(--color-text-primary)]"],
+html.redlava .aero-titlebar [class*="text-[var(--color-text-secondary)]"],
+html.redlava .aero-titlebar [class*="text-[var(--color-text-tertiary)]"],
+html.redlava [role="status"][aria-label="Status bar"],
+html.redlava [role="status"][aria-label="Status bar"] .dark\:text-gray-400,
+html.redlava [role="status"][aria-label="Status bar"] .dark\:text-gray-300,
+html.redlava [role="status"][aria-label="Status bar"] .text-gray-500,
+html.redlava [role="status"][aria-label="Status bar"] .text-gray-600 {
+  color: #ffffff !important;
+}
+
+/* Keep titlebar hover/separators legible on the red bodywork */
+html.redlava .aero-titlebar .hover\:bg-\[var\(--color-bg-tertiary\)\]:hover {
+  background-color: rgba(0, 0, 0, 0.22) !important;
+}
+
+html.redlava .aero-titlebar .bg-\[var\(--color-border\)\],
+html.redlava [role="status"][aria-label="Status bar"] .dark\:border-gray-700 {
+  background-color: rgba(255, 255, 255, 0.28) !important;
+  border-color: rgba(255, 255, 255, 0.28) !important;
+}
+
 /* =========================================================
    Tool Approval: Theme-aware button
    ========================================================= */
@@ -1699,6 +1954,18 @@ html.cyber .tool-approval-allow:hover {
 
 html.cyber .tool-approval-bubble {
   border-color: var(--cyber-border) !important;
+}
+
+/* Red Lava: lava red */
+html.redlava .tool-approval-allow {
+  background-color: var(--rl-accent);
+  color: #fff;
+}
+html.redlava .tool-approval-allow:hover {
+  background-color: var(--rl-accent-hover);
+}
+html.redlava .tool-approval-bubble {
+  border-color: var(--rl-border) !important;
 }
 
 /* Cyber scrollbar */

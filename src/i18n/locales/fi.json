@@ -971,7 +971,11 @@
             "keystoreExportModeFull": "Täysi varmuuskopio (suositeltu)",
             "keystoreExportModeFullDesc": "Holvin tunnistetiedot, AI-keskusteluhistoria, agentin muisti, tiedostotunnisteet, asennetut pluginit, synkronointitilannekuvat ja tallennetut asetukset. Sovelluksen täydellinen tila yhdessä salatussa tiedostossa.",
             "keystoreExportModeVaultOnly": "Vain holvi (vanha)",
-            "keystoreExportModeVaultOnlyDesc": "Vain salatut tunnistetiedot ja palvelinprofiilit. Pienempi, nopeampi, identtinen v3.7.8 versiota edeltäneiden vientien kanssa. Hyödyllinen, kun siirrät palvelimia koneiden välillä ilman keskusteluhistoriaa."
+            "keystoreExportModeVaultOnlyDesc": "Vain salatut tunnistetiedot ja palvelinprofiilit. Pienempi, nopeampi, identtinen v3.7.8 versiota edeltäneiden vientien kanssa. Hyödyllinen, kun siirrät palvelimia koneiden välillä ilman keskusteluhistoriaa.",
+            "themeIceDesc": "Raikas jäinen valko-sininen paletti rauhalliseen, huurteiseen ilmeeseen",
+            "themeIceLabel": "Jää",
+            "themeRedlavaDesc": "Sula laavanpunainen lähes mustalla rohkeaan, tuliseen ilmeeseen",
+            "themeRedlavaLabel": "Red Lava"
         },
         "devtools": {
             "title": "AeroTools",

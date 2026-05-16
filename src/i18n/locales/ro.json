@@ -971,7 +971,11 @@
             "keystoreExportModeFull": "Backup complet (recomandat)",
             "keystoreExportModeFullDesc": "Credențialele seifului, istoricul conversațiilor AI, memoria agentului, tagurile fișierelor, plugin-urile instalate, snapshot-urile de sincronizare și preferințele salvate. Starea completă a aplicației într-un singur fișier criptat.",
             "keystoreExportModeVaultOnly": "Doar seiful (legacy)",
-            "keystoreExportModeVaultOnlyDesc": "Doar credențialele criptate și profilurile de server. Mai mic, mai rapid, identic cu exporturile anterioare versiunii v3.7.8. Util la migrarea serverelor între mașini fără a aduce și istoricul conversațiilor."
+            "keystoreExportModeVaultOnlyDesc": "Doar credențialele criptate și profilurile de server. Mai mic, mai rapid, identic cu exporturile anterioare versiunii v3.7.8. Util la migrarea serverelor între mașini fără a aduce și istoricul conversațiilor.",
+            "themeIceDesc": "Paletă clară alb-albastru glacial pentru un aspect calm și brumat",
+            "themeIceLabel": "Gheață",
+            "themeRedlavaDesc": "Roșu de lavă topită pe aproape negru pentru un aspect îndrăzneț și aprins",
+            "themeRedlavaLabel": "Red Lava"
         },
         "devtools": {
             "title": "AeroTools",

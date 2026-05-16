@@ -971,7 +971,11 @@
             "keystoreExportModeFull": "Copia de seguranza completa (recomendado)",
             "keystoreExportModeFullDesc": "Credenciais do cofre, historial de chats de AI, memoria do axente, etiquetas de ficheiros, plugins instalados, instantáneas de sincronización e preferencias gardadas. O estado completo da aplicación nun único ficheiro cifrado.",
             "keystoreExportModeVaultOnly": "Só cofre (legado)",
-            "keystoreExportModeVaultOnlyDesc": "Só as credenciais cifradas e os perfís de servidor. Máis pequeno, máis rápido, idéntico ás exportacións anteriores á v3.7.8. Útil ao migrar servidores entre máquinas sen arrastrar o historial de chats."
+            "keystoreExportModeVaultOnlyDesc": "Só as credenciais cifradas e os perfís de servidor. Máis pequeno, máis rápido, idéntico ás exportacións anteriores á v3.7.8. Útil ao migrar servidores entre máquinas sen arrastrar o historial de chats.",
+            "themeIceDesc": "Paleta nítida branco-azul xeada para un aspecto tranquilo e enxeado",
+            "themeIceLabel": "Xeo",
+            "themeRedlavaDesc": "Vermello de lava fundida sobre case negro para un aspecto atrevido e ardente",
+            "themeRedlavaLabel": "Red Lava"
         },
         "devtools": {
             "title": "AeroTools",

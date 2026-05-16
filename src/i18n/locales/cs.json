@@ -971,7 +971,11 @@
             "keystoreExportModeFull": "Úplná záloha (doporučeno)",
             "keystoreExportModeFullDesc": "Přihlašovací údaje trezoru, historie AI chatů, paměť agenta, štítky souborů, nainstalované pluginy, snímky synchronizace a uložené předvolby. Kompletní stav aplikace v jednom šifrovaném souboru.",
             "keystoreExportModeVaultOnly": "Pouze trezor (starší režim)",
-            "keystoreExportModeVaultOnlyDesc": "Pouze šifrované přihlašovací údaje a profily serverů. Menší, rychlejší, identický s exporty před v3.7.8. Užitečné při migraci serverů mezi počítači bez přenosu historie chatů."
+            "keystoreExportModeVaultOnlyDesc": "Pouze šifrované přihlašovací údaje a profily serverů. Menší, rychlejší, identický s exporty před v3.7.8. Užitečné při migraci serverů mezi počítači bez přenosu historie chatů.",
+            "themeIceDesc": "Svěží ledově bílomodrá paleta pro klidný, mrazivý vzhled",
+            "themeIceLabel": "Led",
+            "themeRedlavaDesc": "Roztavená lávová červeň na téměř černé pro odvážný, ohnivý vzhled",
+            "themeRedlavaLabel": "Red Lava"
         },
         "devtools": {
             "title": "AeroTools",

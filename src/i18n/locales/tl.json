@@ -971,7 +971,11 @@
             "keystoreExportModeFull": "Kumpletong backup (inirerekomenda)",
             "keystoreExportModeFullDesc": "Mga credential ng vault, kasaysayan ng AI chat, memorya ng agent, file tags, mga naka-install na plugin, mga sync snapshot, at mga naka-save na preference. Ang kumpletong estado ng aplikasyon sa isang naka-encrypt na file.",
             "keystoreExportModeVaultOnly": "Vault lamang (legacy)",
-            "keystoreExportModeVaultOnlyDesc": "Ang mga naka-encrypt na credential at server profile lamang. Mas maliit, mas mabilis, at katulad ng mga export bago ang v3.7.8. Kapaki-pakinabang kapag inililipat ang mga server sa pagitan ng mga makina nang hindi kasama ang kasaysayan ng chat."
+            "keystoreExportModeVaultOnlyDesc": "Ang mga naka-encrypt na credential at server profile lamang. Mas maliit, mas mabilis, at katulad ng mga export bago ang v3.7.8. Kapaki-pakinabang kapag inililipat ang mga server sa pagitan ng mga makina nang hindi kasama ang kasaysayan ng chat.",
+            "themeIceDesc": "Malinaw na puti-asul na parang yelo na palette para sa kalmado, nagyeyelong itsura",
+            "themeIceLabel": "Yelo",
+            "themeRedlavaDesc": "Tunaw na lava na pula sa halos itim para sa matapang, nag-aapoy na itsura",
+            "themeRedlavaLabel": "Red Lava"
         },
         "devtools": {
             "title": "AeroTools",

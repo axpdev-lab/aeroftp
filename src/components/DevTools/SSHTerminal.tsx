@@ -317,9 +317,63 @@ const TERMINAL_THEMES: Record<string, TerminalTheme> = {
             brightWhite: '#f0fdf4',
         },
     },
+    'ice': {
+        name: 'Ice',
+        colors: {
+            background: '#f4f9ff',
+            foreground: '#0b2942',
+            cursor: '#0ea5e9',
+            cursorAccent: '#f4f9ff',
+            selectionBackground: '#cfe7f8',
+            selectionForeground: '#0b2942',
+            black: '#0b2942',
+            red: '#dc2626',
+            green: '#0f766e',
+            yellow: '#b45309',
+            blue: '#0284c7',
+            magenta: '#7c3aed',
+            cyan: '#0ea5e9',
+            white: '#dbeafe',
+            brightBlack: '#6b95b5',
+            brightRed: '#ef4444',
+            brightGreen: '#14b8a6',
+            brightYellow: '#d97706',
+            brightBlue: '#38bdf8',
+            brightMagenta: '#8b5cf6',
+            brightCyan: '#7dd3fc',
+            brightWhite: '#f4f9ff',
+        },
+    },
+    'redlava': {
+        name: 'Red Lava',
+        colors: {
+            background: '#120406',
+            foreground: '#ffffff',
+            cursor: '#db282e',
+            cursorAccent: '#120406',
+            selectionBackground: '#3a1414',
+            selectionForeground: '#ffffff',
+            black: '#20070a',
+            red: '#db282e',
+            green: '#16a34a',
+            yellow: '#ffcd00',
+            blue: '#e85055',
+            magenta: '#b01f24',
+            cyan: '#eb8589',
+            white: '#f1d6d8',
+            brightBlack: '#5a2a2a',
+            brightRed: '#f23b41',
+            brightGreen: '#22c55e',
+            brightYellow: '#fbbf24',
+            brightBlue: '#ef7a7d',
+            brightMagenta: '#db282e',
+            brightCyan: '#f3b0b2',
+            brightWhite: '#ffffff',
+        },
+    },
 };
 
-const THEME_ORDER = ['tokyo-night', 'dracula', 'monokai', 'nord', 'catppuccin-mocha', 'github-dark', 'solarized-dark', 'solarized-light', 'cyber', 'true-dark', 'green'];
+const THEME_ORDER = ['tokyo-night', 'dracula', 'monokai', 'nord', 'catppuccin-mocha', 'github-dark', 'solarized-dark', 'solarized-light', 'cyber', 'true-dark', 'green', 'ice', 'redlava'];
 
 // Map app themes to matching terminal themes
 const APP_THEME_TO_TERMINAL: Record<string, string> = {
@@ -329,6 +383,8 @@ const APP_THEME_TO_TERMINAL: Record<string, string> = {
     'tokyo': 'tokyo-night',
     'cyber': 'cyber',
     'green': 'green',
+    'ice': 'ice',
+    'redlava': 'redlava',
 };
 
 // ============ Tab State ============

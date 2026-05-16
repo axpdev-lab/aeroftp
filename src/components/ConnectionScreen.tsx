@@ -1779,7 +1779,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             <span className="font-medium">{providerName}</span>
                                         </div>
                                         {providerDesc && (
-                                            <span className="text-[11px] text-gray-400 dark:text-gray-500 max-w-xs text-right leading-tight">{providerDesc}</span>
+                                            <span className="text-[11px] text-gray-400 dark:text-gray-500 max-w-md text-right leading-tight">{providerDesc}</span>
                                         )}
                                     </div>
                                 );

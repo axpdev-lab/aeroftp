@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.8.1] - 2026-05-16
+
+### Two New Themes, Toolbar Legibility and Quota Polish
+
+A UI polish patch on top of v3.8.0: two new application themes, a toolbar contrast fix, a form-header width tweak, and the manual storage-quota auto-scan fix.
+
+#### Added
+
+- **Ice theme**: a light icy white-blue palette for a calm, frosted look. Wired through the full theme system (CSS palette, theme cycle and toggle, Monaco editor, xterm.js terminal, Settings selector, Activity Log, icon-theme defaults).
+- **Red Lava theme**: a brilliant crimson red on near-black. The titlebar and status bar render as glowing-red chrome (the status bar a touch darker than the titlebar for depth) while panels and cards stay dark; every titlebar icon is forced to white for contrast. The total number of themes goes from six to eight.
+- **Theme name and description translated** across all 47 languages.
+
+#### Fixed
+
+- **AeroVault and AeroCrypt toolbar buttons**: now inherit the same bright foreground as the Sync and Refresh buttons instead of a dimmed grey, so they are clearly legible in their inactive state.
+- **Manual storage-quota auto-scan**: now runs on connect for profiles that opted in, even when only a manual total is present or a WebDAV/SFTP backend returns a partial quota; saved-server cards reflect an updated quota immediately without a manual reload.
+
+#### Changed
+
+- **Provider form header subtitle**: given more width so longer one-line descriptions (for example Backblaze B2) no longer wrap unnecessarily.
+
 ## [3.8.0] - 2026-05-15
 
 ### AeroVault Wrapper-Stack, Behind-the-Scenes Telemetry, AeroRsync Streaming and Dual-Panel Unification
