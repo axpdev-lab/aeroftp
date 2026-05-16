@@ -3,7 +3,7 @@
 **Version**: 2.2
 **Status**: Stable
 **Date**: 2026-05-01
-**Authors**: AXP Development
+**Authors**: axpdev-lab
 
 > Canonical source: [`aerovault` crate on crates.io](https://crates.io/crates/aerovault)
 > Reference implementation: [github.com/axpdev-lab/aerovault](https://github.com/axpdev-lab/aerovault)
@@ -785,4 +785,4 @@ This specification is released under the [GPL-3.0 License](../LICENSE). The `aer
 
 ---
 
-*AeroVault v2 is part of the [AeroFTP](https://github.com/axpdev-lab/aeroftp) ecosystem by AXP Development.*
+*AeroVault v2 is part of the [AeroFTP](https://github.com/axpdev-lab/aeroftp) ecosystem by axpdev-lab.*

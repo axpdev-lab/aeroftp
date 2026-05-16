@@ -3,7 +3,9 @@
 **Version**: Draft 0.1
 **Status**: Implementation draft
 **Date**: 2026-05-11
-**Authors**: AXP Development
+**Authors**: axpdev-lab
+
+> **Roadmap attribution.** The wrapper-stack design this format implements (the wrapper-versus-step taxonomy, the corrected AES-256-GCM-SIV avalanche framing, algorithm versioning as a forward-compatibility clause, the small-file-packing model and the chunking trade analysis) is a sustained community design contribution by **Ehud Kirsh** in the AeroFTP [COMMUNITY ROADMAP thread (issue #162)](https://github.com/axpdev-lab/aeroftp/issues/162). The conversation shaped both the v3 architecture and this specification.
 
 ---
 
