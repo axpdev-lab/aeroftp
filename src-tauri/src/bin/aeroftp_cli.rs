@@ -15690,13 +15690,28 @@ fn collect_export_scaffold(
             ));
             continue;
         }
-        if secret.is_empty() {
+        // SFTP profiles authenticate by SSH key (path in
+        // `options.private_key_path`), so an empty vault password is
+        // legitimate for them. Everything else genuinely needs a stored
+        // secret. Key-auth SFTP must still reach export_rclone, which emits
+        // the `key_file` reference from `options`.
+        let has_sftp_key = protocol == "sftp"
+            && options
+                .as_ref()
+                .and_then(|o| o.get("private_key_path"))
+                .and_then(|v| v.as_str())
+                .map(|s| !s.trim().is_empty())
+                .unwrap_or(false);
+
+        if secret.is_empty() && !has_sftp_key {
             out.skipped
                 .push((name.to_string(), "no credential in vault".to_string()));
             continue;
         }
 
-        out.passwords.insert(name.to_string(), secret.clone());
+        if !secret.is_empty() {
+            out.passwords.insert(name.to_string(), secret.clone());
+        }
         out.profiles.push(ProfileExportScaffold {
             name: name.to_string(),
             host,
