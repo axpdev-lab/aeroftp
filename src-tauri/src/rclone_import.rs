@@ -892,6 +892,56 @@ pub struct RcloneExportServer {
     // Password is fetched from vault separately and passed in
 }
 
+/// Sanitize a saved-profile name into a valid rclone remote name.
+///
+/// rclone validates remote names against `^[\w.+@ -]+$` and additionally
+/// rejects a leading `-`/space and a trailing space
+/// (`fspath.CheckConfigName`, `\w` being ASCII-only in Go's regexp).
+/// AeroFTP profile names are free-form and routinely contain characters
+/// rclone refuses, e.g. `axpbuntu-remote (admin)` (parentheses). The
+/// previous export only stripped INI-breaking characters (`[ ] CR LF`),
+/// so such profiles produced a config rclone could not even load. This
+/// maps every disallowed character to `-`, collapses runs of separators
+/// to a single `-`, and trims the edges. Names that already worked
+/// (single internal spaces, e.g. `axpbuntu lab MinIO`) are left intact.
+/// Returns an empty string only if nothing usable remains; the caller
+/// skips those.
+fn sanitize_rclone_remote_name(name: &str) -> String {
+    let mapped = name.chars().map(|c| {
+        if c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '+' | '@' | ' ' | '-') {
+            c
+        } else {
+            '-'
+        }
+    });
+
+    // Collapse runs of 2+ separators ([space-]) into a single '-' so a
+    // replaced bracket adjacent to an existing space/dash does not leave
+    // "remote -admin-". A lone space is a run of length 1 and survives.
+    let mut collapsed = String::with_capacity(name.len());
+    let mut sep_run = 0usize;
+    for c in mapped {
+        if c == ' ' || c == '-' {
+            sep_run += 1;
+            match sep_run {
+                1 => collapsed.push(c),
+                2 => {
+                    collapsed.pop();
+                    collapsed.push('-');
+                }
+                _ => {}
+            }
+        } else {
+            sep_run = 0;
+            collapsed.push(c);
+        }
+    }
+
+    collapsed
+        .trim_matches(|c| c == ' ' || c == '-')
+        .to_string()
+}
+
 /// Export server profiles to rclone.conf INI format.
 /// Passwords are obscured using rclone's AES-256-CTR scheme for compatibility.
 pub fn export_rclone(
@@ -913,14 +963,24 @@ pub fn export_rclone(
         let options = server.options.as_ref();
         let password = passwords.get(&server.name);
 
-        // Sanitize remote name: rclone uses [name] as INI section, no special chars
-        let remote_name = server
-            .name
-            .replace(['[', ']', '\n', '\r'], "-")
-            .trim()
-            .to_string();
+        // Sanitize remote name to rclone's own naming rules, not just INI
+        // safety: rclone refuses names outside `^[\w.+@ -]+$`, so profiles
+        // like "axpbuntu-remote (admin)" previously produced a config
+        // rclone could not load at all.
+        let remote_name = sanitize_rclone_remote_name(&server.name);
         if remote_name.is_empty() {
             continue;
+        }
+        if remote_name != server.name {
+            tracing::warn!(
+                "[rclone export] profile '{}' renamed to '{}' to satisfy rclone remote-name rules",
+                server.name,
+                remote_name
+            );
+            output.push_str(&format!(
+                "# renamed from AeroFTP profile \"{}\" (rclone remote-name rules)\n",
+                server.name.replace(['\n', '\r'], " ")
+            ));
         }
 
         output.push_str(&format!("[{}]\n", remote_name));
@@ -957,11 +1017,39 @@ pub fn export_rclone(
                 output.push_str(&format!("host = {}\n", server.host));
                 output.push_str(&format!("port = {}\n", server.port));
                 output.push_str(&format!("user = {}\n", server.username));
-                if let Some(pw) = password {
+                if let Some(pw) = password.filter(|p| !p.is_empty()) {
                     output.push_str(&format!(
                         "pass = {}\n",
                         obscure_password(pw).unwrap_or_default()
                     ));
+                }
+                // SFTP key auth: AeroFTP stores the private key as a file
+                // path in `options.private_key_path` (+ optional
+                // `key_passphrase`). Exporting these key-auth profiles as
+                // password-only made rclone fail SSH auth even though
+                // `aeroftp-cli connect` succeeded with the key. We emit a
+                // `key_file` reference (no private-key bytes are copied
+                // into the plaintext config).
+                if let Some(opts) = options {
+                    if let Some(key_file) = opts
+                        .get("private_key_path")
+                        .and_then(|v| v.as_str())
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                    {
+                        output.push_str(&format!("key_file = {}\n", key_file));
+                    }
+                    if let Some(key_pass) = opts
+                        .get("key_passphrase")
+                        .and_then(|v| v.as_str())
+                        .filter(|s| !s.is_empty())
+                    {
+                        // rclone requires key_file_pass obscured, like `pass`.
+                        output.push_str(&format!(
+                            "key_file_pass = {}\n",
+                            obscure_password(key_pass).unwrap_or_default()
+                        ));
+                    }
                 }
             }
             "s3" => {
