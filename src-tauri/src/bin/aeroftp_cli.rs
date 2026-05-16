@@ -800,6 +800,63 @@ enum Commands {
         #[arg(long, requires = "scan")]
         full: bool,
     },
+    /// Show total size and object count under a path (recursive scan)
+    Size {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_", hide_default_value = true)]
+        url: String,
+        /// Remote path to measure (default: profile initial path / root)
+        #[arg(default_value = "")]
+        path: String,
+    },
+    /// List directories only (rclone-style `lsd`)
+    Lsd {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_", hide_default_value = true)]
+        url: String,
+        /// Remote path (default: /)
+        #[arg(default_value = "/")]
+        path: String,
+    },
+    /// Long listing: permissions, size, date, name (rclone-style `lsl`)
+    Lsl {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_", hide_default_value = true)]
+        url: String,
+        /// Remote path (default: /)
+        #[arg(default_value = "/")]
+        path: String,
+    },
+    /// Flat machine-parsable listing, one entry per line (rclone-style `lsf`)
+    Lsf {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_", hide_default_value = true)]
+        url: String,
+        /// Remote path (default: /)
+        #[arg(default_value = "/")]
+        path: String,
+    },
+    /// Remove a path and all of its contents (recursive delete)
+    Purge {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_", hide_default_value = true)]
+        url: String,
+        /// Remote path to purge
+        #[arg(default_value = "")]
+        path: String,
+        /// Skip the confirmation prompt
+        #[arg(short, long)]
+        force: bool,
+    },
+    /// Remove a single empty directory (fails if not empty)
+    Rmdir {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_", hide_default_value = true)]
+        url: String,
+        /// Remote directory to remove
+        #[arg(default_value = "")]
+        path: String,
+    },
     /// Show detailed server info, account, and storage quota
     About {
         /// Server URL (omit when using --profile)
@@ -18029,6 +18086,196 @@ async fn cmd_df(url: &str, scan: bool, full: bool, cli: &Cli, format: OutputForm
     }
 }
 
+/// `size`: total bytes and object count under a path. Mirrors rclone
+/// `size`. Reuses the shared `scan_used_bytes` engine (same BFS / S3
+/// flat-list / WebDAV Depth:infinity specializations and the same
+/// depth/entry caps as `df --scan`), so it never issues a per-file
+/// `stat()`.
+async fn cmd_size(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32 {
+    let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+
+    let resolved = resolve_cli_remote_path(&initial_path, path);
+    // Mirror `df --scan`: an empty effective path means "the provider's
+    // canonical root", which the BFS expresses as "/".
+    let root = if resolved.trim().is_empty() {
+        "/".to_string()
+    } else {
+        resolved
+    };
+
+    let cancel = std::sync::Arc::new(AtomicBool::new(false));
+    let cancel_sig = cancel.clone();
+    tokio::spawn(async move {
+        let _ = shutdown_signal().await;
+        cancel_sig.store(true, Ordering::Relaxed);
+    });
+
+    let spinner = create_spinner(&format!("Scanning {} ...", root));
+    let scan_depth = cli.max_depth.map(|d| d as usize).unwrap_or(MAX_SCAN_DEPTH);
+    let mut last_tick = Instant::now()
+        .checked_sub(std::time::Duration::from_millis(400))
+        .unwrap_or_else(Instant::now);
+    let result = ftp_client_gui_lib::used_scan::scan_used_bytes(
+        &mut provider,
+        &root,
+        scan_depth,
+        MAX_SCAN_ENTRIES,
+        &cancel,
+        |files, bytes| {
+            if last_tick.elapsed() >= std::time::Duration::from_millis(300) {
+                spinner.set_message(format!(
+                    "Scanning... {} files, {} so far",
+                    files,
+                    format_size(bytes)
+                ));
+                last_tick = Instant::now();
+            }
+        },
+    )
+    .await;
+    spinner.finish_and_clear();
+
+    match result {
+        Ok(s) => {
+            match format {
+                OutputFormat::Text => {
+                    // rclone `size` reports object count then size with the
+                    // exact byte figure in parentheses. Directories are
+                    // surfaced separately because some AeroFTP backends
+                    // (SFTP/FTP/WebDAV) model real directories rclone does
+                    // not.
+                    println!(
+                        "Total objects: {} ({} files, {} dirs){}",
+                        s.file_count + s.dir_count,
+                        s.file_count,
+                        s.dir_count,
+                        if s.truncated { " (TRUNCATED)" } else { "" }
+                    );
+                    println!(
+                        "Total size: {} ({} Byte)",
+                        format_size(s.used_bytes),
+                        s.used_bytes
+                    );
+                    if !cli.quiet {
+                        eprintln!("Path: {} (scan method: {})", root, s.method);
+                        if s.truncated {
+                            eprintln!(
+                                "Warning: scan capped (depth {} / {} entries); figure is a lower bound",
+                                scan_depth, MAX_SCAN_ENTRIES
+                            );
+                        }
+                    }
+                }
+                OutputFormat::Json => {
+                    print_json(&serde_json::json!({
+                        "status": "ok",
+                        "path": root,
+                        "count": s.file_count,
+                        "dirs": s.dir_count,
+                        "objects": s.file_count + s.dir_count,
+                        "bytes": s.used_bytes,
+                        "human": format_size(s.used_bytes),
+                        "truncated": s.truncated,
+                        "scan_method": s.method,
+                    }));
+                }
+            }
+            let _ = provider.disconnect().await;
+            0
+        }
+        Err(e) => {
+            print_error(
+                format,
+                &format!("size failed: {}", e),
+                provider_error_to_exit_code(&e),
+            );
+            let _ = provider.disconnect().await;
+            provider_error_to_exit_code(&e)
+        }
+    }
+}
+
+/// `rmdir`: remove a single empty directory. Mirrors rclone `rmdir`: it
+/// refuses a non-empty directory (exit 9) so it is safe to script
+/// against, unlike `rm -r` / `purge` which wipe the whole subtree.
+async fn cmd_rmdir(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32 {
+    let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+
+    let path = &resolve_cli_remote_path(&initial_path, path);
+    if path.trim_matches('/').is_empty() {
+        print_error(
+            format,
+            "Refusing to rmdir the remote root '/'. Specify a directory.",
+            1,
+        );
+        let _ = provider.disconnect().await;
+        return 1;
+    }
+
+    // Emptiness check counts EVERY entry, including dotfiles, so a
+    // directory holding only hidden files is correctly rejected.
+    match provider.list(path).await {
+        Ok(entries) => {
+            if !entries.is_empty() {
+                print_error(
+                    format,
+                    &format!(
+                        "rmdir failed: directory not empty: {} ({} entr{})",
+                        path,
+                        entries.len(),
+                        if entries.len() == 1 { "y" } else { "ies" }
+                    ),
+                    9,
+                );
+                let _ = provider.disconnect().await;
+                return 9;
+            }
+        }
+        Err(e) => {
+            print_error(
+                format,
+                &format!("rmdir failed: {}", e),
+                provider_error_to_exit_code(&e),
+            );
+            let _ = provider.disconnect().await;
+            return provider_error_to_exit_code(&e);
+        }
+    }
+
+    match provider.rmdir(path).await {
+        Ok(()) => {
+            match format {
+                OutputFormat::Text => {
+                    if !cli.quiet {
+                        eprintln!("Removed empty directory: {}", path);
+                    }
+                }
+                OutputFormat::Json => print_json(&CliOk {
+                    status: "ok",
+                    message: format!("Removed empty directory: {}", path),
+                }),
+            }
+            let _ = provider.disconnect().await;
+            0
+        }
+        Err(e) => {
+            print_error(
+                format,
+                &format!("rmdir failed: {}", e),
+                provider_error_to_exit_code(&e),
+            );
+            let _ = provider.disconnect().await;
+            provider_error_to_exit_code(&e)
+        }
+    }
+}
+
 async fn cmd_about(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
     let (mut provider, _) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
@@ -33300,6 +33547,62 @@ async fn main() {
             cmd_find(u, p, pat, *files_only, *dirs_only, *limit, &cli, format).await
         }
         Commands::Df { url, scan, full } => cmd_df(url, *scan, *full, &cli, format).await,
+        Commands::Size { url, path } => {
+            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                ("_", url.as_str())
+            } else {
+                (url.as_str(), path.as_str())
+            };
+            cmd_size(u, p, &cli, format).await
+        }
+        Commands::Lsd { url, path } => {
+            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                ("_", url.as_str())
+            } else {
+                (url.as_str(), path.as_str())
+            };
+            // rclone `lsd`: directories only.
+            cmd_ls(u, p, false, "name", false, false, None, false, true, &cli, format).await
+        }
+        Commands::Lsl { url, path } => {
+            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                ("_", url.as_str())
+            } else {
+                (url.as_str(), path.as_str())
+            };
+            // rclone `lsl`: long listing (perms, size, date, name).
+            cmd_ls(u, p, true, "name", false, false, None, false, false, &cli, format).await
+        }
+        Commands::Lsf { url, path } => {
+            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                ("_", url.as_str())
+            } else {
+                (url.as_str(), path.as_str())
+            };
+            // rclone `lsf`: bare entries, one per line. The cmd_ls short
+            // format already prints one entry per line and routes the
+            // human summary to stderr, so stdout stays pipe-clean.
+            cmd_ls(u, p, false, "name", false, false, None, false, false, &cli, format).await
+        }
+        Commands::Purge { url, path, force } => {
+            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                ("_", url.as_str())
+            } else {
+                (url.as_str(), path.as_str())
+            };
+            // rclone `purge`: recursive delete of the path and everything
+            // under it. Routes through cmd_rm so the root guard, the
+            // confirmation prompt and the error/exit mapping stay shared.
+            cmd_rm(u, p, true, *force, &cli, format).await
+        }
+        Commands::Rmdir { url, path } => {
+            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                ("_", url.as_str())
+            } else {
+                (url.as_str(), path.as_str())
+            };
+            cmd_rmdir(u, p, &cli, format).await
+        }
         Commands::Tree { url, path, depth } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str())
