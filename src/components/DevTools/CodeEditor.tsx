@@ -164,7 +164,77 @@ const greenTheme = {
     },
 };
 
-type EditorTheme = 'vs' | 'vs-dark' | 'tokyo-night' | 'cyber' | 'truedark' | 'green';
+// Ice theme: icy white-blue, light editor
+const iceTheme = {
+    base: 'vs' as const,
+    inherit: true,
+    rules: [
+        { token: 'comment', foreground: '6b95b5', fontStyle: 'italic' },
+        { token: 'keyword', foreground: '0284c7' },
+        { token: 'string', foreground: '0f766e' },
+        { token: 'number', foreground: 'b45309' },
+        { token: 'type', foreground: '0ea5e9' },
+        { token: 'function', foreground: '2563eb' },
+        { token: 'variable', foreground: '0b2942' },
+        { token: 'constant', foreground: 'b45309' },
+        { token: 'tag', foreground: '0891b2' },
+        { token: 'attribute.name', foreground: '0ea5e9' },
+        { token: 'attribute.value', foreground: '0f766e' },
+        { token: 'delimiter', foreground: '3b6789' },
+        { token: 'operator', foreground: '0284c7' },
+    ],
+    colors: {
+        'editor.background': '#f4f9ff',
+        'editor.foreground': '#0b2942',
+        'editorLineNumber.foreground': '#9cc0db',
+        'editorLineNumber.activeForeground': '#0284c7',
+        'editor.selectionBackground': '#cfe7f8',
+        'editor.lineHighlightBackground': '#e8f2fc',
+        'editorCursor.foreground': '#0ea5e9',
+        'editorWhitespace.foreground': '#cfe2f0',
+        'editorIndentGuide.background': '#d6e8f8',
+        'editor.selectionHighlightBackground': '#bae0f7',
+        'editorBracketMatch.background': '#bae0f766',
+        'editorBracketMatch.border': '#0ea5e9',
+    },
+};
+
+// Red Lava theme: molten lava red on near-black
+const redlavaTheme = {
+    base: 'vs-dark' as const,
+    inherit: true,
+    rules: [
+        { token: 'comment', foreground: 'b08488', fontStyle: 'italic' },
+        { token: 'keyword', foreground: 'db282e' },
+        { token: 'string', foreground: 'eb8589' },
+        { token: 'number', foreground: 'ffcd00' },
+        { token: 'type', foreground: 'e85055' },
+        { token: 'function', foreground: 'db282e' },
+        { token: 'variable', foreground: 'ffffff' },
+        { token: 'constant', foreground: 'ffcd00' },
+        { token: 'tag', foreground: 'f23b41' },
+        { token: 'attribute.name', foreground: 'e85055' },
+        { token: 'attribute.value', foreground: 'eb8589' },
+        { token: 'delimiter', foreground: 'f1d6d8' },
+        { token: 'operator', foreground: 'db282e' },
+    ],
+    colors: {
+        'editor.background': '#120406',
+        'editor.foreground': '#ffffff',
+        'editorLineNumber.foreground': '#5a2a2a',
+        'editorLineNumber.activeForeground': '#db282e',
+        'editor.selectionBackground': '#3a1414',
+        'editor.lineHighlightBackground': '#1f0709',
+        'editorCursor.foreground': '#db282e',
+        'editorWhitespace.foreground': '#3a1a1a',
+        'editorIndentGuide.background': '#3a1a1a',
+        'editor.selectionHighlightBackground': '#5a1a1a55',
+        'editorBracketMatch.background': '#db282e33',
+        'editorBracketMatch.border': '#db282e',
+    },
+};
+
+type EditorTheme = 'vs' | 'vs-dark' | 'tokyo-night' | 'cyber' | 'truedark' | 'green' | 'ice' | 'redlava';
 
 interface CodeEditorProps {
     file: PreviewFile | null;
@@ -217,6 +287,8 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
         monaco.editor.defineTheme('cyber', cyberTheme);
         monaco.editor.defineTheme('truedark', truedarkTheme);
         monaco.editor.defineTheme('green', greenTheme);
+        monaco.editor.defineTheme('ice', iceTheme);
+        monaco.editor.defineTheme('redlava', redlavaTheme);
         monaco.editor.setTheme(theme);
 
         if (file) {

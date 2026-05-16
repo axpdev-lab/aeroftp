@@ -971,7 +971,11 @@
             "keystoreExportModeFull": "完整 backup（推荐）",
             "keystoreExportModeFullDesc": "保险库凭据、AI 对话历史、代理记忆、文件标签、已安装的 plugin、同步快照和已保存的偏好设置。整个应用程序的完整状态保存在单个加密文件中。",
             "keystoreExportModeVaultOnly": "仅保险库（旧版）",
-            "keystoreExportModeVaultOnlyDesc": "仅包含加密凭据和服务器配置文件。体积更小、速度更快，与 v3.7.8 之前的导出完全相同。适用于在不同机器之间迁移服务器而不携带对话历史的场景。"
+            "keystoreExportModeVaultOnlyDesc": "仅包含加密凭据和服务器配置文件。体积更小、速度更快，与 v3.7.8 之前的导出完全相同。适用于在不同机器之间迁移服务器而不携带对话历史的场景。",
+            "themeIceDesc": "清爽的冰雪白蓝配色，呈现宁静、覆霜的观感",
+            "themeIceLabel": "冰",
+            "themeRedlavaDesc": "近黑底上的熔岩红，呈现大胆、炽烈的观感",
+            "themeRedlavaLabel": "Red Lava"
         },
         "devtools": {
             "title": "AeroTools",

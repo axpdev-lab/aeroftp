@@ -971,7 +971,11 @@
             "keystoreExportModeFull": "Tam backup (önerilen)",
             "keystoreExportModeFullDesc": "Kasa kimlik bilgileri, AI sohbet geçmişi, ajan belleği, dosya etiketleri, kurulu pluginler, senkronizasyon anlık görüntüleri ve kaydedilmiş tercihler. Tüm uygulama durumu tek bir şifrelenmiş dosyada.",
             "keystoreExportModeVaultOnly": "Yalnızca kasa (legacy)",
-            "keystoreExportModeVaultOnlyDesc": "Yalnızca şifrelenmiş kimlik bilgileri ve sunucu profilleri. Daha küçük, daha hızlı, v3.7.8 öncesi dışa aktarımlarla aynı. Sunucuları makineler arasında sohbet geçmişini taşımadan aktarırken kullanışlıdır."
+            "keystoreExportModeVaultOnlyDesc": "Yalnızca şifrelenmiş kimlik bilgileri ve sunucu profilleri. Daha küçük, daha hızlı, v3.7.8 öncesi dışa aktarımlarla aynı. Sunucuları makineler arasında sohbet geçmişini taşımadan aktarırken kullanışlıdır.",
+            "themeIceDesc": "Sakin, kırağılı bir görünüm için berrak buzlu beyaz-mavi palet",
+            "themeIceLabel": "Buz",
+            "themeRedlavaDesc": "Cesur, ateşli bir görünüm için neredeyse siyah üzerine erimiş lav kırmızısı",
+            "themeRedlavaLabel": "Red Lava"
         },
         "devtools": {
             "title": "AeroTools",

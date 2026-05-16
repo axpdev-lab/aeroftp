@@ -971,7 +971,11 @@
             "keystoreExportModeFull": "Volledige back-up (aanbevolen)",
             "keystoreExportModeFullDesc": "Kluis-inloggegevens, AI-chatgeschiedenis, agentgeheugen, bestandstags, geïnstalleerde plugins, synchronisatiemomentopnamen en opgeslagen voorkeuren. De volledige toepassingsstatus in één versleuteld bestand.",
             "keystoreExportModeVaultOnly": "Alleen kluis (verouderd)",
-            "keystoreExportModeVaultOnlyDesc": "Alleen de versleutelde inloggegevens en serverprofielen. Kleiner, sneller, identiek aan exports van vóór v3.7.8. Handig bij het migreren van servers tussen machines zonder de chatgeschiedenis mee te slepen."
+            "keystoreExportModeVaultOnlyDesc": "Alleen de versleutelde inloggegevens en serverprofielen. Kleiner, sneller, identiek aan exports van vóór v3.7.8. Handig bij het migreren van servers tussen machines zonder de chatgeschiedenis mee te slepen.",
+            "themeIceDesc": "Helder ijzig wit-blauw palet voor een rustige, berijpte uitstraling",
+            "themeIceLabel": "IJs",
+            "themeRedlavaDesc": "Gesmolten lavarood op bijna zwart voor een gedurfde, vurige uitstraling",
+            "themeRedlavaLabel": "Red Lava"
         },
         "devtools": {
             "title": "AeroTools",

@@ -971,7 +971,11 @@
             "keystoreExportModeFull": "Potpuna sigurnosna kopija (preporučeno)",
             "keystoreExportModeFullDesc": "Vjerodajnice trezora, povijest AI razgovora, memorija agenta, oznake datoteka, instalirani pluginovi, snimke sinkronizacije i spremljene postavke. Cjelokupno stanje aplikacije u jednoj šifriranoj datoteci.",
             "keystoreExportModeVaultOnly": "Samo trezor (zastarjelo)",
-            "keystoreExportModeVaultOnlyDesc": "Samo šifrirane vjerodajnice i profili poslužitelja. Manji, brži, identičan izvozima prije verzije v3.7.8. Korisno pri seljenju poslužitelja između računala bez prenošenja povijesti razgovora."
+            "keystoreExportModeVaultOnlyDesc": "Samo šifrirane vjerodajnice i profili poslužitelja. Manji, brži, identičan izvozima prije verzije v3.7.8. Korisno pri seljenju poslužitelja između računala bez prenošenja povijesti razgovora.",
+            "themeIceDesc": "Svježa ledeno bijelo-plava paleta za miran, injem prekriven izgled",
+            "themeIceLabel": "Led",
+            "themeRedlavaDesc": "Rastaljena lavina crvena na gotovo crnoj za odvažan, vatren izgled",
+            "themeRedlavaLabel": "Red Lava"
         },
         "devtools": {
             "title": "AeroTools",

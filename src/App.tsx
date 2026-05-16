@@ -12073,7 +12073,7 @@ interface UpdateVerificationInfo {
                           : `AeroVault: ${t('toolbar.aerovaultOverlayInactive') || 'Open an .aerovault container as a virtual remote panel.'}`}
                         aria-label={aeroVaultOverlaySession ? 'AeroVault ON' : 'AeroVault'}
                       >
-                        <VaultIcon variant="outline" size={16} className={aeroVaultOverlaySession ? 'text-white' : 'text-gray-600 dark:text-gray-300'} />
+                        <VaultIcon variant="outline" size={16} className={aeroVaultOverlaySession ? 'text-white' : ''} />
                       </button>
                       {usesProviderApi(getActiveProviderProtocol()) && (
                         <button
@@ -12096,7 +12096,7 @@ interface UpdateVerificationInfo {
                             : `AeroCrypt: ${t('toolbar.aerocryptOverlayInactive')}`}
                           aria-label={rcloneCryptVaultId ? 'AeroCrypt ON' : 'AeroCrypt'}
                         >
-                          <OverlayIcon size={16} className={rcloneCryptVaultId ? 'text-white' : 'text-gray-600 dark:text-gray-300'} />
+                          <OverlayIcon size={16} className={rcloneCryptVaultId ? 'text-white' : ''} />
                         </button>
                       )}
                       <button

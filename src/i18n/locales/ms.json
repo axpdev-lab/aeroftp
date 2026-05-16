@@ -971,7 +971,11 @@
             "keystoreExportModeFull": "Sandaran penuh (disyorkan)",
             "keystoreExportModeFullDesc": "Kelayakan peti besi, sejarah sembang AI, memori ejen, tag fail, plugin yang dipasang, snapshot penyegerakan dan keutamaan tersimpan. Keadaan aplikasi yang lengkap dalam satu fail tersulit.",
             "keystoreExportModeVaultOnly": "Peti besi sahaja (warisan)",
-            "keystoreExportModeVaultOnlyDesc": "Hanya kelayakan tersulit dan profil pelayan. Lebih kecil, lebih pantas, sama dengan eksport sebelum v3.7.8. Berguna semasa memindahkan pelayan antara mesin tanpa membawa sejarah sembang."
+            "keystoreExportModeVaultOnlyDesc": "Hanya kelayakan tersulit dan profil pelayan. Lebih kecil, lebih pantas, sama dengan eksport sebelum v3.7.8. Berguna semasa memindahkan pelayan antara mesin tanpa membawa sejarah sembang.",
+            "themeIceDesc": "Palet putih-biru sejuk bagai ais untuk rupa tenang dan berembun",
+            "themeIceLabel": "Ais",
+            "themeRedlavaDesc": "Merah lava cair atas hampir hitam untuk rupa berani dan berapi",
+            "themeRedlavaLabel": "Red Lava"
         },
         "devtools": {
             "title": "AeroTools",

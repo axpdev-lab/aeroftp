@@ -22,7 +22,7 @@ interface DevToolsV2Props {
     onSaveFile?: (content: string, file: PreviewFile) => Promise<void>;
     onClearFile?: () => void;
     /** Monaco editor theme */
-    editorTheme?: 'vs' | 'vs-dark' | 'tokyo-night' | 'cyber' | 'truedark' | 'green';
+    editorTheme?: 'vs' | 'vs-dark' | 'tokyo-night' | 'cyber' | 'truedark' | 'green' | 'ice' | 'redlava';
     /** App-level theme for DevTools panel styling */
     appTheme?: EffectiveTheme;
     /** SSH connection info for remote shell (when connected to SFTP) */

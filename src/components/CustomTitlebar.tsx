@@ -354,7 +354,7 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
         // child drag regions below (the logo+name cluster on the left
         // and the spacer between the menu and the right cluster).
         <div
-            className="flex items-center h-9 px-2 bg-[var(--color-bg-secondary)] border-b border-[var(--color-border)] select-none shrink-0"
+            className="aero-titlebar flex items-center h-9 px-2 bg-[var(--color-bg-secondary)] border-b border-[var(--color-border)] select-none shrink-0"
         >
             {/* Left: Logo + App name */}
             <div

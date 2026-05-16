@@ -971,7 +971,11 @@
             "keystoreExportModeFull": "Täielik varukoopia (soovitatav)",
             "keystoreExportModeFullDesc": "Hoidla mandaadid, AI vestluste ajalugu, agendi mälu, failimärgendid, paigaldatud pluginad, sünkroonimise hetktõmmised ja salvestatud eelistused. Rakenduse täielik olek ühes krüpteeritud failis.",
             "keystoreExportModeVaultOnly": "Ainult hoidla (pärand)",
-            "keystoreExportModeVaultOnlyDesc": "Ainult krüpteeritud mandaadid ja serveriprofiilid. Väiksem, kiirem, identne v3.7.8 eelsete ekspordifailidega. Kasulik serverite migreerimisel masinate vahel ilma vestluste ajalugu kaasa võtmata."
+            "keystoreExportModeVaultOnlyDesc": "Ainult krüpteeritud mandaadid ja serveriprofiilid. Väiksem, kiirem, identne v3.7.8 eelsete ekspordifailidega. Kasulik serverite migreerimisel masinate vahel ilma vestluste ajalugu kaasa võtmata.",
+            "themeIceDesc": "Värske jäine valge-sinine palett rahuliku, härmas ilme jaoks",
+            "themeIceLabel": "Jää",
+            "themeRedlavaDesc": "Sulav laavapunane peaaegu mustal julge, tulise ilme jaoks",
+            "themeRedlavaLabel": "Red Lava"
         },
         "devtools": {
             "title": "AeroTools",

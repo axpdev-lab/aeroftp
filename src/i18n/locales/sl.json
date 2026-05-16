@@ -971,7 +971,11 @@
             "keystoreExportModeFull": "Popoln backup (priporočeno)",
             "keystoreExportModeFullDesc": "Poverilnice trezorja, zgodovina AI klepetov, spomin agenta, oznake datotek, nameščeni plugini, posnetki sinhronizacije in shranjene nastavitve. Celotno stanje aplikacije v eni šifrirani datoteki.",
             "keystoreExportModeVaultOnly": "Samo trezor (zastarelo)",
-            "keystoreExportModeVaultOnlyDesc": "Samo šifrirane poverilnice in profili strežnikov. Manjši, hitrejši, enak izvozom pred v3.7.8. Uporabno pri selitvi strežnikov med računalniki brez prenosa zgodovine klepetov."
+            "keystoreExportModeVaultOnlyDesc": "Samo šifrirane poverilnice in profili strežnikov. Manjši, hitrejši, enak izvozom pred v3.7.8. Uporabno pri selitvi strežnikov med računalniki brez prenosa zgodovine klepetov.",
+            "themeIceDesc": "Sveža ledeno belo-modra paleta za miren, ivnat videz",
+            "themeIceLabel": "Led",
+            "themeRedlavaDesc": "Staljena lavina rdeča na skoraj črni za drzen, ognjevit videz",
+            "themeRedlavaLabel": "Red Lava"
         },
         "devtools": {
             "title": "AeroTools",

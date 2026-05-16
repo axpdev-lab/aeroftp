@@ -971,7 +971,11 @@
             "keystoreExportModeFull": "Fuld sikkerhedskopi (anbefalet)",
             "keystoreExportModeFullDesc": "Loginoplysninger til boksen, AI-chathistorik, agenthukommelse, filtags, installerede plugins, synkroniseringssnapshots og gemte præferencer. Programmets fulde tilstand i én krypteret fil.",
             "keystoreExportModeVaultOnly": "Kun boks (legacy)",
-            "keystoreExportModeVaultOnlyDesc": "Kun de krypterede loginoplysninger og serverprofiler. Mindre, hurtigere, identisk med eksporter fra før v3.7.8. Nyttig, når du migrerer servere mellem maskiner uden at trække chathistorik med."
+            "keystoreExportModeVaultOnlyDesc": "Kun de krypterede loginoplysninger og serverprofiler. Mindre, hurtigere, identisk med eksporter fra før v3.7.8. Nyttig, når du migrerer servere mellem maskiner uden at trække chathistorik med.",
+            "themeIceDesc": "Frisk isblå-hvid palet til et roligt, frostklædt look",
+            "themeIceLabel": "Is",
+            "themeRedlavaDesc": "Smeltet lavarød på næsten sort til et dristigt, brændende look",
+            "themeRedlavaLabel": "Red Lava"
         },
         "devtools": {
             "title": "AeroTools",

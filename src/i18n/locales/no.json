@@ -971,7 +971,11 @@
             "keystoreExportModeFull": "Full sikkerhetskopi (anbefalt)",
             "keystoreExportModeFullDesc": "Hvelv-legitimasjon, AI-chathistorikk, agentminne, filtagger, installerte plugins, synkroniseringsbilder og lagrede preferanser. Hele applikasjonens tilstand i én kryptert fil.",
             "keystoreExportModeVaultOnly": "Kun hvelv (eldre)",
-            "keystoreExportModeVaultOnlyDesc": "Bare den krypterte legitimasjonen og serverprofilene. Mindre, raskere, identisk med eksporter før v3.7.8. Nyttig når du flytter servere mellom maskiner uten å dra med chathistorikken."
+            "keystoreExportModeVaultOnlyDesc": "Bare den krypterte legitimasjonen og serverprofilene. Mindre, raskere, identisk med eksporter før v3.7.8. Nyttig når du flytter servere mellom maskiner uten å dra med chathistorikken.",
+            "themeIceDesc": "Frisk isblå-hvit palett for et rolig, frostaktig uttrykk",
+            "themeIceLabel": "Is",
+            "themeRedlavaDesc": "Smeltet lavarød på nesten svart for et dristig, brennende uttrykk",
+            "themeRedlavaLabel": "Red Lava"
         },
         "devtools": {
             "title": "AeroTools",

@@ -971,7 +971,11 @@
             "keystoreExportModeFull": "전체 백업 (권장)",
             "keystoreExportModeFullDesc": "볼트 자격 증명, AI 채팅 기록, 에이전트 메모리, 파일 태그, 설치된 플러그인, 동기화 스냅샷 및 저장된 환경 설정. 전체 애플리케이션 상태를 하나의 암호화된 파일에 담습니다.",
             "keystoreExportModeVaultOnly": "볼트만 (레거시)",
-            "keystoreExportModeVaultOnlyDesc": "암호화된 자격 증명과 서버 프로필만 포함합니다. 더 작고 빠르며 v3.7.8 이전 내보내기와 동일합니다. 채팅 기록을 함께 가져오지 않고 기기 간에 서버를 이전할 때 유용합니다."
+            "keystoreExportModeVaultOnlyDesc": "암호화된 자격 증명과 서버 프로필만 포함합니다. 더 작고 빠르며 v3.7.8 이전 내보내기와 동일합니다. 채팅 기록을 함께 가져오지 않고 기기 간에 서버를 이전할 때 유용합니다.",
+            "themeIceDesc": "차분하고 서리 낀 느낌을 위한 청량한 얼음빛 흰-파랑 팔레트",
+            "themeIceLabel": "아이스",
+            "themeRedlavaDesc": "대담하고 불타는 느낌을 위한 거의 검정 위 용암 레드",
+            "themeRedlavaLabel": "Red Lava"
         },
         "devtools": {
             "title": "AeroTools",

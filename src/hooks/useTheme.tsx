@@ -12,7 +12,7 @@
 
 import { useState, useEffect } from 'react';
 import { useTranslation } from '../i18n';
-import { Sun, Moon, Monitor, MoonStar, Leaf } from 'lucide-react';
+import { Sun, Moon, Monitor, MoonStar, Leaf, Snowflake, Flame } from 'lucide-react';
 
 /** Tokyo Cherry Blossom icon (neon purple) */
 const CherryBlossomIcon: React.FC<{ size?: number; className?: string }> = ({ size = 18, className }) => (
@@ -29,10 +29,10 @@ const HackerIcon: React.FC<{ size?: number; className?: string }> = ({ size = 18
     </svg>
 );
 
-export type Theme = 'light' | 'dark' | 'truedark' | 'tokyo' | 'cyber' | 'green' | 'auto';
+export type Theme = 'light' | 'dark' | 'truedark' | 'tokyo' | 'cyber' | 'green' | 'ice' | 'redlava' | 'auto';
 
 /** Resolved theme (no 'auto') */
-export type EffectiveTheme = 'light' | 'dark' | 'truedark' | 'tokyo' | 'cyber' | 'green';
+export type EffectiveTheme = 'light' | 'dark' | 'truedark' | 'tokyo' | 'cyber' | 'green' | 'ice' | 'redlava';
 
 /**
  * Get the effective theme (resolving 'auto' to actual theme)
@@ -47,7 +47,7 @@ export const getEffectiveTheme = (theme: Theme, prefersDark: boolean): Effective
 /**
  * Map app theme to Monaco editor theme
  */
-export const getMonacoTheme = (theme: Theme, prefersDark: boolean): 'vs' | 'vs-dark' | 'tokyo-night' | 'cyber' | 'truedark' | 'green' => {
+export const getMonacoTheme = (theme: Theme, prefersDark: boolean): 'vs' | 'vs-dark' | 'tokyo-night' | 'cyber' | 'truedark' | 'green' | 'ice' | 'redlava' => {
     const effective = getEffectiveTheme(theme, prefersDark);
     switch (effective) {
         case 'light': return 'vs';
@@ -56,6 +56,8 @@ export const getMonacoTheme = (theme: Theme, prefersDark: boolean): 'vs' | 'vs-d
         case 'tokyo': return 'tokyo-night';
         case 'cyber': return 'cyber';
         case 'green': return 'green';
+        case 'ice': return 'ice';
+        case 'redlava': return 'redlava';
         default: return 'vs-dark';
     }
 };
@@ -83,7 +85,7 @@ export const useTheme = () => {
         if (saved === 'auto') {
             return window.matchMedia('(prefers-color-scheme: dark)').matches;
         }
-        return saved === 'dark' || saved === 'truedark' || saved === 'tokyo' || saved === 'cyber' || saved === 'green';
+        return saved === 'dark' || saved === 'truedark' || saved === 'tokyo' || saved === 'cyber' || saved === 'green' || saved === 'redlava';
     });
 
     useEffect(() => {
@@ -91,7 +93,7 @@ export const useTheme = () => {
             const nextIsDark =
                 theme === 'auto'
                     ? window.matchMedia('(prefers-color-scheme: dark)').matches
-                    : (theme === 'dark' || theme === 'truedark' || theme === 'tokyo' || theme === 'cyber' || theme === 'green');
+                    : (theme === 'dark' || theme === 'truedark' || theme === 'tokyo' || theme === 'cyber' || theme === 'green' || theme === 'redlava');
 
             setIsDark(prev => (prev === nextIsDark ? prev : nextIsDark));
         };
@@ -114,6 +116,8 @@ export const useTheme = () => {
         html.classList.toggle('tokyo', theme === 'tokyo');
         html.classList.toggle('cyber', theme === 'cyber');
         html.classList.toggle('green', theme === 'green');
+        html.classList.toggle('ice', theme === 'ice');
+        html.classList.toggle('redlava', theme === 'redlava');
         // Force a layout flush so the no-transition class actually takes effect
         // before paint, then remove it on the next frame.
         // eslint-disable-next-line @typescript-eslint/no-unused-expressions
@@ -140,7 +144,7 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({ theme, setTheme }) => 
     const t = useTranslation();
 
     const nextTheme = (): Theme => {
-        const order: Theme[] = ['light', 'dark', 'truedark', 'tokyo', 'cyber', 'green', 'auto'];
+        const order: Theme[] = ['light', 'dark', 'truedark', 'tokyo', 'cyber', 'green', 'ice', 'redlava', 'auto'];
         return order[(order.indexOf(theme) + 1) % order.length];
     };
 
@@ -152,6 +156,8 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({ theme, setTheme }) => 
             case 'tokyo': return <CherryBlossomIcon size={14} className="text-purple-400" />;
             case 'cyber': return <HackerIcon size={14} className="text-emerald-400" />;
             case 'green': return <Leaf size={14} className="text-emerald-500" />;
+            case 'ice': return <Snowflake size={14} className="text-sky-400" />;
+            case 'redlava': return <Flame size={14} className="text-red-500" />;
             case 'auto': return <Monitor size={14} />;
         }
     };
@@ -164,6 +170,8 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({ theme, setTheme }) => 
             case 'tokyo': return t('settings.themeTokyoLabel');
             case 'cyber': return t('settings.themeCyberLabel');
             case 'green': return t('settings.themeGreenLabel');
+            case 'ice': return t('settings.themeIceLabel');
+            case 'redlava': return t('settings.themeRedlavaLabel');
             case 'auto': return t('settings.themeAutoLabel');
         }
     };
@@ -177,6 +185,8 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({ theme, setTheme }) => 
             case 'tokyo': return 'bg-purple-900/50 hover:bg-purple-800/50';
             case 'cyber': return 'bg-emerald-900/50 hover:bg-emerald-800/50';
             case 'green': return 'bg-green-900/50 hover:bg-green-800/50';
+            case 'ice': return 'bg-sky-100 dark:bg-sky-900/40 hover:bg-sky-200 dark:hover:bg-sky-800/50';
+            case 'redlava': return 'bg-red-900/50 hover:bg-red-800/50';
         }
     };
 

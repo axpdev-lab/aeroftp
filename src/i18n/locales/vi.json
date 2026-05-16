@@ -971,7 +971,11 @@
             "keystoreExportModeFull": "Backup đầy đủ (khuyến nghị)",
             "keystoreExportModeFullDesc": "Thông tin xác thực vault, lịch sử trò chuyện AI, bộ nhớ tác nhân, thẻ tệp, các plugin đã cài đặt, ảnh chụp nhanh đồng bộ và các tùy chọn đã lưu. Toàn bộ trạng thái ứng dụng trong một tệp được mã hóa duy nhất.",
             "keystoreExportModeVaultOnly": "Chỉ vault (legacy)",
-            "keystoreExportModeVaultOnlyDesc": "Chỉ thông tin xác thực được mã hóa và hồ sơ máy chủ. Nhỏ hơn, nhanh hơn, giống hệt các bản xuất trước v3.7.8. Hữu ích khi di chuyển máy chủ giữa các máy mà không kéo theo lịch sử trò chuyện."
+            "keystoreExportModeVaultOnlyDesc": "Chỉ thông tin xác thực được mã hóa và hồ sơ máy chủ. Nhỏ hơn, nhanh hơn, giống hệt các bản xuất trước v3.7.8. Hữu ích khi di chuyển máy chủ giữa các máy mà không kéo theo lịch sử trò chuyện.",
+            "themeIceDesc": "Bảng màu trắng-xanh băng giá trong trẻo cho vẻ ngoài tĩnh lặng, phủ sương",
+            "themeIceLabel": "Băng",
+            "themeRedlavaDesc": "Đỏ dung nham nóng chảy trên nền gần đen cho vẻ ngoài táo bạo, rực lửa",
+            "themeRedlavaLabel": "Red Lava"
         },
         "devtools": {
             "title": "AeroTools",
