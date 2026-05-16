@@ -844,6 +844,19 @@ impl StorageProvider for SftpProvider {
                 continue;
             }
 
+            // Tolerate malformed directory entries instead of letting one
+            // bad name break the whole listing (FileZilla fzssh 1.2.1 class).
+            // russh-sftp already decodes names with from_utf8_lossy, so a
+            // non-UTF8 name survives as replacement chars; an empty name is
+            // the only remaining unusable case and is skipped with a log.
+            if name.is_empty() {
+                tracing::warn!(
+                    "SFTP: skipping directory entry with empty name in {}",
+                    full_path
+                );
+                continue;
+            }
+
             let entry_path = if full_path == "/" {
                 format!("/{}", name)
             } else {
@@ -852,6 +865,22 @@ impl StorageProvider for SftpProvider {
 
             let mut remote_entry =
                 self.metadata_to_entry(name.clone(), entry_path.clone(), &entry.metadata());
+
+            // Minimal/embedded SFTP servers (some NAS firmware) omit file
+            // attributes in READDIR replies. Without permission bits neither
+            // our code nor russh-sftp's file_type() can tell a directory from
+            // a file, so metadata_to_entry reports it as a file and the
+            // directory becomes unenterable. Recover with an explicit STAT,
+            // which these servers answer with full attributes (FileZilla
+            // fzssh 1.2.1 / rclone sftp behaviour for capability-poor
+            // servers). Bounded to the attr-less case so well-behaved
+            // servers pay no extra round-trip.
+            if remote_entry.permissions.is_none() {
+                if let Ok(stat) = sftp.metadata(&entry_path).await {
+                    remote_entry =
+                        self.metadata_to_entry(name.clone(), entry_path.clone(), &stat);
+                }
+            }
 
             // Check if it's a symlink
             if let Ok(link_meta) = sftp.symlink_metadata(&entry_path).await {
