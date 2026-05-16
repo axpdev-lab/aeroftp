@@ -2646,17 +2646,32 @@ pub fn decompress_zstd_literal_stream(payloads: &[&[u8]]) -> Result<Vec<u8>, Rea
             continue;
         }
         let mut input = InBuffer::around(payload);
-        // Loop until the current payload is fully consumed: each
-        // `decompress_stream` call may produce 0 to `staging_capacity`
-        // output bytes depending on how much of the frame is ready.
-        while input.pos < payload.len() {
+        // Drain the decoder for this payload. A call that consumes the
+        // last input byte can still leave decompressed bytes buffered
+        // inside the DCtx when it saturated the staging buffer; an
+        // input-only loop condition (`input.pos < payload.len()`)
+        // exits one drain call too early and silently truncates the
+        // tail by up to `staging_capacity` bytes per payload.
+        loop {
             let mut output = OutBuffer::around(&mut staging[..]);
             ctx.decompress_stream(&mut output, &mut input)
                 .map_err(|code| {
                     let reason = zstd::zstd_safe::get_error_name(code).to_string();
                     RealWireError::ZstdDecompressionFailed { reason }
                 })?;
+            let produced = output.pos();
             out.extend_from_slice(output.as_slice());
+            // More input still to feed: keep going.
+            if input.pos() < payload.len() {
+                continue;
+            }
+            // Input exhausted: keep draining only while the decoder
+            // keeps saturating the staging buffer (more buffered
+            // output is ready). A non-full / empty produce means the
+            // flushed block is fully decompressed.
+            if produced < staging_capacity {
+                break;
+            }
         }
     }
 
@@ -2691,14 +2706,26 @@ pub fn decompress_zstd_literal_stream_boundaries(
         let mut this_out: Vec<u8> = Vec::new();
         if !payload.is_empty() {
             let mut input = InBuffer::around(payload);
-            while input.pos < payload.len() {
+            // See `decompress_zstd_literal_stream`: an input-only loop
+            // condition drops the last buffered output block (up to
+            // `staging_capacity` bytes) whenever the final
+            // `decompress_stream` call both consumes the last input
+            // byte and saturates the staging buffer.
+            loop {
                 let mut output = OutBuffer::around(&mut staging[..]);
                 ctx.decompress_stream(&mut output, &mut input)
                     .map_err(|code| {
                         let reason = zstd::zstd_safe::get_error_name(code).to_string();
                         RealWireError::ZstdDecompressionFailed { reason }
                     })?;
+                let produced = output.pos();
                 this_out.extend_from_slice(output.as_slice());
+                if input.pos() < payload.len() {
+                    continue;
+                }
+                if produced < staging_capacity {
+                    break;
+                }
             }
         }
         results.push(this_out);

@@ -1962,20 +1962,44 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         bridge: &mut dyn EventSink,
     ) -> Result<(), AerorsyncError> {
         self.phase = AerorsyncSessionPhase::DeltaReceiving;
-
-        // Accumulate bytes until `decode_delta_stream` succeeds.
-        let mut buf: Vec<u8> = Vec::new();
         let sum_head_count = self.sent_sum_head.as_ref().map(|h| h.count);
+
+        // Stock rsync's sender frames every file transfer as
+        // `write_ndx_and_attrs` (ndx + iflags) + `write_sum_head`
+        // BEFORE the token stream (`sender.c::send_files`), mirroring
+        // exactly what our upload `send_delta_phase_single_file` emits.
+        // Consume that prefix with the same decoder the upload-receive
+        // path uses (`read_signature_header`). A leading `NDX_DONE` is
+        // the genuine identical-baseline no-op: the sender skipped the
+        // file, so copy the local baseline through unchanged.
+        let mut buf = match self.read_signature_header(bridge).await {
+            Ok(SignatureHeader::Transfer { .. }) => {
+                std::mem::take(&mut self.sig_residual_after_header)
+            }
+            Ok(SignatureHeader::NoopDone) => {
+                // residual already stashed into `summary_seed`.
+                self.install_download_noop_reconstructed(destination_data);
+                return Ok(());
+            }
+            Err(e) if Self::is_download_clean_eof_noop(&e) => {
+                // Server closed before sending any ndx: a no-payload
+                // identical no-op (nothing to reconstruct, keep local).
+                self.download_clean_eof_noop = true;
+                self.install_download_noop_reconstructed(destination_data);
+                return Ok(());
+            }
+            Err(e) => return Err(e),
+        };
+
+        // Accumulate token-stream bytes until `decode_delta_stream`
+        // succeeds. `buf` is seeded with the residual the prefix
+        // decoder over-read from the same MSG_DATA frame(s).
         loop {
             self.check_cancel("receive_delta_phase")?;
             if !buf.is_empty() {
-                if self.take_download_noop_delta_marker(&mut buf) {
-                    self.install_download_noop_reconstructed(destination_data);
-                    return Ok(());
-                }
                 match decode_delta_stream(&buf, A2_3_FILE_CHECKSUM_LEN, sum_head_count) {
                     Ok((report, consumed)) => {
-                        buf.drain(..consumed);
+                        self.stash_post_delta_into_summary_seed(&buf[consumed..]);
                         self.received_file_checksum = Some(report.file_checksum.clone());
                         self.install_reconstructed_from_wire(
                             destination_data,
@@ -1996,26 +2020,22 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             match self.next_data_frame(bridge).await {
                 Ok(payload) => buf.extend_from_slice(&payload),
                 Err(e) if Self::is_download_clean_eof_noop(&e) => {
-                    // See the streaming sibling: a clean "remote closed
-                    // (exit 0)" is only an identical-baseline no-op when
-                    // the server sent no payload. A non-empty `buf` is a
-                    // complete full/delta stream terminated by the EOF;
-                    // decode and reconstruct it instead of discarding it
-                    // for the empty baseline (24658dad regression).
+                    // A clean "remote closed (exit 0)" terminates a
+                    // complete full/delta stream the loop-top decode
+                    // could not consume earlier solely because it was
+                    // still truncated: decode it now, exactly as the
+                    // loop-top would. An empty `buf` here is a genuine
+                    // no-payload no-op (keep the local baseline).
                     if !buf.is_empty() {
-                        if self.take_download_noop_delta_marker(&mut buf) {
-                            self.download_clean_eof_noop = true;
-                            self.install_download_noop_reconstructed(
-                                destination_data,
-                            );
-                            return Ok(());
-                        }
                         match decode_delta_stream(
                             &buf,
                             A2_3_FILE_CHECKSUM_LEN,
                             sum_head_count,
                         ) {
-                            Ok((report, _consumed)) => {
+                            Ok((report, consumed)) => {
+                                self.stash_post_delta_into_summary_seed(
+                                    &buf[consumed..],
+                                );
                                 self.received_file_checksum =
                                     Some(report.file_checksum.clone());
                                 self.install_reconstructed_from_wire(
@@ -2099,20 +2119,36 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         bridge: &mut dyn EventSink,
     ) -> Result<(), AerorsyncError> {
         self.phase = AerorsyncSessionPhase::DeltaReceiving;
-
-        let mut buf: Vec<u8> = Vec::new();
         let sum_head_count = self.sent_sum_head.as_ref().map(|h| h.count);
+
+        // Consume the sender's `write_ndx_and_attrs` + `write_sum_head`
+        // prefix (ndx + iflags + sum_head) that precedes the token
+        // stream. See `receive_delta_phase_single_file` for the full
+        // rationale; this is the streaming sink twin.
+        let mut buf = match self.read_signature_header(bridge).await {
+            Ok(SignatureHeader::Transfer { .. }) => {
+                std::mem::take(&mut self.sig_residual_after_header)
+            }
+            Ok(SignatureHeader::NoopDone) => {
+                self.install_download_noop_streaming(baseline, writer)
+                    .await?;
+                return Ok(());
+            }
+            Err(e) if Self::is_download_clean_eof_noop(&e) => {
+                self.download_clean_eof_noop = true;
+                self.install_download_noop_streaming(baseline, writer)
+                    .await?;
+                return Ok(());
+            }
+            Err(e) => return Err(e),
+        };
+
         loop {
             self.check_cancel("receive_delta_phase")?;
             if !buf.is_empty() {
-                if self.take_download_noop_delta_marker(&mut buf) {
-                    self.install_download_noop_streaming(baseline, writer)
-                        .await?;
-                    return Ok(());
-                }
                 match decode_delta_stream(&buf, A2_3_FILE_CHECKSUM_LEN, sum_head_count) {
                     Ok((report, consumed)) => {
-                        buf.drain(..consumed);
+                        self.stash_post_delta_into_summary_seed(&buf[consumed..]);
                         self.received_file_checksum = Some(report.file_checksum.clone());
                         self.install_reconstructed_from_wire_streaming(
                             baseline, writer, adapter, report.ops,
@@ -2132,29 +2168,22 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             match self.next_data_frame(bridge).await {
                 Ok(payload) => buf.extend_from_slice(&payload),
                 Err(e) if Self::is_download_clean_eof_noop(&e) => {
-                    // A clean "remote closed (exit 0)" is only an
-                    // identical-baseline no-op when the server sent NO
-                    // delta/literal payload. If `buf` still holds bytes
-                    // the EOF simply terminates a complete full/delta
-                    // stream that the loop-top decode could not consume
-                    // earlier solely because it was still truncated:
-                    // decode it now and reconstruct, exactly as the
-                    // loop-top path would. Unconditionally treating this
-                    // as a no-op (24658dad) discarded a full download
-                    // and wrote the empty local baseline instead.
+                    // A clean "remote closed (exit 0)" terminates a
+                    // complete full/delta stream the loop-top decode
+                    // could not consume earlier solely because it was
+                    // still truncated: decode it now, exactly as the
+                    // loop-top would. An empty `buf` here is a genuine
+                    // no-payload no-op (keep the local baseline).
                     if !buf.is_empty() {
-                        if self.take_download_noop_delta_marker(&mut buf) {
-                            self.download_clean_eof_noop = true;
-                            self.install_download_noop_streaming(baseline, writer)
-                                .await?;
-                            return Ok(());
-                        }
                         match decode_delta_stream(
                             &buf,
                             A2_3_FILE_CHECKSUM_LEN,
                             sum_head_count,
                         ) {
-                            Ok((report, _consumed)) => {
+                            Ok((report, consumed)) => {
+                                self.stash_post_delta_into_summary_seed(
+                                    &buf[consumed..],
+                                );
                                 self.received_file_checksum =
                                     Some(report.file_checksum.clone());
                                 self.install_reconstructed_from_wire_streaming(
@@ -2188,18 +2217,21 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         }
     }
 
-    fn take_download_noop_delta_marker(&mut self, buf: &mut Vec<u8>) -> bool {
-        if !Self::looks_like_download_noop_delta_marker(buf) {
-            return false;
+    /// Prepend the wire bytes the sender wrote AFTER the file checksum
+    /// (the interleaved `NDX_DONE` markers + `SummaryFrame` + trailer)
+    /// to `summary_seed`. They were pulled into the delta accumulator
+    /// because they shared MSG_DATA frame(s) with the tail of the token
+    /// stream; the sender then closed the channel, so `finish_session`
+    /// must satisfy `drain_leading_ndx_done_download` /
+    /// `receive_summary_phase` from this seed rather than the wire.
+    fn stash_post_delta_into_summary_seed(&mut self, leftover: &[u8]) {
+        if leftover.is_empty() {
+            return;
         }
-        buf.drain(..1);
-        self.summary_seed.extend_from_slice(buf);
-        buf.clear();
-        true
-    }
-
-    fn looks_like_download_noop_delta_marker(buf: &[u8]) -> bool {
-        buf.first().copied() == Some(0x00)
+        let mut seeded = Vec::with_capacity(leftover.len() + self.summary_seed.len());
+        seeded.extend_from_slice(leftover);
+        seeded.extend_from_slice(&self.summary_seed);
+        self.summary_seed = seeded;
     }
 
     fn install_download_noop_reconstructed(&mut self, destination_data: &[u8]) {
@@ -2606,9 +2638,29 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     }
 
     /// Tear the raw stream down cleanly. Advances phase to `Complete`.
+    ///
+    /// Best-effort: this is the last step of a session whose data and
+    /// summary have already been fully transferred and verified. On a
+    /// download the rsync sender (the server) closes the channel first,
+    /// so by the time we send EOF the raw worker has often already
+    /// exited; that surfaces as a `TransportFailure` ("worker dropped
+    /// shutdown reply" / "channel closed"). Treating a teardown failure
+    /// as fatal here would fail an otherwise byte-perfect transfer.
+    /// Mirrors `read_trailing_ndx_done`'s clean-EOF tolerance and
+    /// rsync's own courtesy-only connection teardown.
     async fn shutdown_raw_stream(&mut self) -> Result<(), AerorsyncError> {
         if let Some(mut stream) = self.stream.take() {
-            stream.shutdown().await?;
+            if let Err(e) = stream.shutdown().await {
+                if e.kind == AerorsyncErrorKind::TransportFailure {
+                    tracing::debug!(
+                        "shutdown_raw_stream: peer closed before teardown ({})",
+                        e.detail
+                    );
+                } else {
+                    self.phase = AerorsyncSessionPhase::Complete;
+                    return Err(e);
+                }
+            }
         }
         self.phase = AerorsyncSessionPhase::Complete;
         Ok(())
@@ -3039,6 +3091,26 @@ mod tests {
             out.extend_from_slice(&encode_sum_block(b));
         }
         out
+    }
+
+    /// The `write_ndx_and_attrs` + `write_sum_head` prefix every stock
+    /// rsync sender emits before the token stream on a download
+    /// (`sender.c::send_files`). The driver consumes it via
+    /// `read_signature_header`; the values are decode-only (the
+    /// reconstruction uses the locally-sent sum_head), so one canonical
+    /// valid header models the wire for every synthetic download test.
+    fn download_sender_prefix() -> Vec<u8> {
+        build_sig_phase_payload(
+            A2_2_FIRST_FILE_NDX,
+            A2_2_DOWNLOAD_IFLAGS,
+            &SumHead {
+                count: 0,
+                block_length: 512,
+                checksum_length: 2,
+                remainder_length: 0,
+            },
+            &[],
+        )
     }
 
     fn make_sig_block(rolling: u32, strong_first_byte: u8, s2length: usize) -> SumBlock {
@@ -4594,6 +4666,7 @@ mod tests {
         let mut inbound = canonical_server_preamble_bytes();
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &entry_bytes));
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &term_bytes));
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &download_sender_prefix()));
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &delta_bytes));
 
         let transport = mock_transport_with_raw_inbound(inbound);
@@ -4718,6 +4791,7 @@ mod tests {
         let mut inbound = canonical_server_preamble_bytes();
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &entry_bytes));
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &term_bytes));
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &download_sender_prefix()));
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &delta_bytes));
 
         // 2 baseline blocks of 4 bytes each: BLK1 (index 0), BLK2 (index 1).
@@ -5064,6 +5138,7 @@ mod tests {
         let mut inbound = canonical_server_preamble_bytes();
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &entry_bytes));
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &term_bytes));
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &download_sender_prefix()));
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &delta_bytes[..half]));
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &delta_bytes[half..]));
 
@@ -5406,6 +5481,7 @@ mod tests {
         let mut inbound = canonical_server_preamble_bytes();
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &entry_bytes));
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &term_bytes));
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &download_sender_prefix()));
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &delta_bytes));
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &ndx_done_leading));
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &summary_bytes));
@@ -5572,6 +5648,7 @@ mod tests {
         let mut inbound = canonical_server_preamble_bytes();
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &entry_bytes));
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &term_bytes));
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &download_sender_prefix()));
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &delta_bytes));
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &combined));
 
@@ -5627,6 +5704,7 @@ mod tests {
         let mut inbound = canonical_server_preamble_bytes();
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &entry_bytes));
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &term_bytes));
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &download_sender_prefix()));
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &delta_bytes));
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &poisoned));
 
@@ -6459,6 +6537,7 @@ mod tests {
         let mut inbound = canonical_server_preamble_bytes();
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &entry_bytes));
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &term_bytes));
+        inbound.extend_from_slice(&mux_frame(MuxTag::Data, &download_sender_prefix()));
         inbound.extend_from_slice(&mux_frame(MuxTag::Data, &delta_bytes));
         inbound
     }

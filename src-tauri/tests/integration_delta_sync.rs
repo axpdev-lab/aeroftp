@@ -465,11 +465,22 @@ async fn product_path_uses_delta_when_session_is_eligible() {
     let _ = provider.disconnect().await;
 }
 
+/// Z.1.4 (2026-05-15, commit 24658dad) made password-backed SFTP
+/// profiles eligible for the native rsync leg, gated fail-closed on the
+/// host-key fingerprint the verified SFTP handshake captured (the U-02
+/// security gate, `src/providers/sftp.rs`; confirmed fail-closed by the
+/// independent v3.8.0 crypto audit, area v). With the fixture host key
+/// seeded into `known_hosts`, a password-auth session therefore enters
+/// the native delta transport (host key pinned) exactly like a
+/// key-auth session: the pre-24658dad "password => always classic"
+/// contract this test used to assert is obsolete. The contract now is:
+/// password-SFTP with a pinned host key DOES use the delta/native path
+/// and still produces a byte-correct upload.
 #[tokio::test]
 #[ignore = "requires docker fixture"]
-async fn product_path_falls_through_silently_when_session_not_eligible() {
+async fn product_path_uses_native_delta_for_password_sftp_with_pinned_host_key() {
     if !password_fixture_ready_or_skip(
-        "product_path_falls_through_silently_when_session_not_eligible",
+        "product_path_uses_native_delta_for_password_sftp_with_pinned_host_key",
     ) {
         return;
     }
@@ -493,13 +504,16 @@ async fn product_path_falls_through_silently_when_session_not_eligible() {
         .expect("password-auth SFTP connect");
 
     let local_root = tempfile::tempdir().expect("local tempdir");
-    let payload = local_root.path().join("classic-only.bin");
-    write_repeated_payload(&payload, 0x55, 512);
+    let payload = local_root.path().join("delta-payload.bin");
+    // Above DEFAULT_MIN_FILE_SIZE (1 MiB) so the transfer exercises the
+    // delta path rather than the orthogonal below-threshold size
+    // fallback.
+    write_repeated_payload(&payload, 0x55, 2048);
 
-    let remote_root = unique_remote_root("p1-t02-silent-fallback");
-    let opts = SyncOptions {
+    let remote_root = unique_remote_root("p1-t02-password-native-delta");
+    let baseline = SyncOptions {
         direction: SyncDirection::Upload,
-        delta_policy: DeltaPolicy::Delta,
+        delta_policy: DeltaPolicy::Mtime,
         dry_run: false,
         delete_orphans: false,
         conflict_mode: ConflictMode::Larger,
@@ -507,11 +521,33 @@ async fn product_path_falls_through_silently_when_session_not_eligible() {
     };
     let mut sink = NoopProgressSink;
 
+    let first_report = sync_tree_core(
+        &mut provider,
+        local_root.path().to_str().expect("utf8 local path"),
+        &remote_root,
+        &baseline,
+        &mut sink,
+    )
+    .await;
+    assert!(
+        first_report.errors.is_empty(),
+        "baseline upload should succeed, got errors: {:?}",
+        first_report.errors
+    );
+    assert_eq!(first_report.uploaded, 1, "baseline should upload once");
+
+    thread::sleep(Duration::from_secs(2));
+    mutate_first_byte(&payload, b'X');
+
+    let delta_opts = SyncOptions {
+        delta_policy: DeltaPolicy::Delta,
+        ..baseline.clone()
+    };
     let report = sync_tree_core(
         &mut provider,
         local_root.path().to_str().expect("utf8 local path"),
         &remote_root,
-        &opts,
+        &delta_opts,
         &mut sink,
     )
     .await;
@@ -519,13 +555,25 @@ async fn product_path_falls_through_silently_when_session_not_eligible() {
 
     assert!(
         report.errors.is_empty(),
-        "non-eligible session should fall back to classic without errors: {:?}",
+        "password-SFTP delta apply should succeed, got errors: {:?}",
         report.errors
     );
-    assert_eq!(report.uploaded, 1, "classic path should still upload once");
+    assert_eq!(report.uploaded, 1, "delta apply should upload once");
+    // The native leg must be selected for a host-key-pinned password
+    // session (fail-closed gate satisfied via the seeded known_host).
     assert!(
-        !logs.contains("sync.delta:"),
-        "expected silent None => classic branch for password-auth session; logs were:\n{}",
+        logs.contains("using native rsync delta transport (host key pinned)"),
+        "expected password-SFTP with pinned host key to select the native \
+         delta transport; logs were:\n{}",
+        logs
+    );
+    // And the product path must actually run delta (single-shot or
+    // batch), not fall through to classic.
+    assert!(
+        logs.contains("sync.delta: used delta path")
+            || logs.contains("sync.delta: used batch path"),
+        "expected the delta/native path to run on the pinned password \
+         session; logs were:\n{}",
         logs
     );
 
