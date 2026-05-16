@@ -226,6 +226,39 @@ aeroftp-cli lsf --profile "My S3" / | grep '\.tar\.gz$'
 
 Predictable list shapes for shell users coming from rclone. `lsd` shows only directories, `lsl` is the long format, and `lsf` prints bare entries one per line. The human summary always goes to stderr, so `lsf` stdout stays clean for pipelines. All three accept the same path and `--profile` rules as `ls`.
 
+### lsjson - Stable JSON Listing
+
+```bash
+# One JSON record per entry in a directory
+aeroftp-cli lsjson --profile "My S3" /backups
+
+# Recurse the whole subtree
+aeroftp-cli lsjson --profile "My S3" / -R
+
+# Only files, no MimeType field, piped into jq
+aeroftp-cli lsjson --profile "My S3" /backups -R --files-only --no-mimetype | jq -r '.[].Path'
+
+# A single object describing the path itself
+aeroftp-cli lsjson --profile "My S3" /backups/report.pdf --stat
+
+# Opt-in per-file hashes (downloads each file to digest it)
+aeroftp-cli lsjson --profile "My S3" /backups --hash --hash-type md5
+```
+
+Emits a pretty-printed JSON **array** to stdout with a stable, machine-parsable record schema, so scripts and CI can depend on the field names. The output is always JSON regardless of the global `--json`/text flag; an empty listing is `[]`. Records are sorted by `Path` for reproducible diffs.
+
+| Field | Type | Notes |
+|---|---|---|
+| `Path` | string | Relative to the listed root: leaf name non-recursively, `/`-joined subpath with `-R`. |
+| `Name` | string | Leaf name only. |
+| `Size` | int64 | Byte size; directories are `-1` by convention. |
+| `MimeType` | string | `inode/directory` for directories, otherwise guessed from the name. Omitted with `--no-mimetype`. |
+| `ModTime` | string | Provider-native modification time, passed through verbatim (RFC3339 where the provider supplies it; empty string when unknown). Not re-normalized. Omitted with `--no-modtime`. |
+| `IsDir` | bool | Whether the entry is a directory. |
+| `Hashes` | object | Only with `--hash`: `{ "<algo>": "<hex>" }`. Omitted for directories. |
+
+Flags: `-R`/`--recursive`, `--files-only`, `--dirs-only` (mutually exclusive with `--files-only`), `--stat` (single object for the path itself, not its contents), `--no-modtime`, `--no-mimetype`, `--hash`, `--hash-type <md5|sha1|sha256|sha512|blake3>` (default `sha256`). The global `--max-depth` caps recursion. `--hash` has no cheap server-side source: it downloads each file and digests it locally, so it is slow on large trees and is off by default; without it the `Hashes` field is omitted entirely. Exit code `0` on success, `2` on a missing path. Same path and `--profile` rules as `ls`.
+
 ### get - Download Files
 
 ```bash
