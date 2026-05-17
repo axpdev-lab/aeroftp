@@ -666,7 +666,19 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
   // -----------------------------------------------------------------------
 
   return (
-    <div role="navigation" aria-label="Places sidebar" className="w-[200px] h-full bg-white/80 border-r border-gray-200 dark:bg-gray-900/50 dark:border-gray-700 flex flex-col overflow-hidden select-none">
+    <div
+      role="navigation"
+      aria-label="Places sidebar"
+      className="w-[200px] h-full bg-white/80 border-r border-gray-200 dark:bg-gray-900/50 dark:border-gray-700 flex flex-col overflow-hidden select-none"
+      // The sidebar lives inside the left LocalFilePanel, whose root has
+      // onMouseDown={onPanelFocus}. In dual-panel mode that would re-focus
+      // the left panel on mousedown, flipping sidebarTargetPanelId back to
+      // 'local' before the click navigation fires, so the sidebar always
+      // drove the left panel. The sidebar is a shared control that must act
+      // on the active panel without changing which panel is active, so we
+      // stop mousedown from bubbling to the host panel's focus handler.
+      onMouseDown={(e) => e.stopPropagation()}
+    >
       {/* Header with mode toggle */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-gray-700/50">
         <div className="flex items-center gap-1.5 min-w-0">
