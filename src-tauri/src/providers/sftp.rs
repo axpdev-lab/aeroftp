@@ -10,6 +10,7 @@
 
 use super::types::is_session_closed_error_message;
 use super::{ProviderError, ProviderType, RemoteEntry, SftpConfig, StorageProvider};
+use crate::ssh_exec::ssh_exec_collect;
 use async_trait::async_trait;
 use russh::client::AuthResult;
 use russh::client::{self, Config, Handle, Handler};
@@ -47,6 +48,27 @@ fn classify_russh_err(
 /// Used by sibling modules (e.g. rsync-over-SSH) to open additional channels
 /// (exec, direct-tcpip) without re-authenticating.
 pub type SharedSshHandle = Arc<TokioMutex<Handle<SshHandler>>>;
+
+/// POSIX single-quote a string for safe interpolation into a remote shell
+/// command. The whole value is wrapped in `'...'` (everything literal inside
+/// single quotes) and every embedded `'` is emitted as `'\''` (close quote,
+/// escaped literal quote, reopen quote). This neutralises `$()`, backticks,
+/// `;`, `&&`, newlines and spaces: there is no shell metacharacter that
+/// survives single-quoting. Used by [`SftpProvider::checksum`] before passing
+/// a listing-derived path to `sha256sum` over an exec channel.
+fn shell_single_quote(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('\'');
+    for ch in s.chars() {
+        if ch == '\'' {
+            out.push_str("'\\''");
+        } else {
+            out.push(ch);
+        }
+    }
+    out.push('\'');
+    out
+}
 
 /// SSH Client Handler for server key verification.
 ///
@@ -1347,6 +1369,60 @@ impl StorageProvider for SftpProvider {
         }
     }
 
+    fn supports_checksum(&self) -> bool {
+        // We can attempt a server-side hash whenever the SSH session is up.
+        // `checksum()` degrades to an empty map (consumers then omit) if the
+        // server has no `sha256sum`: honest, like rclone.
+        self.ssh_handle.is_some()
+    }
+
+    /// Server-side SHA-256 computed by the remote host via an SSH exec
+    /// channel (`sha256sum`). The file is read and hashed entirely on the
+    /// server: no file content crosses the wire to us, unlike a download.
+    ///
+    /// Returns an empty map (not an error) when the server lacks
+    /// `sha256sum`, the command exits non-zero, or the output is
+    /// unparseable: callers then omit the hash, matching rclone's
+    /// behaviour of silently skipping hashes a backend cannot provide.
+    async fn checksum(
+        &mut self,
+        path: &str,
+    ) -> Result<std::collections::HashMap<String, String>, ProviderError> {
+        let handle = self
+            .ssh_handle
+            .clone()
+            .ok_or(ProviderError::NotConnected)?;
+        let full_path = self.normalize_path(path);
+        // `--` ends option parsing; the path is fully single-quoted so no
+        // shell metacharacter (`$()`, backtick, `;`, space, newline) in a
+        // listing-derived name can break out. See `shell_single_quote`.
+        let cmd = format!("sha256sum -- {}", shell_single_quote(&full_path));
+
+        let (stdout, _stderr, _exit) = match ssh_exec_collect(handle, &cmd, 4096).await {
+            Ok(v) => v,
+            // A transport/channel failure is reported as "no server hash"
+            // so consumers gracefully omit rather than failing the listing.
+            Err(_) => return Ok(std::collections::HashMap::new()),
+        };
+
+        // `sha256sum` prints the `<64-hex>  name` line to stdout ONLY on
+        // success; on any error it writes to stderr and emits no digest.
+        // A well-formed digest is therefore itself proof of success, so we
+        // do not gate on the exec exit status: some SSH servers deliver
+        // `exit-status` after `eof`/`close`, and `ssh_exec_collect` then
+        // reports the EXIT_ABNORMAL sentinel even though stdout is complete
+        // and correct (observed on the OpenSSH lab box with an SFTP
+        // subsystem channel concurrently open on the same handle).
+        let mut out = std::collections::HashMap::new();
+        if let Some(token) = String::from_utf8_lossy(&stdout).split_whitespace().next() {
+            let digest = token.to_ascii_lowercase();
+            if digest.len() == 64 && digest.bytes().all(|b| b.is_ascii_hexdigit()) {
+                out.insert("sha256".to_string(), digest);
+            }
+        }
+        Ok(out)
+    }
+
     async fn keep_alive(&mut self) -> Result<(), ProviderError> {
         // SFTP over SSH is a persistent connection
         // Just check if we're still connected
@@ -1579,6 +1655,31 @@ impl StorageProvider for SftpProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shell_single_quote_neutralises_injection() {
+        // Plain path: just wrapped.
+        assert_eq!(shell_single_quote("/srv/file.txt"), "'/srv/file.txt'");
+        // Spaces stay literal.
+        assert_eq!(shell_single_quote("/a b/c"), "'/a b/c'");
+        // Embedded single quote: close, escaped quote, reopen.
+        assert_eq!(shell_single_quote("a'b"), "'a'\\''b'");
+        // Command substitution / backticks are inert inside single quotes.
+        assert_eq!(shell_single_quote("$(rm -rf /)"), "'$(rm -rf /)'");
+        assert_eq!(shell_single_quote("`id`"), "'`id`'");
+        // Separators and logical operators cannot break out.
+        assert_eq!(shell_single_quote("x; rm -rf /"), "'x; rm -rf /'");
+        assert_eq!(shell_single_quote("a && b"), "'a && b'");
+        // Newline injection stays inside the quotes.
+        assert_eq!(shell_single_quote("a\nrm -rf /"), "'a\nrm -rf /'");
+        // The classic break-out attempt: '; rm -rf / ; echo '
+        let evil = "'; rm -rf / ; echo '";
+        let q = shell_single_quote(evil);
+        assert!(q.starts_with('\'') && q.ends_with('\''));
+        // Every original `'` became the 4-char `'\''` sequence; there is no
+        // bare unescaped quote that could terminate the literal early.
+        assert_eq!(q, "''\\''; rm -rf / ; echo '\\'''");
+    }
 
     #[test]
     fn test_sftp_provider_creation() {
