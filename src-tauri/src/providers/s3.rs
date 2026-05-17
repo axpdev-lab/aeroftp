@@ -58,6 +58,23 @@ fn encode_s3_key_path(key: &str) -> String {
         .join("/")
 }
 
+/// Convert a raw S3 `ETag` value to a usable MD5 hex digest, or `None`.
+///
+/// An S3 ETag equals the object MD5 ONLY for single-part uploads without
+/// SSE-KMS/SSE-C: a quoted 32-hex string. Multipart uploads use
+/// `"<hash>-<partcount>"` (the `-N` suffix is not the object MD5) and SSE
+/// objects use an opaque value. We accept exactly 32 lowercase-hex chars
+/// (which also rejects any `-N` suffix), mirroring rclone's S3 hash
+/// behaviour: omit rather than report a wrong digest.
+fn etag_to_md5(raw: &str) -> Option<String> {
+    let v = raw.trim().trim_matches('"').to_ascii_lowercase();
+    if v.len() == 32 && v.bytes().all(|b| b.is_ascii_hexdigit()) {
+        Some(v)
+    } else {
+        None
+    }
+}
+
 fn is_local_s3_endpoint(endpoint: &str) -> bool {
     let lower = endpoint.trim().to_ascii_lowercase();
     let stripped = lower
@@ -805,13 +822,16 @@ impl S3Provider {
                                                 .and_then(|s| s.parse().ok())
                                                 .unwrap_or(0);
 
-                                            let etag = c_etag
-                                                .as_ref()
-                                                .map(|s| s.trim_matches('"').to_string());
-
                                             let mut metadata = HashMap::new();
-                                            if let Some(etag) = etag {
-                                                metadata.insert("etag".to_string(), etag);
+                                            if let Some(raw_etag) = c_etag.as_ref() {
+                                                let etag =
+                                                    raw_etag.trim_matches('"').to_string();
+                                                if let Some(md5) = etag_to_md5(&etag) {
+                                                    metadata
+                                                        .insert("md5".to_string(), md5);
+                                                }
+                                                metadata
+                                                    .insert("etag".to_string(), etag);
                                             }
                                             if let Some(ref sc) = c_storage_class {
                                                 metadata.insert(
@@ -2364,6 +2384,9 @@ impl StorageProvider for S3Provider {
 
                 let mut metadata = HashMap::new();
                 if let Some(etag) = etag {
+                    if let Some(md5) = etag_to_md5(&etag) {
+                        metadata.insert("md5".to_string(), md5);
+                    }
                     metadata.insert("etag".to_string(), etag);
                 }
 
@@ -2401,6 +2424,27 @@ impl StorageProvider for S3Provider {
             Err(ProviderError::NotFound(_)) => Ok(false),
             Err(e) => Err(e),
         }
+    }
+
+    fn supports_checksum(&self) -> bool {
+        true
+    }
+
+    /// Server-side MD5 derived from the object ETag (HEAD only, no download).
+    ///
+    /// Returns an empty map for multipart or SSE-encrypted objects whose
+    /// ETag is not the object MD5: honest, matching rclone (omit over
+    /// guess). `stat()` already normalises the ETag into `metadata["md5"]`.
+    async fn checksum(
+        &mut self,
+        path: &str,
+    ) -> Result<HashMap<String, String>, ProviderError> {
+        let entry = self.stat(path).await?;
+        let mut out = HashMap::new();
+        if let Some(md5) = entry.metadata.get("md5") {
+            out.insert("md5".to_string(), md5.clone());
+        }
+        Ok(out)
     }
 
     async fn keep_alive(&mut self) -> Result<(), ProviderError> {

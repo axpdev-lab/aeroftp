@@ -159,6 +159,11 @@ struct B2File {
     content_type: Option<String>,
     #[serde(default)]
     upload_timestamp: Option<i64>,
+    /// Whole-file SHA-1 (`contentSha1`). `"none"` for large files (the real
+    /// hash is per-part), `"unverified:<sha1>"` when the uploader did not
+    /// certify it. Captured into `metadata["sha1"]` only when clean 40-hex.
+    #[serde(default)]
+    content_sha1: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1581,6 +1586,16 @@ impl StorageProvider for B2Provider {
                 }
                 let is_dir = f.action == "folder";
                 let full_path = format!("/{}", f.file_name.trim_end_matches('/'));
+                let mut metadata = std::collections::HashMap::new();
+                if !is_dir {
+                    if let Some(sha1) = f
+                        .content_sha1
+                        .as_deref()
+                        .and_then(b2_clean_sha1)
+                    {
+                        metadata.insert("sha1".to_string(), sha1);
+                    }
+                }
                 entries.push(RemoteEntry {
                     name: name_only.to_string(),
                     path: full_path,
@@ -1596,7 +1611,7 @@ impl StorageProvider for B2Provider {
                     is_symlink: false,
                     link_target: None,
                     mime_type: f.content_type.clone(),
-                    metadata: std::collections::HashMap::new(),
+                    metadata,
                 });
             }
             match resp.next_file_name {
@@ -2058,6 +2073,12 @@ impl StorageProvider for B2Provider {
             .find(|f| f.file_name == key || f.file_name.starts_with(&format!("{}/", key)))
             .ok_or_else(|| ProviderError::NotFound(format!("path {}", abs)))?;
         let is_dir = f.file_name != key;
+        let mut metadata = std::collections::HashMap::new();
+        if !is_dir {
+            if let Some(sha1) = f.content_sha1.as_deref().and_then(b2_clean_sha1) {
+                metadata.insert("sha1".to_string(), sha1);
+            }
+        }
         Ok(RemoteEntry {
             name: abs.rsplit('/').next().unwrap_or("").to_string(),
             path: format!("/{}", f.file_name.trim_end_matches('/')),
@@ -2073,7 +2094,7 @@ impl StorageProvider for B2Provider {
             is_symlink: false,
             link_target: None,
             mime_type: f.content_type,
-            metadata: std::collections::HashMap::new(),
+            metadata,
         })
     }
 
@@ -2087,6 +2108,26 @@ impl StorageProvider for B2Provider {
             Err(ProviderError::NotFound(_)) => Ok(false),
             Err(e) => Err(e),
         }
+    }
+
+    fn supports_checksum(&self) -> bool {
+        true
+    }
+
+    /// Server-side SHA-1 from B2 `contentSha1` (one metadata listing call,
+    /// no download). Empty for large files / uncertified uploads whose
+    /// `contentSha1` is `none`/`unverified:` (honest, matching rclone).
+    /// `stat()` already normalises it into `metadata["sha1"]`.
+    async fn checksum(
+        &mut self,
+        path: &str,
+    ) -> Result<std::collections::HashMap<String, String>, ProviderError> {
+        let entry = self.stat(path).await?;
+        let mut out = std::collections::HashMap::new();
+        if let Some(sha1) = entry.metadata.get("sha1") {
+            out.insert("sha1".to_string(), sha1.clone());
+        }
+        Ok(out)
     }
 
     async fn keep_alive(&mut self) -> Result<(), ProviderError> {
@@ -2454,6 +2495,23 @@ pub(crate) fn sha1_hex(bytes: &[u8]) -> String {
         s.push_str(&format!("{:02x}", b));
     }
     s
+}
+
+/// Normalise a B2 `contentSha1` value to a usable SHA-1 hex digest, or
+/// `None`. Rejects `"none"` (large files: no whole-file hash) and the
+/// `"unverified:<sha1>"` prefix (uploader did not certify it). Accepts
+/// only exactly 40 lowercase-hex characters: conservative, matching
+/// rclone (omit over report an uncertified or absent hash).
+fn b2_clean_sha1(raw: &str) -> Option<String> {
+    let v = raw.trim().to_ascii_lowercase();
+    if v == "none" || v.starts_with("unverified:") {
+        return None;
+    }
+    if v.len() == 40 && v.bytes().all(|b| b.is_ascii_hexdigit()) {
+        Some(v)
+    } else {
+        None
+    }
 }
 
 pub(crate) fn encode_path_segments(key: &str) -> String {
