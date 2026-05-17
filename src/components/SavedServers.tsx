@@ -7,7 +7,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { Server, Plus, Trash2, Edit2, Copy, X, Check, Cloud, AlertCircle, GripVertical, Search, Activity, Play, Loader2, Eye, EyeOff } from 'lucide-react';
 import { ImportExportIcon } from './icons/ImportExportIcon';
 import { open } from '@tauri-apps/plugin-dialog';
-import { ServerProfile, ConnectionParams, ProviderType, isOAuthProvider, isFourSharedProvider } from '../types';
+import { ServerProfile, ConnectionParams, ProviderType, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol } from '../types';
 import { useTranslation } from '../i18n';
 import { getProtocolInfo, ProtocolBadge, ProtocolIcon } from './ProtocolSelector';
 import { PROVIDER_LOGOS } from './ProviderLogos';
@@ -534,8 +534,17 @@ export const SavedServers: React.FC<SavedServersProps> = ({
             // Legacy-profile migration: when the registry preset's
             // protocol changed since the profile was saved, trust the
             // registry so connect dispatches to the right provider.
+            //
+            // BUT: never let this downgrade a native-API profile. Some
+            // providers expose BOTH a native API protocol and a WebDAV
+            // registry preset that share the same providerId (Koofr,
+            // OpenDrive). For a native profile (protocol: 'koofr') the only
+            // registry entry id 'koofr' is the WebDAV preset, so the naive
+            // override flipped it to 'webdav' and connected the API profile
+            // over WebDAV: PROPFIND against the bare API host returned 404
+            // (issue #213). A saved native protocol is authoritative.
             let effectiveProtocol: ProviderType = (server.protocol || 'ftp') as ProviderType;
-            if (server.providerId) {
+            if (server.providerId && !isNativeApiProtocol(server.protocol)) {
                 const preset = getProviderById(server.providerId);
                 if (preset?.protocol && preset.protocol !== effectiveProtocol) {
                     effectiveProtocol = preset.protocol as ProviderType;

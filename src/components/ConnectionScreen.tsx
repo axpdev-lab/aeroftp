@@ -11,7 +11,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { readFile } from '@tauri-apps/plugin-fs';
 import { FolderOpen, HardDrive, ChevronRight, ChevronDown, Save, Copy, Cloud, Check, Settings, Clock, Folder, X, Lock, ArrowLeft, Eye, EyeOff, ExternalLink, Shield, ShieldCheck, KeyRound, Loader2, Image, Info, Pencil, Link2 } from 'lucide-react';
-import { ConnectionParams, ProviderType, isOAuthProvider, isAeroCloudProvider, isFourSharedProvider, ServerProfile } from '../types';
+import { ConnectionParams, ProviderType, isOAuthProvider, isAeroCloudProvider, isFourSharedProvider, isNativeApiProtocol, ServerProfile } from '../types';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { SavedServers } from './SavedServers';
 import { ExportImportDialog } from './ExportImportDialog';
@@ -1163,8 +1163,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // ProviderModeTabs surface the provider chip strip in edit mode.
         // Filen native profiles have no providerId so they fall through
         // and keep their saved protocol as-is.
+        // Native-API profiles keep their saved protocol: a WebDAV registry
+        // preset sharing the providerId (Koofr/OpenDrive) must not flip the
+        // edit form to WebDAV fields (issue #213).
         let effectiveProtocol = profile.protocol || 'ftp';
-        if (profile.providerId) {
+        if (profile.providerId && !isNativeApiProtocol(profile.protocol)) {
             const presetProtocol = getProviderById(profile.providerId)?.protocol;
             if (presetProtocol && presetProtocol !== effectiveProtocol) {
                 effectiveProtocol = presetProtocol;
