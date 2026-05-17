@@ -862,8 +862,10 @@ enum Commands {
         /// Omit the MimeType field entirely
         #[arg(long)]
         no_mimetype: bool,
-        /// Include per-file Hashes. Downloads each file to hash it; slow on
-        /// large trees. Omitted for directories.
+        /// Include per-file Hashes from server-provided digests only
+        /// (S3 ETag, B2 contentSha1, pCloud, SFTP sha256sum): never
+        /// downloads. Omitted for directories and whenever the backend
+        /// does not expose the requested hash cheaply.
         #[arg(long)]
         hash: bool,
         /// Hash algorithm used by --hash
@@ -18334,28 +18336,57 @@ struct LsjsonEntry {
     hashes: Option<std::collections::BTreeMap<&'static str, String>>,
 }
 
-/// Digest `data` with `algo`, returning the canonical algorithm name and the
-/// lowercase hex digest. Mirrors the exact match arms used by `hashsum`.
-fn lsjson_hash(algo: HashAlgorithm, data: &[u8]) -> (&'static str, String) {
+/// Canonical lowercase algorithm name for a [`HashAlgorithm`]. Matches the
+/// keys used by every `StorageProvider::checksum()` implementation and by
+/// `hashsum`'s JSON output, so consumers can look a digest up by name.
+fn hash_algo_key(algo: HashAlgorithm) -> &'static str {
     match algo {
-        HashAlgorithm::Md5 => {
-            use md5::Digest;
-            ("md5", format!("{:x}", md5::Md5::digest(data)))
-        }
-        HashAlgorithm::Sha1 => {
-            use sha1::Digest;
-            ("sha1", format!("{:x}", sha1::Sha1::digest(data)))
-        }
-        HashAlgorithm::Sha256 => {
-            use sha2::Digest;
-            ("sha256", format!("{:x}", sha2::Sha256::digest(data)))
-        }
-        HashAlgorithm::Sha512 => {
-            use sha2::Digest;
-            ("sha512", format!("{:x}", sha2::Sha512::digest(data)))
-        }
-        HashAlgorithm::Blake3 => ("blake3", blake3::hash(data).to_hex().to_string()),
+        HashAlgorithm::Md5 => "md5",
+        HashAlgorithm::Sha1 => "sha1",
+        HashAlgorithm::Sha256 => "sha256",
+        HashAlgorithm::Sha512 => "sha512",
+        HashAlgorithm::Blake3 => "blake3",
     }
+}
+
+/// Resolve a file's hash for `lsjson --hash` WITHOUT downloading it.
+///
+/// Resolution order, cheapest first:
+/// 1. a digest already carried in the listing/metadata (S3 ETag->md5,
+///    B2 contentSha1): zero extra round-trips;
+/// 2. the provider's server-side `checksum()` (S3 HEAD, SFTP `sha256sum`
+///    over an exec channel, pCloud `/checksumfile`): metadata-only, the
+///    file content never crosses the wire;
+/// 3. otherwise `None`, so the `Hashes` field is omitted entirely.
+///
+/// There is deliberately no download fallback: a digest that required
+/// fetching the whole object is not a server-side hash, and reporting one
+/// would misrepresent what the backend can do cheaply.
+async fn lsjson_server_hash(
+    provider: &mut Box<dyn StorageProvider>,
+    entry: &RemoteEntry,
+    algo: HashAlgorithm,
+) -> Option<std::collections::BTreeMap<&'static str, String>> {
+    let key = hash_algo_key(algo);
+    let wrap = |v: &str| {
+        let mut m = std::collections::BTreeMap::new();
+        m.insert(key, v.trim().to_ascii_lowercase());
+        Some(m)
+    };
+    // 1. Listing-embedded digest: no extra I/O.
+    if let Some(v) = entry.metadata.get(key) {
+        return wrap(v);
+    }
+    // 2. Server-side checksum: HEAD / exec / API, never a content download.
+    if provider.supports_checksum() {
+        if let Ok(map) = provider.checksum(&entry.path).await {
+            if let Some(v) = map.get(key) {
+                return wrap(v);
+            }
+        }
+    }
+    // 3. Not available cheaply: omit.
+    None
 }
 
 /// `lsjson`: machine-readable JSON listing with a stable record schema.
@@ -18363,8 +18394,9 @@ fn lsjson_hash(algo: HashAlgorithm, data: &[u8]) -> (&'static str, String) {
 /// Always writes a pretty-printed JSON array to stdout regardless of the
 /// global `--json`/text format (an empty listing is `[]`). `--stat` writes a
 /// single object describing the path itself. `MimeType`/`ModTime` are opt-out;
-/// `Hashes` is opt-in (downloads each file to digest it locally, slow on large
-/// trees, omitted for directories).
+/// `Hashes` is opt-in and server-side only (see [`lsjson_server_hash`]): it
+/// never downloads, and is omitted for directories and for any file whose
+/// backend does not expose the requested digest cheaply.
 #[allow(clippy::too_many_arguments)]
 async fn cmd_lsjson(
     url: &str,
@@ -18411,20 +18443,7 @@ async fn cmd_lsjson(
                     Some(e.modified.clone().unwrap_or_default())
                 };
                 let hashes = if hash && !e.is_dir {
-                    match provider.download_to_bytes(&resolved).await {
-                        Ok(data) => {
-                            let (n, h) = lsjson_hash(hash_type, &data);
-                            let mut m = std::collections::BTreeMap::new();
-                            m.insert(n, h);
-                            Some(m)
-                        }
-                        Err(err) => {
-                            if !cli.quiet {
-                                eprintln!("Warning: cannot hash {}: {}", resolved, err);
-                            }
-                            None
-                        }
-                    }
+                    lsjson_server_hash(&mut provider, &e, hash_type).await
                 } else {
                     None
                 };
@@ -18547,20 +18566,7 @@ async fn cmd_lsjson(
                         Some(e.modified.clone().unwrap_or_default())
                     };
                     let hashes = if hash && !e.is_dir {
-                        match provider.download_to_bytes(&e.path).await {
-                            Ok(data) => {
-                                let (n, h) = lsjson_hash(hash_type, &data);
-                                let mut m = std::collections::BTreeMap::new();
-                                m.insert(n, h);
-                                Some(m)
-                            }
-                            Err(err) => {
-                                if !cli.quiet {
-                                    eprintln!("Warning: cannot hash {}: {}", e.path, err);
-                                }
-                                None
-                            }
-                        }
+                        lsjson_server_hash(&mut provider, &e, hash_type).await
                     } else {
                         None
                     };
@@ -27213,6 +27219,33 @@ async fn cmd_hashsum(
         Err(code) => return code,
     };
     let path = &resolve_cli_remote_path(&initial_path, path);
+
+    // Fast-path: prefer a server-side digest (S3 ETag md5, B2 contentSha1,
+    // pCloud /checksumfile, SFTP sha256sum) so the file never leaves the
+    // server. Falls through to download+digest for sha512/blake3 (never
+    // server-side) and for multipart/SSE objects with no usable hash.
+    if provider.supports_checksum() {
+        if let Ok(map) = provider.checksum(path).await {
+            if let Some(h) = map.get(hash_algo_key(algorithm)) {
+                let hash = h.trim().to_ascii_lowercase();
+                let size = provider.stat(path).await.map(|e| e.size).unwrap_or(0);
+                if matches!(format, OutputFormat::Json) {
+                    print_json(&CliHashResult {
+                        status: "ok",
+                        algorithm: hash_algo_key(algorithm).to_string(),
+                        hash: hash.clone(),
+                        path: path.to_string(),
+                        size,
+                    });
+                } else {
+                    println!("{}  {}", hash, path);
+                }
+                let _ = provider.disconnect().await;
+                return 0;
+            }
+        }
+    }
+
     match provider.download_to_bytes(path).await {
         Ok(data) => {
             let hash = match algorithm {
@@ -27234,13 +27267,7 @@ async fn cmd_hashsum(
                 }
                 HashAlgorithm::Blake3 => blake3::hash(&data).to_hex().to_string(),
             };
-            let algo_name = match algorithm {
-                HashAlgorithm::Md5 => "md5",
-                HashAlgorithm::Sha1 => "sha1",
-                HashAlgorithm::Sha256 => "sha256",
-                HashAlgorithm::Sha512 => "sha512",
-                HashAlgorithm::Blake3 => "blake3",
-            };
+            let algo_name = hash_algo_key(algorithm);
             if matches!(format, OutputFormat::Json) {
                 print_json(&CliHashResult {
                     status: "ok",
