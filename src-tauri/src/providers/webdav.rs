@@ -620,6 +620,99 @@ impl WebDavProvider {
         })
     }
 
+    /// OpenDrive exposes the same quota the native provider reads, but its
+    /// WebDAV server (webdav.opendrive.com) does not return RFC 4331 quota
+    /// via PROPFIND. The OpenDrive REST API uses session auth (not basic
+    /// auth like Koofr), so do a minimal login -> users/info -> logout with
+    /// the same account credentials the WebDAV profile already stores.
+    /// Mirrors the native provider's storage_info (opendrive.rs).
+    async fn opendrive_storage_via_api(&self) -> Result<super::StorageInfo, ProviderError> {
+        const API: &str = "https://dev.opendrive.com/api/v1";
+
+        // reqwest's `.form()` helper is not enabled in this build; urlencode
+        // the body manually like opendrive.rs/post_form does.
+        let login_body = {
+            let mut s = url::form_urlencoded::Serializer::new(String::new());
+            s.append_pair("username", &self.config.username);
+            s.append_pair("passwd", self.config.password.expose_secret());
+            s.append_pair("version", "2.9.7");
+            s.append_pair("partner_id", "");
+            s.finish()
+        };
+        let login: serde_json::Value = self
+            .client
+            .post(format!("{}/session/login.json", API))
+            .header(
+                reqwest::header::CONTENT_TYPE,
+                "application/x-www-form-urlencoded",
+            )
+            .body(login_body)
+            .send()
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?
+            .json()
+            .await
+            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+
+        let session_id = login
+            .get("SessionID")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| {
+                ProviderError::NotSupported("opendrive quota: no SessionID".into())
+            })?
+            .to_string();
+
+        let info_res = self
+            .client
+            .get(format!("{}/users/info.json/{}", API, session_id))
+            .send()
+            .await
+            .and_then(|r| r.error_for_status())
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?
+            .json::<serde_json::Value>()
+            .await
+            .map_err(|e| ProviderError::ParseError(e.to_string()));
+
+        // Best-effort logout regardless of the users/info outcome: never
+        // leak a session because the quota call failed.
+        let logout_body = {
+            let mut s = url::form_urlencoded::Serializer::new(String::new());
+            s.append_pair("session_id", &session_id);
+            s.finish()
+        };
+        let _ = self
+            .client
+            .post(format!("{}/session/logout.json", API))
+            .header(
+                reqwest::header::CONTENT_TYPE,
+                "application/x-www-form-urlencoded",
+            )
+            .body(logout_body)
+            .send()
+            .await;
+
+        let info = info_res?;
+        // OpenDrive reports MaxStorage in MiB, StorageUsed in bytes
+        // (verified live in opendrive.rs:1921). Accept number or string.
+        let as_u64 = |v: Option<&serde_json::Value>| -> u64 {
+            v.and_then(|x| x.as_u64().or_else(|| x.as_str().and_then(|s| s.parse().ok())))
+                .unwrap_or(0)
+        };
+        let total = as_u64(info.get("MaxStorage")).saturating_mul(1024 * 1024);
+        let used = as_u64(info.get("StorageUsed"));
+        if total == 0 {
+            return Err(ProviderError::NotSupported(
+                "opendrive quota: no MaxStorage".into(),
+            ));
+        }
+        Ok(super::StorageInfo {
+            used,
+            total,
+            free: total.saturating_sub(used),
+        })
+    }
+
     /// OCS: Create a public share link for a file/folder.
     /// If the Nextcloud instance enforces passwords on share links (HTTP 403),
     /// retries automatically with a generated password and returns "url\npassword".
@@ -2338,6 +2431,16 @@ impl StorageProvider for WebDavProvider {
         // basic auth with the same email + app password used for WebDAV.
         if self.config.url.contains("app.koofr.net") {
             if let Ok(info) = self.koofr_storage_via_api().await {
+                return Ok(info);
+            }
+            // Fall through to PROPFIND on failure (best-effort).
+        }
+
+        // OpenDrive WebDAV behaves the same way: no RFC 4331 quota over
+        // PROPFIND. Read the real quota from the OpenDrive REST API using
+        // the same account credentials (session auth).
+        if self.config.url.contains("webdav.opendrive.com") {
+            if let Ok(info) = self.opendrive_storage_via_api().await {
                 return Ok(info);
             }
             // Fall through to PROPFIND on failure (best-effort).
