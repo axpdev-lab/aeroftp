@@ -52,6 +52,23 @@ struct FolderFacet {
 #[serde(rename_all = "camelCase")]
 struct FileFacet {
     mime_type: Option<String>,
+    #[serde(default)]
+    hashes: Option<HashesFacet>,
+}
+
+/// Microsoft Graph `file.hashes`. `quickXorHash` is Microsoft's
+/// proprietary algorithm (base64), NOT a SHA: it is exposed under its
+/// own `quickxor` key, never aliased to sha1/sha256. Presence varies
+/// by account type (personal vs business).
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct HashesFacet {
+    #[serde(default)]
+    sha1_hash: Option<String>,
+    #[serde(default)]
+    sha256_hash: Option<String>,
+    #[serde(default)]
+    quick_xor_hash: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -214,6 +231,19 @@ impl OneDriveProvider {
         metadata.insert("id".to_string(), item.id.clone());
         if let Some(ref url) = item.download_url {
             metadata.insert("downloadUrl".to_string(), url.clone());
+        }
+        // Server-computed digests from file.hashes (no content download).
+        // quickXorHash is proprietary: its own key, never aliased to sha.
+        if let Some(h) = item.file.as_ref().and_then(|f| f.hashes.as_ref()) {
+            if let Some(ref v) = h.sha1_hash {
+                metadata.insert("sha1".to_string(), v.to_ascii_lowercase());
+            }
+            if let Some(ref v) = h.sha256_hash {
+                metadata.insert("sha256".to_string(), v.to_ascii_lowercase());
+            }
+            if let Some(ref v) = h.quick_xor_hash {
+                metadata.insert("quickxor".to_string(), v.clone());
+            }
         }
 
         RemoteEntry {
@@ -1115,6 +1145,27 @@ impl StorageProvider for OneDriveProvider {
             Err(ProviderError::NotFound(_)) => Ok(false),
             Err(e) => Err(e),
         }
+    }
+
+    fn supports_checksum(&self) -> bool {
+        true
+    }
+
+    /// Server-computed digests from `file.hashes` (one item GET, no
+    /// content download). `quickxor` is Microsoft's proprietary hash,
+    /// returned under its own key, never aliased to sha1/sha256.
+    async fn checksum(
+        &mut self,
+        path: &str,
+    ) -> Result<HashMap<String, String>, ProviderError> {
+        let entry = self.stat(path).await?;
+        let mut out = HashMap::new();
+        for algo in ["sha1", "sha256", "quickxor"] {
+            if let Some(v) = entry.metadata.get(algo) {
+                out.insert(algo.to_string(), v.clone());
+            }
+        }
+        Ok(out)
     }
 
     async fn keep_alive(&mut self) -> Result<(), ProviderError> {

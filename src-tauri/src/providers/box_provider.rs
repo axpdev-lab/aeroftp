@@ -46,6 +46,10 @@ struct BoxItem {
     watermark_info: Option<BoxWatermarkInfo>,
     #[serde(default)]
     tags: Vec<String>,
+    /// Server-computed SHA-1 (Box returns it on file objects when
+    /// requested via `fields=sha1`). Absent for folders.
+    #[serde(default)]
+    sha1: Option<String>,
 }
 
 /// Box folder items response
@@ -1281,7 +1285,7 @@ impl StorageProvider for BoxProvider {
         loop {
             let token = self.get_token().await?;
             let url = format!(
-                "{}/folders/{}/items?fields=name,type,id,size,modified_at,watermark_info,tags&limit={}&offset={}",
+                "{}/folders/{}/items?fields=name,type,id,size,modified_at,watermark_info,tags,sha1&limit={}&offset={}",
                 API_BASE, folder_id, PAGE_LIMIT, offset
             );
 
@@ -1353,6 +1357,11 @@ impl StorageProvider for BoxProvider {
                         }
                         if !item.tags.is_empty() {
                             m.insert("box_tags".to_string(), item.tags.join(","));
+                        }
+                        if !is_dir {
+                            if let Some(ref s) = item.sha1 {
+                                m.insert("sha1".to_string(), s.to_ascii_lowercase());
+                            }
                         }
                         m
                     },
@@ -1855,7 +1864,7 @@ impl StorageProvider for BoxProvider {
             let resp = self
                 .client
                 .get(format!(
-                    "{}/files/{}?fields=name,type,size,modified_at",
+                    "{}/files/{}?fields=name,type,size,modified_at,sha1",
                     API_BASE, file_id
                 ))
                 .header(AUTHORIZATION, Self::bearer_header(&token)?)
@@ -1868,6 +1877,10 @@ impl StorageProvider for BoxProvider {
                 .await
                 .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
+            let mut metadata = HashMap::new();
+            if let Some(ref s) = item.sha1 {
+                metadata.insert("sha1".to_string(), s.to_ascii_lowercase());
+            }
             return Ok(RemoteEntry {
                 name: item.name,
                 path: Self::normalize_path(path),
@@ -1880,7 +1893,7 @@ impl StorageProvider for BoxProvider {
                 is_symlink: false,
                 link_target: None,
                 mime_type: None,
-                metadata: Default::default(),
+                metadata,
             });
         }
 
@@ -1925,6 +1938,24 @@ impl StorageProvider for BoxProvider {
             Err(ProviderError::NotFound(_)) => Ok(false),
             Err(e) => Err(e),
         }
+    }
+
+    fn supports_checksum(&self) -> bool {
+        true
+    }
+
+    /// Server-computed SHA-1 from the Box file metadata (one files.get
+    /// call, no content download).
+    async fn checksum(
+        &mut self,
+        path: &str,
+    ) -> Result<HashMap<String, String>, ProviderError> {
+        let entry = self.stat(path).await?;
+        let mut out = HashMap::new();
+        if let Some(v) = entry.metadata.get("sha1") {
+            out.insert("sha1".to_string(), v.clone());
+        }
+        Ok(out)
     }
 
     async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {

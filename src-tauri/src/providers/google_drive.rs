@@ -68,6 +68,15 @@ struct DriveFile {
     description: Option<String>,
     #[serde(default)]
     properties: Option<HashMap<String, String>>,
+    /// Server-computed digests. Present for binary files; absent for
+    /// native Google Workspace docs (Sheets/Docs), which have no
+    /// downloadable byte stream and thus no checksum.
+    #[serde(default)]
+    md5_checksum: Option<String>,
+    #[serde(default)]
+    sha1_checksum: Option<String>,
+    #[serde(default)]
+    sha256_checksum: Option<String>,
 }
 
 /// Google Drive file list response
@@ -189,7 +198,7 @@ impl GoogleDriveProvider {
 
         loop {
             let mut url = format!(
-                "{}/files?q='{}'+in+parents+and+trashed=false&fields=files(id,name,mimeType,size,modifiedTime,parents,starred,description,properties),nextPageToken&pageSize=1000",
+                "{}/files?q='{}'+in+parents+and+trashed=false&fields=files(id,name,mimeType,size,modifiedTime,parents,starred,description,properties,md5Checksum,sha1Checksum,sha256Checksum),nextPageToken&pageSize=1000",
                 DRIVE_API_BASE, folder_id
             );
 
@@ -235,7 +244,7 @@ impl GoogleDriveProvider {
     #[allow(dead_code)]
     async fn get_file(&self, file_id: &str) -> Result<DriveFile, ProviderError> {
         let url = format!(
-            "{}/files/{}?fields=id,name,mimeType,size,modifiedTime,parents",
+            "{}/files/{}?fields=id,name,mimeType,size,modifiedTime,parents,md5Checksum,sha1Checksum,sha256Checksum",
             DRIVE_API_BASE, file_id
         );
 
@@ -270,7 +279,7 @@ impl GoogleDriveProvider {
         );
 
         let url = format!(
-            "{}/files?q={}&fields=files(id,name,mimeType,size,modifiedTime,parents)",
+            "{}/files?q={}&fields=files(id,name,mimeType,size,modifiedTime,parents,md5Checksum,sha1Checksum,sha256Checksum)",
             DRIVE_API_BASE,
             urlencoding::encode(&query)
         );
@@ -955,6 +964,17 @@ impl GoogleDriveProvider {
             metadata.insert("exportExtension".to_string(), ext.to_string());
             metadata.insert("isWorkspaceFile".to_string(), "true".to_string());
         }
+        // Server-computed digests (binary files only; absent for native
+        // Workspace docs). Surfaced via supports_checksum()/checksum().
+        if let Some(ref v) = file.md5_checksum {
+            metadata.insert("md5".to_string(), v.to_ascii_lowercase());
+        }
+        if let Some(ref v) = file.sha1_checksum {
+            metadata.insert("sha1".to_string(), v.to_ascii_lowercase());
+        }
+        if let Some(ref v) = file.sha256_checksum {
+            metadata.insert("sha256".to_string(), v.to_ascii_lowercase());
+        }
 
         RemoteEntry {
             name: file.name.clone(),
@@ -1630,6 +1650,28 @@ impl StorageProvider for GoogleDriveProvider {
             Err(ProviderError::NotFound(_)) => Ok(false),
             Err(e) => Err(e),
         }
+    }
+
+    fn supports_checksum(&self) -> bool {
+        true
+    }
+
+    /// Server-computed md5/sha1/sha256 from the Drive file metadata
+    /// (one files.get call, no content download). Empty for native
+    /// Google Workspace docs, which have no byte stream and thus no
+    /// checksum: honest absence.
+    async fn checksum(
+        &mut self,
+        path: &str,
+    ) -> Result<HashMap<String, String>, ProviderError> {
+        let entry = self.stat(path).await?;
+        let mut out = HashMap::new();
+        for algo in ["md5", "sha1", "sha256"] {
+            if let Some(v) = entry.metadata.get(algo) {
+                out.insert(algo.to_string(), v.clone());
+            }
+        }
+        Ok(out)
     }
 
     async fn keep_alive(&mut self) -> Result<(), ProviderError> {
@@ -2539,6 +2581,9 @@ mod tests {
             starred: is_starred,
             description: None,
             properties: None,
+            md5_checksum: None,
+            sha1_checksum: None,
+            sha256_checksum: None,
         }
     }
 
