@@ -34727,65 +34727,90 @@ async fn main() {
                     } else {
                         resolve_ver(vault_version)
                     };
-                    let res: Result<String, String> = match ver.as_str() {
-                        "v1" => {
-                            // v1 extract writes to the literal output path;
-                            // v2/v3 accept a directory. Normalise so a
-                            // directory dest works for v1 too: append the
-                            // entry basename when dest is a dir or ends "/".
-                            let d = std::path::Path::new(dest.as_str());
-                            let dest_final = if d.is_dir() || dest.ends_with('/')
-                            {
-                                let base = std::path::Path::new(entry.as_str())
-                                    .file_name()
-                                    .map(|s| s.to_string_lossy().to_string())
-                                    .unwrap_or_else(|| entry.clone());
-                                d.join(base).to_string_lossy().to_string()
-                            } else {
-                                dest.clone()
-                            };
-                            aerovault::vault_extract_entry(
-                                path.clone(),
-                                pw,
-                                entry.clone(),
-                                dest_final,
-                            )
-                            .await
+                    // Destination normalization, applied uniformly to v1/v2/v3
+                    // (previously v1-only, so a trailing-slash / directory dest
+                    // on a v3 vault created a *file* named like the directory).
+                    // A dest that ends with a path separator, or is an existing
+                    // directory, is treated as a directory: ensure it exists
+                    // and append the entry basename.
+                    let d = std::path::Path::new(dest.as_str());
+                    let treat_as_dir = dest.ends_with('/')
+                        || dest.ends_with(std::path::MAIN_SEPARATOR)
+                        || d.is_dir();
+                    let dest_final: Option<String> = if treat_as_dir {
+                        if let Err(e) = std::fs::create_dir_all(d) {
+                            print_error(
+                                format,
+                                &format!(
+                                    "Cannot create destination directory '{}': {}",
+                                    dest, e
+                                ),
+                                2,
+                            );
+                            None
+                        } else {
+                            let base = std::path::Path::new(entry.as_str())
+                                .file_name()
+                                .map(|s| s.to_string_lossy().to_string())
+                                .unwrap_or_else(|| entry.clone());
+                            Some(d.join(base).to_string_lossy().to_string())
                         }
-                        "v2" => {
-                            aerovault_v2::vault_v2_extract_entry(
-                                path.clone(),
-                                pw,
-                                entry.clone(),
-                                dest.clone(),
-                            )
-                            .await
-                        }
-                        _ => {
-                            aerovault_v3::vault_v3_extract_entry(
-                                path.clone(),
-                                pw,
-                                entry.clone(),
-                                dest.clone(),
-                            )
-                            .await
-                        }
+                    } else {
+                        Some(dest.clone())
                     };
-                    match res {
-                        Ok(out) => {
-                            match format {
-                                OutputFormat::Json => print_json(&serde_json::json!({
-                                    "status": "ok", "extracted": out, "version": ver
-                                })),
-                                OutputFormat::Text => {
-                                    println!("Extracted to: {out}")
+                    match dest_final {
+                        None => 2,
+                        Some(dest_final) => {
+                            let res: Result<String, String> = match ver.as_str() {
+                                "v1" => {
+                                    aerovault::vault_extract_entry(
+                                        path.clone(),
+                                        pw,
+                                        entry.clone(),
+                                        dest_final,
+                                    )
+                                    .await
+                                }
+                                "v2" => {
+                                    aerovault_v2::vault_v2_extract_entry(
+                                        path.clone(),
+                                        pw,
+                                        entry.clone(),
+                                        dest_final,
+                                    )
+                                    .await
+                                }
+                                _ => {
+                                    aerovault_v3::vault_v3_extract_entry(
+                                        path.clone(),
+                                        pw,
+                                        entry.clone(),
+                                        dest_final,
+                                    )
+                                    .await
+                                }
+                            };
+                            match res {
+                                Ok(out) => {
+                                    match format {
+                                        OutputFormat::Json => {
+                                            print_json(&serde_json::json!({
+                                                "status": "ok",
+                                                "extracted": out,
+                                                "version": ver
+                                            }))
+                                        }
+                                        OutputFormat::Text => {
+                                            println!("Extracted to: {out}")
+                                        }
+                                    }
+                                    0
+                                }
+                                Err(e) => {
+                                    print_error(format, &e, 2);
+                                    2
                                 }
                             }
-                            0
-                        }
-                        Err(e) => {
-                            print_error(format, &e, 2);
-                            2
                         }
                     }
                 }
