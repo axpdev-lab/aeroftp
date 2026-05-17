@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.8.2] - 2026-05-17
+
+### Profile Bridge Expansion, Server-Side Hashing and Interop Fixes
+
+The profile bridge grows from three sources to fifteen, with the twelve new sources now fully wired into the Export/Import dialog (not just the CLI). This release also lands the server-side hashing work and a batch of cross-tool interoperability fixes.
+
+#### Added
+
+- **Profile bridge: 12 new sources in the GUI**: the Export/Import dialog now lists all fifteen bridge sources. Beyond rclone, WinSCP and FileZilla you can import from and export to AWS CLI, MinIO Client, s3cmd, OpenSSH, PuTTY, MobaXterm, lftp, Cyberduck, Dreamweaver, Kopia, restic and Duplicacy. Each source auto-detects its conventional config path, recovers credentials into the AeroFTP vault where possible, and shows a clear per-source note when only metadata or partial secrets can be carried.
+- **Export filtered by protocol support**: when exporting to a target tool, profiles whose protocol that tool cannot carry are shown disabled with an explicit reason and excluded from the written file, so an export never produces an unusable entry.
+- **Server-side file hashing**: a Properties checksum tab for remote files, with server-side hashes exposed for S3, Backblaze B2, Google Drive, OneDrive (quickXor), Box, Dropbox and SFTP. The CLI `hashsum` and `lsjson` commands prefer server-side hashes and avoid downloading, plus a new stable-JSON `lsjson` listing command and additional listing and maintenance commands (`size`, `lsd`, `lsl`, `lsf`, `purge`, `rmdir`).
+
+#### Fixed
+
+- **WebDAV path handling**: reserved path characters are now encoded and the auto-detected collection root is applied; collection requests are normalized to trailing-slash form.
+- **SFTP listing**: entry type is recovered via `stat` when a server omits attributes during listing.
+- **rclone export**: remote names are conformed and SFTP key material is exported correctly; exported S3 config objects are addressed bucket-relative.
+- **AeroCrypt interop**: overlay filename encoding aligned for cross-tool compatibility.
+- **CLI vault extract**: a trailing-slash destination is treated as a directory.
+- **MCP server**: OAuth providers are kept on a fresh token in the long-running server.
+
+#### Changed
+
+- **Profile bridge core**: a single shared module now backs every importer (UUID, S3/WebDAV provider tables, INI/plist/XML scanners, atomic 0600 writes), with the per-source protocol filter and export format shared between the GUI and the CLI so the two never diverge.
+
 ## [3.8.1] - 2026-05-16
 
 ### Two New Themes, Toolbar Legibility and Quota Polish
