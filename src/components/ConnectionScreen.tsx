@@ -11,13 +11,14 @@ import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { readFile } from '@tauri-apps/plugin-fs';
 import { FolderOpen, HardDrive, ChevronRight, ChevronDown, Save, Copy, Cloud, Check, Settings, Clock, Folder, X, Lock, ArrowLeft, Eye, EyeOff, ExternalLink, Shield, ShieldCheck, KeyRound, Loader2, Image, Info, Pencil, Link2 } from 'lucide-react';
-import { ConnectionParams, ProviderType, isOAuthProvider, isAeroCloudProvider, isFourSharedProvider, isNativeApiProtocol, ServerProfile } from '../types';
+import { ConnectionParams, ProviderType, isOAuthProvider, isAeroCloudProvider, isFourSharedProvider, isNativeApiProtocol, providerServesQuota, ServerProfile } from '../types';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { SavedServers } from './SavedServers';
 import { ExportImportDialog } from './ExportImportDialog';
 import { useTranslation } from '../i18n';
 import { ProtocolSelector, ProtocolFields, getDefaultPort } from './ProtocolSelector';
 import { ProviderModeTabs } from './ProviderModeTabs';
+import { resolveModeHeader } from './providerModeGroups';
 import { OAuthConnect } from './OAuthConnect';
 import { ProviderSelector } from './ProviderSelector';
 import { AlertDialog } from './Dialogs';
@@ -1630,8 +1631,16 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     quota API (raw FTP/FTPS/SFTP, most S3/WebDAV) or that
                     expose USED but not TOTAL (Backblaze B2). The provider API
                     total always wins; this is only the fallback so the My
-                    Servers usage bar and % can render (item 4a). Always shown
-                    as an override regardless of protocol. */}
+                    Servers usage bar and % can render (item 4a). Hidden for
+                    backends that already report their own quota (native-API
+                    providers, and Koofr even over WebDAV via its REST API):
+                    the manual cap and the used-storage scan are pointless
+                    noise there. */}
+                {!providerServesQuota(
+                    connectionParams.protocol,
+                    connectionParams.providerId,
+                    connectionParams.server,
+                ) && (
                 <div>
                     <label className="block text-sm font-medium mb-1.5 flex items-center gap-1.5">
                         <HardDrive size={14} />
@@ -1685,6 +1694,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         </p>
                     </div>
                 </div>
+                )}
                 {/* Action Buttons */}
                 <div className={showCancelSaveAsNew ? 'flex gap-2' : 'pt-2'}>
                     {showCancelSaveAsNew && editingProfileId && (
@@ -1738,9 +1748,19 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         <div className="flex items-start justify-between">
                             <div>
                                 <h2 className="text-xl font-semibold">{t('connection.quickConnect')}</h2>
-                                {selectedProvider && (
-                                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{t('connection.connectTo', { provider: selectedProvider.name })}</p>
-                                )}
+                                {(() => {
+                                    // Keep the "Connect to X" subtitle in sync
+                                    // with the canonical group header so it
+                                    // does not vanish on the preset-less
+                                    // native tab.
+                                    const mh = resolveModeHeader(connectionParams.providerId, connectionParams.protocol);
+                                    const name = mh?.name
+                                        || (mh?.providerId ? getProviderById(mh.providerId)?.name : undefined)
+                                        || selectedProvider?.name;
+                                    return name ? (
+                                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{t('connection.connectTo', { provider: name })}</p>
+                                    ) : null;
+                                })()}
                             </div>
                             {(() => {
                                 const PROTOCOL_DISPLAY: Record<string, { name: string; desc?: string }> = {
@@ -1748,10 +1768,22 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     immich: { name: 'Immich', desc: t('protocol.discoverImmich') },
                                 };
                                 const pid = connectionParams.providerId || '';
-                                const logoId = selectedProviderId || pid || protocol || '';
+                                // When the active config belongs to a mode
+                                // group (Koofr/OpenDrive/...), the header
+                                // (logo+name+description+Docs link) is the
+                                // group's canonical one for EVERY tab, so it
+                                // no longer flickers between a full WebDAV
+                                // preset header and a linkless native
+                                // fallback. selectedProvider still drives the
+                                // form fields / connection config.
+                                const modeHeader = resolveModeHeader(connectionParams.providerId, connectionParams.protocol);
+                                const headerProv = modeHeader?.providerId
+                                    ? (getProviderById(modeHeader.providerId) || selectedProvider)
+                                    : selectedProvider;
+                                const logoId = modeHeader?.providerId || selectedProviderId || pid || protocol || '';
                                 const LogoComponent = PROVIDER_LOGOS[logoId];
                                 const display = PROTOCOL_DISPLAY[pid] || PROTOCOL_DISPLAY[protocol || ''];
-                                const providerName = selectedProvider?.name || display?.name || protocol?.toUpperCase() || '';
+                                const providerName = modeHeader?.name || headerProv?.name || display?.name || protocol?.toUpperCase() || '';
                                 // Description fallback: registry > PROTOCOL_DISPLAY > i18n protocol.<protocol>Desc
                                 const tryProtocolDesc = (key: string): string | undefined => {
                                     if (!key) return undefined;
@@ -1759,7 +1791,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     const v = t(i18nKey);
                                     return v && v !== i18nKey ? v : undefined;
                                 };
-                                const providerDesc = selectedProvider?.description
+                                const providerDesc = headerProv?.description
                                     || display?.desc
                                     || tryProtocolDesc(pid)
                                     || tryProtocolDesc(protocol || '');
@@ -1767,9 +1799,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 return (
                                     <div className="flex flex-col items-end gap-0.5">
                                         <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-                                            {selectedProvider?.helpUrl && (
+                                            {headerProv?.helpUrl && (
                                                 <a
-                                                    href={selectedProvider.helpUrl}
+                                                    href={headerProv.helpUrl}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
                                                     className="inline-flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300"

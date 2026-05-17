@@ -42,6 +42,11 @@ export interface ProviderMode {
     description: string;
     /** Optional badge text (e.g. "BETA", "LOCAL"). */
     badge?: string;
+    /** Per-mode override of the form's top-right header source. Use only
+     *  when this surface genuinely has a different docs page / identity
+     *  from the rest of the group. Falls back to the group header. */
+    headerProviderId?: string;
+    headerName?: string;
 }
 
 export interface ProviderModeGroup {
@@ -55,6 +60,17 @@ export interface ProviderModeGroup {
     /** Optional i18n key for an extra warning block rendered under the
      *  description when a specific mode is active. Keyed by mode label. */
     activeWarnings?: Record<string, string>;
+    /** Canonical source for the form's top-right header (logo + name +
+     *  description + Docs link) for EVERY mode in the group. Without
+     *  this, a preset-less native mode loses the registry-derived header
+     *  (no Docs link, generic name) while the WebDAV mode keeps it, so
+     *  the header flickered between tabs. `headerProviderId` is a
+     *  registry id whose metadata represents the whole group;
+     *  `headerName` optionally overrides just the displayed name (e.g.
+     *  show "OpenDrive" instead of the WebDAV preset's
+     *  "OpenDrive (WebDAV)"). A mode may still override per surface. */
+    headerProviderId?: string;
+    headerName?: string;
 }
 
 export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
@@ -151,6 +167,11 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
     {
         id: 'opendrive',
         headerLabel: 'OpenDrive Modes',
+        // WebDAV preset carries the description/Docs link/logo; show the
+        // plain "OpenDrive" name so the Native API tab is not mislabeled
+        // "OpenDrive (WebDAV)".
+        headerProviderId: 'opendrive-webdav',
+        headerName: 'OpenDrive',
         modes: [
             {
                 // OpenDrive native API selected via ProtocolSelector
@@ -230,4 +251,28 @@ export function findActiveMode(
         }
     }
     return null;
+}
+
+/**
+ * Canonical header source for the form's top-right logo/name/description/
+ * Docs link when the active config belongs to a mode group. Resolution:
+ * active mode override -> group default. Returns null when no group is
+ * active (caller keeps its existing preset/protocol fallback).
+ *
+ * `providerId` is a registry id to pull metadata from; `name` optionally
+ * overrides only the displayed name. This keeps the header identical
+ * across the group's tabs while staying overridable per surface when a
+ * mode genuinely has a different docs page.
+ */
+export function resolveModeHeader(
+    activeProviderId: string | null | undefined,
+    activeProtocol: string | null | undefined,
+): { providerId?: string; name?: string } | null {
+    const group = findActiveModeGroup(activeProviderId, activeProtocol);
+    if (!group) return null;
+    const mode = findActiveMode(group, activeProviderId, activeProtocol);
+    const providerId = mode?.headerProviderId ?? group.headerProviderId;
+    const name = mode?.headerName ?? group.headerName;
+    if (!providerId && !name) return null;
+    return { providerId, name };
 }

@@ -161,6 +161,38 @@ export const isNativeApiProtocol = (protocol?: string | null): boolean => {
   return !!protocol && NATIVE_API_PROTOCOLS.has(protocol);
 };
 
+// True when the backend reports its own real storage quota, so the
+// manual total-storage override and the recursive used-storage scan are
+// pointless noise and must be hidden in the connection form.
+//
+//  - Native-API providers always report quota from their account API.
+//  - Koofr and OpenDrive are special even over WebDAV: their DAV servers
+//    return 0 for the RFC 4331 quota properties, so the backend fetches
+//    the real quota from the provider REST API instead (webdav.rs
+//    storage_info special-cases app.koofr.net and webdav.opendrive.com).
+//    So a Koofr/OpenDrive profile, API or WebDAV, never needs the cap.
+//
+// Raw FTP/FTPS/SFTP, generic S3/WebDAV, and USED-but-no-TOTAL backends
+// (Backblaze B2) are deliberately NOT covered: they keep the override.
+export const providerServesQuota = (
+  protocol?: string | null,
+  providerId?: string | null,
+  server?: string | null,
+): boolean => {
+  if (isNativeApiProtocol(protocol)) return true;
+  if (protocol === "webdav") {
+    const host = (server || "").toLowerCase();
+    if (providerId === "koofr" || host.includes("koofr")) return true;
+    if (
+      providerId === "opendrive-webdav" ||
+      host.includes("webdav.opendrive.com")
+    ) {
+      return true;
+    }
+  }
+  return false;
+};
+
 // Check if a provider supports storage quota queries
 export const supportsStorageQuota = (type: ProviderType): boolean => {
   return [
