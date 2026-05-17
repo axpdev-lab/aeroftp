@@ -194,6 +194,37 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
             },
         ],
     },
+    {
+        id: 'koofr',
+        headerLabel: 'Koofr Modes',
+        // Single registry entry 'koofr' (the WebDAV preset) carries the
+        // canonical Koofr identity + Docs link; use it for both tabs so
+        // the header stays identical (issue #213 follow-up).
+        headerProviderId: 'koofr',
+        modes: [
+            {
+                // Koofr native API selected via ProtocolSelector
+                // (`type: 'koofr'`); no registry preset is involved. The
+                // only registry entry id 'koofr' is the WebDAV preset, so
+                // the native mode is intentionally preset-less (issue #213).
+                protocol: 'koofr',
+                icon: <Cloud size={14} />,
+                activeColor: 'text-teal-500',
+                label: 'Native API',
+                description:
+                    'EU-based REST API with email + app password. Full feature set: storage quota, trash (list/restore/empty), share links.',
+            },
+            {
+                providerId: 'koofr',
+                protocol: 'webdav',
+                icon: <Globe size={14} />,
+                activeColor: 'text-blue-500',
+                label: 'WebDAV',
+                description:
+                    'WebDAV access via app.koofr.net/dav/Koofr on port 443. Storage quota is still read from the Koofr REST API. Use for legacy clients or to mount as a network drive.',
+            },
+        ],
+    },
 ];
 
 /**
