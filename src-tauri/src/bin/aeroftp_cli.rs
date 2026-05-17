@@ -1762,6 +1762,150 @@ enum ExportCommands {
         #[arg(long)]
         json: bool,
     },
+    /// Export S3 profiles to AWS shared credentials/config files (secrets written to file).
+    Aws {
+        /// Output file path (default writes to a temp file)
+        #[arg(long, short = 'o')]
+        output: Option<String>,
+        /// Comma-separated profile names to export
+        #[arg(long)]
+        profiles: Option<String>,
+        /// Output as JSON summary
+        #[arg(long)]
+        json: bool,
+    },
+    /// Export SFTP profiles to an ssh_config file (key paths only, no key material).
+    Ssh {
+        /// Output file path (default writes to a temp file)
+        #[arg(long, short = 'o')]
+        output: Option<String>,
+        /// Comma-separated profile names to export
+        #[arg(long)]
+        profiles: Option<String>,
+        /// Output as JSON summary
+        #[arg(long)]
+        json: bool,
+    },
+    /// Export S3 profiles to a MinIO client config.json (secrets written to file).
+    Mc {
+        /// Output file path (default writes to a temp file)
+        #[arg(long, short = 'o')]
+        output: Option<String>,
+        /// Comma-separated profile names to export
+        #[arg(long)]
+        profiles: Option<String>,
+        /// Output as JSON summary
+        #[arg(long)]
+        json: bool,
+    },
+    /// Export FTP/FTPS/SFTP/WebDAV/S3 profiles to Cyberduck bookmarks (.duck).
+    Cyberduck {
+        /// Output file path (default writes to a temp file)
+        #[arg(long, short = 'o')]
+        output: Option<String>,
+        /// Comma-separated profile names to export
+        #[arg(long)]
+        profiles: Option<String>,
+        /// Output as JSON summary
+        #[arg(long)]
+        json: bool,
+    },
+    /// Export S3/SFTP/WebDAV profiles to a .s3cfg file (secrets written to file).
+    S3cmd {
+        /// Output file path (default writes to a temp file)
+        #[arg(long, short = 'o')]
+        output: Option<String>,
+        /// Comma-separated profile names to export
+        #[arg(long)]
+        profiles: Option<String>,
+        /// Output as JSON summary
+        #[arg(long)]
+        json: bool,
+    },
+    /// Export FTP/FTPS/SFTP/WebDAV profiles to an lftp rc file (secrets written to file).
+    Lftp {
+        /// Output file path (default writes to a temp file)
+        #[arg(long, short = 'o')]
+        output: Option<String>,
+        /// Comma-separated profile names to export
+        #[arg(long)]
+        profiles: Option<String>,
+        /// Output as JSON summary
+        #[arg(long)]
+        json: bool,
+    },
+    /// Export SFTP profiles to a PuTTY session file (key paths only, no key material).
+    Putty {
+        /// Output file path (default writes to a temp file)
+        #[arg(long, short = 'o')]
+        output: Option<String>,
+        /// Comma-separated profile names to export
+        #[arg(long)]
+        profiles: Option<String>,
+        /// Output as JSON summary
+        #[arg(long)]
+        json: bool,
+    },
+    /// Export profiles to a MobaXterm.ini file (secrets written to file).
+    Mobaxterm {
+        /// Output file path (default writes to a temp file)
+        #[arg(long, short = 'o')]
+        output: Option<String>,
+        /// Comma-separated profile names to export
+        #[arg(long)]
+        profiles: Option<String>,
+        /// Output as JSON summary
+        #[arg(long)]
+        json: bool,
+    },
+    /// Export profiles to a Dreamweaver site definition (.ste; secrets written to file).
+    Dreamweaver {
+        /// Output file path (default writes to a temp file)
+        #[arg(long, short = 'o')]
+        output: Option<String>,
+        /// Comma-separated profile names to export
+        #[arg(long)]
+        profiles: Option<String>,
+        /// Output as JSON summary
+        #[arg(long)]
+        json: bool,
+    },
+    /// Export S3/SFTP/WebDAV profiles to a kopia repository config (secrets written to file).
+    Kopia {
+        /// Output file path (default writes to a temp file)
+        #[arg(long, short = 'o')]
+        output: Option<String>,
+        /// Comma-separated profile names to export
+        #[arg(long)]
+        profiles: Option<String>,
+        /// Output as JSON summary
+        #[arg(long)]
+        json: bool,
+    },
+    /// Export S3/SFTP/WebDAV profiles to Duplicacy preferences (secrets written to file).
+    Duplicacy {
+        /// Output file path (default writes to a temp file)
+        #[arg(long, short = 'o')]
+        output: Option<String>,
+        /// Comma-separated profile names to export
+        #[arg(long)]
+        profiles: Option<String>,
+        /// Output as JSON summary
+        #[arg(long)]
+        json: bool,
+    },
+    /// Export S3/SFTP/WebDAV profiles to a sourceable Restic env script (secrets written to file).
+    Restic {
+        /// Output file path (default writes to a temp file)
+        #[arg(long, short = 'o')]
+        output: Option<String>,
+        /// Comma-separated profile names to export
+        #[arg(long)]
+        profiles: Option<String>,
+        /// Output as JSON summary
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 /// Selectivity for `aeroftp-cli keystore export`.
@@ -2103,6 +2247,104 @@ enum ImportCommands {
         #[arg(long)]
         force: bool,
         /// Output a JSON envelope with the converted text and warnings
+        #[arg(long)]
+        json: bool,
+    },
+    /// Import profiles from ~/.aws/credentials + config (secrets are read, never printed)
+    Aws {
+        /// Path to the AWS credentials file (auto-detected if omitted)
+        path: Option<String>,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Import hosts from ~/.ssh/config (key paths only; never prints key material)
+    Ssh {
+        /// Path to ssh_config (auto-detected if omitted)
+        path: Option<String>,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Import aliases from the MinIO client config.json (secrets read, never printed)
+    Mc {
+        /// Path to mc config.json (auto-detected if omitted)
+        path: Option<String>,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Import bookmarks from Cyberduck (.duck/Bookmarks; passwords stay in the OS keychain)
+    Cyberduck {
+        /// Path to the Cyberduck bookmarks directory/file (auto-detected if omitted)
+        path: Option<String>,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Import buckets from ~/.s3cfg (s3cmd secrets are read, never printed)
+    S3cmd {
+        /// Path to .s3cfg (auto-detected if omitted)
+        path: Option<String>,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Import bookmarks from ~/.lftprc / ~/.lftp/rc (stored secrets read, never printed)
+    Lftp {
+        /// Path to the lftp rc file (auto-detected if omitted)
+        path: Option<String>,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Import sessions from PuTTY (registry on Windows; key paths only, no key material)
+    Putty {
+        /// Path to a PuTTY session export (auto-detected if omitted)
+        path: Option<String>,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Import sessions from MobaXterm.ini (stored secrets read, never printed)
+    Mobaxterm {
+        /// Path to MobaXterm.ini (auto-detected if omitted)
+        path: Option<String>,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Import sites from Dreamweaver site definitions (.ste; secrets read, never printed)
+    Dreamweaver {
+        /// Path to the Dreamweaver site file (auto-detected if omitted)
+        path: Option<String>,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Import the repository from the kopia repository config (secrets read, never printed)
+    Kopia {
+        /// Path to the kopia repository config (auto-detected if omitted)
+        path: Option<String>,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Import the storage backend from Duplicacy preferences (secrets read, never printed)
+    Duplicacy {
+        /// Path to the Duplicacy preferences file (auto-detected if omitted)
+        path: Option<String>,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Import the Restic repository. PATH is a RESTIC_REPOSITORY_FILE; if
+    /// omitted, RESTIC_REPOSITORY / RESTIC_REPOSITORY_FILE env vars are
+    /// used. Secrets are read from the environment, never printed.
+    Restic {
+        /// Path to a RESTIC_REPOSITORY_FILE (env fallback if omitted)
+        path: Option<String>,
+        /// Output as JSON
         #[arg(long)]
         json: bool,
     },
@@ -15689,6 +15931,220 @@ async fn cmd_import_rclone(path: Option<String>, json: bool) -> i32 {
     }
 }
 
+/// Shared text/JSON printer for every bridge importer. `v` is the
+/// `serde_json::Value` produced by `serde_json::to_value(&<Src>ImportResult)`,
+/// so its keys are the camelCase serde shape: `servers`, `skipped`,
+/// `sourcePath`, `totalRemotes`. This reproduces the exact output of
+/// `cmd_import_rclone`: credentials are NEVER printed; every server reports
+/// `hasCredential` (bool) instead of the secret, both in text and JSON.
+fn print_bridge_import(v: &serde_json::Value, json: bool, source_label: &str) -> i32 {
+    let servers = v
+        .get("servers")
+        .and_then(|s| s.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let skipped = v
+        .get("skipped")
+        .and_then(|s| s.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let source_path = v
+        .get("sourcePath")
+        .and_then(|s| s.as_str())
+        .unwrap_or("")
+        .to_string();
+    let total_remotes = v
+        .get("totalRemotes")
+        .and_then(|s| s.as_u64())
+        .unwrap_or(servers.len() as u64);
+
+    if json {
+        // Redact credentials: never echo plaintext secrets to stdout.
+        let redacted_servers: Vec<serde_json::Value> = servers
+            .iter()
+            .map(|s| {
+                serde_json::json!({
+                    "id": s.get("id").cloned().unwrap_or(serde_json::Value::Null),
+                    "name": s.get("name").cloned().unwrap_or(serde_json::Value::Null),
+                    "host": s.get("host").cloned().unwrap_or(serde_json::Value::Null),
+                    "port": s.get("port").cloned().unwrap_or(serde_json::Value::Null),
+                    "username": s.get("username").cloned().unwrap_or(serde_json::Value::Null),
+                    "protocol": s.get("protocol").cloned().unwrap_or(serde_json::Value::Null),
+                    "initialPath": s.get("initialPath").cloned().unwrap_or(serde_json::Value::Null),
+                    "options": s.get("options").cloned().unwrap_or(serde_json::Value::Null),
+                    "hasCredential": s
+                        .get("credential")
+                        .map(|c| !c.is_null())
+                        .unwrap_or(false),
+                })
+            })
+            .collect();
+        let envelope = serde_json::json!({
+            "servers": redacted_servers,
+            "skipped": skipped,
+            "sourcePath": source_path,
+            "totalRemotes": total_remotes,
+        });
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&envelope).unwrap_or_default()
+        );
+    } else {
+        println!("Scanned {} remotes from {}", total_remotes, source_path);
+        println!();
+
+        if !servers.is_empty() {
+            println!("Importable ({}):", servers.len());
+            for s in &servers {
+                let name = s.get("name").and_then(|x| x.as_str()).unwrap_or("?");
+                let proto = s.get("protocol").and_then(|x| x.as_str()).unwrap_or("?");
+                let user = s.get("username").and_then(|x| x.as_str()).unwrap_or("");
+                let host = s.get("host").and_then(|x| x.as_str()).unwrap_or("");
+                let port = s.get("port").and_then(|x| x.as_u64()).unwrap_or(0);
+                let cred = if s.get("credential").map(|c| !c.is_null()).unwrap_or(false) {
+                    " [credentials]"
+                } else {
+                    ""
+                };
+                println!(
+                    "  {} - {}://{}@{}:{}{}",
+                    name, proto, user, host, port, cred
+                );
+            }
+            println!();
+        }
+
+        if !skipped.is_empty() {
+            println!("Skipped ({}):", skipped.len());
+            for s in &skipped {
+                let name = s.get("name").and_then(|x| x.as_str()).unwrap_or("?");
+                let kind = s.get("kind").and_then(|x| x.as_str()).unwrap_or("?");
+                let reason = s.get("reason").and_then(|x| x.as_str()).unwrap_or("?");
+                println!("  {} - {} ({})", name, kind, reason);
+            }
+            println!();
+        }
+
+        println!(
+            "To import into the GUI, use Settings > Export/Import > Import from {}",
+            source_label
+        );
+    }
+    0
+}
+
+/// Generic importer for the 12 profile-bridge sources. Resolves the source
+/// config path via the matching `default_*_config_path` when `path` is
+/// `None`, calls the matching `import_*`, then serializes the result and
+/// hands off to the shared `print_bridge_import` printer. Credentials are
+/// never written to stdout (see `print_bridge_import`). For `restic`, `path`
+/// is interpreted as a RESTIC_REPOSITORY_FILE; when absent the resolver
+/// falls back to the RESTIC_REPOSITORY / RESTIC_REPOSITORY_FILE environment
+/// variables via `restic_import::import_restic_from_env`.
+async fn cmd_import_bridge(src: &str, path: Option<String>, json: bool) -> i32 {
+    use ftp_client_gui_lib::{
+        aws_credentials_import, cyberduck_import, dreamweaver_import, duplicacy_import,
+        kopia_import, lftp_import, mc_import, mobaxterm_import, putty_import, restic_import,
+        s3cmd_import, ssh_config_import,
+    };
+
+    // Resolve the config path. `restic` has its own env-aware path:
+    // a missing path is legitimate (env fallback), so it skips the
+    // generic "config not found / file not found" guards below.
+    let resolved: Option<std::path::PathBuf> = match path {
+        Some(p) => Some(std::path::PathBuf::from(p)),
+        None => match src {
+            "aws" => aws_credentials_import::default_aws_credentials_config_path(),
+            "ssh" => ssh_config_import::default_ssh_config_path(),
+            "mc" => mc_import::default_mc_config_path(),
+            "cyberduck" => cyberduck_import::default_cyberduck_config_path(),
+            "s3cmd" => s3cmd_import::default_s3cmd_config_path(),
+            "lftp" => lftp_import::default_lftp_config_path(),
+            "putty" => putty_import::default_putty_config_path(),
+            "mobaxterm" => mobaxterm_import::default_mobaxterm_config_path(),
+            "dreamweaver" => dreamweaver_import::default_dreamweaver_config_path(),
+            "kopia" => kopia_import::default_kopia_config_path(),
+            "duplicacy" => duplicacy_import::default_duplicacy_config_path(),
+            "restic" => restic_import::default_restic_config_path(),
+            _ => None,
+        },
+    };
+
+    if src != "restic" {
+        let cfg = match &resolved {
+            Some(p) => p.clone(),
+            None => {
+                let msg = format!(
+                    "{} configuration not found. Specify the path manually: aeroftp import {} /path/to/config",
+                    src, src
+                );
+                if json {
+                    eprintln!("{}", serde_json::json!({ "error": msg }));
+                } else {
+                    eprintln!("Error: {}", msg);
+                }
+                return 1;
+            }
+        };
+        if !cfg.exists() {
+            let msg = format!("File not found: {}", cfg.display());
+            if json {
+                eprintln!("{}", serde_json::json!({ "error": msg }));
+            } else {
+                eprintln!("Error: {}", msg);
+            }
+            return 1;
+        }
+    }
+
+    // Each arm returns `Result<serde_json::Value, String>` so the typed
+    // `<Src>ImportResult` is collapsed to the shared camelCase shape.
+    let outcome: Result<serde_json::Value, String> = match src {
+        "aws" => aws_credentials_import::import_aws_credentials(resolved.as_deref().unwrap())
+            .and_then(|r| serde_json::to_value(r).map_err(|e| e.to_string())),
+        "ssh" => ssh_config_import::import_ssh_config(resolved.as_deref().unwrap())
+            .and_then(|r| serde_json::to_value(r).map_err(|e| e.to_string())),
+        "mc" => mc_import::import_mc(resolved.as_deref().unwrap())
+            .and_then(|r| serde_json::to_value(r).map_err(|e| e.to_string())),
+        "cyberduck" => cyberduck_import::import_cyberduck(resolved.as_deref().unwrap())
+            .and_then(|r| serde_json::to_value(r).map_err(|e| e.to_string())),
+        "s3cmd" => s3cmd_import::import_s3cmd(resolved.as_deref().unwrap())
+            .and_then(|r| serde_json::to_value(r).map_err(|e| e.to_string())),
+        "lftp" => lftp_import::import_lftp(resolved.as_deref().unwrap())
+            .and_then(|r| serde_json::to_value(r).map_err(|e| e.to_string())),
+        "putty" => putty_import::import_putty(resolved.as_deref().unwrap())
+            .and_then(|r| serde_json::to_value(r).map_err(|e| e.to_string())),
+        "mobaxterm" => mobaxterm_import::import_mobaxterm(resolved.as_deref().unwrap())
+            .and_then(|r| serde_json::to_value(r).map_err(|e| e.to_string())),
+        "dreamweaver" => dreamweaver_import::import_dreamweaver(resolved.as_deref().unwrap())
+            .and_then(|r| serde_json::to_value(r).map_err(|e| e.to_string())),
+        "kopia" => kopia_import::import_kopia(resolved.as_deref().unwrap())
+            .and_then(|r| serde_json::to_value(r).map_err(|e| e.to_string())),
+        "duplicacy" => duplicacy_import::import_duplicacy(resolved.as_deref().unwrap())
+            .and_then(|r| serde_json::to_value(r).map_err(|e| e.to_string())),
+        "restic" => {
+            let r = match resolved.as_deref() {
+                Some(p) => restic_import::import_restic(p),
+                None => restic_import::import_restic_from_env(&|k| std::env::var(k).ok()),
+            };
+            r.and_then(|r| serde_json::to_value(r).map_err(|e| e.to_string()))
+        }
+        other => Err(format!("unknown import source: {}", other)),
+    };
+
+    match outcome {
+        Ok(v) => print_bridge_import(&v, json, src),
+        Err(e) => {
+            if json {
+                eprintln!("{}", serde_json::json!({ "error": e }));
+            } else {
+                eprintln!("Error: {}", e);
+            }
+            1
+        }
+    }
+}
+
 /// Shared scaffold for the three `Commands::Export` subcommands. Reads
 /// the GUI-managed profile list from the vault, resolves credentials
 /// against the same `server_<id>` keys used by the connect path, and
@@ -16100,6 +16556,152 @@ async fn cmd_export_filezilla(
                 &target_path,
                 &collected.skipped,
             );
+            0
+        }
+        Err(e) => {
+            print_error(format, &format!("export failed: {}", e), 4);
+            4
+        }
+    }
+}
+
+/// Generic exporter for the 12 profile-bridge sources. Mirrors
+/// `cmd_export_winscp`: unlocks the vault, reads the GUI profile list,
+/// applies the optional `--profiles` name filter, collects exportable
+/// profiles with the per-source supported-protocol set, then builds the
+/// matching typed `Vec<<Src>ExportServer>` and calls the matching
+/// `export_<src>`. OAuth-only providers are reported as skipped by the
+/// shared scaffold (the per-source modules emit their own OAuth skips on
+/// import). Secrets are written only into the format file, never echoed.
+async fn cmd_export_bridge(
+    src: &str,
+    output: Option<String>,
+    profiles: Option<String>,
+    json: bool,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    use ftp_client_gui_lib::{
+        aws_credentials_import::{export_aws_credentials, AwsExportServer},
+        cyberduck_import::{export_cyberduck, CyberduckExportServer},
+        dreamweaver_import::{export_dreamweaver, DreamweaverExportServer},
+        duplicacy_import::{export_duplicacy, DuplicacyExportServer},
+        kopia_import::{export_kopia, KopiaExportServer},
+        lftp_import::{export_lftp, LftpExportServer},
+        mc_import::{export_mc, McExportServer},
+        mobaxterm_import::{export_mobaxterm, MobaxtermExportServer},
+        putty_import::{export_putty, PuttyExportServer},
+        restic_import::{export_restic, ResticExportServer},
+        s3cmd_import::{export_s3cmd, S3cmdExportServer},
+        ssh_config_import::{export_ssh_config, SshExportServer},
+    };
+
+    // Supported-protocol sets per the CLI wiring contract. OAuth list is
+    // empty for every source: the bridge modules surface OAuth skips on
+    // import, and the export scaffold only needs the supported filter.
+    let supported: &[&str] = match src {
+        "aws" | "mc" => &["s3"],
+        "s3cmd" | "kopia" | "duplicacy" | "restic" => &["s3", "sftp", "webdav"],
+        "lftp" => &["ftp", "ftps", "sftp", "webdav"],
+        "ssh" | "putty" => &["sftp"],
+        "cyberduck" | "mobaxterm" | "dreamweaver" => &["ftp", "ftps", "sftp", "webdav", "s3"],
+        _ => &[],
+    };
+    let oauth: [&str; 0] = [];
+
+    let store = match open_vault(cli) {
+        Ok(s) => s,
+        Err(e) => {
+            print_error(format, &format!("vault unlock failed: {}", e), 5);
+            return 5;
+        }
+    };
+    let servers_json = match read_vault_profiles(&store) {
+        Ok(v) => v,
+        Err(e) => {
+            print_error(format, &format!("read profiles: {}", e), 4);
+            return 4;
+        }
+    };
+    let filter = parse_profile_name_filter(profiles);
+
+    let collected =
+        match collect_export_scaffold(&store, &servers_json, filter.as_deref(), supported, &oauth) {
+            Ok(c) => c,
+            Err(e) => {
+                print_error(format, &e, 4);
+                return 4;
+            }
+        };
+    if collected.profiles.is_empty() {
+        emit_empty_export(json, format, &collected.skipped);
+        return 4;
+    }
+
+    let (ext, label) = match src {
+        "aws" => ("ini", "AWS credentials"),
+        "ssh" => ("conf", "ssh_config"),
+        "mc" => ("json", "mc config.json"),
+        "cyberduck" => ("duck", "Cyberduck bookmarks"),
+        "s3cmd" => ("cfg", ".s3cfg"),
+        "lftp" => ("rc", "lftp rc"),
+        "putty" => ("reg", "PuTTY sessions"),
+        "mobaxterm" => ("ini", "MobaXterm.ini"),
+        "dreamweaver" => ("ste", "Dreamweaver site"),
+        "kopia" => ("conf", "kopia repository config"),
+        "duplicacy" => ("json", "duplicacy preferences"),
+        "restic" => ("sh", "restic env script"),
+        _ => ("txt", src),
+    };
+    let target_path = match output {
+        Some(p) => std::path::PathBuf::from(p),
+        None => std::env::temp_dir().join(format!("aeroftp-{}-export.{}", src, ext)),
+    };
+
+    // Each arm builds the matching typed Vec and calls the matching
+    // `export_<src>` (shared signature
+    // `(&[<Src>ExportServer], &HashMap<String,String>, &Path) -> Result<usize,String>`).
+    macro_rules! run_export {
+        ($ty:path, $f:expr) => {{
+            let exportable: Vec<$ty> = collected
+                .profiles
+                .iter()
+                .map(|p| {
+                    $ty {
+                        name: p.name.clone(),
+                        host: p.host.clone(),
+                        port: p.port,
+                        username: p.username.clone(),
+                        protocol: Some(p.protocol.clone()),
+                        options: p.options.clone(),
+                        provider_id: p.provider_id.clone(),
+                        initial_path: p.initial_path.clone(),
+                    }
+                })
+                .collect();
+            $f(&exportable, &collected.passwords, &target_path)
+        }};
+    }
+
+    let result: Result<usize, String> = match src {
+        "aws" => run_export!(AwsExportServer, export_aws_credentials),
+        "ssh" => run_export!(SshExportServer, export_ssh_config),
+        "mc" => run_export!(McExportServer, export_mc),
+        "cyberduck" => run_export!(CyberduckExportServer, export_cyberduck),
+        "s3cmd" => run_export!(S3cmdExportServer, export_s3cmd),
+        "lftp" => run_export!(LftpExportServer, export_lftp),
+        "putty" => run_export!(PuttyExportServer, export_putty),
+        "mobaxterm" => run_export!(MobaxtermExportServer, export_mobaxterm),
+        "dreamweaver" => run_export!(DreamweaverExportServer, export_dreamweaver),
+        "kopia" => run_export!(KopiaExportServer, export_kopia),
+        "duplicacy" => run_export!(DuplicacyExportServer, export_duplicacy),
+        "restic" => run_export!(ResticExportServer, export_restic),
+        other => Err(format!("unknown export source: {}", other)),
+    };
+
+    match result {
+        Ok(count) => {
+            emit_export_success(json, label, count, &target_path, &collected.skipped);
             0
         }
         Err(e) => {
@@ -35103,6 +35705,40 @@ async fn main() {
                 force,
                 json,
             } => cmd_import_rclone_filter(path.clone(), output.clone(), *force, *json).await,
+            ImportCommands::Aws { path, json } => {
+                cmd_import_bridge("aws", path.clone(), *json).await
+            }
+            ImportCommands::Ssh { path, json } => {
+                cmd_import_bridge("ssh", path.clone(), *json).await
+            }
+            ImportCommands::Mc { path, json } => cmd_import_bridge("mc", path.clone(), *json).await,
+            ImportCommands::Cyberduck { path, json } => {
+                cmd_import_bridge("cyberduck", path.clone(), *json).await
+            }
+            ImportCommands::S3cmd { path, json } => {
+                cmd_import_bridge("s3cmd", path.clone(), *json).await
+            }
+            ImportCommands::Lftp { path, json } => {
+                cmd_import_bridge("lftp", path.clone(), *json).await
+            }
+            ImportCommands::Putty { path, json } => {
+                cmd_import_bridge("putty", path.clone(), *json).await
+            }
+            ImportCommands::Mobaxterm { path, json } => {
+                cmd_import_bridge("mobaxterm", path.clone(), *json).await
+            }
+            ImportCommands::Dreamweaver { path, json } => {
+                cmd_import_bridge("dreamweaver", path.clone(), *json).await
+            }
+            ImportCommands::Kopia { path, json } => {
+                cmd_import_bridge("kopia", path.clone(), *json).await
+            }
+            ImportCommands::Duplicacy { path, json } => {
+                cmd_import_bridge("duplicacy", path.clone(), *json).await
+            }
+            ImportCommands::Restic { path, json } => {
+                cmd_import_bridge("restic", path.clone(), *json).await
+            }
         },
         Commands::Export { command } => match command {
             ExportCommands::Rclone {
@@ -35120,6 +35756,134 @@ async fn main() {
                 profiles,
                 json,
             } => cmd_export_filezilla(output.clone(), profiles.clone(), *json, &cli, format).await,
+            ExportCommands::Aws {
+                output,
+                profiles,
+                json,
+            } => {
+                cmd_export_bridge("aws", output.clone(), profiles.clone(), *json, &cli, format).await
+            }
+            ExportCommands::Ssh {
+                output,
+                profiles,
+                json,
+            } => {
+                cmd_export_bridge("ssh", output.clone(), profiles.clone(), *json, &cli, format).await
+            }
+            ExportCommands::Mc {
+                output,
+                profiles,
+                json,
+            } => {
+                cmd_export_bridge("mc", output.clone(), profiles.clone(), *json, &cli, format).await
+            }
+            ExportCommands::Cyberduck {
+                output,
+                profiles,
+                json,
+            } => {
+                cmd_export_bridge(
+                    "cyberduck",
+                    output.clone(),
+                    profiles.clone(),
+                    *json,
+                    &cli,
+                    format,
+                )
+                .await
+            }
+            ExportCommands::S3cmd {
+                output,
+                profiles,
+                json,
+            } => {
+                cmd_export_bridge("s3cmd", output.clone(), profiles.clone(), *json, &cli, format)
+                    .await
+            }
+            ExportCommands::Lftp {
+                output,
+                profiles,
+                json,
+            } => {
+                cmd_export_bridge("lftp", output.clone(), profiles.clone(), *json, &cli, format)
+                    .await
+            }
+            ExportCommands::Putty {
+                output,
+                profiles,
+                json,
+            } => {
+                cmd_export_bridge("putty", output.clone(), profiles.clone(), *json, &cli, format)
+                    .await
+            }
+            ExportCommands::Mobaxterm {
+                output,
+                profiles,
+                json,
+            } => {
+                cmd_export_bridge(
+                    "mobaxterm",
+                    output.clone(),
+                    profiles.clone(),
+                    *json,
+                    &cli,
+                    format,
+                )
+                .await
+            }
+            ExportCommands::Dreamweaver {
+                output,
+                profiles,
+                json,
+            } => {
+                cmd_export_bridge(
+                    "dreamweaver",
+                    output.clone(),
+                    profiles.clone(),
+                    *json,
+                    &cli,
+                    format,
+                )
+                .await
+            }
+            ExportCommands::Kopia {
+                output,
+                profiles,
+                json,
+            } => {
+                cmd_export_bridge("kopia", output.clone(), profiles.clone(), *json, &cli, format)
+                    .await
+            }
+            ExportCommands::Duplicacy {
+                output,
+                profiles,
+                json,
+            } => {
+                cmd_export_bridge(
+                    "duplicacy",
+                    output.clone(),
+                    profiles.clone(),
+                    *json,
+                    &cli,
+                    format,
+                )
+                .await
+            }
+            ExportCommands::Restic {
+                output,
+                profiles,
+                json,
+            } => {
+                cmd_export_bridge(
+                    "restic",
+                    output.clone(),
+                    profiles.clone(),
+                    *json,
+                    &cli,
+                    format,
+                )
+                .await
+            }
         },
         Commands::Audit { command } => cmd_audit(command, &cli, format).await,
         Commands::Keystore { command } => match command {
