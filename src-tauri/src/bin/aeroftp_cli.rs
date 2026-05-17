@@ -386,13 +386,28 @@ enum ReconcileFormat {
     Summary,
 }
 
-#[derive(Copy, Clone, Debug, ValueEnum)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
 enum HashAlgorithm {
     Md5,
     Sha1,
     Sha256,
     Sha512,
     Blake3,
+    /// Microsoft OneDrive proprietary QuickXorHash. Server-side only:
+    /// it cannot be computed locally, so there is no download fallback.
+    Quickxor,
+    /// Dropbox content_hash (SHA-256 of per-4MiB-block SHA-256).
+    /// Server-side only: not a plain digest, no local fallback.
+    Dropbox,
+}
+
+impl HashAlgorithm {
+    /// True for proprietary hashes that exist only as server-provided
+    /// values: they are not locally computable, so consumers must omit
+    /// or error rather than fall back to download-and-digest.
+    fn is_server_only(self) -> bool {
+        matches!(self, HashAlgorithm::Quickxor | HashAlgorithm::Dropbox)
+    }
 }
 
 #[derive(Copy, Clone, Debug, ValueEnum)]
@@ -18346,6 +18361,8 @@ fn hash_algo_key(algo: HashAlgorithm) -> &'static str {
         HashAlgorithm::Sha256 => "sha256",
         HashAlgorithm::Sha512 => "sha512",
         HashAlgorithm::Blake3 => "blake3",
+        HashAlgorithm::Quickxor => "quickxor",
+        HashAlgorithm::Dropbox => "dropbox",
     }
 }
 
@@ -27246,6 +27263,23 @@ async fn cmd_hashsum(
         }
     }
 
+    if algorithm.is_server_only() {
+        // quickxor/dropbox cannot be computed locally: if the backend
+        // did not expose it above there is no honest fallback. Exit 7
+        // (NotSupported), never a misleading download-and-digest.
+        print_error(
+            format,
+            &format!(
+                "hashsum failed: {} is server-side only and this backend did not provide it for {}",
+                hash_algo_key(algorithm),
+                path
+            ),
+            7,
+        );
+        let _ = provider.disconnect().await;
+        return 7;
+    }
+
     match provider.download_to_bytes(path).await {
         Ok(data) => {
             let hash = match algorithm {
@@ -27266,6 +27300,9 @@ async fn cmd_hashsum(
                     format!("{:x}", sha2::Sha512::digest(&data))
                 }
                 HashAlgorithm::Blake3 => blake3::hash(&data).to_hex().to_string(),
+                HashAlgorithm::Quickxor | HashAlgorithm::Dropbox => {
+                    unreachable!("server-only hashes return before download")
+                }
             };
             let algo_name = hash_algo_key(algorithm);
             if matches!(format, OutputFormat::Json) {
