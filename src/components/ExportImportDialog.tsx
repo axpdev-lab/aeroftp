@@ -10,6 +10,8 @@ import { PasswordStrengthBar } from './vault/PasswordStrengthBar';
 import { ServerProfile } from '../types';
 import { useTranslation } from '../i18n';
 import { Checkbox } from './ui/Checkbox';
+import { BridgeSourcePanel } from './BridgeSourcePanel';
+import { BridgeSourceDescriptor, LEGACY_BRIDGE_SOURCES, GENERIC_BRIDGE_SOURCES } from './bridge/bridgeSources';
 
 interface ExportImportDialogProps {
     servers: ServerProfile[];
@@ -53,8 +55,10 @@ interface RcloneImportResult {
 
 export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers, onImport, onClose }) => {
     const t = useTranslation();
-    const [mode, setMode] = useState<'export' | 'import' | 'rclone' | 'rclone-export' | 'winscp' | 'winscp-export' | 'filezilla' | 'filezilla-export' | 'bridge-import' | 'bridge-export' | null>(null);
-    const [bridgeApp, setBridgeApp] = useState<'rclone' | 'winscp' | 'filezilla'>('rclone');
+    const [mode, setMode] = useState<'export' | 'import' | 'rclone' | 'rclone-export' | 'winscp' | 'winscp-export' | 'filezilla' | 'filezilla-export' | 'bridge-import' | 'bridge-export' | 'bridge-src' | null>(null);
+    // Generic bridge source (the 12 expansion sources routed through BridgeSourcePanel)
+    const [bridgeSrc, setBridgeSrc] = useState<BridgeSourceDescriptor | null>(null);
+    const [bridgeSrcDir, setBridgeSrcDir] = useState<'import' | 'export'>('import');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [includeCredentials, setIncludeCredentials] = useState(true);
@@ -118,12 +122,12 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
 
     // Auto-detect FileZilla config when entering filezilla mode
     useEffect(() => {
-        if ((mode === 'filezilla' || (mode === 'bridge-import' && bridgeApp === 'filezilla')) && filezillaDetectedPath === null) {
+        if (mode === 'filezilla' && filezillaDetectedPath === null) {
             invoke<string | null>('detect_filezilla_config').then(path => {
                 setFilezillaDetectedPath(path || '');
             }).catch(() => setFilezillaDetectedPath(''));
         }
-    }, [mode, bridgeApp, filezillaDetectedPath]);
+    }, [mode, filezillaDetectedPath]);
 
     const toggleServer = (id: string) => {
         setSelectedServerIds(prev => {
@@ -651,6 +655,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         setWinscpSelectedIds(new Set());
         setFilezillaResult(null);
         setFilezillaSelectedIds(new Set());
+        setBridgeSrc(null);
     };
 
     // Protocol display helper
@@ -671,6 +676,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                             : mode === 'filezilla-export' ? t('settings.filezillaExport')
                             : mode === 'bridge-import' ? t('settings.bridgeImport')
                             : mode === 'bridge-export' ? t('settings.bridgeExport')
+                            : mode === 'bridge-src' && bridgeSrc ? `${bridgeSrc.label} ${bridgeSrcDir === 'import' ? t('settings.bridgeImport') : t('settings.bridgeExport')}`
                             : t('settings.exportImport')}
                     </h3>
                     <button onClick={onClose} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700">
@@ -745,61 +751,57 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                                 </button>
                             </div>
                         </div>
-                    ) : mode === 'bridge-import' ? (
-                        /* ---- Bridge Import: select source app ---- */
-                        <div className="space-y-4">
-                            <div className="text-sm text-gray-600 dark:text-gray-300">{t('settings.bridgeSelectSource')}</div>
-                            {([
-                                { id: 'rclone' as const, label: 'rclone', desc: t('settings.rcloneImportDesc'), iconColor: 'text-orange-500', iconBg: 'bg-orange-100 dark:bg-orange-900/30' },
-                                { id: 'winscp' as const, label: 'WinSCP', desc: t('settings.winscpImportDesc'), iconColor: 'text-purple-500', iconBg: 'bg-purple-100 dark:bg-purple-900/30' },
-                                { id: 'filezilla' as const, label: 'FileZilla', desc: t('settings.filezillaImportDesc'), iconColor: 'text-emerald-500', iconBg: 'bg-emerald-100 dark:bg-emerald-900/30' },
-                            ]).map(app => (
-                                <button
-                                    key={app.id}
-                                    onClick={() => setMode(app.id)}
-                                    className="w-full p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:border-blue-400 dark:hover:border-blue-500 flex items-center gap-3 transition-colors"
-                                >
-                                    <div className={`w-10 h-10 rounded-lg ${app.iconBg} flex items-center justify-center`}>
-                                        <FolderInput size={20} className={app.iconColor} />
+                    ) : (mode === 'bridge-import' || mode === 'bridge-export') ? (
+                        /* ---- Bridge: select source/target app (all 15) ---- */
+                        (() => {
+                            const isImport = mode === 'bridge-import';
+                            const Icon = isImport ? FolderInput : Download;
+                            const pick = (s: BridgeSourceDescriptor) => {
+                                if (isImport && s.legacyImportMode) { setMode(s.legacyImportMode); return; }
+                                if (!isImport && s.legacyExportMode) { setMode(s.legacyExportMode); return; }
+                                setBridgeSrc(s);
+                                setBridgeSrcDir(isImport ? 'import' : 'export');
+                                setMode('bridge-src');
+                            };
+                            return (
+                                <div className="space-y-3">
+                                    <div className="text-sm text-gray-600 dark:text-gray-300">
+                                        {isImport ? t('settings.bridgeSelectSource') : t('settings.bridgeSelectTarget')}
                                     </div>
-                                    <div className="text-left">
-                                        <div className="font-medium">{app.label}</div>
-                                        <div className="text-xs text-gray-500 dark:text-gray-400">{app.desc}</div>
+                                    {[...LEGACY_BRIDGE_SOURCES, ...GENERIC_BRIDGE_SOURCES].map(s => (
+                                        <button
+                                            key={s.id}
+                                            onClick={() => pick(s)}
+                                            disabled={!isImport && servers.length === 0}
+                                            className="w-full p-3 border border-gray-200 dark:border-gray-700 rounded-lg hover:border-blue-400 dark:hover:border-blue-500 flex items-center gap-3 transition-colors disabled:opacity-50"
+                                        >
+                                            <div className={`w-9 h-9 rounded-lg ${s.accentBg} flex items-center justify-center flex-shrink-0`}>
+                                                <Icon size={18} className={s.accent} />
+                                            </div>
+                                            <div className="text-left min-w-0">
+                                                <div className="font-medium">{s.label}</div>
+                                                <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                                    {(isImport ? t('settings.bridgeGenericImportDesc') : t('settings.bridgeGenericExportDesc')).replace('{app}', s.label)}
+                                                </div>
+                                            </div>
+                                        </button>
+                                    ))}
+                                    <div className="flex gap-2">
+                                        <button onClick={resetMode} className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">{t('common.back')}</button>
                                     </div>
-                                </button>
-                            ))}
-                            <div className="flex gap-2">
-                                <button onClick={resetMode} className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">{t('common.back')}</button>
-                            </div>
-                        </div>
-                    ) : mode === 'bridge-export' ? (
-                        /* ---- Bridge Export: select target app ---- */
-                        <div className="space-y-4">
-                            <div className="text-sm text-gray-600 dark:text-gray-300">{t('settings.bridgeSelectTarget')}</div>
-                            {([
-                                { id: 'rclone-export' as const, label: 'rclone', desc: t('settings.rcloneExportDesc'), iconColor: 'text-orange-500', iconBg: 'bg-orange-100 dark:bg-orange-900/30' },
-                                { id: 'winscp-export' as const, label: 'WinSCP', desc: t('settings.winscpExportDesc'), iconColor: 'text-purple-500', iconBg: 'bg-purple-100 dark:bg-purple-900/30' },
-                                { id: 'filezilla-export' as const, label: 'FileZilla', desc: t('settings.filezillaExportDesc'), iconColor: 'text-emerald-500', iconBg: 'bg-emerald-100 dark:bg-emerald-900/30' },
-                            ]).map(app => (
-                                <button
-                                    key={app.id}
-                                    onClick={() => setMode(app.id)}
-                                    disabled={servers.length === 0}
-                                    className="w-full p-4 border border-gray-200 dark:border-gray-700 rounded-lg hover:border-blue-400 dark:hover:border-blue-500 flex items-center gap-3 transition-colors disabled:opacity-50"
-                                >
-                                    <div className={`w-10 h-10 rounded-lg ${app.iconBg} flex items-center justify-center`}>
-                                        <Download size={20} className={app.iconColor} />
-                                    </div>
-                                    <div className="text-left">
-                                        <div className="font-medium">{app.label}</div>
-                                        <div className="text-xs text-gray-500 dark:text-gray-400">{app.desc}</div>
-                                    </div>
-                                </button>
-                            ))}
-                            <div className="flex gap-2">
-                                <button onClick={resetMode} className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">{t('common.back')}</button>
-                            </div>
-                        </div>
+                                </div>
+                            );
+                        })()
+                    ) : mode === 'bridge-src' && bridgeSrc ? (
+                        <BridgeSourcePanel
+                            source={bridgeSrc}
+                            direction={bridgeSrcDir}
+                            servers={servers}
+                            existingServerKeys={existingServerKeys}
+                            onImport={onImport}
+                            onClose={onClose}
+                            onBack={() => { setBridgeSrc(null); setError(null); setSuccess(null); setMode(bridgeSrcDir === 'import' ? 'bridge-import' : 'bridge-export'); }}
+                        />
                     ) : mode === 'export' ? (
                         <div className="space-y-4">
                             {/* Server selection list */}

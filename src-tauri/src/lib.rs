@@ -34,6 +34,7 @@ pub mod ai_stream;
 mod ai_tools;
 mod archive_browse;
 pub mod aws_credentials_import;
+pub mod bridge_commands;
 pub mod bridge_shared;
 pub mod cyberduck_import;
 pub mod dreamweaver_import;
@@ -14591,6 +14592,11 @@ pub fn run() {
             detect_filezilla_config,
             import_filezilla_config,
             export_filezilla_config,
+            // Generic profile bridge (12 expansion sources)
+            bridge_commands::detect_bridge_config,
+            bridge_commands::bridge_source_meta,
+            bridge_commands::import_bridge_config,
+            bridge_commands::export_bridge_config,
             // Full Keystore Export/Import
             export_keystore,
             import_keystore,

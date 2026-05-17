@@ -468,7 +468,7 @@ pub fn import_filezilla(config_path: &Path) -> Result<FileZillaImportResult, Str
                         .chars()
                         .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
                         .collect::<String>(),
-                    &uuid_v4()[..8]
+                    &crate::bridge_shared::uuid_v4()[..8]
                 );
 
                 servers.push(ServerProfileExport {
@@ -613,23 +613,7 @@ pub fn export_filezilla(
     Ok(exported)
 }
 
-/// Simple UUID v4 generator using CSPRNG.
-fn uuid_v4() -> String {
-    let random_bytes = crate::crypto::random_bytes(16);
-
-    let mut bytes = [0u8; 16];
-    bytes.copy_from_slice(&random_bytes);
-    bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
-    bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant 10xx
-
-    format!(
-        "{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
-        bytes[0], bytes[1], bytes[2], bytes[3],
-        bytes[4], bytes[5], bytes[6], bytes[7],
-        bytes[8], bytes[9], bytes[10], bytes[11],
-        bytes[12], bytes[13], bytes[14], bytes[15],
-    )
-}
+// uuid_v4 now lives in `crate::bridge_shared` (Refactor 6).
 
 #[cfg(test)]
 mod tests {

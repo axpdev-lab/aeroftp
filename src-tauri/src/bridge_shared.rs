@@ -377,9 +377,133 @@ pub(crate) fn xml_attr(tag: &str, attr: &str) -> Option<String> {
     None
 }
 
+// ============ Bridge source metadata (single source of truth) ============
+//
+// These tables describe the 12 generically-dispatched bridge sources
+// (the three legacy importers rclone/winscp/filezilla keep their own
+// dedicated Tauri commands and are intentionally not listed here).
+// Both the CLI (`cmd_export_bridge`) and the GUI Tauri commands
+// (`bridge_commands`) read from here so the protocol filter and the
+// export file format never drift between the two surfaces.
+
+/// Canonical id list for the generically-dispatched sources.
+pub const BRIDGE_GENERIC_SOURCES: &[&str] = &[
+    "aws",
+    "ssh",
+    "mc",
+    "cyberduck",
+    "s3cmd",
+    "lftp",
+    "putty",
+    "mobaxterm",
+    "dreamweaver",
+    "kopia",
+    "duplicacy",
+    "restic",
+];
+
+/// Protocol families a given source can carry. An empty slice means the
+/// source is unknown to the generic bridge (legacy/own-command sources
+/// return empty here so the CLI keeps its prior `_ => &[]` behaviour).
+pub fn bridge_supported_protocols(src: &str) -> &'static [&'static str] {
+    match src {
+        "aws" | "mc" => &["s3"],
+        "s3cmd" | "kopia" | "duplicacy" | "restic" => &["s3", "sftp", "webdav"],
+        "lftp" => &["ftp", "ftps", "sftp", "webdav"],
+        "ssh" | "putty" => &["sftp"],
+        "cyberduck" | "mobaxterm" | "dreamweaver" => {
+            &["ftp", "ftps", "sftp", "webdav", "s3"]
+        }
+        _ => &[],
+    }
+}
+
+/// `(extension, human label)` for the file an export writes. `None` for
+/// sources outside the generic bridge.
+pub fn bridge_export_format(src: &str) -> Option<(&'static str, &'static str)> {
+    let pair = match src {
+        "aws" => ("ini", "AWS credentials"),
+        "ssh" => ("conf", "ssh_config"),
+        "mc" => ("json", "mc config.json"),
+        "cyberduck" => ("duck", "Cyberduck bookmarks"),
+        "s3cmd" => ("cfg", ".s3cfg"),
+        "lftp" => ("rc", "lftp rc"),
+        "putty" => ("reg", "PuTTY sessions"),
+        "mobaxterm" => ("ini", "MobaXterm.ini"),
+        "dreamweaver" => ("ste", "Dreamweaver site"),
+        "kopia" => ("conf", "kopia repository config"),
+        "duplicacy" => ("json", "duplicacy preferences"),
+        "restic" => ("sh", "restic env script"),
+        _ => return None,
+    };
+    Some(pair)
+}
+
+/// File-picker hint for an import: `(filter name, accepted extensions)`.
+/// Many of these configs are conventionally extensionless (`credentials`,
+/// `config`, `.s3cfg`), so the extension list is a UX convenience only:
+/// the server side validates by canonicalisation/size, not by extension.
+pub fn bridge_import_filter(src: &str) -> (&'static str, &'static [&'static str]) {
+    match src {
+        "aws" => ("AWS credentials", &["ini", "conf", "txt"]),
+        "ssh" => ("ssh config", &["conf", "config", "txt"]),
+        "mc" => ("mc config", &["json"]),
+        "cyberduck" => ("Cyberduck bookmark", &["duck", "plist", "xml"]),
+        "s3cmd" => ("s3cmd config", &["cfg", "s3cfg", "ini", "conf"]),
+        "lftp" => ("lftp rc", &["rc", "conf", "txt"]),
+        "putty" => ("PuTTY registry export", &["reg"]),
+        "mobaxterm" => ("MobaXterm config", &["ini"]),
+        "dreamweaver" => ("Dreamweaver site export", &["ste"]),
+        "kopia" => ("kopia repository config", &["config", "conf", "json"]),
+        "duplicacy" => ("duplicacy preferences", &["json", "txt"]),
+        "restic" => ("restic env script", &["sh", "env", "txt"]),
+        _ => ("Configuration", &["*"]),
+    }
+}
+
+/// How much of a usable secret an import can realistically recover.
+/// `"full"`: plaintext/obfuscated secret present, upgraded into the
+/// vault. `"limited"`: only part of the secret material (host-bound or
+/// optional). `"metadata"`: connection metadata only (secret lives in an
+/// OS keychain / SSH agent / interactive prompt).
+pub fn bridge_secret_policy(src: &str) -> &'static str {
+    match src {
+        "aws" | "mc" | "s3cmd" | "dreamweaver" | "kopia" | "restic" => "full",
+        "lftp" | "mobaxterm" | "duplicacy" => "limited",
+        "ssh" | "cyberduck" | "putty" => "metadata",
+        _ => "metadata",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bridge_tables_are_consistent() {
+        for src in BRIDGE_GENERIC_SOURCES {
+            // Every generic source must have a non-empty protocol set,
+            // an export format and a recognised secret policy.
+            assert!(
+                !bridge_supported_protocols(src).is_empty(),
+                "missing protocols for {src}"
+            );
+            assert!(
+                bridge_export_format(src).is_some(),
+                "missing export format for {src}"
+            );
+            assert!(
+                matches!(bridge_secret_policy(src), "full" | "limited" | "metadata"),
+                "bad secret policy for {src}"
+            );
+            let (_, exts) = bridge_import_filter(src);
+            assert!(!exts.is_empty(), "missing import filter for {src}");
+        }
+        // Legacy / unknown sources fall through cleanly.
+        assert!(bridge_supported_protocols("rclone").is_empty());
+        assert!(bridge_export_format("winscp").is_none());
+        assert_eq!(bridge_secret_policy("filezilla"), "metadata");
+    }
 
     #[test]
     fn uuid_shape() {
