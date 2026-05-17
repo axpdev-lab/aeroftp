@@ -16596,17 +16596,11 @@ async fn cmd_export_bridge(
         ssh_config_import::{export_ssh_config, SshExportServer},
     };
 
-    // Supported-protocol sets per the CLI wiring contract. OAuth list is
-    // empty for every source: the bridge modules surface OAuth skips on
-    // import, and the export scaffold only needs the supported filter.
-    let supported: &[&str] = match src {
-        "aws" | "mc" => &["s3"],
-        "s3cmd" | "kopia" | "duplicacy" | "restic" => &["s3", "sftp", "webdav"],
-        "lftp" => &["ftp", "ftps", "sftp", "webdav"],
-        "ssh" | "putty" => &["sftp"],
-        "cyberduck" | "mobaxterm" | "dreamweaver" => &["ftp", "ftps", "sftp", "webdav", "s3"],
-        _ => &[],
-    };
+    // Supported-protocol sets live in `bridge_shared` (single source of
+    // truth shared with the GUI bridge commands). OAuth list is empty for
+    // every source: the bridge modules surface OAuth skips on import, and
+    // the export scaffold only needs the supported filter.
+    let supported: &[&str] = ftp_client_gui_lib::bridge_shared::bridge_supported_protocols(src);
     let oauth: [&str; 0] = [];
 
     let store = match open_vault(cli) {
@@ -16638,21 +16632,8 @@ async fn cmd_export_bridge(
         return 4;
     }
 
-    let (ext, label) = match src {
-        "aws" => ("ini", "AWS credentials"),
-        "ssh" => ("conf", "ssh_config"),
-        "mc" => ("json", "mc config.json"),
-        "cyberduck" => ("duck", "Cyberduck bookmarks"),
-        "s3cmd" => ("cfg", ".s3cfg"),
-        "lftp" => ("rc", "lftp rc"),
-        "putty" => ("reg", "PuTTY sessions"),
-        "mobaxterm" => ("ini", "MobaXterm.ini"),
-        "dreamweaver" => ("ste", "Dreamweaver site"),
-        "kopia" => ("conf", "kopia repository config"),
-        "duplicacy" => ("json", "duplicacy preferences"),
-        "restic" => ("sh", "restic env script"),
-        _ => ("txt", src),
-    };
+    let (ext, label) =
+        ftp_client_gui_lib::bridge_shared::bridge_export_format(src).unwrap_or(("txt", src));
     let target_path = match output {
         Some(p) => std::path::PathBuf::from(p),
         None => std::env::temp_dir().join(format!("aeroftp-{}-export.{}", src, ext)),

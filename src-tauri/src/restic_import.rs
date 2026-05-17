@@ -68,7 +68,6 @@ use std::path::{Path, PathBuf};
 /// - `rest:https://host/` -> `("webdav", "custom-webdav", host, 443, None)`
 /// - `rclone:remote:path` -> `None` (caller chains into the rclone importer)
 /// - local path / `swift:` / `azure:` / `gs:` -> `None` (not bridgeable)
-/// Decomposed restic repo: `(protocol, provider_id, host, port, initial_path)`.
 pub type ResticRepoTarget = (&'static str, Option<String>, String, u32, Option<String>);
 
 pub fn parse_restic_repo(url: &str) -> Option<ResticRepoTarget> {
