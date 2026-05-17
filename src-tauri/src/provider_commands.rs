@@ -2533,6 +2533,34 @@ pub async fn provider_stat(
         .map_err(|e| format!("Failed to get file info: {}", e))
 }
 
+/// Server-side content hash(es) of a remote object WITHOUT downloading it.
+///
+/// Returns an `algo -> hex` map populated only from what the backend
+/// exposes cheaply (S3 ETag md5, B2 contentSha1, pCloud, SFTP
+/// `sha256sum`, Drive/OneDrive/Box API digests, Dropbox `content_hash`).
+/// An empty map means the provider has no cheap server-side hash for
+/// this object; the caller should say so rather than download it.
+#[tauri::command]
+pub async fn provider_checksum(
+    state: State<'_, ProviderState>,
+    path: String,
+) -> Result<std::collections::HashMap<String, String>, String> {
+    let mut provider_lock = state.provider.lock().await;
+
+    let provider = provider_lock
+        .as_mut()
+        .ok_or("Not connected to any provider")?;
+
+    if !provider.supports_checksum() {
+        return Ok(std::collections::HashMap::new());
+    }
+
+    provider
+        .checksum(&path)
+        .await
+        .map_err(|e| format!("Failed to get server-side checksum: {}", e))
+}
+
 /// Keep connection alive (NOOP equivalent)
 #[tauri::command]
 pub async fn provider_keep_alive(state: State<'_, ProviderState>) -> Result<(), String> {

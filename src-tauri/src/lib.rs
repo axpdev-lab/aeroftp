@@ -14758,6 +14758,7 @@ pub fn run() {
             provider_commands::provider_server_copy,
             provider_commands::provider_supports_server_copy,
             provider_commands::provider_stat,
+            provider_commands::provider_checksum,
             provider_commands::provider_keep_alive,
             provider_commands::provider_server_info,
             provider_commands::provider_file_size,
