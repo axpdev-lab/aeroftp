@@ -1089,6 +1089,7 @@ pub fn export_rclone(
                     output.push_str(&format!("secret_access_key = {}\n", pw));
                 }
                 let mut emitted_endpoint = false;
+                let mut pinned_bucket: Option<String> = None;
                 if let Some(opts) = options {
                     if let Some(region) = opts.get("region").and_then(|v| v.as_str()) {
                         output.push_str(&format!("region = {}\n", region));
@@ -1097,8 +1098,10 @@ pub fn export_rclone(
                         output.push_str(&format!("endpoint = {}\n", endpoint));
                         emitted_endpoint = true;
                     }
-                    if let Some(bucket) = opts.get("bucket").and_then(|v| v.as_str()) {
-                        output.push_str(&format!("bucket = {}\n", bucket));
+                    if let Some(b) = opts.get("bucket").and_then(|v| v.as_str()) {
+                        if !b.trim().is_empty() {
+                            pinned_bucket = Some(b.trim().to_string());
+                        }
                     }
                 }
                 // Fallback: some profiles (Storj S3 gateway, Cloudflare R2
@@ -1115,6 +1118,31 @@ pub fn export_rclone(
                             format!("https://{}", endpoint)
                         };
                     output.push_str(&format!("endpoint = {}\n", endpoint));
+                }
+
+                // Bucket reconciliation. The s3 backend has no `bucket` config
+                // key: it is silently ignored, so a profile-pinned bucket used
+                // to round-trip wrong (objects written by AeroFTP at key
+                // `<obj>` in bucket `<b>` were only reachable as
+                // `<remote>:<b>/<obj>`, while `<remote>:` gave "directory not
+                // found"). When the profile pins a bucket we emit an `alias`
+                // remote whose path is exactly `<remote>:<bucket>`, so the
+                // alias addresses objects bucket-relative, identical to how
+                // the AeroFTP S3 client writes keys (drop-in for crypt/sync).
+                if let Some(bucket) = pinned_bucket {
+                    let alias_name =
+                        sanitize_rclone_remote_name(&format!("{}-{}", remote_name, bucket));
+                    if !alias_name.is_empty() && alias_name != remote_name {
+                        output.push_str(&format!(
+                            "\n# Bucket-relative view of '{}' (bucket '{}').\n\
+                             # AeroFTP writes keys at bucket root; address them\n\
+                             # as `{}:` or wrap a crypt remote with `remote = {}:`.\n",
+                            remote_name, bucket, alias_name, alias_name
+                        ));
+                        output.push_str(&format!("[{}]\n", alias_name));
+                        output.push_str("type = alias\n");
+                        output.push_str(&format!("remote = {}:{}\n", remote_name, bucket));
+                    }
                 }
             }
             "webdav" => {
@@ -1550,5 +1578,63 @@ type = fichier
         let s3 = result.servers.iter().find(|s| s.name == "my-s3").unwrap();
         assert_eq!(s3.protocol.as_deref(), Some("s3"));
         assert_eq!(s3.credential.as_deref(), Some("s3secret"));
+    }
+
+    #[test]
+    fn test_export_rclone_s3_bucket_alias() {
+        // F1 regression: a profile-pinned bucket must NOT be emitted as the
+        // inert `bucket =` s3 key (silently ignored by rclone), but as an
+        // `alias` remote that is bucket-relative, matching how the AeroFTP
+        // S3 client writes keys.
+        let servers = vec![RcloneExportServer {
+            name: "minio".to_string(),
+            host: "s3.lab.axpdev.it".to_string(),
+            port: 443,
+            username: "AKIAEXAMPLE".to_string(),
+            protocol: Some("s3".to_string()),
+            options: Some(serde_json::json!({
+                "region": "us-east-1",
+                "endpoint": "https://s3.lab.axpdev.it",
+                "bucket": "aeroftp-test"
+            })),
+            provider_id: Some("minio".to_string()),
+        }];
+        let mut passwords = HashMap::new();
+        passwords.insert("minio".to_string(), "s3secret".to_string());
+
+        let tmp = std::env::temp_dir().join("aeroftp-test-export-s3-alias.conf");
+        export_rclone(&servers, &passwords, &tmp).expect("should export");
+        let conf = std::fs::read_to_string(&tmp).expect("read conf");
+        std::fs::remove_file(&tmp).ok();
+
+        // No inert bucket key in the s3 backend section.
+        assert!(
+            !conf.contains("\nbucket = "),
+            "must not emit the ignored s3 `bucket =` key:\n{conf}"
+        );
+        // Bucket-relative alias remote present and correct.
+        assert!(
+            conf.contains("[minio-aeroftp-test]"),
+            "expected bucket alias section:\n{conf}"
+        );
+        assert!(
+            conf.contains("type = alias"),
+            "alias remote must be type=alias:\n{conf}"
+        );
+        assert!(
+            conf.contains("remote = minio:aeroftp-test"),
+            "alias must point at <remote>:<bucket>:\n{conf}"
+        );
+
+        // The alias section is not re-imported as a phantom server.
+        let result = import_rclone(&tmp).unwrap_or_else(|_| {
+            // file already removed; re-export to a fresh path for re-import
+            let p = std::env::temp_dir().join("aeroftp-test-export-s3-alias2.conf");
+            export_rclone(&servers, &passwords, &p).unwrap();
+            let r = import_rclone(&p).unwrap();
+            std::fs::remove_file(&p).ok();
+            r
+        });
+        assert_eq!(result.servers.len(), 1, "alias must not become a server");
     }
 }
