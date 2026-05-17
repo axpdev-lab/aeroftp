@@ -11028,21 +11028,38 @@ interface UpdateVerificationInfo {
               setPropertiesDialog(null);
             }}
             onCalculateChecksum={async (algorithm: 'md5' | 'sha1' | 'sha256' | 'sha512' | 'blake3') => {
-              if (!propertiesDialog || propertiesDialog.isRemote) return;
+              if (!propertiesDialog) return;
               setPropertiesDialog(prev => prev ? { ...prev, checksum: { ...prev.checksum, calculating: true } } : null);
               try {
-                const hash = await invoke<string>('calculate_checksum', { path: propertiesDialog.path, algorithm });
-                setPropertiesDialog(prev => {
-                  if (!prev) return null;
-                  return {
+                if (propertiesDialog.isRemote) {
+                  // Server-side only: provider_checksum never downloads the
+                  // file. One call returns every digest the backend exposes
+                  // cheaply (S3 md5, B2 sha1, SFTP sha256, Drive/OneDrive/Box
+                  // API hashes), so populate them all at once.
+                  const map = await invoke<Record<string, string>>('provider_checksum', { path: propertiesDialog.path });
+                  setPropertiesDialog(prev => {
+                    if (!prev) return null;
+                    const next = { ...prev.checksum, calculating: false };
+                    (['md5', 'sha1', 'sha256', 'sha512', 'blake3'] as const).forEach(k => {
+                      if (map[k]) next[k] = map[k];
+                    });
+                    return { ...prev, checksum: next };
+                  });
+                  if (!map[algorithm]) {
+                    // Honest: this backend has no cheap server-side digest of
+                    // this type. We deliberately do not download to compute it.
+                    notify.error(
+                      t('toast.checksumFailed'),
+                      `${algorithm.toUpperCase()} is not available server-side for this backend (no download performed)`
+                    );
+                  }
+                } else {
+                  const hash = await invoke<string>('calculate_checksum', { path: propertiesDialog.path, algorithm });
+                  setPropertiesDialog(prev => prev ? {
                     ...prev,
-                    checksum: {
-                      ...prev.checksum,
-                      calculating: false,
-                      [algorithm]: hash
-                    }
-                  };
-                });
+                    checksum: { ...prev.checksum, calculating: false, [algorithm]: hash }
+                  } : null);
+                }
               } catch (err) {
                 notify.error(t('toast.checksumFailed'), String(err));
                 setPropertiesDialog(prev => prev ? { ...prev, checksum: { ...prev.checksum, calculating: false } } : null);
