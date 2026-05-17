@@ -38,6 +38,12 @@ struct DropboxMetadata {
     size: u64,
     client_modified: Option<String>,
     server_modified: Option<String>,
+    /// Dropbox content hash: SHA-256 over the SHA-256 of each 4 MiB
+    /// block, then concatenated. This is NOT a plain file SHA-256, so
+    /// it is exposed under a dedicated `dropbox` key and never aliased
+    /// to `sha256`.
+    #[serde(default)]
+    content_hash: Option<String>,
 }
 
 /// List folder response
@@ -167,6 +173,11 @@ impl DropboxProvider {
         let mut metadata = HashMap::new();
         if let Some(ref rev) = meta.rev {
             metadata.insert("rev".to_string(), rev.clone());
+        }
+        if !is_dir {
+            if let Some(ref h) = meta.content_hash {
+                metadata.insert("dropbox".to_string(), h.to_ascii_lowercase());
+            }
         }
 
         RemoteEntry {
@@ -1104,6 +1115,26 @@ impl StorageProvider for DropboxProvider {
             Err(ProviderError::NotFound(_)) => Ok(false),
             Err(e) => Err(e),
         }
+    }
+
+    fn supports_checksum(&self) -> bool {
+        true
+    }
+
+    /// Dropbox `content_hash` from the file metadata (one API call, no
+    /// content download). Exposed under the dedicated `dropbox` key:
+    /// it is a SHA-256-of-block-SHA-256 scheme, not a plain file
+    /// digest, so it is never reported as md5/sha1/sha256.
+    async fn checksum(
+        &mut self,
+        path: &str,
+    ) -> Result<HashMap<String, String>, ProviderError> {
+        let entry = self.stat(path).await?;
+        let mut out = HashMap::new();
+        if let Some(v) = entry.metadata.get("dropbox") {
+            out.insert("dropbox".to_string(), v.clone());
+        }
+        Ok(out)
     }
 
     async fn keep_alive(&mut self) -> Result<(), ProviderError> {
