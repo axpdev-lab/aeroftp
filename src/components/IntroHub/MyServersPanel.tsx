@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Plus, Server as ServerIcon, Play, Edit2, Copy, Trash2, Activity, Star, PencilLine, ArrowUpRight, ArrowDownLeft, Database, Globe, Cloud, Camera, Code, Gauge, HardDrive } from 'lucide-react';
-import { ServerProfile, ConnectionParams, ProviderType, getE2EBits, getProtocolClass, isOAuthProvider, isFourSharedProvider } from '../../types';
+import { ServerProfile, ConnectionParams, ProviderType, getE2EBits, getProtocolClass, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol } from '../../types';
 import { MyServersViewMode, MyServersFilterBy, FILTER_CHIPS, CatalogCategoryId } from '../../types/catalog';
 import { MyServersToolbar } from './MyServersToolbar';
 import { ServerCard } from './ServerCard';
@@ -876,8 +876,10 @@ export function MyServersPanel({
             // profile persisted, trust the registry. Without this,
             // legacy profiles can fail to connect because the backend
             // dispatches to the wrong provider for the saved protocol.
+            // Never downgrade a native-API profile from a WebDAV registry
+            // preset sharing its providerId (Koofr/OpenDrive): issue #213.
             let proto = server.protocol || 'ftp';
-            if (server.providerId) {
+            if (server.providerId && !isNativeApiProtocol(server.protocol)) {
                 const presetProto = getProviderById(server.providerId)?.protocol;
                 if (presetProto && presetProto !== proto) {
                     proto = presetProto;

@@ -142,6 +142,25 @@ export const isFtpProtocol = (type: ProviderType): boolean => {
   return type === "ftp" || type === "ftps";
 };
 
+// First-class native-API provider protocols. A saved profile with one of
+// these protocols is authoritative: the connect path must NOT override it
+// from a registry preset. Some providers expose BOTH a native API protocol
+// and a WebDAV registry preset sharing the same providerId (Koofr,
+// OpenDrive); the registry-preset override used to flip a native profile to
+// 'webdav' and connect it over WebDAV, which 404s against the bare API host
+// (issue #213). Generic protocols (ftp/ftps/sftp/s3/webdav) are deliberately
+// excluded: those legitimately rely on the registry preset for dispatch.
+const NATIVE_API_PROTOCOLS: ReadonlySet<string> = new Set([
+  "mega", "box", "pcloud", "azure", "filen", "internxt", "kdrive", "drime",
+  "filelu", "koofr", "opendrive", "yandexdisk", "googledrive", "dropbox",
+  "onedrive", "fourshared", "zohoworkdrive", "github", "gitlab", "immich",
+  "jottacloud", "swift",
+]);
+
+export const isNativeApiProtocol = (protocol?: string | null): boolean => {
+  return !!protocol && NATIVE_API_PROTOCOLS.has(protocol);
+};
+
 // Check if a provider supports storage quota queries
 export const supportsStorageQuota = (type: ProviderType): boolean => {
   return [
