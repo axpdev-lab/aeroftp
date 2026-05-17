@@ -255,9 +255,9 @@ Emits a pretty-printed JSON **array** to stdout with a stable, machine-parsable 
 | `MimeType` | string | `inode/directory` for directories, otherwise guessed from the name. Omitted with `--no-mimetype`. |
 | `ModTime` | string | Provider-native modification time, passed through verbatim (RFC3339 where the provider supplies it; empty string when unknown). Not re-normalized. Omitted with `--no-modtime`. |
 | `IsDir` | bool | Whether the entry is a directory. |
-| `Hashes` | object | Only with `--hash`: `{ "<algo>": "<hex>" }`. Omitted for directories. |
+| `Hashes` | object | Only with `--hash`: `{ "<algo>": "<hex>" }`, server-side only (never downloads). Omitted for directories and when the backend does not expose the requested digest cheaply. |
 
-Flags: `-R`/`--recursive`, `--files-only`, `--dirs-only` (mutually exclusive with `--files-only`), `--stat` (single object for the path itself, not its contents), `--no-modtime`, `--no-mimetype`, `--hash`, `--hash-type <md5|sha1|sha256|sha512|blake3>` (default `sha256`). The global `--max-depth` caps recursion. `--hash` has no cheap server-side source: it downloads each file and digests it locally, so it is slow on large trees and is off by default; without it the `Hashes` field is omitted entirely. Exit code `0` on success, `2` on a missing path. Same path and `--profile` rules as `ls`.
+Flags: `-R`/`--recursive`, `--files-only`, `--dirs-only` (mutually exclusive with `--files-only`), `--stat` (single object for the path itself, not its contents), `--no-modtime`, `--no-mimetype`, `--hash`, `--hash-type <md5|sha1|sha256|sha512|blake3>` (default `sha256`). The global `--max-depth` caps recursion. `--hash` is server-side only: it reports a digest the backend already exposes (S3/MinIO/R2 ETag `md5`, B2 `contentSha1`, pCloud, SFTP `sha256sum` over an exec channel) without ever downloading the file. It is off by default; the `Hashes` field is omitted for directories and for any file whose backend does not provide the requested digest cheaply (it never falls back to downloading). Exit code `0` on success, `2` on a missing path. Same path and `--profile` rules as `ls`.
 
 ### get - Download Files
 
@@ -509,6 +509,8 @@ aeroftp-cli hashsum --profile "server" sha256 /file.txt --json
 ```
 
 Supported algorithms: `md5`, `sha1`, `sha256`, `sha512`, `blake3`. Output format matches standard `sha256sum` format: `<hash>  <path>`.
+
+When the backend can supply the requested digest without transferring the file, `hashsum` takes a server-side fast-path and never downloads it: S3/MinIO/R2 `md5` from the object ETag, Backblaze B2 `sha1` from `contentSha1`, pCloud via its checksum API, and SFTP by running `sha256sum` on the server over an exec channel. `sha512`/`blake3`, multipart/SSE S3 objects, and any backend without a cheap digest fall back to download-and-digest automatically (same result, just slower).
 
 ### check - Verify Local/Remote Match
 
