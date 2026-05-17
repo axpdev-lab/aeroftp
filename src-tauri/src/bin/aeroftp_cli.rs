@@ -728,6 +728,10 @@ enum Commands {
         /// Filename encryption mode
         #[arg(long, default_value = "standard")]
         filename_encryption: String,
+        /// Suffix on objects when --filename-encryption=off (rclone default
+        /// ".bin"; use "none" to disable). Stripped before comparing names.
+        #[arg(long)]
+        suffix: Option<String>,
         /// Only check files present locally
         #[arg(long)]
         one_way: bool,
@@ -2232,6 +2236,10 @@ enum RcloneCryptCommands {
         /// Optional plaintext filename override before encryption
         #[arg(long)]
         remote_name: Option<String>,
+        /// Suffix appended to the object name when --filename-encryption=off
+        /// (rclone-compatible, default ".bin"). Use "none" to disable.
+        #[arg(long)]
+        suffix: Option<String>,
     },
 }
 
@@ -25920,6 +25928,7 @@ async fn cmd_rclone_crypt_put(
     filename_encryption: RcloneFilenameEncryption,
     dir_iv_base64: Option<&str>,
     remote_name: Option<&str>,
+    suffix: Option<&str>,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
@@ -25970,7 +25979,18 @@ async fn cmd_rclone_crypt_put(
         .unwrap_or_else(|| local_file.to_string());
 
     let encrypted_name = match filename_encryption {
-        RcloneFilenameEncryption::Off => plain_name.clone(),
+        RcloneFilenameEncryption::Off => {
+            // rclone tags name-encryption-off objects with a suffix (default
+            // ".bin") so it recognizes them as encrypted; without it rclone
+            // skips the file ("does not match suffix"). Append it for drop-in
+            // interop; "none"/empty disables it (rclone `suffix = none`).
+            let suf = ftp_client_gui_lib::rclone_crypt::resolve_off_suffix(suffix);
+            if suf.is_empty() {
+                plain_name.clone()
+            } else {
+                format!("{}{}", plain_name, suf)
+            }
+        }
         RcloneFilenameEncryption::Standard => {
             if dir_iv_base64.is_some() && cli.verbose > 0 {
                 eprintln!("Note: --dir-iv-base64 is ignored for rclone-compatible standard names; the EME tweak is derived from the password.");
@@ -27460,6 +27480,7 @@ async fn cmd_cryptcheck(
     password: Option<String>,
     password2: Option<String>,
     filename_encryption: &str,
+    suffix: Option<&str>,
     one_way: bool,
     _checkfile: Option<String>,
     algorithm: &str,
@@ -27467,6 +27488,9 @@ async fn cmd_cryptcheck(
     format: OutputFormat,
 ) -> i32 {
     let start = Instant::now();
+    // With name encryption off, AeroFTP/rclone tag objects with a suffix
+    // (default ".bin"); strip it from the leaf before comparing to local.
+    let off_suffix = ftp_client_gui_lib::rclone_crypt::resolve_off_suffix(suffix);
 
     if filename_encryption == "obfuscate" {
         print_error(format, "filename_encryption=obfuscate is not yet supported (see APPENDIX-S §\"Chiusura finale richiesta\")", 5);
@@ -27535,12 +27559,20 @@ async fn cmd_cryptcheck(
         }
 
         let components: Vec<&str> = r.rel_path.split('/').collect();
+        let last_idx = components.len().saturating_sub(1);
         let mut current_dec_dir = String::new();
         let mut ok = true;
 
-        for comp in components.iter() {
+        for (idx, comp) in components.iter().enumerate() {
             let dec_comp = if filename_encryption == "off" {
-                comp.to_string()
+                // Only the leaf carries the suffix; directory names do not.
+                if idx == last_idx && !off_suffix.is_empty() {
+                    comp.strip_suffix(off_suffix.as_str())
+                        .unwrap_or(comp)
+                        .to_string()
+                } else {
+                    comp.to_string()
+                }
             } else {
                 match ftp_client_gui_lib::rclone_crypt::decrypt_name(&name_key, &name_tweak, comp) {
                     Ok(n) => n,
@@ -33651,6 +33683,7 @@ async fn main() {
             password,
             password2,
             filename_encryption,
+            suffix,
             one_way,
             checkfile,
             algorithm,
@@ -33667,6 +33700,7 @@ async fn main() {
                 password.clone(),
                 password2.clone(),
                 filename_encryption,
+                suffix.as_deref(),
                 *one_way,
                 checkfile.clone(),
                 algorithm,
@@ -34987,6 +35021,7 @@ async fn main() {
                     filename_encryption,
                     dir_iv_base64,
                     remote_name,
+                    suffix,
                 } => {
                     let pw = resolve_rclone_password(password).unwrap_or_default();
                     if pw.is_empty() {
@@ -35007,6 +35042,7 @@ async fn main() {
                             *filename_encryption,
                             dir_iv_base64.as_deref(),
                             remote_name.as_deref(),
+                            suffix.as_deref(),
                             &cli,
                             format,
                         )

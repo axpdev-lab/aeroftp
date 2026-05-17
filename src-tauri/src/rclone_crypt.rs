@@ -61,6 +61,26 @@ pub enum FilenameEncryption {
     Off,
 }
 
+/// Suffix rclone appends to file names when `filename_encryption = off`.
+///
+/// With name encryption off rclone still tags every encrypted object with a
+/// suffix (default `.bin`) so it can tell encrypted files apart; a remote
+/// without it triggers rclone's "not an encrypted file - does not match
+/// suffix" skip. We append/strip the same suffix for drop-in interop. An
+/// empty suffix (or the literal `none`) disables it, matching rclone's
+/// `suffix = none`.
+pub const DEFAULT_OFF_SUFFIX: &str = ".bin";
+
+/// Resolve a user-supplied suffix string to the effective suffix.
+/// `None` -> rclone default `.bin`; `Some("none")` or `Some("")` -> no suffix.
+pub fn resolve_off_suffix(arg: Option<&str>) -> String {
+    match arg {
+        None => DEFAULT_OFF_SUFFIX.to_string(),
+        Some(s) if s.eq_ignore_ascii_case("none") || s.is_empty() => String::new(),
+        Some(s) => s.to_string(),
+    }
+}
+
 /// Derived keys for an unlocked rclone crypt remote.
 pub struct RcloneCryptKeys {
     pub name_key: [u8; 32],
@@ -301,7 +321,8 @@ pub fn decrypt_name(
     dir_iv: &[u8; 16],
     encrypted_name: &str,
 ) -> Result<String, String> {
-    // 1. Base32hex decode (rclone uses uppercase base32hex, no padding)
+    // 1. Base32hex decode (rclone uses lowercase base32hex, no padding;
+    //    decode is case-insensitive for legacy uppercase vaults)
     let ciphertext = base32hex_decode(encrypted_name)?;
 
     if ciphertext.is_empty() || ciphertext.len() % AES_BLOCK != 0 {
@@ -334,7 +355,7 @@ pub fn encrypt_name(
     // 2. EME encrypt
     let ciphertext = eme_encrypt(name_key, dir_iv, &padded)?;
 
-    // 3. Base32hex encode (uppercase, no padding)
+    // 3. Base32hex encode (lowercase, no padding) to match rclone on the wire
     Ok(base32hex_encode(&ciphertext))
 }
 
@@ -513,14 +534,23 @@ fn pkcs7_unpad(data: &[u8]) -> Result<Vec<u8>, String> {
 
 // ── Base32hex encoding (rclone-compatible) ─────────────────────────────────
 
-/// Base32hex encode (uppercase, no padding): matches rclone's filename encoding.
+/// Base32hex encode (lowercase, no padding): matches rclone's filename encoding.
+///
+/// rclone emits lowercase base32hex names. On case-sensitive backends (S3 and
+/// most cloud object stores) any case difference makes rclone's forward-derived
+/// lookup name miss the object, breaking `sync`/`ls`/dedupe interop. We emit
+/// lowercase to stay byte-identical with rclone.
 fn base32hex_encode(data: &[u8]) -> String {
-    data_encoding::BASE32HEX_NOPAD.encode(data)
+    // data_encoding::BASE32HEX_NOPAD uses the uppercase RFC 4648 base32hex
+    // alphabet; lowercase it so the on-wire name matches rclone exactly. The
+    // alphabet is ASCII, so to_lowercase() is a 1:1 byte-preserving transform.
+    data_encoding::BASE32HEX_NOPAD.encode(data).to_lowercase()
 }
 
 /// Base32hex decode (case-insensitive, no padding).
 fn base32hex_decode(s: &str) -> Result<Vec<u8>, String> {
-    // rclone uses uppercase but we accept both
+    // rclone emits lowercase; older AeroFTP vaults emitted uppercase. Accept
+    // both by normalizing to the uppercase alphabet data_encoding expects.
     let upper = s.to_uppercase();
     data_encoding::BASE32HEX_NOPAD
         .decode(upper.as_bytes())
@@ -1331,6 +1361,38 @@ mod tests {
             decrypt_name(&name_key, &dir_iv, "qgm4avr35m5loi1th53ato71v0").unwrap(),
             "123"
         );
+    }
+
+    #[test]
+    fn standard_filename_is_lowercase_no_masking() {
+        // F2 regression: rclone emits lowercase base32hex. Assert the raw
+        // output is byte-identical to rclone WITHOUT a masking to_lowercase(),
+        // so case-sensitive backends (S3) resolve the same key.
+        let name_key = [0u8; 32];
+        let dir_iv = [0u8; 16];
+
+        let e = encrypt_name(&name_key, &dir_iv, "1").unwrap();
+        assert_eq!(e, "p0e52nreeaj0a5ea7s64m4j72s");
+        assert!(
+            !e.chars().any(|c| c.is_ascii_uppercase()),
+            "encrypted name must not contain uppercase: {e}"
+        );
+        // Legacy uppercase vaults must still decode (case-insensitive).
+        assert_eq!(
+            decrypt_name(&name_key, &dir_iv, &e.to_uppercase()).unwrap(),
+            "1"
+        );
+    }
+
+    #[test]
+    fn off_suffix_resolution() {
+        // F3: default suffix is rclone's `.bin`; `none`/empty disables it.
+        assert_eq!(resolve_off_suffix(None), ".bin");
+        assert_eq!(resolve_off_suffix(Some(".bin")), ".bin");
+        assert_eq!(resolve_off_suffix(Some("none")), "");
+        assert_eq!(resolve_off_suffix(Some("NONE")), "");
+        assert_eq!(resolve_off_suffix(Some("")), "");
+        assert_eq!(resolve_off_suffix(Some(".enc")), ".enc");
     }
 
     #[test]
