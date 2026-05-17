@@ -113,6 +113,7 @@ import { useCircuitBreaker } from './hooks/useCircuitBreaker';
 import { RECONNECT_ERROR_KINDS, getErrorKindI18nKey } from './utils/transferErrorClassifier';
 import { normalizeMegaOptions } from './utils/providerConnectionMeta';
 import { CustomTitlebar } from './components/CustomTitlebar';
+import { ExportImportDialog } from './components/ExportImportDialog';
 import { WindowResizeEdges } from './components/WindowResizeEdges';
 import { DevToolsV2, PreviewFile, isPreviewable } from './components/DevTools';
 import { UniversalPreview, PreviewFileData, getPreviewCategory, isPreviewable as isMediaPreviewable } from './components/Preview';
@@ -659,6 +660,8 @@ const App: React.FC = () => {
   const [multiPropertiesDialog, setMultiPropertiesDialog] = useState<MultiFileProperties | null>(null);
   const [showAboutDialog, setShowAboutDialog] = useState(false);
   const [showMcpDialog, setShowMcpDialog] = useState(false);
+  const [showExportImport, setShowExportImport] = useState(false);
+  const [exportImportServers, setExportImportServers] = useState<ServerProfile[]>([]);
   const [showSupportDialog, setShowSupportDialog] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showShortcutsDialog, setShowShortcutsDialog] = useState(false);
@@ -10543,6 +10546,14 @@ interface UpdateVerificationInfo {
           onShowConnectionScreen={handleNewTabFromSavedServer}
           showConnectionScreen={showConnectionScreen}
           onOpenSettings={() => setShowSettingsPanel(true)}
+          onShowExportImport={async () => {
+            try {
+              setExportImportServers(await loadSavedServerProfiles());
+            } catch {
+              setExportImportServers([]);
+            }
+            setShowExportImport(true);
+          }}
           onShowSupport={() => setShowSupportDialog(true)}
           onShowCyberTools={() => setShowCyberTools(true)}
           onShowVault={() => setShowVaultPanel({ mode: 'home' })}
@@ -11180,6 +11191,20 @@ interface UpdateVerificationInfo {
         {showCyberTools && <CyberToolsModal onClose={() => setShowCyberTools(false)} />}
         <AboutDialog isOpen={showAboutDialog} onClose={() => setShowAboutDialog(false)} />
         <McpDialog isOpen={showMcpDialog} onClose={() => setShowMcpDialog(false)} />
+        {showExportImport && (
+          <ExportImportDialog
+            servers={exportImportServers}
+            onImport={(newServers) => {
+              const merged = [...exportImportServers, ...newServers];
+              setExportImportServers(merged);
+              storeSavedServerProfiles(merged)
+                .then(() => setServersRefreshKey(k => k + 1))
+                .catch(() => {});
+              setShowExportImport(false);
+            }}
+            onClose={() => setShowExportImport(false)}
+          />
+        )}
         <SupportDialog isOpen={showSupportDialog} onClose={() => setShowSupportDialog(false)} />
         <ProvidersDialog isOpen={showProvidersDialog} onClose={() => setShowProvidersDialog(false)} />
         {showMountManager && (

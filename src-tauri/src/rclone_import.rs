@@ -131,45 +131,8 @@ struct MappedProfile {
     initial_path: Option<String>,
 }
 
-/// Map an rclone S3 `provider` field to our providerId.
-fn map_s3_provider(provider: &str) -> &'static str {
-    match provider.to_lowercase().as_str() {
-        "aws" | "amazon" => "amazon-s3",
-        "cloudflare" | "r2" => "cloudflare-r2",
-        "digitalocean" | "digitaloceanspaces" => "digitalocean-spaces",
-        "wasabi" => "wasabi",
-        "backblaze" | "b2" => "backblaze-b2",
-        "linode" | "linodeobjectstorage" => "linode-object-storage",
-        "scaleway" => "scaleway",
-        "stackpath" => "stackpath",
-        "storj" => "storj",
-        "idrive" | "idrivee2" => "idrive-e2",
-        "minio" => "minio",
-        "ceph" => "custom-s3",
-        "arvancloud" => "custom-s3",
-        "huaweiobs" | "obs" => "custom-s3",
-        "tencentcos" | "cos" => "custom-s3",
-        "alicloud" | "oss" => "custom-s3",
-        "ibmcos" => "custom-s3",
-        "ionos" => "ionos-s3",
-        "petabox" => "custom-s3",
-        "seaweedfs" => "custom-s3",
-        "netease" => "custom-s3",
-        "qiniu" => "custom-s3",
-        _ => "custom-s3",
-    }
-}
-
-/// Map an rclone WebDAV `vendor` field to our providerId.
-fn map_webdav_vendor(vendor: &str) -> &'static str {
-    match vendor.to_lowercase().as_str() {
-        "nextcloud" => "nextcloud",
-        "owncloud" => "owncloud",
-        "sharepoint" | "sharepoint-ntlm" => "custom-webdav",
-        "fastmail" => "custom-webdav",
-        _ => "custom-webdav",
-    }
-}
+// Provider tables now live in `crate::bridge_shared` (Refactor 6): a single
+// source for every importer instead of per-module duplicates.
 
 /// Convert a single rclone remote to an AeroFTP profile.
 fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
@@ -244,7 +207,7 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
         // ---- S3 ----
         "s3" => {
             let s3_provider = get_str("provider").unwrap_or("Other");
-            let provider_id = map_s3_provider(s3_provider);
+            let provider_id = crate::bridge_shared::map_s3_provider(s3_provider);
             let region = get_str("region").unwrap_or("us-east-1").to_string();
             let endpoint = get_str("endpoint").unwrap_or("").to_string();
 
@@ -303,7 +266,7 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
                 return None;
             }
             let vendor = get_str("vendor").unwrap_or("other");
-            let provider_id = map_webdav_vendor(vendor);
+            let provider_id = crate::bridge_shared::map_webdav_vendor(vendor);
 
             // Parse URL to extract host and base path
             let (host, base_path, port) = parse_webdav_url(&url);
@@ -798,7 +761,7 @@ pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
                 let id = format!(
                     "rclone-{}-{}",
                     name.to_lowercase().replace(' ', "-"),
-                    &uuid_v4()[..8]
+                    &crate::bridge_shared::uuid_v4()[..8]
                 );
 
                 servers.push(ServerProfileExport {
@@ -842,39 +805,7 @@ pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
     })
 }
 
-/// Simple UUID v4 generator (avoid pulling uuid crate just for this).
-fn uuid_v4() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    let seed = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    let random_bytes = crate::crypto::random_bytes(16);
-
-    // Set version (4) and variant (10xx) bits
-    let mut bytes = [0u8; 16];
-    bytes.copy_from_slice(&random_bytes);
-    bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
-    bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant 10xx
-
-    // Mix in time for extra entropy
-    let time_bytes = (seed as u64).to_le_bytes();
-    for (i, &b) in time_bytes.iter().enumerate() {
-        bytes[i] ^= b;
-    }
-    bytes[6] = (bytes[6] & 0x0f) | 0x40; // re-set version after XOR
-    bytes[8] = (bytes[8] & 0x3f) | 0x80; // re-set variant after XOR
-
-    format!(
-        "{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
-        bytes[0], bytes[1], bytes[2], bytes[3],
-        bytes[4], bytes[5],
-        bytes[6], bytes[7],
-        bytes[8], bytes[9],
-        bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15],
-    )
-}
+// uuid_v4 now lives in `crate::bridge_shared` (Refactor 6).
 
 // ============ Export to rclone.conf ============
 

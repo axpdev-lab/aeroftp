@@ -48,6 +48,7 @@ interface TitlebarProps {
     onShowConnectionScreen: () => void;
     showConnectionScreen: boolean;
     onOpenSettings: () => void;
+    onShowExportImport: () => void;
     onShowSupport: () => void;
     onShowCyberTools: () => void;
     onShowVault: () => void;
@@ -197,7 +198,7 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
     const {
         appTheme, theme, setTheme,
         isConnected, onDisconnect, onShowConnectionScreen, showConnectionScreen,
-        onOpenSettings, onShowSupport, onShowCyberTools, onShowVault,
+        onOpenSettings, onShowExportImport, onShowSupport, onShowCyberTools, onShowVault,
         onShowAbout, onShowMcp, onShowShortcuts, onShowDependencies, onShowProviders,
         onShowMountManager,
         masterPasswordSet, onLockApp, onSetupMasterPassword,
@@ -254,6 +255,7 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
     const fileMenu: MenuEntry[] = [
         { label: t('menu.newFolder'), shortcut: 'Ctrl+N', onClick: onNewFolder, disabled: !hasFilePanel },
         { label: t('common.settings'), shortcut: 'Ctrl+,', onClick: onOpenSettings },
+        { label: t('settings.exportImport'), onClick: onShowExportImport },
         { label: t('menu.mountManager'), onClick: onShowMountManager },
         { separator: true },
         // L53: Debug Mode only visible in dev builds: in production, Cyber theme auto-enables it
