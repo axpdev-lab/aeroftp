@@ -140,6 +140,26 @@ pub struct McpRemoteBackend {
     server: String,
 }
 
+/// Heuristic: does this error look like an expired / invalid OAuth or auth
+/// token rather than a transport or logic failure? Used to trigger a single
+/// vault hot-reload retry (F5 #2): the long-running MCP process pools the
+/// provider with the token captured at construction time, so once the desktop
+/// app refreshes the token in the vault the pooled provider keeps presenting
+/// the stale one. Dropping the pooled entry forces `create_provider_from_vault`
+/// to re-read the fresh token from disk.
+fn looks_like_auth_failure(msg: &str) -> bool {
+    let m = msg.to_ascii_lowercase();
+    m.contains("401")
+        || m.contains("unauthorized")
+        || m.contains("access token")
+        || m.contains("invalid_grant")
+        || m.contains("invalid token")
+        || m.contains("token expired")
+        || m.contains("expired token")
+        || m.contains("authentication failed")
+        || m.contains("requires a valid access token")
+}
+
 impl McpRemoteBackend {
     async fn with_provider<T, F>(&self, op: F) -> Result<T, String>
     where
@@ -151,13 +171,37 @@ impl McpRemoteBackend {
                     + Send
                     + 'p,
             >,
-        >,
+        > + Clone,
     {
-        let arc = self.pool.get_provider(&self.server).await?;
-        let mut guard = arc.lock().await;
-        op(&mut guard)
-            .await
-            .map_err(|e| crate::providers::sanitize_api_error(&e.to_string()))
+        // First attempt against the pooled (possibly stale-token) provider.
+        let first = match self.pool.get_provider(&self.server).await {
+            Ok(arc) => {
+                let mut guard = arc.lock().await;
+                op.clone()(&mut guard)
+                    .await
+                    .map_err(|e| crate::providers::sanitize_api_error(&e.to_string()))
+            }
+            Err(e) => Err(e),
+        };
+
+        match first {
+            Ok(v) => Ok(v),
+            Err(e) if looks_like_auth_failure(&e) => {
+                // F5 #2: hot-reload from the vault. Drop the pooled connection
+                // so the next get_provider() rebuilds it from the freshly
+                // refreshed credentials the desktop app wrote, then retry the
+                // operation exactly once. An auth failure means the operation
+                // did not take effect server-side, so the single retry is safe
+                // for mutating ops too.
+                let _ = self.pool.invalidate(&self.server).await;
+                let arc = self.pool.get_provider(&self.server).await?;
+                let mut guard = arc.lock().await;
+                op(&mut guard)
+                    .await
+                    .map_err(|e| crate::providers::sanitize_api_error(&e.to_string()))
+            }
+            Err(e) => Err(e),
+        }
     }
 }
 
@@ -266,5 +310,35 @@ impl RemoteBackend for McpRemoteBackend {
             total: info.total,
             available: info.free,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::looks_like_auth_failure;
+
+    #[test]
+    fn auth_failure_classification() {
+        // F5 #2: these must trigger the single vault hot-reload retry.
+        for s in [
+            "HTTP 401 Unauthorized",
+            "Authentication failed: Unauthorized",
+            "OAuth2 provider 'box' requires a valid access token",
+            "invalid_grant",
+            "the access token expired",
+            "Box API: invalid token",
+        ] {
+            assert!(looks_like_auth_failure(s), "should be auth-class: {s}");
+        }
+        // These must NOT: transport/logic errors keep their own recovery path.
+        for s in [
+            "Data connection is already open",
+            "broken pipe",
+            "404 Not Found",
+            "directory not found",
+            "connection refused",
+        ] {
+            assert!(!looks_like_auth_failure(s), "should NOT be auth-class: {s}");
+        }
     }
 }

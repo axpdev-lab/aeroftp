@@ -491,8 +491,12 @@ fn create_provider_from_vault(
         && password.is_empty()
     {
         return Err(format!(
-            "OAuth2 provider '{}' on server '{}' requires a valid access token. \
-             Re-authenticate via the AeroFTP GUI first, then retry.",
+            "OAuth2 provider '{}' on server '{}' has no usable access token in \
+             the vault. Re-authenticate this provider in the AeroFTP desktop \
+             app: the MCP server reloads the refreshed token from the vault \
+             automatically on the next call (no manual retry loop, no server \
+             restart needed). If it still fails after re-auth, the stored \
+             refresh token itself is revoked or expired.",
             protocol, profile_name
         ));
     }

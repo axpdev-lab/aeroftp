@@ -381,6 +381,89 @@ impl StoredTokens {
     }
 }
 
+/// Cross-process advisory lease guarding the OAuth refresh + persist
+/// critical section.
+///
+/// The in-process `refresh_guard` mutex only serializes refreshes inside ONE
+/// process. The desktop app and the long-running MCP server are SEPARATE
+/// processes sharing the same vault. Without cross-process coordination both
+/// can refresh the same provider concurrently and, for providers that rotate
+/// the refresh token on every refresh (Box, Dropbox, Google), invalidate
+/// each other's token: the exact F5 failure mode (MCP serving a stale /
+/// dead token after a GUI re-auth). This lease makes the refresh
+/// single-owner across processes; the loser waits a bounded time then
+/// re-reads the token the winner just persisted (hot-reload) instead of
+/// racing the rotation.
+///
+/// Implemented with an atomic `create_new` lock file: portable (O_EXCL on
+/// Unix, CREATE_NEW on Windows), no extra crate. A stale lease (holder
+/// crashed without cleanup) is stolen after `STALE_SECS`, and acquisition
+/// is bounded by `MAX_WAIT_MS`, so OAuth can never wedge permanently.
+struct RefreshLease {
+    path: std::path::PathBuf,
+}
+
+impl RefreshLease {
+    const STALE_SECS: u64 = 30;
+    const MAX_WAIT_MS: u64 = 10_000;
+    const POLL_MS: u64 = 150;
+
+    /// Try to become the single cross-process owner of the refresh for
+    /// `slug`. `Some(lease)` => WE own it, perform the refresh. `None` =>
+    /// gave up waiting or no lock dir; caller must re-load tokens (the other
+    /// owner is refreshing) rather than refresh in parallel.
+    async fn acquire(slug: &str) -> Option<Self> {
+        let dir = OAuth2Manager::token_dir().ok()?;
+        let path = dir.join(format!("refresh-{}.lock", slug));
+        let started = std::time::Instant::now();
+        loop {
+            match std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path)
+            {
+                Ok(mut f) => {
+                    use std::io::Write;
+                    let _ = writeln!(
+                        f,
+                        "{} {}",
+                        std::process::id(),
+                        chrono::Utc::now().timestamp()
+                    );
+                    return Some(Self { path });
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    // Steal a stale lease (previous holder crashed).
+                    if let Ok(modified) =
+                        std::fs::metadata(&path).and_then(|m| m.modified())
+                    {
+                        if modified
+                            .elapsed()
+                            .map(|d| d.as_secs() >= Self::STALE_SECS)
+                            .unwrap_or(true)
+                        {
+                            let _ = std::fs::remove_file(&path);
+                            continue;
+                        }
+                    }
+                    if started.elapsed().as_millis() as u64 >= Self::MAX_WAIT_MS {
+                        return None;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(Self::POLL_MS))
+                        .await;
+                }
+                Err(_) => return None, // unexpected fs error: degrade gracefully
+            }
+        }
+    }
+}
+
+impl Drop for RefreshLease {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
 /// OAuth2 Manager for handling authentication flows
 pub struct OAuth2Manager {
     /// Pending PKCE verifiers for ongoing auth flows
@@ -531,8 +614,15 @@ impl OAuth2Manager {
         Ok(tokens)
     }
 
-    /// Get valid access token (refreshing if needed)
-    /// Uses refresh_guard mutex to prevent concurrent refresh races (H-04)
+    /// Get valid access token (refreshing if needed).
+    ///
+    /// Two layers of concurrency control:
+    /// - `refresh_guard`: serializes refresh within THIS process (H-04).
+    /// - `RefreshLease`: serializes refresh ACROSS processes (desktop app vs
+    ///   long-running MCP server), so refresh-token rotation can't make them
+    ///   invalidate each other (F5 #1). Double-checked: after winning the
+    ///   lease we re-load, so if the other process already refreshed we use
+    ///   its result instead of refreshing again.
     pub async fn get_valid_token(
         &self,
         config: &OAuthConfig,
@@ -541,13 +631,24 @@ impl OAuth2Manager {
         let mut tokens = self.load_tokens(config.provider)?;
 
         if tokens.is_expired() {
-            if let Some(ref refresh_token) = tokens.refresh_token {
-                tokens = self.refresh_tokens(config, refresh_token).await?;
-            } else {
-                return Err(ProviderError::AuthenticationFailed(
-                    "Token expired and no refresh token available".to_string(),
-                ));
+            let slug = format!("oauth_{:?}", config.provider).to_lowercase();
+            // Bounded, self-healing cross-process lease. `None` => another
+            // process is the refresh owner (or no lock dir): fall through to
+            // the re-load below and use whatever it persisted.
+            let _lease = RefreshLease::acquire(&slug).await;
+            // Double-check: the lease winner (possibly the other process)
+            // may have already rotated+persisted a fresh token.
+            tokens = self.load_tokens(config.provider)?;
+            if tokens.is_expired() {
+                if let Some(ref refresh_token) = tokens.refresh_token {
+                    tokens = self.refresh_tokens(config, refresh_token).await?;
+                } else {
+                    return Err(ProviderError::AuthenticationFailed(
+                        "Token expired and no refresh token available".to_string(),
+                    ));
+                }
             }
+            // _lease drops here, releasing the cross-process lock.
         }
 
         Ok(SecretString::from(tokens.access_token.clone()))
@@ -1160,5 +1261,39 @@ mod tests {
         let config = OAuthConfig::google("client_id", "client_secret");
         assert_eq!(config.provider, OAuthProvider::Google);
         assert!(!config.scopes.is_empty());
+    }
+
+    #[tokio::test]
+    async fn refresh_lease_raii_and_stale_steal() {
+        // F5 #1: the cross-process lease must be exclusive while held,
+        // self-clean on drop, and steal a stale (crashed-holder) lock.
+        let slug = format!("test_lease_{}", std::process::id());
+        let dir = OAuth2Manager::token_dir().expect("token dir");
+        let lock_path = dir.join(format!("refresh-{}.lock", slug));
+        let _ = std::fs::remove_file(&lock_path);
+
+        // Fresh acquire wins and creates the lock file.
+        let lease = RefreshLease::acquire(&slug).await.expect("first acquire");
+        assert!(lock_path.exists(), "lock file must exist while held");
+
+        // Drop releases and removes the file.
+        drop(lease);
+        assert!(
+            !lock_path.exists(),
+            "lock file must be removed on lease drop"
+        );
+
+        // A stale lock (older than STALE_SECS) gets stolen, not deadlocked.
+        std::fs::write(&lock_path, b"99999 0").unwrap();
+        let stale = std::time::SystemTime::now()
+            - std::time::Duration::from_secs(RefreshLease::STALE_SECS + 5);
+        filetime::set_file_mtime(&lock_path, filetime::FileTime::from_system_time(stale))
+            .unwrap();
+        let stolen = RefreshLease::acquire(&slug)
+            .await
+            .expect("stale lock must be stolen");
+        assert!(lock_path.exists());
+        drop(stolen);
+        assert!(!lock_path.exists());
     }
 }
