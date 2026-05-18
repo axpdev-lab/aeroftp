@@ -174,7 +174,9 @@ pub(crate) fn default_port_for(protocol: &str) -> u32 {
 
 /// Build a serde_json object from `(key, Option<String>)` pairs, skipping
 /// `None` and empty values so optional metadata never produces noise keys.
-pub(crate) fn json_map(pairs: &[(&str, Option<String>)]) -> serde_json::Map<String, serde_json::Value> {
+pub(crate) fn json_map(
+    pairs: &[(&str, Option<String>)],
+) -> serde_json::Map<String, serde_json::Value> {
     let mut m = serde_json::Map::new();
     for (k, v) in pairs {
         if let Some(val) = v {
@@ -234,7 +236,11 @@ pub(crate) fn parse_ini_sections(content: &str) -> HashMap<String, HashMap<Strin
         }
         if line.starts_with('[') && line.ends_with(']') {
             let raw = line[1..line.len() - 1].trim();
-            let name = raw.strip_prefix("profile ").unwrap_or(raw).trim().to_string();
+            let name = raw
+                .strip_prefix("profile ")
+                .unwrap_or(raw)
+                .trim()
+                .to_string();
             if !name.is_empty() {
                 out.entry(name.clone()).or_default();
                 cur = Some(name);
@@ -274,11 +280,11 @@ pub(crate) fn html_unescape(s: &str) -> String {
             "quot" => Some('"'),
             "apos" => Some('\''),
             _ if ent.starts_with("#x") || ent.starts_with("#X") => {
-                u32::from_str_radix(&ent[2..], 16).ok().and_then(char::from_u32)
+                u32::from_str_radix(&ent[2..], 16)
+                    .ok()
+                    .and_then(char::from_u32)
             }
-            _ if ent.starts_with('#') => {
-                ent[1..].parse::<u32>().ok().and_then(char::from_u32)
-            }
+            _ if ent.starts_with('#') => ent[1..].parse::<u32>().ok().and_then(char::from_u32),
             _ => None,
         };
         match decoded {
@@ -359,8 +365,7 @@ pub(crate) fn xml_attr(tag: &str, attr: &str) -> Option<String> {
     let mut search_from = 0;
     while let Some(rel) = tag[search_from..].find(&needle) {
         let pos = search_from + rel;
-        let ok_boundary = pos == 0
-            || matches!(bytes[pos - 1], b' ' | b'\t' | b'\n' | b'\r' | b'<');
+        let ok_boundary = pos == 0 || matches!(bytes[pos - 1], b' ' | b'\t' | b'\n' | b'\r' | b'<');
         if !ok_boundary {
             search_from = pos + needle.len();
             continue;
@@ -411,9 +416,7 @@ pub fn bridge_supported_protocols(src: &str) -> &'static [&'static str] {
         "s3cmd" | "kopia" | "duplicacy" | "restic" => &["s3", "sftp", "webdav"],
         "lftp" => &["ftp", "ftps", "sftp", "webdav"],
         "ssh" | "putty" => &["sftp"],
-        "cyberduck" | "mobaxterm" | "dreamweaver" => {
-            &["ftp", "ftps", "sftp", "webdav", "s3"]
-        }
+        "cyberduck" | "mobaxterm" | "dreamweaver" => &["ftp", "ftps", "sftp", "webdav", "s3"],
         _ => &[],
     }
 }
@@ -569,7 +572,10 @@ mod tests {
     fn xml_helpers() {
         assert_eq!(html_unescape("a&amp;b&lt;c&#65;"), "a&b<cA");
         let duck = "<key>Hostname</key><string>ftp.example.com</string><key>Port</key><integer>21</integer><key>Secure</key><true/>";
-        assert_eq!(plist_field(duck, "Hostname").as_deref(), Some("ftp.example.com"));
+        assert_eq!(
+            plist_field(duck, "Hostname").as_deref(),
+            Some("ftp.example.com")
+        );
         assert_eq!(plist_field(duck, "Port").as_deref(), Some("21"));
         assert_eq!(plist_field(duck, "Secure").as_deref(), Some("true"));
         let ste = r#"<site name="My Site"><remoteInfo accessType="ftp" host="h.example.com" port="21" login="u"/></site>"#;
@@ -577,7 +583,10 @@ mod tests {
         assert_eq!(xml_attr(&ri, "host").as_deref(), Some("h.example.com"));
         assert_eq!(xml_attr(&ri, "accessType").as_deref(), Some("ftp"));
         // token boundary: "ost=" must not satisfy a request for "host"
-        assert_eq!(xml_attr(r#"<x vhost="bad" host="good"/>"#, "host").as_deref(), Some("good"));
+        assert_eq!(
+            xml_attr(r#"<x vhost="bad" host="good"/>"#, "host").as_deref(),
+            Some("good")
+        );
     }
 
     #[test]

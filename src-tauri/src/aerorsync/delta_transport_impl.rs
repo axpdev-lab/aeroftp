@@ -66,7 +66,7 @@ use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 use crate::aerorsync::engine_adapter::{
     BaselineSource, CurrentDeltaSyncBridge, FileBaseline, MemoryBaseline,
 };
-use crate::aerorsync::fallback_policy::{FallbackVerdict, classify_fallback};
+use crate::aerorsync::fallback_policy::{classify_fallback, FallbackVerdict};
 use crate::aerorsync::native_driver::{AerorsyncDriver, PreambleProfile};
 use crate::aerorsync::real_wire::FileListEntry;
 use crate::aerorsync::remote_command::RemoteCommandSpec;
@@ -167,10 +167,7 @@ impl AerorsyncDeltaTransport {
             // resolves SSH_AUTH_SOCK at connect time. `prefers_russh_leg`
             // then routes probe + single-shot through russh (libssh2 is
             // pubkey-file-only).
-            auth_agent: matches!(
-                cfg.auth_method,
-                crate::rsync_over_ssh::AuthMethod::Agent
-            ),
+            auth_agent: matches!(cfg.auth_method, crate::rsync_over_ssh::AuthMethod::Agent),
             // B.1/B.4: probe stock `rsync --version` on the remote. The
             // parser in `parse_probe_protocol` extracts the numeric
             // protocol version from the multi-line banner. A missing
@@ -1828,8 +1825,15 @@ mod tests {
             .expect("sparse write");
 
         let back = std::fs::read(&target).unwrap();
-        assert_eq!(back.len(), data.len(), "size must match (set_len fixed trailing hole)");
-        assert_eq!(back, data, "sparse output must be byte-identical (holes read as zeros)");
+        assert_eq!(
+            back.len(),
+            data.len(),
+            "size must match (set_len fixed trailing hole)"
+        );
+        assert_eq!(
+            back, data,
+            "sparse output must be byte-identical (holes read as zeros)"
+        );
     }
 
     #[cfg(unix)]
@@ -1856,7 +1860,10 @@ mod tests {
             .expect("sparse write");
 
         // Logical content identical.
-        assert_eq!(std::fs::read(&dense).unwrap(), std::fs::read(&sparse).unwrap());
+        assert_eq!(
+            std::fs::read(&dense).unwrap(),
+            std::fs::read(&sparse).unwrap()
+        );
 
         let dense_blocks = std::fs::metadata(&dense).unwrap().blocks();
         let sparse_blocks = std::fs::metadata(&sparse).unwrap().blocks();

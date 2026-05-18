@@ -4537,10 +4537,7 @@ fn dump_connection_info(cli: &Cli, config: &ProviderConfig) {
             } else {
                 format!("[redacted, len={}]", pass.chars().count())
             };
-            eprintln!(
-                "  password: {}",
-                auth_state
-            );
+            eprintln!("  password: {}", auth_state);
         } else {
             eprintln!("  password: [redacted, use --dump auth for presence/length only]");
         }
@@ -5870,9 +5867,7 @@ fn read_ui_table_settings(store: &CredentialStore) -> UiTableSettings {
                     // column picker).
                     if matches!(
                         col,
-                        ProfileColId::Paths
-                            | ProfileColId::Saved
-                            | ProfileColId::SavedPct
+                        ProfileColId::Paths | ProfileColId::Saved | ProfileColId::SavedPct
                     ) {
                         out.hidden.insert(*col);
                     }
@@ -6988,7 +6983,9 @@ fn interactive_profiles_loop(store: &CredentialStore, profiles: Vec<serde_json::
             eprintln!("  d <selectors>   delete (red rendering, tombstone reprint)");
             eprintln!("  f <selectors>   toggle favourite \u{2605} (green/yellow rendering)");
             eprintln!("  c <selectors>   copy / duplicate (blue rendering)");
-            eprintln!("  r <selector>    rename (single target, prompts for new name, green rendering)");
+            eprintln!(
+                "  r <selector>    rename (single target, prompts for new name, green rendering)"
+            );
             eprintln!("  e <selector>    edit name/host/port/username/initialPath inline (green rendering)");
             eprintln!("  Nl  Nt  Nd      legacy single-target compact form (e.g. '1l', 'l1')");
             eprintln!("  0/q             quit");
@@ -7179,14 +7176,17 @@ fn interactive_profiles_loop(store: &CredentialStore, profiles: Vec<serde_json::
                     match toggle_favorite_in_vault(store, &id) {
                         Ok(true) => eprintln!(
                             "{}",
-                            paint_yellow(&format!("\u{2605} #{} '{}' marked as favourite.", zero + 1, name))
+                            paint_yellow(&format!(
+                                "\u{2605} #{} '{}' marked as favourite.",
+                                zero + 1,
+                                name
+                            ))
                         ),
-                        Ok(false) => eprintln!(
-                            "#{} '{}' removed from favourites.",
-                            zero + 1,
-                            name
+                        Ok(false) => eprintln!("#{} '{}' removed from favourites.", zero + 1, name),
+                        Err(e) => eprintln!(
+                            "{}",
+                            paint_red(&format!("Favourite toggle '{}' failed: {}", name, e))
                         ),
-                        Err(e) => eprintln!("{}", paint_red(&format!("Favourite toggle '{}' failed: {}", name, e))),
                     }
                 }
             }
@@ -7271,18 +7271,27 @@ fn interactive_profiles_loop(store: &CredentialStore, profiles: Vec<serde_json::
                     eprintln!("Name unchanged: rename skipped.");
                     continue;
                 }
-                match update_profile_field_in_vault(store, &id, "name", serde_json::Value::String(new_name.clone())) {
+                match update_profile_field_in_vault(
+                    store,
+                    &id,
+                    "name",
+                    serde_json::Value::String(new_name.clone()),
+                ) {
                     Ok(updated) => {
                         current = updated;
                         eprintln!(
                             "{}",
-                            paint_green(&format!("#{} '{}' renamed to '{}'.", zero + 1, name, new_name))
+                            paint_green(&format!(
+                                "#{} '{}' renamed to '{}'.",
+                                zero + 1,
+                                name,
+                                new_name
+                            ))
                         );
                     }
-                    Err(e) => eprintln!(
-                        "{}",
-                        paint_red(&format!("Rename '{}' failed: {}", name, e))
-                    ),
+                    Err(e) => {
+                        eprintln!("{}", paint_red(&format!("Rename '{}' failed: {}", name, e)))
+                    }
                 }
             }
             'e' => {
@@ -7328,18 +7337,17 @@ fn interactive_profiles_loop(store: &CredentialStore, profiles: Vec<serde_json::
                 ];
                 let mut abort = false;
                 for (key, label, allow_clear) in fields {
-                    let current_value = profile.get(*key).cloned().unwrap_or(serde_json::Value::Null);
+                    let current_value = profile
+                        .get(*key)
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Null);
                     let current_str = match &current_value {
                         serde_json::Value::String(s) => s.clone(),
                         serde_json::Value::Number(n) => n.to_string(),
                         serde_json::Value::Null => String::new(),
                         v => v.to_string(),
                     };
-                    let suffix = if *allow_clear {
-                        " (`-` to clear)"
-                    } else {
-                        ""
-                    };
+                    let suffix = if *allow_clear { " (`-` to clear)" } else { "" };
                     eprint!("{} [{}]{}: ", label, current_str, suffix);
                     let _ = io::stderr().flush();
                     let mut buf = String::new();
@@ -7362,7 +7370,10 @@ fn interactive_profiles_loop(store: &CredentialStore, profiles: Vec<serde_json::
                         match raw.parse::<u16>() {
                             Ok(n) => updates.push((*key, serde_json::json!(n))),
                             Err(_) => {
-                                eprintln!("Invalid port '{}': must be 0-65535. Aborting edit.", raw);
+                                eprintln!(
+                                    "Invalid port '{}': must be 0-65535. Aborting edit.",
+                                    raw
+                                );
                                 abort = true;
                                 break;
                             }
@@ -7845,8 +7856,14 @@ fn cmd_profile_add(
 
     let mut entry = serde_json::Map::new();
     entry.insert("id".into(), serde_json::Value::String(new_id.clone()));
-    entry.insert("name".into(), serde_json::Value::String(trimmed_name.to_string()));
-    entry.insert("protocol".into(), serde_json::Value::String(proto_lower.clone()));
+    entry.insert(
+        "name".into(),
+        serde_json::Value::String(trimmed_name.to_string()),
+    );
+    entry.insert(
+        "protocol".into(),
+        serde_json::Value::String(proto_lower.clone()),
+    );
     if let Some(h) = host {
         entry.insert("host".into(), serde_json::Value::String(h.to_string()));
     }
@@ -7869,7 +7886,10 @@ fn cmd_profile_add(
         entry.insert("color".into(), serde_json::Value::String(c.to_string()));
     }
     if let Some(pid) = provider_id {
-        entry.insert("providerId".into(), serde_json::Value::String(pid.to_string()));
+        entry.insert(
+            "providerId".into(),
+            serde_json::Value::String(pid.to_string()),
+        );
     }
     if let Some(mtb) = manual_total_bytes {
         let mut options = serde_json::Map::new();
@@ -8006,7 +8026,10 @@ fn cmd_profile_duplicate(
     let mut copy = source.clone();
     if let serde_json::Value::Object(ref mut map) = copy {
         map.insert("id".into(), serde_json::Value::String(new_id.clone()));
-        map.insert("name".into(), serde_json::Value::String(resolved_name.clone()));
+        map.insert(
+            "name".into(),
+            serde_json::Value::String(resolved_name.clone()),
+        );
         map.remove("lastConnected");
         if let Some(mtb) = manual_total_bytes {
             // The source's cached quota no longer matches the new (manual)
@@ -8118,12 +8141,7 @@ fn delete_profile_in_vault(
 /// all work. Without `--yes` and with stdin attached to a TTY, prompts
 /// for `y/N` on stderr; in non-TTY contexts (CI / pipe) the absence of
 /// `--yes` is a hard error so a script never silently consumes stdin.
-fn cmd_profile_delete(
-    cli: &Cli,
-    format: OutputFormat,
-    selector: &str,
-    skip_confirm: bool,
-) -> i32 {
+fn cmd_profile_delete(cli: &Cli, format: OutputFormat, selector: &str, skip_confirm: bool) -> i32 {
     let store = match open_vault(cli) {
         Ok(s) => s,
         Err(e) => {
@@ -8305,11 +8323,7 @@ fn cmd_profile_set_password(
                 return 5;
             }
             Err(_) => {
-                print_error(
-                    format,
-                    &format!("environment variable {var} is not set"),
-                    5,
-                );
+                print_error(format, &format!("environment variable {var} is not set"), 5);
                 return 5;
             }
         }
@@ -8458,8 +8472,8 @@ fn duplicate_profile_in_vault(
     let raw = store
         .get("config_server_profiles")
         .map_err(|e| format!("Failed to read profiles: {}", e))?;
-    let mut profiles: Vec<serde_json::Value> = serde_json::from_str(&raw)
-        .map_err(|e| format!("Failed to parse profiles: {}", e))?;
+    let mut profiles: Vec<serde_json::Value> =
+        serde_json::from_str(&raw).map_err(|e| format!("Failed to parse profiles: {}", e))?;
     let source = profiles
         .iter()
         .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(source_id))
@@ -8492,7 +8506,10 @@ fn duplicate_profile_in_vault(
     let mut copy = source.clone();
     if let serde_json::Value::Object(ref mut map) = copy {
         map.insert("id".into(), serde_json::Value::String(new_id.clone()));
-        map.insert("name".into(), serde_json::Value::String(resolved_name.clone()));
+        map.insert(
+            "name".into(),
+            serde_json::Value::String(resolved_name.clone()),
+        );
         map.remove("lastConnected");
     }
     profiles.insert(0, copy);
@@ -8531,8 +8548,8 @@ fn apply_profile_updates_in_vault(
     let raw = store
         .get("config_server_profiles")
         .map_err(|e| format!("Failed to read profiles: {}", e))?;
-    let mut profiles: Vec<serde_json::Value> = serde_json::from_str(&raw)
-        .map_err(|e| format!("Failed to parse profiles: {}", e))?;
+    let mut profiles: Vec<serde_json::Value> =
+        serde_json::from_str(&raw).map_err(|e| format!("Failed to parse profiles: {}", e))?;
     let target = profiles
         .iter_mut()
         .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(profile_id))
@@ -13830,8 +13847,7 @@ async fn cmd_get(
             }
             if result.used_delta {
                 let elapsed = start.elapsed();
-                let file_size =
-                    std::fs::metadata(local_path).map(|m| m.len()).unwrap_or(0);
+                let file_size = std::fs::metadata(local_path).map(|m| m.len()).unwrap_or(0);
                 session_transfer_add(file_size);
                 if let Some(pb) = pb {
                     pb.finish_and_clear();
@@ -13878,9 +13894,7 @@ async fn cmd_get(
                 }
             }
         } else if !cli.quiet {
-            eprintln!(
-                "delta unavailable for this provider, falling back to classic download"
-            );
+            eprintln!("delta unavailable for this provider, falling back to classic download");
         }
     }
 
@@ -15000,9 +15014,7 @@ async fn cmd_put(
                 }
             }
         } else if !cli.quiet {
-            eprintln!(
-                "delta unavailable for this provider, falling back to classic upload"
-            );
+            eprintln!("delta unavailable for this provider, falling back to classic upload");
         }
     }
 
@@ -16859,14 +16871,19 @@ async fn cmd_export_bridge(
     };
     let filter = parse_profile_name_filter(profiles);
 
-    let collected =
-        match collect_export_scaffold(&store, &servers_json, filter.as_deref(), supported, &oauth) {
-            Ok(c) => c,
-            Err(e) => {
-                print_error(format, &e, 4);
-                return 4;
-            }
-        };
+    let collected = match collect_export_scaffold(
+        &store,
+        &servers_json,
+        filter.as_deref(),
+        supported,
+        &oauth,
+    ) {
+        Ok(c) => c,
+        Err(e) => {
+            print_error(format, &e, 4);
+            return 4;
+        }
+    };
     if collected.profiles.is_empty() {
         emit_empty_export(json, format, &collected.skipped);
         return 4;
@@ -16887,17 +16904,15 @@ async fn cmd_export_bridge(
             let exportable: Vec<$ty> = collected
                 .profiles
                 .iter()
-                .map(|p| {
-                    $ty {
-                        name: p.name.clone(),
-                        host: p.host.clone(),
-                        port: p.port,
-                        username: p.username.clone(),
-                        protocol: Some(p.protocol.clone()),
-                        options: p.options.clone(),
-                        provider_id: p.provider_id.clone(),
-                        initial_path: p.initial_path.clone(),
-                    }
+                .map(|p| $ty {
+                    name: p.name.clone(),
+                    host: p.host.clone(),
+                    port: p.port,
+                    username: p.username.clone(),
+                    protocol: Some(p.protocol.clone()),
+                    options: p.options.clone(),
+                    provider_id: p.provider_id.clone(),
+                    initial_path: p.initial_path.clone(),
                 })
                 .collect();
             $f(&exportable, &collected.passwords, &target_path)
@@ -16986,16 +17001,18 @@ fn resolve_keystore_password(
     if std::io::stdin().is_terminal() {
         eprint!("Keystore password: ");
         std::io::stderr().flush().ok();
-        let pw = rpassword::read_password()
-            .map_err(|e| format!("read interactive password: {e}"))?;
+        let pw =
+            rpassword::read_password().map_err(|e| format!("read interactive password: {e}"))?;
         if pw.is_empty() {
             return Err("Empty password".to_string());
         }
         return Ok(pw);
     }
-    Err("No keystore password available. Set AEROFTP_KEYSTORE_PASSWORD, \
+    Err(
+        "No keystore password available. Set AEROFTP_KEYSTORE_PASSWORD, \
          pipe via --password-stdin, or run interactively."
-        .to_string())
+            .to_string(),
+    )
 }
 
 /// Resolve the config directory the export/import should target.
@@ -17043,11 +17060,7 @@ async fn cmd_keystore_export(
     };
     if password.len() < 8 {
         password.zeroize();
-        print_error(
-            format,
-            "Keystore password must be at least 8 characters",
-            6,
-        );
+        print_error(format, "Keystore password must be at least 8 characters", 6);
         return 6;
     }
 
@@ -17287,10 +17300,7 @@ fn cmd_keystore_info(input: &str, json: bool, format: OutputFormat) -> i32 {
             "    server creds: {}",
             metadata.categories.server_credentials
         );
-        eprintln!(
-            "    profiles:     {}",
-            metadata.categories.server_profiles
-        );
+        eprintln!("    profiles:     {}", metadata.categories.server_profiles);
         eprintln!("    ai keys:      {}", metadata.categories.ai_keys);
         eprintln!("    oauth tokens: {}", metadata.categories.oauth_tokens);
         eprintln!("    config:       {}", metadata.categories.config_entries);
@@ -17425,9 +17435,7 @@ fn cmd_aerorsync_mode_set(mode: &str, format: OutputFormat) -> i32 {
         other => {
             print_error(
                 format,
-                &format!(
-                    "invalid mode {other:?}: expected one of auto, classic, native"
-                ),
+                &format!("invalid mode {other:?}: expected one of auto, classic, native"),
                 5,
             );
             return 5;
@@ -17505,9 +17513,7 @@ async fn cmd_aerorsync_probe(
 ) -> i32 {
     use ftp_client_gui_lib::aerorsync::russh_session_transport::RusshSessionTransport;
     use ftp_client_gui_lib::aerorsync::ssh_transport::{SshHostKeyPolicy, SshTransportConfig};
-    use ftp_client_gui_lib::aerorsync::transport::{
-        RemoteExecRequest, RemoteShellTransport,
-    };
+    use ftp_client_gui_lib::aerorsync::transport::{RemoteExecRequest, RemoteShellTransport};
     use secrecy::SecretString;
 
     // Profile-backed lookup: when `--profile-rsync` is set, read the
@@ -17638,11 +17644,7 @@ async fn cmd_aerorsync_probe(
                 return 5;
             }
             Err(_) => {
-                print_error(
-                    format,
-                    &format!("environment variable {var} is not set"),
-                    5,
-                );
+                print_error(format, &format!("environment variable {var} is not set"), 5);
                 return 5;
             }
         },
@@ -18661,12 +18663,7 @@ fn resolve_profile_manual_total(cli: &Cli) -> Option<u64> {
 /// `lastQuota` (item 4b) so the GUI My Servers card/row, `profiles` and a
 /// later `df` show it without rescanning. Best-effort: URL-mode runs and
 /// vault failures simply skip persistence.
-fn persist_scanned_quota_to_profile(
-    cli: &Cli,
-    used: u64,
-    total: u64,
-    total_source: Option<&str>,
-) {
+fn persist_scanned_quota_to_profile(cli: &Cli, used: u64, total: u64, total_source: Option<&str>) {
     let Some(profile_name) = cli.profile.as_ref() else {
         return;
     };
@@ -18703,12 +18700,7 @@ fn persist_scanned_quota_to_profile(
 /// optional "Saved"/"Saved%" columns in `profiles` and the GUI My Servers
 /// table populate without re-running the op. Best-effort and no-op when
 /// `--profile` is unset: URL-mode runs and vault failures simply skip it.
-fn persist_compression_to_profile(
-    cli: &Cli,
-    plaintext: u64,
-    compressed: u64,
-    ratio: f64,
-) {
+fn persist_compression_to_profile(cli: &Cli, plaintext: u64, compressed: u64, ratio: f64) {
     // Only persist a real, self-consistent compression measurement. v1
     // (ZIP) and v2 (AES-256-GCM-SIV, no compression stage) leave
     // compressed_bytes = 0; persisting that made `saved = plaintext -
@@ -18841,8 +18833,7 @@ async fn cmd_df(url: &str, scan: bool, full: bool, cli: &Cli, format: OutputForm
                             };
                             println!("  Total: {}{}", format_size(eff_total), label);
                             let bar_width: usize = 40;
-                            let filled =
-                                (((pct.min(100.0)) / 100.0) * bar_width as f64) as usize;
+                            let filled = (((pct.min(100.0)) / 100.0) * bar_width as f64) as usize;
                             let empty = bar_width.saturating_sub(filled);
                             println!(
                                 "  [{}{}] {:.1}%",
@@ -19326,8 +19317,7 @@ async fn cmd_lsjson(
         // The relative prefix is accumulated from entry names rather than from
         // provider paths so it is correct regardless of how each backend roots
         // entry.path (S3 bucket-root, SFTP absolute, WebDAV collection).
-        let mut stack: Vec<(String, String, usize)> =
-            vec![(resolved.clone(), String::new(), 1)];
+        let mut stack: Vec<(String, String, usize)> = vec![(resolved.clone(), String::new(), 1)];
         let mut is_root_list = true;
 
         while let Some((dir_path, rel_prefix, depth)) = stack.pop() {
@@ -19419,7 +19409,11 @@ async fn cmd_lsjson(
                         None
                     };
                     out.push(LsjsonEntry {
-                        path: if recursive { rel.clone() } else { e.name.clone() },
+                        path: if recursive {
+                            rel.clone()
+                        } else {
+                            e.name.clone()
+                        },
                         name: e.name.clone(),
                         size: if e.is_dir { -1 } else { e.size as i64 },
                         mime_type,
@@ -22210,16 +22204,17 @@ async fn cmd_sync_local_to_local(
     let mut total_payload: u64 = 0;
 
     #[cfg(feature = "aerorsync")]
-    let delta_transport: Option<ftp_client_gui_lib::aerorsync::local_transport::LocalDeltaTransport> =
-        if no_local_delta {
-            None
-        } else {
-            Some(
-                ftp_client_gui_lib::aerorsync::local_transport::LocalDeltaTransport::new(
-                    ftp_client_gui_lib::rsync_over_ssh::DEFAULT_MIN_FILE_SIZE,
-                ),
-            )
-        };
+    let delta_transport: Option<
+        ftp_client_gui_lib::aerorsync::local_transport::LocalDeltaTransport,
+    > = if no_local_delta {
+        None
+    } else {
+        Some(
+            ftp_client_gui_lib::aerorsync::local_transport::LocalDeltaTransport::new(
+                ftp_client_gui_lib::rsync_over_ssh::DEFAULT_MIN_FILE_SIZE,
+            ),
+        )
+    };
     #[cfg(not(feature = "aerorsync"))]
     let delta_transport: Option<()> = None;
 
@@ -22295,10 +22290,7 @@ async fn cmd_sync_local_to_local(
         {
             use ftp_client_gui_lib::delta_transport::DeltaTransport;
             if let Some(transport) = delta_transport.as_ref() {
-                match transport
-                    .upload(&src, dst.to_string_lossy().as_ref())
-                    .await
-                {
+                match transport.upload(&src, dst.to_string_lossy().as_ref()).await {
                     Ok(rsync_stats) => {
                         used_delta = true;
                         delta_bytes = Some(rsync_stats.bytes_sent);
@@ -22374,7 +22366,11 @@ async fn cmd_sync_local_to_local(
             0.0
         };
         let out = LocalSyncJson {
-            status: if stats.error_count == 0 { "ok" } else { "partial" },
+            status: if stats.error_count == 0 {
+                "ok"
+            } else {
+                "partial"
+            },
             uploaded: stats.uploaded,
             skipped: stats.skipped,
             errors: stats.error_count,
@@ -34321,8 +34317,18 @@ async fn main() {
             let max_transfer_limit = resolve_max_transfer(&cli);
             let mut last_code = 0i32;
             for attempt in 1..=max_attempts {
-                last_code =
-                    cmd_get(u, r, l, false, *segments, false, &cli, format, cancelled.clone()).await;
+                last_code = cmd_get(
+                    u,
+                    r,
+                    l,
+                    false,
+                    *segments,
+                    false,
+                    &cli,
+                    format,
+                    cancelled.clone(),
+                )
+                .await;
                 if !is_retryable_exit(last_code)
                     || session_transfer_exceeded(max_transfer_limit)
                     || attempt == max_attempts
@@ -34802,7 +34808,10 @@ async fn main() {
                 (url.as_str(), path.as_str())
             };
             // rclone `lsd`: directories only.
-            cmd_ls(u, p, false, "name", false, false, None, false, true, &cli, format).await
+            cmd_ls(
+                u, p, false, "name", false, false, None, false, true, &cli, format,
+            )
+            .await
         }
         Commands::Lsl { url, path } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
@@ -34811,7 +34820,10 @@ async fn main() {
                 (url.as_str(), path.as_str())
             };
             // rclone `lsl`: long listing (perms, size, date, name).
-            cmd_ls(u, p, true, "name", false, false, None, false, false, &cli, format).await
+            cmd_ls(
+                u, p, true, "name", false, false, None, false, false, &cli, format,
+            )
+            .await
         }
         Commands::Lsf { url, path } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
@@ -34822,7 +34834,10 @@ async fn main() {
             // rclone `lsf`: bare entries, one per line. The cmd_ls short
             // format already prints one entry per line and routes the
             // human summary to stderr, so stdout stays pipe-clean.
-            cmd_ls(u, p, false, "name", false, false, None, false, false, &cli, format).await
+            cmd_ls(
+                u, p, false, "name", false, false, None, false, false, &cli, format,
+            )
+            .await
         }
         Commands::Lsjson {
             url,
@@ -35011,42 +35026,7 @@ async fn main() {
                 };
 
                 if *watch {
-                cmd_sync_watch(
-                    u,
-                    l,
-                    r,
-                    direction,
-                    *dry_run,
-                    *delete,
-                    exclude,
-                    *track_renames,
-                    max_delete.as_deref(),
-                    backup_dir.as_deref(),
-                    backup_suffix,
-                    *suffix_keep_extension,
-                    compare_dest.as_deref(),
-                    copy_dest.as_deref(),
-                    from_reconcile.as_deref(),
-                    conflict_mode,
-                    *skip_matching,
-                    *resync,
-                    watch_mode,
-                    *watch_debounce_ms,
-                    *watch_cooldown,
-                    *watch_rescan,
-                    *watch_no_initial,
-                    &cli,
-                    format,
-                    cancelled.clone(),
-                )
-                .await
-            } else {
-                let max_attempts = cli.retries.max(1);
-                let sleep_dur = parse_retry_sleep(&cli.retries_sleep);
-                let max_transfer_limit = resolve_max_transfer(&cli);
-                let mut last_code = 0i32;
-                for attempt in 1..=max_attempts {
-                    last_code = cmd_sync(
+                    cmd_sync_watch(
                         u,
                         l,
                         r,
@@ -35065,32 +35045,67 @@ async fn main() {
                         conflict_mode,
                         *skip_matching,
                         *resync,
+                        watch_mode,
+                        *watch_debounce_ms,
+                        *watch_cooldown,
+                        *watch_rescan,
+                        *watch_no_initial,
                         &cli,
                         format,
                         cancelled.clone(),
-                        None,
-                        *delta,
                     )
                     .await
-                    .exit_code;
-                    if !is_retryable_exit(last_code)
-                        || session_transfer_exceeded(max_transfer_limit)
-                        || attempt == max_attempts
-                    {
-                        break;
+                } else {
+                    let max_attempts = cli.retries.max(1);
+                    let sleep_dur = parse_retry_sleep(&cli.retries_sleep);
+                    let max_transfer_limit = resolve_max_transfer(&cli);
+                    let mut last_code = 0i32;
+                    for attempt in 1..=max_attempts {
+                        last_code = cmd_sync(
+                            u,
+                            l,
+                            r,
+                            direction,
+                            *dry_run,
+                            *delete,
+                            exclude,
+                            *track_renames,
+                            max_delete.as_deref(),
+                            backup_dir.as_deref(),
+                            backup_suffix,
+                            *suffix_keep_extension,
+                            compare_dest.as_deref(),
+                            copy_dest.as_deref(),
+                            from_reconcile.as_deref(),
+                            conflict_mode,
+                            *skip_matching,
+                            *resync,
+                            &cli,
+                            format,
+                            cancelled.clone(),
+                            None,
+                            *delta,
+                        )
+                        .await
+                        .exit_code;
+                        if !is_retryable_exit(last_code)
+                            || session_transfer_exceeded(max_transfer_limit)
+                            || attempt == max_attempts
+                        {
+                            break;
+                        }
+                        if !cli.quiet {
+                            eprintln!(
+                                "Attempt {}/{} failed (exit {}), retrying in {:?}...",
+                                attempt, max_attempts, last_code, sleep_dur
+                            );
+                        }
+                        if !sleep_dur.is_zero() {
+                            tokio::time::sleep(sleep_dur).await;
+                        }
                     }
-                    if !cli.quiet {
-                        eprintln!(
-                            "Attempt {}/{} failed (exit {}), retrying in {:?}...",
-                            attempt, max_attempts, last_code, sleep_dur
-                        );
-                    }
-                    if !sleep_dur.is_zero() {
-                        tokio::time::sleep(sleep_dur).await;
-                    }
+                    last_code
                 }
-                last_code
-            }
             }
         }
         Commands::SyncDoctor {
@@ -35326,25 +35341,13 @@ async fn main() {
                     // "auto" has no file to inspect on create: default v3.
                     let ver = resolve_ver(vault_version);
                     let res: Result<String, String> = match ver.as_str() {
-                        "v1" => {
-                            aerovault::vault_create(path.clone(), pw, None).await
-                        }
+                        "v1" => aerovault::vault_create(path.clone(), pw, None).await,
                         "v2" => {
-                            aerovault_v2::vault_v2_create(
-                                path.clone(),
-                                pw,
-                                None,
-                                *cascade,
-                            )
-                            .await
+                            aerovault_v2::vault_v2_create(path.clone(), pw, None, *cascade).await
                         }
                         _ => {
-                            aerovault_v3::vault_v3_create(
-                                path.clone(),
-                                pw,
-                                Some(profile.clone()),
-                            )
-                            .await
+                            aerovault_v3::vault_v3_create(path.clone(), pw, Some(profile.clone()))
+                                .await
                         }
                     };
                     match res {
@@ -35379,12 +35382,8 @@ async fn main() {
                         resolve_ver(vault_version)
                     };
                     if ver == "v3" {
-                        match aerovault_v3::vault_v3_add_files(
-                            path.clone(),
-                            pw,
-                            files.clone(),
-                        )
-                        .await
+                        match aerovault_v3::vault_v3_add_files(path.clone(), pw, files.clone())
+                            .await
                         {
                             Ok(info) => {
                                 let mut code = 0;
@@ -35403,14 +35402,10 @@ async fn main() {
                                     if let Some(rpath) = receipt {
                                         match serde_json::to_string_pretty(rep) {
                                             Ok(j) => {
-                                                if let Err(e) =
-                                                    std::fs::write(rpath, j)
-                                                {
+                                                if let Err(e) = std::fs::write(rpath, j) {
                                                     print_error(
                                                         format,
-                                                        &format!(
-                                                            "write receipt: {e}"
-                                                        ),
+                                                        &format!("write receipt: {e}"),
                                                         4,
                                                     );
                                                     code = 4;
@@ -35419,9 +35414,7 @@ async fn main() {
                                             Err(e) => {
                                                 print_error(
                                                     format,
-                                                    &format!(
-                                                        "serialize receipt: {e}"
-                                                    ),
+                                                    &format!("serialize receipt: {e}"),
                                                     4,
                                                 );
                                                 code = 4;
@@ -35441,19 +35434,9 @@ async fn main() {
                         }
                     } else {
                         let res = if ver == "v1" {
-                            aerovault::vault_add_files(
-                                path.clone(),
-                                pw,
-                                files.clone(),
-                            )
-                            .await
+                            aerovault::vault_add_files(path.clone(), pw, files.clone()).await
                         } else {
-                            aerovault_v2::vault_v2_add_files(
-                                path.clone(),
-                                pw,
-                                files.clone(),
-                            )
-                            .await
+                            aerovault_v2::vault_v2_add_files(path.clone(), pw, files.clone()).await
                         };
                         match res {
                             Ok(value) => {
@@ -35473,14 +35456,10 @@ async fn main() {
                                         .get("compression_ratio_pct")
                                         .and_then(|v| v.as_f64())
                                         .unwrap_or(0.0);
-                                    persist_compression_to_profile(
-                                        &cli, pt, cb, rt,
-                                    );
+                                    persist_compression_to_profile(&cli, pt, cb, rt);
                                 }
                                 if let Some(rpath) = receipt {
-                                    if let Ok(j) =
-                                        serde_json::to_string_pretty(&value)
-                                    {
+                                    if let Ok(j) = serde_json::to_string_pretty(&value) {
                                         let _ = std::fs::write(rpath, j);
                                     }
                                 }
@@ -35506,25 +35485,18 @@ async fn main() {
                         resolve_ver(vault_version)
                     };
                     let res: Result<serde_json::Value, String> = match ver.as_str() {
-                        "v1" => {
-                            match aerovault::vault_list(path.clone(), pw).await {
-                                Ok(entries) => Ok(serde_json::json!({
-                                    "version": 1,
-                                    "file_count": entries.len(),
-                                    "files": entries,
-                                })),
-                                Err(e) => Err(e),
-                            }
-                        }
-                        "v2" => {
-                            aerovault_v2::vault_v2_open(path.clone(), pw).await
-                        }
+                        "v1" => match aerovault::vault_list(path.clone(), pw).await {
+                            Ok(entries) => Ok(serde_json::json!({
+                                "version": 1,
+                                "file_count": entries.len(),
+                                "files": entries,
+                            })),
+                            Err(e) => Err(e),
+                        },
+                        "v2" => aerovault_v2::vault_v2_open(path.clone(), pw).await,
                         _ => aerovault_v3::vault_v3_open(path.clone(), pw)
                             .await
-                            .and_then(|i| {
-                                serde_json::to_value(&i)
-                                    .map_err(|e| e.to_string())
-                            }),
+                            .and_then(|i| serde_json::to_value(&i).map_err(|e| e.to_string())),
                     };
                     match res {
                         Ok(info) => {
@@ -35564,10 +35536,7 @@ async fn main() {
                         if let Err(e) = std::fs::create_dir_all(d) {
                             print_error(
                                 format,
-                                &format!(
-                                    "Cannot create destination directory '{}': {}",
-                                    dest, e
-                                ),
+                                &format!("Cannot create destination directory '{}': {}", dest, e),
                                 2,
                             );
                             None
@@ -35616,13 +35585,11 @@ async fn main() {
                             match res {
                                 Ok(out) => {
                                     match format {
-                                        OutputFormat::Json => {
-                                            print_json(&serde_json::json!({
-                                                "status": "ok",
-                                                "extracted": out,
-                                                "version": ver
-                                            }))
-                                        }
+                                        OutputFormat::Json => print_json(&serde_json::json!({
+                                            "status": "ok",
+                                            "extracted": out,
+                                            "version": ver
+                                        })),
                                         OutputFormat::Text => {
                                             println!("Extracted to: {out}")
                                         }
@@ -35642,9 +35609,7 @@ async fn main() {
         Commands::Aerorsync { command } => match command {
             AerorsyncCommands::Mode { command } => match command {
                 AerorsyncModeCommands::Get => cmd_aerorsync_mode_get(format),
-                AerorsyncModeCommands::Set { mode } => {
-                    cmd_aerorsync_mode_set(mode, format)
-                }
+                AerorsyncModeCommands::Set { mode } => cmd_aerorsync_mode_set(mode, format),
             },
             AerorsyncCommands::Probe {
                 host,
@@ -35982,14 +35947,16 @@ async fn main() {
                 profiles,
                 json,
             } => {
-                cmd_export_bridge("aws", output.clone(), profiles.clone(), *json, &cli, format).await
+                cmd_export_bridge("aws", output.clone(), profiles.clone(), *json, &cli, format)
+                    .await
             }
             ExportCommands::Ssh {
                 output,
                 profiles,
                 json,
             } => {
-                cmd_export_bridge("ssh", output.clone(), profiles.clone(), *json, &cli, format).await
+                cmd_export_bridge("ssh", output.clone(), profiles.clone(), *json, &cli, format)
+                    .await
             }
             ExportCommands::Mc {
                 output,
@@ -36018,24 +35985,45 @@ async fn main() {
                 profiles,
                 json,
             } => {
-                cmd_export_bridge("s3cmd", output.clone(), profiles.clone(), *json, &cli, format)
-                    .await
+                cmd_export_bridge(
+                    "s3cmd",
+                    output.clone(),
+                    profiles.clone(),
+                    *json,
+                    &cli,
+                    format,
+                )
+                .await
             }
             ExportCommands::Lftp {
                 output,
                 profiles,
                 json,
             } => {
-                cmd_export_bridge("lftp", output.clone(), profiles.clone(), *json, &cli, format)
-                    .await
+                cmd_export_bridge(
+                    "lftp",
+                    output.clone(),
+                    profiles.clone(),
+                    *json,
+                    &cli,
+                    format,
+                )
+                .await
             }
             ExportCommands::Putty {
                 output,
                 profiles,
                 json,
             } => {
-                cmd_export_bridge("putty", output.clone(), profiles.clone(), *json, &cli, format)
-                    .await
+                cmd_export_bridge(
+                    "putty",
+                    output.clone(),
+                    profiles.clone(),
+                    *json,
+                    &cli,
+                    format,
+                )
+                .await
             }
             ExportCommands::Mobaxterm {
                 output,
@@ -36072,8 +36060,15 @@ async fn main() {
                 profiles,
                 json,
             } => {
-                cmd_export_bridge("kopia", output.clone(), profiles.clone(), *json, &cli, format)
-                    .await
+                cmd_export_bridge(
+                    "kopia",
+                    output.clone(),
+                    profiles.clone(),
+                    *json,
+                    &cli,
+                    format,
+                )
+                .await
             }
             ExportCommands::Duplicacy {
                 output,
@@ -36284,12 +36279,24 @@ mod tests {
     #[test]
     fn parse_manual_total_size_matches_frontend() {
         assert_eq!(parse_manual_total_size("1073741824"), Ok(1_073_741_824));
-        assert_eq!(parse_manual_total_size("10 GB"), Ok(10 * 1024 * 1024 * 1024));
+        assert_eq!(
+            parse_manual_total_size("10 GB"),
+            Ok(10 * 1024 * 1024 * 1024)
+        );
         assert_eq!(parse_manual_total_size("10gb"), Ok(10 * 1024 * 1024 * 1024));
-        assert_eq!(parse_manual_total_size("2TB"), Ok(2u64 * 1024 * 1024 * 1024 * 1024));
+        assert_eq!(
+            parse_manual_total_size("2TB"),
+            Ok(2u64 * 1024 * 1024 * 1024 * 1024)
+        );
         assert_eq!(parse_manual_total_size("512MiB"), Ok(512 * 1024 * 1024));
-        assert_eq!(parse_manual_total_size("1.5 gb"), Ok((1.5 * 1024.0 * 1024.0 * 1024.0) as u64));
-        assert_eq!(parse_manual_total_size("1,5gb"), Ok((1.5 * 1024.0 * 1024.0 * 1024.0) as u64));
+        assert_eq!(
+            parse_manual_total_size("1.5 gb"),
+            Ok((1.5 * 1024.0 * 1024.0 * 1024.0) as u64)
+        );
+        assert_eq!(
+            parse_manual_total_size("1,5gb"),
+            Ok((1.5 * 1024.0 * 1024.0 * 1024.0) as u64)
+        );
         assert_eq!(parse_manual_total_size("500 K"), Ok(500 * 1024));
         assert!(parse_manual_total_size("").is_err());
         assert!(parse_manual_total_size("abc").is_err());
@@ -36299,7 +36306,10 @@ mod tests {
 
     #[test]
     fn json_u64_flexible_accepts_number_and_string() {
-        assert_eq!(json_u64_flexible(&json!(10_737_418_240u64)), Some(10_737_418_240));
+        assert_eq!(
+            json_u64_flexible(&json!(10_737_418_240u64)),
+            Some(10_737_418_240)
+        );
         assert_eq!(json_u64_flexible(&json!("536870912")), Some(536_870_912));
         assert_eq!(json_u64_flexible(&json!("  42 ")), Some(42));
         assert_eq!(json_u64_flexible(&json!(2.0)), Some(2));

@@ -47,25 +47,25 @@
 //! checkpoint doc.
 
 use crate::aerorsync::engine_adapter::{
-    BaselineSource, DeltaEngineAdapter, DeltaPlanProducer, EngineDeltaOp, EngineSignatureBlock,
-    RollingDeltaPlanProducer, apply_delta_streaming,
+    apply_delta_streaming, BaselineSource, DeltaEngineAdapter, DeltaPlanProducer, EngineDeltaOp,
+    EngineSignatureBlock, RollingDeltaPlanProducer,
 };
 use crate::aerorsync::events::EventSink;
 use crate::aerorsync::real_wire::{
-    ClientPreamble, DeltaOp, DeltaStreamReport, FileListDecodeOptions, FileListDecodeOutcome,
-    FileListEntry, MAX_DELTA_LITERAL_LEN, MuxHeader, MuxPoll, MuxStreamReader, MuxTag, NDX_DONE,
-    NDX_FLIST_EOF, NdxState, RealWireError, SumBlock, SumHead, SummaryFrame,
     compress_zstd_literal_stream, decode_delta_stream, decode_file_list_entry, decode_item_flags,
     decode_ndx, decode_server_preamble, decode_sum_block, decode_sum_head, decode_summary_frame,
     decompress_zstd_literal_stream_boundaries, encode_client_preamble, encode_delta_stream,
     encode_file_list_entry, encode_file_list_terminator, encode_item_flags, encode_ndx,
-    encode_sum_block, encode_sum_head, encode_summary_frame,
+    encode_sum_block, encode_sum_head, encode_summary_frame, ClientPreamble, DeltaOp,
+    DeltaStreamReport, FileListDecodeOptions, FileListDecodeOutcome, FileListEntry, MuxHeader,
+    MuxPoll, MuxStreamReader, MuxTag, NdxState, RealWireError, SumBlock, SumHead, SummaryFrame,
+    MAX_DELTA_LITERAL_LEN, NDX_DONE, NDX_FLIST_EOF,
 };
 use crate::aerorsync::remote_command::{RemoteCommandFlavor, RemoteCommandSpec};
 use crate::aerorsync::transport::{CancelHandle, RawByteStream, RawRemoteShellTransport};
 use crate::aerorsync::types::{AerorsyncError, AerorsyncErrorKind, SessionRole, SessionStats};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite};
-use xxhash_rust::xxh3::{Xxh3Default, xxh3_128, xxh3_128_with_seed};
+use xxhash_rust::xxh3::{xxh3_128, xxh3_128_with_seed, Xxh3Default};
 
 /// Compute the 16-byte file-level strong checksum rsync verifies at the
 /// end of the delta stream when `xxh128` is the negotiated algo.
@@ -317,7 +317,11 @@ fn wire_dump_append(file: &str, header: &str, bytes: &[u8]) {
             let _ = write!(
                 out,
                 "{}",
-                if (0x20..0x7f).contains(&c) { c as char } else { '.' }
+                if (0x20..0x7f).contains(&c) {
+                    c as char
+                } else {
+                    '.'
+                }
             );
         }
         let _ = writeln!(out, "|");
@@ -1071,10 +1075,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                     })?;
                     let chunk = stream.read_bytes(RAW_READ_CHUNK).await?;
                     if chunk.is_empty() {
-                        wire_dump_server_response(
-                            &scratch,
-                            "remote-closed-before-server-preamble",
-                        );
+                        wire_dump_server_response(&scratch, "remote-closed-before-server-preamble");
                         return Err(AerorsyncError::transport(
                             "perform_preamble_exchange: remote closed before server preamble",
                         ));
@@ -2027,34 +2028,23 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                     // loop-top would. An empty `buf` here is a genuine
                     // no-payload no-op (keep the local baseline).
                     if !buf.is_empty() {
-                        match decode_delta_stream(
-                            &buf,
-                            A2_3_FILE_CHECKSUM_LEN,
-                            sum_head_count,
-                        ) {
+                        match decode_delta_stream(&buf, A2_3_FILE_CHECKSUM_LEN, sum_head_count) {
                             Ok((report, consumed)) => {
-                                self.stash_post_delta_into_summary_seed(
-                                    &buf[consumed..],
-                                );
-                                self.received_file_checksum =
-                                    Some(report.file_checksum.clone());
+                                self.stash_post_delta_into_summary_seed(&buf[consumed..]);
+                                self.received_file_checksum = Some(report.file_checksum.clone());
                                 self.install_reconstructed_from_wire(
                                     destination_data,
                                     adapter,
                                     report.ops,
                                 )?;
-                                self.phase =
-                                    AerorsyncSessionPhase::DeltaReceived;
+                                self.phase = AerorsyncSessionPhase::DeltaReceived;
                                 return Ok(());
                             }
                             Err(RealWireError::DeltaTokenTruncated { .. }) => {
                                 return Err(e);
                             }
                             Err(other) => {
-                                return Err(map_realwire_error(
-                                    other,
-                                    "delta stream",
-                                ));
+                                return Err(map_realwire_error(other, "delta stream"));
                             }
                         }
                     }
@@ -2175,17 +2165,10 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                     // loop-top would. An empty `buf` here is a genuine
                     // no-payload no-op (keep the local baseline).
                     if !buf.is_empty() {
-                        match decode_delta_stream(
-                            &buf,
-                            A2_3_FILE_CHECKSUM_LEN,
-                            sum_head_count,
-                        ) {
+                        match decode_delta_stream(&buf, A2_3_FILE_CHECKSUM_LEN, sum_head_count) {
                             Ok((report, consumed)) => {
-                                self.stash_post_delta_into_summary_seed(
-                                    &buf[consumed..],
-                                );
-                                self.received_file_checksum =
-                                    Some(report.file_checksum.clone());
+                                self.stash_post_delta_into_summary_seed(&buf[consumed..]);
+                                self.received_file_checksum = Some(report.file_checksum.clone());
                                 self.install_reconstructed_from_wire_streaming(
                                     baseline, writer, adapter, report.ops,
                                 )
@@ -2200,10 +2183,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                                 return Err(e);
                             }
                             Err(other) => {
-                                return Err(map_realwire_error(
-                                    other,
-                                    "delta stream",
-                                ));
+                                return Err(map_realwire_error(other, "delta stream"));
                             }
                         }
                     }
@@ -2294,9 +2274,9 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         let zstd_on = self.zstd_negotiated();
         let engine_ops = self.delta_wire_to_engine_ops(&wire_ops, zstd_on)?;
         let _ = adapter; // adapter is unused on the streaming path -
-        // engine ops carry everything apply_delta_streaming needs.
-        // Kept in the signature for parity with the bulk twin and
-        // to leave room for future adapter-driven dispatch.
+                         // engine ops carry everything apply_delta_streaming needs.
+                         // Kept in the signature for parity with the bulk twin and
+                         // to leave room for future adapter-driven dispatch.
         let block_size = self
             .sent_sum_head
             .as_ref()
@@ -2963,11 +2943,11 @@ mod tests {
     use crate::aerorsync::engine_adapter::{
         DeltaEngineAdapter, EngineDeltaOp, EngineDeltaPlan, EngineSignatureBlock,
     };
-    use crate::aerorsync::events::{AerorsyncEvent, CollectingSink, classify_oob_frame};
+    use crate::aerorsync::events::{classify_oob_frame, AerorsyncEvent, CollectingSink};
     use crate::aerorsync::fixtures::RealRsyncBaselineByteTranscript;
     use crate::aerorsync::mock::{MockRemoteShellTransport, MockTransportConfig};
     use crate::aerorsync::real_wire::{
-        ServerPreamble, decode_client_preamble, encode_server_preamble, reassemble_msg_data,
+        decode_client_preamble, encode_server_preamble, reassemble_msg_data, ServerPreamble,
     };
 
     /// Mock adapter used by A2.2/A2.3 tests. Returns a configurable
@@ -3080,7 +3060,7 @@ mod tests {
         blocks: &[SumBlock],
     ) -> Vec<u8> {
         use crate::aerorsync::real_wire::{
-            NdxState, encode_item_flags, encode_ndx, encode_sum_block, encode_sum_head,
+            encode_item_flags, encode_ndx, encode_sum_block, encode_sum_head, NdxState,
         };
         let mut st = NdxState::new();
         let mut out = Vec::new();
@@ -3138,8 +3118,8 @@ mod tests {
             block_len,
         }
     }
-    use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
 
     // ---- helpers ---------------------------------------------------------
 

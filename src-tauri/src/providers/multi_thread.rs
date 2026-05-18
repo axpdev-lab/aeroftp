@@ -200,7 +200,9 @@ pub(crate) async fn run_concurrent_range_download<W, WFut>(
 ) -> Result<ConcurrentRangeOutcome, ProviderError>
 where
     W: Fn(u64, u64, PathBuf, Arc<AtomicU64>, CancellationToken) -> WFut + Send + Sync + 'static,
-    WFut: std::future::Future<Output = Result<ConcurrentRangeOutcome, ProviderError>> + Send + 'static,
+    WFut: std::future::Future<Output = Result<ConcurrentRangeOutcome, ProviderError>>
+        + Send
+        + 'static,
 {
     let ranges = plan_multi_thread_ranges(cfg.total_size, cfg.streams, cfg.max_streams);
     if ranges.is_empty() {

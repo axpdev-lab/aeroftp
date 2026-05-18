@@ -669,9 +669,7 @@ impl WebDavProvider {
             .get("SessionID")
             .and_then(|v| v.as_str())
             .filter(|s| !s.is_empty())
-            .ok_or_else(|| {
-                ProviderError::NotSupported("opendrive quota: no SessionID".into())
-            })?
+            .ok_or_else(|| ProviderError::NotSupported("opendrive quota: no SessionID".into()))?
             .to_string();
 
         let info_res = self
@@ -707,8 +705,11 @@ impl WebDavProvider {
         // OpenDrive reports MaxStorage in MiB, StorageUsed in bytes
         // (verified live in opendrive.rs:1921). Accept number or string.
         let as_u64 = |v: Option<&serde_json::Value>| -> u64 {
-            v.and_then(|x| x.as_u64().or_else(|| x.as_str().and_then(|s| s.parse().ok())))
-                .unwrap_or(0)
+            v.and_then(|x| {
+                x.as_u64()
+                    .or_else(|| x.as_str().and_then(|s| s.parse().ok()))
+            })
+            .unwrap_or(0)
         };
         let total = as_u64(info.get("MaxStorage")).saturating_mul(1024 * 1024);
         let used = as_u64(info.get("StorageUsed"));
@@ -1134,10 +1135,7 @@ impl WebDavProvider {
     /// falls back to the recursive Depth:1 BFS. Only `size`/`is_dir` are
     /// relied on downstream, so the flat `name`/`path` (computed against
     /// the root) being approximate for deep entries does not matter.
-    pub async fn list_recursive(
-        &mut self,
-        path: &str,
-    ) -> Result<Vec<RemoteEntry>, ProviderError> {
+    pub async fn list_recursive(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -1181,8 +1179,7 @@ impl WebDavProvider {
                 // bounded BFS rather than producing a wrong figure.
                 const MAX_PROPFIND_INFINITY_BYTES: u64 = 256 * 1024 * 1024;
                 let body =
-                    super::response_bytes_with_limit(response, MAX_PROPFIND_INFINITY_BYTES)
-                        .await?;
+                    super::response_bytes_with_limit(response, MAX_PROPFIND_INFINITY_BYTES).await?;
                 let xml = String::from_utf8_lossy(&body);
                 self.parse_propfind_response(&xml, &list_path)
             }

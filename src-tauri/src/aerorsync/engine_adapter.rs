@@ -26,7 +26,7 @@ use crate::aerorsync::protocol::{
     DeltaInstruction as ProtocolDeltaInstruction, SignatureBlock as ProtocolSignatureBlock,
 };
 use crate::delta_sync;
-use crate::delta_sync::{RollingChecksum, strong_hash};
+use crate::delta_sync::{strong_hash, RollingChecksum};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EngineSignatureBlock {

@@ -206,10 +206,7 @@ const F_PORT: usize = 2;
 const F_USER: usize = 3;
 
 fn field(fields: &[String], idx: usize) -> Option<&str> {
-    fields
-        .get(idx)
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty())
+    fields.get(idx).map(|s| s.trim()).filter(|s| !s.is_empty())
 }
 
 /// Convert one parsed bookmark entry to an AeroFTP profile, or `None`

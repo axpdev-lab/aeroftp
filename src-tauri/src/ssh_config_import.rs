@@ -172,10 +172,7 @@ fn map_host_block(block: &HostBlock) -> Result<ServerProfileExport, String> {
         );
     }
     if let Some(proxy) = kv.get("proxyjump").filter(|s| !s.is_empty()) {
-        options.insert(
-            "proxyJump".into(),
-            serde_json::Value::String(proxy.clone()),
-        );
+        options.insert("proxyJump".into(), serde_json::Value::String(proxy.clone()));
     }
 
     Ok(ServerProfileExport {
@@ -230,8 +227,7 @@ pub struct SshImportResult {
 
 /// Import all concrete `Host` blocks from an OpenSSH client config file.
 pub fn import_ssh_config(path: &Path) -> Result<SshImportResult, String> {
-    let content =
-        std::fs::read_to_string(path).map_err(|e| format!("read ssh config: {e}"))?;
+    let content = std::fs::read_to_string(path).map_err(|e| format!("read ssh config: {e}"))?;
 
     let blocks = parse_ssh_config(&content);
     let total_remotes = blocks.len();
@@ -239,11 +235,7 @@ pub fn import_ssh_config(path: &Path) -> Result<SshImportResult, String> {
     let mut skipped = Vec::new();
 
     for block in &blocks {
-        let display_name = block
-            .aliases
-            .first()
-            .cloned()
-            .unwrap_or_default();
+        let display_name = block.aliases.first().cloned().unwrap_or_default();
         match map_host_block(block) {
             Ok(profile) => servers.push(profile),
             Err(reason) => skipped.push(SshSkippedRemote {
@@ -384,8 +376,10 @@ Host web-?
 
     #[test]
     fn test_import_skips_wildcards() {
-        let tmp = std::env::temp_dir()
-            .join(format!("aeroftp-ssh-{}.cfg", crate::bridge_shared::uuid_v4()));
+        let tmp = std::env::temp_dir().join(format!(
+            "aeroftp-ssh-{}.cfg",
+            crate::bridge_shared::uuid_v4()
+        ));
         std::fs::write(&tmp, FIXTURE).unwrap();
         let result = import_ssh_config(&tmp).expect("should parse");
         std::fs::remove_file(&tmp).ok();
@@ -446,8 +440,10 @@ Host roundtrip
     User carol
     IdentityFile /home/carol/.ssh/id_rt
 "#;
-        let tmp_in = std::env::temp_dir()
-            .join(format!("aeroftp-ssh-rt-{}.cfg", crate::bridge_shared::uuid_v4()));
+        let tmp_in = std::env::temp_dir().join(format!(
+            "aeroftp-ssh-rt-{}.cfg",
+            crate::bridge_shared::uuid_v4()
+        ));
         std::fs::write(&tmp_in, original).unwrap();
         let imported = import_ssh_config(&tmp_in).expect("import");
         std::fs::remove_file(&tmp_in).ok();
@@ -465,8 +461,10 @@ Host roundtrip
             initial_path: s.initial_path.clone(),
         }];
 
-        let tmp_out = std::env::temp_dir()
-            .join(format!("aeroftp-ssh-rt-out-{}.cfg", crate::bridge_shared::uuid_v4()));
+        let tmp_out = std::env::temp_dir().join(format!(
+            "aeroftp-ssh-rt-out-{}.cfg",
+            crate::bridge_shared::uuid_v4()
+        ));
         let exported =
             export_ssh_config(&export_servers, &HashMap::new(), &tmp_out).expect("export");
         assert_eq!(exported, 1);
@@ -501,8 +499,10 @@ Host roundtrip
         #[cfg(any(target_os = "linux", target_os = "macos"))]
         {
             let prev = std::env::var("HOME").ok();
-            let dir = std::env::temp_dir()
-                .join(format!("aeroftp-ssh-home-{}", crate::bridge_shared::uuid_v4()));
+            let dir = std::env::temp_dir().join(format!(
+                "aeroftp-ssh-home-{}",
+                crate::bridge_shared::uuid_v4()
+            ));
             std::fs::create_dir_all(dir.join(".ssh")).unwrap();
             std::fs::write(dir.join(".ssh").join("config"), "Host x\n").unwrap();
 
@@ -542,8 +542,10 @@ Host roundtrip
                 initial_path: None,
             },
         ];
-        let tmp = std::env::temp_dir()
-            .join(format!("aeroftp-ssh-exp-{}.cfg", crate::bridge_shared::uuid_v4()));
+        let tmp = std::env::temp_dir().join(format!(
+            "aeroftp-ssh-exp-{}.cfg",
+            crate::bridge_shared::uuid_v4()
+        ));
         let n = export_ssh_config(&servers, &HashMap::new(), &tmp).expect("export");
         let conf = std::fs::read_to_string(&tmp).unwrap();
         std::fs::remove_file(&tmp).ok();

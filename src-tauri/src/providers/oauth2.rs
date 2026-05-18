@@ -434,9 +434,7 @@ impl RefreshLease {
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
                     // Steal a stale lease (previous holder crashed).
-                    if let Ok(modified) =
-                        std::fs::metadata(&path).and_then(|m| m.modified())
-                    {
+                    if let Ok(modified) = std::fs::metadata(&path).and_then(|m| m.modified()) {
                         if modified
                             .elapsed()
                             .map(|d| d.as_secs() >= Self::STALE_SECS)
@@ -449,8 +447,7 @@ impl RefreshLease {
                     if started.elapsed().as_millis() as u64 >= Self::MAX_WAIT_MS {
                         return None;
                     }
-                    tokio::time::sleep(std::time::Duration::from_millis(Self::POLL_MS))
-                        .await;
+                    tokio::time::sleep(std::time::Duration::from_millis(Self::POLL_MS)).await;
                 }
                 Err(_) => return None, // unexpected fs error: degrade gracefully
             }
@@ -1287,8 +1284,7 @@ mod tests {
         std::fs::write(&lock_path, b"99999 0").unwrap();
         let stale = std::time::SystemTime::now()
             - std::time::Duration::from_secs(RefreshLease::STALE_SECS + 5);
-        filetime::set_file_mtime(&lock_path, filetime::FileTime::from_system_time(stale))
-            .unwrap();
+        filetime::set_file_mtime(&lock_path, filetime::FileTime::from_system_time(stale)).unwrap();
         let stolen = RefreshLease::acquire(&slug)
             .await
             .expect("stale lock must be stolen");

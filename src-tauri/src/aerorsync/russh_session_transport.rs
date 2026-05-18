@@ -17,8 +17,8 @@ use russh::keys::{self, Algorithm, EcdsaCurve, HashAlg, PrivateKeyWithHashAlg, P
 use russh::Preferred;
 use russh::{Channel, ChannelMsg};
 use secrecy::ExposeSecret;
-use std::borrow::Cow;
 use sha2::{Digest, Sha256};
+use std::borrow::Cow;
 use tokio::sync::Mutex as AsyncMutex;
 
 use crate::aerorsync::ssh_transport::{parse_probe_protocol, SshHostKeyPolicy, SshTransportConfig};
@@ -208,9 +208,10 @@ async fn authenticate_agent(
             "ssh-agent connect (SSH_AUTH_SOCK): {e}; is an agent running and SSH_AUTH_SOCK set?"
         ))
     })?;
-    let identities = agent.request_identities().await.map_err(|e| {
-        AerorsyncError::transport(format!("ssh-agent request_identities: {e}"))
-    })?;
+    let identities = agent
+        .request_identities()
+        .await
+        .map_err(|e| AerorsyncError::transport(format!("ssh-agent request_identities: {e}")))?;
     if identities.is_empty() {
         return Err(AerorsyncError::transport(
             "ssh-agent has no identities loaded (run `ssh-add` first)",
@@ -1065,9 +1066,9 @@ mod tests {
         let before = transport.handshake_count();
         match transport.reconnect().await {
             Err(_) => {}
-            Ok(_) => panic!(
-                "reconnect to port 1 should not succeed in CI: see connect_refuses_port_1"
-            ),
+            Ok(_) => {
+                panic!("reconnect to port 1 should not succeed in CI: see connect_refuses_port_1")
+            }
         }
         assert_eq!(
             transport.handshake_count(),

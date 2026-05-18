@@ -1442,7 +1442,8 @@ mod native_rsync_password_auth {
             .expect("remote whoami via password auth must succeed");
 
         assert_eq!(
-            output.exit_code, 0,
+            output.exit_code,
+            0,
             "whoami exit must be 0; stderr was: {}",
             String::from_utf8_lossy(&output.stderr)
         );

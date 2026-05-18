@@ -513,7 +513,10 @@ mod tests {
 
         // Secret-policy invariant: PuTTY never stores passwords, the key
         // is bridged by reference only.
-        assert!(p.credential.is_none(), "PuTTY profile must have no credential");
+        assert!(
+            p.credential.is_none(),
+            "PuTTY profile must have no credential"
+        );
         assert_eq!(p.has_stored_credential, Some(false));
         let opts = p.options.expect("options with private_key_path");
         assert_eq!(

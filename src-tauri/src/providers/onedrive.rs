@@ -1154,10 +1154,7 @@ impl StorageProvider for OneDriveProvider {
     /// Server-computed digests from `file.hashes` (one item GET, no
     /// content download). `quickxor` is Microsoft's proprietary hash,
     /// returned under its own key, never aliased to sha1/sha256.
-    async fn checksum(
-        &mut self,
-        path: &str,
-    ) -> Result<HashMap<String, String>, ProviderError> {
+    async fn checksum(&mut self, path: &str) -> Result<HashMap<String, String>, ProviderError> {
         let entry = self.stat(path).await?;
         let mut out = HashMap::new();
         for algo in ["sha1", "sha256", "quickxor"] {

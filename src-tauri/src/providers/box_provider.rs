@@ -1946,10 +1946,7 @@ impl StorageProvider for BoxProvider {
 
     /// Server-computed SHA-1 from the Box file metadata (one files.get
     /// call, no content download).
-    async fn checksum(
-        &mut self,
-        path: &str,
-    ) -> Result<HashMap<String, String>, ProviderError> {
+    async fn checksum(&mut self, path: &str) -> Result<HashMap<String, String>, ProviderError> {
         let entry = self.stat(path).await?;
         let mut out = HashMap::new();
         if let Some(v) = entry.metadata.get("sha1") {

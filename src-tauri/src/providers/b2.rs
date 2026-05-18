@@ -1588,11 +1588,7 @@ impl StorageProvider for B2Provider {
                 let full_path = format!("/{}", f.file_name.trim_end_matches('/'));
                 let mut metadata = std::collections::HashMap::new();
                 if !is_dir {
-                    if let Some(sha1) = f
-                        .content_sha1
-                        .as_deref()
-                        .and_then(b2_clean_sha1)
-                    {
+                    if let Some(sha1) = f.content_sha1.as_deref().and_then(b2_clean_sha1) {
                         metadata.insert("sha1".to_string(), sha1);
                     }
                 }

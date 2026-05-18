@@ -811,10 +811,7 @@ const MAX_QUOTA_SCAN_ENTRIES: usize = 500_000;
 
 async fn storage_quota(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     let server = normalize_server(args)?;
-    let scan = args
-        .get("scan")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
+    let scan = args.get("scan").and_then(|v| v.as_bool()).unwrap_or(false);
     let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
 
     if !scan {
@@ -832,10 +829,7 @@ async fn storage_quota(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
     // For backends with no quota-total API (raw FTP/FTPS, most S3/WebDAV)
     // the only way to a real used/total/% is to sum file sizes. Never run
     // automatically: the agent opts in with scan:true.
-    let full = args
-        .get("full")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
+    let full = args.get("full").and_then(|v| v.as_bool()).unwrap_or(false);
     let root = if full {
         "/".to_string()
     } else {
@@ -862,8 +856,7 @@ async fn storage_quota(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
     let mut truncated = false;
     // BFS queue of (path, depth). Only directories are queued; entries are
     // summed in-place so memory stays bounded by tree breadth.
-    let mut queue: std::collections::VecDeque<(String, usize)> =
-        std::collections::VecDeque::new();
+    let mut queue: std::collections::VecDeque<(String, usize)> = std::collections::VecDeque::new();
     queue.push_back((root.clone(), 0));
 
     while let Some((dir, depth)) = queue.pop_front() {

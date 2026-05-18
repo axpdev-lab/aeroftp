@@ -3217,7 +3217,11 @@ mod tests {
 
         let err = decode_server_preamble(&buf).unwrap_err();
         match err {
-            RealWireError::TruncatedBuffer { at, needed, available } => {
+            RealWireError::TruncatedBuffer {
+                at,
+                needed,
+                available,
+            } => {
                 assert_eq!(at, "server_checksum_algos");
                 assert_eq!(needed, 25); // 1 len byte + 24 declared bytes
                 assert!(
@@ -3247,7 +3251,11 @@ mod tests {
 
         let err = decode_server_preamble(&buf).unwrap_err();
         match err {
-            RealWireError::TruncatedBuffer { at, needed, available } => {
+            RealWireError::TruncatedBuffer {
+                at,
+                needed,
+                available,
+            } => {
                 assert_eq!(at, "server_compression_algos");
                 assert_eq!(needed, 25);
                 assert!(available < needed);
@@ -5306,7 +5314,10 @@ mod tests {
         let (outcome, _) = decode_file_list_entry(&reg_bytes, &opts).unwrap();
         match outcome {
             FileListDecodeOutcome::Entry(d) => {
-                assert!(d.symlink_target.is_none(), "regular file must have no symlink target");
+                assert!(
+                    d.symlink_target.is_none(),
+                    "regular file must have no symlink target"
+                );
             }
             other => panic!("expected Entry, got {other:?}"),
         }
