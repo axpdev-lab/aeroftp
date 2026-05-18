@@ -227,6 +227,75 @@ async fn large_upload_forces_chunked_workflow_and_round_trips() {
     p.disconnect().await.ok();
 }
 
+/// PD-UP-1: the large-file path now uploads parts concurrently through the
+/// shared engine. This asserts two things together: the capability is
+/// advertised honestly (multipart, parallel > 1), and a multi-part upload is
+/// reassembled byte-identically by the server. A non-round payload size
+/// (260 MiB + 777 KiB) forces an uneven final part, the exact case the part
+/// planner's "only the last part may be shorter" invariant must get right on
+/// the wire, not just in unit tests.
+#[tokio::test]
+#[ignore = "requires AEROFTP_TEST_B2_* env"]
+async fn large_upload_parallel_parts_round_trip_byte_identical() {
+    let creds = match skip_unless_creds("large_upload_parallel_parts_round_trip_byte_identical") {
+        Some(c) => c,
+        None => return,
+    };
+    let prefix = run_prefix("parallel");
+    let key = format!("{}parallel.bin", prefix);
+    let mut p = make_provider(&creds, None);
+
+    // Honest capability advertisement is part of PD-UP-1: it must be true
+    // before we even connect, derived from the provider, not a runtime probe.
+    let hints = p.transfer_optimization_hints();
+    assert!(
+        hints.supports_multipart,
+        "B2 must advertise multipart after PD-UP-1"
+    );
+    assert!(
+        hints.multipart_max_parallel > 1,
+        "B2 must advertise concurrent parts (got {})",
+        hints.multipart_max_parallel
+    );
+
+    p.connect().await.expect("connect");
+
+    let size: usize = 260 * 1024 * 1024 + 777 * 1024;
+    let mut payload = vec![0u8; size];
+    for (i, b) in payload.iter_mut().enumerate() {
+        *b = ((i.wrapping_mul(2654435761) ^ (i >> 7)) & 0xff) as u8;
+    }
+    let expected_sha = sha256_hex(&payload);
+
+    let local_dir =
+        std::env::temp_dir().join(format!("aeroftp-it-parallel-{}", std::process::id()));
+    tokio::fs::create_dir_all(&local_dir)
+        .await
+        .expect("mk tmp dir");
+    let local_in: PathBuf = local_dir.join("upload.bin");
+    let local_out: PathBuf = local_dir.join("download.bin");
+    tokio::fs::write(&local_in, &payload)
+        .await
+        .expect("write upload");
+    drop(payload);
+
+    p.upload(local_in.to_str().unwrap(), &format!("/{}", key), None)
+        .await
+        .expect("parallel multipart upload");
+    p.download(&format!("/{}", key), local_out.to_str().unwrap(), None)
+        .await
+        .expect("download");
+    let actual_sha = read_local_sha256(&local_out).await;
+    assert_eq!(
+        actual_sha, expected_sha,
+        "parallel multipart round-trip checksum mismatch (parts mis-ordered or truncated)"
+    );
+
+    cleanup_prefix(&mut p, &prefix).await;
+    let _ = tokio::fs::remove_dir_all(&local_dir).await;
+    p.disconnect().await.ok();
+}
+
 #[tokio::test]
 #[ignore = "requires AEROFTP_TEST_B2_* env"]
 async fn rename_moves_file_and_source_disappears() {
