@@ -307,6 +307,11 @@ pub enum ProviderTransferExecutorKind {
     /// model as the FTP pool). Distinct from `HttpClonePool` so the
     /// session pool / metrics label the transport as SFTP, never HTTP.
     SftpConnectionPool,
+    /// FTP file-level + intra-file parallelism via N **independent** FTP
+    /// control+data connections re-dialled from a retained connection spec
+    /// (PD-FTP-1, the FTP mirror of `SftpConnectionPool`). Distinct so the
+    /// session pool / metrics label the transport as FTP, never HTTP.
+    FtpConnectionPool,
 }
 
 /// Execution model the Core DAG scanner may use for remote list/checker work.
@@ -804,19 +809,25 @@ pub trait StorageProvider: Send + Sync {
             self.transfer_executor_kind(),
             ProviderTransferExecutorKind::HttpClonePool
                 | ProviderTransferExecutorKind::SftpConnectionPool
+                | ProviderTransferExecutorKind::FtpConnectionPool
         ) {
             caps.file_parallel = crate::transfer_dag::Capability::Supported;
             caps.session_pool = crate::transfer_dag::Capability::Supported;
             caps.max_file_slots = Some(self.transfer_executor_max_sessions().max(1));
         }
 
-        // PD-SFTP-2: intra-file concurrent range is real once the SFTP pool
-        // exists (N independent SSH connections + seek/read), runtime-gated
-        // by the multi-thread cutoff in `download()`. Flip honestly only
-        // behind the real pool kind, never as a protocol claim. HTTP
-        // providers keep their own `from_provider_hints` derivation
-        // untouched (this branch is SFTP-only).
-        if self.transfer_executor_kind() == ProviderTransferExecutorKind::SftpConnectionPool {
+        // PD-SFTP-2 / PD-FTP-1: intra-file concurrent range is real once a
+        // connection pool exists (N independent SSH/FTP connections +
+        // seek/read), runtime-gated by the multi-thread cutoff in
+        // `download()`. Flip honestly only behind a real pool kind, never
+        // as a protocol claim. HTTP providers keep their own
+        // `from_provider_hints` derivation untouched (this branch is
+        // SFTP/FTP-only).
+        if matches!(
+            self.transfer_executor_kind(),
+            ProviderTransferExecutorKind::SftpConnectionPool
+                | ProviderTransferExecutorKind::FtpConnectionPool
+        ) {
             caps.strict_concurrent_range_download = crate::transfer_dag::Capability::Supported;
         }
 

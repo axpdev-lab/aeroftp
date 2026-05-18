@@ -185,6 +185,25 @@ impl TransferSessionPoolHandle {
         ))
     }
 
+    /// Concurrency gate for FTP file-level / intra-file parallelism
+    /// (PD-FTP-1, the FTP mirror of [`Self::sftp_connection`]).
+    ///
+    /// The real resource is N **independent** FTP connections re-dialled by
+    /// `clone_for_transfer()` workers from a retained connection spec. This
+    /// handle only bounds how many run at once. Labelled `Ftp` (reusing the
+    /// PD-Core-2 lease kind), never `HttpClone`, so capacity and metrics
+    /// tell the truth about the transport. Distinct from
+    /// [`Self::executor_managed_ftp`], the legacy GUI `FtpSessionPool`
+    /// adapter (no duplicate pool: a `SemaphoreSessionPool` is just the
+    /// concurrency gate, not a second stateful pool).
+    pub fn ftp_connection(label: impl Into<String>, capacity: usize) -> Self {
+        Self::new(SemaphoreSessionPool::with_capacity(
+            SessionLeaseKind::Ftp,
+            label,
+            capacity,
+        ))
+    }
+
     pub fn executor_managed_ftp(label: impl Into<String>, capacity: usize) -> Self {
         Self::new(ExecutorManagedSessionPool::new(
             SessionLeaseKind::Ftp,
