@@ -14192,6 +14192,23 @@ impl Drop for PgetTempGuard {
     }
 }
 
+// PD-CLI-CONV-E (scope-split out of PD-CLI-CONV-D, tracked, not done):
+// converge this intra-file segmented download onto the shared
+// `run_concurrent_range_download` engine
+// (`providers::multi_thread`, today `pub(crate)`). NOT a 1:1 wiring like
+// the sync transfer phase: pget is provider-`read_range`-based (an
+// independent `create_and_connect` per chunk, a multi-file temp dir, and
+// a manual `pget_assemble_chunks`), NOT a Range fetch on a shared HTTP
+// client. Convergence needs (1) a new provider-`read_range`
+// `write_one_range` adapter that seek-writes each `[start,end]` window at
+// its absolute offset into the engine's single pre-allocated `.aerotmp`
+// (sub-read loop, cancel-aware, never `ServerIgnoredRange` like SFTP);
+// (2) replacing the temp-dir + `PgetTempGuard` + `pget_assemble_chunks`
+// lifecycle with the engine's single-`.aerotmp` + internal RAII, plus the
+// degenerate/fallback rework; (3) making the engine `pub` and re-exported
+// through `ftp_client_gui_lib` (additive, like the PD-CLI-CONV-B modules).
+// Deferred deliberately: distinct design surface, kept off this slice to
+// preserve the one-concern-per-slice cadence. No overclaim until it lands.
 async fn pget_segmented_download(
     url: &str,
     remote_path: &str,
@@ -23580,41 +23597,94 @@ async fn cmd_sync(
 
     if !leftover_upload_jobs.is_empty() {
         let _ = used_batch_for_uploads; // already logged above; flag retained for follow-up reporting
-        let upload_results = futures_util::stream::iter(leftover_upload_jobs.into_iter().map(
-            |(path, local_path, remote_path, _size)| {
-                let cancelled = cancelled.clone();
-                let aggregate = aggregate.clone();
-                let overall_pb = overall_pb.clone();
-                async move {
-                    if cancelled.load(Ordering::Relaxed) {
-                        return Err(format!("upload {}: cancelled", path));
-                    }
-                    match upload_transfer_task(
-                        url,
-                        local_path,
-                        remote_path,
-                        cli,
-                        format,
-                        Some(aggregate),
-                        overall_pb,
-                        resolve_max_transfer(cli),
-                    )
-                    .await
-                    {
-                        Ok(()) => Ok(path),
-                        Err(err) => Err(format!("upload {}: {}", path, err)),
-                    }
+
+        // PD-CLI-CONV-D: converge the sync upload transfer phase on the SAME
+        // shared provider executor + orchestrator `aeroftp put` uses
+        // (PD-CLI-CONV-C), sink-agnostic. ONLY the transfer is converged:
+        // scan / compare / conflict-resolution / journal / delete-orphans
+        // stay outside the batch (executed before/after, untouched). Remote
+        // parent directories were pre-created above with the connected scan
+        // `provider`, so the shared executor uploads into existing parents.
+        // Unlike `cmd_put_recursive`, `--immutable` needs NO legacy gate
+        // here: the sync plan already stripped immutable-conflicting paths
+        // from `to_upload` (the `--immutable` retain pass earlier), so the
+        // batch list is immutable-clean by construction. `--max-transfer`
+        // is not enforced on the shared path (tracked PD-UX-1); the legacy
+        // fallback below still enforces it. A separate base connection is
+        // opened only as the clone-pool spec source (the original scan
+        // `provider` stays alive for the post-transfer rename/delete);
+        // non-pool-backed providers (FTP, single-conn APIs) fall back to
+        // the legacy independent-connection batch: honest fallback, no
+        // overclaim.
+        let upload_files: Vec<(String, String, u64)> = leftover_upload_jobs
+            .iter()
+            .map(|(_, local_path, remote_path, size)| {
+                (local_path.clone(), remote_path.clone(), *size)
+            })
+            .collect();
+
+        let use_legacy_upload = match create_and_connect(url, cli, format).await {
+            Ok((base, _)) => match run_shared_provider_upload_batch(
+                base,
+                &upload_files,
+                cli,
+                overall_pb.clone(),
+                cancelled.clone(),
+            )
+            .await
+            {
+                Ok(outcome) => {
+                    uploaded += outcome.uploaded;
+                    errors.extend(outcome.errors);
+                    false
+                }
+                Err(mut base) => {
+                    let _ = base.disconnect().await;
+                    true
                 }
             },
-        ))
-        .buffer_unordered(effective_parallel_workers(cli))
-        .collect::<Vec<_>>()
-        .await;
+            // Could not open the shared base (transient): degrade to the
+            // legacy per-file path rather than dropping the uploads.
+            Err(_) => true,
+        };
 
-        for result in upload_results {
-            match result {
-                Ok(_) => uploaded += 1,
-                Err(err) => errors.push(err),
+        if use_legacy_upload {
+            let upload_results = futures_util::stream::iter(leftover_upload_jobs.into_iter().map(
+                |(path, local_path, remote_path, _size)| {
+                    let cancelled = cancelled.clone();
+                    let aggregate = aggregate.clone();
+                    let overall_pb = overall_pb.clone();
+                    async move {
+                        if cancelled.load(Ordering::Relaxed) {
+                            return Err(format!("upload {}: cancelled", path));
+                        }
+                        match upload_transfer_task(
+                            url,
+                            local_path,
+                            remote_path,
+                            cli,
+                            format,
+                            Some(aggregate),
+                            overall_pb,
+                            resolve_max_transfer(cli),
+                        )
+                        .await
+                        {
+                            Ok(()) => Ok(path),
+                            Err(err) => Err(format!("upload {}: {}", path, err)),
+                        }
+                    }
+                },
+            ))
+            .buffer_unordered(effective_parallel_workers(cli))
+            .collect::<Vec<_>>()
+            .await;
+
+            for result in upload_results {
+                match result {
+                    Ok(_) => uploaded += 1,
+                    Err(err) => errors.push(err),
+                }
             }
         }
     }
@@ -23680,44 +23750,92 @@ async fn cmd_sync(
         download_jobs.push((relative, local_path, remote_path, size));
     }
 
-    let download_results = futures_util::stream::iter(download_jobs.into_iter().map(
-        |(path, local_path, remote_path, _size)| {
-            let cancelled = cancelled.clone();
-            let aggregate = aggregate.clone();
-            let overall_pb = overall_pb.clone();
-            async move {
-                if cancelled.load(Ordering::Relaxed) {
-                    return Err(format!("download {}: cancelled", path));
-                }
-                if let Some(parent) = Path::new(&local_path).parent() {
-                    let _ = std::fs::create_dir_all(parent);
-                }
-                match download_transfer_task(
-                    url,
-                    remote_path,
-                    local_path,
-                    cli,
-                    format,
-                    Some(aggregate),
-                    overall_pb,
-                    resolve_max_transfer(cli),
-                )
-                .await
-                {
-                    Ok(()) => Ok(path),
-                    Err(err) => Err(format!("download {}: {}", path, err)),
-                }
-            }
-        },
-    ))
-    .buffer_unordered(effective_parallel_workers(cli))
-    .collect::<Vec<_>>()
-    .await;
+    // PD-CLI-CONV-D: converge the sync download transfer phase on the SAME
+    // shared provider executor + orchestrator `aeroftp get -r` uses
+    // (PD-CLI-CONV-B), sink-agnostic. Conflict-renames were already executed
+    // above (sequential preserve-then-download); only the canonical download
+    // stream is converged. The shared executor pre-creates local parent
+    // dirs and writes `<local>.aerotmp` then atomically renames, matching
+    // the legacy per-file `create_dir_all`. `--max-transfer` is not enforced
+    // on the shared path (tracked PD-UX-1); the legacy fallback below still
+    // enforces it. A separate base connection is opened only as the
+    // clone-pool spec source (the scan `provider` stays alive for the
+    // post-transfer rename/delete); non-pool-backed providers fall back to
+    // the legacy independent-connection batch: honest fallback, no overclaim.
+    let download_files: Vec<(String, String, u64)> = download_jobs
+        .iter()
+        .map(|(_, local_path, remote_path, size)| (remote_path.clone(), local_path.clone(), *size))
+        .collect();
 
-    for result in download_results {
-        match result {
-            Ok(_) => downloaded += 1,
-            Err(err) => errors.push(err),
+    let use_legacy_download = if download_files.is_empty() {
+        false
+    } else {
+        match create_and_connect(url, cli, format).await {
+            Ok((base, _)) => match run_shared_provider_download_batch(
+                base,
+                &download_files,
+                cli,
+                overall_pb.clone(),
+                cancelled.clone(),
+            )
+            .await
+            {
+                Ok(outcome) => {
+                    downloaded += outcome.downloaded;
+                    errors.extend(outcome.errors);
+                    false
+                }
+                Err(mut base) => {
+                    let _ = base.disconnect().await;
+                    true
+                }
+            },
+            // Could not open the shared base (transient): degrade to the
+            // legacy per-file path rather than dropping the downloads.
+            Err(_) => true,
+        }
+    };
+
+    if use_legacy_download {
+        let download_results = futures_util::stream::iter(download_jobs.into_iter().map(
+            |(path, local_path, remote_path, _size)| {
+                let cancelled = cancelled.clone();
+                let aggregate = aggregate.clone();
+                let overall_pb = overall_pb.clone();
+                async move {
+                    if cancelled.load(Ordering::Relaxed) {
+                        return Err(format!("download {}: cancelled", path));
+                    }
+                    if let Some(parent) = Path::new(&local_path).parent() {
+                        let _ = std::fs::create_dir_all(parent);
+                    }
+                    match download_transfer_task(
+                        url,
+                        remote_path,
+                        local_path,
+                        cli,
+                        format,
+                        Some(aggregate),
+                        overall_pb,
+                        resolve_max_transfer(cli),
+                    )
+                    .await
+                    {
+                        Ok(()) => Ok(path),
+                        Err(err) => Err(format!("download {}: {}", path, err)),
+                    }
+                }
+            },
+        ))
+        .buffer_unordered(effective_parallel_workers(cli))
+        .collect::<Vec<_>>()
+        .await;
+
+        for result in download_results {
+            match result {
+                Ok(_) => downloaded += 1,
+                Err(err) => errors.push(err),
+            }
         }
     }
 
