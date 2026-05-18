@@ -16643,7 +16643,7 @@ async fn cmd_export_bridge(
     // `export_<src>` (shared signature
     // `(&[<Src>ExportServer], &HashMap<String,String>, &Path) -> Result<usize,String>`).
     macro_rules! run_export {
-        ($ty:path, $f:expr) => {{
+        ($ty:ident, $f:expr) => {{
             let exportable: Vec<$ty> = collected
                 .profiles
                 .iter()

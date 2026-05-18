@@ -26,7 +26,6 @@ use url::Url;
 pub mod aerovault;
 pub mod aerovault_v2;
 pub mod aerovault_v3;
-pub mod vault_telemetry;
 pub mod agent_memory_db;
 pub mod ai;
 pub mod ai_core;
@@ -36,14 +35,6 @@ mod archive_browse;
 pub mod aws_credentials_import;
 pub mod bridge_commands;
 pub mod bridge_shared;
-pub mod cyberduck_import;
-pub mod dreamweaver_import;
-pub mod duplicacy_import;
-pub mod kopia_import;
-pub mod lftp_import;
-pub mod mobaxterm_import;
-pub mod putty_import;
-pub mod s3cmd_import;
 mod chat_history;
 mod cloud_config;
 mod cloud_provider_factory;
@@ -55,8 +46,17 @@ pub mod cross_profile_transfer;
 mod crypto;
 mod cryptomator;
 mod cyber_tools;
+pub mod cyberduck_import;
 mod debug_tests;
 mod delta_sync;
+pub mod dreamweaver_import;
+pub mod duplicacy_import;
+pub mod kopia_import;
+pub mod lftp_import;
+pub mod mobaxterm_import;
+pub mod putty_import;
+pub mod s3cmd_import;
+pub mod vault_telemetry;
 // `pub` only so `tests/integration_delta_sync.rs` (separate crate) can
 // inject a MockDeltaTransport. Everything but the hidden inner helper
 // remains semver-stable; a future `#[cfg(feature = "test-hooks")]` gate
@@ -102,6 +102,7 @@ mod infinicloud;
 pub mod keystore_export;
 mod local_panel_watcher;
 mod master_password;
+pub mod mc_import;
 pub mod mcp;
 mod mount_manager;
 mod plugin_registry;
@@ -114,14 +115,13 @@ pub mod providers;
 mod pty;
 pub mod rclone_crypt;
 pub mod rclone_filter;
-pub mod mc_import;
 pub mod rclone_import;
 pub mod restic_import;
-pub mod ssh_config_import;
 mod session_commands;
 mod session_manager;
 #[cfg(not(target_os = "macos"))]
 mod speech;
+pub mod ssh_config_import;
 mod ssh_shell;
 pub mod sync;
 mod sync_badge;
@@ -130,6 +130,7 @@ mod sync_ignore;
 mod sync_scheduler;
 mod sync_versioning;
 mod totp;
+pub mod transfer_dag;
 mod transfer_domain;
 mod transfer_orchestrator;
 mod transfer_pool;
@@ -1013,11 +1014,14 @@ async fn aerovault_overlay_delete_entries(
     }
 
     let removed = if version == 3 {
-        let result = aerovault_v3::vault_v3_delete_entries(vault_path, password, normalized, recursive).await?;
+        let result =
+            aerovault_v3::vault_v3_delete_entries(vault_path, password, normalized, recursive)
+                .await?;
         result.get("removed").and_then(|v| v.as_u64()).unwrap_or(0)
     } else {
         let result =
-            aerovault_v2::vault_v2_delete_entries(vault_path, password, normalized, recursive).await?;
+            aerovault_v2::vault_v2_delete_entries(vault_path, password, normalized, recursive)
+                .await?;
         result.get("removed").and_then(|v| v.as_u64()).unwrap_or(0)
     };
     Ok(removed)
@@ -9722,6 +9726,97 @@ async fn get_transfer_optimization_hints(
 }
 
 #[tauri::command]
+async fn get_transfer_capabilities(
+    state: State<'_, provider_commands::ProviderState>,
+    provider_type: Option<String>,
+) -> Result<transfer_dag::TransferCapabilities, String> {
+    let requested = provider_type.unwrap_or_default().to_lowercase();
+    let active_protocol = {
+        let provider_lock = state.provider.lock().await;
+        provider_lock
+            .as_ref()
+            .map(|provider| format!("{:?}", provider.provider_type()).to_lowercase())
+    };
+
+    if let Some(active) = active_protocol.as_deref() {
+        if requested.is_empty() || requested == active {
+            let provider_lock = state.provider.lock().await;
+            return Ok(provider_lock
+                .as_ref()
+                .map(|provider| provider.transfer_capabilities())
+                .unwrap_or_else(|| {
+                    transfer_dag::TransferCapabilities::from_provider_hints(
+                        provider_type_from_string(active).unwrap_or(providers::ProviderType::Ftp),
+                        &default_transfer_optimization_hints(active),
+                        false,
+                    )
+                }));
+        }
+    }
+
+    let provider_type = provider_type_from_string(&requested).ok_or_else(|| {
+        if requested.is_empty() {
+            "No active provider is connected".to_string()
+        } else {
+            format!("Unknown provider type: {}", requested)
+        }
+    })?;
+
+    Ok(transfer_dag::TransferCapabilities::from_provider_hints(
+        provider_type,
+        &default_transfer_optimization_hints(&requested),
+        false,
+    ))
+}
+
+fn provider_type_from_string(value: &str) -> Option<providers::ProviderType> {
+    match value {
+        "ftp" => Some(providers::ProviderType::Ftp),
+        "ftps" => Some(providers::ProviderType::Ftps),
+        "sftp" => Some(providers::ProviderType::Sftp),
+        "webdav" | "web_dav" => Some(providers::ProviderType::WebDav),
+        "s3" => Some(providers::ProviderType::S3),
+        "aerocloud" | "aero_cloud" => Some(providers::ProviderType::AeroCloud),
+        "googledrive" | "google_drive" | "google drive" => {
+            Some(providers::ProviderType::GoogleDrive)
+        }
+        "dropbox" => Some(providers::ProviderType::Dropbox),
+        "onedrive" | "one_drive" | "one drive" => Some(providers::ProviderType::OneDrive),
+        "mega" => Some(providers::ProviderType::Mega),
+        "box" => Some(providers::ProviderType::Box),
+        "pcloud" | "p_cloud" => Some(providers::ProviderType::PCloud),
+        "azure" => Some(providers::ProviderType::Azure),
+        "filen" => Some(providers::ProviderType::Filen),
+        "fourshared" | "four_shared" | "4shared" => Some(providers::ProviderType::FourShared),
+        "zohoworkdrive" | "zoho_workdrive" | "zoho workdrive" => {
+            Some(providers::ProviderType::ZohoWorkdrive)
+        }
+        "internxt" => Some(providers::ProviderType::Internxt),
+        "kdrive" | "k_drive" => Some(providers::ProviderType::KDrive),
+        "jottacloud" => Some(providers::ProviderType::Jottacloud),
+        "drimecloud" | "drime_cloud" => Some(providers::ProviderType::DrimeCloud),
+        "filelu" | "file_lu" => Some(providers::ProviderType::FileLu),
+        "koofr" => Some(providers::ProviderType::Koofr),
+        "opendrive" | "open_drive" => Some(providers::ProviderType::OpenDrive),
+        "yandexdisk" | "yandex_disk" | "yandex disk" => Some(providers::ProviderType::YandexDisk),
+        "github" => Some(providers::ProviderType::GitHub),
+        "gitlab" => Some(providers::ProviderType::GitLab),
+        "swift" => Some(providers::ProviderType::Swift),
+        "googlephotos" | "google_photos" | "google photos" => {
+            Some(providers::ProviderType::GooglePhotos)
+        }
+        "immich" => Some(providers::ProviderType::Immich),
+        "imagekit" | "image_kit" => Some(providers::ProviderType::ImageKit),
+        "uploadcare" => Some(providers::ProviderType::Uploadcare),
+        "backblaze" | "b2" | "backblazeb2" | "backblaze_b2" => {
+            Some(providers::ProviderType::Backblaze)
+        }
+        "cloudinary" => Some(providers::ProviderType::Cloudinary),
+        _ => None,
+    }
+}
+
+#[tauri::command]
 async fn sftp_probe_delta_eligibility(
     provider_state: State<'_, provider_commands::ProviderState>,
 ) -> Result<DeltaEligibilityProbeResult, String> {
@@ -14372,7 +14467,10 @@ pub fn run() {
                 // Same for a double-clicked .aeroftp-keystore on first launch
                 // so it routes to the keystore import/key-entry screen
                 // instead of a bare window (issue #214 pt.4a).
-                if let Some(ks_arg) = args.iter().skip(1).find(|a| a.ends_with(".aeroftp-keystore"))
+                if let Some(ks_arg) = args
+                    .iter()
+                    .skip(1)
+                    .find(|a| a.ends_with(".aeroftp-keystore"))
                 {
                     if let Ok(canonical) = std::fs::canonicalize(ks_arg) {
                         let meta = std::fs::symlink_metadata(&canonical);
@@ -14534,6 +14632,7 @@ pub fn run() {
             save_sync_schedule_cmd,
             get_watcher_status_cmd,
             get_transfer_optimization_hints,
+            get_transfer_capabilities,
             sftp_probe_delta_eligibility,
             get_multi_path_config,
             save_multi_path_config_cmd,

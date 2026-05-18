@@ -6,6 +6,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::sync::RetryPolicy;
+use crate::transfer_dag::{TransferBudget, TransferCapabilities};
 
 pub const DEFAULT_MAX_CONCURRENT: u32 = 5;
 pub const DEFAULT_RETRY_COUNT: u32 = 3;
@@ -112,6 +113,27 @@ pub fn resolve_provider_transfer_settings(
     )
 }
 
+#[allow(dead_code)]
+pub fn resolve_transfer_settings_for_capabilities(
+    input: TransferSettingsInput,
+    capabilities: &TransferCapabilities,
+) -> ResolvedTransferSettings {
+    let requested = input
+        .max_concurrent
+        .unwrap_or(DEFAULT_MAX_CONCURRENT)
+        .clamp(MIN_MAX_CONCURRENT, MAX_MAX_CONCURRENT);
+    let budget =
+        TransferBudget::from_file_slots(requested as u16).clamped_for_capabilities(capabilities);
+
+    resolve_transfer_settings(
+        input,
+        TransferCapabilityCaps {
+            max_concurrent_cap: budget.file_slots as u32,
+            ..TransferCapabilityCaps::default()
+        },
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -128,5 +150,23 @@ mod tests {
         assert_eq!(resolved.max_concurrent, 1);
         assert_eq!(resolved.retry_count, 2);
         assert_eq!(resolved.timeout_seconds, 45);
+    }
+
+    #[test]
+    fn capability_settings_clamp_to_dag_file_slots() {
+        let resolved = resolve_transfer_settings_for_capabilities(
+            TransferSettingsInput {
+                max_concurrent: Some(6),
+                retry_count: None,
+                timeout_seconds: None,
+            },
+            &TransferCapabilities {
+                max_file_slots: Some(2),
+                ..TransferCapabilities::default()
+            },
+        );
+
+        assert_eq!(resolved.requested_max_concurrent, 6);
+        assert_eq!(resolved.max_concurrent, 2);
     }
 }

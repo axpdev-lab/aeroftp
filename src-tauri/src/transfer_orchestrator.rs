@@ -12,9 +12,13 @@ use std::time::Instant;
 
 use async_trait::async_trait;
 use tauri::{AppHandle, Emitter};
-use tokio::sync::{Mutex, Semaphore};
+use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 
+use crate::transfer_dag::{
+    ResourceRequest, TransferBudget, TransferResourceManager, TransferSessionLease,
+    TransferSessionPoolHandle,
+};
 use crate::transfer_domain::{
     BatchProgressSnapshot, TransferBatchConfig, TransferBatchResult, TransferDirection,
     TransferEntry, TransferOutcome,
@@ -34,6 +38,20 @@ pub struct TransferBatch {
 #[async_trait]
 pub trait TransferExecutor {
     async fn execute(&self, entry: TransferEntry) -> TransferOutcome;
+
+    fn session_pool(&self, _max_concurrent: usize) -> TransferSessionPoolHandle {
+        TransferSessionPoolHandle::legacy_single("legacy-provider")
+    }
+
+    async fn execute_with_session(
+        &self,
+        entry: TransferEntry,
+        session_lease: TransferSessionLease,
+    ) -> TransferOutcome {
+        let outcome = self.execute(entry).await;
+        drop(session_lease);
+        outcome
+    }
 }
 
 pub async fn execute_batch<E>(
@@ -53,9 +71,12 @@ where
         bytes_total: batch.entries.iter().map(|entry| entry.size).sum(),
         ..BatchProgressSnapshot::default()
     }));
-    let semaphore = Arc::new(Semaphore::new(batch.config.max_concurrent.max(1) as usize));
-    let mut join_set = JoinSet::new();
+    let resource_manager = Arc::new(TransferResourceManager::new(
+        TransferBudget::from_file_slots(batch.config.max_concurrent.max(1) as u16),
+    ));
     let max_concurrent = batch.config.max_concurrent.max(1) as usize;
+    let session_pool = Arc::new(executor.session_pool(max_concurrent));
+    let mut join_set = JoinSet::new();
     let mut entries = batch.entries.into_iter();
 
     let _ = app.emit(
@@ -82,7 +103,8 @@ where
             executor.clone(),
             progress.clone(),
             progress_observer.clone(),
-            semaphore.clone(),
+            resource_manager.clone(),
+            session_pool.clone(),
             entry,
         );
     }
@@ -104,7 +126,8 @@ where
                 executor.clone(),
                 progress.clone(),
                 progress_observer.clone(),
-                semaphore.clone(),
+                resource_manager.clone(),
+                session_pool.clone(),
                 entry,
             );
         }
@@ -133,13 +156,30 @@ fn spawn_transfer_task<E>(
     executor: Arc<E>,
     progress: Arc<Mutex<BatchProgressSnapshot>>,
     progress_observer: Option<ProgressObserver>,
-    semaphore: Arc<Semaphore>,
+    resource_manager: Arc<TransferResourceManager>,
+    session_pool: Arc<TransferSessionPoolHandle>,
     entry: TransferEntry,
 ) where
     E: TransferExecutor + Send + Sync + 'static,
 {
     join_set.spawn(async move {
-        let _permit = semaphore.acquire_owned().await.ok();
+        let _lease = match resource_manager
+            .acquire(ResourceRequest::file_transfer())
+            .await
+        {
+            Ok(lease) => lease,
+            Err(error) => {
+                tracing::warn!("Transfer resource acquisition failed: {}", error);
+                return;
+            }
+        };
+        let session_lease = match session_pool.acquire().await {
+            Ok(lease) => lease,
+            Err(error) => {
+                tracing::warn!("Transfer session acquisition failed: {}", error);
+                return;
+            }
+        };
 
         if cancel.load(Ordering::Relaxed) {
             return;
@@ -150,7 +190,9 @@ fn spawn_transfer_task<E>(
             snapshot.active += 1;
         }
 
-        let outcome = executor.execute(entry.clone()).await;
+        let outcome = executor
+            .execute_with_session(entry.clone(), session_lease)
+            .await;
 
         let mut snapshot = progress.lock().await;
         snapshot.active = snapshot.active.saturating_sub(1);

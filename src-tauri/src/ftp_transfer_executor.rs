@@ -13,6 +13,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
 use crate::ftp_session_pool::FtpSessionPool;
+use crate::transfer_dag::TransferSessionPoolHandle;
 use crate::transfer_domain::{
     transfer_failure_kind_from_sync, user_facing_transfer_failure_message, TransferEntry,
     TransferFailure, TransferFailureKind, TransferOutcome,
@@ -68,6 +69,13 @@ impl FtpUploadExecutor {
 
 #[async_trait]
 impl TransferExecutor for FtpDownloadExecutor {
+    fn session_pool(&self, _max_concurrent: usize) -> TransferSessionPoolHandle {
+        TransferSessionPoolHandle::executor_managed_ftp(
+            "ftp-download-executor",
+            self.pool.total_sessions(),
+        )
+    }
+
     async fn execute(&self, entry: TransferEntry) -> TransferOutcome {
         let file_transfer_id = entry.id.clone();
 
@@ -309,6 +317,13 @@ impl TransferExecutor for FtpDownloadExecutor {
 
 #[async_trait]
 impl TransferExecutor for FtpUploadExecutor {
+    fn session_pool(&self, _max_concurrent: usize) -> TransferSessionPoolHandle {
+        TransferSessionPoolHandle::executor_managed_ftp(
+            "ftp-upload-executor",
+            self.pool.total_sessions(),
+        )
+    }
+
     async fn execute(&self, entry: TransferEntry) -> TransferOutcome {
         let file_transfer_id = entry.id.clone();
         let file_size = if entry.size > 0 {
