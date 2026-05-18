@@ -132,6 +132,7 @@ mod sync_versioning;
 mod totp;
 pub mod transfer_dag;
 mod transfer_domain;
+pub mod transfer_event_sink;
 mod transfer_orchestrator;
 mod transfer_pool;
 mod transfer_settings;
