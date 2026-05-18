@@ -434,6 +434,9 @@ const App: React.FC = () => {
   const [masterPasswordBootstrapMode, setMasterPasswordBootstrapMode] = useState(false);
   const [showMigrationWizard, setShowMigrationWizard] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<'general' | 'connection' | 'servers' | 'filehandling' | 'transfers' | 'cloudproviders' | 'ui' | 'security' | 'privacy' | undefined>(undefined);
+  // Path of a .aeroftp-keystore opened via OS file association: routes the
+  // Settings panel to the Backup tab with the file preloaded (issue #214 pt.4a).
+  const [settingsInitialKeystorePath, setSettingsInitialKeystorePath] = useState<string | undefined>(undefined);
 
   const localFilesInitStarted = useRef(false);  // Guard against re-running init effect
 
@@ -3194,6 +3197,18 @@ interface UpdateVerificationInfo {
     const vaultPath = event.payload;
     if (vaultPath && vaultPath.endsWith('.aerovault')) {
       setShowVaultPanel({ mode: 'open', path: vaultPath });
+    }
+  });
+
+  // OS file association: a double-clicked .aeroftp-keystore opens Settings
+  // on the Backup tab with the file preloaded for import, instead of just
+  // raising the window (issue #214 pt.4a). SettingsPanel selects the Backup
+  // tab itself from initialKeystoreImportPath.
+  useTauriListener<string>('keystore-open-file', (event) => {
+    const ksPath = event.payload;
+    if (ksPath && ksPath.endsWith('.aeroftp-keystore')) {
+      setSettingsInitialKeystorePath(ksPath);
+      setShowSettingsPanel(true);
     }
   });
 
@@ -11302,10 +11317,11 @@ interface UpdateVerificationInfo {
         <ShortcutsDialog isOpen={showShortcutsDialog} onClose={() => setShowShortcutsDialog(false)} />
         <SettingsPanel
           isOpen={showSettingsPanel}
-          onClose={() => { setShowSettingsPanel(false); setSettingsInitialTab(undefined); }}
+          onClose={() => { setShowSettingsPanel(false); setSettingsInitialTab(undefined); setSettingsInitialKeystorePath(undefined); }}
           onOpenCloudPanel={() => setShowCloudPanel(true)}
           onActivityLog={{ logRaw: humanLog.logRaw }}
           initialTab={settingsInitialTab}
+          initialKeystoreImportPath={settingsInitialKeystorePath}
           onServersChanged={() => setServersRefreshKey(k => k + 1)}
           theme={theme}
           setTheme={setTheme}

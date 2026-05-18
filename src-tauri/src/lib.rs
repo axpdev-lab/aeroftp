@@ -13717,6 +13717,27 @@ pub fn run() {
                     }
                 }
             }
+            // Forward .aeroftp-keystore file argument to frontend so a
+            // double-clicked keystore lands on the import/key-entry screen
+            // instead of just raising the window (issue #214 pt.4a). Same
+            // canonicalize + symlink_metadata validation as .aerovault.
+            if let Some(ks_arg) = argv
+                .iter()
+                .skip(1)
+                .find(|a| a.ends_with(".aeroftp-keystore"))
+            {
+                if let Ok(canonical) = std::fs::canonicalize(ks_arg) {
+                    let meta = std::fs::symlink_metadata(&canonical);
+                    if meta.map(|m| m.is_file()).unwrap_or(false) {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.emit(
+                                "keystore-open-file",
+                                canonical.to_string_lossy().to_string(),
+                            );
+                        }
+                    }
+                }
+            }
         }))
         .plugin(
             tauri_plugin_window_state::Builder::new()
@@ -14343,6 +14364,25 @@ pub fn run() {
                                 std::thread::sleep(std::time::Duration::from_millis(1500));
                                 if let Some(window) = app_handle.get_webview_window("main") {
                                     let _ = window.emit("vault-open-file", vault_path);
+                                }
+                            });
+                        }
+                    }
+                }
+                // Same for a double-clicked .aeroftp-keystore on first launch
+                // so it routes to the keystore import/key-entry screen
+                // instead of a bare window (issue #214 pt.4a).
+                if let Some(ks_arg) = args.iter().skip(1).find(|a| a.ends_with(".aeroftp-keystore"))
+                {
+                    if let Ok(canonical) = std::fs::canonicalize(ks_arg) {
+                        let meta = std::fs::symlink_metadata(&canonical);
+                        if meta.map(|m| m.is_file()).unwrap_or(false) {
+                            let ks_path = canonical.to_string_lossy().to_string();
+                            let app_handle = app.handle().clone();
+                            std::thread::spawn(move || {
+                                std::thread::sleep(std::time::Duration::from_millis(1500));
+                                if let Some(window) = app_handle.get_webview_window("main") {
+                                    let _ = window.emit("keystore-open-file", ks_path);
                                 }
                             });
                         }
