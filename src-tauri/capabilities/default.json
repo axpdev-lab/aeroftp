@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "AeroFTP default capabilities: file manager requires full FS access. A8-01: fs:read-all/write-all are REQUIRED because AeroFTP is a file manager that must read/write any user-chosen path. The fs:scope provides additional deny rules (webview-data). Risk-accepted: removing *-all would break core functionality.",
+  "description": "AeroFTP default capabilities: file manager requires full FS access. A8-01: fs:read-all/write-all are REQUIRED because AeroFTP is a file manager that must read/write any user-chosen path. fs:scope MUST keep { \"path\": \"**\" }: the security boundary is the explicit fs:deny-webview-data-* rules, NOT a $HOME allow-list. Removing the ** entry (v2.8.7..v3.8.2 regression) broke browsing/transfer of any path outside $HOME (external drives, /mnt, /media, project trees) with 'not allowed by ACL'. Risk-accepted: removing *-all or ** would break core functionality.",
   "windows": [
     "main"
   ],
@@ -35,7 +35,8 @@
         { "path": "$APPCONFIG/**" },
         { "path": "$APPDATA/**" },
         { "path": "$APPLOCALDATA/**" },
-        { "path": "$TEMP/**" }
+        { "path": "$TEMP/**" },
+        { "path": "**" }
       ]
     },
     "log:default",
