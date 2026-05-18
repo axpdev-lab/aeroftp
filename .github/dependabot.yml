@@ -86,6 +86,14 @@ updates:
       - "dependencies"
       - "javascript"
     ignore:
+      # Keep the @tauri-apps JS surface in lockstep with the Rust tauri
+      # crate, which is pinned =2.11.0 (see /src-tauri ignore + Cargo.toml:
+      # 2.11.1's is_local_url() broke every Linux build, v3.8.2 regression
+      # fixed in v3.8.3). Do not let the bindings or build CLI drift ahead.
+      - dependency-name: "@tauri-apps/api"
+        versions: [">=2.11.1"]
+      - dependency-name: "@tauri-apps/cli"
+        versions: [">=2.11.1"]
       - dependency-name: "vite"
         update-types: ["version-update:semver-major"]
       - dependency-name: "tailwindcss"
