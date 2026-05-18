@@ -14,6 +14,17 @@ updates:
       - "dependencies"
       - "rust"
     ignore:
+      # DO NOT allow tauri 2.11.x. Dependabot PR #201 bumped tauri
+      # =2.11.0 -> =2.11.1; 2.11.1's is_local_url() classifies the Linux
+      # production webview origin http://127.0.0.1:14321 as remote and
+      # rejects every custom command, making all Linux builds
+      # non-functional (v3.8.2 regression, fixed in v3.8.3). Windows and
+      # macOS use the tauri:// App protocol and are unaffected. Keep
+      # =2.11.0 in Cargo.toml; unblock only with a deliberate migration.
+      - dependency-name: "tauri"
+        versions: [">=2.11.1"]
+      - dependency-name: "tauri-build"
+        versions: [">=2.11.1"]
       - dependency-name: "suppaftp"
         update-types: ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
       - dependency-name: "rand"
