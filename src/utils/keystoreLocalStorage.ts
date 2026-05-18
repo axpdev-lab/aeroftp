@@ -17,38 +17,53 @@
  * exported backups still carry it but `applyLocalStorage` will drop
  * it on the import side.
  */
+// NOTE: every entry below is the exact key the app actually writes.
+// The earlier list carried several wrong names (underscore vs hyphen,
+// `aeroftp_` vs `aerofile_` prefix), so collectLocalStorage() never
+// matched them and the corresponding state (custom icon library, app
+// background, theme) was silently absent from every full keystore,
+// resetting on import (issue #214 pt.4b). Keep these byte-identical to
+// the constants in the owning components.
 export const KEYSTORE_LS_WHITELIST: string[] = [
     // AeroAgent agent mode (Safe / Auto / Extreme) -- security-relevant
     'aeroftp_ai_agent_mode',
 
-    // AeroFile multi-tab state
+    // AeroFile multi-tab state (both dual-panel sides)
     'aerofile_local_tabs',
+    'aerofile_local_tabs_2',
     'aerofile_active_tab',
+    'aerofile_active_tab_2',
     'aerofile_recent_paths',
     'aerofile_show_sidebar',
+    'aerofile_sidebar_mode',
+    'aerofile_custom_locations',
 
     // Server card UX
     'aeroftp-favorite-servers',
     'aeroftp_myservers_filter',
     'aeroftp_hide_server_username',
-    'aeroftp-saved-servers-view-mode',
+    'aeroftp-my-servers-density',
 
     // IntroHub
     'aeroftp-intro-active-tab',
+    'aeroftp-intro-view-mode',
     'aeroftp-discover-category',
 
-    // Background / lock screen
-    'aeroftp_app_background',
+    // Appearance: theme + background + lock screen
+    'aeroftp-theme',
+    'aeroftp-icon-theme',
+    'aeroftp_app_background_pattern',
     'aeroftp_lock_pattern',
 
-    // Custom assets the user authored
-    'aeroftp_custom_icons',
-    'aeroftp_custom_icons_sort',
-    'aeroftp_custom_locations',
-    'aeroftp_sidebar_mode',
+    // Custom assets the user authored (icon library + its ordering)
+    'aeroftp-custom-icons',
+    'aeroftp-custom-icons-sort',
+
+    // Terminal preferences
+    'aeroftp-terminal-settings',
 
     // GitHub commit dialog co-authors
-    'aeroftp_co_authors',
+    'github-co-authors',
 
     // Activity log filters
     'aeroftp_activitylog_filters',
