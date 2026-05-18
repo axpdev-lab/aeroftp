@@ -1887,6 +1887,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         <ProviderModeTabs
                             activeProviderId={selectedProviderId || connectionParams.providerId}
                             activeProtocol={protocol}
+                            readOnly={!!editingProfileId}
                             onSwitchMode={(newProtocol, newProviderId) => {
                                 handleProtocolChange(newProtocol as ProviderType, newProviderId);
                             }}

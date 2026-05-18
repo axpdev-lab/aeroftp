@@ -35,6 +35,15 @@ interface ProviderModeTabsProps {
     /** Called when the operator clicks a sub-tab. Should route through
      *  the form's own `handleProtocolChange(newProtocol, newProviderId?)`. */
     onSwitchMode: (protocol: ProviderType, providerId?: string) => void;
+    /** When true the strip is shown but locked: it only indicates the
+     *  current mode of a saved profile being edited and cannot switch
+     *  surface. A profile keeps the mode chosen at creation time; to use
+     *  a different mode the user creates a new connection. Switching mode
+     *  in edit would silently rewrite the saved profile's
+     *  providerId/server/credentials (issue #215). The FTP/FTPS/SFTP
+     *  in-place switch is a separate, deliberately allowed path handled
+     *  by the ProtocolSelector, not by this strip. */
+    readOnly?: boolean;
     /** Optional className override for the outer container. */
     className?: string;
 }
@@ -43,6 +52,7 @@ export const ProviderModeTabs: React.FC<ProviderModeTabsProps> = ({
     activeProviderId,
     activeProtocol,
     onSwitchMode,
+    readOnly,
     className,
 }) => {
     const t = useTranslation();
@@ -66,6 +76,15 @@ export const ProviderModeTabs: React.FC<ProviderModeTabsProps> = ({
         return translated && translated !== key ? translated : fallback;
     };
 
+    // Locked-in-edit hint. Follows the same translate-or-fallback pattern
+    // as resolveWarning so it does not require an i18n key to exist yet.
+    const lockedKey = 'provider.modes.lockedInEdit';
+    const lockedTranslated = t(lockedKey);
+    const lockedHint =
+        lockedTranslated && lockedTranslated !== lockedKey
+            ? lockedTranslated
+            : 'Mode is chosen when the connection is created and stays fixed while editing a saved profile. To use a different mode, create a new connection.';
+
     return (
         <div
             className={
@@ -88,11 +107,15 @@ export const ProviderModeTabs: React.FC<ProviderModeTabsProps> = ({
                             type="button"
                             role="tab"
                             aria-selected={isActive}
-                            onClick={() => onSwitchMode(mode.protocol, mode.providerId)}
-                            title={mode.description}
+                            aria-disabled={!!readOnly && !isActive}
+                            disabled={!!readOnly && !isActive}
+                            onClick={() => { if (!readOnly) onSwitchMode(mode.protocol, mode.providerId); }}
+                            title={readOnly && !isActive ? lockedHint : mode.description}
                             className={
                                 isActive
                                     ? `inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12px] font-medium border bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-600 ${mode.activeColor}`
+                                    : readOnly
+                                    ? 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12px] font-medium border border-transparent text-gray-600 dark:text-gray-300 opacity-50 cursor-not-allowed'
                                     : 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12px] font-medium border border-transparent text-gray-600 dark:text-gray-300 hover:bg-white hover:dark:bg-gray-900 hover:border-gray-200 hover:dark:border-gray-700 transition-colors'
                             }
                         >
@@ -119,6 +142,11 @@ export const ProviderModeTabs: React.FC<ProviderModeTabsProps> = ({
                 <div className="text-[11px] text-gray-600 dark:text-gray-400 leading-snug pl-1">
                     <span className="font-medium text-gray-700 dark:text-gray-300">{active.label}:</span>{' '}
                     {active.description}
+                </div>
+            )}
+            {readOnly && (
+                <div className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-500 leading-snug pl-1 italic">
+                    {lockedHint}
                 </div>
             )}
             {warning && (
