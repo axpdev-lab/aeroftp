@@ -720,3 +720,319 @@ async fn pd_cli_conv_c_shared_executor_upload_is_byte_identical() {
          ProviderUploadExecutor + NoopTransferSink); byte-identical, pool-backed, not serialised."
     );
 }
+
+/// PD-CLI-CONV-D: the CLI `sync` transfer phase now routes its download
+/// list through `run_shared_provider_download_batch` and its upload list
+/// through `run_shared_provider_upload_batch` (the same shared core as
+/// `get -r` / `put`), while scan / compare / conflict / journal /
+/// delete-orphans stay outside the batch. The cmd_sync-specific
+/// invariant D introduces: the shared batches open their OWN base
+/// connection, so the scan `provider` survives the transfer phase and is
+/// still usable for the post-transfer remote ops (rename, delete-orphans).
+/// This drives that exact bidirectional core against the live SFTP
+/// fixture and asserts:
+/// - both directions resolve to the SFTP connection pool (pool-backed,
+///   shared path taken, not the legacy fallback);
+/// - every downloaded AND uploaded file is byte-identical (SHA-256);
+/// - a separate scan provider stays connected across both shared batches
+///   and still performs a post-transfer `rename` (the `--track-renames`
+///   path), proving the shared batch did not consume it;
+/// - C=4 wall-clock is not catastrophically worse than C=1 in either
+///   direction (parallelism preserved, never silently serialised).
+#[tokio::test]
+#[ignore = "live: requires the sftp-rsync Docker fixture up on :2222"]
+async fn pd_cli_conv_d_sync_transfer_phase_is_byte_identical() {
+    use std::sync::atomic::AtomicBool;
+    use std::sync::Arc;
+
+    use ftp_client_gui_lib::provider_transfer_executor::{
+        resolve_provider_executor_session_model, ProviderDownloadExecutor,
+        ProviderExecutorSessionModel, ProviderUploadExecutor,
+    };
+    use ftp_client_gui_lib::transfer_domain::{
+        TransferBatchConfig, TransferDirection, TransferEntry,
+    };
+    use ftp_client_gui_lib::transfer_event_sink::{NoopTransferSink, TransferEventSink};
+    use ftp_client_gui_lib::transfer_orchestrator::{execute_batch, TransferBatch};
+    use ftp_client_gui_lib::transfer_settings::{
+        resolve_provider_transfer_settings, TransferSettingsInput,
+    };
+
+    if !ssh_key_path().exists() {
+        eprintln!("SKIP: fixture ssh_key missing (run fixtures/sftp-rsync/setup.sh)");
+        return;
+    }
+    seed_known_host();
+
+    // Local upload sources (the sync `to_upload` list).
+    let up_src = std::env::temp_dir().join("pd-cli-conv-d-upsrc-it");
+    let _ = std::fs::remove_dir_all(&up_src);
+    std::fs::create_dir_all(&up_src).unwrap();
+    let mut up_hashes = std::collections::HashMap::new();
+    for i in 0..FILES {
+        let name = format!("up{i}.bin");
+        let p = up_src.join(&name);
+        let mut buf = vec![0u8; FILE_BYTES];
+        for (j, b) in buf.iter_mut().enumerate() {
+            *b = ((i * 71 + j * 29) % 251) as u8;
+        }
+        std::fs::write(&p, &buf).unwrap();
+        up_hashes.insert(name, sha256_file(&p));
+    }
+    let total_mib = (FILES * FILE_BYTES) as f64 / 1_048_576.0;
+
+    let dl_verify_root = std::env::temp_dir().join("pd-cli-conv-d-dlverify-it");
+    let _ = std::fs::remove_dir_all(&dl_verify_root);
+    let up_verify_root = std::env::temp_dir().join("pd-cli-conv-d-upverify-it");
+    let _ = std::fs::remove_dir_all(&up_verify_root);
+
+    let runtime_settings = resolve_provider_transfer_settings(TransferSettingsInput {
+        max_concurrent: None,
+        retry_count: None,
+        timeout_seconds: None,
+    });
+
+    let mut c1_elapsed: Option<std::time::Duration> = None;
+    let mut c4_elapsed: Option<std::time::Duration> = None;
+    for concurrency in [1usize, 4] {
+        let down_dir = format!("/workdir/pd-cli-conv-d-down-c{concurrency}");
+        let up_dir = format!("/workdir/pd-cli-conv-d-up-c{concurrency}");
+
+        // Seed the remote download sources (the sync `to_download` list)
+        // and pre-create the upload parent (cmd_sync pre-creates
+        // upload_dirs with the connected scan provider before the batch).
+        let mut seeder = SftpProvider::new(fixture_config());
+        seeder.connect().await.expect("seeder SFTP connect");
+        let _ = seeder.mkdir(&down_dir).await;
+        let _ = seeder.mkdir(&up_dir).await;
+        let mut down_hashes = std::collections::HashMap::new();
+        for i in 0..FILES {
+            let name = format!("dn{i}.bin");
+            let p = up_src.join(format!("seed-{name}"));
+            let mut buf = vec![0u8; FILE_BYTES];
+            for (j, b) in buf.iter_mut().enumerate() {
+                *b = ((i * 41 + j * 19) % 251) as u8;
+            }
+            std::fs::write(&p, &buf).unwrap();
+            down_hashes.insert(name.clone(), sha256_file(&p));
+            seeder
+                .upload(p.to_str().unwrap(), &format!("{down_dir}/{name}"), None)
+                .await
+                .unwrap_or_else(|e| panic!("seed remote download src {name}: {e}"));
+            let _ = std::fs::remove_file(&p);
+        }
+        let _ = seeder.disconnect().await;
+
+        // The cmd_sync scan provider: connected once, kept alive across
+        // BOTH shared batches, used afterwards for the post-transfer
+        // rename (the `--track-renames` loop). PD-CLI-CONV-D's invariant
+        // is that the shared batches must NOT consume this connection.
+        let mut scan_provider = SftpProvider::new(fixture_config());
+        scan_provider
+            .connect()
+            .await
+            .expect("scan provider connect");
+
+        let started = Instant::now();
+
+        // ---- Download phase: sync `to_download` -> shared download core
+        {
+            let dl_run = dl_verify_root.join(format!("c{concurrency}"));
+            std::fs::create_dir_all(&dl_run).unwrap();
+            let mut connected = SftpProvider::new(fixture_config());
+            connected.connect().await.expect("download base connect");
+            let provider_arc = Arc::new(tokio::sync::Mutex::new(Some(
+                Box::new(connected) as Box<dyn StorageProvider>
+            )));
+            let model = resolve_provider_executor_session_model(&provider_arc, concurrency).await;
+            assert!(
+                matches!(
+                    model,
+                    ProviderExecutorSessionModel::SftpConnectionPool { .. }
+                ),
+                "sync download phase must resolve to the SFTP pool, got {model:?}"
+            );
+            let cancel_token = tokio_util::sync::CancellationToken::new();
+            let sink: Arc<dyn TransferEventSink> = Arc::new(NoopTransferSink);
+            let executor = Arc::new(ProviderDownloadExecutor::new(
+                sink.clone(),
+                provider_arc.clone(),
+                runtime_settings,
+                cancel_token,
+                model,
+            ));
+            let entries: Vec<TransferEntry> = (0..FILES)
+                .map(|i| {
+                    let name = format!("dn{i}.bin");
+                    TransferEntry {
+                        id: format!("it-d-dl-{i}"),
+                        display_name: name.clone(),
+                        remote_path: format!("{down_dir}/{name}"),
+                        local_path: dl_run.join(&name).to_string_lossy().to_string(),
+                        size: FILE_BYTES as u64,
+                        modified: None,
+                    }
+                })
+                .collect();
+            let batch = TransferBatch {
+                id: "pd-cli-conv-d-dl".to_string(),
+                display_name: "sync download phase".to_string(),
+                direction: TransferDirection::Download,
+                config: TransferBatchConfig {
+                    max_concurrent: concurrency as u32,
+                    max_retries: runtime_settings.retry_count,
+                    timeout_ms: runtime_settings.timeout_seconds.saturating_mul(1000),
+                },
+                entries,
+            };
+            let cancel = Arc::new(AtomicBool::new(false));
+            let result = execute_batch(sink, batch, executor, cancel, None).await;
+            assert_eq!(
+                result.completed, FILES as u32,
+                "sync download must complete all"
+            );
+            assert_eq!(result.failed, 0, "no sync download failures");
+            for i in 0..FILES {
+                let name = format!("dn{i}.bin");
+                assert_eq!(
+                    down_hashes.get(&name),
+                    Some(&sha256_file(&dl_run.join(&name))),
+                    "sync download byte mismatch {name} at C={concurrency}"
+                );
+            }
+            let taken = provider_arc.lock().await.take();
+            if let Some(mut p) = taken {
+                let _ = p.disconnect().await;
+            }
+        }
+
+        // ---- Upload phase: sync `to_upload` -> shared upload core
+        {
+            let mut connected = SftpProvider::new(fixture_config());
+            connected.connect().await.expect("upload base connect");
+            let provider_arc = Arc::new(tokio::sync::Mutex::new(Some(
+                Box::new(connected) as Box<dyn StorageProvider>
+            )));
+            let model = resolve_provider_executor_session_model(&provider_arc, concurrency).await;
+            assert!(
+                matches!(
+                    model,
+                    ProviderExecutorSessionModel::SftpConnectionPool { .. }
+                ),
+                "sync upload phase must resolve to the SFTP pool, got {model:?}"
+            );
+            let cancel_token = tokio_util::sync::CancellationToken::new();
+            let sink: Arc<dyn TransferEventSink> = Arc::new(NoopTransferSink);
+            let executor = Arc::new(ProviderUploadExecutor::new(
+                sink.clone(),
+                provider_arc.clone(),
+                runtime_settings,
+                None,
+                cancel_token,
+                model,
+            ));
+            let entries: Vec<TransferEntry> = (0..FILES)
+                .map(|i| {
+                    let name = format!("up{i}.bin");
+                    TransferEntry {
+                        id: format!("it-d-up-{i}"),
+                        display_name: name.clone(),
+                        remote_path: format!("{up_dir}/{name}"),
+                        local_path: up_src.join(&name).to_string_lossy().to_string(),
+                        size: FILE_BYTES as u64,
+                        modified: None,
+                    }
+                })
+                .collect();
+            let batch = TransferBatch {
+                id: "pd-cli-conv-d-up".to_string(),
+                display_name: "sync upload phase".to_string(),
+                direction: TransferDirection::Upload,
+                config: TransferBatchConfig {
+                    max_concurrent: concurrency as u32,
+                    max_retries: runtime_settings.retry_count,
+                    timeout_ms: runtime_settings.timeout_seconds.saturating_mul(1000),
+                },
+                entries,
+            };
+            let cancel = Arc::new(AtomicBool::new(false));
+            let result = execute_batch(sink, batch, executor, cancel, None).await;
+            assert_eq!(
+                result.completed, FILES as u32,
+                "sync upload must complete all"
+            );
+            assert_eq!(result.failed, 0, "no sync upload failures");
+            let taken = provider_arc.lock().await.take();
+            if let Some(mut p) = taken {
+                let _ = p.disconnect().await;
+            }
+        }
+
+        let elapsed = started.elapsed();
+
+        // cmd_sync invariant: the scan provider was NOT consumed by the
+        // shared batches and is still usable for the post-transfer remote
+        // ops. Mirror the `--track-renames` loop: rename one uploaded
+        // file via the scan provider, then read it back byte-identical.
+        let old_remote = format!("{up_dir}/up0.bin");
+        let new_remote = format!("{up_dir}/up0.renamed.bin");
+        scan_provider
+            .rename(&old_remote, &new_remote)
+            .await
+            .expect("post-transfer rename via the surviving scan provider");
+        let _ = scan_provider.disconnect().await;
+
+        // Read every uploaded file back (renamed one included) and assert
+        // byte-identity, proving upload + post-transfer rename are sound.
+        let up_run = up_verify_root.join(format!("c{concurrency}"));
+        std::fs::create_dir_all(&up_run).unwrap();
+        let mut verifier = SftpProvider::new(fixture_config());
+        verifier.connect().await.expect("verifier connect");
+        for i in 0..FILES {
+            let name = format!("up{i}.bin");
+            let remote = if i == 0 {
+                new_remote.clone()
+            } else {
+                format!("{up_dir}/{name}")
+            };
+            let local = up_run.join(&name);
+            verifier
+                .download(&remote, local.to_str().unwrap(), None)
+                .await
+                .unwrap_or_else(|e| panic!("readback {name}: {e}"));
+            assert_eq!(
+                up_hashes.get(&name),
+                Some(&sha256_file(&local)),
+                "sync upload byte mismatch {name} at C={concurrency}"
+            );
+        }
+        let _ = verifier.disconnect().await;
+
+        eprintln!(
+            "PD-CLI-CONV-D C={concurrency:<2} elapsed={:>6.2}s  {:>6.1} MiB/s  (sync transfer phase, both directions)",
+            elapsed.as_secs_f64(),
+            (2.0 * total_mib) / elapsed.as_secs_f64(),
+        );
+        if concurrency == 1 {
+            c1_elapsed = Some(elapsed);
+        } else {
+            c4_elapsed = Some(elapsed);
+        }
+    }
+
+    if let (Some(e1), Some(e4)) = (c1_elapsed, c4_elapsed) {
+        assert!(
+            e4 <= e1 * 3,
+            "C=4 ({e4:?}) catastrophically slower than C=1 ({e1:?}): sync transfer phase serialised?"
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(&dl_verify_root);
+    let _ = std::fs::remove_dir_all(&up_verify_root);
+    let _ = std::fs::remove_dir_all(&up_src);
+    eprintln!(
+        "PD-CLI-CONV-D: sync transfer phase converged on the shared executors \
+         (download + upload), scan provider survived for the post-transfer rename; \
+         byte-identical, pool-backed, not serialised."
+    );
+}
