@@ -62,6 +62,6 @@
   },
   "overrides": {
     "picomatch": ">=2.3.2",
-    "dompurify": "^3.4.2"
+    "dompurify": "$dompurify"
   }
 }
