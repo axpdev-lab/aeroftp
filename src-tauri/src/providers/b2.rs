@@ -26,6 +26,13 @@ const AUTHORIZE_URL: &str = "https://api.backblazeb2.com/b2api/v4/b2_authorize_a
 const SINGLE_UPLOAD_RECOMMENDED_MAX: u64 = 200 * 1024 * 1024; // 200 MB; above this use large-file workflow
 const LARGE_FILE_PART_SIZE: u64 = 100 * 1024 * 1024; // 100 MB per part (recommended)
 const LARGE_FILE_MIN_PART_SIZE: u64 = 5 * 1024 * 1024; // B2 minimum (last part may be smaller)
+/// Concurrent large-file part uploads. B2 requires an independent
+/// upload-part-URL per in-flight part (an upload URL is single-threaded), so
+/// each slot fetches its own. Peak transient RAM is bounded to
+/// `LARGE_FILE_MAX_PARALLEL * LARGE_FILE_PART_SIZE`; 4 keeps that at ~400 MB
+/// on a >200 MB upload, the same order of magnitude as comparable clients,
+/// and matches the in-repo S3 multipart fan-out for consistency.
+const LARGE_FILE_MAX_PARALLEL: usize = 4;
 const COPY_MAX_SIZE: u64 = 5 * 1024 * 1024 * 1024; // 5 GB hard limit on b2_copy_file
 const COPY_PART_MAX_SIZE: u64 = 5 * 1024 * 1024 * 1024; // 5 GB per b2_copy_part call
 const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024 * 1024 * 1024; // 10 TB practical ceiling
@@ -42,6 +49,7 @@ fn b2_log(_msg: &str) {}
 
 // ─── Configuration ───
 
+#[derive(Clone)]
 pub struct B2Config {
     pub application_key_id: String,
     pub application_key: SecretString,
@@ -288,6 +296,11 @@ pub struct B2UnfinishedUpload {
 
 // ─── Provider ───
 
+/// `Clone` is cheap: `reqwest::Client` is internally `Arc`, the rest are
+/// owned `String`/`SecretString` config. It exists so concurrent part-upload
+/// workers each get an independent handle (the same pattern S3 uses for its
+/// native multipart path), never to duplicate a live connection.
+#[derive(Clone)]
 pub struct B2Provider {
     config: B2Config,
     client: reqwest::Client,
@@ -637,6 +650,18 @@ impl B2Provider {
             .map_err(|e| ProviderError::ServerError(format!("finish_large_file parse: {}", e)))
     }
 
+    /// Large-file upload converged on the shared concurrent part-upload
+    /// engine (PD-UP-1). The B2-specific part is just "fetch a fresh
+    /// upload-part-URL, PUT this part, return its `contentSha1`": B2 requires
+    /// an independent upload URL per concurrent part (a URL is
+    /// single-threaded), so the closure acquires one per slot. Part planning,
+    /// the 10000-part protocol cap, the only-last-part-may-be-smaller
+    /// invariant, bounded concurrency, progress, and abort-on-first-error all
+    /// live once in the shared engine. Session lifecycle stays here: an
+    /// engine `Err` leaves the started large file unfinished, exactly as the
+    /// previous sequential path did (B2 auto-expires an unfinished large file
+    /// and the `upload()` caller still retries once on a master-token
+    /// failure: no behaviour change on the failure path).
     async fn upload_large_file(
         &self,
         local_path: &str,
@@ -644,54 +669,48 @@ impl B2Provider {
         size: u64,
         progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        use crate::providers::multi_thread::{
+            run_concurrent_part_upload, ConcurrentPartUploadConfig,
+        };
+
         let start = self.start_large_file(key).await?;
-        let part_urls = self.get_upload_part_url(&start.file_id).await?;
-        let mut file = tokio::fs::File::open(local_path)
-            .await
-            .map_err(|e| ProviderError::Other(format!("open local: {}", e)))?;
-        use tokio::io::AsyncReadExt;
-        let mut part_sha1s: Vec<String> = Vec::new();
-        let mut part_number: u32 = 1;
-        let mut transferred: u64 = 0;
-        loop {
-            let remaining = size.saturating_sub(transferred);
-            if remaining == 0 {
-                break;
+        let file_id = start.file_id.clone();
+
+        let provider = self.clone();
+        let part_file_id = file_id.clone();
+        let upload_one_part = move |part_number: u32, data: Vec<u8>| {
+            let provider = provider.clone();
+            let file_id = part_file_id.clone();
+            async move {
+                let part_urls = provider.get_upload_part_url(&file_id).await?;
+                let resp = provider
+                    .upload_part(
+                        &part_urls.upload_url,
+                        &part_urls.authorization_token,
+                        part_number,
+                        data,
+                    )
+                    .await?;
+                Ok::<String, ProviderError>(resp.content_sha1)
             }
-            let this_part = remaining.min(LARGE_FILE_PART_SIZE);
-            let mut buf = vec![0u8; this_part as usize];
-            file.read_exact(&mut buf)
-                .await
-                .map_err(|e| ProviderError::Other(format!("read part {}: {}", part_number, e)))?;
-            // Validate part size: only the LAST part may be smaller than 5 MB
-            let is_last = remaining == this_part;
-            if !is_last && this_part < LARGE_FILE_MIN_PART_SIZE {
-                return Err(ProviderError::InvalidConfig(format!(
-                    "part {} too small ({} < {})",
-                    part_number, this_part, LARGE_FILE_MIN_PART_SIZE
-                )));
-            }
-            let part_resp = self
-                .upload_part(
-                    &part_urls.upload_url,
-                    &part_urls.authorization_token,
-                    part_number,
-                    buf,
-                )
-                .await?;
-            part_sha1s.push(part_resp.content_sha1);
-            transferred += this_part;
-            part_number += 1;
-            if let Some(ref p) = progress {
-                p(transferred, size);
-            }
-            if part_number > 10_000 {
-                return Err(ProviderError::InvalidConfig(
-                    "exceeded B2 limit of 10000 parts".into(),
-                ));
-            }
-        }
-        self.finish_large_file(&start.file_id, part_sha1s).await?;
+        };
+
+        let parts = run_concurrent_part_upload(
+            ConcurrentPartUploadConfig {
+                local_path: std::path::PathBuf::from(local_path),
+                total_size: size,
+                part_size: LARGE_FILE_PART_SIZE,
+                max_parts: 10_000,
+                max_parallel: LARGE_FILE_MAX_PARALLEL,
+            },
+            upload_one_part,
+            tokio_util::sync::CancellationToken::new(),
+            progress,
+        )
+        .await?;
+
+        let part_sha1s: Vec<String> = parts.into_iter().map(|(_, sha1)| sha1).collect();
+        self.finish_large_file(&file_id, part_sha1s).await?;
         Ok(())
     }
 
@@ -2402,6 +2421,21 @@ impl StorageProvider for B2Provider {
             password: None,
             expires_at,
         })
+    }
+
+    /// Advertise the parallel large-file capability honestly now that
+    /// `upload_large_file` genuinely uploads parts concurrently (PD-UP-1).
+    /// Only the multipart fields are set: B2's download path stays
+    /// single-stream, so `supports_range_download` is left at its default
+    /// `false` (no overclaim of a range capability B2 does not honour here).
+    fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
+        super::TransferOptimizationHints {
+            supports_multipart: true,
+            multipart_threshold: SINGLE_UPLOAD_RECOMMENDED_MAX,
+            multipart_part_size: LARGE_FILE_PART_SIZE,
+            multipart_max_parallel: LARGE_FILE_MAX_PARALLEL as u8,
+            ..Default::default()
+        }
     }
 }
 

@@ -31,7 +31,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use futures_util::StreamExt;
-use tokio::io::{AsyncSeekExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
@@ -73,6 +73,49 @@ pub(crate) fn plan_multi_thread_ranges(
         offset += len;
     }
     ranges
+}
+
+/// Plan fixed-size, contiguous, gap-free parts covering a whole local file
+/// for a multipart / large-file upload. Returns `(part_number, offset, len)`
+/// with `part_number` 1-based. Only the **last** part may be shorter than the
+/// effective part size, exactly matching the S3/B2 multipart contract (every
+/// non-final part must be >= the protocol minimum).
+///
+/// `part_size` is the caller's preferred part size; `max_parts` is the
+/// protocol hard cap (S3 and B2 both cap a multipart upload at 10000 parts).
+/// If the file is large enough that `ceil(total / part_size)` would exceed
+/// `max_parts`, the effective part size is grown to the smallest value that
+/// still fits within `max_parts`, so the plan never exceeds the protocol
+/// limit. This is the adaptive-part-size behaviour every real multipart
+/// client needs and is what lets a single conservative default part size
+/// scale up to multi-terabyte files. Returns an empty plan for a zero-size
+/// file, a zero part size, or a zero cap (the caller falls back to its
+/// single-stream PUT).
+pub(crate) fn plan_fixed_size_parts(
+    total_size: u64,
+    part_size: u64,
+    max_parts: u32,
+) -> Vec<(u32, u64, u64)> {
+    if total_size == 0 || part_size == 0 || max_parts == 0 {
+        return Vec::new();
+    }
+    let max_parts = max_parts as u64;
+    let effective = if total_size.div_ceil(part_size) > max_parts {
+        total_size.div_ceil(max_parts)
+    } else {
+        part_size
+    };
+    let count = total_size.div_ceil(effective);
+    let mut parts = Vec::with_capacity(count as usize);
+    let mut offset = 0u64;
+    let mut part_number = 1u32;
+    while offset < total_size {
+        let len = effective.min(total_size - offset);
+        parts.push((part_number, offset, len));
+        offset += len;
+        part_number += 1;
+    }
+    parts
 }
 
 /// Parse an HTTP `Content-Range: bytes start-end/total` header.
@@ -296,6 +339,167 @@ where
 
     guard.commit();
     Ok(ConcurrentRangeOutcome::Completed)
+}
+
+/// Configuration for [`run_concurrent_part_upload`].
+pub struct ConcurrentPartUploadConfig {
+    /// Source file on disk; parts are read from here at their offsets.
+    pub local_path: PathBuf,
+    pub total_size: u64,
+    /// Preferred part size; grown automatically if `max_parts` would be
+    /// exceeded (see [`plan_fixed_size_parts`]).
+    pub part_size: u64,
+    /// Protocol hard cap on the number of parts (S3 and B2: 10000).
+    pub max_parts: u32,
+    /// Max part uploads in flight at once. `1` collapses to a sequential
+    /// upload through the same path (no second engine, no special case).
+    pub max_parallel: usize,
+}
+
+/// Transport-agnostic concurrent multipart-upload orchestrator (PD-UP-1).
+///
+/// The upload-side mirror of [`run_concurrent_range_download`]: the single
+/// shared engine that plans fixed-size parts over a local file, reads each
+/// part from disk at its offset, and uploads parts with bounded concurrency
+/// in a true sliding window (a freed slot starts the next part immediately,
+/// never a per-batch barrier). Everything that is *not* transport-specific
+/// lives here exactly once: the part plan, the per-part disk read, bounded
+/// concurrency, progress aggregation, cooperative cancellation, and
+/// abort-all-siblings-on-first-error (a doomed upload must not keep burning
+/// bandwidth and per-request billing).
+///
+/// `upload_one_part(part_number, data)` is the only transport-specific part.
+/// It must upload `data` as part `part_number` and return the provider's part
+/// identifier (S3 `ETag`, B2 part `contentSha1`) needed for the finalising
+/// "complete/finish" call. The engine returns the identifiers **sorted by
+/// part number**, ready for that call. The engine never creates, finalises,
+/// or aborts the multipart session itself: that lifecycle is provider
+/// specific and stays with the caller, so an `Err` here leaves the caller to
+/// run its existing abort/cleanup exactly as before (no behaviour change on
+/// the failure path).
+///
+/// The caller owns the decision of whether to call this at all (its own size
+/// threshold). Below that threshold it keeps its single-stream PUT untouched:
+/// honest fallback, no overclaim. S3 deliberately keeps its native multipart
+/// path: it is already live-validated byte-identical and converging it here
+/// would risk regressing a proven path for no measured gain (tracked, not
+/// done in PD-UP-1; the same rev-3 principle the download side applied to
+/// S3's native range path: no churn on a validated path).
+pub async fn run_concurrent_part_upload<U, UFut>(
+    cfg: ConcurrentPartUploadConfig,
+    upload_one_part: U,
+    cancel: CancellationToken,
+    on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+) -> Result<Vec<(u32, String)>, ProviderError>
+where
+    U: Fn(u32, Vec<u8>) -> UFut + Send + Sync + 'static,
+    UFut: std::future::Future<Output = Result<String, ProviderError>> + Send + 'static,
+{
+    let parts = plan_fixed_size_parts(cfg.total_size, cfg.part_size, cfg.max_parts);
+    if parts.is_empty() {
+        return Err(ProviderError::TransferFailed(
+            "Concurrent part upload: empty part plan".to_string(),
+        ));
+    }
+
+    let aggregate = Arc::new(AtomicU64::new(0));
+    let semaphore = Arc::new(Semaphore::new(cfg.max_parallel.max(1)));
+    let upload_one_part = Arc::new(upload_one_part);
+    let local_path = Arc::new(cfg.local_path);
+    let total_size = cfg.total_size;
+    let mut join_set: JoinSet<Result<(u32, String), ProviderError>> = JoinSet::new();
+
+    for (part_number, offset, len) in parts {
+        let semaphore = semaphore.clone();
+        let upload_one_part = upload_one_part.clone();
+        let aggregate = aggregate.clone();
+        let local_path = local_path.clone();
+        let cancel = cancel.clone();
+        join_set.spawn(async move {
+            let _permit = semaphore
+                .acquire_owned()
+                .await
+                .map_err(|_| ProviderError::TransferFailed("part scheduler closed".to_string()))?;
+            if cancel.is_cancelled() {
+                return Err(ProviderError::TransferFailed(
+                    "Transfer cancelled by user".to_string(),
+                ));
+            }
+            // Read this part only after a slot is free, so peak RAM is bounded
+            // to `max_parallel * part_size`, never the whole file.
+            let data = read_part_from_disk(&local_path, offset, len).await?;
+            let part_id = tokio::select! {
+                _ = cancel.cancelled() => {
+                    return Err(ProviderError::TransferFailed(
+                        "Transfer cancelled by user".to_string(),
+                    ));
+                }
+                r = upload_one_part(part_number, data) => r?,
+            };
+            aggregate.fetch_add(len, Ordering::Relaxed);
+            Ok((part_number, part_id))
+        });
+    }
+
+    let mut completed: Vec<(u32, String)> = Vec::new();
+    while let Some(joined) = join_set.join_next().await {
+        let task_result = match joined {
+            Ok(r) => r,
+            Err(e) => {
+                cancel.cancel();
+                join_set.shutdown().await;
+                return Err(ProviderError::TransferFailed(format!(
+                    "Part task panicked: {}",
+                    e
+                )));
+            }
+        };
+        match task_result {
+            Ok((part_number, part_id)) => {
+                completed.push((part_number, part_id));
+                if let Some(cb) = on_progress.as_ref() {
+                    cb(aggregate.load(Ordering::Relaxed), total_size);
+                }
+            }
+            Err(e) => {
+                cancel.cancel();
+                join_set.shutdown().await;
+                return Err(e);
+            }
+        }
+    }
+
+    completed.sort_by_key(|(pn, _)| *pn);
+    Ok(completed)
+}
+
+/// Read exactly `len` bytes at `offset` from the source file into a fresh
+/// buffer. Each part gets its own file handle so concurrent reads never share
+/// a cursor (the read-side mirror of the per-task handle the download engine
+/// opens to write its window).
+async fn read_part_from_disk(path: &Path, offset: u64, len: u64) -> Result<Vec<u8>, ProviderError> {
+    let mut file = tokio::fs::File::open(path)
+        .await
+        .map_err(ProviderError::IoError)?;
+    file.seek(std::io::SeekFrom::Start(offset))
+        .await
+        .map_err(ProviderError::IoError)?;
+    let mut buf = vec![0u8; len as usize];
+    let mut filled = 0usize;
+    while filled < buf.len() {
+        let n = file
+            .read(&mut buf[filled..])
+            .await
+            .map_err(ProviderError::IoError)?;
+        if n == 0 {
+            return Err(ProviderError::TransferFailed(format!(
+                "Concurrent part upload: source truncated at offset {} (wanted {} bytes, got {})",
+                offset, len, filled
+            )));
+        }
+        filled += n;
+    }
+    Ok(buf)
 }
 
 /// Strict concurrent HTTP Range download.
@@ -680,6 +884,83 @@ mod tests {
     fn plan_single_stream_covers_whole_file() {
         let ranges = plan_multi_thread_ranges(12345, 1, MAX);
         assert_eq!(ranges, vec![(0, 12344)]);
+    }
+
+    /// Parts are 1-based, gap-free, contiguous, exactly cover `total`, and
+    /// only the final part may be shorter than the effective part size.
+    fn parts_well_formed(total: u64, parts: &[(u32, u64, u64)]) -> bool {
+        if parts.is_empty() {
+            return total == 0;
+        }
+        let mut expected_offset = 0u64;
+        let effective = parts[0].2;
+        for (i, &(pn, offset, len)) in parts.iter().enumerate() {
+            if pn as usize != i + 1 || offset != expected_offset || len == 0 {
+                return false;
+            }
+            let is_last = i + 1 == parts.len();
+            if !is_last && len != effective {
+                return false;
+            }
+            if is_last && len > effective {
+                return false;
+            }
+            expected_offset += len;
+        }
+        expected_offset == total
+    }
+
+    #[test]
+    fn parts_even_split_only_last_may_be_short() {
+        let parts = plan_fixed_size_parts(1000, 250, 100);
+        assert_eq!(parts.len(), 4);
+        assert!(parts_well_formed(1000, &parts));
+        assert_eq!(parts[0], (1, 0, 250));
+        assert_eq!(parts[3], (4, 750, 250));
+    }
+
+    #[test]
+    fn parts_remainder_lands_in_final_part() {
+        let parts = plan_fixed_size_parts(1003, 250, 100);
+        assert_eq!(parts.len(), 5);
+        assert!(parts_well_formed(1003, &parts));
+        assert_eq!(parts[4], (5, 1000, 3));
+    }
+
+    #[test]
+    fn parts_zero_size_part_or_cap_is_empty() {
+        assert!(plan_fixed_size_parts(0, 250, 100).is_empty());
+        assert!(plan_fixed_size_parts(1000, 0, 100).is_empty());
+        assert!(plan_fixed_size_parts(1000, 250, 0).is_empty());
+    }
+
+    #[test]
+    fn parts_grow_part_size_to_respect_protocol_cap() {
+        // 1000 / 10 = 100 parts would exceed the cap of 4: the planner must
+        // grow the part size so the plan never breaches the protocol limit.
+        let parts = plan_fixed_size_parts(1000, 10, 4);
+        assert!(parts.len() <= 4);
+        assert!(parts_well_formed(1000, &parts));
+        assert_eq!(parts[0].2, 250);
+    }
+
+    #[test]
+    fn parts_single_part_when_file_below_part_size() {
+        let parts = plan_fixed_size_parts(4096, 100 * 1024, 10_000);
+        assert_eq!(parts, vec![(1, 0, 4096)]);
+    }
+
+    #[test]
+    fn parts_b2_realistic_250mib_keeps_non_final_above_min() {
+        let mib = 1024 * 1024;
+        let parts = plan_fixed_size_parts(250 * mib, 100 * mib, 10_000);
+        assert_eq!(parts.len(), 3);
+        assert!(parts_well_formed(250 * mib, &parts));
+        // Every non-final part is well above the B2 5 MiB minimum.
+        for &(_, _, len) in &parts[..parts.len() - 1] {
+            assert!(len >= 5 * mib);
+        }
+        assert_eq!(parts[2].2, 50 * mib);
     }
 
     #[test]
