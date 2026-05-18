@@ -459,7 +459,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     useEffect(() => {
         if (!editingServer) return;
         if (editingServer.password) return; // Already has password (user typed it)
-        if (!editingServer.hasStoredCredential) return;
+        // Probe the vault unconditionally, mirroring the connect path
+        // (MyServersPanel reads server_<id> with no flag gate). The legacy
+        // hasStoredCredential gate lived only in localStorage and is absent
+        // on profiles reconstructed from the vault (per-origin localStorage
+        // wipe / app update), which left the Edit password field blank even
+        // though the credential existed and connect worked. The call below
+        // is already try/catch + truthy-guarded, so a missing credential is
+        // a no-op.
         const serverId = editingServer.id;
         (async () => {
             try {
