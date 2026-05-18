@@ -236,7 +236,16 @@ pub struct WebDavProvider {
     /// Populated in every successful branch of `connect()`. `None` when
     /// disconnected. When `Some`, takes precedence over `config.initial_path`.
     server_root: Option<String>,
+    /// Multi-thread concurrent-Range download (rclone `--multi-thread-streams`).
+    /// `1` = disabled (default). Set via `set_multi_thread_download`.
+    multi_thread_streams: usize,
+    /// Files at or above this size use the concurrent-Range path when
+    /// `multi_thread_streams >= 2`.
+    multi_thread_cutoff: u64,
 }
+
+/// Provider-specific hard cap on concurrent Range streams (mirrors S3's 16).
+const WEBDAV_MULTI_THREAD_MAX_STREAMS: usize = 16;
 
 impl WebDavProvider {
     /// Create a new WebDAV provider with the given configuration
@@ -271,6 +280,8 @@ impl WebDavProvider {
             connected: false,
             digest_auth: None,
             server_root: None,
+            multi_thread_streams: 1,
+            multi_thread_cutoff: 8 * 1024 * 1024,
         })
     }
 
@@ -1996,6 +2007,49 @@ impl StorageProvider for WebDavProvider {
             return Err(ProviderError::NotConnected);
         }
 
+        let mut on_progress = on_progress;
+
+        // PD-HTTP-2: concurrent-Range download behind a real strict 206 probe.
+        // Digest auth mutates a per-request nonce counter and cannot be
+        // replayed concurrently, so it is excluded here (honest single-stream).
+        // The probe + closure go through the live reqwest client with a
+        // precomputed Basic header; no credential is reconstructed.
+        if self.multi_thread_streams >= 2 && self.digest_auth.is_none() {
+            let mut headers: Vec<(reqwest::header::HeaderName, reqwest::header::HeaderValue)> =
+                Vec::new();
+            if !self.config.anonymous {
+                use base64::Engine as _;
+                let token = base64::engine::general_purpose::STANDARD.encode(format!(
+                    "{}:{}",
+                    self.config.username,
+                    self.config.password.expose_secret()
+                ));
+                match reqwest::header::HeaderValue::from_str(&format!("Basic {}", token)) {
+                    Ok(v) => headers.push((reqwest::header::AUTHORIZATION, v)),
+                    Err(e) => {
+                        return Err(ProviderError::AuthenticationFailed(format!(
+                            "Invalid characters in credentials: {}",
+                            e
+                        )))
+                    }
+                }
+            }
+            let req = super::multi_thread::HttpRangeRequest {
+                client: self.client.clone(),
+                url: self.build_url(remote_path),
+                headers,
+                local_path: local_path.to_string(),
+                streams: self.multi_thread_streams,
+                max_streams: WEBDAV_MULTI_THREAD_MAX_STREAMS,
+                cutoff: self.multi_thread_cutoff,
+            };
+            match super::multi_thread::try_http_concurrent_range_download(req, on_progress).await {
+                super::multi_thread::HttpRangeAttempt::Completed => return Ok(()),
+                super::multi_thread::HttpRangeAttempt::Failed(e) => return Err(e),
+                super::multi_thread::HttpRangeAttempt::Fallback(p) => on_progress = p,
+            }
+        }
+
         let response = self
             .send_with_too_early_retry(Method::GET, remote_path)
             .await?;
@@ -2716,6 +2770,11 @@ impl StorageProvider for WebDavProvider {
             supports_resume_download: true,
             ..Default::default()
         }
+    }
+
+    fn set_multi_thread_download(&mut self, streams: usize, cutoff_bytes: u64) {
+        self.multi_thread_streams = streams.clamp(1, WEBDAV_MULTI_THREAD_MAX_STREAMS);
+        self.multi_thread_cutoff = cutoff_bytes;
     }
 
     async fn read_range(
