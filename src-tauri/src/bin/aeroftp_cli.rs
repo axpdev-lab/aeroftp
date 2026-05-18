@@ -13968,7 +13968,14 @@ async fn cmd_get(
         if hints.supports_range_download && total_size >= PGET_MIN_FILE_SIZE {
             let _ = provider.disconnect().await;
             return pget_segmented_download(
-                url, remote, local_path, segments, total_size, cli, format,
+                url,
+                remote,
+                local_path,
+                segments,
+                total_size,
+                cli,
+                format,
+                cancelled.clone(),
             )
             .await;
         } else if !quiet {
@@ -14144,71 +14151,44 @@ const PGET_MIN_FILE_SIZE: u64 = 4 * 1024 * 1024; // 4 MB minimum for segmented d
 const PGET_MIN_CHUNK_SIZE: u64 = 1024 * 1024; // 1 MB minimum per chunk
 const PGET_SUB_READ_SIZE: u64 = 64 * 1024 * 1024; // 64 MB max per read_range call
 
-struct PgetChunk {
-    index: usize,
-    offset: u64,
-    length: u64,
-}
-
-fn plan_pget_chunks(file_size: u64, segments: usize) -> Vec<PgetChunk> {
+/// Effective pget segment count.
+///
+/// The shared concurrent-range engine (`providers::multi_thread`,
+/// `plan_multi_thread_ranges`) plans the actual byte windows; the CLI only
+/// needs the *count* up front for the degenerate-fallback decision, the
+/// progress label, and the user-facing summary. This preserves the
+/// historical anti-fragmentation policy verbatim: never split a chunk below
+/// `PGET_MIN_CHUNK_SIZE`, hard cap at 16. With `streams == max_streams ==`
+/// this count, the engine emits exactly this many gap-free windows whose
+/// offsets are byte-identical to the previous hand-rolled planner.
+fn pget_effective_segments(file_size: u64, segments: usize) -> usize {
     if file_size == 0 || segments == 0 {
-        return Vec::new();
+        return 0;
     }
 
     let segments = segments.clamp(1, 16);
 
-    // Reduce segment count if chunks would be too small
-    let actual_segments = {
-        let chunk = file_size / segments as u64;
-        if chunk < PGET_MIN_CHUNK_SIZE {
-            (file_size / PGET_MIN_CHUNK_SIZE).max(1) as usize
-        } else {
-            segments
-        }
-    };
-
-    let base = file_size / actual_segments as u64;
-    let remainder = file_size % actual_segments as u64;
-
-    let mut chunks = Vec::with_capacity(actual_segments);
-    let mut offset = 0u64;
-    for i in 0..actual_segments {
-        let length = base + if (i as u64) < remainder { 1 } else { 0 };
-        chunks.push(PgetChunk {
-            index: i,
-            offset,
-            length,
-        });
-        offset += length;
-    }
-    chunks
-}
-
-/// RAII guard that removes a temp directory on drop
-struct PgetTempGuard(String);
-impl Drop for PgetTempGuard {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
+    // Reduce segment count if chunks would be too small.
+    let chunk = file_size / segments as u64;
+    if chunk < PGET_MIN_CHUNK_SIZE {
+        (file_size / PGET_MIN_CHUNK_SIZE).max(1) as usize
+    } else {
+        segments
     }
 }
 
-// PD-CLI-CONV-E (scope-split out of PD-CLI-CONV-D, tracked, not done):
-// converge this intra-file segmented download onto the shared
-// `run_concurrent_range_download` engine
-// (`providers::multi_thread`, today `pub(crate)`). NOT a 1:1 wiring like
-// the sync transfer phase: pget is provider-`read_range`-based (an
-// independent `create_and_connect` per chunk, a multi-file temp dir, and
-// a manual `pget_assemble_chunks`), NOT a Range fetch on a shared HTTP
-// client. Convergence needs (1) a new provider-`read_range`
-// `write_one_range` adapter that seek-writes each `[start,end]` window at
-// its absolute offset into the engine's single pre-allocated `.aerotmp`
-// (sub-read loop, cancel-aware, never `ServerIgnoredRange` like SFTP);
-// (2) replacing the temp-dir + `PgetTempGuard` + `pget_assemble_chunks`
-// lifecycle with the engine's single-`.aerotmp` + internal RAII, plus the
-// degenerate/fallback rework; (3) making the engine `pub` and re-exported
-// through `ftp_client_gui_lib` (additive, like the PD-CLI-CONV-B modules).
-// Deferred deliberately: distinct design surface, kept off this slice to
-// preserve the one-concern-per-slice cadence. No overclaim until it lands.
+/// Segmented parallel download (pget), converged onto the shared
+/// transport-agnostic concurrent-range engine
+/// (`providers::multi_thread::run_concurrent_range_download`,
+/// PD-CLI-CONV-E). The engine owns the gap-free range plan, the single
+/// pre-allocated `.aerotmp`, its RAII cleanup, bounded concurrency,
+/// progress aggregation and cooperative cancellation; this function only
+/// supplies the provider-`read_range` window writer and the honest
+/// fallbacks. One independent connection per window preserves the
+/// historical N-real-connections parallelism (clone-pool / PD-SFTP-1
+/// coherent): the engine orchestrates and bounds, the parallel transfers
+/// live on those connections.
+#[allow(clippy::too_many_arguments)]
 async fn pget_segmented_download(
     url: &str,
     remote_path: &str,
@@ -14217,13 +14197,19 @@ async fn pget_segmented_download(
     file_size: u64,
     cli: &Cli,
     format: OutputFormat,
+    cancelled: Arc<AtomicBool>,
 ) -> i32 {
-    let chunks = plan_pget_chunks(file_size, segments);
-    let actual_segments = chunks.len();
+    use ftp_client_gui_lib::providers::multi_thread::{
+        aerotmp_path_for, run_concurrent_range_download, ConcurrentRangeConfig,
+        ConcurrentRangeOutcome,
+    };
+
+    let actual_segments = pget_effective_segments(file_size, segments);
 
     if actual_segments <= 1 {
-        // Degenerate: only 1 segment, fall through to normal download would be redundant
-        // but we already disconnected the initial provider, so reconnect and do single download
+        // Degenerate: a single effective segment is just a single-stream
+        // download. The initial probe provider was already disconnected by
+        // the caller, so reconnect and stream once (honest, no overclaim).
         return pget_fallback_single(url, remote_path, local_path, cli, format).await;
     }
 
@@ -14237,19 +14223,34 @@ async fn pget_segmented_download(
         );
     }
 
-    // Create temp directory for chunk files
-    let temp_dir = format!("{}.aeroftp-pget-{}", local_path, uuid::Uuid::new_v4());
-    if let Err(e) = std::fs::create_dir_all(&temp_dir) {
-        print_error(
-            format,
-            &format!("pget: failed to create temp dir: {}", e),
-            4,
-        );
-        return 4;
+    // One independent connection per segment, established up front. This is
+    // exactly the historical "N real connections" model: the engine emits
+    // exactly `actual_segments` windows (streams == max_streams ==
+    // actual_segments) and each window is served on its own connection. On
+    // ANY connection failure, fall honestly back to a single-stream
+    // download rather than overclaim parallelism.
+    let mut conns: Vec<Box<dyn StorageProvider>> = Vec::with_capacity(actual_segments);
+    for i in 0..actual_segments {
+        match create_and_connect(url, cli, format).await {
+            Ok((p, _)) => conns.push(p),
+            Err(_) => {
+                for mut c in conns {
+                    let _ = c.disconnect().await;
+                }
+                if !quiet {
+                    eprintln!(
+                        "pget: connection {} of {} failed; falling back to single download",
+                        i + 1,
+                        actual_segments
+                    );
+                }
+                return pget_fallback_single(url, remote_path, local_path, cli, format).await;
+            }
+        }
     }
-    let _temp_guard = PgetTempGuard(temp_dir.clone());
 
-    // Progress bar
+    // Progress bar (coarse, one tick per completed window via the engine's
+    // `on_progress`; the aggregate it reports is bumped per sub-read).
     let filename = remote_path.rsplit('/').next().unwrap_or("download");
     let pb = if !quiet {
         Some(create_progress_bar(
@@ -14259,217 +14260,200 @@ async fn pget_segmented_download(
     } else {
         None
     };
-    let aggregate = Arc::new(AtomicU64::new(0));
+    let pb_for_cb = pb.clone();
+    let on_progress: Option<Box<dyn Fn(u64, u64) + Send>> = pb_for_cb.map(|pb| {
+        Box::new(move |transferred: u64, total: u64| {
+            if total > 0 {
+                pb.set_length(total);
+            }
+            pb.set_position(transferred);
+        }) as Box<dyn Fn(u64, u64) + Send>
+    });
+
+    // Bridge Ctrl+C (AtomicBool) to the engine's CancellationToken so an
+    // in-flight window aborts, identical to run_shared_provider_download_batch.
+    let cancel_token = tokio_util::sync::CancellationToken::new();
+    let watcher = {
+        let ct = cancel_token.clone();
+        let flag = cancelled.clone();
+        tokio::spawn(async move {
+            while !flag.load(Ordering::Relaxed) {
+                tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+            }
+            ct.cancel();
+        })
+    };
+
+    // Shared queue of the pre-established connections. The engine produces
+    // exactly `actual_segments` windows, so each window pops exactly one
+    // connection: N real parallel transfers, never silently serialized.
+    let pool = Arc::new(tokio::sync::Mutex::new(std::collections::VecDeque::from(
+        conns,
+    )));
+    let remote_owned = remote_path.to_string();
+
+    let cfg = ConcurrentRangeConfig {
+        final_path: PathBuf::from(local_path),
+        total_size: file_size,
+        streams: actual_segments,
+        max_streams: actual_segments,
+        max_parallel: effective_parallel_workers(cli).min(actual_segments),
+    };
+
+    let write_one_range =
+        move |start_off: u64,
+              end_off: u64,
+              temp_path: PathBuf,
+              aggregate: Arc<AtomicU64>,
+              cancel: tokio_util::sync::CancellationToken| {
+            let pool = pool.clone();
+            let remote = remote_owned.clone();
+            async move {
+                use tokio::io::{AsyncSeekExt, AsyncWriteExt};
+
+                let mut provider = {
+                    let mut guard = pool.lock().await;
+                    guard.pop_front().ok_or_else(|| {
+                        ProviderError::TransferFailed(
+                            "pget: connection pool exhausted (internal invariant)".to_string(),
+                        )
+                    })?
+                };
+
+                let window_len = end_off - start_off + 1;
+                // The engine pre-allocated and sized the temp; open without
+                // truncate and seek to the absolute window offset.
+                let mut file = tokio::fs::OpenOptions::new()
+                    .write(true)
+                    .open(&temp_path)
+                    .await
+                    .map_err(ProviderError::IoError)?;
+                file.seek(std::io::SeekFrom::Start(start_off))
+                    .await
+                    .map_err(ProviderError::IoError)?;
+
+                let mut written = 0u64;
+                while written < window_len {
+                    if cancel.is_cancelled() {
+                        let _ = provider.disconnect().await;
+                        return Err(ProviderError::TransferFailed(
+                            "Transfer cancelled by user".to_string(),
+                        ));
+                    }
+                    let sub_len = (window_len - written).min(PGET_SUB_READ_SIZE);
+                    let data = provider
+                        .read_range(&remote, start_off + written, sub_len)
+                        .await
+                        .map_err(|e| {
+                            ProviderError::TransferFailed(format!(
+                                "pget: read_range at offset {} failed: {}",
+                                start_off + written,
+                                e
+                            ))
+                        })?;
+                    if data.is_empty() {
+                        // Hard error, never a soft short-read: read_range has no
+                        // HTTP-200 semantics, so this is not ServerIgnoredRange
+                        // (same strict gate as the engine's SFTP branch).
+                        let _ = provider.disconnect().await;
+                        return Err(ProviderError::TransferFailed(format!(
+                            "pget: short read at offset {} ({} of {} bytes for window [{}, {}])",
+                            start_off + written,
+                            written,
+                            window_len,
+                            start_off,
+                            end_off
+                        )));
+                    }
+                    file.write_all(&data)
+                        .await
+                        .map_err(ProviderError::IoError)?;
+                    written += data.len() as u64;
+                    aggregate.fetch_add(data.len() as u64, Ordering::Relaxed);
+                }
+                file.flush().await.map_err(ProviderError::IoError)?;
+                let _ = provider.disconnect().await;
+
+                if written != window_len {
+                    return Err(ProviderError::TransferFailed(format!(
+                        "pget: window [{}, {}] wrote {} bytes, expected {}",
+                        start_off, end_off, written, window_len
+                    )));
+                }
+                Ok(ConcurrentRangeOutcome::Completed)
+            }
+        };
+
     let start = Instant::now();
-
-    // Download all chunks concurrently, each with its own connection
-    let workers = effective_parallel_workers(cli).min(actual_segments);
-    let results: Vec<Result<(), String>> = futures_util::stream::iter(chunks.iter().map(|chunk| {
-        let url = url.to_string();
-        let remote = remote_path.to_string();
-        let temp_dir = temp_dir.clone();
-        let aggregate = aggregate.clone();
-        let pb = pb.clone();
-        let offset = chunk.offset;
-        let length = chunk.length;
-        let idx = chunk.index;
-        async move {
-            pget_download_chunk(
-                &url, &remote, &temp_dir, idx, offset, length, aggregate, pb, cli, format,
-            )
-            .await
-        }
-    }))
-    .buffer_unordered(workers)
-    .collect()
-    .await;
-
-    // Check for chunk errors
-    let errors: Vec<&String> = results.iter().filter_map(|r| r.as_ref().err()).collect();
-    if !errors.is_empty() {
-        if let Some(ref pb) = pb {
-            pb.finish_and_clear();
-        }
-        for err in &errors {
-            print_error(format, &format!("pget: {}", err), 4);
-        }
-        // _temp_guard cleans up
-        return 4;
-    }
-
-    // Assemble chunks into final file
-    if let Err(e) = pget_assemble_chunks(&temp_dir, local_path, actual_segments).await {
-        if let Some(ref pb) = pb {
-            pb.finish_and_clear();
-        }
-        print_error(format, &format!("pget assembly failed: {}", e), 4);
-        return 4;
-    }
-
-    if let Some(pb) = pb {
+    let outcome =
+        run_concurrent_range_download(cfg, write_one_range, cancel_token, on_progress).await;
+    watcher.abort();
+    if let Some(ref pb) = pb {
         pb.finish_and_clear();
     }
 
-    let elapsed = start.elapsed();
-    let speed = if elapsed.as_secs_f64() > 0.0 {
-        (file_size as f64 / elapsed.as_secs_f64()) as u64
-    } else {
-        0
-    };
+    match outcome {
+        Ok(ConcurrentRangeOutcome::Completed) => {
+            // The engine left `<local>.aerotmp` committed; atomically
+            // promote it to the final path like every other CLI transfer.
+            let temp = aerotmp_path_for(Path::new(local_path));
+            if let Err(e) = tokio::fs::rename(&temp, local_path).await {
+                let _ = tokio::fs::remove_file(&temp).await;
+                print_error(format, &format!("pget: finalize failed: {}", e), 4);
+                return 4;
+            }
 
-    match format {
-        OutputFormat::Text => {
-            if !cli.quiet {
-                println!(
-                    "{} → {} ({}, {}, {:.1}s, {} segments)",
-                    remote_path,
-                    local_path,
-                    format_size(file_size),
-                    format_speed(speed),
-                    elapsed.as_secs_f64(),
-                    actual_segments,
+            let elapsed = start.elapsed();
+            let speed = if elapsed.as_secs_f64() > 0.0 {
+                (file_size as f64 / elapsed.as_secs_f64()) as u64
+            } else {
+                0
+            };
+
+            match format {
+                OutputFormat::Text => {
+                    if !cli.quiet {
+                        println!(
+                            "{} → {} ({}, {}, {:.1}s, {} segments)",
+                            remote_path,
+                            local_path,
+                            format_size(file_size),
+                            format_speed(speed),
+                            elapsed.as_secs_f64(),
+                            actual_segments,
+                        );
+                    }
+                }
+                OutputFormat::Json => {
+                    print_json(&CliTransferResult {
+                        status: "ok",
+                        operation: "download".to_string(),
+                        path: remote_path.to_string(),
+                        bytes: file_size,
+                        elapsed_secs: elapsed.as_secs_f64(),
+                        speed_bps: speed,
+                    });
+                }
+            }
+            0
+        }
+        Ok(ConcurrentRangeOutcome::ServerIgnoredRange) => {
+            // `read_range` cannot produce this (no HTTP-200 semantics); the
+            // engine already dropped the temp. Defensive honest fallback.
+            pget_fallback_single(url, remote_path, local_path, cli, format).await
+        }
+        Err(e) => {
+            // The engine's RAII guard already removed the temp. Honest
+            // single-stream fallback rather than overclaim parallelism.
+            if !quiet {
+                eprintln!(
+                    "pget: segmented download failed ({}); falling back to single download",
+                    e
                 );
             }
-        }
-        OutputFormat::Json => {
-            print_json(&CliTransferResult {
-                status: "ok",
-                operation: "download".to_string(),
-                path: remote_path.to_string(),
-                bytes: file_size,
-                elapsed_secs: elapsed.as_secs_f64(),
-                speed_bps: speed,
-            });
+            pget_fallback_single(url, remote_path, local_path, cli, format).await
         }
     }
-
-    0
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn pget_download_chunk(
-    url: &str,
-    remote_path: &str,
-    temp_dir: &str,
-    chunk_index: usize,
-    offset: u64,
-    length: u64,
-    aggregate: Arc<AtomicU64>,
-    pb: Option<ProgressBar>,
-    cli: &Cli,
-    format: OutputFormat,
-) -> Result<(), String> {
-    use tokio::io::AsyncWriteExt;
-
-    let (mut provider, _) = create_and_connect(url, cli, format).await.map_err(|code| {
-        format!(
-            "chunk {}: connection failed (exit code {})",
-            chunk_index, code
-        )
-    })?;
-
-    let chunk_path = format!("{}/chunk_{:04}", temp_dir, chunk_index);
-    let mut file = tokio::fs::File::create(&chunk_path)
-        .await
-        .map_err(|e| format!("chunk {}: create file failed: {}", chunk_index, e))?;
-
-    // Stream range data in sub-reads to bound memory usage
-    let mut downloaded = 0u64;
-    while downloaded < length {
-        let remaining = length - downloaded;
-        let read_size = remaining.min(PGET_SUB_READ_SIZE);
-        let data = provider
-            .read_range(remote_path, offset + downloaded, read_size)
-            .await
-            .map_err(|e| {
-                format!(
-                    "chunk {}: read_range at offset {} failed: {}",
-                    chunk_index,
-                    offset + downloaded,
-                    e
-                )
-            })?;
-
-        if data.is_empty() {
-            break;
-        }
-
-        file.write_all(&data)
-            .await
-            .map_err(|e| format!("chunk {}: write failed: {}", chunk_index, e))?;
-
-        downloaded += data.len() as u64;
-        let new_total =
-            aggregate.fetch_add(data.len() as u64, Ordering::Relaxed) + data.len() as u64;
-        if let Some(ref pb) = pb {
-            pb.set_position(new_total);
-        }
-    }
-
-    file.flush()
-        .await
-        .map_err(|e| format!("chunk {}: flush failed: {}", chunk_index, e))?;
-    let _ = provider.disconnect().await;
-    Ok(())
-}
-
-async fn pget_assemble_chunks(
-    temp_dir: &str,
-    dest_path: &str,
-    num_chunks: usize,
-) -> Result<(), String> {
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
-    let temp_dest = format!(
-        "{}.aeroftp-assemble-{}.tmp",
-        dest_path,
-        uuid::Uuid::new_v4()
-    );
-    let mut dest = tokio::fs::File::create(&temp_dest)
-        .await
-        .map_err(|e| format!("failed to create destination temp file: {}", e))?;
-
-    let mut buf = vec![0u8; 256 * 1024]; // 256 KB copy buffer
-
-    for i in 0..num_chunks {
-        let chunk_path = format!("{}/chunk_{:04}", temp_dir, i);
-        let mut src = tokio::fs::File::open(&chunk_path).await.map_err(|e| {
-            let _ = std::fs::remove_file(&temp_dest);
-            format!("failed to open chunk {}: {}", i, e)
-        })?;
-
-        loop {
-            let n = src.read(&mut buf).await.map_err(|e| {
-                let _ = std::fs::remove_file(&temp_dest);
-                format!("failed to read chunk {}: {}", i, e)
-            })?;
-            if n == 0 {
-                break;
-            }
-            dest.write_all(&buf[..n]).await.map_err(|e| {
-                let _ = std::fs::remove_file(&temp_dest);
-                format!("failed to write chunk {}: {}", i, e)
-            })?;
-        }
-    }
-
-    dest.flush().await.map_err(|e| {
-        let _ = std::fs::remove_file(&temp_dest);
-        format!("failed to flush destination: {}", e)
-    })?;
-    drop(dest);
-
-    if Path::new(dest_path).exists() {
-        std::fs::remove_file(dest_path).map_err(|e| {
-            let _ = std::fs::remove_file(&temp_dest);
-            format!("failed to replace destination: {}", e)
-        })?;
-    }
-    std::fs::rename(&temp_dest, dest_path).map_err(|e| {
-        let _ = std::fs::remove_file(&temp_dest);
-        format!("failed to finalize destination: {}", e)
-    })?;
-    Ok(())
 }
 
 /// Fallback to a normal single-stream download (used when pget degrades)
@@ -37449,144 +37433,57 @@ mod tests {
         assert!(update_check_due(&cache, now));
     }
 
-    // ── pget chunk planning tests ──────────────────────────────────
+    // ── pget effective-segment-count tests ─────────────────────────
+    //
+    // The actual gap-free byte windows are planned and unit-tested in
+    // `providers::multi_thread` (`plan_multi_thread_ranges`). The CLI only
+    // derives the segment *count* (degenerate-fallback decision + display);
+    // these assert the historical anti-fragmentation policy is preserved.
 
     #[test]
-    fn test_pget_plan_basic() {
-        let chunks = plan_pget_chunks(100 * 1024 * 1024, 4); // 100 MB, 4 segments
-        assert_eq!(chunks.len(), 4);
-        assert_eq!(chunks[0].offset, 0);
-        assert_eq!(chunks[0].length, 25 * 1024 * 1024);
-        assert_eq!(chunks[1].offset, 25 * 1024 * 1024);
-        assert_eq!(chunks[3].offset, 75 * 1024 * 1024);
-        // Sum of all lengths equals file size
-        let total: u64 = chunks.iter().map(|c| c.length).sum();
-        assert_eq!(total, 100 * 1024 * 1024);
+    fn test_pget_effective_segments_basic() {
+        // 100 MB / 4 -> 25 MB chunks, well above PGET_MIN_CHUNK_SIZE.
+        assert_eq!(pget_effective_segments(100 * 1024 * 1024, 4), 4);
     }
 
     #[test]
-    fn test_pget_plan_uneven_division() {
-        let chunks = plan_pget_chunks(10_000_003, 4); // not evenly divisible
-        assert_eq!(chunks.len(), 4);
-        let total: u64 = chunks.iter().map(|c| c.length).sum();
-        assert_eq!(total, 10_000_003);
-        // Offsets are contiguous
-        for i in 1..chunks.len() {
-            assert_eq!(
-                chunks[i].offset,
-                chunks[i - 1].offset + chunks[i - 1].length
-            );
-        }
+    fn test_pget_effective_segments_uneven_division() {
+        // 10_000_003 / 4 ~= 2.5 MB chunks, above PGET_MIN_CHUNK_SIZE.
+        assert_eq!(pget_effective_segments(10_000_003, 4), 4);
     }
 
     #[test]
-    fn test_pget_plan_reduces_segments_for_small_files() {
-        // 3 MB file with 16 segments requested - each chunk would be < PGET_MIN_CHUNK_SIZE (1 MB)
-        let chunks = plan_pget_chunks(3 * 1024 * 1024, 16);
-        assert_eq!(chunks.len(), 3); // reduced to 3 segments
-        let total: u64 = chunks.iter().map(|c| c.length).sum();
-        assert_eq!(total, 3 * 1024 * 1024);
+    fn test_pget_effective_segments_reduces_for_small_files() {
+        // 3 MB with 16 segments -> each chunk < PGET_MIN_CHUNK_SIZE (1 MB),
+        // so the count collapses to floor(3 MB / 1 MB) = 3.
+        assert_eq!(pget_effective_segments(3 * 1024 * 1024, 16), 3);
     }
 
     #[test]
-    fn test_pget_plan_single_segment() {
-        let chunks = plan_pget_chunks(500_000, 1);
-        assert_eq!(chunks.len(), 1);
-        assert_eq!(chunks[0].offset, 0);
-        assert_eq!(chunks[0].length, 500_000);
+    fn test_pget_effective_segments_single_segment() {
+        assert_eq!(pget_effective_segments(500_000, 1), 1);
     }
 
     #[test]
-    fn test_pget_plan_zero_size() {
-        let chunks = plan_pget_chunks(0, 4);
-        assert!(chunks.is_empty());
+    fn test_pget_effective_segments_zero_size() {
+        assert_eq!(pget_effective_segments(0, 4), 0);
     }
 
     #[test]
-    fn test_pget_plan_clamps_segments() {
-        let chunks = plan_pget_chunks(100 * 1024 * 1024, 100); // 100 > max 16
-        assert!(chunks.len() <= 16);
-        let total: u64 = chunks.iter().map(|c| c.length).sum();
-        assert_eq!(total, 100 * 1024 * 1024);
+    fn test_pget_effective_segments_clamps_segments() {
+        // 100 > hard cap 16; 100 MB / 16 = 6.25 MB chunks, above the floor.
+        assert_eq!(pget_effective_segments(100 * 1024 * 1024, 100), 16);
     }
 
     #[test]
-    fn test_pget_plan_tiny_file() {
-        // File smaller than PGET_MIN_CHUNK_SIZE - should get 1 segment
-        let chunks = plan_pget_chunks(500_000, 8);
-        assert_eq!(chunks.len(), 1);
-        assert_eq!(chunks[0].length, 500_000);
-    }
-
-    #[tokio::test]
-    async fn test_pget_assemble_chunks() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let temp_path = temp_dir.path().to_str().unwrap();
-
-        // Write 3 chunk files
-        tokio::fs::write(format!("{}/chunk_0000", temp_path), b"Hello, ")
-            .await
-            .unwrap();
-        tokio::fs::write(format!("{}/chunk_0001", temp_path), b"segmented ")
-            .await
-            .unwrap();
-        tokio::fs::write(format!("{}/chunk_0002", temp_path), b"world!")
-            .await
-            .unwrap();
-
-        let dest = temp_dir.path().join("assembled.bin");
-        let dest_str = dest.to_str().unwrap();
-
-        pget_assemble_chunks(temp_path, dest_str, 3).await.unwrap();
-
-        let result = tokio::fs::read(dest_str).await.unwrap();
-        assert_eq!(result, b"Hello, segmented world!");
-    }
-
-    #[tokio::test]
-    async fn test_pget_assemble_binary_integrity() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let temp_path = temp_dir.path().to_str().unwrap();
-
-        // Write binary chunk data
-        let chunk0: Vec<u8> = (0..1024).map(|i| (i % 256) as u8).collect();
-        let chunk1: Vec<u8> = (1024..2048).map(|i| (i % 256) as u8).collect();
-        tokio::fs::write(format!("{}/chunk_0000", temp_path), &chunk0)
-            .await
-            .unwrap();
-        tokio::fs::write(format!("{}/chunk_0001", temp_path), &chunk1)
-            .await
-            .unwrap();
-
-        let dest = temp_dir.path().join("assembled.bin");
-        let dest_str = dest.to_str().unwrap();
-
-        pget_assemble_chunks(temp_path, dest_str, 2).await.unwrap();
-
-        let result = tokio::fs::read(dest_str).await.unwrap();
-        let expected: Vec<u8> = (0..2048).map(|i| (i % 256) as u8).collect();
-        assert_eq!(result, expected);
+    fn test_pget_effective_segments_tiny_file() {
+        // Below PGET_MIN_CHUNK_SIZE -> never split, exactly 1 segment.
+        assert_eq!(pget_effective_segments(500_000, 8), 1);
     }
 
     #[test]
-    fn test_pget_temp_guard_cleanup() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let guard_path = temp_dir.path().join("pget-guard-test");
-        std::fs::create_dir_all(&guard_path).unwrap();
-        std::fs::write(guard_path.join("chunk_0000"), b"data").unwrap();
-
-        let guard_str = guard_path.to_string_lossy().to_string();
-        assert!(guard_path.exists());
-
-        {
-            let _guard = PgetTempGuard(guard_str);
-            // guard goes out of scope here
-        }
-
-        assert!(
-            !guard_path.exists(),
-            "temp dir should be cleaned up by PgetTempGuard"
-        );
+    fn test_pget_effective_segments_zero_requested() {
+        assert_eq!(pget_effective_segments(100 * 1024 * 1024, 0), 0);
     }
 
     // ── serve http helper tests ──────────────────────────────────────
