@@ -4730,6 +4730,220 @@ async fn upload_transfer_task(
     result
 }
 
+// ── PD-CLI-CONV-B: shared provider executor convergence ────────────
+
+/// Outcome of the converged shared-executor download batch.
+struct SharedDownloadOutcome {
+    downloaded: u32,
+    errors: Vec<String>,
+}
+
+/// Sink-agnostic CLI sink for the shared provider executor.
+///
+/// The shared executor emits Tauri-shaped `TransferEvent`s; the CLI has no
+/// Tauri frontend, so progress/start/complete are dropped (the overall
+/// indicatif bar is driven by the orchestrator's per-file progress
+/// observer instead). Only `file_error` messages are captured so
+/// `aeroftp get -r` keeps reporting which file failed: no UX regression
+/// versus the legacy independent-connection path. The three
+/// batch-lifecycle events inherit the trait's no-op defaults.
+struct CliBatchSink {
+    errors: Mutex<Vec<String>>,
+}
+
+impl CliBatchSink {
+    fn new() -> Self {
+        Self {
+            errors: Mutex::new(Vec::new()),
+        }
+    }
+
+    fn take_errors(&self) -> Vec<String> {
+        self.errors
+            .lock()
+            .map(|mut g| std::mem::take(&mut *g))
+            .unwrap_or_default()
+    }
+}
+
+impl ftp_client_gui_lib::transfer_event_sink::TransferEventSink for CliBatchSink {
+    fn emit_transfer_event(&self, event: ftp_client_gui_lib::TransferEvent) {
+        if event.event_type == "file_error" {
+            let msg = event
+                .message
+                .unwrap_or_else(|| "transfer failed".to_string());
+            if let Ok(mut g) = self.errors.lock() {
+                g.push(format!("{}: {}", event.filename, msg));
+            }
+        }
+    }
+}
+
+/// Run the CLI file-level download batch through the SAME shared provider
+/// executor + orchestrator the GUI uses, sink-agnostic (PD-CLI-CONV-A).
+///
+/// Engaged ONLY for pool-backed providers (clone-pool session model:
+/// SFTP / S3 / Azure / WebDAV / Koofr). For non-pool-backed providers
+/// (FTP, single-connection APIs) the connected base provider is handed
+/// back un-consumed via `Err(base)` so the caller keeps the legacy
+/// independent-connection path: honest fallback, no overclaim.
+///
+/// Non-regression: the legacy CLI path opens N independent connections via
+/// `buffer_unordered(workers)`. The shared SFTP path opens N independent
+/// SSH connections too (`clone_for_transfer` re-dial, PD-SFTP-1), bounded
+/// by `min(workers, provider session cap)`. Parallelism is preserved up to
+/// the provider's advertised safe cap; beyond it the shared engine clamps
+/// deliberately (surfaced honestly), it never silently serialises.
+async fn run_shared_provider_download_batch(
+    base: Box<dyn StorageProvider>,
+    files: &[(String, String, u64)],
+    cli: &Cli,
+    overall_pb: Option<ProgressBar>,
+    cancelled: Arc<AtomicBool>,
+) -> Result<SharedDownloadOutcome, Box<dyn StorageProvider>> {
+    use ftp_client_gui_lib::provider_transfer_executor::{
+        resolve_provider_executor_session_model, ProviderDownloadExecutor,
+        ProviderExecutorSessionModel,
+    };
+    use ftp_client_gui_lib::transfer_domain::{
+        TransferBatchConfig, TransferDirection, TransferEntry,
+    };
+    use ftp_client_gui_lib::transfer_event_sink::TransferEventSink;
+    use ftp_client_gui_lib::transfer_orchestrator::{
+        execute_batch, ProgressObserver, TransferBatch,
+    };
+    use ftp_client_gui_lib::transfer_settings::{
+        resolve_provider_transfer_settings, TransferSettingsInput,
+    };
+
+    let workers = effective_parallel_workers(cli);
+    let provider_arc = Arc::new(AsyncMutex::new(Some(base)));
+
+    let model = resolve_provider_executor_session_model(&provider_arc, workers).await;
+    let is_pool_backed = matches!(
+        model,
+        ProviderExecutorSessionModel::HttpClonePool { .. }
+            | ProviderExecutorSessionModel::SftpConnectionPool { .. }
+    );
+    if !is_pool_backed {
+        // Not pool-backed: return the still-connected provider so the
+        // caller runs the legacy independent-connection batch.
+        let base = provider_arc
+            .lock()
+            .await
+            .take()
+            .expect("base provider must still be present");
+        return Err(base);
+    }
+
+    // The shared executor writes `<local>.aerotmp` then atomically
+    // renames; it does not mkdir parents. Pre-create them (idempotent),
+    // matching the legacy per-file `create_dir_all`.
+    for (_, local_path, _) in files {
+        if let Some(parent) = Path::new(local_path).parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+    }
+
+    // `resolve_provider_transfer_settings` caps max_concurrent to 1 (GUI
+    // policy). The executor only reads retry/timeout from it; the real
+    // file-level concurrency is `TransferBatchConfig.max_concurrent`
+    // below, so the CLI keeps its requested `--parallel`.
+    let runtime_settings = resolve_provider_transfer_settings(TransferSettingsInput {
+        max_concurrent: None,
+        retry_count: None,
+        timeout_seconds: None,
+    });
+
+    let entries: Vec<TransferEntry> = files
+        .iter()
+        .enumerate()
+        .map(|(i, (remote_path, local_path, size))| {
+            let display_name = remote_path
+                .rsplit('/')
+                .next()
+                .unwrap_or(remote_path)
+                .to_string();
+            TransferEntry {
+                id: format!("cli-get-{i}"),
+                display_name,
+                remote_path: remote_path.clone(),
+                local_path: local_path.clone(),
+                size: *size,
+                modified: None,
+            }
+        })
+        .collect();
+
+    let batch = TransferBatch {
+        id: "cli-get-recursive".to_string(),
+        display_name: "aeroftp get -r".to_string(),
+        direction: TransferDirection::Download,
+        config: TransferBatchConfig {
+            max_concurrent: workers as u32,
+            max_retries: runtime_settings.retry_count,
+            timeout_ms: runtime_settings.timeout_seconds.saturating_mul(1000),
+        },
+        entries,
+    };
+
+    // Bridge Ctrl+C (AtomicBool) to the executor's CancellationToken so an
+    // in-flight file aborts, matching the GUI executor behaviour.
+    let cancel_token = tokio_util::sync::CancellationToken::new();
+    let watcher = {
+        let ct = cancel_token.clone();
+        let flag = cancelled.clone();
+        tokio::spawn(async move {
+            while !flag.load(Ordering::Relaxed) {
+                tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+            }
+            ct.cancel();
+        })
+    };
+
+    let sink = Arc::new(CliBatchSink::new());
+    let dyn_sink: Arc<dyn TransferEventSink> = sink.clone();
+
+    let executor = Arc::new(ProviderDownloadExecutor::new(
+        dyn_sink.clone(),
+        provider_arc.clone(),
+        runtime_settings,
+        cancel_token,
+        model,
+    ));
+
+    let progress_observer: ProgressObserver = {
+        let overall_pb = overall_pb.clone();
+        Arc::new(move |snapshot| {
+            if let Some(pb) = overall_pb.as_ref() {
+                pb.set_position(snapshot.bytes_transferred);
+            }
+        })
+    };
+
+    let batch_result = execute_batch(
+        dyn_sink,
+        batch,
+        executor,
+        cancelled.clone(),
+        Some(progress_observer),
+    )
+    .await;
+
+    watcher.abort();
+
+    // The base provider was only the clone-pool spec source; clone workers
+    // each ran on their own independent connection. Disconnect it.
+    if let Some(mut base) = provider_arc.lock().await.take() {
+        let _ = base.disconnect().await;
+    }
+
+    Ok(SharedDownloadOutcome {
+        downloaded: batch_result.completed,
+        errors: sink.take_errors(),
+    })
+}
+
 // ── URL Parsing → ProviderConfig ───────────────────────────────────
 
 fn resolve_password(
@@ -14257,8 +14471,6 @@ async fn cmd_get_recursive(
         }
     }
 
-    let _ = provider.disconnect().await;
-
     let total_bytes: u64 = files.iter().map(|(_, _, size)| *size).sum();
     let total_files = files.len();
     if !quiet {
@@ -14279,47 +14491,73 @@ async fn cmd_get_recursive(
         None
     };
 
-    let results =
-        futures_util::stream::iter(files.into_iter().map(|(remote_path, local_path, _size)| {
-            let cancelled = cancelled.clone();
-            let aggregate = aggregate.clone();
-            let overall_pb = overall_pb.clone();
-            async move {
-                if cancelled.load(Ordering::Relaxed) {
-                    return Err("Cancelled by user".to_string());
+    let mut downloaded: u32 = 0;
+    let mut errors: Vec<String> = Vec::new();
+
+    // PD-CLI-CONV-B: converge the file-level batch on the shared provider
+    // executor + orchestrator (sink-agnostic) for pool-backed providers
+    // (clone-pool: SFTP / S3 / Azure / WebDAV / Koofr). The scan provider
+    // stays connected so its captured secure connection spec backs the
+    // clone-pool workers. Non-pool-backed providers (FTP, single-conn
+    // APIs) fall back to the legacy independent-connection batch below:
+    // honest fallback, no overclaim.
+    match run_shared_provider_download_batch(
+        provider,
+        &files,
+        cli,
+        overall_pb.clone(),
+        cancelled.clone(),
+    )
+    .await
+    {
+        Ok(outcome) => {
+            downloaded = outcome.downloaded;
+            errors = outcome.errors;
+        }
+        Err(mut base) => {
+            let _ = base.disconnect().await;
+            let results = futures_util::stream::iter(files.into_iter().map(
+                |(remote_path, local_path, _size)| {
+                    let cancelled = cancelled.clone();
+                    let aggregate = aggregate.clone();
+                    let overall_pb = overall_pb.clone();
+                    async move {
+                        if cancelled.load(Ordering::Relaxed) {
+                            return Err("Cancelled by user".to_string());
+                        }
+                        if let Some(parent) = Path::new(&local_path).parent() {
+                            let _ = std::fs::create_dir_all(parent);
+                        }
+                        let result = download_transfer_task(
+                            url,
+                            remote_path.clone(),
+                            local_path,
+                            cli,
+                            format,
+                            Some(aggregate),
+                            overall_pb,
+                            resolve_max_transfer(cli),
+                        )
+                        .await;
+                        result.map(|_| remote_path)
+                    }
+                },
+            ))
+            .buffer_unordered(effective_parallel_workers(cli))
+            .collect::<Vec<_>>()
+            .await;
+
+            for result in results {
+                match result {
+                    Ok(_) => downloaded += 1,
+                    Err(err) => errors.push(err),
                 }
-                if let Some(parent) = Path::new(&local_path).parent() {
-                    let _ = std::fs::create_dir_all(parent);
-                }
-                let result = download_transfer_task(
-                    url,
-                    remote_path.clone(),
-                    local_path,
-                    cli,
-                    format,
-                    Some(aggregate),
-                    overall_pb,
-                    resolve_max_transfer(cli),
-                )
-                .await;
-                result.map(|_| remote_path)
             }
-        }))
-        .buffer_unordered(effective_parallel_workers(cli))
-        .collect::<Vec<_>>()
-        .await;
+        }
+    }
 
     if let Some(pb) = overall_pb {
         pb.finish_and_clear();
-    }
-
-    let mut downloaded: u32 = 0;
-    let mut errors: Vec<String> = Vec::new();
-    for result in results {
-        match result {
-            Ok(_) => downloaded += 1,
-            Err(err) => errors.push(err),
-        }
     }
 
     let elapsed = start.elapsed();

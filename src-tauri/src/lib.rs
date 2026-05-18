@@ -110,7 +110,12 @@ mod plugins;
 pub mod profile_auth_state;
 mod profile_export;
 mod provider_commands;
-mod provider_transfer_executor;
+// PD-CLI-CONV-B: the next four modules are exposed for the `aeroftp-cli`
+// bin so the CLI file-level batch can converge on the same provider
+// executor + orchestrator the GUI uses (sink-agnostic after
+// PD-CLI-CONV-A). Additive visibility only: no behaviour change, no API
+// break (visibility only widens).
+pub mod provider_transfer_executor;
 pub mod providers;
 mod pty;
 pub mod rclone_crypt;
@@ -131,11 +136,11 @@ mod sync_scheduler;
 mod sync_versioning;
 mod totp;
 pub mod transfer_dag;
-mod transfer_domain;
+pub mod transfer_domain;
 pub mod transfer_event_sink;
-mod transfer_orchestrator;
+pub mod transfer_orchestrator;
 mod transfer_pool;
-mod transfer_settings;
+pub mod transfer_settings;
 mod tray_badge;
 mod vault_remote;
 mod windows_acl;
@@ -4120,8 +4125,14 @@ async fn download_files_batch(
         cancel_token,
     ));
 
+    // PD-CLI-CONV-B: the orchestrator is now sink-agnostic. The FTP
+    // executors keep their own `AppHandle` for `transfer_event`; only the
+    // three batch-lifecycle events move behind the sink. `AppHandleSink`
+    // is a 1:1 adapter, so the emitted payloads are byte-identical.
+    let batch_sink: std::sync::Arc<dyn crate::transfer_event_sink::TransferEventSink> =
+        std::sync::Arc::new(crate::transfer_event_sink::AppHandleSink::new(app.clone()));
     let batch_result = transfer_orchestrator::execute_batch(
-        &app,
+        batch_sink,
         batch,
         executor,
         state.cancel_flag.clone(),
@@ -4330,8 +4341,14 @@ async fn upload_files_batch(
         cancel_token,
     ));
 
+    // PD-CLI-CONV-B: the orchestrator is now sink-agnostic. The FTP
+    // executors keep their own `AppHandle` for `transfer_event`; only the
+    // three batch-lifecycle events move behind the sink. `AppHandleSink`
+    // is a 1:1 adapter, so the emitted payloads are byte-identical.
+    let batch_sink: std::sync::Arc<dyn crate::transfer_event_sink::TransferEventSink> =
+        std::sync::Arc::new(crate::transfer_event_sink::AppHandleSink::new(app.clone()));
     let batch_result = transfer_orchestrator::execute_batch(
-        &app,
+        batch_sink,
         batch,
         executor,
         state.cancel_flag.clone(),
@@ -4874,8 +4891,14 @@ async fn download_folder(
         cancel_token,
     ));
 
+    // PD-CLI-CONV-B: the orchestrator is now sink-agnostic. The FTP
+    // executors keep their own `AppHandle` for `transfer_event`; only the
+    // three batch-lifecycle events move behind the sink. `AppHandleSink`
+    // is a 1:1 adapter, so the emitted payloads are byte-identical.
+    let batch_sink: std::sync::Arc<dyn crate::transfer_event_sink::TransferEventSink> =
+        std::sync::Arc::new(crate::transfer_event_sink::AppHandleSink::new(app.clone()));
     let batch_result = transfer_orchestrator::execute_batch(
-        &app,
+        batch_sink,
         batch,
         executor,
         state.cancel_flag.clone(),
@@ -5400,8 +5423,14 @@ async fn upload_folder(
         cancel_token,
     ));
 
+    // PD-CLI-CONV-B: the orchestrator is now sink-agnostic. The FTP
+    // executors keep their own `AppHandle` for `transfer_event`; only the
+    // three batch-lifecycle events move behind the sink. `AppHandleSink`
+    // is a 1:1 adapter, so the emitted payloads are byte-identical.
+    let batch_sink: std::sync::Arc<dyn crate::transfer_event_sink::TransferEventSink> =
+        std::sync::Arc::new(crate::transfer_event_sink::AppHandleSink::new(app.clone()));
     let batch_result = transfer_orchestrator::execute_batch(
-        &app,
+        batch_sink,
         batch,
         executor,
         state.cancel_flag.clone(),

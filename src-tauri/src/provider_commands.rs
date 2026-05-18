@@ -24,7 +24,7 @@ use crate::providers::{
     StorageInfo, StorageProvider,
 };
 use crate::transfer_domain::{TransferBatchConfig, TransferDirection, TransferEntry};
-use crate::transfer_event_sink::AppHandleSink;
+use crate::transfer_event_sink::{AppHandleSink, TransferEventSink};
 use crate::transfer_orchestrator::{execute_batch, ProgressObserver, TransferBatch};
 use crate::transfer_settings::{
     resolve_provider_transfer_settings, ResolvedTransferSettings, TransferSettingsInput,
@@ -1688,8 +1688,9 @@ async fn provider_download_folder_inner(
         batch.config.max_concurrent as usize,
     )
     .await;
+    let sink: Arc<dyn TransferEventSink> = Arc::new(AppHandleSink::new(app.clone()));
     let executor = Arc::new(ProviderDownloadExecutor::new(
-        Arc::new(AppHandleSink::new(app.clone())),
+        sink.clone(),
         state.provider.clone(),
         runtime_settings,
         cancel_token,
@@ -1697,7 +1698,7 @@ async fn provider_download_folder_inner(
     ));
 
     let batch_result = execute_batch(
-        app,
+        sink,
         batch,
         executor,
         state.cancel_flag.clone(),
@@ -2030,8 +2031,9 @@ async fn provider_upload_folder_inner(
         batch.config.max_concurrent as usize,
     )
     .await;
+    let sink: Arc<dyn TransferEventSink> = Arc::new(AppHandleSink::new(app.clone()));
     let executor = Arc::new(ProviderUploadExecutor::new(
-        Arc::new(AppHandleSink::new(app.clone())),
+        sink.clone(),
         state.provider.clone(),
         runtime_settings,
         commit_message,
@@ -2040,7 +2042,7 @@ async fn provider_upload_folder_inner(
     ));
 
     let batch_result = execute_batch(
-        app,
+        sink,
         batch,
         executor,
         state.cancel_flag.clone(),
