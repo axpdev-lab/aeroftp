@@ -13,14 +13,18 @@
 //! so the helper reports an honest single-stream fallback instead of silently
 //! corrupting the file by writing a full body at a chunk offset.
 //!
-//! `plan_multi_thread_ranges` is pure, fully unit-tested and already wired
-//! (S3's `download_multi_thread` calls it). The strict download helper and
-//! its support types are the convergence primitive WebDAV/Koofr will adopt
-//! in **PD-HTTP-2** after the live 206 census; S3 keeps its native path for
-//! now. They are therefore intentionally unused at PD-HTTP-1 close and
-//! carry `#[allow(dead_code)]` with this rationale rather than a faked
-//! consumer (rev 3 principle: no overclaim, untested live paths stay
-//! honestly marked scaffold, not silently masked).
+//! `plan_multi_thread_ranges` is pure, fully unit-tested and wired by S3's
+//! native `download_multi_thread`. As of **PD-HTTP-2** the strict download
+//! helper is no longer scaffold: [`try_http_concurrent_range_download`] is
+//! the live entry point WebDAV and Koofr call from their `download()` path.
+//! It performs a real strict 206 probe (a one-byte `Range` request), only
+//! commits to the concurrent path when the server proves `206` +
+//! `Content-Range` honesty, and otherwise hands an honest single-stream
+//! fallback (with the progress callback returned unconsumed) back to the
+//! caller. S3 deliberately keeps its native path: it is already
+//! live-validated byte-identical and converging it here would risk
+//! regressing a proven path for no measured gain (tracked, not done in
+//! PD-HTTP-2; rev 3 principle: no overclaim, no churn on a validated path).
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -32,6 +36,9 @@ use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
+use reqwest::header::{HeaderName, HeaderValue, RANGE};
+
+use super::http_retry::{send_with_retry, HttpRetryConfig};
 use super::ProviderError;
 
 /// Plan contiguous, gap-free, non-overlapping byte ranges covering the whole
@@ -74,7 +81,6 @@ pub(crate) fn plan_multi_thread_ranges(
 /// (unknown-length) form. Returns `None` on any deviation from the
 /// `bytes <start>-<end>/<total|*>` grammar: the strict gate treats a
 /// malformed header on a `206` as a hard failure, never a soft accept.
-#[allow(dead_code)] // PD-HTTP-2 convergence primitive (see module docs)
 pub(crate) fn parse_content_range(header: &str) -> Option<(u64, u64, Option<u64>)> {
     let rest = header.trim().strip_prefix("bytes ")?;
     let (range_part, total_part) = rest.split_once('/')?;
@@ -94,7 +100,6 @@ pub(crate) fn parse_content_range(header: &str) -> Option<(u64, u64, Option<u64>
 /// True when a `206` response's `Content-Range` exactly covers the requested
 /// inclusive `[want_start, want_end]` window. Any mismatch (wrong offset,
 /// short window, missing/garbled header) fails the strict gate.
-#[allow(dead_code)] // PD-HTTP-2 convergence primitive (see module docs)
 pub(crate) fn content_range_matches(
     content_range: Option<&str>,
     want_start: u64,
@@ -107,7 +112,6 @@ pub(crate) fn content_range_matches(
 }
 
 /// Outcome of an attempted concurrent range download.
-#[allow(dead_code)] // PD-HTTP-2 convergence primitive (see module docs)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ConcurrentRangeOutcome {
     /// Every range came back as a strict `206` with a coherent
@@ -119,7 +123,6 @@ pub(crate) enum ConcurrentRangeOutcome {
 }
 
 /// Configuration for [`download_via_concurrent_range`].
-#[allow(dead_code)] // PD-HTTP-2 convergence primitive (see module docs)
 pub(crate) struct ConcurrentRangeConfig {
     /// Final destination path (used only to derive the `.aerotmp` sibling).
     pub final_path: PathBuf,
@@ -134,13 +137,11 @@ pub(crate) struct ConcurrentRangeConfig {
 /// called. Guarantees no partial temp survives an error, a fallback, or a
 /// cancellation (the F-1 lesson: every new transfer path is cancellable and
 /// leaves no debris).
-#[allow(dead_code)] // PD-HTTP-2 convergence primitive (see module docs)
 struct TempFileGuard {
     path: PathBuf,
     committed: bool,
 }
 
-#[allow(dead_code)] // PD-HTTP-2 convergence primitive (see module docs)
 impl TempFileGuard {
     fn new(path: PathBuf) -> Self {
         Self {
@@ -165,7 +166,6 @@ impl Drop for TempFileGuard {
 /// Compute the `.aerotmp` sibling of `final_path`, matching the convention
 /// used by `AtomicFile::temp_path_for` so existing cleanup tooling and the
 /// resume path stay consistent.
-#[allow(dead_code)] // PD-HTTP-2 convergence primitive (see module docs)
 pub(crate) fn aerotmp_path_for(final_path: &Path) -> PathBuf {
     let mut p = final_path.as_os_str().to_owned();
     p.push(".aerotmp");
@@ -182,7 +182,6 @@ pub(crate) fn aerotmp_path_for(final_path: &Path) -> PathBuf {
 /// Returns [`ConcurrentRangeOutcome::ServerIgnoredRange`] (no bytes
 /// committed, temp removed) the moment any task observes `200 OK`, so the
 /// caller can perform an honest single-stream download instead.
-#[allow(dead_code)] // PD-HTTP-2 convergence primitive (see module docs)
 pub(crate) async fn download_via_concurrent_range<F, Fut>(
     cfg: ConcurrentRangeConfig,
     fetch_range: F,
@@ -296,7 +295,6 @@ where
 }
 
 /// Download exactly one `[start, end]` window under the strict gate.
-#[allow(dead_code)] // PD-HTTP-2 convergence primitive (see module docs)
 async fn download_one_strict_range<F, Fut>(
     fetch_range: &F,
     temp_path: &Path,
@@ -393,6 +391,177 @@ where
     file.flush().await.map_err(ProviderError::IoError)?;
     file.sync_all().await.map_err(ProviderError::IoError)?;
     Ok(ConcurrentRangeOutcome::Completed)
+}
+
+/// A stateless-HTTP provider's request recipe for concurrent Range download.
+///
+/// `headers` are the *static* per-request headers (e.g. a precomputed Basic
+/// `Authorization`, an API version header). They must be safe to replay
+/// concurrently: a WebDAV server using **Digest** auth mutates a per-request
+/// nonce counter and is therefore excluded by the caller, never represented
+/// here. No credential is reconstructed: the caller hands the live client and
+/// the already-derived header values.
+pub(crate) struct HttpRangeRequest {
+    pub client: reqwest::Client,
+    pub url: String,
+    pub headers: Vec<(HeaderName, HeaderValue)>,
+    pub local_path: String,
+    pub streams: usize,
+    pub max_streams: usize,
+    pub cutoff: u64,
+}
+
+/// Result of [`try_http_concurrent_range_download`].
+pub(crate) enum HttpRangeAttempt {
+    /// Concurrent Range download finished and the file is at `local_path`.
+    Completed,
+    /// The provider must run its normal single-stream download. The progress
+    /// callback is handed back unconsumed when the strict probe declined
+    /// before the concurrent helper took ownership (`Some`); it is `None`
+    /// only on the rare post-probe inconsistency where the server honoured
+    /// the probe but then ignored a real Range mid-flight.
+    Fallback(Option<Box<dyn Fn(u64, u64) + Send>>),
+    /// Hard failure from the concurrent path (already past a good probe).
+    Failed(ProviderError),
+}
+
+/// Strict 206 probe + concurrent Range download for a stateless-HTTP
+/// provider, with an honest single-stream fallback.
+///
+/// The probe is a single `Range: bytes=0-0` GET. The concurrent path is taken
+/// **only** when the server answers `206` with a `Content-Range` that exactly
+/// covers `0-0` and advertises a known total `>=` the multi-thread cutoff.
+/// Any other outcome (a `200` that ignored Range, an unknown total, a
+/// sub-cutoff file, a transport hiccup) yields `Fallback`, so the provider's
+/// own retry-hardened single-stream path stays the single source of truth for
+/// the canonical error. A `200` is logged as a `range_ignored` event
+/// (observability hook for PD-ADAPT-1 metrics).
+pub(crate) async fn try_http_concurrent_range_download(
+    req: HttpRangeRequest,
+    on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+) -> HttpRangeAttempt {
+    if req.streams < 2 || req.max_streams == 0 {
+        return HttpRangeAttempt::Fallback(on_progress);
+    }
+
+    let retry_cfg = HttpRetryConfig::default();
+
+    // --- Strict 206 probe (one byte) -------------------------------------
+    let probe_builder = {
+        let mut rb = req.client.get(&req.url);
+        for (k, v) in &req.headers {
+            rb = rb.header(k.clone(), v.clone());
+        }
+        rb.header(RANGE, HeaderValue::from_static("bytes=0-0"))
+    };
+    let probe_req = match probe_builder.build() {
+        Ok(r) => r,
+        Err(_) => return HttpRangeAttempt::Fallback(on_progress),
+    };
+    let probe = match send_with_retry(&req.client, probe_req, &retry_cfg).await {
+        Ok(r) => r,
+        // An opportunistic probe must never be the error source: let the
+        // provider's canonical path connect and report.
+        Err(_) => return HttpRangeAttempt::Fallback(on_progress),
+    };
+
+    let status = probe.status();
+    if status == reqwest::StatusCode::OK {
+        tracing::warn!(
+            "[multi-thread] range_ignored: server answered 200 OK to a Range probe for {}; single-stream fallback",
+            req.url
+        );
+        return HttpRangeAttempt::Fallback(on_progress);
+    }
+    if status != reqwest::StatusCode::PARTIAL_CONTENT {
+        // 416/4xx/5xx: defer to the canonical single-stream path.
+        return HttpRangeAttempt::Fallback(on_progress);
+    }
+
+    let content_range = probe
+        .headers()
+        .get(reqwest::header::CONTENT_RANGE)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+    if !content_range_matches(content_range.as_deref(), 0, 0) {
+        tracing::warn!(
+            "[multi-thread] 206 with incoherent Content-Range {:?} on probe for {}; single-stream fallback",
+            content_range,
+            req.url
+        );
+        return HttpRangeAttempt::Fallback(on_progress);
+    }
+    let total = match content_range
+        .as_deref()
+        .and_then(parse_content_range)
+        .and_then(|(_, _, total)| total)
+    {
+        Some(t) if t > 0 && t >= req.cutoff => t,
+        // Unknown length or below cutoff: not worth (or not safe to plan)
+        // a concurrent split.
+        _ => return HttpRangeAttempt::Fallback(on_progress),
+    };
+
+    // --- Concurrent path (server proved 206 honesty) ---------------------
+    let parallel = req.streams.clamp(1, req.max_streams);
+    let cfg = ConcurrentRangeConfig {
+        final_path: PathBuf::from(&req.local_path),
+        total_size: total,
+        streams: req.streams,
+        max_streams: req.max_streams,
+        max_parallel: parallel,
+    };
+
+    let client = req.client.clone();
+    let url: Arc<str> = Arc::from(req.url.as_str());
+    let headers = Arc::new(req.headers.clone());
+    let fetch_range = move |start: u64, end: u64| {
+        let client = client.clone();
+        let url = url.clone();
+        let headers = headers.clone();
+        async move {
+            let mut rb = client.get(url.as_ref());
+            for (k, v) in headers.iter() {
+                rb = rb.header(k.clone(), v.clone());
+            }
+            let range = HeaderValue::from_str(&format!("bytes={}-{}", start, end))
+                .map_err(|e| ProviderError::TransferFailed(format!("Invalid Range: {}", e)))?;
+            let request = rb
+                .header(RANGE, range)
+                .build()
+                .map_err(|e| ProviderError::TransferFailed(format!("Build request: {}", e)))?;
+            send_with_retry(&client, request, &HttpRetryConfig::default())
+                .await
+                .map_err(|e| ProviderError::TransferFailed(e.to_string()))
+        }
+    };
+
+    match download_via_concurrent_range(cfg, fetch_range, CancellationToken::new(), on_progress)
+        .await
+    {
+        Ok(ConcurrentRangeOutcome::Completed) => {
+            let temp = aerotmp_path_for(Path::new(&req.local_path));
+            match tokio::fs::rename(&temp, &req.local_path).await {
+                Ok(()) => HttpRangeAttempt::Completed,
+                Err(e) => {
+                    let _ = tokio::fs::remove_file(&temp).await;
+                    HttpRangeAttempt::Failed(ProviderError::IoError(e))
+                }
+            }
+        }
+        Ok(ConcurrentRangeOutcome::ServerIgnoredRange) => {
+            // Server honoured the probe then ignored a real Range: rare
+            // inconsistency. The helper already removed the temp; the
+            // progress callback was moved in, so the fallback runs without
+            // it (degraded but correct).
+            tracing::warn!(
+                "[multi-thread] range_ignored mid-flight after a good probe for {}; single-stream fallback (no progress)",
+                req.url
+            );
+            HttpRangeAttempt::Fallback(None)
+        }
+        Err(e) => HttpRangeAttempt::Failed(e),
+    }
 }
 
 #[cfg(test)]

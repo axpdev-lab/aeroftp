@@ -324,8 +324,10 @@ struct Cli {
 
     /// Number of concurrent Range streams per single-file download
     /// (rclone `--multi-thread-streams`). Default 1 = disabled. Range 1-16.
-    /// Currently honored by S3-compatible providers; other backends fall back
-    /// to single-stream transparently. Reads default from
+    /// Honored by S3/Azure (native) and, after a live strict 206 probe, by
+    /// WebDAV (Basic/anonymous auth; Digest excluded) and Koofr. Any backend
+    /// or server that does not prove Range honesty falls back to
+    /// single-stream transparently. Reads default from
     /// `AEROFTP_MULTI_THREAD_STREAMS` if set.
     #[arg(
         long,

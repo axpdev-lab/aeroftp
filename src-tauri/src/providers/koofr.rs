@@ -282,7 +282,16 @@ pub struct KoofrProvider {
     space_total: i64,
     space_used: i64,
     account_email: Option<String>,
+    /// Multi-thread concurrent-Range download (rclone `--multi-thread-streams`).
+    /// `1` = disabled (default). Set via `set_multi_thread_download`.
+    multi_thread_streams: usize,
+    /// Files at or above this size use the concurrent-Range path when
+    /// `multi_thread_streams >= 2`.
+    multi_thread_cutoff: u64,
 }
+
+/// Provider-specific hard cap on concurrent Range streams (mirrors S3's 16).
+const KOOFR_MULTI_THREAD_MAX_STREAMS: usize = 16;
 
 impl KoofrProvider {
     pub fn new(config: KoofrConfig) -> Self {
@@ -306,6 +315,8 @@ impl KoofrProvider {
             space_total: 0,
             space_used: 0,
             account_email: None,
+            multi_thread_streams: 1,
+            multi_thread_cutoff: 8 * 1024 * 1024,
         }
     }
 
@@ -802,6 +813,8 @@ impl StorageProvider for KoofrProvider {
             return Err(ProviderError::NotConnected);
         }
 
+        let mut on_progress = on_progress;
+
         let resolved = self.resolve_path(remote_path);
         let url = format!(
             "{}/mounts/{}/files/get?path={}",
@@ -809,6 +822,26 @@ impl StorageProvider for KoofrProvider {
             self.mount_id,
             urlencoding::encode(&resolved)
         );
+
+        // PD-HTTP-2: concurrent-Range download behind a real strict 206 probe.
+        // Koofr content auth is a static Basic header (no per-request nonce),
+        // so it is safe to replay concurrently through the live client.
+        if self.multi_thread_streams >= 2 {
+            let req = super::multi_thread::HttpRangeRequest {
+                client: self.client.clone(),
+                url: url.clone(),
+                headers: vec![(AUTHORIZATION, self.auth_header()?)],
+                local_path: local_path.to_string(),
+                streams: self.multi_thread_streams,
+                max_streams: KOOFR_MULTI_THREAD_MAX_STREAMS,
+                cutoff: self.multi_thread_cutoff,
+            };
+            match super::multi_thread::try_http_concurrent_range_download(req, on_progress).await {
+                super::multi_thread::HttpRangeAttempt::Completed => return Ok(()),
+                super::multi_thread::HttpRangeAttempt::Failed(e) => return Err(e),
+                super::multi_thread::HttpRangeAttempt::Fallback(p) => on_progress = p,
+            }
+        }
 
         let request = self
             .client
@@ -1649,11 +1682,20 @@ impl StorageProvider for KoofrProvider {
     fn transfer_optimization_hints(&self) -> TransferOptimizationHints {
         TransferOptimizationHints {
             supports_resume_download: true,
+            // The Koofr content endpoint honours HTTP Range (used by
+            // `read_range` and, after a live strict 206 probe, by the
+            // PD-HTTP-2 concurrent-Range download path).
+            supports_range_download: true,
             supports_server_checksum: true,
             preferred_checksum_algo: Some("koofr".to_string()),
             supports_delta_sync: true,
             ..Default::default()
         }
+    }
+
+    fn set_multi_thread_download(&mut self, streams: usize, cutoff_bytes: u64) {
+        self.multi_thread_streams = streams.clamp(1, KOOFR_MULTI_THREAD_MAX_STREAMS);
+        self.multi_thread_cutoff = cutoff_bytes;
     }
 }
 
