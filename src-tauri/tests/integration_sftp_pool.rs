@@ -1036,3 +1036,249 @@ async fn pd_cli_conv_d_sync_transfer_phase_is_byte_identical() {
          byte-identical, pool-backed, not serialised."
     );
 }
+
+/// Mirror of the CLI binary's converged `pget` adapter, driving the EXACT
+/// shared core (`providers::multi_thread::run_concurrent_range_download`).
+/// `pget_segmented_download` itself lives in the binary and is unreachable
+/// from an integration test, so this reproduces its behaviour with the
+/// same provider-`read_range` window writer: N independent pooled SFTP
+/// connections, one per gap-free window, each seek-writing its window at
+/// the absolute offset into the engine's single pre-allocated `.aerotmp`,
+/// atomically promoted on success.
+async fn pget_via_shared_engine(
+    base: &SftpProvider,
+    remote: &str,
+    out: &std::path::Path,
+    file_size: u64,
+    segments: usize,
+) -> Result<(), ftp_client_gui_lib::providers::ProviderError> {
+    use ftp_client_gui_lib::providers::multi_thread::{
+        aerotmp_path_for, run_concurrent_range_download, ConcurrentRangeConfig,
+        ConcurrentRangeOutcome,
+    };
+    use ftp_client_gui_lib::providers::ProviderError;
+    use std::collections::VecDeque;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::Arc;
+    use tokio_util::sync::CancellationToken;
+
+    // Small sub-read so each window takes several `read_range` calls
+    // (exercises the adapter's sub-read accumulation loop).
+    const SUB_READ: u64 = 8 * 1024 * 1024;
+
+    // One independent pooled connection per window: N real connections,
+    // exactly like the binary's `create_and_connect` loop.
+    let mut conns: VecDeque<Box<dyn StorageProvider>> = VecDeque::with_capacity(segments);
+    for _ in 0..segments {
+        let mut w = base.clone_for_transfer()?;
+        w.connect().await?;
+        conns.push_back(w);
+    }
+    let pool = Arc::new(tokio::sync::Mutex::new(conns));
+    let remote_owned = remote.to_string();
+
+    let cfg = ConcurrentRangeConfig {
+        final_path: out.to_path_buf(),
+        total_size: file_size,
+        streams: segments,
+        max_streams: segments,
+        max_parallel: segments,
+    };
+
+    let write_one_range = move |start_off: u64,
+                                end_off: u64,
+                                temp_path: std::path::PathBuf,
+                                aggregate: Arc<AtomicU64>,
+                                cancel: CancellationToken| {
+        let pool = pool.clone();
+        let remote = remote_owned.clone();
+        async move {
+            use tokio::io::{AsyncSeekExt, AsyncWriteExt};
+
+            let mut provider = {
+                let mut g = pool.lock().await;
+                g.pop_front().ok_or_else(|| {
+                    ProviderError::TransferFailed("pget: pool exhausted".to_string())
+                })?
+            };
+            let window_len = end_off - start_off + 1;
+            let mut file = tokio::fs::OpenOptions::new()
+                .write(true)
+                .open(&temp_path)
+                .await
+                .map_err(ProviderError::IoError)?;
+            file.seek(std::io::SeekFrom::Start(start_off))
+                .await
+                .map_err(ProviderError::IoError)?;
+            let mut written = 0u64;
+            while written < window_len {
+                if cancel.is_cancelled() {
+                    let _ = provider.disconnect().await;
+                    return Err(ProviderError::TransferFailed("cancelled".to_string()));
+                }
+                let sub = (window_len - written).min(SUB_READ);
+                let data = provider
+                    .read_range(&remote, start_off + written, sub)
+                    .await?;
+                if data.is_empty() {
+                    let _ = provider.disconnect().await;
+                    return Err(ProviderError::TransferFailed(format!(
+                        "pget: short read at {} ({}/{})",
+                        start_off + written,
+                        written,
+                        window_len
+                    )));
+                }
+                file.write_all(&data)
+                    .await
+                    .map_err(ProviderError::IoError)?;
+                written += data.len() as u64;
+                aggregate.fetch_add(data.len() as u64, Ordering::Relaxed);
+            }
+            file.flush().await.map_err(ProviderError::IoError)?;
+            let _ = provider.disconnect().await;
+            assert_eq!(written, window_len, "pget: window underwrite");
+            Ok(ConcurrentRangeOutcome::Completed)
+        }
+    };
+
+    match run_concurrent_range_download(cfg, write_one_range, CancellationToken::new(), None)
+        .await?
+    {
+        ConcurrentRangeOutcome::Completed => {
+            let temp = aerotmp_path_for(out);
+            tokio::fs::rename(&temp, out)
+                .await
+                .map_err(ProviderError::IoError)?;
+            Ok(())
+        }
+        ConcurrentRangeOutcome::ServerIgnoredRange => Err(ProviderError::TransferFailed(
+            "read_range unexpectedly produced ServerIgnoredRange".to_string(),
+        )),
+    }
+}
+
+/// PD-CLI-CONV-E live validation: the CLI segmented parallel download
+/// (`pget`) now runs through the SAME shared transport-agnostic
+/// concurrent-range engine the GUI / HTTP / SFTP-intra-file paths use,
+/// instead of the old hand-rolled multi-file temp dir + manual assemble.
+/// This is the SFTP-transfer-convergence closure: after it, every CLI SFTP
+/// transfer path (download, upload, sync, pget) rides the shared engine.
+///
+/// Gate is correctness + non-regression:
+/// - the base captures a secure `SftpConnectionSpec` and a pooled worker
+///   advertises strict concurrent range (the converged pool-backed path,
+///   not a silent locked-single fallback);
+/// - the assembled file is byte-identical SHA-256 at N=1 and N=4;
+/// - no `.aerotmp` residue (the engine's RAII + the atomic rename);
+/// - N=4 wall-clock is not catastrophically worse than N=1 (the N real
+///   connections are not silently serialised; loopback has no bandwidth
+///   bottleneck so only catastrophic serialisation is caught, noted
+///   honestly in the master, not faked here).
+#[tokio::test]
+#[ignore = "live: requires the sftp-rsync Docker fixture up on :2222"]
+async fn pd_cli_conv_e_pget_segmented_is_byte_identical() {
+    if !ssh_key_path().exists() {
+        eprintln!("SKIP: fixture ssh_key missing (run fixtures/sftp-rsync/setup.sh)");
+        return;
+    }
+    seed_known_host();
+
+    // ~64 MiB of non-repeating pseudo-random bytes so a mis-ordered or
+    // short window cannot accidentally hash-match.
+    const BIG_BYTES: usize = 64 * 1024 * 1024;
+
+    let src_dir = std::env::temp_dir().join("pd-cli-conv-e-src");
+    let _ = std::fs::remove_dir_all(&src_dir);
+    std::fs::create_dir_all(&src_dir).unwrap();
+    let src = src_dir.join("big.bin");
+    {
+        let mut buf = vec![0u8; BIG_BYTES];
+        let mut x: u32 = 0x1357_9BDF;
+        for b in buf.iter_mut() {
+            x ^= x << 13;
+            x ^= x >> 17;
+            x ^= x << 5;
+            *b = (x & 0xFF) as u8;
+        }
+        std::fs::write(&src, &buf).unwrap();
+    }
+    let src_hash = sha256_file(&src);
+    let file_size = BIG_BYTES as u64;
+    let remote = "/workdir/pget-e.bin";
+
+    let mut base = SftpProvider::new(fixture_config());
+    base.connect().await.expect("base SFTP connect");
+    assert!(
+        base.connection_spec().is_some(),
+        "connect() must capture a secure SftpConnectionSpec (pool-backed)"
+    );
+    base.upload(src.to_str().unwrap(), remote, None)
+        .await
+        .expect("seed upload");
+
+    // A pooled worker must advertise strict concurrent range: this is the
+    // converged pool-backed SFTP path pget now rides, not a locked single.
+    {
+        let probe = base.clone_for_transfer().expect("clone_for_transfer probe");
+        assert_eq!(
+            probe
+                .transfer_capabilities()
+                .strict_concurrent_range_download,
+            Capability::Supported,
+            "a pool-backed SFTP worker must advertise strict concurrent range"
+        );
+    }
+
+    let tmp_root = std::env::temp_dir().join("pd-cli-conv-e");
+    let _ = std::fs::remove_dir_all(&tmp_root);
+    std::fs::create_dir_all(&tmp_root).unwrap();
+    let total_mib = BIG_BYTES as f64 / 1_048_576.0;
+
+    // --- N=1: the shared engine's degenerate single window ---------------
+    let n1 = tmp_root.join("n1.bin");
+    let t1 = Instant::now();
+    pget_via_shared_engine(&base, remote, &n1, file_size, 1)
+        .await
+        .expect("pget N=1 via shared engine");
+    let e1 = t1.elapsed();
+    assert_eq!(src_hash, sha256_file(&n1), "N=1 byte mismatch");
+
+    // --- N=4: the real segmented parallel download -----------------------
+    let n4 = tmp_root.join("n4.bin");
+    let t4 = Instant::now();
+    pget_via_shared_engine(&base, remote, &n4, file_size, 4)
+        .await
+        .expect("pget N=4 via shared engine");
+    let e4 = t4.elapsed();
+    assert_eq!(src_hash, sha256_file(&n4), "N=4 segmented byte mismatch");
+
+    // Strict temp hygiene: the engine's RAII + atomic rename leave no
+    // `.aerotmp` residue beside either output.
+    assert!(
+        !tmp_root.join("n1.bin.aerotmp").exists(),
+        "N=1 left an .aerotmp residue"
+    );
+    assert!(
+        !tmp_root.join("n4.bin.aerotmp").exists(),
+        "N=4 left an .aerotmp residue"
+    );
+
+    assert!(
+        e4 <= e1 * 3,
+        "N=4 ({e4:?}) catastrophically slower than N=1 ({e1:?}): pget serialised?"
+    );
+
+    eprintln!(
+        "PD-CLI-CONV-E pget: file={:.0} MiB  N=1 {:.2}s ({:.1} MiB/s)  N=4 {:.2}s ({:.1} MiB/s)  SHA-256 identical, single .aerotmp, atomically promoted",
+        total_mib,
+        e1.as_secs_f64(),
+        total_mib / e1.as_secs_f64(),
+        e4.as_secs_f64(),
+        total_mib / e4.as_secs_f64(),
+    );
+
+    let _ = base.disconnect().await;
+    let _ = std::fs::remove_dir_all(&tmp_root);
+    let _ = std::fs::remove_dir_all(&src_dir);
+}

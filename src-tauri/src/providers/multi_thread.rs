@@ -113,7 +113,7 @@ pub(crate) fn content_range_matches(
 
 /// Outcome of an attempted concurrent range download.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ConcurrentRangeOutcome {
+pub enum ConcurrentRangeOutcome {
     /// Every range came back as a strict `206` with a coherent
     /// `Content-Range`; the temp file is fully written.
     Completed,
@@ -123,7 +123,7 @@ pub(crate) enum ConcurrentRangeOutcome {
 }
 
 /// Configuration for [`download_via_concurrent_range`].
-pub(crate) struct ConcurrentRangeConfig {
+pub struct ConcurrentRangeConfig {
     /// Final destination path (used only to derive the `.aerotmp` sibling).
     pub final_path: PathBuf,
     pub total_size: u64,
@@ -166,7 +166,7 @@ impl Drop for TempFileGuard {
 /// Compute the `.aerotmp` sibling of `final_path`, matching the convention
 /// used by `AtomicFile::temp_path_for` so existing cleanup tooling and the
 /// resume path stay consistent.
-pub(crate) fn aerotmp_path_for(final_path: &Path) -> PathBuf {
+pub fn aerotmp_path_for(final_path: &Path) -> PathBuf {
     let mut p = final_path.as_os_str().to_owned();
     p.push(".aerotmp");
     PathBuf::from(p)
@@ -192,7 +192,7 @@ pub(crate) fn aerotmp_path_for(final_path: &Path) -> PathBuf {
 /// - `Err` on any hard failure (the strict gate: HTTP = `206` +
 ///   `Content-Range`; SFTP = exactly `end - start + 1` bytes, no silent
 ///   short read).
-pub(crate) async fn run_concurrent_range_download<W, WFut>(
+pub async fn run_concurrent_range_download<W, WFut>(
     cfg: ConcurrentRangeConfig,
     write_one_range: W,
     cancel: CancellationToken,
