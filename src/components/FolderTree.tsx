@@ -125,6 +125,7 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
   t,
 }) => {
   const [rootEntries, setRootEntries] = useState<SubDirectory[]>([]);
+  const [rootLoaded, setRootLoaded] = useState(false);
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
   const [childrenCache, setChildrenCache] = useState<Map<string, SubDirectory[]>>(new Map());
   const [loadingPaths, setLoadingPaths] = useState<Set<string>>(new Set());
@@ -155,19 +156,57 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
   useEffect(() => {
     mountedRef.current = true;
     const loadRoot = async () => {
-      const entries = await fetchChildren('/');
-      if (mountedRef.current) {
-        setRootEntries(entries);
-        setChildrenCache((prev) => {
-          const next = new Map(prev);
-          next.set('/', entries);
-          return next;
-        });
+      // Unix/macOS have a single "/" root. Windows has none: "/" is not an
+      // absolute path there, so the backend rejects it and the tree used to
+      // spin on "Loading..." forever (#216). When "/" yields nothing we fall
+      // back to the mounted volumes (drive letters on Windows), reusing the
+      // command Places already relies on. Linux keeps the exact "/" behaviour.
+      let roots: SubDirectory[] = [];
+      try {
+        roots = await invoke<SubDirectory[]>('list_subdirectories', { path: '/' });
+        roots.sort((a, b) => a.name.localeCompare(b.name));
+      } catch {
+        roots = [];
       }
+
+      if (roots.length > 0) {
+        if (!mountedRef.current) return;
+        setRootEntries(roots);
+        setRootLoaded(true);
+        setChildrenCache((prev) => new Map(prev).set('/', roots));
+        return;
+      }
+
+      // "/" gave nothing: enumerate drives/volumes as tree roots (Windows).
+      try {
+        const volumes = await invoke<Array<{ name: string; mount_point: string }>>(
+          'list_mounted_volumes',
+        );
+        roots = volumes
+          .filter((v) => !!v.mount_point)
+          .map((v) => ({
+            name: v.name || v.mount_point,
+            path: v.mount_point,
+            has_children: true,
+          }));
+      } catch {
+        roots = [];
+      }
+
+      if (!mountedRef.current) return;
+      setRootEntries(roots);
+      setRootLoaded(true);
+      setChildrenCache((prev) => {
+        const next = new Map(prev);
+        for (const root of roots) {
+          if (!next.has(root.path)) next.set(root.path, []);
+        }
+        return next;
+      });
     };
     loadRoot();
     return () => { mountedRef.current = false; };
-  }, [fetchChildren]);
+  }, []);
 
   // -----------------------------------------------------------------------
   // Auto-expand ancestors of currentPath on first load
@@ -304,10 +343,16 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
         />
       ))}
 
-      {rootEntries.length === 0 && (
+      {!rootLoaded && (
         <div className="flex items-center justify-center py-4 text-gray-500 text-xs">
           <Loader2 className="w-4 h-4 animate-spin mr-2" />
           {t('common.loading')}
+        </div>
+      )}
+
+      {rootLoaded && rootEntries.length === 0 && (
+        <div className="flex items-center justify-center py-4 text-gray-500 text-xs">
+          {t('common.failed')}
         </div>
       )}
 
