@@ -130,6 +130,11 @@ interface SettingsPanelProps {
     onOpenCloudPanel?: () => void;
     onActivityLog?: ActivityLogCallback;
     initialTab?: TabId;
+    /** Path of a .aeroftp-keystore opened via OS file association. When
+     *  set (and the panel is open) the Backup tab is selected and the
+     *  keystore is preloaded for import, so a double-clicked keystore
+     *  lands on the key-entry screen (issue #214 pt.4a). */
+    initialKeystoreImportPath?: string;
     onServersChanged?: () => void;
     theme?: Theme;
     setTheme?: (t: Theme) => void;
@@ -365,7 +370,7 @@ const CheckUpdateButton: React.FC<CheckUpdateButtonProps> = ({ onActivityLog }) 
     );
 };
 
-export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, onOpenCloudPanel, onActivityLog, initialTab, onServersChanged, theme: appThemeProp = 'auto', setTheme: setAppTheme }) => {
+export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, onOpenCloudPanel, onActivityLog, initialTab, initialKeystoreImportPath, onServersChanged, theme: appThemeProp = 'auto', setTheme: setAppTheme }) => {
     const [activeTab, setActiveTab] = useState<TabId>(initialTab || 'general');
     const [appearanceSubTab, setAppearanceSubTab] = useState<AppearanceSubTabId>('interface');
     const { iconTheme, setIconTheme } = useIconTheme();
@@ -588,6 +593,51 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
             keystoreImportProgressCleanupRef.current = null;
         }
     }, []);
+
+    // #214 pt.4a: load a keystore by path. Shared by the Choose-File
+    // button (after the OS dialog) and by the file-association deep link
+    // so a double-clicked .aeroftp-keystore reaches the same import /
+    // key-entry UI. Reading metadata is what renders that screen.
+    const loadKeystoreFromPath = useCallback(async (path: string) => {
+        setKeystoreMessage(null);
+        try {
+            const meta = await invoke<{
+                exportDate: string;
+                aeroftpVersion: string;
+                entriesCount: number;
+                categories: {
+                    serverCredentials: number;
+                    serverProfiles: number;
+                    aiKeys: number;
+                    oauthTokens: number;
+                    configEntries: number;
+                };
+            }>('read_keystore_metadata', { filePath: path });
+            setKeystoreMetadata(meta);
+            setKeystoreImportFilePath(path);
+        } catch (err) {
+            setKeystoreMessage({ type: 'error', text: String(err) });
+        }
+    }, []);
+
+    // #214 pt.4a: opened via a double-clicked .aeroftp-keystore. Jump to
+    // the Backup tab and preload the file so the user lands on the
+    // key-entry screen instead of a bare window.
+    const keystoreDeepLinkRef = useRef<string | null>(null);
+    useEffect(() => {
+        if (!isOpen) {
+            keystoreDeepLinkRef.current = null;
+            return;
+        }
+        if (
+            initialKeystoreImportPath &&
+            keystoreDeepLinkRef.current !== initialKeystoreImportPath
+        ) {
+            keystoreDeepLinkRef.current = initialKeystoreImportPath;
+            setActiveTab('backup');
+            void loadKeystoreFromPath(initialKeystoreImportPath);
+        }
+    }, [isOpen, initialKeystoreImportPath, loadKeystoreFromPath]);
 
     // i18n hook
     const { language, setLanguage, t, availableLanguages } = useI18n();
@@ -4449,30 +4499,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                             });
                                                             if (!filePath) return;
                                                             // Dialog open() with multiple:false always returns string | null.
-                                                            const path = filePath as string;
-                                                            try {
-                                                                const meta = await invoke<{
-                                                                    exportDate: string;
-                                                                    aeroftpVersion: string;
-                                                                    entriesCount: number;
-                                                                    categories: {
-                                                                        serverCredentials: number;
-                                                                        serverProfiles: number;
-                                                                        aiKeys: number;
-                                                                        oauthTokens: number;
-                                                                        configEntries: number;
-                                                                    };
-                                                                }>('read_keystore_metadata', {
-                                                                    filePath: path,
-                                                                });
-                                                                setKeystoreMetadata(meta);
-                                                                setKeystoreImportFilePath(path);
-                                                            } catch (err) {
-                                                                setKeystoreMessage({
-                                                                    type: 'error',
-                                                                    text: String(err),
-                                                                });
-                                                            }
+                                                            await loadKeystoreFromPath(filePath as string);
                                                         }}
                                                         className="w-full px-4 py-2 bg-blue-100 hover:bg-blue-200 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-400 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
                                                     >
