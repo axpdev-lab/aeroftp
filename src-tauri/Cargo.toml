@@ -41,14 +41,20 @@ serde = { version = "1.0", features = ["derive"] }
 toml = "1.1"
 log = "0.4"
 futures-util = "0.3"
-# Pinned to 2.11.0: 2.11.1's GHSA-7gmj-67g7-phm9 fix introduced an
-# `is_local_url()` check that classifies `http://127.0.0.1:*` as remote and
-# rejects every custom command without a full app ACL manifest. The webview
-# origin must stay on the localhost server so upgrades preserve all WebKit
-# origin-scoped state (localStorage, IndexedDB, server filters, theme, etc.).
-# The CVE vector requires loading remote/untrusted content, which AeroFTP
-# does not do, so the residual risk is not applicable to our surface.
-tauri = { version = "=2.11.1", features = ["tray-icon", "protocol-asset"] }
+# DO NOT BUMP. Dependabot raised this to =2.11.1 (PR #201) and broke EVERY
+# Linux build: 2.11.1's GHSA-7gmj-67g7-phm9 fix added an `is_local_url()`
+# check that classifies the Linux production webview origin
+# `http://127.0.0.1:14321` as remote and rejects every custom command
+# ("not allowed by ACL": get_local_files, vault read, keystore, mount,
+# update) because default.json is not a full app ACL manifest. Windows/macOS
+# use the `tauri://` App protocol and are unaffected, which is why only
+# Linux regressed. The webview origin must stay on the localhost server so
+# upgrades preserve all WebKit origin-scoped state (localStorage, IndexedDB,
+# server filters, theme, etc.). The CVE vector requires loading
+# remote/untrusted content, which AeroFTP does not do, so the residual risk
+# is not applicable to our surface. Keep =2.11.0; ignore tauri 2.11.x in
+# dependabot.yml.
+tauri = { version = "=2.11.0", features = ["tray-icon", "protocol-asset"] }
 tauri-plugin-log = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-dialog = "2"
