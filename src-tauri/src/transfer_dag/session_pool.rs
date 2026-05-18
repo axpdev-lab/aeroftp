@@ -170,6 +170,21 @@ impl TransferSessionPoolHandle {
         Self::new(FtpSessionPoolAdapter::new(label, pool))
     }
 
+    /// Concurrency gate for SFTP file-level parallelism (PD-SFTP-1).
+    ///
+    /// The real resource is N **independent** SSH connections re-dialled by
+    /// `clone_for_transfer()` workers from a retained secure connection
+    /// spec (same model the FTP pool uses). This handle only bounds how
+    /// many run at once. Labelled `Sftp`, never `HttpClone`, so capacity
+    /// and metrics tell the truth about the transport.
+    pub fn sftp_connection(label: impl Into<String>, capacity: usize) -> Self {
+        Self::new(SemaphoreSessionPool::with_capacity(
+            SessionLeaseKind::Sftp,
+            label,
+            capacity,
+        ))
+    }
+
     pub fn executor_managed_ftp(label: impl Into<String>, capacity: usize) -> Self {
         Self::new(ExecutorManagedSessionPool::new(
             SessionLeaseKind::Ftp,
@@ -487,6 +502,17 @@ mod tests {
         assert_eq!(pool.capacity().max_leases, 3);
         assert_eq!(lease.kind(), SessionLeaseKind::HttpList);
         assert_eq!(lease.info().label, "s3-list");
+    }
+
+    #[tokio::test]
+    async fn sftp_connection_pool_reports_sftp_kind_not_http() {
+        let pool = TransferSessionPoolHandle::sftp_connection("axpbuntu-remote", 4);
+        let lease = pool.acquire().await.unwrap();
+
+        assert_eq!(pool.capacity().kind, SessionLeaseKind::Sftp);
+        assert_eq!(pool.capacity().max_leases, 4);
+        assert_eq!(lease.kind(), SessionLeaseKind::Sftp);
+        assert_eq!(lease.info().label, "axpbuntu-remote");
     }
 
     #[tokio::test]

@@ -302,6 +302,11 @@ impl Default for TransferOptimizationHints {
 pub enum ProviderTransferExecutorKind {
     LockedSingle,
     HttpClonePool,
+    /// SFTP file-level parallelism via N **independent** SSH connections
+    /// re-dialled from a retained secure connection spec (PD-SFTP-1, same
+    /// model as the FTP pool). Distinct from `HttpClonePool` so the
+    /// session pool / metrics label the transport as SFTP, never HTTP.
+    SftpConnectionPool,
 }
 
 /// Execution model the Core DAG scanner may use for remote list/checker work.
@@ -795,7 +800,11 @@ pub trait StorageProvider: Send + Sync {
             self.supports_server_copy(),
         );
 
-        if self.transfer_executor_kind() == ProviderTransferExecutorKind::HttpClonePool {
+        if matches!(
+            self.transfer_executor_kind(),
+            ProviderTransferExecutorKind::HttpClonePool
+                | ProviderTransferExecutorKind::SftpConnectionPool
+        ) {
             caps.file_parallel = crate::transfer_dag::Capability::Supported;
             caps.session_pool = crate::transfer_dag::Capability::Supported;
             caps.max_file_slots = Some(self.transfer_executor_max_sessions().max(1));

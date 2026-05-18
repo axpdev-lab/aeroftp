@@ -32,6 +32,13 @@ pub enum ProviderExecutorSessionModel {
         provider_type: ProviderType,
         max_leases: usize,
     },
+    /// SFTP: N independent SSH connections re-dialled by clone workers
+    /// (PD-SFTP-1). Same clone-worker dispatch as `HttpClonePool`; the
+    /// session pool is labelled `Sftp`, never `HttpClone`.
+    SftpConnectionPool {
+        provider_type: ProviderType,
+        max_leases: usize,
+    },
 }
 
 impl ProviderExecutorSessionModel {
@@ -45,11 +52,17 @@ impl ProviderExecutorSessionModel {
             Self::HttpClonePool { max_leases, .. } => {
                 TransferSessionPoolHandle::http_clone(label, *max_leases)
             }
+            Self::SftpConnectionPool { max_leases, .. } => {
+                TransferSessionPoolHandle::sftp_connection(label, *max_leases)
+            }
         }
     }
 
     fn is_clone_pool(&self) -> bool {
-        matches!(self, Self::HttpClonePool { .. })
+        matches!(
+            self,
+            Self::HttpClonePool { .. } | Self::SftpConnectionPool { .. }
+        )
     }
 }
 
@@ -101,23 +114,37 @@ pub async fn resolve_provider_executor_session_model(
 
     let provider_type = provider.provider_type();
     let caps = provider.transfer_capabilities();
-    let executor_can_clone =
-        provider.transfer_executor_kind() == ProviderTransferExecutorKind::HttpClonePool;
+    let executor_kind = provider.transfer_executor_kind();
     let scheduler_can_parallelize = caps.file_parallel == Capability::Supported
         && caps.session_pool == Capability::Supported
         && provider.clone_for_transfer().is_ok();
 
-    if executor_can_clone && scheduler_can_parallelize {
-        let advertised = caps
-            .max_file_slots
-            .unwrap_or_else(|| provider.transfer_executor_max_sessions())
-            .max(1) as usize;
-        ProviderExecutorSessionModel::HttpClonePool {
-            provider_type,
-            max_leases: advertised.min(max_concurrent.max(1)).max(1),
+    if !scheduler_can_parallelize {
+        return ProviderExecutorSessionModel::locked(Some(provider_type));
+    }
+
+    let max_leases = caps
+        .max_file_slots
+        .unwrap_or_else(|| provider.transfer_executor_max_sessions())
+        .max(1) as usize;
+    let max_leases = max_leases.min(max_concurrent.max(1)).max(1);
+
+    match executor_kind {
+        ProviderTransferExecutorKind::HttpClonePool => {
+            ProviderExecutorSessionModel::HttpClonePool {
+                provider_type,
+                max_leases,
+            }
         }
-    } else {
-        ProviderExecutorSessionModel::locked(Some(provider_type))
+        ProviderTransferExecutorKind::SftpConnectionPool => {
+            ProviderExecutorSessionModel::SftpConnectionPool {
+                provider_type,
+                max_leases,
+            }
+        }
+        ProviderTransferExecutorKind::LockedSingle => {
+            ProviderExecutorSessionModel::locked(Some(provider_type))
+        }
     }
 }
 
@@ -819,6 +846,19 @@ mod tests {
         let pool = model.session_pool("provider-test");
 
         assert_eq!(pool.capacity().kind, SessionLeaseKind::HttpClone);
+        assert_eq!(pool.capacity().max_leases, 4);
+    }
+
+    #[test]
+    fn sftp_connection_model_uses_sftp_lease_kind_not_http() {
+        let model = ProviderExecutorSessionModel::SftpConnectionPool {
+            provider_type: ProviderType::Sftp,
+            max_leases: 4,
+        };
+        let pool = model.session_pool("provider-test");
+
+        assert!(model.is_clone_pool());
+        assert_eq!(pool.capacity().kind, SessionLeaseKind::Sftp);
         assert_eq!(pool.capacity().max_leases, 4);
     }
 
