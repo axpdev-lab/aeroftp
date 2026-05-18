@@ -39,6 +39,15 @@ pub enum ProviderExecutorSessionModel {
         provider_type: ProviderType,
         max_leases: usize,
     },
+    /// FTP: N independent FTP connections re-dialled by clone workers
+    /// (PD-FTP-1, the FTP mirror of `SftpConnectionPool`). Same
+    /// clone-worker dispatch; the session pool is labelled `Ftp`, never
+    /// `HttpClone`. Distinct from the legacy executor-managed
+    /// `FtpSessionPool` GUI path (which never reaches this resolver).
+    FtpConnectionPool {
+        provider_type: ProviderType,
+        max_leases: usize,
+    },
 }
 
 impl ProviderExecutorSessionModel {
@@ -55,13 +64,18 @@ impl ProviderExecutorSessionModel {
             Self::SftpConnectionPool { max_leases, .. } => {
                 TransferSessionPoolHandle::sftp_connection(label, *max_leases)
             }
+            Self::FtpConnectionPool { max_leases, .. } => {
+                TransferSessionPoolHandle::ftp_connection(label, *max_leases)
+            }
         }
     }
 
     fn is_clone_pool(&self) -> bool {
         matches!(
             self,
-            Self::HttpClonePool { .. } | Self::SftpConnectionPool { .. }
+            Self::HttpClonePool { .. }
+                | Self::SftpConnectionPool { .. }
+                | Self::FtpConnectionPool { .. }
         )
     }
 }
@@ -138,6 +152,12 @@ pub async fn resolve_provider_executor_session_model(
         }
         ProviderTransferExecutorKind::SftpConnectionPool => {
             ProviderExecutorSessionModel::SftpConnectionPool {
+                provider_type,
+                max_leases,
+            }
+        }
+        ProviderTransferExecutorKind::FtpConnectionPool => {
+            ProviderExecutorSessionModel::FtpConnectionPool {
                 provider_type,
                 max_leases,
             }

@@ -8,12 +8,37 @@
 
 use async_trait::async_trait;
 use globset::GlobBuilder;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use suppaftp::tokio::{AsyncRustlsConnector, AsyncRustlsFtpStream};
 use suppaftp::types::FileType;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio_util::sync::CancellationToken;
 
-use super::{FtpConfig, FtpTlsMode, ProviderError, ProviderType, RemoteEntry, StorageProvider};
+use super::multi_thread::{
+    aerotmp_path_for, run_concurrent_range_download, ConcurrentRangeConfig, ConcurrentRangeOutcome,
+};
+use super::{
+    FtpConfig, FtpTlsMode, ProviderError, ProviderTransferExecutorKind, ProviderType, RemoteEntry,
+    StorageProvider,
+};
+
+/// Hard cap on intra-file FTP range streams (PD-FTP-1), mirroring the SFTP
+/// `MULTI_THREAD_MAX_STREAMS`. Each stream is a full independent FTP
+/// control+data connection re-dialled from the retained connection spec, so
+/// the cap stays conservative; the live benchmark says where it pays.
+const FTP_MULTI_THREAD_MAX_STREAMS: usize = 16;
+
+/// Default intra-file cutoff: below this a single FTP stream beats paying N
+/// control-connection handshakes. Matches the SFTP/S3 default (250 MiB) so
+/// `--multi-thread-cutoff` behaves identically across backends.
+const FTP_MULTI_THREAD_CUTOFF_DEFAULT: u64 = 250 * 1024 * 1024;
+
+/// Per-range streaming read buffer. The generic `read_range` allocates the
+/// whole window; the intra-file path streams in fixed chunks so a multi-MiB
+/// window never buffers itself in RAM per worker.
+const FTP_RANGE_READ_CHUNK: usize = 256 * 1024;
 
 /// FTP/FTPS Storage Provider
 pub struct FtpProvider {
@@ -32,6 +57,22 @@ pub struct FtpProvider {
     pub tls_downgraded: bool,
     /// Buffer size for download/upload (default: 8 KB)
     buffer_size: usize,
+    /// Connection spec retained after `connect()` so the shared transfer
+    /// engine can re-dial N independent FTP connections for intra-file
+    /// parallelism (PD-FTP-1, the FTP mirror of PD-SFTP-1/2). `FtpConfig`
+    /// already holds the password as `SecretString` for the provider's
+    /// lifetime: this is the security posture the FTP session pool already
+    /// ships. `Some` once captured at a successful `connect()`, or carried
+    /// by a `clone_for_transfer()` worker that has not dialled yet.
+    connection_spec: Option<FtpConfig>,
+    /// Intra-file parallel streams (PD-FTP-1). `1` (default) keeps the
+    /// single-stream path the only behaviour; `>= 2` splits files at/above
+    /// `multi_thread_cutoff` into N concurrent REST+RETR ranges over N
+    /// independent connections. Set via `set_multi_thread_download`
+    /// (CLI `--multi-thread-streams`).
+    multi_thread_streams: usize,
+    /// File size at/above which intra-file parallelism engages.
+    multi_thread_cutoff: u64,
 }
 
 impl FtpProvider {
@@ -47,12 +88,134 @@ impl FtpProvider {
             hash_supported: None,
             tls_downgraded: false,
             buffer_size: 8192,
+            connection_spec: None,
+            multi_thread_streams: 1,
+            multi_thread_cutoff: FTP_MULTI_THREAD_CUTOFF_DEFAULT,
         }
     }
 
     /// Get mutable reference to the FTP stream, returning error if not connected
     fn stream_mut(&mut self) -> Result<&mut AsyncRustlsFtpStream, ProviderError> {
         self.stream.as_mut().ok_or(ProviderError::NotConnected)
+    }
+
+    /// Connection spec captured at `connect()` (`None` until connected, or
+    /// until set by `clone_for_transfer()` on a pool worker). Mirrors
+    /// `SftpProvider::connection_spec()`.
+    pub fn connection_spec(&self) -> Option<FtpConfig> {
+        self.connection_spec.clone()
+    }
+
+    /// Ensure this provider has its own independent FTP connection
+    /// (PD-FTP-1). A `clone_for_transfer()` worker starts unconnected and
+    /// carries only the spec; the first transfer dials a **separate**
+    /// control+data connection so N transfers run truly in parallel,
+    /// exactly like the SFTP pool. A no-op when already connected, so the
+    /// CLI single-stream path (provider already connected) is unchanged.
+    async fn ensure_connected(&mut self) -> Result<(), ProviderError> {
+        if self.stream.is_some() {
+            return Ok(());
+        }
+        let spec = self
+            .connection_spec
+            .clone()
+            .ok_or(ProviderError::NotConnected)?;
+        self.config = spec;
+        self.connect().await
+    }
+
+    /// PD-FTP-1: split one large file into N gap-free windows, each
+    /// downloaded over its **own** independent FTP connection (REST+RETR,
+    /// the exact connection model of the FTP session pool and PD-SFTP-2),
+    /// assembled into a pre-allocated `.aerotmp` and atomically renamed.
+    /// Reuses the shared [`run_concurrent_range_download`] orchestrator so
+    /// HTTP, SFTP and FTP share one engine, not a fourth implementation.
+    ///
+    /// Strict gate (the FTP equivalent of HTTP `206` + `Content-Range`):
+    /// every window must yield exactly `end - start + 1` bytes; a premature
+    /// EOF is a hard error, never a silent short read. FTP REST+RETR has no
+    /// `ServerIgnoredRange` analogue (it cannot answer `200 OK` ignoring the
+    /// offset), so that orchestrator arm is unreachable here and fails loud
+    /// if hit, never a silent re-download that would double the bytes.
+    async fn download_intra_file_pooled(
+        &self,
+        remote_path: &str,
+        local_path: &str,
+        total_size: u64,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        let spec = self
+            .connection_spec
+            .clone()
+            .ok_or(ProviderError::NotConnected)?;
+        let streams = self
+            .multi_thread_streams
+            .clamp(2, FTP_MULTI_THREAD_MAX_STREAMS);
+        let remote_path_owned = remote_path.to_string();
+
+        let cfg = ConcurrentRangeConfig {
+            final_path: PathBuf::from(local_path),
+            total_size,
+            streams,
+            max_streams: FTP_MULTI_THREAD_MAX_STREAMS,
+            max_parallel: streams,
+        };
+
+        tracing::info!(
+            "FTP: intra-file download {} ({} bytes) over {} independent connections",
+            remote_path_owned,
+            total_size,
+            streams
+        );
+
+        let write_one_range = move |start: u64,
+                                    end: u64,
+                                    temp_path: PathBuf,
+                                    aggregate: Arc<AtomicU64>,
+                                    cancel: CancellationToken| {
+            let spec = spec.clone();
+            let remote_path = remote_path_owned.clone();
+            async move {
+                ftp_download_one_range(
+                    spec,
+                    remote_path,
+                    FTP_RANGE_READ_CHUNK,
+                    start,
+                    end,
+                    temp_path,
+                    aggregate,
+                    cancel,
+                )
+                .await
+            }
+        };
+
+        match run_concurrent_range_download(
+            cfg,
+            write_one_range,
+            CancellationToken::new(),
+            on_progress,
+        )
+        .await?
+        {
+            ConcurrentRangeOutcome::Completed => {
+                let temp = aerotmp_path_for(Path::new(local_path));
+                tokio::fs::rename(&temp, local_path)
+                    .await
+                    .map_err(ProviderError::IoError)?;
+                tracing::info!("FTP: intra-file download complete: {}", remote_path);
+                Ok(())
+            }
+            ConcurrentRangeOutcome::ServerIgnoredRange => {
+                // Unreachable for FTP: REST+RETR cannot "ignore" a range.
+                // Never silently re-download (it would double the bytes).
+                let _ = tokio::fs::remove_file(aerotmp_path_for(Path::new(local_path))).await;
+                Err(ProviderError::TransferFailed(
+                    "FTP intra-file: unexpected ServerIgnoredRange (REST/RETR has no HTTP-200 analogue)"
+                        .to_string(),
+                ))
+            }
+        }
     }
 
     /// Create a TLS connector with rustls for TLS session reuse support (RFC 4217 §10.2).
@@ -629,6 +792,13 @@ impl StorageProvider for FtpProvider {
             .replace('\\', "/");
 
         self.stream = Some(stream);
+
+        // PD-FTP-1: capture the connection spec now so the shared transfer
+        // engine can re-dial N independent FTP connections for intra-file
+        // parallelism. `FtpProvider` owns `self.config` (password as
+        // `SecretString`) for its whole life: the same posture as the FTP
+        // session pool already in production.
+        self.connection_spec = Some(self.config.clone());
         Ok(())
     }
 
@@ -703,10 +873,33 @@ impl StorageProvider for FtpProvider {
         local_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        let stream = self.stream_mut()?;
+        // No-op when the provider is already connected (CLI path); connects
+        // a `clone_for_transfer()` worker on its first transfer (generic
+        // clone-pool path), mirroring SFTP.
+        self.ensure_connected().await?;
 
-        // Get file size for progress
-        let total_size = stream.size(remote_path).await.unwrap_or(0) as u64;
+        // Get file size for progress + intra-file gating.
+        let total_size = {
+            let stream = self.stream_mut()?;
+            stream.size(remote_path).await.unwrap_or(0) as u64
+        };
+
+        // PD-FTP-1: intra-file parallelism. Engaged only when the user
+        // opted in (`set_multi_thread_download(streams >= 2, ...)`), the
+        // file is at/above the cutoff, and a real connection spec exists so
+        // we can re-dial N independent FTP connections. Without all three
+        // this is a no-op and the single-stream path below is unchanged:
+        // honest non-regression, no protocol overclaim.
+        if self.multi_thread_streams >= 2
+            && total_size >= self.multi_thread_cutoff
+            && self.connection_spec.is_some()
+        {
+            return self
+                .download_intra_file_pooled(remote_path, local_path, total_size, on_progress)
+                .await;
+        }
+
+        let stream = self.stream_mut()?;
 
         // Set binary mode
         stream
@@ -1246,12 +1439,62 @@ impl StorageProvider for FtpProvider {
         }
     }
 
+    /// PD-FTP-1: advertise real file-level parallelism only once a
+    /// connection spec exists to re-dial independent FTP connections from.
+    /// Without it (never connected) FTP stays a single locked lease:
+    /// honest non-regression, no overclaim. The legacy GUI FTP transfer
+    /// path uses its own dedicated `FtpSessionPool`/`FtpDownloadExecutor`
+    /// and never consults this, so it is unaffected (no double pool).
+    fn transfer_executor_kind(&self) -> ProviderTransferExecutorKind {
+        if self.connection_spec.is_some() {
+            ProviderTransferExecutorKind::FtpConnectionPool
+        } else {
+            ProviderTransferExecutorKind::LockedSingle
+        }
+    }
+
+    /// Conservative initial cap, mirroring the SFTP pool / FTP pool clamp.
+    /// Each lease is a full independent FTP connection.
+    fn transfer_executor_max_sessions(&self) -> u16 {
+        4
+    }
+
+    /// Produce an independent transfer worker. It is **not connected**: it
+    /// carries only the connection spec and dials its own separate FTP
+    /// connection lazily on the first transfer (`ensure_connected`). No
+    /// control/data connection is shared, so N workers are N independent
+    /// connections, exactly like the SFTP pool.
+    fn clone_for_transfer(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
+        let spec = self.connection_spec.clone().ok_or_else(|| {
+            ProviderError::NotSupported(
+                "FTP clone_for_transfer requires a captured connection spec".to_string(),
+            )
+        })?;
+        let mut worker = FtpProvider::new(spec.clone());
+        worker.buffer_size = self.buffer_size;
+        worker.connection_spec = Some(spec);
+        worker.multi_thread_streams = self.multi_thread_streams;
+        worker.multi_thread_cutoff = self.multi_thread_cutoff;
+        Ok(Box::new(worker))
+    }
+
     fn set_chunk_sizes(&mut self, upload: Option<u64>, download: Option<u64>) {
         // Cap at 16 MB; use the larger of upload/download as unified buffer
         let cap = 16 * 1024 * 1024;
         if let Some(size) = upload.or(download) {
             self.buffer_size = (size as usize).clamp(4096, cap);
         }
+    }
+
+    /// PD-FTP-1: opt into intra-file parallelism. `streams <= 1` keeps the
+    /// single-stream path (honest default). `cutoff` floors at 1 MiB so a
+    /// degenerate value can never split a tiny file into N handshakes. The
+    /// intra-file path additionally requires a real connection spec
+    /// (`FtpConnectionPool`) at `download()` time, so a not-connected
+    /// provider never overclaims.
+    fn set_multi_thread_download(&mut self, streams: usize, cutoff_bytes: u64) {
+        self.multi_thread_streams = streams.clamp(1, FTP_MULTI_THREAD_MAX_STREAMS);
+        self.multi_thread_cutoff = cutoff_bytes.max(1024 * 1024);
     }
 
     async fn read_range(
@@ -1377,6 +1620,113 @@ impl FtpProvider {
 
         Ok(result)
     }
+}
+
+/// PD-FTP-1 per-range writer. Dials a fresh independent FTP connection from
+/// `spec`, REST+RETR from `start`, and streams **exactly** `end - start + 1`
+/// bytes into `temp_path` at absolute offset `start`. One call == one fresh
+/// control+data connection, so N ranges of one file = N independent
+/// connections, the same model as the FTP session pool and PD-SFTP-2.
+///
+/// Strict gate: a `read() == 0` before `expected` bytes is a hard
+/// [`ProviderError`], never a silent short read, never `ServerIgnoredRange`
+/// (FTP REST+RETR has no HTTP-200 analogue). Writes are clamped to the
+/// window so a remote file that grew mid-transfer cannot corrupt the
+/// neighbouring range.
+#[allow(clippy::too_many_arguments)]
+async fn ftp_download_one_range(
+    spec: FtpConfig,
+    remote_path: String,
+    chunk_size: usize,
+    start: u64,
+    end: u64,
+    temp_path: PathBuf,
+    aggregate: Arc<AtomicU64>,
+    cancel: CancellationToken,
+) -> Result<ConcurrentRangeOutcome, ProviderError> {
+    use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt as _};
+
+    let expected = end - start + 1;
+
+    // Independent worker: its own control + data connection.
+    let mut worker = FtpProvider::new(spec);
+    worker.connect().await?;
+
+    {
+        let stream = worker.stream_mut()?;
+        stream
+            .transfer_type(FileType::Binary)
+            .await
+            .map_err(|e| ProviderError::ServerError(e.to_string()))?;
+        // REST sets the byte offset for the next RETR.
+        stream
+            .resume_transfer(start as usize)
+            .await
+            .map_err(|e| ProviderError::TransferFailed(format!("REST failed: {}", e)))?;
+    }
+
+    let mut data_stream = {
+        let stream = worker.stream_mut()?;
+        stream
+            .retr_as_stream(&remote_path)
+            .await
+            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?
+    };
+
+    let mut out = tokio::fs::OpenOptions::new()
+        .write(true)
+        .open(&temp_path)
+        .await
+        .map_err(ProviderError::IoError)?;
+    out.seek(std::io::SeekFrom::Start(start))
+        .await
+        .map_err(ProviderError::IoError)?;
+
+    let mut buf = vec![0u8; chunk_size];
+    let mut written: u64 = 0;
+
+    while written < expected {
+        tokio::select! {
+            _ = cancel.cancelled() => {
+                return Err(ProviderError::TransferFailed(
+                    "Transfer cancelled by user".to_string(),
+                ));
+            }
+            read = data_stream.read(&mut buf) => {
+                let n = read.map_err(|e| {
+                    ProviderError::TransferFailed(format!("Range read error: {}", e))
+                })?;
+                if n == 0 {
+                    // Strict gate: premature EOF, no silent short read.
+                    return Err(ProviderError::TransferFailed(format!(
+                        "FTP range short read: expected {} bytes at offset {}, got {}",
+                        expected, start, written
+                    )));
+                }
+                let take = std::cmp::min(n as u64, expected - written) as usize;
+                out.write_all(&buf[..take])
+                    .await
+                    .map_err(ProviderError::IoError)?;
+                aggregate.fetch_add(take as u64, Ordering::Relaxed);
+                written += take as u64;
+            }
+        }
+    }
+
+    out.flush().await.map_err(ProviderError::IoError)?;
+    out.sync_all().await.map_err(ProviderError::IoError)?;
+
+    // The bounded RETR intentionally stopped before EOF; finalizing that
+    // partial RETR may error. The connection is disposable (one per range),
+    // so disconnect regardless: the same posture as `read_range`.
+    let finalize_result = {
+        let stream = worker.stream.as_mut().ok_or(ProviderError::NotConnected)?;
+        stream.finalize_retr_stream(data_stream).await
+    };
+    let _ = finalize_result;
+    let _ = worker.disconnect().await;
+
+    Ok(ConcurrentRangeOutcome::Completed)
 }
 
 #[cfg(test)]

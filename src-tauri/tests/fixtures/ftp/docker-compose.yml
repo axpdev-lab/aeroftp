@@ -1,0 +1,25 @@
+# vsftpd fixture for the PD-FTP-1 intra-file parallelism integration test.
+#
+# Usage:
+#   cd src-tauri/tests/fixtures/ftp
+#   docker compose up -d --build           # control on :2123, PASV 30000-30009
+#   cd ../../.. && cargo test --release --test integration_ftp_pool \
+#     -- --ignored --nocapture
+#   cd tests/fixtures/ftp && docker compose down -v
+#
+# Credentials (testuser:testpass) are fixture-only and intentionally
+# hardcoded, exactly like the password-auth sftp-rsync variant.
+
+services:
+  ftp:
+    build: .
+    container_name: aeroftp-ftp-pool-fixture
+    ports:
+      - "127.0.0.1:2123:21"
+      - "127.0.0.1:30000-30009:30000-30009"
+    restart: "no"
+    healthcheck:
+      test: ["CMD", "sh", "-c", "pgrep vsftpd"]
+      interval: 2s
+      timeout: 2s
+      retries: 5
