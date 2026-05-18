@@ -20,10 +20,27 @@ use russh::client::{self, Config, Handle, Handler};
 use russh::keys::{self, Algorithm, HashAlg, PrivateKeyWithHashAlg, PublicKey, known_hosts};
 use russh::{Preferred, compression};
 use russh_sftp::client::SftpSession;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::io::AsyncReadExt;
 use tokio::sync::Mutex as TokioMutex;
+use tokio_util::sync::CancellationToken;
+
+use super::multi_thread::{
+    aerotmp_path_for, run_concurrent_range_download, ConcurrentRangeConfig, ConcurrentRangeOutcome,
+};
+
+/// Hard cap on intra-file SFTP range streams (PD-SFTP-2), mirroring the S3
+/// `MULTI_THREAD_MAX_STREAMS`. Each stream is a full independent SSH
+/// connection from the pool, so the cap stays conservative; the live
+/// benchmark in master 9.6.2 says where it pays.
+const SFTP_MULTI_THREAD_MAX_STREAMS: usize = 16;
+
+/// Default intra-file cutoff: below this a single SFTP stream is faster
+/// than paying N SSH handshakes. Matches the S3 default (250 MiB) so the
+/// `--multi-thread-cutoff` CLI flag behaves identically across backends.
+const SFTP_MULTI_THREAD_CUTOFF_DEFAULT: u64 = 250 * 1024 * 1024;
 
 /// Map a russh / russh-sftp / io error onto a [`ProviderError`].
 ///
@@ -275,6 +292,14 @@ pub struct SftpProvider {
     /// provider was produced by `clone_for_transfer()` as a not-yet-
     /// connected pool worker.
     connection_spec: Option<SftpConnectionSpec>,
+    /// Intra-file parallel streams (PD-SFTP-2). `1` (default) disables it:
+    /// the single-stream path stays the only behaviour. `>= 2` enables a
+    /// chunked range download over N independent SSH connections for files
+    /// at/above `multi_thread_cutoff`. Set via `set_multi_thread_download`
+    /// (CLI `--multi-thread-streams`).
+    multi_thread_streams: usize,
+    /// File size at/above which intra-file parallelism engages.
+    multi_thread_cutoff: u64,
 }
 
 impl SftpProvider {
@@ -296,6 +321,8 @@ impl SftpProvider {
             buffer_size: 256 * 1024,
             host_key_sha256_hex: Arc::new(std::sync::OnceLock::new()),
             connection_spec: None,
+            multi_thread_streams: 1,
+            multi_thread_cutoff: SFTP_MULTI_THREAD_CUTOFF_DEFAULT,
         }
     }
 
@@ -354,6 +381,125 @@ impl SftpProvider {
             }
         }
         Ok(())
+    }
+
+    /// PD-SFTP-2 intra-file download: split a large file into N gap-free
+    /// windows, each streamed over its **own independent SSH connection**
+    /// (the exact connection model of the file-level pool: spec re-dial with
+    /// host-key pin, no shared SSH handle/channel), assembled into a
+    /// pre-allocated `.aerotmp` and atomically renamed. Reuses the shared
+    /// [`run_concurrent_range_download`] orchestrator (plan / temp / RAII
+    /// cleanup / bounded concurrency / progress / cancel) so HTTP and SFTP
+    /// share one engine, not a fifth implementation.
+    ///
+    /// Strict gate (the SFTP equivalent of HTTP `206` + `Content-Range`):
+    /// every window must yield exactly `end - start + 1` bytes; a premature
+    /// EOF is a hard error, never a silent short read. SFTP has no
+    /// `ServerIgnoredRange` analogue (`seek`+`read` cannot ignore a range),
+    /// so that orchestrator arm is unreachable here and fails loud if hit.
+    ///
+    /// Single-session READ pipelining (rclone's `--sftp-concurrency`) is
+    /// deliberately **not** implemented: per the rev-3 honesty rule it is an
+    /// optional, separately-measured tier, never a closure promise. N
+    /// independent connections is the mechanism, exactly like PD-SFTP-1.
+    async fn download_intra_file_pooled(
+        &self,
+        remote_path: &str,
+        local_path: &str,
+        total_size: u64,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        let spec = self
+            .connection_spec
+            .clone()
+            .ok_or(ProviderError::NotConnected)?;
+        let streams = self
+            .multi_thread_streams
+            .clamp(2, SFTP_MULTI_THREAD_MAX_STREAMS);
+        let buffer_size = self.buffer_size.max(4096);
+        // Split any bandwidth cap across the N connections so the aggregate
+        // stays near the user's limit (same intent as the single-stream
+        // throttle; no new semantics vs the PD-SFTP-1 file-level pool, which
+        // also runs N connections).
+        let per_stream_limit_bps = if self.download_limit_bps > 0 {
+            (self.download_limit_bps / streams as u64).max(1)
+        } else {
+            0
+        };
+        let remote_path_owned = remote_path.to_string();
+        let current_dir = self.current_dir.clone();
+        let home_dir = self.home_dir.clone();
+        let compression_enabled = self.compression_enabled;
+
+        let cfg = ConcurrentRangeConfig {
+            final_path: PathBuf::from(local_path),
+            total_size,
+            streams,
+            max_streams: SFTP_MULTI_THREAD_MAX_STREAMS,
+            max_parallel: streams,
+        };
+
+        tracing::info!(
+            "SFTP: intra-file download {} ({} bytes) over {} independent connections",
+            remote_path_owned,
+            total_size,
+            streams
+        );
+
+        let write_one_range = move |start: u64,
+                                    end: u64,
+                                    temp_path: PathBuf,
+                                    aggregate: Arc<AtomicU64>,
+                                    cancel: CancellationToken| {
+            let spec = spec.clone();
+            let remote_path = remote_path_owned.clone();
+            let current_dir = current_dir.clone();
+            let home_dir = home_dir.clone();
+            async move {
+                sftp_download_one_range(
+                    spec,
+                    remote_path,
+                    current_dir,
+                    home_dir,
+                    buffer_size,
+                    per_stream_limit_bps,
+                    compression_enabled,
+                    start,
+                    end,
+                    temp_path,
+                    aggregate,
+                    cancel,
+                )
+                .await
+            }
+        };
+
+        match run_concurrent_range_download(
+            cfg,
+            write_one_range,
+            CancellationToken::new(),
+            on_progress,
+        )
+        .await?
+        {
+            ConcurrentRangeOutcome::Completed => {
+                let temp = aerotmp_path_for(Path::new(local_path));
+                tokio::fs::rename(&temp, local_path)
+                    .await
+                    .map_err(ProviderError::IoError)?;
+                tracing::info!("SFTP: intra-file download complete: {}", remote_path);
+                Ok(())
+            }
+            ConcurrentRangeOutcome::ServerIgnoredRange => {
+                // Unreachable for SFTP: seek+read cannot "ignore" a range.
+                // Never silently re-download (it would double the bytes).
+                let _ =
+                    tokio::fs::remove_file(aerotmp_path_for(Path::new(local_path))).await;
+                Err(ProviderError::TransferFailed(
+                    "SFTP intra-file: unexpected range-ignored outcome".to_string(),
+                ))
+            }
+        }
     }
 
     /// Return a cloneable handle to the underlying SSH session, if connected.
@@ -1120,6 +1266,21 @@ impl StorageProvider for SftpProvider {
         })?;
         let total_size = metadata.size.unwrap_or(0);
 
+        // PD-SFTP-2: intra-file parallelism. Engaged only when the user opted
+        // in (`set_multi_thread_download(streams >= 2, ...)`), the file is
+        // at/above the cutoff, and a real connection spec exists so we can
+        // re-dial N independent SSH connections (the SftpConnectionPool kind).
+        // Without all three this is a no-op and the single-stream path below
+        // is unchanged: honest non-regression, no protocol overclaim.
+        if self.multi_thread_streams >= 2
+            && total_size >= self.multi_thread_cutoff
+            && self.connection_spec.is_some()
+        {
+            return self
+                .download_intra_file_pooled(remote_path, local_path, total_size, on_progress)
+                .await;
+        }
+
         // Open remote file
         let mut remote_file = sftp.open(&full_path).await.map_err(|e| {
             classify_russh_err(e, |s| {
@@ -1743,6 +1904,8 @@ impl StorageProvider for SftpProvider {
         worker.compression_enabled = self.compression_enabled;
         worker.buffer_size = self.buffer_size;
         worker.connection_spec = Some(spec);
+        worker.multi_thread_streams = self.multi_thread_streams;
+        worker.multi_thread_cutoff = self.multi_thread_cutoff;
         Ok(Box::new(worker))
     }
 
@@ -1755,6 +1918,17 @@ impl StorageProvider for SftpProvider {
         if let Some(size) = download {
             self.buffer_size = (size as usize).clamp(4096, cap);
         }
+    }
+
+    /// PD-SFTP-2: opt into intra-file parallelism. `streams <= 1` keeps the
+    /// single-stream path (honest default). `cutoff` floors at 1 MiB so a
+    /// degenerate value can never split a tiny file into N SSH handshakes.
+    /// The intra-file path additionally requires a real connection spec
+    /// (`SftpConnectionPool`) at `download()` time, so a not-connected /
+    /// credential-less provider never overclaims.
+    fn set_multi_thread_download(&mut self, streams: usize, cutoff_bytes: u64) {
+        self.multi_thread_streams = streams.clamp(1, SFTP_MULTI_THREAD_MAX_STREAMS);
+        self.multi_thread_cutoff = cutoff_bytes.max(1024 * 1024);
     }
 
     fn supports_delta_sync(&self) -> bool {
@@ -1815,6 +1989,120 @@ impl StorageProvider for SftpProvider {
         buf.truncate(total_read);
         Ok(buf)
     }
+}
+
+/// PD-SFTP-2 per-range worker: dial an **independent** SSH+SFTP connection
+/// from `spec`, seek to `start`, and stream **exactly** `end - start + 1`
+/// bytes into `temp_path` at absolute offset `start`. One call == one fresh
+/// SSH connection (host-key pinned re-dial via `ensure_connected`), so N
+/// ranges of one file = N independent connections, the same model as the
+/// PD-SFTP-1 file-level pool and rclone's pooled SFTP.
+///
+/// Strict gate: a `read() == 0` before `expected` bytes is a hard
+/// [`ProviderError`], never a silent short read. Writes are clamped to the
+/// window so a remote file that grew mid-transfer cannot corrupt the
+/// neighbouring range.
+#[allow(clippy::too_many_arguments)]
+async fn sftp_download_one_range(
+    spec: SftpConnectionSpec,
+    remote_path: String,
+    current_dir: String,
+    home_dir: String,
+    buffer_size: usize,
+    limit_bps: u64,
+    compression_enabled: bool,
+    start: u64,
+    end: u64,
+    temp_path: PathBuf,
+    aggregate: Arc<AtomicU64>,
+    cancel: CancellationToken,
+) -> Result<ConcurrentRangeOutcome, ProviderError> {
+    use tokio::io::{AsyncSeekExt, AsyncWriteExt};
+
+    let expected = end - start + 1;
+
+    // Independent worker: own socket + own auth, host-key pinned re-dial.
+    let mut worker = SftpProvider::new(spec.to_config());
+    worker.current_dir = current_dir;
+    worker.home_dir = home_dir;
+    worker.buffer_size = buffer_size;
+    worker.compression_enabled = compression_enabled;
+    worker.connection_spec = Some(spec);
+    worker.ensure_connected().await?;
+
+    let full_path = worker.normalize_path(&remote_path);
+    let sftp = worker.get_sftp()?;
+    let mut remote_file = sftp.open(&full_path).await.map_err(|e| {
+        classify_russh_err(e, |s| {
+            ProviderError::TransferFailed(format!("Failed to open remote file for range: {}", s))
+        })
+    })?;
+    remote_file
+        .seek(std::io::SeekFrom::Start(start))
+        .await
+        .map_err(|e| {
+            classify_russh_err(e, |s| {
+                ProviderError::ServerError(format!("Failed to seek to range start: {}", s))
+            })
+        })?;
+
+    let mut out = tokio::fs::OpenOptions::new()
+        .write(true)
+        .open(&temp_path)
+        .await
+        .map_err(ProviderError::IoError)?;
+    out.seek(std::io::SeekFrom::Start(start))
+        .await
+        .map_err(ProviderError::IoError)?;
+
+    let mut buf = vec![0u8; buffer_size];
+    let mut written: u64 = 0;
+    let started = std::time::Instant::now();
+
+    while written < expected {
+        tokio::select! {
+            _ = cancel.cancelled() => {
+                return Err(ProviderError::TransferFailed(
+                    "Transfer cancelled by user".to_string(),
+                ));
+            }
+            read = remote_file.read(&mut buf) => {
+                let n = read.map_err(|e| {
+                    classify_russh_err(e, |s| {
+                        ProviderError::TransferFailed(format!("Range read error: {}", s))
+                    })
+                })?;
+                if n == 0 {
+                    // Strict gate: premature EOF, no silent short read.
+                    return Err(ProviderError::TransferFailed(format!(
+                        "SFTP range short read: expected {} bytes at offset {}, got {}",
+                        expected, start, written
+                    )));
+                }
+                let take = std::cmp::min(n as u64, expected - written) as usize;
+                out.write_all(&buf[..take])
+                    .await
+                    .map_err(ProviderError::IoError)?;
+                aggregate.fetch_add(take as u64, Ordering::Relaxed);
+                written += take as u64;
+
+                if limit_bps > 0 {
+                    let expected_elapsed = std::time::Duration::from_secs_f64(
+                        written as f64 / limit_bps as f64,
+                    );
+                    let elapsed = started.elapsed();
+                    if expected_elapsed > elapsed {
+                        tokio::time::sleep(expected_elapsed - elapsed).await;
+                    }
+                }
+            }
+        }
+    }
+
+    out.flush().await.map_err(ProviderError::IoError)?;
+    out.sync_all().await.map_err(ProviderError::IoError)?;
+    let _ = worker.disconnect().await;
+    Ok(ConcurrentRangeOutcome::Completed)
 }
 
 #[cfg(test)]

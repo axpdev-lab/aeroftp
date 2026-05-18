@@ -810,6 +810,16 @@ pub trait StorageProvider: Send + Sync {
             caps.max_file_slots = Some(self.transfer_executor_max_sessions().max(1));
         }
 
+        // PD-SFTP-2: intra-file concurrent range is real once the SFTP pool
+        // exists (N independent SSH connections + seek/read), runtime-gated
+        // by the multi-thread cutoff in `download()`. Flip honestly only
+        // behind the real pool kind, never as a protocol claim. HTTP
+        // providers keep their own `from_provider_hints` derivation
+        // untouched (this branch is SFTP-only).
+        if self.transfer_executor_kind() == ProviderTransferExecutorKind::SftpConnectionPool {
+            caps.strict_concurrent_range_download = crate::transfer_dag::Capability::Supported;
+        }
+
         if self.list_executor_kind() == ProviderListExecutorKind::HttpClonePool
             && self.clone_for_list().is_ok()
         {

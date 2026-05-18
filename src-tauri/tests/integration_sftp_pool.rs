@@ -36,6 +36,7 @@ use std::time::Instant;
 use ftp_client_gui_lib::providers::sftp::SftpProvider;
 use ftp_client_gui_lib::providers::types::SftpConfig;
 use ftp_client_gui_lib::providers::{ProviderTransferExecutorKind, StorageProvider};
+use ftp_client_gui_lib::transfer_dag::Capability;
 use futures_util::StreamExt;
 use sha2::{Digest, Sha256};
 
@@ -200,4 +201,117 @@ async fn sftp_connection_pool_parallel_download_is_real_and_byte_identical() {
     let _ = std::fs::remove_dir_all(&tmp_root);
     let _ = std::fs::remove_dir_all(&src_dir);
     eprintln!("PD-SFTP-1: byte-identical across C=1/3/5; independent-connection pool path exercised.");
+}
+
+/// PD-SFTP-2 live validation: intra-file parallelism. ONE large file is
+/// downloaded single-stream (N=1) and then split into N=4 concurrent range
+/// windows, each over its own independent SSH connection, and re-assembled.
+/// The gate is **correctness**: byte-identical SHA-256 across source / N=1 /
+/// N=4 proves the range plan + strict-length per-window writer + offset
+/// assembly are correct, and zero `.aerotmp` residue proves the
+/// TempFileGuard + atomic rename. The intra-file path is taken
+/// deterministically (cutoff 8 MiB < file size, streams = 4) and the
+/// capability flip is asserted, so a silent single-stream fallback fails
+/// the run.
+#[tokio::test]
+#[ignore = "live: requires the sftp-rsync Docker fixture up on :2222"]
+async fn sftp_intra_file_concurrent_range_is_byte_identical() {
+    if !ssh_key_path().exists() {
+        eprintln!("SKIP: fixture ssh_key missing (run fixtures/sftp-rsync/setup.sh)");
+        return;
+    }
+    seed_known_host();
+
+    // ~64 MiB so 4 streams produce 4 x 16 MiB windows. Pseudo-random,
+    // non-repeating bytes so a mis-ordered window cannot accidentally match.
+    const BIG_BYTES: usize = 64 * 1024 * 1024;
+    const CUTOFF: u64 = 8 * 1024 * 1024;
+    const STREAMS: usize = 4;
+
+    let src_dir = std::env::temp_dir().join("pd-sftp2-src-it");
+    let _ = std::fs::remove_dir_all(&src_dir);
+    std::fs::create_dir_all(&src_dir).unwrap();
+    let src = src_dir.join("big.bin");
+    {
+        let mut buf = vec![0u8; BIG_BYTES];
+        let mut x: u32 = 0x9E37_79B9;
+        for b in buf.iter_mut() {
+            // xorshift32: cheap, deterministic, full-range, non-periodic here.
+            x ^= x << 13;
+            x ^= x >> 17;
+            x ^= x << 5;
+            *b = (x & 0xFF) as u8;
+        }
+        std::fs::write(&src, &buf).unwrap();
+    }
+    let src_hash = sha256_file(&src);
+
+    let mut base = SftpProvider::new(fixture_config());
+    base.connect().await.expect("base SFTP connect");
+    assert!(
+        base.connection_spec().is_some(),
+        "connect() must capture a secure SftpConnectionSpec"
+    );
+    base.upload(src.to_str().unwrap(), "/workdir/big.bin", None)
+        .await
+        .expect("seed upload big.bin");
+
+    let tmp_root = std::env::temp_dir().join("pd-sftp2-it");
+    let _ = std::fs::remove_dir_all(&tmp_root);
+    std::fs::create_dir_all(&tmp_root).unwrap();
+    let total_mib = BIG_BYTES as f64 / 1_048_576.0;
+
+    // --- N=1 single-stream (cutoff above size: intra-file disabled) -------
+    let n1 = tmp_root.join("n1.bin");
+    let mut w1 = base
+        .clone_for_transfer()
+        .expect("clone_for_transfer (single-stream)");
+    let t1 = Instant::now();
+    w1.download("/workdir/big.bin", n1.to_str().unwrap(), None)
+        .await
+        .expect("single-stream download");
+    let e1 = t1.elapsed();
+    assert_eq!(src_hash, sha256_file(&n1), "N=1 byte mismatch");
+
+    // --- N=4 intra-file concurrent range ---------------------------------
+    let n4 = tmp_root.join("n4.bin");
+    let mut w4 = base
+        .clone_for_transfer()
+        .expect("clone_for_transfer (intra-file)");
+    w4.set_multi_thread_download(STREAMS, CUTOFF);
+    assert_eq!(
+        w4.transfer_capabilities().strict_concurrent_range_download,
+        Capability::Supported,
+        "a pool-backed SFTP worker must advertise strict concurrent range"
+    );
+    let t4 = Instant::now();
+    w4.download("/workdir/big.bin", n4.to_str().unwrap(), None)
+        .await
+        .expect("intra-file concurrent range download");
+    let e4 = t4.elapsed();
+    assert_eq!(src_hash, sha256_file(&n4), "N=4 intra-file byte mismatch");
+
+    // Strict temp hygiene: no `.aerotmp` residue beside either output.
+    assert!(
+        !tmp_root.join("n1.bin.aerotmp").exists(),
+        "N=1 left an .aerotmp residue"
+    );
+    assert!(
+        !tmp_root.join("n4.bin.aerotmp").exists(),
+        "N=4 intra-file left an .aerotmp residue"
+    );
+
+    eprintln!(
+        "PD-SFTP-2 intra-file: file={:.0} MiB  N=1 {:.2}s ({:.1} MiB/s)  N={} {:.2}s ({:.1} MiB/s)  SHA-256 identical",
+        total_mib,
+        e1.as_secs_f64(),
+        total_mib / e1.as_secs_f64(),
+        STREAMS,
+        e4.as_secs_f64(),
+        total_mib / e4.as_secs_f64(),
+    );
+
+    let _ = base.disconnect().await;
+    let _ = std::fs::remove_dir_all(&tmp_root);
+    let _ = std::fs::remove_dir_all(&src_dir);
 }

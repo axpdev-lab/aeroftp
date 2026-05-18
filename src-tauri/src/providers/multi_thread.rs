@@ -172,25 +172,35 @@ pub(crate) fn aerotmp_path_for(final_path: &Path) -> PathBuf {
     PathBuf::from(p)
 }
 
-/// Strict concurrent HTTP Range download.
+/// Transport-agnostic concurrent range download orchestrator (PD-SFTP-2).
 ///
-/// `fetch_range(start, end)` must issue a single `Range: bytes=start-end`
-/// request and return the raw `reqwest::Response`. The helper enforces the
-/// strict gate, writes each window at its absolute offset in a pre-allocated
-/// `.aerotmp`, aggregates progress, and cleans up on every non-success exit.
+/// This is the single shared engine for splitting a large file into N
+/// gap-free windows downloaded in parallel into a pre-allocated `.aerotmp`.
+/// Everything that is *not* transport-specific lives here exactly once: the
+/// range plan, the temp pre-allocation, the [`TempFileGuard`] RAII cleanup
+/// (the F-1 lesson), bounded concurrency, progress aggregation, cooperative
+/// cancellation, and the commit/atomic-ready temp.
 ///
-/// Returns [`ConcurrentRangeOutcome::ServerIgnoredRange`] (no bytes
-/// committed, temp removed) the moment any task observes `200 OK`, so the
-/// caller can perform an honest single-stream download instead.
-pub(crate) async fn download_via_concurrent_range<F, Fut>(
+/// `write_one_range(start, end, temp_path, aggregate, cancel)` is the only
+/// transport-specific part. It must write **exactly** the inclusive
+/// `[start, end]` window at its absolute offset into `temp_path`, bump
+/// `aggregate` by the bytes it wrote, honour `cancel`, and return:
+/// - [`ConcurrentRangeOutcome::Completed`] on success;
+/// - [`ConcurrentRangeOutcome::ServerIgnoredRange`] iff the transport proves
+///   the server ignored `Range` (HTTP `200 OK`); SFTP never returns this
+///   because a short read is a hard error, not a fallback signal;
+/// - `Err` on any hard failure (the strict gate: HTTP = `206` +
+///   `Content-Range`; SFTP = exactly `end - start + 1` bytes, no silent
+///   short read).
+pub(crate) async fn run_concurrent_range_download<W, WFut>(
     cfg: ConcurrentRangeConfig,
-    fetch_range: F,
+    write_one_range: W,
     cancel: CancellationToken,
     on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
 ) -> Result<ConcurrentRangeOutcome, ProviderError>
 where
-    F: Fn(u64, u64) -> Fut + Send + Sync + 'static,
-    Fut: std::future::Future<Output = Result<reqwest::Response, ProviderError>> + Send,
+    W: Fn(u64, u64, PathBuf, Arc<AtomicU64>, CancellationToken) -> WFut + Send + Sync + 'static,
+    WFut: std::future::Future<Output = Result<ConcurrentRangeOutcome, ProviderError>> + Send + 'static,
 {
     let ranges = plan_multi_thread_ranges(cfg.total_size, cfg.streams, cfg.max_streams);
     if ranges.is_empty() {
@@ -225,13 +235,13 @@ where
 
     let aggregate = Arc::new(AtomicU64::new(0));
     let semaphore = Arc::new(Semaphore::new(cfg.max_parallel.max(1)));
-    let fetch_range = Arc::new(fetch_range);
+    let write_one_range = Arc::new(write_one_range);
     let total_size = cfg.total_size;
     let mut join_set: JoinSet<Result<ConcurrentRangeOutcome, ProviderError>> = JoinSet::new();
 
     for (start, end) in ranges {
         let semaphore = semaphore.clone();
-        let fetch_range = fetch_range.clone();
+        let write_one_range = write_one_range.clone();
         let aggregate = aggregate.clone();
         let temp_path = temp_path.clone();
         let cancel = cancel.clone();
@@ -245,15 +255,7 @@ where
                     "Transfer cancelled by user".to_string(),
                 ));
             }
-            download_one_strict_range(
-                fetch_range.as_ref(),
-                &temp_path,
-                start,
-                end,
-                &aggregate,
-                &cancel,
-            )
-            .await
+            write_one_range(start, end, temp_path, aggregate, cancel).await
         });
     }
 
@@ -292,6 +294,54 @@ where
 
     guard.commit();
     Ok(ConcurrentRangeOutcome::Completed)
+}
+
+/// Strict concurrent HTTP Range download.
+///
+/// `fetch_range(start, end)` must issue a single `Range: bytes=start-end`
+/// request and return the raw `reqwest::Response`. The helper enforces the
+/// strict gate, writes each window at its absolute offset in a pre-allocated
+/// `.aerotmp`, aggregates progress, and cleans up on every non-success exit.
+///
+/// Returns [`ConcurrentRangeOutcome::ServerIgnoredRange`] (no bytes
+/// committed, temp removed) the moment any task observes `200 OK`, so the
+/// caller can perform an honest single-stream download instead.
+///
+/// This is now a thin HTTP adapter over [`run_concurrent_range_download`]:
+/// the orchestration is shared with SFTP intra-file, the HTTP strict 206
+/// gate stays here in [`download_one_strict_range`]. Behaviour is
+/// byte-identical to the pre-PD-SFTP-2 inline version (the live-validated
+/// WebDAV/Koofr path is unchanged).
+pub(crate) async fn download_via_concurrent_range<F, Fut>(
+    cfg: ConcurrentRangeConfig,
+    fetch_range: F,
+    cancel: CancellationToken,
+    on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+) -> Result<ConcurrentRangeOutcome, ProviderError>
+where
+    F: Fn(u64, u64) -> Fut + Send + Sync + 'static,
+    Fut: std::future::Future<Output = Result<reqwest::Response, ProviderError>> + Send + 'static,
+{
+    let fetch_range = Arc::new(fetch_range);
+    let write_one_range = move |start: u64,
+                                end: u64,
+                                temp_path: PathBuf,
+                                aggregate: Arc<AtomicU64>,
+                                cancel: CancellationToken| {
+        let fetch_range = fetch_range.clone();
+        async move {
+            download_one_strict_range(
+                fetch_range.as_ref(),
+                &temp_path,
+                start,
+                end,
+                &aggregate,
+                &cancel,
+            )
+            .await
+        }
+    };
+    run_concurrent_range_download(cfg, write_one_range, cancel, on_progress).await
 }
 
 /// Download exactly one `[start, end]` window under the strict gate.
