@@ -76,6 +76,127 @@ pub async fn bridge_source_meta(source: String) -> Result<Value, String> {
     }))
 }
 
+/// Content + filename sniffer for a dropped profile file. Returns the
+/// candidate bridge source ids, most-specific first. Pure and cheap: it
+/// only looks at the lowercased file name and a bounded text head, never
+/// the secrets. Legacy ids (filezilla / rclone / winscp) are included so
+/// the frontend can route them to their dedicated panels; the frontend
+/// owns the id -> descriptor mapping (bridgeSources.ts), so this stays a
+/// thin classifier and does not duplicate metadata.
+fn identify_sources(file_name: &str, head: &str) -> Vec<&'static str> {
+    let name = file_name.to_ascii_lowercase();
+    let h = head; // case-sensitive markers kept where the format is
+    let hl = head.to_ascii_lowercase();
+    let mut hits: Vec<&'static str> = Vec::new();
+    let push = |id: &'static str, hits: &mut Vec<&'static str>| {
+        if !hits.contains(&id) {
+            hits.push(id);
+        }
+    };
+
+    // Strong, format-unique markers first.
+    if h.contains("<FileZilla3") || (hl.contains("<servers") && name.contains("sitemanager")) {
+        push("filezilla", &mut hits);
+    }
+    if name.ends_with(".ste") || (hl.contains("<site") && hl.contains("<remoteinfo")) {
+        push("dreamweaver", &mut hits);
+    }
+    if name.ends_with(".duck")
+        || (hl.contains("<plist") && hl.contains("protocol") && hl.contains("hostname"))
+    {
+        push("cyberduck", &mut hits);
+    }
+    if name.ends_with(".reg") && h.contains("SimonTatham\\PuTTY\\Sessions") {
+        push("putty", &mut hits);
+    }
+    if hl.contains("restic_repository") {
+        push("restic", &mut hits);
+    }
+    if (name == "rclone.conf" || name.ends_with("rclone.conf"))
+        || (hl.contains("type = ") && hl.contains('[') && hl.contains(']'))
+    {
+        push("rclone", &mut hits);
+    }
+    if name.contains("winscp") || hl.contains("[sessions\\") || hl.contains("[configuration]") {
+        push("winscp", &mut hits);
+    }
+    // INI credential families. aws and s3cmd both use [default] + a key;
+    // disambiguate on their unique keys but keep both when ambiguous.
+    if hl.contains("aws_access_key_id") {
+        push("aws", &mut hits);
+    }
+    if name.contains("s3cfg")
+        || (hl.contains("access_key") && hl.contains("secret_key") && hl.contains("host_base"))
+    {
+        push("s3cmd", &mut hits);
+    }
+    if (name == "config" && hl.contains("host ") && hl.contains("hostname"))
+        || (hl.contains("\nhost ") && hl.contains("hostname "))
+    {
+        push("ssh", &mut hits);
+    }
+    if hl.contains("[bookmarks") && hl.contains("mobaxterm") {
+        push("mobaxterm", &mut hits);
+    }
+    if name.ends_with(".rc") || (hl.contains("bookmark ") && hl.contains("set ")) {
+        push("lftp", &mut hits);
+    }
+    // JSON families: mc / kopia / duplicacy.
+    if hl.contains("\"aliases\"") || (hl.contains("\"url\"") && hl.contains("\"accesskey\"")) {
+        push("mc", &mut hits);
+    }
+    if hl.contains("\"storage\"") && hl.contains("\"type\"") && hl.contains("\"hostname\"") {
+        push("kopia", &mut hits);
+    }
+    if hl.contains("\"storage_backend\"") || hl.contains("\"snapshot_id\"") {
+        push("duplicacy", &mut hits);
+    }
+    hits
+}
+
+/// Identify which bridge source a dropped profile file belongs to so the
+/// UI can route a drag-and-drop straight to that source's import form
+/// without the user picking from the list. Same path validation as
+/// `import_bridge_config` (traversal reject + canonicalize + regular
+/// file + 10 MB cap). Never returns file contents: profile files carry
+/// credentials, so only the file name and the candidate ids are exposed;
+/// the redacted preview happens later in `import_bridge_config`.
+#[tauri::command]
+pub async fn bridge_identify(file_path: String) -> Result<Value, String> {
+    let path = Path::new(&file_path);
+    if path.to_string_lossy().contains("..") {
+        return Err("Invalid path: directory traversal not allowed".to_string());
+    }
+    let canonical = path
+        .canonicalize()
+        .map_err(|_| "File not found or inaccessible".to_string())?;
+    let metadata = std::fs::metadata(&canonical)
+        .map_err(|_| "Cannot read file metadata".to_string())?;
+    if !metadata.is_file() {
+        return Err("Not a regular file".to_string());
+    }
+    if metadata.len() > 10 * 1024 * 1024 {
+        return Err("File too large (max 10 MB)".to_string());
+    }
+
+    let file_name = canonical
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    // Read a bounded head only; enough for every format's markers and
+    // cheap. Binary/garbled files just yield zero candidates.
+    let bytes = std::fs::read(&canonical).map_err(|_| "Cannot read file".to_string())?;
+    let head_len = bytes.len().min(64 * 1024);
+    let head = String::from_utf8_lossy(&bytes[..head_len]);
+
+    let candidates = identify_sources(&file_name, &head);
+    Ok(json!({
+        "fileName": file_name,
+        "candidates": candidates,
+    }))
+}
+
 /// Dispatch the typed `import_<src>` and collapse the result to the
 /// shared camelCase JSON shape (servers / skipped / sourcePath /
 /// totalRemotes), identical to the CLI's `cmd_import_bridge`.

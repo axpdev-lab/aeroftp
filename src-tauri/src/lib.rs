@@ -14635,6 +14635,7 @@ pub fn run() {
             // Generic profile bridge (12 expansion sources)
             bridge_commands::detect_bridge_config,
             bridge_commands::bridge_source_meta,
+            bridge_commands::bridge_identify,
             bridge_commands::import_bridge_config,
             bridge_commands::export_bridge_config,
             // Full Keystore Export/Import

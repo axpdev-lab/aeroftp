@@ -2,8 +2,9 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { Upload, Download, Shield, AlertCircle, CheckCircle2, X, Eye, EyeOff, Lock, Server, RefreshCw, FolderInput, AlertTriangle } from 'lucide-react';
 import { PasswordStrengthBar } from './vault/PasswordStrengthBar';
@@ -59,6 +60,9 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
     // Generic bridge source (the 12 expansion sources routed through BridgeSourcePanel)
     const [bridgeSrc, setBridgeSrc] = useState<BridgeSourceDescriptor | null>(null);
     const [bridgeSrcDir, setBridgeSrcDir] = useState<'import' | 'export'>('import');
+    // A profile file dropped onto the dialog and identified by
+    // bridge_identify; handed to BridgeSourcePanel to skip browse.
+    const [bridgePresetPath, setBridgePresetPath] = useState<string | null>(null);
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [includeCredentials, setIncludeCredentials] = useState(true);
@@ -656,7 +660,91 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         setFilezillaResult(null);
         setFilezillaSelectedIds(new Set());
         setBridgeSrc(null);
+        setBridgePresetPath(null);
     };
+
+    // Route to a bridge source's import surface. Shared by the source
+    // list click and by drag-and-drop. Legacy sources keep their own
+    // dedicated mode (no preset path: those panels manage their own
+    // file selection); generic sources go through BridgeSourcePanel and
+    // can receive the dropped file directly.
+    const routeBridgeSource = useCallback(
+        (s: BridgeSourceDescriptor, asImport: boolean, presetPath?: string) => {
+            if (asImport && s.legacyImportMode) {
+                setBridgePresetPath(null);
+                setMode(s.legacyImportMode);
+                return;
+            }
+            if (!asImport && s.legacyExportMode) {
+                setBridgePresetPath(null);
+                setMode(s.legacyExportMode);
+                return;
+            }
+            setBridgePresetPath(presetPath ?? null);
+            setBridgeSrc(s);
+            setBridgeSrcDir(asImport ? 'import' : 'export');
+            setMode('bridge-src');
+        },
+        [],
+    );
+
+    // Drag-and-drop a client profile file anywhere on the open dialog:
+    // identify the format and jump straight to that source's import
+    // form with the file preloaded. One match routes directly; zero or
+    // several matches open the source list (with the file kept ready)
+    // so the user picks. Never auto-imports: the preview + confirm step
+    // in BridgeSourcePanel still applies.
+    const handleBridgeDrop = useCallback(
+        async (filePath: string) => {
+            try {
+                const res = await invoke<{ fileName: string; candidates: string[] }>(
+                    'bridge_identify',
+                    { filePath },
+                );
+                const all = [...LEGACY_BRIDGE_SOURCES, ...GENERIC_BRIDGE_SOURCES];
+                const matched = res.candidates
+                    .map(id => all.find(s => s.id === id))
+                    .filter((s): s is BridgeSourceDescriptor => !!s);
+                if (matched.length === 1) {
+                    setError(null);
+                    routeBridgeSource(matched[0], true, filePath);
+                } else {
+                    // 0 or >1: let the user choose from the list, keeping
+                    // the dropped file ready so the pick still uses it.
+                    setBridgePresetPath(filePath);
+                    setBridgeSrc(null);
+                    setBridgeSrcDir('import');
+                    setMode('bridge-import');
+                }
+            } catch (e) {
+                setError(String(e));
+            }
+        },
+        [routeBridgeSource],
+    );
+
+    // OS file drag-and-drop is delivered through the Tauri webview API
+    // (HTML drop does not expose absolute paths in the sandbox). The
+    // listener lives for the dialog's lifetime (it is only mounted while
+    // the modal is open).
+    useEffect(() => {
+        let unlisten: (() => void) | undefined;
+        let cancelled = false;
+        (async () => {
+            const webview = getCurrentWebview();
+            const un = await webview.onDragDropEvent((event) => {
+                if (event.payload.type === 'drop' && event.payload.paths.length > 0) {
+                    void handleBridgeDrop(event.payload.paths[0]);
+                }
+            });
+            if (cancelled) un();
+            else unlisten = un;
+        })();
+        return () => {
+            cancelled = true;
+            if (unlisten) unlisten();
+        };
+    }, [handleBridgeDrop]);
 
     // Protocol display helper
     const protocolLabel = (proto?: string) => (proto || 'ftp').toUpperCase();
@@ -756,13 +844,8 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                         (() => {
                             const isImport = mode === 'bridge-import';
                             const Icon = isImport ? FolderInput : Download;
-                            const pick = (s: BridgeSourceDescriptor) => {
-                                if (isImport && s.legacyImportMode) { setMode(s.legacyImportMode); return; }
-                                if (!isImport && s.legacyExportMode) { setMode(s.legacyExportMode); return; }
-                                setBridgeSrc(s);
-                                setBridgeSrcDir(isImport ? 'import' : 'export');
-                                setMode('bridge-src');
-                            };
+                            const pick = (s: BridgeSourceDescriptor) =>
+                                routeBridgeSource(s, isImport, bridgePresetPath ?? undefined);
                             return (
                                 <div className="space-y-3">
                                     <div className="text-sm text-gray-600 dark:text-gray-300">
@@ -800,7 +883,8 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                             existingServerKeys={existingServerKeys}
                             onImport={onImport}
                             onClose={onClose}
-                            onBack={() => { setBridgeSrc(null); setError(null); setSuccess(null); setMode(bridgeSrcDir === 'import' ? 'bridge-import' : 'bridge-export'); }}
+                            presetFilePath={bridgePresetPath ?? undefined}
+                            onBack={() => { setBridgeSrc(null); setBridgePresetPath(null); setError(null); setSuccess(null); setMode(bridgeSrcDir === 'import' ? 'bridge-import' : 'bridge-export'); }}
                         />
                     ) : mode === 'export' ? (
                         <div className="space-y-4">
