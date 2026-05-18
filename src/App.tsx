@@ -853,7 +853,14 @@ const App: React.FC = () => {
   const [syncNavDialog, setSyncNavDialog] = useState<{ missingPath: string; isRemote: boolean; targetPath: string } | null>(null);
   // AeroFile sidebar state (persisted in localStorage)
   const [showSidebar, setShowSidebar] = useState(() => localStorage.getItem('aerofile_show_sidebar') !== 'false');
-  const [showDualLocalPanel, setShowDualLocalPanel] = useState(() => localStorage.getItem('aerofile_dual_panel') === 'true');
+  // Boot always starts on the single default panel (left, "L") even if the
+  // previous session had the dual panel open. Restoring dual mode at boot
+  // let the second-panel seed effect run before the left panel had resolved
+  // a real path, seeding panel 2 with '/' (Linux: outside fs:scope, rejected
+  // as "not allowed by ACL"; Windows: not absolute, "Path must be absolute")
+  // and re-firing on every boot-time path change. The user re-enables the
+  // dual panel in-session; the toggle still persists within that session.
+  const [showDualLocalPanel, setShowDualLocalPanel] = useState(false);
   // AeroFile dual-panel split ratio (flex-grow of left panel, range 0.2..1.8).
   // Stored as a number; defaults to 1.0 (equal 50/50 split). Persisted.
   const [dualPanelLeftFlex, setDualPanelLeftFlex] = useState<number>(() => {
@@ -3199,6 +3206,15 @@ interface UpdateVerificationInfo {
 
   // File loading (race-condition safe: stale responses are discarded)
   const loadLocalFiles = useCallback(async (path: string): Promise<boolean> => {
+    if (!path) {
+      // Defence in depth: never call get_local_files with an empty path
+      // from any caller (boot, sidebar, sync nav, session restore with a
+      // missing path). The backend rejects it loudly (Linux: outside
+      // fs:scope, "not allowed by ACL"; Windows: "Path must be absolute")
+      // and it would surface in the Activity Log. An uninitialised path
+      // just means there is nothing to list yet.
+      return false;
+    }
     const callId = ++loadLocalCallIdRef.current;
     try {
       const files: LocalFile[] = await invoke('get_local_files', { path, showHidden: showHiddenFiles });
@@ -3216,6 +3232,7 @@ interface UpdateVerificationInfo {
   }, [showHiddenFiles, notify, t]);
 
   const loadLocalFiles2 = useCallback(async (path: string): Promise<boolean> => {
+    if (!path) return false; // defence in depth: see loadLocalFiles above
     try {
       const files: LocalFile[] = await invoke('get_local_files', { path, showHidden: showHiddenFiles });
       setLocalFiles2(files);
@@ -3272,8 +3289,15 @@ interface UpdateVerificationInfo {
   }, [activeLocalTabId2, changeLocalDirectory2, setLocalTabs2, setActiveLocalTabId2]);
 
   useEffect(() => {
+    // Defence in depth: seed the second panel only once the left panel has
+    // settled on a real absolute path. Never fall back to '/': it sits
+    // outside fs:scope on Linux (rejected as "not allowed by ACL") and is
+    // not an absolute path on Windows ("Path must be absolute"), and the
+    // failed call never sets currentLocalPath2, so the effect would re-fire
+    // on every boot-time currentLocalPath change.
     if (!showDualLocalPanel || currentLocalPath2) return;
-    const seedPath = currentLocalPath || defaultLocalPath || '/';
+    const seedPath = currentLocalPath || defaultLocalPath;
+    if (!seedPath) return;
     void loadLocalFiles2(seedPath);
   }, [showDualLocalPanel, currentLocalPath2, currentLocalPath, defaultLocalPath, loadLocalFiles2]);
 
