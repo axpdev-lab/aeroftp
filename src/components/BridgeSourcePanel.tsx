@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import {
@@ -49,6 +49,10 @@ interface Props {
     onImport: (servers: ServerProfile[]) => void;
     onClose: () => void;
     onBack: () => void;
+    /** A profile file dragged onto the import dialog and identified as
+     *  this source. When set, skip auto-detect/browse and scan it
+     *  directly so drag-and-drop lands straight on the preview. */
+    presetFilePath?: string;
 }
 
 const DEFAULT_EXPORT_NAME: Record<string, string> = {
@@ -60,6 +64,7 @@ const DEFAULT_EXPORT_NAME: Record<string, string> = {
 
 export const BridgeSourcePanel: React.FC<Props> = ({
     source, direction, servers, existingServerKeys, onImport, onClose, onBack,
+    presetFilePath,
 }) => {
     const t = useTranslation();
     const app = source.label;
@@ -85,14 +90,17 @@ export const BridgeSourcePanel: React.FC<Props> = ({
             .catch(e => setError(String(e)));
     }, [source.id]);
 
-    // Auto-detect the config file for imports.
+    // Auto-detect the config file for imports. Skipped when a dropped
+    // file was already identified for this source (presetFilePath wins).
     useEffect(() => {
-        if (direction === 'import' && detectedPath === null) {
+        if (direction === 'import' && detectedPath === null && !presetFilePath) {
             invoke<string | null>('detect_bridge_config', { source: source.id })
                 .then(p => setDetectedPath(p || ''))
                 .catch(() => setDetectedPath(''));
         }
-    }, [direction, source.id, detectedPath]);
+    }, [direction, source.id, detectedPath, presetFilePath]);
+
+    const presetHandledRef = useRef<string | null>(null);
 
     // Pre-select exportable profiles (protocol supported by the target).
     const supported = meta?.supportedProtocols ?? [];
@@ -145,6 +153,23 @@ export const BridgeSourcePanel: React.FC<Props> = ({
             setLoading(false);
         }
     };
+
+    // Drag-and-drop entry point: a file identified as this source is
+    // scanned directly, skipping detect/browse. Guarded so it runs once
+    // per dropped path.
+    useEffect(() => {
+        if (
+            direction === 'import' &&
+            presetFilePath &&
+            presetHandledRef.current !== presetFilePath
+        ) {
+            presetHandledRef.current = presetFilePath;
+            setDetectedPath(presetFilePath);
+            void runScan(presetFilePath);
+        }
+        // runScan is a stable closure over source.id for this panel.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [direction, presetFilePath]);
 
     const browse = async () => {
         const exts = meta?.importExtensions?.length ? meta.importExtensions : ['*'];
