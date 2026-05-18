@@ -26,8 +26,9 @@ use tracing::{debug, info};
 
 use super::types::AzureConfig;
 use super::{
-    sanitize_api_error, send_with_retry, HttpRetryConfig, ProviderError, ProviderType, RemoteEntry,
-    ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult, StorageProvider,
+    sanitize_api_error, send_with_retry, HttpRetryConfig, ProviderError,
+    ProviderTransferExecutorKind, ProviderType, RemoteEntry, ShareLinkCapabilities,
+    ShareLinkOptions, ShareLinkResult, StorageProvider,
 };
 
 type HmacSha256 = Hmac<Sha256>;
@@ -116,6 +117,17 @@ pub struct AzureProvider {
     client: reqwest::Client,
     connected: bool,
     current_prefix: String,
+}
+
+impl Clone for AzureProvider {
+    fn clone(&self) -> Self {
+        Self {
+            config: self.config.clone(),
+            client: self.client.clone(),
+            connected: self.connected,
+            current_prefix: self.current_prefix.clone(),
+        }
+    }
 }
 
 impl AzureProvider {
@@ -941,6 +953,30 @@ impl StorageProvider for AzureProvider {
             supports_resume_download: true,
             ..Default::default()
         }
+    }
+
+    fn transfer_executor_kind(&self) -> ProviderTransferExecutorKind {
+        ProviderTransferExecutorKind::HttpClonePool
+    }
+
+    fn transfer_executor_max_sessions(&self) -> u16 {
+        8
+    }
+
+    fn clone_for_transfer(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
+        Ok(Box::new(self.clone()))
+    }
+
+    fn list_executor_kind(&self) -> super::ProviderListExecutorKind {
+        super::ProviderListExecutorKind::HttpClonePool
+    }
+
+    fn list_executor_max_sessions(&self) -> u16 {
+        8
+    }
+
+    fn clone_for_list(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
+        Ok(Box::new(self.clone()))
     }
 
     async fn resume_download(

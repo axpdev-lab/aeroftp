@@ -289,6 +289,32 @@ impl Default for TransferOptimizationHints {
     }
 }
 
+/// Execution model the Core DAG provider executor may use for file transfers.
+///
+/// `LockedSingle` is the conservative default for providers whose trait object is
+/// protected by the GUI session mutex for the whole file. Providers should only
+/// return `HttpClonePool` when `clone_for_transfer()` produces an independent
+/// transfer-capable instance backed by a cloneable HTTP client or equivalent
+/// real resource.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderTransferExecutorKind {
+    LockedSingle,
+    HttpClonePool,
+}
+
+/// Execution model the Core DAG scanner may use for remote list/checker work.
+///
+/// This is intentionally separate from file transfer execution: a provider may
+/// support clone-backed transfers before its list/stat/checksum path has been
+/// audited for concurrent use.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderListExecutorKind {
+    LockedSingle,
+    HttpClonePool,
+}
+
 /// Options for creating a share link - provider-specific fields are optional.
 /// Providers that don't support a given option simply ignore it.
 #[derive(Debug, Clone, Default, serde::Deserialize)]
@@ -715,6 +741,45 @@ pub trait StorageProvider: Send + Sync {
         TransferOptimizationHints::default()
     }
 
+    /// Scheduler-facing provider executor model.
+    ///
+    /// Defaults to a single locked session. Override only when this provider can
+    /// create independent transfer workers via `clone_for_transfer()`.
+    fn transfer_executor_kind(&self) -> ProviderTransferExecutorKind {
+        ProviderTransferExecutorKind::LockedSingle
+    }
+
+    /// Maximum file-level leases for the provider executor when clone-backed.
+    fn transfer_executor_max_sessions(&self) -> u16 {
+        1
+    }
+
+    /// Create an independent transfer worker for clone-backed provider DAG execution.
+    fn clone_for_transfer(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
+        Err(ProviderError::NotSupported(
+            "clone_for_transfer".to_string(),
+        ))
+    }
+
+    /// Scheduler-facing provider scanner model.
+    ///
+    /// Defaults to a single locked session. Override only when list/stat/checksum
+    /// work can run on independent workers without taking the GUI provider mutex
+    /// for the duration of the remote scan.
+    fn list_executor_kind(&self) -> ProviderListExecutorKind {
+        ProviderListExecutorKind::LockedSingle
+    }
+
+    /// Maximum checker/list leases for clone-backed remote scan.
+    fn list_executor_max_sessions(&self) -> u16 {
+        1
+    }
+
+    /// Create an independent list/checker worker for clone-backed scan.
+    fn clone_for_list(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
+        Err(ProviderError::NotSupported("clone_for_list".to_string()))
+    }
+
     /// Get scheduler-facing transfer capabilities for the Core DAG engine.
     ///
     /// This is deliberately stricter than the legacy hint surface: a provider
@@ -723,11 +788,29 @@ pub trait StorageProvider: Send + Sync {
     /// executor. Defaults derive from existing hints and keep legacy providers
     /// on a single lease unless they advertise a real pool-backed path.
     fn transfer_capabilities(&self) -> crate::transfer_dag::TransferCapabilities {
-        crate::transfer_dag::TransferCapabilities::from_provider_hints(
+        let mut caps = crate::transfer_dag::TransferCapabilities::from_provider_hints(
             self.provider_type(),
             &self.transfer_optimization_hints(),
             self.supports_server_copy(),
-        )
+        );
+
+        if self.transfer_executor_kind() == ProviderTransferExecutorKind::HttpClonePool {
+            caps.file_parallel = crate::transfer_dag::Capability::Supported;
+            caps.session_pool = crate::transfer_dag::Capability::Supported;
+            caps.max_file_slots = Some(self.transfer_executor_max_sessions().max(1));
+        }
+
+        if self.list_executor_kind() == ProviderListExecutorKind::HttpClonePool
+            && self.clone_for_list().is_ok()
+        {
+            caps.list_parallel = crate::transfer_dag::Capability::Supported;
+            caps.max_checker_slots = Some(self.list_executor_max_sessions().max(1));
+        } else {
+            caps.list_parallel = crate::transfer_dag::Capability::Unsupported;
+            caps.max_checker_slots = Some(1);
+        }
+
+        caps
     }
 
     /// Override upload chunk size and download buffer size.
