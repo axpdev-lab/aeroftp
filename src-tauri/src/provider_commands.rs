@@ -24,6 +24,7 @@ use crate::providers::{
     StorageInfo, StorageProvider,
 };
 use crate::transfer_domain::{TransferBatchConfig, TransferDirection, TransferEntry};
+use crate::transfer_event_sink::AppHandleSink;
 use crate::transfer_orchestrator::{execute_batch, ProgressObserver, TransferBatch};
 use crate::transfer_settings::{
     resolve_provider_transfer_settings, ResolvedTransferSettings, TransferSettingsInput,
@@ -1688,7 +1689,7 @@ async fn provider_download_folder_inner(
     )
     .await;
     let executor = Arc::new(ProviderDownloadExecutor::new(
-        app.clone(),
+        Arc::new(AppHandleSink::new(app.clone())),
         state.provider.clone(),
         runtime_settings,
         cancel_token,
@@ -2030,7 +2031,7 @@ async fn provider_upload_folder_inner(
     )
     .await;
     let executor = Arc::new(ProviderUploadExecutor::new(
-        app.clone(),
+        Arc::new(AppHandleSink::new(app.clone())),
         state.provider.clone(),
         runtime_settings,
         commit_message,

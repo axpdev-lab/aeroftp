@@ -7,7 +7,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use tauri::{AppHandle, Emitter};
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
@@ -20,6 +19,7 @@ use crate::transfer_domain::{
     transfer_failure_kind_from_sync, user_facing_transfer_failure_message, TransferEntry,
     TransferFailure, TransferOutcome,
 };
+use crate::transfer_event_sink::TransferEventSink;
 use crate::transfer_orchestrator::TransferExecutor;
 use crate::transfer_settings::ResolvedTransferSettings;
 
@@ -179,7 +179,7 @@ pub async fn resolve_provider_list_session_model(
 }
 
 pub struct ProviderDownloadExecutor {
-    app: AppHandle,
+    sink: Arc<dyn TransferEventSink>,
     provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
     runtime_settings: ResolvedTransferSettings,
     cancel_token: CancellationToken,
@@ -188,14 +188,14 @@ pub struct ProviderDownloadExecutor {
 
 impl ProviderDownloadExecutor {
     pub fn new(
-        app: AppHandle,
+        sink: Arc<dyn TransferEventSink>,
         provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
         runtime_settings: ResolvedTransferSettings,
         cancel_token: CancellationToken,
         session_model: ProviderExecutorSessionModel,
     ) -> Self {
         Self {
-            app,
+            sink,
             provider,
             runtime_settings,
             cancel_token,
@@ -287,7 +287,7 @@ impl ProviderDownloadExecutor {
         file_transfer_id: &str,
         attempt: u32,
     ) -> Result<(), String> {
-        let app = self.app.clone();
+        let sink = Arc::clone(&self.sink);
         let transfer_id = file_transfer_id.to_string();
         let display_name = entry.display_name.clone();
         let remote_path = entry.remote_path.clone();
@@ -328,31 +328,28 @@ impl ProviderDownloadExecutor {
                 } else {
                     0
                 };
-                let _ = app.emit(
-                    "transfer_event",
-                    crate::TransferEvent {
-                        event_type: "progress".to_string(),
+                sink.emit_transfer_event(crate::TransferEvent {
+                    event_type: "progress".to_string(),
+                    transfer_id: transfer_id.clone(),
+                    filename: display_name.clone(),
+                    direction: "download".to_string(),
+                    message: None,
+                    progress: Some(crate::TransferProgress {
                         transfer_id: transfer_id.clone(),
                         filename: display_name.clone(),
+                        transferred,
+                        total: total.max(file_size),
+                        percentage,
+                        speed_bps: speed,
+                        eta_seconds: eta as u32,
                         direction: "download".to_string(),
-                        message: None,
-                        progress: Some(crate::TransferProgress {
-                            transfer_id: transfer_id.clone(),
-                            filename: display_name.clone(),
-                            transferred,
-                            total: total.max(file_size),
-                            percentage,
-                            speed_bps: speed,
-                            eta_seconds: eta as u32,
-                            direction: "download".to_string(),
-                            total_files: None,
-                            path: None,
-                        }),
-                        path: Some(remote_path_for_progress.clone()),
-                        delta_stats: None,
-                        fallback_reason: None,
-                    },
-                );
+                        total_files: None,
+                        path: None,
+                    }),
+                    path: Some(remote_path_for_progress.clone()),
+                    delta_stats: None,
+                    fallback_reason: None,
+                });
             }));
 
         let size_based_secs = file_size / 50_000;
@@ -383,48 +380,42 @@ impl ProviderDownloadExecutor {
     }
 
     fn emit_download_start(&self, entry: &TransferEntry, file_transfer_id: &str) {
-        let _ = self.app.emit(
-            "transfer_event",
-            crate::TransferEvent {
-                event_type: "file_start".to_string(),
+        self.sink.emit_transfer_event(crate::TransferEvent {
+            event_type: "file_start".to_string(),
+            transfer_id: file_transfer_id.to_string(),
+            filename: entry.display_name.clone(),
+            direction: "download".to_string(),
+            message: Some(format!("Downloading: {}", entry.remote_path)),
+            progress: Some(crate::TransferProgress {
                 transfer_id: file_transfer_id.to_string(),
                 filename: entry.display_name.clone(),
+                transferred: 0,
+                total: entry.size,
+                percentage: 0,
+                speed_bps: 0,
+                eta_seconds: 0,
                 direction: "download".to_string(),
-                message: Some(format!("Downloading: {}", entry.remote_path)),
-                progress: Some(crate::TransferProgress {
-                    transfer_id: file_transfer_id.to_string(),
-                    filename: entry.display_name.clone(),
-                    transferred: 0,
-                    total: entry.size,
-                    percentage: 0,
-                    speed_bps: 0,
-                    eta_seconds: 0,
-                    direction: "download".to_string(),
-                    total_files: None,
-                    path: None,
-                }),
-                path: Some(entry.remote_path.clone()),
-                delta_stats: None,
-                fallback_reason: None,
-            },
-        );
+                total_files: None,
+                path: None,
+            }),
+            path: Some(entry.remote_path.clone()),
+            delta_stats: None,
+            fallback_reason: None,
+        });
     }
 
     fn emit_download_complete(&self, entry: &TransferEntry, file_transfer_id: &str) {
-        let _ = self.app.emit(
-            "transfer_event",
-            crate::TransferEvent {
-                event_type: "file_complete".to_string(),
-                transfer_id: file_transfer_id.to_string(),
-                filename: entry.display_name.clone(),
-                direction: "download".to_string(),
-                message: Some(format!("Downloaded: {}", entry.display_name)),
-                progress: None,
-                path: Some(entry.remote_path.clone()),
-                delta_stats: None,
-                fallback_reason: None,
-            },
-        );
+        self.sink.emit_transfer_event(crate::TransferEvent {
+            event_type: "file_complete".to_string(),
+            transfer_id: file_transfer_id.to_string(),
+            filename: entry.display_name.clone(),
+            direction: "download".to_string(),
+            message: Some(format!("Downloaded: {}", entry.display_name)),
+            progress: None,
+            path: Some(entry.remote_path.clone()),
+            delta_stats: None,
+            fallback_reason: None,
+        });
     }
 
     fn failed_download(&self, entry: TransferEntry, last_error: String) -> TransferOutcome {
@@ -445,27 +436,24 @@ impl ProviderDownloadExecutor {
             }
         };
 
-        let _ = self.app.emit(
-            "transfer_event",
-            crate::TransferEvent {
-                event_type: "file_error".to_string(),
-                transfer_id: entry.id,
-                filename: entry.display_name.clone(),
-                direction: "download".to_string(),
-                message: Some(failure.message.clone()),
-                progress: None,
-                path: Some(entry.remote_path.clone()),
-                delta_stats: None,
-                fallback_reason: None,
-            },
-        );
+        self.sink.emit_transfer_event(crate::TransferEvent {
+            event_type: "file_error".to_string(),
+            transfer_id: entry.id,
+            filename: entry.display_name.clone(),
+            direction: "download".to_string(),
+            message: Some(failure.message.clone()),
+            progress: None,
+            path: Some(entry.remote_path.clone()),
+            delta_stats: None,
+            fallback_reason: None,
+        });
 
         TransferOutcome::Failed(failure)
     }
 }
 
 pub struct ProviderUploadExecutor {
-    app: AppHandle,
+    sink: Arc<dyn TransferEventSink>,
     provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
     runtime_settings: ResolvedTransferSettings,
     commit_message: Option<String>,
@@ -475,7 +463,7 @@ pub struct ProviderUploadExecutor {
 
 impl ProviderUploadExecutor {
     pub fn new(
-        app: AppHandle,
+        sink: Arc<dyn TransferEventSink>,
         provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
         runtime_settings: ResolvedTransferSettings,
         commit_message: Option<String>,
@@ -483,7 +471,7 @@ impl ProviderUploadExecutor {
         session_model: ProviderExecutorSessionModel,
     ) -> Self {
         Self {
-            app,
+            sink,
             provider,
             runtime_settings,
             commit_message,
@@ -601,7 +589,7 @@ impl ProviderUploadExecutor {
             };
         }
 
-        let app = self.app.clone();
+        let sink = Arc::clone(&self.sink);
         let transfer_id = file_transfer_id.to_string();
         let display_name = entry.display_name.clone();
         let remote_path_for_progress = entry.remote_path.clone();
@@ -636,31 +624,28 @@ impl ProviderUploadExecutor {
                         0
                     };
 
-                    let _ = app.emit(
-                        "transfer_event",
-                        crate::TransferEvent {
-                            event_type: "progress".to_string(),
+                    sink.emit_transfer_event(crate::TransferEvent {
+                        event_type: "progress".to_string(),
+                        transfer_id: transfer_id.clone(),
+                        filename: display_name.clone(),
+                        direction: "upload".to_string(),
+                        message: None,
+                        progress: Some(crate::TransferProgress {
                             transfer_id: transfer_id.clone(),
                             filename: display_name.clone(),
+                            transferred,
+                            total: total.max(file_size),
+                            percentage,
+                            speed_bps: speed,
+                            eta_seconds: eta as u32,
                             direction: "upload".to_string(),
-                            message: None,
-                            progress: Some(crate::TransferProgress {
-                                transfer_id: transfer_id.clone(),
-                                filename: display_name.clone(),
-                                transferred,
-                                total: total.max(file_size),
-                                percentage,
-                                speed_bps: speed,
-                                eta_seconds: eta as u32,
-                                direction: "upload".to_string(),
-                                total_files: None,
-                                path: None,
-                            }),
-                            path: Some(remote_path_for_progress.clone()),
-                            delta_stats: None,
-                            fallback_reason: None,
-                        },
-                    );
+                            total_files: None,
+                            path: None,
+                        }),
+                        path: Some(remote_path_for_progress.clone()),
+                        delta_stats: None,
+                        fallback_reason: None,
+                    });
                 })),
             ),
         )
@@ -672,48 +657,42 @@ impl ProviderUploadExecutor {
     }
 
     fn emit_upload_start(&self, entry: &TransferEntry, file_transfer_id: &str, file_size: u64) {
-        let _ = self.app.emit(
-            "transfer_event",
-            crate::TransferEvent {
-                event_type: "file_start".to_string(),
+        self.sink.emit_transfer_event(crate::TransferEvent {
+            event_type: "file_start".to_string(),
+            transfer_id: file_transfer_id.to_string(),
+            filename: entry.display_name.clone(),
+            direction: "upload".to_string(),
+            message: Some(format!("Uploading: {}", entry.remote_path)),
+            progress: Some(crate::TransferProgress {
                 transfer_id: file_transfer_id.to_string(),
                 filename: entry.display_name.clone(),
+                transferred: 0,
+                total: file_size,
+                percentage: 0,
+                speed_bps: 0,
+                eta_seconds: 0,
                 direction: "upload".to_string(),
-                message: Some(format!("Uploading: {}", entry.remote_path)),
-                progress: Some(crate::TransferProgress {
-                    transfer_id: file_transfer_id.to_string(),
-                    filename: entry.display_name.clone(),
-                    transferred: 0,
-                    total: file_size,
-                    percentage: 0,
-                    speed_bps: 0,
-                    eta_seconds: 0,
-                    direction: "upload".to_string(),
-                    total_files: None,
-                    path: None,
-                }),
-                path: Some(entry.remote_path.clone()),
-                delta_stats: None,
-                fallback_reason: None,
-            },
-        );
+                total_files: None,
+                path: None,
+            }),
+            path: Some(entry.remote_path.clone()),
+            delta_stats: None,
+            fallback_reason: None,
+        });
     }
 
     fn emit_upload_complete(&self, entry: &TransferEntry, file_transfer_id: &str) {
-        let _ = self.app.emit(
-            "transfer_event",
-            crate::TransferEvent {
-                event_type: "file_complete".to_string(),
-                transfer_id: file_transfer_id.to_string(),
-                filename: entry.display_name.clone(),
-                direction: "upload".to_string(),
-                message: Some(format!("Uploaded: {}", entry.display_name)),
-                progress: None,
-                path: Some(entry.remote_path.clone()),
-                delta_stats: None,
-                fallback_reason: None,
-            },
-        );
+        self.sink.emit_transfer_event(crate::TransferEvent {
+            event_type: "file_complete".to_string(),
+            transfer_id: file_transfer_id.to_string(),
+            filename: entry.display_name.clone(),
+            direction: "upload".to_string(),
+            message: Some(format!("Uploaded: {}", entry.display_name)),
+            progress: None,
+            path: Some(entry.remote_path.clone()),
+            delta_stats: None,
+            fallback_reason: None,
+        });
     }
 
     fn failed_upload(&self, entry: TransferEntry, last_error: String) -> TransferOutcome {
@@ -733,20 +712,17 @@ impl ProviderUploadExecutor {
             }
         };
 
-        let _ = self.app.emit(
-            "transfer_event",
-            crate::TransferEvent {
-                event_type: "file_error".to_string(),
-                transfer_id: entry.id,
-                filename: entry.display_name.clone(),
-                direction: "upload".to_string(),
-                message: Some(failure.message.clone()),
-                progress: None,
-                path: Some(entry.remote_path.clone()),
-                delta_stats: None,
-                fallback_reason: None,
-            },
-        );
+        self.sink.emit_transfer_event(crate::TransferEvent {
+            event_type: "file_error".to_string(),
+            transfer_id: entry.id,
+            filename: entry.display_name.clone(),
+            direction: "upload".to_string(),
+            message: Some(failure.message.clone()),
+            progress: None,
+            path: Some(entry.remote_path.clone()),
+            delta_stats: None,
+            fallback_reason: None,
+        });
 
         TransferOutcome::Failed(failure)
     }
