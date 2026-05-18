@@ -9,7 +9,10 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use super::types::is_session_closed_error_message;
-use super::{ProviderError, ProviderType, RemoteEntry, SftpConfig, StorageProvider};
+use super::{
+    ProviderError, ProviderTransferExecutorKind, ProviderType, RemoteEntry, SftpConfig,
+    StorageProvider,
+};
 use crate::ssh_exec::ssh_exec_collect;
 use async_trait::async_trait;
 use russh::client::AuthResult;
@@ -194,6 +197,51 @@ impl Handler for SshHandler {
     }
 }
 
+/// Secure connection spec retained after `connect()` so the shared
+/// transfer engine can re-dial N **independent** SSH+SFTP connections for
+/// file-level parallelism (PD-SFTP-1).
+///
+/// This mirrors `FtpConnectionSpec` / `FtpManager::connection_spec()`:
+/// `provider_connect` zeroizes the outer config password after the first
+/// connect, so the provider must retain its own `SecretString` copy.
+/// Holding credentials for the provider's lifetime is the exact security
+/// posture FTP already ships. Secrets are only exposed (`ExposeSecret`)
+/// at dial time, never on IPC or in logs.
+#[derive(Clone)]
+pub struct SftpConnectionSpec {
+    pub host: String,
+    pub port: u16,
+    pub username: String,
+    pub password: Option<secrecy::SecretString>,
+    pub private_key_path: Option<String>,
+    pub key_passphrase: Option<secrecy::SecretString>,
+    pub initial_path: Option<String>,
+    pub timeout_secs: u64,
+    /// SHA-256 hex of the host key accepted by the first connect. Pool
+    /// re-dials verify the new connection's key against this (defense in
+    /// depth on top of `known_hosts`), same posture as the U-02 rsync pin.
+    pub pinned_host_key_sha256: Option<String>,
+}
+
+impl SftpConnectionSpec {
+    /// Rebuild an `SftpConfig` for an independent worker. `trust_unknown_hosts`
+    /// is forced to `false`: a pooled re-dial must never TOFU, the host key
+    /// is already in `known_hosts` from the first connect.
+    fn to_config(&self) -> SftpConfig {
+        SftpConfig {
+            host: self.host.clone(),
+            port: self.port,
+            username: self.username.clone(),
+            password: self.password.clone(),
+            private_key_path: self.private_key_path.clone(),
+            key_passphrase: self.key_passphrase.clone(),
+            initial_path: self.initial_path.clone(),
+            timeout_secs: self.timeout_secs,
+            trust_unknown_hosts: false,
+        }
+    }
+}
+
 /// SFTP Provider
 ///
 /// Provides secure file transfer over SSH using the SFTP protocol.
@@ -221,6 +269,12 @@ pub struct SftpProvider {
     /// SSH connection (U-02) so the fresh TCP socket it opens for
     /// `aerorsync_serve` does not skip host-key verification.
     host_key_sha256_hex: Arc<std::sync::OnceLock<String>>,
+    /// Secure connection spec for re-dialling independent pool sessions.
+    /// `Some` once captured: either at the end of a successful `connect()`
+    /// (before `provider_connect` zeroizes the outer config) or when this
+    /// provider was produced by `clone_for_transfer()` as a not-yet-
+    /// connected pool worker.
+    connection_spec: Option<SftpConnectionSpec>,
 }
 
 impl SftpProvider {
@@ -241,6 +295,7 @@ impl SftpProvider {
             // in practice. Override per-call with --chunk-size / --buffer-size.
             buffer_size: 256 * 1024,
             host_key_sha256_hex: Arc::new(std::sync::OnceLock::new()),
+            connection_spec: None,
         }
     }
 
@@ -253,6 +308,52 @@ impl SftpProvider {
     /// fingerprint the classic SFTP verification already cleared.
     pub fn accepted_host_key_sha256_hex(&self) -> Option<String> {
         self.host_key_sha256_hex.get().cloned()
+    }
+
+    /// Secure connection spec retained after a successful `connect()`.
+    /// Mirrors `FtpManager::connection_spec()`. `None` until connected (or
+    /// until set by `clone_for_transfer()` on a pool worker).
+    pub fn connection_spec(&self) -> Option<SftpConnectionSpec> {
+        self.connection_spec.clone()
+    }
+
+    /// Ensure this provider has its own independent, authenticated SSH+SFTP
+    /// connection (PD-SFTP-1). A `clone_for_transfer()` worker starts
+    /// unconnected and carries only the secure spec; the first transfer
+    /// dials a **separate** SSH connection (separate TCP socket, separate
+    /// auth) so N files run truly in parallel, exactly like the FTP pool.
+    ///
+    /// Host-key safety on the re-dial: `connect()` still goes through
+    /// `SshHandler` -> `known_hosts` with `trust_unknown_hosts = false`
+    /// (never TOFU on a pooled dial; the key is already known from the
+    /// first connect, `KeyChanged` is rejected). Defense in depth: the
+    /// freshly accepted fingerprint is compared against the pin captured
+    /// at the first connect and a mismatch aborts the worker.
+    async fn ensure_connected(&mut self) -> Result<(), ProviderError> {
+        if self.sftp.is_some() {
+            return Ok(());
+        }
+        let spec = self
+            .connection_spec
+            .clone()
+            .ok_or(ProviderError::NotConnected)?;
+        self.config = spec.to_config();
+        // Fresh per-connection slot so the comparison reflects this dial.
+        self.host_key_sha256_hex = Arc::new(std::sync::OnceLock::new());
+        self.connect().await?;
+        if let Some(pinned) = spec.pinned_host_key_sha256.as_deref() {
+            match self.accepted_host_key_sha256_hex().as_deref() {
+                Some(seen) if seen == pinned => {}
+                other => {
+                    let _ = self.disconnect().await;
+                    return Err(ProviderError::ConnectionFailed(format!(
+                        "SFTP pool re-dial host key mismatch (expected {}, got {:?}): aborting worker",
+                        pinned, other
+                    )));
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Return a cloneable handle to the underlying SSH session, if connected.
@@ -807,6 +908,27 @@ impl StorageProvider for SftpProvider {
         self.ssh_handle = Some(Arc::new(TokioMutex::new(handle)));
         self.sftp = Some(sftp);
 
+        // PD-SFTP-1: capture a secure connection spec now, while
+        // `self.config` still holds the secrets (`provider_connect`
+        // zeroizes the outer config only after this returns). The pinned
+        // host-key fingerprint was populated by `SshHandler` during the
+        // handshake; preserve an earlier pin if this dial reused one.
+        let prior_pin = self
+            .connection_spec
+            .as_ref()
+            .and_then(|s| s.pinned_host_key_sha256.clone());
+        self.connection_spec = Some(SftpConnectionSpec {
+            host: self.config.host.clone(),
+            port: self.config.port,
+            username: self.config.username.clone(),
+            password: self.config.password.clone(),
+            private_key_path: self.config.private_key_path.clone(),
+            key_passphrase: self.config.key_passphrase.clone(),
+            initial_path: self.config.initial_path.clone(),
+            timeout_secs: self.config.timeout_secs,
+            pinned_host_key_sha256: self.host_key_sha256_hex.get().cloned().or(prior_pin),
+        });
+
         tracing::info!(
             "SFTP: Connected successfully to {} (home: {})",
             self.config.host,
@@ -984,6 +1106,7 @@ impl StorageProvider for SftpProvider {
         local_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        self.ensure_connected().await?;
         let sftp = self.get_sftp()?;
         let full_path = self.normalize_path(remote_path);
 
@@ -1100,6 +1223,7 @@ impl StorageProvider for SftpProvider {
     ) -> Result<(), ProviderError> {
         use tokio::io::AsyncWriteExt;
 
+        self.ensure_connected().await?;
         let sftp = self.get_sftp()?;
         let full_path = self.normalize_path(remote_path);
 
@@ -1579,6 +1703,47 @@ impl StorageProvider for SftpProvider {
             supports_delta_sync: true,
             ..Default::default()
         }
+    }
+
+    /// PD-SFTP-1: advertise real file-level parallelism only once a secure
+    /// connection spec exists to re-dial independent SSH connections from.
+    /// Without it (never connected, or credentials unavailable) SFTP stays
+    /// a single locked lease: honest non-regression, no overclaim.
+    fn transfer_executor_kind(&self) -> ProviderTransferExecutorKind {
+        if self.connection_spec.is_some() {
+            ProviderTransferExecutorKind::SftpConnectionPool
+        } else {
+            ProviderTransferExecutorKind::LockedSingle
+        }
+    }
+
+    /// Conservative initial cap, mirroring the FTP pool clamp (1..8).
+    /// Each lease is a full independent SSH connection; raise only after a
+    /// live benchmark on the target server says it pays.
+    fn transfer_executor_max_sessions(&self) -> u16 {
+        4
+    }
+
+    /// Produce an independent transfer worker. It is **not connected**:
+    /// it carries only the secure `SftpConnectionSpec` and dials its own
+    /// separate SSH connection lazily on the first transfer
+    /// (`ensure_connected`). No SSH handle or channel is shared, so N
+    /// workers are N independent connections, exactly like the FTP pool.
+    fn clone_for_transfer(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
+        let spec = self.connection_spec.clone().ok_or_else(|| {
+            ProviderError::NotSupported(
+                "SFTP clone_for_transfer requires a captured connection spec".to_string(),
+            )
+        })?;
+        let mut worker = SftpProvider::new(spec.to_config());
+        worker.current_dir = self.current_dir.clone();
+        worker.home_dir = self.home_dir.clone();
+        worker.download_limit_bps = self.download_limit_bps;
+        worker.upload_limit_bps = self.upload_limit_bps;
+        worker.compression_enabled = self.compression_enabled;
+        worker.buffer_size = self.buffer_size;
+        worker.connection_spec = Some(spec);
+        Ok(Box::new(worker))
     }
 
     fn set_chunk_sizes(&mut self, upload: Option<u64>, download: Option<u64>) {
