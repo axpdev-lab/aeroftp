@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 v3.8.2 shipped a Tauri 2.11.1 dependency bump that made every Linux build non-functional: the production webview origin was reclassified as remote and all backend commands were rejected, leaving the app unable to list files, read the credential vault, connect, mount drives or check for updates. Windows and macOS were unaffected. This release restores Linux operation and bundles the related vault and edit-screen fixes.
 
+#### Added
+- **Drag-and-drop profile import**: Drag a client profile or configuration file directly onto its Profile Bridge import form to bring it in, instead of browsing for it.
+
 #### Fixed
 - **Linux app fully non-functional on v3.8.2**: Pinned Tauri back to the known-good 2.11.0 so the production webview keeps backend access. Every Linux v3.8.2 install was affected; upgrading is strongly recommended.
 - **Saved-server passwords blank in the edit screen**: The edit form now reads the stored password from the vault unconditionally, matching the connect path, so credentials appear after the server list is rebuilt from the vault.
@@ -20,7 +23,7 @@ v3.8.2 shipped a Tauri 2.11.1 dependency bump that made every Linux build non-fu
 - **AeroFile initial panel**: Starts on a single left panel and never lists with an empty path.
 
 #### Changed
-- **Parallel transfer engine convergence**: File transfers continue converging on the shared concurrent executor with connection pooling and concurrent byte-range reads for faster multi-file and large-file transfers.
+- **Parallel transfers**: SFTP gains a connection pool for concurrent multi-file transfers and intra-file concurrent byte-range reads, with concurrent ranged reads also applied to WebDAV and Koofr. The GUI and CLI now share one concurrent executor, and CLI recursive, glob and upload transfers run on it for faster large and multi-file operations.
 
 ## [3.8.2] - 2026-05-17
 
