@@ -23,8 +23,10 @@ updates:
       # =2.11.0 in Cargo.toml; unblock only with a deliberate migration.
       - dependency-name: "tauri"
         versions: [">=2.11.1"]
-      - dependency-name: "tauri-build"
-        versions: [">=2.11.1"]
+      # tauri-build is intentionally NOT blocked: it tracks its own 2.6.x
+      # line, is the build-script crate (not the runtime that regressed),
+      # and its patch/minor updates are safe. The runtime `tauri` pin
+      # above is the actual protection.
       - dependency-name: "suppaftp"
         update-types: ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
       - dependency-name: "rand"
