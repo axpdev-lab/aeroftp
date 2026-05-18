@@ -13863,6 +13863,24 @@ pub fn run() {
                     }
                 }
             }
+            // Forward a double-clicked plain .aeroftp server-profiles export
+            // so it lands on the import/password screen instead of just
+            // raising the window (issue #214 pt.4a, plain .aeroftp).
+            // ends_with(".aeroftp") does not match ".aeroftp-keystore", so
+            // there is no collision with the block above.
+            if let Some(sp_arg) = argv.iter().skip(1).find(|a| a.ends_with(".aeroftp")) {
+                if let Ok(canonical) = std::fs::canonicalize(sp_arg) {
+                    let meta = std::fs::symlink_metadata(&canonical);
+                    if meta.map(|m| m.is_file()).unwrap_or(false) {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.emit(
+                                "servers-open-file",
+                                canonical.to_string_lossy().to_string(),
+                            );
+                        }
+                    }
+                }
+            }
         }))
         .plugin(
             tauri_plugin_window_state::Builder::new()
@@ -14511,6 +14529,25 @@ pub fn run() {
                                 std::thread::sleep(std::time::Duration::from_millis(1500));
                                 if let Some(window) = app_handle.get_webview_window("main") {
                                     let _ = window.emit("keystore-open-file", ks_path);
+                                }
+                            });
+                        }
+                    }
+                }
+                // Same for a double-clicked plain .aeroftp server-profiles
+                // export on first launch so it routes to the import/password
+                // screen instead of a bare window (issue #214 pt.4a, plain
+                // .aeroftp). ends_with(".aeroftp") excludes ".aeroftp-keystore".
+                if let Some(sp_arg) = args.iter().skip(1).find(|a| a.ends_with(".aeroftp")) {
+                    if let Ok(canonical) = std::fs::canonicalize(sp_arg) {
+                        let meta = std::fs::symlink_metadata(&canonical);
+                        if meta.map(|m| m.is_file()).unwrap_or(false) {
+                            let sp_path = canonical.to_string_lossy().to_string();
+                            let app_handle = app.handle().clone();
+                            std::thread::spawn(move || {
+                                std::thread::sleep(std::time::Duration::from_millis(1500));
+                                if let Some(window) = app_handle.get_webview_window("main") {
+                                    let _ = window.emit("servers-open-file", sp_path);
                                 }
                             });
                         }
