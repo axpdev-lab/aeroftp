@@ -715,6 +715,21 @@ pub trait StorageProvider: Send + Sync {
         TransferOptimizationHints::default()
     }
 
+    /// Get scheduler-facing transfer capabilities for the Core DAG engine.
+    ///
+    /// This is deliberately stricter than the legacy hint surface: a provider
+    /// can support `read_range()` for delta sync while still not being safe for
+    /// concurrent Range downloads or file-level parallelism under the current
+    /// executor. Defaults derive from existing hints and keep legacy providers
+    /// on a single lease unless they advertise a real pool-backed path.
+    fn transfer_capabilities(&self) -> crate::transfer_dag::TransferCapabilities {
+        crate::transfer_dag::TransferCapabilities::from_provider_hints(
+            self.provider_type(),
+            &self.transfer_optimization_hints(),
+            self.supports_server_copy(),
+        )
+    }
+
     /// Override upload chunk size and download buffer size.
     /// Providers that support dynamic sizing should override this.
     fn set_chunk_sizes(&mut self, _upload: Option<u64>, _download: Option<u64>) {}
