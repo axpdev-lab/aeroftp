@@ -4941,6 +4941,185 @@ async fn run_shared_provider_download_batch(
     })
 }
 
+/// Outcome of the converged shared-executor upload batch.
+struct SharedUploadOutcome {
+    uploaded: u32,
+    errors: Vec<String>,
+}
+
+/// Run the CLI file-level upload batch through the SAME shared provider
+/// executor + orchestrator the GUI uses, sink-agnostic (PD-CLI-CONV-A):
+/// the upload twin of `run_shared_provider_download_batch`.
+///
+/// Engaged ONLY for pool-backed providers (clone-pool session model:
+/// SFTP / S3 / Azure / WebDAV / Koofr). For non-pool-backed providers
+/// (FTP, single-connection APIs) the connected base provider is handed
+/// back un-consumed via `Err(base)` so the caller keeps the legacy
+/// independent-connection path: honest fallback, no overclaim.
+///
+/// `commit_message` is `None`: the only provider that consumes it is
+/// GitHub, which is single-connection (never pool-backed) and therefore
+/// never reaches this shared path; it always takes the `Err(base)`
+/// legacy fallback where `upload_transfer_task` handles it.
+///
+/// `--immutable` is NOT honoured here (the shared upload executor has no
+/// remote-stat skip, and unlike `get -r` the put scan does not
+/// pre-filter existing remote files); callers MUST keep `cli.immutable`
+/// uploads on the legacy path. `--max-transfer` session accounting is
+/// likewise bypassed on the shared path, matching the shipped download
+/// convergence (PD-CLI-CONV-B); the legacy fallback still enforces it.
+/// Remote parent directories must be pre-created by the caller while the
+/// scan provider is connected (the shared executor does not mkdir).
+///
+/// Non-regression: the legacy CLI path opens N independent connections
+/// via `buffer_unordered(workers)`. The shared SFTP path opens N
+/// independent SSH connections too (`clone_for_transfer` re-dial,
+/// PD-SFTP-1), bounded by `min(workers, provider session cap)`.
+/// Parallelism is preserved up to the provider's advertised safe cap;
+/// beyond it the shared engine clamps deliberately, never silently
+/// serialises.
+async fn run_shared_provider_upload_batch(
+    base: Box<dyn StorageProvider>,
+    files: &[(String, String, u64)],
+    cli: &Cli,
+    overall_pb: Option<ProgressBar>,
+    cancelled: Arc<AtomicBool>,
+) -> Result<SharedUploadOutcome, Box<dyn StorageProvider>> {
+    use ftp_client_gui_lib::provider_transfer_executor::{
+        resolve_provider_executor_session_model, ProviderExecutorSessionModel,
+        ProviderUploadExecutor,
+    };
+    use ftp_client_gui_lib::transfer_domain::{
+        TransferBatchConfig, TransferDirection, TransferEntry,
+    };
+    use ftp_client_gui_lib::transfer_event_sink::TransferEventSink;
+    use ftp_client_gui_lib::transfer_orchestrator::{
+        execute_batch, ProgressObserver, TransferBatch,
+    };
+    use ftp_client_gui_lib::transfer_settings::{
+        resolve_provider_transfer_settings, TransferSettingsInput,
+    };
+
+    let workers = effective_parallel_workers(cli);
+    let provider_arc = Arc::new(AsyncMutex::new(Some(base)));
+
+    let model = resolve_provider_executor_session_model(&provider_arc, workers).await;
+    let is_pool_backed = matches!(
+        model,
+        ProviderExecutorSessionModel::HttpClonePool { .. }
+            | ProviderExecutorSessionModel::SftpConnectionPool { .. }
+    );
+    if !is_pool_backed {
+        // Not pool-backed: return the still-connected provider so the
+        // caller runs the legacy independent-connection batch.
+        let base = provider_arc
+            .lock()
+            .await
+            .take()
+            .expect("base provider must still be present");
+        return Err(base);
+    }
+
+    // `resolve_provider_transfer_settings` caps max_concurrent to 1 (GUI
+    // policy). The executor only reads retry/timeout from it; the real
+    // file-level concurrency is `TransferBatchConfig.max_concurrent`
+    // below, so the CLI keeps its requested `--parallel`.
+    let runtime_settings = resolve_provider_transfer_settings(TransferSettingsInput {
+        max_concurrent: None,
+        retry_count: None,
+        timeout_seconds: None,
+    });
+
+    let entries: Vec<TransferEntry> = files
+        .iter()
+        .enumerate()
+        .map(|(i, (local_path, remote_path, size))| {
+            let display_name = remote_path
+                .rsplit('/')
+                .next()
+                .unwrap_or(remote_path)
+                .to_string();
+            TransferEntry {
+                id: format!("cli-put-{i}"),
+                display_name,
+                remote_path: remote_path.clone(),
+                local_path: local_path.clone(),
+                size: *size,
+                modified: None,
+            }
+        })
+        .collect();
+
+    let batch = TransferBatch {
+        id: "cli-put".to_string(),
+        display_name: "aeroftp put".to_string(),
+        direction: TransferDirection::Upload,
+        config: TransferBatchConfig {
+            max_concurrent: workers as u32,
+            max_retries: runtime_settings.retry_count,
+            timeout_ms: runtime_settings.timeout_seconds.saturating_mul(1000),
+        },
+        entries,
+    };
+
+    // Bridge Ctrl+C (AtomicBool) to the executor's CancellationToken so an
+    // in-flight file aborts, matching the GUI executor behaviour.
+    let cancel_token = tokio_util::sync::CancellationToken::new();
+    let watcher = {
+        let ct = cancel_token.clone();
+        let flag = cancelled.clone();
+        tokio::spawn(async move {
+            while !flag.load(Ordering::Relaxed) {
+                tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+            }
+            ct.cancel();
+        })
+    };
+
+    let sink = Arc::new(CliBatchSink::new());
+    let dyn_sink: Arc<dyn TransferEventSink> = sink.clone();
+
+    let executor = Arc::new(ProviderUploadExecutor::new(
+        dyn_sink.clone(),
+        provider_arc.clone(),
+        runtime_settings,
+        None,
+        cancel_token,
+        model,
+    ));
+
+    let progress_observer: ProgressObserver = {
+        let overall_pb = overall_pb.clone();
+        Arc::new(move |snapshot| {
+            if let Some(pb) = overall_pb.as_ref() {
+                pb.set_position(snapshot.bytes_transferred);
+            }
+        })
+    };
+
+    let batch_result = execute_batch(
+        dyn_sink,
+        batch,
+        executor,
+        cancelled.clone(),
+        Some(progress_observer),
+    )
+    .await;
+
+    watcher.abort();
+
+    // The base provider was only the clone-pool spec source; clone workers
+    // each ran on their own independent connection. Disconnect it.
+    if let Some(mut base) = provider_arc.lock().await.take() {
+        let _ = base.disconnect().await;
+    }
+
+    Ok(SharedUploadOutcome {
+        uploaded: batch_result.completed,
+        errors: sink.take_errors(),
+    })
+}
+
 // ── URL Parsing → ProviderConfig ───────────────────────────────────
 
 fn resolve_password(
@@ -14682,8 +14861,6 @@ async fn cmd_get_glob(
         return 2;
     }
 
-    let _ = provider.disconnect().await;
-
     let start = Instant::now();
     let total = matched.len();
     let total_bytes: u64 = matched.iter().map(|entry| entry.size).sum();
@@ -14698,45 +14875,86 @@ async fn cmd_get_glob(
 
     let _ = std::fs::create_dir_all(local_base);
 
-    let results = futures_util::stream::iter(matched.into_iter().map(|entry| {
-        let cancelled = cancelled.clone();
-        let aggregate = aggregate.clone();
-        let overall_pb = overall_pb.clone();
-        let local_path = format!("{}/{}", local_base, entry.name);
-        async move {
-            if cancelled.load(Ordering::Relaxed) {
-                return Err("Cancelled by user".to_string());
-            }
-            if validate_relative_path(&entry.name).is_none() {
-                return Err(format!("{}: unsafe path (traversal rejected)", entry.name));
-            }
-            download_transfer_task(
-                url,
-                entry.path.clone(),
-                local_path.clone(),
-                cli,
-                format,
-                Some(aggregate),
-                overall_pb,
-                resolve_max_transfer(cli),
-            )
-            .await
-            .map(|_| entry.name.clone())
+    // Build the file list before consuming the connected provider. Path
+    // validation (previously inside the per-file closure) is hoisted here
+    // so the shared-executor and legacy paths share identical safety
+    // semantics: an unsafe name becomes a reported error, never a
+    // download.
+    let mut files: Vec<(String, String, u64)> = Vec::new();
+    for entry in &matched {
+        if validate_relative_path(&entry.name).is_none() {
+            errors.push(format!("{}: unsafe path (traversal rejected)", entry.name));
+            continue;
         }
-    }))
-    .buffer_unordered(effective_parallel_workers(cli))
-    .collect::<Vec<_>>()
-    .await;
+        let local_path = format!("{}/{}", local_base, entry.name);
+        files.push((entry.path.clone(), local_path, entry.size));
+    }
+
+    // PD-CLI-CONV-C: converge the glob file-level batch on the SAME shared
+    // provider executor + orchestrator `aeroftp get -r` uses
+    // (PD-CLI-CONV-B), sink-agnostic. Pool-backed providers (clone-pool:
+    // SFTP / S3 / Azure / WebDAV / Koofr) run on the shared engine; the
+    // scan provider stays connected so its captured secure connection
+    // spec backs the clone-pool workers. Non-pool-backed providers (FTP,
+    // single-conn APIs) fall back to the legacy independent-connection
+    // batch below: honest fallback, no overclaim.
+    match run_shared_provider_download_batch(
+        provider,
+        &files,
+        cli,
+        overall_pb.clone(),
+        cancelled.clone(),
+    )
+    .await
+    {
+        Ok(outcome) => {
+            downloaded = outcome.downloaded;
+            errors.extend(outcome.errors);
+        }
+        Err(mut base) => {
+            let _ = base.disconnect().await;
+            let results = futures_util::stream::iter(files.into_iter().map(
+                |(remote_path, local_path, _size)| {
+                    let cancelled = cancelled.clone();
+                    let aggregate = aggregate.clone();
+                    let overall_pb = overall_pb.clone();
+                    async move {
+                        if cancelled.load(Ordering::Relaxed) {
+                            return Err("Cancelled by user".to_string());
+                        }
+                        if let Some(parent) = Path::new(&local_path).parent() {
+                            let _ = std::fs::create_dir_all(parent);
+                        }
+                        download_transfer_task(
+                            url,
+                            remote_path.clone(),
+                            local_path,
+                            cli,
+                            format,
+                            Some(aggregate),
+                            overall_pb,
+                            resolve_max_transfer(cli),
+                        )
+                        .await
+                        .map(|_| remote_path)
+                    }
+                },
+            ))
+            .buffer_unordered(effective_parallel_workers(cli))
+            .collect::<Vec<_>>()
+            .await;
+
+            for result in results {
+                match result {
+                    Ok(_) => downloaded += 1,
+                    Err(err) => errors.push(err),
+                }
+            }
+        }
+    }
 
     if let Some(pb) = overall_pb {
         pb.finish_and_clear();
-    }
-
-    for result in results {
-        match result {
-            Ok(_) => downloaded += 1,
-            Err(err) => errors.push(err),
-        }
     }
 
     let elapsed = start.elapsed();
@@ -15194,7 +15412,6 @@ async fn cmd_put_recursive(
     for dir in &dirs {
         let _ = provider.mkdir(dir).await;
     }
-    let _ = provider.disconnect().await;
 
     // Upload files
     let start = Instant::now();
@@ -15205,48 +15422,87 @@ async fn cmd_put_recursive(
         None
     };
 
-    let results =
-        futures_util::stream::iter(files.into_iter().map(|(local_path, remote_path, _size)| {
-            let cancelled = cancelled.clone();
-            let aggregate = aggregate.clone();
-            let overall_pb = overall_pb.clone();
-            async move {
-                if cancelled.load(Ordering::Relaxed) {
-                    return Err("Cancelled by user".to_string());
-                }
-                upload_transfer_task(
-                    url,
-                    local_path.clone(),
-                    remote_path.clone(),
-                    cli,
-                    format,
-                    Some(aggregate),
-                    overall_pb,
-                    resolve_max_transfer(cli),
-                )
-                .await
-                .map(|_| local_path)
+    let mut uploaded: u32 = 0;
+    let mut skipped: u32 = 0;
+    let mut errors: Vec<String> = Vec::new();
+
+    // PD-CLI-CONV-C: converge the upload batch on the SAME shared provider
+    // executor + orchestrator `aeroftp get -r` uses (PD-CLI-CONV-B),
+    // sink-agnostic: the upload twin of `cmd_get_recursive`. Every remote
+    // directory was pre-created above while the scan provider was
+    // connected, so the shared executor uploads into existing parents.
+    // `--immutable` stays on the legacy path: the shared upload executor
+    // has no remote-stat skip and the put scan (unlike get -r) does not
+    // pre-filter existing remote files. Non-pool-backed providers (FTP,
+    // single-conn APIs) fall back to the legacy independent-connection
+    // batch below: honest fallback, no overclaim.
+    let use_legacy = if cli.immutable {
+        let _ = provider.disconnect().await;
+        true
+    } else {
+        match run_shared_provider_upload_batch(
+            provider,
+            &files,
+            cli,
+            overall_pb.clone(),
+            cancelled.clone(),
+        )
+        .await
+        {
+            Ok(outcome) => {
+                uploaded = outcome.uploaded;
+                errors = outcome.errors;
+                false
             }
-        }))
+            Err(mut base) => {
+                let _ = base.disconnect().await;
+                true
+            }
+        }
+    };
+
+    if use_legacy {
+        let results = futures_util::stream::iter(files.into_iter().map(
+            |(local_path, remote_path, _size)| {
+                let cancelled = cancelled.clone();
+                let aggregate = aggregate.clone();
+                let overall_pb = overall_pb.clone();
+                async move {
+                    if cancelled.load(Ordering::Relaxed) {
+                        return Err("Cancelled by user".to_string());
+                    }
+                    upload_transfer_task(
+                        url,
+                        local_path.clone(),
+                        remote_path.clone(),
+                        cli,
+                        format,
+                        Some(aggregate),
+                        overall_pb,
+                        resolve_max_transfer(cli),
+                    )
+                    .await
+                    .map(|_| local_path)
+                }
+            },
+        ))
         .buffer_unordered(effective_parallel_workers(cli))
         .collect::<Vec<_>>()
         .await;
 
-    if let Some(pb) = overall_pb {
-        pb.finish_and_clear();
+        for result in results {
+            match result {
+                Ok(_) => uploaded += 1,
+                Err(ref err) if err.contains("--immutable") => {
+                    skipped += 1;
+                }
+                Err(err) => errors.push(err),
+            }
+        }
     }
 
-    let mut uploaded: u32 = 0;
-    let mut skipped: u32 = 0;
-    let mut errors: Vec<String> = Vec::new();
-    for result in results {
-        match result {
-            Ok(_) => uploaded += 1,
-            Err(ref err) if err.contains("--immutable") => {
-                skipped += 1;
-            }
-            Err(err) => errors.push(err),
-        }
+    if let Some(pb) = overall_pb {
+        pb.finish_and_clear();
     }
 
     let elapsed = start.elapsed();
@@ -27021,45 +27277,95 @@ async fn cmd_put_glob(
         None
     };
 
-    let results =
-        futures_util::stream::iter(matched.into_iter().map(|(local_path, filename, _size)| {
-            let cancelled = cancelled.clone();
-            let aggregate = aggregate.clone();
-            let overall_pb = overall_pb.clone();
+    let files: Vec<(String, String, u64)> = matched
+        .into_iter()
+        .map(|(local_path, filename, size)| {
             let remote_path = format!("{}/{}", remote_base.trim_end_matches('/'), filename);
-            async move {
-                if cancelled.load(Ordering::Relaxed) {
-                    return Err("Cancelled by user".to_string());
-                }
-                upload_transfer_task(
-                    url,
-                    local_path,
-                    remote_path,
+            (local_path, remote_path, size)
+        })
+        .collect();
+
+    let mut uploaded: u32 = 0;
+    let mut errors: Vec<String> = Vec::new();
+
+    // PD-CLI-CONV-C: converge the glob upload batch on the SAME shared
+    // provider executor + orchestrator (PD-CLI-CONV-B), sink-agnostic.
+    // The probe connection was only used to resolve `initial_path`; the
+    // shared engine needs a live base whose connection spec backs the
+    // clone-pool workers, so a base provider is (re)connected here. The
+    // single remote parent (`remote_base`) is pre-created idempotently
+    // because the shared executor does not mkdir. `--immutable` and
+    // non-pool-backed providers (FTP, single-conn APIs) stay on the
+    // legacy independent-connection batch: honest fallback, no overclaim.
+    let use_legacy = if cli.immutable {
+        true
+    } else {
+        match create_and_connect(url, cli, format).await {
+            Ok((mut provider, _)) => {
+                let _ = provider.mkdir(remote_base).await;
+                match run_shared_provider_upload_batch(
+                    provider,
+                    &files,
                     cli,
-                    format,
-                    Some(aggregate),
-                    overall_pb,
-                    resolve_max_transfer(cli),
+                    overall_pb.clone(),
+                    cancelled.clone(),
                 )
                 .await
-                .map(|_| filename)
+                {
+                    Ok(outcome) => {
+                        uploaded = outcome.uploaded;
+                        errors = outcome.errors;
+                        false
+                    }
+                    Err(mut base) => {
+                        let _ = base.disconnect().await;
+                        true
+                    }
+                }
             }
-        }))
+            Err(_) => true,
+        }
+    };
+
+    if use_legacy {
+        let results = futures_util::stream::iter(files.into_iter().map(
+            |(local_path, remote_path, _size)| {
+                let cancelled = cancelled.clone();
+                let aggregate = aggregate.clone();
+                let overall_pb = overall_pb.clone();
+                async move {
+                    if cancelled.load(Ordering::Relaxed) {
+                        return Err("Cancelled by user".to_string());
+                    }
+                    upload_transfer_task(
+                        url,
+                        local_path.clone(),
+                        remote_path,
+                        cli,
+                        format,
+                        Some(aggregate),
+                        overall_pb,
+                        resolve_max_transfer(cli),
+                    )
+                    .await
+                    .map(|_| local_path)
+                }
+            },
+        ))
         .buffer_unordered(effective_parallel_workers(cli))
         .collect::<Vec<_>>()
         .await;
 
-    if let Some(pb) = overall_pb {
-        pb.finish_and_clear();
+        for result in results {
+            match result {
+                Ok(_) => uploaded += 1,
+                Err(err) => errors.push(err),
+            }
+        }
     }
 
-    let mut uploaded: u32 = 0;
-    let mut errors: Vec<String> = Vec::new();
-    for result in results {
-        match result {
-            Ok(_) => uploaded += 1,
-            Err(err) => errors.push(err),
-        }
+    if let Some(pb) = overall_pb {
+        pb.finish_and_clear();
     }
 
     let elapsed = start.elapsed();

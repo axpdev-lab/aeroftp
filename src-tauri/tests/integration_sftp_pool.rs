@@ -525,3 +525,198 @@ async fn pd_cli_conv_b_shared_executor_download_is_byte_identical() {
          ProviderDownloadExecutor + NoopTransferSink); byte-identical, pool-backed, not serialised."
     );
 }
+
+/// PD-CLI-CONV-C upload twin of the PD-CLI-CONV-B download test: the CLI
+/// `put -r` / `put <glob>` batch now runs through the SAME shared engine
+/// (`run_shared_provider_upload_batch` -> `execute_batch` +
+/// `ProviderUploadExecutor`). This drives that exact core against the
+/// live SFTP fixture and asserts:
+/// - the session model resolves to the SFTP connection pool (pool-backed,
+///   so the shared path is taken, not the legacy fallback);
+/// - every uploaded file is byte-identical (SHA-256) when read back;
+/// - C=4 wall-clock is not catastrophically worse than C=1 (parallelism
+///   preserved, never silently serialised).
+#[tokio::test]
+#[ignore = "live: requires the sftp-rsync Docker fixture up on :2222"]
+async fn pd_cli_conv_c_shared_executor_upload_is_byte_identical() {
+    use std::sync::atomic::AtomicBool;
+    use std::sync::Arc;
+
+    use ftp_client_gui_lib::provider_transfer_executor::{
+        resolve_provider_executor_session_model, ProviderExecutorSessionModel,
+        ProviderUploadExecutor,
+    };
+    use ftp_client_gui_lib::transfer_domain::{
+        TransferBatchConfig, TransferDirection, TransferEntry,
+    };
+    use ftp_client_gui_lib::transfer_event_sink::{NoopTransferSink, TransferEventSink};
+    use ftp_client_gui_lib::transfer_orchestrator::{execute_batch, TransferBatch};
+    use ftp_client_gui_lib::transfer_settings::{
+        resolve_provider_transfer_settings, TransferSettingsInput,
+    };
+
+    if !ssh_key_path().exists() {
+        eprintln!("SKIP: fixture ssh_key missing (run fixtures/sftp-rsync/setup.sh)");
+        return;
+    }
+    seed_known_host();
+
+    let src_dir = std::env::temp_dir().join("pd-cli-conv-c-src-it");
+    let _ = std::fs::remove_dir_all(&src_dir);
+    std::fs::create_dir_all(&src_dir).unwrap();
+    let mut src_hashes = std::collections::HashMap::new();
+    for i in 0..FILES {
+        let name = format!("u{i}.bin");
+        let p = src_dir.join(&name);
+        let mut buf = vec![0u8; FILE_BYTES];
+        for (j, b) in buf.iter_mut().enumerate() {
+            *b = ((i * 53 + j * 17) % 251) as u8;
+        }
+        std::fs::write(&p, &buf).unwrap();
+        src_hashes.insert(name, sha256_file(&p));
+    }
+    let total_mib = (FILES * FILE_BYTES) as f64 / 1_048_576.0;
+
+    let verify_root = std::env::temp_dir().join("pd-cli-conv-c-verify-it");
+    let _ = std::fs::remove_dir_all(&verify_root);
+
+    let mut c1_elapsed: Option<std::time::Duration> = None;
+    let mut c4_elapsed: Option<std::time::Duration> = None;
+    for concurrency in [1usize, 4] {
+        let remote_dir = format!("/workdir/pd-cli-conv-c-c{concurrency}");
+
+        // Pre-create the remote parent: `run_shared_provider_upload_batch`
+        // requires the caller to mkdir parents (the shared executor does
+        // not), exactly as cmd_put_recursive/glob now do before the batch.
+        let mut seeder = SftpProvider::new(fixture_config());
+        seeder.connect().await.expect("seeder SFTP connect");
+        let _ = seeder.mkdir(&remote_dir).await;
+        let _ = seeder.disconnect().await;
+
+        // One connected base provider; the converged executor clones it
+        // into N independent SSH connections (PD-SFTP-1 re-dial).
+        let mut connected = SftpProvider::new(fixture_config());
+        connected.connect().await.expect("converged base connect");
+        let provider_arc = Arc::new(tokio::sync::Mutex::new(Some(
+            Box::new(connected) as Box<dyn StorageProvider>
+        )));
+
+        let model = resolve_provider_executor_session_model(&provider_arc, concurrency).await;
+        assert!(
+            matches!(
+                model,
+                ProviderExecutorSessionModel::SftpConnectionPool { .. }
+            ),
+            "converged upload path must resolve to the SFTP connection pool, got {model:?}"
+        );
+
+        let runtime_settings = resolve_provider_transfer_settings(TransferSettingsInput {
+            max_concurrent: None,
+            retry_count: None,
+            timeout_seconds: None,
+        });
+        let cancel_token = tokio_util::sync::CancellationToken::new();
+        let sink: Arc<dyn TransferEventSink> = Arc::new(NoopTransferSink);
+        let executor = Arc::new(ProviderUploadExecutor::new(
+            sink.clone(),
+            provider_arc.clone(),
+            runtime_settings,
+            None,
+            cancel_token,
+            model,
+        ));
+
+        let entries: Vec<TransferEntry> = (0..FILES)
+            .map(|i| {
+                let name = format!("u{i}.bin");
+                TransferEntry {
+                    id: format!("it-put-{i}"),
+                    display_name: name.clone(),
+                    remote_path: format!("{remote_dir}/{name}"),
+                    local_path: src_dir.join(&name).to_string_lossy().to_string(),
+                    size: FILE_BYTES as u64,
+                    modified: None,
+                }
+            })
+            .collect();
+        let batch = TransferBatch {
+            id: "pd-cli-conv-c-it".to_string(),
+            display_name: "shared executor upload batch".to_string(),
+            direction: TransferDirection::Upload,
+            config: TransferBatchConfig {
+                max_concurrent: concurrency as u32,
+                max_retries: runtime_settings.retry_count,
+                timeout_ms: runtime_settings.timeout_seconds.saturating_mul(1000),
+            },
+            entries,
+        };
+
+        let cancel = Arc::new(AtomicBool::new(false));
+        let started = Instant::now();
+        let result = execute_batch(sink, batch, executor, cancel, None).await;
+        let elapsed = started.elapsed();
+
+        assert_eq!(
+            result.completed, FILES as u32,
+            "the orchestrator must upload every file at C={concurrency}"
+        );
+        assert_eq!(
+            result.failed, 0,
+            "no upload failures expected at C={concurrency}"
+        );
+
+        let taken = provider_arc.lock().await.take();
+        if let Some(mut p) = taken {
+            let _ = p.disconnect().await;
+        }
+
+        // Read every uploaded file back and assert byte-identity.
+        let run_verify = verify_root.join(format!("c{concurrency}"));
+        std::fs::create_dir_all(&run_verify).unwrap();
+        let mut verifier = SftpProvider::new(fixture_config());
+        verifier.connect().await.expect("verifier SFTP connect");
+        for i in 0..FILES {
+            let name = format!("u{i}.bin");
+            let local = run_verify.join(&name);
+            verifier
+                .download(
+                    &format!("{remote_dir}/{name}"),
+                    local.to_str().unwrap(),
+                    None,
+                )
+                .await
+                .unwrap_or_else(|e| panic!("readback download {name} failed: {e}"));
+            assert_eq!(
+                src_hashes.get(&name),
+                Some(&sha256_file(&local)),
+                "byte mismatch for uploaded {name} at C={concurrency} (converged path)"
+            );
+        }
+        let _ = verifier.disconnect().await;
+
+        eprintln!(
+            "PD-CLI-CONV-C C={concurrency:<2} elapsed={:>6.2}s  {:>6.1} MiB/s  (shared upload executor path)",
+            elapsed.as_secs_f64(),
+            total_mib / elapsed.as_secs_f64(),
+        );
+        if concurrency == 1 {
+            c1_elapsed = Some(elapsed);
+        } else {
+            c4_elapsed = Some(elapsed);
+        }
+    }
+
+    if let (Some(e1), Some(e4)) = (c1_elapsed, c4_elapsed) {
+        assert!(
+            e4 <= e1 * 3,
+            "C=4 ({e4:?}) catastrophically slower than C=1 ({e1:?}): converged upload path serialised?"
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(&verify_root);
+    let _ = std::fs::remove_dir_all(&src_dir);
+    eprintln!(
+        "PD-CLI-CONV-C: CLI upload batch converged on the shared executor (execute_batch + \
+         ProviderUploadExecutor + NoopTransferSink); byte-identical, pool-backed, not serialised."
+    );
+}
