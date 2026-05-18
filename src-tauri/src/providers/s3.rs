@@ -24,8 +24,9 @@ use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 use tracing::{debug, info, warn};
 
 use super::{
-    sanitize_api_error, FileVersion, ProviderError, ProviderType, RemoteEntry, S3Config,
-    ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult, StorageProvider,
+    sanitize_api_error, FileVersion, ProviderError, ProviderTransferExecutorKind, ProviderType,
+    RemoteEntry, S3Config, ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult,
+    StorageProvider,
 };
 
 /// Returns true when the S3 endpoint targets a loopback address or a known
@@ -824,14 +825,11 @@ impl S3Provider {
 
                                             let mut metadata = HashMap::new();
                                             if let Some(raw_etag) = c_etag.as_ref() {
-                                                let etag =
-                                                    raw_etag.trim_matches('"').to_string();
+                                                let etag = raw_etag.trim_matches('"').to_string();
                                                 if let Some(md5) = etag_to_md5(&etag) {
-                                                    metadata
-                                                        .insert("md5".to_string(), md5);
+                                                    metadata.insert("md5".to_string(), md5);
                                                 }
-                                                metadata
-                                                    .insert("etag".to_string(), etag);
+                                                metadata.insert("etag".to_string(), etag);
                                             }
                                             if let Some(ref sc) = c_storage_class {
                                                 metadata.insert(
@@ -2435,10 +2433,7 @@ impl StorageProvider for S3Provider {
     /// Returns an empty map for multipart or SSE-encrypted objects whose
     /// ETag is not the object MD5: honest, matching rclone (omit over
     /// guess). `stat()` already normalises the ETag into `metadata["md5"]`.
-    async fn checksum(
-        &mut self,
-        path: &str,
-    ) -> Result<HashMap<String, String>, ProviderError> {
+    async fn checksum(&mut self, path: &str) -> Result<HashMap<String, String>, ProviderError> {
         let entry = self.stat(path).await?;
         let mut out = HashMap::new();
         if let Some(md5) = entry.metadata.get("md5") {
@@ -2888,6 +2883,30 @@ impl StorageProvider for S3Provider {
             preferred_checksum_algo: Some("ETag".to_string()),
             ..Default::default()
         }
+    }
+
+    fn transfer_executor_kind(&self) -> ProviderTransferExecutorKind {
+        ProviderTransferExecutorKind::HttpClonePool
+    }
+
+    fn transfer_executor_max_sessions(&self) -> u16 {
+        8
+    }
+
+    fn clone_for_transfer(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
+        Ok(Box::new(self.clone()))
+    }
+
+    fn list_executor_kind(&self) -> super::ProviderListExecutorKind {
+        super::ProviderListExecutorKind::HttpClonePool
+    }
+
+    fn list_executor_max_sessions(&self) -> u16 {
+        8
+    }
+
+    fn clone_for_list(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
+        Ok(Box::new(self.clone()))
     }
 
     fn set_chunk_sizes(&mut self, upload: Option<u64>, _download: Option<u64>) {

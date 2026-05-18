@@ -5,10 +5,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::provider_transfer_executor::ProviderListSessionModel;
 use crate::providers::{ProviderError, StorageProvider};
+use crate::transfer_dag::{
+    ResourceRequest, TransferBudget, TransferResourceManager, TransferSessionPoolHandle,
+};
 use sha2::Digest;
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::path::Path;
+use std::sync::Arc;
+use tokio::sync::Mutex;
+use tokio::task::JoinSet;
 
 /// Soft cap on the number of entries returned from a single scan. Matches
 /// the CLI cap so both front-ends behave identically.
@@ -230,6 +237,310 @@ pub async fn scan_remote_tree(
         }
     }
     results
+}
+
+/// Scan a remote tree through the GUI provider holder, consuming explicit
+/// checker/list leases. Clone-backed providers can list independent directories
+/// concurrently; locked legacy providers keep the old one-list-at-a-time path.
+pub async fn scan_remote_tree_with_provider_lock(
+    provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
+    remote_root: &str,
+    opts: &ScanOptions,
+    list_model: &ProviderListSessionModel,
+    cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
+) -> Vec<RemoteEntry> {
+    if !list_model.is_clone_pool() {
+        return scan_remote_tree_locked(provider, remote_root, opts, list_model, cancel).await;
+    }
+
+    let cap = opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES);
+    let depth = opts.max_depth.unwrap_or(DEFAULT_SCAN_DEPTH);
+    let max_workers = list_model.max_leases().max(1);
+    let resource_manager = Arc::new(TransferResourceManager::new(TransferBudget {
+        checker_slots: max_workers as u16,
+        ..TransferBudget::from_file_slots(1)
+    }));
+    let session_pool = Arc::new(list_model.session_pool("provider-list"));
+    let want_remote_checksum = {
+        let provider_lock = provider.lock().await;
+        opts.compute_remote_checksum
+            && provider_lock
+                .as_ref()
+                .map(|provider| provider.supports_checksum())
+                .unwrap_or(false)
+    };
+
+    let mut results = Vec::new();
+    let mut queue = VecDeque::from([RemoteScanDir {
+        abs_dir: remote_root.to_string(),
+        rel_prefix: String::new(),
+        depth: 0,
+    }]);
+    let mut join_set = JoinSet::new();
+    let mut in_flight = 0usize;
+
+    while (!queue.is_empty() || in_flight > 0) && results.len() < cap {
+        if scan_cancelled(&cancel) {
+            break;
+        }
+        while in_flight < max_workers {
+            if scan_cancelled(&cancel) {
+                break;
+            }
+            let Some(dir) = queue.pop_front() else {
+                break;
+            };
+            if dir.depth >= depth {
+                continue;
+            }
+            spawn_remote_scan_task(
+                &mut join_set,
+                provider.clone(),
+                resource_manager.clone(),
+                session_pool.clone(),
+                dir,
+                opts.clone(),
+                want_remote_checksum,
+                cancel.clone(),
+            );
+            in_flight += 1;
+        }
+
+        if in_flight == 0 {
+            break;
+        }
+
+        match join_set.join_next().await {
+            Some(Ok(Ok(batch))) => {
+                in_flight = in_flight.saturating_sub(1);
+                for file in batch.files {
+                    if results.len() >= cap {
+                        break;
+                    }
+                    results.push(file);
+                }
+                for dir in batch.dirs {
+                    if results.len() >= cap {
+                        break;
+                    }
+                    queue.push_back(dir);
+                }
+            }
+            Some(Ok(Err(error))) => {
+                in_flight = in_flight.saturating_sub(1);
+                eprintln!("[scan_remote_tree] warning: {}", error);
+            }
+            Some(Err(error)) => {
+                in_flight = in_flight.saturating_sub(1);
+                eprintln!("[scan_remote_tree] warning: scan task failed: {}", error);
+            }
+            None => break,
+        }
+    }
+
+    results
+}
+
+async fn scan_remote_tree_locked(
+    provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
+    remote_root: &str,
+    opts: &ScanOptions,
+    list_model: &ProviderListSessionModel,
+    cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
+) -> Vec<RemoteEntry> {
+    let cap = opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES);
+    let depth = opts.max_depth.unwrap_or(DEFAULT_SCAN_DEPTH);
+    let want_remote_checksum = {
+        let provider_lock = provider.lock().await;
+        opts.compute_remote_checksum
+            && provider_lock
+                .as_ref()
+                .map(|provider| provider.supports_checksum())
+                .unwrap_or(false)
+    };
+
+    let mut results = Vec::new();
+    let resource_manager = TransferResourceManager::new(TransferBudget {
+        checker_slots: 1,
+        ..TransferBudget::from_file_slots(1)
+    });
+    let session_pool = list_model.session_pool("provider-list");
+    let mut queue = VecDeque::from([RemoteScanDir {
+        abs_dir: remote_root.to_string(),
+        rel_prefix: String::new(),
+        depth: 0,
+    }]);
+    while let Some(dir) = queue.pop_front() {
+        if scan_cancelled(&cancel) {
+            break;
+        }
+        if dir.depth >= depth || results.len() >= cap {
+            continue;
+        }
+
+        let Ok(_checker_lease) = resource_manager.acquire(ResourceRequest::checker()).await else {
+            eprintln!("[scan_remote_tree] warning: failed to acquire checker slot");
+            break;
+        };
+        let Ok(session_lease) = session_pool.acquire().await else {
+            eprintln!("[scan_remote_tree] warning: failed to acquire list lease");
+            break;
+        };
+        let batch = {
+            let mut provider_lock = provider.lock().await;
+            let Some(provider) = provider_lock.as_mut() else {
+                eprintln!("[scan_remote_tree] warning: provider disconnected");
+                break;
+            };
+            scan_remote_dir(provider, &dir, opts, want_remote_checksum, &cancel).await
+        };
+        drop(session_lease);
+
+        match batch {
+            Ok(batch) => {
+                for file in batch.files {
+                    if results.len() >= cap {
+                        break;
+                    }
+                    results.push(file);
+                }
+                for dir in batch.dirs {
+                    queue.push_back(dir);
+                }
+            }
+            Err(error) => {
+                eprintln!(
+                    "[scan_remote_tree] warning: failed to list {}: {}",
+                    dir.abs_dir, error
+                );
+            }
+        }
+    }
+
+    results
+}
+
+#[derive(Debug, Clone)]
+struct RemoteScanDir {
+    abs_dir: String,
+    rel_prefix: String,
+    depth: usize,
+}
+
+struct RemoteScanBatch {
+    files: Vec<RemoteEntry>,
+    dirs: Vec<RemoteScanDir>,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn spawn_remote_scan_task(
+    join_set: &mut JoinSet<Result<RemoteScanBatch, String>>,
+    provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
+    resource_manager: Arc<TransferResourceManager>,
+    session_pool: Arc<TransferSessionPoolHandle>,
+    dir: RemoteScanDir,
+    opts: ScanOptions,
+    want_remote_checksum: bool,
+    cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
+) {
+    join_set.spawn(async move {
+        let _checker_lease = resource_manager
+            .acquire(ResourceRequest::checker())
+            .await
+            .map_err(|error| format!("failed to acquire checker slot: {}", error))?;
+        let session_lease = session_pool
+            .acquire()
+            .await
+            .map_err(|error| format!("failed to acquire list lease: {}", error))?;
+        if scan_cancelled(&cancel) {
+            drop(session_lease);
+            return Ok(RemoteScanBatch {
+                files: Vec::new(),
+                dirs: Vec::new(),
+            });
+        }
+        let mut worker = {
+            let provider_lock = provider.lock().await;
+            provider_lock
+                .as_ref()
+                .ok_or_else(|| "provider disconnected".to_string())?
+                .clone_for_list()
+                .map_err(|error| error.to_string())?
+        };
+        let result = scan_remote_dir(&mut worker, &dir, &opts, want_remote_checksum, &cancel)
+            .await
+            .map_err(|error| format!("failed to list {}: {}", dir.abs_dir, error));
+        drop(session_lease);
+        result
+    });
+}
+
+/// Returns true when an optional cancel flag has been raised by the UI.
+fn scan_cancelled(cancel: &Option<Arc<std::sync::atomic::AtomicBool>>) -> bool {
+    cancel
+        .as_ref()
+        .map(|flag| flag.load(std::sync::atomic::Ordering::Relaxed))
+        .unwrap_or(false)
+}
+
+async fn scan_remote_dir(
+    provider: &mut Box<dyn StorageProvider>,
+    dir: &RemoteScanDir,
+    opts: &ScanOptions,
+    want_remote_checksum: bool,
+    cancel: &Option<Arc<std::sync::atomic::AtomicBool>>,
+) -> Result<RemoteScanBatch, ProviderError> {
+    let matchers = compile_matchers(&opts.exclude_patterns);
+    let entries = list_with_transport_retry(provider, &dir.abs_dir).await?;
+    let mut files = Vec::new();
+    let mut dirs = Vec::new();
+
+    for entry in entries {
+        if scan_cancelled(cancel) {
+            break;
+        }
+        let entry_rel = if dir.rel_prefix.is_empty() {
+            entry.name.clone()
+        } else {
+            format!("{}/{}", dir.rel_prefix, entry.name)
+        };
+        if entry.is_dir {
+            dirs.push(RemoteScanDir {
+                abs_dir: entry.path.clone(),
+                rel_prefix: entry_rel,
+                depth: dir.depth + 1,
+            });
+            continue;
+        }
+        if opts.skip_filenames.iter().any(|name| name == &entry.name) {
+            continue;
+        }
+        if !matchers.is_empty() && matches_any(&matchers, &entry_rel, &entry.name) {
+            continue;
+        }
+        if let Some(ref set) = opts.files_from {
+            if !set.contains(entry_rel.as_str()) {
+                continue;
+            }
+        }
+        let (checksum_alg, checksum_hex) = if want_remote_checksum {
+            match provider.checksum(&entry.path).await {
+                Ok(map) => pick_preferred_checksum(&map),
+                Err(_) => (None, None),
+            }
+        } else {
+            (None, None)
+        };
+        files.push(RemoteEntry {
+            rel_path: entry_rel,
+            size: entry.size,
+            mtime: entry.modified,
+            checksum_alg,
+            checksum_hex,
+        });
+    }
+
+    Ok(RemoteScanBatch { files, dirs })
 }
 
 /// Run `provider.list(dir)` with one automatic reconnect on transport-level

@@ -17,6 +17,7 @@ pub enum SessionLeaseKind {
     LegacySingle,
     Ftp,
     HttpClone,
+    HttpList,
     Sftp,
 }
 
@@ -152,6 +153,14 @@ impl TransferSessionPoolHandle {
     pub fn http_clone(label: impl Into<String>, capacity: usize) -> Self {
         Self::new(SemaphoreSessionPool::with_capacity(
             SessionLeaseKind::HttpClone,
+            label,
+            capacity,
+        ))
+    }
+
+    pub fn http_list_clone(label: impl Into<String>, capacity: usize) -> Self {
+        Self::new(SemaphoreSessionPool::with_capacity(
+            SessionLeaseKind::HttpList,
             label,
             capacity,
         ))
@@ -463,9 +472,21 @@ mod tests {
         let pool = TransferSessionPoolHandle::http_clone("webdav", 4);
         let lease = pool.acquire().await.unwrap();
 
+        assert_eq!(pool.capacity().kind, SessionLeaseKind::HttpClone);
         assert_eq!(pool.capacity().max_leases, 4);
         assert_eq!(lease.kind(), SessionLeaseKind::HttpClone);
         assert_eq!(lease.info().label, "webdav");
+    }
+
+    #[tokio::test]
+    async fn http_list_pool_reports_checker_capacity() {
+        let pool = TransferSessionPoolHandle::http_list_clone("s3-list", 3);
+        let lease = pool.acquire().await.unwrap();
+
+        assert_eq!(pool.capacity().kind, SessionLeaseKind::HttpList);
+        assert_eq!(pool.capacity().max_leases, 3);
+        assert_eq!(lease.kind(), SessionLeaseKind::HttpList);
+        assert_eq!(lease.info().label, "s3-list");
     }
 
     #[tokio::test]

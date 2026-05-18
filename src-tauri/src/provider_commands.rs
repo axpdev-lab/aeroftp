@@ -14,7 +14,10 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
-use crate::provider_transfer_executor::{ProviderDownloadExecutor, ProviderUploadExecutor};
+use crate::provider_transfer_executor::{
+    resolve_provider_executor_session_model, resolve_provider_list_session_model,
+    ProviderDownloadExecutor, ProviderUploadExecutor,
+};
 use crate::providers::{
     FileVersion, LockInfo, ProviderConfig, ProviderError, ProviderFactory, ProviderType,
     RemoteEntry, ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult, SharePermission,
@@ -1679,11 +1682,17 @@ async fn provider_download_folder_inner(
         );
     });
 
+    let session_model = resolve_provider_executor_session_model(
+        &state.provider,
+        batch.config.max_concurrent as usize,
+    )
+    .await;
     let executor = Arc::new(ProviderDownloadExecutor::new(
         app.clone(),
         state.provider.clone(),
         runtime_settings,
         cancel_token,
+        session_model,
     ));
 
     let batch_result = execute_batch(
@@ -2015,12 +2024,18 @@ async fn provider_upload_folder_inner(
         );
     });
 
+    let session_model = resolve_provider_executor_session_model(
+        &state.provider,
+        batch.config.max_concurrent as usize,
+    )
+    .await;
     let executor = Arc::new(ProviderUploadExecutor::new(
         app.clone(),
         state.provider.clone(),
         runtime_settings,
         commit_message,
         cancel_token,
+        session_model,
     ));
 
     let batch_result = execute_batch(
@@ -3671,9 +3686,9 @@ pub async fn provider_compare_directories(
         }),
     );
 
-    // Get remote files via provider - lock/unlock per directory to avoid blocking other operations
+    // Get remote files via provider. Clone-backed providers use explicit
+    // checker/list leases; legacy providers keep the per-directory lock path.
     let mut remote_files: HashMap<String, FileInfo> = HashMap::new();
-    let mut dirs_to_process = vec![remote_path.clone()];
 
     // First check we're connected
     {
@@ -3683,50 +3698,48 @@ pub async fn provider_compare_directories(
         }
     }
 
-    while let Some(current_dir) = dirs_to_process.pop() {
-        // Abort the remote scan if the user cancelled from the UI.
-        // Without this, the walk keeps listing directories until the tree is
-        // exhausted, which can look like a runaway scan on large providers.
+    let list_model = resolve_provider_list_session_model(&state.provider, 8).await;
+    if list_model.is_clone_pool() {
+        use crate::sync_core::scan::{scan_remote_tree_with_provider_lock, ScanOptions};
+
         if state.cancel_flag.load(std::sync::atomic::Ordering::Relaxed) {
             return Err("Compare cancelled by user".to_string());
         }
 
-        // Lock provider only for this single list operation, then release
-        let entries = {
-            let mut provider_lock = state.provider.lock().await;
-            let provider = provider_lock
-                .as_mut()
-                .ok_or("Not connected to any provider")?;
-            provider
-                .list(&current_dir)
-                .await
-                .map_err(|e| format!("Failed to list {}: {}", current_dir, e))?
+        let scan_options = ScanOptions {
+            exclude_patterns: options.exclude_patterns.clone(),
+            compute_remote_checksum: options.compare_checksum,
+            ..Default::default()
         };
+        let remote_entries = scan_remote_tree_with_provider_lock(
+            state.provider.clone(),
+            &remote_path,
+            &scan_options,
+            &list_model,
+            Some(state.cancel_flag.clone()),
+        )
+        .await;
 
-        for entry in entries {
-            if entry.name == "." || entry.name == ".." {
-                continue;
-            }
+        // The parallel scan stops early when the cancel flag is raised but
+        // returns the partial results it gathered. Surface the same
+        // user-facing error the per-directory legacy path returned so the UI
+        // does not treat a cancelled compare as a completed one.
+        if state.cancel_flag.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err("Compare cancelled by user".to_string());
+        }
 
-            let relative_path = if current_dir == remote_path {
-                entry.name.clone()
+        for entry in remote_entries {
+            let relative_path = entry.rel_path;
+            let name = std::path::Path::new(&relative_path)
+                .file_name()
+                .map(|name| name.to_string_lossy().to_string())
+                .unwrap_or_else(|| relative_path.clone());
+            let remote_abs_path = if remote_path.ends_with('/') {
+                format!("{}{}", remote_path, relative_path.trim_start_matches('/'))
             } else {
-                let rel_dir = current_dir
-                    .strip_prefix(&remote_path)
-                    .unwrap_or(&current_dir);
-                let rel_dir = rel_dir.trim_start_matches('/');
-                if rel_dir.is_empty() {
-                    entry.name.clone()
-                } else {
-                    format!("{}/{}", rel_dir, entry.name)
-                }
+                format!("{}/{}", remote_path, relative_path.trim_start_matches('/'))
             };
-
-            if should_exclude(&relative_path, &options.exclude_patterns) {
-                continue;
-            }
-
-            let modified = entry.modified.and_then(|s| {
+            let modified = entry.mtime.and_then(|s| {
                 chrono::DateTime::parse_from_rfc3339(&s)
                     .map(|dt| dt.with_timezone(&chrono::Utc))
                     .ok()
@@ -3747,24 +3760,15 @@ pub async fn provider_compare_directories(
             });
 
             let file_info = FileInfo {
-                name: entry.name.clone(),
-                path: entry.path.clone(),
+                name,
+                path: remote_abs_path,
                 size: entry.size,
                 modified,
-                is_dir: entry.is_dir,
-                checksum: None,
+                is_dir: false,
+                checksum: entry.checksum_hex,
             };
 
             remote_files.insert(relative_path, file_info);
-
-            if entry.is_dir {
-                let sub_path = if current_dir.ends_with('/') {
-                    format!("{}{}", current_dir, entry.name)
-                } else {
-                    format!("{}/{}", current_dir, entry.name)
-                };
-                dirs_to_process.push(sub_path);
-            }
         }
 
         let _ = app.emit(
@@ -3774,6 +3778,103 @@ pub async fn provider_compare_directories(
                 "files_found": local_files.len() + remote_files.len(),
             }),
         );
+    } else {
+        let mut dirs_to_process = vec![remote_path.clone()];
+        while let Some(current_dir) = dirs_to_process.pop() {
+            // Abort the remote scan if the user cancelled from the UI.
+            // Without this, the walk keeps listing directories until the tree is
+            // exhausted, which can look like a runaway scan on large providers.
+            if state.cancel_flag.load(std::sync::atomic::Ordering::Relaxed) {
+                return Err("Compare cancelled by user".to_string());
+            }
+
+            // Lock provider only for this single list operation, then release
+            let entries = {
+                let mut provider_lock = state.provider.lock().await;
+                let provider = provider_lock
+                    .as_mut()
+                    .ok_or("Not connected to any provider")?;
+                provider
+                    .list(&current_dir)
+                    .await
+                    .map_err(|e| format!("Failed to list {}: {}", current_dir, e))?
+            };
+
+            for entry in entries {
+                if entry.name == "." || entry.name == ".." {
+                    continue;
+                }
+
+                let relative_path = if current_dir == remote_path {
+                    entry.name.clone()
+                } else {
+                    let rel_dir = current_dir
+                        .strip_prefix(&remote_path)
+                        .unwrap_or(&current_dir);
+                    let rel_dir = rel_dir.trim_start_matches('/');
+                    if rel_dir.is_empty() {
+                        entry.name.clone()
+                    } else {
+                        format!("{}/{}", rel_dir, entry.name)
+                    }
+                };
+
+                if should_exclude(&relative_path, &options.exclude_patterns) {
+                    continue;
+                }
+
+                let modified = entry.modified.and_then(|s| {
+                    chrono::DateTime::parse_from_rfc3339(&s)
+                        .map(|dt| dt.with_timezone(&chrono::Utc))
+                        .ok()
+                        .or_else(|| {
+                            let clean = s.strip_suffix('Z').unwrap_or(&s);
+                            chrono::NaiveDateTime::parse_from_str(clean, "%Y-%m-%d %H:%M")
+                                .or_else(|_| {
+                                    chrono::NaiveDateTime::parse_from_str(
+                                        clean,
+                                        "%Y-%m-%d %H:%M:%S",
+                                    )
+                                })
+                                .ok()
+                                .map(|dt| {
+                                    chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
+                                        dt,
+                                        chrono::Utc,
+                                    )
+                                })
+                        })
+                });
+
+                let file_info = FileInfo {
+                    name: entry.name.clone(),
+                    path: entry.path.clone(),
+                    size: entry.size,
+                    modified,
+                    is_dir: entry.is_dir,
+                    checksum: None,
+                };
+
+                remote_files.insert(relative_path, file_info);
+
+                if entry.is_dir {
+                    let sub_path = if current_dir.ends_with('/') {
+                        format!("{}{}", current_dir, entry.name)
+                    } else {
+                        format!("{}/{}", current_dir, entry.name)
+                    };
+                    dirs_to_process.push(sub_path);
+                }
+            }
+
+            let _ = app.emit(
+                "sync_scan_progress",
+                serde_json::json!({
+                    "phase": "remote",
+                    "files_found": local_files.len() + remote_files.len(),
+                }),
+            );
+        }
     }
 
     let _ = app.emit(
