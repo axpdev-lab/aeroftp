@@ -11,7 +11,6 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
-use tauri::{AppHandle, Emitter};
 use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 
@@ -23,6 +22,7 @@ use crate::transfer_domain::{
     BatchProgressSnapshot, TransferBatchConfig, TransferBatchResult, TransferDirection,
     TransferEntry, TransferOutcome,
 };
+use crate::transfer_event_sink::TransferEventSink;
 
 pub type ProgressObserver = Arc<dyn Fn(BatchProgressSnapshot) + Send + Sync>;
 
@@ -55,7 +55,7 @@ pub trait TransferExecutor {
 }
 
 pub async fn execute_batch<E>(
-    app: &AppHandle,
+    sink: Arc<dyn TransferEventSink>,
     batch: TransferBatch,
     executor: Arc<E>,
     cancel: Arc<AtomicBool>,
@@ -79,15 +79,12 @@ where
     let mut join_set = JoinSet::new();
     let mut entries = batch.entries.into_iter();
 
-    let _ = app.emit(
-        "transfer_batch_started",
-        serde_json::json!({
-            "batch_id": batch.id,
-            "display_name": batch.display_name,
-            "direction": batch.direction,
-            "total": total,
-        }),
-    );
+    sink.emit_batch_started(serde_json::json!({
+        "batch_id": batch.id,
+        "display_name": batch.display_name,
+        "direction": batch.direction,
+        "total": total,
+    }));
 
     for _ in 0..max_concurrent {
         if cancel.load(Ordering::Relaxed) {
@@ -98,7 +95,7 @@ where
         };
         spawn_transfer_task(
             &mut join_set,
-            app.clone(),
+            sink.clone(),
             cancel.clone(),
             executor.clone(),
             progress.clone(),
@@ -121,7 +118,7 @@ where
         if let Some(entry) = entries.next() {
             spawn_transfer_task(
                 &mut join_set,
-                app.clone(),
+                sink.clone(),
                 cancel.clone(),
                 executor.clone(),
                 progress.clone(),
@@ -143,7 +140,7 @@ where
         duration_ms: started_at.elapsed().as_millis() as u64,
     };
 
-    let _ = app.emit("transfer_batch_completed", &batch_result);
+    sink.emit_batch_completed(&batch_result);
 
     batch_result
 }
@@ -151,7 +148,7 @@ where
 #[allow(clippy::too_many_arguments)]
 fn spawn_transfer_task<E>(
     join_set: &mut JoinSet<()>,
-    app: AppHandle,
+    sink: Arc<dyn TransferEventSink>,
     cancel: Arc<AtomicBool>,
     executor: Arc<E>,
     progress: Arc<Mutex<BatchProgressSnapshot>>,
@@ -212,7 +209,7 @@ fn spawn_transfer_task<E>(
         let snapshot_clone = snapshot.clone();
         drop(snapshot);
 
-        let _ = app.emit("transfer_batch_progress", snapshot_clone.clone());
+        sink.emit_batch_progress(&snapshot_clone);
         if let Some(observer) = progress_observer {
             observer(snapshot_clone);
         }

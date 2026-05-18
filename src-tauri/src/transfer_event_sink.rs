@@ -18,6 +18,7 @@
 //! Mirrors the [`crate::ai_core::EventSink`] precedent already used to make
 //! the AI streaming path sink-agnostic for CLI/MCP.
 
+use crate::transfer_domain::{BatchProgressSnapshot, TransferBatchResult};
 use crate::TransferEvent;
 
 /// Abstraction over `transfer_event` emission: Tauri GUI or CLI / headless.
@@ -26,12 +27,32 @@ use crate::TransferEvent;
 /// otherwise have passed to `app.emit("transfer_event", _)`. Implementors
 /// MUST NOT reshape or drop fields: the GUI frontend consumes this payload
 /// verbatim and the byte-shape is a non-regression contract.
+///
+/// PD-CLI-CONV-B extends the same single abstraction with the three
+/// **batch-lifecycle** events the orchestrator (`execute_batch`) used to
+/// emit directly via its own `AppHandle`. They default to no-op so the CLI
+/// `NoopTransferSink` and the existing tests inherit them for free; the GUI
+/// `AppHandleSink` overrides them as a 1:1 adapter (byte-identical payload,
+/// same channel names), which is the non-regression proof.
 pub trait TransferEventSink: Send + Sync {
     /// Emit one `transfer_event`.
     ///
     /// - GUI: `app.emit("transfer_event", event)` (fire-and-forget).
     /// - CLI: no-op (progress surfaced via the indicatif progress callback).
     fn emit_transfer_event(&self, event: TransferEvent);
+
+    /// Batch started. GUI: `app.emit("transfer_batch_started", payload)`.
+    /// The orchestrator builds `payload` identically regardless of sink, so
+    /// the GUI byte-shape is unchanged. Default: no-op (CLI/headless).
+    fn emit_batch_started(&self, _payload: serde_json::Value) {}
+
+    /// Per-file batch progress snapshot. GUI:
+    /// `app.emit("transfer_batch_progress", snapshot)`. Default: no-op.
+    fn emit_batch_progress(&self, _snapshot: &BatchProgressSnapshot) {}
+
+    /// Batch completed. GUI: `app.emit("transfer_batch_completed", result)`.
+    /// Default: no-op.
+    fn emit_batch_completed(&self, _result: &TransferBatchResult) {}
 }
 
 /// GUI sink: 1:1 adapter over [`tauri::AppHandle::emit`]. Produces exactly the
@@ -53,6 +74,21 @@ impl TransferEventSink for AppHandleSink {
     fn emit_transfer_event(&self, event: TransferEvent) {
         use tauri::Emitter;
         let _ = self.app.emit("transfer_event", event);
+    }
+
+    fn emit_batch_started(&self, payload: serde_json::Value) {
+        use tauri::Emitter;
+        let _ = self.app.emit("transfer_batch_started", payload);
+    }
+
+    fn emit_batch_progress(&self, snapshot: &BatchProgressSnapshot) {
+        use tauri::Emitter;
+        let _ = self.app.emit("transfer_batch_progress", snapshot);
+    }
+
+    fn emit_batch_completed(&self, result: &TransferBatchResult) {
+        use tauri::Emitter;
+        let _ = self.app.emit("transfer_batch_completed", result);
     }
 }
 
