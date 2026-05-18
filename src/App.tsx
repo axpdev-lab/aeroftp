@@ -3212,6 +3212,18 @@ interface UpdateVerificationInfo {
     }
   });
 
+  // OS file association: a double-clicked plain .aeroftp server-profiles
+  // export opens the import flow (password prompt -> import_server_profiles)
+  // instead of just raising the window (issue #214 pt.4a, plain .aeroftp).
+  // The explicit !endsWith('.aeroftp-keystore') guard keeps a keystore file
+  // from ever reaching the profiles importer, mirroring the backend filter.
+  useTauriListener<string>('servers-open-file', (event) => {
+    const p = event.payload;
+    if (p && p.endsWith('.aeroftp') && !p.endsWith('.aeroftp-keystore')) {
+      importAeroFtpProfileFile(p);
+    }
+  });
+
   // Auto-enable debug mode when Cyber theme is active, disable when switching away
   useEffect(() => {
     const isCyber = getEffectiveTheme(theme, isDark) === 'cyber';
