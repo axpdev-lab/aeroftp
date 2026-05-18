@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.8.3] - 2026-05-18
+
+### Critical Linux Hotfix
+
+v3.8.2 shipped a Tauri 2.11.1 dependency bump that made every Linux build non-functional: the production webview origin was reclassified as remote and all backend commands were rejected, leaving the app unable to list files, read the credential vault, connect, mount drives or check for updates. Windows and macOS were unaffected. This release restores Linux operation and bundles the related vault and edit-screen fixes.
+
+#### Fixed
+- **Linux app fully non-functional on v3.8.2**: Pinned Tauri back to the known-good 2.11.0 so the production webview keeps backend access. Every Linux v3.8.2 install was affected; upgrading is strongly recommended.
+- **Saved-server passwords blank in the edit screen**: The edit form now reads the stored password from the vault unconditionally, matching the connect path, so credentials appear after the server list is rebuilt from the vault.
+- **Server list empty after a storage-cache cleanup**: The list is rebuilt from the encrypted vault when the local cache is missing instead of showing zero servers.
+- **Keystore backup and import**: Corrected the local backup whitelist key names and routed a double-clicked .aeroftp-keystore file straight to the import screen.
+- **Provider mode tabs while editing**: Locked read-only during profile edit to prevent accidental protocol changes.
+- **AeroFile initial panel**: Starts on a single left panel and never lists with an empty path.
+
+#### Changed
+- **Parallel transfer engine convergence**: File transfers continue converging on the shared concurrent executor with connection pooling and concurrent byte-range reads for faster multi-file and large-file transfers.
+
 ## [3.8.2] - 2026-05-17
 
 ### Profile Bridge Expansion, Server-Side Hashing and Interop Fixes

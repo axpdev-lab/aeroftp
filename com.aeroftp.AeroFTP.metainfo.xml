@@ -137,6 +137,12 @@
   </languages>
 
   <releases>
+    <release version="3.8.3" date="2026-05-18">
+      <description>
+        <p>Critical Linux hotfix. v3.8.2 shipped a Tauri 2.11.1 dependency bump that made every Linux build non-functional: the production webview origin was reclassified as remote and all backend commands were rejected, so the application could not list files, read the credential vault, connect to servers, mount drives or check for updates. Windows and macOS were unaffected. This release restores Linux operation by pinning Tauri back to the known-good 2.11.0 and is strongly recommended for every Linux user on 3.8.2.</p>
+        <p>It also bundles related fixes: saved-server passwords now appear in the edit screen because the vault is read unconditionally, the server list is rebuilt from the encrypted vault when the local cache is missing, keystore backup key names and double-click import are corrected, provider mode tabs are locked read-only while editing a profile, and AeroFile starts on a single left panel. Multi-file and large-file transfers continue converging on the shared concurrent executor for better throughput.</p>
+      </description>
+    </release>
     <release version="3.8.2" date="2026-05-17">
       <description>
         <p>The profile bridge grows from three sources to fifteen, and the twelve new sources are now fully wired into the Export/Import dialog rather than the CLI alone. Beyond rclone, WinSCP and FileZilla you can import from and export to AWS CLI, MinIO Client, s3cmd, OpenSSH, PuTTY, MobaXterm, lftp, Cyberduck, Dreamweaver, Kopia, restic and Duplicacy. Each source auto-detects its conventional configuration path, recovers credentials into the AeroFTP vault where the source format allows it, and shows a clear per-source note when only connection metadata or partial secrets can be carried. When exporting to a target tool, profiles whose protocol that tool cannot carry are shown disabled with an explicit reason and excluded from the written file, so an export never produces an unusable entry. A single shared core now backs every importer and the per-source protocol filter and export format are shared between the GUI and the CLI so the two never diverge.</p>
