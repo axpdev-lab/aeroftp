@@ -164,14 +164,14 @@ impl McpRemoteBackend {
     async fn with_provider<T, F>(&self, op: F) -> Result<T, String>
     where
         F: for<'p> FnOnce(
-            &'p mut Box<dyn crate::providers::StorageProvider>,
-        ) -> std::pin::Pin<
-            Box<
-                dyn std::future::Future<Output = Result<T, crate::providers::ProviderError>>
-                    + Send
-                    + 'p,
-            >,
-        > + Clone,
+                &'p mut Box<dyn crate::providers::StorageProvider>,
+            ) -> std::pin::Pin<
+                Box<
+                    dyn std::future::Future<Output = Result<T, crate::providers::ProviderError>>
+                        + Send
+                        + 'p,
+                >,
+            > + Clone,
     {
         // First attempt against the pooled (possibly stale-token) provider.
         let first = match self.pool.get_provider(&self.server).await {

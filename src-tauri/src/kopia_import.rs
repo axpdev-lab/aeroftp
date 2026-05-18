@@ -121,8 +121,8 @@ pub fn default_kopia_config_path() -> Option<PathBuf> {
     #[cfg(target_os = "macos")]
     {
         if let Ok(home) = std::env::var("HOME") {
-            let path = PathBuf::from(home)
-                .join("Library/Application Support/kopia/repository.config");
+            let path =
+                PathBuf::from(home).join("Library/Application Support/kopia/repository.config");
             if path.exists() {
                 return Some(path);
             }
@@ -215,17 +215,13 @@ fn map_storage(kind: &str, config: &serde_json::Value) -> Mapped {
             json_map(&[]),
         ),
         "gcs" | "azureblob" => {
-            return Mapped::Skipped(
-                "OAuth/SAS backend not bridgeable".to_string(),
-            );
+            return Mapped::Skipped("OAuth/SAS backend not bridgeable".to_string());
         }
         "filesystem" => {
             return Mapped::Skipped("local filesystem, not a server".to_string());
         }
         other => {
-            return Mapped::Skipped(format!(
-                "unsupported kopia storage type: {other}"
-            ));
+            return Mapped::Skipped(format!("unsupported kopia storage type: {other}"));
         }
     };
 
@@ -267,8 +263,7 @@ fn map_storage(kind: &str, config: &serde_json::Value) -> Mapped {
 /// `filesystem` backends are reported in `skipped` rather than failing the
 /// whole import.
 pub fn import_kopia(path: &Path) -> Result<KopiaImportResult, String> {
-    let raw = std::fs::read_to_string(path)
-        .map_err(|e| format!("read kopia config: {e}"))?;
+    let raw = std::fs::read_to_string(path).map_err(|e| format!("read kopia config: {e}"))?;
     let kc: KopiaConfig =
         serde_json::from_str(&raw).map_err(|e| format!("parse kopia json: {e}"))?;
 
@@ -409,8 +404,10 @@ mod tests {
     use super::*;
 
     fn import_str(json: &str) -> KopiaImportResult {
-        let tmp = std::env::temp_dir()
-            .join(format!("aeroftp-kopia-{}.config", crate::bridge_shared::uuid_v4()));
+        let tmp = std::env::temp_dir().join(format!(
+            "aeroftp-kopia-{}.config",
+            crate::bridge_shared::uuid_v4()
+        ));
         std::fs::write(&tmp, json).unwrap();
         let r = import_kopia(&tmp).expect("import");
         std::fs::remove_file(&tmp).ok();
@@ -543,13 +540,12 @@ mod tests {
             initial_path: s1.initial_path.clone(),
         }];
         let mut passwords = HashMap::new();
-        passwords.insert(
-            s1.name.clone(),
-            s1.credential.clone().unwrap_or_default(),
-        );
+        passwords.insert(s1.name.clone(), s1.credential.clone().unwrap_or_default());
 
-        let out = std::env::temp_dir()
-            .join(format!("aeroftp-kopia-rt-{}.config", crate::bridge_shared::uuid_v4()));
+        let out = std::env::temp_dir().join(format!(
+            "aeroftp-kopia-rt-{}.config",
+            crate::bridge_shared::uuid_v4()
+        ));
         let n = export_kopia(&export, &passwords, &out).expect("export");
         assert_eq!(n, 1);
 
@@ -589,8 +585,10 @@ mod tests {
         let mut passwords = HashMap::new();
         passwords.insert(s1.name.clone(), "K00rt".to_string());
 
-        let out = std::env::temp_dir()
-            .join(format!("aeroftp-kopia-b2rt-{}.config", crate::bridge_shared::uuid_v4()));
+        let out = std::env::temp_dir().join(format!(
+            "aeroftp-kopia-b2rt-{}.config",
+            crate::bridge_shared::uuid_v4()
+        ));
         export_kopia(&export, &passwords, &out).expect("export");
         let r2 = import_kopia(&out).expect("reimport");
         std::fs::remove_file(&out).ok();
@@ -610,9 +608,7 @@ mod tests {
             r#"{"storage":{"type":"s3","config":{"endpoint":"https://s3.x.com","accessKeyID":"A","secretAccessKey":"S"}}}"#,
         );
         assert_eq!(s3.servers[0].credential.as_deref(), Some("S"));
-        let b2 = import_str(
-            r#"{"storage":{"type":"b2","config":{"keyID":"K","key":"KK"}}}"#,
-        );
+        let b2 = import_str(r#"{"storage":{"type":"b2","config":{"keyID":"K","key":"KK"}}}"#);
         assert_eq!(b2.servers[0].credential.as_deref(), Some("KK"));
         let dav = import_str(
             r#"{"storage":{"type":"webdav","config":{"url":"https://d.x.com","username":"u","password":"p"}}}"#,
@@ -643,8 +639,10 @@ mod tests {
 
     #[test]
     fn test_default_path_env_override() {
-        let dir = std::env::temp_dir()
-            .join(format!("aeroftp-kopia-defpath-{}", crate::bridge_shared::uuid_v4()));
+        let dir = std::env::temp_dir().join(format!(
+            "aeroftp-kopia-defpath-{}",
+            crate::bridge_shared::uuid_v4()
+        ));
         let cfgdir = dir.join("kopia");
         std::fs::create_dir_all(&cfgdir).unwrap();
         let cfg = cfgdir.join("repository.config");

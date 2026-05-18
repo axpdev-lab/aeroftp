@@ -187,7 +187,11 @@ async fn sftp_connection_pool_parallel_download_is_real_and_byte_identical() {
             results.len()
         );
 
-        assert_eq!(results.len(), FILES, "all files must download at C={concurrency}");
+        assert_eq!(
+            results.len(),
+            FILES,
+            "all files must download at C={concurrency}"
+        );
         for (name, local) in &results {
             assert_eq!(
                 src_hashes.get(name),
@@ -200,7 +204,9 @@ async fn sftp_connection_pool_parallel_download_is_real_and_byte_identical() {
     let _ = base.disconnect().await;
     let _ = std::fs::remove_dir_all(&tmp_root);
     let _ = std::fs::remove_dir_all(&src_dir);
-    eprintln!("PD-SFTP-1: byte-identical across C=1/3/5; independent-connection pool path exercised.");
+    eprintln!(
+        "PD-SFTP-1: byte-identical across C=1/3/5; independent-connection pool path exercised."
+    );
 }
 
 /// PD-SFTP-2 live validation: intra-file parallelism. ONE large file is
@@ -414,12 +420,15 @@ async fn pd_cli_conv_b_shared_executor_download_is_byte_identical() {
         let mut connected = SftpProvider::new(fixture_config());
         connected.connect().await.expect("converged base connect");
         let provider_arc = Arc::new(tokio::sync::Mutex::new(Some(
-            Box::new(connected) as Box<dyn StorageProvider>,
+            Box::new(connected) as Box<dyn StorageProvider>
         )));
 
         let model = resolve_provider_executor_session_model(&provider_arc, concurrency).await;
         assert!(
-            matches!(model, ProviderExecutorSessionModel::SftpConnectionPool { .. }),
+            matches!(
+                model,
+                ProviderExecutorSessionModel::SftpConnectionPool { .. }
+            ),
             "converged path must resolve to the SFTP connection pool, got {model:?}"
         );
 

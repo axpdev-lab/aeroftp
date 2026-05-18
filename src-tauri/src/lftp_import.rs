@@ -493,7 +493,10 @@ mystery gopher://old.example.com/0/
         // 4 well-formed lines + 1 "broken-line" + 1 "mystery"
         assert_eq!(entries.len(), 5);
         assert_eq!(entries[0].0, "prod-ftp");
-        assert_eq!(entries[0].1, "ftp://deploy:s3cr%40t@ftp.example.com:2121/var/www");
+        assert_eq!(
+            entries[0].1,
+            "ftp://deploy:s3cr%40t@ftp.example.com:2121/var/www"
+        );
         assert_eq!(entries[3].0, "broken-line");
         assert_eq!(entries[3].1, "not-a-url-without-scheme");
     }
@@ -535,8 +538,7 @@ mystery gopher://old.example.com/0/
 
     #[test]
     fn test_parse_bookmark_url_fish_maps_sftp() {
-        let m =
-            parse_bookmark_url("fish://root@nas.local").expect("fish url should parse");
+        let m = parse_bookmark_url("fish://root@nas.local").expect("fish url should parse");
         assert_eq!(m.protocol, "sftp");
         assert_eq!(m.port, 22);
         assert_eq!(m.username, "root");
@@ -586,11 +588,7 @@ mystery gopher://old.example.com/0/
         assert_eq!(sftp.has_stored_credential, Some(false));
 
         // Skipped reasons.
-        let unsupported = result
-            .skipped
-            .iter()
-            .find(|s| s.name == "mystery")
-            .unwrap();
+        let unsupported = result.skipped.iter().find(|s| s.name == "mystery").unwrap();
         assert!(unsupported.reason.contains("unsupported lftp scheme"));
         let malformed = result
             .skipped
@@ -714,7 +712,13 @@ mystery gopher://old.example.com/0/
 
     #[test]
     fn test_url_encode_decode_roundtrip() {
-        for s in &["plain", "a b@c", "s3cr@t:/pass", "unicode-\u{00e9}\u{00f1}", "%percent"] {
+        for s in &[
+            "plain",
+            "a b@c",
+            "s3cr@t:/pass",
+            "unicode-\u{00e9}\u{00f1}",
+            "%percent",
+        ] {
             let enc = url_encode(s);
             assert_eq!(&url_decode(&enc), s, "roundtrip failed for {}", s);
         }

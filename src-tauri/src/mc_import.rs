@@ -211,8 +211,7 @@ pub struct McImportResult {
 
 /// Import every bridgeable alias from an `mc` `config.json`.
 pub fn import_mc(path: &Path) -> Result<McImportResult, String> {
-    let content =
-        std::fs::read_to_string(path).map_err(|e| format!("read mc config: {}", e))?;
+    let content = std::fs::read_to_string(path).map_err(|e| format!("read mc config: {}", e))?;
     let config: McConfig =
         serde_json::from_str(&content).map_err(|e| format!("parse mc config json: {}", e))?;
 
@@ -527,7 +526,8 @@ mod tests {
 
     #[test]
     fn test_default_path_env_override() {
-        let dir = std::env::temp_dir().join(format!("mc-cfgdir-{}", crate::bridge_shared::uuid_v4()));
+        let dir =
+            std::env::temp_dir().join(format!("mc-cfgdir-{}", crate::bridge_shared::uuid_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         let cfg = dir.join("config.json");
         std::fs::write(&cfg, FIXTURE).unwrap();

@@ -193,9 +193,7 @@ fn map_duck(xml: &str) -> DuckOutcome {
         // 80 only if the bookmark explicitly pins it).
         "davs" => DuckOutcome::Profile(MappedProfile {
             protocol: "webdav".into(),
-            provider_id: Some(
-                crate::bridge_shared::map_webdav_vendor(&hostname).to_string(),
-            ),
+            provider_id: Some(crate::bridge_shared::map_webdav_vendor(&hostname).to_string()),
             host: hostname,
             port: port_field.unwrap_or(443),
             username,
@@ -205,9 +203,7 @@ fn map_duck(xml: &str) -> DuckOutcome {
 
         "dav" => DuckOutcome::Profile(MappedProfile {
             protocol: "webdav".into(),
-            provider_id: Some(
-                crate::bridge_shared::map_webdav_vendor(&hostname).to_string(),
-            ),
+            provider_id: Some(crate::bridge_shared::map_webdav_vendor(&hostname).to_string()),
             host: hostname,
             port: port_field.unwrap_or(443),
             username,
@@ -240,15 +236,17 @@ fn map_duck(xml: &str) -> DuckOutcome {
 fn bookmark_name(xml: &str) -> String {
     crate::bridge_shared::plist_field(xml, "Nickname")
         .filter(|s| !s.is_empty())
-        .or_else(|| {
-            crate::bridge_shared::plist_field(xml, "Hostname").filter(|s| !s.is_empty())
-        })
+        .or_else(|| crate::bridge_shared::plist_field(xml, "Hostname").filter(|s| !s.is_empty()))
         .or_else(|| crate::bridge_shared::plist_field(xml, "Protocol"))
         .unwrap_or_else(|| "Cyberduck bookmark".to_string())
 }
 
 /// Map one `.duck` body, pushing into `servers` or `skipped`.
-fn ingest_duck(xml: &str, servers: &mut Vec<ServerProfileExport>, skipped: &mut Vec<CyberduckSkippedRemote>) {
+fn ingest_duck(
+    xml: &str,
+    servers: &mut Vec<ServerProfileExport>,
+    skipped: &mut Vec<CyberduckSkippedRemote>,
+) {
     let name = bookmark_name(xml);
     match map_duck(xml) {
         DuckOutcome::Profile(m) => {
@@ -301,8 +299,7 @@ pub fn default_cyberduck_config_path() -> Option<PathBuf> {
     #[cfg(target_os = "macos")]
     {
         if let Ok(home) = std::env::var("HOME") {
-            let p = PathBuf::from(home)
-                .join("Library/Application Support/Cyberduck/Bookmarks");
+            let p = PathBuf::from(home).join("Library/Application Support/Cyberduck/Bookmarks");
             if p.exists() {
                 return Some(p);
             }
@@ -338,8 +335,8 @@ pub fn import_cyberduck(path: &Path) -> Result<CyberduckImportResult, String> {
     let mut total_remotes = 0usize;
 
     if path.is_dir() {
-        let entries = std::fs::read_dir(path)
-            .map_err(|e| format!("read Cyberduck Bookmarks dir: {e}"))?;
+        let entries =
+            std::fs::read_dir(path).map_err(|e| format!("read Cyberduck Bookmarks dir: {e}"))?;
         let mut duck_files: Vec<PathBuf> = Vec::new();
         for entry in entries.flatten() {
             let p = entry.path();
@@ -374,8 +371,7 @@ pub fn import_cyberduck(path: &Path) -> Result<CyberduckImportResult, String> {
             }
         }
     } else {
-        let xml = std::fs::read_to_string(path)
-            .map_err(|e| format!("read .duck: {e}"))?;
+        let xml = std::fs::read_to_string(path).map_err(|e| format!("read .duck: {e}"))?;
         total_remotes = 1;
         ingest_duck(&xml, &mut servers, &mut skipped);
     }
@@ -460,16 +456,14 @@ pub fn export_cyberduck(
     // the secret in the file, so the map is intentionally unused.
     let _ = passwords;
 
-    std::fs::create_dir_all(out)
-        .map_err(|e| format!("create Cyberduck Bookmarks dir: {e}"))?;
+    std::fs::create_dir_all(out).map_err(|e| format!("create Cyberduck Bookmarks dir: {e}"))?;
 
     let mut exported = 0usize;
     let mut used_names: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     for server in servers {
         let proto = server.protocol.as_deref().unwrap_or("ftp");
-        let Some(duck_proto) = cyberduck_protocol(proto, server.provider_id.as_deref())
-        else {
+        let Some(duck_proto) = cyberduck_protocol(proto, server.provider_id.as_deref()) else {
             continue;
         };
 
@@ -654,8 +648,14 @@ mod tests {
         // Provider inferred from the wasabisys.com endpoint host.
         assert_eq!(s.provider_id.as_deref(), Some("wasabi"));
         let opts = s.options.as_ref().expect("S3 options").as_object().unwrap();
-        assert_eq!(opts.get("region").and_then(|v| v.as_str()), Some("us-east-1"));
-        assert_eq!(opts.get("bucket").and_then(|v| v.as_str()), Some("my-bucket"));
+        assert_eq!(
+            opts.get("region").and_then(|v| v.as_str()),
+            Some("us-east-1")
+        );
+        assert_eq!(
+            opts.get("bucket").and_then(|v| v.as_str()),
+            Some("my-bucket")
+        );
         assert!(s.credential.is_none());
         assert_eq!(s.has_stored_credential, Some(false));
     }
@@ -742,8 +742,7 @@ mod tests {
             crate::bridge_shared::uuid_v4()
         ));
         let passwords = HashMap::new();
-        let written = export_cyberduck(&export_servers, &passwords, &out_dir)
-            .expect("export");
+        let written = export_cyberduck(&export_servers, &passwords, &out_dir).expect("export");
         assert_eq!(written, 1);
 
         let second = import_cyberduck(&out_dir).expect("re-import");

@@ -128,7 +128,10 @@ pub async fn debug_test_vault_roundtrip() -> Result<TestResult, String> {
     if read_value == value {
         Ok(TestResult::pass(t0, "Vault write/read/delete cycle OK"))
     } else {
-        Ok(TestResult::fail(t0, "Read value did not match written value"))
+        Ok(TestResult::fail(
+            t0,
+            "Read value did not match written value",
+        ))
     }
 }
 
@@ -222,9 +225,7 @@ pub async fn debug_test_aerovault_roundtrip() -> Result<TestResult, String> {
 // ─── T5: plugin integrity walk ─────────────────────────────────────────────
 
 #[tauri::command]
-pub async fn debug_test_plugin_integrity(
-    app: tauri::AppHandle,
-) -> Result<TestResult, String> {
+pub async fn debug_test_plugin_integrity(app: tauri::AppHandle) -> Result<TestResult, String> {
     let t0 = Instant::now();
     let plugins = match crate::plugins::list_plugins(app).await {
         Ok(p) => p,
@@ -263,15 +264,36 @@ fn redaction_patterns() -> &'static [(regex::Regex, &'static str)] {
     static PATTERNS: OnceLock<Vec<(regex::Regex, &'static str)>> = OnceLock::new();
     PATTERNS.get_or_init(|| {
         let raw: &[(&str, &'static str)] = &[
-            (r"sk-(ant|proj|live|test)-[A-Za-z0-9_\-]{16,}", "sk-***REDACTED***"),
+            (
+                r"sk-(ant|proj|live|test)-[A-Za-z0-9_\-]{16,}",
+                "sk-***REDACTED***",
+            ),
             (r"sk_(live|test)_[A-Za-z0-9]{16,}", "sk_***REDACTED***"),
-            (r"\bBearer\s+[A-Za-z0-9_\-.~+/]{8,}=*", "Bearer ***REDACTED***"),
-            (r#"(?i)\bx-api-key\s*[:=]\s*[^\s,;'"<>]+"#, "x-api-key: ***REDACTED***"),
-            (r#"(?i)\bauthorization\s*[:=]\s*[^\s,;'"<>]+"#, "authorization: ***REDACTED***"),
-            (r"\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}", "***JWT-REDACTED***"),
-            (r"(?i)\b((?:ftps?|sftp|https?|webdav)://[^:\s@/]+:)[^@\s]+(@)", "$1***REDACTED***$2"),
+            (
+                r"\bBearer\s+[A-Za-z0-9_\-.~+/]{8,}=*",
+                "Bearer ***REDACTED***",
+            ),
+            (
+                r#"(?i)\bx-api-key\s*[:=]\s*[^\s,;'"<>]+"#,
+                "x-api-key: ***REDACTED***",
+            ),
+            (
+                r#"(?i)\bauthorization\s*[:=]\s*[^\s,;'"<>]+"#,
+                "authorization: ***REDACTED***",
+            ),
+            (
+                r"\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}",
+                "***JWT-REDACTED***",
+            ),
+            (
+                r"(?i)\b((?:ftps?|sftp|https?|webdav)://[^:\s@/]+:)[^@\s]+(@)",
+                "$1***REDACTED***$2",
+            ),
             (r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", "***@***"),
-            (r"\b(?!127\.0\.0\.1\b|0\.0\.0\.0\b)((?:\d{1,3}\.){3}\d{1,3})\b", "***.***.***.***"),
+            (
+                r"\b(?!127\.0\.0\.1\b|0\.0\.0\.0\b)((?:\d{1,3}\.){3}\d{1,3})\b",
+                "***.***.***.***",
+            ),
             (r"/home/[A-Za-z0-9._-]+", "/home/***"),
             (r"/Users/[A-Za-z0-9._-]+", "/Users/***"),
             (r"(?i)C:\\Users\\[^\\]+", "C:\\Users\\***"),
@@ -309,8 +331,8 @@ pub async fn debug_export_bundle(
     use std::fs::File;
     use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
 
-    let file = File::create(&output_path)
-        .map_err(|e| format!("Cannot create bundle file: {}", e))?;
+    let file =
+        File::create(&output_path).map_err(|e| format!("Cannot create bundle file: {}", e))?;
     let mut zip = ZipWriter::new(file);
     let opts = SimpleFileOptions::default()
         .compression_method(CompressionMethod::Deflated)
@@ -362,8 +384,7 @@ pub async fn debug_export_bundle(
     write(
         &mut zip,
         "localstorage.json",
-        &serde_json::to_string_pretty(&bundle.local_storage_keys)
-            .unwrap_or_else(|_| "{}".into()),
+        &serde_json::to_string_pretty(&bundle.local_storage_keys).unwrap_or_else(|_| "{}".into()),
     )?;
 
     // Tail of the on-disk Rust log. tauri-plugin-log writes to
@@ -390,8 +411,7 @@ pub async fn debug_export_bundle(
         }
     }
 
-    zip.finish()
-        .map_err(|e| format!("zip finish: {}", e))?;
+    zip.finish().map_err(|e| format!("zip finish: {}", e))?;
     Ok(output_path)
 }
 

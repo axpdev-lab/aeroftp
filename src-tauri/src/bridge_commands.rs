@@ -16,14 +16,13 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use crate::bridge_shared::{
-    bridge_export_format, bridge_import_filter, bridge_secret_policy,
-    bridge_supported_protocols,
+    bridge_export_format, bridge_import_filter, bridge_secret_policy, bridge_supported_protocols,
 };
 use crate::credential_store::CredentialStore;
 use crate::{
-    aws_credentials_import, cyberduck_import, dreamweaver_import, duplicacy_import,
-    kopia_import, lftp_import, mc_import, mobaxterm_import, putty_import, restic_import,
-    s3cmd_import, ssh_config_import,
+    aws_credentials_import, cyberduck_import, dreamweaver_import, duplicacy_import, kopia_import,
+    lftp_import, mc_import, mobaxterm_import, putty_import, restic_import, s3cmd_import,
+    ssh_config_import,
 };
 
 fn known(source: &str) -> Result<(), String> {
@@ -63,8 +62,7 @@ pub async fn detect_bridge_config(source: String) -> Result<Option<String>, Stri
 pub async fn bridge_source_meta(source: String) -> Result<Value, String> {
     known(&source)?;
     let (filter_name, exts) = bridge_import_filter(&source);
-    let (export_ext, export_label) =
-        bridge_export_format(&source).unwrap_or(("txt", ""));
+    let (export_ext, export_label) = bridge_export_format(&source).unwrap_or(("txt", ""));
     Ok(json!({
         "source": source,
         "supportedProtocols": bridge_supported_protocols(&source),
@@ -170,8 +168,8 @@ pub async fn bridge_identify(file_path: String) -> Result<Value, String> {
     let canonical = path
         .canonicalize()
         .map_err(|_| "File not found or inaccessible".to_string())?;
-    let metadata = std::fs::metadata(&canonical)
-        .map_err(|_| "Cannot read file metadata".to_string())?;
+    let metadata =
+        std::fs::metadata(&canonical).map_err(|_| "Cannot read file metadata".to_string())?;
     if !metadata.is_file() {
         return Err("Not a regular file".to_string());
     }
@@ -227,10 +225,7 @@ fn dispatch_import(source: &str, path: &Path) -> Result<Value, String> {
 /// upgrades any recovered secret into the AES-256-GCM vault and returns
 /// credential-redacted profiles, exactly like `import_rclone_config`.
 #[tauri::command]
-pub async fn import_bridge_config(
-    source: String,
-    file_path: String,
-) -> Result<Value, String> {
+pub async fn import_bridge_config(source: String, file_path: String) -> Result<Value, String> {
     known(&source)?;
 
     let path = Path::new(&file_path);
@@ -240,8 +235,8 @@ pub async fn import_bridge_config(
     let canonical = path
         .canonicalize()
         .map_err(|_| "File not found or inaccessible".to_string())?;
-    let metadata = std::fs::metadata(&canonical)
-        .map_err(|_| "Cannot read file metadata".to_string())?;
+    let metadata =
+        std::fs::metadata(&canonical).map_err(|_| "Cannot read file metadata".to_string())?;
     if !metadata.is_file() {
         return Err("Not a regular file".to_string());
     }
@@ -296,10 +291,7 @@ pub async fn import_bridge_config(
         .map(|s| {
             let has_cred = s
                 .get("credential")
-                .map(|c| {
-                    !c.is_null()
-                        && c.as_str().map(|x| !x.is_empty()).unwrap_or(true)
-                })
+                .map(|c| !c.is_null() && c.as_str().map(|x| !x.is_empty()).unwrap_or(true))
                 .unwrap_or(false);
             json!({
                 "id": s.get("id").cloned().unwrap_or(Value::Null),
@@ -356,8 +348,8 @@ pub async fn export_bridge_config(
         }
     }
 
-    let raw: Vec<Value> = serde_json::from_str(&servers_json)
-        .map_err(|e| format!("Invalid server data: {e}"))?;
+    let raw: Vec<Value> =
+        serde_json::from_str(&servers_json).map_err(|e| format!("Invalid server data: {e}"))?;
     let store = CredentialStore::from_cache();
 
     // Each arm builds the typed Vec for that source, filtering by the
@@ -451,15 +443,9 @@ pub async fn export_bridge_config(
             cyberduck_import::CyberduckExportServer,
             cyberduck_import::export_cyberduck
         ),
-        "s3cmd" => run_export!(
-            s3cmd_import::S3cmdExportServer,
-            s3cmd_import::export_s3cmd
-        ),
+        "s3cmd" => run_export!(s3cmd_import::S3cmdExportServer, s3cmd_import::export_s3cmd),
         "lftp" => run_export!(lftp_import::LftpExportServer, lftp_import::export_lftp),
-        "putty" => run_export!(
-            putty_import::PuttyExportServer,
-            putty_import::export_putty
-        ),
+        "putty" => run_export!(putty_import::PuttyExportServer, putty_import::export_putty),
         "mobaxterm" => run_export!(
             mobaxterm_import::MobaxtermExportServer,
             mobaxterm_import::export_mobaxterm
@@ -468,10 +454,7 @@ pub async fn export_bridge_config(
             dreamweaver_import::DreamweaverExportServer,
             dreamweaver_import::export_dreamweaver
         ),
-        "kopia" => run_export!(
-            kopia_import::KopiaExportServer,
-            kopia_import::export_kopia
-        ),
+        "kopia" => run_export!(kopia_import::KopiaExportServer, kopia_import::export_kopia),
         "duplicacy" => run_export!(
             duplicacy_import::DuplicacyExportServer,
             duplicacy_import::export_duplicacy

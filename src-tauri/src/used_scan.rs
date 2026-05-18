@@ -139,7 +139,15 @@ pub async fn scan_used_bytes(
     }
 
     // --- Baseline: shared provider-agnostic BFS ------------------------
-    bfs_used_bytes(provider, root, max_depth, max_entries, cancel, &mut on_progress).await
+    bfs_used_bytes(
+        provider,
+        root,
+        max_depth,
+        max_entries,
+        cancel,
+        &mut on_progress,
+    )
+    .await
 }
 
 /// Provider-agnostic breadth-first sum. One `list()` per directory; size

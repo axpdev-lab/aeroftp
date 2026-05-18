@@ -17,8 +17,8 @@ use crate::ssh_exec::ssh_exec_collect;
 use async_trait::async_trait;
 use russh::client::AuthResult;
 use russh::client::{self, Config, Handle, Handler};
-use russh::keys::{self, Algorithm, HashAlg, PrivateKeyWithHashAlg, PublicKey, known_hosts};
-use russh::{Preferred, compression};
+use russh::keys::{self, known_hosts, Algorithm, HashAlg, PrivateKeyWithHashAlg, PublicKey};
+use russh::{compression, Preferred};
 use russh_sftp::client::SftpSession;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -493,8 +493,7 @@ impl SftpProvider {
             ConcurrentRangeOutcome::ServerIgnoredRange => {
                 // Unreachable for SFTP: seek+read cannot "ignore" a range.
                 // Never silently re-download (it would double the bytes).
-                let _ =
-                    tokio::fs::remove_file(aerotmp_path_for(Path::new(local_path))).await;
+                let _ = tokio::fs::remove_file(aerotmp_path_for(Path::new(local_path))).await;
                 Err(ProviderError::TransferFailed(
                     "SFTP intra-file: unexpected range-ignored outcome".to_string(),
                 ))
@@ -1167,8 +1166,7 @@ impl StorageProvider for SftpProvider {
             // servers pay no extra round-trip.
             if remote_entry.permissions.is_none() {
                 if let Ok(stat) = sftp.metadata(&entry_path).await {
-                    remote_entry =
-                        self.metadata_to_entry(name.clone(), entry_path.clone(), &stat);
+                    remote_entry = self.metadata_to_entry(name.clone(), entry_path.clone(), &stat);
                 }
             }
 
@@ -1673,10 +1671,7 @@ impl StorageProvider for SftpProvider {
         &mut self,
         path: &str,
     ) -> Result<std::collections::HashMap<String, String>, ProviderError> {
-        let handle = self
-            .ssh_handle
-            .clone()
-            .ok_or(ProviderError::NotConnected)?;
+        let handle = self.ssh_handle.clone().ok_or(ProviderError::NotConnected)?;
         let full_path = self.normalize_path(path);
         // `--` ends option parsing; the path is fully single-quoted so no
         // shell metacharacter (`$()`, backtick, `;`, space, newline) in a

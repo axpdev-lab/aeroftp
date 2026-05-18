@@ -7,6 +7,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::vault_telemetry::VaultReport;
 use aes_gcm_siv::aead::{Aead, Payload};
 use aes_gcm_siv::{Aes256GcmSiv, KeyInit, Nonce};
 use aes_kw::Kek;
@@ -14,7 +15,6 @@ use hmac::{Hmac, Mac};
 use rand::RngCore;
 use secrecy::zeroize::Zeroize;
 use serde::{Deserialize, Serialize};
-use crate::vault_telemetry::VaultReport;
 use sha2::Sha512;
 use std::collections::{BTreeMap, HashSet};
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -572,7 +572,6 @@ fn chunk_ranges_with(data: &[u8], bounds: &CdcBounds) -> Vec<(usize, usize)> {
     ranges
 }
 
-
 fn validate_vault_path(path: &str) -> Result<(), String> {
     if path.is_empty()
         || path.starts_with('/')
@@ -684,7 +683,10 @@ fn sort_entries(manifest: &mut VaultManifestV3) {
     manifest.entries.sort_by(|a, b| a.path.cmp(&b.path));
 }
 
-fn create_directory_in_manifest(manifest: &mut VaultManifestV3, dir_path: &str) -> Result<bool, String> {
+fn create_directory_in_manifest(
+    manifest: &mut VaultManifestV3,
+    dir_path: &str,
+) -> Result<bool, String> {
     let dir_path = normalize_vault_relative_path(dir_path)?;
     ensure_no_file_ancestor(manifest, &dir_path)?;
 
@@ -786,10 +788,15 @@ fn append_file_at(vault: &mut OpenVaultV3, source: &Path, entry_path: &str) -> R
     if let Some(kind) = entry_kind(&vault.manifest, &entry_path) {
         match kind {
             EntryKindV3::Directory => {
-                return Err(format!("Destination already exists as directory: {entry_path}"));
+                return Err(format!(
+                    "Destination already exists as directory: {entry_path}"
+                ));
             }
             EntryKindV3::File => {
-                vault.manifest.entries.retain(|entry| entry.path != entry_path);
+                vault
+                    .manifest
+                    .entries
+                    .retain(|entry| entry.path != entry_path);
             }
         }
     }
@@ -885,8 +892,7 @@ fn flush_pack(
                     cov.push(id.clone());
                 }
             }
-            let fc = first
-                .ok_or_else(|| format!("Packing failed to cover file: {entry_path}"))?;
+            let fc = first.ok_or_else(|| format!("Packing failed to cover file: {entry_path}"))?;
             (cov, Some(fstart_v - fc))
         };
 
@@ -948,8 +954,8 @@ fn append_sources_batched(
         let mut pack: Vec<u8> = Vec::new();
         let mut members: Vec<(String, u64, u64)> = Vec::new();
         for (source, entry_path) in &small_meta {
-            let mut data = std::fs::read(source)
-                .map_err(|e| format!("Read {}: {e}", source.display()))?;
+            let mut data =
+                std::fs::read(source).map_err(|e| format!("Read {}: {e}", source.display()))?;
             let start = pack.len() as u64;
             pack.extend_from_slice(&data);
             let len = data.len() as u64;
@@ -1055,7 +1061,10 @@ fn delete_entries_from_manifest(
         match kind {
             EntryKindV3::File => {
                 let before = vault.manifest.entries.len();
-                vault.manifest.entries.retain(|entry| entry.path != entry_name);
+                vault
+                    .manifest
+                    .entries
+                    .retain(|entry| entry.path != entry_name);
                 removed += before.saturating_sub(vault.manifest.entries.len());
             }
             EntryKindV3::Directory => {
@@ -1504,14 +1513,15 @@ fn extract_entry(
         Some(EntryKindV3::Directory) => {
             let output_root = if dest_path.exists() {
                 if !dest_path.is_dir() {
-                    return Err("Destination for directory extraction must be a directory".to_string());
+                    return Err(
+                        "Destination for directory extraction must be a directory".to_string()
+                    );
                 }
                 dest_path.join(path_basename(&entry_name))
             } else {
                 dest_path.to_path_buf()
             };
-            std::fs::create_dir_all(&output_root)
-                .map_err(|e| format!("Create output dir: {e}"))?;
+            std::fs::create_dir_all(&output_root).map_err(|e| format!("Create output dir: {e}"))?;
 
             let prefix = format!("{entry_name}/");
             let mut descendants: Vec<&ManifestEntryV3> = vault
@@ -1639,12 +1649,16 @@ pub async fn vault_v3_add_files(
     let started = std::time::Instant::now();
     let mut vault = open_vault(&vault_path, &password)?;
     vault.report = VaultReport::new("add_files", VERSION);
-    vault.report.set_profile(match manifest_zstd_level(&vault.manifest) {
-        3 => "fast",
-        19 => "archive",
-        _ => "balanced",
-    });
-    vault.report.set_algorithms(algorithm_chain(&vault.manifest));
+    vault
+        .report
+        .set_profile(match manifest_zstd_level(&vault.manifest) {
+            3 => "fast",
+            19 => "archive",
+            _ => "balanced",
+        });
+    vault
+        .report
+        .set_algorithms(algorithm_chain(&vault.manifest));
 
     let mut sources: Vec<(PathBuf, String)> = Vec::with_capacity(file_paths.len());
     for file_path in &file_paths {
@@ -1658,9 +1672,7 @@ pub async fn vault_v3_add_files(
     append_sources_batched(&mut vault, &sources)?;
     vault.report.step("seal: rebuild manifest + atomic write");
     save_open_vault(&vault)?;
-    vault
-        .report
-        .finish(started.elapsed().as_millis() as u64);
+    vault.report.finish(started.elapsed().as_millis() as u64);
     let (np, dh, ratio) = (
         vault.report.new_physical_chunks,
         vault.report.dedup_hits,
@@ -2014,7 +2026,12 @@ mod tests {
         let mut vault = open_vault(&vault_path, "old-password").unwrap();
         create_directory_in_manifest(&mut vault.manifest, "empty").unwrap();
         append_file_at(&mut vault, &source.join("docs/guide.txt"), "docs/guide.txt").unwrap();
-        append_file_at(&mut vault, &source.join("docs/nested/readme.txt"), "docs/nested/readme.txt").unwrap();
+        append_file_at(
+            &mut vault,
+            &source.join("docs/nested/readme.txt"),
+            "docs/nested/readme.txt",
+        )
+        .unwrap();
         copy_entry_in_manifest(&mut vault, "docs", "docs-copy").unwrap();
         move_entry_in_manifest(&mut vault, "docs-copy", "docs-archived").unwrap();
         delete_entries_from_manifest(&mut vault, &["docs-archived".to_string()], true).unwrap();
@@ -2104,7 +2121,11 @@ mod tests {
         let mut v2 = open_vault(&vault_path, "pack-password").unwrap();
         let before = v2.manifest.chunks.len();
         append_sources_batched(&mut v2, &sources).unwrap();
-        assert_eq!(v2.manifest.chunks.len(), before, "dedup unstable across adds");
+        assert_eq!(
+            v2.manifest.chunks.len(),
+            before,
+            "dedup unstable across adds"
+        );
     }
 
     #[test]
@@ -2130,14 +2151,20 @@ mod tests {
         save_open_vault(&vault).unwrap();
 
         let reopened = open_vault(&vault_path, "multi-password").unwrap();
-        assert!(reopened.manifest.chunks.len() >= 2, "expected multi-chunk pack");
+        assert!(
+            reopened.manifest.chunks.len() >= 2,
+            "expected multi-chunk pack"
+        );
         let straddlers = reopened
             .manifest
             .entries
             .iter()
             .filter(|e| !e.is_dir && e.chunks.len() >= 2)
             .count();
-        assert!(straddlers >= 1, "expected at least one boundary-straddling file");
+        assert!(
+            straddlers >= 1,
+            "expected at least one boundary-straddling file"
+        );
 
         for i in [0usize, 1, 250, 599] {
             let out = dir.path().join(format!("m{i}.bin"));
@@ -2173,7 +2200,10 @@ mod tests {
 
         let reopened = open_vault(&vault_path, "shared-password").unwrap();
         assert!(entry_kind(&reopened.manifest, "s3.txt").is_none());
-        assert!(!reopened.manifest.chunks.is_empty(), "shared chunk wrongly GCd");
+        assert!(
+            !reopened.manifest.chunks.is_empty(),
+            "shared chunk wrongly GCd"
+        );
         for i in [0usize, 5, 9] {
             let out = dir.path().join(format!("k{i}.txt"));
             extract_entry(&reopened, &format!("s{i}.txt"), &out).unwrap();
@@ -2191,7 +2221,11 @@ mod tests {
     /// Flip one bit at an absolute byte offset inside a sealed vault file.
     fn flip_byte_in_file(path: &Path, offset: usize) {
         let mut bytes = std::fs::read(path).unwrap();
-        assert!(offset < bytes.len(), "offset {offset} past EOF {}", bytes.len());
+        assert!(
+            offset < bytes.len(),
+            "offset {offset} past EOF {}",
+            bytes.len()
+        );
         bytes[offset] ^= 0x01;
         std::fs::write(path, bytes).unwrap();
     }
@@ -2205,7 +2239,9 @@ mod tests {
     fn build_filled_vault(dir: &Path, name: &str, password: &str, payload_kib: usize) -> PathBuf {
         let src = dir.join("payload.bin");
         // Distinct, low-redundancy bytes so the cipher block is sizeable.
-        let body: Vec<u8> = (0..payload_kib * 1024).map(|i| (i * 31 + 7) as u8).collect();
+        let body: Vec<u8> = (0..payload_kib * 1024)
+            .map(|i| (i * 31 + 7) as u8)
+            .collect();
         std::fs::write(&src, &body).unwrap();
         let vault_path = dir.join(name);
         create_empty_vault(&vault_path, password, DEFAULT_ZSTD_LEVEL).unwrap();
@@ -2276,8 +2312,16 @@ mod tests {
         save_open_vault(&bv).unwrap();
 
         // Wider bounds => fewer, larger chunks for the same 6 MiB input.
-        let archive_chunks = open_vault(&archive_path, "bounds-pw").unwrap().manifest.chunks.len();
-        let balanced_chunks = open_vault(&bal_path, "bounds-pw").unwrap().manifest.chunks.len();
+        let archive_chunks = open_vault(&archive_path, "bounds-pw")
+            .unwrap()
+            .manifest
+            .chunks
+            .len();
+        let balanced_chunks = open_vault(&bal_path, "bounds-pw")
+            .unwrap()
+            .manifest
+            .chunks
+            .len();
         assert!(
             archive_chunks <= balanced_chunks,
             "archive bounds should not produce more chunks ({archive_chunks} vs {balanced_chunks})"
@@ -2288,12 +2332,28 @@ mod tests {
             let v = open_vault(vp, "bounds-pw").unwrap();
             let out = dir.path().join(format!("out-{tag}.bin"));
             extract_entry(&v, "big.bin", &out).unwrap();
-            assert_eq!(std::fs::read(&out).unwrap(), body, "bounds round-trip {tag}");
+            assert_eq!(
+                std::fs::read(&out).unwrap(),
+                body,
+                "bounds round-trip {tag}"
+            );
         }
 
         // Invalid bounds are rejected (defence against a hostile manifest).
-        assert!(CdcBounds { min: 0, avg: 1024, max: 2048 }.validate().is_err());
-        assert!(CdcBounds { min: 4096, avg: 3000, max: 8192 }.validate().is_err());
+        assert!(CdcBounds {
+            min: 0,
+            avg: 1024,
+            max: 2048
+        }
+        .validate()
+        .is_err());
+        assert!(CdcBounds {
+            min: 4096,
+            avg: 3000,
+            max: 8192
+        }
+        .validate()
+        .is_err());
         assert!(CdcBounds::defaults().validate().is_ok());
         assert!(CdcBounds::for_level(19).validate().is_ok());
     }

@@ -112,11 +112,12 @@ impl LocalDeltaTransport {
         // Apply the plan to the baseline to reconstruct the target bytes.
         // For an identical baseline this is purely CopyBlock ops and the
         // output equals `source`.
-        let reconstructed = delta_sync::apply_delta(&baseline, &ops, block_size)
-            .map_err(|e| RsyncError::TransferFailed {
+        let reconstructed = delta_sync::apply_delta(&baseline, &ops, block_size).map_err(|e| {
+            RsyncError::TransferFailed {
                 exit: 0,
                 stderr: format!("local delta apply failed: {e}"),
-            })?;
+            }
+        })?;
 
         // Account literal bytes for the speedup metric: this is the byte
         // count that would have travelled on the wire in a real delta sync.
@@ -209,13 +210,10 @@ impl DeltaTransport for LocalDeltaTransport {
         Ok(())
     }
 
-    async fn upload(
-        &self,
-        local_path: &Path,
-        remote_path: &str,
-    ) -> Result<RsyncStats, RsyncError> {
+    async fn upload(&self, local_path: &Path, remote_path: &str) -> Result<RsyncStats, RsyncError> {
         // `remote_path` is interpreted as a local filesystem path.
-        self.transfer_inner(local_path, Path::new(remote_path)).await
+        self.transfer_inner(local_path, Path::new(remote_path))
+            .await
     }
 
     async fn download(
@@ -224,7 +222,8 @@ impl DeltaTransport for LocalDeltaTransport {
         local_path: &Path,
     ) -> Result<RsyncStats, RsyncError> {
         // Inverted direction: `remote_path` is the source on the local fs.
-        self.transfer_inner(Path::new(remote_path), local_path).await
+        self.transfer_inner(Path::new(remote_path), local_path)
+            .await
     }
 }
 
@@ -478,7 +477,9 @@ mod tests {
         let dir = tmp_dir();
         let src = dir.path().join("src.bin");
         let dst = dir.path().join("dst.bin");
-        tokio::fs::write(&src, vec![0u8; 1024 * 1024 + 1]).await.unwrap();
+        tokio::fs::write(&src, vec![0u8; 1024 * 1024 + 1])
+            .await
+            .unwrap();
         let perms = std::fs::Permissions::from_mode(0o640);
         std::fs::set_permissions(&src, perms).unwrap();
 

@@ -868,9 +868,7 @@ fn sanitize_rclone_remote_name(name: &str) -> String {
         }
     }
 
-    collapsed
-        .trim_matches(|c| c == ' ' || c == '-')
-        .to_string()
+    collapsed.trim_matches(|c| c == ' ' || c == '-').to_string()
 }
 
 /// Export server profiles to rclone.conf INI format.

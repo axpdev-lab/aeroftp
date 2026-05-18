@@ -644,8 +644,11 @@ impl StorageProvider for MegaCmdProvider {
         // guarantees the path does not pre-exist, so MEGAcmd writes exactly
         // where we then read.
         let temp_dir = std::env::temp_dir();
-        let temp_path =
-            temp_dir.join(format!("aeroftp_mega_{}_{}", uuid::Uuid::new_v4(), file_name));
+        let temp_path = temp_dir.join(format!(
+            "aeroftp_mega_{}_{}",
+            uuid::Uuid::new_v4(),
+            file_name
+        ));
         let temp_str = temp_path.to_string_lossy().to_string();
 
         self.run_mega_cmd_with_reauth("mega-get", &[&abs_remote, &temp_str])

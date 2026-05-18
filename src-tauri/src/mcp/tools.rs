@@ -604,12 +604,20 @@ async fn run_debug_test_for_mcp(test_id: &str) -> Result<Value, String> {
         "known_hosts" => {
             let path = match dirs::home_dir().map(|d| d.join(".ssh").join("known_hosts")) {
                 Some(p) => p,
-                None => return Ok(json!({ "status": "warn", "duration_ms": t0.elapsed().as_millis() as u64, "message": "No home directory detected" })),
+                None => {
+                    return Ok(
+                        json!({ "status": "warn", "duration_ms": t0.elapsed().as_millis() as u64, "message": "No home directory detected" }),
+                    )
+                }
             };
             if !path.exists() {
-                return Ok(json!({ "status": "skipped", "duration_ms": t0.elapsed().as_millis() as u64, "message": "~/.ssh/known_hosts not present" }));
+                return Ok(
+                    json!({ "status": "skipped", "duration_ms": t0.elapsed().as_millis() as u64, "message": "~/.ssh/known_hosts not present" }),
+                );
             }
-            let content = tokio::fs::read_to_string(&path).await.map_err(|e| e.to_string())?;
+            let content = tokio::fs::read_to_string(&path)
+                .await
+                .map_err(|e| e.to_string())?;
             let entries = content
                 .lines()
                 .filter(|l| {
@@ -631,7 +639,8 @@ async fn run_debug_test_for_mcp(test_id: &str) -> Result<Value, String> {
             let opts = aerovault::CreateOptions::new(&vault_str, password.clone())
                 .with_mode(aerovault::EncryptionMode::Standard);
             aerovault::Vault::create(opts).map_err(|e| format!("create: {}", e))?;
-            let v = aerovault::Vault::open(&vault_str, &password).map_err(|e| format!("reopen: {}", e))?;
+            let v = aerovault::Vault::open(&vault_str, &password)
+                .map_err(|e| format!("reopen: {}", e))?;
             let entries = v.list().map_err(|e| format!("list: {}", e))?.len();
             drop(v);
             drop(tmp);
@@ -644,15 +653,19 @@ async fn run_debug_test_for_mcp(test_id: &str) -> Result<Value, String> {
         "vault_roundtrip" => {
             let store = match crate::credential_store::CredentialStore::from_cache() {
                 Some(s) => s,
-                None => return Ok(json!({
-                    "status": "skipped",
-                    "duration_ms": t0.elapsed().as_millis() as u64,
-                    "message": "Vault locked: unlock to run this probe",
-                })),
+                None => {
+                    return Ok(json!({
+                        "status": "skipped",
+                        "duration_ms": t0.elapsed().as_millis() as u64,
+                        "message": "Vault locked: unlock to run this probe",
+                    }))
+                }
             };
             let key = format!("__aeroftp_debug_mcp_roundtrip_{}__", uuid::Uuid::new_v4());
             let value = "round_trip_test_value_OK";
-            store.store(&key, value).map_err(|e| format!("write: {}", e))?;
+            store
+                .store(&key, value)
+                .map_err(|e| format!("write: {}", e))?;
             let read_back = store.get(&key).map_err(|e| {
                 let _ = store.delete(&key);
                 format!("read: {}", e)
@@ -689,8 +702,8 @@ async fn run_benchmark_via_subprocess(
     operations: Option<&str>,
     anonymize_extra: bool,
 ) -> Result<Value, String> {
-    let exe = std::env::current_exe()
-        .map_err(|e| format!("Cannot resolve current executable: {}", e))?;
+    let exe =
+        std::env::current_exe().map_err(|e| format!("Cannot resolve current executable: {}", e))?;
 
     let mut cmd = tokio::process::Command::new(&exe);
     cmd.arg("--profile")
@@ -916,9 +929,7 @@ pub async fn execute_tool(
                 .get("sizes")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
-            let runs = args
-                .get("runs")
-                .and_then(|v| v.as_u64());
+            let runs = args.get("runs").and_then(|v| v.as_u64());
             let operations = args
                 .get("operations")
                 .and_then(|v| v.as_str())
@@ -927,7 +938,16 @@ pub async fn execute_tool(
                 .get("anonymize_extra")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
-            match run_benchmark_via_subprocess(&profile, &level, sizes.as_deref(), runs, operations.as_deref(), anonymize_extra).await {
+            match run_benchmark_via_subprocess(
+                &profile,
+                &level,
+                sizes.as_deref(),
+                runs,
+                operations.as_deref(),
+                anonymize_extra,
+            )
+            .await
+            {
                 Ok(v) => finish(tool_name, Some(&profile), None, ok(v), start),
                 Err(e) => finish(tool_name, Some(&profile), None, err(e), start),
             }

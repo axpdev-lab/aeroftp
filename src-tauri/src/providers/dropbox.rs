@@ -1125,10 +1125,7 @@ impl StorageProvider for DropboxProvider {
     /// content download). Exposed under the dedicated `dropbox` key:
     /// it is a SHA-256-of-block-SHA-256 scheme, not a plain file
     /// digest, so it is never reported as md5/sha1/sha256.
-    async fn checksum(
-        &mut self,
-        path: &str,
-    ) -> Result<HashMap<String, String>, ProviderError> {
+    async fn checksum(&mut self, path: &str) -> Result<HashMap<String, String>, ProviderError> {
         let entry = self.stat(path).await?;
         let mut out = HashMap::new();
         if let Some(v) = entry.metadata.get("dropbox") {

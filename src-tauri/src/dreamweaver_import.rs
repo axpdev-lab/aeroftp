@@ -186,8 +186,8 @@ fn map_remote_info(ri: &str) -> MapOutcome {
     let access_l = access.to_lowercase();
 
     let is_sftp = ri_flag(ri, &["useSFTP", "usesftp"]);
-    let ssl = ri_flag(ri, &["useSSL", "usessl", "encryptedftp"])
-        || ri_attr(ri, &["ftps"]).is_some();
+    let ssl =
+        ri_flag(ri, &["useSSL", "usessl", "encryptedftp"]) || ri_attr(ri, &["ftps"]).is_some();
 
     let (protocol, default_port): (&str, u32) = match access_l.as_str() {
         "ftp" => {

@@ -83,9 +83,7 @@ where
 ///
 /// Reconciled to the real `crate::bridge_shared` API (spec drafts referenced
 /// the pre-refactor `crate::rclone_import_shared`).
-fn parse_storage_url(
-    u: &str,
-) -> Option<(&'static str, Option<String>, String, Option<String>)> {
+fn parse_storage_url(u: &str) -> Option<(&'static str, Option<String>, String, Option<String>)> {
     let (scheme, rest) = u.split_once("://")?;
     match scheme {
         // b2://bucket -> backblaze-b2, bucket lands in initial_path
@@ -187,11 +185,7 @@ fn resolve_secret(
             return Some(v.clone());
         }
     }
-    let env_key = format!(
-        "DUPLICACY_{}_{}",
-        name.to_uppercase(),
-        key.to_uppercase()
-    );
+    let env_key = format!("DUPLICACY_{}_{}", name.to_uppercase(), key.to_uppercase());
     env(&env_key).filter(|v| !v.is_empty())
 }
 
@@ -208,10 +202,9 @@ pub fn import_duplicacy_with_env(
     path: &Path,
     env: &dyn Fn(&str) -> Option<String>,
 ) -> Result<DuplicacyImportResult, String> {
-    let raw = std::fs::read_to_string(path)
-        .map_err(|e| format!("read preferences: {e}"))?;
-    let list: Vec<DupStorage> = serde_json::from_str(&raw)
-        .map_err(|e| format!("parse preferences: {e}"))?;
+    let raw = std::fs::read_to_string(path).map_err(|e| format!("read preferences: {e}"))?;
+    let list: Vec<DupStorage> =
+        serde_json::from_str(&raw).map_err(|e| format!("parse preferences: {e}"))?;
 
     let total_remotes = list.len();
     let mut servers = Vec::new();
@@ -244,23 +237,19 @@ pub fn import_duplicacy_with_env(
         // Resolve username + credential per backend, secret policy aware.
         let (username, credential, mut extra_opts): BackendSecret = match (proto, pid.as_deref()) {
             ("s3", Some("backblaze-b2")) => (
-                resolve_secret(&st.name, &st.keys, "b2_id", env)
-                    .unwrap_or_default(),
+                resolve_secret(&st.name, &st.keys, "b2_id", env).unwrap_or_default(),
                 resolve_secret(&st.name, &st.keys, "b2_key", env),
                 Vec::new(),
             ),
             ("s3", _) => (
-                resolve_secret(&st.name, &st.keys, "s3_id", env)
-                    .unwrap_or_default(),
+                resolve_secret(&st.name, &st.keys, "s3_id", env).unwrap_or_default(),
                 resolve_secret(&st.name, &st.keys, "s3_secret", env),
                 Vec::new(),
             ),
             ("sftp", _) => {
                 // ssh_key_file referenced -> store path only, no key bytes,
                 // no credential. Otherwise ssh_password.
-                if let Some(keyfile) =
-                    resolve_secret(&st.name, &st.keys, "ssh_key_file", env)
-                {
+                if let Some(keyfile) = resolve_secret(&st.name, &st.keys, "ssh_key_file", env) {
                     (
                         String::new(),
                         None,
@@ -286,10 +275,12 @@ pub fn import_duplicacy_with_env(
         // SSH key file is referenced (path only, no bytes) or the secret
         // lives in the runtime env. Both leave the credential unset, so the
         // profile is flagged as not carrying a stored credential.
-        let key_file_referenced =
-            extra_opts.iter().any(|(k, _)| *k == "private_key_path");
-        let has_stored_credential =
-            if credential.is_none() { Some(false) } else { None };
+        let key_file_referenced = extra_opts.iter().any(|(k, _)| *k == "private_key_path");
+        let has_stored_credential = if credential.is_none() {
+            Some(false)
+        } else {
+            None
+        };
         if credential.is_none() && !key_file_referenced {
             tracing::warn!(
                 "[duplicacy import] '{}' ({}): no in-file/env secret, \
@@ -305,8 +296,7 @@ pub fn import_duplicacy_with_env(
             ("repo_id", Some(st.name.clone())),
         ];
         opt_pairs.append(&mut extra_opts);
-        let options =
-            serde_json::Value::Object(crate::bridge_shared::json_map(&opt_pairs));
+        let options = serde_json::Value::Object(crate::bridge_shared::json_map(&opt_pairs));
 
         let id = format!(
             "duplicacy-{}-{}",
@@ -378,49 +368,48 @@ pub fn export_duplicacy(
         let secret = passwords.get(&server.name).map(|s| s.as_str());
         let path = server.initial_path.clone().unwrap_or_default();
 
-        let (url, keys) =
-            match (server.protocol.as_deref(), server.provider_id.as_deref()) {
-                (Some("s3"), Some("backblaze-b2")) => (
-                    format!("b2://{path}"),
-                    serde_json::json!({
-                        "b2_id": server.username,
-                        "b2_key": secret.unwrap_or(""),
-                    }),
-                ),
-                (Some("s3"), _) => (
-                    format!("s3://{}/{}", server.host, path),
-                    serde_json::json!({
-                        "s3_id": server.username,
-                        "s3_secret": secret.unwrap_or(""),
-                    }),
-                ),
-                (Some("sftp"), _) => {
-                    // Preserve a key-file reference if the profile carried
-                    // one; otherwise emit ssh_password.
-                    let key_path = server
-                        .options
-                        .as_ref()
-                        .and_then(|v| v.as_object())
-                        .and_then(|m| m.get("private_key_path"))
-                        .and_then(|v| v.as_str());
-                    let keys = if let Some(kp) = key_path {
-                        serde_json::json!({ "ssh_key_file": kp })
-                    } else {
-                        serde_json::json!({ "ssh_password": secret.unwrap_or("") })
-                    };
-                    (
-                        format!("sftp://{}@{}{}", server.username, server.host, path),
-                        keys,
-                    )
-                }
-                (Some("webdav"), _) => (
-                    format!("webdav://{}{}", server.host, path),
-                    serde_json::json!({ "password": secret.unwrap_or("") }),
-                ),
-                // OAuth backends and anything else have no Duplicacy storage
-                // URL form: skip without aborting the batch.
-                _ => continue,
-            };
+        let (url, keys) = match (server.protocol.as_deref(), server.provider_id.as_deref()) {
+            (Some("s3"), Some("backblaze-b2")) => (
+                format!("b2://{path}"),
+                serde_json::json!({
+                    "b2_id": server.username,
+                    "b2_key": secret.unwrap_or(""),
+                }),
+            ),
+            (Some("s3"), _) => (
+                format!("s3://{}/{}", server.host, path),
+                serde_json::json!({
+                    "s3_id": server.username,
+                    "s3_secret": secret.unwrap_or(""),
+                }),
+            ),
+            (Some("sftp"), _) => {
+                // Preserve a key-file reference if the profile carried
+                // one; otherwise emit ssh_password.
+                let key_path = server
+                    .options
+                    .as_ref()
+                    .and_then(|v| v.as_object())
+                    .and_then(|m| m.get("private_key_path"))
+                    .and_then(|v| v.as_str());
+                let keys = if let Some(kp) = key_path {
+                    serde_json::json!({ "ssh_key_file": kp })
+                } else {
+                    serde_json::json!({ "ssh_password": secret.unwrap_or("") })
+                };
+                (
+                    format!("sftp://{}@{}{}", server.username, server.host, path),
+                    keys,
+                )
+            }
+            (Some("webdav"), _) => (
+                format!("webdav://{}{}", server.host, path),
+                serde_json::json!({ "password": secret.unwrap_or("") }),
+            ),
+            // OAuth backends and anything else have no Duplicacy storage
+            // URL form: skip without aborting the batch.
+            _ => continue,
+        };
 
         entries.push(serde_json::json!({
             "name": "default",
@@ -458,8 +447,8 @@ mod tests {
     ]"#;
 
     fn write_tmp(content: &str) -> PathBuf {
-        let dir = std::env::temp_dir()
-            .join(format!("dup-test-{}", crate::bridge_shared::uuid_v4()));
+        let dir =
+            std::env::temp_dir().join(format!("dup-test-{}", crate::bridge_shared::uuid_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         let p = dir.join("preferences");
         std::fs::write(&p, content).unwrap();
@@ -474,7 +463,11 @@ mod tests {
         assert_eq!(r.servers.len(), 3);
         assert_eq!(r.skipped.len(), 1);
 
-        let b2 = r.servers.iter().find(|s| s.name == "Duplicacy b2store").unwrap();
+        let b2 = r
+            .servers
+            .iter()
+            .find(|s| s.name == "Duplicacy b2store")
+            .unwrap();
         assert_eq!(b2.protocol.as_deref(), Some("s3"));
         assert_eq!(b2.provider_id.as_deref(), Some("backblaze-b2"));
         assert_eq!(b2.host, "");
@@ -483,14 +476,22 @@ mod tests {
         assert_eq!(b2.credential.as_deref(), Some("K0secret"));
         assert_eq!(b2.port, 443);
 
-        let s3 = r.servers.iter().find(|s| s.name == "Duplicacy s3store").unwrap();
+        let s3 = r
+            .servers
+            .iter()
+            .find(|s| s.name == "Duplicacy s3store")
+            .unwrap();
         assert_eq!(s3.provider_id.as_deref(), Some("wasabi"));
         assert_eq!(s3.host, "s3.wasabisys.com");
         assert_eq!(s3.initial_path.as_deref(), Some("backups/host1"));
         assert_eq!(s3.username, "AKIA1");
         assert_eq!(s3.credential.as_deref(), Some("S3SEC"));
 
-        let ssh = r.servers.iter().find(|s| s.name == "Duplicacy sshstore").unwrap();
+        let ssh = r
+            .servers
+            .iter()
+            .find(|s| s.name == "Duplicacy sshstore")
+            .unwrap();
         assert_eq!(ssh.protocol.as_deref(), Some("sftp"));
         assert_eq!(ssh.host, "nas.example.com");
         assert_eq!(ssh.initial_path.as_deref(), Some("/srv/backup"));
@@ -603,8 +604,8 @@ mod tests {
             })
             .collect();
 
-        let out_dir = std::env::temp_dir()
-            .join(format!("dup-rt-{}", crate::bridge_shared::uuid_v4()));
+        let out_dir =
+            std::env::temp_dir().join(format!("dup-rt-{}", crate::bridge_shared::uuid_v4()));
         std::fs::create_dir_all(&out_dir).unwrap();
         let out = out_dir.join("preferences");
         let n = export_duplicacy(&export_servers, &passwords, &out).unwrap();
@@ -645,8 +646,8 @@ mod tests {
         // Build a working dir with .duplicacy/preferences and point the env
         // var at it; default path must resolve to that file, then None when
         // the file is absent.
-        let work = std::env::temp_dir()
-            .join(format!("dup-env-{}", crate::bridge_shared::uuid_v4()));
+        let work =
+            std::env::temp_dir().join(format!("dup-env-{}", crate::bridge_shared::uuid_v4()));
         let dup = work.join(".duplicacy");
         std::fs::create_dir_all(&dup).unwrap();
         let pref = dup.join("preferences");

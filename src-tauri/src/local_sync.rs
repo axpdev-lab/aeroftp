@@ -70,10 +70,7 @@ pub async fn local_sync_run(
         return Err(format!("Source path not found: {}", source.display()));
     }
     if !source.is_dir() {
-        return Err(format!(
-            "Source must be a directory: {}",
-            source.display()
-        ));
+        return Err(format!("Source must be a directory: {}", source.display()));
     }
     if !request.dry_run {
         std::fs::create_dir_all(&destination)
@@ -127,10 +124,7 @@ pub async fn local_sync_run(
         if rel_str.is_empty() {
             continue;
         }
-        let fname = entry
-            .file_name()
-            .to_string_lossy()
-            .to_string();
+        let fname = entry.file_name().to_string_lossy().to_string();
         let rel_path_ref: &Path = relative.as_path();
         let fname_path_ref: &Path = Path::new(&fname);
         if exclude_matchers

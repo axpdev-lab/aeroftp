@@ -155,7 +155,11 @@ pub async fn vault_v2_add_files(
     let paths: Vec<std::path::PathBuf> = file_paths.iter().map(std::path::PathBuf::from).collect();
     report.step(format!(
         "encrypt+seal: AES-256-GCM-SIV{} over 64KiB chunks, rebuild container",
-        if cascade { " + ChaCha20-Poly1305 cascade" } else { "" }
+        if cascade {
+            " + ChaCha20-Poly1305 cascade"
+        } else {
+            ""
+        }
     ));
     let added = vault.add_files(&paths).map_err(|e| e.to_string())?;
     let total = vault.list().map_err(|e| e.to_string())?.len();
@@ -171,8 +175,7 @@ pub async fn vault_v2_add_files(
     report.encrypted_bytes = size_after.saturating_sub(size_before);
     report.step(format!(
         "done: {} file(s) added, container grew {} byte(s)",
-        added,
-        report.encrypted_bytes
+        added, report.encrypted_bytes
     ));
     report.finish(started.elapsed().as_millis() as u64);
 

@@ -1660,10 +1660,7 @@ impl StorageProvider for GoogleDriveProvider {
     /// (one files.get call, no content download). Empty for native
     /// Google Workspace docs, which have no byte stream and thus no
     /// checksum: honest absence.
-    async fn checksum(
-        &mut self,
-        path: &str,
-    ) -> Result<HashMap<String, String>, ProviderError> {
+    async fn checksum(&mut self, path: &str) -> Result<HashMap<String, String>, ProviderError> {
         let entry = self.stat(path).await?;
         let mut out = HashMap::new();
         for algo in ["md5", "sha1", "sha256"] {

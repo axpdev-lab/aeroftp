@@ -1709,10 +1709,7 @@ mod tests {
             // run without a real config_dir).
             return;
         };
-        let last = p
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or_default();
+        let last = p.file_name().and_then(|s| s.to_str()).unwrap_or_default();
         assert_eq!(
             last,
             crate::portable::TAURI_APP_IDENTIFIER,

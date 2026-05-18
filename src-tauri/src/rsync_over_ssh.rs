@@ -838,7 +838,10 @@ fn build_ssh_e_arg(cfg: &RsyncConfig) -> Result<String, RsyncError> {
             parts.push(port.to_string());
         }
         parts.push("-o".into());
-        parts.push(format!("StrictHostKeyChecking={}", cfg.strict_host_key_check));
+        parts.push(format!(
+            "StrictHostKeyChecking={}",
+            cfg.strict_host_key_check
+        ));
         if let Some(kh) = &cfg.known_hosts_path {
             parts.push("-o".into());
             parts.push(format!(
@@ -1273,9 +1276,7 @@ mod tests {
     fn debug_redacts_password_secret() {
         let cfg = RsyncConfig {
             auth_method: AuthMethod::Password,
-            ssh_password: Some(SecretString::from(
-                "super-secret-ssh-password".to_string(),
-            )),
+            ssh_password: Some(SecretString::from("super-secret-ssh-password".to_string())),
             ..Default::default()
         };
         let debug = format!("{cfg:?}");
@@ -1287,9 +1288,7 @@ mod tests {
     fn ssh_e_arg_refuses_password_method_without_leaking_secret() {
         let cfg = RsyncConfig {
             auth_method: AuthMethod::Password,
-            ssh_password: Some(SecretString::from(
-                "super-secret-ssh-password".to_string(),
-            )),
+            ssh_password: Some(SecretString::from("super-secret-ssh-password".to_string())),
             ..Default::default()
         };
         match build_ssh_e_arg(&cfg) {
