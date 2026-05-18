@@ -11,7 +11,7 @@ import { MyServersTableFooter } from './MyServersTableFooter';
 import { useTranslation } from '../../i18n';
 import { ContextMenu, useContextMenu } from '../ContextMenu';
 import type { ContextMenuItem } from '../ContextMenu';
-import { secureGet, secureGetWithFallback, secureStoreAndClean } from '../../utils/secureStorage';
+import { secureGetAwaitReady, secureGetWithFallback, secureStoreAndClean } from '../../utils/secureStorage';
 import { getProviderById } from '../../providers';
 import { logger } from '../../utils/logger';
 import { ServerHealthCheck } from '../ServerHealthCheck';
@@ -376,15 +376,20 @@ export function MyServersPanel({
         const cached = getSavedServers();
         if (cached.length > 0) setServers(cached);
         // Reconcile with the vault, which is the source of truth. Uses
-        // `secureGet` (not `secureGetWithFallback`) so a vault-locked
-        // response stays distinguishable from "vault returned the empty
-        // list": the latter must propagate to the state and the localStorage
-        // backup so a CLI-driven delete of the last profile is honoured
-        // instead of being hidden by the stale localStorage cache (#194).
+        // `secureGetAwaitReady` (not `secureGetWithFallback`) so a
+        // vault-locked response stays distinguishable from "vault returned
+        // the empty list": the latter must propagate to the state and the
+        // localStorage backup so a CLI-driven delete of the last profile is
+        // honoured instead of being hidden by the stale localStorage cache
+        // (#194). The await-ready variant additionally retries while the
+        // store is still booting (`STORE_NOT_READY`), so when the per-origin
+        // localStorage cache is absent (wiped by an aggressive cache
+        // cleanup, or a fresh machine) the list is still rebuilt from the
+        // vault instead of staying empty until an external refresh.
         let cancelled = false;
         (async () => {
             try {
-                const vaultServers = await secureGet<ServerProfile[]>('server_profiles');
+                const vaultServers = await secureGetAwaitReady<ServerProfile[]>('server_profiles');
                 if (cancelled || !Array.isArray(vaultServers)) return;
                 let migrated = false;
                 for (const s of vaultServers) {
