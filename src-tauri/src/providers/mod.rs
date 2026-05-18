@@ -47,6 +47,7 @@ pub mod koofr;
 pub mod mega;
 pub mod mega_crypto;
 pub mod mega_native;
+pub mod multi_thread;
 pub mod oauth1;
 pub mod oauth2;
 pub mod onedrive;

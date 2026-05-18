@@ -1261,7 +1261,11 @@ impl S3Provider {
         let streams = self
             .multi_thread_streams
             .clamp(2, Self::MULTI_THREAD_MAX_STREAMS);
-        let ranges = plan_multi_thread_ranges(total_size, streams);
+        let ranges = crate::providers::multi_thread::plan_multi_thread_ranges(
+            total_size,
+            streams,
+            Self::MULTI_THREAD_MAX_STREAMS,
+        );
         if ranges.is_empty() {
             return Err(ProviderError::TransferFailed(
                 "Multi-thread download: empty range plan".to_string(),
@@ -3680,39 +3684,6 @@ impl S3Provider {
     }
 }
 
-/// Plan contiguous byte ranges for a multi-thread download.
-///
-/// Splits `[0, total_size)` into at most `streams` chunks of (almost) equal
-/// length. The remainder is distributed one byte at a time across the first
-/// `total_size % streams` ranges, so the union always covers exactly the
-/// whole object with no gaps and no overlaps.
-///
-/// Returned ranges use **inclusive** end offsets, matching HTTP `Range:
-/// bytes=start-end` semantics.
-fn plan_multi_thread_ranges(total_size: u64, streams: usize) -> Vec<(u64, u64)> {
-    if total_size == 0 || streams == 0 {
-        return Vec::new();
-    }
-    let streams = streams.clamp(1, S3Provider::MULTI_THREAD_MAX_STREAMS) as u64;
-    // If the file is smaller than the requested stream count, collapse to fewer
-    // ranges of >= 1 byte rather than emit zero-length entries.
-    let effective = streams.min(total_size);
-    let base = total_size / effective;
-    let remainder = total_size % effective;
-
-    let mut ranges = Vec::with_capacity(effective as usize);
-    let mut offset = 0u64;
-    for i in 0..effective {
-        let len = base + if i < remainder { 1 } else { 0 };
-        if len == 0 {
-            continue;
-        }
-        ranges.push((offset, offset + len - 1));
-        offset += len;
-    }
-    ranges
-}
-
 /// Download a single byte range and write it at the matching offset of an
 /// already-pre-allocated temp file. Used as the per-task body of
 /// `S3Provider::download_multi_thread`.
@@ -3902,85 +3873,9 @@ mod tests {
         ));
     }
 
-    // ── U-13 multi-thread download: range planner ─────────────────────
-
-    fn ranges_cover(total: u64, ranges: &[(u64, u64)]) -> bool {
-        if ranges.is_empty() {
-            return total == 0;
-        }
-        // Must start at 0
-        if ranges[0].0 != 0 {
-            return false;
-        }
-        // Each must be contiguous with no gap and no overlap
-        for w in ranges.windows(2) {
-            if w[0].1 + 1 != w[1].0 {
-                return false;
-            }
-        }
-        // End-inclusive last range must hit total - 1
-        ranges
-            .last()
-            .map(|(_, end)| *end + 1 == total)
-            .unwrap_or(false)
-    }
-
-    #[test]
-    fn test_plan_multi_thread_ranges_even_split() {
-        let ranges = plan_multi_thread_ranges(1000, 4);
-        assert_eq!(ranges.len(), 4);
-        assert!(ranges_cover(1000, &ranges));
-        // 1000 / 4 = 250 each
-        for &(s, e) in &ranges {
-            assert_eq!(e - s + 1, 250);
-        }
-    }
-
-    #[test]
-    fn test_plan_multi_thread_ranges_uneven_split_distributes_remainder() {
-        // 1003 / 4 = 250 base, remainder 3 → first 3 ranges get +1
-        let ranges = plan_multi_thread_ranges(1003, 4);
-        assert_eq!(ranges.len(), 4);
-        assert!(ranges_cover(1003, &ranges));
-        let lengths: Vec<u64> = ranges.iter().map(|(s, e)| e - s + 1).collect();
-        assert_eq!(lengths, vec![251, 251, 251, 250]);
-    }
-
-    #[test]
-    fn test_plan_multi_thread_ranges_zero_size_returns_empty() {
-        assert!(plan_multi_thread_ranges(0, 4).is_empty());
-    }
-
-    #[test]
-    fn test_plan_multi_thread_ranges_zero_streams_returns_empty() {
-        assert!(plan_multi_thread_ranges(1024, 0).is_empty());
-    }
-
-    #[test]
-    fn test_plan_multi_thread_ranges_caps_streams_to_max() {
-        let ranges = plan_multi_thread_ranges(10_000_000, 999);
-        // Cap is MULTI_THREAD_MAX_STREAMS (16)
-        assert!(ranges.len() <= S3Provider::MULTI_THREAD_MAX_STREAMS);
-        assert!(ranges_cover(10_000_000, &ranges));
-    }
-
-    #[test]
-    fn test_plan_multi_thread_ranges_collapses_when_streams_exceed_size() {
-        // file smaller than stream count: each range must still be ≥ 1 byte
-        let ranges = plan_multi_thread_ranges(3, 8);
-        assert_eq!(ranges.len(), 3);
-        assert!(ranges_cover(3, &ranges));
-        for &(s, e) in &ranges {
-            assert_eq!(e - s + 1, 1);
-        }
-    }
-
-    #[test]
-    fn test_plan_multi_thread_ranges_single_stream_covers_whole_file() {
-        let ranges = plan_multi_thread_ranges(12345, 1);
-        assert_eq!(ranges, vec![(0, 12344)]);
-        assert!(ranges_cover(12345, &ranges));
-    }
+    // U-13 multi-thread download: range planner tests moved to
+    // `providers::multi_thread` (PD-HTTP-1). The S3-specific setter test
+    // below stays here because it exercises `S3Provider` state.
 
     #[test]
     fn test_set_multi_thread_download_clamps_streams_and_floors_cutoff() {
