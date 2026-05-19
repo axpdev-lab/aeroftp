@@ -1551,6 +1551,56 @@ fn local_name(raw: &[u8]) -> String {
     }
 }
 
+/// Canonical lowercase key for an ownCloud/Nextcloud `oc:checksums`
+/// algorithm label, matching every `StorageProvider::checksum()` impl
+/// and the `hashsum` / `lsjson --hash` consumers. Unknown labels degrade
+/// to a lowercased, separator-stripped form (still a real server-side
+/// digest, just an exotic algo) rather than being dropped.
+fn canonical_checksum_key(algo: &str) -> String {
+    let norm: String = algo
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .collect::<String>()
+        .to_ascii_uppercase();
+    match norm.as_str() {
+        "SHA256" => "sha256",
+        "SHA512" => "sha512",
+        "SHA384" => "sha384",
+        "SHA1" => "sha1",
+        "MD5" => "md5",
+        "CRC32" => "crc32",
+        "ADLER32" => "adler32",
+        _ => return norm.to_ascii_lowercase(),
+    }
+    .to_string()
+}
+
+/// Parse an `<oc:checksums><oc:checksum>` payload into canonical
+/// `{key: hexdigest}` pairs. The element is a single string of
+/// whitespace-separated `ALGO:HEXDIGEST` tokens, e.g.
+/// `"SHA1:f1d2d2... MD5:900150... ADLER32:024d0127"`. Tokens without a
+/// `:`, with an empty digest, or with a non-hex digest are skipped so a
+/// malformed entry can never poison the map. Returns an empty map for
+/// every WebDAV server that does not emit `oc:checksums` (the
+/// server-side-or-omit contract: no content is ever downloaded).
+fn parse_oc_checksums(raw: &str) -> HashMap<String, String> {
+    let mut out = HashMap::new();
+    for token in raw.split_whitespace() {
+        let Some((algo, digest)) = token.split_once(':') else {
+            continue;
+        };
+        let digest = digest.trim().to_ascii_lowercase();
+        if digest.is_empty() || !digest.bytes().all(|b| b.is_ascii_hexdigit()) {
+            continue;
+        }
+        let key = canonical_checksum_key(algo);
+        if !key.is_empty() {
+            out.entry(key).or_insert(digest);
+        }
+    }
+    out
+}
+
 #[async_trait]
 impl StorageProvider for WebDavProvider {
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
@@ -2370,6 +2420,71 @@ impl StorageProvider for WebDavProvider {
                 last_status
             )))
         }
+    }
+
+    fn supports_checksum(&self) -> bool {
+        // ownCloud/Nextcloud expose server-side digests via the
+        // `oc:checksums` PROPFIND prop; every other WebDAV server simply
+        // omits it, in which case `checksum()` returns an empty map and
+        // consumers omit / fall back. The probe is a metadata PROPFIND,
+        // never a content download: the server-side-or-omit contract.
+        true
+    }
+
+    async fn checksum(&mut self, path: &str) -> Result<HashMap<String, String>, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+
+        const PROPFIND_BODY: &str = r#"<?xml version="1.0" encoding="utf-8"?>
+                <d:propfind xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">
+                    <d:prop>
+                        <oc:checksums/>
+                    </d:prop>
+                </d:propfind>"#;
+
+        // Mirror `stat()`'s file-first / collection-retry: a file must be
+        // requested without a trailing slash, while a slash-less
+        // collection can be 301'd by Apache to a scheme-downgraded URL
+        // that strips auth (see `collection_path`).
+        let collection_form = Self::collection_path(path);
+        let mut attempts: Vec<&str> = vec![path];
+        if collection_form != path {
+            attempts.push(collection_form.as_str());
+        }
+
+        for attempt in attempts {
+            let response = self
+                .request(webdav_methods::propfind(), attempt)
+                .header("Depth", "0")
+                .header("Content-Type", "application/xml")
+                .body(PROPFIND_BODY)
+                .send()
+                .await
+                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+            match response.status() {
+                StatusCode::OK | StatusCode::MULTI_STATUS => {
+                    let xml = response
+                        .text()
+                        .await
+                        .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+                    let props = self.extract_xml_properties(&xml);
+                    return Ok(props
+                        .get("checksum")
+                        .map(|s| parse_oc_checksums(s))
+                        .unwrap_or_default());
+                }
+                // Ambiguous path type: retry in collection form.
+                StatusCode::NOT_FOUND | StatusCode::UNAUTHORIZED => continue,
+                // Any other status: the server cannot answer the prop.
+                // Treat as "no server-side hash" (omit) rather than an
+                // error that would fail a listing or trigger a download.
+                _ => return Ok(HashMap::new()),
+            }
+        }
+
+        Ok(HashMap::new())
     }
 
     async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
@@ -3210,5 +3325,49 @@ mod tests {
         assert_eq!(t.resolve_root("/aeroftp-utest"), "/aeroftp-utest");
         t.server_root = Some("/".to_string());
         assert_eq!(t.resolve_root("/aeroftp-utest"), "/aeroftp-utest");
+    }
+
+    #[test]
+    fn oc_checksums_parsed_to_canonical_lowercase_keys() {
+        // Real Nextcloud/ownCloud shape: space-separated ALGO:HEX tokens.
+        let m = parse_oc_checksums(
+            "SHA1:f1d2d2f924e986ac86fdf7b36c94bcdf32beec15 \
+             MD5:900150983cd24fb0d6963f7d28e17f72 ADLER32:024d0127",
+        );
+        assert_eq!(
+            m.get("sha1").map(String::as_str),
+            Some("f1d2d2f924e986ac86fdf7b36c94bcdf32beec15")
+        );
+        assert_eq!(
+            m.get("md5").map(String::as_str),
+            Some("900150983cd24fb0d6963f7d28e17f72")
+        );
+        assert_eq!(m.get("adler32").map(String::as_str), Some("024d0127"));
+        // No canonical key is upper-cased or dash-separated.
+        assert!(m.keys().all(|k| k == &k.to_ascii_lowercase()));
+    }
+
+    #[test]
+    fn oc_checksums_canonicalises_separators_and_case() {
+        let m = parse_oc_checksums("SHA-256:ABCDEF01 sha512:00FF");
+        assert_eq!(m.get("sha256").map(String::as_str), Some("abcdef01"));
+        assert_eq!(m.get("sha512").map(String::as_str), Some("00ff"));
+    }
+
+    #[test]
+    fn oc_checksums_skips_malformed_and_empty() {
+        // No colon, empty digest, non-hex digest, and the empty string.
+        assert!(parse_oc_checksums("").is_empty());
+        assert!(parse_oc_checksums("SHA1 MD5: SHA256:zz_not_hex").is_empty());
+        // A single good token among malformed ones still survives.
+        let m = parse_oc_checksums("garbage MD5:0a1b BAD:");
+        assert_eq!(m.len(), 1);
+        assert_eq!(m.get("md5").map(String::as_str), Some("0a1b"));
+    }
+
+    #[test]
+    fn unknown_algo_degrades_not_dropped() {
+        let m = parse_oc_checksums("WHIRLPOOL:dead");
+        assert_eq!(m.get("whirlpool").map(String::as_str), Some("dead"));
     }
 }
