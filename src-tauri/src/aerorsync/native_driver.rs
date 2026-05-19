@@ -1083,6 +1083,15 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
                     scratch.extend_from_slice(&chunk);
                 }
                 Err(other) => {
+                    // Diagnostics for the intermittent CI-only preamble
+                    // desync (scratch observed starting past the 4-byte
+                    // protocol-version prefix, decoding it as garbage e.g.
+                    // 2015297409). The truncated/clean-EOF arms already
+                    // dump; this terminal arm did not, so a flaky CI
+                    // failure carried no bytes to root-cause from. Env-
+                    // gated (AEROFTP_WIRE_DUMP_DIR), zero cost when unset,
+                    // no behaviour change.
+                    wire_dump_server_response(&scratch, "preamble-hard-fail");
                     return Err(map_realwire_error(other, "server preamble"));
                 }
             }
