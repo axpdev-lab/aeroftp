@@ -1,7 +1,7 @@
 # AeroFTP CLI - User Guide
 
 > **Binary**: `aeroftp-cli` (ships alongside the GUI)
-> **Version reference**: v3.7.2 (May 2026) - last reviewed 6 May 2026
+> **Version reference**: v3.8.3 (May 2026) - last reviewed 19 May 2026
 > **License**: GPL-3.0
 
 ---
@@ -339,6 +339,18 @@ aeroftp-cli rmdir --profile "My S3" /backups/2024-archived
 
 Removes a single directory only when it is empty. A non-empty target is refused with exit code 9 (the emptiness check counts every entry, including dotfiles), so `rmdir` is safe to script against where `rm -r` / `purge` would wipe the whole subtree. Returns exit 2 if the path does not exist.
 
+### rmdirs - Recursively Prune Empty Directories
+
+```bash
+# Dry-run (default): list which empty directories would be removed
+aeroftp-cli rmdirs --profile "My S3" /staging
+
+# Actually remove them
+aeroftp-cli rmdirs --profile "My S3" /staging --force --json
+```
+
+Recursively removes **only empty** directories under the path. Files and any directory that still contains entries are left untouched, and the target path itself is never removed. Pruning is bottom-up, so a parent that becomes empty once its empty children are removed is cleaned up in the same pass. Dry-run by default (prints what would be removed); pass `--force` to delete. `--json` reports `removed[]`, `removed_count`, `kept_nonempty`, and `scan_errors`/`delete_errors`; the run is idempotent (a second pass over a clean tree exits `0` with nothing removed). Honors the shared scan-depth/entry caps and path-traversal validation.
+
 ### purge - Recursive Delete of a Path
 
 ```bash
@@ -510,7 +522,7 @@ aeroftp-cli hashsum --profile "server" sha256 /file.txt --json
 
 Supported algorithms: `md5`, `sha1`, `sha256`, `sha512`, `blake3`. Output format matches standard `sha256sum` format: `<hash>  <path>`.
 
-When the backend can supply the requested digest without transferring the file, `hashsum` takes a server-side fast-path and never downloads it: S3/MinIO/R2 `md5` from the object ETag, Backblaze B2 `sha1` from `contentSha1`, pCloud via its checksum API, and SFTP by running `sha256sum` on the server over an exec channel. `sha512`/`blake3`, multipart/SSE S3 objects, and any backend without a cheap digest fall back to download-and-digest automatically (same result, just slower).
+When the backend can supply the requested digest without transferring the file, `hashsum` takes a server-side fast-path and never downloads it: S3/MinIO/R2 `md5` from the object ETag, Backblaze B2 `sha1` from `contentSha1`, pCloud via its checksum API, Google Drive / OneDrive / Box / Dropbox from their listing metadata, SFTP by running `sha256sum` on the server over an exec channel, ownCloud/Nextcloud WebDAV from the `oc:checksums` property, and FTP/FTPS when the server advertises `HASH`/`XSHA256`/`XMD5`/`XCRC` in `FEAT`. `sha512`/`blake3`, multipart/SSE S3 objects, and any backend without a cheap digest fall back to download-and-digest automatically (same result, just slower).
 
 ### check - Verify Local/Remote Match
 
