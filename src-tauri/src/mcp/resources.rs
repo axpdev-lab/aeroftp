@@ -4,7 +4,7 @@
 //! - `aeroftp://profiles`: catalog of saved profiles (no credentials)
 //! - `aeroftp://profiles/status`: vault availability status
 //! - `aeroftp://profiles/{id}`: individual profile detail
-//! - `aeroftp://capabilities`: supported protocols and their capabilities
+//! - `aeroftp://capabilities`: supported protocols and transfer capabilities
 //! - `aeroftp://connections`: active pooled connections and their state
 
 // SPDX-License-Identifier: GPL-3.0-or-later
@@ -32,7 +32,7 @@ pub fn resource_list(profiles: &[Value], vault_error: &Option<String>) -> Vec<Va
         json!({
             "uri": "aeroftp://capabilities",
             "name": "AeroFTP protocol capabilities",
-            "description": "Supported protocols and their feature matrix",
+            "description": "Supported protocols with transfer capability limits",
             "mimeType": "application/json",
         }),
         json!({
@@ -85,7 +85,10 @@ pub async fn read_resource(
         let text = serde_json::to_string_pretty(&json!({
             "status": if vault_error.is_some() { "unavailable" } else { "ok" },
             "error": vault_error,
-            "profiles": profiles,
+            "profiles": profiles
+                .iter()
+                .map(profile_with_transfer_capabilities)
+                .collect::<Vec<_>>(),
         }))
         .unwrap_or_default();
         return Some((mime, text));
@@ -122,7 +125,13 @@ pub async fn read_resource(
         let profile = profiles
             .iter()
             .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(profile_id));
-        return profile.map(|p| (mime, serde_json::to_string_pretty(p).unwrap_or_default()));
+        return profile.map(|p| {
+            (
+                mime,
+                serde_json::to_string_pretty(&profile_with_transfer_capabilities(p))
+                    .unwrap_or_default(),
+            )
+        });
     }
 
     None
@@ -157,6 +166,12 @@ fn capabilities() -> Value {
         proto_cap("Swift", ProviderType::Swift),
         proto_cap("Zoho WorkDrive", ProviderType::ZohoWorkdrive),
         proto_cap("4shared", ProviderType::FourShared),
+        proto_cap("Google Photos", ProviderType::GooglePhotos),
+        proto_cap("Immich", ProviderType::Immich),
+        proto_cap("ImageKit", ProviderType::ImageKit),
+        proto_cap("Uploadcare", ProviderType::Uploadcare),
+        proto_cap("Backblaze B2", ProviderType::Backblaze),
+        proto_cap("Cloudinary", ProviderType::Cloudinary),
     ];
 
     json!({
@@ -166,9 +181,110 @@ fn capabilities() -> Value {
 }
 
 fn proto_cap(name: &str, pt: ProviderType) -> Value {
+    let feature_key = protocol_feature_key(pt);
     json!({
         "name": name,
         "requires_oauth2": pt.requires_oauth2(),
         "encrypted": pt.uses_encryption(),
+        "transfer_capabilities": {
+            "status": "ok",
+            "source": "protocol_defaults",
+            "capabilities": crate::agent_session::transfer_capabilities_for_provider_type(
+                pt,
+                feature_key,
+            ),
+        },
     })
+}
+
+fn protocol_feature_key(pt: ProviderType) -> &'static str {
+    match pt {
+        ProviderType::Ftp => "ftp",
+        ProviderType::Ftps => "ftps",
+        ProviderType::Sftp => "sftp",
+        ProviderType::WebDav => "webdav",
+        ProviderType::S3 => "s3",
+        ProviderType::AeroCloud => "aerocloud",
+        ProviderType::GoogleDrive => "googledrive",
+        ProviderType::Dropbox => "dropbox",
+        ProviderType::OneDrive => "onedrive",
+        ProviderType::Mega => "mega",
+        ProviderType::Box => "box",
+        ProviderType::PCloud => "pcloud",
+        ProviderType::Azure => "azure",
+        ProviderType::Filen => "filen",
+        ProviderType::FourShared => "fourshared",
+        ProviderType::ZohoWorkdrive => "zohoworkdrive",
+        ProviderType::Internxt => "internxt",
+        ProviderType::KDrive => "kdrive",
+        ProviderType::Jottacloud => "jottacloud",
+        ProviderType::DrimeCloud => "drime",
+        ProviderType::FileLu => "filelu",
+        ProviderType::Koofr => "koofr",
+        ProviderType::OpenDrive => "opendrive",
+        ProviderType::YandexDisk => "yandexdisk",
+        ProviderType::GitHub => "github",
+        ProviderType::GitLab => "gitlab",
+        ProviderType::Swift => "swift",
+        ProviderType::GooglePhotos => "googlephotos",
+        ProviderType::Immich => "immich",
+        ProviderType::ImageKit => "imagekit",
+        ProviderType::Uploadcare => "uploadcare",
+        ProviderType::Backblaze => "backblaze",
+        ProviderType::Cloudinary => "cloudinary",
+    }
+}
+
+fn profile_with_transfer_capabilities(profile: &Value) -> Value {
+    let mut enriched = profile.clone();
+    let protocol = profile
+        .get("protocol")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    enriched["transfer_capabilities"] =
+        crate::agent_session::transfer_capabilities_block(protocol, None, "profile_defaults");
+    enriched
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn capabilities_resource_includes_transfer_limits() {
+        let caps = capabilities();
+        let protocols = caps["protocols"].as_array().expect("protocols array");
+        let b2 = protocols
+            .iter()
+            .find(|p| p["name"] == "Backblaze B2")
+            .expect("Backblaze B2 protocol entry");
+        assert_eq!(b2["transfer_capabilities"]["status"], "ok");
+        assert_eq!(
+            b2["transfer_capabilities"]["capabilities"]["multipart_upload"],
+            "supported"
+        );
+        assert_eq!(
+            b2["transfer_capabilities"]["capabilities"]["max_chunk_slots"],
+            4
+        );
+    }
+
+    #[test]
+    fn profile_resource_includes_profile_default_transfer_capabilities() {
+        let profile = json!({
+            "id": "srv_1",
+            "name": "Example",
+            "protocol": "sftp",
+        });
+        let enriched = profile_with_transfer_capabilities(&profile);
+        assert_eq!(enriched["transfer_capabilities"]["status"], "ok");
+        assert_eq!(
+            enriched["transfer_capabilities"]["source"],
+            "profile_defaults"
+        );
+        assert_eq!(
+            enriched["transfer_capabilities"]["capabilities"]["strict_concurrent_range_download"],
+            "unsupported"
+        );
+    }
 }

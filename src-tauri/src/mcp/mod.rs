@@ -144,6 +144,7 @@ pub(crate) fn load_safe_profiles() -> Result<Vec<serde_json::Value>, String> {
                 "port": p.get("port").and_then(|v| v.as_u64()).unwrap_or(0),
                 "username": p.get("username").and_then(|v| v.as_str()).unwrap_or(""),
                 "initialPath": p.get("initialPath").and_then(|v| v.as_str()).unwrap_or("/"),
+                "providerId": p.get("providerId").and_then(|v| v.as_str()).unwrap_or(""),
             })
         })
         .collect())

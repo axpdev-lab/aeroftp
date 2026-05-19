@@ -9110,6 +9110,7 @@ fn safe_vault_profiles(cli: &Cli) -> Result<Vec<serde_json::Value>, String> {
                 "port": p.get("port").and_then(|v| v.as_u64()).unwrap_or(0),
                 "username": p.get("username").and_then(|v| v.as_str()).unwrap_or(""),
                 "initialPath": p.get("initialPath").and_then(|v| v.as_str()).unwrap_or("/"),
+                "providerId": p.get("providerId").and_then(|v| v.as_str()).unwrap_or(""),
                 "auth_state": auth_state,
             })
         })
@@ -9139,6 +9140,7 @@ fn safe_vault_profiles_for_agent() -> Result<Vec<serde_json::Value>, String> {
                 "port": p.get("port").and_then(|v| v.as_u64()).unwrap_or(0),
                 "username": p.get("username").and_then(|v| v.as_str()).unwrap_or(""),
                 "initialPath": p.get("initialPath").and_then(|v| v.as_str()).unwrap_or("/"),
+                "providerId": p.get("providerId").and_then(|v| v.as_str()).unwrap_or(""),
             })
         })
         .collect())
@@ -9285,14 +9287,69 @@ fn cmd_agent_info(cli: &Cli) -> i32 {
     let profiles = profiles
         .into_iter()
         .map(|p| {
+            let protocol = p.get("protocol").and_then(|v| v.as_str()).unwrap_or("");
             serde_json::json!({
+                "id": p.get("id").and_then(|v| v.as_str()).unwrap_or(""),
                 "name": p.get("name").and_then(|v| v.as_str()).unwrap_or(""),
-                "protocol": p.get("protocol").and_then(|v| v.as_str()).unwrap_or(""),
+                "protocol": protocol,
                 "host": p.get("host").and_then(|v| v.as_str()).unwrap_or(""),
+                "port": p.get("port").and_then(|v| v.as_u64()).unwrap_or(0),
+                "username": p.get("username").and_then(|v| v.as_str()).unwrap_or(""),
                 "initialPath": p.get("initialPath").and_then(|v| v.as_str()).unwrap_or("/"),
+                "providerId": p.get("providerId").and_then(|v| v.as_str()).unwrap_or(""),
+                "transfer_capabilities": ftp_client_gui_lib::agent_session::transfer_capabilities_block(
+                    protocol,
+                    None,
+                    "profile_defaults",
+                ),
             })
         })
         .collect::<Vec<_>>();
+    let protocol_transfer_capabilities = [
+        "ftp",
+        "ftps",
+        "sftp",
+        "webdav",
+        "webdavs",
+        "s3",
+        "backblaze",
+        "b2",
+        "azure",
+        "swift",
+        "googledrive",
+        "googlephotos",
+        "dropbox",
+        "onedrive",
+        "box",
+        "pcloud",
+        "mega",
+        "filen",
+        "internxt",
+        "kdrive",
+        "jottacloud",
+        "zohoworkdrive",
+        "yandexdisk",
+        "koofr",
+        "opendrive",
+        "drime",
+        "filelu",
+        "fourshared",
+        "immich",
+        "github",
+        "gitlab",
+    ]
+    .into_iter()
+    .map(|protocol| {
+        (
+            protocol.to_string(),
+            ftp_client_gui_lib::agent_session::transfer_capabilities_block(
+                protocol,
+                None,
+                "protocol_defaults",
+            ),
+        )
+    })
+    .collect::<serde_json::Map<_, _>>();
 
     let info = serde_json::json!({
         "version": env!("CARGO_PKG_VERSION"),
@@ -9398,7 +9455,7 @@ fn cmd_agent_info(cli: &Cli) -> i32 {
             "130": "interrupted (SIGINT)"
         },
         "protocols": [
-            "ftp", "ftps", "sftp", "webdav", "webdavs", "s3", "aerocloud",
+            "ftp", "ftps", "sftp", "webdav", "webdavs", "s3", "backblaze", "b2", "aerocloud",
             "mega", "filen", "internxt", "kdrive", "koofr",
             "jottacloud", "filelu", "opendrive", "yandexdisk", "azure",
             "github", "gitlab", "googledrive", "dropbox", "onedrive", "box",
@@ -9440,6 +9497,7 @@ fn cmd_agent_info(cli: &Cli) -> i32 {
             "github": ftp_client_gui_lib::agent_session::capabilities_for_protocol("github"),
             "gitlab": ftp_client_gui_lib::agent_session::capabilities_for_protocol("gitlab")
         },
+        "protocol_transfer_capabilities": protocol_transfer_capabilities,
         "agent_connect_supported_protocols": [
             "ftp", "ftps", "sftp", "webdav", "s3", "github", "gitlab"
         ],
