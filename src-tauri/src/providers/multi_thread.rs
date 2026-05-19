@@ -41,6 +41,11 @@ use reqwest::header::{HeaderName, HeaderValue, RANGE};
 use super::http_retry::{send_with_retry, HttpRetryConfig};
 use super::ProviderError;
 
+/// A boxed progress callback shared across node-graph runner invocations.
+/// The `Box` is `Send` but not `Sync`; the `Arc<Mutex<_>>` is what makes the
+/// capturing runner closure `Send + Sync` for the executor.
+type SharedProgress = Arc<std::sync::Mutex<Option<Box<dyn Fn(u64, u64) + Send>>>>;
+
 /// Plan contiguous, gap-free, non-overlapping byte ranges covering the whole
 /// object. End offsets are **inclusive**, matching HTTP `Range: bytes=s-e`.
 ///
@@ -278,17 +283,83 @@ where
     }
     let mut guard = TempFileGuard::new(temp_path.clone());
 
-    let aggregate = Arc::new(AtomicU64::new(0));
-    let semaphore = Arc::new(Semaphore::new(cfg.max_parallel.max(1)));
     let write_one_range = Arc::new(write_one_range);
     let total_size = cfg.total_size;
+
+    // PD-ADAPT-1d: opt-in migration of this converged path onto the transfer
+    // node-graph executor. Unset (the default) keeps the exact JoinSet path
+    // every current caller and test exercises, byte-identical. The flag name
+    // stays implementation-neutral on purpose.
+    let use_graph = std::env::var("AEROFTP_RANGE_GRAPH")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+
+    let outcome = if use_graph {
+        run_ranges_via_graph(
+            &ranges,
+            &temp_path,
+            total_size,
+            cfg.max_parallel,
+            write_one_range,
+            cancel,
+            on_progress,
+        )
+        .await?
+    } else {
+        run_ranges_via_joinset(
+            &ranges,
+            &temp_path,
+            total_size,
+            cfg.max_parallel,
+            write_one_range,
+            cancel,
+            on_progress,
+        )
+        .await?
+    };
+
+    match outcome {
+        ConcurrentRangeOutcome::Completed => {
+            guard.commit();
+            Ok(ConcurrentRangeOutcome::Completed)
+        }
+        ConcurrentRangeOutcome::ServerIgnoredRange => {
+            Ok(ConcurrentRangeOutcome::ServerIgnoredRange)
+        }
+    }
+}
+
+/// Dispatch+drain the range plan on a bounded [`JoinSet`] (the original,
+/// shipped scheduler). This is a verbatim extraction of the previous inline
+/// body of [`run_concurrent_range_download`]: the same instructions in the
+/// same order, so it is byte-identical to the pre-PD-ADAPT-1d path by
+/// construction. The caller owns the [`TempFileGuard`]; this returns the
+/// outcome only (no `commit`, so an `Err`/`ServerIgnoredRange` lets the
+/// caller's guard drop and remove the temp exactly as before).
+pub(crate) async fn run_ranges_via_joinset<W, WFut>(
+    ranges: &[(u64, u64)],
+    temp_path: &Path,
+    total_size: u64,
+    max_parallel: usize,
+    write_one_range: Arc<W>,
+    cancel: CancellationToken,
+    on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+) -> Result<ConcurrentRangeOutcome, ProviderError>
+where
+    W: Fn(u64, u64, PathBuf, Arc<AtomicU64>, CancellationToken) -> WFut + Send + Sync + 'static,
+    WFut: std::future::Future<Output = Result<ConcurrentRangeOutcome, ProviderError>>
+        + Send
+        + 'static,
+{
+    let aggregate = Arc::new(AtomicU64::new(0));
+    let semaphore = Arc::new(Semaphore::new(max_parallel.max(1)));
     let mut join_set: JoinSet<Result<ConcurrentRangeOutcome, ProviderError>> = JoinSet::new();
 
-    for (start, end) in ranges {
+    for &(start, end) in ranges {
         let semaphore = semaphore.clone();
         let write_one_range = write_one_range.clone();
         let aggregate = aggregate.clone();
-        let temp_path = temp_path.clone();
+        let temp_path = temp_path.to_path_buf();
         let cancel = cancel.clone();
         join_set.spawn(async move {
             let _permit = semaphore
@@ -337,8 +408,161 @@ where
         }
     }
 
-    guard.commit();
     Ok(ConcurrentRangeOutcome::Completed)
+}
+
+/// Dispatch the same range plan as independent fan-out nodes on the transfer
+/// node-graph executor (`transfer_dag::executor::execute_dag`). Each range is
+/// one `DownloadRange` node with no dependencies and a `range_chunk` resource
+/// request; the resource budget is sized so effective concurrency equals
+/// `max_parallel`, exactly mirroring the JoinSet semaphore. The temp file is
+/// pre-allocated by the caller, so the only real dependency is satisfied
+/// before the graph runs and a Plan/Preallocate node would add nothing but a
+/// serial point: the graph is an honest pure fan-out. Observer is no-op and
+/// the AIMD controller is `None`: 1d migrates the executor only, diff-0;
+/// adaptivity on this path is a later concern. Outcome, error variant and
+/// cancel semantics are identical to [`run_ranges_via_joinset`]; only the
+/// scheduling differs (which diff-0 explicitly does not constrain).
+pub(crate) async fn run_ranges_via_graph<W, WFut>(
+    ranges: &[(u64, u64)],
+    temp_path: &Path,
+    total_size: u64,
+    max_parallel: usize,
+    write_one_range: Arc<W>,
+    cancel: CancellationToken,
+    on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+) -> Result<ConcurrentRangeOutcome, ProviderError>
+where
+    W: Fn(u64, u64, PathBuf, Arc<AtomicU64>, CancellationToken) -> WFut + Send + Sync + 'static,
+    WFut: std::future::Future<Output = Result<ConcurrentRangeOutcome, ProviderError>>
+        + Send
+        + 'static,
+{
+    use crate::transfer_dag::executor::{execute_dag, DagNodeRunner, NodeFuture, NodeOutcome};
+    use crate::transfer_dag::graph::{TransferDag, TransferNode, TransferNodeKind};
+    use crate::transfer_dag::{
+        DagObserver, NoopDagObserver, ResourceRequest, TransferBudget, TransferResourceManager,
+    };
+    use std::sync::atomic::AtomicBool;
+    use std::sync::Mutex;
+
+    let mut dag = TransferDag::default();
+    for _ in ranges {
+        dag.add_node(
+            TransferNodeKind::DownloadRange,
+            vec![],
+            ResourceRequest::range_chunk(),
+        );
+    }
+
+    // Size the controlled classes so up to `max_parallel` range_chunk nodes
+    // run at once: identical effective concurrency to the JoinSet semaphore
+    // (`range_chunk` requests chunk+http+disk_write = 1 each).
+    let slots = max_parallel.max(1).min(u16::MAX as usize) as u16;
+    let manager = TransferResourceManager::new(TransferBudget {
+        chunk_slots: slots,
+        http_slots: slots,
+        disk_write_slots: slots,
+        ..TransferBudget::from_file_slots(1)
+    });
+
+    let ranges: Arc<Vec<(u64, u64)>> = Arc::new(ranges.to_vec());
+    let aggregate = Arc::new(AtomicU64::new(0));
+    let temp_path: Arc<PathBuf> = Arc::new(temp_path.to_path_buf());
+    let server_ignored = Arc::new(AtomicBool::new(false));
+    let first_error: Arc<Mutex<Option<ProviderError>>> = Arc::new(Mutex::new(None));
+    let progress: SharedProgress = Arc::new(Mutex::new(on_progress));
+
+    let r_ranges = ranges.clone();
+    let r_write = write_one_range.clone();
+    let r_aggregate = aggregate.clone();
+    let r_temp = temp_path.clone();
+    let r_cancel = cancel.clone();
+    let r_ignored = server_ignored.clone();
+    let r_first_error = first_error.clone();
+    let r_progress = progress.clone();
+
+    let runner: Arc<dyn DagNodeRunner> = Arc::new(move |node: TransferNode| -> NodeFuture {
+        let ranges = r_ranges.clone();
+        let write_one_range = r_write.clone();
+        let aggregate = r_aggregate.clone();
+        let temp_path = r_temp.clone();
+        let cancel = r_cancel.clone();
+        let server_ignored = r_ignored.clone();
+        let first_error = r_first_error.clone();
+        let progress = r_progress.clone();
+        Box::pin(async move {
+            let (start, end) = ranges[node.id];
+            // Mirror the JoinSet path's pre-write cancel check.
+            if cancel.is_cancelled() {
+                return NodeOutcome::Failed("Transfer cancelled by user".to_string());
+            }
+            match write_one_range(
+                start,
+                end,
+                (*temp_path).clone(),
+                aggregate.clone(),
+                cancel.clone(),
+            )
+            .await
+            {
+                Ok(ConcurrentRangeOutcome::Completed) => {
+                    if let Some(cb) = progress.lock().unwrap().as_ref() {
+                        cb(aggregate.load(Ordering::Relaxed), total_size);
+                    }
+                    NodeOutcome::Completed
+                }
+                Ok(ConcurrentRangeOutcome::ServerIgnoredRange) => {
+                    // Honest fallback: cancel siblings; the caller skips the
+                    // commit so the temp is removed, exactly like JoinSet.
+                    server_ignored.store(true, Ordering::SeqCst);
+                    cancel.cancel();
+                    NodeOutcome::Fallback
+                }
+                Err(e) => {
+                    // ProviderError is not Clone (IoError wraps io::Error):
+                    // stringify for the node message, then move the owned
+                    // error into the first-error slot to preserve the exact
+                    // variant for the caller (diff-0 error semantics).
+                    let message = e.to_string();
+                    {
+                        let mut slot = first_error.lock().unwrap();
+                        if slot.is_none() {
+                            *slot = Some(e);
+                        }
+                    }
+                    cancel.cancel();
+                    NodeOutcome::Failed(message)
+                }
+            }
+        })
+    });
+
+    let exec = execute_dag(
+        &dag,
+        &manager,
+        runner,
+        Arc::new(NoopDagObserver) as Arc<dyn DagObserver>,
+        None,
+    )
+    .await;
+
+    // Order matters: a ServerIgnoredRange cancels the token, so sibling nodes
+    // then fail with "cancelled" and execute_dag returns NodeFailed. Check the
+    // fallback flag before treating that as an error.
+    if server_ignored.load(Ordering::SeqCst) {
+        return Ok(ConcurrentRangeOutcome::ServerIgnoredRange);
+    }
+    match exec {
+        Ok(_summary) => Ok(ConcurrentRangeOutcome::Completed),
+        Err(dag_err) => {
+            if let Some(e) = first_error.lock().unwrap().take() {
+                Err(e)
+            } else {
+                Err(ProviderError::TransferFailed(dag_err.to_string()))
+            }
+        }
+    }
 }
 
 /// Configuration for [`run_concurrent_part_upload`].
@@ -992,5 +1216,240 @@ mod tests {
         assert!(!content_range_matches(Some("bytes 0-498/1000"), 0, 499));
         // Missing header on a 206 fails closed.
         assert!(!content_range_matches(None, 0, 499));
+    }
+
+    // --- PD-ADAPT-1d: JoinSet vs node-graph executor diff-0 proof ---------
+    //
+    // These call the two `pub(crate)` runners directly, never through the
+    // `AEROFTP_RANGE_GRAPH` env var: gating the test through the flag would
+    // race the process-global environment with the rest of the suite.
+
+    type BoxedRangeFut = std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<ConcurrentRangeOutcome, ProviderError>> + Send>,
+    >;
+
+    /// Fills `[start, end]` at its absolute offset with `(offset % 251) as u8`,
+    /// the same content regardless of which window writes it, so a correct
+    /// run produces one deterministic file.
+    fn deterministic_writer(
+    ) -> impl Fn(u64, u64, PathBuf, Arc<AtomicU64>, CancellationToken) -> BoxedRangeFut
+           + Send
+           + Sync
+           + Clone
+           + 'static {
+        |start, end, temp_path, aggregate, _cancel| {
+            Box::pin(async move {
+                let mut f = tokio::fs::OpenOptions::new()
+                    .write(true)
+                    .open(&temp_path)
+                    .await
+                    .map_err(ProviderError::IoError)?;
+                f.seek(std::io::SeekFrom::Start(start))
+                    .await
+                    .map_err(ProviderError::IoError)?;
+                let len = (end - start + 1) as usize;
+                let mut buf = vec![0u8; len];
+                for (i, b) in buf.iter_mut().enumerate() {
+                    *b = ((start + i as u64) % 251) as u8;
+                }
+                f.write_all(&buf).await.map_err(ProviderError::IoError)?;
+                f.flush().await.map_err(ProviderError::IoError)?;
+                aggregate.fetch_add(len as u64, Ordering::Relaxed);
+                Ok(ConcurrentRangeOutcome::Completed)
+            })
+        }
+    }
+
+    async fn prealloc(path: &Path, total: u64) {
+        let f = tokio::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(path)
+            .await
+            .unwrap();
+        f.set_len(total).await.unwrap();
+    }
+
+    fn scratch_dir(tag: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("aero-rg-{}-{}", tag, std::process::id()))
+    }
+
+    #[tokio::test]
+    async fn joinset_and_graph_produce_byte_identical_output() {
+        let total: u64 = 1 << 20; // 1 MiB
+        let ranges = plan_multi_thread_ranges(total, 4, 16);
+        assert_eq!(ranges.len(), 4);
+
+        let dir = scratch_dir("identical");
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        let temp_a = aerotmp_path_for(&dir.join("a.bin"));
+        let temp_b = aerotmp_path_for(&dir.join("b.bin"));
+        prealloc(&temp_a, total).await;
+        prealloc(&temp_b, total).await;
+
+        let w = Arc::new(deterministic_writer());
+        let out_a = run_ranges_via_joinset(
+            &ranges,
+            &temp_a,
+            total,
+            4,
+            w.clone(),
+            CancellationToken::new(),
+            None,
+        )
+        .await
+        .unwrap();
+        let out_b = run_ranges_via_graph(
+            &ranges,
+            &temp_b,
+            total,
+            4,
+            w.clone(),
+            CancellationToken::new(),
+            None,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(out_a, ConcurrentRangeOutcome::Completed);
+        assert_eq!(out_b, ConcurrentRangeOutcome::Completed);
+
+        let bytes_a = tokio::fs::read(&temp_a).await.unwrap();
+        let bytes_b = tokio::fs::read(&temp_b).await.unwrap();
+        assert_eq!(bytes_a.len() as u64, total);
+        assert_eq!(bytes_b.len() as u64, total);
+        assert_eq!(
+            bytes_a, bytes_b,
+            "JoinSet and node-graph paths must be byte-identical"
+        );
+        for (o, byte) in bytes_a.iter().enumerate() {
+            assert_eq!(*byte, ((o as u64) % 251) as u8, "byte mismatch at {o}");
+        }
+
+        let _ = tokio::fs::remove_dir_all(&dir).await;
+    }
+
+    #[tokio::test]
+    async fn joinset_and_graph_agree_on_server_ignored_range() {
+        let total: u64 = 1 << 20;
+        let ranges = plan_multi_thread_ranges(total, 4, 16);
+
+        let dir = scratch_dir("sir");
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        let temp_a = aerotmp_path_for(&dir.join("a.bin"));
+        let temp_b = aerotmp_path_for(&dir.join("b.bin"));
+        prealloc(&temp_a, total).await;
+        prealloc(&temp_b, total).await;
+
+        let w = Arc::new(
+            |start: u64,
+             _end: u64,
+             _p: PathBuf,
+             _a: Arc<AtomicU64>,
+             _c: CancellationToken|
+             -> BoxedRangeFut {
+                Box::pin(async move {
+                    if start == 0 {
+                        Ok(ConcurrentRangeOutcome::ServerIgnoredRange)
+                    } else {
+                        Ok(ConcurrentRangeOutcome::Completed)
+                    }
+                })
+            },
+        );
+        let out_a = run_ranges_via_joinset(
+            &ranges,
+            &temp_a,
+            total,
+            4,
+            w.clone(),
+            CancellationToken::new(),
+            None,
+        )
+        .await
+        .unwrap();
+        let out_b = run_ranges_via_graph(
+            &ranges,
+            &temp_b,
+            total,
+            4,
+            w.clone(),
+            CancellationToken::new(),
+            None,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(out_a, ConcurrentRangeOutcome::ServerIgnoredRange);
+        assert_eq!(out_b, ConcurrentRangeOutcome::ServerIgnoredRange);
+        assert_eq!(out_a, out_b);
+
+        let _ = tokio::fs::remove_dir_all(&dir).await;
+    }
+
+    #[tokio::test]
+    async fn joinset_and_graph_agree_on_hard_error_variant() {
+        let total: u64 = 1 << 20;
+        let ranges = plan_multi_thread_ranges(total, 4, 16);
+
+        let dir = scratch_dir("err");
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        let temp_a = aerotmp_path_for(&dir.join("a.bin"));
+        let temp_b = aerotmp_path_for(&dir.join("b.bin"));
+        prealloc(&temp_a, total).await;
+        prealloc(&temp_b, total).await;
+
+        let w = Arc::new(
+            |start: u64,
+             _end: u64,
+             _p: PathBuf,
+             _a: Arc<AtomicU64>,
+             _c: CancellationToken|
+             -> BoxedRangeFut {
+                Box::pin(async move {
+                    if start == 0 {
+                        Err(ProviderError::NotSupported(
+                            "synthetic hard error".to_string(),
+                        ))
+                    } else {
+                        Ok(ConcurrentRangeOutcome::Completed)
+                    }
+                })
+            },
+        );
+        let err_a = run_ranges_via_joinset(
+            &ranges,
+            &temp_a,
+            total,
+            4,
+            w.clone(),
+            CancellationToken::new(),
+            None,
+        )
+        .await
+        .unwrap_err();
+        let err_b = run_ranges_via_graph(
+            &ranges,
+            &temp_b,
+            total,
+            4,
+            w.clone(),
+            CancellationToken::new(),
+            None,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(
+            matches!(err_a, ProviderError::NotSupported(_)),
+            "joinset returned {err_a:?}"
+        );
+        assert!(
+            matches!(err_b, ProviderError::NotSupported(_)),
+            "graph returned {err_b:?}"
+        );
+
+        let _ = tokio::fs::remove_dir_all(&dir).await;
     }
 }
