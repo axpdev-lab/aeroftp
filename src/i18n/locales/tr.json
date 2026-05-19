@@ -2163,7 +2163,8 @@
             "templateFormatPwsh": "PowerShell betiği (.ps1)",
             "templateScriptExportedToast": "Betik dışa aktarıldı",
             "templateScriptImportedToast": "Betik meta verileri yüklendi",
-            "templateScriptInvalidToast": "Betik AeroFTP meta verileri içermiyor"
+            "templateScriptInvalidToast": "Betik AeroFTP meta verileri içermiyor",
+            "checksumPoolNote": "Bu SFTP oturumundaki checksum karşılaştırması tek bir bağlantı kullanır (oturum havuzu yok): büyük ağaçlarda taramalar daha yavaş olur."
         },
         "ui": {
             "syncing": "Senkronize ediliyor...",

@@ -798,6 +798,34 @@ export interface TransferOptimizationHints {
   delta_sync_note: string | null;
 }
 
+// Transfer capability descriptor (mirrors Rust transfer_dag::TransferCapabilities)
+export type Capability =
+  | "unsupported"
+  | "supported"
+  | "supported_after_probe"
+  | "experimental";
+
+export interface TransferCapabilities {
+  file_parallel: Capability;
+  session_pool: Capability;
+  strict_concurrent_range_download: Capability;
+  resume_download: Capability;
+  resume_upload: Capability;
+  multipart_upload: Capability;
+  offset_upload: Capability;
+  upload_session: Capability;
+  server_side_copy: Capability;
+  list_parallel: Capability;
+  batch_list: Capability;
+  server_checksum: Capability;
+  atomic_rename: Capability;
+  rate_limited_api: Capability;
+  max_file_slots: number | null;
+  max_chunk_slots: number | null;
+  max_checker_slots: number | null;
+  preferred_chunk_size: number | null;
+}
+
 export interface DeltaServerIdentity {
   protocol: ProviderType;
   host: string;

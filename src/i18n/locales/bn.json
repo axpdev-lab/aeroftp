@@ -2163,7 +2163,8 @@
             "templateFormatPwsh": "PowerShell স্ক্রিপ্ট (.ps1)",
             "templateScriptExportedToast": "স্ক্রিপ্ট রপ্তানি করা হয়েছে",
             "templateScriptImportedToast": "স্ক্রিপ্ট মেটাডেটা লোড করা হয়েছে",
-            "templateScriptInvalidToast": "স্ক্রিপ্টে AeroFTP মেটাডেটা নেই"
+            "templateScriptInvalidToast": "স্ক্রিপ্টে AeroFTP মেটাডেটা নেই",
+            "checksumPoolNote": "এই SFTP সেশনে checksum তুলনা একটি একক সংযোগ ব্যবহার করে (কোনো সেশন pool নেই): বড় ট্রিতে ধীর স্ক্যানের আশা করুন।"
         },
         "ui": {
             "syncing": "সিঙ্ক হচ্ছে...",

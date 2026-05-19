@@ -2163,7 +2163,8 @@
             "templateFormatPwsh": "Σενάριο PowerShell (.ps1)",
             "templateScriptExportedToast": "Το σενάριο εξήχθη",
             "templateScriptImportedToast": "Τα μεταδεδομένα του σεναρίου φορτώθηκαν",
-            "templateScriptInvalidToast": "Το σενάριο δεν περιέχει μεταδεδομένα AeroFTP"
+            "templateScriptInvalidToast": "Το σενάριο δεν περιέχει μεταδεδομένα AeroFTP",
+            "checksumPoolNote": "Η σύγκριση checksum σε αυτή τη συνεδρία SFTP χρησιμοποιεί μία μόνο σύνδεση (χωρίς pool συνεδριών): αναμένετε πιο αργές σαρώσεις σε μεγάλα δέντρα."
         },
         "ui": {
             "syncing": "Συγχρονισμός...",

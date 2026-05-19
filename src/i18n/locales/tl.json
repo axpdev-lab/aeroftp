@@ -2163,7 +2163,8 @@
             "templateFormatPwsh": "PowerShell script (.ps1)",
             "templateScriptExportedToast": "Na-export ang script",
             "templateScriptImportedToast": "Na-load ang metadata ng script",
-            "templateScriptInvalidToast": "Walang AeroFTP metadata ang script"
+            "templateScriptInvalidToast": "Walang AeroFTP metadata ang script",
+            "checksumPoolNote": "Ang paghahambing ng checksum sa SFTP session na ito ay gumagamit ng isang koneksyon (walang session pool): asahan ang mas mabagal na pag-scan sa malalaking puno."
         },
         "ui": {
             "syncing": "Sinsi-sync...",

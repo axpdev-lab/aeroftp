@@ -2163,7 +2163,8 @@
             "templateFormatPwsh": "PowerShell-skript (.ps1)",
             "templateScriptExportedToast": "Skript eksporditud",
             "templateScriptImportedToast": "Skripti metaandmed laaditud",
-            "templateScriptInvalidToast": "Skript ei sisalda AeroFTP metaandmeid"
+            "templateScriptInvalidToast": "Skript ei sisalda AeroFTP metaandmeid",
+            "checksumPoolNote": "Selle SFTP-seansi kontrollsumma võrdlus kasutab üht ühendust (seansipuuli pole): suurte puude skannimine on aeglasem."
         },
         "ui": {
             "syncing": "Sünkroniseerimine...",

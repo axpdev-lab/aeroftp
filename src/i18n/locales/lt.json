@@ -2163,7 +2163,8 @@
             "templateFormatPwsh": "PowerShell scenarijus (.ps1)",
             "templateScriptExportedToast": "Scenarijus eksportuotas",
             "templateScriptImportedToast": "Scenarijaus metaduomenys įkelti",
-            "templateScriptInvalidToast": "Scenarijuje nėra AeroFTP metaduomenų"
+            "templateScriptInvalidToast": "Scenarijuje nėra AeroFTP metaduomenų",
+            "checksumPoolNote": "Kontrolinės sumos palyginimas šioje SFTP sesijoje naudoja vieną ryšį (be sesijų telkinio): didelių medžių nuskaitymas bus lėtesnis."
         },
         "ui": {
             "syncing": "Sinchronizuojama...",

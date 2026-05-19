@@ -2163,7 +2163,8 @@
             "templateFormatPwsh": "PowerShell 스크립트 (.ps1)",
             "templateScriptExportedToast": "스크립트를 내보냈습니다",
             "templateScriptImportedToast": "스크립트 메타데이터를 불러왔습니다",
-            "templateScriptInvalidToast": "스크립트에 AeroFTP 메타데이터가 없습니다"
+            "templateScriptInvalidToast": "스크립트에 AeroFTP 메타데이터가 없습니다",
+            "checksumPoolNote": "이 SFTP 세션의 checksum 비교는 단일 연결을 사용합니다(세션 pool 없음): 큰 트리에서는 스캔이 느려질 수 있습니다."
         },
         "ui": {
             "syncing": "동기화 중...",

@@ -2156,7 +2156,8 @@
             "templateFormatPwsh": "PowerShell սկրիպտ (.ps1)",
             "templateScriptExportedToast": "Սկրիպտը արտահանվեց",
             "templateScriptImportedToast": "Սկրիպտի մետատվյալները բեռնված են",
-            "templateScriptInvalidToast": "Սկրիպտը չի պարունակում AeroFTP մետատվյալներ"
+            "templateScriptInvalidToast": "Սկրիպտը չի պարունակում AeroFTP մետատվյալներ",
+            "checksumPoolNote": "Այս SFTP նստաշրջանում checksum-ի համեմատությունն օգտագործում է մեկ կապ (առանց նստաշրջանների pool-ի). մեծ ծառերի դեպքում սպասեք ավելի դանդաղ սկանավորում:"
         },
         "ui": {
             "syncing": "Սինքրոնացում...",

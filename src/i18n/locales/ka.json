@@ -2163,7 +2163,8 @@
             "templateFormatPwsh": "PowerShell სკრიპტი (.ps1)",
             "templateScriptExportedToast": "სკრიპტი ექსპორტირებულია",
             "templateScriptImportedToast": "სკრიპტის მეტამონაცემები ჩაიტვირთა",
-            "templateScriptInvalidToast": "სკრიპტი არ შეიცავს AeroFTP-ის მეტამონაცემებს"
+            "templateScriptInvalidToast": "სკრიპტი არ შეიცავს AeroFTP-ის მეტამონაცემებს",
+            "checksumPoolNote": "ამ SFTP სესიაში checksum-ის შედარება იყენებს ერთ კავშირს (სესიების pool-ის გარეშე): დიდ ხეებზე ელოდეთ უფრო ნელ სკანირებას."
         },
         "ui": {
             "syncing": "სინქრონიზაცია...",
