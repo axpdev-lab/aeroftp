@@ -3114,6 +3114,7 @@
             "calculateSize": "サイズを計算",
             "checksumVerification": "クリックしてファイルのチェックサムを計算",
             "checksumFolderNA": "フォルダではチェックサムは利用できません",
+            "checksumServerOnly": "サーバーから提供",
             "readOnly": "読み取り専用",
             "hidden": "非表示",
             "contains": "内容",

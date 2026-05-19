@@ -3149,6 +3149,7 @@
             "calculateSize": "크기 계산",
             "checksumVerification": "파일 체크섬을 계산하려면 클릭하세요",
             "checksumFolderNA": "폴더에는 체크섬을 사용할 수 없습니다",
+            "checksumServerOnly": "서버에서 제공됨",
             "readOnly": "읽기 전용",
             "hidden": "숨김",
             "contains": "포함",

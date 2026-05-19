@@ -3149,6 +3149,7 @@
             "calculateSize": "Beräkna storlek",
             "checksumVerification": "Klicka för att beräkna filens kontrollsumma",
             "checksumFolderNA": "Kontrollsummor är inte tillgängliga för mappar",
+            "checksumServerOnly": "Tillhandahålls av servern",
             "readOnly": "Skrivskyddad",
             "hidden": "Dold",
             "contains": "Innehåller",

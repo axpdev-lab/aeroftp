@@ -3140,6 +3140,7 @@
             "calculateSize": "Հաշվարկել չափը",
             "checksumVerification": "Սեղմեք ստուգիչ գումարը հաշվարկելու համար",
             "checksumFolderNA": "Ստուգիչ գումարը հասանելի չէ պանակների համար",
+            "checksumServerOnly": "Տրամադրված է սերվերի կողմից",
             "folderContents": "{files} ֆայլ, {dirs} պանակ",
             "notAvailable": "Հասանելի չէ",
             "readOnly": "Միայն կարդալու",

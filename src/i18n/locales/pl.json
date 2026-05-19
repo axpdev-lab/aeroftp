@@ -3149,6 +3149,7 @@
             "calculateSize": "Oblicz rozmiar",
             "checksumVerification": "Kliknij, aby obliczyć sumę kontrolną pliku",
             "checksumFolderNA": "Sumy kontrolne nie są dostępne dla folderów",
+            "checksumServerOnly": "Dostarczone przez serwer",
             "readOnly": "Tylko do odczytu",
             "hidden": "Ukryty",
             "contains": "Zawiera",

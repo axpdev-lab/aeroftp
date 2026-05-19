@@ -3149,6 +3149,7 @@
             "calculateSize": "Hitung Ukuran",
             "checksumVerification": "Klik untuk menghitung checksum file",
             "checksumFolderNA": "Checksum tidak tersedia untuk folder",
+            "checksumServerOnly": "Disediakan oleh server",
             "readOnly": "Hanya baca",
             "hidden": "Tersembunyi",
             "contains": "Berisi",

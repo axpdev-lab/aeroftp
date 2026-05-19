@@ -3147,6 +3147,7 @@
             "calculateSize": "आकार की गणना करें",
             "checksumVerification": "फ़ाइल चेकसम की गणना करने के लिए क्लिक करें",
             "checksumFolderNA": "फ़ोल्डरों के लिए चेकसम उपलब्ध नहीं हैं",
+            "checksumServerOnly": "सर्वर द्वारा प्रदान किया गया",
             "folderContents": "{files} फ़ाइलें, {dirs} फ़ोल्डर",
             "notAvailable": "उपलब्ध नहीं",
             "readOnly": "केवल पढ़ने योग्य",

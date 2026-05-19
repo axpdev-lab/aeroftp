@@ -3149,6 +3149,7 @@
             "calculateSize": "คำนวณขนาด",
             "checksumVerification": "คลิกเพื่อคำนวณค่าตรวจสอบไฟล์",
             "checksumFolderNA": "ค่าตรวจสอบไม่สามารถใช้ได้กับโฟลเดอร์",
+            "checksumServerOnly": "ให้บริการโดยเซิร์ฟเวอร์",
             "readOnly": "อ่านอย่างเดียว",
             "hidden": "ซ่อนอยู่",
             "contains": "ประกอบด้วย",

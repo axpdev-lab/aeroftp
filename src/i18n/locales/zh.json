@@ -3149,6 +3149,7 @@
             "calculateSize": "计算大小",
             "checksumVerification": "点击计算文件校验和",
             "checksumFolderNA": "文件夹不支持校验和",
+            "checksumServerOnly": "由服务器提供",
             "readOnly": "只读",
             "hidden": "隐藏",
             "contains": "包含",

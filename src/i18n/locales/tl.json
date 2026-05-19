@@ -3149,6 +3149,7 @@
             "calculateSize": "Kalkulahin ang Laki",
             "checksumVerification": "I-click para kalkulahin ang checksum ng file",
             "checksumFolderNA": "Hindi available ang checksum para sa mga folder",
+            "checksumServerOnly": "Ibinigay ng server",
             "readOnly": "Basahin lamang",
             "hidden": "Nakatago",
             "contains": "Naglalaman ng",

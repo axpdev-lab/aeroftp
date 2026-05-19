@@ -3149,6 +3149,7 @@
             "calculateSize": "Laske koko",
             "checksumVerification": "Napsauta laskeaksesi tiedoston tarkistussumman",
             "checksumFolderNA": "Tarkistussummat eivät ole saatavilla kansioille",
+            "checksumServerOnly": "Palvelimen toimittama",
             "readOnly": "Vain luku",
             "hidden": "Piilotettu",
             "contains": "Sisältää",

@@ -3149,6 +3149,7 @@
             "calculateSize": "Vypocitat velkost",
             "checksumVerification": "Kliknite pre vypocet kontrolneho suctu suboru",
             "checksumFolderNA": "Kontrolne sucty nie su pre priecinky dostupne",
+            "checksumServerOnly": "Poskytnuté serverom",
             "readOnly": "Len na čítanie",
             "hidden": "Skrytý",
             "contains": "Obsahuje",

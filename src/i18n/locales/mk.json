@@ -3149,6 +3149,7 @@
             "calculateSize": "Пресметај големина",
             "checksumVerification": "Кликнете за пресметување контролна сума на датотека",
             "checksumFolderNA": "Контролните суми не се достапни за папки",
+            "checksumServerOnly": "Обезбедено од серверот",
             "readOnly": "Само за читање",
             "hidden": "Скриено",
             "contains": "Содржи",

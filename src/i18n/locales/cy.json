@@ -3149,6 +3149,7 @@
             "calculateSize": "Cyfrifo Maint",
             "checksumVerification": "Cliciwch i gyfrifo swm gwirio'r ffeil",
             "checksumFolderNA": "Nid yw symiau gwirio ar gael ar gyfer ffolderi",
+            "checksumServerOnly": "Darparwyd gan y gweinydd",
             "readOnly": "Darllen yn unig",
             "hidden": "Cudd",
             "contains": "Yn cynnwys",

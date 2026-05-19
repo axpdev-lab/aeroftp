@@ -3149,6 +3149,7 @@
             "calculateSize": "គណនាទំហំ",
             "checksumVerification": "ចុចដើម្បីគណនា checksum ឯកសារ",
             "checksumFolderNA": "Checksums មិនមានសម្រាប់ថតទេ",
+            "checksumServerOnly": "ផ្តល់ដោយម៉ាស៊ីនមេ",
             "readOnly": "អានតែប៉ុណ្ណោះ",
             "hidden": "លាក់",
             "contains": "មានផ្ទុក",

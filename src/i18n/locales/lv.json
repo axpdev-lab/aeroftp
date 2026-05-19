@@ -3149,6 +3149,7 @@
             "calculateSize": "Aprēķināt lielumu",
             "checksumVerification": "Noklikšķiniet faila kontrolsummas aprēķināšanai",
             "checksumFolderNA": "Kontrolsummas nav pieejamas mapēm",
+            "checksumServerOnly": "Nodrošina serveris",
             "readOnly": "Tikai lasāms",
             "hidden": "Slēpts",
             "contains": "Satur",

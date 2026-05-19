@@ -2213,6 +2213,7 @@
       "calculating": "Calculating...",
       "checksum": "Checksum",
       "checksumFolderNA": "Checksums are not available for folders",
+      "checksumServerOnly": "Provided by the server",
       "checksumVerification": "Click to compute file checksum",
       "contains": "Contains",
       "created": "Created",

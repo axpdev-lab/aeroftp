@@ -282,6 +282,11 @@ export interface FileProperties {
         sha256?: string;
         sha512?: string;
         blake3?: string;
+        // Server-only digests: present only when the backend exposes
+        // them (OneDrive QuickXorHash, Dropbox content_hash). Never
+        // computed locally.
+        quickxor?: string;
+        dropbox?: string;
         calculating?: boolean;
     };
 }
@@ -402,8 +407,15 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
     // is readable without truncation; the dialog widens (see modal class) to
     // accommodate SHA-512 (128 hex) and BLAKE3 (64 hex) on a single line where
     // possible, wrapping cleanly otherwise.
-    const ChecksumRow: React.FC<{ label: string; value?: string; algorithm: 'md5' | 'sha1' | 'sha256' | 'sha512' | 'blake3' }> =
-        ({ label, value, algorithm }) => (
+    // `serverOnly` rows (quickxor, dropbox) cannot be computed locally:
+    // they exist only when the backend already returned them, so no
+    // "Calculate" action is offered, just the value plus an honest note.
+    const ChecksumRow: React.FC<{
+        label: string;
+        value?: string;
+        algorithm?: 'md5' | 'sha1' | 'sha256' | 'sha512' | 'blake3';
+        serverOnly?: boolean;
+    }> = ({ label, value, algorithm, serverOnly }) => (
         <div className="flex items-start gap-2 mb-2">
             <span className="text-xs text-gray-500 w-20 shrink-0 pt-1">{label}:</span>
             {value ? (
@@ -413,9 +425,13 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
                 >
                     {value}
                 </code>
+            ) : serverOnly ? (
+                <span className="flex-1 text-xs text-gray-400 italic pt-1">
+                    {t('properties.checksumServerOnly')}
+                </span>
             ) : (
                 <button
-                    onClick={() => onCalculateChecksum?.(algorithm)}
+                    onClick={() => algorithm && onCalculateChecksum?.(algorithm)}
                     disabled={file.checksum?.calculating}
                     className="text-xs text-blue-500 hover:text-blue-600 disabled:text-gray-400"
                 >
@@ -679,6 +695,15 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
                                     <ChecksumRow label="SHA-256" value={file.checksum?.sha256} algorithm="sha256" />
                                     <ChecksumRow label="SHA-512" value={file.checksum?.sha512} algorithm="sha512" />
                                     <ChecksumRow label="BLAKE3" value={file.checksum?.blake3} algorithm="blake3" />
+                                    {/* Server-only digests: shown only when the
+                                        backend (OneDrive, Dropbox) actually
+                                        returned them. No local fallback. */}
+                                    {file.checksum?.quickxor && (
+                                        <ChecksumRow label="QuickXor" value={file.checksum.quickxor} serverOnly />
+                                    )}
+                                    {file.checksum?.dropbox && (
+                                        <ChecksumRow label="Dropbox" value={file.checksum.dropbox} serverOnly />
+                                    )}
                                 </div>
                             ) : file.is_dir ? (
                                 <div className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">

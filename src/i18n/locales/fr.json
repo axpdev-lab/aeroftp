@@ -3149,6 +3149,7 @@
             "calculateSize": "Calculer la taille",
             "checksumVerification": "Cliquez pour calculer la somme de controle du fichier",
             "checksumFolderNA": "Les sommes de controle ne sont pas disponibles pour les dossiers",
+            "checksumServerOnly": "Fourni par le serveur",
             "readOnly": "Lecture seule",
             "hidden": "Masqué",
             "contains": "Contient",

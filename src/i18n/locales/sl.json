@@ -3149,6 +3149,7 @@
             "calculateSize": "Izračunaj velikost",
             "checksumVerification": "Kliknite za izračun kontrolne vsote datoteke",
             "checksumFolderNA": "Kontrolne vsote niso na voljo za mape",
+            "checksumServerOnly": "Zagotovljeno s strežnika",
             "readOnly": "Samo za branje",
             "hidden": "Skrito",
             "contains": "Vsebuje",

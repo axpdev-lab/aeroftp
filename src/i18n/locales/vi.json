@@ -3149,6 +3149,7 @@
             "calculateSize": "Tính kích thước",
             "checksumVerification": "Nhấn để tính tổng kiểm tra tệp",
             "checksumFolderNA": "Tổng kiểm tra không khả dụng cho thư mục",
+            "checksumServerOnly": "Do máy chủ cung cấp",
             "readOnly": "Chỉ đọc",
             "hidden": "Ẩn",
             "contains": "Chứa",

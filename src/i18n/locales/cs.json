@@ -3149,6 +3149,7 @@
             "calculateSize": "Vypocitat velikost",
             "checksumVerification": "Kliknete pro vypocet kontrolniho souctu souboru",
             "checksumFolderNA": "Kontrolni soucty nejsou pro slozky dostupne",
+            "checksumServerOnly": "Poskytnuto serverem",
             "readOnly": "Jen pro čtení",
             "hidden": "Skrytý",
             "contains": "Obsahuje",

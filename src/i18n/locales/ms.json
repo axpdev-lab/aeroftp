@@ -3149,6 +3149,7 @@
             "calculateSize": "Kira Saiz",
             "checksumVerification": "Klik untuk mengira checksum fail",
             "checksumFolderNA": "Checksum tidak tersedia untuk folder",
+            "checksumServerOnly": "Disediakan oleh pelayan",
             "readOnly": "Baca sahaja",
             "hidden": "Tersembunyi",
             "contains": "Mengandungi",

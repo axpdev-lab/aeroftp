@@ -3149,6 +3149,7 @@
             "calculateSize": "Beregn størrelse",
             "checksumVerification": "Klikk for å beregne filsjekksum",
             "checksumFolderNA": "Sjekksummer er ikke tilgjengelig for mapper",
+            "checksumServerOnly": "Levert av serveren",
             "readOnly": "Skrivebeskyttet",
             "hidden": "Skjult",
             "contains": "Inneholder",

@@ -3149,6 +3149,7 @@
             "calculateSize": "Izračunaj veličinu",
             "checksumVerification": "Kliknite za izračunavanje kontrolnog zbira fajla",
             "checksumFolderNA": "Kontrolni zbirovi nisu dostupni za fascikle",
+            "checksumServerOnly": "Обезбеђено од сервера",
             "readOnly": "Само за читање",
             "hidden": "Скривено",
             "contains": "Садржи",
