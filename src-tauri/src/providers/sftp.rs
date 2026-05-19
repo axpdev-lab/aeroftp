@@ -1279,6 +1279,41 @@ impl StorageProvider for SftpProvider {
                 .await;
         }
 
+        // PD-PIPE-1: opt-in pipelined single-stream read on the *one
+        // existing* SFTP session (no new connection, no pool). Off by
+        // default = the serial loop below, byte-identical. Skipped when the
+        // size is unknown/zero or a bandwidth limit is active (the serial
+        // loop owns the exact throttling); the SHA-256 live gate guards it.
+        if let Some(window) = sftp_read_pipeline_window() {
+            if total_size > 0 && self.download_limit_bps == 0 {
+                let sftp = self.get_sftp()?;
+                let mut atomic = super::atomic_write::AtomicFile::new(local_path)
+                    .await
+                    .map_err(|e| {
+                        ProviderError::TransferFailed(format!("Failed to create local file: {}", e))
+                    })?;
+                sftp_pipelined_download(
+                    sftp,
+                    &full_path,
+                    total_size,
+                    &mut atomic,
+                    self.buffer_size,
+                    window,
+                    on_progress,
+                )
+                .await?;
+                atomic.commit().await.map_err(|e| {
+                    ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
+                })?;
+                tracing::info!(
+                    "SFTP: Download complete (pipelined, window={}): {} bytes",
+                    window,
+                    total_size
+                );
+                return Ok(());
+            }
+        }
+
         // Open remote file
         let mut remote_file = sftp.open(&full_path).await.map_err(|e| {
             classify_russh_err(e, |s| {
@@ -1986,6 +2021,174 @@ impl StorageProvider for SftpProvider {
     }
 }
 
+/// PD-PIPE-1: parse `AEROFTP_SFTP_READ_PIPELINE` into a pipeline window.
+///
+/// Mirrors the `AEROFTP_RANGE_GRAPH` opt-in discipline (PD-ADAPT-1d): the
+/// flag is **off by default**, so an unset/`0`/`1`/`false` value keeps the
+/// exact serial `download()` loop (byte-identical, diff-0). A value `>= 2`
+/// (or a truthy word) enables bounded read pipelining on the **single
+/// existing** SFTP session and is the only thing that changes the read
+/// scheduling. The window is capped so a hostile value cannot blow memory
+/// (`window * buffer_size` is the worst-case in-flight footprint).
+const SFTP_PIPELINE_MAX_WINDOW: usize = 64;
+const SFTP_PIPELINE_DEFAULT_WINDOW: usize = 16;
+
+/// Pure parser for the PD-PIPE-1 flag value (env read split out so it is
+/// deterministically unit-testable without mutating process-global env).
+fn parse_sftp_read_pipeline_window(raw: Option<&str>) -> Option<usize> {
+    let v = raw?.trim().to_ascii_lowercase();
+    match v.as_str() {
+        "" | "0" | "1" | "false" | "off" | "no" => None,
+        "true" | "on" | "yes" => Some(SFTP_PIPELINE_DEFAULT_WINDOW),
+        _ => match v.parse::<usize>() {
+            Ok(n) if n >= 2 => Some(n.min(SFTP_PIPELINE_MAX_WINDOW)),
+            _ => None,
+        },
+    }
+}
+
+fn sftp_read_pipeline_window() -> Option<usize> {
+    parse_sftp_read_pipeline_window(std::env::var("AEROFTP_SFTP_READ_PIPELINE").ok().as_deref())
+}
+
+/// PD-PIPE-1: read exactly `want` bytes from `file` starting at the absolute
+/// offset `abs_off`, looping on short protocol reads. A `read() == 0` before
+/// `want` is **not** an error here: it means EOF (the remote file is shorter
+/// than the metadata size); the caller treats a returned buffer shorter than
+/// the requested window as the end of the transfer, exactly as the serial
+/// loop stops on `read() == 0`.
+async fn sftp_pipelined_read_window(
+    file: &mut russh_sftp::client::fs::File,
+    abs_off: u64,
+    want: usize,
+) -> Result<Vec<u8>, ProviderError> {
+    use tokio::io::{AsyncReadExt, AsyncSeekExt};
+
+    file.seek(std::io::SeekFrom::Start(abs_off))
+        .await
+        .map_err(|e| {
+            classify_russh_err(e, |s| {
+                ProviderError::TransferFailed(format!("Seek error (pipeline): {}", s))
+            })
+        })?;
+
+    let mut buf = vec![0u8; want];
+    let mut filled = 0usize;
+    while filled < want {
+        let n = file.read(&mut buf[filled..]).await.map_err(|e| {
+            classify_russh_err(e, |s| {
+                ProviderError::TransferFailed(format!("Read error (pipeline): {}", s))
+            })
+        })?;
+        if n == 0 {
+            break;
+        }
+        filled += n;
+    }
+    buf.truncate(filled);
+    Ok(buf)
+}
+
+/// PD-PIPE-1: pipelined single-stream SFTP download over the **one existing**
+/// SFTP session.
+///
+/// Root cause this addresses (PD-BENCH-1, master 9.6.4): the serial
+/// `download()` loop issues a single outstanding `SSH_FXP_READ` and then
+/// serially `write_all`s it, with no net/disk overlap, so one stream is far
+/// below the link. russh-sftp's `SftpSession` multiplexes concurrent
+/// requests by id over one channel (`RawSftpSession`, an internal `Arc`
+/// shared by every `File` it opens), so opening `window` cheap file handles
+/// to the same path and reading disjoint stripes concurrently keeps `window`
+/// `SSH_FXP_READ` in flight on the same connection. **No new TCP connection,
+/// no new pool, one SFTP session** (this is deliberately not the PD-SFTP-2
+/// independent-connection pool).
+///
+/// Diff-0: the bytes written are `[0, min(total_size, EOF))` in strict
+/// ascending order, identical to the serial loop for a static file (the
+/// real, gated scenario). Chunks are produced in `window`-sized batches and
+/// written in order; the first short read ends the transfer just like the
+/// serial loop's `read() == 0`. Only the read scheduling differs. Trusting
+/// the metadata size for windowing is the same accepted discipline as the
+/// shipped PD-SFTP-2 range worker; every run is SHA-256 gated.
+async fn sftp_pipelined_download(
+    sftp: &SftpSession,
+    full_path: &str,
+    total_size: u64,
+    atomic: &mut super::atomic_write::AtomicFile,
+    chunk: usize,
+    window: usize,
+    on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+) -> Result<(), ProviderError> {
+    let chunk = chunk.max(4096) as u64;
+    let window = window.clamp(2, 64);
+    let chunks_needed = total_size.div_ceil(chunk).max(1) as usize;
+    let eff_window = window.min(chunks_needed);
+
+    // `eff_window` handles, all on the SAME session: one SSH channel, the
+    // RawSftpSession multiplexes the concurrent reads by request id.
+    let mut handles: Vec<russh_sftp::client::fs::File> = Vec::with_capacity(eff_window);
+    for _ in 0..eff_window {
+        let f = sftp.open(full_path).await.map_err(|e| {
+            classify_russh_err(e, |s| {
+                ProviderError::TransferFailed(format!(
+                    "Failed to open remote file (pipeline): {}",
+                    s
+                ))
+            })
+        })?;
+        handles.push(f);
+    }
+
+    let mut transferred: u64 = 0;
+    let mut offset: u64 = 0;
+    'outer: while offset < total_size {
+        // Plan up to `eff_window` consecutive chunks for this batch.
+        let mut wants: Vec<usize> = Vec::with_capacity(eff_window);
+        for _ in 0..eff_window {
+            if offset >= total_size {
+                break;
+            }
+            let want = std::cmp::min(chunk, total_size - offset) as usize;
+            wants.push(want);
+            offset += want as u64;
+        }
+        if wants.is_empty() {
+            break;
+        }
+
+        // Issue the batch concurrently: each future borrows one distinct
+        // handle (disjoint &mut via split_at_mut), so `window` reads are in
+        // flight on the single connection at once.
+        let n = wants.len();
+        let batch_base = offset - wants.iter().map(|w| *w as u64).sum::<u64>();
+        let (used, _rest) = handles.split_at_mut(n);
+        let mut futs = Vec::with_capacity(n);
+        let mut abs = batch_base;
+        for (f, &want) in used.iter_mut().zip(wants.iter()) {
+            futs.push(sftp_pipelined_read_window(f, abs, want));
+            abs += want as u64;
+        }
+        let results = futures_util::future::try_join_all(futs).await?;
+
+        // Write in strict offset order; the first short read is EOF.
+        for (buf, &want) in results.iter().zip(wants.iter()) {
+            atomic
+                .write_all(buf)
+                .await
+                .map_err(|e| ProviderError::TransferFailed(format!("Write error: {}", e)))?;
+            transferred += buf.len() as u64;
+            if let Some(ref progress) = on_progress {
+                progress(transferred, total_size);
+            }
+            if buf.len() < want {
+                break 'outer;
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// PD-SFTP-2 per-range worker: dial an **independent** SSH+SFTP connection
 /// from `spec`, seek to `start`, and stream **exactly** `end - start + 1`
 /// bytes into `temp_path` at absolute offset `start`. One call == one fresh
@@ -2103,6 +2306,39 @@ async fn sftp_download_one_range(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pd_pipe1_flag_is_off_by_default_and_capped() {
+        // diff-0 default: unset / falsey / the degenerate "1" window all
+        // mean "serial loop", i.e. None.
+        assert_eq!(parse_sftp_read_pipeline_window(None), None);
+        for off in ["", " ", "0", "1", "false", "off", "no", "FALSE", "Off"] {
+            assert_eq!(parse_sftp_read_pipeline_window(Some(off)), None, "{off:?}");
+        }
+        // Truthy words enable the default window.
+        for on in ["true", "on", "yes", "TRUE", " On "] {
+            assert_eq!(
+                parse_sftp_read_pipeline_window(Some(on)),
+                Some(SFTP_PIPELINE_DEFAULT_WINDOW),
+                "{on:?}"
+            );
+        }
+        // Explicit numeric window, only >= 2 enables; capped at the max.
+        assert_eq!(parse_sftp_read_pipeline_window(Some("2")), Some(2));
+        assert_eq!(parse_sftp_read_pipeline_window(Some("16")), Some(16));
+        assert_eq!(
+            parse_sftp_read_pipeline_window(Some("9999")),
+            Some(SFTP_PIPELINE_MAX_WINDOW)
+        );
+        // Junk is safe-off.
+        for junk in ["abc", "-3", "2.5", "0x10"] {
+            assert_eq!(
+                parse_sftp_read_pipeline_window(Some(junk)),
+                None,
+                "{junk:?}"
+            );
+        }
+    }
 
     #[test]
     fn shell_single_quote_neutralises_injection() {
