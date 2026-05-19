@@ -18,6 +18,7 @@ import { ExportImportDialog } from './ExportImportDialog';
 import { useTranslation } from '../i18n';
 import { ProtocolSelector, ProtocolFields, getDefaultPort } from './ProtocolSelector';
 import { ProviderModeTabs } from './ProviderModeTabs';
+import { TotpLivePreview } from './TotpLivePreview';
 import { resolveModeHeader } from './providerModeGroups';
 import { OAuthConnect } from './OAuthConnect';
 import { ProviderSelector } from './ProviderSelector';
@@ -3406,6 +3407,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 spellCheck={false}
                                             />
                                             <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{t('connection.totpSecretHelp')}</p>
+                                            <TotpLivePreview secret={connectionParams.options?.totp_secret || ''} t={t} />
                                         </div>
 
                                         <div className="bg-emerald-50 dark:bg-emerald-900/10 p-3 rounded-lg border border-emerald-100 dark:border-emerald-900/30 text-xs text-emerald-800 dark:text-emerald-200">
@@ -3786,6 +3788,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 spellCheck={false}
                                             />
                                             <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{t('connection.totpSecretHelp')}</p>
+                                            <TotpLivePreview secret={connectionParams.options?.totp_secret || ''} t={t} />
                                         </div>
 
                                         <div className="space-y-2">
