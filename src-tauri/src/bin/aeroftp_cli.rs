@@ -914,6 +914,20 @@ enum Commands {
         #[arg(default_value = "")]
         path: String,
     },
+    /// Recursively remove EMPTY directories under a path (files and
+    /// non-empty directories are left untouched; the path itself is
+    /// never removed). Dry-run by default; --force to delete.
+    Rmdirs {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_", hide_default_value = true)]
+        url: String,
+        /// Remote path to prune (default: /)
+        #[arg(default_value = "/")]
+        path: String,
+        /// Actually remove the empty directories (default: dry-run)
+        #[arg(long)]
+        force: bool,
+    },
     /// Show detailed server info, account, and storage quota
     About {
         /// Server URL (omit when using --profile)
@@ -19589,6 +19603,172 @@ async fn cmd_rmdir(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i3
     }
 }
 
+/// Order discovered directories for empty-prune: deepest first
+/// (post-order), so a child is always considered before its parent and a
+/// parent that only becomes empty after its children are pruned is still
+/// revisited later in the same single pass. Stable within a depth (by
+/// path) for deterministic output. Pure and side-effect free so the
+/// ordering guarantee is unit-testable without a live server.
+fn rmdirs_prune_order(mut dirs: Vec<(String, usize)>) -> Vec<String> {
+    dirs.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    dirs.into_iter().map(|(p, _)| p).collect()
+}
+
+/// `rmdirs`: recursively remove **empty** directories under a path,
+/// leaving every file and every non-empty directory untouched. The
+/// target path itself is never removed (only its empty descendants).
+/// Dry-run by default; `--force` performs the deletions. Honors the
+/// shared CLI safety primitives (`validate_relative_path`, depth/entry
+/// caps, exit-code taxonomy, `--json`).
+async fn cmd_rmdirs(url: &str, path: &str, force: bool, cli: &Cli, format: OutputFormat) -> i32 {
+    let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    let root = resolve_cli_remote_path(&initial_path, path);
+    let quiet = cli.quiet || matches!(format, OutputFormat::Json);
+    let root_norm = root.trim_end_matches('/').to_string();
+    let max_depth = cli.max_depth.map(|d| d as usize).unwrap_or(MAX_SCAN_DEPTH);
+
+    if !quiet {
+        eprintln!("Scanning {} for empty directories...", root);
+    }
+
+    // BFS-collect every directory under `root`, tracking depth and
+    // rejecting any listing-derived component that attempts traversal.
+    let mut found: Vec<(String, usize)> = Vec::new();
+    let mut stack: Vec<(String, usize)> = vec![(root.clone(), 0usize)];
+    let mut scan_errors = 0u32;
+    let mut exit_code = 0i32;
+    let mut capped = false;
+
+    while let Some((dir, depth)) = stack.pop() {
+        if depth >= max_depth {
+            continue;
+        }
+        if found.len() >= MAX_SCAN_ENTRIES {
+            capped = true;
+            break;
+        }
+        match provider.list(&dir).await {
+            Ok(entries) => {
+                for entry in entries {
+                    if !entry.is_dir {
+                        continue;
+                    }
+                    let rel = entry.path.strip_prefix(&root_norm).unwrap_or(&entry.path);
+                    if validate_relative_path(rel).is_none() {
+                        continue;
+                    }
+                    if found.len() >= MAX_SCAN_ENTRIES {
+                        capped = true;
+                        break;
+                    }
+                    found.push((entry.path.clone(), depth + 1));
+                    stack.push((entry.path.clone(), depth + 1));
+                }
+            }
+            Err(e) => {
+                scan_errors += 1;
+                if exit_code == 0 {
+                    exit_code = provider_error_to_exit_code(&e);
+                }
+                if !quiet {
+                    eprintln!("  Failed to list {}: {}", dir, e);
+                }
+            }
+        }
+    }
+    if capped && !quiet {
+        eprintln!("Warning: scan capped at {} entries", MAX_SCAN_ENTRIES);
+    }
+
+    // Deepest-first: pruning a leaf empties its parent before we reach
+    // the (shallower, later) parent, so one pass cascades correctly.
+    let ordered = rmdirs_prune_order(found);
+
+    let mut removed: Vec<String> = Vec::new();
+    let mut kept_nonempty = 0usize;
+    let mut delete_errors = 0u32;
+
+    for dir in ordered {
+        match provider.list(&dir).await {
+            Ok(entries) if entries.is_empty() => {
+                if force {
+                    match provider.rmdir(&dir).await {
+                        Ok(()) => removed.push(dir),
+                        Err(e) => {
+                            delete_errors += 1;
+                            if exit_code == 0 {
+                                exit_code = provider_error_to_exit_code(&e);
+                            }
+                            if !quiet {
+                                eprintln!("  Failed to rmdir {}: {}", dir, e);
+                            }
+                        }
+                    }
+                } else {
+                    // Dry-run: this directory would be removed.
+                    removed.push(dir);
+                }
+            }
+            Ok(_) => kept_nonempty += 1,
+            Err(e) => {
+                scan_errors += 1;
+                if exit_code == 0 {
+                    exit_code = provider_error_to_exit_code(&e);
+                }
+                if !quiet {
+                    eprintln!("  Failed to re-list {}: {}", dir, e);
+                }
+            }
+        }
+    }
+
+    let _ = provider.disconnect().await;
+
+    let clean = scan_errors == 0 && delete_errors == 0;
+    match format {
+        OutputFormat::Json => {
+            print_json(&serde_json::json!({
+                "status": if clean { "ok" } else { "partial" },
+                "dry_run": !force,
+                "removed": removed,
+                "removed_count": removed.len(),
+                "kept_nonempty": kept_nonempty,
+                "scan_errors": scan_errors,
+                "delete_errors": delete_errors,
+            }));
+        }
+        OutputFormat::Text => {
+            let n = removed.len();
+            let plural = if n == 1 { "y" } else { "ies" };
+            if n == 0 {
+                eprintln!("No empty directories to prune under {}.", root);
+            } else if force {
+                eprintln!("Removed {} empty director{}:", n, plural);
+                for d in &removed {
+                    eprintln!("  {}", d);
+                }
+            } else {
+                eprintln!(
+                    "Would remove {} empty director{} (use --force to delete):",
+                    n, plural
+                );
+                for d in &removed {
+                    eprintln!("  {}", d);
+                }
+            }
+        }
+    }
+
+    if clean {
+        0
+    } else {
+        exit_code.max(4)
+    }
+}
+
 /// One record of the `lsjson` output. Field names and order are a stable
 /// public contract (scripts/CI parse this): keep them as declared. Optional
 /// fields are skipped entirely (not emitted as empty) when their flag is set.
@@ -35505,6 +35685,14 @@ async fn main() {
             };
             cmd_rmdir(u, p, &cli, format).await
         }
+        Commands::Rmdirs { url, path, force } => {
+            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                ("_", url.as_str())
+            } else {
+                (url.as_str(), path.as_str())
+            };
+            cmd_rmdirs(u, p, *force, &cli, format).await
+        }
         Commands::Tree { url, path, depth } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str())
@@ -38896,5 +39084,44 @@ mod tests {
         // flattened details
         assert!((v["percent"].as_f64().unwrap() - 87.5).abs() < 1e-9);
         assert!((v["threshold"].as_f64().unwrap() - 80.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn rmdirs_prune_order_is_deepest_first_then_stable_by_path() {
+        // A child must precede its parent so a single bottom-up pass
+        // cascades (pruning the leaf empties the parent before we reach
+        // the shallower parent later in the same list).
+        let dirs = vec![
+            ("/a".to_string(), 1),
+            ("/a/b".to_string(), 2),
+            ("/a/b/c".to_string(), 3),
+            ("/a/x".to_string(), 2),
+            ("/z".to_string(), 1),
+        ];
+        let ordered = rmdirs_prune_order(dirs);
+        assert_eq!(
+            ordered,
+            vec![
+                "/a/b/c".to_string(), // depth 3
+                "/a/b".to_string(),   // depth 2 (path < /a/x)
+                "/a/x".to_string(),   // depth 2
+                "/a".to_string(),     // depth 1 (path < /z)
+                "/z".to_string(),     // depth 1
+            ]
+        );
+        // Every child index precedes its parent's index.
+        let pos = |p: &str| ordered.iter().position(|x| x == p).unwrap();
+        assert!(pos("/a/b/c") < pos("/a/b"));
+        assert!(pos("/a/b") < pos("/a"));
+        assert!(pos("/a/x") < pos("/a"));
+    }
+
+    #[test]
+    fn rmdirs_prune_order_handles_empty_and_singleton() {
+        assert!(rmdirs_prune_order(vec![]).is_empty());
+        assert_eq!(
+            rmdirs_prune_order(vec![("/only".to_string(), 1)]),
+            vec!["/only".to_string()]
+        );
     }
 }
