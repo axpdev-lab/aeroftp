@@ -61,6 +61,66 @@ impl Drop for ReaderGuard {
 /// is torn down abnormally.
 pub const EXIT_ABNORMAL: u32 = 255;
 
+/// Loop-control decision derived from a channel message.
+///
+/// Factored out of the async reader so the `Eof` / `Close` /
+/// late-`ExitStatus` ordering (the part that must never regress) is
+/// deterministically unit-testable without a live SSH channel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReaderControl {
+    /// Keep reading with the normal unbounded wait.
+    Continue,
+    /// `Eof` observed: keep reading (a late `ExitStatus` may still arrive
+    /// before `Close`) but bound subsequent waits.
+    Drain,
+    /// Channel definitively closed: stop the reader.
+    Stop,
+}
+
+/// Tracks the authoritative remote exit across the reader's lifetime.
+///
+/// The first `ExitStatus` wins; `ExitSignal` maps to [`EXIT_ABNORMAL`]; if
+/// the channel ends without either, [`resolve`](Self::resolve) yields
+/// [`EXIT_ABNORMAL`] (the genuine-abnormal contract). This mirrors the
+/// previous take-once `oneshot` semantics, decoupled from the I/O loop.
+#[derive(Debug, Default)]
+struct ExitTracker {
+    code: Option<u32>,
+}
+
+impl ExitTracker {
+    /// Fold one channel message; returns what the reader loop should do.
+    /// Payload (stdout/stderr) forwarding stays in the async loop so this
+    /// is pure and side-effect free.
+    fn observe(&mut self, msg: &ChannelMsg) -> ReaderControl {
+        match msg {
+            ChannelMsg::ExitStatus { exit_status } => {
+                self.code.get_or_insert(*exit_status);
+                ReaderControl::Continue
+            }
+            ChannelMsg::ExitSignal { .. } => {
+                self.code.get_or_insert(EXIT_ABNORMAL);
+                ReaderControl::Continue
+            }
+            ChannelMsg::Eof => ReaderControl::Drain,
+            ChannelMsg::Close => ReaderControl::Stop,
+            // Data / ExtendedData / window adjustments / etc. are inert for
+            // exit accounting (their payloads are handled by the loop).
+            _ => ReaderControl::Continue,
+        }
+    }
+
+    /// Whether an authoritative status/signal has already been observed.
+    fn is_resolved(&self) -> bool {
+        self.code.is_some()
+    }
+
+    /// Exit code to deliver once the channel terminates definitively.
+    fn resolve(&self) -> u32 {
+        self.code.unwrap_or(EXIT_ABNORMAL)
+    }
+}
+
 /// Open a remote exec channel on `handle_shared` and run `command`.
 ///
 /// Returns immediately after the exec request has been acknowledged; caller pumps I/O
@@ -98,13 +158,37 @@ where
     let (exit_tx, exit_rx) = oneshot::channel::<u32>();
 
     let reader_task = tokio::spawn(async move {
-        let mut exit_sent: Option<oneshot::Sender<u32>> = Some(exit_tx);
-        'outer: while let Some(msg) = read_half.wait().await {
-            match msg {
+        let mut tracker = ExitTracker::default();
+        // After `Eof` a well-behaved server still owes us `exit-status`
+        // and then `Close` (RFC 4254 §6.10 permits `exit-status` to follow
+        // `Eof`). Breaking on `Eof` would drop a late `exit-status` and
+        // wrongly synthesize `EXIT_ABNORMAL`. So we keep draining past
+        // `Eof` until `Close`, but bound that post-`Eof` wait so a server
+        // that never sends `Close` cannot wedge the reader task.
+        const EOF_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
+        let mut draining = false;
+        'outer: loop {
+            let msg = if draining {
+                match tokio::time::timeout(EOF_GRACE, read_half.wait()).await {
+                    Ok(Some(m)) => m,
+                    // Stream ended, or the grace elapsed without `Close`:
+                    // stop (do not hang). `tracker.resolve()` preserves the
+                    // genuine-abnormal sentinel when no status was seen.
+                    Ok(None) | Err(_) => break 'outer,
+                }
+            } else {
+                match read_half.wait().await {
+                    Some(m) => m,
+                    None => break 'outer,
+                }
+            };
+            // Forward payload before interpreting control so the server's
+            // stdout/stderr ordering is preserved. The send happens in the
+            // guard; a closed consumer (send error) tears the reader down.
+            match &msg {
                 ChannelMsg::Data { data } if stdout_tx.send(data.to_vec()).is_err() => {
                     break 'outer;
                 }
-                ChannelMsg::Data { .. } => {}
                 // SSH_EXTENDED_DATA_STDERR = 1 per RFC 4254 §5.2.
                 // Other ext streams are silently discarded.
                 ChannelMsg::ExtendedData { data, ext: 1 }
@@ -112,28 +196,24 @@ where
                 {
                     break 'outer;
                 }
-                ChannelMsg::ExtendedData { .. } => {}
-                ChannelMsg::ExitStatus { exit_status } => {
-                    if let Some(tx) = exit_sent.take() {
-                        let _ = tx.send(exit_status);
-                    }
-                }
-                ChannelMsg::ExitSignal { .. } => {
-                    // Signaled termination: treat as abnormal if no status was sent.
-                    if let Some(tx) = exit_sent.take() {
-                        let _ = tx.send(EXIT_ABNORMAL);
-                    }
-                }
-                ChannelMsg::Eof | ChannelMsg::Close => {
-                    break;
-                }
                 _ => {}
             }
+            match tracker.observe(&msg) {
+                ReaderControl::Continue => {}
+                ReaderControl::Drain => {
+                    // Already have an authoritative status: nothing useful
+                    // can still arrive, so stop now instead of paying the
+                    // grace wait for a `Close` we no longer need.
+                    if tracker.is_resolved() {
+                        break 'outer;
+                    }
+                    draining = true;
+                }
+                ReaderControl::Stop => break 'outer,
+            }
         }
-        // Channel closed without an ExitStatus: synthesize abnormal exit.
-        if let Some(tx) = exit_sent.take() {
-            let _ = tx.send(EXIT_ABNORMAL);
-        }
+        // Delivered once, at definitive channel termination.
+        let _ = exit_tx.send(tracker.resolve());
     });
 
     Ok(ExecSession {
@@ -195,4 +275,142 @@ where
 
     let exit = session.exit_rx.await.unwrap_or(EXIT_ABNORMAL);
     Ok((stdout, stderr, exit))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use russh::ChannelMsg;
+
+    /// Faithful, synchronous re-enactment of the reader task's control
+    /// flow (the only thing dropped is the async I/O and the post-`Eof`
+    /// `tokio::time::timeout`; an exhausted message slice models exactly
+    /// the two non-`Close` terminations: stream end and grace expiry).
+    /// Production and this driver share `ExitTracker::observe` /
+    /// `is_resolved` / `resolve`, so the regression is locked at its
+    /// source: if `Eof` ever maps back to `Stop`, the late-`ExitStatus`
+    /// cases below flip to 255 and fail.
+    fn drive(msgs: Vec<ChannelMsg>) -> u32 {
+        let mut tracker = ExitTracker::default();
+        let mut draining = false;
+        for msg in msgs {
+            match tracker.observe(&msg) {
+                ReaderControl::Continue => {}
+                ReaderControl::Drain => {
+                    if tracker.is_resolved() {
+                        break;
+                    }
+                    draining = true;
+                }
+                ReaderControl::Stop => break,
+            }
+        }
+        let _ = draining; // mirrors the loop's bounded-wait latch
+        tracker.resolve()
+    }
+
+    fn exit_signal() -> ChannelMsg {
+        ChannelMsg::ExitSignal {
+            signal_name: russh::Sig::TERM,
+            core_dumped: false,
+            error_message: String::new(),
+            lang_tag: String::new(),
+        }
+    }
+
+    // `Data`/`ExtendedData` need a `bytes::Bytes` (not a direct dep); for
+    // exit accounting they are inert and classify exactly like any other
+    // payload-bearing message via the `_` arm. `Success` is a
+    // construct-without-bytes stand-in for "a non-control message arrived
+    // before EOF" and proves it does not perturb the late-exit capture.
+    fn data_like() -> ChannelMsg {
+        ChannelMsg::Success
+    }
+
+    #[test]
+    fn late_exit_status_between_eof_and_close_is_captured() {
+        // The headline regression: server sends data, EOF, THEN the real
+        // exit-status, THEN Close. The old `break` on `Eof` dropped the
+        // status and synthesized 255; we must report the true 0.
+        let exit = drive(vec![
+            data_like(),
+            ChannelMsg::Eof,
+            ChannelMsg::ExitStatus { exit_status: 0 },
+            ChannelMsg::Close,
+        ]);
+        assert_eq!(exit, 0, "late exit-status after EOF must win, not 255");
+    }
+
+    #[test]
+    fn late_nonzero_exit_status_after_eof_is_preserved() {
+        let exit = drive(vec![
+            data_like(),
+            ChannelMsg::Eof,
+            ChannelMsg::ExitStatus { exit_status: 3 },
+            ChannelMsg::Close,
+        ]);
+        assert_eq!(exit, 3);
+    }
+
+    #[test]
+    fn close_without_any_status_stays_abnormal() {
+        let exit = drive(vec![data_like(), ChannelMsg::Eof, ChannelMsg::Close]);
+        assert_eq!(exit, EXIT_ABNORMAL);
+    }
+
+    #[test]
+    fn stream_end_after_eof_without_close_does_not_hang_and_is_abnormal() {
+        // No `Close` ever: in production the post-EOF grace elapses; here
+        // the slice simply ends. Both terminate (no hang) and, with no
+        // status seen, report the genuine-abnormal sentinel.
+        let exit = drive(vec![data_like(), ChannelMsg::Eof]);
+        assert_eq!(exit, EXIT_ABNORMAL);
+    }
+
+    #[test]
+    fn exit_signal_maps_to_abnormal() {
+        let exit = drive(vec![exit_signal(), ChannelMsg::Close]);
+        assert_eq!(exit, EXIT_ABNORMAL);
+    }
+
+    #[test]
+    fn normal_order_exit_status_before_eof_is_zero() {
+        // Common case: exit-status precedes EOF. The fast path stops at
+        // EOF (already resolved) and reports the real code.
+        let exit = drive(vec![
+            ChannelMsg::ExitStatus { exit_status: 0 },
+            ChannelMsg::Eof,
+            ChannelMsg::Close,
+        ]);
+        assert_eq!(exit, 0);
+    }
+
+    #[test]
+    fn first_status_wins_over_a_later_signal() {
+        // Take-once semantics preserved from the previous oneshot design.
+        let exit = drive(vec![
+            ChannelMsg::ExitStatus { exit_status: 0 },
+            exit_signal(),
+            ChannelMsg::Close,
+        ]);
+        assert_eq!(exit, 0);
+    }
+
+    #[test]
+    fn control_classification_is_stable() {
+        let mut t = ExitTracker::default();
+        assert_eq!(t.observe(&data_like()), ReaderControl::Continue);
+        assert_eq!(t.observe(&ChannelMsg::Eof), ReaderControl::Drain);
+        assert_eq!(
+            t.observe(&ChannelMsg::ExitStatus { exit_status: 0 }),
+            ReaderControl::Continue
+        );
+        assert!(t.is_resolved());
+        assert_eq!(t.observe(&ChannelMsg::Close), ReaderControl::Stop);
+        assert_eq!(exit_signal_control(), ReaderControl::Continue);
+    }
+
+    fn exit_signal_control() -> ReaderControl {
+        ExitTracker::default().observe(&exit_signal())
+    }
 }
