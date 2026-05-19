@@ -126,17 +126,42 @@ parts:
       - iso-codes
       - libglu1-mesa
     override-build: |
-      # Copy pre-built binary
+      # Copy pre-built dispatcher layout
       mkdir -p $SNAPCRAFT_PART_INSTALL/usr/bin
+      mkdir -p $SNAPCRAFT_PART_INSTALL/usr/lib/aeroftp
       mkdir -p $SNAPCRAFT_PART_INSTALL/usr/share/icons/hicolor/256x256/apps
       mkdir -p $SNAPCRAFT_PART_INSTALL/usr/share/applications
       
       if [ -f src-tauri/target/release/aeroftp ]; then
-        cp src-tauri/target/release/aeroftp $SNAPCRAFT_PART_INSTALL/usr/bin/
-        chmod +x $SNAPCRAFT_PART_INSTALL/usr/bin/aeroftp
-        echo "Binary copied successfully"
+        cp src-tauri/target/release/aeroftp $SNAPCRAFT_PART_INSTALL/usr/lib/aeroftp/aeroftp.bin
+        chmod +x $SNAPCRAFT_PART_INSTALL/usr/lib/aeroftp/aeroftp.bin
+        echo "GUI payload copied successfully"
       else
-        echo "ERROR: Binary not found at src-tauri/target/release/aeroftp"
+        echo "ERROR: GUI binary not found at src-tauri/target/release/aeroftp"
+        ls -la src-tauri/target/release/ || echo "Release directory not found"
+        exit 1
+      fi
+
+      if [ -f src-tauri/target/release/aeroftp-dispatch-bundle/aeroftp-cli ]; then
+        cp src-tauri/target/release/aeroftp-dispatch-bundle/aeroftp-cli $SNAPCRAFT_PART_INSTALL/usr/lib/aeroftp/aeroftp-cli
+        chmod +x $SNAPCRAFT_PART_INSTALL/usr/lib/aeroftp/aeroftp-cli
+        echo "CLI payload copied successfully"
+      else
+        echo "ERROR: CLI binary not found at src-tauri/target/release/aeroftp-dispatch-bundle/aeroftp-cli"
+        ls -la src-tauri/target/release/ || echo "Release directory not found"
+        exit 1
+      fi
+
+      if [ -f src-tauri/target/release/aeroftp-dispatch-bundle/aeroftp-dispatch ]; then
+        cp src-tauri/target/release/aeroftp-dispatch-bundle/aeroftp-dispatch $SNAPCRAFT_PART_INSTALL/usr/bin/aeroftp
+        cp src-tauri/target/release/aeroftp-dispatch-bundle/aeroftp-dispatch $SNAPCRAFT_PART_INSTALL/usr/lib/aeroftp/aeroftp-dispatch
+        chmod +x $SNAPCRAFT_PART_INSTALL/usr/bin/aeroftp
+        chmod +x $SNAPCRAFT_PART_INSTALL/usr/lib/aeroftp/aeroftp-dispatch
+        ln -sfn aeroftp $SNAPCRAFT_PART_INSTALL/usr/bin/aftp
+        ln -sfn aeroftp $SNAPCRAFT_PART_INSTALL/usr/bin/aeroftp-cli
+        echo "Dispatcher and aliases copied successfully"
+      else
+        echo "ERROR: dispatcher binary not found at src-tauri/target/release/aeroftp-dispatch-bundle/aeroftp-dispatch"
         ls -la src-tauri/target/release/ || echo "Release directory not found"
         exit 1
       fi
@@ -149,7 +174,7 @@ parts:
       [Desktop Entry]
       Name=AeroFTP
       Comment=Multi-Protocol File Client with AI & Encryption (Snap - Limited FS)
-      Exec=aeroftp %f
+      Exec=aeroftp %U
       Icon=${SNAP}/usr/share/icons/hicolor/256x256/apps/aeroftp.png
       Terminal=false
       Type=Application

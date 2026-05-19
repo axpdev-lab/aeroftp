@@ -145,6 +145,15 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Patch Debian dispatcher layout
+        if: matrix.target == 'linux'
+        shell: bash
+        run: |
+          shopt -s nullglob
+          for deb in src-tauri/target/release/bundle/deb/*.deb; do
+            src-tauri/scripts/patch-deb-dispatch.sh "$deb"
+          done
+
       # Fix Tauri AppImage for cross-distro compatibility (issue #90).
       #
       # Problem: linuxdeploy bundles shared libraries (WebKitGTK, GStreamer, etc.)
@@ -183,7 +192,10 @@ jobs:
             echo "Fixed: .DirIcon -> $ICON (relative)"
           fi
 
-          # --- Fix 2: Remove all bundled shared libraries (issue #90) ---
+          # --- Fix 2: dispatcher layout ---
+          "$GITHUB_WORKSPACE/src-tauri/scripts/patch-appimage-dispatch.sh" "$(pwd)" "$GITHUB_WORKSPACE"
+
+          # --- Fix 3: Remove all bundled shared libraries (issue #90) ---
           # Keeps: binary, icons, desktop file, AppRun, metadata.
           # Removes: usr/lib/*.so* (WebKitGTK, GStreamer, GLib, etc.)
           LIB_COUNT=$(find usr/lib -name '*.so*' -type f -o -name '*.so*' -type l 2>/dev/null | wc -l)
