@@ -4474,6 +4474,37 @@ fn session_transfer_add(bytes: u64) -> u64 {
     SESSION_TRANSFERRED_BYTES.fetch_add(bytes, Ordering::Relaxed) + bytes
 }
 
+/// Truncate a batch file list to the remaining `--max-transfer` session
+/// budget, returning `(kept, skipped)`. File-granular, mirroring the
+/// legacy per-file `session_transfer_exceeded` check: a file is started
+/// while the session is still under the cap (so the file that crosses the
+/// cap still transfers fully), and every file after the cap is reached is
+/// skipped. This is deterministic single-overshoot, i.e. at most one file
+/// crosses the cap, which is stricter and more predictable than the legacy
+/// concurrent check (where up to `--parallel` files could be in flight
+/// past the cap). It is never a silent no-op: the shared executor emits an
+/// honest note when `skipped > 0` and post-accounts the real transferred
+/// bytes so the exit-code-8 session gate fires on the converged path too.
+fn cap_files_to_max_transfer(
+    files: &[(String, String, u64)],
+    cli: &Cli,
+) -> (Vec<(String, String, u64)>, usize) {
+    let Some(limit) = resolve_max_transfer(cli) else {
+        return (files.to_vec(), 0);
+    };
+    let mut running = SESSION_TRANSFERRED_BYTES.load(Ordering::Relaxed);
+    let mut kept: Vec<(String, String, u64)> = Vec::with_capacity(files.len());
+    for f in files {
+        if running >= limit {
+            break;
+        }
+        running = running.saturating_add(f.2);
+        kept.push(f.clone());
+    }
+    let skipped = files.len() - kept.len();
+    (kept, skipped)
+}
+
 // ── Retry helper ──────────────────────────────────────────────────
 
 /// Parse a duration string like "5s", "1m", "500ms", "0" into Duration.
@@ -4791,6 +4822,12 @@ impl ftp_client_gui_lib::transfer_event_sink::TransferEventSink for CliBatchSink
 /// by `min(workers, provider session cap)`. Parallelism is preserved up to
 /// the provider's advertised safe cap; beyond it the shared engine clamps
 /// deliberately (surfaced honestly), it never silently serialises.
+///
+/// `--max-transfer` is enforced here, not bypassed: the file list is
+/// pre-flight truncated to the remaining session budget (file-granular,
+/// the legacy semantics) and the real transferred bytes are post-accounted
+/// into the session counter so the exit-code-8 gate fires on the converged
+/// path. A non-empty skip emits an honest note.
 async fn run_shared_provider_download_batch(
     base: Box<dyn StorageProvider>,
     files: &[(String, String, u64)],
@@ -4832,6 +4869,18 @@ async fn run_shared_provider_download_batch(
             .expect("base provider must still be present");
         return Err(base);
     }
+
+    // --max-transfer: pre-flight truncate to the remaining session budget
+    // (file-granular, the legacy `session_transfer_exceeded` semantics) so
+    // the flag is enforced on the converged path, never a silent no-op.
+    let (capped, max_transfer_skipped) = cap_files_to_max_transfer(files, cli);
+    if max_transfer_skipped > 0 && !cli.quiet {
+        eprintln!(
+            "Note: --max-transfer reached, skipped {} file(s) (session byte limit)",
+            max_transfer_skipped
+        );
+    }
+    let files = &capped;
 
     // The shared executor writes `<local>.aerotmp` then atomically
     // renames; it does not mkdir parents. Pre-create them (idempotent),
@@ -4909,12 +4958,19 @@ async fn run_shared_provider_download_batch(
         model,
     ));
 
+    // `BatchProgressSnapshot.bytes_transferred` is monotonic (sum of
+    // succeeded `entry.size`); the observer fires after every task, so the
+    // max observed value is the true transferred total, post-accounted
+    // into the session counter for --max-transfer / exit-code-8.
+    let transferred = Arc::new(AtomicU64::new(0));
     let progress_observer: ProgressObserver = {
         let overall_pb = overall_pb.clone();
+        let transferred = transferred.clone();
         Arc::new(move |snapshot| {
             if let Some(pb) = overall_pb.as_ref() {
                 pb.set_position(snapshot.bytes_transferred);
             }
+            transferred.fetch_max(snapshot.bytes_transferred, Ordering::Relaxed);
         })
     };
 
@@ -4934,6 +4990,8 @@ async fn run_shared_provider_download_batch(
     if let Some(mut base) = provider_arc.lock().await.take() {
         let _ = base.disconnect().await;
     }
+
+    session_transfer_add(transferred.load(Ordering::Relaxed));
 
     Ok(SharedDownloadOutcome {
         downloaded: batch_result.completed,
@@ -4965,9 +5023,11 @@ struct SharedUploadOutcome {
 /// `--immutable` is NOT honoured here (the shared upload executor has no
 /// remote-stat skip, and unlike `get -r` the put scan does not
 /// pre-filter existing remote files); callers MUST keep `cli.immutable`
-/// uploads on the legacy path. `--max-transfer` session accounting is
-/// likewise bypassed on the shared path, matching the shipped download
-/// convergence (PD-CLI-CONV-B); the legacy fallback still enforces it.
+/// uploads on the legacy path and emit an honest note when they do.
+/// `--max-transfer` IS enforced here: the file list is pre-flight
+/// truncated to the remaining session budget (file-granular, the legacy
+/// semantics) and the real transferred bytes are post-accounted into the
+/// session counter so the exit-code-8 gate fires on the converged path.
 /// Remote parent directories must be pre-created by the caller while the
 /// scan provider is connected (the shared executor does not mkdir).
 ///
@@ -5019,6 +5079,18 @@ async fn run_shared_provider_upload_batch(
             .expect("base provider must still be present");
         return Err(base);
     }
+
+    // --max-transfer: pre-flight truncate to the remaining session budget
+    // (file-granular, the legacy `session_transfer_exceeded` semantics) so
+    // the flag is enforced on the converged path, never a silent no-op.
+    let (capped, max_transfer_skipped) = cap_files_to_max_transfer(files, cli);
+    if max_transfer_skipped > 0 && !cli.quiet {
+        eprintln!(
+            "Note: --max-transfer reached, skipped {} file(s) (session byte limit)",
+            max_transfer_skipped
+        );
+    }
+    let files = &capped;
 
     // `resolve_provider_transfer_settings` caps max_concurrent to 1 (GUI
     // policy). The executor only reads retry/timeout from it; the real
@@ -5088,12 +5160,19 @@ async fn run_shared_provider_upload_batch(
         model,
     ));
 
+    // `BatchProgressSnapshot.bytes_transferred` is monotonic (sum of
+    // succeeded `entry.size`); the observer fires after every task, so the
+    // max observed value is the true transferred total, post-accounted
+    // into the session counter for --max-transfer / exit-code-8.
+    let transferred = Arc::new(AtomicU64::new(0));
     let progress_observer: ProgressObserver = {
         let overall_pb = overall_pb.clone();
+        let transferred = transferred.clone();
         Arc::new(move |snapshot| {
             if let Some(pb) = overall_pb.as_ref() {
                 pb.set_position(snapshot.bytes_transferred);
             }
+            transferred.fetch_max(snapshot.bytes_transferred, Ordering::Relaxed);
         })
     };
 
@@ -5113,6 +5192,8 @@ async fn run_shared_provider_upload_batch(
     if let Some(mut base) = provider_arc.lock().await.take() {
         let _ = base.disconnect().await;
     }
+
+    session_transfer_add(transferred.load(Ordering::Relaxed));
 
     Ok(SharedUploadOutcome {
         uploaded: batch_result.completed,
@@ -14788,6 +14869,11 @@ async fn cmd_get_recursive(
 
     if downloaded == total_files as u32 {
         0
+    } else if session_transfer_exceeded(resolve_max_transfer(cli)) {
+        // The deficit is an intentional, signalled --max-transfer cap
+        // (honest note already emitted), not a transfer failure: the
+        // dedicated exit code, consistent with the legacy path.
+        8
     } else {
         4
     }
@@ -14891,6 +14977,27 @@ async fn cmd_get_glob(
         files.push((entry.path.clone(), local_path, entry.size));
     }
 
+    // --immutable: pre-filter files whose local target already exists, so
+    // BOTH the shared executor and the legacy fallback are immutable-clean
+    // by construction. Coherent with `get -r` (scan pre-filter) and `sync`
+    // (plan strip); without this `get --glob` would silently ignore
+    // --immutable on both paths (neither the shared executor nor
+    // `download_transfer_task` has a skip-if-exists check). The skipped
+    // count is intentional (not a failure): it is added back to the exit
+    // accounting below so an immutable run is exit 0, like `get -r`.
+    let mut immutable_skipped: u32 = 0;
+    if cli.immutable {
+        let before = files.len();
+        files.retain(|(_, local_path, _)| !Path::new(local_path).exists());
+        immutable_skipped = (before - files.len()) as u32;
+        if immutable_skipped > 0 && !cli.quiet {
+            eprintln!(
+                "Note: --immutable skipped {} file(s) that already exist locally",
+                immutable_skipped
+            );
+        }
+    }
+
     // PD-CLI-CONV-C: converge the glob file-level batch on the SAME shared
     // provider executor + orchestrator `aeroftp get -r` uses
     // (PD-CLI-CONV-B), sink-agnostic. Pool-backed providers (clone-pool:
@@ -14985,8 +15092,15 @@ async fn cmd_get_glob(
         }
     }
 
-    if downloaded == total as u32 {
+    if downloaded + immutable_skipped == total as u32 {
+        // --immutable skips are intentional (honest note emitted), not a
+        // deficit: counted toward success like `get -r` / `cmd_put_recursive`.
         0
+    } else if session_transfer_exceeded(resolve_max_transfer(cli)) {
+        // Intentional --max-transfer cap (honest note already emitted),
+        // not a transfer failure: the dedicated exit code, consistent
+        // with the legacy path.
+        8
     } else {
         4
     }
@@ -15438,6 +15552,12 @@ async fn cmd_put_recursive(
     // single-conn APIs) fall back to the legacy independent-connection
     // batch below: honest fallback, no overclaim.
     let use_legacy = if cli.immutable {
+        if !cli.quiet {
+            eprintln!(
+                "Note: --immutable uses the single-stream upload path \
+                 (the pooled uploader has no remote-existence check)"
+            );
+        }
         let _ = provider.disconnect().await;
         true
     } else {
@@ -15547,6 +15667,11 @@ async fn cmd_put_recursive(
         } else {
             0
         }
+    } else if session_transfer_exceeded(resolve_max_transfer(cli)) {
+        // Intentional --max-transfer cap (honest note already emitted),
+        // not a transfer failure: the dedicated exit code, consistent
+        // with the legacy path.
+        8
     } else {
         4
     }
@@ -23593,8 +23718,10 @@ async fn cmd_sync(
         // here: the sync plan already stripped immutable-conflicting paths
         // from `to_upload` (the `--immutable` retain pass earlier), so the
         // batch list is immutable-clean by construction. `--max-transfer`
-        // is not enforced on the shared path (tracked PD-UX-1); the legacy
-        // fallback below still enforces it. A separate base connection is
+        // IS enforced on the shared path (PD-UX-1: the shared batch
+        // pre-flight truncates to the remaining session budget and
+        // post-accounts the real bytes); the legacy fallback below also
+        // enforces it per-file. A separate base connection is
         // opened only as the clone-pool spec source (the original scan
         // `provider` stays alive for the post-transfer rename/delete);
         // non-pool-backed providers (FTP, single-conn APIs) fall back to
@@ -23740,9 +23867,10 @@ async fn cmd_sync(
     // above (sequential preserve-then-download); only the canonical download
     // stream is converged. The shared executor pre-creates local parent
     // dirs and writes `<local>.aerotmp` then atomically renames, matching
-    // the legacy per-file `create_dir_all`. `--max-transfer` is not enforced
-    // on the shared path (tracked PD-UX-1); the legacy fallback below still
-    // enforces it. A separate base connection is opened only as the
+    // the legacy per-file `create_dir_all`. `--max-transfer` IS enforced
+    // on the shared path (PD-UX-1: pre-flight budget truncation + real
+    // post-accounting); the legacy fallback below also enforces it. A
+    // separate base connection is opened only as the
     // clone-pool spec source (the scan `provider` stays alive for the
     // post-transfer rename/delete); non-pool-backed providers fall back to
     // the legacy independent-connection batch: honest fallback, no overclaim.
@@ -23942,7 +24070,16 @@ async fn cmd_sync(
 
     let _ = provider.disconnect().await;
     SyncCycleStats {
-        exit_code: if errors.is_empty() { 0 } else { 4 },
+        exit_code: if !errors.is_empty() {
+            4
+        } else if session_transfer_exceeded(resolve_max_transfer(cli)) {
+            // Intentional --max-transfer cap (honest note already emitted
+            // by the shared batch), not a failure: the dedicated exit
+            // code, consistent with get/put/glob and the legacy path.
+            8
+        } else {
+            0
+        },
         uploaded,
         downloaded,
         deleted,
@@ -27400,6 +27537,12 @@ async fn cmd_put_glob(
     // non-pool-backed providers (FTP, single-conn APIs) stay on the
     // legacy independent-connection batch: honest fallback, no overclaim.
     let use_legacy = if cli.immutable {
+        if !cli.quiet {
+            eprintln!(
+                "Note: --immutable uses the single-stream upload path \
+                 (the pooled uploader has no remote-existence check)"
+            );
+        }
         true
     } else {
         match create_and_connect(url, cli, format).await {
@@ -27498,6 +27641,11 @@ async fn cmd_put_glob(
     }
     if uploaded == total as u32 {
         0
+    } else if session_transfer_exceeded(resolve_max_transfer(cli)) {
+        // Intentional --max-transfer cap (honest note already emitted),
+        // not a transfer failure: the dedicated exit code, consistent
+        // with the legacy path.
+        8
     } else {
         4
     }
@@ -37484,6 +37632,62 @@ mod tests {
     #[test]
     fn test_pget_effective_segments_zero_requested() {
         assert_eq!(pget_effective_segments(100 * 1024 * 1024, 0), 0);
+    }
+
+    // ── --max-transfer pre-flight cap (PD-UX-1) ──────────────────────
+
+    #[test]
+    fn test_cap_files_to_max_transfer() {
+        // This test owns the process-global session counter (no other
+        // test touches it), so it is deterministic under parallel runs.
+        let files: Vec<(String, String, u64)> = vec![
+            ("a".into(), "a".into(), 40),
+            ("b".into(), "b".into(), 40),
+            ("c".into(), "c".into(), 40),
+        ];
+
+        // No --max-transfer: every file kept, nothing skipped.
+        SESSION_TRANSFERRED_BYTES.store(0, Ordering::Relaxed);
+        let (kept, skipped) = cap_files_to_max_transfer(&files, &test_cli());
+        assert_eq!(kept.len(), 3);
+        assert_eq!(skipped, 0);
+
+        // Limit 100 B, fresh session: a file is started while the running
+        // total is still under the cap (it then transfers fully, the
+        // single-overshoot rule). running 0->40 (a), 40->80 (b),
+        // 80->120 (c): all three began under 100, so all three are kept.
+        SESSION_TRANSFERRED_BYTES.store(0, Ordering::Relaxed);
+        let cli = Cli {
+            max_transfer: Some("100".to_string()),
+            ..test_cli()
+        };
+        let (kept, skipped) = cap_files_to_max_transfer(&files, &cli);
+        assert_eq!(kept.len(), 3);
+        assert_eq!(skipped, 0);
+
+        // Session already spent 90 B against a 100 B cap: a starts
+        // (90 < 100) -> kept, running 130; b sees running >= 100 ->
+        // skipped, and so is c. Honest single-overshoot.
+        SESSION_TRANSFERRED_BYTES.store(90, Ordering::Relaxed);
+        let (kept, skipped) = cap_files_to_max_transfer(&files, &cli);
+        assert_eq!(kept.len(), 1);
+        assert_eq!(skipped, 2);
+
+        // Budget fully spent before the batch: every file skipped, never
+        // a silent no-op (caller emits the honest note).
+        SESSION_TRANSFERRED_BYTES.store(100, Ordering::Relaxed);
+        let (kept, skipped) = cap_files_to_max_transfer(&files, &cli);
+        assert!(kept.is_empty());
+        assert_eq!(skipped, 3);
+
+        // Empty input is a no-op regardless of the budget.
+        SESSION_TRANSFERRED_BYTES.store(0, Ordering::Relaxed);
+        let (kept, skipped) = cap_files_to_max_transfer(&[], &cli);
+        assert!(kept.is_empty());
+        assert_eq!(skipped, 0);
+
+        // Restore the global for any later-scheduled reader.
+        SESSION_TRANSFERRED_BYTES.store(0, Ordering::Relaxed);
     }
 
     // ── serve http helper tests ──────────────────────────────────────
