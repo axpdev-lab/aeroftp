@@ -211,7 +211,7 @@ aeroftp-cli ls sftp://user@host / -l --sort size --reverse
 aeroftp-cli ls sftp://user@host / --all
 ```
 
-### lsd / lsl / lsf - rclone-style List Variants
+### lsd / lsl / lsf - List Variants for Shell Pipelines
 
 ```bash
 # Directories only
@@ -224,7 +224,7 @@ aeroftp-cli lsl --profile "My S3" /backups
 aeroftp-cli lsf --profile "My S3" / | grep '\.tar\.gz$'
 ```
 
-Predictable list shapes for shell users coming from rclone. `lsd` shows only directories, `lsl` is the long format, and `lsf` prints bare entries one per line. The human summary always goes to stderr, so `lsf` stdout stays clean for pipelines. All three accept the same path and `--profile` rules as `ls`.
+Predictable list shapes for shell pipelines. `lsd` shows only directories, `lsl` is the long format, and `lsf` prints bare entries one per line. The human summary always goes to stderr, so `lsf` stdout stays clean for pipelines. All three accept the same path and `--profile` rules as `ls`.
 
 ### lsjson - Stable JSON Listing
 
@@ -347,7 +347,7 @@ aeroftp-cli purge --profile "My S3" /tmp/old-namespace
 aeroftp-cli purge --profile "My S3" /tmp/old-namespace --force
 ```
 
-Removes a path and everything under it (rclone-style `purge`). It routes through the same engine as `rm -r`, so it inherits the root guard (refuses to purge `/`), the confirmation prompt, and the shared error / exit-code mapping.
+Removes a path and everything under it. It routes through the same engine as `rm -r`, so it inherits the root guard (refuses to purge `/`), the confirmation prompt, and the shared error / exit-code mapping.
 
 ### mv - Rename / Move
 
@@ -451,7 +451,7 @@ aeroftp-cli size --profile "My S3" /
 aeroftp-cli --json size --profile "My S3" /backups
 ```
 
-Reports the recursive object count and total bytes under a path (rclone-style `size`). It reuses the same scan engine as `df --scan`: S3 flat list-recursive, WebDAV `Depth:infinity` with a BFS fallback, generic BFS elsewhere, and the same depth/entry caps. Files and directories are reported separately because SFTP/FTP/WebDAV model real directories that object stores do not. A capped scan sets `truncated: true` (JSON) or prints a `TRUNCATED` marker, so the figure is a clear lower bound. Never issues a per-file `stat()`.
+Reports the recursive object count and total bytes under a path. It reuses the same scan engine as `df --scan`: S3 flat list-recursive, WebDAV `Depth:infinity` with a BFS fallback, generic BFS elsewhere, and the same depth/entry caps. Files and directories are reported separately because SFTP/FTP/WebDAV model real directories that object stores do not. A capped scan sets `truncated: true` (JSON) or prints a `TRUNCATED` marker, so the figure is a clear lower bound. Never issues a per-file `stat()`.
 
 ### head - First N Lines
 
@@ -1160,7 +1160,7 @@ aeroftp-cli import rclone /path/to/rclone.conf
 aeroftp-cli import rclone --json
 ```
 
-Supports 17 rclone backend types (FTP, SFTP, S3, WebDAV, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob, Swift, Yandex Disk, Koofr, Jottacloud, Backblaze B2, OpenDrive). Passwords are de-obfuscated from rclone's reversible AES-256-CTR scheme. See the full [rclone Integration Guide](https://docs.aeroftp.app/features/rclone) for the complete backend mapping table and security comparison. For existing `rclone crypt` remotes (full read/write interop with transparent encrypted overlay session), see [rclone crypt interoperability](https://docs.aeroftp.app/features/rclone-crypt).
+Supports 17 rclone backend types (FTP, SFTP, S3, WebDAV, Google Drive, Dropbox, OneDrive, MEGA, Box, pCloud, Azure Blob, Swift, Yandex Disk, Koofr, Jottacloud, Backblaze B2, OpenDrive). Passwords are de-obfuscated from rclone's reversible AES-256-CTR scheme. See the full [rclone Integration Guide](https://docs.aeroftp.app/features/rclone) for the complete backend mapping table. For existing `rclone crypt` remotes (full read/write interop with transparent encrypted overlay session), see [rclone crypt interoperability](https://docs.aeroftp.app/features/rclone-crypt).
 
 #### import winscp
 
@@ -1406,7 +1406,7 @@ Returns the canonical task-oriented quick-start that agents should follow before
 aeroftp-cli agent-connect "AWS S3" --json
 ```
 
-Replaces the boilerplate `connect -> about -> df -> ls /` sequence agents would otherwise run. Returns a single JSON envelope with four blocks: `connect`, `capabilities`, `quota`, `path`. Each block carries one of `ok` / `unsupported` / `unavailable` / `error`. Live-connect allowlist: FTP, FTPS, SFTP, WebDAV, S3, GitHub, GitLab. For other providers (pCloud, Dropbox, OneDrive, Box, Filen, MEGA, Koofr, kDrive, Jottacloud, Drime, FileLu, Yandex, 4shared, Internxt, Swift, Azure, Google Drive, Zoho WorkDrive, Immich) the `connect` block returns `status: "unsupported"` but `capabilities`, `path`, and `profile` stay actionable, and the CLI exits 0. Exit codes: `0` ok or unsupported with valid capabilities, `1` connect attempted and failed, `2` profile lookup failed.
+Replaces the boilerplate `connect -> about -> df -> ls /` sequence agents would otherwise run. Returns a single JSON envelope with four blocks: `connect`, `capabilities`, `quota`, `path`. Each block carries one of `ok` / `unsupported` / `unavailable` / `error`. The `capabilities` block also carries a `transfer_capabilities` sub-block; on the discovery path it reports `source: "protocol_defaults"`, and when the backend is actually opened it is upgraded in place to `source: "live_provider"` from the live provider instance (no credentials are exposed). See [Transfer Capabilities by Protocol](#transfer-capabilities-by-protocol). Live-connect allowlist: FTP, FTPS, SFTP, WebDAV, S3, GitHub, GitLab. For other providers (pCloud, Dropbox, OneDrive, Box, Filen, MEGA, Koofr, kDrive, Jottacloud, Drime, FileLu, Yandex, 4shared, Internxt, Swift, Azure, Google Drive, Zoho WorkDrive, Immich) the `connect` block returns `status: "unsupported"` but `capabilities`, `path`, and `profile` stay actionable, and the CLI exits 0. Exit codes: `0` ok or unsupported with valid capabilities, `1` connect attempted and failed, `2` profile lookup failed.
 
 ### agent-info - AI Agent Discovery Metadata
 
@@ -1415,6 +1415,8 @@ aeroftp-cli agent-info --json
 ```
 
 Prints structured JSON describing safe/modify/destructive command groups, credential model, output hygiene, saved profile inventory with per-profile auth state, and a `protocol_features` map keyed by protocol (share_links, resume, server_copy, versions, thumbnails, change_tracking) plus an `agent_connect_supported_protocols` array. This is the recommended discovery surface for AI coding agents and the canonical input for capability-aware tool routing.
+
+It also emits the transfer-scheduler surface: a `protocol_transfer_capabilities` map (one block per protocol, `source: "protocol_defaults"`) and a per-profile `transfer_capabilities` block (`source: "profile_defaults"`) under `profiles.servers[]`, alongside the safe profile fields `id`, `name`, `protocol`, `host`, `port`, `username`, `initialPath`, `providerId`. Each block is `{ status, source, capabilities }`, where `capabilities` is the `TransferCapabilities` object documented in [Transfer Capabilities by Protocol](#transfer-capabilities-by-protocol). These fields are additive: consumers reading only `protocol_features` keep working unchanged.
 
 ---
 
@@ -1465,6 +1467,35 @@ Prints structured JSON describing safe/modify/destructive command groups, creden
 | `--chunk-size <size>` | Override upload chunk size (e.g., `64M`). Min 5M for S3 multipart |
 | `--buffer-size <size>` | Override download buffer size (e.g., `256K`, `1M`) |
 | `--dump <kinds>` | Debug: `headers`, `bodies`, `auth` (comma-separated). Prints to stderr |
+
+---
+
+## Transfer Capabilities by Protocol
+
+Not every protocol can honor every transfer flag. `--parallel`, `--chunk-size`, `--partial`, and the segmented/delta paths each depend on what the underlying backend actually supports. The CLI does not guess: each protocol advertises a `TransferCapabilities` block that the scheduler reads before deciding how to move bytes. This is the same block exposed as machine-readable JSON by [`agent-info`](#agent-info---ai-agent-discovery-metadata) (`protocol_transfer_capabilities` and per-profile `transfer_capabilities`) and by [`agent-connect`](#agent-connect---single-shot-agent-connect).
+
+The table below is the provider-generic default (no live connection). It is generated from the same source of truth the runtime uses, so a backend never claims a capability the transfer engine will not actually exercise.
+
+| Protocol(s) | Parallel files | Session pool | Concurrent range GET | Multipart upload | Resume DL / UL | Server checksum | API rate-limited |
+|---|---|---|---|---|---|---|---|
+| FTP, FTPS | yes (8 slots) | yes | no | no | yes / yes | no | no |
+| SFTP | no (1 slot) | no | no | no | no / no | no | no |
+| S3 | no (1 slot) | no | yes | yes (4 parts, 5 MiB) | yes / no | yes (ETag) | no |
+| Azure Blob | no (1 slot) | no | yes | no | yes / no | no | no |
+| OpenStack Swift | no (1 slot) | no | no | no | yes / no | no | no |
+| WebDAV, Koofr | no (1 slot) | no | after probe | no | yes / no | no | no |
+| Backblaze B2 | no (1 slot) | no | no | yes (4 parts, 100 MiB) | no / no | no | no |
+| Google Drive, Google Photos, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, 4shared, Yandex Disk, kDrive, Jottacloud, Drime, FileLu, OpenDrive | no (1 slot) | no | no | no | no / no | no | yes |
+| GitHub, GitLab | no (1 slot) | no | no | no | no / no | no | yes |
+| AeroCloud, MEGA, Filen, Internxt, Immich, ImageKit, Uploadcare, Cloudinary | no (1 slot) | no | no | no | no / no | no | no |
+
+Legend: **yes** = `supported`, **no** = `unsupported`, **after probe** = `supported_after_probe` (the capability is exercised only after a runtime range probe confirms the server honors `Range:` correctly). "Parallel files" is `file_parallel` with its `max_file_slots`; "Multipart upload" lists `max_chunk_slots` and `preferred_chunk_size` when the backend sets one. The JSON block also carries `max_checker_slots` (listing/verify fan-out) and the remaining `TransferCapabilities` fields (`offset_upload`, `upload_session`, `server_side_copy`, `list_parallel`, `batch_list`, `atomic_rename`); per-protocol `server_side_copy` and the feature tokens (`share_links`, `versions`, ...) live in the `protocol_features` map.
+
+Notes on honesty of the matrix:
+
+- **FTP/FTPS** advertise file-level parallelism through the session pool (up to 8 concurrent file slots) rather than strict concurrent range GET on a single file; the capability surface deliberately does not overclaim single-file range parallelism for FTP.
+- **SFTP** reports a single-lease provider-generic profile by design (the shared SFTP pool is not the provider-generic path). SFTP-specific acceleration is still available and is documented separately: byte-level delta via [`--delta`](#get---download-files) and segmented single-file download via [`pget`](#pget---segmented-parallel-download).
+- The discovery surfaces report `source: "profile_defaults"` (`agent-info` per-profile) or `source: "protocol_defaults"` (`agent-info` `protocol_transfer_capabilities`, `agent-connect` discovery path). Only a real connection upgrades a block to `source: "live_provider"`, which can differ from the defaults above when a specific server exposes more or fewer primitives.
 
 ---
 
@@ -1916,7 +1947,7 @@ The following providers have been tested live via CLI with `--profile`:
 - **v3.7.0 - AeroRsync session-cached batch + crypto overlay**: new `AerorsyncBatch` trait amortizes one SSH session across many delta transfers; `SyncReport` exposes `delta_files[]` and `bytes_on_wire`. Cross-profile transfer (`aeroftp_transfer`, `aeroftp_transfer_tree`) and six new ops tools (`aeroftp_touch`, `aeroftp_cleanup`, `aeroftp_speed`, `aeroftp_sync_doctor`, `aeroftp_dedupe`, `aeroftp_reconcile`) bring MCP to 39 tools. rclone crypt becomes full read/write through transparent overlay session; AeroVault gets matching overlay-session model.
 - **v3.6.1 - Windows first-class delta sync**: native rsync protocol 31 in pure Rust (`aerorsync`), no `rsync.exe` bundle, no WSL requirement. The Windows binary now performs delta uploads byte-identical to stock rsync 3.4.1 in CI.
 - **v3.5.4 - MCP hardening**: `aeroftp-cli mcp` top-level alias, vault auto-init in MCP, per-profile serialization, schema validation, S3 bucket fix, FTP/SFTP/WebDAV/Filen/FileLu/Drime/Immich error message hardening.
-- **v3.5.3 - Continuous bidirectional `sync --watch`**: native filesystem watcher (inotify/FSEvents/ReadDirectoryChangesW) with anti-loop cooldown, periodic rescan, NDJSON output. First CLI on the market with this feature natively (rclone doesn't ship it).
+- **v3.5.3 - Continuous bidirectional `sync --watch`**: native filesystem watcher (inotify/FSEvents/ReadDirectoryChangesW) with anti-loop cooldown, periodic rescan, NDJSON output. No external sync daemon required.
 - **v3.5.3 - Agent-friendly flags**: `--files-from`, `--immutable`, `--no-check-dest`, `--max-depth`, `--inplace`, `--fast-list` (S3), `--compare-dest`/`--copy-dest`, `cleanup` for orphan `.aerotmp`.
 - **v3.5.2 - Determinism & threat model**: 12 structured exit codes mapping all `ProviderError` variants, `mkdir --parents`, `rm --force`, `put --no-clobber`, `--chunk-size`/`--buffer-size` overrides, [`docs/THREAT-MODEL.md`](THREAT-MODEL.md), [`docs/LLM-INTEGRATION-GUIDE.md`](LLM-INTEGRATION-GUIDE.md).
 - **v3.3.4 - Local server bridges**: `serve http` (read-only HTTP, Range requests), `serve webdav` (read-write, axum-based), `serve ftp` / `serve sftp` (anonymous read-write).
