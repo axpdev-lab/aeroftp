@@ -15,6 +15,13 @@ on:
       - 'src-tauri/src/rsync_over_ssh.rs'
       - 'src-tauri/src/delta_transport.rs'
       - 'src-tauri/src/delta_sync_rsync.rs'
+      # The native rsync wire implementation lives here and is the code
+      # this job actually exercises end-to-end. Omitting it meant a
+      # native-rsync change did not trigger this job at its own commit;
+      # the regression only surfaced later when an unrelated filtered
+      # path (Cargo.lock, lib.rs) triggered the job, producing
+      # misleading "clean bisects" that blamed the triggering commit.
+      - 'src-tauri/src/aerorsync/**'
       - 'src-tauri/src/providers/sftp.rs'
       - 'src-tauri/Cargo.lock'
       - 'src-tauri/tests/fixtures/sftp-rsync/**'
@@ -30,6 +37,7 @@ on:
       - 'src-tauri/src/rsync_over_ssh.rs'
       - 'src-tauri/src/delta_transport.rs'
       - 'src-tauri/src/delta_sync_rsync.rs'
+      - 'src-tauri/src/aerorsync/**'
       - 'src-tauri/src/providers/sftp.rs'
       - 'src-tauri/Cargo.lock'
       - 'src-tauri/tests/fixtures/sftp-rsync/**'
