@@ -18,6 +18,10 @@ name = "aeroftp-cli"
 path = "src/bin/aeroftp_cli.rs"
 
 [[bin]]
+name = "aeroftp-dispatch"
+path = "src/bin/aeroftp_dispatch.rs"
+
+[[bin]]
 name = "aerorsync_serve"
 path = "src/bin/aerorsync_serve.rs"
 # The real server body is gated behind the `aerorsync` feature. When the

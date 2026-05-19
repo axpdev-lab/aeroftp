@@ -1672,6 +1672,40 @@ enum Commands {
     },
 }
 
+#[cfg(test)]
+#[allow(dead_code)]
+#[path = "../cli_dispatch.rs"]
+mod cli_dispatch;
+
+#[cfg(test)]
+mod cli_dispatch_tests {
+    use super::{cli_dispatch, Cli};
+    use clap::CommandFactory;
+
+    #[test]
+    fn dispatcher_allowlist_matches_clap_subcommands() {
+        std::thread::Builder::new()
+            .name("dispatcher-allowlist-clap-sync".to_string())
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                let clap_names: Vec<_> = Cli::command()
+                    .get_subcommands()
+                    .filter(|subcommand| !subcommand.is_hide_set())
+                    .map(|subcommand| subcommand.get_name().to_string())
+                    .collect();
+                let allowlist_names: Vec<_> = cli_dispatch::CLI_SUBCOMMANDS
+                    .iter()
+                    .map(|name| (*name).to_string())
+                    .collect();
+
+                assert_eq!(allowlist_names, clap_names);
+            })
+            .expect("spawn allowlist sync test")
+            .join()
+            .expect("allowlist sync test panicked");
+    }
+}
+
 #[derive(Subcommand)]
 enum VaultCommands {
     /// Create a new empty AeroVault container (v3 default; v1/v2 selectable)
