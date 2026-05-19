@@ -327,6 +327,8 @@ Bidirectional directory synchronization compares local and remote files by times
 | **Koofr** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
 | **FileLu** | Yes | Yes | Yes | Yes | Via `StorageProvider` trait |
 
+> For transfer-scheduler capabilities per protocol (parallel streams, chunked/segmented/delta paths, session pooling), see [CLI-GUIDE: Transfer Capabilities by Protocol](CLI-GUIDE.md#transfer-capabilities-by-protocol). That matrix is the single source and is not duplicated here.
+
 ### Sync Modes
 - **Remote → Local**: Download newer remote files
 - **Local → Remote**: Upload newer local files
