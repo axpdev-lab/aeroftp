@@ -2163,7 +2163,8 @@
             "templateFormatPwsh": "PowerShell-komentosarja (.ps1)",
             "templateScriptExportedToast": "Komentosarja viety",
             "templateScriptImportedToast": "Komentosarjan metatiedot ladattu",
-            "templateScriptInvalidToast": "Komentosarja ei sisällä AeroFTP-metatietoja"
+            "templateScriptInvalidToast": "Komentosarja ei sisällä AeroFTP-metatietoja",
+            "checksumPoolNote": "Tarkistussumman vertailu tässä SFTP-istunnossa käyttää yhtä yhteyttä (ei istuntopoolia): suurten puiden skannaus on hitaampaa."
         },
         "ui": {
             "syncing": "Synkronoidaan...",

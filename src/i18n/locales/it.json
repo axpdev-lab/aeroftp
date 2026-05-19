@@ -2244,6 +2244,7 @@
             "deltaEligibilitySkip": "Non mostrare più per questo server",
             "deltaEligibilityLearnMore": "Approfondisci",
             "deltaDisabledFallback": "Delta Sync non è attivo per questa sessione. Consulta il suggerimento in Controllo trasferimento per il motivo.",
+            "checksumPoolNote": "Il confronto checksum su questa sessione SFTP usa una singola connessione (nessun pool di sessioni): su alberi grandi la scansione sarà più lenta.",
             "deltaSummary": "{files} file · {bytes} risparmiati · {speedup}x di velocità",
             "deltaBatchSummary": "Delta: {files} file in {sessions} sessione/i",
             "deltaBytesOnWire": "{bytesOnWire} su rete",

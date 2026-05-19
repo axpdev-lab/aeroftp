@@ -2163,7 +2163,8 @@
             "templateFormatPwsh": "PowerShell-script (.ps1)",
             "templateScriptExportedToast": "Script geëxporteerd",
             "templateScriptImportedToast": "Scriptmetadata geladen",
-            "templateScriptInvalidToast": "Script bevat geen AeroFTP-metadata"
+            "templateScriptInvalidToast": "Script bevat geen AeroFTP-metadata",
+            "checksumPoolNote": "Checksumvergelijking in deze SFTP-sessie gebruikt één verbinding (geen sessiepool): verwacht tragere scans bij grote structuren."
         },
         "ui": {
             "syncing": "Synchroniseren...",

@@ -2163,7 +2163,8 @@
             "templateFormatPwsh": "PowerShell скрипта (.ps1)",
             "templateScriptExportedToast": "Скрипта је извезена",
             "templateScriptImportedToast": "Метаподаци скрипте су учитани",
-            "templateScriptInvalidToast": "Скрипта не садржи метаподатке AeroFTP-а"
+            "templateScriptInvalidToast": "Скрипта не садржи метаподатке AeroFTP-а",
+            "checksumPoolNote": "Поређење checksum-а у овој SFTP сесији користи једну везу (без пула сесија): очекујте спорије скенирање великих стабала."
         },
         "ui": {
             "syncing": "Sinhronizacija...",

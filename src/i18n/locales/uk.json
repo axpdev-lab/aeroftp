@@ -2163,7 +2163,8 @@
             "templateFormatPwsh": "Скрипт PowerShell (.ps1)",
             "templateScriptExportedToast": "Скрипт експортовано",
             "templateScriptImportedToast": "Метадані скрипта завантажено",
-            "templateScriptInvalidToast": "Скрипт не містить метаданих AeroFTP"
+            "templateScriptInvalidToast": "Скрипт не містить метаданих AeroFTP",
+            "checksumPoolNote": "Порівняння контрольних сум у цій сесії SFTP використовує одне з'єднання (без пулу сесій): сканування великих дерев буде повільнішим."
         },
         "ui": {
             "syncing": "Синхронізація...",

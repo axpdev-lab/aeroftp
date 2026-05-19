@@ -2163,7 +2163,8 @@
             "templateFormatPwsh": "PowerShell 脚本 (.ps1)",
             "templateScriptExportedToast": "脚本已导出",
             "templateScriptImportedToast": "已加载脚本元数据",
-            "templateScriptInvalidToast": "脚本不包含 AeroFTP 元数据"
+            "templateScriptInvalidToast": "脚本不包含 AeroFTP 元数据",
+            "checksumPoolNote": "此 SFTP 会话的 checksum 比较使用单一连接(无会话 pool):大型目录树扫描会较慢。"
         },
         "ui": {
             "syncing": "正在同步...",

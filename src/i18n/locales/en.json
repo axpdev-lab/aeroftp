@@ -3298,6 +3298,7 @@
       "deltaEligibilitySkip": "Don't show this again for this server",
       "deltaEligibilityLearnMore": "Learn more",
       "deltaDisabledFallback": "Delta Sync is not currently active for this session. See the Transfer Control hint for the reason.",
+      "checksumPoolNote": "Checksum compare on this SFTP session runs single-lease (no session pool): expect slower scans on large trees.",
       "deltaSummary": "{files} files · {bytes} saved · {speedup}x speedup",
       "deltaBatchSummary": "Delta: {files} files in {sessions} session(s)",
       "deltaBytesOnWire": "{bytesOnWire} on wire",

@@ -2163,7 +2163,8 @@
             "templateFormatPwsh": "Script PowerShell (.ps1)",
             "templateScriptExportedToast": "Script exportado",
             "templateScriptImportedToast": "Metadatos del script cargados",
-            "templateScriptInvalidToast": "El script no contiene metadatos de AeroFTP"
+            "templateScriptInvalidToast": "El script no contiene metadatos de AeroFTP",
+            "checksumPoolNote": "La comparación de checksum en esta sesión SFTP usa una sola conexión (sin pool de sesiones): los escaneos de árboles grandes serán más lentos."
         },
         "ui": {
             "syncing": "Sincronizando...",

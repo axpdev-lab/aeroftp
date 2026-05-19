@@ -2163,7 +2163,8 @@
             "templateFormatPwsh": "Skrip PowerShell (.ps1)",
             "templateScriptExportedToast": "Skrip diekspor",
             "templateScriptImportedToast": "Metadata skrip dimuat",
-            "templateScriptInvalidToast": "Skrip tidak berisi metadata AeroFTP"
+            "templateScriptInvalidToast": "Skrip tidak berisi metadata AeroFTP",
+            "checksumPoolNote": "Perbandingan checksum pada sesi SFTP ini menggunakan satu koneksi (tanpa pool sesi): perkirakan pemindaian lebih lambat pada pohon besar."
         },
         "ui": {
             "syncing": "Menyinkronkan...",

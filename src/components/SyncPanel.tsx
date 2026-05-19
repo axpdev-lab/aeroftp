@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useMemo,
+} from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
@@ -88,6 +94,10 @@ import { SyncQuickMode } from "./Sync/SyncQuickMode";
 import { SyncAdvancedConfig } from "./Sync/SyncAdvancedConfig";
 import { useSyncProfiles } from "./Sync/useSyncProfiles";
 import { useSyncOptimization } from "./Sync/useSyncOptimization";
+import {
+  useTransferCapabilities,
+  isCapabilityAvailable,
+} from "./Sync/useTransferCapabilities";
 import {
   SpeedMode,
   SPEED_PRESETS,
@@ -323,8 +333,13 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
 
   // Phase 3A+: Parallel streams (1 = sequential/legacy, 2-8 = turbo)
   const [parallelStreams, setParallelStreamsRaw] = useState(1);
+  // Upper bound for parallel streams: the real backend capability for the
+  // active provider (FTP/FTPS pool = 8, multipart providers = chunk slots,
+  // everything else = single-stream). Defaults to 8 until caps resolve so the
+  // pre-connect config UX is not artificially constrained.
+  const capStreamsRef = useRef(8);
   const setParallelStreams = (n: number) =>
-    setParallelStreamsRaw(Math.max(1, Math.min(8, n)));
+    setParallelStreamsRaw(Math.max(1, Math.min(capStreamsRef.current, n)));
   const [compressionMode, setCompressionMode] =
     useState<CompressionMode>("off");
   const [deltaSyncEnabled, setDeltaSyncEnabled] = useState(false);
@@ -342,6 +357,29 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
     protocol,
     isConnected,
   );
+
+  // Real per-provider transfer capabilities (single source of truth on the
+  // Rust side). The speed presets and the parallel-streams selector are
+  // clamped to what the backend can actually honor: advertising 8 streams on
+  // a single-lease provider is a silent no-op, not an optimization.
+  const { caps: transferCaps } = useTransferCapabilities(protocol, isConnected);
+  const capabilityMaxStreams = useMemo(() => {
+    if (!transferCaps) return 8;
+    return Math.max(
+      1,
+      transferCaps.max_file_slots ?? 1,
+      transferCaps.max_chunk_slots ?? 1,
+    );
+  }, [transferCaps]);
+  const sftpPoolUnavailable =
+    protocol === "sftp" &&
+    !!transferCaps &&
+    !isCapabilityAvailable(transferCaps.session_pool);
+  useEffect(() => {
+    capStreamsRef.current = capabilityMaxStreams;
+    setParallelStreamsRaw((p) => Math.max(1, Math.min(p, capabilityMaxStreams)));
+  }, [capabilityMaxStreams]);
+
   const deltaEligibilityResolverRef = useRef<
     ((proceed: boolean) => void) | null
   >(null);
@@ -3040,6 +3078,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                 onSpeedModeChange={handleSpeedModeChange}
                 showManiac={isCyberTheme()}
                 maniacConfirmed={maniacConfirmed}
+                streamCap={capabilityMaxStreams}
                 onManiacConfirm={() => {
                   setManiacConfirmed(true);
                   // Apply maniac overrides ONLY after user confirmation
@@ -3077,6 +3116,8 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                 onSpeedLimitChange={handleSpeedLimitChange}
                 parallelStreams={parallelStreams}
                 onParallelStreamsChange={setParallelStreams}
+                streamCap={capabilityMaxStreams}
+                sftpPoolUnavailable={sftpPoolUnavailable}
                 compressionMode={compressionMode}
                 onCompressionModeChange={setCompressionMode}
                 deltaSyncEnabled={deltaSyncEnabled}

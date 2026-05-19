@@ -2128,7 +2128,8 @@
             "templateFormatPwsh": "PowerShell スクリプト (.ps1)",
             "templateScriptExportedToast": "スクリプトをエクスポートしました",
             "templateScriptImportedToast": "スクリプトのメタデータを読み込みました",
-            "templateScriptInvalidToast": "スクリプトに AeroFTP のメタデータが含まれていません"
+            "templateScriptInvalidToast": "スクリプトに AeroFTP のメタデータが含まれていません",
+            "checksumPoolNote": "このSFTPセッションでのchecksum比較は単一接続を使用します(セッションpoolなし)。大きなツリーではスキャンが遅くなります。"
         },
         "ui": {
             "syncing": "同期中...",

@@ -2163,7 +2163,8 @@
             "templateFormatPwsh": "Skript PowerShell (.ps1)",
             "templateScriptExportedToast": "Skript exportovaný",
             "templateScriptImportedToast": "Metadáta skriptu načítané",
-            "templateScriptInvalidToast": "Skript neobsahuje metadáta AeroFTP"
+            "templateScriptInvalidToast": "Skript neobsahuje metadáta AeroFTP",
+            "checksumPoolNote": "Porovnanie kontrolného súčtu v tejto SFTP relácii používa jediné pripojenie (bez poolu relácií): pri veľkých stromoch očakávajte pomalšie skenovanie."
         },
         "ui": {
             "syncing": "Synchronizacia...",

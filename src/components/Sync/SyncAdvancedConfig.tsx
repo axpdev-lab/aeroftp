@@ -38,6 +38,10 @@ interface SyncAdvancedConfigProps {
     onSpeedLimitChange: (dl: number, ul: number) => void;
     parallelStreams: number;
     onParallelStreamsChange: (n: number) => void;
+    /** Real backend stream ceiling for the active provider (capability-driven). */
+    streamCap: number;
+    /** True when the active SFTP session has no pooled strategy (single-lease). */
+    sftpPoolUnavailable: boolean;
     compressionMode: CompressionMode;
     onCompressionModeChange: (m: CompressionMode) => void;
     deltaSyncEnabled: boolean;
@@ -116,6 +120,8 @@ export const SyncAdvancedConfig: React.FC<SyncAdvancedConfigProps> = React.memo(
     onSpeedLimitChange,
     parallelStreams,
     onParallelStreamsChange,
+    streamCap,
+    sftpPoolUnavailable,
     compressionMode,
     onCompressionModeChange,
     deltaSyncEnabled,
@@ -280,6 +286,12 @@ export const SyncAdvancedConfig: React.FC<SyncAdvancedConfigProps> = React.memo(
                         )}
                     </div>
                 </div>
+
+                {sftpPoolUnavailable && options.compare_checksum && (
+                    <div className="mt-2 text-[11px] leading-relaxed text-amber-300/90">
+                        {t('syncPanel.checksumPoolNote')}
+                    </div>
+                )}
 
                 <div className="sync-adv-divider" />
 
@@ -485,19 +497,24 @@ export const SyncAdvancedConfig: React.FC<SyncAdvancedConfigProps> = React.memo(
                         <span className="text-xs text-gray-400">{t('syncPanel.parallelStreams')}:</span>
                         <select
                             className="sync-adv-select"
-                            value={parallelStreams}
+                            value={Math.max(1, Math.min(parallelStreams, streamCap))}
                             onChange={e => onParallelStreamsChange(Number(e.target.value))}
                             disabled={disabled}
                         >
-                            <option value="1">{t('syncPanel.parallelSequential')}</option>
-                            <option value="2">2 {t('syncPanel.parallelStreamLabel')}</option>
-                            <option value="3">3 {t('syncPanel.parallelStreamLabel')}</option>
-                            <option value="4">4 {t('syncPanel.parallelStreamLabel')}</option>
-                            <option value="6">6 {t('syncPanel.parallelStreamLabel')}</option>
-                            <option value="8">8 {t('syncPanel.parallelStreamLabel')}</option>
+                            {/* Only offer stream counts the backend can honor:
+                                a single-lease provider lists Sequential only. */}
+                            {[1, 2, 3, 4, 6, 8]
+                                .filter(v => v <= streamCap)
+                                .map(v => (
+                                    <option key={v} value={v}>
+                                        {v === 1
+                                            ? t('syncPanel.parallelSequential')
+                                            : `${v} ${t('syncPanel.parallelStreamLabel')}`}
+                                    </option>
+                                ))}
                         </select>
                     </label>
-                    {parallelStreams > 1 && (
+                    {parallelStreams > 1 && streamCap > 1 && (
                         <span className="text-[10px] text-yellow-400/70 flex items-center gap-0.5">
                             <Zap size={10} /> {t('syncPanel.parallelTurboLabel')}
                         </span>

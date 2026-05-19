@@ -2163,7 +2163,8 @@
             "templateFormatPwsh": "ស្គ្រីប PowerShell (.ps1)",
             "templateScriptExportedToast": "បាននាំចេញស្គ្រីប",
             "templateScriptImportedToast": "បានផ្ទុកទិន្នន័យមេតារបស់ស្គ្រីប",
-            "templateScriptInvalidToast": "ស្គ្រីបមិនមានទិន្នន័យមេតារបស់ AeroFTP ទេ"
+            "templateScriptInvalidToast": "ស្គ្រីបមិនមានទិន្នន័យមេតារបស់ AeroFTP ទេ",
+            "checksumPoolNote": "ការប្រៀបធៀប checksum នៅលើសម័យ SFTP នេះប្រើការតភ្ជាប់តែមួយ (គ្មាន pool សម័យ)៖ រំពឹងថាការស្កេនយឺតលើដើមឈើធំ។"
         },
         "ui": {
             "syncing": "កំពុងធ្វើសមកាលកម្ម...",

@@ -2163,7 +2163,8 @@
             "templateFormatPwsh": "PowerShell-szkript (.ps1)",
             "templateScriptExportedToast": "Szkript exportálva",
             "templateScriptImportedToast": "Szkript metaadatai betöltve",
-            "templateScriptInvalidToast": "A szkript nem tartalmaz AeroFTP-metaadatokat"
+            "templateScriptInvalidToast": "A szkript nem tartalmaz AeroFTP-metaadatokat",
+            "checksumPoolNote": "Az ellenőrzőösszeg-összehasonlítás ebben az SFTP-munkamenetben egyetlen kapcsolatot használ (nincs munkamenet-pool): nagy fáknál lassabb vizsgálatra számíts."
         },
         "ui": {
             "syncing": "Szinkronizálás...",

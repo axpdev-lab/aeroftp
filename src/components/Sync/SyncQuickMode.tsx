@@ -24,6 +24,8 @@ interface SyncQuickModeProps {
     maniacConfirmed: boolean;
     onManiacConfirm: () => void;
     disabled: boolean;
+    /** Real backend stream ceiling for the active provider (capability-driven). */
+    streamCap: number;
 }
 
 // Preset card configuration
@@ -53,6 +55,7 @@ export const SyncQuickMode: React.FC<SyncQuickModeProps> = React.memo(({
     maniacConfirmed,
     onManiacConfirm,
     disabled,
+    streamCap,
 }) => {
     const t = useTranslation();
 
@@ -132,13 +135,20 @@ export const SyncQuickMode: React.FC<SyncQuickModeProps> = React.memo(({
                     {speedModes.map(mode => {
                         const isActive = speedMode === mode;
                         const preset = SPEED_PRESETS[mode];
+                        // Honest tooltip: show the streams the backend will
+                        // actually run for this provider, not the nominal
+                        // preset value (clamped to the real capability).
+                        const effectiveStreams = Math.max(
+                            1,
+                            Math.min(preset.parallelStreams, streamCap),
+                        );
                         return (
                             <button
                                 key={mode}
                                 className={`sync-speed-pill ${mode} ${isActive ? 'active' : ''}`}
                                 onClick={() => handleSpeedChange(mode)}
                                 disabled={disabled}
-                                title={t('syncPanel.speedStreams', { count: preset.parallelStreams })}
+                                title={t('syncPanel.speedStreams', { count: effectiveStreams })}
                             >
                                 {mode === 'maniac' && <Skull size={12} className="mr-1" />}
                                 {t(SPEED_MODE_KEYS[mode])}
