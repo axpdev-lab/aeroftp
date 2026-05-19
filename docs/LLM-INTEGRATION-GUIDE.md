@@ -203,6 +203,30 @@ capabilities=$(aeroftp-cli agent-info --json 2>/dev/null)
 # Then check if server_copy is supported before calling
 ```
 
+The same rule applies to transfer-scheduling flags (`--parallel`,
+`--chunk-size`, `--partial`, the segmented and delta paths): not every
+protocol can honor them. Read the machine-readable transfer-capability
+surface instead of assuming:
+
+```bash
+# Per-protocol defaults plus a per-profile block (no connection, no credentials)
+aeroftp-cli agent-info --json 2>/dev/null \
+  | jq '.protocol_transfer_capabilities, (.profiles.servers[] | {name, transfer_capabilities})'
+
+# Single profile, optionally refined against the live backend
+aeroftp-cli agent-connect --profile "Server" --json 2>/dev/null \
+  | jq '.capabilities.transfer_capabilities'
+```
+
+Each block carries a `source` field: `protocol_defaults` or
+`profile_defaults` are derived without contacting the server, while
+`live_provider` means a real connection refined the block and may
+differ from the defaults. Honor the advertised limits (for example
+`max_file_slots`, `max_chunk_slots`, `session_pool`) rather than
+passing a `--parallel` value the backend will silently clamp. The
+human-readable matrix is in
+[CLI-GUIDE: Transfer Capabilities by Protocol](CLI-GUIDE.md#transfer-capabilities-by-protocol).
+
 ### DO NOT: Retry Non-Retryable Errors
 
 ```bash
