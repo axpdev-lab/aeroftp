@@ -8,7 +8,8 @@
 use crate::provider_transfer_executor::ProviderListSessionModel;
 use crate::providers::{ProviderError, StorageProvider};
 use crate::transfer_dag::{
-    ResourceRequest, TransferBudget, TransferResourceManager, TransferSessionPoolHandle,
+    DagObserver, ResourceRequest, TransferBudget, TransferResourceManager,
+    TransferSessionPoolHandle,
 };
 use sha2::Digest;
 use std::collections::{HashSet, VecDeque};
@@ -23,6 +24,12 @@ const MAX_SCAN_ENTRIES: usize = 500_000;
 
 /// Maximum directory depth when recursing the remote tree.
 const DEFAULT_SCAN_DEPTH: usize = 100;
+
+/// Minimum gap between periodic scan-progress notifications. Matches the
+/// transfer progress throttle so a large tree streams a moving counter
+/// instead of jumping straight to the final value (the O-3 regression of
+/// the clone-pool scan path, which has no `AppHandle`).
+const SCAN_PROGRESS_INTERVAL: std::time::Duration = std::time::Duration::from_millis(150);
 
 /// A local file captured by `scan_local_tree`.
 #[derive(Debug, Clone)]
@@ -248,9 +255,11 @@ pub async fn scan_remote_tree_with_provider_lock(
     opts: &ScanOptions,
     list_model: &ProviderListSessionModel,
     cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
+    observer: Option<&dyn DagObserver>,
 ) -> Vec<RemoteEntry> {
     if !list_model.is_clone_pool() {
-        return scan_remote_tree_locked(provider, remote_root, opts, list_model, cancel).await;
+        return scan_remote_tree_locked(provider, remote_root, opts, list_model, cancel, observer)
+            .await;
     }
 
     let cap = opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES);
@@ -278,6 +287,7 @@ pub async fn scan_remote_tree_with_provider_lock(
     }]);
     let mut join_set = JoinSet::new();
     let mut in_flight = 0usize;
+    let mut last_progress = std::time::Instant::now();
 
     while (!queue.is_empty() || in_flight > 0) && results.len() < cap {
         if scan_cancelled(&cancel) {
@@ -336,8 +346,18 @@ pub async fn scan_remote_tree_with_provider_lock(
             }
             None => break,
         }
+
+        if let Some(obs) = observer {
+            if last_progress.elapsed() >= SCAN_PROGRESS_INTERVAL {
+                obs.on_scan_progress(results.len(), in_flight);
+                last_progress = std::time::Instant::now();
+            }
+        }
     }
 
+    if let Some(obs) = observer {
+        obs.on_scan_progress(results.len(), 0);
+    }
     results
 }
 
@@ -347,6 +367,7 @@ async fn scan_remote_tree_locked(
     opts: &ScanOptions,
     list_model: &ProviderListSessionModel,
     cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
+    observer: Option<&dyn DagObserver>,
 ) -> Vec<RemoteEntry> {
     let cap = opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES);
     let depth = opts.max_depth.unwrap_or(DEFAULT_SCAN_DEPTH);
@@ -415,8 +436,17 @@ async fn scan_remote_tree_locked(
                 );
             }
         }
+
+        // One list at a time: emit per directory, matching the cadence the
+        // pre-clone-pool path produced (no throttle needed here).
+        if let Some(obs) = observer {
+            obs.on_scan_progress(results.len(), usize::from(!queue.is_empty()));
+        }
     }
 
+    if let Some(obs) = observer {
+        obs.on_scan_progress(results.len(), 0);
+    }
     results
 }
 

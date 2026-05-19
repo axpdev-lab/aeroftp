@@ -25,6 +25,8 @@ use serde::{Deserialize, Serialize};
 use tokio::task::JoinSet;
 
 use super::graph::{TransferDag, TransferNode};
+use super::metrics::TransferDagMetrics;
+use super::observer::{DagObserver, ObservedOutcome};
 use super::resources::{ResourceRequest, TransferBudget, TransferResourceManager};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -32,6 +34,11 @@ pub struct DagExecutionSummary {
     pub nodes_completed: u32,
     pub nodes_failed: u32,
     pub fallback_count: u32,
+    /// Accumulated run metrics. In this slice only the truthfully known
+    /// fields are populated (`range_fallbacks` from fallback completions);
+    /// bytes/retries/backpressure stay zero until a real path is migrated
+    /// and adaptive throttling lands. No value is fabricated.
+    pub metrics: TransferDagMetrics,
 }
 
 /// Outcome of running a single node action.
@@ -154,19 +161,27 @@ fn request_exceeds_budget(request: &ResourceRequest, budget: &TransferBudget) ->
 /// dispatched, in-flight nodes are drained, and [`DagExecutionError::NodeFailed`]
 /// is returned (matching the abort-on-error semantics of the converged
 /// single-file path this executor will host).
+///
+/// `observer` receives node lifecycle and a final [`TransferDagMetrics`]
+/// snapshot through an `AppHandle`-free abstraction. It defaults to a no-op
+/// for non-GUI callers; the metrics it reports are the truthfully known ones
+/// only (no fabricated throughput/retry counts before a real path is wired).
 pub async fn execute_dag(
     dag: &TransferDag,
     manager: &TransferResourceManager,
     runner: Arc<dyn DagNodeRunner>,
+    observer: Arc<dyn DagObserver>,
 ) -> Result<DagExecutionSummary, DagExecutionError> {
     let nodes = dag.nodes();
     let mut summary = DagExecutionSummary::default();
     if nodes.is_empty() {
+        observer.on_metrics(&summary.metrics);
         return Ok(summary);
     }
 
     // Pre-flight: a node demanding more of a class than the manager owns would
-    // wait on the semaphore forever. Fail it honestly instead of hanging.
+    // wait on the semaphore forever. Fail it honestly instead of hanging. This
+    // is detected before any node runs, so no metrics are reported.
     let budget = manager.budget();
     for node in nodes {
         if let Some(reason) = request_exceeds_budget(&node.resources, &budget) {
@@ -180,6 +195,7 @@ pub async fn execute_dag(
     let mut completed: HashSet<usize> = HashSet::new();
     let mut started: HashSet<usize> = HashSet::new();
     let mut failed: Option<(usize, String)> = None;
+    let mut terminal_error: Option<DagExecutionError> = None;
     let mut join_set: JoinSet<(usize, NodeOutcome)> = JoinSet::new();
 
     loop {
@@ -196,6 +212,7 @@ pub async fn execute_dag(
                 .collect();
             for node in ready {
                 started.insert(node.id);
+                observer.on_node_start(node.id, node.kind);
                 let manager = manager.clone();
                 let runner = Arc::clone(&runner);
                 join_set.spawn(async move {
@@ -221,9 +238,10 @@ pub async fn execute_dag(
             }
             // Nothing ready, nothing running, not everything started: a
             // dependency can never be satisfied.
-            return Err(DagExecutionError::Stuck {
+            terminal_error = Some(DagExecutionError::Stuck {
                 pending: nodes.len() - completed.len(),
             });
+            break;
         }
 
         let joined = join_set
@@ -234,31 +252,44 @@ pub async fn execute_dag(
             Ok(pair) => pair,
             Err(join_err) => {
                 let node_id = guess_panicked_node(&started, &completed);
-                return Err(DagExecutionError::TaskPanicked {
+                terminal_error = Some(DagExecutionError::TaskPanicked {
                     node_id,
                     message: join_err.to_string(),
                 });
+                break;
             }
         };
         match outcome {
             NodeOutcome::Completed => {
                 summary.nodes_completed += 1;
                 completed.insert(id);
+                observer.on_node_complete(id, ObservedOutcome::Completed);
             }
             NodeOutcome::Fallback => {
                 summary.nodes_completed += 1;
                 summary.fallback_count += 1;
+                // A node taking its degraded path is the one metric this
+                // slice can populate truthfully.
+                summary.metrics.range_fallbacks += 1;
                 completed.insert(id);
+                observer.on_node_complete(id, ObservedOutcome::Fallback);
             }
             NodeOutcome::Failed(message) => {
                 summary.nodes_failed += 1;
                 if failed.is_none() {
                     failed = Some((id, message));
                 }
+                observer.on_node_complete(id, ObservedOutcome::Failed);
             }
         }
     }
 
+    // Single finalize: report the accumulated metrics once for any run that
+    // entered the scheduling loop, then surface the terminal state.
+    observer.on_metrics(&summary.metrics);
+    if let Some(error) = terminal_error {
+        return Err(error);
+    }
     if let Some((node_id, message)) = failed {
         return Err(DagExecutionError::NodeFailed { node_id, message });
     }
@@ -279,9 +310,14 @@ fn guess_panicked_node(started: &HashSet<usize>, completed: &HashSet<usize>) -> 
 mod tests {
     use super::*;
     use crate::transfer_dag::graph::TransferNodeKind;
+    use crate::transfer_dag::observer::{CollectingDagObserver, NoopDagObserver};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Mutex;
     use std::time::Duration;
+
+    fn noop_observer() -> Arc<dyn DagObserver> {
+        Arc::new(NoopDagObserver)
+    }
 
     /// A runner that records completion order and tracks peak concurrency.
     #[derive(Default)]
@@ -337,9 +373,14 @@ mod tests {
 
         let probe = Arc::new(ProbeRunner::default());
         let manager = TransferResourceManager::new(TransferBudget::from_file_slots(4));
-        let summary = execute_dag(&dag, &manager, runner_arc(Arc::clone(&probe)))
-            .await
-            .unwrap();
+        let summary = execute_dag(
+            &dag,
+            &manager,
+            runner_arc(Arc::clone(&probe)),
+            noop_observer(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(summary.nodes_completed, 3);
         assert_eq!(summary.nodes_failed, 0);
@@ -373,9 +414,14 @@ mod tests {
 
         let probe = Arc::new(ProbeRunner::default());
         let manager = TransferResourceManager::new(TransferBudget::from_file_slots(4));
-        let summary = execute_dag(&dag, &manager, runner_arc(Arc::clone(&probe)))
-            .await
-            .unwrap();
+        let summary = execute_dag(
+            &dag,
+            &manager,
+            runner_arc(Arc::clone(&probe)),
+            noop_observer(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(summary.nodes_completed, 4);
         let order = probe.order();
@@ -402,9 +448,14 @@ mod tests {
 
         let probe = Arc::new(ProbeRunner::default());
         let manager = TransferResourceManager::new(TransferBudget::from_file_slots(8));
-        let summary = execute_dag(&dag, &manager, runner_arc(Arc::clone(&probe)))
-            .await
-            .unwrap();
+        let summary = execute_dag(
+            &dag,
+            &manager,
+            runner_arc(Arc::clone(&probe)),
+            noop_observer(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(summary.nodes_completed, 5);
         // The four children carry no scarce resource and must overlap.
@@ -425,9 +476,14 @@ mod tests {
         let probe = Arc::new(ProbeRunner::default());
         // Only one file slot: the three file transfers must serialize.
         let manager = TransferResourceManager::new(TransferBudget::from_file_slots(1));
-        let summary = execute_dag(&dag, &manager, runner_arc(Arc::clone(&probe)))
-            .await
-            .unwrap();
+        let summary = execute_dag(
+            &dag,
+            &manager,
+            runner_arc(Arc::clone(&probe)),
+            noop_observer(),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(summary.nodes_completed, 3);
         assert_eq!(probe.peak(), 1, "file_slots=1 must force serialization");
@@ -457,7 +513,9 @@ mod tests {
             })
         });
         let manager = TransferResourceManager::new(TransferBudget::from_file_slots(4));
-        let err = execute_dag(&dag, &manager, runner).await.unwrap_err();
+        let err = execute_dag(&dag, &manager, runner, noop_observer())
+            .await
+            .unwrap_err();
 
         match err {
             DagExecutionError::NodeFailed { node_id, message } => {
@@ -487,6 +545,7 @@ mod tests {
             Arc::new(|_n: TransferNode| -> NodeFuture {
                 Box::pin(async { NodeOutcome::Completed })
             }),
+            noop_observer(),
         )
         .await
         .unwrap_err();
@@ -513,6 +572,7 @@ mod tests {
             Arc::new(|_n: TransferNode| -> NodeFuture {
                 Box::pin(async { NodeOutcome::Fallback })
             }),
+            noop_observer(),
         )
         .await
         .unwrap();
@@ -520,5 +580,48 @@ mod tests {
         assert_eq!(summary.nodes_completed, 1);
         assert_eq!(summary.fallback_count, 1);
         assert_eq!(summary.nodes_failed, 0);
+        // The one metric this slice populates truthfully.
+        assert_eq!(summary.metrics.range_fallbacks, 1);
+    }
+
+    #[tokio::test]
+    async fn observer_receives_node_lifecycle_and_final_metrics() {
+        let mut dag = TransferDag::default();
+        let a = dag.add_node(
+            TransferNodeKind::PlanTransfer,
+            vec![],
+            ResourceRequest::default(),
+        );
+        let _b = dag.add_node(
+            TransferNodeKind::DownloadFile,
+            vec![a],
+            ResourceRequest::default(),
+        );
+
+        // Node 0 completes normally, node 1 takes the degraded path.
+        let runner: Arc<dyn DagNodeRunner> = Arc::new(|node: TransferNode| -> NodeFuture {
+            Box::pin(async move {
+                if node.id == 0 {
+                    NodeOutcome::Completed
+                } else {
+                    NodeOutcome::Fallback
+                }
+            })
+        });
+        let observer = Arc::new(CollectingDagObserver::default());
+        let manager = TransferResourceManager::new(TransferBudget::from_file_slots(4));
+        let summary = execute_dag(
+            &dag,
+            &manager,
+            runner,
+            Arc::clone(&observer) as Arc<dyn DagObserver>,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(summary.nodes_completed, 2);
+        assert_eq!(summary.metrics.range_fallbacks, 1);
+        // on_metrics fired once at finalize with the same accumulated value.
+        assert_eq!(observer.metrics().range_fallbacks, 1);
     }
 }
