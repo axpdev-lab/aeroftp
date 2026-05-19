@@ -7,6 +7,7 @@
 //! existing GUI/CLI transfer paths can keep their public behavior while the
 //! scheduler, capability model, and resource leases become shared vocabulary.
 
+pub mod adaptive;
 pub mod capabilities;
 pub mod executor;
 pub mod graph;
@@ -16,6 +17,9 @@ pub mod planner;
 pub mod resources;
 pub mod session_pool;
 
+pub use adaptive::{
+    congestion_from_error, AdaptiveClass, AimdConfig, AimdController, CongestionEvent,
+};
 pub use capabilities::{Capability, TransferCapabilities};
 pub use observer::{DagObserver, NoopDagObserver, ObservedOutcome};
 pub use resources::{ResourceKind, ResourceRequest, TransferBudget, TransferResourceManager};
