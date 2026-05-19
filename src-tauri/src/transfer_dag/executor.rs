@@ -15,7 +15,7 @@
 //! paths are unchanged until one path is migrated onto this executor behind a
 //! flag with a byte-identical guarantee.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
@@ -24,6 +24,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use tokio::task::JoinSet;
 
+use super::adaptive::{congestion_from_error, AimdController};
 use super::graph::{TransferDag, TransferNode};
 use super::metrics::TransferDagMetrics;
 use super::observer::{DagObserver, ObservedOutcome};
@@ -166,11 +167,20 @@ fn request_exceeds_budget(request: &ResourceRequest, budget: &TransferBudget) ->
 /// snapshot through an `AppHandle`-free abstraction. It defaults to a no-op
 /// for non-GUI callers; the metrics it reports are the truthfully known ones
 /// only (no fabricated throughput/retry counts before a real path is wired).
+///
+/// `controller`, when `Some`, throttles the dispatch step with a prudent
+/// AIMD loop: each dispatched node first acquires per-class dispatch permits
+/// from the controller and holds them for its lifetime, so shrinking the
+/// concurrency target only withholds *future* dispatches and never aborts an
+/// in-flight transfer. Congestion is mapped off the existing error classifier
+/// (no new classifier, no provider signature change). `None` is the previous
+/// behaviour exactly (diff-0 for every current caller).
 pub async fn execute_dag(
     dag: &TransferDag,
     manager: &TransferResourceManager,
     runner: Arc<dyn DagNodeRunner>,
     observer: Arc<dyn DagObserver>,
+    controller: Option<Arc<AimdController>>,
 ) -> Result<DagExecutionSummary, DagExecutionError> {
     let nodes = dag.nodes();
     let mut summary = DagExecutionSummary::default();
@@ -194,6 +204,7 @@ pub async fn execute_dag(
 
     let mut completed: HashSet<usize> = HashSet::new();
     let mut started: HashSet<usize> = HashSet::new();
+    let mut requests: HashMap<usize, ResourceRequest> = HashMap::new();
     let mut failed: Option<(usize, String)> = None;
     let mut terminal_error: Option<DagExecutionError> = None;
     let mut join_set: JoinSet<(usize, NodeOutcome)> = JoinSet::new();
@@ -212,12 +223,21 @@ pub async fn execute_dag(
                 .collect();
             for node in ready {
                 started.insert(node.id);
+                requests.insert(node.id, node.resources);
                 observer.on_node_start(node.id, node.kind);
                 let manager = manager.clone();
                 let runner = Arc::clone(&runner);
+                let controller = controller.clone();
                 join_set.spawn(async move {
                     let id = node.id;
                     let request = node.resources;
+                    // Adaptive dispatch gate (held for the node's lifetime):
+                    // a shrink only parks not-yet-started nodes here, never
+                    // an in-flight transfer.
+                    let _dispatch = match &controller {
+                        Some(ctrl) => Some(ctrl.acquire(&request).await),
+                        None => None,
+                    };
                     match manager.acquire(request).await {
                         Ok(_lease) => {
                             let outcome = runner.run(node).await;
@@ -259,11 +279,13 @@ pub async fn execute_dag(
                 break;
             }
         };
+        let node_request = requests.get(&id).copied();
         match outcome {
             NodeOutcome::Completed => {
                 summary.nodes_completed += 1;
                 completed.insert(id);
                 observer.on_node_complete(id, ObservedOutcome::Completed);
+                aimd_note_healthy(&controller, node_request.as_ref());
             }
             NodeOutcome::Fallback => {
                 summary.nodes_completed += 1;
@@ -273,9 +295,22 @@ pub async fn execute_dag(
                 summary.metrics.range_fallbacks += 1;
                 completed.insert(id);
                 observer.on_node_complete(id, ObservedOutcome::Fallback);
+                // A successful (if degraded) completion is still a healthy
+                // signal for the concurrency controller.
+                aimd_note_healthy(&controller, node_request.as_ref());
             }
             NodeOutcome::Failed(message) => {
                 summary.nodes_failed += 1;
+                // Only the narrow congestion set throttles; other failures
+                // (auth, not-found, ...) must not shrink concurrency.
+                if let (Some(ctrl), Some(request)) = (&controller, node_request.as_ref()) {
+                    if congestion_from_error(&message).is_some() {
+                        summary.metrics.backpressure_events += 1;
+                        for class in AimdController::classes_for(request) {
+                            ctrl.on_congestion(class);
+                        }
+                    }
+                }
                 if failed.is_none() {
                     failed = Some((id, message));
                 }
@@ -294,6 +329,16 @@ pub async fn execute_dag(
         return Err(DagExecutionError::NodeFailed { node_id, message });
     }
     Ok(summary)
+}
+
+/// Reward the AIMD controller for a healthy completion on every controlled
+/// class the node used. No-op when no controller is wired.
+fn aimd_note_healthy(controller: &Option<Arc<AimdController>>, request: Option<&ResourceRequest>) {
+    if let (Some(ctrl), Some(request)) = (controller, request) {
+        for class in AimdController::classes_for(request) {
+            ctrl.note_healthy(class);
+        }
+    }
 }
 
 /// Best-effort node id for a panicking task: a started-but-not-completed node.
@@ -378,6 +423,7 @@ mod tests {
             &manager,
             runner_arc(Arc::clone(&probe)),
             noop_observer(),
+            None,
         )
         .await
         .unwrap();
@@ -419,6 +465,7 @@ mod tests {
             &manager,
             runner_arc(Arc::clone(&probe)),
             noop_observer(),
+            None,
         )
         .await
         .unwrap();
@@ -453,6 +500,7 @@ mod tests {
             &manager,
             runner_arc(Arc::clone(&probe)),
             noop_observer(),
+            None,
         )
         .await
         .unwrap();
@@ -481,6 +529,7 @@ mod tests {
             &manager,
             runner_arc(Arc::clone(&probe)),
             noop_observer(),
+            None,
         )
         .await
         .unwrap();
@@ -513,7 +562,7 @@ mod tests {
             })
         });
         let manager = TransferResourceManager::new(TransferBudget::from_file_slots(4));
-        let err = execute_dag(&dag, &manager, runner, noop_observer())
+        let err = execute_dag(&dag, &manager, runner, noop_observer(), None)
             .await
             .unwrap_err();
 
@@ -546,6 +595,7 @@ mod tests {
                 Box::pin(async { NodeOutcome::Completed })
             }),
             noop_observer(),
+            None,
         )
         .await
         .unwrap_err();
@@ -573,6 +623,7 @@ mod tests {
                 Box::pin(async { NodeOutcome::Fallback })
             }),
             noop_observer(),
+            None,
         )
         .await
         .unwrap();
@@ -615,6 +666,7 @@ mod tests {
             &manager,
             runner,
             Arc::clone(&observer) as Arc<dyn DagObserver>,
+            None,
         )
         .await
         .unwrap();
@@ -623,5 +675,70 @@ mod tests {
         assert_eq!(summary.metrics.range_fallbacks, 1);
         // on_metrics fired once at finalize with the same accumulated value.
         assert_eq!(observer.metrics().range_fallbacks, 1);
+    }
+
+    #[tokio::test]
+    async fn aimd_controller_shrinks_file_target_on_congestion_failure() {
+        use crate::transfer_dag::adaptive::{AdaptiveClass, AimdConfig, AimdController};
+
+        // One file node that fails with a 429 (a congestion signal).
+        let mut dag = TransferDag::default();
+        dag.add_node(
+            TransferNodeKind::DownloadFile,
+            vec![],
+            ResourceRequest::file_transfer(),
+        );
+
+        let runner: Arc<dyn DagNodeRunner> = Arc::new(|_n: TransferNode| -> NodeFuture {
+            Box::pin(async { NodeOutcome::Failed("HTTP 429 Too Many Requests".into()) })
+        });
+        let controller = Arc::new(AimdController::new(8, 1, 1, 1, AimdConfig::default()));
+        let manager = TransferResourceManager::new(TransferBudget::from_file_slots(8));
+
+        let err = execute_dag(
+            &dag,
+            &manager,
+            runner,
+            noop_observer(),
+            Some(Arc::clone(&controller)),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(matches!(err, DagExecutionError::NodeFailed { .. }));
+        // The 429 must have halved the File-class target (8 -> 4) and never
+        // grown it above the honest ceiling.
+        assert_eq!(controller.target(AdaptiveClass::File), 4);
+        assert_eq!(controller.live(AdaptiveClass::File), 4);
+    }
+
+    #[tokio::test]
+    async fn aimd_ignores_non_congestion_failures() {
+        use crate::transfer_dag::adaptive::{AdaptiveClass, AimdConfig, AimdController};
+
+        let mut dag = TransferDag::default();
+        dag.add_node(
+            TransferNodeKind::DownloadFile,
+            vec![],
+            ResourceRequest::file_transfer(),
+        );
+
+        let runner: Arc<dyn DagNodeRunner> = Arc::new(|_n: TransferNode| -> NodeFuture {
+            Box::pin(async { NodeOutcome::Failed("404 not found".into()) })
+        });
+        let controller = Arc::new(AimdController::new(8, 1, 1, 1, AimdConfig::default()));
+        let manager = TransferResourceManager::new(TransferBudget::from_file_slots(8));
+
+        let _ = execute_dag(
+            &dag,
+            &manager,
+            runner,
+            noop_observer(),
+            Some(Arc::clone(&controller)),
+        )
+        .await;
+
+        // A not-found failure is not congestion: the target stays put.
+        assert_eq!(controller.target(AdaptiveClass::File), 8);
     }
 }
