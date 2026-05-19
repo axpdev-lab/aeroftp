@@ -21,6 +21,33 @@ use super::types::ProviderError;
 /// Uses the RFC 6238 defaults shared by Filen, MEGA, and every standard
 /// authenticator app: SHA-1, 6 digits, 30-second period, t0 = Unix epoch.
 pub fn generate_totp_code(secret: &SecretString) -> Result<String, ProviderError> {
+    let totp = build_totp(secret)?;
+    totp.generate_current()
+        .map_err(|err| ProviderError::InvalidConfig(format!("TOTP generation failed: {err}")))
+}
+
+/// Like [`generate_totp_code`] but also returns the seconds remaining
+/// before the current code rolls over. Used by the connection-form
+/// diagnostic that shows the live code + 30s countdown next to the saved
+/// secret field, so the user can confirm AeroFTP derives the same code as
+/// their authenticator app (issue #128).
+pub fn generate_totp_code_with_ttl(
+    secret: &SecretString,
+) -> Result<(String, u64), ProviderError> {
+    let totp = build_totp(secret)?;
+    let code = totp
+        .generate_current()
+        .map_err(|err| ProviderError::InvalidConfig(format!("TOTP generation failed: {err}")))?;
+    let ttl = totp
+        .ttl()
+        .map_err(|err| ProviderError::InvalidConfig(format!("TOTP ttl failed: {err}")))?;
+    Ok((code, ttl))
+}
+
+/// Build the RFC 6238 TOTP from a base32 secret using the defaults shared
+/// by Filen, MEGA, and every standard authenticator app: SHA-1, 6 digits,
+/// 30-second period, t0 = Unix epoch.
+fn build_totp(secret: &SecretString) -> Result<TOTP, ProviderError> {
     // Normalize: strip whitespace and force uppercase so users can paste
     // the secret with spaces (the usual display format from providers)
     // without an "invalid character" error.
@@ -49,7 +76,7 @@ pub fn generate_totp_code(secret: &SecretString) -> Result<String, ProviderError
     // We trust the provider's own 2FA enrollment to be authoritative.
     // Issuer / account_name are required by the signature even though we
     // never emit an otpauth URI here (only generate_current is called).
-    let totp = TOTP::new_unchecked(
+    Ok(TOTP::new_unchecked(
         Algorithm::SHA1,
         6,
         1,
@@ -57,10 +84,7 @@ pub fn generate_totp_code(secret: &SecretString) -> Result<String, ProviderError
         bytes,
         Some("AeroFTP".to_string()),
         "provider-2fa".to_string(),
-    );
-
-    totp.generate_current()
-        .map_err(|err| ProviderError::InvalidConfig(format!("TOTP generation failed: {err}")))
+    ))
 }
 
 #[cfg(test)]

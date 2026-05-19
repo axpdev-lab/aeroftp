@@ -253,15 +253,32 @@ impl MegaCmdProvider {
         let password = self.config.password.expose_secret().to_string();
         let resolved_cmd = Self::resolve_mega_cmd("mega-login");
 
+        // 2FA: derive the 6-digit code from a saved base32 secret when
+        // present (no prompt, every connect), else fall back to a typed
+        // single-use code. mega-login takes the PIN via --auth-code; without
+        // forwarding it a 2FA-enabled MEGA account can never authenticate
+        // no matter what the user enters or saves (issue #128).
+        let auth_code: Option<String> = match self.config.totp_secret.as_ref() {
+            Some(secret) => Some(super::totp_helper::generate_totp_code(secret)?),
+            None => self
+                .config
+                .two_factor_code
+                .as_ref()
+                .map(|c| c.trim().to_string())
+                .filter(|c| !c.is_empty()),
+        };
+
         let login_future = async {
             #[cfg(windows)]
             let output = {
                 // CREATE_NO_WINDOW prevents cmd.exe console flash
                 use std::os::windows::process::CommandExt;
-                Command::new(&resolved_cmd)
-                    .arg(&self.config.email)
-                    .arg(&password)
-                    .creation_flags(CREATE_NO_WINDOW)
+                let mut cmd = Command::new(&resolved_cmd);
+                cmd.arg(&self.config.email).arg(&password);
+                if let Some(ref code) = auth_code {
+                    cmd.arg(format!("--auth-code={}", code));
+                }
+                cmd.creation_flags(CREATE_NO_WINDOW)
                     .stdout(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::piped())
                     .output()
@@ -275,16 +292,23 @@ impl MegaCmdProvider {
             };
 
             #[cfg(not(windows))]
-            let output = Command::new(&resolved_cmd)
-                .arg(&self.config.email)
-                .arg(&password)
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped())
-                .output()
-                .await
-                .map_err(|e| {
-                    ProviderError::ConnectionFailed(format!("Failed to execute mega-login: {}", e))
-                })?;
+            let output = {
+                let mut cmd = Command::new(&resolved_cmd);
+                cmd.arg(&self.config.email).arg(&password);
+                if let Some(ref code) = auth_code {
+                    cmd.arg(format!("--auth-code={}", code));
+                }
+                cmd.stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::piped())
+                    .output()
+                    .await
+                    .map_err(|e| {
+                        ProviderError::ConnectionFailed(format!(
+                            "Failed to execute mega-login: {}",
+                            e
+                        ))
+                    })?
+            };
 
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);

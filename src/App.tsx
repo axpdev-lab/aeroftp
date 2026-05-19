@@ -3988,6 +3988,7 @@ interface UpdateVerificationInfo {
         : effectiveParams.options?.tlsMode || (protocol === 'ftps' ? 'implicit' : protocol === 'ftp' ? 'explicit' : undefined),
       verify_cert: effectiveParams.options?.verifyCert !== undefined ? effectiveParams.options.verifyCert : true,
       two_factor_code: effectiveParams.options?.two_factor_code || null,
+      totp_secret: effectiveParams.options?.totp_secret || null,
       github_auth_mode: effectiveParams.options?.githubAuthMode || null,
       github_app_id: effectiveParams.options?.githubAppId || null,
       github_installation_id: effectiveParams.options?.githubInstallationId || null,
@@ -5218,6 +5219,7 @@ interface UpdateVerificationInfo {
             tls_mode: cloudServer.options?.tlsMode || (protocol === 'ftps' ? 'implicit' : protocol === 'ftp' ? 'explicit' : undefined),
             verify_cert: cloudServer.options?.verifyCert !== undefined ? cloudServer.options.verifyCert : true,
             two_factor_code: cloudServer.options?.two_factor_code || null,
+            totp_secret: cloudServer.options?.totp_secret || null,
           };
           await invoke('provider_connect', { params: providerParams });
         } else {

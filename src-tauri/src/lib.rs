@@ -381,6 +381,24 @@ fn drain_expired_overlay_sessions(
         .collect()
 }
 
+/// Live preview of the 6-digit code derived from a base32 TOTP secret,
+/// plus the seconds left before it rolls over. Powers the connection-form
+/// diagnostic next to the saved-secret field so the user can confirm the
+/// app derives the same code as their authenticator app (issue #128).
+/// Reuses the exact derivation used at connect time, so a match here means
+/// a match at login.
+#[tauri::command]
+fn preview_provider_totp(secret: String) -> Result<serde_json::Value, String> {
+    let (code, seconds_remaining) = providers::totp_helper::generate_totp_code_with_ttl(
+        &secrecy::SecretString::from(secret),
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(serde_json::json!({
+        "code": code,
+        "seconds_remaining": seconds_remaining,
+    }))
+}
+
 #[tauri::command]
 async fn aerovault_overlay_get_idle_timeout() -> Result<u64, String> {
     Ok(load_persisted_overlay_idle_timeout().unwrap_or(OVERLAY_IDLE_TIMEOUT_DEFAULT_SECS))
@@ -15263,6 +15281,7 @@ pub fn run() {
             filesystem::list_mounted_volumes,
             filesystem::list_subdirectories,
             filesystem::eject_volume,
+            preview_provider_totp,
             filesystem::list_unmounted_partitions,
             filesystem::mount_partition,
             filesystem::get_file_properties,

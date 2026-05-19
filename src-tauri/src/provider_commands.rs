@@ -227,6 +227,9 @@ pub struct ProviderConnectionParams {
     pub verify_cert: Option<bool>,
     /// Filen: Optional TOTP 2FA code
     pub two_factor_code: Option<String>,
+    /// Filen/MEGA/Internxt: Optional persisted base32 TOTP secret. When set,
+    /// the backend derives the 6-digit code on every connect (no prompt).
+    pub totp_secret: Option<String>,
     /// GitHub: auth mode used to obtain the token
     pub github_auth_mode: Option<String>,
     /// GitHub: App ID for installation-token mode
@@ -444,6 +447,16 @@ impl ProviderConnectionParams {
             if let Some(ref code) = self.two_factor_code {
                 if !code.is_empty() {
                     extra.insert("two_factor_code".to_string(), code.clone());
+                }
+            }
+            // Persisted base32 TOTP secret: forwarded so the provider derives
+            // the 6-digit code itself on every connect and never prompts
+            // (issue #128). The frontend persists this on the profile; without
+            // this line it never reached ProviderConfig and the field was
+            // effectively dead.
+            if let Some(ref secret) = self.totp_secret {
+                if !secret.trim().is_empty() {
+                    extra.insert("totp_secret".to_string(), secret.trim().to_string());
                 }
             }
         }
@@ -9234,6 +9247,7 @@ mod tests {
             tls_mode: None,
             verify_cert: None,
             two_factor_code: None,
+            totp_secret: None,
             github_auth_mode: None,
             github_app_id: None,
             github_installation_id: None,
