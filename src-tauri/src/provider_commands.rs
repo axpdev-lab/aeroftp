@@ -3646,6 +3646,28 @@ pub async fn provider_remove_permission(
         .map_err(|e| format!("Remove permission failed: {}", e))
 }
 
+/// GUI adapter that maps the `AppHandle`-free scan observer 1:1 onto the
+/// existing `sync_scan_progress` event. The clone-pool / locked scan paths
+/// hold only `&dyn DagObserver`; this adapter (which does own the
+/// `AppHandle`) restores the moving "remote" counter without threading the
+/// `AppHandle` into the scan module. The payload shape is byte-identical to
+/// the manual emits in `provider_compare_directories`, so the frontend is
+/// unchanged.
+struct ScanProgressEmitter {
+    app: AppHandle,
+}
+
+impl crate::transfer_dag::DagObserver for ScanProgressEmitter {
+    fn on_scan_progress(&self, scanned: usize, _in_flight: usize) {
+        let _ = self.app.emit(
+            "sync_scan_progress",
+            serde_json::json!({
+                "phase": "remote", "files_found": scanned,
+            }),
+        );
+    }
+}
+
 /// Compare local and remote directories using the StorageProvider trait.
 /// Works with all protocols (SFTP, WebDAV, S3, Google Drive, etc.)
 #[tauri::command]
@@ -3727,12 +3749,14 @@ pub async fn provider_compare_directories(
             compute_remote_checksum: options.compare_checksum,
             ..Default::default()
         };
+        let scan_observer = ScanProgressEmitter { app: app.clone() };
         let remote_entries = scan_remote_tree_with_provider_lock(
             state.provider.clone(),
             &remote_path,
             &scan_options,
             &list_model,
             Some(state.cancel_flag.clone()),
+            Some(&scan_observer),
         )
         .await;
 

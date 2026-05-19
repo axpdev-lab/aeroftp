@@ -11,11 +11,13 @@ pub mod capabilities;
 pub mod executor;
 pub mod graph;
 pub mod metrics;
+pub mod observer;
 pub mod planner;
 pub mod resources;
 pub mod session_pool;
 
 pub use capabilities::{Capability, TransferCapabilities};
+pub use observer::{DagObserver, NoopDagObserver, ObservedOutcome};
 pub use resources::{ResourceKind, ResourceRequest, TransferBudget, TransferResourceManager};
 pub use session_pool::{
     FtpPoolSessionLease, FtpSessionPoolAdapter, SessionLeaseId, SessionLeaseInfo, SessionLeaseKind,
