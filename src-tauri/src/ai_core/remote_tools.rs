@@ -412,6 +412,11 @@ async fn list_servers(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErro
             name_ok && proto_ok
         })
         .map(|p| {
+            let transfer_capabilities = crate::agent_session::transfer_capabilities_block(
+                &p.protocol,
+                None,
+                "profile_defaults",
+            );
             let auth_state = auth_lookup
                 .as_ref()
                 .map(|(store, accounts)| {
@@ -433,6 +438,7 @@ async fn list_servers(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErro
                 "initialPath": p.initial_path,
                 "providerId": p.provider_id,
                 "auth_state": auth_state,
+                "transfer_capabilities": transfer_capabilities,
             })
         })
         .collect();
@@ -1205,7 +1211,7 @@ async fn agent_connect(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
     };
 
     let path = agent_session::path_block(&profile);
-    let capabilities = agent_session::capabilities_block(&profile.protocol);
+    let mut capabilities = agent_session::capabilities_block(&profile.protocol);
 
     // `remote_backend()` opens (or reuses) the pooled connection: its
     // outcome IS the "connect" block. No separate connect() call needed.
@@ -1216,6 +1222,13 @@ async fn agent_connect(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
     let (connect, quota) = match backend_result {
         Ok(backend) => {
             let connect = agent_session::connect_block_ok(&profile.id, elapsed_ms);
+            if let Ok(Some(live_caps)) = backend.transfer_capabilities().await {
+                capabilities["transfer_capabilities"] = agent_session::transfer_capabilities_block(
+                    &profile.protocol,
+                    Some(live_caps),
+                    "live_provider",
+                );
+            }
             let quota = match backend.storage_info().await {
                 Ok(q) => agent_session::quota_block_ok(q.used, q.total, q.available),
                 Err(msg) => {

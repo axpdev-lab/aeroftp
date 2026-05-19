@@ -16,7 +16,9 @@
 use crate::credential_store::CredentialStore;
 use crate::providers::{
     ProviderConfig, ProviderError, ProviderFactory, ProviderType, StorageProvider,
+    TransferOptimizationHints,
 };
+use crate::transfer_dag::TransferCapabilities;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::time::Instant;
@@ -297,6 +299,135 @@ pub fn capabilities_for_protocol(protocol: &str) -> Vec<&'static str> {
     }
 }
 
+pub fn provider_type_for_transfer_capabilities(protocol: &str) -> Option<ProviderType> {
+    match protocol.to_ascii_lowercase().as_str() {
+        "ftp" => Some(ProviderType::Ftp),
+        "ftps" => Some(ProviderType::Ftps),
+        "sftp" => Some(ProviderType::Sftp),
+        "webdav" | "webdavs" | "web_dav" => Some(ProviderType::WebDav),
+        "s3" => Some(ProviderType::S3),
+        "aerocloud" | "aero_cloud" => Some(ProviderType::AeroCloud),
+        "googledrive" | "google_drive" | "google drive" => Some(ProviderType::GoogleDrive),
+        "googlephotos" | "google_photos" | "google photos" => Some(ProviderType::GooglePhotos),
+        "dropbox" => Some(ProviderType::Dropbox),
+        "onedrive" | "one_drive" | "one drive" => Some(ProviderType::OneDrive),
+        "mega" => Some(ProviderType::Mega),
+        "box" => Some(ProviderType::Box),
+        "pcloud" | "p_cloud" => Some(ProviderType::PCloud),
+        "azure" => Some(ProviderType::Azure),
+        "filen" => Some(ProviderType::Filen),
+        "fourshared" | "four_shared" | "4shared" => Some(ProviderType::FourShared),
+        "zohoworkdrive" | "zoho_workdrive" | "zoho workdrive" => Some(ProviderType::ZohoWorkdrive),
+        "internxt" => Some(ProviderType::Internxt),
+        "kdrive" | "k_drive" => Some(ProviderType::KDrive),
+        "jottacloud" => Some(ProviderType::Jottacloud),
+        "drime" | "drimecloud" | "drime_cloud" => Some(ProviderType::DrimeCloud),
+        "filelu" | "file_lu" => Some(ProviderType::FileLu),
+        "koofr" => Some(ProviderType::Koofr),
+        "opendrive" | "open_drive" => Some(ProviderType::OpenDrive),
+        "yandexdisk" | "yandex_disk" | "yandex disk" => Some(ProviderType::YandexDisk),
+        "github" => Some(ProviderType::GitHub),
+        "gitlab" => Some(ProviderType::GitLab),
+        "swift" => Some(ProviderType::Swift),
+        "immich" => Some(ProviderType::Immich),
+        "imagekit" | "image_kit" => Some(ProviderType::ImageKit),
+        "uploadcare" | "upload_care" => Some(ProviderType::Uploadcare),
+        "backblaze" | "b2" | "backblazeb2" | "backblaze_b2" => Some(ProviderType::Backblaze),
+        "cloudinary" => Some(ProviderType::Cloudinary),
+        _ => None,
+    }
+}
+
+pub fn default_transfer_optimization_hints_for_provider(
+    provider_type: ProviderType,
+) -> TransferOptimizationHints {
+    match provider_type {
+        ProviderType::Sftp => TransferOptimizationHints {
+            supports_range_download: true,
+            supports_compression: true,
+            supports_delta_sync: true,
+            ..Default::default()
+        },
+        ProviderType::Ftp | ProviderType::Ftps => TransferOptimizationHints {
+            supports_resume_download: true,
+            supports_resume_upload: true,
+            supports_range_download: true,
+            ..Default::default()
+        },
+        ProviderType::S3 => TransferOptimizationHints {
+            supports_multipart: true,
+            multipart_threshold: 5 * 1024 * 1024,
+            multipart_part_size: 5 * 1024 * 1024,
+            multipart_max_parallel: 4,
+            supports_range_download: true,
+            supports_resume_download: true,
+            supports_server_checksum: true,
+            preferred_checksum_algo: Some("ETag".to_string()),
+            ..Default::default()
+        },
+        ProviderType::Backblaze => TransferOptimizationHints {
+            supports_multipart: true,
+            multipart_threshold: 200 * 1024 * 1024,
+            multipart_part_size: 100 * 1024 * 1024,
+            multipart_max_parallel: 4,
+            ..Default::default()
+        },
+        ProviderType::WebDav | ProviderType::Koofr => TransferOptimizationHints {
+            supports_range_download: true,
+            supports_resume_download: true,
+            ..Default::default()
+        },
+        ProviderType::Azure => TransferOptimizationHints {
+            supports_range_download: true,
+            supports_resume_download: true,
+            ..Default::default()
+        },
+        ProviderType::Swift => TransferOptimizationHints {
+            supports_resume_download: true,
+            ..Default::default()
+        },
+        _ => TransferOptimizationHints::default(),
+    }
+}
+
+pub fn transfer_capabilities_for_protocol(protocol: &str) -> Option<TransferCapabilities> {
+    let provider_type = provider_type_for_transfer_capabilities(protocol)?;
+    Some(transfer_capabilities_for_provider_type(
+        provider_type,
+        protocol,
+    ))
+}
+
+pub fn transfer_capabilities_for_provider_type(
+    provider_type: ProviderType,
+    protocol_for_feature_hint: &str,
+) -> TransferCapabilities {
+    TransferCapabilities::from_provider_hints(
+        provider_type,
+        &default_transfer_optimization_hints_for_provider(provider_type),
+        capabilities_for_protocol(protocol_for_feature_hint).contains(&"server_copy"),
+    )
+}
+
+pub fn transfer_capabilities_block(
+    protocol: &str,
+    live_capabilities: Option<TransferCapabilities>,
+    source: &str,
+) -> Value {
+    match live_capabilities.or_else(|| transfer_capabilities_for_protocol(protocol)) {
+        Some(capabilities) => json!({
+            "status": "ok",
+            "source": source,
+            "capabilities": capabilities,
+        }),
+        None => json!({
+            "status": "unsupported",
+            "source": source,
+            "capabilities": TransferCapabilities::default(),
+        }),
+    }
+}
+
 /// Profile block: always present, summarises which profile the agent
 /// is talking about. Never carries `status` (it's metadata, not a step
 /// that can fail).
@@ -331,6 +462,11 @@ pub fn capabilities_block(protocol: &str) -> Value {
     json!({
         "status": "ok",
         "features": features,
+        "transfer_capabilities": transfer_capabilities_block(
+            protocol,
+            None,
+            "protocol_defaults"
+        ),
     })
 }
 
@@ -527,7 +663,7 @@ pub async fn build_agent_connect_payload(query: &str) -> Value {
     };
 
     let path = path_block(&profile);
-    let capabilities = capabilities_block(&profile.protocol);
+    let mut capabilities = capabilities_block(&profile.protocol);
 
     let connect_started = Instant::now();
     let connect_result = connect_provider(&profile).await;
@@ -535,6 +671,11 @@ pub async fn build_agent_connect_payload(query: &str) -> Value {
 
     let (connect, quota) = match connect_result {
         ConnectOutcome::Connected(mut provider) => {
+            capabilities["transfer_capabilities"] = transfer_capabilities_block(
+                &profile.protocol,
+                Some(provider.transfer_capabilities()),
+                "live_provider",
+            );
             let connect = connect_block_ok(&profile.id, elapsed_ms);
             let quota = match provider.storage_info().await {
                 Ok(info) => quota_block_ok(info.used, info.total, info.free),
@@ -612,6 +753,36 @@ mod tests {
     #[test]
     fn capabilities_unknown_protocol_is_empty() {
         assert!(capabilities_for_protocol("xyzzy").is_empty());
+    }
+
+    #[test]
+    fn transfer_capabilities_block_exposes_parallel_limits() {
+        let v = transfer_capabilities_block("backblaze", None, "profile_defaults");
+        assert_eq!(v["status"], "ok");
+        assert_eq!(v["source"], "profile_defaults");
+        assert_eq!(v["capabilities"]["multipart_upload"], "supported");
+        assert_eq!(v["capabilities"]["max_chunk_slots"], 4);
+        assert_eq!(v["capabilities"]["preferred_chunk_size"], 100 * 1024 * 1024);
+    }
+
+    #[test]
+    fn transfer_capabilities_unknown_protocol_is_explicit() {
+        let v = transfer_capabilities_block("xyzzy", None, "profile_defaults");
+        assert_eq!(v["status"], "unsupported");
+        assert_eq!(v["source"], "profile_defaults");
+        assert_eq!(v["capabilities"]["max_file_slots"], 1);
+    }
+
+    #[test]
+    fn capabilities_block_contains_transfer_capabilities() {
+        let v = capabilities_block("sftp");
+        assert_eq!(v["status"], "ok");
+        assert_eq!(v["transfer_capabilities"]["status"], "ok");
+        assert_eq!(v["transfer_capabilities"]["source"], "protocol_defaults");
+        assert_eq!(
+            v["transfer_capabilities"]["capabilities"]["strict_concurrent_range_download"],
+            "unsupported"
+        );
     }
 
     #[test]

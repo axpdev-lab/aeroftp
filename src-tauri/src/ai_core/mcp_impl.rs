@@ -311,6 +311,14 @@ impl RemoteBackend for McpRemoteBackend {
             available: info.free,
         })
     }
+
+    async fn transfer_capabilities(
+        &self,
+    ) -> Result<Option<crate::transfer_dag::TransferCapabilities>, String> {
+        self.with_provider(move |p| Box::pin(async move { Ok(p.transfer_capabilities()) }))
+            .await
+            .map(Some)
+    }
 }
 
 #[cfg(test)]

@@ -7,6 +7,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use crate::providers::RemoteEntry;
+use crate::transfer_dag::TransferCapabilities;
 use async_trait::async_trait;
 
 /// Storage quota information
@@ -55,4 +56,10 @@ pub trait RemoteBackend: Send + Sync {
 
     /// Get storage quota information.
     async fn storage_info(&self) -> Result<StorageQuota, String>;
+
+    /// Transfer scheduler capabilities for the live provider, when the
+    /// backend can expose them without credentials leaving the surface.
+    async fn transfer_capabilities(&self) -> Result<Option<TransferCapabilities>, String> {
+        Ok(None)
+    }
 }
