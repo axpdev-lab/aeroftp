@@ -3147,6 +3147,7 @@
             "calculateSize": "Izračunaj veličinu",
             "checksumVerification": "Kliknite za izračun kontrolnog zbroja datoteke",
             "checksumFolderNA": "Kontrolni zbrojevi nisu dostupni za mape",
+            "checksumServerOnly": "Pruža poslužitelj",
             "folderContents": "{files} datoteka, {dirs} mapa",
             "notAvailable": "Nije dostupno",
             "readOnly": "Samo za čitanje",

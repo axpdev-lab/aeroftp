@@ -3149,6 +3149,7 @@
             "calculateSize": "Arvuta suurus",
             "checksumVerification": "Klõpsake faili kontrollsumma arvutamiseks",
             "checksumFolderNA": "Kontrollsummad pole kaustade jaoks saadaval",
+            "checksumServerOnly": "Pakub server",
             "readOnly": "Kirjutuskaitstud",
             "hidden": "Peidetud",
             "contains": "Sisaldab",

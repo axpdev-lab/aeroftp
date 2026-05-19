@@ -3149,6 +3149,7 @@
             "calculateSize": "Grootte berekenen",
             "checksumVerification": "Klik om bestandscontrolesom te berekenen",
             "checksumFolderNA": "Controlesommen zijn niet beschikbaar voor mappen",
+            "checksumServerOnly": "Geleverd door de server",
             "readOnly": "Alleen-lezen",
             "hidden": "Verborgen",
             "contains": "Bevat",

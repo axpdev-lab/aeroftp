@@ -11104,7 +11104,10 @@ interface UpdateVerificationInfo {
                   setPropertiesDialog(prev => {
                     if (!prev) return null;
                     const next = { ...prev.checksum, calculating: false };
-                    (['md5', 'sha1', 'sha256', 'sha512', 'blake3'] as const).forEach(k => {
+                    // quickxor (OneDrive) / dropbox (Dropbox content_hash)
+                    // are server-only: surfaced when the backend returns
+                    // them, never computed locally.
+                    (['md5', 'sha1', 'sha256', 'sha512', 'blake3', 'quickxor', 'dropbox'] as const).forEach(k => {
                       if (map[k]) next[k] = map[k];
                     });
                     return { ...prev, checksum: next };

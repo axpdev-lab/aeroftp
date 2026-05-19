@@ -3147,6 +3147,7 @@
             "calculateSize": "Kalkulatu tamaina",
             "checksumVerification": "Klikatu fitxategiaren kontrol-batura kalkulatzeko",
             "checksumFolderNA": "Ez dago kontrol-baturarik karpetentzako",
+            "checksumServerOnly": "Zerbitzariak emana",
             "folderContents": "{files} fitxategi, {dirs} karpeta",
             "notAvailable": "Ez dago eskuragarri",
             "readOnly": "Irakurtzeko soilik",

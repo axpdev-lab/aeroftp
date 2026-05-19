@@ -3149,6 +3149,7 @@
             "calculateSize": "Boyutu Hesapla",
             "checksumVerification": "Dosya sağlama toplamını hesaplamak için tıklayın",
             "checksumFolderNA": "Sağlama toplamları klasörler için kullanılamaz",
+            "checksumServerOnly": "Sunucu tarafından sağlandı",
             "readOnly": "Salt okunur",
             "hidden": "Gizli",
             "contains": "İçerir",

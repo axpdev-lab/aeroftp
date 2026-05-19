@@ -3149,6 +3149,7 @@
             "calculateSize": "Обчислити розмір",
             "checksumVerification": "Натисніть для обчислення контрольної суми файлу",
             "checksumFolderNA": "Контрольні суми недоступні для тек",
+            "checksumServerOnly": "Надано сервером",
             "readOnly": "Лише для читання",
             "hidden": "Прихований",
             "contains": "Містить",

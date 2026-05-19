@@ -3149,6 +3149,7 @@
             "calculateSize": "Calculează dimensiunea",
             "checksumVerification": "Click pentru a calcula suma de control a fișierului",
             "checksumFolderNA": "Sumele de control nu sunt disponibile pentru dosare",
+            "checksumServerOnly": "Furnizat de server",
             "readOnly": "Doar citire",
             "hidden": "Ascuns",
             "contains": "Conține",

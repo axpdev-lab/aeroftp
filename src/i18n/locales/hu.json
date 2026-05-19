@@ -3149,6 +3149,7 @@
             "calculateSize": "Méret számítása",
             "checksumVerification": "Kattintson a fájl ellenőrző összeg számításához",
             "checksumFolderNA": "Ellenőrző összeg nem elérhető mappákhoz",
+            "checksumServerOnly": "A kiszolgáló biztosítja",
             "readOnly": "Csak olvasható",
             "hidden": "Rejtett",
             "contains": "Tartalmaz",

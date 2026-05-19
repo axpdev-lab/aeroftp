@@ -3149,6 +3149,7 @@
             "calculateSize": "Calcular tamaño",
             "checksumVerification": "Haz clic para calcular el checksum del archivo",
             "checksumFolderNA": "Los checksums no están disponibles para carpetas",
+            "checksumServerOnly": "Proporcionado por el servidor",
             "readOnly": "Solo lectura",
             "hidden": "Oculto",
             "contains": "Contiene",

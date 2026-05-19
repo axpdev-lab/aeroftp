@@ -3149,6 +3149,7 @@
             "calculateSize": "Calcular mida",
             "checksumVerification": "Feu clic per calcular la suma de verificació del fitxer",
             "checksumFolderNA": "Les sumes de verificació no estan disponibles per a carpetes",
+            "checksumServerOnly": "Proporcionat pel servidor",
             "readOnly": "Només lectura",
             "hidden": "Ocult",
             "contains": "Conté",

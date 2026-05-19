@@ -3149,6 +3149,7 @@
             "calculateSize": "Apskaičiuoti dydį",
             "checksumVerification": "Spustelėkite failo kontrolinei sumai apskaičiuoti",
             "checksumFolderNA": "Kontrolinės sumos nėra pasiekiamos aplankams",
+            "checksumServerOnly": "Pateikta serverio",
             "readOnly": "Tik skaitymui",
             "hidden": "Paslėptas",
             "contains": "Talpina",

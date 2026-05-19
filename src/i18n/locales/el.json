@@ -3149,6 +3149,7 @@
             "calculateSize": "Υπολογισμός Μεγέθους",
             "checksumVerification": "Κάντε κλικ για υπολογισμό checksum αρχείου",
             "checksumFolderNA": "Τα checksums δεν είναι διαθέσιμα για φακέλους",
+            "checksumServerOnly": "Παρέχεται από τον διακομιστή",
             "readOnly": "Μόνο για ανάγνωση",
             "hidden": "Κρυφό",
             "contains": "Περιέχει",

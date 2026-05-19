@@ -3147,6 +3147,7 @@
             "calculateSize": "Calcular tamaño",
             "checksumVerification": "Clic para calcular suma de verificación",
             "checksumFolderNA": "Sumas de verificación non dispoñibles para cartafoles",
+            "checksumServerOnly": "Fornecido polo servidor",
             "folderContents": "{files} ficheiros, {dirs} cartafoles",
             "notAvailable": "Non dispoñible",
             "readOnly": "Só lectura",

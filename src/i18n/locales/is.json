@@ -3149,6 +3149,7 @@
             "calculateSize": "Reikna Stærð",
             "checksumVerification": "Smelltu til að reikna tékksummu skráar",
             "checksumFolderNA": "Tékksummur ekki í boði fyrir möppur",
+            "checksumServerOnly": "Veitt af þjóninum",
             "readOnly": "Skrifvarið",
             "hidden": "Falið",
             "contains": "Inniheldur",

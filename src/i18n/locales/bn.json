@@ -3149,6 +3149,7 @@
             "calculateSize": "আকার গণনা করুন",
             "checksumVerification": "ফাইলের চেকসাম গণনা করতে ক্লিক করুন",
             "checksumFolderNA": "ফোল্ডারের জন্য চেকসাম উপলব্ধ নয়",
+            "checksumServerOnly": "সার্ভার দ্বারা প্রদত্ত",
             "readOnly": "শুধুমাত্র পঠনযোগ্য",
             "hidden": "লুকানো",
             "contains": "ধারণ করে",

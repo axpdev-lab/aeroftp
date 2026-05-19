@@ -3149,6 +3149,7 @@
             "calculateSize": "Hesabu Ukubwa",
             "checksumVerification": "Bonyeza kuhesabu checksum ya faili",
             "checksumFolderNA": "Checksum haipatikani kwa folda",
+            "checksumServerOnly": "Imetolewa na seva",
             "readOnly": "Kusoma tu",
             "hidden": "Iliyofichwa",
             "contains": "Ina",
