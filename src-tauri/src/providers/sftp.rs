@@ -2189,6 +2189,168 @@ async fn sftp_pipelined_download(
     Ok(())
 }
 
+/// PD-PIPE-2 strict gate (pure, unit-tested): inside a range sub-window a
+/// `read() == 0` before the requested length is a **hard error**, never a
+/// silent short read. This is exactly the serial PD-SFTP-2 worker's `n == 0`
+/// gate (same message shape: expected/at-offset/got), factored out so the
+/// strict-short-read-before-length path is deterministically testable
+/// without a live SFTP server.
+fn sftp_strict_short_read_check(
+    n: usize,
+    filled: usize,
+    want: usize,
+    abs_off: u64,
+) -> Result<(), ProviderError> {
+    if n == 0 && filled < want {
+        return Err(ProviderError::TransferFailed(format!(
+            "SFTP range short read: expected {} bytes at offset {}, got {}",
+            want, abs_off, filled
+        )));
+    }
+    Ok(())
+}
+
+/// PD-PIPE-2: read **exactly** `want` bytes from `file` at the absolute
+/// offset `abs_off`. Unlike the PD-PIPE-1 [`sftp_pipelined_read_window`]
+/// (EOF-tolerant: a short read is the end of a single-stream `download()`),
+/// this is the **strict** sub-window read for the PD-SFTP-2 range worker:
+/// a `read() == 0` before `want` is a hard [`ProviderError::TransferFailed`]
+/// via [`sftp_strict_short_read_check`], byte-for-byte the serial worker's
+/// strict gate. Each window must yield its full length or fail loud.
+async fn sftp_pipelined_range_read_strict(
+    file: &mut russh_sftp::client::fs::File,
+    abs_off: u64,
+    want: usize,
+) -> Result<Vec<u8>, ProviderError> {
+    use tokio::io::{AsyncReadExt, AsyncSeekExt};
+
+    file.seek(std::io::SeekFrom::Start(abs_off))
+        .await
+        .map_err(|e| {
+            classify_russh_err(e, |s| {
+                ProviderError::ServerError(format!("Failed to seek to range start: {}", s))
+            })
+        })?;
+
+    let mut buf = vec![0u8; want];
+    let mut filled = 0usize;
+    while filled < want {
+        let n = file.read(&mut buf[filled..]).await.map_err(|e| {
+            classify_russh_err(e, |s| {
+                ProviderError::TransferFailed(format!("Range read error: {}", s))
+            })
+        })?;
+        sftp_strict_short_read_check(n, filled, want, abs_off)?;
+        filled += n;
+    }
+    Ok(buf)
+}
+
+/// PD-PIPE-2: pipeline the PD-SFTP-2 range worker's read of
+/// `[start, start + expected)` on the worker's **own single** SFTP session.
+///
+/// Compounds with PD-SFTP-2: that slice gives N independent connections
+/// (one per range window); this gives K pipelined reads per connection over
+/// distinct `File` handles on **that connection's one `SftpSession`**
+/// (russh-sftp multiplexes concurrent requests by id over one channel; the
+/// internal `Arc<RawSftpSession>` is shared by every `File`). **No new TCP
+/// connection, no new pool, no second channel** (the same vehicle PD-PIPE-1
+/// proved, applied inside the worker). Byte-identical to the serial worker
+/// loop: the same bytes written at the same absolute offsets, the same
+/// strict short-read hard error and the same per-batch cancellation; only
+/// the read scheduling differs.
+#[allow(clippy::too_many_arguments)]
+async fn sftp_pipelined_range_into(
+    sftp: &SftpSession,
+    full_path: &str,
+    start: u64,
+    expected: u64,
+    out: &mut tokio::fs::File,
+    chunk: usize,
+    window: usize,
+    aggregate: &Arc<AtomicU64>,
+    cancel: &CancellationToken,
+) -> Result<(), ProviderError> {
+    use tokio::io::{AsyncSeekExt, AsyncWriteExt};
+
+    let chunk = chunk.max(4096) as u64;
+    let window = window.clamp(2, SFTP_PIPELINE_MAX_WINDOW);
+    let chunks_needed = expected.div_ceil(chunk).max(1) as usize;
+    let eff_window = window.min(chunks_needed);
+
+    // `eff_window` handles, all on the worker's ONE existing session: one
+    // SSH channel, the RawSftpSession multiplexes the concurrent reads by id.
+    let mut handles: Vec<russh_sftp::client::fs::File> = Vec::with_capacity(eff_window);
+    for _ in 0..eff_window {
+        let f = sftp.open(full_path).await.map_err(|e| {
+            classify_russh_err(e, |s| {
+                ProviderError::TransferFailed(format!(
+                    "Failed to open remote file for range (pipeline): {}",
+                    s
+                ))
+            })
+        })?;
+        handles.push(f);
+    }
+
+    let stop = start + expected;
+    let mut offset: u64 = start;
+    while offset < stop {
+        // Plan up to `eff_window` consecutive strict sub-stripes.
+        let batch_base = offset;
+        let mut wants: Vec<usize> = Vec::with_capacity(eff_window);
+        for _ in 0..eff_window {
+            if offset >= stop {
+                break;
+            }
+            let want = std::cmp::min(chunk, stop - offset) as usize;
+            wants.push(want);
+            offset += want as u64;
+        }
+        if wants.is_empty() {
+            break;
+        }
+
+        // Issue the batch concurrently: each future borrows one distinct
+        // handle (disjoint &mut via split_at_mut), so `window` strict reads
+        // are in flight on the single connection at once.
+        let n = wants.len();
+        let (used, _rest) = handles.split_at_mut(n);
+        let mut futs = Vec::with_capacity(n);
+        let mut abs = batch_base;
+        for (f, &want) in used.iter_mut().zip(wants.iter()) {
+            futs.push(sftp_pipelined_range_read_strict(f, abs, want));
+            abs += want as u64;
+        }
+
+        // Cancellation stays responsive per batch and returns the EXACT
+        // serial-worker "Transfer cancelled by user" error.
+        let results = tokio::select! {
+            _ = cancel.cancelled() => {
+                return Err(ProviderError::TransferFailed(
+                    "Transfer cancelled by user".to_string(),
+                ));
+            }
+            r = futures_util::future::try_join_all(futs) => r?,
+        };
+
+        // Write each strict sub-stripe in strict offset order at its
+        // absolute file offset; aggregate per chunk (the shared progress
+        // counter, same as the serial worker).
+        let mut abs = batch_base;
+        for buf in results.iter() {
+            out.seek(std::io::SeekFrom::Start(abs))
+                .await
+                .map_err(ProviderError::IoError)?;
+            out.write_all(buf).await.map_err(ProviderError::IoError)?;
+            aggregate.fetch_add(buf.len() as u64, Ordering::Relaxed);
+            abs += buf.len() as u64;
+        }
+    }
+
+    Ok(())
+}
+
 /// PD-SFTP-2 per-range worker: dial an **independent** SSH+SFTP connection
 /// from `spec`, seek to `start`, and stream **exactly** `end - start + 1`
 /// bytes into `temp_path` at absolute offset `start`. One call == one fresh
@@ -2230,6 +2392,40 @@ async fn sftp_download_one_range(
 
     let full_path = worker.normalize_path(&remote_path);
     let sftp = worker.get_sftp()?;
+
+    // PD-PIPE-2: when the opt-in flag yields a window and no bandwidth cap
+    // is active, pipeline this range worker's read of
+    // `[start, start + expected)` on its OWN single SFTP session. Compounds
+    // with PD-SFTP-2's N independent connections; no new connection / pool /
+    // channel. Default (flag unset) or an active cap falls through to the
+    // exact serial loop below = diff-0 (the serial loop owns the precise
+    // throttle, same discipline as PD-PIPE-1 / `AEROFTP_RANGE_GRAPH`).
+    if limit_bps == 0 {
+        if let Some(window) = sftp_read_pipeline_window() {
+            let mut out = tokio::fs::OpenOptions::new()
+                .write(true)
+                .open(&temp_path)
+                .await
+                .map_err(ProviderError::IoError)?;
+            sftp_pipelined_range_into(
+                sftp,
+                &full_path,
+                start,
+                expected,
+                &mut out,
+                buffer_size,
+                window,
+                &aggregate,
+                &cancel,
+            )
+            .await?;
+            out.flush().await.map_err(ProviderError::IoError)?;
+            out.sync_all().await.map_err(ProviderError::IoError)?;
+            let _ = worker.disconnect().await;
+            return Ok(ConcurrentRangeOutcome::Completed);
+        }
+    }
+
     let mut remote_file = sftp.open(&full_path).await.map_err(|e| {
         classify_russh_err(e, |s| {
             ProviderError::TransferFailed(format!("Failed to open remote file for range: {}", s))
@@ -2338,6 +2534,33 @@ mod tests {
                 "{junk:?}"
             );
         }
+    }
+
+    #[test]
+    fn pd_pipe2_strict_short_read_before_length_is_hard_error() {
+        // The strict-short-read-before-length hard-error path of the
+        // PD-PIPE-2 assembler (deterministic, no live server). A protocol
+        // `read() == 0` with fewer than `want` bytes filled is the exact
+        // serial PD-SFTP-2 worker error: never a silent short read.
+        let err = sftp_strict_short_read_check(0, 100, 4096, 1_048_576)
+            .expect_err("zero read before length must be a hard error");
+        match err {
+            ProviderError::TransferFailed(m) => {
+                assert!(m.contains("short read"), "message shape: {m}");
+                assert!(m.contains("4096"), "want in message: {m}");
+                assert!(m.contains("1048576"), "abs offset in message: {m}");
+                assert!(m.contains("100"), "filled-so-far in message: {m}");
+            }
+            other => panic!("expected TransferFailed, got {other:?}"),
+        }
+        // A non-zero read is always progress (loop continues).
+        assert!(sftp_strict_short_read_check(1, 0, 4096, 0).is_ok());
+        assert!(sftp_strict_short_read_check(4096, 0, 4096, 0).is_ok());
+        // Zero read exactly AT the requested length is not an error (the
+        // while-loop would already have stopped: filled == want).
+        assert!(sftp_strict_short_read_check(0, 4096, 4096, 0).is_ok());
+        // Zero read past the length (defensive) is likewise not an error.
+        assert!(sftp_strict_short_read_check(0, 5000, 4096, 0).is_ok());
     }
 
     #[test]

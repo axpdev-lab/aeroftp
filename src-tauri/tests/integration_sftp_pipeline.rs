@@ -37,6 +37,7 @@ use std::time::Instant;
 use ftp_client_gui_lib::providers::sftp::SftpProvider;
 use ftp_client_gui_lib::providers::types::SftpConfig;
 use ftp_client_gui_lib::providers::StorageProvider;
+use ftp_client_gui_lib::transfer_dag::Capability;
 use sha2::{Digest, Sha256};
 
 const PORT: u16 = 2222;
@@ -226,4 +227,125 @@ async fn sftp_read_pipeline_is_byte_identical_to_serial() {
     );
 
     eprintln!("PD-PIPE-1: serial == pipelined == source for all sizes; zero .aerotmp residue");
+}
+
+/// PD-PIPE-2 live validation: the read pipeline is now **active on the
+/// PD-SFTP-2 pooled path** (the parallel range worker), not just the
+/// single-stream `download()`. A 64 MiB file is downloaded over the
+/// intra-file concurrent-range path (`--multi-thread-streams 4
+/// --multi-thread-cutoff 1M`) with `AEROFTP_SFTP_READ_PIPELINE` **off** and
+/// then **on**: both must be byte-identical to the source (so each N=4
+/// range window, now pipelined K reads deep on its own session, assembles
+/// exactly the same bytes at the same offsets), with zero `.aerotmp`
+/// residue. Off==on==source is the diff-0 proof; the timing line is a
+/// non-gating observation (compounds with PD-PIPE-1). The capability flip
+/// is asserted so a silent single-stream fallback fails the run.
+#[tokio::test]
+#[ignore = "live: requires the sftp-rsync Docker fixture up on :2222"]
+async fn sftp_read_pipeline_is_byte_identical_on_the_pooled_path() {
+    if !ssh_key_path().exists() {
+        eprintln!("SKIP: fixture ssh_key missing (run fixtures/sftp-rsync/setup.sh)");
+        return;
+    }
+    seed_known_host();
+
+    // ~64 MiB so 4 streams produce 4 x 16 MiB range windows; pseudo-random,
+    // non-repeating bytes so a mis-ordered stripe cannot accidentally match.
+    const BIG_BYTES: usize = 64 * 1024 * 1024;
+    const CUTOFF: u64 = 1024 * 1024; // --multi-thread-cutoff 1M
+    const STREAMS: usize = 4; // --multi-thread-streams 4
+
+    let src_dir = std::env::temp_dir().join("pd-pipe2-src");
+    let _ = std::fs::remove_dir_all(&src_dir);
+    std::fs::create_dir_all(&src_dir).unwrap();
+    let src = src_dir.join("big.bin");
+    {
+        let mut buf = vec![0u8; BIG_BYTES];
+        let mut x: u32 = 0x9E37_79B9;
+        for b in buf.iter_mut() {
+            x ^= x << 13;
+            x ^= x >> 17;
+            x ^= x << 5;
+            *b = (x & 0xFF) as u8;
+        }
+        std::fs::write(&src, &buf).unwrap();
+    }
+    let src_hash = sha256_file(&src);
+
+    let mut base = SftpProvider::new(fixture_config());
+    base.connect().await.expect("base SFTP connect");
+    assert!(
+        base.connection_spec().is_some(),
+        "connect() must capture a secure SftpConnectionSpec"
+    );
+    base.upload(src.to_str().unwrap(), "/workdir/pipe2_big.bin", None)
+        .await
+        .expect("seed upload pipe2_big.bin");
+
+    let out_root = std::env::temp_dir().join("pd-pipe2-out");
+    let _ = std::fs::remove_dir_all(&out_root);
+    std::fs::create_dir_all(&out_root).unwrap();
+    let total_mib = BIG_BYTES as f64 / 1_048_576.0;
+
+    // Pooled path, flag OFF: serial range worker (shipped PD-SFTP-2).
+    std::env::remove_var("AEROFTP_SFTP_READ_PIPELINE");
+    let off_out = out_root.join("n4_off.bin");
+    let mut w_off = base
+        .clone_for_transfer()
+        .expect("clone_for_transfer (pool, flag off)");
+    w_off.set_multi_thread_download(STREAMS, CUTOFF);
+    assert_eq!(
+        w_off
+            .transfer_capabilities()
+            .strict_concurrent_range_download,
+        Capability::Supported,
+        "a pool-backed SFTP worker must advertise strict concurrent range"
+    );
+    let t_off = Instant::now();
+    w_off
+        .download("/workdir/pipe2_big.bin", off_out.to_str().unwrap(), None)
+        .await
+        .expect("pooled download (flag off)");
+    let off_s = t_off.elapsed().as_secs_f64();
+    assert_eq!(src_hash, sha256_file(&off_out), "pool flag-off != source");
+
+    // Pooled path, flag ON: each of the N=4 range windows now reads K deep
+    // on its OWN session (PD-PIPE-2). Must be byte-identical.
+    std::env::set_var("AEROFTP_SFTP_READ_PIPELINE", "8");
+    let on_out = out_root.join("n4_on.bin");
+    let mut w_on = base
+        .clone_for_transfer()
+        .expect("clone_for_transfer (pool, flag on)");
+    w_on.set_multi_thread_download(STREAMS, CUTOFF);
+    let t_on = Instant::now();
+    w_on.download("/workdir/pipe2_big.bin", on_out.to_str().unwrap(), None)
+        .await
+        .expect("pooled download (flag on)");
+    let on_s = t_on.elapsed().as_secs_f64();
+    std::env::remove_var("AEROFTP_SFTP_READ_PIPELINE");
+    assert_eq!(
+        src_hash,
+        sha256_file(&on_out),
+        "pool flag-on != source (NOT byte-identical: PD-PIPE-2 broke the pooled path)"
+    );
+
+    assert!(
+        aerotmp_residue(&out_root).is_empty(),
+        "F-1: .aerotmp residue after the pooled path"
+    );
+
+    eprintln!(
+        "PD-PIPE-2 pooled: file={:.0} MiB  N={} flag-off {:.2}s ({:.1} MiB/s)  \
+         flag-on {:.2}s ({:.1} MiB/s)  off==on==source  zero .aerotmp",
+        total_mib,
+        STREAMS,
+        off_s,
+        if off_s > 0.0 { total_mib / off_s } else { 0.0 },
+        on_s,
+        if on_s > 0.0 { total_mib / on_s } else { 0.0 },
+    );
+
+    let _ = base.disconnect().await;
+    let _ = std::fs::remove_dir_all(&out_root);
+    let _ = std::fs::remove_dir_all(&src_dir);
 }
