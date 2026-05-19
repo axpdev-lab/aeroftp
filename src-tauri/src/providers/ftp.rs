@@ -1565,6 +1565,33 @@ impl StorageProvider for FtpProvider {
 // FTP Hash/Checksum Commands (B3)
 // =============================================================================
 
+/// Map an FTP server's hash-algorithm label (the leading token of a
+/// RFC-draft `HASH` reply, or the implied algo of `XMD5`/`XCRC`/`XSHA1`)
+/// to the canonical lowercase key shared by every
+/// `StorageProvider::checksum()` impl and the `hashsum` / `lsjson --hash`
+/// consumers. Separators and case vary across servers (`SHA-256`,
+/// `sha256`, `SHA256`), so the label is normalised before matching; an
+/// unrecognised label degrades to its lowercased, separator-stripped form
+/// rather than being dropped (still server-side, just an exotic algo).
+fn canonical_hash_key(server_algo: &str) -> String {
+    let norm: String = server_algo
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .collect::<String>()
+        .to_ascii_uppercase();
+    match norm.as_str() {
+        "SHA256" => "sha256",
+        "SHA512" => "sha512",
+        "SHA384" => "sha384",
+        "SHA1" => "sha1",
+        "MD5" => "md5",
+        "CRC32" => "crc32",
+        "ADLER32" => "adler32",
+        _ => return norm.to_ascii_lowercase(),
+    }
+    .to_string()
+}
+
 impl FtpProvider {
     /// Compute a remote file checksum using the best available command.
     /// Returns a map like {"MD5": "abc123..."} or {"CRC32": "..."} etc.
@@ -1607,15 +1634,22 @@ impl FtpProvider {
             // e.g. "SHA-256 0-EOF abc123def456 /path/to/file.txt"
             let parts: Vec<&str> = body.splitn(4, ' ').collect();
             if parts.len() >= 3 {
-                let algo = parts[0]; // actual algorithm from server
-                let hash = parts[2];
-                result.insert(algo.to_string(), hash.to_string());
+                result.insert(
+                    canonical_hash_key(parts[0]),
+                    parts[2].trim().to_ascii_lowercase(),
+                );
             } else {
-                result.insert(default_algo.to_string(), body.trim().to_string());
+                result.insert(
+                    canonical_hash_key(default_algo),
+                    body.trim().to_ascii_lowercase(),
+                );
             }
         } else {
             // XMD5/XCRC/XSHA1: response is just the hex hash
-            result.insert(default_algo.to_string(), body.trim().to_string());
+            result.insert(
+                canonical_hash_key(default_algo),
+                body.trim().to_ascii_lowercase(),
+            );
         }
 
         Ok(result)
@@ -1845,6 +1879,20 @@ mod tests {
 
         assert_eq!(entry.name, "Projects");
         assert!(entry.is_dir);
+    }
+
+    #[test]
+    fn ftp_hash_keys_canonicalised() {
+        // RFC-draft HASH labels and the X* family map to the same
+        // lowercase keys every checksum() consumer expects.
+        assert_eq!(canonical_hash_key("SHA-256"), "sha256");
+        assert_eq!(canonical_hash_key("sha256"), "sha256");
+        assert_eq!(canonical_hash_key("SHA-512"), "sha512");
+        assert_eq!(canonical_hash_key("SHA-1"), "sha1");
+        assert_eq!(canonical_hash_key("MD5"), "md5");
+        assert_eq!(canonical_hash_key("CRC32"), "crc32");
+        // Unknown algo degrades, never dropped.
+        assert_eq!(canonical_hash_key("Whirlpool"), "whirlpool");
     }
 }
 
