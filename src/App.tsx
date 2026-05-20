@@ -6669,7 +6669,7 @@ interface UpdateVerificationInfo {
 
     let context: AeroFileSyncContext;
 
-    if (showDualLocalPanel && !showRemotePanel) {
+    if (showDualLocalPanel && (!isConnected || !showRemotePanel)) {
       const leftEntries = localFiles.map(toCompareEntry);
       const rightEntries = localFiles2.map(toCompareEntry);
       const result = compareEntries(leftEntries, rightEntries);
