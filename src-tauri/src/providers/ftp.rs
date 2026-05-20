@@ -1513,6 +1513,12 @@ impl StorageProvider for FtpProvider {
             )));
         }
 
+        // PD-FTP-1 mirror of the SFTP path: clone-for-transfer workers
+        // start unconnected and self-dial on first transfer. The GUI
+        // segmented engine calls `read_range` directly on the pool
+        // worker, so without this self-dial every segmented download
+        // against a clone pool fails with `Not connected`.
+        self.ensure_connected().await?;
         let stream = self.stream_mut()?;
 
         stream
