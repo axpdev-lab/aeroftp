@@ -998,7 +998,11 @@
             "bridgeUnsupportedProto": "{protocol} ni podprt v {app}",
             "bridgeSecretFull": "Poverilnice se obnovijo in znova šifrirajo v trezor AeroFTP.",
             "bridgeSecretLimited": "Obnoviti je mogoče le del poverilnic; nekatere skrivnosti boste morda morali znova vnesti.",
-            "bridgeSecretMetadata": "Samo metapodatki povezave: skrivnosti ostanejo v zbirki ključev/agentu {app} in jih je treba znova vnesti."
+            "bridgeSecretMetadata": "Samo metapodatki povezave: skrivnosti ostanejo v zbirki ključev/agentu {app} in jih je treba znova vnesti.",
+            "downloadSegments": "Segmenti prenosa na datoteko",
+            "downloadSegmentsAuto": "Samodejno (en tok)",
+            "downloadSegmentsN": "{n} segmentov na datoteko",
+            "downloadSegmentsDesc": "Vsak prenos razdeli na vzporedne razpone bajtov. Samodejno ohrani trenutno vedenje z enim tokom. Učinkovito pri ponudnikih, ki podpirajo zahteve po razponu (SFTP, S3, HTTP), za datoteke dovolj velike, da prinašajo korist."
         },
         "devtools": {
             "title": "AeroTools",

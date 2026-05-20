@@ -998,7 +998,11 @@
             "bridgeUnsupportedProto": "A(z) {protocol} nem támogatott a(z) {app} által",
             "bridgeSecretFull": "A hitelesítő adatok visszaállnak és újra titkosítva kerülnek az AeroFTP vaultba.",
             "bridgeSecretLimited": "A hitelesítő adatoknak csak egy része állítható vissza; előfordulhat, hogy néhány titkot újra meg kell adnia.",
-            "bridgeSecretMetadata": "Csak kapcsolati metaadatok: a titkok a(z) {app} kulcstartójában/ügynökében maradnak, és újra meg kell adni őket."
+            "bridgeSecretMetadata": "Csak kapcsolati metaadatok: a titkok a(z) {app} kulcstartójában/ügynökében maradnak, és újra meg kell adni őket.",
+            "downloadSegments": "Letöltési szegmensek fájlonként",
+            "downloadSegmentsAuto": "Automatikus (egy adatfolyam)",
+            "downloadSegmentsN": "{n} szegmens fájlonként",
+            "downloadSegmentsDesc": "Minden letöltés felosztása párhuzamos byte-tartományokra. Az Automatikus megőrzi a jelenlegi egycsatornás működést. Olyan szolgáltatóknál hatékony, amelyek támogatják a range-kéréseket (SFTP, S3, HTTP), megfelelően nagy fájlok esetén."
         },
         "devtools": {
             "title": "AeroTools",

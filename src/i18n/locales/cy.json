@@ -998,7 +998,11 @@
             "bridgeUnsupportedProto": "Nid yw {app} yn cefnogi {protocol}",
             "bridgeSecretFull": "Caiff y manylion adnabod eu hadfer a'u hailamgryptio i mewn i gladd AeroFTP.",
             "bridgeSecretLimited": "Dim ond rhan o'r manylion adnabod y gellir ei hadfer; efallai y bydd angen i chi ailosod rhai cyfrinachau.",
-            "bridgeSecretMetadata": "Metadata cysylltiad yn unig: mae'r cyfrinachau'n aros yng nghadwyn allweddi/asiant {app} a rhaid eu hailosod."
+            "bridgeSecretMetadata": "Metadata cysylltiad yn unig: mae'r cyfrinachau'n aros yng nghadwyn allweddi/asiant {app} a rhaid eu hailosod.",
+            "downloadSegments": "Segmentau lawrlwytho fesul ffeil",
+            "downloadSegmentsAuto": "Auto (un ffrwd)",
+            "downloadSegmentsN": "{n} segment fesul ffeil",
+            "downloadSegmentsDesc": "Rhannu pob lawrlwythiad yn ystodau beit cyfochrog. Mae Auto yn cadw'r ymddygiad un ffrwd presennol. Effeithiol gyda darparwyr sy'n cefnogi ceisiadau ystod (SFTP, S3, HTTP) ar gyfer ffeiliau digon mawr i elwa."
         },
         "devtools": {
             "title": "AeroTools",

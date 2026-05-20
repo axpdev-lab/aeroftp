@@ -998,7 +998,11 @@
             "bridgeUnsupportedProto": "{protocol}은(는) {app}에서 지원하지 않습니다",
             "bridgeSecretFull": "자격 증명이 복구되어 AeroFTP vault로 다시 암호화됩니다.",
             "bridgeSecretLimited": "자격 증명의 일부만 복구할 수 있습니다. 일부 비밀을 다시 입력해야 할 수 있습니다.",
-            "bridgeSecretMetadata": "연결 메타데이터만 해당: 비밀은 {app}의 키체인/에이전트에 남아 있으므로 다시 입력해야 합니다."
+            "bridgeSecretMetadata": "연결 메타데이터만 해당: 비밀은 {app}의 키체인/에이전트에 남아 있으므로 다시 입력해야 합니다.",
+            "downloadSegments": "파일당 다운로드 세그먼트 수",
+            "downloadSegmentsAuto": "자동 (단일 스트림)",
+            "downloadSegmentsN": "파일당 {n}개 세그먼트",
+            "downloadSegmentsDesc": "각 다운로드를 병렬 바이트 범위로 분할합니다. 자동은 현재의 단일 스트림 동작을 유지합니다. 범위 요청을 지원하는 제공자(SFTP, S3, HTTP)에서 충분히 큰 파일에 대해 효과적입니다."
         },
         "devtools": {
             "title": "AeroTools",

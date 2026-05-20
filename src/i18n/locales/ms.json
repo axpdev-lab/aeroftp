@@ -998,7 +998,11 @@
             "bridgeUnsupportedProto": "{protocol} tidak disokong oleh {app}",
             "bridgeSecretFull": "Kelayakan dipulihkan dan disulitkan semula ke dalam vault AeroFTP.",
             "bridgeSecretLimited": "Hanya sebahagian bahan kelayakan boleh dipulihkan; anda mungkin perlu memasukkan semula beberapa rahsia.",
-            "bridgeSecretMetadata": "Metadata sambungan sahaja: rahsia kekal dalam keychain/ejen {app} dan mesti dimasukkan semula."
+            "bridgeSecretMetadata": "Metadata sambungan sahaja: rahsia kekal dalam keychain/ejen {app} dan mesti dimasukkan semula.",
+            "downloadSegments": "Segmen Muat Turun setiap Fail",
+            "downloadSegmentsAuto": "Auto (strim tunggal)",
+            "downloadSegmentsN": "{n} segmen setiap fail",
+            "downloadSegmentsDesc": "Pecahkan setiap muat turun kepada julat bait selari. Auto mengekalkan tingkah laku strim tunggal sedia ada. Berkesan pada penyedia yang menyokong permintaan julat (SFTP, S3, HTTP) untuk fail yang cukup besar untuk mendapat manfaat."
         },
         "devtools": {
             "title": "AeroTools",

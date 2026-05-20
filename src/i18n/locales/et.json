@@ -998,7 +998,11 @@
             "bridgeUnsupportedProto": "{app} ei toeta protokolli {protocol}",
             "bridgeSecretFull": "Mandaadid taastatakse ja krüptitakse uuesti AeroFTP hoidlasse.",
             "bridgeSecretLimited": "Mandaatidest saab taastada ainult osa; mõned saladused tuleb võib-olla uuesti sisestada.",
-            "bridgeSecretMetadata": "Ainult ühenduse metaandmed: saladused jäävad rakenduse {app} võtmehoidlasse/agenti ja tuleb uuesti sisestada."
+            "bridgeSecretMetadata": "Ainult ühenduse metaandmed: saladused jäävad rakenduse {app} võtmehoidlasse/agenti ja tuleb uuesti sisestada.",
+            "downloadSegments": "Allalaadimise segmendid faili kohta",
+            "downloadSegmentsAuto": "Auto (üks voog)",
+            "downloadSegmentsN": "{n} segmenti faili kohta",
+            "downloadSegmentsDesc": "Jagab iga allalaadimise paralleelseteks baidivahemikeks. Auto säilitab praeguse ühe voo käitumise. Toimib pakkujatel, kes toetavad vahemikupäringuid (SFTP, S3, HTTP), ja piisavalt suurte failide korral, et sellest kasu oleks."
         },
         "devtools": {
             "title": "AeroTools",

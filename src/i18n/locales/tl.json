@@ -998,7 +998,11 @@
             "bridgeUnsupportedProto": "Hindi sinusuportahan ang {protocol} ng {app}",
             "bridgeSecretFull": "Ang mga kredensyal ay nababawi at muling ini-encrypt sa vault ng AeroFTP.",
             "bridgeSecretLimited": "Bahagi lamang ng kredensyal ang maaaring mabawi; maaaring kailanganin mong muling ipasok ang ilang sikreto.",
-            "bridgeSecretMetadata": "Metadata lamang ng koneksyon: nananatili ang mga sikreto sa keychain/agent ng {app} at dapat muling ipasok."
+            "bridgeSecretMetadata": "Metadata lamang ng koneksyon: nananatili ang mga sikreto sa keychain/agent ng {app} at dapat muling ipasok.",
+            "downloadSegments": "Mga segment ng pag-download kada file",
+            "downloadSegmentsAuto": "Auto (isang stream)",
+            "downloadSegmentsN": "{n} segment kada file",
+            "downloadSegmentsDesc": "Hinahati ang bawat pag-download sa parehas na byte ranges. Pinapanatili ng Auto ang kasalukuyang single-stream na pag-uugali. Epektibo sa mga provider na sumusuporta sa range requests (SFTP, S3, HTTP) para sa mga file na sapat ang laki upang makinabang."
         },
         "devtools": {
             "title": "AeroTools",

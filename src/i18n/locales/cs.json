@@ -998,7 +998,11 @@
             "bridgeUnsupportedProto": "{protocol} není podporován v {app}",
             "bridgeSecretFull": "Přihlašovací údaje se obnoví a znovu zašifrují do trezoru AeroFTP.",
             "bridgeSecretLimited": "Lze obnovit jen část přihlašovacích údajů; některá tajemství bude možná nutné zadat znovu.",
-            "bridgeSecretMetadata": "Pouze metadata připojení: tajemství zůstávají v klíčence/agentovi {app} a musí být zadána znovu."
+            "bridgeSecretMetadata": "Pouze metadata připojení: tajemství zůstávají v klíčence/agentovi {app} a musí být zadána znovu.",
+            "downloadSegments": "Segmenty stahování na soubor",
+            "downloadSegmentsAuto": "Auto (jeden proud)",
+            "downloadSegmentsN": "{n} segmentů na soubor",
+            "downloadSegmentsDesc": "Rozdělí každé stahování na paralelní bajtové rozsahy. Auto zachovává současné chování s jedním proudem. Funguje u poskytovatelů, kteří podporují požadavky na rozsah (SFTP, S3, HTTP), a u souborů dostatečně velkých, aby z toho měly užitek."
         },
         "devtools": {
             "title": "AeroTools",

@@ -998,7 +998,11 @@
             "bridgeUnsupportedProto": "{app} ei tue protokollaa {protocol}",
             "bridgeSecretFull": "Tunnistetiedot palautetaan ja salataan uudelleen AeroFTP-holviin.",
             "bridgeSecretLimited": "Vain osa tunnistetiedoista voidaan palauttaa; sinun on ehkä syötettävä jotkin salaisuudet uudelleen.",
-            "bridgeSecretMetadata": "Vain yhteyden metatiedot: salaisuudet pysyvät sovelluksen {app} avainnipussa/agentissa, ja ne on syötettävä uudelleen."
+            "bridgeSecretMetadata": "Vain yhteyden metatiedot: salaisuudet pysyvät sovelluksen {app} avainnipussa/agentissa, ja ne on syötettävä uudelleen.",
+            "downloadSegments": "Latauksen segmentit per tiedosto",
+            "downloadSegmentsAuto": "Auto (yksi virta)",
+            "downloadSegmentsN": "{n} segmenttiä per tiedosto",
+            "downloadSegmentsDesc": "Jakaa jokaisen latauksen rinnakkaisiin tavualueisiin. Auto säilyttää nykyisen yhden virran toiminnan. Tehokas palveluntarjoajilla, jotka tukevat range-pyyntöjä (SFTP, S3, HTTP), riittävän suurille tiedostoille, jotta hyöty näkyy."
         },
         "devtools": {
             "title": "AeroTools",

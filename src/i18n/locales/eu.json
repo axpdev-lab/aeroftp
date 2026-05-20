@@ -998,7 +998,11 @@
             "bridgeUnsupportedProto": "{app}(e)k ez du {protocol} onartzen",
             "bridgeSecretFull": "Kredentzialak berreskuratu eta berriro zifratzen dira AeroFTP vault-ean.",
             "bridgeSecretLimited": "Kredentzialen zati bat baino ezin da berreskuratu; baliteke isilpeko datu batzuk berriro sartu behar izatea.",
-            "bridgeSecretMetadata": "Konexioaren metadatuak soilik: isilpeko datuak {app}(r)en gako-sortan/agentean geratzen dira eta berriro sartu behar dira."
+            "bridgeSecretMetadata": "Konexioaren metadatuak soilik: isilpeko datuak {app}(r)en gako-sortan/agentean geratzen dira eta berriro sartu behar dira.",
+            "downloadSegments": "Deskarga-segmentuak fitxategiko",
+            "downloadSegmentsAuto": "Auto (korronte bakarra)",
+            "downloadSegmentsN": "{n} segmentu fitxategiko",
+            "downloadSegmentsDesc": "Deskarga bakoitza byte-tarte paraleloetan banatzen du. Auto-k egungo korronte bakarreko portaera mantentzen du. Tarte-eskaerak onartzen dituzten hornitzaileetan eraginkorra (SFTP, S3, HTTP), onura ateratzeko bezain handiak diren fitxategietarako."
         },
         "devtools": {
             "title": "AeroTools",
