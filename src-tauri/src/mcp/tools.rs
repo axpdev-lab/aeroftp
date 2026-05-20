@@ -1334,6 +1334,7 @@ pub async fn execute_tool(
                     compute_remote_checksum: delta_policy.wants_checksums(),
                     ..Default::default()
                 },
+                download_segments: crate::transfer_settings::DEFAULT_DOWNLOAD_SEGMENTS,
             };
 
             // Entry-time pool invalidate. Wave-1 added an end-of-run
