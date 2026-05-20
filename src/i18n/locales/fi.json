@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} ajassa {seconds}s",
                 "newTransfer": "Uusi siirto",
                 "preparing": "Valmistellaan siirtoa…"
-            }
+            },
+            "staged": "jonossa",
+            "start": "Aloita",
+            "startAll": "Aloita kaikki"
         },
         "settings": {
             "title": "Asetukset",

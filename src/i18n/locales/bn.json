@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} {seconds}s-এ",
                 "newTransfer": "নতুন ট্রান্সফার",
                 "preparing": "স্থানান্তর প্রস্তুত করা হচ্ছে…"
-            }
+            },
+            "staged": "সারিবদ্ধ",
+            "start": "শুরু",
+            "startAll": "সব শুরু করুন"
         },
         "settings": {
             "title": "সেটিংস",

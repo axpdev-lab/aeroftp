@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} en {seconds}s",
                 "newTransfer": "Nova Transferencia",
                 "preparing": "Preparant la transferència…"
-            }
+            },
+            "staged": "en cua",
+            "start": "Inicia",
+            "startAll": "Inicia-ho tot"
         },
         "settings": {
             "title": "Configuracio",

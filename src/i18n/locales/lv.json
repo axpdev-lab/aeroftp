@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} {seconds}s laikā",
                 "newTransfer": "Jauna pārsūtīšana",
                 "preparing": "Sagatavo pārsūtīšanu…"
-            }
+            },
+            "staged": "rindā",
+            "start": "Sākt",
+            "startAll": "Sākt visu"
         },
         "settings": {
             "title": "Iestatījumi",

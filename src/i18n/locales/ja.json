@@ -501,7 +501,10 @@
                 "summaryMeta": "{size}（{seconds}秒）",
                 "newTransfer": "新規転送",
                 "preparing": "転送を準備しています…"
-            }
+            },
+            "staged": "待機中",
+            "start": "開始",
+            "startAll": "すべて開始"
         },
         "settings": {
             "title": "設定",

@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} за {seconds}s",
                 "newTransfer": "Нови пренос",
                 "preparing": "Припрема преноса…"
-            }
+            },
+            "staged": "у реду",
+            "start": "Покрени",
+            "startAll": "Покрени све"
         },
         "settings": {
             "title": "Подешавања",

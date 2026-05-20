@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} {seconds}s-ში",
                 "newTransfer": "ახალი ტრანსფერი",
                 "preparing": "გადაცემის მომზადება…"
-            }
+            },
+            "staged": "რიგში",
+            "start": "დაწყება",
+            "startAll": "ყველას დაწყება"
         },
         "settings": {
             "title": "პარამეტრები",

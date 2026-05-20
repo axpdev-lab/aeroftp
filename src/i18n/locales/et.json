@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} {seconds}s jooksul",
                 "newTransfer": "Uus ülekanne",
                 "preparing": "Ülekande ettevalmistamine…"
-            }
+            },
+            "staged": "järjekorras",
+            "start": "Käivita",
+            "startAll": "Käivita kõik"
         },
         "settings": {
             "title": "Seaded",

@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} {seconds}s-ում",
                 "newTransfer": "Նոր փոխանցում",
                 "preparing": "Փոխանցման նախապատրաստում…"
-            }
+            },
+            "staged": "հերթում",
+            "start": "Սկսել",
+            "startAll": "Սկսել բոլորը"
         },
         "settings": {
             "title": "Կարգավորումներ",

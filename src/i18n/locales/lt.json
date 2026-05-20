@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} per {seconds}s",
                 "newTransfer": "Naujas perkėlimas",
                 "preparing": "Ruošiamas perdavimas…"
-            }
+            },
+            "staged": "eilėje",
+            "start": "Pradėti",
+            "startAll": "Pradėti viską"
         },
         "settings": {
             "title": "Nustatymai",

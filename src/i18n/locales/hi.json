@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} {seconds}s में",
                 "newTransfer": "नया ट्रांसफर",
                 "preparing": "स्थानांतरण की तैयारी की जा रही है…"
-            }
+            },
+            "staged": "कतार में",
+            "start": "शुरू करें",
+            "startAll": "सभी शुरू करें"
         },
         "settings": {
             "title": "सेटिंग्स",

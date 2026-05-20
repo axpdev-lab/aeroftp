@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} en {seconds}s",
                 "newTransfer": "Nova Transferencia",
                 "preparing": "Preparando a transferencia…"
-            }
+            },
+            "staged": "en cola",
+            "start": "Iniciar",
+            "startAll": "Iniciar todo"
         },
         "settings": {
             "title": "Axustes",

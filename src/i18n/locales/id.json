@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} dalam {seconds} detik",
                 "newTransfer": "Transfer Baru",
                 "preparing": "Menyiapkan transfer…"
-            }
+            },
+            "staged": "dalam antrian",
+            "start": "Mulai",
+            "startAll": "Mulai semua"
         },
         "settings": {
             "title": "Pengaturan",

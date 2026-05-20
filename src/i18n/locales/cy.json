@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} mewn {seconds}s",
                 "newTransfer": "Trosglwyddiad Newydd",
                 "preparing": "Yn paratoi'r trosglwyddiad…"
-            }
+            },
+            "staged": "mewn ciw",
+            "start": "Cychwyn",
+            "startAll": "Cychwyn popeth"
         },
         "settings": {
             "title": "Gosodiadau",

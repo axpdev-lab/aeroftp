@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} sa {seconds}s",
                 "newTransfer": "Bagong Paglipat",
                 "preparing": "Inihahanda ang paglilipat…"
-            }
+            },
+            "staged": "naka-queue",
+            "start": "Simulan",
+            "startAll": "Simulan lahat"
         },
         "settings": {
             "title": "Mga Setting",

@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} σε {seconds}s",
                 "newTransfer": "Νέα μεταφορά",
                 "preparing": "Προετοιμασία μεταφοράς…"
-            }
+            },
+            "staged": "σε αναμονή",
+            "start": "Έναρξη",
+            "startAll": "Έναρξη όλων"
         },
         "settings": {
             "title": "Ρυθμίσεις",
