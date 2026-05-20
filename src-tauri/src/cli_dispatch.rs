@@ -16,6 +16,7 @@ pub const CLI_SUBCOMMANDS: &[&str] = &[
     "cat",
     "head",
     "tail",
+    "peek",
     "touch",
     "hashsum",
     "check",
