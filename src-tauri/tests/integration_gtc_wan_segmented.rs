@@ -32,6 +32,9 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use ftp_client_gui_lib::credential_store::CredentialStore;
+use ftp_client_gui_lib::cross_profile_transfer::{
+    copy_one_file, copy_one_file_with_options, CrossProfileCopyOptions,
+};
 use ftp_client_gui_lib::provider_transfer_executor::{
     provider_segmented_download_eligible, run_provider_segmented_download,
 };
@@ -48,6 +51,7 @@ use ftp_client_gui_lib::sync_core::scan::ScanOptions;
 use ftp_client_gui_lib::transfer_dag::Capability;
 use secrecy::SecretString;
 use sha2::{Digest, Sha256};
+use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
 const SFTP_PROFILE_ID: &str = "srv_1778600830336_6pvrx7450";
@@ -73,6 +77,8 @@ const S3_BUCKET: &str = "aeroftp-test";
 const S3_REGION: &str = "us-east-1";
 const S3_ENDPOINT: &str = "https://s3.lab.axpdev.it";
 const S3_REMOTE_BIG: &str = "_gtc_gui_validation/64MiB.bin";
+const GTC4_FILE_BYTES: usize = 16 * 1024 * 1024;
+const GTC4_FILES: usize = 4;
 
 // ---------------------------------------------------------------------
 // Helpers
@@ -135,26 +141,25 @@ fn load_sftp_creds() -> Option<LoadedSftpCreds> {
 
     // The vault may store either a raw password string OR a JSON object
     // with `{password, private_key_path, key_passphrase, ...}` fields.
-    let (password, private_key_path) = if let Ok(val) =
-        serde_json::from_str::<serde_json::Value>(&raw)
-    {
-        if let Some(obj) = val.as_object() {
-            let pwd = obj
-                .get("password")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let key = obj
-                .get("private_key_path")
-                .and_then(|v| v.as_str())
-                .filter(|s| !s.is_empty())
-                .map(expand_tilde);
-            (pwd, key)
+    let (password, private_key_path) =
+        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&raw) {
+            if let Some(obj) = val.as_object() {
+                let pwd = obj
+                    .get("password")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let key = obj
+                    .get("private_key_path")
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty())
+                    .map(expand_tilde);
+                (pwd, key)
+            } else {
+                (Some(raw), None)
+            }
         } else {
             (Some(raw), None)
-        }
-    } else {
-        (Some(raw), None)
-    };
+        };
 
     // Fallback: the SFTP admin profile is known to use the local
     // `~/.ssh/id_ed25519` key via the GUI's "Private Key Path" field.
@@ -740,6 +745,171 @@ fn s3_config(secret: String) -> S3Config {
         sse_kms_key_id: None,
         verify_cert: false,
     }
+}
+
+async fn verify_s3_object_sha(base: &S3Provider, key: &str, expected_sha: &str, label: &str) {
+    let dst = std::env::temp_dir().join(format!("gtc4-verify-{label}.bin"));
+    let _ = std::fs::remove_file(&dst);
+    let mut worker = base.clone_for_transfer().expect("clone S3 verifier");
+    worker
+        .download(key, dst.to_str().unwrap(), None)
+        .await
+        .unwrap_or_else(|e| panic!("download S3 verifier {key}: {e}"));
+    assert_eq!(
+        sha256_file(&dst),
+        expected_sha,
+        "S3 object {key} must match source bytes",
+    );
+    let _ = std::fs::remove_file(&dst);
+}
+
+#[tokio::test]
+#[ignore = "live WAN: GTC-4 cross-profile SFTP to S3 parallel copy against axpbuntu"]
+async fn gtc_cross_profile_sftp_to_s3_parallel_byte_identity_speed_band() {
+    let Some(creds) = load_sftp_creds() else {
+        eprintln!("SKIP: SFTP credentials unavailable in vault");
+        return;
+    };
+    let Some(s3_secret) = load_s3_secret() else {
+        eprintln!("SKIP: S3 secret unavailable in vault");
+        return;
+    };
+
+    let src_dir = std::env::temp_dir().join("gtc4-cross-profile-src");
+    let _ = std::fs::remove_dir_all(&src_dir);
+    std::fs::create_dir_all(&src_dir).unwrap();
+
+    let mut expected = Vec::new();
+    let mut sftp_base = SftpProvider::new(sftp_config(creds.clone()));
+    sftp_base.connect().await.expect("base SFTP connect");
+    let _ = sftp_base.mkdir(REMOTE_DIR).await;
+    for i in 0..GTC4_FILES {
+        let local = src_dir.join(format!("gtc4-{i}.bin"));
+        std::fs::write(
+            &local,
+            random_buf(0x4754_4304_u64 + i as u64, GTC4_FILE_BYTES),
+        )
+        .unwrap();
+        let sha = sha256_file(&local);
+        let remote = format!("{REMOTE_DIR}/gtc4-{i}.bin");
+        let _ = sftp_base.delete(&remote).await;
+        sftp_base
+            .upload(local.to_str().unwrap(), &remote, None)
+            .await
+            .unwrap_or_else(|e| panic!("seed SFTP source {remote}: {e}"));
+        expected.push((remote, sha));
+    }
+
+    let mut s3_base = S3Provider::new(s3_config(s3_secret.clone())).expect("S3Provider::new");
+    s3_base.connect().await.expect("base S3 connect");
+    for i in 0..GTC4_FILES {
+        let _ = s3_base
+            .delete(&format!("_gtc_gui_validation/gtc4-serial-{i}.bin"))
+            .await;
+        let _ = s3_base
+            .delete(&format!("_gtc_gui_validation/gtc4-parallel-{i}.bin"))
+            .await;
+    }
+
+    let serial_start = Instant::now();
+    for (i, (remote, _sha)) in expected.iter().enumerate() {
+        let mut source = SftpProvider::new(sftp_config(creds.clone()));
+        source.connect().await.expect("serial SFTP connect");
+        let mut dest = S3Provider::new(s3_config(s3_secret.clone())).expect("S3Provider::new");
+        dest.connect().await.expect("serial S3 connect");
+        copy_one_file(
+            &mut source,
+            &mut dest,
+            remote,
+            &format!("_gtc_gui_validation/gtc4-serial-{i}.bin"),
+            None,
+        )
+        .await
+        .unwrap_or_else(|e| panic!("serial cross-profile copy {remote}: {e}"));
+        let _ = source.disconnect().await;
+        let _ = dest.disconnect().await;
+    }
+    let serial_elapsed = serial_start.elapsed();
+
+    let parallel_start = Instant::now();
+    let mut tasks = JoinSet::new();
+    for (i, (remote, _sha)) in expected.iter().cloned().enumerate() {
+        let creds = creds.clone();
+        let s3_secret = s3_secret.clone();
+        tasks.spawn(async move {
+            let mut source = SftpProvider::new(sftp_config(creds));
+            source.connect().await.expect("parallel SFTP connect");
+            let mut dest = S3Provider::new(s3_config(s3_secret)).expect("S3Provider::new");
+            dest.connect().await.expect("parallel S3 connect");
+            let key = format!("_gtc_gui_validation/gtc4-parallel-{i}.bin");
+            copy_one_file_with_options(
+                &mut source,
+                &mut dest,
+                &remote,
+                &key,
+                None,
+                CrossProfileCopyOptions {
+                    source_size: Some(GTC4_FILE_BYTES as u64),
+                    download_segments: 4,
+                    cancel_token: CancellationToken::new(),
+                },
+            )
+            .await
+            .unwrap_or_else(|e| panic!("parallel cross-profile copy {remote}: {e}"));
+            let _ = source.disconnect().await;
+            let _ = dest.disconnect().await;
+        });
+    }
+    while let Some(result) = tasks.join_next().await {
+        result.expect("parallel copy task join");
+    }
+    let parallel_elapsed = parallel_start.elapsed();
+
+    for (i, (_remote, sha)) in expected.iter().enumerate() {
+        verify_s3_object_sha(
+            &s3_base,
+            &format!("_gtc_gui_validation/gtc4-parallel-{i}.bin"),
+            sha,
+            &format!("parallel-{i}"),
+        )
+        .await;
+        verify_s3_object_sha(
+            &s3_base,
+            &format!("_gtc_gui_validation/gtc4-serial-{i}.bin"),
+            sha,
+            &format!("serial-{i}"),
+        )
+        .await;
+    }
+
+    let speedup = serial_elapsed.as_secs_f64() / parallel_elapsed.as_secs_f64().max(1e-6);
+    eprintln!(
+        "GTC-4 Cross-Profile SFTP->S3 @ axpbuntu: files={} size={}MiB serial {:.2}s  parallel {:.2}s  speedup {:.2}x  byte-id=YES",
+        GTC4_FILES,
+        GTC4_FILE_BYTES / 1_048_576,
+        serial_elapsed.as_secs_f64(),
+        parallel_elapsed.as_secs_f64(),
+        speedup,
+    );
+    assert!(
+        speedup >= 0.75,
+        "parallel cross-profile copy must stay within speed band, got {speedup:.2}x",
+    );
+
+    for i in 0..GTC4_FILES {
+        let _ = s3_base
+            .delete(&format!("_gtc_gui_validation/gtc4-serial-{i}.bin"))
+            .await;
+        let _ = s3_base
+            .delete(&format!("_gtc_gui_validation/gtc4-parallel-{i}.bin"))
+            .await;
+        let _ = sftp_base
+            .delete(&format!("{REMOTE_DIR}/gtc4-{i}.bin"))
+            .await;
+    }
+    let _ = s3_base.disconnect().await;
+    let _ = sftp_base.disconnect().await;
+    let _ = std::fs::remove_dir_all(&src_dir);
 }
 
 #[tokio::test]
