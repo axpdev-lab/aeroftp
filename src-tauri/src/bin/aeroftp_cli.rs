@@ -1300,6 +1300,22 @@ enum Commands {
         #[command(subcommand)]
         command: AliasCommands,
     },
+    /// Toggle an opt-in shell alias (default: aero) on or off
+    ///
+    /// Creates or removes a symlink in the user's local bin directory
+    /// that points back at the dispatcher. The same command both
+    /// enables and disables the alias: running it twice returns to the
+    /// original state. Prints exactly one confirmation line:
+    /// "The '<name>' alias is now On" or "The '<name>' alias is now
+    /// Off". Idempotent, exit code 0 in both directions.
+    AliasToggle {
+        /// Alias name to toggle (default: aero)
+        #[arg(default_value = "aero")]
+        name: String,
+        /// Override the target directory (default: ~/.local/bin on Unix)
+        #[arg(long)]
+        bin_dir: Option<PathBuf>,
+    },
     /// AeroAgent - AI-powered interactive agent with tool execution
     Agent {
         /// One-shot message (run and exit)
@@ -1670,6 +1686,40 @@ enum Commands {
         #[command(subcommand)]
         command: VaultCommands,
     },
+}
+
+#[cfg(test)]
+#[allow(dead_code)]
+#[path = "../cli_dispatch.rs"]
+mod cli_dispatch;
+
+#[cfg(test)]
+mod cli_dispatch_tests {
+    use super::{cli_dispatch, Cli};
+    use clap::CommandFactory;
+
+    #[test]
+    fn dispatcher_allowlist_matches_clap_subcommands() {
+        std::thread::Builder::new()
+            .name("dispatcher-allowlist-clap-sync".to_string())
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                let clap_names: Vec<_> = Cli::command()
+                    .get_subcommands()
+                    .filter(|subcommand| !subcommand.is_hide_set())
+                    .map(|subcommand| subcommand.get_name().to_string())
+                    .collect();
+                let allowlist_names: Vec<_> = cli_dispatch::CLI_SUBCOMMANDS
+                    .iter()
+                    .map(|name| (*name).to_string())
+                    .collect();
+
+                assert_eq!(allowlist_names, clap_names);
+            })
+            .expect("spawn allowlist sync test")
+            .join()
+            .expect("allowlist sync test panicked");
+    }
 }
 
 #[derive(Subcommand)]
@@ -18845,6 +18895,187 @@ fn cmd_alias(command: &AliasCommands, format: OutputFormat) -> i32 {
                 }
             }
             0
+        }
+    }
+}
+
+fn is_valid_opt_in_alias_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 64
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
+fn default_opt_in_bin_dir() -> Result<PathBuf, String> {
+    if let Some(home) = std::env::var_os("HOME") {
+        Ok(PathBuf::from(home).join(".local").join("bin"))
+    } else {
+        Err("cannot resolve $HOME; pass --bin-dir explicitly".to_string())
+    }
+}
+
+fn path_dir_is_in_env(target: &Path) -> bool {
+    let Some(raw_path) = std::env::var_os("PATH") else {
+        return false;
+    };
+    std::env::split_paths(&raw_path).any(|entry| entry == target)
+}
+
+fn cmd_alias_toggle(name: &str, bin_dir: Option<&Path>, format: OutputFormat) -> i32 {
+    if !is_valid_opt_in_alias_name(name) {
+        print_error(
+            format,
+            &format!(
+                "Invalid alias name '{}': only ASCII letters, digits, '-' and '_' are allowed.",
+                name
+            ),
+            5,
+        );
+        return 5;
+    }
+
+    #[cfg(not(unix))]
+    {
+        let _ = bin_dir;
+        print_error(
+            format,
+            "alias-toggle is not yet supported on this platform; see CLI-GUIDE.md for the PowerShell profile recipe.",
+            7,
+        );
+        return 7;
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::symlink;
+
+        let exe = match std::env::current_exe() {
+            Ok(path) => path,
+            Err(e) => {
+                print_error(format, &format!("cannot resolve current executable: {}", e), 5);
+                return 5;
+            }
+        };
+        let bin_dir = match bin_dir.map(|p| p.to_path_buf()).map_or_else(default_opt_in_bin_dir, Ok) {
+            Ok(path) => path,
+            Err(e) => {
+                print_error(format, &e, 5);
+                return 5;
+            }
+        };
+        let link_path = bin_dir.join(name);
+
+        let existing = std::fs::symlink_metadata(&link_path);
+        match existing {
+            Ok(meta) if meta.file_type().is_symlink() => {
+                let target = match std::fs::read_link(&link_path) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        print_error(
+                            format,
+                            &format!(
+                                "cannot read existing symlink '{}': {}",
+                                link_path.display(),
+                                e
+                            ),
+                            5,
+                        );
+                        return 5;
+                    }
+                };
+                if target != exe {
+                    print_error(
+                        format,
+                        &format!(
+                            "'{}' exists and points to '{}', not the current aeroftp binary; refusing to touch.",
+                            link_path.display(),
+                            target.display()
+                        ),
+                        5,
+                    );
+                    return 5;
+                }
+                if let Err(e) = std::fs::remove_file(&link_path) {
+                    print_error(
+                        format,
+                        &format!("cannot remove '{}': {}", link_path.display(), e),
+                        5,
+                    );
+                    return 5;
+                }
+                match format {
+                    OutputFormat::Text => {
+                        println!("The '{}' alias is now Off", name);
+                    }
+                    OutputFormat::Json => {
+                        print_json(&serde_json::json!({
+                            "status": "ok",
+                            "alias": name,
+                            "state": "off",
+                            "path": link_path.display().to_string(),
+                        }));
+                    }
+                }
+                0
+            }
+            Ok(_) => {
+                print_error(
+                    format,
+                    &format!(
+                        "'{}' already exists and is not a symlink; refusing to overwrite.",
+                        link_path.display()
+                    ),
+                    5,
+                );
+                5
+            }
+            Err(_) => {
+                if let Err(e) = std::fs::create_dir_all(&bin_dir) {
+                    print_error(
+                        format,
+                        &format!("cannot create '{}': {}", bin_dir.display(), e),
+                        5,
+                    );
+                    return 5;
+                }
+                if let Err(e) = symlink(&exe, &link_path) {
+                    print_error(
+                        format,
+                        &format!(
+                            "cannot create symlink '{}' -> '{}': {}",
+                            link_path.display(),
+                            exe.display(),
+                            e
+                        ),
+                        5,
+                    );
+                    return 5;
+                }
+                match format {
+                    OutputFormat::Text => {
+                        println!("The '{}' alias is now On", name);
+                        if !path_dir_is_in_env(&bin_dir) {
+                            eprintln!(
+                                "note: {} is not in PATH; add it to your shell init file to use '{}' directly.",
+                                bin_dir.display(),
+                                name
+                            );
+                        }
+                    }
+                    OutputFormat::Json => {
+                        print_json(&serde_json::json!({
+                            "status": "ok",
+                            "alias": name,
+                            "state": "on",
+                            "path": link_path.display().to_string(),
+                            "target": exe.display().to_string(),
+                            "path_in_env": path_dir_is_in_env(&bin_dir),
+                        }));
+                    }
+                }
+                0
+            }
         }
     }
 }
@@ -37000,6 +37231,9 @@ async fn main() {
         }
         Commands::Batch { file } => cmd_batch(file, &cli, format, cancelled).await,
         Commands::Alias { command } => cmd_alias(command, format),
+        Commands::AliasToggle { name, bin_dir } => {
+            cmd_alias_toggle(name, bin_dir.as_deref(), format)
+        }
         Commands::Agent {
             message,
             provider,
