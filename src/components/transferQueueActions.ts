@@ -145,3 +145,22 @@ export function statusCounts(items: TransferItem[]): StatusCounts {
     }
     return counts;
 }
+
+/** TQ-6 pruned-set filter. The auto-start OFF batch executors in App.tsx
+ *  keep an `idToEntry` map alongside their entries; at fire time they
+ *  filter to the queue ids that survived user-pruning. Extracted here so
+ *  the behaviour can be unit tested independently of React state.
+ *
+ *  Returns the entries in the original `idToEntry` insertion order; ids
+ *  not present in `currentItems` are dropped.  */
+export function filterSurvivingBatchEntries<T>(
+    idToEntry: Map<string, T>,
+    currentItems: ReadonlyArray<{ id: string }>,
+): T[] {
+    const currentIds = new Set(currentItems.map(i => i.id));
+    const out: T[] = [];
+    for (const [id, entry] of idToEntry.entries()) {
+        if (currentIds.has(id)) out.push(entry);
+    }
+    return out;
+}

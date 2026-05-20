@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import type { TransferItem, TransferStatus, TransferType } from './TransferQueue';
 import {
     addItem,
+    filterSurvivingBatchEntries,
     removeItem,
     reorder,
     stagedCount,
@@ -149,6 +150,83 @@ describe('reorder', () => {
         const input = [makeItem('a', 'staged')];
         const next = reorder(input, 'zzz', 0);
         expect(next).toBe(input);
+    });
+});
+
+describe('filterSurvivingBatchEntries (TQ-6 pruned-set)', () => {
+    type FakeEntry = { display_name: string; size: number };
+    const fakeEntries: Array<[string, FakeEntry]> = [
+        ['t1', { display_name: 'a.bin', size: 100 }],
+        ['t2', { display_name: 'b.bin', size: 200 }],
+        ['t3', { display_name: 'c.bin', size: 300 }],
+        ['t4', { display_name: 'd.bin', size: 400 }],
+        ['t5', { display_name: 'e.bin', size: 500 }],
+    ];
+
+    it('returns every entry when nothing was pruned', () => {
+        const idToEntry = new Map(fakeEntries);
+        const currentItems = fakeEntries.map(([id]) => ({ id }));
+        const remaining = filterSurvivingBatchEntries(idToEntry, currentItems);
+        expect(remaining.map(e => e.display_name)).toEqual(['a.bin', 'b.bin', 'c.bin', 'd.bin', 'e.bin']);
+    });
+
+    it("drops user-removed entries (ironhussar's 5-subdir example: prune 2 of 5)", () => {
+        const idToEntry = new Map(fakeEntries);
+        // Simulate the user removing t2 and t4 from the staged panel
+        const currentItems = [{ id: 't1' }, { id: 't3' }, { id: 't5' }];
+        const remaining = filterSurvivingBatchEntries(idToEntry, currentItems);
+        expect(remaining.map(e => e.display_name)).toEqual(['a.bin', 'c.bin', 'e.bin']);
+    });
+
+    it('returns an empty array when every entry was pruned', () => {
+        const idToEntry = new Map(fakeEntries);
+        const remaining = filterSurvivingBatchEntries(idToEntry, []);
+        expect(remaining).toEqual([]);
+    });
+
+    it('preserves the original insertion order, not the queue order', () => {
+        const idToEntry = new Map(fakeEntries);
+        // Even if the queue reports a reordered set, the entries come back in
+        // their original idToEntry insertion order (the backend expects the
+        // batch in the order the entries were enumerated, not in user-shuffled
+        // priority order).
+        const currentItems = [{ id: 't5' }, { id: 't3' }, { id: 't1' }];
+        const remaining = filterSurvivingBatchEntries(idToEntry, currentItems);
+        expect(remaining.map(e => e.display_name)).toEqual(['a.bin', 'c.bin', 'e.bin']);
+    });
+
+    it('ignores spurious ids in the queue that are not in the batch map', () => {
+        const idToEntry = new Map(fakeEntries);
+        // 'foreign' is a queue id that belongs to a different operation
+        // (e.g. an unrelated direct upload that races with the batch). The
+        // filter must not pick it up.
+        const currentItems = [{ id: 't1' }, { id: 'foreign' }, { id: 't2' }];
+        const remaining = filterSurvivingBatchEntries(idToEntry, currentItems);
+        expect(remaining.map(e => e.display_name)).toEqual(['a.bin', 'b.bin']);
+    });
+});
+
+describe('staged lifecycle scenario (TQ-6)', () => {
+    // End-to-end check via the pure helpers: stage 5, prune 2, start all.
+    // Mirrors ironhussar's reported flow on #180.
+    it('stage 5 -> prune 2 -> startAll -> 3 pending in original order', () => {
+        let items: TransferItem[] = [];
+        items = addItem(items, 't1', 'a.bin', '/a.bin', 100, 'upload', { staged: true });
+        items = addItem(items, 't2', 'b.bin', '/b.bin', 200, 'upload', { staged: true });
+        items = addItem(items, 't3', 'c.bin', '/c.bin', 300, 'upload', { staged: true });
+        items = addItem(items, 't4', 'd.bin', '/d.bin', 400, 'upload', { staged: true });
+        items = addItem(items, 't5', 'e.bin', '/e.bin', 500, 'upload', { staged: true });
+
+        // User prunes t2 and t4 from the panel.
+        items = removeItem(items, 't2');
+        items = removeItem(items, 't4');
+        expect(stagedCount(items)).toBe(3);
+
+        // User clicks Start all.
+        items = startAll(items);
+        const finalIds = items.map(i => i.id);
+        expect(finalIds).toEqual(['t1', 't3', 't5']);
+        expect(items.every(i => i.status === 'pending')).toBe(true);
     });
 });
 
