@@ -140,6 +140,7 @@ pub mod transfer_domain;
 pub mod transfer_event_sink;
 pub mod transfer_orchestrator;
 mod transfer_pool;
+mod transfer_queue_scan;
 pub mod transfer_settings;
 mod tray_badge;
 mod vault_remote;
@@ -2134,8 +2135,8 @@ pub async fn throttle_transfer(
 
 // Shared application state
 pub(crate) struct AppState {
-    ftp_manager: Mutex<FtpManager>,
-    cancel_flag: Arc<AtomicBool>,
+    pub(crate) ftp_manager: Mutex<FtpManager>,
+    pub(crate) cancel_flag: Arc<AtomicBool>,
     cancel_token: Mutex<CancellationToken>,
     speed_limits: SpeedLimits,
 }
@@ -14659,6 +14660,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             #[cfg(feature = "aerorsync")]
             local_sync::local_sync_run,
+            transfer_queue_scan::transfer_queue_scan_remote_tree,
             app_ready,
             set_close_to_tray,
             is_autostart_launch,
