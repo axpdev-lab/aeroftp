@@ -148,6 +148,25 @@ jobs:
           "$CLI_BIN" agent-info --json > /dev/null
           "$CLI_BIN" profiles --json > /dev/null || true
 
+      # R10 (APPENDIX-CLI-DISPATCH): the version baked into the CLI binary
+      # must match the [package].version declared in src-tauri/Cargo.toml.
+      # Drift would mean cargo and the installed payload disagree, which
+      # confuses cargo install, update checks, and the AUR pkgver bump.
+      - name: R10 version match (binary vs Cargo.toml)
+        working-directory: src-tauri
+        shell: bash
+        env:
+          CLI_BIN: ${{ matrix.cli_bin }}
+        run: |
+          EXPECTED=$(grep -m1 '^version' Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
+          ACTUAL=$("$CLI_BIN" --version | awk '{print $NF}')
+          echo "Cargo.toml version: $EXPECTED"
+          echo "CLI binary version: $ACTUAL"
+          if [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "::error::R10 version mismatch: Cargo.toml=$EXPECTED CLI=$ACTUAL"
+            exit 1
+          fi
+
       - name: Batch parser smoke
         working-directory: src-tauri
         shell: bash
@@ -192,6 +211,57 @@ jobs:
           "$CLI_BIN" completions bash > /dev/null
           "$CLI_BIN" completions zsh > /dev/null
           "$CLI_BIN" completions fish > /dev/null
+
+  # R11 (APPENDIX-CLI-DISPATCH): `cargo install --path src-tauri --bin
+  # aeroftp-cli` is the path developers and AUR maintainers use to get
+  # just the CLI binary out of the workspace. It rebuilds with `--locked`
+  # and lands the binary under $CARGO_HOME/bin (here pinned to RUNNER_TEMP
+  # so we can probe it without polluting the runner). Linux-only because
+  # CLI behavior is the same across platforms and the cargo install code
+  # path is what differs; the cross-OS smoke job above already covers the
+  # multi-platform behavior of the binary itself.
+  cargo-install-smoke:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
+        with:
+          workspaces: './src-tauri -> target'
+          prefix-key: 'v2-whisper-vs18'
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev
+
+      - name: R11 cargo install --path smoke
+        shell: bash
+        run: |
+          INSTALL_ROOT="$RUNNER_TEMP/aeroftp-install"
+          cargo install --path src-tauri --bin aeroftp-cli \
+            --root "$INSTALL_ROOT" --locked
+          BIN="$INSTALL_ROOT/bin/aeroftp-cli"
+          test -x "$BIN" || { echo "::error::R11 binary missing at $BIN"; exit 1; }
+          "$BIN" --version
+          "$BIN" --help > /dev/null
+          EXPECTED=$(grep -m1 '^version' src-tauri/Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
+          ACTUAL=$("$BIN" --version | awk '{print $NF}')
+          if [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "::error::R11 installed binary version $ACTUAL != Cargo.toml $EXPECTED"
+            exit 1
+          fi
 
   coverage:
     runs-on: ubuntu-latest
