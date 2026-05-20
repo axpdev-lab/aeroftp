@@ -7457,40 +7457,75 @@ interface UpdateVerificationInfo {
             return;
           }
 
-          for (const entry of entries) {
-            transferQueue.addItem(entry.display_name, entry.remote_path, entry.size, 'upload');
-          }
-
-          try {
-            await invoke<string>('upload_files_batch', {
-              params: {
-                entries,
-                max_concurrent: effectiveMaxConcurrentTransfers,
-                retry_count: retryCount,
-                timeout_seconds: timeoutSeconds,
+          // TQ-4-routing: gate on autoStartTransfers. When ON (default),
+          // legacy byte-identical path: stage as 'pending', invoke batch.
+          // When OFF, stage as 'staged' with a one-shot batch executor so
+          // the panel can prune entries before the user presses Start.
+          const launchBatchUpload = async (entriesToSend: typeof entries) => {
+            if (entriesToSend.length === 0) {
+              if (skippedCount > 0) notify.info(t('toast.fileSkipped', { count: skippedCount }));
+              setSelectedLocalFiles(new Set());
+              loadRemoteFiles();
+              return;
+            }
+            try {
+              await invoke<string>('upload_files_batch', {
+                params: {
+                  entries: entriesToSend,
+                  max_concurrent: effectiveMaxConcurrentTransfers,
+                  retry_count: retryCount,
+                  timeout_seconds: timeoutSeconds,
+                }
+              });
+            } catch (error) {
+              if (!batchCancelledRef.current) {
+                notify.error(t('toast.uploadFailed'), String(error));
               }
-            });
-          } catch (error) {
-            if (!batchCancelledRef.current) {
-              notify.error(t('toast.uploadFailed'), String(error));
+            }
+            if (skippedCount > 0) {
+              notify.info(t('toast.fileSkipped', { count: skippedCount }));
+            }
+            setSelectedLocalFiles(new Set());
+            loadRemoteFiles();
+          };
+
+          if (settings.autoStartTransfers !== false) {
+            for (const entry of entries) {
+              transferQueue.addItem(entry.display_name, entry.remote_path, entry.size, 'upload');
+            }
+            await launchBatchUpload(entries);
+          } else {
+            const batchState = { fired: false };
+            const idToEntry = new Map<string, typeof entries[0]>();
+            const batchExecutor = () => {
+              if (batchState.fired) return;
+              batchState.fired = true;
+              const currentIds = new Set(queueItemsRef.current.map(i => i.id));
+              const remaining = Array.from(idToEntry.entries())
+                .filter(([id]) => currentIds.has(id))
+                .map(([, entry]) => entry);
+              void launchBatchUpload(remaining);
+            };
+            for (const entry of entries) {
+              const id = transferQueue.addItem(entry.display_name, entry.remote_path, entry.size, 'upload', { staged: true });
+              idToEntry.set(id, entry);
+              retryCallbacksRef.current.set(id, batchExecutor);
             }
           }
-
-          if (skippedCount > 0) {
-            notify.info(t('toast.fileSkipped', { count: skippedCount }));
-          }
-          setSelectedLocalFiles(new Set());
-          loadRemoteFiles();
           return;
         }
 
         // Queue shows progress - no toast needed
 
-        // Add all files to queue first
+        // TQ-4-routing: stage the entries. The same retry callback is the
+        // staged executor (dispatcher fires it on staged -> pending). Legacy
+        // path falls through to the overwrite + circuit-breaker for-loop;
+        // staged path returns immediately after seeding the queue.
+        const stagedUploadMode = settings.autoStartTransfers === false;
         const queueItems = filesToUpload.map(({ path: filePath, file }) => {
           const fileName = filePath.split(/[/\\]/).pop() || filePath;
           const size = file?.size || 0;
-          const id = transferQueue.addItem(fileName, filePath, size, 'upload');
+          const id = transferQueue.addItem(fileName, filePath, size, 'upload', stagedUploadMode ? { staged: true } : undefined);
           retryCallbacksRef.current.set(id, async () => {
             transferQueue.startTransfer(id);
             try {
@@ -7502,6 +7537,11 @@ interface UpdateVerificationInfo {
           });
           return { id, filePath, fileName, file };
         });
+
+        if (stagedUploadMode) {
+          setSelectedLocalFiles(new Set());
+          return;
+        }
 
         // Reset cancel flags and circuit breaker before starting batch
         batchCancelledRef.current = false;
@@ -7714,10 +7754,12 @@ interface UpdateVerificationInfo {
       try { await invoke('reset_cancel_flag'); } catch { }
       let skippedCount = 0;
 
-      // Add to transfer queue for tracking
+      // TQ-4-routing: stage the dialog-selected entries. Same callback
+      // is reused as the staged executor.
+      const stagedDialogMode = settings.autoStartTransfers === false;
       const queueItems = files.map(filePath => {
         const fileName = filePath.replace(/^.*[\\\/]/, '');
-        const id = transferQueue.addItem(fileName, filePath, 0, 'upload');
+        const id = transferQueue.addItem(fileName, filePath, 0, 'upload', stagedDialogMode ? { staged: true } : undefined);
         retryCallbacksRef.current.set(id, async () => {
           transferQueue.startTransfer(id);
           try {
@@ -7729,6 +7771,10 @@ interface UpdateVerificationInfo {
         });
         return { id, filePath, fileName };
       });
+
+      if (stagedDialogMode) {
+        return;
+      }
 
       for (let i = 0; i < queueItems.length; i++) {
         const item = queueItems[i];
@@ -7918,40 +7964,73 @@ interface UpdateVerificationInfo {
           return;
         }
 
-        for (const entry of entries) {
-          transferQueue.addItem(entry.display_name, entry.remote_path, entry.size, 'download');
-        }
-
-        try {
-          await invoke<string>('download_files_batch', {
-            params: {
-              entries,
-              max_concurrent: effectiveMaxConcurrentTransfers,
-              retry_count: retryCount,
-              timeout_seconds: timeoutSeconds,
+        // TQ-4-routing: gate on autoStartTransfers (download batch). Same
+        // shape as the upload batch site: one-shot batch executor filters
+        // to the entries still in the queue at fire time so user-pruned
+        // items are dropped.
+        const launchBatchDownload = async (entriesToSend: typeof entries) => {
+          if (entriesToSend.length === 0) {
+            if (skippedCount > 0) notify.info(t('toast.fileSkipped', { count: skippedCount }));
+            setSelectedRemoteFiles(new Set());
+            await loadLocalFiles(currentLocalPath);
+            return;
+          }
+          try {
+            await invoke<string>('download_files_batch', {
+              params: {
+                entries: entriesToSend,
+                max_concurrent: effectiveMaxConcurrentTransfers,
+                retry_count: retryCount,
+                timeout_seconds: timeoutSeconds,
+              }
+            });
+          } catch (error) {
+            if (!batchCancelledRef.current) {
+              notify.error(t('toast.downloadFailed'), String(error));
             }
-          });
-        } catch (error) {
-          if (!batchCancelledRef.current) {
-            notify.error(t('toast.downloadFailed'), String(error));
+          }
+          if (skippedCount > 0) {
+            notify.info(t('toast.fileSkipped', { count: skippedCount }));
+          }
+          setSelectedRemoteFiles(new Set());
+          await loadLocalFiles(currentLocalPath);
+        };
+
+        if (settings.autoStartTransfers !== false) {
+          for (const entry of entries) {
+            transferQueue.addItem(entry.display_name, entry.remote_path, entry.size, 'download');
+          }
+          await launchBatchDownload(entries);
+        } else {
+          const batchState = { fired: false };
+          const idToEntry = new Map<string, typeof entries[0]>();
+          const batchExecutor = () => {
+            if (batchState.fired) return;
+            batchState.fired = true;
+            const currentIds = new Set(queueItemsRef.current.map(i => i.id));
+            const remaining = Array.from(idToEntry.entries())
+              .filter(([id]) => currentIds.has(id))
+              .map(([, entry]) => entry);
+            void launchBatchDownload(remaining);
+          };
+          for (const entry of entries) {
+            const id = transferQueue.addItem(entry.display_name, entry.remote_path, entry.size, 'download', { staged: true });
+            idToEntry.set(id, entry);
+            retryCallbacksRef.current.set(id, batchExecutor);
           }
         }
-
-        if (skippedCount > 0) {
-          notify.info(t('toast.fileSkipped', { count: skippedCount }));
-        }
-        setSelectedRemoteFiles(new Set());
-        await loadLocalFiles(currentLocalPath);
         return;
       }
 
       // Queue shows progress - no toast needed
 
-      // Add all files to queue first
+      // TQ-4-routing: stage the entries. Same retry callback reused as the
+      // staged executor (dispatcher fires it on staged -> pending).
       // Freeze paths at queue time so retry callbacks don't use stale state
       const frozenLocalPath = currentLocalPath;
+      const stagedDownloadMode = settings.autoStartTransfers === false;
       const queueItems = filesToDownload.map(file => {
-        const id = transferQueue.addItem(file.name, file.path, file.size || 0, 'download');
+        const id = transferQueue.addItem(file.name, file.path, file.size || 0, 'download', stagedDownloadMode ? { staged: true } : undefined);
         retryCallbacksRef.current.set(id, async () => {
           transferQueue.startTransfer(id);
           try {
@@ -7963,6 +8042,11 @@ interface UpdateVerificationInfo {
         });
         return { id, file };
       });
+
+      if (stagedDownloadMode) {
+        setSelectedRemoteFiles(new Set());
+        return;
+      }
 
       // Reset cancel flags and circuit breaker before starting batch
       batchCancelledRef.current = false;
