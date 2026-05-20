@@ -1971,6 +1971,13 @@ impl StorageProvider for SftpProvider {
         offset: u64,
         len: u64,
     ) -> Result<Vec<u8>, ProviderError> {
+        // PD-SFTP-1: clone-for-transfer workers start unconnected and
+        // re-dial on first transfer. `download()` already does this; the
+        // segmented engine (`run_provider_segmented_download`) calls
+        // `read_range` directly on the pool worker, so the same self-dial
+        // must happen here or every segmented download against a clone
+        // pool fails with `Not connected`.
+        self.ensure_connected().await?;
         let sftp = self
             .sftp
             .as_ref()

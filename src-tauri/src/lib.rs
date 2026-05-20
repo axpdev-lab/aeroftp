@@ -3997,6 +3997,10 @@ async fn download_files_batch(
             max_concurrent: params.max_concurrent,
             retry_count: params.retry_count,
             timeout_seconds: params.timeout_seconds,
+            // GTC-1: FTP GUI batch stays on `FtpDownloadExecutor`
+            // (no-double-pool invariant); the segments knob only
+            // matters on the `ProviderDownloadExecutor` path.
+            download_segments: None,
         },
     );
 
@@ -4225,6 +4229,10 @@ async fn upload_files_batch(
             max_concurrent: params.max_concurrent,
             retry_count: params.retry_count,
             timeout_seconds: params.timeout_seconds,
+            // GTC-1: FTP GUI batch stays on `FtpDownloadExecutor`
+            // (no-double-pool invariant); the segments knob only
+            // matters on the `ProviderDownloadExecutor` path.
+            download_segments: None,
         },
     );
 
@@ -4750,6 +4758,10 @@ async fn download_folder(
             max_concurrent: params.max_concurrent,
             retry_count: params.retry_count,
             timeout_seconds: params.timeout_seconds,
+            // GTC-1: FTP GUI batch stays on `FtpDownloadExecutor`
+            // (no-double-pool invariant); the segments knob only
+            // matters on the `ProviderDownloadExecutor` path.
+            download_segments: None,
         },
     );
     info!(
@@ -5280,6 +5292,10 @@ async fn upload_folder(
             max_concurrent: params.max_concurrent,
             retry_count: params.retry_count,
             timeout_seconds: params.timeout_seconds,
+            // GTC-1: FTP GUI batch stays on `FtpDownloadExecutor`
+            // (no-double-pool invariant); the segments knob only
+            // matters on the `ProviderDownloadExecutor` path.
+            download_segments: None,
         },
     );
     info!(

@@ -436,6 +436,7 @@ async fn pd_cli_conv_b_shared_executor_download_is_byte_identical() {
             max_concurrent: None,
             retry_count: None,
             timeout_seconds: None,
+            download_segments: None,
         });
         let cancel_token = tokio_util::sync::CancellationToken::new();
         let sink: Arc<dyn TransferEventSink> = Arc::new(NoopTransferSink);
@@ -614,6 +615,7 @@ async fn pd_cli_conv_c_shared_executor_upload_is_byte_identical() {
             max_concurrent: None,
             retry_count: None,
             timeout_seconds: None,
+            download_segments: None,
         });
         let cancel_token = tokio_util::sync::CancellationToken::new();
         let sink: Arc<dyn TransferEventSink> = Arc::new(NoopTransferSink);
@@ -790,6 +792,7 @@ async fn pd_cli_conv_d_sync_transfer_phase_is_byte_identical() {
         max_concurrent: None,
         retry_count: None,
         timeout_seconds: None,
+        download_segments: None,
     });
 
     let mut c1_elapsed: Option<std::time::Duration> = None;
