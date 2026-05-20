@@ -906,6 +906,7 @@ pub async fn provider_pwd(state: State<'_, ProviderState>) -> Result<String, Str
 }
 
 /// Download a file from the remote server
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn provider_download_file(
     app: AppHandle,
@@ -914,6 +915,7 @@ pub async fn provider_download_file(
     local_path: String,
     modified: Option<String>,
     use_delta: Option<bool>,
+    download_segments: Option<u32>,
 ) -> Result<String, String> {
     let mut provider_lock = state.provider.lock().await;
 
@@ -960,7 +962,7 @@ pub async fn provider_download_file(
     let fname_progress = filename.clone();
 
     let dl_start_time = std::time::Instant::now();
-    let progress_cb: Option<Box<dyn Fn(u64, u64) + Send>> = if file_size > 0 {
+    let mut progress_cb: Option<Box<dyn Fn(u64, u64) + Send>> = if file_size > 0 {
         Some(Box::new(move |transferred: u64, total: u64| {
             let pct = if total > 0 {
                 ((transferred as f64 / total as f64) * 100.0) as u8
@@ -1090,25 +1092,122 @@ pub async fn provider_download_file(
     // Resume-aware download: if provider supports resume and a partial .aerotmp exists,
     // use resume_download to continue from where we left off. This avoids re-downloading
     // data on S3/Azure (pay-per-GB) and all other HTTP-based providers.
-    let result = if provider.supports_resume() {
-        let tmp_path = format!("{}.aerotmp", local_path);
-        let offset = tokio::fs::metadata(&tmp_path)
+    let tmp_path = format!("{}.aerotmp", local_path);
+    let partial_offset = if provider.supports_resume() {
+        tokio::fs::metadata(&tmp_path)
             .await
             .map(|m| m.len())
-            .unwrap_or(0);
-        if offset > 0 {
-            info!(
-                "Resuming download from offset {} bytes: {}",
-                offset, filename
-            );
-            provider
-                .resume_download(&remote_path, &local_path, offset, progress_cb)
-                .await
-        } else {
-            provider
-                .download(&remote_path, &local_path, progress_cb)
-                .await
+            .unwrap_or(0)
+    } else {
+        0
+    };
+
+    // GTC-2: opportunistic intra-file range parallelism on the single-file
+    // path. Gated on no-resume (`partial_offset == 0`) because the segmented
+    // engine pre-allocates and overwrites its own `.aerotmp`; a partial
+    // legacy resume must not be silently dropped. On hard failure we fall
+    // through to the legacy single-stream branch below.
+    let mut segmented_result: Option<Result<(), String>> = None;
+    if partial_offset == 0 {
+        if let Some(requested) = download_segments {
+            if let Some(segments) =
+                crate::provider_transfer_executor::provider_segmented_download_eligible(
+                    provider.as_ref(),
+                    file_size,
+                    requested,
+                    requested as usize,
+                )
+            {
+                info!(
+                    "Segmented download: {} segments on {} ({} bytes)",
+                    segments, filename, file_size
+                );
+                let cancel = tokio_util::sync::CancellationToken::new();
+                let outcome =
+                    crate::provider_transfer_executor::run_provider_segmented_download(
+                        provider.as_ref(),
+                        &remote_path,
+                        &local_path,
+                        file_size,
+                        segments,
+                        progress_cb.take(),
+                        cancel,
+                    )
+                    .await;
+                if let Err(ref e) = outcome {
+                    warn!(
+                        "Segmented download failed, falling back to single-stream: {}",
+                        e
+                    );
+                }
+                segmented_result = Some(outcome);
+            }
         }
+    }
+
+    // If segmented ran (success or hard error) the original progress_cb has
+    // been moved into it. Build a fresh callback for the legacy fallback so
+    // the user still sees per-byte progress.
+    if segmented_result.is_some() && progress_cb.is_none() && file_size > 0 {
+        let app_progress_fb = app.clone();
+        let tid_fb = transfer_id.clone();
+        let fname_fb = filename.clone();
+        let start_fb = std::time::Instant::now();
+        progress_cb = Some(Box::new(move |transferred: u64, total: u64| {
+            let pct = if total > 0 {
+                ((transferred as f64 / total as f64) * 100.0) as u8
+            } else {
+                0
+            };
+            let elapsed = start_fb.elapsed().as_secs_f64();
+            let speed = if elapsed > 0.1 {
+                (transferred as f64 / elapsed) as u64
+            } else {
+                0
+            };
+            let eta = if speed > 0 && transferred < total {
+                ((total - transferred) as f64 / speed as f64) as u64
+            } else {
+                0
+            };
+            let _ = app_progress_fb.emit(
+                "transfer_event",
+                crate::TransferEvent {
+                    event_type: "progress".to_string(),
+                    transfer_id: tid_fb.clone(),
+                    filename: fname_fb.clone(),
+                    direction: "download".to_string(),
+                    message: None,
+                    progress: Some(crate::TransferProgress {
+                        transfer_id: tid_fb.clone(),
+                        filename: fname_fb.clone(),
+                        direction: "download".to_string(),
+                        percentage: pct,
+                        transferred,
+                        total,
+                        speed_bps: speed,
+                        eta_seconds: eta as u32,
+                        total_files: None,
+                        path: None,
+                    }),
+                    path: None,
+                    delta_stats: None,
+                    fallback_reason: None,
+                },
+            );
+        }));
+    }
+
+    let result = if let Some(Ok(())) = &segmented_result {
+        Ok(())
+    } else if partial_offset > 0 {
+        info!(
+            "Resuming download from offset {} bytes: {}",
+            partial_offset, filename
+        );
+        provider
+            .resume_download(&remote_path, &local_path, partial_offset, progress_cb)
+            .await
     } else {
         provider
             .download(&remote_path, &local_path, progress_cb)
