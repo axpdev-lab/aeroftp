@@ -18,6 +18,15 @@ pub const MAX_RETRY_COUNT: u32 = 5;
 pub const MIN_TIMEOUT_SECONDS: u64 = 10;
 pub const MAX_TIMEOUT_SECONDS: u64 = 300;
 
+/// Intra-file range parallelism (PD-Core / GTC-1).
+///
+/// `segments == 1` means single-stream legacy behaviour. Cap mirrors
+/// `pget_effective_segments` in `bin/aeroftp_cli.rs` (capability gate
+/// + runtime min-chunk anti-fragmentation is applied at attempt time).
+pub const DEFAULT_DOWNLOAD_SEGMENTS: u32 = 1;
+pub const MIN_DOWNLOAD_SEGMENTS: u32 = 1;
+pub const MAX_DOWNLOAD_SEGMENTS: u32 = 16;
+
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct TransferSettingsInput {
     #[serde(default)]
@@ -26,6 +35,8 @@ pub struct TransferSettingsInput {
     pub retry_count: Option<u32>,
     #[serde(default)]
     pub timeout_seconds: Option<u64>,
+    #[serde(default)]
+    pub download_segments: Option<u32>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -53,6 +64,15 @@ pub struct ResolvedTransferSettings {
     pub max_concurrent: u32,
     pub retry_count: u32,
     pub timeout_seconds: u64,
+    /// Requested intra-file download segments (GTC-1). 1 = single-stream.
+    /// The executor still gates on provider capability, file size, and
+    /// session-pool kind at attempt time before honouring this value.
+    #[serde(default = "default_download_segments")]
+    pub download_segments: u32,
+}
+
+fn default_download_segments() -> u32 {
+    DEFAULT_DOWNLOAD_SEGMENTS
 }
 
 impl ResolvedTransferSettings {
@@ -94,6 +114,10 @@ pub fn resolve_transfer_settings(
                 caps.min_timeout_seconds.max(MIN_TIMEOUT_SECONDS),
                 caps.max_timeout_seconds.max(caps.min_timeout_seconds),
             ),
+        download_segments: input
+            .download_segments
+            .unwrap_or(DEFAULT_DOWNLOAD_SEGMENTS)
+            .clamp(MIN_DOWNLOAD_SEGMENTS, MAX_DOWNLOAD_SEGMENTS),
     }
 }
 
@@ -144,6 +168,7 @@ mod tests {
             max_concurrent: Some(4),
             retry_count: Some(2),
             timeout_seconds: Some(45),
+            download_segments: None,
         });
 
         assert_eq!(resolved.requested_max_concurrent, 4);
@@ -153,12 +178,38 @@ mod tests {
     }
 
     #[test]
+    fn download_segments_default_is_single_stream() {
+        let resolved = resolve_provider_transfer_settings(TransferSettingsInput::default());
+        assert_eq!(resolved.download_segments, DEFAULT_DOWNLOAD_SEGMENTS);
+        assert_eq!(resolved.download_segments, 1);
+    }
+
+    #[test]
+    fn download_segments_clamp_above_max_drops_to_16() {
+        let resolved = resolve_provider_transfer_settings(TransferSettingsInput {
+            download_segments: Some(99),
+            ..TransferSettingsInput::default()
+        });
+        assert_eq!(resolved.download_segments, MAX_DOWNLOAD_SEGMENTS);
+    }
+
+    #[test]
+    fn download_segments_clamp_below_min_floors_to_1() {
+        let resolved = resolve_provider_transfer_settings(TransferSettingsInput {
+            download_segments: Some(0),
+            ..TransferSettingsInput::default()
+        });
+        assert_eq!(resolved.download_segments, MIN_DOWNLOAD_SEGMENTS);
+    }
+
+    #[test]
     fn capability_settings_clamp_to_dag_file_slots() {
         let resolved = resolve_transfer_settings_for_capabilities(
             TransferSettingsInput {
                 max_concurrent: Some(6),
                 retry_count: None,
                 timeout_seconds: None,
+                download_segments: None,
             },
             &TransferCapabilities {
                 max_file_slots: Some(2),

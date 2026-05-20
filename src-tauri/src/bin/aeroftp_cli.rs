@@ -4963,6 +4963,9 @@ async fn run_shared_provider_download_batch(
         max_concurrent: None,
         retry_count: None,
         timeout_seconds: None,
+        // CLI segmented downloads use the dedicated `pget` path, not
+        // the GUI provider executor, so the executor stays single-stream.
+        download_segments: None,
     });
 
     let entries: Vec<TransferEntry> = files
@@ -5164,6 +5167,9 @@ async fn run_shared_provider_upload_batch(
         max_concurrent: None,
         retry_count: None,
         timeout_seconds: None,
+        // CLI segmented downloads use the dedicated `pget` path, not
+        // the GUI provider executor, so the executor stays single-stream.
+        download_segments: None,
     });
 
     let entries: Vec<TransferEntry> = files

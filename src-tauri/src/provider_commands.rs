@@ -1179,11 +1179,13 @@ pub async fn provider_download_folder(
     max_concurrent: Option<u32>,
     retry_count: Option<u32>,
     timeout_seconds: Option<u64>,
+    download_segments: Option<u32>,
 ) -> Result<String, String> {
     let runtime_settings = resolve_provider_transfer_settings(TransferSettingsInput {
         max_concurrent,
         retry_count,
         timeout_seconds,
+        download_segments,
     });
 
     // Capture current pwd so we can restore it after folder scan changes it
@@ -1236,6 +1238,10 @@ pub async fn provider_upload_folder(
         max_concurrent,
         retry_count,
         timeout_seconds,
+        // Upload-side intra-file parallelism is a separate slice (out
+        // of scope for GTC-1); upload paths keep single-stream legacy
+        // behaviour regardless of the requested segments knob.
+        download_segments: None,
     });
 
     // Capture current pwd so we can restore it after upload
