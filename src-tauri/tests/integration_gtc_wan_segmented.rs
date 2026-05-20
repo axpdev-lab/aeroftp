@@ -35,12 +35,16 @@ use ftp_client_gui_lib::credential_store::CredentialStore;
 use ftp_client_gui_lib::provider_transfer_executor::{
     provider_segmented_download_eligible, run_provider_segmented_download,
 };
-use ftp_client_gui_lib::providers::multi_thread::aerotmp_path_for;
 use ftp_client_gui_lib::providers::ftp::FtpProvider;
+use ftp_client_gui_lib::providers::multi_thread::aerotmp_path_for;
 use ftp_client_gui_lib::providers::s3::S3Provider;
 use ftp_client_gui_lib::providers::sftp::SftpProvider;
 use ftp_client_gui_lib::providers::types::{FtpConfig, FtpTlsMode, S3Config, SftpConfig};
 use ftp_client_gui_lib::providers::{ProviderTransferExecutorKind, StorageProvider};
+use ftp_client_gui_lib::sync::{
+    sync_tree_core, ConflictMode, DeltaPolicy, NoopProgressSink, SyncDirection, SyncOptions,
+};
+use ftp_client_gui_lib::sync_core::scan::ScanOptions;
 use ftp_client_gui_lib::transfer_dag::Capability;
 use secrecy::SecretString;
 use sha2::{Digest, Sha256};
@@ -94,6 +98,7 @@ fn sha256_file(path: &Path) -> String {
 /// PubKey first, so the test must pass both to match what the CLI
 /// does (otherwise auth fails because password-only is not what the
 /// server accepts for this user).
+#[derive(Clone)]
 struct LoadedSftpCreds {
     password: Option<String>,
     private_key_path: Option<String>,
@@ -145,7 +150,7 @@ fn load_sftp_creds() -> Option<LoadedSftpCreds> {
                 .map(expand_tilde);
             (pwd, key)
         } else {
-            (Some(raw.trim_matches('"').to_string()), None)
+            (Some(raw), None)
         }
     } else {
         (Some(raw), None)
@@ -216,6 +221,37 @@ async fn seed_remote(base: &mut SftpProvider, local_src: &Path) -> Result<(), St
         .map_err(|e| format!("seed upload: {e}"))
 }
 
+async fn run_sync_download_once(
+    creds: LoadedSftpCreds,
+    local_root: &Path,
+    download_segments: u32,
+) -> (ftp_client_gui_lib::sync::SyncReport, std::time::Duration) {
+    let mut provider: Box<dyn StorageProvider> = Box::new(SftpProvider::new(sftp_config(creds)));
+    provider.connect().await.expect("sync SFTP connect");
+    let opts = SyncOptions {
+        direction: SyncDirection::Download,
+        delta_policy: DeltaPolicy::Mtime,
+        dry_run: false,
+        delete_orphans: false,
+        conflict_mode: ConflictMode::Larger,
+        scan: ScanOptions::default(),
+        download_segments,
+    };
+    let mut sink = NoopProgressSink;
+    let t = Instant::now();
+    let report = sync_tree_core(
+        &mut provider,
+        local_root.to_str().expect("utf8 local path"),
+        REMOTE_DIR,
+        &opts,
+        &mut sink,
+    )
+    .await;
+    let elapsed = t.elapsed();
+    let _ = provider.disconnect().await;
+    (report, elapsed)
+}
+
 // ---------------------------------------------------------------------
 // Test 1: byte-identity vs single-stream baseline
 // ---------------------------------------------------------------------
@@ -245,7 +281,8 @@ async fn gtc_gui_sftp_segmented_byte_identical_vs_single_stream() {
         "connected SFTP must advertise SftpConnectionPool",
     );
     assert_eq!(
-        base.transfer_capabilities().strict_concurrent_range_download,
+        base.transfer_capabilities()
+            .strict_concurrent_range_download,
         Capability::Supported,
         "SFTP pool kind must lift strict_concurrent_range_download to Supported",
     );
@@ -320,6 +357,93 @@ async fn gtc_gui_sftp_segmented_byte_identical_vs_single_stream() {
 }
 
 // ---------------------------------------------------------------------
+// Test 1b: AeroSync transfer phase uses the same segmented helper while
+// keeping the sync planner and result accounting in charge.
+// ---------------------------------------------------------------------
+
+#[tokio::test]
+#[ignore = "live WAN: GTC-3 AeroSync segmented transfer phase against axpbuntu"]
+async fn gtc_aerosync_sftp_segmented_download_byte_identity_speed_band() {
+    let Some(creds) = load_sftp_creds() else {
+        eprintln!("SKIP: SFTP credentials unavailable in vault");
+        return;
+    };
+
+    let src_dir = std::env::temp_dir().join("gtc-aerosync-sftp-src");
+    let _ = std::fs::remove_dir_all(&src_dir);
+    std::fs::create_dir_all(&src_dir).unwrap();
+    let src = src_dir.join("64MiB.bin");
+    std::fs::write(&src, random_buf(0xB16B_00B5, FILE_BYTES)).unwrap();
+    let src_sha = sha256_file(&src);
+
+    let mut base = SftpProvider::new(sftp_config(creds.clone()));
+    base.connect().await.expect("base SFTP connect");
+    seed_remote(&mut base, &src).await.expect("seed");
+
+    let single_root = std::env::temp_dir().join("gtc-aerosync-sftp-single");
+    let segmented_root = std::env::temp_dir().join("gtc-aerosync-sftp-segmented");
+    let _ = std::fs::remove_dir_all(&single_root);
+    let _ = std::fs::remove_dir_all(&segmented_root);
+    std::fs::create_dir_all(&single_root).unwrap();
+    std::fs::create_dir_all(&segmented_root).unwrap();
+
+    let (single_report, e1) = run_sync_download_once(creds.clone(), &single_root, 1).await;
+    assert!(
+        single_report.errors.is_empty(),
+        "single-stream sync must succeed, got {:?}",
+        single_report.errors,
+    );
+    assert_eq!(
+        single_report.downloaded, 1,
+        "single-stream sync downloads once"
+    );
+    let single_file = single_root.join("64MiB.bin");
+    assert_eq!(
+        sha256_file(&single_file),
+        src_sha,
+        "single-stream sync sha must match source",
+    );
+
+    let (segmented_report, e4) = run_sync_download_once(creds.clone(), &segmented_root, 4).await;
+    assert!(
+        segmented_report.errors.is_empty(),
+        "segmented sync must succeed, got {:?}",
+        segmented_report.errors,
+    );
+    assert_eq!(
+        segmented_report.downloaded, 1,
+        "segmented sync downloads once"
+    );
+    let segmented_file = segmented_root.join("64MiB.bin");
+    assert_eq!(
+        sha256_file(&segmented_file),
+        src_sha,
+        "segmented sync sha must match source byte-for-byte",
+    );
+    assert!(
+        !aerotmp_path_for(&segmented_file).exists(),
+        ".aerotmp must be renamed away after segmented sync success",
+    );
+
+    let speedup = e1.as_secs_f64() / e4.as_secs_f64().max(1e-6);
+    eprintln!(
+        "GTC-3 AeroSync SFTP @ axpbuntu: 64MiB seg=1 {:.2}s  seg=4 {:.2}s  speedup {:.2}x  byte-id=YES",
+        e1.as_secs_f64(),
+        e4.as_secs_f64(),
+        speedup,
+    );
+    assert!(
+        speedup >= 0.75,
+        "segmented sync must stay within the expected WAN speed band, got {speedup:.2}x",
+    );
+
+    let _ = base.disconnect().await;
+    let _ = std::fs::remove_dir_all(&single_root);
+    let _ = std::fs::remove_dir_all(&segmented_root);
+    let _ = std::fs::remove_dir_all(&src_dir);
+}
+
+// ---------------------------------------------------------------------
 // Test 2: cooperative cancel leaves no .aerotmp / no partial dst
 // ---------------------------------------------------------------------
 
@@ -389,9 +513,7 @@ async fn gtc_gui_sftp_segmented_cancel_leaves_no_aerotmp() {
         "final destination must NOT exist after cancel (no atomic rename happened): {dst:?}",
     );
 
-    eprintln!(
-        "GTC-1/2 SFTP cancel @ axpbuntu: outcome=Err  .aerotmp=absent  dst=absent  ok",
-    );
+    eprintln!("GTC-1/2 SFTP cancel @ axpbuntu: outcome=Err  .aerotmp=absent  dst=absent  ok",);
 
     let _ = base.disconnect().await;
     let _ = std::fs::remove_dir_all(&dst_root);
@@ -513,7 +635,8 @@ async fn gtc_gui_ftp_segmented_byte_identical_vs_single_stream() {
         "connected FTP must advertise FtpConnectionPool",
     );
     assert_eq!(
-        base.transfer_capabilities().strict_concurrent_range_download,
+        base.transfer_capabilities()
+            .strict_concurrent_range_download,
         Capability::Supported,
         "FTP pool kind must lift strict_concurrent_range_download to Supported",
     );
@@ -530,7 +653,11 @@ async fn gtc_gui_ftp_segmented_byte_identical_vs_single_stream() {
         .await
         .expect("FTP single-stream download");
     let e1 = t1.elapsed();
-    assert_eq!(sha256_file(&dst1), src_sha, "FTP single-stream sha mismatch");
+    assert_eq!(
+        sha256_file(&dst1),
+        src_sha,
+        "FTP single-stream sha mismatch"
+    );
 
     let segments = provider_segmented_download_eligible(&base, FILE_BYTES as u64, 4, 8)
         .expect("eligibility probe must succeed for FTP@axpbuntu");
@@ -638,7 +765,8 @@ async fn gtc_gui_s3_segmented_byte_identical_vs_single_stream() {
         "S3 must advertise HttpClonePool",
     );
     assert_eq!(
-        base.transfer_capabilities().strict_concurrent_range_download,
+        base.transfer_capabilities()
+            .strict_concurrent_range_download,
         Capability::Supported,
         "S3 must advertise strict_concurrent_range_download = Supported",
     );
