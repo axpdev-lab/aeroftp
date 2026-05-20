@@ -80,6 +80,9 @@ export interface AppSettings {
   timeoutSeconds: number;
   maxConcurrentTransfers: number;
   retryCount: number;
+  /** Intra-file range parallelism per download. 0 = Auto (backend decides,
+   *  today: single-stream). Supported values: 0, 2, 4, 8, 16. */
+  downloadSegments: number;
   fileExistsAction: 'ask' | 'overwrite' | 'skip' | 'rename' | 'resume' | 'overwrite_if_newer' | 'overwrite_if_different' | 'skip_if_identical';
   swapPanels: boolean;
   lastLocalPath?: string;
@@ -116,6 +119,7 @@ const DEFAULTS: AppSettings = {
   timeoutSeconds: 30,
   maxConcurrentTransfers: 5,
   retryCount: 3,
+  downloadSegments: 0,
   fileExistsAction: 'ask',
   swapPanels: false,
   disableUpdateChecks: false,
@@ -145,6 +149,7 @@ export const useSettings = () => {
   const [timeoutSeconds, setTimeoutSeconds] = useState(DEFAULTS.timeoutSeconds);
   const [maxConcurrentTransfers, setMaxConcurrentTransfers] = useState(DEFAULTS.maxConcurrentTransfers);
   const [retryCount, setRetryCount] = useState(DEFAULTS.retryCount);
+  const [downloadSegments, setDownloadSegments] = useState(DEFAULTS.downloadSegments);
   const [fileExistsAction, setFileExistsAction] = useState<AppSettings['fileExistsAction']>(DEFAULTS.fileExistsAction);
   const [swapPanels, setSwapPanels] = useState(DEFAULTS.swapPanels);
   const [disableUpdateChecks, setDisableUpdateChecks] = useState(DEFAULTS.disableUpdateChecks);
@@ -174,6 +179,9 @@ export const useSettings = () => {
     if (typeof parsed.timeoutSeconds === 'number') setTimeoutSeconds(parsed.timeoutSeconds);
     if (typeof parsed.maxConcurrentTransfers === 'number') setMaxConcurrentTransfers(parsed.maxConcurrentTransfers);
     if (typeof parsed.retryCount === 'number') setRetryCount(parsed.retryCount);
+    if (typeof parsed.downloadSegments === 'number' && [0, 2, 4, 8, 16].includes(parsed.downloadSegments)) {
+      setDownloadSegments(parsed.downloadSegments);
+    }
     if (
       typeof parsed.fileExistsAction === 'string' &&
       ['ask', 'overwrite', 'skip', 'rename', 'resume', 'overwrite_if_newer', 'overwrite_if_different', 'skip_if_identical'].includes(parsed.fileExistsAction)
@@ -269,6 +277,7 @@ export const useSettings = () => {
     timeoutSeconds,
     maxConcurrentTransfers,
     retryCount,
+    downloadSegments,
     fileExistsAction,
     swapPanels,
     disableUpdateChecks,
@@ -298,6 +307,7 @@ export const useSettings = () => {
     setTimeoutSeconds,
     setMaxConcurrentTransfers,
     setRetryCount,
+    setDownloadSegments,
     setFileExistsAction,
     setSwapPanels,
     setDisableUpdateChecks,

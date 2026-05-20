@@ -998,7 +998,11 @@
             "bridgeUnsupportedProto": "{app} neatbalsta {protocol}",
             "bridgeSecretFull": "Akreditācijas dati tiek atjaunoti un atkārtoti šifrēti AeroFTP vault.",
             "bridgeSecretLimited": "Var atjaunot tikai daļu no akreditācijas datiem; iespējams, dažas slepenās vērtības būs jāievada atkārtoti.",
-            "bridgeSecretMetadata": "Tikai savienojuma metadati: slepenās vērtības paliek {app} atslēgu saišķī/aģentā un ir jāievada atkārtoti."
+            "bridgeSecretMetadata": "Tikai savienojuma metadati: slepenās vērtības paliek {app} atslēgu saišķī/aģentā un ir jāievada atkārtoti.",
+            "downloadSegments": "Lejupielādes segmenti vienam failam",
+            "downloadSegmentsAuto": "Automātiski (viena plūsma)",
+            "downloadSegmentsN": "{n} segmenti vienam failam",
+            "downloadSegmentsDesc": "Sadaliet katru lejupielādi paralēlos baitu diapazonos. Automātiski saglabā pašreizējo vienas plūsmas darbību. Efektīvi pakalpojumu sniedzējiem, kuri atbalsta diapazonu pieprasījumus (SFTP, S3, HTTP), pietiekami lieliem failiem."
         },
         "devtools": {
             "title": "AeroTools",

@@ -1290,7 +1290,11 @@
             "bridgeUnsupportedProto": "{protocol} non supportato da {app}",
             "bridgeSecretFull": "Le credenziali vengono recuperate e ricifrate nel vault di AeroFTP.",
             "bridgeSecretLimited": "Solo parte delle credenziali puo' essere recuperata; potresti dover reinserire alcuni segreti.",
-            "bridgeSecretMetadata": "Solo metadati di connessione: i segreti restano nel portachiavi/agent di {app} e vanno reinseriti."
+            "bridgeSecretMetadata": "Solo metadati di connessione: i segreti restano nel portachiavi/agent di {app} e vanno reinseriti.",
+            "downloadSegments": "Segmenti di download per file",
+            "downloadSegmentsAuto": "Auto (singolo stream)",
+            "downloadSegmentsN": "{n} segmenti per file",
+            "downloadSegmentsDesc": "Suddivide ogni download in range di byte paralleli. Auto mantiene il comportamento attuale a singolo stream. Efficace sui provider che supportano le richieste range (SFTP, S3, HTTP) per file abbastanza grandi da trarne beneficio."
         },
         "appearance": {
             "patternCross": "Croce",

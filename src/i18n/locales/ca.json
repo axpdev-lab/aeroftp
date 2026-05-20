@@ -998,7 +998,11 @@
             "bridgeUnsupportedProto": "{protocol} no és compatible amb {app}",
             "bridgeSecretFull": "Les credencials es recuperen i es tornen a xifrar al vault d'AeroFTP.",
             "bridgeSecretLimited": "Només es pot recuperar una part de les credencials; pot ser que hagis de tornar a introduir alguns secrets.",
-            "bridgeSecretMetadata": "Només metadades de connexió: els secrets es queden al clauer/agent de {app} i s'han de tornar a introduir."
+            "bridgeSecretMetadata": "Només metadades de connexió: els secrets es queden al clauer/agent de {app} i s'han de tornar a introduir.",
+            "downloadSegments": "Segments de descàrrega per fitxer",
+            "downloadSegmentsAuto": "Auto (flux únic)",
+            "downloadSegmentsN": "{n} segments per fitxer",
+            "downloadSegmentsDesc": "Divideix cada descàrrega en intervals de bytes paral·lels. Auto manté el comportament actual de flux únic. Efectiu en proveïdors compatibles amb sol·licituds de rang (SFTP, S3, HTTP) per a fitxers prou grans com per beneficiar-se'n."
         },
         "devtools": {
             "title": "AeroTools",

@@ -213,6 +213,8 @@ interface AppSettings {
     // Transfers
     maxConcurrentTransfers: number;
     retryCount: number;
+    /** Intra-file range parallelism per download. 0 = Auto. */
+    downloadSegments: number;
     // File Handling
     fileExistsAction: 'ask' | 'overwrite' | 'skip' | 'rename' | 'resume' | 'overwrite_if_newer' | 'overwrite_if_different' | 'skip_if_identical';
     preserveTimestamps: boolean;
@@ -256,6 +258,7 @@ const defaultSettings: AppSettings = {
     ftpMode: 'passive',
     maxConcurrentTransfers: 5,
     retryCount: 3,
+    downloadSegments: 0,
     fileExistsAction: 'ask',
     preserveTimestamps: true,
     transferMode: 'auto',
@@ -2829,6 +2832,18 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     </option>
                                                 ))}
                                             </select>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1">{t('settings.downloadSegments')}</label>
+                                            <select value={settings.downloadSegments} onChange={(e) => updateSetting('downloadSegments', parseInt(e.target.value))} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm">
+                                                {[0, 2, 4, 8, 16].map((n) => (
+                                                    <option key={n} value={n}>
+                                                        {n === 0 ? t('settings.downloadSegmentsAuto') : t('settings.downloadSegmentsN', { n })}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <p className="text-xs text-gray-500 mt-1">{t('settings.downloadSegmentsDesc')}</p>
                                         </div>
 
                                         <div>

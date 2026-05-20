@@ -998,7 +998,11 @@
             "bridgeUnsupportedProto": "{app} 不支持 {protocol}",
             "bridgeSecretFull": "凭据将被恢复并重新加密到 AeroFTP 保险库中。",
             "bridgeSecretLimited": "只能恢复部分凭据信息；您可能需要重新输入某些密钥。",
-            "bridgeSecretMetadata": "仅连接元数据：密钥仍保留在 {app} 的钥匙串/代理中，必须重新输入。"
+            "bridgeSecretMetadata": "仅连接元数据：密钥仍保留在 {app} 的钥匙串/代理中，必须重新输入。",
+            "downloadSegments": "每个文件的下载分段数",
+            "downloadSegmentsAuto": "自动(单流)",
+            "downloadSegmentsN": "每个文件 {n} 个分段",
+            "downloadSegmentsDesc": "将每次下载拆分为并行的字节区间。自动模式保持当前的单流行为。在支持区间请求(SFTP、S3、HTTP)的提供商上,对足够大的文件有效。"
         },
         "devtools": {
             "title": "AeroTools",
