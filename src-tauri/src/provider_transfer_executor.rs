@@ -39,6 +39,242 @@ const SEGMENTED_DOWNLOAD_MIN_CHUNK_SIZE: u64 = 1024 * 1024;
 /// unbounded on very large files.
 const SEGMENTED_DOWNLOAD_SUB_READ_SIZE: u64 = 64 * 1024 * 1024;
 
+/// Effective segment count after the anti-fragmentation rule
+/// (`SEGMENTED_DOWNLOAD_MIN_CHUNK_SIZE`). Mirrors `pget_effective_segments`
+/// in `bin/aeroftp_cli.rs`. Returns 0 to signal "do not segment".
+///
+/// This is the single source of truth shared by the GUI executor
+/// (`ProviderDownloadExecutor`) and the GUI single-file path
+/// (`provider_download_file`) so the same anti-fragmentation policy
+/// holds across both surfaces.
+pub fn provider_segmented_effective_count(file_size: u64, requested: u32) -> usize {
+    if file_size < SEGMENTED_DOWNLOAD_FILE_FLOOR || requested <= 1 {
+        return 0;
+    }
+    let segments = (requested as u64).clamp(1, 16);
+    let chunk = file_size / segments;
+    let bounded = if chunk < SEGMENTED_DOWNLOAD_MIN_CHUNK_SIZE {
+        (file_size / SEGMENTED_DOWNLOAD_MIN_CHUNK_SIZE).max(1)
+    } else {
+        segments
+    };
+    if bounded <= 1 {
+        0
+    } else {
+        bounded as usize
+    }
+}
+
+/// Eligibility probe for the segmented download path. Returns
+/// `Some(N)` (the final segment count after pool cap + provider
+/// capability) when the segmented path can be attempted, or `None`
+/// when the caller must use a single-stream download. The capability
+/// flags this gates on are the same PD-CLI-CONV-E / PD-SFTP-1 /
+/// PD-FTP-1 flips: real session pool kind + strict concurrent range.
+pub fn provider_segmented_download_eligible(
+    primary: &dyn StorageProvider,
+    file_size: u64,
+    requested_segments: u32,
+    max_workers: usize,
+) -> Option<usize> {
+    // Capability gate 1: must be a real clone-backed session pool.
+    if !matches!(
+        primary.transfer_executor_kind(),
+        ProviderTransferExecutorKind::HttpClonePool
+            | ProviderTransferExecutorKind::SftpConnectionPool
+            | ProviderTransferExecutorKind::FtpConnectionPool
+    ) {
+        return None;
+    }
+
+    // Capability gate 2: provider must advertise strict concurrent
+    // range download (the post-PD-CLI-CONV-E honest flag).
+    if primary.transfer_capabilities().strict_concurrent_range_download != Capability::Supported {
+        return None;
+    }
+
+    // Probe `clone_for_transfer()` once so we never start the
+    // orchestration on a provider that lies about its pool kind.
+    if primary.clone_for_transfer().is_err() {
+        return None;
+    }
+
+    let segments = provider_segmented_effective_count(file_size, requested_segments);
+    if segments < 2 {
+        return None;
+    }
+    let segments = segments.min(max_workers.max(1));
+    if segments < 2 {
+        None
+    } else {
+        Some(segments)
+    }
+}
+
+/// Run the segmented (intra-file range) download path against the
+/// shared transport-agnostic engine. The caller is responsible for the
+/// capability gate (use [`provider_segmented_download_eligible`]) and
+/// for any retry/fallback envelope: this function returns `Ok(())` on
+/// success and `Err(_)` on hard failure (no implicit fallback).
+///
+/// On entry: `segments >= 2`, `file_size >= SEGMENTED_DOWNLOAD_FILE_FLOOR`,
+/// and `primary.clone_for_transfer()` is honestly supported.
+///
+/// On exit: `local_path` is renamed atomically from its `.aerotmp`
+/// sibling on success; on any error the engine's `TempFileGuard`
+/// drops the temp.
+pub async fn run_provider_segmented_download(
+    primary: &dyn StorageProvider,
+    remote_path: &str,
+    local_path: &str,
+    file_size: u64,
+    segments: usize,
+    on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    cancel_token: CancellationToken,
+) -> Result<(), String> {
+    use crate::providers::multi_thread::{
+        aerotmp_path_for, run_concurrent_range_download, ConcurrentRangeConfig,
+        ConcurrentRangeOutcome,
+    };
+    use crate::providers::ProviderError;
+    use std::collections::VecDeque;
+    use std::path::{Path, PathBuf};
+
+    if segments < 2 {
+        return Err("segmented download: refusing to run with fewer than 2 segments".to_string());
+    }
+
+    // Pre-acquire N independent workers. The first failure aborts the
+    // segmented path so the caller can fall back to single-stream.
+    let mut workers: Vec<Box<dyn StorageProvider>> = Vec::with_capacity(segments);
+    for i in 0..segments {
+        match primary.clone_for_transfer() {
+            Ok(w) => workers.push(w),
+            Err(e) => {
+                for mut w in workers {
+                    let _ = w.disconnect().await;
+                }
+                return Err(format!(
+                    "segmented download: clone {} of {} failed: {}",
+                    i + 1,
+                    segments,
+                    e
+                ));
+            }
+        }
+    }
+
+    let pool = Arc::new(tokio::sync::Mutex::new(VecDeque::from(workers)));
+    let remote_owned = remote_path.to_string();
+
+    let cfg = ConcurrentRangeConfig {
+        final_path: PathBuf::from(local_path),
+        total_size: file_size,
+        streams: segments,
+        max_streams: segments,
+        max_parallel: segments,
+    };
+
+    let write_one_range = move |start_off: u64,
+                                end_off: u64,
+                                temp_path: PathBuf,
+                                aggregate: Arc<std::sync::atomic::AtomicU64>,
+                                cancel: CancellationToken| {
+        let pool = pool.clone();
+        let remote = remote_owned.clone();
+        async move {
+            use std::sync::atomic::Ordering;
+            use tokio::io::{AsyncSeekExt, AsyncWriteExt};
+
+            let mut provider = {
+                let mut guard = pool.lock().await;
+                guard.pop_front().ok_or_else(|| {
+                    ProviderError::TransferFailed(
+                        "segmented download: worker pool exhausted (internal invariant)"
+                            .to_string(),
+                    )
+                })?
+            };
+
+            let window_len = end_off - start_off + 1;
+            let mut file = tokio::fs::OpenOptions::new()
+                .write(true)
+                .open(&temp_path)
+                .await
+                .map_err(ProviderError::IoError)?;
+            file.seek(std::io::SeekFrom::Start(start_off))
+                .await
+                .map_err(ProviderError::IoError)?;
+
+            let mut written = 0u64;
+            while written < window_len {
+                if cancel.is_cancelled() {
+                    let _ = provider.disconnect().await;
+                    return Err(ProviderError::TransferFailed(
+                        "Transfer cancelled by user".to_string(),
+                    ));
+                }
+                let sub_len = (window_len - written).min(SEGMENTED_DOWNLOAD_SUB_READ_SIZE);
+                let data = provider
+                    .read_range(&remote, start_off + written, sub_len)
+                    .await
+                    .map_err(|e| {
+                        ProviderError::TransferFailed(format!(
+                            "segmented download: read_range at offset {} failed: {}",
+                            start_off + written,
+                            e
+                        ))
+                    })?;
+                if data.is_empty() {
+                    let _ = provider.disconnect().await;
+                    return Err(ProviderError::TransferFailed(format!(
+                        "segmented download: short read at offset {} ({} of {} bytes, window [{}, {}])",
+                        start_off + written,
+                        written,
+                        window_len,
+                        start_off,
+                        end_off
+                    )));
+                }
+                file.write_all(&data)
+                    .await
+                    .map_err(ProviderError::IoError)?;
+                written += data.len() as u64;
+                aggregate.fetch_add(data.len() as u64, Ordering::Relaxed);
+            }
+            file.flush().await.map_err(ProviderError::IoError)?;
+            let _ = provider.disconnect().await;
+
+            if written != window_len {
+                return Err(ProviderError::TransferFailed(format!(
+                    "segmented download: window [{}, {}] wrote {} bytes, expected {}",
+                    start_off, end_off, written, window_len
+                )));
+            }
+            Ok(ConcurrentRangeOutcome::Completed)
+        }
+    };
+
+    let outcome =
+        run_concurrent_range_download(cfg, write_one_range, cancel_token, on_progress).await;
+
+    match outcome {
+        Ok(ConcurrentRangeOutcome::Completed) => {
+            let temp = aerotmp_path_for(Path::new(local_path));
+            if let Err(e) = tokio::fs::rename(&temp, local_path).await {
+                let _ = tokio::fs::remove_file(&temp).await;
+                return Err(format!("segmented download: finalize failed: {}", e));
+            }
+            Ok(())
+        }
+        Ok(ConcurrentRangeOutcome::ServerIgnoredRange) => Err(
+            "segmented download: server ignored Range; falling back to single-stream"
+                .to_string(),
+        ),
+        Err(e) => Err(format!("segmented download: {}", e)),
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProviderExecutorSessionModel {
     LockedSingle {
@@ -450,27 +686,6 @@ impl ProviderDownloadExecutor {
         }
     }
 
-    /// Compute the effective segment count after the anti-fragmentation
-    /// rule (`SEGMENTED_DOWNLOAD_MIN_CHUNK_SIZE`). Mirrors
-    /// `pget_effective_segments` in `bin/aeroftp_cli.rs`. Returns 0 to
-    /// signal "do not segment".
-    fn effective_segments(file_size: u64, requested: u32) -> usize {
-        if file_size < SEGMENTED_DOWNLOAD_FILE_FLOOR || requested <= 1 {
-            return 0;
-        }
-        let segments = (requested as u64).clamp(1, 16) as u64;
-        let chunk = file_size / segments;
-        let bounded = if chunk < SEGMENTED_DOWNLOAD_MIN_CHUNK_SIZE {
-            (file_size / SEGMENTED_DOWNLOAD_MIN_CHUNK_SIZE).max(1)
-        } else {
-            segments
-        };
-        if bounded <= 1 {
-            0
-        } else {
-            bounded as usize
-        }
-    }
 
     /// Try the segmented (intra-file range) download path. Returns
     /// `None` when the path is not applicable — the caller falls
@@ -488,86 +703,14 @@ impl ProviderDownloadExecutor {
         dl_start: std::time::Instant,
         file_size: u64,
     ) -> Option<Result<(), String>> {
-        // Capability gate 1: only run on a real session pool. Locked
-        // single sessions cannot be cloned safely; FTP/FTPS GUI batch
-        // never reaches this executor anyway (no-double-pool
-        // invariant), and the resolver returns `HttpClonePool` /
-        // `SftpConnectionPool` / `FtpConnectionPool` only when
-        // `clone_for_transfer()` is honestly supported.
-        if !self.session_model.is_clone_pool() {
-            return None;
-        }
-
-        // Capability gate 2: provider must advertise strict concurrent
-        // range download. This is the same flag PD-CLI-CONV-E and
-        // PD-SFTP-1/PD-FTP-1 flip behind a real pool.
-        let caps = primary.transfer_capabilities();
-        if caps.strict_concurrent_range_download != Capability::Supported {
-            return None;
-        }
-
-        // Effective segment count after anti-fragmentation; if the file
-        // is below floor or the bound collapses to 1, skip the path.
-        let segments = Self::effective_segments(file_size, self.runtime_settings.download_segments);
-        if segments < 2 {
-            return None;
-        }
-
-        // Cap parallel workers by the resolved session-pool size, so we
-        // never exceed the lease budget the resolver committed to.
-        let pool_cap = self.session_model.max_leases().max(1);
-        let segments = segments.min(pool_cap).max(1);
-        if segments < 2 {
-            return None;
-        }
-
-        Some(
-            self.run_segmented_download(entry, file_transfer_id, dl_start, file_size, segments)
-                .await,
-        )
-    }
-
-    /// Execute the segmented download path. Pre-acquires N independent
-    /// provider workers via `clone_for_transfer()`, then delegates to
-    /// `run_concurrent_range_download` (the shared transport-agnostic
-    /// engine PD-CLI-CONV-E owns).
-    async fn run_segmented_download(
-        &self,
-        entry: &TransferEntry,
-        file_transfer_id: &str,
-        dl_start: std::time::Instant,
-        file_size: u64,
-        segments: usize,
-    ) -> Result<(), String> {
-        use crate::providers::multi_thread::{
-            aerotmp_path_for, run_concurrent_range_download, ConcurrentRangeConfig,
-            ConcurrentRangeOutcome,
-        };
-        use crate::providers::ProviderError;
-        use std::collections::VecDeque;
-        use std::path::{Path, PathBuf};
-
-        // Pre-acquire N independent workers. The first failure aborts
-        // the segmented path so the caller's retry envelope can fall
-        // back to the legacy single-stream branch (next attempt has
-        // `attempt > 0`, the gate above is bypassed).
-        let mut workers: Vec<Box<dyn StorageProvider>> = Vec::with_capacity(segments);
-        for i in 0..segments {
-            match self.clone_worker().await {
-                Ok(w) => workers.push(w),
-                Err(e) => {
-                    for mut w in workers {
-                        let _ = w.disconnect().await;
-                    }
-                    return Err(format!(
-                        "segmented download: clone {} of {} failed: {}",
-                        i + 1,
-                        segments,
-                        e
-                    ));
-                }
-            }
-        }
+        // Single-source-of-truth gate: capability + session-pool kind +
+        // anti-fragmentation count + pool-cap clamp.
+        let segments = provider_segmented_download_eligible(
+            primary,
+            file_size,
+            self.runtime_settings.download_segments,
+            self.session_model.max_leases(),
+        )?;
 
         // Progress bridge to the executor's TransferEventSink, same
         // shape as the legacy progress callback.
@@ -624,127 +767,18 @@ impl ProviderDownloadExecutor {
                 });
             }));
 
-        // Shared worker queue. The engine emits exactly `segments`
-        // windows; each window pops exactly one worker, runs its range
-        // reads on that connection, and never returns it (workers
-        // disconnect when their window completes).
-        let pool = Arc::new(tokio::sync::Mutex::new(VecDeque::from(workers)));
-        let remote_owned = entry.remote_path.clone();
-
-        let cfg = ConcurrentRangeConfig {
-            final_path: PathBuf::from(&entry.local_path),
-            total_size: file_size,
-            streams: segments,
-            max_streams: segments,
-            max_parallel: segments,
-        };
-
-        let write_one_range = move |start_off: u64,
-                                    end_off: u64,
-                                    temp_path: PathBuf,
-                                    aggregate: Arc<std::sync::atomic::AtomicU64>,
-                                    cancel: CancellationToken| {
-            let pool = pool.clone();
-            let remote = remote_owned.clone();
-            async move {
-                use std::sync::atomic::Ordering;
-                use tokio::io::{AsyncSeekExt, AsyncWriteExt};
-
-                let mut provider = {
-                    let mut guard = pool.lock().await;
-                    guard.pop_front().ok_or_else(|| {
-                        ProviderError::TransferFailed(
-                            "segmented download: worker pool exhausted (internal invariant)"
-                                .to_string(),
-                        )
-                    })?
-                };
-
-                let window_len = end_off - start_off + 1;
-                let mut file = tokio::fs::OpenOptions::new()
-                    .write(true)
-                    .open(&temp_path)
-                    .await
-                    .map_err(ProviderError::IoError)?;
-                file.seek(std::io::SeekFrom::Start(start_off))
-                    .await
-                    .map_err(ProviderError::IoError)?;
-
-                let mut written = 0u64;
-                while written < window_len {
-                    if cancel.is_cancelled() {
-                        let _ = provider.disconnect().await;
-                        return Err(ProviderError::TransferFailed(
-                            "Transfer cancelled by user".to_string(),
-                        ));
-                    }
-                    let sub_len = (window_len - written).min(SEGMENTED_DOWNLOAD_SUB_READ_SIZE);
-                    let data = provider
-                        .read_range(&remote, start_off + written, sub_len)
-                        .await
-                        .map_err(|e| {
-                            ProviderError::TransferFailed(format!(
-                                "segmented download: read_range at offset {} failed: {}",
-                                start_off + written,
-                                e
-                            ))
-                        })?;
-                    if data.is_empty() {
-                        let _ = provider.disconnect().await;
-                        return Err(ProviderError::TransferFailed(format!(
-                            "segmented download: short read at offset {} ({} of {} bytes, window [{}, {}])",
-                            start_off + written,
-                            written,
-                            window_len,
-                            start_off,
-                            end_off
-                        )));
-                    }
-                    file.write_all(&data)
-                        .await
-                        .map_err(ProviderError::IoError)?;
-                    written += data.len() as u64;
-                    aggregate.fetch_add(data.len() as u64, Ordering::Relaxed);
-                }
-                file.flush().await.map_err(ProviderError::IoError)?;
-                let _ = provider.disconnect().await;
-
-                if written != window_len {
-                    return Err(ProviderError::TransferFailed(format!(
-                        "segmented download: window [{}, {}] wrote {} bytes, expected {}",
-                        start_off, end_off, written, window_len
-                    )));
-                }
-                Ok(ConcurrentRangeOutcome::Completed)
-            }
-        };
-
-        let outcome = run_concurrent_range_download(
-            cfg,
-            write_one_range,
-            self.cancel_token.clone(),
-            on_progress,
+        Some(
+            run_provider_segmented_download(
+                primary,
+                &entry.remote_path,
+                &entry.local_path,
+                file_size,
+                segments,
+                on_progress,
+                self.cancel_token.clone(),
+            )
+            .await,
         )
-        .await;
-
-        match outcome {
-            Ok(ConcurrentRangeOutcome::Completed) => {
-                let temp = aerotmp_path_for(Path::new(&entry.local_path));
-                if let Err(e) = tokio::fs::rename(&temp, &entry.local_path).await {
-                    let _ = tokio::fs::remove_file(&temp).await;
-                    return Err(format!("segmented download: finalize failed: {}", e));
-                }
-                Ok(())
-            }
-            // `.aerotmp` is dropped by the engine's `TempFileGuard`; the
-            // caller's retry envelope picks up a single-stream attempt
-            // because the segmented branch is gated on `attempt == 0`.
-            Ok(ConcurrentRangeOutcome::ServerIgnoredRange) => Err(
-                "segmented download: server ignored Range; falling back to single-stream"
-                    .to_string(),
-            ),
-            Err(e) => Err(format!("segmented download: {}", e)),
-        }
     }
 
     fn emit_download_start(&self, entry: &TransferEntry, file_transfer_id: &str) {
@@ -1176,14 +1210,14 @@ mod tests {
     fn effective_segments_below_file_floor_returns_zero() {
         // 4 MiB file with 4 segments requested: below the 8 MiB floor,
         // segmented path must be skipped.
-        let n = ProviderDownloadExecutor::effective_segments(4 * 1024 * 1024, 4);
+        let n = provider_segmented_effective_count(4 * 1024 * 1024, 4);
         assert_eq!(n, 0);
     }
 
     #[test]
     fn effective_segments_single_request_returns_zero() {
         // Even a large file with `segments == 1` is just single-stream.
-        let n = ProviderDownloadExecutor::effective_segments(64 * 1024 * 1024, 1);
+        let n = provider_segmented_effective_count(64 * 1024 * 1024, 1);
         assert_eq!(n, 0);
     }
 
@@ -1191,7 +1225,7 @@ mod tests {
     fn effective_segments_full_file_above_floor_returns_request() {
         // 64 MiB / 4 = 16 MiB per chunk, well above the 1 MiB
         // anti-fragmentation floor.
-        let n = ProviderDownloadExecutor::effective_segments(64 * 1024 * 1024, 4);
+        let n = provider_segmented_effective_count(64 * 1024 * 1024, 4);
         assert_eq!(n, 4);
     }
 
@@ -1200,7 +1234,7 @@ mod tests {
         // The executor itself clamps to 16 inside `effective_segments`
         // (`download_segments` is also clamped at resolve time, but the
         // helper must stay defensive).
-        let n = ProviderDownloadExecutor::effective_segments(1024 * 1024 * 1024, 64);
+        let n = provider_segmented_effective_count(1024 * 1024 * 1024, 64);
         assert_eq!(n, 16);
     }
 
@@ -1209,7 +1243,7 @@ mod tests {
         // 9 MiB / 16 segments would mean ~576 KiB per chunk, below the
         // 1 MiB minimum. The helper must reduce the count so each chunk
         // is at least 1 MiB.
-        let n = ProviderDownloadExecutor::effective_segments(9 * 1024 * 1024, 16);
+        let n = provider_segmented_effective_count(9 * 1024 * 1024, 16);
         // 9 MiB / 1 MiB = 9 → cap at 9.
         assert_eq!(n, 9);
     }
