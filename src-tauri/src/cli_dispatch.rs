@@ -83,8 +83,27 @@ pub enum DispatchRoute {
 impl DispatchRoute {
     pub fn target_name(self) -> &'static str {
         match self {
-            DispatchRoute::Gui => "aeroftp.bin",
-            DispatchRoute::Cli => "aeroftp-cli",
+            // Windows requires the `.exe` suffix because Rust's
+            // Command::new(<absolute-path>) calls CreateProcessW with
+            // lpApplicationName set, which does not append PATHEXT.
+            // The GUI is renamed at packaging time from the default
+            // `aeroftp.exe` produced by cargo to `aeroftp-gui.exe` so
+            // the dispatcher itself can take over the canonical
+            // `aeroftp.exe` slot in the install directory.
+            DispatchRoute::Gui => {
+                if cfg!(windows) {
+                    "aeroftp-gui.exe"
+                } else {
+                    "aeroftp.bin"
+                }
+            }
+            DispatchRoute::Cli => {
+                if cfg!(windows) {
+                    "aeroftp-cli.exe"
+                } else {
+                    "aeroftp-cli"
+                }
+            }
         }
     }
 }
@@ -203,5 +222,69 @@ mod tests {
         );
         assert_eq!(candidates[1], PathBuf::from("/usr/bin/aeroftp-cli"));
         assert_eq!(candidates[2], PathBuf::from("/usr/lib/aeroftp/aeroftp-cli"));
+    }
+
+    #[test]
+    fn target_names_are_platform_appropriate() {
+        if cfg!(windows) {
+            assert_eq!(DispatchRoute::Gui.target_name(), "aeroftp-gui.exe");
+            assert_eq!(DispatchRoute::Cli.target_name(), "aeroftp-cli.exe");
+        } else {
+            assert_eq!(DispatchRoute::Gui.target_name(), "aeroftp.bin");
+            assert_eq!(DispatchRoute::Cli.target_name(), "aeroftp-cli");
+        }
+    }
+
+    // Windows-only: argv[0] often carries a full backslash path and the
+    // `.exe` extension. Both must be stripped before the stem comparison
+    // routes the invocation. Running this case under `cfg(windows)` is
+    // load-bearing: on Unix the Path parser treats `C:\foo\bar.exe` as
+    // a single filename and the assertions would not exercise the real
+    // Windows behavior.
+    #[cfg(windows)]
+    #[test]
+    fn windows_argv0_with_full_path_and_extension_routes_correctly() {
+        let cases = [
+            (
+                vec!["C:\\Program Files\\AeroFTP\\aeroftp.exe", "ls", "ftp://h"],
+                DispatchRoute::Cli,
+            ),
+            (
+                vec!["C:\\Program Files\\AeroFTP\\aftp.exe", "ls"],
+                DispatchRoute::Cli,
+            ),
+            (
+                vec!["C:\\Program Files\\AeroFTP\\aeroftp-cli.exe", "ls"],
+                DispatchRoute::Cli,
+            ),
+            (
+                vec!["C:\\Program Files\\AeroFTP\\aero.exe", "ls"],
+                DispatchRoute::Cli,
+            ),
+            (
+                vec!["C:\\Program Files\\AeroFTP\\aeroftp.exe"],
+                DispatchRoute::Gui,
+            ),
+            (
+                vec![
+                    "C:\\Program Files\\AeroFTP\\aeroftp.exe",
+                    "C:\\Users\\me\\vault.aerovault",
+                ],
+                DispatchRoute::Gui,
+            ),
+            (
+                vec![
+                    "C:\\Program Files\\AeroFTP\\aeroftp.exe",
+                    "--post-update-cleanup",
+                    "C:\\Users\\me\\AppData\\Local\\AeroFTP\\aeroftp.exe.old",
+                ],
+                DispatchRoute::Gui,
+            ),
+        ];
+
+        for (input, expected) in cases {
+            let actual = route_from_argv_with_path_exists(&argv(&input), |_| false);
+            assert_eq!(actual, expected, "argv={input:?}");
+        }
     }
 }
