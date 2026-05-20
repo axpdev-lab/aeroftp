@@ -4362,6 +4362,10 @@
                 "colPct": "%",
                 "totalRow": "Ukupno",
                 "noData": "Još nema podataka o protokolima — povežite barem jedan poslužitelj."
+            },
+            "connectError": {
+                "failed": "Posljednji pokušaj povezivanja nije uspio",
+                "lastFailedAt": "Posljednja pogreška prije {time}"
             }
         },
         "gitlab": {

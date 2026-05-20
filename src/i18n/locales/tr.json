@@ -4362,6 +4362,10 @@
                 "colPct": "%",
                 "totalRow": "Toplam",
                 "noData": "Henüz protokol verisi yok — en az bir sunucuya bağlanın."
+            },
+            "connectError": {
+                "failed": "Son bağlantı denemesi başarısız",
+                "lastFailedAt": "Son hata {time} önce"
             }
         },
         "gitlab": {

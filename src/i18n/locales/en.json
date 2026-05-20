@@ -4415,6 +4415,10 @@
         "unknown": "Not probed",
         "clickToRetry": "click to recheck"
       },
+      "connectError": {
+        "failed": "Last connection attempt failed",
+        "lastFailedAt": "Last failure {time} ago"
+      },
       "renameWithHotkey": "Rename (F2)",
       "setAsCrossProfileSource": "Set as Cross-Profile source",
       "setAsCrossProfileDestination": "Set as Cross-Profile destination",

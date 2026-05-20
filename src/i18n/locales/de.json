@@ -4362,6 +4362,10 @@
                 "colPct": "%",
                 "totalRow": "Gesamt",
                 "noData": "Noch keine Protokolldaten — verbinden Sie mindestens einen Server."
+            },
+            "connectError": {
+                "failed": "Letzter Verbindungsversuch fehlgeschlagen",
+                "lastFailedAt": "Letzter Fehler vor {time}"
             }
         },
         "gitlab": {

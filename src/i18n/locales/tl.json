@@ -4381,6 +4381,10 @@
                 "colPct": "%",
                 "totalRow": "Kabuuan",
                 "noData": "Wala pang data ng protocol — kumonekta ng kahit isang server."
+            },
+            "connectError": {
+                "failed": "Nabigo ang huling pagsubok na kumonekta",
+                "lastFailedAt": "Huling pagkabigo {time} ang nakalipas"
             }
         },
         "gitlab": {

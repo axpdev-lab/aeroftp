@@ -286,7 +286,13 @@ import { getIconThemeProvider } from './utils/iconThemes';
 import { logger } from './utils/logger';
 import { initCspReporter } from './utils/cspReporter';
 import { secureGet, secureGetWithFallback, secureStoreAndClean } from './utils/secureStorage';
-import { loadSavedServerProfiles, mergeSavedServerProfile, storeSavedServerProfiles } from './utils/serverProfileStore';
+import {
+  loadSavedServerProfiles,
+  mergeSavedServerProfile,
+  storeSavedServerProfiles,
+  recordProfileConnectFailure,
+  clearProfileConnectFailure,
+} from './utils/serverProfileStore';
 import { maskCredential } from './utils/maskCredential';
 import { getOpenWithDefaultRoute } from './utils/openWithDefault';
 import { createLocalEndpoint, createRemoteEndpoint } from './utils/panelEndpoints';
@@ -4470,6 +4476,9 @@ interface UpdateVerificationInfo {
         // for the next batched health scan to refresh the cache.
         if (effectiveParams.savedServerId) {
           markProfileHealthy(effectiveParams.savedServerId);
+          // Clear the standalone connect-failure marker (#180 / 4486730822).
+          // Separate signal from health so the two concepts never collide.
+          void clearProfileConnectFailure(effectiveParams.savedServerId);
         }
 
         logConnectionSuccess(protocol, effectiveParams.username, {
@@ -4546,6 +4555,12 @@ interface UpdateVerificationInfo {
         }
         humanLog.logError('CONNECT', { server: maskedProviderName }, logId);
         notify.error(t('connection.connectionFailed'), String(error));
+        // #180 / 4486730822: stamp a standalone connect-failure marker on
+        // the saved-server card so a closed Activity Log is no longer the
+        // only feedback path.
+        if (effectiveParams.savedServerId) {
+          void recordProfileConnectFailure(effectiveParams.savedServerId, error);
+        }
       }
       finally { setLoading(false); }
       return;
@@ -4570,6 +4585,11 @@ interface UpdateVerificationInfo {
       const { resolvedIp: ftpIp, connectingLogId: ftpConnLogId } = await logConnectionSteps(effectiveParams.server, effectiveParams.port || 21, ftpProto);
       await invoke('connect_ftp', { params: effectiveParams });
       if (ftpConnLogId) humanLog.updateEntry(ftpConnLogId, { status: 'success', message: t('activity.connected_to', { ip: ftpIp || effectiveParams.server, port: String(effectiveParams.port || 21) }) });
+      // Clear the standalone connect-failure marker on a confirmed FTP/SFTP
+      // login (#180 / 4486730822). Separate signal from health.
+      if (effectiveParams.savedServerId) {
+        void clearProfileConnectFailure(effectiveParams.savedServerId);
+      }
       logConnectionSuccess(ftpProto, effectiveParams.username, {
         tlsMode: effectiveParams.options?.tlsMode,
         private_key_path: effectiveParams.options?.private_key_path || undefined,
@@ -4607,6 +4627,12 @@ interface UpdateVerificationInfo {
     } catch (error) {
       humanLog.logError('CONNECT', { server: effectiveParams.server }, logId);
       notify.error(t('connection.connectionFailed'), String(error));
+      // #180 / 4486730822: stamp the standalone connect-failure marker so
+      // the My Servers card surfaces a failed FTP/SFTP login even when
+      // the Activity Log is closed.
+      if (effectiveParams.savedServerId) {
+        void recordProfileConnectFailure(effectiveParams.savedServerId, error);
+      }
     }
     finally { setLoading(false); }
   };
@@ -11924,6 +11950,12 @@ interface UpdateVerificationInfo {
                       files
                     );
                     fetchStorageQuota(connectedParams.protocol, connectedParams);
+                    // Clear the standalone connect-failure marker (#180 /
+                    // 4486730822). Separate signal from health.
+                    {
+                      const savedId = connectedParams.savedServerId || normalizedParams.savedServerId;
+                      if (savedId) void clearProfileConnectFailure(savedId);
+                    }
                     // Reset form for next "Add New Server"
                     setConnectionParams({ server: '', username: '', password: '' });
                     setQuickConnectDirs({ remoteDir: '', localDir: '' });
@@ -11940,6 +11972,13 @@ interface UpdateVerificationInfo {
                     }
                     humanLog.logError('CONNECT', { server: maskedProviderName }, logId);
                     notify.error(t('connection.connectionFailed'), String(error));
+                    // #180 / 4486730822: stamp the standalone connect-failure
+                    // marker so the My Servers card surfaces a failed login
+                    // even when the Activity Log is closed.
+                    {
+                      const savedId = normalizedParams.savedServerId;
+                      if (savedId) void recordProfileConnectFailure(savedId, error);
+                    }
                   } finally {
                     setLoading(false);
                   }
@@ -11961,6 +12000,10 @@ interface UpdateVerificationInfo {
                   const { resolvedIp: savedFtpIp, connectingLogId: savedFtpConnLogId } = await logConnectionSteps(params.server, params.port || 21, savedFtpProto);
                   await invoke('connect_ftp', { params });
                   if (savedFtpConnLogId) humanLog.updateEntry(savedFtpConnLogId, { status: 'success', message: t('activity.connected_to', { ip: savedFtpIp || params.server, port: String(params.port || 21) }) });
+                  // Clear standalone connect-failure marker (#180 / 4486730822).
+                  if (params.savedServerId) {
+                    void clearProfileConnectFailure(params.savedServerId);
+                  }
                   logConnectionSuccess(savedFtpProto, params.username, {
                     tlsMode: params.options?.tlsMode,
                     private_key_path: params.options?.private_key_path || undefined,
@@ -12002,6 +12045,11 @@ interface UpdateVerificationInfo {
                 } catch (error) {
                   humanLog.logError('CONNECT', { server: params.server }, logId);
                   notify.error(t('connection.connectionFailed'), String(error));
+                  // #180 / 4486730822: stamp the standalone connect-failure
+                  // marker on the saved-server card.
+                  if (params.savedServerId) {
+                    void recordProfileConnectFailure(params.savedServerId, error);
+                  }
                 } finally {
                   setLoading(false);
                 }

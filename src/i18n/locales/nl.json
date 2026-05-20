@@ -4362,6 +4362,10 @@
                 "colPct": "%",
                 "totalRow": "Totaal",
                 "noData": "Nog geen protocolgegevens — verbind ten minste één server."
+            },
+            "connectError": {
+                "failed": "Laatste verbindingspoging mislukt",
+                "lastFailedAt": "Laatste fout {time} geleden"
             }
         },
         "gitlab": {

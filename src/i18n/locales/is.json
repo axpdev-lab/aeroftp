@@ -4381,6 +4381,10 @@
                 "colPct": "%",
                 "totalRow": "Samtals",
                 "noData": "Engin gögn enn — tengdu að minnsta kosti einn netþjón."
+            },
+            "connectError": {
+                "failed": "Síðasta tengitilraun mistókst",
+                "lastFailedAt": "Síðasta villa fyrir {time}"
             }
         },
         "gitlab": {

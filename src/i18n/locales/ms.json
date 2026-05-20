@@ -4362,6 +4362,10 @@
                 "colPct": "%",
                 "totalRow": "Jumlah",
                 "noData": "Belum ada data protokol — sambungkan sekurang-kurangnya satu pelayan."
+            },
+            "connectError": {
+                "failed": "Percubaan sambungan terakhir gagal",
+                "lastFailedAt": "Kegagalan terakhir {time} lalu"
             }
         },
         "gitlab": {

@@ -4362,6 +4362,10 @@
                 "colPct": "%",
                 "totalRow": "Kokku",
                 "noData": "Veel pole protokolli andmeid — ühendage vähemalt üks server."
+            },
+            "connectError": {
+                "failed": "Viimane ühenduskatse ebaõnnestus",
+                "lastFailedAt": "Viimane viga {time} tagasi"
             }
         },
         "gitlab": {

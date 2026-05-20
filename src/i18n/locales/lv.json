@@ -4362,6 +4362,10 @@
                 "colPct": "%",
                 "totalRow": "Kopā",
                 "noData": "Vēl nav protokola datu — pievienojiet vismaz vienu serveri."
+            },
+            "connectError": {
+                "failed": "Pēdējais savienojuma mēģinājums neizdevās",
+                "lastFailedAt": "Pēdējā kļūda pirms {time}"
             }
         },
         "gitlab": {

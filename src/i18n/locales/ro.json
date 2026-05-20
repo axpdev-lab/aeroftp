@@ -4362,6 +4362,10 @@
                 "colPct": "%",
                 "totalRow": "Total",
                 "noData": "Încă nu există date despre protocol — conectează cel puțin un server."
+            },
+            "connectError": {
+                "failed": "Ultima încercare de conectare a eșuat",
+                "lastFailedAt": "Ultima eroare acum {time}"
             }
         },
         "gitlab": {

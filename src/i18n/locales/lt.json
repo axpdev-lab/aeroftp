@@ -4362,6 +4362,10 @@
                 "colPct": "%",
                 "totalRow": "Iš viso",
                 "noData": "Protokolo duomenų dar nėra — prijunkite bent vieną serverį."
+            },
+            "connectError": {
+                "failed": "Paskutinis prisijungimo bandymas nepavyko",
+                "lastFailedAt": "Paskutinė klaida prieš {time}"
             }
         },
         "gitlab": {

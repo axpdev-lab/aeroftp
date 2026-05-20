@@ -4362,6 +4362,10 @@
                 "colPct": "%",
                 "totalRow": "Yhteensä",
                 "noData": "Ei vielä protokollatietoja — yhdistä vähintään yksi palvelin."
+            },
+            "connectError": {
+                "failed": "Viimeisin yhteysyritys epäonnistui",
+                "lastFailedAt": "Viimeisin virhe {time} sitten"
             }
         },
         "gitlab": {
