@@ -2574,6 +2574,8 @@
       "autoLockDisabled": "Disabled",
       "autoLockEnabled": "Auto-lock: {minutes} min",
       "autoLockTimeout": "Auto-lock Timeout",
+      "autoStartTransfers": "Auto-start transfers",
+      "autoStartTransfersHelp": "When on, drag-and-drop and click transfers launch immediately. When off, they are parked in the Transfer Queue as staged so you can prune folder trees and reorder before pressing Start.",
       "aerovaultOverlayTimeoutTitle": "AeroVault Overlay Timeout",
       "aerovaultOverlayTimeoutDesc": "AeroVault Overlay sessions auto-lock after this period of inactivity. Lower values are safer but require more frequent unlocks.",
       "autoTheme": "Auto (System)",
@@ -3726,6 +3728,9 @@
       "retry": "Retry",
       "running": "running",
       "speed": "Speed",
+      "staged": "staged",
+      "start": "Start",
+      "startAll": "Start all",
       "forceStop": "Force stop (interrupt current file)",
       "stopAll": "Stop all",
       "stopAllPending": "Stop all pending",
@@ -4418,6 +4423,10 @@
         "pending": "Checking...",
         "unknown": "Not probed",
         "clickToRetry": "click to recheck"
+      },
+      "connectError": {
+        "failed": "Last connection attempt failed",
+        "lastFailedAt": "Last failure {time} ago"
       },
       "renameWithHotkey": "Rename (F2)",
       "setAsCrossProfileSource": "Set as Cross-Profile source",

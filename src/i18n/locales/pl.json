@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} w {seconds}s",
                 "newTransfer": "Nowy transfer",
                 "preparing": "Przygotowywanie transferu…"
-            }
+            },
+            "staged": "w kolejce",
+            "start": "Rozpocznij",
+            "startAll": "Rozpocznij wszystkie"
         },
         "settings": {
             "title": "Ustawienia",
@@ -1002,7 +1005,9 @@
             "downloadSegments": "Segmenty pobierania na plik",
             "downloadSegmentsAuto": "Auto (pojedynczy strumień)",
             "downloadSegmentsN": "{n} segmentów na plik",
-            "downloadSegmentsDesc": "Dziel każde pobieranie na równoległe zakresy bajtów. Auto zachowuje obecne zachowanie z pojedynczym strumieniem. Działa u dostawców obsługujących żądania zakresów (SFTP, S3, HTTP) dla plików wystarczająco dużych, aby odnieść korzyść."
+            "downloadSegmentsDesc": "Dziel każde pobieranie na równoległe zakresy bajtów. Auto zachowuje obecne zachowanie z pojedynczym strumieniem. Działa u dostawców obsługujących żądania zakresów (SFTP, S3, HTTP) dla plików wystarczająco dużych, aby odnieść korzyść.",
+            "autoStartTransfers": "Automatyczne uruchamianie transferow",
+            "autoStartTransfersHelp": "Gdy wlaczone, transfery przeciagnij-i-upusc oraz klikniecia startuja od razu. Gdy wylaczone, sa odkladane w Transfer Queue jako staged, abys mogl przyciac drzewa folderow i zmienic kolejnosc przed nacisnieciem Start."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4366,6 +4371,10 @@
                 "colPct": "%",
                 "totalRow": "Razem",
                 "noData": "Brak danych protokołu — połącz przynajmniej jeden serwer."
+            },
+            "connectError": {
+                "failed": "Ostatnia próba połączenia nie powiodła się",
+                "lastFailedAt": "Ostatni błąd {time} temu"
             }
         },
         "gitlab": {

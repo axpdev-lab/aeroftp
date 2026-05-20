@@ -215,6 +215,10 @@ interface AppSettings {
     retryCount: number;
     /** Intra-file range parallelism per download. 0 = Auto. */
     downloadSegments: number;
+    /** Transfer Queue staging gate. When true (default), transfers launch
+     *  immediately on drag/drop or click. When false, transfers are parked
+     *  in the queue panel as `staged` for prune-then-start workflows. */
+    autoStartTransfers: boolean;
     // File Handling
     fileExistsAction: 'ask' | 'overwrite' | 'skip' | 'rename' | 'resume' | 'overwrite_if_newer' | 'overwrite_if_different' | 'skip_if_identical';
     preserveTimestamps: boolean;
@@ -259,6 +263,7 @@ const defaultSettings: AppSettings = {
     maxConcurrentTransfers: 5,
     retryCount: 3,
     downloadSegments: 0,
+    autoStartTransfers: true,
     fileExistsAction: 'ask',
     preserveTimestamps: true,
     transferMode: 'auto',
@@ -2823,6 +2828,30 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                     <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">{t('settings.transferSettings')}</h3>
 
                                     <div className="space-y-4">
+                                        {/* TQ-4: Transfer Queue staging gate. Default ON = legacy
+                                            immediate-transfer flow (byte-identical to today, the
+                                            regression oracle for the Transfer Queue rollout).
+                                            Toggle OFF parks transfers in the queue panel as
+                                            staged so the user can prune before pressing Start. */}
+                                        <div>
+                                            <label className="flex items-start gap-2 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={settings.autoStartTransfers}
+                                                    onChange={(e) => updateSetting('autoStartTransfers', e.target.checked)}
+                                                    className="mt-1 w-4 h-4 rounded text-amber-500 focus:ring-amber-500"
+                                                />
+                                                <span className="flex-1">
+                                                    <span className="block text-sm font-medium text-gray-700 dark:text-gray-200">
+                                                        {t('settings.autoStartTransfers')}
+                                                    </span>
+                                                    <span className="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                                        {t('settings.autoStartTransfersHelp')}
+                                                    </span>
+                                                </span>
+                                            </label>
+                                        </div>
+
                                         <div>
                                             <label className="block text-sm font-medium mb-1">{t('settings.concurrentTransfers')}</label>
                                             <select value={settings.maxConcurrentTransfers} onChange={(e) => updateSetting('maxConcurrentTransfers', parseInt(e.target.value))} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm">

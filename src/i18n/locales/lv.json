@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} {seconds}s laikā",
                 "newTransfer": "Jauna pārsūtīšana",
                 "preparing": "Sagatavo pārsūtīšanu…"
-            }
+            },
+            "staged": "rindā",
+            "start": "Sākt",
+            "startAll": "Sākt visu"
         },
         "settings": {
             "title": "Iestatījumi",
@@ -1002,7 +1005,9 @@
             "downloadSegments": "Lejupielādes segmenti vienam failam",
             "downloadSegmentsAuto": "Automātiski (viena plūsma)",
             "downloadSegmentsN": "{n} segmenti vienam failam",
-            "downloadSegmentsDesc": "Sadaliet katru lejupielādi paralēlos baitu diapazonos. Automātiski saglabā pašreizējo vienas plūsmas darbību. Efektīvi pakalpojumu sniedzējiem, kuri atbalsta diapazonu pieprasījumus (SFTP, S3, HTTP), pietiekami lieliem failiem."
+            "downloadSegmentsDesc": "Sadaliet katru lejupielādi paralēlos baitu diapazonos. Automātiski saglabā pašreizējo vienas plūsmas darbību. Efektīvi pakalpojumu sniedzējiem, kuri atbalsta diapazonu pieprasījumus (SFTP, S3, HTTP), pietiekami lieliem failiem.",
+            "autoStartTransfers": "Parsutisanu automatiska sakums",
+            "autoStartTransfersHelp": "Kad ieslegts, vilksanas un nomesanas un klikskinasanas parsutisanas sakas nekavejoties. Kad izslegts, tas tiek novietotas Transfer Queue ka staged, lai tu varetu apgriezt mapju kokus un parkartot pirms nospiez Start."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4366,6 +4371,10 @@
                 "colPct": "%",
                 "totalRow": "Kopā",
                 "noData": "Vēl nav protokola datu — pievienojiet vismaz vienu serveri."
+            },
+            "connectError": {
+                "failed": "Pēdējais savienojuma mēģinājums neizdevās",
+                "lastFailedAt": "Pēdējā kļūda pirms {time}"
             }
         },
         "gitlab": {

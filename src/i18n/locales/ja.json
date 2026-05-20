@@ -501,7 +501,10 @@
                 "summaryMeta": "{size}（{seconds}秒）",
                 "newTransfer": "新規転送",
                 "preparing": "転送を準備しています…"
-            }
+            },
+            "staged": "待機中",
+            "start": "開始",
+            "startAll": "すべて開始"
         },
         "settings": {
             "title": "設定",
@@ -1002,7 +1005,9 @@
             "downloadSegments": "ファイルごとのダウンロードセグメント数",
             "downloadSegmentsAuto": "自動（単一ストリーム）",
             "downloadSegmentsN": "ファイルあたり {n} セグメント",
-            "downloadSegmentsDesc": "各ダウンロードを並列のバイト範囲に分割します。「自動」は現在のシングルストリーム動作を維持します。範囲リクエストに対応したプロバイダー（SFTP、S3、HTTP）で、効果が見込める程度に大きいファイルで有効です。"
+            "downloadSegmentsDesc": "各ダウンロードを並列のバイト範囲に分割します。「自動」は現在のシングルストリーム動作を維持します。範囲リクエストに対応したプロバイダー（SFTP、S3、HTTP）で、効果が見込める程度に大きいファイルで有効です。",
+            "autoStartTransfers": "転送を自動開始",
+            "autoStartTransfersHelp": "オンの場合、ドラッグ&ドロップやクリックでの転送はすぐに開始されます。オフの場合、Transfer Queue に staged として保留され、Start を押す前にフォルダツリーを整理して並び替えできます。"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4366,6 +4371,10 @@
                 "colPct": "%",
                 "totalRow": "合計",
                 "noData": "プロトコルデータがまだありません — サーバーを 1 つ以上接続してください。"
+            },
+            "connectError": {
+                "failed": "前回の接続試行に失敗しました",
+                "lastFailedAt": "前回の失敗は{time}前"
             }
         },
         "gitlab": {

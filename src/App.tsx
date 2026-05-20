@@ -109,6 +109,7 @@ import { MountManagerDialog } from './components/MountManagerDialog';
 import { SettingsPanel } from './components/SettingsPanel';
 import { StatusBar } from './components/StatusBar';
 import { TransferQueue, useTransferQueue } from './components/TransferQueue';
+import { filterSurvivingBatchEntries } from './components/transferQueueActions';
 import { useCircuitBreaker } from './hooks/useCircuitBreaker';
 import { RECONNECT_ERROR_KINDS, getErrorKindI18nKey } from './utils/transferErrorClassifier';
 import { normalizeMegaOptions } from './utils/providerConnectionMeta';
@@ -286,7 +287,14 @@ import { getIconThemeProvider } from './utils/iconThemes';
 import { logger } from './utils/logger';
 import { initCspReporter } from './utils/cspReporter';
 import { secureGet, secureGetWithFallback, secureStoreAndClean } from './utils/secureStorage';
-import { loadSavedServerProfiles, mergeSavedServerProfile, storeSavedServerProfiles } from './utils/serverProfileStore';
+import {
+  loadSavedServerProfiles,
+  mergeSavedServerProfile,
+  storeSavedServerProfiles,
+  recordProfileConnectFailure,
+  clearProfileConnectFailure,
+  PROFILES_CHANGED_EVENT,
+} from './utils/serverProfileStore';
 import { maskCredential } from './utils/maskCredential';
 import { getOpenWithDefaultRoute } from './utils/openWithDefault';
 import { createLocalEndpoint, createRemoteEndpoint } from './utils/panelEndpoints';
@@ -685,6 +693,16 @@ const App: React.FC = () => {
   const folderOverwriteApplyToAll = useRef<{ action: FolderMergeAction; enabled: boolean }>({ action: 'merge_overwrite', enabled: false });
   // showSettingsPanel provided by useSettings
   const [serversRefreshKey, setServersRefreshKey] = useState(0);
+  // Vault mutations triggered by silent paths (recordProfileConnectFailure /
+  // clearProfileConnectFailure, future fire-and-forget edits) emit a global
+  // `aeroftp-profiles-changed` event so the card list re-renders without
+  // waiting for an unrelated route refresh. Bump-refreshKey is idempotent and
+  // cheap: the existing useEffect already de-bounces via React's batching.
+  useEffect(() => {
+    const handler = () => setServersRefreshKey(k => k + 1);
+    window.addEventListener(PROFILES_CHANGED_EVENT, handler);
+    return () => window.removeEventListener(PROFILES_CHANGED_EVENT, handler);
+  }, []);
   const [endpointSelectorProfiles, setEndpointSelectorProfiles] = useState<ServerProfile[]>([]);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
 
@@ -970,6 +988,36 @@ const App: React.FC = () => {
   const retryCallbacksRef = React.useRef<Map<string, () => void>>(new Map());
   const batchCancelledRef = React.useRef(false);
   const cancelLevelRef = React.useRef(0); // 0=none, 1=soft, 2=hard
+
+  // TQ-4-routing: dispatcher for staged -> pending transitions.
+  // When the user presses Start (per-item) or Start all in the panel, the
+  // hook flips entries from 'staged' to 'pending'. This effect detects the
+  // transition vs the prior snapshot and runs the stored executor exactly
+  // once. The executor is the same callback used by Retry, so the retry
+  // path keeps working unchanged (error -> pending also fires here, but
+  // retryItem() already invokes the callback directly, and the executor is
+  // idempotent for batch sites via a one-shot guard).
+  const prevQueueStatusRef = React.useRef<Map<string, string>>(new Map());
+  const queueItemsRef = React.useRef(transferQueue.items);
+  React.useEffect(() => {
+    queueItemsRef.current = transferQueue.items;
+    const next = new Map<string, string>();
+    for (const item of transferQueue.items) {
+      const prev = prevQueueStatusRef.current.get(item.id);
+      if (prev === 'staged' && item.status === 'pending') {
+        const cb = retryCallbacksRef.current.get(item.id);
+        if (cb) {
+          try {
+            cb();
+          } catch (e) {
+            console.error('staged executor failed', e);
+          }
+        }
+      }
+      next.set(item.id, item.status);
+    }
+    prevQueueStatusRef.current = next;
+  }, [transferQueue.items]);
 
   // Circuit breaker for batch transfers
   const circuitBreaker = useCircuitBreaker();
@@ -4471,6 +4519,9 @@ interface UpdateVerificationInfo {
         // for the next batched health scan to refresh the cache.
         if (effectiveParams.savedServerId) {
           markProfileHealthy(effectiveParams.savedServerId);
+          // Clear the standalone connect-failure marker (#180 / 4486730822).
+          // Separate signal from health so the two concepts never collide.
+          void clearProfileConnectFailure(effectiveParams.savedServerId);
         }
 
         logConnectionSuccess(protocol, effectiveParams.username, {
@@ -4547,6 +4598,12 @@ interface UpdateVerificationInfo {
         }
         humanLog.logError('CONNECT', { server: maskedProviderName }, logId);
         notify.error(t('connection.connectionFailed'), String(error));
+        // #180 / 4486730822: stamp a standalone connect-failure marker on
+        // the saved-server card so a closed Activity Log is no longer the
+        // only feedback path.
+        if (effectiveParams.savedServerId) {
+          void recordProfileConnectFailure(effectiveParams.savedServerId, error);
+        }
       }
       finally { setLoading(false); }
       return;
@@ -4571,6 +4628,11 @@ interface UpdateVerificationInfo {
       const { resolvedIp: ftpIp, connectingLogId: ftpConnLogId } = await logConnectionSteps(effectiveParams.server, effectiveParams.port || 21, ftpProto);
       await invoke('connect_ftp', { params: effectiveParams });
       if (ftpConnLogId) humanLog.updateEntry(ftpConnLogId, { status: 'success', message: t('activity.connected_to', { ip: ftpIp || effectiveParams.server, port: String(effectiveParams.port || 21) }) });
+      // Clear the standalone connect-failure marker on a confirmed FTP/SFTP
+      // login (#180 / 4486730822). Separate signal from health.
+      if (effectiveParams.savedServerId) {
+        void clearProfileConnectFailure(effectiveParams.savedServerId);
+      }
       logConnectionSuccess(ftpProto, effectiveParams.username, {
         tlsMode: effectiveParams.options?.tlsMode,
         private_key_path: effectiveParams.options?.private_key_path || undefined,
@@ -4608,6 +4670,12 @@ interface UpdateVerificationInfo {
     } catch (error) {
       humanLog.logError('CONNECT', { server: effectiveParams.server }, logId);
       notify.error(t('connection.connectionFailed'), String(error));
+      // #180 / 4486730822: stamp the standalone connect-failure marker so
+      // the My Servers card surfaces a failed FTP/SFTP login even when
+      // the Activity Log is closed.
+      if (effectiveParams.savedServerId) {
+        void recordProfileConnectFailure(effectiveParams.savedServerId, error);
+      }
     }
     finally { setLoading(false); }
   };
@@ -7401,40 +7469,72 @@ interface UpdateVerificationInfo {
             return;
           }
 
-          for (const entry of entries) {
-            transferQueue.addItem(entry.display_name, entry.remote_path, entry.size, 'upload');
-          }
-
-          try {
-            await invoke<string>('upload_files_batch', {
-              params: {
-                entries,
-                max_concurrent: effectiveMaxConcurrentTransfers,
-                retry_count: retryCount,
-                timeout_seconds: timeoutSeconds,
+          // TQ-4-routing: gate on autoStartTransfers. When ON (default),
+          // legacy byte-identical path: stage as 'pending', invoke batch.
+          // When OFF, stage as 'staged' with a one-shot batch executor so
+          // the panel can prune entries before the user presses Start.
+          const launchBatchUpload = async (entriesToSend: typeof entries) => {
+            if (entriesToSend.length === 0) {
+              if (skippedCount > 0) notify.info(t('toast.fileSkipped', { count: skippedCount }));
+              setSelectedLocalFiles(new Set());
+              loadRemoteFiles();
+              return;
+            }
+            try {
+              await invoke<string>('upload_files_batch', {
+                params: {
+                  entries: entriesToSend,
+                  max_concurrent: effectiveMaxConcurrentTransfers,
+                  retry_count: retryCount,
+                  timeout_seconds: timeoutSeconds,
+                }
+              });
+            } catch (error) {
+              if (!batchCancelledRef.current) {
+                notify.error(t('toast.uploadFailed'), String(error));
               }
-            });
-          } catch (error) {
-            if (!batchCancelledRef.current) {
-              notify.error(t('toast.uploadFailed'), String(error));
+            }
+            if (skippedCount > 0) {
+              notify.info(t('toast.fileSkipped', { count: skippedCount }));
+            }
+            setSelectedLocalFiles(new Set());
+            loadRemoteFiles();
+          };
+
+          if (settings.autoStartTransfers !== false) {
+            for (const entry of entries) {
+              transferQueue.addItem(entry.display_name, entry.remote_path, entry.size, 'upload');
+            }
+            await launchBatchUpload(entries);
+          } else {
+            const batchState = { fired: false };
+            const idToEntry = new Map<string, typeof entries[0]>();
+            const batchExecutor = () => {
+              if (batchState.fired) return;
+              batchState.fired = true;
+              const remaining = filterSurvivingBatchEntries(idToEntry, queueItemsRef.current);
+              void launchBatchUpload(remaining);
+            };
+            for (const entry of entries) {
+              const id = transferQueue.addItem(entry.display_name, entry.remote_path, entry.size, 'upload', { staged: true });
+              idToEntry.set(id, entry);
+              retryCallbacksRef.current.set(id, batchExecutor);
             }
           }
-
-          if (skippedCount > 0) {
-            notify.info(t('toast.fileSkipped', { count: skippedCount }));
-          }
-          setSelectedLocalFiles(new Set());
-          loadRemoteFiles();
           return;
         }
 
         // Queue shows progress - no toast needed
 
-        // Add all files to queue first
+        // TQ-4-routing: stage the entries. The same retry callback is the
+        // staged executor (dispatcher fires it on staged -> pending). Legacy
+        // path falls through to the overwrite + circuit-breaker for-loop;
+        // staged path returns immediately after seeding the queue.
+        const stagedUploadMode = settings.autoStartTransfers === false;
         const queueItems = filesToUpload.map(({ path: filePath, file }) => {
           const fileName = filePath.split(/[/\\]/).pop() || filePath;
           const size = file?.size || 0;
-          const id = transferQueue.addItem(fileName, filePath, size, 'upload');
+          const id = transferQueue.addItem(fileName, filePath, size, 'upload', stagedUploadMode ? { staged: true } : undefined);
           retryCallbacksRef.current.set(id, async () => {
             transferQueue.startTransfer(id);
             try {
@@ -7446,6 +7546,11 @@ interface UpdateVerificationInfo {
           });
           return { id, filePath, fileName, file };
         });
+
+        if (stagedUploadMode) {
+          setSelectedLocalFiles(new Set());
+          return;
+        }
 
         // Reset cancel flags and circuit breaker before starting batch
         batchCancelledRef.current = false;
@@ -7658,10 +7763,12 @@ interface UpdateVerificationInfo {
       try { await invoke('reset_cancel_flag'); } catch { }
       let skippedCount = 0;
 
-      // Add to transfer queue for tracking
+      // TQ-4-routing: stage the dialog-selected entries. Same callback
+      // is reused as the staged executor.
+      const stagedDialogMode = settings.autoStartTransfers === false;
       const queueItems = files.map(filePath => {
         const fileName = filePath.replace(/^.*[\\\/]/, '');
-        const id = transferQueue.addItem(fileName, filePath, 0, 'upload');
+        const id = transferQueue.addItem(fileName, filePath, 0, 'upload', stagedDialogMode ? { staged: true } : undefined);
         retryCallbacksRef.current.set(id, async () => {
           transferQueue.startTransfer(id);
           try {
@@ -7673,6 +7780,10 @@ interface UpdateVerificationInfo {
         });
         return { id, filePath, fileName };
       });
+
+      if (stagedDialogMode) {
+        return;
+      }
 
       for (let i = 0; i < queueItems.length; i++) {
         const item = queueItems[i];
@@ -7862,40 +7973,70 @@ interface UpdateVerificationInfo {
           return;
         }
 
-        for (const entry of entries) {
-          transferQueue.addItem(entry.display_name, entry.remote_path, entry.size, 'download');
-        }
-
-        try {
-          await invoke<string>('download_files_batch', {
-            params: {
-              entries,
-              max_concurrent: effectiveMaxConcurrentTransfers,
-              retry_count: retryCount,
-              timeout_seconds: timeoutSeconds,
+        // TQ-4-routing: gate on autoStartTransfers (download batch). Same
+        // shape as the upload batch site: one-shot batch executor filters
+        // to the entries still in the queue at fire time so user-pruned
+        // items are dropped.
+        const launchBatchDownload = async (entriesToSend: typeof entries) => {
+          if (entriesToSend.length === 0) {
+            if (skippedCount > 0) notify.info(t('toast.fileSkipped', { count: skippedCount }));
+            setSelectedRemoteFiles(new Set());
+            await loadLocalFiles(currentLocalPath);
+            return;
+          }
+          try {
+            await invoke<string>('download_files_batch', {
+              params: {
+                entries: entriesToSend,
+                max_concurrent: effectiveMaxConcurrentTransfers,
+                retry_count: retryCount,
+                timeout_seconds: timeoutSeconds,
+              }
+            });
+          } catch (error) {
+            if (!batchCancelledRef.current) {
+              notify.error(t('toast.downloadFailed'), String(error));
             }
-          });
-        } catch (error) {
-          if (!batchCancelledRef.current) {
-            notify.error(t('toast.downloadFailed'), String(error));
+          }
+          if (skippedCount > 0) {
+            notify.info(t('toast.fileSkipped', { count: skippedCount }));
+          }
+          setSelectedRemoteFiles(new Set());
+          await loadLocalFiles(currentLocalPath);
+        };
+
+        if (settings.autoStartTransfers !== false) {
+          for (const entry of entries) {
+            transferQueue.addItem(entry.display_name, entry.remote_path, entry.size, 'download');
+          }
+          await launchBatchDownload(entries);
+        } else {
+          const batchState = { fired: false };
+          const idToEntry = new Map<string, typeof entries[0]>();
+          const batchExecutor = () => {
+            if (batchState.fired) return;
+            batchState.fired = true;
+            const remaining = filterSurvivingBatchEntries(idToEntry, queueItemsRef.current);
+            void launchBatchDownload(remaining);
+          };
+          for (const entry of entries) {
+            const id = transferQueue.addItem(entry.display_name, entry.remote_path, entry.size, 'download', { staged: true });
+            idToEntry.set(id, entry);
+            retryCallbacksRef.current.set(id, batchExecutor);
           }
         }
-
-        if (skippedCount > 0) {
-          notify.info(t('toast.fileSkipped', { count: skippedCount }));
-        }
-        setSelectedRemoteFiles(new Set());
-        await loadLocalFiles(currentLocalPath);
         return;
       }
 
       // Queue shows progress - no toast needed
 
-      // Add all files to queue first
+      // TQ-4-routing: stage the entries. Same retry callback reused as the
+      // staged executor (dispatcher fires it on staged -> pending).
       // Freeze paths at queue time so retry callbacks don't use stale state
       const frozenLocalPath = currentLocalPath;
+      const stagedDownloadMode = settings.autoStartTransfers === false;
       const queueItems = filesToDownload.map(file => {
-        const id = transferQueue.addItem(file.name, file.path, file.size || 0, 'download');
+        const id = transferQueue.addItem(file.name, file.path, file.size || 0, 'download', stagedDownloadMode ? { staged: true } : undefined);
         retryCallbacksRef.current.set(id, async () => {
           transferQueue.startTransfer(id);
           try {
@@ -7907,6 +8048,11 @@ interface UpdateVerificationInfo {
         });
         return { id, file };
       });
+
+      if (stagedDownloadMode) {
+        setSelectedRemoteFiles(new Set());
+        return;
+      }
 
       // Reset cancel flags and circuit breaker before starting batch
       batchCancelledRef.current = false;
@@ -10937,13 +11083,15 @@ interface UpdateVerificationInfo {
             const cb = retryCallbacksRef.current.get(id);
             if (cb) cb();
           }}
+          onStartItem={transferQueue.startStaged}
+          onStartAll={transferQueue.startAll}
           isPaused={isBatchPaused}
           pauseReason={batchPauseReason}
           onResume={resumeBatch}
           onRetryAllFailed={retryAllFailedItems}
         />
         {contextMenu.state.visible && <ContextMenu x={contextMenu.state.x} y={contextMenu.state.y} items={contextMenu.state.items} onClose={contextMenu.hide} />}
-        <TransferToastContainer />
+        <TransferToastContainer onOpen={transferQueue.show} />
         <GlobalTooltip />
         {confirmDialog && <ConfirmDialog message={confirmDialog.message} onConfirm={confirmDialog.onConfirm} onCancel={confirmDialog.onCancel || (() => setConfirmDialog(null))} />}
         {pendingUnifiedTransferPlan && (
@@ -11935,6 +12083,12 @@ interface UpdateVerificationInfo {
                       files
                     );
                     fetchStorageQuota(connectedParams.protocol, connectedParams);
+                    // Clear the standalone connect-failure marker (#180 /
+                    // 4486730822). Separate signal from health.
+                    {
+                      const savedId = connectedParams.savedServerId || normalizedParams.savedServerId;
+                      if (savedId) void clearProfileConnectFailure(savedId);
+                    }
                     // Reset form for next "Add New Server"
                     setConnectionParams({ server: '', username: '', password: '' });
                     setQuickConnectDirs({ remoteDir: '', localDir: '' });
@@ -11951,6 +12105,13 @@ interface UpdateVerificationInfo {
                     }
                     humanLog.logError('CONNECT', { server: maskedProviderName }, logId);
                     notify.error(t('connection.connectionFailed'), String(error));
+                    // #180 / 4486730822: stamp the standalone connect-failure
+                    // marker so the My Servers card surfaces a failed login
+                    // even when the Activity Log is closed.
+                    {
+                      const savedId = normalizedParams.savedServerId;
+                      if (savedId) void recordProfileConnectFailure(savedId, error);
+                    }
                   } finally {
                     setLoading(false);
                   }
@@ -11972,6 +12133,10 @@ interface UpdateVerificationInfo {
                   const { resolvedIp: savedFtpIp, connectingLogId: savedFtpConnLogId } = await logConnectionSteps(params.server, params.port || 21, savedFtpProto);
                   await invoke('connect_ftp', { params });
                   if (savedFtpConnLogId) humanLog.updateEntry(savedFtpConnLogId, { status: 'success', message: t('activity.connected_to', { ip: savedFtpIp || params.server, port: String(params.port || 21) }) });
+                  // Clear standalone connect-failure marker (#180 / 4486730822).
+                  if (params.savedServerId) {
+                    void clearProfileConnectFailure(params.savedServerId);
+                  }
                   logConnectionSuccess(savedFtpProto, params.username, {
                     tlsMode: params.options?.tlsMode,
                     private_key_path: params.options?.private_key_path || undefined,
@@ -12013,6 +12178,11 @@ interface UpdateVerificationInfo {
                 } catch (error) {
                   humanLog.logError('CONNECT', { server: params.server }, logId);
                   notify.error(t('connection.connectionFailed'), String(error));
+                  // #180 / 4486730822: stamp the standalone connect-failure
+                  // marker on the saved-server card.
+                  if (params.savedServerId) {
+                    void recordProfileConnectFailure(params.savedServerId, error);
+                  }
                 } finally {
                   setLoading(false);
                 }

@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} en {seconds}s",
                 "newTransfer": "Nova Transferencia",
                 "preparing": "Preparant la transferència…"
-            }
+            },
+            "staged": "en cua",
+            "start": "Inicia",
+            "startAll": "Inicia-ho tot"
         },
         "settings": {
             "title": "Configuracio",
@@ -1002,7 +1005,9 @@
             "downloadSegments": "Segments de descàrrega per fitxer",
             "downloadSegmentsAuto": "Auto (flux únic)",
             "downloadSegmentsN": "{n} segments per fitxer",
-            "downloadSegmentsDesc": "Divideix cada descàrrega en intervals de bytes paral·lels. Auto manté el comportament actual de flux únic. Efectiu en proveïdors compatibles amb sol·licituds de rang (SFTP, S3, HTTP) per a fitxers prou grans com per beneficiar-se'n."
+            "downloadSegmentsDesc": "Divideix cada descàrrega en intervals de bytes paral·lels. Auto manté el comportament actual de flux únic. Efectiu en proveïdors compatibles amb sol·licituds de rang (SFTP, S3, HTTP) per a fitxers prou grans com per beneficiar-se'n.",
+            "autoStartTransfers": "Inici automatic de transferencies",
+            "autoStartTransfersHelp": "Si esta activat, les transferencies per arrossegar i deixar anar i per clic s'inicien immediatament. Si esta desactivat, queden aparcades a la Transfer Queue com a staged perque puguis podar arbres de carpetes i reordenar abans de prémer Start."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4385,6 +4390,10 @@
                 "colPct": "%",
                 "totalRow": "Total",
                 "noData": "Encara no hi ha dades per protocol — connecta com a mínim un servidor."
+            },
+            "connectError": {
+                "failed": "L'últim intent de connexió ha fallat",
+                "lastFailedAt": "Últim error fa {time}"
             }
         },
         "gitlab": {

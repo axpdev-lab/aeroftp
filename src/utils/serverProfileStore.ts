@@ -57,12 +57,23 @@ export const loadSavedServerProfiles = async (): Promise<ServerProfile[]> => {
  * between co-installed builds (e.g. a portable folder next to an MSI
  * install) once the vault per-installation isolation is in place.
  */
+// Custom DOM event fired whenever the saved-server vault is mutated. App.tsx
+// listens on `window` and bumps `serversRefreshKey` so the IntroHub card list
+// reflects the change without waiting for an unrelated route refresh. Mirrors
+// the `transfer-toast-update` / `editor-reload` pattern used elsewhere.
+export const PROFILES_CHANGED_EVENT = 'aeroftp-profiles-changed';
+
 export const storeSavedServerProfiles = async (profiles: ServerProfile[]): Promise<void> => {
     await secureStore(SAVED_SERVERS_ACCOUNT, profiles);
     try {
         localStorage.removeItem(SAVED_SERVERS_STORAGE_KEY);
     } catch {
         // best-effort cleanup
+    }
+    try {
+        window.dispatchEvent(new CustomEvent(PROFILES_CHANGED_EVENT));
+    } catch {
+        // SSR / non-DOM environment: dispatch is a best-effort notification.
     }
 };
 
@@ -87,4 +98,43 @@ export const mergeSavedServerProfile = async (
     profileWriteQueue = queued.then(() => undefined, () => undefined);
     await queued;
     return result;
+};
+
+// Trim a connect-error reason to a single short line for tooltip display.
+// We intentionally cap and strip newlines so a multi-paragraph backend
+// error does not blow up the card tooltip.
+const MAX_ERROR_REASON_CHARS = 280;
+const formatConnectErrorReason = (raw: string): string => {
+    const single = raw.replace(/\s+/g, ' ').trim();
+    return single.length > MAX_ERROR_REASON_CHARS
+        ? single.slice(0, MAX_ERROR_REASON_CHARS - 1) + '…'
+        : single;
+};
+
+export const recordProfileConnectFailure = async (
+    profileId: string,
+    reason: unknown,
+): Promise<void> => {
+    const message = formatConnectErrorReason(
+        typeof reason === 'string' ? reason : String(reason ?? ''),
+    );
+    if (!profileId) return;
+    await mergeSavedServerProfile(profileId, profile => ({
+        ...profile,
+        lastConnectionError: {
+            timestamp: new Date().toISOString(),
+            message,
+        },
+    }));
+};
+
+export const clearProfileConnectFailure = async (
+    profileId: string,
+): Promise<void> => {
+    if (!profileId) return;
+    await mergeSavedServerProfile(profileId, profile => {
+        if (!profile.lastConnectionError) return profile;
+        const { lastConnectionError: _omit, ...rest } = profile;
+        return rest as ServerProfile;
+    });
 };

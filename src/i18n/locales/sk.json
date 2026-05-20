@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} za {seconds}s",
                 "newTransfer": "Novy prenos",
                 "preparing": "Pripravuje sa prenos…"
-            }
+            },
+            "staged": "vo fronte",
+            "start": "Spustiť",
+            "startAll": "Spustiť všetko"
         },
         "settings": {
             "title": "Nastavenia",
@@ -1002,7 +1005,9 @@
             "downloadSegments": "Segmenty sťahovania na súbor",
             "downloadSegmentsAuto": "Auto (jeden prúd)",
             "downloadSegmentsN": "{n} segmentov na súbor",
-            "downloadSegmentsDesc": "Rozdelí každé sťahovanie na paralelné rozsahy bajtov. Auto zachováva súčasné správanie s jedným prúdom. Účinné u poskytovateľov, ktorí podporujú požiadavky na rozsah (SFTP, S3, HTTP), pre súbory dostatočne veľké na to, aby to prinieslo úžitok."
+            "downloadSegmentsDesc": "Rozdelí každé sťahovanie na paralelné rozsahy bajtov. Auto zachováva súčasné správanie s jedným prúdom. Účinné u poskytovateľov, ktorí podporujú požiadavky na rozsah (SFTP, S3, HTTP), pre súbory dostatočne veľké na to, aby to prinieslo úžitok.",
+            "autoStartTransfers": "Automaticke spustenie prenosov",
+            "autoStartTransfersHelp": "Ked je zapnute, prenosy cez drag-and-drop a klik sa spustia okamzite. Ked je vypnute, parkuju sa v Transfer Queue ako staged, aby si mohol prerediť stromy priecinkov a preusporiadat pred stlacenim Start."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4366,6 +4371,10 @@
                 "colPct": "%",
                 "totalRow": "Celkom",
                 "noData": "Zatiaľ žiadne údaje o protokole — pripojte aspoň jeden server."
+            },
+            "connectError": {
+                "failed": "Posledný pokus o pripojenie zlyhal",
+                "lastFailedAt": "Posledná chyba pred {time}"
             }
         },
         "gitlab": {

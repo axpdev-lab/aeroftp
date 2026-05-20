@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} en {seconds}s",
                 "newTransfer": "Nova Transferencia",
                 "preparing": "Preparando a transferencia…"
-            }
+            },
+            "staged": "en cola",
+            "start": "Iniciar",
+            "startAll": "Iniciar todo"
         },
         "settings": {
             "title": "Axustes",
@@ -1002,7 +1005,9 @@
             "downloadSegments": "Segmentos de descarga por ficheiro",
             "downloadSegmentsAuto": "Auto (fluxo único)",
             "downloadSegmentsN": "{n} segmentos por ficheiro",
-            "downloadSegmentsDesc": "Divide cada descarga en intervalos de bytes paralelos. Auto mantén o comportamento actual de fluxo único. Eficaz nos provedores que admiten solicitudes de rango (SFTP, S3, HTTP) para ficheiros suficientemente grandes como para beneficiarse."
+            "downloadSegmentsDesc": "Divide cada descarga en intervalos de bytes paralelos. Auto mantén o comportamento actual de fluxo único. Eficaz nos provedores que admiten solicitudes de rango (SFTP, S3, HTTP) para ficheiros suficientemente grandes como para beneficiarse.",
+            "autoStartTransfers": "Inicio automatico de transferencias",
+            "autoStartTransfersHelp": "Cando esta activado, as transferencias por arrastrar e soltar e clic inicianse de inmediato. Cando esta desactivado, aparcanse na Transfer Queue como staged para que poidas podar arbores de cartafoles e reordenar antes de premer Start."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4385,6 +4390,10 @@
                 "colPct": "%",
                 "totalRow": "Total",
                 "noData": "Aínda non hai datos por protocolo — conecta polo menos un servidor."
+            },
+            "connectError": {
+                "failed": "O último intento de conexión fallou",
+                "lastFailedAt": "Último erro hai {time}"
             }
         },
         "gitlab": {

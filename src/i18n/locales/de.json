@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} in {seconds}s",
                 "newTransfer": "Neue Uebertragung",
                 "preparing": "Übertragung wird vorbereitet…"
-            }
+            },
+            "staged": "in Warteschlange",
+            "start": "Starten",
+            "startAll": "Alle starten"
         },
         "settings": {
             "title": "Einstellungen",
@@ -1002,7 +1005,9 @@
             "downloadSegments": "Download-Segmente pro Datei",
             "downloadSegmentsAuto": "Auto (einzelner Stream)",
             "downloadSegmentsN": "{n} Segmente pro Datei",
-            "downloadSegmentsDesc": "Teilt jeden Download in parallele Byte-Bereiche auf. Auto behält das bisherige Verhalten mit einem einzelnen Stream bei. Wirksam bei Anbietern, die Range-Anfragen unterstützen (SFTP, S3, HTTP), und bei Dateien, die groß genug sind, um davon zu profitieren."
+            "downloadSegmentsDesc": "Teilt jeden Download in parallele Byte-Bereiche auf. Auto behält das bisherige Verhalten mit einem einzelnen Stream bei. Wirksam bei Anbietern, die Range-Anfragen unterstützen (SFTP, S3, HTTP), und bei Dateien, die groß genug sind, um davon zu profitieren.",
+            "autoStartTransfers": "Ubertragungen automatisch starten",
+            "autoStartTransfersHelp": "Wenn aktiv, starten Drag-and-Drop- und Klick-Ubertragungen sofort. Wenn deaktiviert, werden sie in der Transfer Queue als Staged geparkt, damit du Ordnerbaume bereinigen und neu sortieren kannst, bevor du Start drueckst."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4366,6 +4371,10 @@
                 "colPct": "%",
                 "totalRow": "Gesamt",
                 "noData": "Noch keine Protokolldaten — verbinden Sie mindestens einen Server."
+            },
+            "connectError": {
+                "failed": "Letzter Verbindungsversuch fehlgeschlagen",
+                "lastFailedAt": "Letzter Fehler vor {time}"
             }
         },
         "gitlab": {

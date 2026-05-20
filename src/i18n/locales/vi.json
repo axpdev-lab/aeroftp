@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} trong {seconds} giây",
                 "newTransfer": "Chuyển mới",
                 "preparing": "Đang chuẩn bị truyền…"
-            }
+            },
+            "staged": "trong hàng đợi",
+            "start": "Bắt đầu",
+            "startAll": "Bắt đầu tất cả"
         },
         "settings": {
             "title": "Cài đặt",
@@ -1002,7 +1005,9 @@
             "downloadSegments": "Số phân đoạn tải xuống cho mỗi tệp",
             "downloadSegmentsAuto": "Tự động (luồng đơn)",
             "downloadSegmentsN": "{n} phân đoạn cho mỗi tệp",
-            "downloadSegmentsDesc": "Chia mỗi lần tải xuống thành các dải byte song song. Tự động giữ nguyên hành vi luồng đơn hiện tại. Hiệu quả với các nhà cung cấp hỗ trợ yêu cầu theo dải (SFTP, S3, HTTP) cho các tệp đủ lớn để có lợi."
+            "downloadSegmentsDesc": "Chia mỗi lần tải xuống thành các dải byte song song. Tự động giữ nguyên hành vi luồng đơn hiện tại. Hiệu quả với các nhà cung cấp hỗ trợ yêu cầu theo dải (SFTP, S3, HTTP) cho các tệp đủ lớn để có lợi.",
+            "autoStartTransfers": "Tu dong bat dau truyen",
+            "autoStartTransfersHelp": "Khi bat, truyen bang keo-tha va nhap bat dau ngay lap tuc. Khi tat, chung duoc do trong Transfer Queue o trang thai staged de ban co the cat tia cay thu muc va sap xep lai truoc khi nhan Start."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4366,6 +4371,10 @@
                 "colPct": "%",
                 "totalRow": "Tổng",
                 "noData": "Chưa có dữ liệu giao thức — hãy kết nối ít nhất một máy chủ."
+            },
+            "connectError": {
+                "failed": "Lần kết nối cuối cùng đã thất bại",
+                "lastFailedAt": "Lỗi gần nhất {time} trước"
             }
         },
         "gitlab": {

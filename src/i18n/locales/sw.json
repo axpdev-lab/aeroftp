@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} katika sekunde {seconds}",
                 "newTransfer": "Uhamisho Mpya",
                 "preparing": "Inaandaa uhamishaji…"
-            }
+            },
+            "staged": "kwenye foleni",
+            "start": "Anza",
+            "startAll": "Anza zote"
         },
         "settings": {
             "title": "Mipangilio",
@@ -1002,7 +1005,9 @@
             "downloadSegments": "Sehemu za upakuaji kwa kila faili",
             "downloadSegmentsAuto": "Otomatiki (mkondo mmoja)",
             "downloadSegmentsN": "Sehemu {n} kwa kila faili",
-            "downloadSegmentsDesc": "Gawanya kila upakuaji katika safu sambamba za baiti. Otomatiki hudumisha tabia ya sasa ya mkondo mmoja. Hufanya kazi kwa watoa huduma wanaounga mkono maombi ya safu (SFTP, S3, HTTP) kwa faili kubwa za kutosha kufaidika."
+            "downloadSegmentsDesc": "Gawanya kila upakuaji katika safu sambamba za baiti. Otomatiki hudumisha tabia ya sasa ya mkondo mmoja. Hufanya kazi kwa watoa huduma wanaounga mkono maombi ya safu (SFTP, S3, HTTP) kwa faili kubwa za kutosha kufaidika.",
+            "autoStartTransfers": "Anza uhamishaji kiotomatiki",
+            "autoStartTransfersHelp": "Inapowashwa, uhamishaji wa kuburuta na kudondosha na wa kubofya huanza mara moja. Inapozimwa, huegeshwa katika Transfer Queue kama staged ili uweze kupogoa miti ya folda na kupanga upya kabla ya kubonyeza Start."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4366,6 +4371,10 @@
                 "colPct": "%",
                 "totalRow": "Jumla",
                 "noData": "Hakuna data ya itifaki bado — unganisha angalau seva moja."
+            },
+            "connectError": {
+                "failed": "Jaribio la mwisho la kuunganisha limeshindwa",
+                "lastFailedAt": "Hitilafu ya mwisho {time} iliyopita"
             }
         },
         "gitlab": {

@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Edit2, Trash2, Copy, Loader2, Star, Clock, ShieldCheck, Lock, Check, X, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
+import { Edit2, Trash2, Copy, Loader2, Star, Clock, ShieldCheck, Lock, Check, X, ArrowUpRight, ArrowDownLeft, AlertTriangle } from 'lucide-react';
 import { ServerProfile, ProviderType, getProtocolClass, getE2EBits, profileHasQuota, resolveEffectiveQuota } from '../../types';
 import { ProtocolIcon } from '../ProtocolSelector';
 import { PROVIDER_LOGOS } from '../ProviderLogos';
@@ -414,6 +414,18 @@ export const ServerCard = React.memo(function ServerCard({
     const handleRetry = onRetryHealth ? () => onRetryHealth(server) : undefined;
     const quotaSupported = profileHasQuota(server);
     const timeAgo = getTimeAgo(server.lastConnected);
+    // #180 / 4486730822: standalone connect-failure marker. Separate signal
+    // from health (which is a reachability probe); never share the glyph
+    // or the status enum with `useProviderHealth`.
+    const connectError = server.lastConnectionError;
+    const connectErrorTitle = React.useMemo(() => {
+        if (!connectError) return undefined;
+        const when = getTimeAgo(connectError.timestamp);
+        const head = t('introHub.connectError.failed');
+        const ago = when ? t('introHub.connectError.lastFailedAt', { time: when }) : '';
+        const reason = connectError.message || '';
+        return [head, ago, reason].filter(Boolean).join(' · ');
+    }, [connectError, t]);
     const handleMouseEnter = onHoverChange ? () => onHoverChange(server) : undefined;
     const handleMouseLeave = onHoverChange ? () => onHoverChange(null) : undefined;
     // Card body click toggles cross-profile selection: but only when the click
@@ -506,6 +518,19 @@ export const ServerCard = React.memo(function ServerCard({
                             title={radialTitle}
                             aria-label={radialTitle}
                         />
+                    )}
+                    {/* #180 / 4486730822: standalone connect-failure marker.
+                        Anchored top-left so it never overlaps the bottom-right
+                        health dot or the detailed-layout HealthRadial. */}
+                    {connectError && (
+                        <span
+                            className="absolute -top-1 -left-1 inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-amber-600 dark:bg-amber-700 text-white shadow ring-2 ring-white dark:ring-gray-800 pointer-events-none"
+                            title={connectErrorTitle}
+                            aria-label={connectErrorTitle}
+                            data-testid="server-card-connect-error"
+                        >
+                            <AlertTriangle size={9} strokeWidth={2.75} />
+                        </span>
                     )}
                 </div>
                 <div className="flex-1 min-w-0">

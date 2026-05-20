@@ -501,7 +501,10 @@
                 "summaryMeta": "{size}，用时 {seconds} 秒",
                 "newTransfer": "新建传输",
                 "preparing": "正在准备传输…"
-            }
+            },
+            "staged": "已排队",
+            "start": "开始",
+            "startAll": "全部开始"
         },
         "settings": {
             "title": "设置",
@@ -1002,7 +1005,9 @@
             "downloadSegments": "每个文件的下载分段数",
             "downloadSegmentsAuto": "自动(单流)",
             "downloadSegmentsN": "每个文件 {n} 个分段",
-            "downloadSegmentsDesc": "将每次下载拆分为并行的字节区间。自动模式保持当前的单流行为。在支持区间请求(SFTP、S3、HTTP)的提供商上,对足够大的文件有效。"
+            "downloadSegmentsDesc": "将每次下载拆分为并行的字节区间。自动模式保持当前的单流行为。在支持区间请求(SFTP、S3、HTTP)的提供商上,对足够大的文件有效。",
+            "autoStartTransfers": "自动启动传输",
+            "autoStartTransfersHelp": "开启时,拖放和点击传输立即开始。关闭时,它们以 staged 状态停放在 Transfer Queue 中,你可以在按下 Start 之前修剪文件夹树并重新排序。"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4366,6 +4371,10 @@
                 "colPct": "%",
                 "totalRow": "总计",
                 "noData": "暂无协议数据 — 请至少连接一台服务器。"
+            },
+            "connectError": {
+                "failed": "上次连接尝试失败",
+                "lastFailedAt": "上次失败于 {time} 前"
             }
         },
         "gitlab": {

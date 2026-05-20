@@ -497,6 +497,17 @@ export interface ServerProfile {
     ratio: number;
     at: string;
   };
+  // Outcome of the most recent connect attempt for this profile. When set
+  // we display a standalone connect-failure marker on the My Servers card
+  // (an alert triangle), so a closed Activity Log is no longer the only
+  // feedback path for a failed login (#180 / 4486730822). This is profile
+  // state, NOT a health status: `useProviderHealth` is unchanged and the
+  // marker is rendered independently from the health dot/HealthRadial.
+  // Cleared on the next successful connect to the same profile.
+  lastConnectionError?: {
+    timestamp: string;
+    message: string;
+  };
 }
 
 /**

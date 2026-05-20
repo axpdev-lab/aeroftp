@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} per {seconds}s",
                 "newTransfer": "Naujas perkėlimas",
                 "preparing": "Ruošiamas perdavimas…"
-            }
+            },
+            "staged": "eilėje",
+            "start": "Pradėti",
+            "startAll": "Pradėti viską"
         },
         "settings": {
             "title": "Nustatymai",
@@ -1002,7 +1005,9 @@
             "downloadSegments": "Atsisiuntimo segmentai vienam failui",
             "downloadSegmentsAuto": "Automatinis (vienas srautas)",
             "downloadSegmentsN": "{n} segmentų viename faile",
-            "downloadSegmentsDesc": "Padalykite kiekvieną atsisiuntimą į lygiagrečius baitų diapazonus. Automatinis išlaiko esamą vieno srauto elgseną. Veiksminga su tiekėjais, palaikančiais diapazonų užklausas (SFTP, S3, HTTP), pakankamai dideliems failams."
+            "downloadSegmentsDesc": "Padalykite kiekvieną atsisiuntimą į lygiagrečius baitų diapazonus. Automatinis išlaiko esamą vieno srauto elgseną. Veiksminga su tiekėjais, palaikančiais diapazonų užklausas (SFTP, S3, HTTP), pakankamai dideliems failams.",
+            "autoStartTransfers": "Automatinis perdavimu paleidimas",
+            "autoStartTransfersHelp": "Kai ijungta, vilkimo ir spustelejimo perdavimai prasideda is karto. Kai isjungta, jie paliekami Transfer Queue kaip staged, kad galetum apkarpyti aplanku medzius ir pertvarkyti pries paspausdamas Start."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4366,6 +4371,10 @@
                 "colPct": "%",
                 "totalRow": "Iš viso",
                 "noData": "Protokolo duomenų dar nėra — prijunkite bent vieną serverį."
+            },
+            "connectError": {
+                "failed": "Paskutinis prisijungimo bandymas nepavyko",
+                "lastFailedAt": "Paskutinė klaida prieš {time}"
             }
         },
         "gitlab": {
