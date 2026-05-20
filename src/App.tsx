@@ -109,6 +109,7 @@ import { MountManagerDialog } from './components/MountManagerDialog';
 import { SettingsPanel } from './components/SettingsPanel';
 import { StatusBar } from './components/StatusBar';
 import { TransferQueue, useTransferQueue } from './components/TransferQueue';
+import { filterSurvivingBatchEntries } from './components/transferQueueActions';
 import { useCircuitBreaker } from './hooks/useCircuitBreaker';
 import { RECONNECT_ERROR_KINDS, getErrorKindI18nKey } from './utils/transferErrorClassifier';
 import { normalizeMegaOptions } from './utils/providerConnectionMeta';
@@ -7500,10 +7501,7 @@ interface UpdateVerificationInfo {
             const batchExecutor = () => {
               if (batchState.fired) return;
               batchState.fired = true;
-              const currentIds = new Set(queueItemsRef.current.map(i => i.id));
-              const remaining = Array.from(idToEntry.entries())
-                .filter(([id]) => currentIds.has(id))
-                .map(([, entry]) => entry);
+              const remaining = filterSurvivingBatchEntries(idToEntry, queueItemsRef.current);
               void launchBatchUpload(remaining);
             };
             for (const entry of entries) {
@@ -8007,10 +8005,7 @@ interface UpdateVerificationInfo {
           const batchExecutor = () => {
             if (batchState.fired) return;
             batchState.fired = true;
-            const currentIds = new Set(queueItemsRef.current.map(i => i.id));
-            const remaining = Array.from(idToEntry.entries())
-              .filter(([id]) => currentIds.has(id))
-              .map(([, entry]) => entry);
+            const remaining = filterSurvivingBatchEntries(idToEntry, queueItemsRef.current);
             void launchBatchDownload(remaining);
           };
           for (const entry of entries) {
