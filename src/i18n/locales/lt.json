@@ -998,7 +998,9 @@
             "bridgeUnsupportedProto": "{app} nepalaiko {protocol}",
             "bridgeSecretFull": "Prisijungimo duomenys atkuriami ir iš naujo užšifruojami į AeroFTP vault.",
             "bridgeSecretLimited": "Galima atkurti tik dalį prisijungimo duomenų; gali tekti iš naujo įvesti kai kurias paslaptis.",
-            "bridgeSecretMetadata": "Tik ryšio metaduomenys: paslaptys lieka {app} raktinėje/agente ir turi būti įvestos iš naujo."
+            "bridgeSecretMetadata": "Tik ryšio metaduomenys: paslaptys lieka {app} raktinėje/agente ir turi būti įvestos iš naujo.",
+            "autoStartTransfers": "Automatinis perdavimu paleidimas",
+            "autoStartTransfersHelp": "Kai ijungta, vilkimo ir spustelejimo perdavimai prasideda is karto. Kai isjungta, jie paliekami Transfer Queue kaip staged, kad galetum apkarpyti aplanku medzius ir pertvarkyti pries paspausdamas Start."
         },
         "devtools": {
             "title": "AeroTools",

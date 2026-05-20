@@ -998,7 +998,9 @@
             "bridgeUnsupportedProto": "{protocol} wird von {app} nicht unterstützt",
             "bridgeSecretFull": "Die Zugangsdaten werden wiederhergestellt und erneut in den AeroFTP-Vault verschlüsselt.",
             "bridgeSecretLimited": "Nur ein Teil der Zugangsdaten kann wiederhergestellt werden; einige Geheimnisse müssen Sie möglicherweise erneut eingeben.",
-            "bridgeSecretMetadata": "Nur Verbindungsmetadaten: Die Geheimnisse bleiben im Schlüsselbund/Agenten von {app} und müssen erneut eingegeben werden."
+            "bridgeSecretMetadata": "Nur Verbindungsmetadaten: Die Geheimnisse bleiben im Schlüsselbund/Agenten von {app} und müssen erneut eingegeben werden.",
+            "autoStartTransfers": "Ubertragungen automatisch starten",
+            "autoStartTransfersHelp": "Wenn aktiv, starten Drag-and-Drop- und Klick-Ubertragungen sofort. Wenn deaktiviert, werden sie in der Transfer Queue als Staged geparkt, damit du Ordnerbaume bereinigen und neu sortieren kannst, bevor du Start drueckst."
         },
         "devtools": {
             "title": "AeroTools",

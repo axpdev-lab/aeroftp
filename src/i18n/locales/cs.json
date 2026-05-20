@@ -998,7 +998,9 @@
             "bridgeUnsupportedProto": "{protocol} není podporován v {app}",
             "bridgeSecretFull": "Přihlašovací údaje se obnoví a znovu zašifrují do trezoru AeroFTP.",
             "bridgeSecretLimited": "Lze obnovit jen část přihlašovacích údajů; některá tajemství bude možná nutné zadat znovu.",
-            "bridgeSecretMetadata": "Pouze metadata připojení: tajemství zůstávají v klíčence/agentovi {app} a musí být zadána znovu."
+            "bridgeSecretMetadata": "Pouze metadata připojení: tajemství zůstávají v klíčence/agentovi {app} a musí být zadána znovu.",
+            "autoStartTransfers": "Automaticke spousteni prenosu",
+            "autoStartTransfersHelp": "Kdyz je zapnuto, prenosy pres drag-and-drop a klik startuji okamzite. Kdyz je vypnuto, parkuji se v Transfer Queue jako staged, abys mohl prored'ovat stromy slozek a preusporadat pred stisknutim Start."
         },
         "devtools": {
             "title": "AeroTools",

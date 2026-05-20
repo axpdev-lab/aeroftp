@@ -998,7 +998,9 @@
             "bridgeUnsupportedProto": "{protocol} haitumiki na {app}",
             "bridgeSecretFull": "Vitambulisho vinapatikana tena na kusimbwa upya kwenye chumba cha hazina cha AeroFTP.",
             "bridgeSecretLimited": "Ni sehemu tu ya vitambulisho inayoweza kupatikana tena; huenda ukahitaji kuingiza tena baadhi ya siri.",
-            "bridgeSecretMetadata": "Metadata ya muunganisho pekee: siri zinabaki kwenye mnyororo wa funguo/wakala wa {app} na lazima ziingizwe tena."
+            "bridgeSecretMetadata": "Metadata ya muunganisho pekee: siri zinabaki kwenye mnyororo wa funguo/wakala wa {app} na lazima ziingizwe tena.",
+            "autoStartTransfers": "Anza uhamishaji kiotomatiki",
+            "autoStartTransfersHelp": "Inapowashwa, uhamishaji wa kuburuta na kudondosha na wa kubofya huanza mara moja. Inapozimwa, huegeshwa katika Transfer Queue kama staged ili uweze kupogoa miti ya folda na kupanga upya kabla ya kubonyeza Start."
         },
         "devtools": {
             "title": "AeroTools",

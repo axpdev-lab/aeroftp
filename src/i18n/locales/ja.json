@@ -998,7 +998,9 @@
             "bridgeUnsupportedProto": "{protocol} は {app} ではサポートされていません",
             "bridgeSecretFull": "資格情報は復元され、AeroFTP の vault に再暗号化されます。",
             "bridgeSecretLimited": "資格情報の一部のみ復元できます。一部のシークレットを再入力する必要がある場合があります。",
-            "bridgeSecretMetadata": "接続のメタデータのみ: シークレットは {app} のキーチェーン/エージェントに残るため、再入力が必要です。"
+            "bridgeSecretMetadata": "接続のメタデータのみ: シークレットは {app} のキーチェーン/エージェントに残るため、再入力が必要です。",
+            "autoStartTransfers": "転送を自動開始",
+            "autoStartTransfersHelp": "オンの場合、ドラッグ&ドロップやクリックでの転送はすぐに開始されます。オフの場合、Transfer Queue に staged として保留され、Start を押す前にフォルダツリーを整理して並び替えできます。"
         },
         "devtools": {
             "title": "AeroTools",

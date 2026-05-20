@@ -2574,6 +2574,8 @@
       "autoLockDisabled": "Disabled",
       "autoLockEnabled": "Auto-lock: {minutes} min",
       "autoLockTimeout": "Auto-lock Timeout",
+      "autoStartTransfers": "Auto-start transfers",
+      "autoStartTransfersHelp": "When on, drag-and-drop and click transfers launch immediately. When off, they are parked in the Transfer Queue as staged so you can prune folder trees and reorder before pressing Start.",
       "aerovaultOverlayTimeoutTitle": "AeroVault Overlay Timeout",
       "aerovaultOverlayTimeoutDesc": "AeroVault Overlay sessions auto-lock after this period of inactivity. Lower values are safer but require more frequent unlocks.",
       "autoTheme": "Auto (System)",

@@ -998,7 +998,9 @@
             "bridgeUnsupportedProto": "Nid yw {app} yn cefnogi {protocol}",
             "bridgeSecretFull": "Caiff y manylion adnabod eu hadfer a'u hailamgryptio i mewn i gladd AeroFTP.",
             "bridgeSecretLimited": "Dim ond rhan o'r manylion adnabod y gellir ei hadfer; efallai y bydd angen i chi ailosod rhai cyfrinachau.",
-            "bridgeSecretMetadata": "Metadata cysylltiad yn unig: mae'r cyfrinachau'n aros yng nghadwyn allweddi/asiant {app} a rhaid eu hailosod."
+            "bridgeSecretMetadata": "Metadata cysylltiad yn unig: mae'r cyfrinachau'n aros yng nghadwyn allweddi/asiant {app} a rhaid eu hailosod.",
+            "autoStartTransfers": "Cychwyn trosglwyddiadau yn awtomatig",
+            "autoStartTransfersHelp": "Pan fydd ymlaen, mae trosglwyddiadau drag-and-drop a chlicio yn cychwyn ar unwaith. Pan fydd i ffwrdd, cant eu parcio yn y Transfer Queue fel staged er mwyn i ti docio coed ffolderi ac aildrefnu cyn pwyso Start."
         },
         "devtools": {
             "title": "AeroTools",

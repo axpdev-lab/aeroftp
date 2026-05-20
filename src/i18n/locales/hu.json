@@ -998,7 +998,9 @@
             "bridgeUnsupportedProto": "A(z) {protocol} nem támogatott a(z) {app} által",
             "bridgeSecretFull": "A hitelesítő adatok visszaállnak és újra titkosítva kerülnek az AeroFTP vaultba.",
             "bridgeSecretLimited": "A hitelesítő adatoknak csak egy része állítható vissza; előfordulhat, hogy néhány titkot újra meg kell adnia.",
-            "bridgeSecretMetadata": "Csak kapcsolati metaadatok: a titkok a(z) {app} kulcstartójában/ügynökében maradnak, és újra meg kell adni őket."
+            "bridgeSecretMetadata": "Csak kapcsolati metaadatok: a titkok a(z) {app} kulcstartójában/ügynökében maradnak, és újra meg kell adni őket.",
+            "autoStartTransfers": "Atvitelek automatikus inditasa",
+            "autoStartTransfersHelp": "Bekapcsolva a fogd-es-vidd es kattintasos atvitelek azonnal elindulnak. Kikapcsolva a Transfer Queue-ban staged allapotban parkolnak, igy a Start gomb megnyomasa elott megrostalhatod a mappafakat es atrendezheted oket."
         },
         "devtools": {
             "title": "AeroTools",

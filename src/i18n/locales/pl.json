@@ -998,7 +998,9 @@
             "bridgeUnsupportedProto": "{protocol} nie jest obsługiwany przez {app}",
             "bridgeSecretFull": "Poświadczenia są odzyskiwane i ponownie szyfrowane w sejfie AeroFTP.",
             "bridgeSecretLimited": "Można odzyskać tylko część danych uwierzytelniających; konieczne może być ponowne wprowadzenie niektórych sekretów.",
-            "bridgeSecretMetadata": "Tylko metadane połączenia: sekrety pozostają w pęku kluczy/agencie {app} i muszą zostać wprowadzone ponownie."
+            "bridgeSecretMetadata": "Tylko metadane połączenia: sekrety pozostają w pęku kluczy/agencie {app} i muszą zostać wprowadzone ponownie.",
+            "autoStartTransfers": "Automatyczne uruchamianie transferow",
+            "autoStartTransfersHelp": "Gdy wlaczone, transfery przeciagnij-i-upusc oraz klikniecia startuja od razu. Gdy wylaczone, sa odkladane w Transfer Queue jako staged, abys mogl przyciac drzewa folderow i zmienic kolejnosc przed nacisnieciem Start."
         },
         "devtools": {
             "title": "AeroTools",

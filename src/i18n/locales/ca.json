@@ -998,7 +998,9 @@
             "bridgeUnsupportedProto": "{protocol} no és compatible amb {app}",
             "bridgeSecretFull": "Les credencials es recuperen i es tornen a xifrar al vault d'AeroFTP.",
             "bridgeSecretLimited": "Només es pot recuperar una part de les credencials; pot ser que hagis de tornar a introduir alguns secrets.",
-            "bridgeSecretMetadata": "Només metadades de connexió: els secrets es queden al clauer/agent de {app} i s'han de tornar a introduir."
+            "bridgeSecretMetadata": "Només metadades de connexió: els secrets es queden al clauer/agent de {app} i s'han de tornar a introduir.",
+            "autoStartTransfers": "Inici automatic de transferencies",
+            "autoStartTransfersHelp": "Si esta activat, les transferencies per arrossegar i deixar anar i per clic s'inicien immediatament. Si esta desactivat, queden aparcades a la Transfer Queue com a staged perque puguis podar arbres de carpetes i reordenar abans de prémer Start."
         },
         "devtools": {
             "title": "AeroTools",

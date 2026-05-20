@@ -998,7 +998,9 @@
             "bridgeUnsupportedProto": "{protocol} nu este acceptat de {app}",
             "bridgeSecretFull": "Acreditările sunt recuperate și recriptate în seiful AeroFTP.",
             "bridgeSecretLimited": "Doar o parte din datele de autentificare poate fi recuperată; este posibil să fie nevoie să reintroduceți unele secrete.",
-            "bridgeSecretMetadata": "Doar metadate de conexiune: secretele rămân în brelocul/agentul {app} și trebuie reintroduse."
+            "bridgeSecretMetadata": "Doar metadate de conexiune: secretele rămân în brelocul/agentul {app} și trebuie reintroduse.",
+            "autoStartTransfers": "Pornire automata a transferurilor",
+            "autoStartTransfersHelp": "Cand este activ, transferurile prin glisare si plasare si prin clic pornesc imediat. Cand este inactiv, sunt parcate in Transfer Queue ca staged, ca sa poti curata arborii de foldere si sa reordonezi inainte de a apasa Start."
         },
         "devtools": {
             "title": "AeroTools",

@@ -998,7 +998,9 @@
             "bridgeUnsupportedProto": "{app} 不支持 {protocol}",
             "bridgeSecretFull": "凭据将被恢复并重新加密到 AeroFTP 保险库中。",
             "bridgeSecretLimited": "只能恢复部分凭据信息；您可能需要重新输入某些密钥。",
-            "bridgeSecretMetadata": "仅连接元数据：密钥仍保留在 {app} 的钥匙串/代理中，必须重新输入。"
+            "bridgeSecretMetadata": "仅连接元数据：密钥仍保留在 {app} 的钥匙串/代理中，必须重新输入。",
+            "autoStartTransfers": "自动启动传输",
+            "autoStartTransfersHelp": "开启时,拖放和点击传输立即开始。关闭时,它们以 staged 状态停放在 Transfer Queue 中,你可以在按下 Start 之前修剪文件夹树并重新排序。"
         },
         "devtools": {
             "title": "AeroTools",

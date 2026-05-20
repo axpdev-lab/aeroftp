@@ -998,7 +998,9 @@
             "bridgeUnsupportedProto": "{protocol} støttes ikke av {app}",
             "bridgeSecretFull": "Legitimasjon gjenopprettes og krypteres på nytt inn i AeroFTP vault.",
             "bridgeSecretLimited": "Bare deler av legitimasjonen kan gjenopprettes; du må kanskje skrive inn noen hemmeligheter på nytt.",
-            "bridgeSecretMetadata": "Kun tilkoblingsmetadata: hemmeligheter blir værende i nøkkelringen/agenten til {app} og må skrives inn på nytt."
+            "bridgeSecretMetadata": "Kun tilkoblingsmetadata: hemmeligheter blir værende i nøkkelringen/agenten til {app} og må skrives inn på nytt.",
+            "autoStartTransfers": "Start overforinger automatisk",
+            "autoStartTransfersHelp": "Nar pa, starter dra-og-slipp- og klikkoverforinger umiddelbart. Nar av, parkeres de i Transfer Queue som staged, slik at du kan beskjaere mappetraer og omorganisere for du trykker Start."
         },
         "devtools": {
             "title": "AeroTools",

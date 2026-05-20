@@ -998,7 +998,9 @@
             "bridgeUnsupportedProto": "{protocol} tidak didukung oleh {app}",
             "bridgeSecretFull": "Kredensial dipulihkan dan dienkripsi ulang ke dalam vault AeroFTP.",
             "bridgeSecretLimited": "Hanya sebagian materi kredensial yang dapat dipulihkan; Anda mungkin perlu memasukkan ulang beberapa rahasia.",
-            "bridgeSecretMetadata": "Hanya metadata koneksi: rahasia tetap berada di keychain/agen {app} dan harus dimasukkan ulang."
+            "bridgeSecretMetadata": "Hanya metadata koneksi: rahasia tetap berada di keychain/agen {app} dan harus dimasukkan ulang.",
+            "autoStartTransfers": "Mulai transfer otomatis",
+            "autoStartTransfersHelp": "Saat aktif, transfer drag-and-drop dan klik dimulai segera. Saat nonaktif, transfer diparkir di Transfer Queue sebagai staged sehingga kamu dapat memangkas pohon folder dan menyusun ulang sebelum menekan Start."
         },
         "devtools": {
             "title": "AeroTools",
