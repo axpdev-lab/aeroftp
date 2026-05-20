@@ -119,10 +119,9 @@ import { WindowResizeEdges } from './components/WindowResizeEdges';
 import { DevToolsV2, PreviewFile, isPreviewable } from './components/DevTools';
 import { UniversalPreview, PreviewFileData, getPreviewCategory, isPreviewable as isMediaPreviewable } from './components/Preview';
 import { SyncPanel } from './components/SyncPanel';
-import { LocalSyncPanel } from './components/LocalSyncPanel';
 import { UnifiedTransferPlanDialog } from './components/UnifiedTransferPlanDialog';
-import { UnifiedCompareDialog } from './components/UnifiedCompareDialog';
-import { SyncPresetDialog } from './components/SyncPresetDialog';
+import { AeroFileSyncDialog } from './components/AeroFileSync/AeroFileSyncDialog';
+import type { AeroFileSyncTab, AeroFileSyncContext } from './components/AeroFileSync/types';
 import { VaultPanel } from './components/VaultPanel';
 import { CryptomatorBrowser } from './components/CryptomatorBrowser';
 import { RcloneCryptUnlock } from './components/RcloneCryptUnlock';
@@ -622,33 +621,14 @@ const App: React.FC = () => {
     transferEntries?: Array<{ name: string; path: string; is_dir: boolean; size?: number }>;
   } | null>(null);
   const [unifiedTransferExecuting, setUnifiedTransferExecuting] = useState(false);
-  // Z.3.7: standalone compare-view dialog state. The result is pre-computed
-  // from the currently loaded panels, so the dialog never reaches back into
-  // IPC; mirror buttons stage a selection and reuse the existing transfer
-  // pathways. Limited to local-local in this slice; local-remote /
-  // remote-local mirror execution lands with Z.3.7.2 once Z.2.4 wires the
-  // local-remote planner execution.
-  const [pendingCompareView, setPendingCompareView] = useState<{
-    result: CompareResult;
-    leftLabel: string;
-    rightLabel: string;
-    pairKind: 'local-local' | 'local-remote' | 'remote-local' | string;
-    /** Local-panel id paired with the local sibling, used to drive F5/F6 plumbing. */
-    leftPanelId?: 'local' | 'local2';
-    rightPanelId?: 'local' | 'local2';
-  } | null>(null);
-  // Z.3.8: standalone Sync Presets dialog state. Re-uses the Z.3.7
-  // CompareResult and exposes the four canonical presets (mirror,
-  // backup [default], update, bisync). Execution today is limited to
-  // the local-local pair; other pair kinds surface the preview but
-  // disable Execute (see closure report Z.3.8.2).
-  const [pendingSyncPresets, setPendingSyncPresets] = useState<{
-    result: CompareResult;
-    leftLabel: string;
-    rightLabel: string;
-    pairKind: 'local-local' | 'local-remote' | 'remote-local' | string;
-    leftPanelId?: 'local' | 'local2';
-    rightPanelId?: 'local' | 'local2';
+  // AeroFile Sync dialog: unified 3-tab modal (Compare + Plan + Sync).
+  // Replaces the legacy pendingCompareView + pendingSyncPresets +
+  // showLocalSyncPanel triad that lived in separate View menu entries.
+  // The dialog opens with an initial tab and a precomputed context
+  // (compareResult for Compare/Plan, paths for Sync).
+  const [aeroFileSync, setAeroFileSync] = useState<{
+    initialTab: AeroFileSyncTab;
+    context: AeroFileSyncContext;
   } | null>(null);
   const [inputDialog, setInputDialog] = useState<{ title: string; defaultValue: string; onConfirm: (v: string) => void; isPassword?: boolean; placeholder?: string } | null>(null);
   const [zohoShareLinksDialog, setZohoShareLinksDialog] = useState<{ fileName: string; links: Array<{ id: string; attributes: Record<string, unknown> }> } | null>(null);
@@ -721,10 +701,6 @@ const App: React.FC = () => {
 
   const [showDependenciesPanel, setShowDependenciesPanel] = useState(false);
   const [showSyncPanel, setShowSyncPanel] = useState(false);
-  // Z.2.3: local-to-local AeroSync. Independent from showSyncPanel
-  // because the local panel does not need a remote connection and
-  // exposes a different command surface (no direction toggle).
-  const [showLocalSyncPanel, setShowLocalSyncPanel] = useState(false);
   const [showVaultPanel, setShowVaultPanel] = useState<false | { mode?: 'home' | 'create' | 'open'; path?: string; files?: string[]; folderPath?: string }>(false);
   const [aeroVaultOverlaySession, setAeroVaultOverlaySession] = useState<AeroVaultOverlaySession | null>(null);
   const [showCryptomatorBrowser, setShowCryptomatorBrowser] = useState(false);
@@ -2846,7 +2822,7 @@ interface UpdateVerificationInfo {
     { id: 'tools-terminal', label: t('devtools.sshTerminal'), category: 'tools' as CommandCategory, icon: <Terminal size={14} />, action: () => window.dispatchEvent(new CustomEvent('devtools-panel-ensure', { detail: 'terminal' })), keywords: ['ssh', 'shell', 'console'] },
     // Sync
     { id: 'sync-panel', label: t('syncPanel.title'), category: 'sync' as CommandCategory, icon: <FolderSync size={14} />, action: () => setShowSyncPanel(true), keywords: ['synchronize', 'aerosync'] },
-    { id: 'local-sync-panel', label: t('localSync.title'), category: 'sync' as CommandCategory, icon: <FolderSync size={14} />, action: () => setShowLocalSyncPanel(true), keywords: ['synchronize', 'aerosync', 'local', 'delta'] },
+    { id: 'aerofile-sync', label: t('aerofileSync.title') || 'AeroFile Sync', category: 'sync' as CommandCategory, icon: <FolderSync size={14} />, action: () => openAeroFileSync('sync'), keywords: ['synchronize', 'aerosync', 'aerofile', 'compare', 'plan', 'delta', 'aerorsync'] },
     // AeroVault overlay
     {
       id: 'tools-aerovault-overlay',
@@ -6645,11 +6621,13 @@ interface UpdateVerificationInfo {
     }
   }, [pendingUnifiedTransferPlan, transferLocalSelectionAcrossPanels, notify, t]);
 
-  // Z.3.7: open the unified Compare dialog for the currently-loaded panel
-  // pair. Local-local pairs use the two local listings; local-remote /
-  // remote-local pairs use the active remote listing. Returns silently
-  // when the pair is not comparable yet (remote-remote or single panel).
-  const openComparePanelsView = useCallback(() => {
+  // AeroFile Sync: unified opener for Compare + Plan + Sync tabs. Computes
+  // pairKind, labels, and (when a comparable pair is mounted) the compare
+  // result once. The dialog uses this context for the Compare and Plan
+  // tabs; the Sync tab pulls from initialSource/initialDestination. When
+  // no comparable pair is available the dialog still opens (Sync tab is
+  // always usable), and Compare/Plan render their empty-state hint.
+  const openAeroFileSync = useCallback((initialTab: AeroFileSyncTab = 'compare') => {
     const toCompareEntry = (item: { name: string; is_dir: boolean; size: number | null; modified: string | null }): CompareInputEntry => {
       const mtimeMs = (() => {
         if (!item.modified) return null;
@@ -6664,44 +6642,49 @@ interface UpdateVerificationInfo {
       };
     };
 
+    let context: AeroFileSyncContext;
+
     if (showDualLocalPanel && !showRemotePanel) {
       const leftEntries = localFiles.map(toCompareEntry);
       const rightEntries = localFiles2.map(toCompareEntry);
       const result = compareEntries(leftEntries, rightEntries);
-      setPendingCompareView({
-        result,
+      context = {
+        compareResult: result,
         leftLabel: currentLocalPath || 'Local',
         rightLabel: currentLocalPath2 || currentLocalPath || 'Local (right)',
         pairKind: 'local-local',
         leftPanelId: 'local',
         rightPanelId: 'local2',
-      });
-      return;
-    }
-
-    if (isConnected && showRemotePanel) {
+        initialSource: currentLocalPath || '',
+        initialDestination: currentLocalPath2 || '',
+      };
+    } else if (isConnected && showRemotePanel) {
       const localEntries = localFiles.map(toCompareEntry);
       const remoteEntries = remoteFiles.map(toCompareEntry);
-      // `swapPanels` decides whether the visual left slot is local or
-      // remote; the user reads the dialog header relative to that, so
-      // mirror direction labels match the rendering of the dual panel.
       const leftLocal = !swapPanels;
       const result = leftLocal
         ? compareEntries(localEntries, remoteEntries)
         : compareEntries(remoteEntries, localEntries);
-      setPendingCompareView({
-        result,
+      context = {
+        compareResult: result,
         leftLabel: leftLocal ? (currentLocalPath || 'Local') : (activeUnifiedRemoteProfile?.name || 'Remote'),
         rightLabel: leftLocal ? (activeUnifiedRemoteProfile?.name || 'Remote') : (currentLocalPath || 'Local'),
         pairKind: leftLocal ? 'local-remote' : 'remote-local',
-      });
-      return;
+        initialSource: currentLocalPath || '',
+        initialDestination: '',
+      };
+    } else {
+      context = {
+        compareResult: null,
+        leftLabel: currentLocalPath || 'Local',
+        rightLabel: '',
+        pairKind: null,
+        initialSource: currentLocalPath || '',
+        initialDestination: '',
+      };
     }
 
-    notify.info(
-      t('compare.title') || 'Compare panels',
-      t('compare.notAvailable') || 'Open a second panel or a remote connection to compare.',
-    );
+    setAeroFileSync({ initialTab, context });
   }, [
     showDualLocalPanel,
     showRemotePanel,
@@ -6713,8 +6696,6 @@ interface UpdateVerificationInfo {
     currentLocalPath,
     currentLocalPath2,
     activeUnifiedRemoteProfile,
-    notify,
-    t,
   ]);
 
   // Z.3.7: stage the names returned by the Compare dialog into the local
@@ -6775,8 +6756,8 @@ interface UpdateVerificationInfo {
   }, [localFiles, remoteFiles]);
 
   const handleCompareMirrorLeftToRight = useCallback((entries: CompareResultEntry[]) => {
-    const context = pendingCompareView;
-    setPendingCompareView(null);
+    const context = aeroFileSync?.context;
+    setAeroFileSync(null);
     if (!context || entries.length === 0) return;
 
     if (context.pairKind === 'local-local' && context.leftPanelId) {
@@ -6820,7 +6801,7 @@ interface UpdateVerificationInfo {
       });
     }
   }, [
-    pendingCompareView,
+    aeroFileSync,
     stageLocalSelectionFromCompare,
     buildTransferEntriesFromSide,
     currentLocalPath,
@@ -6831,8 +6812,8 @@ interface UpdateVerificationInfo {
   ]);
 
   const handleCompareMirrorRightToLeft = useCallback((entries: CompareResultEntry[]) => {
-    const context = pendingCompareView;
-    setPendingCompareView(null);
+    const context = aeroFileSync?.context;
+    setAeroFileSync(null);
     if (!context || entries.length === 0) return;
 
     if (context.pairKind === 'local-local' && context.rightPanelId) {
@@ -6875,7 +6856,7 @@ interface UpdateVerificationInfo {
       });
     }
   }, [
-    pendingCompareView,
+    aeroFileSync,
     stageLocalSelectionFromCompare,
     buildTransferEntriesFromSide,
     currentLocalPath,
@@ -6885,77 +6866,9 @@ interface UpdateVerificationInfo {
     activeUnifiedRemoteProfile,
   ]);
 
-  // Z.3.8: open the Sync Preset dialog. Same comparable-pair gate as
-  // the Compare view: we need either a dual local panel or one local
-  // plus one remote panel that already loaded their listings.
-  const openSyncPresetsView = useCallback(() => {
-    const toCompareEntry = (item: { name: string; is_dir: boolean; size: number | null; modified: string | null }): CompareInputEntry => {
-      const mtimeMs = (() => {
-        if (!item.modified) return null;
-        const parsed = Date.parse(item.modified);
-        return Number.isFinite(parsed) ? parsed : null;
-      })();
-      return {
-        name: item.name,
-        isDir: item.is_dir,
-        size: item.size ?? null,
-        mtimeMs,
-      };
-    };
-
-    if (showDualLocalPanel && !showRemotePanel) {
-      const result = compareEntries(
-        localFiles.map(toCompareEntry),
-        localFiles2.map(toCompareEntry),
-      );
-      setPendingSyncPresets({
-        result,
-        leftLabel: currentLocalPath || 'Local',
-        rightLabel: currentLocalPath2 || currentLocalPath || 'Local (right)',
-        pairKind: 'local-local',
-        leftPanelId: 'local',
-        rightPanelId: 'local2',
-      });
-      return;
-    }
-
-    if (isConnected && showRemotePanel) {
-      const leftLocal = !swapPanels;
-      const localEntries = localFiles.map(toCompareEntry);
-      const remoteEntries = remoteFiles.map(toCompareEntry);
-      const result = leftLocal
-        ? compareEntries(localEntries, remoteEntries)
-        : compareEntries(remoteEntries, localEntries);
-      setPendingSyncPresets({
-        result,
-        leftLabel: leftLocal ? (currentLocalPath || 'Local') : (activeUnifiedRemoteProfile?.name || 'Remote'),
-        rightLabel: leftLocal ? (activeUnifiedRemoteProfile?.name || 'Remote') : (currentLocalPath || 'Local'),
-        pairKind: leftLocal ? 'local-remote' : 'remote-local',
-      });
-      return;
-    }
-
-    notify.info(
-      t('syncPresets.title') || 'Sync presets',
-      t('compare.notAvailable') || 'Open a second panel or a remote connection to use sync presets.',
-    );
-  }, [
-    showDualLocalPanel,
-    showRemotePanel,
-    isConnected,
-    swapPanels,
-    localFiles,
-    localFiles2,
-    remoteFiles,
-    currentLocalPath,
-    currentLocalPath2,
-    activeUnifiedRemoteProfile,
-    notify,
-    t,
-  ]);
 
   /**
-   * Z.3.8 — execute a preset plan returned by the SyncPresetDialog.
+   * Z.3.8 - execute the preset plan returned by the AeroFile Sync Plan tab.
    * Today only the local-local pair has an executable path: we stage
    * the relevant source-side names into the matching local selection
    * and dispatch through the existing `planLocalSelectionAcrossPanels`
@@ -6967,8 +6880,8 @@ interface UpdateVerificationInfo {
    * adds backend support for batch deletes inside the planner.
    */
   const executeSyncPresetPlan = useCallback((plan: PresetPlan) => {
-    const context = pendingSyncPresets;
-    setPendingSyncPresets(null);
+    const context = aeroFileSync?.context;
+    setAeroFileSync(null);
     if (!context) return;
 
     const deleteSummary = {
@@ -7137,7 +7050,7 @@ interface UpdateVerificationInfo {
       'Execution for this pair kind lands with Z.3.5.2 / Z.3.8.2.',
     );
   }, [
-    pendingSyncPresets,
+    aeroFileSync,
     notify,
     t,
     localFiles,
@@ -10838,9 +10751,7 @@ interface UpdateVerificationInfo {
           onToggleAgent={() => { setDevToolsOpen(true); window.dispatchEvent(new CustomEvent('devtools-panel-solo', { detail: 'agent' })); }}
           onToggleActivityLog={() => setShowActivityLog(v => !v)}
           onToggleDebugPanel={() => setShowDebugPanel(v => !v)}
-          onShowLocalSync={() => setShowLocalSyncPanel(true)}
-          onShowComparePanels={openComparePanelsView}
-          onShowSyncPresets={openSyncPresetsView}
+          onShowAeroFileSync={openAeroFileSync}
           onQuit={async () => { try { await getCurrentWindow().close(); } catch { /* noop */ } }}
           onCheckForUpdates={() => checkForUpdate(true)}
           hasActivity={hasActivity || hasQueueActivity}
@@ -11102,35 +11013,15 @@ interface UpdateVerificationInfo {
             onClose={() => setPendingUnifiedTransferPlan(null)}
           />
         )}
-        {pendingCompareView && (
-          <UnifiedCompareDialog
-            result={pendingCompareView.result}
-            leftLabel={pendingCompareView.leftLabel}
-            rightLabel={pendingCompareView.rightLabel}
-            pairKind={pendingCompareView.pairKind}
-            canMirrorLeftToRight={pendingCompareView.pairKind === 'local-local'}
-            canMirrorRightToLeft={pendingCompareView.pairKind === 'local-local'}
+        {aeroFileSync && (
+          <AeroFileSyncDialog
+            isOpen
+            initialTab={aeroFileSync.initialTab}
+            context={aeroFileSync.context}
+            onClose={() => setAeroFileSync(null)}
             onApplyMirrorLeftToRight={handleCompareMirrorLeftToRight}
             onApplyMirrorRightToLeft={handleCompareMirrorRightToLeft}
-            onClose={() => setPendingCompareView(null)}
-          />
-        )}
-        {pendingSyncPresets && (
-          <SyncPresetDialog
-            result={pendingSyncPresets.result}
-            leftLabel={pendingSyncPresets.leftLabel}
-            rightLabel={pendingSyncPresets.rightLabel}
-            pairKind={pendingSyncPresets.pairKind}
-            // Z.2.4 — local-remote and remote-local pairs now reach
-            // executeUnifiedTransferPlan via the planner queue, so the
-            // preset dialog is no longer confined to local-local.
-            canExecute={
-              pendingSyncPresets.pairKind === 'local-local'
-              || pendingSyncPresets.pairKind === 'local-remote'
-              || pendingSyncPresets.pairKind === 'remote-local'
-            }
-            onExecute={executeSyncPresetPlan}
-            onClose={() => setPendingSyncPresets(null)}
+            onExecutePreset={executeSyncPresetPlan}
           />
         )}
         {inputDialog && <InputDialog title={inputDialog.title} defaultValue={inputDialog.defaultValue} onConfirm={inputDialog.onConfirm} onCancel={() => setInputDialog(null)} isPassword={inputDialog.isPassword} placeholder={inputDialog.placeholder} />}
@@ -11520,11 +11411,6 @@ interface UpdateVerificationInfo {
             await loadRemoteFiles();
             await loadLocalFiles(currentLocalPath);
           }}
-        />
-        <LocalSyncPanel
-          isOpen={showLocalSyncPanel}
-          onClose={() => setShowLocalSyncPanel(false)}
-          initialSource={currentLocalPath}
         />
         <CloudPanel
           isOpen={showCloudPanel}
@@ -13167,6 +13053,7 @@ interface UpdateVerificationInfo {
                   setCurrentPath={setCurrentLocalPath}
                   onNavigate={changeLocalDirectory}
                   onRefresh={loadLocalFiles}
+                  onShowAeroFileSync={() => openAeroFileSync()}
                   isPathCoherent={isLocalPathCoherent}
                   isSyncPathMismatch={isSyncPathMismatch}
                   isSyncNavigation={isSyncNavigation}
@@ -13307,6 +13194,7 @@ interface UpdateVerificationInfo {
                     setCurrentPath={setCurrentLocalPath2}
                     onNavigate={changeLocalDirectory2}
                     onRefresh={loadLocalFiles2}
+                    onShowAeroFileSync={() => openAeroFileSync()}
                     isPathCoherent
                     isSyncPathMismatch={false}
                     isSyncNavigation={false}
