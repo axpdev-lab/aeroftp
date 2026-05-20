@@ -1656,6 +1656,12 @@ async fn perform_upload(
     }
 }
 
+// download_segments is a runtime-configuration parameter (set by the
+// caller's segments preset), distinct from the transfer descriptor in
+// SyncTransferSpec. Folding it into the spec would conflate runtime
+// tunables with intrinsic transfer attributes (rel/total/policy), so
+// the lint is suppressed here rather than refactored away.
+#[allow(clippy::too_many_arguments)]
 async fn perform_download(
     provider: &mut Box<dyn StorageProvider>,
     local_root: &str,
