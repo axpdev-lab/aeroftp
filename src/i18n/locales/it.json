@@ -4424,6 +4424,10 @@
                 "unknown": "Non verificato",
                 "clickToRetry": "clic per riverificare"
             },
+            "connectError": {
+                "failed": "Ultimo tentativo di connessione fallito",
+                "lastFailedAt": "Ultimo errore {time} fa"
+            },
             "densityCompact": "Righe compatte",
             "densityComfortable": "Righe comode",
             "table": {

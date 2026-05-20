@@ -4362,6 +4362,10 @@
                 "colPct": "%",
                 "totalRow": "合計",
                 "noData": "プロトコルデータがまだありません — サーバーを 1 つ以上接続してください。"
+            },
+            "connectError": {
+                "failed": "前回の接続試行に失敗しました",
+                "lastFailedAt": "前回の失敗は{time}前"
             }
         },
         "gitlab": {

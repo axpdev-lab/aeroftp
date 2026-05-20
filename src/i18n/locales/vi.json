@@ -4362,6 +4362,10 @@
                 "colPct": "%",
                 "totalRow": "Tổng",
                 "noData": "Chưa có dữ liệu giao thức — hãy kết nối ít nhất một máy chủ."
+            },
+            "connectError": {
+                "failed": "Lần kết nối cuối cùng đã thất bại",
+                "lastFailedAt": "Lỗi gần nhất {time} trước"
             }
         },
         "gitlab": {

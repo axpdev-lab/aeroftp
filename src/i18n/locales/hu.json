@@ -4362,6 +4362,10 @@
                 "colPct": "%",
                 "totalRow": "Összesen",
                 "noData": "Még nincs protokolladat — csatlakozzon legalább egy kiszolgálóhoz."
+            },
+            "connectError": {
+                "failed": "Az utolsó csatlakozási kísérlet sikertelen",
+                "lastFailedAt": "Utolsó hiba {time} ezelőtt"
             }
         },
         "gitlab": {

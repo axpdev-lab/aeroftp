@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet -- AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
-import { ArrowDownLeft, ArrowUpRight, Clock, Copy, Edit2, Folder, GripVertical, HardDrive, Loader2, Star, Trash2 } from 'lucide-react';
+import { AlertTriangle, ArrowDownLeft, ArrowUpRight, Clock, Copy, Edit2, Folder, GripVertical, HardDrive, Loader2, Star, Trash2 } from 'lucide-react';
 import { ServerProfile, profileHasQuota, resolveEffectiveQuota } from '../../types';
 import { getServerSubtitle } from '../../utils/serverSubtitle';
 import { formatBytes } from '../../utils/formatters';
@@ -112,6 +112,16 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
             + (healthLatencyMs && healthStatus !== 'pending' && healthStatus !== 'down' ? ` · ${healthLatencyMs}ms` : '')
             + (onRetryHealth ? ` · ${t('introHub.health.clickToRetry')}` : '')
         : undefined;
+    // #180 / 4486730822: standalone connect-failure marker, mirror of ServerCard.
+    const connectError = server.lastConnectionError;
+    const connectErrorTitle = React.useMemo(() => {
+        if (!connectError) return undefined;
+        const when = getTimeAgo(connectError.timestamp);
+        const head = t('introHub.connectError.failed');
+        const ago = when ? t('introHub.connectError.lastFailedAt', { time: when }) : '';
+        const reason = connectError.message || '';
+        return [head, ago, reason].filter(Boolean).join(' · ');
+    }, [connectError, t]);
     const isSource = selectionRole === 'source';
     const isDestination = selectionRole === 'destination';
     const isSelected = isSource || isDestination;
@@ -250,13 +260,25 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
             case 'icon':
                 return (
                     <td key="icon" className={`${cellClass} text-center`}>
-                        <button
-                            onClick={(e) => { e.stopPropagation(); onConnect(server); }}
-                            className={`${iconBoxSize} mx-auto shrink-0 rounded-lg bg-gray-100 dark:bg-gray-700 border border-gray-200/70 dark:border-gray-600 hover:bg-blue-100 dark:hover:bg-blue-900/30 hover:ring-2 hover:ring-blue-400/50 hover:border-blue-300 dark:hover:border-blue-500 flex items-center justify-center transition-all cursor-pointer`}
-                            title={t('common.connect')}
-                        >
-                            {isConnecting ? <Loader2 size={iconSize} className="animate-spin text-blue-500" /> : getServerIcon(server, iconSize + 2)}
-                        </button>
+                        <div className="relative inline-block">
+                            <button
+                                onClick={(e) => { e.stopPropagation(); onConnect(server); }}
+                                className={`${iconBoxSize} mx-auto shrink-0 rounded-lg bg-gray-100 dark:bg-gray-700 border border-gray-200/70 dark:border-gray-600 hover:bg-blue-100 dark:hover:bg-blue-900/30 hover:ring-2 hover:ring-blue-400/50 hover:border-blue-300 dark:hover:border-blue-500 flex items-center justify-center transition-all cursor-pointer`}
+                                title={t('common.connect')}
+                            >
+                                {isConnecting ? <Loader2 size={iconSize} className="animate-spin text-blue-500" /> : getServerIcon(server, iconSize + 2)}
+                            </button>
+                            {connectError && (
+                                <span
+                                    className="absolute -top-1 -left-1 inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-amber-500 text-white shadow ring-2 ring-white dark:ring-gray-800 pointer-events-none"
+                                    title={connectErrorTitle}
+                                    aria-label={connectErrorTitle}
+                                    data-testid="server-row-connect-error"
+                                >
+                                    <AlertTriangle size={9} strokeWidth={2.5} />
+                                </span>
+                            )}
+                        </div>
                     </td>
                 );
             case 'name':

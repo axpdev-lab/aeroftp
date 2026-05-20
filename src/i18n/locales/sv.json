@@ -4362,6 +4362,10 @@
                 "colPct": "%",
                 "totalRow": "Totalt",
                 "noData": "Inga protokolldata ännu — anslut minst en server."
+            },
+            "connectError": {
+                "failed": "Senaste anslutningsförsöket misslyckades",
+                "lastFailedAt": "Senaste fel för {time} sedan"
             }
         },
         "gitlab": {

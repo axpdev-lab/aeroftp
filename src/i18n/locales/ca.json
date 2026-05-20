@@ -4381,6 +4381,10 @@
                 "colPct": "%",
                 "totalRow": "Total",
                 "noData": "Encara no hi ha dades per protocol — connecta com a mínim un servidor."
+            },
+            "connectError": {
+                "failed": "L'últim intent de connexió ha fallat",
+                "lastFailedAt": "Últim error fa {time}"
             }
         },
         "gitlab": {

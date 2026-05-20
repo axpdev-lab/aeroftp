@@ -4362,6 +4362,10 @@
                 "colPct": "%",
                 "totalRow": "总计",
                 "noData": "暂无协议数据 — 请至少连接一台服务器。"
+            },
+            "connectError": {
+                "failed": "上次连接尝试失败",
+                "lastFailedAt": "上次失败于 {time} 前"
             }
         },
         "gitlab": {

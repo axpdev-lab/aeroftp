@@ -4381,6 +4381,10 @@
                 "colPct": "%",
                 "totalRow": "Guztira",
                 "noData": "Oraindik ez dago protokolo daturik — konektatu gutxienez zerbitzari bat."
+            },
+            "connectError": {
+                "failed": "Azken konexio-saiakera huts egin du",
+                "lastFailedAt": "Azken hutsegitea duela {time}"
             }
         },
         "gitlab": {

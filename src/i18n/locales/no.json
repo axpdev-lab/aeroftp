@@ -4381,6 +4381,10 @@
                 "colPct": "%",
                 "totalRow": "Totalt",
                 "noData": "Ingen protokolldata ennå — koble til minst én server."
+            },
+            "connectError": {
+                "failed": "Siste tilkoblingsforsøk mislyktes",
+                "lastFailedAt": "Siste feil for {time} siden"
             }
         },
         "gitlab": {

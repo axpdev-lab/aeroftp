@@ -4362,6 +4362,10 @@
                 "colPct": "%",
                 "totalRow": "Celkom",
                 "noData": "Zatiaľ žiadne údaje o protokole — pripojte aspoň jeden server."
+            },
+            "connectError": {
+                "failed": "Posledný pokus o pripojenie zlyhal",
+                "lastFailedAt": "Posledná chyba pred {time}"
             }
         },
         "gitlab": {

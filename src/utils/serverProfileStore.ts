@@ -88,3 +88,42 @@ export const mergeSavedServerProfile = async (
     await queued;
     return result;
 };
+
+// Trim a connect-error reason to a single short line for tooltip display.
+// We intentionally cap and strip newlines so a multi-paragraph backend
+// error does not blow up the card tooltip.
+const MAX_ERROR_REASON_CHARS = 280;
+const formatConnectErrorReason = (raw: string): string => {
+    const single = raw.replace(/\s+/g, ' ').trim();
+    return single.length > MAX_ERROR_REASON_CHARS
+        ? single.slice(0, MAX_ERROR_REASON_CHARS - 1) + '…'
+        : single;
+};
+
+export const recordProfileConnectFailure = async (
+    profileId: string,
+    reason: unknown,
+): Promise<void> => {
+    const message = formatConnectErrorReason(
+        typeof reason === 'string' ? reason : String(reason ?? ''),
+    );
+    if (!profileId) return;
+    await mergeSavedServerProfile(profileId, profile => ({
+        ...profile,
+        lastConnectionError: {
+            timestamp: new Date().toISOString(),
+            message,
+        },
+    }));
+};
+
+export const clearProfileConnectFailure = async (
+    profileId: string,
+): Promise<void> => {
+    if (!profileId) return;
+    await mergeSavedServerProfile(profileId, profile => {
+        if (!profile.lastConnectionError) return profile;
+        const { lastConnectionError: _omit, ...rest } = profile;
+        return rest as ServerProfile;
+    });
+};

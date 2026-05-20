@@ -4362,6 +4362,10 @@
                 "colPct": "%",
                 "totalRow": "Jumla",
                 "noData": "Hakuna data ya itifaki bado — unganisha angalau seva moja."
+            },
+            "connectError": {
+                "failed": "Jaribio la mwisho la kuunganisha limeshindwa",
+                "lastFailedAt": "Hitilafu ya mwisho {time} iliyopita"
             }
         },
         "gitlab": {

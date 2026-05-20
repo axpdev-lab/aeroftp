@@ -4381,6 +4381,10 @@
                 "colPct": "%",
                 "totalRow": "Cyfanswm",
                 "noData": "Dim data protocol eto — cysylltwch o leiaf un gweinydd."
+            },
+            "connectError": {
+                "failed": "Methodd y cais cysylltu diwethaf",
+                "lastFailedAt": "Methiant diwethaf {time} yn ôl"
             }
         },
         "gitlab": {

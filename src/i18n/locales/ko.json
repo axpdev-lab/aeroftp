@@ -4362,6 +4362,10 @@
                 "colPct": "%",
                 "totalRow": "전체",
                 "noData": "아직 프로토콜 데이터가 없습니다 — 서버를 하나 이상 연결하세요."
+            },
+            "connectError": {
+                "failed": "마지막 연결 시도 실패",
+                "lastFailedAt": "마지막 실패 {time} 전"
             }
         },
         "gitlab": {
