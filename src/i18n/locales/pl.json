@@ -998,7 +998,11 @@
             "bridgeUnsupportedProto": "{protocol} nie jest obsługiwany przez {app}",
             "bridgeSecretFull": "Poświadczenia są odzyskiwane i ponownie szyfrowane w sejfie AeroFTP.",
             "bridgeSecretLimited": "Można odzyskać tylko część danych uwierzytelniających; konieczne może być ponowne wprowadzenie niektórych sekretów.",
-            "bridgeSecretMetadata": "Tylko metadane połączenia: sekrety pozostają w pęku kluczy/agencie {app} i muszą zostać wprowadzone ponownie."
+            "bridgeSecretMetadata": "Tylko metadane połączenia: sekrety pozostają w pęku kluczy/agencie {app} i muszą zostać wprowadzone ponownie.",
+            "downloadSegments": "Segmenty pobierania na plik",
+            "downloadSegmentsAuto": "Auto (pojedynczy strumień)",
+            "downloadSegmentsN": "{n} segmentów na plik",
+            "downloadSegmentsDesc": "Dziel każde pobieranie na równoległe zakresy bajtów. Auto zachowuje obecne zachowanie z pojedynczym strumieniem. Działa u dostawców obsługujących żądania zakresów (SFTP, S3, HTTP) dla plików wystarczająco dużych, aby odnieść korzyść."
         },
         "devtools": {
             "title": "AeroTools",

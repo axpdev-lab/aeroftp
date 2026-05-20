@@ -998,7 +998,11 @@
             "bridgeUnsupportedProto": "{protocol} n'est pas pris en charge par {app}",
             "bridgeSecretFull": "Les identifiants sont récupérés et rechiffrés dans le vault d'AeroFTP.",
             "bridgeSecretLimited": "Seule une partie des identifiants peut être récupérée ; vous devrez peut-être ressaisir certains secrets.",
-            "bridgeSecretMetadata": "Métadonnées de connexion uniquement : les secrets restent dans le trousseau/agent de {app} et doivent être ressaisis."
+            "bridgeSecretMetadata": "Métadonnées de connexion uniquement : les secrets restent dans le trousseau/agent de {app} et doivent être ressaisis.",
+            "downloadSegments": "Segments de téléchargement par fichier",
+            "downloadSegmentsAuto": "Auto (flux unique)",
+            "downloadSegmentsN": "{n} segments par fichier",
+            "downloadSegmentsDesc": "Divise chaque téléchargement en plages d'octets parallèles. Auto conserve le comportement actuel à flux unique. Efficace avec les fournisseurs qui prennent en charge les requêtes range (SFTP, S3, HTTP) pour des fichiers suffisamment volumineux pour en tirer parti."
         },
         "devtools": {
             "title": "AeroTools",

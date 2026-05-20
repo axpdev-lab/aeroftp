@@ -371,6 +371,7 @@ const App: React.FC = () => {
     compactMode, showHiddenFiles, showToastNotifications, confirmBeforeDelete,
     showStatusBar, defaultLocalPath, fontSize, fontFamily, doubleClickAction, rememberLastFolder, visibleColumns,
     sortFoldersFirst, showFileExtensions, timeoutSeconds, maxConcurrentTransfers, retryCount,
+    downloadSegments,
     fileExistsAction, swapPanels,
     showActivityLog, showConnectionScreen,
     showSettingsPanel, setShowSettingsPanel, setShowConnectionScreen,
@@ -5811,6 +5812,9 @@ interface UpdateVerificationInfo {
               maxConcurrent: effectiveMaxConcurrentTransfers,
               retryCount,
               timeoutSeconds,
+              // GTC-5: intra-file range parallelism per download.
+              // 0 = Auto (backend = legacy single-stream).
+              downloadSegments: downloadSegments > 0 ? downloadSegments : undefined,
             });
             // pwd is restored by the backend (provider_download_folder saves/restores pwd)
           } else {
@@ -5875,7 +5879,14 @@ interface UpdateVerificationInfo {
             });
           } else if (isProvider) {
             // Use provider command for file download
-            await invoke('provider_download_file', { remotePath: remoteFilePath, localPath: localFilePath, modified: remoteModified });
+            await invoke('provider_download_file', {
+              remotePath: remoteFilePath,
+              localPath: localFilePath,
+              modified: remoteModified,
+              // GTC-5: intra-file range parallelism per download.
+              // 0 = Auto (backend = legacy single-stream).
+              downloadSegments: downloadSegments > 0 ? downloadSegments : undefined,
+            });
           } else {
             const params: DownloadParams = { remote_path: remoteFilePath, local_path: localFilePath, modified: remoteModified };
             await invoke('download_file', { params });

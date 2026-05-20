@@ -998,7 +998,11 @@
             "bridgeUnsupportedProto": "{protocol} haitumiki na {app}",
             "bridgeSecretFull": "Vitambulisho vinapatikana tena na kusimbwa upya kwenye chumba cha hazina cha AeroFTP.",
             "bridgeSecretLimited": "Ni sehemu tu ya vitambulisho inayoweza kupatikana tena; huenda ukahitaji kuingiza tena baadhi ya siri.",
-            "bridgeSecretMetadata": "Metadata ya muunganisho pekee: siri zinabaki kwenye mnyororo wa funguo/wakala wa {app} na lazima ziingizwe tena."
+            "bridgeSecretMetadata": "Metadata ya muunganisho pekee: siri zinabaki kwenye mnyororo wa funguo/wakala wa {app} na lazima ziingizwe tena.",
+            "downloadSegments": "Sehemu za upakuaji kwa kila faili",
+            "downloadSegmentsAuto": "Otomatiki (mkondo mmoja)",
+            "downloadSegmentsN": "Sehemu {n} kwa kila faili",
+            "downloadSegmentsDesc": "Gawanya kila upakuaji katika safu sambamba za baiti. Otomatiki hudumisha tabia ya sasa ya mkondo mmoja. Hufanya kazi kwa watoa huduma wanaounga mkono maombi ya safu (SFTP, S3, HTTP) kwa faili kubwa za kutosha kufaidika."
         },
         "devtools": {
             "title": "AeroTools",

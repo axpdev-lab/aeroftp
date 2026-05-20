@@ -998,7 +998,11 @@
             "bridgeUnsupportedProto": "{protocol} không được {app} hỗ trợ",
             "bridgeSecretFull": "Thông tin xác thực được khôi phục và mã hóa lại vào kho AeroFTP.",
             "bridgeSecretLimited": "Chỉ có thể khôi phục một phần thông tin xác thực; bạn có thể phải nhập lại một số bí mật.",
-            "bridgeSecretMetadata": "Chỉ siêu dữ liệu kết nối: các bí mật vẫn nằm trong chuỗi khóa/tác nhân của {app} và phải được nhập lại."
+            "bridgeSecretMetadata": "Chỉ siêu dữ liệu kết nối: các bí mật vẫn nằm trong chuỗi khóa/tác nhân của {app} và phải được nhập lại.",
+            "downloadSegments": "Số phân đoạn tải xuống cho mỗi tệp",
+            "downloadSegmentsAuto": "Tự động (luồng đơn)",
+            "downloadSegmentsN": "{n} phân đoạn cho mỗi tệp",
+            "downloadSegmentsDesc": "Chia mỗi lần tải xuống thành các dải byte song song. Tự động giữ nguyên hành vi luồng đơn hiện tại. Hiệu quả với các nhà cung cấp hỗ trợ yêu cầu theo dải (SFTP, S3, HTTP) cho các tệp đủ lớn để có lợi."
         },
         "devtools": {
             "title": "AeroTools",

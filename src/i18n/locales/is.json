@@ -998,7 +998,11 @@
             "bridgeUnsupportedProto": "{protocol} er ekki stutt af {app}",
             "bridgeSecretFull": "Auðkenni eru endurheimt og dulkóðuð aftur í AeroFTP vault.",
             "bridgeSecretLimited": "Aðeins hluta auðkennaefnisins er hægt að endurheimta; þú gætir þurft að slá inn aftur einhver leyndarmál.",
-            "bridgeSecretMetadata": "Aðeins lýsigögn tengingar: leyndarmál haldast í lyklakippu/umboði {app} og þarf að slá inn aftur."
+            "bridgeSecretMetadata": "Aðeins lýsigögn tengingar: leyndarmál haldast í lyklakippu/umboði {app} og þarf að slá inn aftur.",
+            "downloadSegments": "Niðurhalshlutar á skrá",
+            "downloadSegmentsAuto": "Sjálfvirkt (einn straumur)",
+            "downloadSegmentsN": "{n} hlutar á skrá",
+            "downloadSegmentsDesc": "Skiptu hverju niðurhali í samhliða bætasvið. Sjálfvirkt heldur núverandi hegðun með einum straumi. Virkar á þjónustum sem styðja sviðsbeiðnir (SFTP, S3, HTTP) fyrir skrár sem eru nógu stórar til að hagnast."
         },
         "devtools": {
             "title": "AeroTools",

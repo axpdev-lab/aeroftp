@@ -998,7 +998,11 @@
             "bridgeUnsupportedProto": "{protocol} wird von {app} nicht unterstützt",
             "bridgeSecretFull": "Die Zugangsdaten werden wiederhergestellt und erneut in den AeroFTP-Vault verschlüsselt.",
             "bridgeSecretLimited": "Nur ein Teil der Zugangsdaten kann wiederhergestellt werden; einige Geheimnisse müssen Sie möglicherweise erneut eingeben.",
-            "bridgeSecretMetadata": "Nur Verbindungsmetadaten: Die Geheimnisse bleiben im Schlüsselbund/Agenten von {app} und müssen erneut eingegeben werden."
+            "bridgeSecretMetadata": "Nur Verbindungsmetadaten: Die Geheimnisse bleiben im Schlüsselbund/Agenten von {app} und müssen erneut eingegeben werden.",
+            "downloadSegments": "Download-Segmente pro Datei",
+            "downloadSegmentsAuto": "Auto (einzelner Stream)",
+            "downloadSegmentsN": "{n} Segmente pro Datei",
+            "downloadSegmentsDesc": "Teilt jeden Download in parallele Byte-Bereiche auf. Auto behält das bisherige Verhalten mit einem einzelnen Stream bei. Wirksam bei Anbietern, die Range-Anfragen unterstützen (SFTP, S3, HTTP), und bei Dateien, die groß genug sind, um davon zu profitieren."
         },
         "devtools": {
             "title": "AeroTools",

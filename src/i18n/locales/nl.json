@@ -998,7 +998,11 @@
             "bridgeUnsupportedProto": "{protocol} wordt niet ondersteund door {app}",
             "bridgeSecretFull": "Inloggegevens worden hersteld en opnieuw versleuteld in de AeroFTP vault.",
             "bridgeSecretLimited": "Slechts een deel van de inloggegevens kan worden hersteld; mogelijk moet u sommige geheimen opnieuw invoeren.",
-            "bridgeSecretMetadata": "Alleen verbindingsmetadata: geheimen blijven in de sleutelbos/agent van {app} en moeten opnieuw worden ingevoerd."
+            "bridgeSecretMetadata": "Alleen verbindingsmetadata: geheimen blijven in de sleutelbos/agent van {app} en moeten opnieuw worden ingevoerd.",
+            "downloadSegments": "Downloadsegmenten per bestand",
+            "downloadSegmentsAuto": "Auto (enkele stream)",
+            "downloadSegmentsN": "{n} segmenten per bestand",
+            "downloadSegmentsDesc": "Splits elke download op in parallelle byte-bereiken. Auto behoudt het huidige gedrag met één stream. Werkt bij providers die range-verzoeken ondersteunen (SFTP, S3, HTTP), voor bestanden die groot genoeg zijn om er baat bij te hebben."
         },
         "devtools": {
             "title": "AeroTools",
