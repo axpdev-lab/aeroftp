@@ -37,19 +37,61 @@ fn dispatch(argv: Vec<OsString>, route: DispatchRoute) -> Result<u8, String> {
         command.env("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }
 
-    exec_or_wait(command)
+    exec_or_wait(command, route)
 }
 
 #[cfg(unix)]
-fn exec_or_wait(mut command: Command) -> Result<u8, String> {
+fn exec_or_wait(mut command: Command, _route: DispatchRoute) -> Result<u8, String> {
     use std::os::unix::process::CommandExt;
 
     let err = command.exec();
     Err(format!("exec failed: {err}"))
 }
 
-#[cfg(not(unix))]
-fn exec_or_wait(mut command: Command) -> Result<u8, String> {
+#[cfg(windows)]
+fn exec_or_wait(mut command: Command, route: DispatchRoute) -> Result<u8, String> {
+    use std::os::windows::process::CommandExt;
+
+    // DETACHED_PROCESS, CREATE_NEW_CONSOLE and CREATE_NO_WINDOW are
+    // mutually exclusive in CreateProcessW. We only need DETACHED_PROCESS
+    // for the GUI branch (the GUI binary is windows-subsystem so it
+    // never allocates a console anyway). Hardcoded to keep the dispatcher
+    // free of an extra crate dependency just for one integer.
+    const DETACHED_PROCESS: u32 = 0x0000_0008;
+
+    match route {
+        DispatchRoute::Gui => {
+            // The GUI binary is built with `windows_subsystem = "windows"`
+            // (see main.rs:5) so it never allocates a console of its own.
+            // Spawn it detached so:
+            //   1. the cmd/PowerShell prompt returns immediately after
+            //      `aeroftp` (the dispatcher fires the GUI and exits),
+            //   2. when the dispatcher is launched from Explorer via a
+            //      file association the brief console it inherits is not
+            //      passed through to the GUI process.
+            command.creation_flags(DETACHED_PROCESS);
+            command
+                .spawn()
+                .map_err(|err| format!("GUI launch failed: {err}"))?;
+            Ok(0)
+        }
+        DispatchRoute::Cli => {
+            // CLI shares the dispatcher's console so output streams to
+            // the parent shell and Ctrl+C reaches both processes via
+            // the console control group. Install a no-op Ctrl+C handler
+            // so the wait survives the signal long enough for the child
+            // to perform its own shutdown and report an exit code.
+            let _ = ctrlc::set_handler(|| {});
+            let status = command
+                .status()
+                .map_err(|err| format!("CLI launch failed: {err}"))?;
+            Ok(status.code().unwrap_or(1).try_into().unwrap_or(1))
+        }
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
+fn exec_or_wait(mut command: Command, _route: DispatchRoute) -> Result<u8, String> {
     let status = command
         .status()
         .map_err(|err| format!("process launch failed: {err}"))?;
