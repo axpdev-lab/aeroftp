@@ -8,21 +8,33 @@
 
 use crate::ai_tools::{create_temp_provider, load_saved_servers, SavedServerInfo};
 use crate::cross_profile_transfer::{
-    copy_one_file, plan_transfer, should_skip_existing, CrossProfileTransferEntry,
-    CrossProfileTransferPlan, CrossProfileTransferRequest,
+    copy_one_file_with_options, plan_transfer, should_skip_existing, CrossProfileCopyOptions,
+    CrossProfileTransferEntry, CrossProfileTransferPlan, CrossProfileTransferRequest,
 };
+use crate::transfer_domain::{
+    TransferBatchConfig, TransferDirection, TransferEntry, TransferFailure, TransferFailureKind,
+    TransferOutcome,
+};
+use crate::transfer_event_sink::NoopTransferSink;
+use crate::transfer_orchestrator::{execute_batch, TransferBatch, TransferExecutor};
 use crate::util::{AbortOnDrop, ProviderGuard};
 use crate::{TransferEvent, TransferProgress};
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter};
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
 const PLAN_TTL_MS: u64 = 15 * 60 * 1000;
 const PLAN_SWEEP_INTERVAL: Duration = Duration::from_secs(60);
+const CROSS_PROFILE_MAX_CONCURRENT: u32 = 4;
+const CROSS_PROFILE_MAX_RETRY: u32 = 3;
+const CROSS_PROFILE_RETRY_DELAY: Duration = Duration::from_secs(1);
+const CROSS_PROFILE_DOWNLOAD_SEGMENTS: u32 = 4;
 
 #[derive(Debug, Clone)]
 struct StoredCrossProfilePlan {
@@ -203,6 +215,325 @@ async fn clear_cancel_token(state: &CrossProfileState, transfer_id: &str) {
     tokens.remove(transfer_id);
 }
 
+struct CrossProfileBatchCounters {
+    transferred: AtomicU64,
+    skipped: AtomicU64,
+    failed: AtomicU64,
+    terminal: AtomicU64,
+    bytes_transferred: AtomicU64,
+    cancel_emitted: AtomicBool,
+}
+
+impl CrossProfileBatchCounters {
+    fn new() -> Self {
+        Self {
+            transferred: AtomicU64::new(0),
+            skipped: AtomicU64::new(0),
+            failed: AtomicU64::new(0),
+            terminal: AtomicU64::new(0),
+            bytes_transferred: AtomicU64::new(0),
+            cancel_emitted: AtomicBool::new(false),
+        }
+    }
+}
+
+struct CrossProfileExecutor {
+    app: AppHandle,
+    transfer_id: String,
+    source_server: SavedServerInfo,
+    dest_server: SavedServerInfo,
+    skip_existing: bool,
+    cancel_token: CancellationToken,
+    total: u64,
+    started_at: Instant,
+    counters: Arc<CrossProfileBatchCounters>,
+}
+
+#[async_trait]
+impl TransferExecutor for CrossProfileExecutor {
+    async fn execute(&self, entry: TransferEntry) -> TransferOutcome {
+        self.execute_entry(entry).await
+    }
+}
+
+impl CrossProfileExecutor {
+    async fn execute_entry(&self, entry: TransferEntry) -> TransferOutcome {
+        if self.cancel_token.is_cancelled() {
+            self.emit_cancelled_once();
+            return transfer_cancelled();
+        }
+
+        if self.skip_existing {
+            match create_temp_provider(&self.dest_server).await {
+                Ok(provider) => {
+                    let mut dest = ProviderGuard::new(provider, "destination");
+                    match should_skip_existing(
+                        dest.provider_mut(),
+                        &entry.local_path,
+                        &entry_to_cross_profile(&entry),
+                    )
+                    .await
+                    {
+                        Ok(true) => {
+                            let _ = dest.disconnect().await;
+                            self.emit_file_skip(&entry);
+                            return TransferOutcome::Skipped {
+                                reason: "Skipped existing destination file".to_string(),
+                            };
+                        }
+                        Ok(false) => {
+                            let _ = dest.disconnect().await;
+                        }
+                        Err(err) => {
+                            tracing::warn!(
+                                "cross-profile: skip-existing check failed for {}: {}",
+                                entry.local_path,
+                                err
+                            );
+                            let _ = dest.disconnect().await;
+                        }
+                    }
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        "cross-profile: destination provider for skip-existing failed: {}",
+                        err
+                    );
+                }
+            }
+        }
+
+        self.emit_file_start(&entry);
+
+        for attempt in 1..=CROSS_PROFILE_MAX_RETRY {
+            if self.cancel_token.is_cancelled() {
+                self.emit_cancelled_once();
+                return transfer_cancelled();
+            }
+
+            let result = self.copy_entry_once(&entry).await;
+            match result {
+                Ok(()) => {
+                    self.emit_file_complete(&entry);
+                    return TransferOutcome::Success;
+                }
+                Err(err) if attempt == CROSS_PROFILE_MAX_RETRY => {
+                    self.emit_file_error(&entry, &err);
+                    return transfer_failed(err.to_string());
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        "cross-profile: attempt {}/{} failed for {}: {}",
+                        attempt,
+                        CROSS_PROFILE_MAX_RETRY,
+                        entry.remote_path,
+                        err
+                    );
+                    tokio::select! {
+                        _ = tokio::time::sleep(CROSS_PROFILE_RETRY_DELAY) => {}
+                        _ = self.cancel_token.cancelled() => {
+                            self.emit_cancelled_once();
+                            return transfer_cancelled();
+                        }
+                    }
+                }
+            }
+        }
+
+        transfer_failed("cross-profile retry loop exhausted".to_string())
+    }
+
+    async fn copy_entry_once(
+        &self,
+        entry: &TransferEntry,
+    ) -> Result<(), crate::providers::ProviderError> {
+        let mut source = ProviderGuard::new(
+            create_temp_provider(&self.source_server)
+                .await
+                .map_err(crate::providers::ProviderError::TransferFailed)?,
+            "source",
+        );
+        let mut dest = ProviderGuard::new(
+            create_temp_provider(&self.dest_server)
+                .await
+                .map_err(crate::providers::ProviderError::TransferFailed)?,
+            "destination",
+        );
+
+        let result = copy_one_file_with_options(
+            source.provider_mut(),
+            dest.provider_mut(),
+            &entry.remote_path,
+            &entry.local_path,
+            entry.modified.as_deref(),
+            CrossProfileCopyOptions {
+                source_size: Some(entry.size),
+                download_segments: CROSS_PROFILE_DOWNLOAD_SEGMENTS,
+                cancel_token: self.cancel_token.clone(),
+            },
+        )
+        .await;
+
+        if let Err(err) = source.disconnect().await {
+            tracing::warn!(
+                "cross-profile: failed to disconnect source provider: {}",
+                err
+            );
+        }
+        if let Err(err) = dest.disconnect().await {
+            tracing::warn!(
+                "cross-profile: failed to disconnect destination provider: {}",
+                err
+            );
+        }
+
+        result
+    }
+
+    fn emit_file_start(&self, entry: &TransferEntry) {
+        emit_transfer_event(
+            &self.app,
+            TransferEvent {
+                event_type: "file_start".to_string(),
+                transfer_id: self.transfer_id.clone(),
+                filename: entry.display_name.clone(),
+                direction: "cross-profile".to_string(),
+                message: None,
+                progress: Some(
+                    self.progress(entry, self.counters.terminal.load(Ordering::Relaxed)),
+                ),
+                path: Some(entry.remote_path.clone()),
+                delta_stats: None,
+                fallback_reason: None,
+            },
+        );
+    }
+
+    fn emit_file_skip(&self, entry: &TransferEntry) {
+        self.counters.skipped.fetch_add(1, Ordering::Relaxed);
+        let terminal = self.counters.terminal.fetch_add(1, Ordering::Relaxed) + 1;
+        emit_transfer_event(
+            &self.app,
+            TransferEvent {
+                event_type: "file_skip".to_string(),
+                transfer_id: self.transfer_id.clone(),
+                filename: entry.display_name.clone(),
+                direction: "cross-profile".to_string(),
+                message: Some("Skipped existing destination file".to_string()),
+                progress: Some(self.progress(entry, terminal)),
+                path: Some(entry.remote_path.clone()),
+                delta_stats: None,
+                fallback_reason: None,
+            },
+        );
+    }
+
+    fn emit_file_complete(&self, entry: &TransferEntry) {
+        self.counters.transferred.fetch_add(1, Ordering::Relaxed);
+        self.counters
+            .bytes_transferred
+            .fetch_add(entry.size, Ordering::Relaxed);
+        let terminal = self.counters.terminal.fetch_add(1, Ordering::Relaxed) + 1;
+        emit_transfer_event(
+            &self.app,
+            TransferEvent {
+                event_type: "file_complete".to_string(),
+                transfer_id: self.transfer_id.clone(),
+                filename: entry.display_name.clone(),
+                direction: "cross-profile".to_string(),
+                message: None,
+                progress: Some(self.progress(entry, terminal)),
+                path: Some(entry.remote_path.clone()),
+                delta_stats: None,
+                fallback_reason: None,
+            },
+        );
+    }
+
+    fn emit_file_error(&self, entry: &TransferEntry, err: &crate::providers::ProviderError) {
+        self.counters.failed.fetch_add(1, Ordering::Relaxed);
+        self.counters.terminal.fetch_add(1, Ordering::Relaxed);
+        emit_transfer_event(
+            &self.app,
+            TransferEvent {
+                event_type: "file_error".to_string(),
+                transfer_id: self.transfer_id.clone(),
+                filename: entry.display_name.clone(),
+                direction: "cross-profile".to_string(),
+                message: Some(err.to_string()),
+                progress: None,
+                path: Some(entry.remote_path.clone()),
+                delta_stats: None,
+                fallback_reason: None,
+            },
+        );
+    }
+
+    fn emit_cancelled_once(&self) {
+        if self.counters.cancel_emitted.swap(true, Ordering::Relaxed) {
+            return;
+        }
+        emit_transfer_event(
+            &self.app,
+            TransferEvent {
+                event_type: "cancelled".to_string(),
+                transfer_id: self.transfer_id.clone(),
+                filename: String::new(),
+                direction: "cross-profile".to_string(),
+                message: Some("Transfer cancelled by user".to_string()),
+                progress: None,
+                path: None,
+                delta_stats: None,
+                fallback_reason: None,
+            },
+        );
+    }
+
+    fn progress(&self, entry: &TransferEntry, terminal: u64) -> TransferProgress {
+        let elapsed_ms = self.started_at.elapsed().as_millis() as u64;
+        let bytes = self.counters.bytes_transferred.load(Ordering::Relaxed);
+        TransferProgress {
+            transfer_id: self.transfer_id.clone(),
+            filename: entry.display_name.clone(),
+            transferred: terminal,
+            total: self.total,
+            percentage: ((terminal * 100).checked_div(self.total).unwrap_or(0)).min(100) as u8,
+            speed_bps: (bytes * 1000).checked_div(elapsed_ms).unwrap_or(0),
+            eta_seconds: 0,
+            direction: "cross-profile".to_string(),
+            total_files: Some(self.total),
+            path: Some(entry.remote_path.clone()),
+        }
+    }
+}
+
+fn entry_to_cross_profile(entry: &TransferEntry) -> CrossProfileTransferEntry {
+    CrossProfileTransferEntry {
+        source_path: entry.remote_path.clone(),
+        dest_path: entry.local_path.clone(),
+        display_name: entry.display_name.clone(),
+        size: entry.size,
+        modified: entry.modified.clone(),
+        is_dir: false,
+    }
+}
+
+fn transfer_failed(message: String) -> TransferOutcome {
+    TransferOutcome::Failed(TransferFailure {
+        kind: TransferFailureKind::Unknown,
+        message,
+        retryable: false,
+    })
+}
+
+fn transfer_cancelled() -> TransferOutcome {
+    TransferOutcome::Failed(TransferFailure {
+        kind: TransferFailureKind::Cancelled,
+        message: "Transfer cancelled by user".to_string(),
+        retryable: false,
+    })
+}
+
 // ── Tauri Commands ─────────────────────────────────────────────────────────
 
 /// Plan a cross-profile transfer without executing it (dry-run).
@@ -290,14 +621,9 @@ pub async fn cross_profile_execute(
     let cancelled = register_cancel_token(&state, &transfer_id).await;
 
     let result = async {
-        let mut source =
-            ProviderGuard::new(create_temp_provider(&stored.source_server).await?, "source");
-        let mut dest = ProviderGuard::new(
-            create_temp_provider(&stored.dest_server).await?,
-            "destination",
-        );
         let plan = stored.plan;
         let total = plan.entries.len() as u64;
+        let max_concurrent = CROSS_PROFILE_MAX_CONCURRENT.min(total.max(1) as u32);
 
         emit_transfer_event(
             &app,
@@ -317,203 +643,72 @@ pub async fn cross_profile_execute(
             },
         );
 
-        let start = std::time::Instant::now();
-        let mut transferred: u64 = 0;
-        let mut skipped: u64 = 0;
-        let mut failed: u64 = 0;
-        let mut bytes_transferred: u64 = 0;
-        let mut was_cancelled = false;
-
-        for entry in &plan.entries {
-            let event_path = entry.source_path.clone();
-
-            if cancelled.is_cancelled() {
-                was_cancelled = true;
-                emit_transfer_event(
-                    &app,
-                    TransferEvent {
-                        event_type: "cancelled".to_string(),
-                        transfer_id: transfer_id.clone(),
-                        filename: String::new(),
-                        direction: "cross-profile".to_string(),
-                        message: Some("Transfer cancelled by user".to_string()),
-                        progress: None,
-                        path: None,
-                        delta_stats: None,
-                        fallback_reason: None,
-                    },
-                );
-                break;
+        let start = Instant::now();
+        let counters = Arc::new(CrossProfileBatchCounters::new());
+        let cancel_flag = Arc::new(AtomicBool::new(false));
+        let cancel_watcher = AbortOnDrop::spawn({
+            let cancelled = cancelled.clone();
+            let cancel_flag = cancel_flag.clone();
+            async move {
+                cancelled.cancelled().await;
+                cancel_flag.store(true, Ordering::Relaxed);
             }
+        });
+        let executor = Arc::new(CrossProfileExecutor {
+            app: app.clone(),
+            transfer_id: transfer_id.clone(),
+            source_server: stored.source_server,
+            dest_server: stored.dest_server,
+            skip_existing: stored.request.skip_existing,
+            cancel_token: cancelled.clone(),
+            total,
+            started_at: start,
+            counters: counters.clone(),
+        });
+        let entries = plan
+            .entries
+            .into_iter()
+            .map(|entry| TransferEntry {
+                id: entry.source_path.clone(),
+                display_name: entry.display_name,
+                remote_path: entry.source_path,
+                local_path: entry.dest_path,
+                size: entry.size,
+                modified: entry.modified,
+            })
+            .collect::<Vec<_>>();
+        let batch = TransferBatch {
+            id: transfer_id.clone(),
+            display_name: format!("{} file(s)", total),
+            direction: TransferDirection::Upload,
+            config: TransferBatchConfig {
+                max_concurrent,
+                max_retries: 0,
+                timeout_ms: 30_000,
+            },
+            entries,
+        };
 
-            if stored.request.skip_existing {
-                if let Ok(true) =
-                    should_skip_existing(dest.provider_mut(), &entry.dest_path, entry).await
-                {
-                    skipped += 1;
-                    emit_transfer_event(
-                        &app,
-                        TransferEvent {
-                            event_type: "file_skip".to_string(),
-                            transfer_id: transfer_id.clone(),
-                            filename: entry.display_name.clone(),
-                            direction: "cross-profile".to_string(),
-                            message: Some("Skipped existing destination file".to_string()),
-                            progress: Some(TransferProgress {
-                                transfer_id: transfer_id.clone(),
-                                filename: entry.display_name.clone(),
-                                transferred: transferred + skipped,
-                                total,
-                                percentage: (((transferred + skipped) * 100)
-                                    .checked_div(total)
-                                    .unwrap_or(0))
-                                .min(100) as u8,
-                                speed_bps: 0,
-                                eta_seconds: 0,
-                                direction: "cross-profile".to_string(),
-                                total_files: Some(total),
-                                path: Some(event_path.clone()),
-                            }),
-                            path: Some(event_path.clone()),
-                            delta_stats: None,
-                            fallback_reason: None,
-                        },
-                    );
-                    continue;
-                }
-            }
-
-            emit_transfer_event(
-                &app,
-                TransferEvent {
-                    event_type: "file_start".to_string(),
-                    transfer_id: transfer_id.clone(),
-                    filename: entry.display_name.clone(),
-                    direction: "cross-profile".to_string(),
-                    message: None,
-                    progress: Some(TransferProgress {
-                        transfer_id: transfer_id.clone(),
-                        filename: entry.display_name.clone(),
-                        transferred,
-                        total,
-                        percentage: ((transferred * 100).checked_div(total).unwrap_or(0)).min(100)
-                            as u8,
-                        speed_bps: 0,
-                        eta_seconds: 0,
-                        direction: "cross-profile".to_string(),
-                        total_files: Some(total),
-                        path: Some(event_path.clone()),
-                    }),
-                    path: Some(event_path.clone()),
-                    delta_stats: None,
-                    fallback_reason: None,
-                },
-            );
-
-            const MAX_RETRY: u32 = 3;
-            let mut file_ok = false;
-            for attempt in 1..=MAX_RETRY {
-                match copy_one_file(
-                    source.provider_mut(),
-                    dest.provider_mut(),
-                    &entry.source_path,
-                    &entry.dest_path,
-                    entry.modified.as_deref(),
-                )
-                .await
-                {
-                    Ok(()) => {
-                        file_ok = true;
-                        break;
-                    }
-                    Err(e) => {
-                        if attempt == MAX_RETRY {
-                            failed += 1;
-                            emit_transfer_event(
-                                &app,
-                                TransferEvent {
-                                    event_type: "file_error".to_string(),
-                                    transfer_id: transfer_id.clone(),
-                                    filename: entry.display_name.clone(),
-                                    direction: "cross-profile".to_string(),
-                                    message: Some(e.to_string()),
-                                    progress: None,
-                                    path: Some(event_path.clone()),
-                                    delta_stats: None,
-                                    fallback_reason: None,
-                                },
-                            );
-                        } else {
-                            tokio::select! {
-                                _ = tokio::time::sleep(std::time::Duration::from_secs(1)) => {}
-                                _ = cancelled.cancelled() => {
-                                    was_cancelled = true;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            if was_cancelled {
-                emit_transfer_event(
-                    &app,
-                    TransferEvent {
-                        event_type: "cancelled".to_string(),
-                        transfer_id: transfer_id.clone(),
-                        filename: String::new(),
-                        direction: "cross-profile".to_string(),
-                        message: Some("Transfer cancelled by user".to_string()),
-                        progress: None,
-                        path: None,
-                        delta_stats: None,
-                        fallback_reason: None,
-                    },
-                );
-                break;
-            }
-
-            if file_ok {
-                transferred += 1;
-                bytes_transferred += entry.size;
-                let elapsed_ms = start.elapsed().as_millis() as u64;
-                emit_transfer_event(
-                    &app,
-                    TransferEvent {
-                        event_type: "file_complete".to_string(),
-                        transfer_id: transfer_id.clone(),
-                        filename: entry.display_name.clone(),
-                        direction: "cross-profile".to_string(),
-                        message: None,
-                        progress: Some(TransferProgress {
-                            transfer_id: transfer_id.clone(),
-                            filename: entry.display_name.clone(),
-                            transferred: transferred + skipped,
-                            total,
-                            percentage: (((transferred + skipped) * 100)
-                                .checked_div(total)
-                                .unwrap_or(100))
-                            .min(100) as u8,
-                            speed_bps: (bytes_transferred * 1000)
-                                .checked_div(elapsed_ms)
-                                .unwrap_or(0),
-                            eta_seconds: 0,
-                            direction: "cross-profile".to_string(),
-                            total_files: Some(total),
-                            path: Some(event_path.clone()),
-                        }),
-                        path: Some(event_path.clone()),
-                        delta_stats: None,
-                        fallback_reason: None,
-                    },
-                );
-            }
-        }
+        let batch_result = execute_batch(
+            Arc::new(NoopTransferSink),
+            batch,
+            executor.clone(),
+            cancel_flag,
+            None,
+        )
+        .await;
+        drop(cancel_watcher);
 
         let duration_ms = start.elapsed().as_millis() as u64;
+        let transferred = counters.transferred.load(Ordering::Relaxed);
+        let skipped = counters.skipped.load(Ordering::Relaxed);
+        let failed = counters.failed.load(Ordering::Relaxed);
+        let bytes_transferred = counters.bytes_transferred.load(Ordering::Relaxed);
+        let was_cancelled = batch_result.cancelled || cancelled.is_cancelled();
 
-        if !was_cancelled {
+        if was_cancelled {
+            executor.emit_cancelled_once();
+        } else {
             emit_transfer_event(
                 &app,
                 TransferEvent {
@@ -543,19 +738,6 @@ pub async fn cross_profile_execute(
                     delta_stats: None,
                     fallback_reason: None,
                 },
-            );
-        }
-
-        if let Err(err) = source.disconnect().await {
-            tracing::warn!(
-                "cross-profile: failed to disconnect source provider: {}",
-                err
-            );
-        }
-        if let Err(err) = dest.disconnect().await {
-            tracing::warn!(
-                "cross-profile: failed to disconnect destination provider: {}",
-                err
             );
         }
 

@@ -621,12 +621,13 @@ fn hard_error_branch_runs_before_classic_fallback_in_bivio() {
     //   1. `Some(result) if result.used_delta => ... return FileOutcome::Uploaded|Downloaded`
     //   2. `Some(result) if result.hard_error.is_some() => ... return FileOutcome::Failed`
     //   3. `Some(result) => ...` (fallback reason log)
-    //   4. `provider.upload(...)` or `provider.download(...)` (classic path)
+    //   4. classic transfer path (`provider.upload(...)` or
+    //      `sync_download_transfer(...)`)
     //
     // The indices below prove the arms appear in the required order.
     for (direction, classic_call) in [
         ("Upload", "provider.upload("),
-        ("Download", "provider.download("),
+        ("Download", "sync_download_transfer("),
     ] {
         let tag = format!("sync.delta: used delta path (direction={}", direction);
         let used_at = src
