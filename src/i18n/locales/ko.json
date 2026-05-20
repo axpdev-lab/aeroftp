@@ -998,7 +998,9 @@
             "bridgeUnsupportedProto": "{protocol}은(는) {app}에서 지원하지 않습니다",
             "bridgeSecretFull": "자격 증명이 복구되어 AeroFTP vault로 다시 암호화됩니다.",
             "bridgeSecretLimited": "자격 증명의 일부만 복구할 수 있습니다. 일부 비밀을 다시 입력해야 할 수 있습니다.",
-            "bridgeSecretMetadata": "연결 메타데이터만 해당: 비밀은 {app}의 키체인/에이전트에 남아 있으므로 다시 입력해야 합니다."
+            "bridgeSecretMetadata": "연결 메타데이터만 해당: 비밀은 {app}의 키체인/에이전트에 남아 있으므로 다시 입력해야 합니다.",
+            "autoStartTransfers": "전송 자동 시작",
+            "autoStartTransfersHelp": "켜져 있으면 드래그 앤 드롭 및 클릭 전송이 즉시 시작됩니다. 꺼져 있으면 Transfer Queue 에 staged 상태로 보관되어 Start 를 누르기 전에 폴더 트리를 정리하고 순서를 바꿀 수 있습니다."
         },
         "devtools": {
             "title": "AeroTools",

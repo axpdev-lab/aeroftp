@@ -998,7 +998,9 @@
             "bridgeUnsupportedProto": "{app} ei tue protokollaa {protocol}",
             "bridgeSecretFull": "Tunnistetiedot palautetaan ja salataan uudelleen AeroFTP-holviin.",
             "bridgeSecretLimited": "Vain osa tunnistetiedoista voidaan palauttaa; sinun on ehkä syötettävä jotkin salaisuudet uudelleen.",
-            "bridgeSecretMetadata": "Vain yhteyden metatiedot: salaisuudet pysyvät sovelluksen {app} avainnipussa/agentissa, ja ne on syötettävä uudelleen."
+            "bridgeSecretMetadata": "Vain yhteyden metatiedot: salaisuudet pysyvät sovelluksen {app} avainnipussa/agentissa, ja ne on syötettävä uudelleen.",
+            "autoStartTransfers": "Aloita siirrot automaattisesti",
+            "autoStartTransfersHelp": "Kun paalla, vedos-ja-pudota- ja napsautussiirrot kaynnistyvat heti. Kun pois paalta, ne pysakoidaan Transfer Queue -jonoon staged-tilassa, jotta voit karsia kansiopuita ja jarjestaa uudelleen ennen Start-painikkeen painamista."
         },
         "devtools": {
             "title": "AeroTools",

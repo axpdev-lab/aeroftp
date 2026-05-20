@@ -998,7 +998,9 @@
             "bridgeUnsupportedProto": "Hindi sinusuportahan ang {protocol} ng {app}",
             "bridgeSecretFull": "Ang mga kredensyal ay nababawi at muling ini-encrypt sa vault ng AeroFTP.",
             "bridgeSecretLimited": "Bahagi lamang ng kredensyal ang maaaring mabawi; maaaring kailanganin mong muling ipasok ang ilang sikreto.",
-            "bridgeSecretMetadata": "Metadata lamang ng koneksyon: nananatili ang mga sikreto sa keychain/agent ng {app} at dapat muling ipasok."
+            "bridgeSecretMetadata": "Metadata lamang ng koneksyon: nananatili ang mga sikreto sa keychain/agent ng {app} at dapat muling ipasok.",
+            "autoStartTransfers": "Awtomatikong simulan ang mga paglilipat",
+            "autoStartTransfersHelp": "Kapag naka-on, kaagad nagsisimula ang mga drag-and-drop at click na paglilipat. Kapag naka-off, ipinaparada ang mga ito sa Transfer Queue bilang staged para magawa mong gupitin ang mga puno ng folder at muling ayusin bago pindutin ang Start."
         },
         "devtools": {
             "title": "AeroTools",

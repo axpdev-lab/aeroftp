@@ -998,7 +998,9 @@
             "bridgeUnsupportedProto": "{app}(e)k ez du {protocol} onartzen",
             "bridgeSecretFull": "Kredentzialak berreskuratu eta berriro zifratzen dira AeroFTP vault-ean.",
             "bridgeSecretLimited": "Kredentzialen zati bat baino ezin da berreskuratu; baliteke isilpeko datu batzuk berriro sartu behar izatea.",
-            "bridgeSecretMetadata": "Konexioaren metadatuak soilik: isilpeko datuak {app}(r)en gako-sortan/agentean geratzen dira eta berriro sartu behar dira."
+            "bridgeSecretMetadata": "Konexioaren metadatuak soilik: isilpeko datuak {app}(r)en gako-sortan/agentean geratzen dira eta berriro sartu behar dira.",
+            "autoStartTransfers": "Hasiera automatikoa transferentziei",
+            "autoStartTransfersHelp": "Aktibatuta dagoenean, arrastatu eta jaregin eta klik transferentziak berehala hasten dira. Desaktibatuta dagoenean, Transfer Queue-n aparkatzen dira staged gisa, karpeta zuhaitzak inausi eta berrordenatu ahal izateko Start sakatu aurretik."
         },
         "devtools": {
             "title": "AeroTools",

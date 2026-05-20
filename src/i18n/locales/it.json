@@ -1290,7 +1290,9 @@
             "bridgeUnsupportedProto": "{protocol} non supportato da {app}",
             "bridgeSecretFull": "Le credenziali vengono recuperate e ricifrate nel vault di AeroFTP.",
             "bridgeSecretLimited": "Solo parte delle credenziali puo' essere recuperata; potresti dover reinserire alcuni segreti.",
-            "bridgeSecretMetadata": "Solo metadati di connessione: i segreti restano nel portachiavi/agent di {app} e vanno reinseriti."
+            "bridgeSecretMetadata": "Solo metadati di connessione: i segreti restano nel portachiavi/agent di {app} e vanno reinseriti.",
+            "autoStartTransfers": "Avvio automatico dei trasferimenti",
+            "autoStartTransfersHelp": "Se attivo, i trasferimenti via drag-and-drop e clic partono subito. Se disattivo, vengono parcheggiati nella Transfer Queue come staged, cosi' puoi sfoltire gli alberi di cartelle e riordinare prima di premere Start."
         },
         "appearance": {
             "patternCross": "Croce",

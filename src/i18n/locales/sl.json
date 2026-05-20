@@ -998,7 +998,9 @@
             "bridgeUnsupportedProto": "{protocol} ni podprt v {app}",
             "bridgeSecretFull": "Poverilnice se obnovijo in znova šifrirajo v trezor AeroFTP.",
             "bridgeSecretLimited": "Obnoviti je mogoče le del poverilnic; nekatere skrivnosti boste morda morali znova vnesti.",
-            "bridgeSecretMetadata": "Samo metapodatki povezave: skrivnosti ostanejo v zbirki ključev/agentu {app} in jih je treba znova vnesti."
+            "bridgeSecretMetadata": "Samo metapodatki povezave: skrivnosti ostanejo v zbirki ključev/agentu {app} in jih je treba znova vnesti.",
+            "autoStartTransfers": "Samodejni zacetek prenosov",
+            "autoStartTransfersHelp": "Ko je vklopljeno, se prenosi z vleci-in-spusti in s klikom zacnejo takoj. Ko je izklopljeno, so parkirani v Transfer Queue kot staged, da lahko obrezes drevesa map in preuredis vrstni red, preden pritisnes Start."
         },
         "devtools": {
             "title": "AeroTools",

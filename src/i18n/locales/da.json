@@ -998,7 +998,9 @@
             "bridgeUnsupportedProto": "{protocol} understøttes ikke af {app}",
             "bridgeSecretFull": "Loginoplysningerne gendannes og krypteres på ny i AeroFTP-vaulten.",
             "bridgeSecretLimited": "Kun en del af loginoplysningerne kan gendannes; du skal muligvis indtaste nogle hemmeligheder igen.",
-            "bridgeSecretMetadata": "Kun forbindelsesmetadata: hemmelighederne forbliver i {app}'s nøglering/agent og skal indtastes igen."
+            "bridgeSecretMetadata": "Kun forbindelsesmetadata: hemmelighederne forbliver i {app}'s nøglering/agent og skal indtastes igen.",
+            "autoStartTransfers": "Start overforsler automatisk",
+            "autoStartTransfersHelp": "Hvis tilvalgt, starter drag-and-drop- og klik-overforsler med det samme. Hvis fravalgt, parkeres de i Transfer Queue som staged, sa du kan beskaere mappetraeer og omarrangere, for du trykker Start."
         },
         "devtools": {
             "title": "AeroTools",

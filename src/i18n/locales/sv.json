@@ -998,7 +998,9 @@
             "bridgeUnsupportedProto": "{protocol} stöds inte av {app}",
             "bridgeSecretFull": "Autentiseringsuppgifterna återställs och krypteras om till AeroFTP-valvet.",
             "bridgeSecretLimited": "Endast en del av autentiseringsuppgifterna kan återställas; du kan behöva ange vissa hemligheter på nytt.",
-            "bridgeSecretMetadata": "Endast anslutningsmetadata: hemligheterna stannar i {app}:s nyckelring/agent och måste anges på nytt."
+            "bridgeSecretMetadata": "Endast anslutningsmetadata: hemligheterna stannar i {app}:s nyckelring/agent och måste anges på nytt.",
+            "autoStartTransfers": "Starta overforingar automatiskt",
+            "autoStartTransfersHelp": "Nar pa startas dra-och-slapp- och klick-overforingar omedelbart. Nar av parkeras de i Transfer Queue som staged sa att du kan beskara mapptrad och omordna innan du trycker Start."
         },
         "devtools": {
             "title": "AeroTools",

@@ -998,7 +998,9 @@
             "bridgeUnsupportedProto": "{protocol} n'est pas pris en charge par {app}",
             "bridgeSecretFull": "Les identifiants sont récupérés et rechiffrés dans le vault d'AeroFTP.",
             "bridgeSecretLimited": "Seule une partie des identifiants peut être récupérée ; vous devrez peut-être ressaisir certains secrets.",
-            "bridgeSecretMetadata": "Métadonnées de connexion uniquement : les secrets restent dans le trousseau/agent de {app} et doivent être ressaisis."
+            "bridgeSecretMetadata": "Métadonnées de connexion uniquement : les secrets restent dans le trousseau/agent de {app} et doivent être ressaisis.",
+            "autoStartTransfers": "Demarrage automatique des transferts",
+            "autoStartTransfersHelp": "Active, les transferts par glisser-deposer ou clic demarrent immediatement. Desactive, ils sont parques dans la Transfer Queue comme staged, ce qui permet d'elaguer les arborescences de dossiers et de reordonner avant d'appuyer sur Start."
         },
         "devtools": {
             "title": "AeroTools",

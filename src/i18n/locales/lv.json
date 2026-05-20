@@ -998,7 +998,9 @@
             "bridgeUnsupportedProto": "{app} neatbalsta {protocol}",
             "bridgeSecretFull": "Akreditācijas dati tiek atjaunoti un atkārtoti šifrēti AeroFTP vault.",
             "bridgeSecretLimited": "Var atjaunot tikai daļu no akreditācijas datiem; iespējams, dažas slepenās vērtības būs jāievada atkārtoti.",
-            "bridgeSecretMetadata": "Tikai savienojuma metadati: slepenās vērtības paliek {app} atslēgu saišķī/aģentā un ir jāievada atkārtoti."
+            "bridgeSecretMetadata": "Tikai savienojuma metadati: slepenās vērtības paliek {app} atslēgu saišķī/aģentā un ir jāievada atkārtoti.",
+            "autoStartTransfers": "Parsutisanu automatiska sakums",
+            "autoStartTransfersHelp": "Kad ieslegts, vilksanas un nomesanas un klikskinasanas parsutisanas sakas nekavejoties. Kad izslegts, tas tiek novietotas Transfer Queue ka staged, lai tu varetu apgriezt mapju kokus un parkartot pirms nospiez Start."
         },
         "devtools": {
             "title": "AeroTools",

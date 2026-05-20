@@ -998,7 +998,9 @@
             "bridgeUnsupportedProto": "{protocol} er ekki stutt af {app}",
             "bridgeSecretFull": "Auðkenni eru endurheimt og dulkóðuð aftur í AeroFTP vault.",
             "bridgeSecretLimited": "Aðeins hluta auðkennaefnisins er hægt að endurheimta; þú gætir þurft að slá inn aftur einhver leyndarmál.",
-            "bridgeSecretMetadata": "Aðeins lýsigögn tengingar: leyndarmál haldast í lyklakippu/umboði {app} og þarf að slá inn aftur."
+            "bridgeSecretMetadata": "Aðeins lýsigögn tengingar: leyndarmál haldast í lyklakippu/umboði {app} og þarf að slá inn aftur.",
+            "autoStartTransfers": "Sjalfvirkt upphaf flutninga",
+            "autoStartTransfersHelp": "Kveikt hefjast drag-and-drop og smella flutningar strax. Slokkt eru their lagdir i Transfer Queue sem staged, svo thu getir snyrt mopputre og endurrada adur en thu yttir a Start."
         },
         "devtools": {
             "title": "AeroTools",

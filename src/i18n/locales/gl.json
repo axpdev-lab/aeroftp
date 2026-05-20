@@ -998,7 +998,9 @@
             "bridgeUnsupportedProto": "{protocol} non é compatible con {app}",
             "bridgeSecretFull": "As credenciais recupéranse e vólvense cifrar no vault de AeroFTP.",
             "bridgeSecretLimited": "Só se pode recuperar parte das credenciais; pode que teñas que volver introducir algúns segredos.",
-            "bridgeSecretMetadata": "Só metadatos de conexión: os segredos permanecen no chaveiro/axente de {app} e hai que volver introducilos."
+            "bridgeSecretMetadata": "Só metadatos de conexión: os segredos permanecen no chaveiro/axente de {app} e hai que volver introducilos.",
+            "autoStartTransfers": "Inicio automatico de transferencias",
+            "autoStartTransfersHelp": "Cando esta activado, as transferencias por arrastrar e soltar e clic inicianse de inmediato. Cando esta desactivado, aparcanse na Transfer Queue como staged para que poidas podar arbores de cartafoles e reordenar antes de premer Start."
         },
         "devtools": {
             "title": "AeroTools",

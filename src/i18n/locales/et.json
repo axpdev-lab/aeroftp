@@ -998,7 +998,9 @@
             "bridgeUnsupportedProto": "{app} ei toeta protokolli {protocol}",
             "bridgeSecretFull": "Mandaadid taastatakse ja krüptitakse uuesti AeroFTP hoidlasse.",
             "bridgeSecretLimited": "Mandaatidest saab taastada ainult osa; mõned saladused tuleb võib-olla uuesti sisestada.",
-            "bridgeSecretMetadata": "Ainult ühenduse metaandmed: saladused jäävad rakenduse {app} võtmehoidlasse/agenti ja tuleb uuesti sisestada."
+            "bridgeSecretMetadata": "Ainult ühenduse metaandmed: saladused jäävad rakenduse {app} võtmehoidlasse/agenti ja tuleb uuesti sisestada.",
+            "autoStartTransfers": "Ulekannete automaatne kaivitamine",
+            "autoStartTransfersHelp": "Sisselulitatuna kaivituvad lohista-ja-aseta ja kliki ulekanded kohe. Valjalulitatuna pargitakse need Transfer Queue'sse staged olekuna, et saaksid kaustapuid kuljendada ja umber jarjestada enne Start vajutamist."
         },
         "devtools": {
             "title": "AeroTools",

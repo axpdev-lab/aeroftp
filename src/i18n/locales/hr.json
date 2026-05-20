@@ -998,7 +998,9 @@
             "bridgeUnsupportedProto": "{protocol} ne podržava {app}",
             "bridgeSecretFull": "Vjerodajnice se vraćaju i ponovno šifriraju u AeroFTP vault.",
             "bridgeSecretLimited": "Samo se dio vjerodajnica može vratiti; možda ćete morati ponovno unijeti neke tajne.",
-            "bridgeSecretMetadata": "Samo metapodaci veze: tajne ostaju u privjesku ključeva/agentu aplikacije {app} i moraju se ponovno unijeti."
+            "bridgeSecretMetadata": "Samo metapodaci veze: tajne ostaju u privjesku ključeva/agentu aplikacije {app} i moraju se ponovno unijeti.",
+            "autoStartTransfers": "Automatsko pokretanje prijenosa",
+            "autoStartTransfersHelp": "Kad je ukljuceno, prijenosi povucenjem-i-ispustanjem i klikom krecu odmah. Kad je iskljuceno, parkiraju se u Transfer Queue kao staged, kako bi mogao prorijediti stabla mapa i preraspodijeliti prije pritiska na Start."
         },
         "devtools": {
             "title": "AeroTools",

@@ -998,7 +998,9 @@
             "bridgeUnsupportedProto": "{protocol} tidak disokong oleh {app}",
             "bridgeSecretFull": "Kelayakan dipulihkan dan disulitkan semula ke dalam vault AeroFTP.",
             "bridgeSecretLimited": "Hanya sebahagian bahan kelayakan boleh dipulihkan; anda mungkin perlu memasukkan semula beberapa rahsia.",
-            "bridgeSecretMetadata": "Metadata sambungan sahaja: rahsia kekal dalam keychain/ejen {app} dan mesti dimasukkan semula."
+            "bridgeSecretMetadata": "Metadata sambungan sahaja: rahsia kekal dalam keychain/ejen {app} dan mesti dimasukkan semula.",
+            "autoStartTransfers": "Mulakan pemindahan secara automatik",
+            "autoStartTransfersHelp": "Apabila aktif, pemindahan drag-and-drop dan klik dimulakan serta-merta. Apabila tidak aktif, ia diletakkan dalam Transfer Queue sebagai staged supaya kamu boleh mencantas pokok folder dan menyusun semula sebelum menekan Start."
         },
         "devtools": {
             "title": "AeroTools",

@@ -998,7 +998,9 @@
             "bridgeUnsupportedProto": "{protocol} wordt niet ondersteund door {app}",
             "bridgeSecretFull": "Inloggegevens worden hersteld en opnieuw versleuteld in de AeroFTP vault.",
             "bridgeSecretLimited": "Slechts een deel van de inloggegevens kan worden hersteld; mogelijk moet u sommige geheimen opnieuw invoeren.",
-            "bridgeSecretMetadata": "Alleen verbindingsmetadata: geheimen blijven in de sleutelbos/agent van {app} en moeten opnieuw worden ingevoerd."
+            "bridgeSecretMetadata": "Alleen verbindingsmetadata: geheimen blijven in de sleutelbos/agent van {app} en moeten opnieuw worden ingevoerd.",
+            "autoStartTransfers": "Overdrachten automatisch starten",
+            "autoStartTransfersHelp": "Indien aan, starten drag-and-drop- en klik-overdrachten direct. Indien uit, worden ze in de Transfer Queue als staged geparkeerd, zodat je mappenbomen kunt opschonen en herordenen voordat je op Start drukt."
         },
         "devtools": {
             "title": "AeroTools",
