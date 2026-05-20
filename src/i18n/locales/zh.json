@@ -3369,9 +3369,7 @@
             "activityLog": "活动日志",
             "detailedCards": "详细服务器卡片",
             "debugPanel": "Debug Panel",
-            "localSync": "本地同步...",
-            "comparePanels": "比较面板...",
-            "syncPresets": "同步预设..."
+            "aerofileSync": "AeroFile Sync..."
         },
         "activityPanel": {
             "awaitingCommands": "等待命令...",
@@ -4620,6 +4618,46 @@
             "nothingToDo": "同步预设",
             "allSkipped": "此预设没有可执行的条目。",
             "deletesDeferred": "同步预设"
+        },
+        "aerofileSync": {
+            "title": "AeroFile Sync",
+            "toolbarButton": "AeroFile Sync",
+            "tabCompare": "比较",
+            "tabPlan": "计划",
+            "tabSync": "同步",
+            "compareUnavailable": "打开第二个面板或远程连接以进行比较。",
+            "planUnavailable": "选择预设之前需要比较结果。请先打开比较选项卡。",
+            "totalEntries": "条目总数",
+            "differences": "差异",
+            "totalBytes": "总字节数",
+            "mirrorHint": "镜像按钮将匹配的条目放入统一的传输规划器中以供审查。",
+            "mirrorLeftToRight": "从左到右镜像",
+            "mirrorRightToLeft": "从右到左镜像",
+            "directionLeftRight": "从左到右",
+            "directionRightLeft": "从右到左",
+            "conflictPolicy": "冲突策略",
+            "ignoredForMirror": "镜像时忽略",
+            "versionedBackup": "版本化备份",
+            "enable": "启用",
+            "versionedBackupHint": "在每次覆盖或删除之前，将目标副本捕获到此目录中。",
+            "actionable": "可执行",
+            "skipped": "已跳过",
+            "transfer": "传输",
+            "destructive": "破坏性",
+            "bucket": "类别",
+            "count": "计数",
+            "action": "操作",
+            "delete": "删除",
+            "overwrite": "覆盖",
+            "conflicts": "冲突",
+            "destructiveWarning": "此预设将删除或覆盖较新的文件。",
+            "confirmDestructive": "我已查看破坏性操作并希望继续。",
+            "executeHint": "执行将选择项放入队列并通过统一的传输规划器分发。",
+            "executeUnavailable": "此对类型不支持执行。",
+            "executeNothing": "无事可做或执行路径不可用",
+            "executeConfirm": "确认破坏性操作以启用执行",
+            "executePreset": "执行预设",
+            "execute": "执行"
         }
     }
 }

@@ -3369,9 +3369,7 @@
             "activityLog": "गतिविधि लॉग",
             "detailedCards": "विस्तृत सर्वर कार्ड",
             "debugPanel": "Debug Panel",
-            "localSync": "स्थानीय सिंक...",
-            "comparePanels": "पैनल तुलना करें...",
-            "syncPresets": "सिंक प्रीसेट..."
+            "aerofileSync": "AeroFile Sync..."
         },
         "activityPanel": {
             "awaitingCommands": "कमांड की प्रतीक्षा में...",
@@ -4620,6 +4618,46 @@
             "nothingToDo": "सिंक प्रीसेट",
             "allSkipped": "इस प्रीसेट के लिए कोई कार्रवाई योग्य प्रविष्टि नहीं है।",
             "deletesDeferred": "सिंक प्रीसेट"
+        },
+        "aerofileSync": {
+            "title": "AeroFile Sync",
+            "toolbarButton": "AeroFile Sync",
+            "tabCompare": "तुलना करें",
+            "tabPlan": "योजना",
+            "tabSync": "सिंक",
+            "compareUnavailable": "तुलना करने के लिए दूसरा पैनल या रिमोट कनेक्शन खोलें।",
+            "planUnavailable": "प्रीसेट चुनने से पहले तुलना परिणाम आवश्यक है। पहले तुलना टैब खोलें।",
+            "totalEntries": "कुल प्रविष्टियाँ",
+            "differences": "अंतर",
+            "totalBytes": "कुल बाइट्स",
+            "mirrorHint": "मिरर बटन समीक्षा के लिए मेल खाने वाली प्रविष्टियों को एकीकृत ट्रांसफर प्लानर में रखते हैं।",
+            "mirrorLeftToRight": "बाएं से दाएं मिरर करें",
+            "mirrorRightToLeft": "दाएं से बाएं मिरर करें",
+            "directionLeftRight": "बाएं से दाएं",
+            "directionRightLeft": "दाएं से बाएं",
+            "conflictPolicy": "संघर्ष नीति",
+            "ignoredForMirror": "मिरर के लिए अनदेखा",
+            "versionedBackup": "संस्करण बैकअप",
+            "enable": "सक्षम करें",
+            "versionedBackupHint": "प्रत्येक ओवरराइट या हटाने से पहले इस निर्देशिका में गंतव्य प्रति कैप्चर करता है।",
+            "actionable": "कार्रवाई योग्य",
+            "skipped": "छोड़ दिया गया",
+            "transfer": "ट्रांसफर",
+            "destructive": "विनाशकारी",
+            "bucket": "श्रेणी",
+            "count": "गणना",
+            "action": "कार्रवाई",
+            "delete": "हटाएं",
+            "overwrite": "अधिलेखित करें",
+            "conflicts": "संघर्ष",
+            "destructiveWarning": "यह प्रीसेट नए फ़ाइलों को हटा देगा या अधिलेखित कर देगा।",
+            "confirmDestructive": "मैंने विनाशकारी कार्रवाइयों की समीक्षा कर ली है और आगे बढ़ना चाहता हूं।",
+            "executeHint": "एक्ज़ीक्यूट चयन को कतार में रखता है और एकीकृत ट्रांसफर प्लानर के माध्यम से भेजता है।",
+            "executeUnavailable": "इस जोड़ी प्रकार के लिए निष्पादन उपलब्ध नहीं है।",
+            "executeNothing": "कुछ नहीं करना है या निष्पादन पथ उपलब्ध नहीं है",
+            "executeConfirm": "एक्ज़ीक्यूट सक्षम करने के लिए विनाशकारी कार्रवाइयों की पुष्टि करें",
+            "executePreset": "प्रीसेट निष्पादित करें",
+            "execute": "निष्पादित करें"
         }
     }
 }

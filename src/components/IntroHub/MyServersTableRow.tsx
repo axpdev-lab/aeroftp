@@ -55,6 +55,8 @@ interface MyServersTableRowProps {
     density?: MyServersDensity;
     /** Resolve effective alignment per column (user override or default). */
     resolveAlign?: (id: MyServersTableColId) => TableColAlign;
+    /** True when this profile has an open session: pulses the health radial. */
+    hasActiveSession?: boolean;
 }
 
 export const MyServersTableRow = React.memo(function MyServersTableRow({
@@ -92,6 +94,7 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
     thresholds = DEFAULT_THRESHOLDS,
     density = 'compact',
     resolveAlign,
+    hasActiveSession = false,
 }: MyServersTableRowProps) {
     const t = useTranslation();
     const isCompact = density === 'compact';
@@ -353,8 +356,9 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
                                 status={healthStatus || 'unknown'}
                                 latencyMs={healthLatencyMs}
                                 size={16}
-                                title={radialTitle}
+                                title={hasActiveSession ? `${radialTitle} (active session)` : radialTitle}
                                 onRetry={handleRetry}
+                                pulsing={hasActiveSession}
                             />
                         </span>
                     </td>

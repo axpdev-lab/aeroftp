@@ -3369,9 +3369,7 @@
             "activityLog": "Journal d'activité",
             "detailedCards": "Cartes serveur détaillées",
             "debugPanel": "Debug Panel",
-            "localSync": "Synchronisation locale...",
-            "comparePanels": "Comparer les panneaux...",
-            "syncPresets": "Préréglages de synchronisation..."
+            "aerofileSync": "AeroFile Sync..."
         },
         "activityPanel": {
             "awaitingCommands": "En attente de commandes...",
@@ -4620,6 +4618,46 @@
             "nothingToDo": "Préréglages de synchronisation",
             "allSkipped": "Aucune entrée exploitable pour ce préréglage.",
             "deletesDeferred": "Préréglages de synchronisation"
+        },
+        "aerofileSync": {
+            "title": "AeroFile Sync",
+            "toolbarButton": "AeroFile Sync",
+            "tabCompare": "Comparer",
+            "tabPlan": "Plan",
+            "tabSync": "Synchroniser",
+            "compareUnavailable": "Ouvrez un second panneau ou une connexion distante pour comparer.",
+            "planUnavailable": "Un résultat de comparaison est requis avant de choisir un preset. Ouvrez d'abord l'onglet Comparer.",
+            "totalEntries": "Entrées totales",
+            "differences": "Différences",
+            "totalBytes": "Octets totaux",
+            "mirrorHint": "Les boutons miroir placent les entrées correspondantes dans le planificateur de transfert unifié pour révision.",
+            "mirrorLeftToRight": "Miroir de gauche à droite",
+            "mirrorRightToLeft": "Miroir de droite à gauche",
+            "directionLeftRight": "Gauche vers Droite",
+            "directionRightLeft": "Droite vers Gauche",
+            "conflictPolicy": "Politique de conflit",
+            "ignoredForMirror": "IGNORÉ POUR MIROIR",
+            "versionedBackup": "Sauvegarde versionnée",
+            "enable": "Activer",
+            "versionedBackupHint": "Capture la copie de destination dans ce répertoire avant chaque écrasement ou suppression.",
+            "actionable": "Actionnable",
+            "skipped": "Ignorés",
+            "transfer": "Transfert",
+            "destructive": "Destructif",
+            "bucket": "Catégorie",
+            "count": "Compte",
+            "action": "Action",
+            "delete": "supprimer",
+            "overwrite": "écraser",
+            "conflicts": "conflit",
+            "destructiveWarning": "Ce preset supprimera ou écrasera des fichiers plus récents.",
+            "confirmDestructive": "J'ai examiné les actions destructives et souhaite continuer.",
+            "executeHint": "Exécuter place la sélection en file et la dispatche via le planificateur de transfert unifié.",
+            "executeUnavailable": "L'exécution n'est pas disponible pour ce type de paire.",
+            "executeNothing": "Rien à faire ou chemin d'exécution non disponible",
+            "executeConfirm": "Confirmez les actions destructives pour activer Exécuter",
+            "executePreset": "Exécuter le preset",
+            "execute": "Exécuter"
         }
     }
 }

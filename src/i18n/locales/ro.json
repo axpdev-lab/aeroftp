@@ -3369,9 +3369,7 @@
             "activityLog": "Jurnal activitate",
             "detailedCards": "Carduri server detaliate",
             "debugPanel": "Debug Panel",
-            "localSync": "Sincronizare locală...",
-            "comparePanels": "Compară panourile...",
-            "syncPresets": "Presetări de sincronizare..."
+            "aerofileSync": "AeroFile Sync..."
         },
         "activityPanel": {
             "awaitingCommands": "Se asteapta comenzi...",
@@ -4620,6 +4618,46 @@
             "nothingToDo": "Presetări de sincronizare",
             "allSkipped": "Nu există intrări executabile pentru această presetare.",
             "deletesDeferred": "Presetări de sincronizare"
+        },
+        "aerofileSync": {
+            "title": "AeroFile Sync",
+            "toolbarButton": "AeroFile Sync",
+            "tabCompare": "Compară",
+            "tabPlan": "Plan",
+            "tabSync": "Sincronizează",
+            "compareUnavailable": "Deschide un al doilea panou sau o conexiune la distanță pentru a compara.",
+            "planUnavailable": "Este necesar un rezultat de comparare înainte de a alege o presetare. Deschide mai întâi fila Compară.",
+            "totalEntries": "Total intrări",
+            "differences": "Diferențe",
+            "totalBytes": "Total octeți",
+            "mirrorHint": "Butoanele de oglindire pun în coadă intrările corespunzătoare în planificatorul unificat de transfer pentru revizuire.",
+            "mirrorLeftToRight": "Oglindește de la stânga la dreapta",
+            "mirrorRightToLeft": "Oglindește de la dreapta la stânga",
+            "directionLeftRight": "De la stânga la dreapta",
+            "directionRightLeft": "De la dreapta la stânga",
+            "conflictPolicy": "Politica conflictelor",
+            "ignoredForMirror": "IGNORAT PENTRU OGLINDIRE",
+            "versionedBackup": "Backup cu versiuni",
+            "enable": "Activează",
+            "versionedBackupHint": "Capturează copia destinației în acest director înainte de fiecare suprascriere sau ștergere.",
+            "actionable": "De executat",
+            "skipped": "Omise",
+            "transfer": "Transfer",
+            "destructive": "Distructiv",
+            "bucket": "Categorie",
+            "count": "Număr",
+            "action": "Acțiune",
+            "delete": "șterge",
+            "overwrite": "suprascrie",
+            "conflicts": "conflict",
+            "destructiveWarning": "Această presetare va șterge sau suprascrie fișiere mai noi.",
+            "confirmDestructive": "Am revizuit acțiunile distructive și doresc să continui.",
+            "executeHint": "Execută pune selecția în coadă și o trimite prin planificatorul unificat de transfer.",
+            "executeUnavailable": "Execuția nu este disponibilă pentru acest tip de pereche.",
+            "executeNothing": "Nimic de făcut sau calea de execuție indisponibilă",
+            "executeConfirm": "Confirmă acțiunile distructive pentru a activa Execută",
+            "executePreset": "Execută presetarea",
+            "execute": "Execută"
         }
     }
 }

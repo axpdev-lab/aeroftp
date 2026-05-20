@@ -3369,9 +3369,7 @@
             "activityLog": "활동 로그",
             "detailedCards": "상세 서버 카드",
             "debugPanel": "Debug Panel",
-            "localSync": "로컬 동기화...",
-            "comparePanels": "패널 비교...",
-            "syncPresets": "동기화 프리셋..."
+            "aerofileSync": "AeroFile Sync..."
         },
         "activityPanel": {
             "awaitingCommands": "명령 대기 중...",
@@ -4620,6 +4618,46 @@
             "nothingToDo": "동기화 프리셋",
             "allSkipped": "이 프리셋에 대해 실행 가능한 항목이 없습니다.",
             "deletesDeferred": "동기화 프리셋"
+        },
+        "aerofileSync": {
+            "title": "AeroFile Sync",
+            "toolbarButton": "AeroFile Sync",
+            "tabCompare": "비교",
+            "tabPlan": "계획",
+            "tabSync": "동기화",
+            "compareUnavailable": "비교하려면 두 번째 패널 또는 원격 연결을 여세요.",
+            "planUnavailable": "프리셋을 선택하기 전에 비교 결과가 필요합니다. 먼저 비교 탭을 여세요.",
+            "totalEntries": "총 항목",
+            "differences": "차이점",
+            "totalBytes": "총 바이트",
+            "mirrorHint": "미러 버튼은 일치하는 항목을 통합 전송 플래너에 준비하여 검토할 수 있게 합니다.",
+            "mirrorLeftToRight": "왼쪽에서 오른쪽으로 미러",
+            "mirrorRightToLeft": "오른쪽에서 왼쪽으로 미러",
+            "directionLeftRight": "왼쪽에서 오른쪽",
+            "directionRightLeft": "오른쪽에서 왼쪽",
+            "conflictPolicy": "충돌 정책",
+            "ignoredForMirror": "미러에서 무시됨",
+            "versionedBackup": "버전 백업",
+            "enable": "활성화",
+            "versionedBackupHint": "각 덮어쓰기 또는 삭제 전에 이 디렉터리에 대상 사본을 캡처합니다.",
+            "actionable": "실행 가능",
+            "skipped": "건너뜀",
+            "transfer": "전송",
+            "destructive": "파괴적",
+            "bucket": "범주",
+            "count": "수",
+            "action": "동작",
+            "delete": "삭제",
+            "overwrite": "덮어쓰기",
+            "conflicts": "충돌",
+            "destructiveWarning": "이 프리셋은 더 새로운 파일을 삭제하거나 덮어씁니다.",
+            "confirmDestructive": "파괴적 동작을 검토했으며 진행하고 싶습니다.",
+            "executeHint": "실행은 선택을 준비하고 통합 전송 플래너를 통해 디스패치합니다.",
+            "executeUnavailable": "이 쌍 종류에는 실행을 사용할 수 없습니다.",
+            "executeNothing": "수행할 작업이 없거나 실행 경로를 사용할 수 없습니다",
+            "executeConfirm": "실행을 활성화하려면 파괴적 동작을 확인하세요",
+            "executePreset": "프리셋 실행",
+            "execute": "실행"
         }
     }
 }

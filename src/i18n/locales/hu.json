@@ -3369,9 +3369,7 @@
             "activityLog": "Tevékenységnapló",
             "detailedCards": "Részletes szerverkártyák",
             "debugPanel": "Debug Panel",
-            "localSync": "Helyi szinkronizálás...",
-            "comparePanels": "Panelek összehasonlítása...",
-            "syncPresets": "Szinkronizációs beállítások..."
+            "aerofileSync": "AeroFile Sync..."
         },
         "activityPanel": {
             "awaitingCommands": "Parancsokra vár...",
@@ -4620,6 +4618,46 @@
             "nothingToDo": "Szinkronizációs beállítások",
             "allSkipped": "Nincs végrehajtható bejegyzés ehhez a beállításhoz.",
             "deletesDeferred": "Szinkronizációs beállítások"
+        },
+        "aerofileSync": {
+            "title": "AeroFile Sync",
+            "toolbarButton": "AeroFile Sync",
+            "tabCompare": "Osszehasonlitas",
+            "tabPlan": "Terv",
+            "tabSync": "Szinkronizalas",
+            "compareUnavailable": "Nyiss meg egy masodik panelt vagy egy tavoli kapcsolatot az osszehasonlitashoz.",
+            "planUnavailable": "Egy osszehasonlitasi eredmenyre van szukseg a preset kivalasztasa elott. Eloszor nyisd meg az Osszehasonlitas fulet.",
+            "totalEntries": "Osszes bejegyzes",
+            "differences": "Kulonbsegek",
+            "totalBytes": "Osszes byte",
+            "mirrorHint": "A tukrozes gombok elokeszitik a megfelelo bejegyzeseket az egyesitett atviteli tervezoben atvizsgalasra.",
+            "mirrorLeftToRight": "Tukrozes balrol jobbra",
+            "mirrorRightToLeft": "Tukrozes jobbrol balra",
+            "directionLeftRight": "Balrol jobbra",
+            "directionRightLeft": "Jobbrol balra",
+            "conflictPolicy": "Utkozesi szabaly",
+            "ignoredForMirror": "TUKROZESBOL KIHAGYVA",
+            "versionedBackup": "Verziozott biztonsagi mentes",
+            "enable": "Engedelyezes",
+            "versionedBackupHint": "Mentsd a celpeldanyt ebbe a konyvtarba minden felulirasi vagy torlesi muvelet elott.",
+            "actionable": "Vegrehajthato",
+            "skipped": "Kihagyva",
+            "transfer": "Atvitel",
+            "destructive": "Romboló",
+            "bucket": "Kategoria",
+            "count": "Darab",
+            "action": "Muvelet",
+            "delete": "torles",
+            "overwrite": "felulirás",
+            "conflicts": "utkozes",
+            "destructiveWarning": "Ez a preset ujabb fajlokat fog torolni vagy felulirni.",
+            "confirmDestructive": "Atneztem a romboló muveleteket es folytatni szeretnem.",
+            "executeHint": "A Vegrehajtas elokeszitti a kivalasztast es az egyesitett atviteli tervezon keresztul kuldi.",
+            "executeUnavailable": "A vegrehajtas nem erheto el ehhez a parositashoz.",
+            "executeNothing": "Nincs teendo vagy a vegrehajtasi ut nem erheto el",
+            "executeConfirm": "Erositsd meg a romboló muveleteket a Vegrehajtas engedelyezesehez",
+            "executePreset": "Preset vegrehajtasa",
+            "execute": "Vegrehajtas"
         }
     }
 }

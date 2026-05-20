@@ -3369,9 +3369,7 @@
             "activityLog": "Registro de actividad",
             "detailedCards": "Tarjetas de servidor detalladas",
             "debugPanel": "Debug Panel",
-            "localSync": "Sincronización local...",
-            "comparePanels": "Comparar paneles...",
-            "syncPresets": "Preajustes de sincronización..."
+            "aerofileSync": "AeroFile Sync..."
         },
         "activityPanel": {
             "awaitingCommands": "Esperando comandos...",
@@ -4620,6 +4618,46 @@
             "nothingToDo": "Preajustes de sincronización",
             "allSkipped": "No hay entradas accionables para este preajuste.",
             "deletesDeferred": "Preajustes de sincronización"
+        },
+        "aerofileSync": {
+            "title": "AeroFile Sync",
+            "toolbarButton": "AeroFile Sync",
+            "tabCompare": "Comparar",
+            "tabPlan": "Plan",
+            "tabSync": "Sincronizar",
+            "compareUnavailable": "Abre un segundo panel o una conexión remota para comparar.",
+            "planUnavailable": "Se requiere un resultado de comparación antes de elegir un preset. Abre primero la pestaña Comparar.",
+            "totalEntries": "Entradas totales",
+            "differences": "Diferencias",
+            "totalBytes": "Bytes totales",
+            "mirrorHint": "Los botones de mirror encolan las entradas coincidentes en el planificador de transferencias unificado para su revisión.",
+            "mirrorLeftToRight": "Reflejar de izquierda a derecha",
+            "mirrorRightToLeft": "Reflejar de derecha a izquierda",
+            "directionLeftRight": "Izquierda a Derecha",
+            "directionRightLeft": "Derecha a Izquierda",
+            "conflictPolicy": "Política de conflictos",
+            "ignoredForMirror": "IGNORADO PARA MIRROR",
+            "versionedBackup": "Copia de seguridad versionada",
+            "enable": "Habilitar",
+            "versionedBackupHint": "Captura la copia de destino en este directorio antes de cada sobrescritura o eliminación.",
+            "actionable": "Accionable",
+            "skipped": "Omitidos",
+            "transfer": "Transferencia",
+            "destructive": "Destructivo",
+            "bucket": "Categoría",
+            "count": "Recuento",
+            "action": "Acción",
+            "delete": "eliminar",
+            "overwrite": "sobrescribir",
+            "conflicts": "conflicto",
+            "destructiveWarning": "Este preset eliminará o sobrescribirá archivos más recientes.",
+            "confirmDestructive": "He revisado las acciones destructivas y deseo continuar.",
+            "executeHint": "Ejecutar encola la selección y la despacha mediante el planificador de transferencias unificado.",
+            "executeUnavailable": "La ejecución no está disponible para este tipo de par.",
+            "executeNothing": "Nada que hacer o ruta de ejecución no disponible",
+            "executeConfirm": "Confirma las acciones destructivas para habilitar Ejecutar",
+            "executePreset": "Ejecutar preset",
+            "execute": "Ejecutar"
         }
     }
 }

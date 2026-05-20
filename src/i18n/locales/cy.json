@@ -3369,9 +3369,7 @@
             "activityLog": "Log Gweithgaredd",
             "detailedCards": "Cardiau gweinydd manwl",
             "debugPanel": "Debug Panel",
-            "localSync": "Cydweddu lleol...",
-            "comparePanels": "Cymharu Paneli...",
-            "syncPresets": "Rhag-osodiadau Cysoni..."
+            "aerofileSync": "AeroFile Sync..."
         },
         "activityPanel": {
             "awaitingCommands": "Yn aros am orchmynion...",
@@ -4639,6 +4637,46 @@
             "nothingToDo": "Rhag-osodiadau cysoni",
             "allSkipped": "Dim cofnodion gweithredadwy ar gyfer y rhag-osodiad hwn.",
             "deletesDeferred": "Rhag-osodiadau cysoni"
+        },
+        "aerofileSync": {
+            "title": "AeroFile Sync",
+            "toolbarButton": "AeroFile Sync",
+            "tabCompare": "Cymharu",
+            "tabPlan": "Cynllun",
+            "tabSync": "Cysoni",
+            "compareUnavailable": "Agor ail banel neu gysylltiad pell i gymharu.",
+            "planUnavailable": "Mae angen canlyniad cymharu cyn dewis rhagosod. Agor y tab Cymharu yn gyntaf.",
+            "totalEntries": "Cyfanswm cofnodion",
+            "differences": "Gwahaniaethau",
+            "totalBytes": "Cyfanswm beit",
+            "mirrorHint": "Mae botymau drych yn ciwio'r cofnodion cyfatebol yn y cynlluniwr trosglwyddo unedig i'w hadolygu.",
+            "mirrorLeftToRight": "Drych o'r chwith i'r dde",
+            "mirrorRightToLeft": "Drych o'r dde i'r chwith",
+            "directionLeftRight": "Chwith i'r Dde",
+            "directionRightLeft": "Dde i'r Chwith",
+            "conflictPolicy": "Polisi gwrthdaro",
+            "ignoredForMirror": "ANWYBYDDIR AR GYFER DRYCH",
+            "versionedBackup": "Wrth gefn fersiynol",
+            "enable": "Galluogi",
+            "versionedBackupHint": "Yn dal y copi cyrchfan o dan y cyfeiriadur hwn cyn pob trosysgrifo neu ddileu.",
+            "actionable": "Gweithredadwy",
+            "skipped": "Wedi'u hepgor",
+            "transfer": "Trosglwyddo",
+            "destructive": "Dinistriol",
+            "bucket": "Categori",
+            "count": "Cyfrif",
+            "action": "Gweithred",
+            "delete": "dileu",
+            "overwrite": "trosysgrifo",
+            "conflicts": "gwrthdaro",
+            "destructiveWarning": "Bydd y rhagosod hwn yn dileu neu'n trosysgrifo ffeiliau mwy newydd.",
+            "confirmDestructive": "Rwyf wedi adolygu'r gweithredoedd dinistriol ac am barhau.",
+            "executeHint": "Mae Gweithredu yn ciwio'r dewis ac yn ei anfon trwy'r cynlluniwr trosglwyddo unedig.",
+            "executeUnavailable": "Nid yw gweithredu ar gael ar gyfer y math hwn o bâr.",
+            "executeNothing": "Dim i'w wneud neu nid yw'r llwybr gweithredu ar gael",
+            "executeConfirm": "Cadarnhau'r gweithredoedd dinistriol i alluogi Gweithredu",
+            "executePreset": "Gweithredu rhagosod",
+            "execute": "Gweithredu"
         }
     }
 }

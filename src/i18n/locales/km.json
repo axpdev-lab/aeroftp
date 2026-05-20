@@ -3369,9 +3369,7 @@
             "activityLog": "កំណត់ហេតុសកម្មភាព",
             "detailedCards": "កាតម៉ាស៊ីនមេលម្អិត",
             "debugPanel": "Debug Panel",
-            "localSync": "ការធ្វើសមកាលកម្មក្នុងតំបន់...",
-            "comparePanels": "ប្រៀបធៀបផ្ទាំង...",
-            "syncPresets": "កំណត់ជាមុនការធ្វើសមកាលកម្ម..."
+            "aerofileSync": "AeroFile Sync..."
         },
         "activityPanel": {
             "awaitingCommands": "កំពុងរង់ចាំពាក្យបញ្ជា...",
@@ -4639,6 +4637,46 @@
             "nothingToDo": "កំណត់ជាមុនការធ្វើសមកាលកម្ម",
             "allSkipped": "គ្មានធាតុដែលអាចសម្រាប់ការកំណត់ជាមុននេះទេ។",
             "deletesDeferred": "កំណត់ជាមុនការធ្វើសមកាលកម្ម"
+        },
+        "aerofileSync": {
+            "title": "AeroFile Sync",
+            "toolbarButton": "AeroFile Sync",
+            "tabCompare": "ប្រៀបធៀប",
+            "tabPlan": "ផែនការ",
+            "tabSync": "ធ្វើសមកាលកម្ម",
+            "compareUnavailable": "បើកផ្ទាំងទីពីរ ឬការតភ្ជាប់ពីចម្ងាយដើម្បីប្រៀបធៀប។",
+            "planUnavailable": "ត្រូវការលទ្ធផលប្រៀបធៀបមុនពេលជ្រើសរើសប្រេសិត។ បើកផ្ទាំងប្រៀបធៀបជាមុនសិន។",
+            "totalEntries": "ធាតុសរុប",
+            "differences": "ភាពខុសគ្នា",
+            "totalBytes": "បៃសរុប",
+            "mirrorHint": "ប៊ូតុងកញ្ចក់រៀបចំធាតុដែលត្រូវគ្នាក្នុងផែនការផ្ទេររួមបញ្ចូលគ្នាសម្រាប់ការត្រួតពិនិត្យ។",
+            "mirrorLeftToRight": "កញ្ចក់ពីឆ្វេងទៅស្តាំ",
+            "mirrorRightToLeft": "កញ្ចក់ពីស្តាំទៅឆ្វេង",
+            "directionLeftRight": "ឆ្វេងទៅស្តាំ",
+            "directionRightLeft": "ស្តាំទៅឆ្វេង",
+            "conflictPolicy": "គោលការណ៍ជម្លោះ",
+            "ignoredForMirror": "មិនអើពើសម្រាប់កញ្ចក់",
+            "versionedBackup": "ការបម្រុងទុកមានកំណែ",
+            "enable": "បើក",
+            "versionedBackupHint": "ចាប់យកច្បាប់ចម្លងគោលដៅនៅក្នុងថតនេះមុនពេលសរសេរជាន់ ឬលុបនីមួយៗ។",
+            "actionable": "អាចអនុវត្តបាន",
+            "skipped": "បានរំលង",
+            "transfer": "ផ្ទេរ",
+            "destructive": "បំផ្លាញ",
+            "bucket": "ប្រភេទ",
+            "count": "ចំនួន",
+            "action": "សកម្មភាព",
+            "delete": "លុប",
+            "overwrite": "សរសេរជាន់",
+            "conflicts": "ជម្លោះ",
+            "destructiveWarning": "ប្រេសិតនេះនឹងលុប ឬសរសេរជាន់ឯកសារថ្មីៗ។",
+            "confirmDestructive": "ខ្ញុំបានពិនិត្យសកម្មភាពបំផ្លាញ ហើយចង់បន្ត។",
+            "executeHint": "អនុវត្តរៀបចំការជ្រើសរើស ហើយបញ្ជូនតាមរយៈផែនការផ្ទេររួមបញ្ចូលគ្នា។",
+            "executeUnavailable": "ការអនុវត្តមិនមានសម្រាប់ប្រភេទគូនេះទេ។",
+            "executeNothing": "គ្មានអ្វីត្រូវធ្វើ ឬផ្លូវអនុវត្តមិនមាន",
+            "executeConfirm": "បញ្ជាក់សកម្មភាពបំផ្លាញដើម្បីបើកអនុវត្ត",
+            "executePreset": "អនុវត្តប្រេសិត",
+            "execute": "អនុវត្ត"
         }
     }
 }

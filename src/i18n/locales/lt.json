@@ -3369,9 +3369,7 @@
             "activityLog": "Veiklos zurnalas",
             "detailedCards": "Išsamios serverių kortelės",
             "debugPanel": "Debug Panel",
-            "localSync": "Vietinė sinchronizacija...",
-            "comparePanels": "Palyginti skydelius...",
-            "syncPresets": "Sinchronizavimo išankstiniai nustatymai..."
+            "aerofileSync": "AeroFile Sync..."
         },
         "activityPanel": {
             "awaitingCommands": "Laukiama komandų...",
@@ -4620,6 +4618,46 @@
             "nothingToDo": "Sinchronizavimo išankstiniai nustatymai",
             "allSkipped": "Šiam išankstiniam nustatymui nėra vykdomų įrašų.",
             "deletesDeferred": "Sinchronizavimo išankstiniai nustatymai"
+        },
+        "aerofileSync": {
+            "title": "AeroFile Sync",
+            "toolbarButton": "AeroFile Sync",
+            "tabCompare": "Palyginti",
+            "tabPlan": "Planas",
+            "tabSync": "Sinchronizuoti",
+            "compareUnavailable": "Atidarykite antra skydeli arba nuotolini prisijungima palyginimui.",
+            "planUnavailable": "Pries pasirenkant isankstini nustatyma reikia palyginimo rezultato. Pirma atidarykite Palyginti kortele.",
+            "totalEntries": "Is viso irasu",
+            "differences": "Skirtumai",
+            "totalBytes": "Is viso baitu",
+            "mirrorHint": "Veidrodzio mygtukai paruosia atitinkamus irasus suvienyto perdavimo planavimo priemoneje perziurai.",
+            "mirrorLeftToRight": "Veidrodziuoti is kaires i desine",
+            "mirrorRightToLeft": "Veidrodziuoti is desines i kaire",
+            "directionLeftRight": "Is kaires i desine",
+            "directionRightLeft": "Is desines i kaire",
+            "conflictPolicy": "Konfliktu politika",
+            "ignoredForMirror": "IGNORUOJAMA VEIDRODZIUI",
+            "versionedBackup": "Versijuota atsargine kopija",
+            "enable": "Igalinti",
+            "versionedBackupHint": "Issaugokite tikslines kopijos sia direktorija pries kiekviena perrasyma ar trinima.",
+            "actionable": "Vykdytinas",
+            "skipped": "Praleista",
+            "transfer": "Perdavimas",
+            "destructive": "Naikinantis",
+            "bucket": "Kategorija",
+            "count": "Skaicius",
+            "action": "Veiksmas",
+            "delete": "istrinti",
+            "overwrite": "perrasyti",
+            "conflicts": "konfliktas",
+            "destructiveWarning": "Sis isankstinis nustatymas istrins arba perrasys naujesnius failus.",
+            "confirmDestructive": "Persvarsciau naikinanciu veiksmus ir noriu testi.",
+            "executeHint": "Vykdyti paruosia pasirinkima ir issiuncia per suvienyta perdavimo planavimo priemone.",
+            "executeUnavailable": "Vykdymas neprieinamas siai poros rusiai.",
+            "executeNothing": "Nera ka daryti arba vykdymo kelias neprieinamas",
+            "executeConfirm": "Patvirtinkite naikinancius veiksmus, kad galetumete vykdyti",
+            "executePreset": "Vykdyti isankstini nustatyma",
+            "execute": "Vykdyti"
         }
     }
 }

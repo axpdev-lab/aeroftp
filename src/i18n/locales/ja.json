@@ -3334,9 +3334,7 @@
             "activityLog": "アクティビティログ",
             "detailedCards": "詳細なサーバーカード",
             "debugPanel": "Debug Panel",
-            "localSync": "ローカル同期...",
-            "comparePanels": "パネルを比較...",
-            "syncPresets": "同期プリセット..."
+            "aerofileSync": "AeroFile Sync..."
         },
         "activityPanel": {
             "awaitingCommands": "コマンド待機中...",
@@ -4620,6 +4618,46 @@
             "nothingToDo": "同期プリセット",
             "allSkipped": "このプリセットには実行可能なエントリがありません。",
             "deletesDeferred": "同期プリセット"
+        },
+        "aerofileSync": {
+            "title": "AeroFile Sync",
+            "toolbarButton": "AeroFile Sync",
+            "tabCompare": "比較",
+            "tabPlan": "プラン",
+            "tabSync": "同期",
+            "compareUnavailable": "比較するには、もう一つのパネルまたはリモート接続を開いてください。",
+            "planUnavailable": "プリセットを選択する前に比較結果が必要です。まず比較タブを開いてください。",
+            "totalEntries": "総エントリ数",
+            "differences": "差分",
+            "totalBytes": "総バイト数",
+            "mirrorHint": "ミラーボタンは、対応するエントリを統合転送プランナーに準備し、レビューできるようにします。",
+            "mirrorLeftToRight": "左から右へミラー",
+            "mirrorRightToLeft": "右から左へミラー",
+            "directionLeftRight": "左から右",
+            "directionRightLeft": "右から左",
+            "conflictPolicy": "競合ポリシー",
+            "ignoredForMirror": "ミラー対象外",
+            "versionedBackup": "バージョン付きバックアップ",
+            "enable": "有効化",
+            "versionedBackupHint": "上書きまたは削除のたびに、このディレクトリに宛先のコピーを保存します。",
+            "actionable": "実行可能",
+            "skipped": "スキップ",
+            "transfer": "転送",
+            "destructive": "破壊的",
+            "bucket": "カテゴリ",
+            "count": "件数",
+            "action": "操作",
+            "delete": "削除",
+            "overwrite": "上書き",
+            "conflicts": "競合",
+            "destructiveWarning": "このプリセットは新しいファイルを削除または上書きします。",
+            "confirmDestructive": "破壊的操作を確認し、続行したいです。",
+            "executeHint": "実行は選択をステージングし、統合転送プランナー経由でディスパッチします。",
+            "executeUnavailable": "このペアタイプでは実行できません。",
+            "executeNothing": "実行する内容がないか、実行経路が利用できません",
+            "executeConfirm": "実行を有効にするには破壊的操作を確認してください",
+            "executePreset": "プリセットを実行",
+            "execute": "実行"
         }
     }
 }

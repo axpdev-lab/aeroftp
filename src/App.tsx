@@ -936,6 +936,18 @@ const App: React.FC = () => {
   const [sessions, setSessions] = useState<FtpSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
 
+  // Set of saved-profile ids that currently have at least one open session in
+  // the tab strip. Passed down to IntroHub so the per-server health indicator
+  // can pulse for the connected ones (issue #222: the green dot was only a
+  // reachability probe; users expected it to also reflect connection state).
+  const activeProfileIds = React.useMemo(() => {
+    const ids = new Set<string>();
+    for (const s of sessions) {
+      if (s.savedServerId) ids.add(s.savedServerId);
+    }
+    return ids;
+  }, [sessions]);
+
   // Window title: keep the current AeroFTP version visible in OS taskbar /
   // window switcher without forcing the user to open the About dialog.
   // Idle:      `AeroFTP X.Y.Z`
@@ -11778,6 +11790,7 @@ interface UpdateVerificationInfo {
               onConnect={connectToFtp}
               onOpenCloudPanel={() => setShowCloudPanel(true)}
               hasExistingSessions={sessions.length > 0}
+              activeProfileIds={activeProfileIds}
               serversRefreshKey={serversRefreshKey}
               onServersChanged={() => setServersRefreshKey(k => k + 1)}
               onAeroCloud={() => {

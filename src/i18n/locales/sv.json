@@ -3369,9 +3369,7 @@
             "activityLog": "Aktivitetslogg",
             "detailedCards": "Detaljerade serverkort",
             "debugPanel": "Debug Panel",
-            "localSync": "Lokal synkronisering...",
-            "comparePanels": "Jämför paneler...",
-            "syncPresets": "Synkroniseringsförinställningar..."
+            "aerofileSync": "AeroFile Sync..."
         },
         "activityPanel": {
             "awaitingCommands": "Vantar pa kommandon...",
@@ -4620,6 +4618,46 @@
             "nothingToDo": "Synkroniseringsförinställningar",
             "allSkipped": "Inga utförbara poster för denna förinställning.",
             "deletesDeferred": "Synkroniseringsförinställningar"
+        },
+        "aerofileSync": {
+            "title": "AeroFile Sync",
+            "toolbarButton": "AeroFile Sync",
+            "tabCompare": "Jämför",
+            "tabPlan": "Plan",
+            "tabSync": "Synkronisera",
+            "compareUnavailable": "Öppna en andra panel eller en fjärranslutning för att jämföra.",
+            "planUnavailable": "Ett jämförelseresultat krävs innan du väljer en förinställning. Öppna fliken Jämför först.",
+            "totalEntries": "Totalt antal poster",
+            "differences": "Skillnader",
+            "totalBytes": "Totalt antal byte",
+            "mirrorHint": "Spegelknapparna placerar matchande poster i den enhetliga överföringsplaneraren för granskning.",
+            "mirrorLeftToRight": "Spegla vänster till höger",
+            "mirrorRightToLeft": "Spegla höger till vänster",
+            "directionLeftRight": "Vänster till höger",
+            "directionRightLeft": "Höger till vänster",
+            "conflictPolicy": "Konfliktpolicy",
+            "ignoredForMirror": "IGNORERAS FÖR SPEGLING",
+            "versionedBackup": "Versionerad säkerhetskopia",
+            "enable": "Aktivera",
+            "versionedBackupHint": "Fånga målkopian i denna katalog före varje överskrivning eller radering.",
+            "actionable": "Att utföra",
+            "skipped": "Hoppade över",
+            "transfer": "Överföring",
+            "destructive": "Destruktivt",
+            "bucket": "Kategori",
+            "count": "Antal",
+            "action": "Åtgärd",
+            "delete": "ta bort",
+            "overwrite": "skriv över",
+            "conflicts": "konflikt",
+            "destructiveWarning": "Denna förinställning kommer att ta bort eller skriva över nyare filer.",
+            "confirmDestructive": "Jag har granskat de destruktiva åtgärderna och vill fortsätta.",
+            "executeHint": "Utför placerar valet i kö och skickar via den enhetliga överföringsplaneraren.",
+            "executeUnavailable": "Utförande är inte tillgängligt för denna partyp.",
+            "executeNothing": "Inget att göra eller utförandeväg inte tillgänglig",
+            "executeConfirm": "Bekräfta destruktiva åtgärder för att aktivera Utför",
+            "executePreset": "Utför förinställning",
+            "execute": "Utför"
         }
     }
 }

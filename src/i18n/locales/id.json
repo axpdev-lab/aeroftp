@@ -3369,9 +3369,7 @@
             "activityLog": "Log Aktivitas",
             "detailedCards": "Kartu server terperinci",
             "debugPanel": "Debug Panel",
-            "localSync": "Sinkronisasi lokal...",
-            "comparePanels": "Bandingkan Panel...",
-            "syncPresets": "Preset Sinkronisasi..."
+            "aerofileSync": "AeroFile Sync..."
         },
         "activityPanel": {
             "awaitingCommands": "Menunggu perintah...",
@@ -4620,6 +4618,46 @@
             "nothingToDo": "Preset sinkronisasi",
             "allSkipped": "Tidak ada entri yang dapat dieksekusi untuk preset ini.",
             "deletesDeferred": "Preset sinkronisasi"
+        },
+        "aerofileSync": {
+            "title": "AeroFile Sync",
+            "toolbarButton": "AeroFile Sync",
+            "tabCompare": "Bandingkan",
+            "tabPlan": "Rencana",
+            "tabSync": "Sinkronkan",
+            "compareUnavailable": "Buka panel kedua atau koneksi jarak jauh untuk membandingkan.",
+            "planUnavailable": "Hasil perbandingan diperlukan sebelum memilih preset. Buka tab Bandingkan terlebih dahulu.",
+            "totalEntries": "Total entri",
+            "differences": "Perbedaan",
+            "totalBytes": "Total byte",
+            "mirrorHint": "Tombol mirror menyiapkan entri yang cocok di perencana transfer terpadu untuk ditinjau.",
+            "mirrorLeftToRight": "Mirror dari kiri ke kanan",
+            "mirrorRightToLeft": "Mirror dari kanan ke kiri",
+            "directionLeftRight": "Kiri ke Kanan",
+            "directionRightLeft": "Kanan ke Kiri",
+            "conflictPolicy": "Kebijakan konflik",
+            "ignoredForMirror": "DIABAIKAN UNTUK MIRROR",
+            "versionedBackup": "Cadangan berversi",
+            "enable": "Aktifkan",
+            "versionedBackupHint": "Tangkap salinan tujuan di direktori ini sebelum setiap penimpaan atau penghapusan.",
+            "actionable": "Dapat dijalankan",
+            "skipped": "Dilewati",
+            "transfer": "Transfer",
+            "destructive": "Destruktif",
+            "bucket": "Kategori",
+            "count": "Jumlah",
+            "action": "Aksi",
+            "delete": "hapus",
+            "overwrite": "timpa",
+            "conflicts": "konflik",
+            "destructiveWarning": "Preset ini akan menghapus atau menimpa berkas yang lebih baru.",
+            "confirmDestructive": "Saya telah meninjau tindakan destruktif dan ingin melanjutkan.",
+            "executeHint": "Jalankan menyiapkan pilihan dan mengirim melalui perencana transfer terpadu.",
+            "executeUnavailable": "Eksekusi tidak tersedia untuk jenis pasangan ini.",
+            "executeNothing": "Tidak ada yang harus dilakukan atau jalur eksekusi tidak tersedia",
+            "executeConfirm": "Konfirmasi tindakan destruktif untuk mengaktifkan Jalankan",
+            "executePreset": "Jalankan preset",
+            "execute": "Jalankan"
         }
     }
 }

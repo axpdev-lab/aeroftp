@@ -3369,9 +3369,7 @@
             "activityLog": "Jarduera erregistroa",
             "detailedCards": "Zerbitzari-txartel zehatzak",
             "debugPanel": "Debug Panel",
-            "localSync": "Sinkronizazio lokala...",
-            "comparePanels": "Konparatu paneletak...",
-            "syncPresets": "Sinkronizazio aurrezarpenak..."
+            "aerofileSync": "AeroFile Sync..."
         },
         "activityPanel": {
             "awaitingCommands": "Komandoen zain...",
@@ -4639,6 +4637,46 @@
             "nothingToDo": "Sinkronizazio aurrezarpenak",
             "allSkipped": "Aurrezarpen honetarako ez dago sarrera exekutagarririk.",
             "deletesDeferred": "Sinkronizazio aurrezarpenak"
+        },
+        "aerofileSync": {
+            "title": "AeroFile Sync",
+            "toolbarButton": "AeroFile Sync",
+            "tabCompare": "Konparatu",
+            "tabPlan": "Plana",
+            "tabSync": "Sinkronizatu",
+            "compareUnavailable": "Ireki bigarren panela edo urruneko konexioa konparatzeko.",
+            "planUnavailable": "Konparaketa emaitza behar da aurrezarpena hautatu aurretik. Ireki lehenik Konparatu fitxa.",
+            "totalEntries": "Sarrera guztiak",
+            "differences": "Desberdintasunak",
+            "totalBytes": "Byte guztiak",
+            "mirrorHint": "Ispilu botoiek bat datozen sarrerak transferentzia-planifikatzaile bateratuan ilaratzen dituzte berrikusteko.",
+            "mirrorLeftToRight": "Ispilatu ezkerretik eskuinera",
+            "mirrorRightToLeft": "Ispilatu eskuinetik ezkerrera",
+            "directionLeftRight": "Ezkerretik Eskuinera",
+            "directionRightLeft": "Eskuinetik Ezkerrera",
+            "conflictPolicy": "Gatazka politika",
+            "ignoredForMirror": "ISPILUARENTZAT BAZTERTUA",
+            "versionedBackup": "Bertsiodun babeskopia",
+            "enable": "Gaitu",
+            "versionedBackupHint": "Helmugako kopia direktorio honetan kapturatzen du gainidatzi edo ezabatu aurretik.",
+            "actionable": "Egingarria",
+            "skipped": "Saltatutakoak",
+            "transfer": "Transferentzia",
+            "destructive": "Suntsigarria",
+            "bucket": "Kategoria",
+            "count": "Kontaketa",
+            "action": "Ekintza",
+            "delete": "ezabatu",
+            "overwrite": "gainidatzi",
+            "conflicts": "gatazka",
+            "destructiveWarning": "Aurrezarpen honek fitxategi berriagoak ezabatu edo gainidatziko ditu.",
+            "confirmDestructive": "Suntsipen ekintzak berrikusi ditut eta jarraitu nahi dut.",
+            "executeHint": "Exekutatu hautapena ilaratzen du eta transferentzia-planifikatzaile bateratuaren bidez bidaltzen du.",
+            "executeUnavailable": "Exekuzioa ez dago erabilgarri bikote mota honentzat.",
+            "executeNothing": "Egitekorik ez edo exekuzio-bidea ez dago erabilgarri",
+            "executeConfirm": "Berretsi suntsipen ekintzak Exekutatu gaitzeko",
+            "executePreset": "Exekutatu aurrezarpena",
+            "execute": "Exekutatu"
         }
     }
 }

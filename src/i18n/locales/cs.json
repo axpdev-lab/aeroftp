@@ -3369,9 +3369,7 @@
             "activityLog": "Protokol aktivit",
             "detailedCards": "Detailní karty serverů",
             "debugPanel": "Debug Panel",
-            "localSync": "Místní synchronizace...",
-            "comparePanels": "Porovnat panely...",
-            "syncPresets": "Předvolby synchronizace..."
+            "aerofileSync": "AeroFile Sync..."
         },
         "activityPanel": {
             "awaitingCommands": "Čekání na příkazy...",
@@ -4620,6 +4618,46 @@
             "nothingToDo": "Předvolby synchronizace",
             "allSkipped": "Žádné proveditelné položky pro tuto předvolbu.",
             "deletesDeferred": "Předvolby synchronizace"
+        },
+        "aerofileSync": {
+            "title": "AeroFile Sync",
+            "toolbarButton": "AeroFile Sync",
+            "tabCompare": "Porovnat",
+            "tabPlan": "Plán",
+            "tabSync": "Synchronizovat",
+            "compareUnavailable": "Otevřete druhý panel nebo vzdálené připojení pro porovnání.",
+            "planUnavailable": "Před výběrem předvolby je nutný výsledek porovnání. Nejprve otevřete kartu Porovnat.",
+            "totalEntries": "Celkem položek",
+            "differences": "Rozdíly",
+            "totalBytes": "Celkem bajtů",
+            "mirrorHint": "Tlačítka zrcadlení zařadí odpovídající položky do sjednoceného plánovače přenosů pro kontrolu.",
+            "mirrorLeftToRight": "Zrcadlit zleva doprava",
+            "mirrorRightToLeft": "Zrcadlit zprava doleva",
+            "directionLeftRight": "Zleva doprava",
+            "directionRightLeft": "Zprava doleva",
+            "conflictPolicy": "Zásady konfliktů",
+            "ignoredForMirror": "IGNOROVÁNO PRO ZRCADLENÍ",
+            "versionedBackup": "Verzovaná záloha",
+            "enable": "Povolit",
+            "versionedBackupHint": "Před každým přepsáním nebo smazáním zachytí cílovou kopii v tomto adresáři.",
+            "actionable": "Proveditelné",
+            "skipped": "Přeskočeno",
+            "transfer": "Přenos",
+            "destructive": "Destruktivní",
+            "bucket": "Kategorie",
+            "count": "Počet",
+            "action": "Akce",
+            "delete": "smazat",
+            "overwrite": "přepsat",
+            "conflicts": "konflikt",
+            "destructiveWarning": "Tato předvolba smaže nebo přepíše novější soubory.",
+            "confirmDestructive": "Prozkoumal jsem destruktivní akce a chci pokračovat.",
+            "executeHint": "Provést zařadí výběr do fronty a odešle ho prostřednictvím sjednoceného plánovače přenosů.",
+            "executeUnavailable": "Provedení není k dispozici pro tento typ páru.",
+            "executeNothing": "Nic k provedení nebo cesta provedení není k dispozici",
+            "executeConfirm": "Potvrďte destruktivní akce pro povolení Provést",
+            "executePreset": "Provést předvolbu",
+            "execute": "Provést"
         }
     }
 }

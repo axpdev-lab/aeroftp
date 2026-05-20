@@ -3369,9 +3369,7 @@
             "activityLog": "บันทึกกิจกรรม",
             "detailedCards": "การ์ดเซิร์ฟเวอร์แบบละเอียด",
             "debugPanel": "Debug Panel",
-            "localSync": "ซิงค์ในเครื่อง...",
-            "comparePanels": "เปรียบเทียบแผง...",
-            "syncPresets": "ค่าที่ตั้งล่วงหน้าการซิงค์..."
+            "aerofileSync": "AeroFile Sync..."
         },
         "activityPanel": {
             "awaitingCommands": "รอคำสั่ง...",
@@ -4620,6 +4618,46 @@
             "nothingToDo": "ค่าที่ตั้งล่วงหน้าการซิงค์",
             "allSkipped": "ไม่มีรายการที่สามารถดำเนินการได้สำหรับค่าที่ตั้งล่วงหน้านี้",
             "deletesDeferred": "ค่าที่ตั้งล่วงหน้าการซิงค์"
+        },
+        "aerofileSync": {
+            "title": "AeroFile Sync",
+            "toolbarButton": "AeroFile Sync",
+            "tabCompare": "เปรียบเทียบ",
+            "tabPlan": "แผน",
+            "tabSync": "ซิงค์",
+            "compareUnavailable": "เปิดแผงที่สองหรือการเชื่อมต่อระยะไกลเพื่อเปรียบเทียบ",
+            "planUnavailable": "ต้องมีผลการเปรียบเทียบก่อนเลือกพรีเซ็ต โปรดเปิดแท็บเปรียบเทียบก่อน",
+            "totalEntries": "จำนวนรายการทั้งหมด",
+            "differences": "ความแตกต่าง",
+            "totalBytes": "จำนวนไบต์ทั้งหมด",
+            "mirrorHint": "ปุ่ม mirror จะจัดวางรายการที่ตรงกันในตัววางแผนการถ่ายโอนแบบรวมเพื่อตรวจสอบ",
+            "mirrorLeftToRight": "Mirror จากซ้ายไปขวา",
+            "mirrorRightToLeft": "Mirror จากขวาไปซ้าย",
+            "directionLeftRight": "จากซ้ายไปขวา",
+            "directionRightLeft": "จากขวาไปซ้าย",
+            "conflictPolicy": "นโยบายความขัดแย้ง",
+            "ignoredForMirror": "ถูกละเว้นสำหรับ MIRROR",
+            "versionedBackup": "สำรองข้อมูลแบบมีเวอร์ชัน",
+            "enable": "เปิดใช้งาน",
+            "versionedBackupHint": "บันทึกสำเนาปลายทางไว้ในไดเรกทอรีนี้ก่อนการเขียนทับหรือลบทุกครั้ง",
+            "actionable": "ดำเนินการได้",
+            "skipped": "ข้ามไป",
+            "transfer": "ถ่ายโอน",
+            "destructive": "ทำลายล้าง",
+            "bucket": "หมวดหมู่",
+            "count": "จำนวน",
+            "action": "การกระทำ",
+            "delete": "ลบ",
+            "overwrite": "เขียนทับ",
+            "conflicts": "ความขัดแย้ง",
+            "destructiveWarning": "พรีเซ็ตนี้จะลบหรือเขียนทับไฟล์ที่ใหม่กว่า",
+            "confirmDestructive": "ฉันได้ตรวจสอบการกระทำที่ทำลายล้างแล้วและต้องการดำเนินการต่อ",
+            "executeHint": "ดำเนินการจัดคิวรายการที่เลือกและส่งผ่านตัววางแผนการถ่ายโอนแบบรวม",
+            "executeUnavailable": "การดำเนินการไม่พร้อมใช้งานสำหรับคู่ประเภทนี้",
+            "executeNothing": "ไม่มีอะไรให้ทำหรือเส้นทางการดำเนินการไม่พร้อมใช้งาน",
+            "executeConfirm": "ยืนยันการกระทำที่ทำลายล้างเพื่อเปิดใช้งานดำเนินการ",
+            "executePreset": "ดำเนินการพรีเซ็ต",
+            "execute": "ดำเนินการ"
         }
     }
 }

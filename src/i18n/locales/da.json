@@ -3369,9 +3369,7 @@
             "activityLog": "Aktivitetslog",
             "detailedCards": "Detaljerede serverkort",
             "debugPanel": "Debug Panel",
-            "localSync": "Lokal synkronisering...",
-            "comparePanels": "Sammenlign paneler...",
-            "syncPresets": "Synkroniseringspresets..."
+            "aerofileSync": "AeroFile Sync..."
         },
         "activityPanel": {
             "awaitingCommands": "Afventer kommandoer...",
@@ -4620,6 +4618,46 @@
             "nothingToDo": "Synkroniseringspresets",
             "allSkipped": "Ingen handlingsbare poster for denne preset.",
             "deletesDeferred": "Synkroniseringspresets"
+        },
+        "aerofileSync": {
+            "title": "AeroFile Sync",
+            "toolbarButton": "AeroFile Sync",
+            "tabCompare": "Sammenlign",
+            "tabPlan": "Plan",
+            "tabSync": "Synkronisér",
+            "compareUnavailable": "Åbn et andet panel eller en fjernforbindelse for at sammenligne.",
+            "planUnavailable": "Et sammenligningsresultat kræves, før du vælger en forudindstilling. Åbn først fanen Sammenlign.",
+            "totalEntries": "Samlede poster",
+            "differences": "Forskelle",
+            "totalBytes": "Samlede bytes",
+            "mirrorHint": "Spejlknapperne placerer de matchende poster i den samlede overførselsplanlægger til gennemgang.",
+            "mirrorLeftToRight": "Spejl venstre til højre",
+            "mirrorRightToLeft": "Spejl højre til venstre",
+            "directionLeftRight": "Venstre til Højre",
+            "directionRightLeft": "Højre til Venstre",
+            "conflictPolicy": "Konfliktpolitik",
+            "ignoredForMirror": "IGNORERET FOR SPEJL",
+            "versionedBackup": "Versioneret sikkerhedskopi",
+            "enable": "Aktivér",
+            "versionedBackupHint": "Indfanger destinationskopien i denne mappe før hver overskrivning eller sletning.",
+            "actionable": "Handlingsdygtig",
+            "skipped": "Sprunget over",
+            "transfer": "Overførsel",
+            "destructive": "Destruktiv",
+            "bucket": "Kategori",
+            "count": "Antal",
+            "action": "Handling",
+            "delete": "slet",
+            "overwrite": "overskriv",
+            "conflicts": "konflikt",
+            "destructiveWarning": "Denne forudindstilling vil slette eller overskrive nyere filer.",
+            "confirmDestructive": "Jeg har gennemgået de destruktive handlinger og ønsker at fortsætte.",
+            "executeHint": "Udfør placerer markeringen i kø og afsender den via den samlede overførselsplanlægger.",
+            "executeUnavailable": "Udførelse er ikke tilgængelig for denne partype.",
+            "executeNothing": "Intet at gøre eller udførelsessti ikke tilgængelig",
+            "executeConfirm": "Bekræft destruktive handlinger for at aktivere Udfør",
+            "executePreset": "Udfør forudindstilling",
+            "execute": "Udfør"
         }
     }
 }

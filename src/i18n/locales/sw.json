@@ -3369,9 +3369,7 @@
             "activityLog": "Kumbukumbu ya Shughuli",
             "detailedCards": "Kadi za seva za kina",
             "debugPanel": "Debug Panel",
-            "localSync": "Usawazishaji wa ndani...",
-            "comparePanels": "Linganisha Paneli...",
-            "syncPresets": "Mipangilio ya Usawazishaji..."
+            "aerofileSync": "AeroFile Sync..."
         },
         "activityPanel": {
             "awaitingCommands": "Inasubiri amri...",
@@ -4620,6 +4618,46 @@
             "nothingToDo": "Mipangilio ya usawazishaji",
             "allSkipped": "Hakuna ingizo linaloweza kutekelezwa kwa mpangilio huu.",
             "deletesDeferred": "Mipangilio ya usawazishaji"
+        },
+        "aerofileSync": {
+            "title": "AeroFile Sync",
+            "toolbarButton": "AeroFile Sync",
+            "tabCompare": "Linganisha",
+            "tabPlan": "Mpango",
+            "tabSync": "Sawazisha",
+            "compareUnavailable": "Fungua paneli ya pili au muunganisho wa mbali ili kulinganisha.",
+            "planUnavailable": "Matokeo ya ulinganisho yanahitajika kabla ya kuchagua mpangilio. Fungua kichupo cha Linganisha kwanza.",
+            "totalEntries": "Jumla ya maingizo",
+            "differences": "Tofauti",
+            "totalBytes": "Jumla ya baiti",
+            "mirrorHint": "Vitufe vya mirror huweka maingizo yanayolingana kwenye mpangaji wa uhamishaji ulioungana kwa ukaguzi.",
+            "mirrorLeftToRight": "Mirror kushoto kwenda kulia",
+            "mirrorRightToLeft": "Mirror kulia kwenda kushoto",
+            "directionLeftRight": "Kushoto kwenda Kulia",
+            "directionRightLeft": "Kulia kwenda Kushoto",
+            "conflictPolicy": "Sera ya migogoro",
+            "ignoredForMirror": "IMEPUUZWA KWA MIRROR",
+            "versionedBackup": "Hifadhi rudufu yenye matoleo",
+            "enable": "Wezesha",
+            "versionedBackupHint": "Nakili nakala ya marudio katika saraka hii kabla ya kila kuandika juu au kufuta.",
+            "actionable": "Inayoweza kutekelezwa",
+            "skipped": "Yameruka",
+            "transfer": "Uhamishaji",
+            "destructive": "Hatari",
+            "bucket": "Kategoria",
+            "count": "Idadi",
+            "action": "Kitendo",
+            "delete": "futa",
+            "overwrite": "andika juu",
+            "conflicts": "mgogoro",
+            "destructiveWarning": "Mpangilio huu utafuta au kuandika juu ya faili mpya zaidi.",
+            "confirmDestructive": "Nimekagua vitendo hatari na ninataka kuendelea.",
+            "executeHint": "Tekeleza huweka uchaguzi katika foleni na kutuma kupitia mpangaji wa uhamishaji ulioungana.",
+            "executeUnavailable": "Utekelezaji haupatikani kwa aina hii ya jozi.",
+            "executeNothing": "Hakuna cha kufanya au njia ya utekelezaji haipatikani",
+            "executeConfirm": "Thibitisha vitendo hatari ili kuwezesha Tekeleza",
+            "executePreset": "Tekeleza mpangilio",
+            "execute": "Tekeleza"
         }
     }
 }
