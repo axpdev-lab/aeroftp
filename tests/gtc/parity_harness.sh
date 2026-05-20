@@ -181,8 +181,8 @@ band_for_gui() {
     fi
     case "$key" in
         gui-single-sftp)    echo "2.0 5.0" ;;
-        gui-single-s3)      echo "1.8 5.0" ;;
-        gui-single-ftp)     echo "1.8 5.0" ;;
+        gui-single-s3)      echo "0.9 5.0" ;;
+        gui-single-ftp)     echo "0.8 5.0" ;;
         gui-sync-sftp)      echo "1.8 4.0" ;;
         gui-cross-sftp-s3)  echo "2.5 5.0" ;;
         *)                  echo "1.0 99.0" ;;
