@@ -12,6 +12,7 @@ use filetime::FileTime;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use tempfile::NamedTempFile;
+use tokio_util::sync::CancellationToken;
 
 /// Maximum BFS scan depth: consistent with CLI's MAX_SCAN_DEPTH.
 const MAX_SCAN_DEPTH: usize = 100;
@@ -64,6 +65,23 @@ pub struct CrossProfileTransferResult {
     pub duration_ms: u64,
 }
 
+#[derive(Debug, Clone)]
+pub struct CrossProfileCopyOptions {
+    pub source_size: Option<u64>,
+    pub download_segments: u32,
+    pub cancel_token: CancellationToken,
+}
+
+impl Default for CrossProfileCopyOptions {
+    fn default() -> Self {
+        Self {
+            source_size: None,
+            download_segments: crate::transfer_settings::DEFAULT_DOWNLOAD_SEGMENTS,
+            cancel_token: CancellationToken::new(),
+        }
+    }
+}
+
 // ── Core: single-file copy ─────────────────────────────────────────────────
 
 /// Copy a single file from `source` to `dest` using a local temp-file bridge.
@@ -86,15 +104,41 @@ pub async fn copy_one_file(
     dest_path: &str,
     source_modified: Option<&str>,
 ) -> Result<(), ProviderError> {
-    // Create a temp file that auto-deletes on drop
+    copy_one_file_with_options(
+        source,
+        dest,
+        source_path,
+        dest_path,
+        source_modified,
+        CrossProfileCopyOptions::default(),
+    )
+    .await
+}
+
+/// Copy a single file with transfer-phase options used by the GUI DAG path.
+///
+/// Keeps the same temp-file bridge and delta upload behavior as
+/// [`copy_one_file`], while allowing the source download leg to opt into the
+/// shared segmented helper when the provider honestly supports it.
+pub async fn copy_one_file_with_options(
+    source: &mut dyn StorageProvider,
+    dest: &mut dyn StorageProvider,
+    source_path: &str,
+    dest_path: &str,
+    source_modified: Option<&str>,
+    options: CrossProfileCopyOptions,
+) -> Result<(), ProviderError> {
+    // Create a temp path that auto-deletes on drop. `into_temp_path` closes
+    // the file handle first, so the segmented helper can atomically rename
+    // over the path on every platform that supports the provider path.
     let tmp = NamedTempFile::new()
         .map_err(|e| ProviderError::TransferFailed(format!("temp file creation failed: {e}")))?;
-    let tmp_path = tmp.path().to_string_lossy().to_string();
+    let tmp = tmp.into_temp_path();
+    let tmp_path = tmp.to_string_lossy().to_string();
 
-    // Download from source to temp file
-    source.download(source_path, &tmp_path, None).await?;
+    download_source_to_temp(source, source_path, &tmp_path, &options).await?;
 
-    preserve_temp_mtime(tmp.path(), source_modified);
+    preserve_temp_mtime(&tmp, source_modified);
 
     // Ensure parent directory exists on destination
     ensure_parent_dir(dest, dest_path).await;
@@ -103,7 +147,7 @@ pub async fn copy_one_file(
     // destinations or when downcast/probe declines: in both cases we proceed
     // to the classic upload below.
     if let Some(result) =
-        try_delta_transfer(dest, SyncDirection::Upload, tmp.path(), dest_path).await
+        try_delta_transfer(dest, SyncDirection::Upload, tmp.as_ref(), dest_path).await
     {
         if result.used_delta {
             // Delta path completed the transfer; we're done.
@@ -124,6 +168,61 @@ pub async fn copy_one_file(
 
     // tmp is dropped here, removing the temp file
     Ok(())
+}
+
+async fn download_source_to_temp(
+    source: &mut dyn StorageProvider,
+    source_path: &str,
+    tmp_path: &str,
+    options: &CrossProfileCopyOptions,
+) -> Result<(), ProviderError> {
+    if options.cancel_token.is_cancelled() {
+        return Err(ProviderError::TransferFailed(
+            "Transfer cancelled by user".to_string(),
+        ));
+    }
+
+    if options.download_segments > 1 {
+        if let Some(source_size) = options.source_size {
+            if let Some(segments) =
+                crate::provider_transfer_executor::provider_segmented_download_eligible(
+                    source,
+                    source_size,
+                    options.download_segments,
+                    options.download_segments as usize,
+                )
+            {
+                tracing::info!(
+                    "cross-profile: segmented source download (remote={}, bytes={}, segments={})",
+                    source_path,
+                    source_size,
+                    segments
+                );
+                match crate::provider_transfer_executor::run_provider_segmented_download(
+                    source,
+                    source_path,
+                    tmp_path,
+                    source_size,
+                    segments,
+                    None,
+                    options.cancel_token.clone(),
+                )
+                .await
+                {
+                    Ok(()) => return Ok(()),
+                    Err(err) => {
+                        tracing::warn!(
+                            "cross-profile: segmented source download failed, falling back to single-stream (remote={}, error={})",
+                            source_path,
+                            err
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    source.download(source_path, tmp_path, None).await
 }
 
 // ── Planning: collect + filter + plan ──────────────────────────────────────
