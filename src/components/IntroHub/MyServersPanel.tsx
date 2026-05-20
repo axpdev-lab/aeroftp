@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Plus, Server as ServerIcon, Play, Edit2, Copy, Trash2, Activity, Star, PencilLine, ArrowUpRight, ArrowDownLeft, Database, Globe, Cloud, Camera, Code, Gauge, HardDrive } from 'lucide-react';
+import { Plus, Server as ServerIcon, Play, Edit2, Copy, Trash2, Activity, Star, PencilLine, ArrowUpRight, ArrowDownLeft, Database, Globe, Cloud, Camera, Code, Gauge, HardDrive, LogOut } from 'lucide-react';
 import { ServerProfile, ConnectionParams, ProviderType, getE2EBits, getProtocolClass, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol } from '../../types';
 import { MyServersViewMode, MyServersFilterBy, FILTER_CHIPS, CatalogCategoryId } from '../../types/catalog';
 import { MyServersToolbar } from './MyServersToolbar';
@@ -240,6 +240,9 @@ interface MyServersPanelProps {
     /** Profile ids that have at least one open session in the tab strip.
      *  Drives the pulsing health indicator on cards / rows (issue #222). */
     activeProfileIds?: ReadonlySet<string>;
+    /** Close every open session for the given saved profile. Wired to the
+     *  Disconnect context-menu entry, gated on `activeProfileIds`. #222. */
+    onDisconnectProfile?: (profileId: string) => void | Promise<void>;
 }
 
 const EMPTY_STATE_CATEGORIES: { id: CatalogCategoryId; labelKey: string; icon: React.ReactNode; iconColor: string }[] = [
@@ -262,6 +265,7 @@ export function MyServersPanel({
     onOpenCrossProfile,
     onOpenMountManager,
     activeProfileIds,
+    onDisconnectProfile,
 }: MyServersPanelProps) {
     const t = useTranslation();
     // Lazy init: read localStorage synchronously on first mount so the panel
@@ -1058,13 +1062,26 @@ export function MyServersPanel({
 
     const handleContextMenu = useCallback((e: React.MouseEvent, server: ServerProfile) => {
         const isFav = favorites.has(server.id);
+        const hasActiveSession = activeProfileIds?.has(server.id) ?? false;
         const items: ContextMenuItem[] = [
             { label: t('common.connect'), icon: <Play size={14} />, action: () => handleConnect(server) },
+        ];
+        if (hasActiveSession && onDisconnectProfile) {
+            // Issue #222: Disconnect entry surfaces only when at least one
+            // session is open for this saved profile, so the menu mirrors
+            // the actual connection state instead of showing a no-op entry.
+            items.push({
+                label: t('common.disconnect'),
+                icon: <LogOut size={14} className="text-amber-500" />,
+                action: () => { void onDisconnectProfile(server.id); },
+            });
+        }
+        items.push(
             { label: t('common.edit'), icon: <Edit2 size={14} />, action: () => onEdit(server) },
             { label: t('introHub.renameWithHotkey'), icon: <PencilLine size={14} />, action: () => handleRenameStart(server) },
             { label: t('common.copy'), icon: <Copy size={14} />, action: () => handleDuplicate(server) },
             { label: isFav ? t('introHub.removeFavorite') : t('introHub.addFavorite'), icon: <Star size={14} />, action: () => toggleFavorite(server.id) },
-        ];
+        );
         if (onOpenCrossProfile && servers.length > 1) {
             items.push({
                 label: t('introHub.setAsCrossProfileSource'),
@@ -1090,7 +1107,7 @@ export function MyServersPanel({
             { label: t('common.delete'), icon: <Trash2 size={14} />, action: () => handleDelete(server), danger: true },
         );
         showContextMenu(e, items);
-    }, [t, handleConnect, onEdit, handleDuplicate, handleDelete, handleRenameStart, toggleFavorite, favorites, showContextMenu, onOpenCrossProfile, setAsCrossProfileSource, setAsCrossProfileDestination, servers.length, handleOpenMount]);
+    }, [t, handleConnect, onEdit, handleDuplicate, handleDelete, handleRenameStart, toggleFavorite, favorites, showContextMenu, onOpenCrossProfile, setAsCrossProfileSource, setAsCrossProfileDestination, servers.length, handleOpenMount, activeProfileIds, onDisconnectProfile]);
 
     return (
         <div className="h-full flex flex-col" onClick={handlePanelBlankClick}>
