@@ -663,6 +663,29 @@ enum Commands {
         #[arg(short = 'n', long, default_value = "20")]
         lines: usize,
     },
+    /// Quick preview of a remote file (smart default: first 20 lines).
+    ///
+    /// Convenience entry that wraps `head` / `tail` for agents that want
+    /// a single "show me what's in this file" command. Use `--tail` to
+    /// invert direction, `--bytes N` for binary-safe byte previews, or
+    /// fall back to `cat` for the full content.
+    Peek {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_", hide_default_value = true)]
+        url: String,
+        /// Remote file path
+        #[arg(default_value = "")]
+        path: String,
+        /// Number of lines to print (default: 20)
+        #[arg(short = 'n', long, default_value = "20")]
+        lines: usize,
+        /// Print first N bytes instead of N lines (binary-safe preview)
+        #[arg(short = 'c', long)]
+        bytes: Option<u64>,
+        /// Show the LAST lines instead of the first. Ignored when --bytes is set.
+        #[arg(long)]
+        tail: bool,
+    },
     /// Create empty file or update timestamp
     Touch {
         /// Server URL (omit when using --profile)
@@ -9456,6 +9479,7 @@ fn cmd_agent_info(cli: &Cli) -> i32 {
                 {"name": "link", "syntax": "aeroftp-cli link --profile NAME /path/file", "description": "Create share link when supported"},
                 {"name": "edit", "syntax": "aeroftp-cli edit --profile NAME /path/file \"find\" \"replace\" [--first]", "description": "Replace text in a remote UTF-8 file"},
                 {"name": "sync", "syntax": "aeroftp-cli sync --profile NAME ./local/ /remote/ [--dry-run]", "description": "Sync directories"},
+                {"name": "transfer", "syntax": "aeroftp-cli transfer \"SRC_PROFILE\" \"DST_PROFILE\" /src/path /dst/path [-r] [--dry-run] [--skip-existing]", "description": "Copy files between two saved profiles (cross-profile, no local hop on disk)"},
             ],
             "destructive": [
                 {"name": "rm", "syntax": "aeroftp-cli rm --profile NAME /path [-f]", "description": "Delete file (-f: force, no error if not found)"},
@@ -9465,6 +9489,7 @@ fn cmd_agent_info(cli: &Cli) -> i32 {
             "advanced": [
                 {"name": "head", "syntax": "aeroftp-cli head --profile NAME /path/file [-n N]", "description": "Read first lines of a remote text file"},
                 {"name": "tail", "syntax": "aeroftp-cli tail --profile NAME /path/file [-n N]", "description": "Read last lines of a remote text file"},
+                {"name": "peek", "syntax": "aeroftp-cli peek --profile NAME /path/file [-n N] [--bytes B] [--tail]", "description": "Smart preview of a remote file: defaults to first 20 lines, --tail for last, --bytes for binary-safe slice"},
                 {"name": "touch", "syntax": "aeroftp-cli touch --profile NAME /path/file [--timestamp ISO8601]", "description": "Create file or update modified time"},
                 {"name": "hashsum", "syntax": "aeroftp-cli hashsum --algorithm ALGO --profile NAME /path/file", "description": "Compute remote checksum"},
                 {"name": "check", "syntax": "aeroftp-cli check --profile NAME ./local /remote", "description": "Compare local and remote trees"},
@@ -35727,6 +35752,24 @@ async fn main() {
                 (url.as_str(), path.as_str())
             };
             cmd_tail(u, p, *lines, &cli, format).await
+        }
+        Commands::Peek {
+            url,
+            path,
+            lines,
+            bytes,
+            tail,
+        } => {
+            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                ("_", url.as_str())
+            } else {
+                (url.as_str(), path.as_str())
+            };
+            if *tail && bytes.is_none() {
+                cmd_tail(u, p, *lines, &cli, format).await
+            } else {
+                cmd_head(u, p, *lines, *bytes, &cli, format).await
+            }
         }
         Commands::Touch {
             url,
