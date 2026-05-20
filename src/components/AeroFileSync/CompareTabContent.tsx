@@ -9,31 +9,25 @@ import {
     ChevronRight,
     Equal,
     FileWarning,
-    GitCompare,
     type LucideIcon,
-    X,
 } from 'lucide-react';
-import type { CompareBucket, CompareResult, CompareResultEntry } from '../utils/compareEndpoints';
-import { formatBytes } from '../utils/formatters';
+import type {
+    CompareBucket,
+    CompareResult,
+    CompareResultEntry,
+} from '../../utils/compareEndpoints';
+import { formatBytes } from '../../utils/formatters';
+import { useTranslation } from '../../i18n';
 
-interface UnifiedCompareDialogProps {
-    /** Pre-computed compare result (the dialog never reaches back into IPC). */
-    result: CompareResult;
-    /** Human-readable label for the left endpoint (used in headers). */
+interface CompareTabContentProps {
+    result: CompareResult | null;
     leftLabel: string;
-    /** Human-readable label for the right endpoint. */
     rightLabel: string;
-    /** Optional pair kind hint, mainly to drive Apply button labels. */
-    pairKind?: 'local-local' | 'local-remote' | 'remote-local' | 'remote-remote' | string;
-    /** Whether the parent can execute a left→right mirror in the current pair. */
+    pairKind?: string | null;
     canMirrorLeftToRight: boolean;
-    /** Whether the parent can execute a right→left mirror in the current pair. */
     canMirrorRightToLeft: boolean;
-    /** Mirror-left action: receives the entry names the parent should transfer. */
     onApplyMirrorLeftToRight: (entries: CompareResultEntry[]) => void;
-    /** Mirror-right action: same contract, opposite direction. */
     onApplyMirrorRightToLeft: (entries: CompareResultEntry[]) => void;
-    onClose: () => void;
 }
 
 const BUCKET_ORDER: CompareBucket[] = [
@@ -92,16 +86,16 @@ const BUCKET_META: Record<CompareBucket, {
 const MAX_PREVIEW_ROWS = 80;
 
 const formatTimestamp = (mtime?: number | null): string => {
-    if (typeof mtime !== 'number' || !Number.isFinite(mtime) || mtime <= 0) return '—';
+    if (typeof mtime !== 'number' || !Number.isFinite(mtime) || mtime <= 0) return '-';
     try {
         return new Date(mtime).toLocaleString();
     } catch {
-        return '—';
+        return '-';
     }
 };
 
 const formatSize = (size?: number | null): string => {
-    if (typeof size !== 'number' || !Number.isFinite(size)) return '—';
+    if (typeof size !== 'number' || !Number.isFinite(size)) return '-';
     return formatBytes(Math.max(0, size));
 };
 
@@ -195,7 +189,7 @@ const BucketSection: React.FC<BucketSectionProps> = ({ bucket, entries, bytes, i
     );
 };
 
-export const UnifiedCompareDialog: React.FC<UnifiedCompareDialogProps> = ({
+export const CompareTabContent: React.FC<CompareTabContentProps> = ({
     result,
     leftLabel,
     rightLabel,
@@ -204,8 +198,17 @@ export const UnifiedCompareDialog: React.FC<UnifiedCompareDialogProps> = ({
     canMirrorRightToLeft,
     onApplyMirrorLeftToRight,
     onApplyMirrorRightToLeft,
-    onClose,
 }) => {
+    const t = useTranslation();
+
+    if (!result) {
+        return (
+            <div className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">
+                {t('aerofileSync.compareUnavailable') || 'Open a second panel or a remote connection to compare.'}
+            </div>
+        );
+    }
+
     const policyLabel = React.useMemo(() => {
         switch (result.appliedOptions.policy) {
             case 'size-only':
@@ -227,102 +230,74 @@ export const UnifiedCompareDialog: React.FC<UnifiedCompareDialogProps> = ({
     );
 
     return (
-        <div
-            className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/55 px-4 backdrop-blur-sm"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Compare panels"
-            onClick={(event) => {
-                if (event.target === event.currentTarget) onClose();
-            }}
-        >
-            <div className="w-full max-w-3xl overflow-hidden rounded-lg bg-white shadow-2xl dark:bg-gray-800">
-                <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700">
-                    <div className="flex items-center gap-2">
-                        <GitCompare size={18} className="text-blue-500" />
-                        <div>
-                            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Compare panels</h2>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">
-                                {leftLabel} <ArrowLeftRight size={11} className="inline align-middle" /> {rightLabel} · {policyLabel}
-                            </p>
-                        </div>
+        <div className="flex flex-col">
+            <div className="grid gap-3 px-4 py-3 sm:grid-cols-3">
+                <div className="rounded-md bg-gray-50 p-3 dark:bg-gray-900/40">
+                    <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        {t('aerofileSync.totalEntries') || 'Total entries'}
                     </div>
+                    <div className="font-semibold text-gray-900 dark:text-white">{result.totals.count}</div>
+                </div>
+                <div className="rounded-md bg-gray-50 p-3 dark:bg-gray-900/40">
+                    <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        {t('aerofileSync.differences') || 'Differences'}
+                    </div>
+                    <div className="font-semibold text-gray-900 dark:text-white">
+                        {result.totals.count - result.stats.same.count}
+                    </div>
+                </div>
+                <div className="rounded-md bg-gray-50 p-3 dark:bg-gray-900/40">
+                    <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        {t('aerofileSync.totalBytes') || 'Total bytes'}
+                    </div>
+                    <div className="font-semibold text-gray-900 dark:text-white">{formatBytes(result.totals.bytes)}</div>
+                </div>
+            </div>
+
+            <div className="px-4 pb-2 text-[11px] text-gray-500 dark:text-gray-400">
+                {leftLabel} <ArrowLeftRight size={11} className="inline align-middle" /> {rightLabel}
+                <span className="mx-1">&middot;</span>
+                {policyLabel}
+                {pairKind ? <span className="ml-1">&middot; {pairKind}</span> : null}
+            </div>
+
+            <div className="max-h-[50vh] space-y-2 overflow-y-auto px-4 pb-3">
+                {BUCKET_ORDER.map((bucket) => (
+                    <BucketSection
+                        key={bucket}
+                        bucket={bucket}
+                        entries={result.buckets[bucket]}
+                        bytes={result.stats[bucket].bytes}
+                        initiallyOpen={bucket !== 'same' && result.buckets[bucket].length > 0}
+                    />
+                ))}
+            </div>
+
+            <div className="flex flex-col gap-2 border-t border-gray-200 px-4 py-3 dark:border-gray-700 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                    {t('aerofileSync.mirrorHint') || 'Mirror buttons stage the matching entries in the unified transfer planner for review.'}
+                </p>
+                <div className="flex flex-wrap justify-end gap-2">
                     <button
                         type="button"
-                        onClick={onClose}
-                        className="rounded p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-700 dark:hover:text-gray-200"
-                        aria-label="Close"
+                        onClick={() => onApplyMirrorRightToLeft(rightToLeftEntries)}
+                        disabled={!canMirrorRightToLeft || rightToLeftEntries.length === 0}
+                        className="inline-flex items-center gap-2 rounded-lg bg-gray-700 px-3 py-2 text-sm text-white transition-colors hover:bg-gray-800 disabled:opacity-40"
                     >
-                        <X size={16} />
+                        &larr; {t('aerofileSync.mirrorRightToLeft') || 'Mirror right to left'} ({rightToLeftEntries.length})
                     </button>
-                </div>
-
-                <div className="grid gap-3 px-4 py-3 sm:grid-cols-3">
-                    <div className="rounded-md bg-gray-50 p-3 dark:bg-gray-900/40">
-                        <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Total entries</div>
-                        <div className="font-semibold text-gray-900 dark:text-white">{result.totals.count}</div>
-                    </div>
-                    <div className="rounded-md bg-gray-50 p-3 dark:bg-gray-900/40">
-                        <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Differences</div>
-                        <div className="font-semibold text-gray-900 dark:text-white">
-                            {result.totals.count - result.stats.same.count}
-                        </div>
-                    </div>
-                    <div className="rounded-md bg-gray-50 p-3 dark:bg-gray-900/40">
-                        <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Total bytes</div>
-                        <div className="font-semibold text-gray-900 dark:text-white">{formatBytes(result.totals.bytes)}</div>
-                    </div>
-                </div>
-
-                <div className="max-h-[60vh] space-y-2 overflow-y-auto px-4 pb-4">
-                    {BUCKET_ORDER.map((bucket) => (
-                        <BucketSection
-                            key={bucket}
-                            bucket={bucket}
-                            entries={result.buckets[bucket]}
-                            bytes={result.stats[bucket].bytes}
-                            initiallyOpen={bucket !== 'same' && result.buckets[bucket].length > 0}
-                        />
-                    ))}
-                </div>
-
-                <div className="flex flex-col gap-2 border-t border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-700 dark:bg-gray-800/70 sm:flex-row sm:items-center sm:justify-between">
-                    <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                        Mirror buttons stage the matching entries in the unified transfer planner for review.
-                        Inline highlighting of file rows lands with Z.3.7.2.
-                        {pairKind ? ` · pair: ${pairKind}` : ''}
-                    </p>
-                    <div className="flex flex-wrap justify-end gap-2">
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className="rounded-lg px-3 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
-                        >
-                            Close
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => onApplyMirrorRightToLeft(rightToLeftEntries)}
-                            disabled={!canMirrorRightToLeft || rightToLeftEntries.length === 0}
-                            className="inline-flex items-center gap-2 rounded-lg bg-gray-700 px-3 py-2 text-sm text-white transition-colors hover:bg-gray-800 disabled:opacity-40"
-                            title="Stage only-right + newer-right entries for a right→left transfer"
-                        >
-                            ← Mirror right→left ({rightToLeftEntries.length})
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => onApplyMirrorLeftToRight(leftToRightEntries)}
-                            disabled={!canMirrorLeftToRight || leftToRightEntries.length === 0}
-                            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm text-white transition-colors hover:bg-blue-700 disabled:opacity-40"
-                            title="Stage only-left + newer-left entries for a left→right transfer"
-                        >
-                            Mirror left→right ({leftToRightEntries.length}) →
-                        </button>
-                    </div>
+                    <button
+                        type="button"
+                        onClick={() => onApplyMirrorLeftToRight(leftToRightEntries)}
+                        disabled={!canMirrorLeftToRight || leftToRightEntries.length === 0}
+                        className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm text-white transition-colors hover:bg-blue-700 disabled:opacity-40"
+                    >
+                        {t('aerofileSync.mirrorLeftToRight') || 'Mirror left to right'} ({leftToRightEntries.length}) &rarr;
+                    </button>
                 </div>
             </div>
         </div>
     );
 };
 
-export default UnifiedCompareDialog;
+export default CompareTabContent;

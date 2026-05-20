@@ -79,21 +79,13 @@ interface TitlebarProps {
     onToggleAgent: () => void;
     onToggleActivityLog: () => void;
     onToggleDebugPanel: () => void;
-    /// AeroSync local-to-local (Z.2.3): pure in-process delta mirror
-    /// between two local paths. Exposed in the View menu next to the
-    /// other utility panels so power users can find it without leaving
-    /// the keyboard (also reachable via the command palette).
-    onShowLocalSync: () => void;
-    /// Z.3.7: open the unified Compare dialog for the currently-loaded
-    /// dual panel. The handler decides whether the pair is comparable
-    /// (local-local or local-remote/remote-local) and falls back to a
-    /// notify.info when no second panel is mounted.
-    onShowComparePanels: () => void;
-    /// Z.3.8: open the Sync Presets dialog (mirror / backup / update /
-    /// bisync). Same comparable-pair gate as Compare Panels. Execution
-    /// today lands only for local-local; other pair kinds surface the
-    /// preview but disable Execute (Z.3.8.2 follow-up).
-    onShowSyncPresets: () => void;
+    /// AeroFile Sync: unified 3-tab modal (Compare + Plan + Sync) that
+    /// replaces the legacy localSync / comparePanels / syncPresets
+    /// triad. The optional initialTab preselects which tab opens first;
+    /// the View menu binds to 'compare' so F4 muscle memory still lands
+    /// on the diff view, while the command palette / toolbar can
+    /// choose 'sync' or 'plan'.
+    onShowAeroFileSync: (initialTab?: import('../components/AeroFileSync/types').AeroFileSyncTab) => void;
     onQuit: () => void;
     onCheckForUpdates: () => void;
     hasActivity: boolean;
@@ -206,7 +198,7 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
         onToggleDebugMode, onRename, onDelete, onSelectAll,
         onCut, onCopy, onPaste, hasSelection, hasClipboard,
         onToggleEditor, onToggleTerminal, onToggleAgent, onToggleActivityLog, onToggleDebugPanel,
-        onShowLocalSync, onShowComparePanels, onShowSyncPresets, onQuit,
+        onShowAeroFileSync, onQuit,
         onCheckForUpdates, hasActivity,
         cardLayout, onToggleCardLayout,
     } = props;
@@ -301,20 +293,11 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
         { label: t('menu.activityLog'), shortcut: 'Ctrl+Shift+L', onClick: onToggleActivityLog },
         { label: t('menu.debugPanel'), shortcut: 'Ctrl+Shift+M', onClick: onToggleDebugPanel },
         { separator: true },
-        // Z.2.3 entry point. Always enabled: the panel itself targets
-        // two local paths and does not depend on the remote connection
-        // or on any file panel being mounted.
-        { label: t('menu.localSync'), onClick: onShowLocalSync },
-        // Z.3.7 entry point. Active whenever a comparable pair is mounted
-        // (dual local panel or one local + one remote). The handler
-        // emits a notify.info when the pair is not comparable yet
-        // (single panel, remote-remote).
-        { label: t('menu.comparePanels'), shortcut: 'F4', onClick: onShowComparePanels },
-        // Z.3.8 entry point. Same comparable-pair gate as Compare Panels.
-        // Surfaces the four FreeFileSync-style presets (mirror, backup,
-        // update, bisync) with explicit destructive confirm; execution
-        // is currently limited to the local-local pair.
-        { label: t('menu.syncPresets'), onClick: onShowSyncPresets },
+        // AeroFile Sync: unified Compare + Plan + Sync modal. Opens at the
+        // Compare tab so the F4 shortcut keeps its legacy meaning (diff view
+        // first); the Plan and Sync tabs are reachable from the tab strip
+        // inside the dialog and through the command palette.
+        { label: t('menu.aerofileSync') || 'AeroFile Sync...', shortcut: 'F4', onClick: () => onShowAeroFileSync('compare') },
     ];
 
     const helpMenu: MenuEntry[] = [
