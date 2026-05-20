@@ -292,6 +292,7 @@ import {
   storeSavedServerProfiles,
   recordProfileConnectFailure,
   clearProfileConnectFailure,
+  PROFILES_CHANGED_EVENT,
 } from './utils/serverProfileStore';
 import { maskCredential } from './utils/maskCredential';
 import { getOpenWithDefaultRoute } from './utils/openWithDefault';
@@ -690,6 +691,16 @@ const App: React.FC = () => {
   const folderOverwriteApplyToAll = useRef<{ action: FolderMergeAction; enabled: boolean }>({ action: 'merge_overwrite', enabled: false });
   // showSettingsPanel provided by useSettings
   const [serversRefreshKey, setServersRefreshKey] = useState(0);
+  // Vault mutations triggered by silent paths (recordProfileConnectFailure /
+  // clearProfileConnectFailure, future fire-and-forget edits) emit a global
+  // `aeroftp-profiles-changed` event so the card list re-renders without
+  // waiting for an unrelated route refresh. Bump-refreshKey is idempotent and
+  // cheap: the existing useEffect already de-bounces via React's batching.
+  useEffect(() => {
+    const handler = () => setServersRefreshKey(k => k + 1);
+    window.addEventListener(PROFILES_CHANGED_EVENT, handler);
+    return () => window.removeEventListener(PROFILES_CHANGED_EVENT, handler);
+  }, []);
   const [endpointSelectorProfiles, setEndpointSelectorProfiles] = useState<ServerProfile[]>([]);
   const [showDebugPanel, setShowDebugPanel] = useState(false);
 

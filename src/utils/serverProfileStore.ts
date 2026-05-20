@@ -57,12 +57,23 @@ export const loadSavedServerProfiles = async (): Promise<ServerProfile[]> => {
  * between co-installed builds (e.g. a portable folder next to an MSI
  * install) once the vault per-installation isolation is in place.
  */
+// Custom DOM event fired whenever the saved-server vault is mutated. App.tsx
+// listens on `window` and bumps `serversRefreshKey` so the IntroHub card list
+// reflects the change without waiting for an unrelated route refresh. Mirrors
+// the `transfer-toast-update` / `editor-reload` pattern used elsewhere.
+export const PROFILES_CHANGED_EVENT = 'aeroftp-profiles-changed';
+
 export const storeSavedServerProfiles = async (profiles: ServerProfile[]): Promise<void> => {
     await secureStore(SAVED_SERVERS_ACCOUNT, profiles);
     try {
         localStorage.removeItem(SAVED_SERVERS_STORAGE_KEY);
     } catch {
         // best-effort cleanup
+    }
+    try {
+        window.dispatchEvent(new CustomEvent(PROFILES_CHANGED_EVENT));
+    } catch {
+        // SSR / non-DOM environment: dispatch is a best-effort notification.
     }
 };
 
