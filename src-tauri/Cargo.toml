@@ -18,6 +18,10 @@ name = "aeroftp-cli"
 path = "src/bin/aeroftp_cli.rs"
 
 [[bin]]
+name = "aeroftp-dispatch"
+path = "src/bin/aeroftp_dispatch.rs"
+
+[[bin]]
 name = "aerorsync_serve"
 path = "src/bin/aerorsync_serve.rs"
 # The real server body is gated behind the `aerorsync` feature. When the
@@ -206,9 +210,16 @@ zstd = "0.13"
 xxhash-rust = { version = "0.8", features = ["xxh3"], optional = true }
 
 # Local speech-to-text: excluded on macOS (WKWebView has native Web Speech API)
+# and gated behind the `local-stt` feature on Linux/Windows. The feature is
+# default-on, so production builds keep whisper-rs + hound exactly as before;
+# a `--no-default-features --features aerorsync` build (used by the dispatcher
+# matrix on Windows runners with a VS minor version that whisper-rs-sys's
+# build chain mismatches against) drops the speech stack entirely and stubs
+# the module, avoiding the MSVC `__imp_*` link failures while leaving the
+# default release path untouched.
 [target.'cfg(not(target_os = "macos"))'.dependencies]
-hound = "3"
-whisper-rs = "0.16.0"
+hound = { version = "3", optional = true }
+whisper-rs = { version = "0.16.0", optional = true }
 
 # Windows Explorer badge integration (v2.0.5)
 [target.'cfg(windows)'.dependencies]
@@ -235,7 +246,7 @@ fuser = "0.16"
 [dev-dependencies]
 
 [features]
-default = ["aerorsync"]
+default = ["aerorsync", "local-stt"]
 custom-protocol = ["tauri/custom-protocol"]
 
 # aerorsync: AeroFTP's native Rust implementation of the rsync wire
@@ -248,6 +259,18 @@ custom-protocol = ["tauri/custom-protocol"]
 # Disable with `--no-default-features` for leaner builds or when
 # debugging the classic binary-rsync path on Unix.
 aerorsync = ["dep:xxhash-rust"]
+
+# local-stt: local speech-to-text via whisper.cpp. Pulls in `whisper-rs`
+# (whisper.cpp Rust bindings) and `hound` (WAV decode). Default-on so
+# production GUI builds keep the AeroAgent voice-input pipeline intact.
+# Turn off with `--no-default-features --features aerorsync` for builds
+# that only need the dispatcher / CLI / aerorsync path: this skips the
+# whisper-rs-sys C/C++ stack entirely, which is the workaround for the
+# MSVC link drift seen on Windows runners whose VS Build Tools minor
+# version mismatches the CI image (e.g. local 17.14 vs cached 17.x). On
+# macOS the speech stack already lives behind `cfg(target_os = "macos")`
+# stubs (Web Speech API used instead), so this feature is a no-op there.
+local-stt = ["dep:hound", "dep:whisper-rs"]
 
 # Strada C: Docker-harness lane cfg flags. Declared here so
 # `#[cfg(ci_lane2)]` / `#[cfg(ci_lane3)]` do not surface

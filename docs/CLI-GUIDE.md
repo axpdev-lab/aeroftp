@@ -59,6 +59,83 @@ cargo build --release --bin aeroftp-cli
 
 ---
 
+## Short Invocation
+
+All AeroFTP packages ship a small native dispatcher so the CLI is reachable under several names without merging the GUI and CLI binaries. The dispatcher is `GUI by default`: anything ambiguous opens the GUI, so file associations and launcher entries can never be swallowed by accident.
+
+The shipped set:
+
+| Name | Routes to | Notes |
+|---|---|---|
+| `aeroftp` | GUI when called bare, with a `.aerovault` / `.aeroftp` / `.aeroftp-keystore` file, or with `-` flags | Same behavior as before |
+| `aeroftp <subcommand>` | CLI | Any CLI subcommand (e.g. `aeroftp ls`, `aeroftp sync`) is routed automatically |
+| `aftp` | CLI | Short 4-character built-in name, always present |
+| `aeroftp-cli` | CLI | Kept for back-compat: scripts, CI, MCP, `cargo install` |
+
+Arguments, signals and exit codes are passed through untouched.
+
+### The `aero` opt-in alias
+
+`aero` is officially provided as an opt-in alias you can enable with a single command. It is not shipped as a global binary because a package owning `/usr/bin/aero` would hard-fail to install on any system where another package already owns that path (a file conflict at the package manager level).
+
+The same command both enables and disables the alias (toggle):
+
+```bash
+# Turn the alias On (creates ~/.local/bin/aero -> dispatcher)
+aeroftp-cli alias-toggle aero
+# The 'aero' alias is now On
+
+# Same command turns it Off
+aeroftp-cli alias-toggle aero
+# The 'aero' alias is now Off
+```
+
+The command is idempotent and exits with code 0 in both directions. The default target directory is `~/.local/bin`; pass `--bin-dir <path>` to override. If the target directory is not on your `PATH`, a one-line note on stderr explains how to add it.
+
+The toggle refuses to overwrite an existing non-symlink file at the target path, and refuses to remove a symlink that does not point at the current AeroFTP binary. This protects user-owned files and foreign installations.
+
+JSON output for scripting:
+
+```bash
+aeroftp-cli --json alias-toggle aero
+# {"alias":"aero","path":".../aero","path_in_env":false,"state":"on", ...}
+```
+
+Once `aero` is enabled, anything that works under `aeroftp` works under `aero`: `aero ls`, `aero sync`, `aero vault`, `aero mcp`, and so on.
+
+### Manual recipes (alternative)
+
+If you prefer to wire the alias yourself, the snippets below are equivalent to the toggle command above. They do not need root and they do not touch the package layout.
+
+**bash** (`~/.bashrc`):
+
+```bash
+alias aero='aeroftp'
+```
+
+**zsh** (`~/.zshrc`):
+
+```zsh
+alias aero='aeroftp'
+```
+
+**fish** (`~/.config/fish/config.fish`):
+
+```fish
+alias aero 'aeroftp'
+funcsave aero
+```
+
+**PowerShell** (`$PROFILE`):
+
+```powershell
+Set-Alias -Name aero -Value aeroftp
+```
+
+After editing the file, reopen the shell or `source` the rc file. Verify with `aero --version`.
+
+---
+
 ## URL Format
 
 All commands use a URL to specify the server connection:

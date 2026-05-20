@@ -121,6 +121,29 @@ jobs:
       - name: Run security regression suite (MVP)
         run: npm run security:regression
 
+      # R10 (APPENDIX-CLI-DISPATCH): the three sources of truth for the
+      # AeroFTP version must stay in lockstep. If they drift, an update
+      # ships a CLI that claims one version while the GUI manifest claims
+      # another, the AUR pkgver bump targets the wrong tag, and the
+      # in-app update check compares against the wrong baseline. Cheap
+      # to run (no build, just text parsing). Linux-only because the
+      # source files are identical across the matrix; one check covers
+      # the whole release.
+      - name: R10 manifest version match (Cargo.toml, package.json, tauri.conf.json)
+        if: matrix.target == 'linux'
+        shell: bash
+        run: |
+          CARGO=$(grep -m1 '^version' src-tauri/Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
+          PKG=$(node -p "require('./package.json').version")
+          TAURI=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          echo "Cargo.toml:        $CARGO"
+          echo "package.json:      $PKG"
+          echo "tauri.conf.json:   $TAURI"
+          if [ "$CARGO" != "$PKG" ] || [ "$CARGO" != "$TAURI" ]; then
+            echo "::error::R10 version drift: cargo=$CARGO package.json=$PKG tauri.conf.json=$TAURI"
+            exit 1
+          fi
+
       # Quality gates: run on Linux only to avoid duplicating work across platforms
       - name: TypeScript type check
         if: matrix.target == 'linux'
@@ -144,6 +167,49 @@ jobs:
         run: npm run tauri build
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Patch Debian dispatcher layout
+        if: matrix.target == 'linux'
+        shell: bash
+        run: |
+          shopt -s nullglob
+          for deb in src-tauri/target/release/bundle/deb/*.deb; do
+            src-tauri/scripts/patch-deb-dispatch.sh "$deb"
+          done
+
+      # R13 (APPENDIX-CLI-DISPATCH): record the size footprint of the
+      # dispatcher payload and the produced bundles so regressions in
+      # binary size (e.g. an accidental dependency that pulls in a heavy
+      # transitive crate) surface in the CI log. Informational only: no
+      # fail conditions; we want the diff visible in PR run logs, not a
+      # hard gate. Linux-only because the dispatcher + bundle layout is
+      # Linux-specific; Windows packaging will get its own report when
+      # CD-3.PACK lands.
+      - name: R13 size report (dispatcher payload + bundles)
+        if: matrix.target == 'linux'
+        shell: bash
+        run: |
+          echo "=== Release binary sizes ==="
+          for bin in aeroftp aeroftp-cli aeroftp-dispatch aerorsync_serve; do
+            f="src-tauri/target/release/$bin"
+            if [ -f "$f" ]; then
+              size=$(stat -c '%s' "$f")
+              human=$(numfmt --to=iec --suffix=B "$size")
+              printf '  %-22s %10s (%s bytes)\n' "$bin" "$human" "$size"
+            fi
+          done
+          echo
+          echo "=== Bundle artifact sizes ==="
+          for f in \
+            src-tauri/target/release/bundle/deb/*.deb \
+            src-tauri/target/release/bundle/rpm/*.rpm \
+            src-tauri/target/release/bundle/appimage/*.AppImage; do
+            if [ -f "$f" ]; then
+              size=$(stat -c '%s' "$f")
+              human=$(numfmt --to=iec --suffix=B "$size")
+              printf '  %-60s %10s\n' "$(basename "$f")" "$human"
+            fi
+          done
 
       # Fix Tauri AppImage for cross-distro compatibility (issue #90).
       #
@@ -183,7 +249,10 @@ jobs:
             echo "Fixed: .DirIcon -> $ICON (relative)"
           fi
 
-          # --- Fix 2: Remove all bundled shared libraries (issue #90) ---
+          # --- Fix 2: dispatcher layout ---
+          "$GITHUB_WORKSPACE/src-tauri/scripts/patch-appimage-dispatch.sh" "$(pwd)" "$GITHUB_WORKSPACE"
+
+          # --- Fix 3: Remove all bundled shared libraries (issue #90) ---
           # Keeps: binary, icons, desktop file, AppRun, metadata.
           # Removes: usr/lib/*.so* (WebKitGTK, GStreamer, GLib, etc.)
           LIB_COUNT=$(find usr/lib -name '*.so*' -type f -o -name '*.so*' -type l 2>/dev/null | wc -l)
