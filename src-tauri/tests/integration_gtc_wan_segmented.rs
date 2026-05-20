@@ -142,7 +142,7 @@ fn load_sftp_creds() -> Option<LoadedSftpCreds> {
                 .get("private_key_path")
                 .and_then(|v| v.as_str())
                 .filter(|s| !s.is_empty())
-                .map(|s| expand_tilde(s));
+                .map(expand_tilde);
             (pwd, key)
         } else {
             (Some(raw.trim_matches('"').to_string()), None)
