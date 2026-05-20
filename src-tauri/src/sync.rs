@@ -5,7 +5,7 @@
 // File comparison and synchronization logic
 
 use crate::delta_transport::DeltaBatch;
-use crate::providers::{ProviderError, StorageProvider};
+use crate::providers::{ProviderError, ProviderTransferExecutorKind, StorageProvider};
 use crate::sync_core::scan::{scan_local_tree, scan_remote_tree, ScanOptions};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -223,6 +223,9 @@ pub struct SyncOptions {
     pub delete_orphans: bool,
     pub conflict_mode: ConflictMode,
     pub scan: ScanOptions,
+    /// Requested intra-file download segments for the transfer phase.
+    /// `1` preserves the legacy single-stream path.
+    pub download_segments: u32,
 }
 
 impl Default for SyncOptions {
@@ -234,6 +237,7 @@ impl Default for SyncOptions {
             delete_orphans: false,
             conflict_mode: ConflictMode::Larger,
             scan: ScanOptions::default(),
+            download_segments: crate::transfer_settings::DEFAULT_DOWNLOAD_SEGMENTS,
         }
     }
 }
@@ -1070,6 +1074,7 @@ pub async fn sync_tree_core(
                             decision_policy: decision.decision_policy,
                             requested_policy: opts.delta_policy,
                         },
+                        opts.download_segments,
                         opts.dry_run,
                         sink,
                         &mut delta_batch,
@@ -1656,6 +1661,7 @@ async fn perform_download(
     local_root: &str,
     remote_root: &str,
     transfer: SyncTransferSpec<'_>,
+    download_segments: u32,
     dry_run: bool,
     sink: &mut dyn SyncProgressSink,
     delta_batch: &mut Option<Box<dyn DeltaBatch>>,
@@ -1751,7 +1757,15 @@ async fn perform_download(
                         remote_path,
                         reason
                     );
-                    return match provider.download(&remote_path, &local_path, None).await {
+                    return match sync_download_transfer(
+                        provider.as_mut(),
+                        &remote_path,
+                        &local_path,
+                        transfer.total,
+                        download_segments,
+                    )
+                    .await
+                    {
                         Ok(()) => FileOutcome::Downloaded {
                             bytes: transfer.total,
                             delta_stats: None,
@@ -1767,7 +1781,15 @@ async fn perform_download(
         }
     }
 
-    match provider.download(&remote_path, &local_path, None).await {
+    match sync_download_transfer(
+        provider.as_mut(),
+        &remote_path,
+        &local_path,
+        transfer.total,
+        download_segments,
+    )
+    .await
+    {
         Ok(()) => FileOutcome::Downloaded {
             bytes: transfer.total,
             delta_stats: None,
@@ -1777,6 +1799,59 @@ async fn perform_download(
             error: format!("download failed: {}", e),
         },
     }
+}
+
+async fn sync_download_transfer(
+    provider: &mut dyn StorageProvider,
+    remote_path: &str,
+    local_path: &str,
+    file_size: u64,
+    download_segments: u32,
+) -> Result<(), String> {
+    if download_segments > 1
+        && provider.transfer_executor_kind() != ProviderTransferExecutorKind::FtpConnectionPool
+    {
+        if let Some(segments) =
+            crate::provider_transfer_executor::provider_segmented_download_eligible(
+                provider,
+                file_size,
+                download_segments,
+                download_segments as usize,
+            )
+        {
+            tracing::info!(
+                "sync.download: segmented range path (remote={}, bytes={}, segments={})",
+                remote_path,
+                file_size,
+                segments
+            );
+            match crate::provider_transfer_executor::run_provider_segmented_download(
+                provider,
+                remote_path,
+                local_path,
+                file_size,
+                segments,
+                None,
+                tokio_util::sync::CancellationToken::new(),
+            )
+            .await
+            {
+                Ok(()) => return Ok(()),
+                Err(e) => {
+                    tracing::warn!(
+                        "sync.download: segmented range path failed, falling back to single-stream (remote={}, error={})",
+                        remote_path,
+                        e
+                    );
+                }
+            }
+        }
+    }
+
+    provider
+        .download(remote_path, local_path, None)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 async fn perform_remote_delete(
