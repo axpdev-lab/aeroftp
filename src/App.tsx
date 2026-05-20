@@ -987,6 +987,36 @@ const App: React.FC = () => {
   const batchCancelledRef = React.useRef(false);
   const cancelLevelRef = React.useRef(0); // 0=none, 1=soft, 2=hard
 
+  // TQ-4-routing: dispatcher for staged -> pending transitions.
+  // When the user presses Start (per-item) or Start all in the panel, the
+  // hook flips entries from 'staged' to 'pending'. This effect detects the
+  // transition vs the prior snapshot and runs the stored executor exactly
+  // once. The executor is the same callback used by Retry, so the retry
+  // path keeps working unchanged (error -> pending also fires here, but
+  // retryItem() already invokes the callback directly, and the executor is
+  // idempotent for batch sites via a one-shot guard).
+  const prevQueueStatusRef = React.useRef<Map<string, string>>(new Map());
+  const queueItemsRef = React.useRef(transferQueue.items);
+  React.useEffect(() => {
+    queueItemsRef.current = transferQueue.items;
+    const next = new Map<string, string>();
+    for (const item of transferQueue.items) {
+      const prev = prevQueueStatusRef.current.get(item.id);
+      if (prev === 'staged' && item.status === 'pending') {
+        const cb = retryCallbacksRef.current.get(item.id);
+        if (cb) {
+          try {
+            cb();
+          } catch (e) {
+            console.error('staged executor failed', e);
+          }
+        }
+      }
+      next.set(item.id, item.status);
+    }
+    prevQueueStatusRef.current = next;
+  }, [transferQueue.items]);
+
   // Circuit breaker for batch transfers
   const circuitBreaker = useCircuitBreaker();
   const [isBatchPaused, setIsBatchPaused] = React.useState(false);
