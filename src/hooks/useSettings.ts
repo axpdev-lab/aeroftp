@@ -93,6 +93,12 @@ export interface AppSettings {
   cardLayout: 'compact' | 'detailed';
   /** Provider logo size in the IntroHub My Servers and Discover cards. */
   introHubIconSize: number;
+  /** When ON (default), single and folder transfers launch immediately on
+   *  drag/drop or click, byte-identical to the legacy behaviour. When OFF,
+   *  transfers are parked in the Transfer Queue panel as `staged` so the
+   *  user can prune folder trees, reorder, then press Start (or Start all).
+   *  Wired by TQ-4; APPENDIX-TRANSFER-QUEUE locked decision 1. */
+  autoStartTransfers: boolean;
 }
 
 export const ALL_COLUMNS = ['name', 'size', 'type', 'permissions', 'modified'];
@@ -125,6 +131,7 @@ const DEFAULTS: AppSettings = {
   disableUpdateChecks: false,
   cardLayout: 'compact',
   introHubIconSize: DEFAULT_INTRO_HUB_ICON_SIZE,
+  autoStartTransfers: true,
 };
 
 export const useSettings = () => {
@@ -155,6 +162,7 @@ export const useSettings = () => {
   const [disableUpdateChecks, setDisableUpdateChecks] = useState(DEFAULTS.disableUpdateChecks);
   const [cardLayout, setCardLayout] = useState<AppSettings['cardLayout']>(DEFAULTS.cardLayout);
   const [introHubIconSize, setIntroHubIconSize] = useState<number>(DEFAULTS.introHubIconSize);
+  const [autoStartTransfers, setAutoStartTransfers] = useState(DEFAULTS.autoStartTransfers);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
 
   const applySettings = useCallback((parsed: Record<string, unknown>) => {
@@ -196,6 +204,7 @@ export const useSettings = () => {
     if (typeof parsed.introHubIconSize === 'number' || typeof parsed.introHubIconSize === 'string') {
       setIntroHubIconSize(clampIntroHubIconSize(parsed.introHubIconSize));
     }
+    if (typeof parsed.autoStartTransfers === 'boolean') setAutoStartTransfers(parsed.autoStartTransfers);
   }, []);
 
   // Load settings on mount + listen for changes
@@ -283,6 +292,7 @@ export const useSettings = () => {
     disableUpdateChecks,
     cardLayout,
     introHubIconSize,
+    autoStartTransfers,
     showSettingsPanel,
 
     // Setters
@@ -313,6 +323,7 @@ export const useSettings = () => {
     setDisableUpdateChecks,
     setCardLayout,
     setIntroHubIconSize,
+    setAutoStartTransfers,
     setShowSettingsPanel,
 
     // Constants

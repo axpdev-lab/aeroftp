@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} en {seconds}s",
                 "newTransfer": "Nouveau transfert",
                 "preparing": "Préparation du transfert…"
-            }
+            },
+            "staged": "en file",
+            "start": "Démarrer",
+            "startAll": "Tout démarrer"
         },
         "settings": {
             "title": "Paramètres",
@@ -1002,7 +1005,9 @@
             "downloadSegments": "Segments de téléchargement par fichier",
             "downloadSegmentsAuto": "Auto (flux unique)",
             "downloadSegmentsN": "{n} segments par fichier",
-            "downloadSegmentsDesc": "Divise chaque téléchargement en plages d'octets parallèles. Auto conserve le comportement actuel à flux unique. Efficace avec les fournisseurs qui prennent en charge les requêtes range (SFTP, S3, HTTP) pour des fichiers suffisamment volumineux pour en tirer parti."
+            "downloadSegmentsDesc": "Divise chaque téléchargement en plages d'octets parallèles. Auto conserve le comportement actuel à flux unique. Efficace avec les fournisseurs qui prennent en charge les requêtes range (SFTP, S3, HTTP) pour des fichiers suffisamment volumineux pour en tirer parti.",
+            "autoStartTransfers": "Demarrage automatique des transferts",
+            "autoStartTransfersHelp": "Active, les transferts par glisser-deposer ou clic demarrent immediatement. Desactive, ils sont parques dans la Transfer Queue comme staged, ce qui permet d'elaguer les arborescences de dossiers et de reordonner avant d'appuyer sur Start."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4366,6 +4371,10 @@
                 "colPct": "%",
                 "totalRow": "Total",
                 "noData": "Aucune donnée par protocole pour l'instant — connectez au moins un serveur."
+            },
+            "connectError": {
+                "failed": "Dernière tentative de connexion échouée",
+                "lastFailedAt": "Dernier échec il y a {time}"
             }
         },
         "gitlab": {

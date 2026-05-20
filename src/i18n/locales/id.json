@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} dalam {seconds} detik",
                 "newTransfer": "Transfer Baru",
                 "preparing": "Menyiapkan transfer…"
-            }
+            },
+            "staged": "dalam antrian",
+            "start": "Mulai",
+            "startAll": "Mulai semua"
         },
         "settings": {
             "title": "Pengaturan",
@@ -1002,7 +1005,9 @@
             "downloadSegments": "Segmen Unduhan per Berkas",
             "downloadSegmentsAuto": "Auto (aliran tunggal)",
             "downloadSegmentsN": "{n} segmen per berkas",
-            "downloadSegmentsDesc": "Bagi setiap unduhan menjadi rentang byte paralel. Auto mempertahankan perilaku aliran tunggal saat ini. Efektif pada penyedia yang mendukung permintaan rentang (SFTP, S3, HTTP) untuk berkas yang cukup besar."
+            "downloadSegmentsDesc": "Bagi setiap unduhan menjadi rentang byte paralel. Auto mempertahankan perilaku aliran tunggal saat ini. Efektif pada penyedia yang mendukung permintaan rentang (SFTP, S3, HTTP) untuk berkas yang cukup besar.",
+            "autoStartTransfers": "Mulai transfer otomatis",
+            "autoStartTransfersHelp": "Saat aktif, transfer drag-and-drop dan klik dimulai segera. Saat nonaktif, transfer diparkir di Transfer Queue sebagai staged sehingga kamu dapat memangkas pohon folder dan menyusun ulang sebelum menekan Start."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4366,6 +4371,10 @@
                 "colPct": "%",
                 "totalRow": "Total",
                 "noData": "Belum ada data protokol — hubungkan setidaknya satu server."
+            },
+            "connectError": {
+                "failed": "Upaya koneksi terakhir gagal",
+                "lastFailedAt": "Kegagalan terakhir {time} lalu"
             }
         },
         "gitlab": {

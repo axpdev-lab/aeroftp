@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} u {seconds}s",
                 "newTransfer": "Novi prijenos",
                 "preparing": "Priprema prijenosa…"
-            }
+            },
+            "staged": "u redu",
+            "start": "Pokreni",
+            "startAll": "Pokreni sve"
         },
         "settings": {
             "title": "Postavke",
@@ -1002,7 +1005,9 @@
             "downloadSegments": "Segmenti preuzimanja po datoteci",
             "downloadSegmentsAuto": "Auto (jedan tok)",
             "downloadSegmentsN": "{n} segmenata po datoteci",
-            "downloadSegmentsDesc": "Podijelite svako preuzimanje na paralelne raspone bajtova. Auto zadržava trenutno ponašanje s jednim tokom. Učinkovito na pružateljima koji podržavaju zahtjeve za raspon (SFTP, S3, HTTP) za datoteke dovoljno velike da imaju koristi."
+            "downloadSegmentsDesc": "Podijelite svako preuzimanje na paralelne raspone bajtova. Auto zadržava trenutno ponašanje s jednim tokom. Učinkovito na pružateljima koji podržavaju zahtjeve za raspon (SFTP, S3, HTTP) za datoteke dovoljno velike da imaju koristi.",
+            "autoStartTransfers": "Automatsko pokretanje prijenosa",
+            "autoStartTransfersHelp": "Kad je ukljuceno, prijenosi povucenjem-i-ispustanjem i klikom krecu odmah. Kad je iskljuceno, parkiraju se u Transfer Queue kao staged, kako bi mogao prorijediti stabla mapa i preraspodijeliti prije pritiska na Start."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4366,6 +4371,10 @@
                 "colPct": "%",
                 "totalRow": "Ukupno",
                 "noData": "Još nema podataka o protokolima — povežite barem jedan poslužitelj."
+            },
+            "connectError": {
+                "failed": "Posljednji pokušaj povezivanja nije uspio",
+                "lastFailedAt": "Posljednja pogreška prije {time}"
             }
         },
         "gitlab": {

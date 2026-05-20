@@ -501,7 +501,10 @@
                 "summaryMeta": "{size}, {seconds}s içinde",
                 "newTransfer": "Yeni Aktarım",
                 "preparing": "Aktarım hazırlanıyor…"
-            }
+            },
+            "staged": "sırada",
+            "start": "Başlat",
+            "startAll": "Tümünü başlat"
         },
         "settings": {
             "title": "Ayarlar",
@@ -1002,7 +1005,9 @@
             "downloadSegments": "Dosya başına indirme segmenti",
             "downloadSegmentsAuto": "Otomatik (tek akış)",
             "downloadSegmentsN": "Dosya başına {n} segment",
-            "downloadSegmentsDesc": "Her indirmeyi paralel bayt aralıklarına böler. Otomatik, mevcut tek akış davranışını korur. Aralık isteklerini destekleyen sağlayıcılarda (SFTP, S3, HTTP), kazanç sağlayacak kadar büyük dosyalar için etkilidir."
+            "downloadSegmentsDesc": "Her indirmeyi paralel bayt aralıklarına böler. Otomatik, mevcut tek akış davranışını korur. Aralık isteklerini destekleyen sağlayıcılarda (SFTP, S3, HTTP), kazanç sağlayacak kadar büyük dosyalar için etkilidir.",
+            "autoStartTransfers": "Aktarimlari otomatik baslat",
+            "autoStartTransfersHelp": "Aciksa, surukle-birak ve tiklama aktarimlari hemen baslar. Kapaliysa, Transfer Queue icinde staged olarak park edilir, boylece Start tusuna basmadan once klasor agaclarini ayiklayabilir ve yeniden siralayabilirsin."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4366,6 +4371,10 @@
                 "colPct": "%",
                 "totalRow": "Toplam",
                 "noData": "Henüz protokol verisi yok — en az bir sunucuya bağlanın."
+            },
+            "connectError": {
+                "failed": "Son bağlantı denemesi başarısız",
+                "lastFailedAt": "Son hata {time} önce"
             }
         },
         "gitlab": {

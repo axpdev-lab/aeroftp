@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} pa {seconds}s",
                 "newTransfer": "Ny overforsel",
                 "preparing": "Forbereder overførsel…"
-            }
+            },
+            "staged": "i kø",
+            "start": "Start",
+            "startAll": "Start alle"
         },
         "settings": {
             "title": "Indstillinger",
@@ -1002,7 +1005,9 @@
             "downloadSegments": "Download-segmenter pr. fil",
             "downloadSegmentsAuto": "Auto (enkelt stream)",
             "downloadSegmentsN": "{n} segmenter pr. fil",
-            "downloadSegmentsDesc": "Opdel hver download i parallelle byte-intervaller. Auto bevarer den nuværende adfærd med enkelt stream. Virker hos udbydere, der understøtter range-anmodninger (SFTP, S3, HTTP), for filer der er store nok til at have gavn af det."
+            "downloadSegmentsDesc": "Opdel hver download i parallelle byte-intervaller. Auto bevarer den nuværende adfærd med enkelt stream. Virker hos udbydere, der understøtter range-anmodninger (SFTP, S3, HTTP), for filer der er store nok til at have gavn af det.",
+            "autoStartTransfers": "Start overforsler automatisk",
+            "autoStartTransfersHelp": "Hvis tilvalgt, starter drag-and-drop- og klik-overforsler med det samme. Hvis fravalgt, parkeres de i Transfer Queue som staged, sa du kan beskaere mappetraeer og omarrangere, for du trykker Start."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4366,6 +4371,10 @@
                 "colPct": "%",
                 "totalRow": "Total",
                 "noData": "Ingen protokoldata endnu — tilslut mindst én server."
+            },
+            "connectError": {
+                "failed": "Sidste forbindelsesforsøg mislykkedes",
+                "lastFailedAt": "Seneste fejl for {time} siden"
             }
         },
         "gitlab": {

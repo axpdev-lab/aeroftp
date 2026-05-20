@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} dalam {seconds}s",
                 "newTransfer": "Pemindahan Baharu",
                 "preparing": "Menyediakan pemindahan…"
-            }
+            },
+            "staged": "dalam baris",
+            "start": "Mula",
+            "startAll": "Mula semua"
         },
         "settings": {
             "title": "Tetapan",
@@ -1002,7 +1005,9 @@
             "downloadSegments": "Segmen Muat Turun setiap Fail",
             "downloadSegmentsAuto": "Auto (strim tunggal)",
             "downloadSegmentsN": "{n} segmen setiap fail",
-            "downloadSegmentsDesc": "Pecahkan setiap muat turun kepada julat bait selari. Auto mengekalkan tingkah laku strim tunggal sedia ada. Berkesan pada penyedia yang menyokong permintaan julat (SFTP, S3, HTTP) untuk fail yang cukup besar untuk mendapat manfaat."
+            "downloadSegmentsDesc": "Pecahkan setiap muat turun kepada julat bait selari. Auto mengekalkan tingkah laku strim tunggal sedia ada. Berkesan pada penyedia yang menyokong permintaan julat (SFTP, S3, HTTP) untuk fail yang cukup besar untuk mendapat manfaat.",
+            "autoStartTransfers": "Mulakan pemindahan secara automatik",
+            "autoStartTransfersHelp": "Apabila aktif, pemindahan drag-and-drop dan klik dimulakan serta-merta. Apabila tidak aktif, ia diletakkan dalam Transfer Queue sebagai staged supaya kamu boleh mencantas pokok folder dan menyusun semula sebelum menekan Start."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4366,6 +4371,10 @@
                 "colPct": "%",
                 "totalRow": "Jumlah",
                 "noData": "Belum ada data protokol — sambungkan sekurang-kurangnya satu pelayan."
+            },
+            "connectError": {
+                "failed": "Percubaan sambungan terakhir gagal",
+                "lastFailedAt": "Kegagalan terakhir {time} lalu"
             }
         },
         "gitlab": {

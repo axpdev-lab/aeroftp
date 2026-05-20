@@ -787,7 +787,10 @@
                 "summary": "{transferred} trasferiti, {skipped} saltati, {failed} falliti",
                 "summaryMeta": "{size} in {seconds}s",
                 "newTransfer": "Nuovo trasferimento"
-            }
+            },
+            "staged": "in coda",
+            "start": "Avvia",
+            "startAll": "Avvia tutto"
         },
         "scanning": {
             "deleting": "Eliminazione",
@@ -1294,7 +1297,9 @@
             "downloadSegments": "Segmenti di download per file",
             "downloadSegmentsAuto": "Auto (singolo stream)",
             "downloadSegmentsN": "{n} segmenti per file",
-            "downloadSegmentsDesc": "Suddivide ogni download in range di byte paralleli. Auto mantiene il comportamento attuale a singolo stream. Efficace sui provider che supportano le richieste range (SFTP, S3, HTTP) per file abbastanza grandi da trarne beneficio."
+            "downloadSegmentsDesc": "Suddivide ogni download in range di byte paralleli. Auto mantiene il comportamento attuale a singolo stream. Efficace sui provider che supportano le richieste range (SFTP, S3, HTTP) per file abbastanza grandi da trarne beneficio.",
+            "autoStartTransfers": "Avvio automatico dei trasferimenti",
+            "autoStartTransfersHelp": "Se attivo, i trasferimenti via drag-and-drop e clic partono subito. Se disattivo, vengono parcheggiati nella Transfer Queue come staged, cosi' puoi sfoltire gli alberi di cartelle e riordinare prima di premere Start."
         },
         "appearance": {
             "patternCross": "Croce",
@@ -4427,6 +4432,10 @@
                 "pending": "Verifica in corso...",
                 "unknown": "Non verificato",
                 "clickToRetry": "clic per riverificare"
+            },
+            "connectError": {
+                "failed": "Ultimo tentativo di connessione fallito",
+                "lastFailedAt": "Ultimo errore {time} fa"
             },
             "densityCompact": "Righe compatte",
             "densityComfortable": "Righe comode",

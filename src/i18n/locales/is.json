@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} á {seconds}s",
                 "newTransfer": "Nýr flutningur",
                 "preparing": "Undirbý flutning…"
-            }
+            },
+            "staged": "í biðröð",
+            "start": "Byrja",
+            "startAll": "Byrja allt"
         },
         "settings": {
             "title": "Stillingar",
@@ -1002,7 +1005,9 @@
             "downloadSegments": "Niðurhalshlutar á skrá",
             "downloadSegmentsAuto": "Sjálfvirkt (einn straumur)",
             "downloadSegmentsN": "{n} hlutar á skrá",
-            "downloadSegmentsDesc": "Skiptu hverju niðurhali í samhliða bætasvið. Sjálfvirkt heldur núverandi hegðun með einum straumi. Virkar á þjónustum sem styðja sviðsbeiðnir (SFTP, S3, HTTP) fyrir skrár sem eru nógu stórar til að hagnast."
+            "downloadSegmentsDesc": "Skiptu hverju niðurhali í samhliða bætasvið. Sjálfvirkt heldur núverandi hegðun með einum straumi. Virkar á þjónustum sem styðja sviðsbeiðnir (SFTP, S3, HTTP) fyrir skrár sem eru nógu stórar til að hagnast.",
+            "autoStartTransfers": "Sjalfvirkt upphaf flutninga",
+            "autoStartTransfersHelp": "Kveikt hefjast drag-and-drop og smella flutningar strax. Slokkt eru their lagdir i Transfer Queue sem staged, svo thu getir snyrt mopputre og endurrada adur en thu yttir a Start."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4385,6 +4390,10 @@
                 "colPct": "%",
                 "totalRow": "Samtals",
                 "noData": "Engin gögn enn — tengdu að minnsta kosti einn netþjón."
+            },
+            "connectError": {
+                "failed": "Síðasta tengitilraun mistókst",
+                "lastFailedAt": "Síðasta villa fyrir {time}"
             }
         },
         "gitlab": {

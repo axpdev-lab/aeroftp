@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} {seconds}s jooksul",
                 "newTransfer": "Uus ülekanne",
                 "preparing": "Ülekande ettevalmistamine…"
-            }
+            },
+            "staged": "järjekorras",
+            "start": "Käivita",
+            "startAll": "Käivita kõik"
         },
         "settings": {
             "title": "Seaded",
@@ -1002,7 +1005,9 @@
             "downloadSegments": "Allalaadimise segmendid faili kohta",
             "downloadSegmentsAuto": "Auto (üks voog)",
             "downloadSegmentsN": "{n} segmenti faili kohta",
-            "downloadSegmentsDesc": "Jagab iga allalaadimise paralleelseteks baidivahemikeks. Auto säilitab praeguse ühe voo käitumise. Toimib pakkujatel, kes toetavad vahemikupäringuid (SFTP, S3, HTTP), ja piisavalt suurte failide korral, et sellest kasu oleks."
+            "downloadSegmentsDesc": "Jagab iga allalaadimise paralleelseteks baidivahemikeks. Auto säilitab praeguse ühe voo käitumise. Toimib pakkujatel, kes toetavad vahemikupäringuid (SFTP, S3, HTTP), ja piisavalt suurte failide korral, et sellest kasu oleks.",
+            "autoStartTransfers": "Ulekannete automaatne kaivitamine",
+            "autoStartTransfersHelp": "Sisselulitatuna kaivituvad lohista-ja-aseta ja kliki ulekanded kohe. Valjalulitatuna pargitakse need Transfer Queue'sse staged olekuna, et saaksid kaustapuid kuljendada ja umber jarjestada enne Start vajutamist."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4366,6 +4371,10 @@
                 "colPct": "%",
                 "totalRow": "Kokku",
                 "noData": "Veel pole protokolli andmeid — ühendage vähemalt üks server."
+            },
+            "connectError": {
+                "failed": "Viimane ühenduskatse ebaõnnestus",
+                "lastFailedAt": "Viimane viga {time} tagasi"
             }
         },
         "gitlab": {

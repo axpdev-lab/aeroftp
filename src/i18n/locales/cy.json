@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} mewn {seconds}s",
                 "newTransfer": "Trosglwyddiad Newydd",
                 "preparing": "Yn paratoi'r trosglwyddiad…"
-            }
+            },
+            "staged": "mewn ciw",
+            "start": "Cychwyn",
+            "startAll": "Cychwyn popeth"
         },
         "settings": {
             "title": "Gosodiadau",
@@ -1002,7 +1005,9 @@
             "downloadSegments": "Segmentau lawrlwytho fesul ffeil",
             "downloadSegmentsAuto": "Auto (un ffrwd)",
             "downloadSegmentsN": "{n} segment fesul ffeil",
-            "downloadSegmentsDesc": "Rhannu pob lawrlwythiad yn ystodau beit cyfochrog. Mae Auto yn cadw'r ymddygiad un ffrwd presennol. Effeithiol gyda darparwyr sy'n cefnogi ceisiadau ystod (SFTP, S3, HTTP) ar gyfer ffeiliau digon mawr i elwa."
+            "downloadSegmentsDesc": "Rhannu pob lawrlwythiad yn ystodau beit cyfochrog. Mae Auto yn cadw'r ymddygiad un ffrwd presennol. Effeithiol gyda darparwyr sy'n cefnogi ceisiadau ystod (SFTP, S3, HTTP) ar gyfer ffeiliau digon mawr i elwa.",
+            "autoStartTransfers": "Cychwyn trosglwyddiadau yn awtomatig",
+            "autoStartTransfersHelp": "Pan fydd ymlaen, mae trosglwyddiadau drag-and-drop a chlicio yn cychwyn ar unwaith. Pan fydd i ffwrdd, cant eu parcio yn y Transfer Queue fel staged er mwyn i ti docio coed ffolderi ac aildrefnu cyn pwyso Start."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4385,6 +4390,10 @@
                 "colPct": "%",
                 "totalRow": "Cyfanswm",
                 "noData": "Dim data protocol eto — cysylltwch o leiaf un gweinydd."
+            },
+            "connectError": {
+                "failed": "Methodd y cais cysylltu diwethaf",
+                "lastFailedAt": "Methiant diwethaf {time} yn ôl"
             }
         },
         "gitlab": {

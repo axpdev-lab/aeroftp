@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} ajassa {seconds}s",
                 "newTransfer": "Uusi siirto",
                 "preparing": "Valmistellaan siirtoa…"
-            }
+            },
+            "staged": "jonossa",
+            "start": "Aloita",
+            "startAll": "Aloita kaikki"
         },
         "settings": {
             "title": "Asetukset",
@@ -1002,7 +1005,9 @@
             "downloadSegments": "Latauksen segmentit per tiedosto",
             "downloadSegmentsAuto": "Auto (yksi virta)",
             "downloadSegmentsN": "{n} segmenttiä per tiedosto",
-            "downloadSegmentsDesc": "Jakaa jokaisen latauksen rinnakkaisiin tavualueisiin. Auto säilyttää nykyisen yhden virran toiminnan. Tehokas palveluntarjoajilla, jotka tukevat range-pyyntöjä (SFTP, S3, HTTP), riittävän suurille tiedostoille, jotta hyöty näkyy."
+            "downloadSegmentsDesc": "Jakaa jokaisen latauksen rinnakkaisiin tavualueisiin. Auto säilyttää nykyisen yhden virran toiminnan. Tehokas palveluntarjoajilla, jotka tukevat range-pyyntöjä (SFTP, S3, HTTP), riittävän suurille tiedostoille, jotta hyöty näkyy.",
+            "autoStartTransfers": "Aloita siirrot automaattisesti",
+            "autoStartTransfersHelp": "Kun paalla, vedos-ja-pudota- ja napsautussiirrot kaynnistyvat heti. Kun pois paalta, ne pysakoidaan Transfer Queue -jonoon staged-tilassa, jotta voit karsia kansiopuita ja jarjestaa uudelleen ennen Start-painikkeen painamista."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4366,6 +4371,10 @@
                 "colPct": "%",
                 "totalRow": "Yhteensä",
                 "noData": "Ei vielä protokollatietoja — yhdistä vähintään yksi palvelin."
+            },
+            "connectError": {
+                "failed": "Viimeisin yhteysyritys epäonnistui",
+                "lastFailedAt": "Viimeisin virhe {time} sitten"
             }
         },
         "gitlab": {
