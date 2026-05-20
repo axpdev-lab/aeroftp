@@ -7,8 +7,21 @@ import { Upload, Download, Check, X, Clock, Loader2, Folder, RotateCcw, Trash2, 
 import { formatBytes } from '../utils/formatters';
 import { useTranslation } from '../i18n';
 import { TransferProgressBar } from './TransferProgressBar';
+import {
+    addItem as addItemHelper,
+    removeItem as removeItemHelper,
+    reorder as reorderHelper,
+    startAll as startAllHelper,
+    startStaged as startStagedHelper,
+    type AddItemOptions,
+} from './transferQueueActions';
 
-export type TransferStatus = 'pending' | 'transferring' | 'completed' | 'error';
+// `staged` was added by TQ-3 (APPENDIX-TRANSFER-QUEUE). It represents an
+// entry that was added to the queue without launching: the user can prune,
+// reorder, then press Start (or Start all) to promote it to `pending`.
+// The legacy "add and run" flow (auto-start mode) continues to bypass
+// `staged` and adds entries directly as `pending`, byte-identical to today.
+export type TransferStatus = 'staged' | 'pending' | 'transferring' | 'completed' | 'error';
 export type TransferType = 'upload' | 'download';
 
 export interface TransferItem {
@@ -46,6 +59,8 @@ interface TransferQueueProps {
 
 const StatusIcon: React.FC<{ status: TransferStatus }> = ({ status }) => {
     switch (status) {
+        case 'staged':
+            return <Play size={12} className="text-amber-500" />;
         case 'pending':
             return <Clock size={12} className="text-gray-400" />;
         case 'transferring':
@@ -604,22 +619,41 @@ export const useTransferQueue = () => {
         };
     }, [items]);
 
-    const addItem = (filename: string, path: string, size: number, type: TransferType): string => {
-        const id = `transfer-${++transferId}`;
-        setItems(prev => [...prev, {
-            id,
-            filename,
-            path,
-            size,
-            type,
-            status: 'pending',
-            startTime: Date.now()
-        }]);
+    const addItem = (
+        filename: string,
+        path: string,
+        size: number,
+        type: TransferType,
+        options?: AddItemOptions,
+    ): string => {
+        const id = options?.id ?? `transfer-${++transferId}`;
+        setItems(prev => addItemHelper(prev, id, filename, path, size, type, options));
         // Only auto-show if user hasn't explicitly closed the panel
         if (!userDismissedRef.current) {
             setIsVisible(true);
         }
         return id;
+    };
+
+    // TQ-3 staging lifecycle: promote a single staged entry to pending.
+    // Used by the per-item Start button. No-op when the item is not staged.
+    const startStaged = (id: string) => {
+        setItems(prev => startStagedHelper(prev, id));
+    };
+
+    // TQ-3 staging lifecycle: promote every staged entry to pending in
+    // current order. Used by the panel-header Start all button.
+    const startAll = () => {
+        setItems(prev => startAllHelper(prev));
+    };
+
+    // TQ-3 staging lifecycle: reorder a staged entry within the queue. The
+    // reorder is a priority hint only (UX spec section 8): the executor
+    // runs `max_concurrent` transfers in parallel from pending, picking in
+    // queue order. Entries already past staged are pinned by the executor
+    // and the helper leaves them alone.
+    const reorderStaged = (fromId: string, toIndex: number) => {
+        setItems(prev => reorderHelper(prev, fromId, toIndex));
     };
 
     const updateStatus = (id: string, status: TransferStatus, progress?: number, error?: string) => {
@@ -731,13 +765,23 @@ export const useTransferQueue = () => {
         });
     };
 
-    // Check if there's any active transfer
+    // Check if there's any active transfer. STAGED entries are intentionally
+    // excluded: they do not consume executor slots (UX spec section 1).
     const hasActiveTransfers = items.some(i => i.status === 'transferring' || i.status === 'pending');
+
+    // TQ-3: number of staged entries waiting on an explicit Start. Surfaced
+    // separately so the panel header can show "{N} staged" without
+    // conflating with the active count.
+    const stagedTransferCount = items.reduce(
+        (n, i) => (i.status === 'staged' ? n + 1 : n),
+        0,
+    );
 
     return {
         items,
         isVisible,
         hasActiveTransfers,
+        stagedTransferCount,
         addItem,
         startTransfer,
         setProgress,
@@ -752,7 +796,11 @@ export const useTransferQueue = () => {
         removeItem,
         retryItem,
         retryAllFailed,
-        toggle
+        toggle,
+        // TQ-3 staging lifecycle
+        startStaged,
+        startAll,
+        reorderStaged,
     };
 };
 
