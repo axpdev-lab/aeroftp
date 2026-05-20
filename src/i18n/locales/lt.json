@@ -998,7 +998,11 @@
             "bridgeUnsupportedProto": "{app} nepalaiko {protocol}",
             "bridgeSecretFull": "Prisijungimo duomenys atkuriami ir iš naujo užšifruojami į AeroFTP vault.",
             "bridgeSecretLimited": "Galima atkurti tik dalį prisijungimo duomenų; gali tekti iš naujo įvesti kai kurias paslaptis.",
-            "bridgeSecretMetadata": "Tik ryšio metaduomenys: paslaptys lieka {app} raktinėje/agente ir turi būti įvestos iš naujo."
+            "bridgeSecretMetadata": "Tik ryšio metaduomenys: paslaptys lieka {app} raktinėje/agente ir turi būti įvestos iš naujo.",
+            "downloadSegments": "Atsisiuntimo segmentai vienam failui",
+            "downloadSegmentsAuto": "Automatinis (vienas srautas)",
+            "downloadSegmentsN": "{n} segmentų viename faile",
+            "downloadSegmentsDesc": "Padalykite kiekvieną atsisiuntimą į lygiagrečius baitų diapazonus. Automatinis išlaiko esamą vieno srauto elgseną. Veiksminga su tiekėjais, palaikančiais diapazonų užklausas (SFTP, S3, HTTP), pakankamai dideliems failams."
         },
         "devtools": {
             "title": "AeroTools",

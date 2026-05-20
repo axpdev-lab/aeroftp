@@ -998,7 +998,11 @@
             "bridgeUnsupportedProto": "{protocol} {app} tarafından desteklenmiyor",
             "bridgeSecretFull": "Kimlik bilgileri kurtarılır ve yeniden şifrelenerek AeroFTP kasasına aktarılır.",
             "bridgeSecretLimited": "Kimlik bilgilerinin yalnızca bir kısmı kurtarılabilir; bazı gizli bilgileri yeniden girmeniz gerekebilir.",
-            "bridgeSecretMetadata": "Yalnızca bağlantı meta verileri: gizli bilgiler {app} anahtarlığında/aracısında kalır ve yeniden girilmelidir."
+            "bridgeSecretMetadata": "Yalnızca bağlantı meta verileri: gizli bilgiler {app} anahtarlığında/aracısında kalır ve yeniden girilmelidir.",
+            "downloadSegments": "Dosya başına indirme segmenti",
+            "downloadSegmentsAuto": "Otomatik (tek akış)",
+            "downloadSegmentsN": "Dosya başına {n} segment",
+            "downloadSegmentsDesc": "Her indirmeyi paralel bayt aralıklarına böler. Otomatik, mevcut tek akış davranışını korur. Aralık isteklerini destekleyen sağlayıcılarda (SFTP, S3, HTTP), kazanç sağlayacak kadar büyük dosyalar için etkilidir."
         },
         "devtools": {
             "title": "AeroTools",

@@ -998,7 +998,11 @@
             "bridgeUnsupportedProto": "{protocol} støttes ikke av {app}",
             "bridgeSecretFull": "Legitimasjon gjenopprettes og krypteres på nytt inn i AeroFTP vault.",
             "bridgeSecretLimited": "Bare deler av legitimasjonen kan gjenopprettes; du må kanskje skrive inn noen hemmeligheter på nytt.",
-            "bridgeSecretMetadata": "Kun tilkoblingsmetadata: hemmeligheter blir værende i nøkkelringen/agenten til {app} og må skrives inn på nytt."
+            "bridgeSecretMetadata": "Kun tilkoblingsmetadata: hemmeligheter blir værende i nøkkelringen/agenten til {app} og må skrives inn på nytt.",
+            "downloadSegments": "Nedlastingssegmenter per fil",
+            "downloadSegmentsAuto": "Auto (én strøm)",
+            "downloadSegmentsN": "{n} segmenter per fil",
+            "downloadSegmentsDesc": "Del hver nedlasting i parallelle byteområder. Auto beholder dagens oppførsel med én strøm. Effektivt på leverandører som støtter områdeforespørsler (SFTP, S3, HTTP) for filer som er store nok til å dra nytte av det."
         },
         "devtools": {
             "title": "AeroTools",

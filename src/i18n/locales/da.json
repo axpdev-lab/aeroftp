@@ -998,7 +998,11 @@
             "bridgeUnsupportedProto": "{protocol} understøttes ikke af {app}",
             "bridgeSecretFull": "Loginoplysningerne gendannes og krypteres på ny i AeroFTP-vaulten.",
             "bridgeSecretLimited": "Kun en del af loginoplysningerne kan gendannes; du skal muligvis indtaste nogle hemmeligheder igen.",
-            "bridgeSecretMetadata": "Kun forbindelsesmetadata: hemmelighederne forbliver i {app}'s nøglering/agent og skal indtastes igen."
+            "bridgeSecretMetadata": "Kun forbindelsesmetadata: hemmelighederne forbliver i {app}'s nøglering/agent og skal indtastes igen.",
+            "downloadSegments": "Download-segmenter pr. fil",
+            "downloadSegmentsAuto": "Auto (enkelt stream)",
+            "downloadSegmentsN": "{n} segmenter pr. fil",
+            "downloadSegmentsDesc": "Opdel hver download i parallelle byte-intervaller. Auto bevarer den nuværende adfærd med enkelt stream. Virker hos udbydere, der understøtter range-anmodninger (SFTP, S3, HTTP), for filer der er store nok til at have gavn af det."
         },
         "devtools": {
             "title": "AeroTools",

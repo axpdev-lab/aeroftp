@@ -998,7 +998,11 @@
             "bridgeUnsupportedProto": "{protocol} non é compatible con {app}",
             "bridgeSecretFull": "As credenciais recupéranse e vólvense cifrar no vault de AeroFTP.",
             "bridgeSecretLimited": "Só se pode recuperar parte das credenciais; pode que teñas que volver introducir algúns segredos.",
-            "bridgeSecretMetadata": "Só metadatos de conexión: os segredos permanecen no chaveiro/axente de {app} e hai que volver introducilos."
+            "bridgeSecretMetadata": "Só metadatos de conexión: os segredos permanecen no chaveiro/axente de {app} e hai que volver introducilos.",
+            "downloadSegments": "Segmentos de descarga por ficheiro",
+            "downloadSegmentsAuto": "Auto (fluxo único)",
+            "downloadSegmentsN": "{n} segmentos por ficheiro",
+            "downloadSegmentsDesc": "Divide cada descarga en intervalos de bytes paralelos. Auto mantén o comportamento actual de fluxo único. Eficaz nos provedores que admiten solicitudes de rango (SFTP, S3, HTTP) para ficheiros suficientemente grandes como para beneficiarse."
         },
         "devtools": {
             "title": "AeroTools",

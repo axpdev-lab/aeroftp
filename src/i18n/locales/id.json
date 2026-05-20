@@ -998,7 +998,11 @@
             "bridgeUnsupportedProto": "{protocol} tidak didukung oleh {app}",
             "bridgeSecretFull": "Kredensial dipulihkan dan dienkripsi ulang ke dalam vault AeroFTP.",
             "bridgeSecretLimited": "Hanya sebagian materi kredensial yang dapat dipulihkan; Anda mungkin perlu memasukkan ulang beberapa rahasia.",
-            "bridgeSecretMetadata": "Hanya metadata koneksi: rahasia tetap berada di keychain/agen {app} dan harus dimasukkan ulang."
+            "bridgeSecretMetadata": "Hanya metadata koneksi: rahasia tetap berada di keychain/agen {app} dan harus dimasukkan ulang.",
+            "downloadSegments": "Segmen Unduhan per Berkas",
+            "downloadSegmentsAuto": "Auto (aliran tunggal)",
+            "downloadSegmentsN": "{n} segmen per berkas",
+            "downloadSegmentsDesc": "Bagi setiap unduhan menjadi rentang byte paralel. Auto mempertahankan perilaku aliran tunggal saat ini. Efektif pada penyedia yang mendukung permintaan rentang (SFTP, S3, HTTP) untuk berkas yang cukup besar."
         },
         "devtools": {
             "title": "AeroTools",
