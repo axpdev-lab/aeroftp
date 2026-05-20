@@ -5,6 +5,118 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.8.4] - 2026-05-20
+
+### Unified Transfer DAG, Staging Queue and AeroFile Sync
+
+v3.8.4 is a big release: the slow work of the last cycle was converging every transfer surface (GUI, CLI, AeroSync, cross-profile) onto one shared execution engine, building a staging queue on top of it, shipping a CLI dispatcher set, unifying three disconnected sync dialogs, and acting on the v3.8.3 community feedback. Seventy commits since v3.8.3, organized below.
+
+---
+
+### What's new
+
+This section is the high-level tour. The detailed lists below cover every change.
+
+#### A single DAG transfer executor
+
+AeroFTP had multiple parallel transfer paths: the GUI segmented download, intra-file range downloads, cross-profile transfers, the AeroSync engine, the CLI `pget` and `sync` commands, and the legacy per-protocol code. v3.8.4 lands a **ready-frontier executor over a Directed Acyclic Graph** (DAG: every transfer is a graph of nodes where each edge says "this step depends on that one", and the executor walks the graph fanning out as soon as a node's dependencies are satisfied), and progressively converges every one of those paths onto it. The same code now powers concurrent-range downloads for SFTP and FTP, B2 large-file uploads, cross-profile transfers, and the AeroSync download stage. The executor ships with **prudent AIMD backpressure** (Additive Increase, Multiplicative Decrease: the classic TCP-style self-tuning that ramps up while the link is healthy and backs off hard at the first sign of strain) so it adapts to the slowest link without the user having to pick a number, and an **AppHandle-free observability sink** so non-Tauri callers (CLI, agents, tests) get the same progress signal the GUI does.
+
+This is mostly internal plumbing. The user-visible effect is that the GUI and the CLI now use the same path for large transfers, with the same parallelism, the same backpressure, and the same telemetry. The GUI grows a Settings knob for the download segment count when you want to override the heuristic.
+
+#### Transfer Queue with real staging
+
+The unified planner had a queue, but it was effectively a fire-and-forget list. v3.8.4 turns it into a proper **staging queue**: items land first as staged (with their pre-enumerated tree for FTP and SFTP), an explicit dispatcher moves them to pending when they are ready, and an Auto-start setting decides whether they go automatically or wait for a manual Start. The CLI gains an `agent peek` view of what is currently staged or pending. The transfer toast was demoted to a minimized indicator so the queue panel is the source of truth.
+
+#### Command-line surface, feature-complete
+
+v3.8.4 closes the long-running CLI work and pushes `aeroftp-cli` to **69 top-level subcommands** across listings, transfers, syncing, vaults, profiles, hashing, agent operation, batch scripting, mount and packaging. With this release the CLI is feature-complete for everyday workflows: anything the GUI can do on a file or a server is reachable from the command line, and the same shared transfer engine now powers both surfaces so the throughput numbers no longer drift between them.
+
+The release adds:
+
+- **`rmdirs`**: recursive prune of empty directory trees, the missing companion to `rmdir` from v3.8.2.
+- **`agent peek`**: a read-only view of the current transfer queue (staged + pending) for agents and automation. The `agent-info` subcommand also surfaces the transfer count and queue depth now.
+- **CLI dispatcher binary**: a thin dispatcher that routes Linux deb / rpm / AppImage packages and Windows installs through a stable entry point, ported to Windows with proper detach+wait semantics. The set-of-four packaging slots (deb / rpm / AppImage / Windows) are now all wired to it, with R10 / R11 / R13 regression gates in CI.
+- **`aero` alias toggle**: a one-command toggle to install or remove the short `aero` invocation, so `aero get s3://bucket/file.tar` Just Works.
+- **`--max-transfer` enforcement** on the converged shared transfer path, so a global byte cap now applies uniformly to CLI runs, GUI runs, and AeroSync.
+- **Transfer capability discovery** documented per-protocol, so agents and scripts can query what concurrent ranges, segments and server-side copy moves each provider actually supports before issuing them.
+- The speech-to-text dependency stack (whisper-rs / hound) is moved behind an opt-out `local-stt` cargo feature so default builds stay lean.
+
+#### AeroFile Sync (unified dialog)
+
+The View menu had three disconnected entries for the same workflow: Local Sync, Compare Panels, Sync Presets. They are now collapsed into a single **AeroFile Sync** dialog with three tabs (Compare, Plan, Sync) that share context. The local-to-local sync engine is named **AeroRsync** in the UI now (it was already AeroRsync under the hood, the description just said "in-process delta engine"). New toolbar button on the AeroFile panel; F4 still opens the dialog on the Compare tab for muscle memory.
+
+#### Connection state on the home screen (issue #222)
+
+A community finding from @raelb and @EhudKirsh, landed in two halves. The per-server health dot in compact layout and the small radial in detailed layout now **pulse softly** when the saved profile has at least one open session, so the home screen also reflects "I am connected to this one" and not only reachability. The color of the dot still encodes the health probe; the pulse is a separate signal. The right-click menu on a saved server gains a **Disconnect** entry that appears only when the profile is connected; picking it closes every session that came from that profile.
+
+#### Tier D server-side hashes (WebDAV and FTP)
+
+Server-side hashing now covers WebDAV (DAV `Mc-Checksum-*` headers when the server returns them) and FTP (`XCRC`, `XSHA256`, `MD5` extensions where supported), on top of the S3 / B2 / pCloud / Drive / OneDrive / Box / Dropbox / SFTP coverage shipped in v3.8.2. The Properties dialog surfaces QuickXor (OneDrive) and Dropbox content hashes alongside the usual MD5/SHA-1/SHA-256. CLI `hashsum` prefers server-side hashes wherever available.
+
+#### Transfer capabilities surfaced to agents and CLI
+
+The Sync GUI now honors the real per-provider transfer capabilities (concurrent ranges, segment count, server-side copy) instead of using a one-size-fits-all default. The CLI exposes a capability discovery surface for agents (LLM tooling, automation), documented in the CLI guide. `--max-transfer` is now enforced on the converged shared path, so a global cap actually caps the GUI too.
+
+---
+
+### Detailed changes
+
+#### Added
+
+- **DAG transfer executor**: ready-frontier executor over a Directed Acyclic Graph, the new shared execution path for every transfer surface (`a083181d`). AIMD (Additive Increase, Multiplicative Decrease) backpressure layered on top (`185234c2`), AppHandle-free observability sink so the CLI and tests share the same progress events (`f69c41f6`), converged range download running on it (`78992012`).
+- **Intra-file range downloads** on the converged engine for FTP and SFTP, with pooled SFTP range worker and pipelined reads on one session (`b21b78b7`, `4cb3099d`, `250a62bf`). Provider download executor and `provider_download_file` both wire the segments (`995ea848`, `82bc9104`).
+- **Cross-profile DAG**: cross-profile transfers run on the parallelized DAG path (`503c9d67`).
+- **GUI segmented downloads** with a Settings knob for the segment count (`4322ca84`, `b9647b3f`). Live-WAN integration tests under `tests/gtc` (`4d05e882`, `1c6e2812`).
+- **B2 large-file upload** converged on the shared part engine (`425c8266`).
+- **CLI `pget` and `sync`** converged on the shared concurrent-range engine and executor (`8db6c7e7`, `7a947101`).
+- **AeroSync downloads** routed through the segmented helper (`4706d4cd`).
+- **Transfer Queue staging**: lazy per-level remote scan for FTP and SFTP (`a0e7a9c1`), extension to provider-backed protocols (`884efb56`), staged -> pending dispatcher (`246e12d1`), 5 entry-points routed through staging (`fc668479`), Start / Start all UI in the panel (`28c45a7f`), Auto-start setting (`f4a41a0e`), staging lifecycle in `useTransferQueue` hook (`798cd216`), pruned-set + lifecycle test coverage (`be61c164`).
+- **CLI `agent peek`** subcommand: read-only view of the current staged and pending transfer queue, plus transfer count surfaced in `agent-info` (`9fe0443e`).
+- **CLI `rmdirs`**: recursive prune of empty directory trees, companion to v3.8.2's `rmdir` (`8ccaaac8`).
+- **CLI dispatcher binary** (`a3300879`) routing deb / rpm / AppImage on Linux (`366d208e`) and Windows installs with detach+wait (`288a8452`). `aero` alias toggle (`b8b3caa2`). CI gates R10 / R11 / R13 (`cf9fa393`). With this commit the dispatcher closes the CLI packaging work that started in v3.8.0.
+- **Transfer capability discovery** for agents (`c65c02f0`), per-protocol documentation (`9238931e`, `bcbb72ba`), and `--max-transfer` enforcement on the converged shared path (`890239f9`).
+- **CLI guide** refreshed for the new commands and the server-side hash work from v3.8.2 (`96388c39`).
+- **AeroFile Sync** unified dialog with three tabs (Compare, Plan, Sync) replacing three legacy View menu entries (`f52533bf`). Toolbar button on the AeroFile panel, F4 opens on Compare. LocalSyncPanel styling baseline (`5ea74e6a`).
+- **Connection state on saved-server cards** (issue #222): per-server health dot and radial pulse when the profile has an active session (`861cf7dc`); Disconnect entry in the context menu, gated on connection state (`4a4f3aef`). Co-authored with Rael Bauer.
+- **IntroHub connect-failure marker**: standalone amber dot on the My Servers card after a failed connection attempt (`c5938899`), readable glyph and immediate badge refresh follow-up (`af268d19`).
+- **Tier D server-side hashes** for WebDAV and FTP (`504ba2b5`); QuickXor (OneDrive) and Dropbox content hashes surfaced in the Properties checksum tab (`f7af4f62`).
+- **Sync GUI honors real per-provider transfer capabilities** (`44d306e6`).
+- **AeroRsync naming**: local-to-local sync description and delta-transport toggle now name AeroRsync explicitly in the UI.
+
+#### Fixed
+
+- **Filen and MEGA TOTP 2FA**: saved TOTP secret is now wired into the Connect path and the live login preview (`254d6196`).
+- **AeroFile folder tree roots on Windows**: load roots from drives so the tree opens the right anchors (`40388f00`).
+- **Import flow**: a double-clicked `.aeroftp` export now routes to the import flow instead of opening it as a file (`fab94a3d`).
+- **SFTP `exec` drain past EOF**: a late exit-status now wins over the default 255, so commands report the right code (`00c354fb`).
+- **SFTP and FTP pools**: a cloned worker now self-dials on `read_range` instead of borrowing the parent's session (`f5c9ab91`).
+- **Cargo.lock version pin** for the aeroftp crate, plus dompurify override aligned with the direct dependency (`4013b669`, `04fa6f13`).
+- **OpenSSL bump**: 0.10.79 -> 0.10.80 (`8e5460b7`).
+- **Clippy too_many_arguments**: targeted allow on `perform_download` (`e4bdea23`), redundant_closure in a GTC test (`aaf450ac`).
+- **CI delta-sync trigger**: now also fires on changes under `src/aerorsync`, with preamble dump on hard fail (`61cd2105`).
+- **Dependabot**: dropped dead `tauri-build` ignore rule (`90a70e61`).
+- **GTC parity harness**: GUI cells extended (`bdc00a59`), single-{s3,ftp} bands widened to no-regression after live runs (`d1fd509c`).
+
+#### Changed
+
+- **View menu** collapses three sync-related entries (Local Sync, Compare Panels, Sync Presets) into a single AeroFile Sync entry. F4 remains bound to opening the dialog on the Compare tab.
+- **LocalSyncPanel chrome** aligned to the Settings dialog pattern with a draggable header, ahead of being absorbed into the unified dialog as the Sync tab.
+- **Transfer toast** demoted to a minimized indicator: the transfer queue panel is now the source of truth (`3ac8c132`).
+- **47-language i18n batch**: new `aerofileSync.*` namespace and the renamed `menu.aerofileSync` entry translated in all 47 supported locales. The deprecated `menu.localSync`, `menu.comparePanels`, `menu.syncPresets` keys are removed from every locale.
+- **whisper-rs / hound** moved behind an opt-out `local-stt` cargo feature so default builds skip the speech-to-text stack (`507f29c2`).
+
+#### Removed
+
+- `src/components/LocalSyncPanel.tsx`, `src/components/UnifiedCompareDialog.tsx`, `src/components/SyncPresetDialog.tsx`: their bodies now live as noChrome tab components under `src/components/AeroFileSync/`.
+- The three legacy View menu entries `menu.localSync`, `menu.comparePanels`, `menu.syncPresets`.
+
+---
+
+### Credits
+
+- Issue #222 (connection state visual + Disconnect entry): @raelb (Rael Bauer), with @EhudKirsh for the helpful clarification of the existing health-probe semantics.
+- The transfer engine work (DAG executor, AIMD backpressure, convergence) sits on top of the GUI Transfer Convergence and CLI Dispatch filones tracked internally.
+
 ## [3.8.3] - 2026-05-18
 
 ### Critical Linux Hotfix
