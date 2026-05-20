@@ -24,6 +24,9 @@ PROTOCOLS=""
 DRY_RUN=0
 KEEP_CORPUS=0
 BANDS_FILE=""
+SUITE="cli"  # cli | gui | all
+GUI_CELLS_DEFAULT="gui-single-sftp,gui-single-s3,gui-single-ftp,gui-sync-sftp,gui-cross-sftp-s3"
+GUI_CELLS=""
 
 usage() {
     cat >&2 <<EOF
@@ -31,9 +34,16 @@ Usage: tests/gtc/parity_harness.sh [options]
 
 Options:
   --protocols LIST    Comma-separated subset (default: $PROTOCOLS_DEFAULT)
+  --suite NAME        cli | gui | all  (default: cli)
+  --gui-only          Shortcut for --suite gui (skip CLI corpus run)
+  --gui-cells LIST    Comma-separated subset of GUI cells
+                      (default: $GUI_CELLS_DEFAULT)
   --dry-run           Generate corpus + plan, do not transfer
   --keep-corpus       Keep generated corpus after run
-  --band PROTO:F:C    Override speedup band for one protocol (repeatable)
+  --band KEY:F:C      Override speedup band for one CLI proto or GUI cell.
+                      KEY = sftp|ftp|ftps|s3|webdav OR
+                            gui-single-sftp|gui-single-s3|gui-single-ftp|
+                            gui-sync-sftp|gui-cross-sftp-s3 (repeatable)
   -h, --help          Show this help
 EOF
 }
@@ -41,6 +51,9 @@ EOF
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --protocols) PROTOCOLS="$2"; shift 2 ;;
+        --suite)     SUITE="$2"; shift 2 ;;
+        --gui-only)  SUITE="gui"; shift ;;
+        --gui-cells) GUI_CELLS="$2"; shift 2 ;;
         --dry-run)   DRY_RUN=1;     shift ;;
         --keep-corpus) KEEP_CORPUS=1; shift ;;
         --band)
@@ -53,14 +66,19 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+case "$SUITE" in
+    cli|gui|all) ;;
+    *) log_err "unknown --suite '$SUITE' (cli|gui|all)"; exit 2 ;;
+esac
+
 PROTOCOLS="${PROTOCOLS:-$PROTOCOLS_DEFAULT}"
 IFS=',' read -r -a PROTO_LIST <<<"$PROTOCOLS"
+GUI_CELLS="${GUI_CELLS:-$GUI_CELLS_DEFAULT}"
+IFS=',' read -r -a GUI_CELL_LIST <<<"$GUI_CELLS"
 
 # ---------------------------------------------------------------------
 # Preflight
 # ---------------------------------------------------------------------
-
-require_cli
 
 RUN_ID=$(date -u +%Y%m%dT%H%M%SZ)
 RUN_DIR="$HARNESS_DIR/reports/$RUN_ID"
@@ -70,28 +88,37 @@ mkdir -p "$RUN_DIR" "$SOURCE_DIR"
 
 log_info "run id: $RUN_ID"
 log_info "report dir: $RUN_DIR"
-log_info "protocols: ${PROTO_LIST[*]}"
+log_info "suite: $SUITE"
 
-# Validate profile ids exist in the vault before doing anything
-VAULT_JSON=$(aeroftp-cli profiles --format json 2>/dev/null || echo '[]')
-if [[ "$VAULT_JSON" == "[]" || -z "$VAULT_JSON" ]]; then
-    log_err "vault returned empty profile list - check AEROFTP_MASTER_PASSWORD or unlock keyring"
-    exit 5
-fi
+if [[ "$SUITE" == "cli" || "$SUITE" == "all" ]]; then
+    log_info "protocols: ${PROTO_LIST[*]}"
+    require_cli
 
-for p in "${PROTO_LIST[@]}"; do
-    pid=$(profile_id_for "$p") || { log_err "unknown protocol tag: $p"; exit 2; }
-    if ! printf '%s' "$VAULT_JSON" | python3 -c "
+    # Validate profile ids exist in the vault before doing anything
+    VAULT_JSON=$(aeroftp-cli profiles --format json 2>/dev/null || echo '[]')
+    if [[ "$VAULT_JSON" == "[]" || -z "$VAULT_JSON" ]]; then
+        log_err "vault returned empty profile list - check AEROFTP_MASTER_PASSWORD or unlock keyring"
+        exit 5
+    fi
+
+    for p in "${PROTO_LIST[@]}"; do
+        pid=$(profile_id_for "$p") || { log_err "unknown protocol tag: $p"; exit 2; }
+        if ! printf '%s' "$VAULT_JSON" | python3 -c "
 import json,sys
 ids=[x.get('id') for x in json.load(sys.stdin)]
 sys.exit(0 if '$pid' in ids else 1)
 " 2>/dev/null; then
-        log_err "profile id $pid (for $p) not in vault"
-        exit 5
-    fi
-done
+            log_err "profile id $pid (for $p) not in vault"
+            exit 5
+        fi
+    done
 
-gen_corpus "$SOURCE_DIR" "$RUN_ID"
+    gen_corpus "$SOURCE_DIR" "$RUN_ID"
+fi
+
+if [[ "$SUITE" == "gui" || "$SUITE" == "all" ]]; then
+    log_info "gui cells: ${GUI_CELL_LIST[*]}"
+fi
 
 if [[ "$DRY_RUN" == "1" ]]; then
     log_ok "dry-run complete; corpus at $SOURCE_DIR"
@@ -135,6 +162,30 @@ band_for() {
         s3)     echo "2.0 6.0" ;;
         webdav) echo "1.3 4.0" ;;
         *)      echo "1.0 99.0" ;;
+    esac
+}
+
+band_for_gui() {
+    # Returns "floor ceiling" for a gui-* cell key, honoring --band overrides.
+    # Defaults are the conservative bands chosen 2026-05-20 (user-confirmed,
+    # see docs/dev/HANDOFF-2026-05-20_GTC-5-closure.md). Floor reflects empirical
+    # WAN median minus jitter; ceiling guards against measurement anomalies.
+    local key="$1"
+    if [[ -n "$BANDS_FILE" && -f "$BANDS_FILE" ]]; then
+        local override
+        override=$(grep "^${key}:" "$BANDS_FILE" | tail -n1 || true)
+        if [[ -n "$override" ]]; then
+            echo "$override" | awk -F: '{print $2" "$3}'
+            return
+        fi
+    fi
+    case "$key" in
+        gui-single-sftp)    echo "2.0 5.0" ;;
+        gui-single-s3)      echo "1.8 5.0" ;;
+        gui-single-ftp)     echo "1.8 5.0" ;;
+        gui-sync-sftp)      echo "1.8 4.0" ;;
+        gui-cross-sftp-s3)  echo "2.5 5.0" ;;
+        *)                  echo "1.0 99.0" ;;
     esac
 }
 
@@ -285,18 +336,182 @@ run_one_protocol() {
 }
 
 # ---------------------------------------------------------------------
+# GUI cells (cargo test integration drivers)
+# ---------------------------------------------------------------------
+#
+# The GUI surfaces don't run through aeroftp-cli. We exercise them via
+# the gated `integration_gtc_wan_segmented.rs` test binary, which drives
+# each GUI Tauri entry-point directly against the axpbuntu lab and
+# prints a single summary line on stderr. We parse that line, lift the
+# seg=1 / seg=N / speedup / byte-id fields, and emit one parity cell.
+
+# Maps a gui-* cell key to the integration test fn name + protocol tag +
+# file_tag (for cells.json). Edit here to add/remove cells.
+gui_cell_meta() {
+    local key="$1"
+    case "$key" in
+        gui-single-sftp)
+            echo "gtc_gui_sftp_segmented_byte_identical_vs_single_stream|sftp|large/64MiB.bin|GUI-Segmented" ;;
+        gui-single-s3)
+            echo "gtc_gui_s3_segmented_byte_identical_vs_single_stream|s3|large/64MiB.bin|GUI-Segmented" ;;
+        gui-single-ftp)
+            echo "gtc_gui_ftp_segmented_byte_identical_vs_single_stream|ftp|large/64MiB.bin|GUI-Segmented" ;;
+        gui-sync-sftp)
+            echo "gtc_aerosync_sftp_segmented_download_byte_identity_speed_band|sftp|aerosync/64MiB.bin|GUI-AeroSync" ;;
+        gui-cross-sftp-s3)
+            echo "gtc_cross_profile_sftp_to_s3_parallel_byte_identity_speed_band|sftp-s3|cross/4x16MiB.bin|GUI-CrossProfile" ;;
+        *) return 2 ;;
+    esac
+}
+
+# Parse one integration test stderr file. Looks for either the
+# seg-style line (gui-single, gui-sync) or the serial/parallel-style
+# line (gui-cross). Sets GUI_SEG1_S, GUI_SEGN_S, GUI_SPEEDUP, GUI_BYTEID.
+parse_gui_line() {
+    local logf="$1"
+    GUI_SEG1_S=""; GUI_SEGN_S=""; GUI_SPEEDUP=""; GUI_BYTEID="false"
+
+    # Both shapes end with "speedup N.NNx ... byte-id=YES" on the same line.
+    local line
+    line=$(grep -E "speedup [0-9.]+x" "$logf" | tail -n1 || true)
+    if [[ -z "$line" ]]; then
+        return 1
+    fi
+
+    if echo "$line" | grep -q "seg=1 "; then
+        GUI_SEG1_S=$(echo "$line" | sed -nE 's/.*seg=1 ([0-9.]+)s.*/\1/p')
+        GUI_SEGN_S=$(echo "$line" | sed -nE 's/.*seg=[0-9]+ ([0-9.]+)s.*speedup.*/\1/p')
+        # Second seg=N (the parallel one) is matched by the last seg=N
+        # before "speedup". Above sed handles the case where seg=1 and
+        # seg=4 both appear; the regex consumes seg=1 then the next
+        # seg=N before " speedup".
+        if [[ -z "$GUI_SEGN_S" ]]; then
+            # Fallback: take the last "seg=NN N.NNs" pair.
+            GUI_SEGN_S=$(echo "$line" \
+                | grep -oE "seg=[0-9]+ [0-9.]+s" | tail -n1 \
+                | grep -oE "[0-9.]+" | tail -n1)
+        fi
+    elif echo "$line" | grep -q "serial "; then
+        GUI_SEG1_S=$(echo "$line" | sed -nE 's/.*serial ([0-9.]+)s.*/\1/p')
+        GUI_SEGN_S=$(echo "$line" | sed -nE 's/.*parallel ([0-9.]+)s.*/\1/p')
+    fi
+
+    GUI_SPEEDUP=$(echo "$line" | sed -nE 's/.*speedup ([0-9.]+)x.*/\1/p')
+    if echo "$line" | grep -qi "byte-id=YES"; then
+        GUI_BYTEID="true"
+    fi
+
+    [[ -n "$GUI_SEG1_S" && -n "$GUI_SEGN_S" && -n "$GUI_SPEEDUP" ]] || return 1
+}
+
+run_gui_cell() {
+    local cell_key="$1"
+    local meta test_name proto file_tag expected_kind
+    meta=$(gui_cell_meta "$cell_key") || { log_err "unknown gui cell: $cell_key"; return 1; }
+    IFS='|' read -r test_name proto file_tag expected_kind <<<"$meta"
+
+    log_info "[$cell_key] cargo test $test_name"
+    local logf="$RUN_DIR/${cell_key}.log"
+
+    local t0 t1
+    t0=$(now_ms)
+    set +e
+    (cd "$REPO_ROOT/src-tauri" && \
+        cargo test --test integration_gtc_wan_segmented \
+            "$test_name" \
+            -- --ignored --nocapture --test-threads=1) \
+        >"$logf" 2>&1
+    local rc=$?
+    set -e
+    t1=$(now_ms)
+    local wall_ms=$((t1 - t0))
+
+    # cargo test exit codes: 0 ok, 101 test failed, others = framework/build.
+    local parsed="false"
+    if parse_gui_line "$logf"; then
+        parsed="true"
+    fi
+
+    local bf bc
+    read -r bf bc < <(band_for_gui "$cell_key")
+
+    local in_band="true"
+    if [[ "$parsed" == "true" ]]; then
+        if awk "BEGIN{exit !($GUI_SPEEDUP < $bf)}"; then in_band="false"; fi
+        if awk "BEGIN{exit !($GUI_SPEEDUP > $bc)}"; then in_band="false"; fi
+    else
+        in_band="false"
+        GUI_SEG1_S=""; GUI_SEGN_S=""; GUI_SPEEDUP=""
+    fi
+
+    SURFACE="$cell_key"; PROTOCOL="$proto"; FILE_TAG="$file_tag"
+    if [[ -n "$GUI_SEGN_S" ]]; then
+        WALL_S="$GUI_SEGN_S"
+    else
+        WALL_S=$(awk "BEGIN{printf \"%.3f\", $wall_ms/1000}")
+    fi
+    BASELINE_S="${GUI_SEG1_S:-}"
+    SPEEDUP="${GUI_SPEEDUP:-}"
+    BAND_FLOOR="$bf"; BAND_CEIL="$bc"
+    SHA_SRC="(internal)"; SHA_RT="(internal)"
+    BYTE_IDENT="$GUI_BYTEID"
+    EXPECTED_KIND="$expected_kind"; RC_OUT=$rc
+    if [[ "$rc" -eq 0 && "$GUI_BYTEID" == "true" && "$in_band" == "true" ]]; then
+        PASSED="true"
+    else
+        PASSED="false"
+    fi
+    emit_cell
+
+    log_ok "[$cell_key] seg1=${GUI_SEG1_S:--}s segN=${GUI_SEGN_S:--}s speedup=${GUI_SPEEDUP:--} band=${bf}..${bc} byte-id=${GUI_BYTEID} pass=${PASSED}"
+
+    [[ "$PASSED" == "true" ]] && return 0 || return 1
+}
+
+run_gui_suite() {
+    # Pre-build the integration test binary once. cargo test --no-run
+    # also caches dependencies so the individual cell runs are fast.
+    log_info "compiling integration_gtc_wan_segmented (cargo test --no-run)"
+    if ! (cd "$REPO_ROOT/src-tauri" && \
+          cargo test --test integration_gtc_wan_segmented --no-run \
+          >"$RUN_DIR/gui_compile.log" 2>&1); then
+        log_err "GUI suite skipped: integration test compile failed (see gui_compile.log)"
+        return 1
+    fi
+
+    local rc_overall=0
+    for key in "${GUI_CELL_LIST[@]}"; do
+        if ! run_gui_cell "$key"; then
+            rc_overall=1
+        fi
+    done
+    return "$rc_overall"
+}
+
+# ---------------------------------------------------------------------
 # Run
 # ---------------------------------------------------------------------
 
 OVERALL_PASS=0
 OVERALL_FAIL=0
-for proto in "${PROTO_LIST[@]}"; do
-    if run_one_protocol "$proto"; then
+
+if [[ "$SUITE" == "cli" || "$SUITE" == "all" ]]; then
+    for proto in "${PROTO_LIST[@]}"; do
+        if run_one_protocol "$proto"; then
+            OVERALL_PASS=$((OVERALL_PASS + 1))
+        else
+            OVERALL_FAIL=$((OVERALL_FAIL + 1))
+        fi
+    done
+fi
+
+if [[ "$SUITE" == "gui" || "$SUITE" == "all" ]]; then
+    if run_gui_suite; then
         OVERALL_PASS=$((OVERALL_PASS + 1))
     else
         OVERALL_FAIL=$((OVERALL_FAIL + 1))
     fi
-done
+fi
 
 # ---------------------------------------------------------------------
 # Report
