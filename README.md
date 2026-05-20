@@ -348,6 +348,8 @@ AeroFTP is built for both humans and AI agents. As agentic AI, computer use, and
 
 Production CLI sharing the same Rust backend as the GUI. 49 subcommands across 7 transport protocols and 25+ native provider integrations, encrypted vault profiles, JSON output, batch scripting, daemon mode with job queue, FUSE filesystem mounting, ncdu TUI explorer, zero-knowledge crypt overlay, single-file AeroVault containers (`vault`, all formats v1/v2/v3), recursive used-storage scan (`df --scan`) with a manual total-cap override, and native MCP server mode for AI integration.
 
+> **Short invocation**: every package ships a native dispatcher, so `aeroftp <subcommand>` and the built-in 4-character name `aftp` both route to the CLI; `aeroftp-cli` is kept for back-compat. An opt-in `aero` alias can be enabled with `aeroftp-cli alias-toggle aero` (idempotent, the same command turns it off). See the [Short Invocation](docs/CLI-GUIDE.md#short-invocation) section of the CLI Guide.
+
 ```bash
 aeroftp-cli ls --profile "My Server" /var/www/ -l        # Vault profile (no credentials exposed)
 aeroftp-cli get sftp://user@host "/data/*.csv"            # Glob download
