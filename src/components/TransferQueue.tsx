@@ -802,6 +802,18 @@ export const useTransferQueue = () => {
         });
     };
 
+    // TQ-5: explicit show, used by the minimized transfer indicator to
+    // pop the panel back open after a manual dismiss. Unlike toggle()
+    // this never hides the panel and always clears the dismiss flag.
+    const show = () => {
+        if (autoHideTimeoutRef.current) {
+            clearTimeout(autoHideTimeoutRef.current);
+            autoHideTimeoutRef.current = null;
+        }
+        userDismissedRef.current = false;
+        setIsVisible(true);
+    };
+
     // Check if there's any active transfer. STAGED entries are intentionally
     // excluded: they do not consume executor slots (UX spec section 1).
     const hasActiveTransfers = items.some(i => i.status === 'transferring' || i.status === 'pending');
@@ -834,6 +846,7 @@ export const useTransferQueue = () => {
         retryItem,
         retryAllFailed,
         toggle,
+        show,
         // TQ-3 staging lifecycle
         startStaged,
         startAll,

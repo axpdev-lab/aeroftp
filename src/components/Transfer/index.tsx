@@ -7,9 +7,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { Download, Upload, Folder, X } from 'lucide-react';
-import { formatBytes, formatSpeed, formatETA } from '../../utils/formatters';
+import { formatBytes } from '../../utils/formatters';
 import { useTheme, getEffectiveTheme } from '../../hooks/useTheme';
-import { TransferProgressBar } from '../TransferProgressBar';
 
 /**
  * Truncate a path smartly: always show the last 2 segments with ellipsis prefix.
@@ -99,13 +98,86 @@ export const AnimatedBytes: React.FC<AnimatedBytesProps> = ({ bytes, isAnimated 
     return <span className={isAnimated ? 'font-mono text-green-400' : ''}>{displayText}</span>;
 };
 
-// ============ Transfer Toast (floating notification) ============
-interface TransferToastProps {
+// ============ Minimized Transfer Indicator (TQ-5) ============
+// The Transfer Queue panel is the primary surface from TQ-5 onward; this
+// is the demoted affordance shown when the panel is hidden. Click to
+// reopen the panel.
+interface MinimizedTransferIndicatorProps {
     transfer: TransferToastState;
+    onOpen: () => void;
     onCancel: () => void;
 }
 
-/** Theme-specific styles for the transfer toast */
+export const MinimizedTransferIndicator: React.FC<MinimizedTransferIndicatorProps> = ({ transfer, onOpen, onCancel }) => {
+    const { theme, isDark } = useTheme();
+    const effectiveTheme = getEffectiveTheme(theme, isDark);
+    const summary = transfer.summary;
+    const isUpload = summary.direction === 'upload';
+    const isFolderTransfer = summary.total_files != null && summary.total_files > 0;
+    const isIndeterminate = !isFolderTransfer && summary.total <= 0;
+    const styles = getToastStyles(effectiveTheme);
+
+    const displayName = summary.path
+        ? truncatePath(summary.path, 28)
+        : summary.filename;
+    const pct = summary.percentage;
+
+    // Auto-dismiss safety: 100% for 3s collapses the chip
+    useEffect(() => {
+        if (pct >= 100) {
+            const timer = setTimeout(() => onCancel(), 3000);
+            return () => clearTimeout(timer);
+        }
+    }, [pct, onCancel]);
+
+    return (
+        <div
+            className={`fixed bottom-12 left-1/2 transform -translate-x-1/2 z-40 rounded-full border px-3 py-1.5 flex items-center gap-2 text-xs cursor-pointer ${styles.container}`}
+            style={{ isolation: 'isolate', contain: 'layout paint' }}
+            onClick={onOpen}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onOpen();
+                }
+            }}
+            title={summary.path || summary.filename}
+        >
+            <div className={`rounded-full p-1 ${styles.panel}`}>
+                {isFolderTransfer ? (
+                    <Folder size={12} className={isUpload ? 'text-cyan-400' : 'text-orange-400'} />
+                ) : isUpload ? (
+                    <Upload size={12} className="text-cyan-400" />
+                ) : (
+                    <Download size={12} className="text-orange-400" />
+                )}
+            </div>
+            <span className={`truncate max-w-[14rem] ${styles.title}`}>
+                {displayName}
+            </span>
+            <span className={`tabular-nums font-semibold ${styles.title}`}>
+                {isFolderTransfer
+                    ? `${summary.transferred}/${summary.total}`
+                    : isIndeterminate
+                        ? '...'
+                        : `${pct}%`}
+            </span>
+            <button
+                onClick={(e) => { e.stopPropagation(); onCancel(); }}
+                className={`shrink-0 p-0.5 rounded-full transition-colors ${styles.cancel}`}
+                title="Dismiss"
+            >
+                <X size={12} />
+            </button>
+        </div>
+    );
+};
+
+/** Theme-specific styles for the minimized transfer indicator (TQ-5).
+ *  The Transfer Queue panel is the primary surface; this only styles the
+ *  small affordance that pops the panel open after a manual dismiss. */
 function getToastStyles(theme: string) {
     switch (theme) {
         case 'cyber':
@@ -151,125 +223,3 @@ function getToastStyles(theme: string) {
     }
 }
 
-export const TransferToast: React.FC<TransferToastProps> = ({ transfer, onCancel }) => {
-    const { theme, isDark } = useTheme();
-    const effectiveTheme = getEffectiveTheme(theme, isDark);
-    const summary = transfer.summary;
-    const isUpload = summary.direction === 'upload';
-    const isFolderTransfer = summary.total_files != null && summary.total_files > 0;
-    const isIndeterminate = !isFolderTransfer && summary.total <= 0;
-    const styles = getToastStyles(effectiveTheme);
-
-    // Display name: use truncated path if available, otherwise just filename
-    const displayName = summary.path
-        ? truncatePath(summary.path)
-        : summary.filename;
-    const transferModeLabel = isUpload ? 'UPLOAD' : 'DOWNLOAD';
-    const transferStateLabel = isFolderTransfer ? 'BATCH' : (isIndeterminate ? 'STREAM' : 'LIVE');
-
-    // Auto-dismiss safety: if stuck at 100% for 3 seconds, dismiss the toast
-    useEffect(() => {
-        if (summary.percentage >= 100) {
-            const timer = setTimeout(() => onCancel(), 3000);
-            return () => clearTimeout(timer);
-        }
-    }, [summary.percentage, onCancel]);
-
-    return (
-        <div
-            className={`fixed bottom-12 left-1/2 transform -translate-x-1/2 z-40 rounded-xl border px-4 py-3 w-[30rem] max-w-[calc(100vw-2rem)] text-xs ${styles.container}`}
-            style={{ isolation: 'isolate', contain: 'layout paint' }}
-        >
-            <div className="flex items-start gap-3">
-                <div className={`mt-0.5 rounded-xl p-2 ${styles.panel} ${isUpload && !isFolderTransfer ? 'animate-pulse' : ''}`}>
-                    {isFolderTransfer ? (
-                        <Folder size={18} className={isUpload ? 'text-cyan-400' : 'text-orange-400'} />
-                    ) : summary.direction === 'download' ? (
-                        <Download size={18} className="text-orange-400" />
-                    ) : (
-                        <Upload size={18} className="text-cyan-400" />
-                    )}
-                </div>
-                <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                            <div
-                                className={`font-semibold truncate ${styles.title}`}
-                                title={summary.path || summary.filename}
-                            >
-                                {displayName}
-                            </div>
-                            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px]">
-                                <span className={`rounded-md px-1.5 py-0.5 font-medium ${styles.badge}`}>
-                                    {transferModeLabel}
-                                </span>
-                                <span className={`rounded-md px-1.5 py-0.5 font-medium ${styles.badge}`}>
-                                    {transferStateLabel}
-                                </span>
-                                {isFolderTransfer && (
-                                    <span className={`rounded-md px-1.5 py-0.5 ${styles.badgeMuted}`}>
-                                        {summary.transferred}/{summary.total} files
-                                    </span>
-                                )}
-                            </div>
-                        </div>
-                        <div className="text-right shrink-0">
-                            <div className={`text-base font-semibold tabular-nums ${styles.title}`}>
-                                {isIndeterminate ? '...' : `${summary.percentage}%`}
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="mt-2.5">
-                        <TransferProgressBar
-                            percentage={summary.percentage}
-                            speedBps={summary.speed_bps}
-                            etaSeconds={summary.eta_seconds}
-                            transferredBytes={isFolderTransfer ? undefined : summary.transferred}
-                            totalBytes={isFolderTransfer ? undefined : summary.total}
-                            currentFile={isFolderTransfer ? summary.transferred : undefined}
-                            totalFiles={isFolderTransfer ? summary.total : undefined}
-                            size="lg"
-                            variant={isIndeterminate ? 'indeterminate' : 'gradient'}
-                            animated={!isIndeterminate}
-                        />
-                        <div className={`mt-1.5 flex justify-between gap-3 text-[11px] ${styles.subtitle}`}>
-                            <span className="tabular-nums">
-                                {isFolderTransfer ? (
-                                    <>{summary.transferred} / {summary.total} files</>
-                                ) : isIndeterminate ? (
-                                    formatBytes(summary.total)
-                                ) : (
-                                    <>{formatBytes(summary.transferred)} / {formatBytes(summary.total)}</>
-                                )}
-                            </span>
-                            <span className="tabular-nums text-right">
-                                {isFolderTransfer
-                                    ? (summary.transferred < summary.total
-                                        ? (summary.speed_bps > 0
-                                            ? `${formatSpeed(summary.speed_bps)}${summary.eta_seconds > 0 ? ` - ETA ${formatETA(summary.eta_seconds)}` : ''}`
-                                            : (isUpload ? 'Uploading...' : 'Downloading...'))
-                                        : 'Complete'
-                                    )
-                                    : isIndeterminate
-                                        ? 'Streaming...'
-                                        : (summary.speed_bps > 0
-                                            ? `${formatSpeed(summary.speed_bps)} - ETA ${formatETA(summary.eta_seconds)}`
-                                            : 'Transferring...'
-                                        )
-                                }
-                            </span>
-                        </div>
-                    </div>
-
-                </div>
-                <button
-                    onClick={onCancel}
-                    className={`shrink-0 p-1 rounded-full transition-colors ${styles.cancel}`}
-                >
-                    <X size={16} />
-                </button>
-            </div>
-        </div>
-    );
-};

@@ -2,16 +2,20 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
- * TransferToastContainer: Isolated toast state management
+ * TransferToastContainer: Isolated transfer-progress affordance.
  *
- * Subscribes to 'transfer-toast-update' custom DOM events to update the toast
- * WITHOUT causing the parent (App.tsx) to re-render. This prevents the entire
- * file browser from re-rendering on every progress tick, which caused visible
+ * From TQ-5 the Transfer Queue panel is the primary surface; this container
+ * renders the demoted indicator (MinimizedTransferIndicator) that the user
+ * clicks to reopen the panel.
+ *
+ * Subscribes to 'transfer-toast-update' custom DOM events to update WITHOUT
+ * causing the parent (App.tsx) to re-render. This prevents the entire file
+ * browser from re-rendering on every progress tick, which caused visible
  * theme flicker in WebKitGTK.
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { TransferToast, TransferToastState } from './index';
+import { MinimizedTransferIndicator, TransferToastState } from './index';
 
 /** Custom event name for transfer progress updates */
 export const TRANSFER_TOAST_EVENT = 'transfer-toast-update';
@@ -50,7 +54,14 @@ export function reopenTransferToast(): void {
     window.dispatchEvent(new CustomEvent(TRANSFER_TOAST_EVENT, { detail: latestTransferToastState }));
 }
 
-export const TransferToastContainer: React.FC = () => {
+interface TransferToastContainerProps {
+    /** Open the Transfer Queue panel. Wired by App.tsx to the hook's toggle
+     *  function so a click on the minimized indicator pops the panel back
+     *  open after a manual dismiss. */
+    onOpen?: () => void;
+}
+
+export const TransferToastContainer: React.FC<TransferToastContainerProps> = ({ onOpen }) => {
     const [transfer, setTransfer] = useState<TransferToastState | null>(null);
     const lastProgressUpdate = useRef<number>(Date.now());
 
@@ -94,6 +105,16 @@ export const TransferToastContainer: React.FC = () => {
         dismissTransferToast();
     }, []);
 
+    const handleOpen = useCallback(() => {
+        onOpen?.();
+    }, [onOpen]);
+
     if (!transfer) return null;
-    return <TransferToast transfer={transfer} onCancel={handleCancel} />;
+    return (
+        <MinimizedTransferIndicator
+            transfer={transfer}
+            onOpen={handleOpen}
+            onCancel={handleCancel}
+        />
+    );
 };
