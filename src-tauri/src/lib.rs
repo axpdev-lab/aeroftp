@@ -124,7 +124,7 @@ pub mod rclone_import;
 pub mod restic_import;
 mod session_commands;
 mod session_manager;
-#[cfg(not(target_os = "macos"))]
+#[cfg(all(not(target_os = "macos"), feature = "local-stt"))]
 mod speech;
 pub mod ssh_config_import;
 mod ssh_shell;
@@ -145,7 +145,12 @@ mod tray_badge;
 mod vault_remote;
 mod windows_acl;
 pub mod winscp_import;
-#[cfg(target_os = "macos")]
+// Stub used when the `local-stt` feature is off OR when targeting macOS
+// (where the frontend uses the WKWebView Web Speech API). Both paths
+// converge on the same minimal surface so `lib.rs` can register the
+// Tauri commands unconditionally and report a uniform "not available"
+// status back to the frontend at runtime.
+#[cfg(any(target_os = "macos", not(feature = "local-stt")))]
 mod speech {
     //! Stub: macOS uses native Web Speech API via WKWebView: whisper.cpp not needed.
     use serde::Serialize;
