@@ -49,6 +49,7 @@ pub const CLI_SUBCOMMANDS: &[&str] = &[
     "rcat",
     "serve",
     "alias",
+    "alias-toggle",
     "agent",
     "mcp",
     "completions",
