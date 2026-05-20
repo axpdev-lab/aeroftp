@@ -787,7 +787,10 @@
                 "summary": "{transferred} trasferiti, {skipped} saltati, {failed} falliti",
                 "summaryMeta": "{size} in {seconds}s",
                 "newTransfer": "Nuovo trasferimento"
-            }
+            },
+            "staged": "in coda",
+            "start": "Avvia",
+            "startAll": "Avvia tutto"
         },
         "scanning": {
             "deleting": "Eliminazione",

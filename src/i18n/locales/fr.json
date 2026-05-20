@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} en {seconds}s",
                 "newTransfer": "Nouveau transfert",
                 "preparing": "Préparation du transfert…"
-            }
+            },
+            "staged": "en file",
+            "start": "Démarrer",
+            "startAll": "Tout démarrer"
         },
         "settings": {
             "title": "Paramètres",

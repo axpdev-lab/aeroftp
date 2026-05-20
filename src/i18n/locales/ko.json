@@ -501,7 +501,10 @@
                 "summaryMeta": "{size}, {seconds}초 소요",
                 "newTransfer": "새 전송",
                 "preparing": "전송 준비 중…"
-            }
+            },
+            "staged": "대기 중",
+            "start": "시작",
+            "startAll": "모두 시작"
         },
         "settings": {
             "title": "설정",

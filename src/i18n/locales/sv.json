@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} pa {seconds}s",
                 "newTransfer": "Ny overforing",
                 "preparing": "Förbereder överföring…"
-            }
+            },
+            "staged": "i kö",
+            "start": "Starta",
+            "startAll": "Starta alla"
         },
         "settings": {
             "title": "Inställningar",

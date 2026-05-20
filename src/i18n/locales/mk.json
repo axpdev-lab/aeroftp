@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} за {seconds}s",
                 "newTransfer": "Нов пренос",
                 "preparing": "Подготовка на преносот…"
-            }
+            },
+            "staged": "во ред",
+            "start": "Започни",
+            "startAll": "Започни ги сите"
         },
         "settings": {
             "title": "Поставки",

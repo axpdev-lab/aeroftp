@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} trong {seconds} giây",
                 "newTransfer": "Chuyển mới",
                 "preparing": "Đang chuẩn bị truyền…"
-            }
+            },
+            "staged": "trong hàng đợi",
+            "start": "Bắt đầu",
+            "startAll": "Bắt đầu tất cả"
         },
         "settings": {
             "title": "Cài đặt",

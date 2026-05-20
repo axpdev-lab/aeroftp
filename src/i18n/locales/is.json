@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} á {seconds}s",
                 "newTransfer": "Nýr flutningur",
                 "preparing": "Undirbý flutning…"
-            }
+            },
+            "staged": "í biðröð",
+            "start": "Byrja",
+            "startAll": "Byrja allt"
         },
         "settings": {
             "title": "Stillingar",

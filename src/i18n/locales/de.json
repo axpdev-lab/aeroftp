@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} in {seconds}s",
                 "newTransfer": "Neue Uebertragung",
                 "preparing": "Übertragung wird vorbereitet…"
-            }
+            },
+            "staged": "in Warteschlange",
+            "start": "Starten",
+            "startAll": "Alle starten"
         },
         "settings": {
             "title": "Einstellungen",

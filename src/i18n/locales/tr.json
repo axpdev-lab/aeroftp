@@ -501,7 +501,10 @@
                 "summaryMeta": "{size}, {seconds}s içinde",
                 "newTransfer": "Yeni Aktarım",
                 "preparing": "Aktarım hazırlanıyor…"
-            }
+            },
+            "staged": "sırada",
+            "start": "Başlat",
+            "startAll": "Tümünü başlat"
         },
         "settings": {
             "title": "Ayarlar",

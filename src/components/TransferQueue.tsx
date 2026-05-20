@@ -48,6 +48,8 @@ interface TransferQueueProps {
     onStopAll?: () => void;
     onRemoveItem?: (id: string) => void;
     onRetryItem?: (id: string) => void;
+    onStartItem?: (id: string) => void;
+    onStartAll?: () => void;
     isVisible: boolean;
     onToggle: () => void;
     forceStopMode?: boolean;
@@ -85,10 +87,11 @@ interface QueueContextMenuProps {
     item: TransferItem;
     onRetry?: (id: string) => void;
     onRemove?: (id: string) => void;
+    onStart?: (id: string) => void;
     onClose: () => void;
 }
 
-const QueueContextMenu: React.FC<QueueContextMenuProps> = ({ x, y, item, onRetry, onRemove, onClose }) => {
+const QueueContextMenu: React.FC<QueueContextMenuProps> = ({ x, y, item, onRetry, onRemove, onStart, onClose }) => {
     const t = useTranslation();
     const menuRef = useRef<HTMLDivElement>(null);
 
@@ -132,6 +135,9 @@ const QueueContextMenu: React.FC<QueueContextMenuProps> = ({ x, y, item, onRetry
             style={{ left: adjustedX, top: adjustedY }}
         >
             {menuItem(<Copy size={12} />, t('transfer.copy'), copyItemDetails)}
+            {item.status === 'staged' && onStart && (
+                menuItem(<Play size={12} />, t('transfer.start'), () => onStart(item.id))
+            )}
             {item.status === 'error' && onRetry && (
                 menuItem(<RotateCcw size={12} />, t('transfer.retry'), () => onRetry(item.id))
             )}
@@ -152,14 +158,16 @@ interface HeaderDropdownProps {
     onClear?: () => void;
     onClearCompleted?: () => void;
     onStopAll?: () => void;
+    onStartAll?: () => void;
     onRetryAllFailed?: () => void;
     hasCompleted: boolean;
     hasPending: boolean;
     hasItems: boolean;
     hasErrors: boolean;
+    hasStaged: boolean;
 }
 
-const HeaderDropdown: React.FC<HeaderDropdownProps> = ({ onClear, onClearCompleted, onStopAll, onRetryAllFailed, hasCompleted, hasPending, hasItems, hasErrors }) => {
+const HeaderDropdown: React.FC<HeaderDropdownProps> = ({ onClear, onClearCompleted, onStopAll, onStartAll, onRetryAllFailed, hasCompleted, hasPending, hasItems, hasErrors, hasStaged }) => {
     const t = useTranslation();
     const [isOpen, setIsOpen] = useState(false);
     const buttonRef = useRef<HTMLButtonElement>(null);
@@ -208,6 +216,7 @@ const HeaderDropdown: React.FC<HeaderDropdownProps> = ({ onClear, onClearComplet
                 <div ref={dropdownRef} className="fixed bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-xl py-1 min-w-[170px] z-[200]"
                     style={{ top: pos.top, right: pos.right }}
                 >
+                    {onStartAll && menuItem(<Play size={12} />, t('transfer.startAll'), onStartAll, !hasStaged)}
                     {onRetryAllFailed && menuItem(<RotateCcw size={12} />, t('transfer.retryAllFailed'), onRetryAllFailed, !hasErrors)}
                     {onClearCompleted && menuItem(<Check size={12} />, t('transfer.clearCompleted'), onClearCompleted, !hasCompleted)}
                     {onStopAll && menuItem(<Square size={12} />, t('transfer.stopAllPending'), onStopAll, !hasPending)}
@@ -226,6 +235,8 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
     onStopAll,
     onRemoveItem,
     onRetryItem,
+    onStartItem,
+    onStartAll,
     isVisible,
     onToggle,
     forceStopMode,
@@ -260,13 +271,14 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
     }, []);
 
     // Single-pass counting instead of 6 separate .filter() calls: O(n) vs O(6n)
-    const { completedCount, errorCount, transferringCount, pendingCount, primaryType } = useMemo(() => {
-        let completed = 0, error = 0, transferring = 0, pending = 0, uploads = 0;
+    const { completedCount, errorCount, transferringCount, pendingCount, stagedCount, primaryType } = useMemo(() => {
+        let completed = 0, error = 0, transferring = 0, pending = 0, staged = 0, uploads = 0;
         for (const item of items) {
             if (item.status === 'completed') completed++;
             else if (item.status === 'error') error++;
             else if (item.status === 'transferring') transferring++;
             else if (item.status === 'pending') pending++;
+            else if (item.status === 'staged') staged++;
             if (item.type === 'upload') uploads++;
         }
         return {
@@ -274,6 +286,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
             errorCount: error,
             transferringCount: transferring,
             pendingCount: pending,
+            stagedCount: staged,
             primaryType: (uploads >= items.length - uploads ? 'upload' : 'download') as TransferType
         };
     }, [items]);
@@ -306,6 +319,9 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                                 {transferringCount}
                             </span>
                         )}
+                        {stagedCount > 0 && (
+                            <span className="text-amber-500">{stagedCount} {t('transfer.staged')}</span>
+                        )}
                         {pendingCount > 0 && (
                             <span className="text-gray-500 dark:text-gray-400">{pendingCount} {t('transfer.pending')}</span>
                         )}
@@ -315,6 +331,15 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
 
                         {/* Quick action buttons */}
                         <div className="flex items-center gap-0.5 ml-1 border-l border-gray-300 dark:border-gray-700 pl-2">
+                            {onStartAll && stagedCount > 0 && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); onStartAll(); }}
+                                    className="p-1 rounded transition-colors text-amber-500 hover:text-amber-400 hover:bg-amber-900/30"
+                                    title={t('transfer.startAll')}
+                                >
+                                    <Play size={13} />
+                                </button>
+                            )}
                             {onClearCompleted && (
                                 <button
                                     onClick={(e) => { e.stopPropagation(); onClearCompleted(); }}
@@ -378,11 +403,13 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                                 onClear={onClear}
                                 onClearCompleted={onClearCompleted}
                                 onStopAll={onStopAll}
+                                onStartAll={onStartAll}
                                 onRetryAllFailed={onRetryAllFailed}
                                 hasCompleted={completedCount > 0}
                                 hasPending={transferringCount > 0 || pendingCount > 0}
                                 hasItems={items.length > 0}
                                 hasErrors={errorCount > 0}
+                                hasStaged={stagedCount > 0}
                             />
                         </div>
                     </div>
@@ -522,6 +549,15 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                                 >
                                     <Copy size={10} />
                                 </button>
+                                {item.status === 'staged' && onStartItem && (
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); onStartItem(item.id); }}
+                                        className="p-0.5 text-amber-500 hover:text-amber-400 transition-colors"
+                                        title={t('transfer.start')}
+                                    >
+                                        <Play size={10} />
+                                    </button>
+                                )}
                                 {item.status === 'error' && onRetryItem && (
                                     <button
                                         onClick={(e) => { e.stopPropagation(); onRetryItem(item.id); }}
@@ -565,6 +601,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                     item={contextMenu.item}
                     onRetry={onRetryItem}
                     onRemove={onRemoveItem}
+                    onStart={onStartItem}
                     onClose={() => setContextMenu(null)}
                 />
             )}

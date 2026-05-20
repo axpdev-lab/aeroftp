@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} за {seconds}s",
                 "newTransfer": "Нова передача",
                 "preparing": "Підготовка передачі…"
-            }
+            },
+            "staged": "у черзі",
+            "start": "Старт",
+            "startAll": "Запустити все"
         },
         "settings": {
             "title": "Налаштування",

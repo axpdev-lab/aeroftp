@@ -501,7 +501,10 @@
                 "summaryMeta": "{size}，用时 {seconds} 秒",
                 "newTransfer": "新建传输",
                 "preparing": "正在准备传输…"
-            }
+            },
+            "staged": "已排队",
+            "start": "开始",
+            "startAll": "全部开始"
         },
         "settings": {
             "title": "设置",

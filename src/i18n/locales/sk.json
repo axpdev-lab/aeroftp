@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} za {seconds}s",
                 "newTransfer": "Novy prenos",
                 "preparing": "Pripravuje sa prenos…"
-            }
+            },
+            "staged": "vo fronte",
+            "start": "Spustiť",
+            "startAll": "Spustiť všetko"
         },
         "settings": {
             "title": "Nastavenia",

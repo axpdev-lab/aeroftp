@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} {seconds} masodperc alatt",
                 "newTransfer": "Uj atvitel",
                 "preparing": "Átvitel előkészítése…"
-            }
+            },
+            "staged": "sorban",
+            "start": "Indítás",
+            "startAll": "Összes indítása"
         },
         "settings": {
             "title": "Beállítások",

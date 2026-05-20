@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} dalam {seconds}s",
                 "newTransfer": "Pemindahan Baharu",
                 "preparing": "Menyediakan pemindahan…"
-            }
+            },
+            "staged": "dalam baris",
+            "start": "Mula",
+            "startAll": "Mula semua"
         },
         "settings": {
             "title": "Tetapan",

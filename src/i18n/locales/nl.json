@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} in {seconds}s",
                 "newTransfer": "Nieuwe overdracht",
                 "preparing": "Overdracht voorbereiden…"
-            }
+            },
+            "staged": "in wachtrij",
+            "start": "Starten",
+            "startAll": "Alle starten"
         },
         "settings": {
             "title": "Instellingen",

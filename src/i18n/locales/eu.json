@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} {seconds}s-tan",
                 "newTransfer": "Transferentzia Berria",
                 "preparing": "Transferentzia prestatzen…"
-            }
+            },
+            "staged": "ilaran",
+            "start": "Hasi",
+            "startAll": "Dena hasi"
         },
         "settings": {
             "title": "Ezarpenak",

@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} em {seconds}s",
                 "newTransfer": "Nova transferencia",
                 "preparing": "Preparando a transferência…"
-            }
+            },
+            "staged": "em fila",
+            "start": "Iniciar",
+            "startAll": "Iniciar tudo"
         },
         "settings": {
             "title": "Configurações",

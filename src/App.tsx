@@ -10963,6 +10963,8 @@ interface UpdateVerificationInfo {
             const cb = retryCallbacksRef.current.get(id);
             if (cb) cb();
           }}
+          onStartItem={transferQueue.startStaged}
+          onStartAll={transferQueue.startAll}
           isPaused={isBatchPaused}
           pauseReason={batchPauseReason}
           onResume={resumeBatch}

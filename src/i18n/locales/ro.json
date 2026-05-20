@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} in {seconds}s",
                 "newTransfer": "Transfer nou",
                 "preparing": "Se pregătește transferul…"
-            }
+            },
+            "staged": "în coadă",
+            "start": "Pornește",
+            "startAll": "Pornește tot"
         },
         "settings": {
             "title": "Setări",

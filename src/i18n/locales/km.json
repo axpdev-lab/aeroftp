@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} ក្នុង {seconds} វិនាទី",
                 "newTransfer": "ផ្ទេរថ្មី",
                 "preparing": "កំពុងរៀបចំការផ្ទេរ…"
-            }
+            },
+            "staged": "ក្នុងជួរ",
+            "start": "ចាប់ផ្តើម",
+            "startAll": "ចាប់ផ្តើមទាំងអស់"
         },
         "settings": {
             "title": "ការកំណត់",

@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} katika sekunde {seconds}",
                 "newTransfer": "Uhamisho Mpya",
                 "preparing": "Inaandaa uhamishaji…"
-            }
+            },
+            "staged": "kwenye foleni",
+            "start": "Anza",
+            "startAll": "Anza zote"
         },
         "settings": {
             "title": "Mipangilio",

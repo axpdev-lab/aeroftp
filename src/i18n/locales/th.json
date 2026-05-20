@@ -501,7 +501,10 @@
                 "summaryMeta": "{size} ใน {seconds} วินาที",
                 "newTransfer": "โอนย้ายใหม่",
                 "preparing": "กำลังเตรียมการถ่ายโอน…"
-            }
+            },
+            "staged": "ในคิว",
+            "start": "เริ่ม",
+            "startAll": "เริ่มทั้งหมด"
         },
         "settings": {
             "title": "การตั้งค่า",
