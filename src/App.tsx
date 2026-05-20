@@ -5085,6 +5085,19 @@ interface UpdateVerificationInfo {
     setSessions(prev => prev.filter(s => s.id !== sessionId));
   };
 
+  // Issue #222: close every open session whose savedServerId matches the
+  // given profile id. Reached from the server card context menu when the
+  // profile is in the activeProfileIds set, so the entry only shows for
+  // saved servers that actually have a live session.
+  const disconnectProfile = useCallback(async (profileId: string) => {
+    const targetIds = sessions
+      .filter(s => s.savedServerId === profileId)
+      .map(s => s.id);
+    for (const id of targetIds) {
+      await closeSession(id);
+    }
+  }, [sessions]);
+
   const closeAllSessions = async () => {
     for (const s of sessions) {
       const overlaySessionId = s.aeroVaultOverlaySession?.sessionId;
@@ -11791,6 +11804,7 @@ interface UpdateVerificationInfo {
               onOpenCloudPanel={() => setShowCloudPanel(true)}
               hasExistingSessions={sessions.length > 0}
               activeProfileIds={activeProfileIds}
+              onDisconnectProfile={disconnectProfile}
               serversRefreshKey={serversRefreshKey}
               onServersChanged={() => setServersRefreshKey(k => k + 1)}
               onAeroCloud={() => {

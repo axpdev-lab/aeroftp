@@ -56,6 +56,10 @@ export interface IntroHubProps {
      *  Pulses the per-server health indicator so users can tell at a glance
      *  which saved server they are currently connected to. Issue #222. */
     activeProfileIds?: ReadonlySet<string>;
+    /** Close every open session for the given saved profile. Surfaces as the
+     *  Disconnect entry in the server card context menu, gated on the profile
+     *  being present in `activeProfileIds`. Issue #222. */
+    onDisconnectProfile?: (profileId: string) => void | Promise<void>;
 }
 
 function generateTabId(): string {
@@ -84,6 +88,7 @@ export function IntroHub(props: IntroHubProps) {
         serversRefreshKey,
         onServersChanged,
         activeProfileIds,
+        onDisconnectProfile,
     } = props;
 
     const t = useTranslation();
@@ -387,6 +392,7 @@ export function IntroHub(props: IntroHubProps) {
                         onOpenCrossProfile={onOpenCrossProfile}
                         onOpenMountManager={onOpenMountManager}
                         activeProfileIds={activeProfileIds}
+                        onDisconnectProfile={onDisconnectProfile}
                     />
                 </div>
 
