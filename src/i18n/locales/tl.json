@@ -3369,9 +3369,7 @@
             "activityLog": "Log ng Aktibidad",
             "detailedCards": "Mga detalyadong card ng server",
             "debugPanel": "Debug Panel",
-            "localSync": "Lokal na sync...",
-            "comparePanels": "Ihambing ang mga Panel...",
-            "syncPresets": "Mga Preset ng Sync..."
+            "aerofileSync": "AeroFile Sync..."
         },
         "activityPanel": {
             "awaitingCommands": "Naghihintay ng mga command...",
@@ -4639,6 +4637,46 @@
             "nothingToDo": "Mga preset ng sync",
             "allSkipped": "Walang maaaring isagawa na entry para sa preset na ito.",
             "deletesDeferred": "Mga preset ng sync"
+        },
+        "aerofileSync": {
+            "title": "AeroFile Sync",
+            "toolbarButton": "AeroFile Sync",
+            "tabCompare": "Ihambing",
+            "tabPlan": "Plano",
+            "tabSync": "I-sync",
+            "compareUnavailable": "Magbukas ng pangalawang panel o malayuang koneksyon upang ihambing.",
+            "planUnavailable": "Kailangan ng resulta ng paghahambing bago pumili ng preset. Buksan muna ang tab na Ihambing.",
+            "totalEntries": "Kabuuang mga entry",
+            "differences": "Mga pagkakaiba",
+            "totalBytes": "Kabuuang byte",
+            "mirrorHint": "Ang mga mirror button ay naglalagay ng tumutugmang mga entry sa pinag-isang transfer planner para sa pagsusuri.",
+            "mirrorLeftToRight": "I-mirror mula kaliwa hanggang kanan",
+            "mirrorRightToLeft": "I-mirror mula kanan hanggang kaliwa",
+            "directionLeftRight": "Kaliwa Papuntang Kanan",
+            "directionRightLeft": "Kanan Papuntang Kaliwa",
+            "conflictPolicy": "Patakaran sa salungatan",
+            "ignoredForMirror": "BINALEWALA PARA SA MIRROR",
+            "versionedBackup": "Naka-version na backup",
+            "enable": "Paganahin",
+            "versionedBackupHint": "Kunin ang kopya ng destinasyon sa direktoryong ito bago ang bawat pag-overwrite o pagtanggal.",
+            "actionable": "Maaksyunan",
+            "skipped": "Nilaktawan",
+            "transfer": "Paglilipat",
+            "destructive": "Mapanira",
+            "bucket": "Kategorya",
+            "count": "Bilang",
+            "action": "Aksyon",
+            "delete": "tanggalin",
+            "overwrite": "i-overwrite",
+            "conflicts": "salungatan",
+            "destructiveWarning": "Buburahin o i-overwrite ng preset na ito ang mga mas bagong file.",
+            "confirmDestructive": "Sinuri ko ang mga mapanirang aksyon at gustong magpatuloy.",
+            "executeHint": "Ang Isagawa ay naglalagay ng pinili sa pila at nagpapadala sa pamamagitan ng pinag-isang transfer planner.",
+            "executeUnavailable": "Hindi magagamit ang pagsasagawa para sa ganitong uri ng pares.",
+            "executeNothing": "Walang gagawin o hindi magagamit ang execution path",
+            "executeConfirm": "Kumpirmahin ang mga mapanirang aksyon upang paganahin ang Isagawa",
+            "executePreset": "Isagawa ang preset",
+            "execute": "Isagawa"
         }
     }
 }

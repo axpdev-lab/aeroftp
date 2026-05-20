@@ -3369,9 +3369,7 @@
             "activityLog": "Aktivitetslogg",
             "detailedCards": "Detaljerte serverkort",
             "debugPanel": "Debug Panel",
-            "localSync": "Lokal synkronisering...",
-            "comparePanels": "Sammenlign paneler...",
-            "syncPresets": "Synkroniseringsforhåndsinnstillinger..."
+            "aerofileSync": "AeroFile Sync..."
         },
         "activityPanel": {
             "awaitingCommands": "Venter på kommandoer...",
@@ -4639,6 +4637,46 @@
             "nothingToDo": "Synkroniseringsforhåndsinnstillinger",
             "allSkipped": "Ingen kjørbare oppføringer for denne forhåndsinnstillingen.",
             "deletesDeferred": "Synkroniseringsforhåndsinnstillinger"
+        },
+        "aerofileSync": {
+            "title": "AeroFile Sync",
+            "toolbarButton": "AeroFile Sync",
+            "tabCompare": "Sammenlign",
+            "tabPlan": "Plan",
+            "tabSync": "Synkroniser",
+            "compareUnavailable": "Apne et andre panel eller en ekstern tilkobling for a sammenligne.",
+            "planUnavailable": "Et sammenligningsresultat kreves for du velger en forhandsinnstilling. Apne Sammenlign-fanen forst.",
+            "totalEntries": "Totalt antall oppforinger",
+            "differences": "Forskjeller",
+            "totalBytes": "Totalt antall byte",
+            "mirrorHint": "Mirror-knappene klargjor matchende oppforinger i den samlede overforingsplanleggeren for gjennomgang.",
+            "mirrorLeftToRight": "Speil fra venstre til hoyre",
+            "mirrorRightToLeft": "Speil fra hoyre til venstre",
+            "directionLeftRight": "Venstre til Hoyre",
+            "directionRightLeft": "Hoyre til Venstre",
+            "conflictPolicy": "Konfliktpolicy",
+            "ignoredForMirror": "IGNORERT FOR MIRROR",
+            "versionedBackup": "Versjonsbasert sikkerhetskopi",
+            "enable": "Aktiver",
+            "versionedBackupHint": "Lagre destinasjonskopien i denne mappen for hver overskriving eller sletting.",
+            "actionable": "Handlingsbar",
+            "skipped": "Hoppet over",
+            "transfer": "Overforing",
+            "destructive": "Destruktiv",
+            "bucket": "Kategori",
+            "count": "Antall",
+            "action": "Handling",
+            "delete": "slett",
+            "overwrite": "overskriv",
+            "conflicts": "konflikt",
+            "destructiveWarning": "Denne forhandsinnstillingen vil slette eller overskrive nyere filer.",
+            "confirmDestructive": "Jeg har gjennomgatt de destruktive handlingene og onsker a fortsette.",
+            "executeHint": "Utfor klargjor utvalget og sender det gjennom den samlede overforingsplanleggeren.",
+            "executeUnavailable": "Utforing er ikke tilgjengelig for denne partypen.",
+            "executeNothing": "Ingenting a gjore eller utforingsbanen er ikke tilgjengelig",
+            "executeConfirm": "Bekreft destruktive handlinger for a aktivere Utfor",
+            "executePreset": "Utfor forhandsinnstilling",
+            "execute": "Utfor"
         }
     }
 }

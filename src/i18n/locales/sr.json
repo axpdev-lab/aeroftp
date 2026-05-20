@@ -3369,9 +3369,7 @@
             "activityLog": "Дневник активности",
             "detailedCards": "Детаљне картице сервера",
             "debugPanel": "Debug Panel",
-            "localSync": "Локална синхронизација...",
-            "comparePanels": "Упореди панеле...",
-            "syncPresets": "Подешавања синхронизације..."
+            "aerofileSync": "AeroFile Sync..."
         },
         "activityPanel": {
             "awaitingCommands": "Чекање на команде...",
@@ -4620,6 +4618,46 @@
             "nothingToDo": "Подешавања синхронизације",
             "allSkipped": "Нема извршивих ставки за ово подешавање.",
             "deletesDeferred": "Подешавања синхронизације"
+        },
+        "aerofileSync": {
+            "title": "AeroFile Sync",
+            "toolbarButton": "AeroFile Sync",
+            "tabCompare": "Упореди",
+            "tabPlan": "План",
+            "tabSync": "Синхронизуј",
+            "compareUnavailable": "Отворите други панел или удаљену везу за поређење.",
+            "planUnavailable": "Пре избора пресета потребан је резултат поређења. Прво отворите картицу Упореди.",
+            "totalEntries": "Укупно ставки",
+            "differences": "Разлике",
+            "totalBytes": "Укупно бајтова",
+            "mirrorHint": "Дугмад за пресликавање стављају одговарајуће ставке у обједињени планер преноса за преглед.",
+            "mirrorLeftToRight": "Пресликај с лева на десно",
+            "mirrorRightToLeft": "Пресликај с десна на лево",
+            "directionLeftRight": "С лева на десно",
+            "directionRightLeft": "С десна на лево",
+            "conflictPolicy": "Политика сукоба",
+            "ignoredForMirror": "ИГНОРИСАНО ЗА ПРЕСЛИКАВАЊЕ",
+            "versionedBackup": "Резервна копија са верзијама",
+            "enable": "Омогући",
+            "versionedBackupHint": "Сачувајте копију одредишта у овом директоријуму пре сваког преписивања или брисања.",
+            "actionable": "За извршење",
+            "skipped": "Прескочено",
+            "transfer": "Пренос",
+            "destructive": "Разорно",
+            "bucket": "Категорија",
+            "count": "Број",
+            "action": "Радња",
+            "delete": "обриши",
+            "overwrite": "препиши",
+            "conflicts": "сукоб",
+            "destructiveWarning": "Овај пресет ће обрисати или преписати новије датотеке.",
+            "confirmDestructive": "Прегледао сам разорне радње и желим да наставим.",
+            "executeHint": "Изврши ставља избор у ред и шаље га преко обједињеног планера преноса.",
+            "executeUnavailable": "Извршење није доступно за овај тип пара.",
+            "executeNothing": "Ништа за урадити или путања извршења није доступна",
+            "executeConfirm": "Потврдите разорне радње да бисте омогућили Изврши",
+            "executePreset": "Изврши пресет",
+            "execute": "Изврши"
         }
     }
 }

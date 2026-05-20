@@ -3369,9 +3369,7 @@
             "activityLog": "Дневник на активността",
             "detailedCards": "Подробни карти на сървърите",
             "debugPanel": "Debug Panel",
-            "localSync": "Локална синхронизация...",
-            "comparePanels": "Сравни панели...",
-            "syncPresets": "Шаблони за синхронизация..."
+            "aerofileSync": "AeroFile Sync..."
         },
         "activityPanel": {
             "awaitingCommands": "Очакване на команди...",
@@ -4620,6 +4618,46 @@
             "nothingToDo": "Шаблони за синхронизация",
             "allSkipped": "Няма елементи за изпълнение в този шаблон.",
             "deletesDeferred": "Шаблони за синхронизация"
+        },
+        "aerofileSync": {
+            "title": "AeroFile Sync",
+            "toolbarButton": "AeroFile Sync",
+            "tabCompare": "Сравнение",
+            "tabPlan": "План",
+            "tabSync": "Синхронизация",
+            "compareUnavailable": "Отворете втори панел или отдалечена връзка за сравнение.",
+            "planUnavailable": "Необходим е резултат от сравнение преди избор на пресет. Първо отворете раздела Сравнение.",
+            "totalEntries": "Общо записи",
+            "differences": "Различия",
+            "totalBytes": "Общо байтове",
+            "mirrorHint": "Бутоните за огледало поставят съответстващите записи в обединения планировчик на трансфери за преглед.",
+            "mirrorLeftToRight": "Огледало отляво надясно",
+            "mirrorRightToLeft": "Огледало отдясно наляво",
+            "directionLeftRight": "Отляво към Дясно",
+            "directionRightLeft": "Отдясно към Ляво",
+            "conflictPolicy": "Политика за конфликти",
+            "ignoredForMirror": "ИГНОРИРАНО ЗА ОГЛЕДАЛО",
+            "versionedBackup": "Версионирано архивиране",
+            "enable": "Активиране",
+            "versionedBackupHint": "Записва копието на целта в тази директория преди всяко презаписване или изтриване.",
+            "actionable": "Изпълнимо",
+            "skipped": "Пропуснати",
+            "transfer": "Трансфер",
+            "destructive": "Разрушително",
+            "bucket": "Категория",
+            "count": "Брой",
+            "action": "Действие",
+            "delete": "изтриване",
+            "overwrite": "презаписване",
+            "conflicts": "конфликт",
+            "destructiveWarning": "Този пресет ще изтрие или презапише по-нови файлове.",
+            "confirmDestructive": "Прегледах разрушителните действия и искам да продължа.",
+            "executeHint": "Изпълни поставя селекцията в опашка и я изпраща чрез обединения планировчик на трансфери.",
+            "executeUnavailable": "Изпълнението не е достъпно за този тип двойка.",
+            "executeNothing": "Няма какво да се прави или пътят за изпълнение не е достъпен",
+            "executeConfirm": "Потвърдете разрушителните действия за активиране на Изпълни",
+            "executePreset": "Изпълни пресет",
+            "execute": "Изпълни"
         }
     }
 }

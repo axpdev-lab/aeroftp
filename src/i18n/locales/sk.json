@@ -3369,9 +3369,7 @@
             "activityLog": "Denník aktivít",
             "detailedCards": "Podrobné karty serverov",
             "debugPanel": "Debug Panel",
-            "localSync": "Lokálna synchronizácia...",
-            "comparePanels": "Porovnať panely...",
-            "syncPresets": "Predvoľby synchronizácie..."
+            "aerofileSync": "AeroFile Sync..."
         },
         "activityPanel": {
             "awaitingCommands": "Cakanie na prikazy...",
@@ -4620,6 +4618,46 @@
             "nothingToDo": "Predvoľby synchronizácie",
             "allSkipped": "Žiadne vykonateľné položky pre túto predvoľbu.",
             "deletesDeferred": "Predvoľby synchronizácie"
+        },
+        "aerofileSync": {
+            "title": "AeroFile Sync",
+            "toolbarButton": "AeroFile Sync",
+            "tabCompare": "Porovnať",
+            "tabPlan": "Plán",
+            "tabSync": "Synchronizovať",
+            "compareUnavailable": "Otvorte druhý panel alebo vzdialené pripojenie na porovnanie.",
+            "planUnavailable": "Pred výberom predvoľby je potrebný výsledok porovnania. Najprv otvorte kartu Porovnať.",
+            "totalEntries": "Celkový počet záznamov",
+            "differences": "Rozdiely",
+            "totalBytes": "Celkový počet bajtov",
+            "mirrorHint": "Tlačidlá zrkadlenia zaradia zodpovedajúce záznamy do jednotného plánovača prenosov na kontrolu.",
+            "mirrorLeftToRight": "Zrkadliť zľava doprava",
+            "mirrorRightToLeft": "Zrkadliť sprava doľava",
+            "directionLeftRight": "Zľava doprava",
+            "directionRightLeft": "Sprava doľava",
+            "conflictPolicy": "Politika konfliktov",
+            "ignoredForMirror": "IGNOROVANÉ PRE ZRKADLENIE",
+            "versionedBackup": "Verziovaná záloha",
+            "enable": "Povoliť",
+            "versionedBackupHint": "Zachyťte cieľovú kópiu v tomto adresári pred každým prepísaním alebo odstránením.",
+            "actionable": "Na vykonanie",
+            "skipped": "Preskočené",
+            "transfer": "Prenos",
+            "destructive": "Deštruktívne",
+            "bucket": "Kategória",
+            "count": "Počet",
+            "action": "Akcia",
+            "delete": "odstrániť",
+            "overwrite": "prepísať",
+            "conflicts": "konflikt",
+            "destructiveWarning": "Táto predvoľba odstráni alebo prepíše novšie súbory.",
+            "confirmDestructive": "Prečítal som si deštruktívne akcie a chcem pokračovať.",
+            "executeHint": "Vykonať zaradí výber do fronty a odošle ho cez jednotný plánovač prenosov.",
+            "executeUnavailable": "Vykonanie nie je dostupné pre tento typ páru.",
+            "executeNothing": "Nič na vykonanie alebo cesta vykonania nie je dostupná",
+            "executeConfirm": "Potvrďte deštruktívne akcie na povolenie Vykonať",
+            "executePreset": "Vykonať predvoľbu",
+            "execute": "Vykonať"
         }
     }
 }

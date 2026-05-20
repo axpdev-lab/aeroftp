@@ -3369,9 +3369,7 @@
             "activityLog": "Aktivitāšu žurnāls",
             "detailedCards": "Detalizētas serveru kartes",
             "debugPanel": "Debug Panel",
-            "localSync": "Vietējā sinhronizācija...",
-            "comparePanels": "Salīdzināt paneļus...",
-            "syncPresets": "Sinhronizācijas iepriekšiestatījumi..."
+            "aerofileSync": "AeroFile Sync..."
         },
         "activityPanel": {
             "awaitingCommands": "Gaida komandas...",
@@ -4620,6 +4618,46 @@
             "nothingToDo": "Sinhronizācijas iepriekšiestatījumi",
             "allSkipped": "Šim iepriekšiestatījumam nav izpildāmu ierakstu.",
             "deletesDeferred": "Sinhronizācijas iepriekšiestatījumi"
+        },
+        "aerofileSync": {
+            "title": "AeroFile Sync",
+            "toolbarButton": "AeroFile Sync",
+            "tabCompare": "Salidzinat",
+            "tabPlan": "Plans",
+            "tabSync": "Sinhronizet",
+            "compareUnavailable": "Atveriet otru paneli vai attalu savienojumu, lai salidzinatu.",
+            "planUnavailable": "Pirms iepriekseja iestatijuma izveles ir nepieciesams salidzinasanas rezultats. Vispirms atveriet cilni Salidzinat.",
+            "totalEntries": "Kopa ierakstu",
+            "differences": "Atskiribas",
+            "totalBytes": "Kopa baitu",
+            "mirrorHint": "Spogula pogas sagatavo atbilstosos ierakstus apvienota parsutisanas planosanas riku parskatisanai.",
+            "mirrorLeftToRight": "Spogulot no kreisas uz labo",
+            "mirrorRightToLeft": "Spogulot no labas uz kreiso",
+            "directionLeftRight": "No kreisas uz labo",
+            "directionRightLeft": "No labas uz kreiso",
+            "conflictPolicy": "Konfliktu politika",
+            "ignoredForMirror": "IGNORETS SPOGULOSANAI",
+            "versionedBackup": "Versionets dublejums",
+            "enable": "Iespejot",
+            "versionedBackupHint": "Saglabajiet merka kopiju saja direktorija pirms katras parrakstisanas vai dzesanas.",
+            "actionable": "Izpildams",
+            "skipped": "Izlaists",
+            "transfer": "Parsutisana",
+            "destructive": "Iznicinosa",
+            "bucket": "Kategorija",
+            "count": "Skaits",
+            "action": "Darbiba",
+            "delete": "dzest",
+            "overwrite": "parrakstit",
+            "conflicts": "konflikts",
+            "destructiveWarning": "Sis iepriekseja iestatijums dzes vai parraksta jaunakos failus.",
+            "confirmDestructive": "Esmu parskatijis iznicinosas darbibas un velos turpinat.",
+            "executeHint": "Izpildit sagatavo izveli un nosuta caur apvienoto parsutisanas planosanas riku.",
+            "executeUnavailable": "Izpilde nav pieejama sim paru veidam.",
+            "executeNothing": "Nav ko darit vai izpildes cels nav pieejams",
+            "executeConfirm": "Apstipriniet iznicinosas darbibas, lai iespejotu Izpildit",
+            "executePreset": "Izpildit iepriekseja iestatijumu",
+            "execute": "Izpildit"
         }
     }
 }

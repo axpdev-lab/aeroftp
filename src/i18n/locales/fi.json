@@ -3369,9 +3369,7 @@
             "activityLog": "Tapahtumaloki",
             "detailedCards": "Yksityiskohtaiset palvelinkortit",
             "debugPanel": "Debug Panel",
-            "localSync": "Paikallinen synkronointi...",
-            "comparePanels": "Vertaile paneeleita...",
-            "syncPresets": "Synkronoinnin esiasetukset..."
+            "aerofileSync": "AeroFile Sync..."
         },
         "activityPanel": {
             "awaitingCommands": "Odotetaan komentoja...",
@@ -4620,6 +4618,46 @@
             "nothingToDo": "Synkronoinnin esiasetukset",
             "allSkipped": "Tälle esiasetukselle ei ole suoritettavia merkintöjä.",
             "deletesDeferred": "Synkronoinnin esiasetukset"
+        },
+        "aerofileSync": {
+            "title": "AeroFile Sync",
+            "toolbarButton": "AeroFile Sync",
+            "tabCompare": "Vertaa",
+            "tabPlan": "Suunnitelma",
+            "tabSync": "Synkronoi",
+            "compareUnavailable": "Avaa toinen paneeli tai etäyhteys vertailua varten.",
+            "planUnavailable": "Vertailutulos vaaditaan ennen esiasetuksen valintaa. Avaa ensin Vertaa-välilehti.",
+            "totalEntries": "Merkintöjä yhteensä",
+            "differences": "Eroavaisuudet",
+            "totalBytes": "Tavuja yhteensä",
+            "mirrorHint": "Peilauspainikkeet asettavat vastaavat merkinnät yhtenäiseen siirtosuunnittelijaan tarkistettavaksi.",
+            "mirrorLeftToRight": "Peilaa vasemmalta oikealle",
+            "mirrorRightToLeft": "Peilaa oikealta vasemmalle",
+            "directionLeftRight": "Vasemmalta Oikealle",
+            "directionRightLeft": "Oikealta Vasemmalle",
+            "conflictPolicy": "Ristiriitakäytäntö",
+            "ignoredForMirror": "OHITETTU PEILAUKSELLE",
+            "versionedBackup": "Versioitu varmuuskopio",
+            "enable": "Ota käyttöön",
+            "versionedBackupHint": "Tallentaa kohdekopion tähän hakemistoon ennen jokaista korvaamista tai poistamista.",
+            "actionable": "Suoritettavissa",
+            "skipped": "Ohitetut",
+            "transfer": "Siirto",
+            "destructive": "Tuhoava",
+            "bucket": "Kategoria",
+            "count": "Lukumäärä",
+            "action": "Toiminto",
+            "delete": "poista",
+            "overwrite": "korvaa",
+            "conflicts": "ristiriita",
+            "destructiveWarning": "Tämä esiasetus poistaa tai korvaa uudempia tiedostoja.",
+            "confirmDestructive": "Olen tarkistanut tuhoavat toiminnot ja haluan jatkaa.",
+            "executeHint": "Suorita asettaa valinnan jonoon ja lähettää sen yhtenäisen siirtosuunnittelijan kautta.",
+            "executeUnavailable": "Suoritus ei ole käytettävissä tälle paritypille.",
+            "executeNothing": "Ei mitään tehtävää tai suorituspolku ei ole käytettävissä",
+            "executeConfirm": "Vahvista tuhoavat toiminnot ottaaksesi Suorita käyttöön",
+            "executePreset": "Suorita esiasetus",
+            "execute": "Suorita"
         }
     }
 }

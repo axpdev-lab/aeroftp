@@ -237,6 +237,9 @@ interface MyServersPanelProps {
     onOpenCrossProfile?: (opts?: { sourceId?: string; sourcePath?: string; destId?: string; destPath?: string }) => void;
     /** Open Mount Manager from the My Servers toolbar. */
     onOpenMountManager?: () => void;
+    /** Profile ids that have at least one open session in the tab strip.
+     *  Drives the pulsing health indicator on cards / rows (issue #222). */
+    activeProfileIds?: ReadonlySet<string>;
 }
 
 const EMPTY_STATE_CATEGORIES: { id: CatalogCategoryId; labelKey: string; icon: React.ReactNode; iconColor: string }[] = [
@@ -258,6 +261,7 @@ export function MyServersPanel({
     onServersChange,
     onOpenCrossProfile,
     onOpenMountManager,
+    activeProfileIds,
 }: MyServersPanelProps) {
     const t = useTranslation();
     // Lazy init: read localStorage synchronously on first mount so the panel
@@ -1237,6 +1241,7 @@ export function MyServersPanel({
                                     healthLatencyMs={health?.latencyMs}
                                     onRetryHealth={cardLayout === 'detailed' ? handleRetryHealth : undefined}
                                     thresholds={thresholds}
+                                    hasActiveSession={activeProfileIds?.has(server.id) ?? false}
                                 />
                             );
                         })}
@@ -1305,6 +1310,7 @@ export function MyServersPanel({
                         onRetryHealth={handleRetryHealth}
                         thresholds={thresholds}
                         density={density}
+                        activeProfileIds={activeProfileIds}
                     />
                     {canDrag && dragIdx !== null && (
                         <div

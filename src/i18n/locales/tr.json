@@ -3369,9 +3369,7 @@
             "activityLog": "Etkinlik Günlüğü",
             "detailedCards": "Ayrıntılı sunucu kartları",
             "debugPanel": "Debug Panel",
-            "localSync": "Yerel eşitleme...",
-            "comparePanels": "Panelleri Karşılaştır...",
-            "syncPresets": "Senkronizasyon Önayarları..."
+            "aerofileSync": "AeroFile Sync..."
         },
         "activityPanel": {
             "awaitingCommands": "Komut bekleniyor...",
@@ -4620,6 +4618,46 @@
             "nothingToDo": "Senkronizasyon önayarları",
             "allSkipped": "Bu önayar için yürütülebilir giriş yok.",
             "deletesDeferred": "Senkronizasyon önayarları"
+        },
+        "aerofileSync": {
+            "title": "AeroFile Sync",
+            "toolbarButton": "AeroFile Sync",
+            "tabCompare": "Karşılaştır",
+            "tabPlan": "Plan",
+            "tabSync": "Senkronize Et",
+            "compareUnavailable": "Karşılaştırmak için ikinci bir panel veya uzak bağlantı açın.",
+            "planUnavailable": "Bir önayar seçmeden önce karşılaştırma sonucu gerekir. Önce Karşılaştır sekmesini açın.",
+            "totalEntries": "Toplam giriş",
+            "differences": "Farklar",
+            "totalBytes": "Toplam bayt",
+            "mirrorHint": "Yansıtma düğmeleri eşleşen girdileri inceleme için birleşik aktarım planlayıcısına yerleştirir.",
+            "mirrorLeftToRight": "Soldan sağa yansıt",
+            "mirrorRightToLeft": "Sağdan sola yansıt",
+            "directionLeftRight": "Soldan Sağa",
+            "directionRightLeft": "Sağdan Sola",
+            "conflictPolicy": "Çakışma politikası",
+            "ignoredForMirror": "YANSITMA İÇİN YOK SAYILDI",
+            "versionedBackup": "Sürümlü yedekleme",
+            "enable": "Etkinleştir",
+            "versionedBackupHint": "Her üzerine yazma veya silme işleminden önce hedef kopyasını bu dizinde yakalayın.",
+            "actionable": "Yapılabilir",
+            "skipped": "Atlandı",
+            "transfer": "Aktarım",
+            "destructive": "Yıkıcı",
+            "bucket": "Kategori",
+            "count": "Sayı",
+            "action": "Eylem",
+            "delete": "sil",
+            "overwrite": "üzerine yaz",
+            "conflicts": "çakışma",
+            "destructiveWarning": "Bu önayar daha yeni dosyaları silecek veya üzerine yazacak.",
+            "confirmDestructive": "Yıkıcı eylemleri inceledim ve devam etmek istiyorum.",
+            "executeHint": "Yürüt seçimi sıraya koyar ve birleşik aktarım planlayıcısı üzerinden gönderir.",
+            "executeUnavailable": "Bu çift türü için yürütme kullanılamaz.",
+            "executeNothing": "Yapılacak bir şey yok veya yürütme yolu kullanılamıyor",
+            "executeConfirm": "Yürüt'ü etkinleştirmek için yıkıcı eylemleri onaylayın",
+            "executePreset": "Önayarı yürüt",
+            "execute": "Yürüt"
         }
     }
 }

@@ -29,6 +29,11 @@ interface HealthRadialProps {
      *  ring forces a fresh check and surfaces whether the bad result was the
      *  scan or the server. */
     onRetry?: () => void;
+    /** When true the ring is rendered with a subtle pulse to signal that the
+     *  profile has at least one open session right now. This is independent
+     *  from the health status (a connected profile can still be `up`/`slow`/
+     *  `down`) and stacks with the existing `pending` self-pulse. Issue #222. */
+    pulsing?: boolean;
 }
 
 const STROKE_WIDTH = 2.5;
@@ -47,6 +52,7 @@ export const HealthRadial: React.FC<HealthRadialProps> = ({
     size = 22,
     title,
     onRetry,
+    pulsing = false,
 }) => {
     const r = (size - STROKE_WIDTH) / 2;
     const cx = size / 2;
@@ -76,7 +82,7 @@ export const HealthRadial: React.FC<HealthRadialProps> = ({
             title={ariaLabel}
             onClick={handleClick}
             type={interactive ? 'button' : undefined}
-            className={`inline-flex shrink-0 items-center justify-center ${status === 'pending' ? 'animate-pulse' : ''} ${interactive ? 'cursor-pointer rounded-full hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors' : ''}`}
+            className={`inline-flex shrink-0 items-center justify-center ${status === 'pending' || pulsing ? 'animate-pulse' : ''} ${interactive ? 'cursor-pointer rounded-full hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors' : ''}`}
             style={{ width: size, height: size, padding: 0, border: 'none', background: 'transparent' }}
         >
             <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>

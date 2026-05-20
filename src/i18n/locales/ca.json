@@ -3369,9 +3369,7 @@
             "activityLog": "Registre d'Activitat",
             "detailedCards": "Targetes de servidor detallades",
             "debugPanel": "Debug Panel",
-            "localSync": "Sincronització local...",
-            "comparePanels": "Compara panells...",
-            "syncPresets": "Predefinits de sincronització..."
+            "aerofileSync": "AeroFile Sync..."
         },
         "activityPanel": {
             "awaitingCommands": "Esperant comandes...",
@@ -4639,6 +4637,46 @@
             "nothingToDo": "Predefinits de sincronització",
             "allSkipped": "No hi ha entrades accionables per a aquest predefinit.",
             "deletesDeferred": "Predefinits de sincronització"
+        },
+        "aerofileSync": {
+            "title": "AeroFile Sync",
+            "toolbarButton": "AeroFile Sync",
+            "tabCompare": "Comparar",
+            "tabPlan": "Pla",
+            "tabSync": "Sincronitzar",
+            "compareUnavailable": "Obre un segon tauler o una connexió remota per comparar.",
+            "planUnavailable": "Cal un resultat de comparació abans d'escollir un preset. Obre primer la pestanya Comparar.",
+            "totalEntries": "Entrades totals",
+            "differences": "Diferències",
+            "totalBytes": "Bytes totals",
+            "mirrorHint": "Els botons de mirall encuen les entrades coincidents al planificador de transferències unificat per a revisió.",
+            "mirrorLeftToRight": "Reflectir d'esquerra a dreta",
+            "mirrorRightToLeft": "Reflectir de dreta a esquerra",
+            "directionLeftRight": "Esquerra a Dreta",
+            "directionRightLeft": "Dreta a Esquerra",
+            "conflictPolicy": "Política de conflictes",
+            "ignoredForMirror": "IGNORAT PER MIRALL",
+            "versionedBackup": "Còpia de seguretat amb versions",
+            "enable": "Habilitar",
+            "versionedBackupHint": "Captura la còpia de destinació en aquest directori abans de cada sobreescriptura o eliminació.",
+            "actionable": "Accionable",
+            "skipped": "Omesos",
+            "transfer": "Transferència",
+            "destructive": "Destructiu",
+            "bucket": "Categoria",
+            "count": "Recompte",
+            "action": "Acció",
+            "delete": "eliminar",
+            "overwrite": "sobreescriure",
+            "conflicts": "conflicte",
+            "destructiveWarning": "Aquest preset eliminarà o sobreescriurà fitxers més recents.",
+            "confirmDestructive": "He revisat les accions destructives i vull continuar.",
+            "executeHint": "Executar encua la selecció i la despatxa mitjançant el planificador de transferències unificat.",
+            "executeUnavailable": "L'execució no està disponible per a aquest tipus de parell.",
+            "executeNothing": "Res a fer o ruta d'execució no disponible",
+            "executeConfirm": "Confirma les accions destructives per habilitar Executar",
+            "executePreset": "Executar preset",
+            "execute": "Executar"
         }
     }
 }

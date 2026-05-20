@@ -52,6 +52,10 @@ export interface IntroHubProps {
     hasExistingSessions?: boolean;
     serversRefreshKey?: number;
     onServersChanged?: () => void;
+    /** Profile ids that have at least one open session in the tab strip.
+     *  Pulses the per-server health indicator so users can tell at a glance
+     *  which saved server they are currently connected to. Issue #222. */
+    activeProfileIds?: ReadonlySet<string>;
 }
 
 function generateTabId(): string {
@@ -79,6 +83,7 @@ export function IntroHub(props: IntroHubProps) {
         hasExistingSessions,
         serversRefreshKey,
         onServersChanged,
+        activeProfileIds,
     } = props;
 
     const t = useTranslation();
@@ -381,6 +386,7 @@ export function IntroHub(props: IntroHubProps) {
                         }}
                         onOpenCrossProfile={onOpenCrossProfile}
                         onOpenMountManager={onOpenMountManager}
+                        activeProfileIds={activeProfileIds}
                     />
                 </div>
 

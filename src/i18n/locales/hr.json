@@ -3369,9 +3369,7 @@
             "activityLog": "Dnevnik aktivnosti",
             "detailedCards": "Detaljne kartice poslužitelja",
             "debugPanel": "Debug Panel",
-            "localSync": "Lokalna sinkronizacija...",
-            "comparePanels": "Usporedi panele...",
-            "syncPresets": "Predlošci sinkronizacije..."
+            "aerofileSync": "AeroFile Sync..."
         },
         "activityPanel": {
             "awaitingCommands": "Čekanje naredbi...",
@@ -4620,6 +4618,46 @@
             "nothingToDo": "Predlošci sinkronizacije",
             "allSkipped": "Nema izvršivih stavki za ovaj predložak.",
             "deletesDeferred": "Predlošci sinkronizacije"
+        },
+        "aerofileSync": {
+            "title": "AeroFile Sync",
+            "toolbarButton": "AeroFile Sync",
+            "tabCompare": "Usporedi",
+            "tabPlan": "Plan",
+            "tabSync": "Sinkroniziraj",
+            "compareUnavailable": "Otvori drugi panel ili udaljenu vezu za usporedbu.",
+            "planUnavailable": "Potreban je rezultat usporedbe prije odabira presetа. Najprije otvori karticu Usporedi.",
+            "totalEntries": "Ukupno stavki",
+            "differences": "Razlike",
+            "totalBytes": "Ukupno bajtova",
+            "mirrorHint": "Gumbi mirror priprema odgovarajuce stavke u objedinjenom planeru prijenosa za pregled.",
+            "mirrorLeftToRight": "Mirror s lijeva na desno",
+            "mirrorRightToLeft": "Mirror s desna na lijevo",
+            "directionLeftRight": "S lijeva na desno",
+            "directionRightLeft": "S desna na lijevo",
+            "conflictPolicy": "Pravila sukoba",
+            "ignoredForMirror": "IGNORIRANO ZA MIRROR",
+            "versionedBackup": "Sigurnosna kopija s verzijama",
+            "enable": "Omoguci",
+            "versionedBackupHint": "Spremi odredisnu kopiju u ovu mapu prije svake prepisivanja ili brisanja.",
+            "actionable": "Za izvrsiti",
+            "skipped": "Preskoceno",
+            "transfer": "Prijenos",
+            "destructive": "Destruktivno",
+            "bucket": "Kategorija",
+            "count": "Broj",
+            "action": "Radnja",
+            "delete": "brisanje",
+            "overwrite": "prepisivanje",
+            "conflicts": "sukob",
+            "destructiveWarning": "Ovaj preset ce izbrisati ili prepisati novije datoteke.",
+            "confirmDestructive": "Pregledao sam destruktivne radnje i zelim nastaviti.",
+            "executeHint": "Izvrsi pripravi odabir i salje ga preko objedinjenog planera prijenosa.",
+            "executeUnavailable": "Izvrsavanje nije dostupno za ovu vrstu para.",
+            "executeNothing": "Nista za uciniti ili put izvrsavanja nije dostupan",
+            "executeConfirm": "Potvrdi destruktivne radnje za omogucavanje Izvrsi",
+            "executePreset": "Izvrsi preset",
+            "execute": "Izvrsi"
         }
     }
 }

@@ -274,6 +274,11 @@ interface ServerCardProps {
     /** Storage usage thresholds (warn/critical) for the % column tone. Falls
      *  back to defaults when the panel hasn't loaded settings yet. */
     thresholds?: StorageThresholds;
+    /** True when this profile has at least one open session in the tab strip.
+     *  Drives a subtle pulse on the health dot (compact) or radial (detailed)
+     *  so users can tell at a glance which saved server they are already
+     *  connected to. Independent from the health status itself. Issue #222. */
+    hasActiveSession?: boolean;
 }
 
 export function RenameInput({
@@ -399,6 +404,7 @@ export const ServerCard = React.memo(function ServerCard({
     healthLatencyMs,
     onRetryHealth,
     thresholds = DEFAULT_THRESHOLDS,
+    hasActiveSession = false,
 }: ServerCardProps) {
     const t = useTranslation();
     const cardLayout = useCardLayout();
@@ -514,9 +520,9 @@ export const ServerCard = React.memo(function ServerCard({
                                 : healthStatus === 'slow' ? 'bg-amber-500'
                                 : healthStatus === 'down' ? 'bg-red-500'
                                 : 'bg-gray-400 animate-pulse'
-                            }`}
-                            title={radialTitle}
-                            aria-label={radialTitle}
+                            } ${hasActiveSession ? 'animate-pulse' : ''}`}
+                            title={hasActiveSession ? `${radialTitle} (active session)` : radialTitle}
+                            aria-label={hasActiveSession ? `${radialTitle} (active session)` : radialTitle}
                         />
                     )}
                     {/* #180 / 4486730822: standalone connect-failure marker.
@@ -576,8 +582,9 @@ export const ServerCard = React.memo(function ServerCard({
                             status={healthStatus || 'unknown'}
                             latencyMs={healthLatencyMs}
                             size={16}
-                            title={radialTitle}
+                            title={hasActiveSession ? `${radialTitle} (active session)` : radialTitle}
                             onRetry={handleRetry}
+                            pulsing={hasActiveSession}
                         />
                     </div>
                 </div>

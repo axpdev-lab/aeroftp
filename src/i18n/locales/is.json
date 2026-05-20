@@ -3369,9 +3369,7 @@
             "activityLog": "Aðgerðaskrá",
             "detailedCards": "Ítarleg netþjónakort",
             "debugPanel": "Debug Panel",
-            "localSync": "Staðbundin samstilling...",
-            "comparePanels": "Bera saman glugga...",
-            "syncPresets": "Forstillingar samstillingar..."
+            "aerofileSync": "AeroFile Sync..."
         },
         "activityPanel": {
             "awaitingCommands": "Bíð eftir skipunum...",
@@ -4639,6 +4637,46 @@
             "nothingToDo": "Forstillingar samstillingar",
             "allSkipped": "Engar framkvæmanlegar færslur fyrir þessa forstillingu.",
             "deletesDeferred": "Forstillingar samstillingar"
+        },
+        "aerofileSync": {
+            "title": "AeroFile Sync",
+            "toolbarButton": "AeroFile Sync",
+            "tabCompare": "Bera saman",
+            "tabPlan": "Aaetlun",
+            "tabSync": "Samstilla",
+            "compareUnavailable": "Opnaethu annaae spjald eaea fjartengingu til aae bera saman.",
+            "planUnavailable": "Samanburaeaarniaeurstaeaea er nauaesynleg aeaeur en preset er valiae. Opnaethu Bera saman flipann fyrst.",
+            "totalEntries": "Heildarfaerslur",
+            "differences": "Mismunur",
+            "totalBytes": "Heildarbaet",
+            "mirrorHint": "Speglunarhnapparnir setja samsvarandi faerslur i sameinaaea flutningsskipuleggjarann til skoaeunar.",
+            "mirrorLeftToRight": "Spegla vinstra megin til haegri",
+            "mirrorRightToLeft": "Spegla haegra megin til vinstri",
+            "directionLeftRight": "Vinstri til Haegri",
+            "directionRightLeft": "Haegri til Vinstri",
+            "conflictPolicy": "Atokastefna",
+            "ignoredForMirror": "HUNSAAE FYRIR SPEGLUN",
+            "versionedBackup": "Utgafusveiae oryggisafrit",
+            "enable": "Virkja",
+            "versionedBackupHint": "Vista afanga afritiae i pessari mappu fyrir hvert yfirskrif eaea eyaeingu.",
+            "actionable": "Aaegeraehaeft",
+            "skipped": "Slepptu",
+            "transfer": "Flutningur",
+            "destructive": "Eyaeileggjandi",
+            "bucket": "Flokkur",
+            "count": "Fjoldi",
+            "action": "Aaegeraeae",
+            "delete": "eyaea",
+            "overwrite": "yfirskrifa",
+            "conflicts": "atok",
+            "destructiveWarning": "Petta preset mun eyaea eaea yfirskrifa nyrri skrar.",
+            "confirmDestructive": "Eg hef yfirfariae eyaeileggjandi aaegeraeirnar og vil halda afram.",
+            "executeHint": "Framkvaema undirbyr valiae og sendir gegnum sameinaaea flutningsskipuleggjarann.",
+            "executeUnavailable": "Framkvaemd er ekki i boaei fyrir pessa tegund af pari.",
+            "executeNothing": "Ekkert til aae gera eaea framkvaemdarleiae er ekki tiltaek",
+            "executeConfirm": "Stadfestu eyaeileggjandi aaegeraeir til aae virkja Framkvaema",
+            "executePreset": "Framkvaema preset",
+            "execute": "Framkvaema"
         }
     }
 }

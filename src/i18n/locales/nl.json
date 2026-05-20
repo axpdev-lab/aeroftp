@@ -3369,9 +3369,7 @@
             "activityLog": "Activiteitenlog",
             "detailedCards": "Gedetailleerde serverkaarten",
             "debugPanel": "Debug Panel",
-            "localSync": "Lokale synchronisatie...",
-            "comparePanels": "Vergelijk panelen...",
-            "syncPresets": "Synchronisatievoorinstellingen..."
+            "aerofileSync": "AeroFile Sync..."
         },
         "activityPanel": {
             "awaitingCommands": "Wacht op opdrachten...",
@@ -4620,6 +4618,46 @@
             "nothingToDo": "Synchronisatievoorinstellingen",
             "allSkipped": "Geen uitvoerbare items voor deze voorinstelling.",
             "deletesDeferred": "Synchronisatievoorinstellingen"
+        },
+        "aerofileSync": {
+            "title": "AeroFile Sync",
+            "toolbarButton": "AeroFile Sync",
+            "tabCompare": "Vergelijken",
+            "tabPlan": "Plan",
+            "tabSync": "Synchroniseren",
+            "compareUnavailable": "Open een tweede paneel of een externe verbinding om te vergelijken.",
+            "planUnavailable": "Een vergelijkingsresultaat is vereist voordat u een preset kiest. Open eerst het tabblad Vergelijken.",
+            "totalEntries": "Totaal items",
+            "differences": "Verschillen",
+            "totalBytes": "Totaal bytes",
+            "mirrorHint": "Mirror-knoppen plaatsen overeenkomende items in de geunificeerde overdrachtsplanner voor beoordeling.",
+            "mirrorLeftToRight": "Spiegelen van links naar rechts",
+            "mirrorRightToLeft": "Spiegelen van rechts naar links",
+            "directionLeftRight": "Links naar Rechts",
+            "directionRightLeft": "Rechts naar Links",
+            "conflictPolicy": "Conflictbeleid",
+            "ignoredForMirror": "GENEGEERD VOOR MIRROR",
+            "versionedBackup": "Versiebeheer back-up",
+            "enable": "Inschakelen",
+            "versionedBackupHint": "Maak een kopie van de bestemming in deze map voor elke overschrijving of verwijdering.",
+            "actionable": "Uitvoerbaar",
+            "skipped": "Overgeslagen",
+            "transfer": "Overdracht",
+            "destructive": "Destructief",
+            "bucket": "Categorie",
+            "count": "Aantal",
+            "action": "Actie",
+            "delete": "verwijderen",
+            "overwrite": "overschrijven",
+            "conflicts": "conflict",
+            "destructiveWarning": "Deze preset zal nieuwere bestanden verwijderen of overschrijven.",
+            "confirmDestructive": "Ik heb de destructieve acties beoordeeld en wil doorgaan.",
+            "executeHint": "Uitvoeren bereidt de selectie voor en verzendt deze via de geunificeerde overdrachtsplanner.",
+            "executeUnavailable": "Uitvoering is niet beschikbaar voor dit type paar.",
+            "executeNothing": "Niets te doen of uitvoeringspad niet beschikbaar",
+            "executeConfirm": "Bevestig destructieve acties om Uitvoeren in te schakelen",
+            "executePreset": "Preset uitvoeren",
+            "execute": "Uitvoeren"
         }
     }
 }

@@ -3369,9 +3369,7 @@
             "activityLog": "Aktivitätsprotokoll",
             "detailedCards": "Detaillierte Serverkarten",
             "debugPanel": "Debug Panel",
-            "localSync": "Lokale Synchronisierung...",
-            "comparePanels": "Panels vergleichen...",
-            "syncPresets": "Sync-Voreinstellungen..."
+            "aerofileSync": "AeroFile Sync..."
         },
         "activityPanel": {
             "awaitingCommands": "Warte auf Befehle...",
@@ -4620,6 +4618,46 @@
             "nothingToDo": "Sync-Voreinstellungen",
             "allSkipped": "Keine ausführbaren Einträge für diese Voreinstellung.",
             "deletesDeferred": "Sync-Voreinstellungen"
+        },
+        "aerofileSync": {
+            "title": "AeroFile Sync",
+            "toolbarButton": "AeroFile Sync",
+            "tabCompare": "Vergleichen",
+            "tabPlan": "Plan",
+            "tabSync": "Synchronisieren",
+            "compareUnavailable": "Öffne ein zweites Panel oder eine Remoteverbindung zum Vergleichen.",
+            "planUnavailable": "Ein Vergleichsergebnis ist erforderlich, bevor ein Preset gewählt werden kann. Öffne zuerst den Reiter Vergleichen.",
+            "totalEntries": "Gesamteinträge",
+            "differences": "Unterschiede",
+            "totalBytes": "Gesamtbytes",
+            "mirrorHint": "Die Mirror-Schaltflächen reihen passende Einträge im einheitlichen Transfer-Planer zur Prüfung ein.",
+            "mirrorLeftToRight": "Von links nach rechts spiegeln",
+            "mirrorRightToLeft": "Von rechts nach links spiegeln",
+            "directionLeftRight": "Links nach Rechts",
+            "directionRightLeft": "Rechts nach Links",
+            "conflictPolicy": "Konfliktrichtlinie",
+            "ignoredForMirror": "FÜR MIRROR IGNORIERT",
+            "versionedBackup": "Versioniertes Backup",
+            "enable": "Aktivieren",
+            "versionedBackupHint": "Speichert die Zielkopie in diesem Verzeichnis vor jedem Überschreiben oder Löschen.",
+            "actionable": "Ausführbar",
+            "skipped": "Übersprungen",
+            "transfer": "Übertragung",
+            "destructive": "Destruktiv",
+            "bucket": "Kategorie",
+            "count": "Anzahl",
+            "action": "Aktion",
+            "delete": "löschen",
+            "overwrite": "überschreiben",
+            "conflicts": "Konflikt",
+            "destructiveWarning": "Dieses Preset löscht oder überschreibt neuere Dateien.",
+            "confirmDestructive": "Ich habe die destruktiven Aktionen geprüft und möchte fortfahren.",
+            "executeHint": "Ausführen reiht die Auswahl ein und versendet sie über den einheitlichen Transfer-Planer.",
+            "executeUnavailable": "Die Ausführung ist für diesen Paartyp nicht verfügbar.",
+            "executeNothing": "Nichts zu tun oder Ausführungspfad nicht verfügbar",
+            "executeConfirm": "Destruktive Aktionen bestätigen, um Ausführen zu aktivieren",
+            "executePreset": "Preset ausführen",
+            "execute": "Ausführen"
         }
     }
 }

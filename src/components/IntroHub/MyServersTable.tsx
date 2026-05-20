@@ -55,6 +55,8 @@ interface MyServersTableProps {
     onRetryHealth: (server: ServerProfile) => void;
     thresholds: StorageThresholds;
     density: MyServersDensity;
+    /** Profile ids that have at least one open session in the tab strip. */
+    activeProfileIds?: ReadonlySet<string>;
 }
 
 const pctOf = (server: ServerProfile) => {
@@ -130,6 +132,7 @@ export function MyServersTable({
     onRetryHealth,
     thresholds,
     density,
+    activeProfileIds,
 }: MyServersTableProps) {
     const t = useTranslation();
     const { config, orderedVisibleColumns, resolveAlign } = columns;
@@ -300,6 +303,7 @@ export function MyServersTable({
                                 thresholds={thresholds}
                                 density={density}
                                 resolveAlign={resolveAlign}
+                                hasActiveSession={activeProfileIds?.has(server.id) ?? false}
                             />
                         );
                     })}

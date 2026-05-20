@@ -3369,9 +3369,7 @@
             "activityLog": "Log Aktiviti",
             "detailedCards": "Kad pelayan terperinci",
             "debugPanel": "Debug Panel",
-            "localSync": "Penyegerakan tempatan...",
-            "comparePanels": "Bandingkan Panel...",
-            "syncPresets": "Pratetap Penyegerakan..."
+            "aerofileSync": "AeroFile Sync..."
         },
         "activityPanel": {
             "awaitingCommands": "Menunggu arahan...",
@@ -4620,6 +4618,46 @@
             "nothingToDo": "Pratetap penyegerakan",
             "allSkipped": "Tiada entri boleh dilaksanakan untuk pratetap ini.",
             "deletesDeferred": "Pratetap penyegerakan"
+        },
+        "aerofileSync": {
+            "title": "AeroFile Sync",
+            "toolbarButton": "AeroFile Sync",
+            "tabCompare": "Bandingkan",
+            "tabPlan": "Rancang",
+            "tabSync": "Segerak",
+            "compareUnavailable": "Buka panel kedua atau sambungan jauh untuk membandingkan.",
+            "planUnavailable": "Keputusan perbandingan diperlukan sebelum memilih pratetap. Buka tab Bandingkan dahulu.",
+            "totalEntries": "Jumlah entri",
+            "differences": "Perbezaan",
+            "totalBytes": "Jumlah bait",
+            "mirrorHint": "Butang cermin menyediakan entri yang sepadan dalam perancang pemindahan bersepadu untuk semakan.",
+            "mirrorLeftToRight": "Cermin kiri ke kanan",
+            "mirrorRightToLeft": "Cermin kanan ke kiri",
+            "directionLeftRight": "Kiri ke Kanan",
+            "directionRightLeft": "Kanan ke Kiri",
+            "conflictPolicy": "Dasar konflik",
+            "ignoredForMirror": "DIABAIKAN UNTUK CERMIN",
+            "versionedBackup": "Sandaran berversi",
+            "enable": "Dayakan",
+            "versionedBackupHint": "Tangkap salinan destinasi dalam direktori ini sebelum setiap penulisan ganti atau pemadaman.",
+            "actionable": "Boleh dilaksanakan",
+            "skipped": "Dilangkau",
+            "transfer": "Pemindahan",
+            "destructive": "Destruktif",
+            "bucket": "Kategori",
+            "count": "Bilangan",
+            "action": "Tindakan",
+            "delete": "padam",
+            "overwrite": "tulis ganti",
+            "conflicts": "konflik",
+            "destructiveWarning": "Pratetap ini akan memadam atau menulis ganti fail yang lebih baharu.",
+            "confirmDestructive": "Saya telah menyemak tindakan destruktif dan ingin meneruskan.",
+            "executeHint": "Laksana menyediakan pilihan dan menghantarnya melalui perancang pemindahan bersepadu.",
+            "executeUnavailable": "Pelaksanaan tidak tersedia untuk jenis pasangan ini.",
+            "executeNothing": "Tiada apa-apa untuk dilakukan atau laluan pelaksanaan tidak tersedia",
+            "executeConfirm": "Sahkan tindakan destruktif untuk membolehkan Laksana",
+            "executePreset": "Laksanakan pratetap",
+            "execute": "Laksana"
         }
     }
 }

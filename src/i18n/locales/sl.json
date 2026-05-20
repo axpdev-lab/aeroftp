@@ -3369,9 +3369,7 @@
             "activityLog": "Dnevnik dejavnosti",
             "detailedCards": "Podrobne kartice strežnikov",
             "debugPanel": "Debug Panel",
-            "localSync": "Lokalna sinhronizacija...",
-            "comparePanels": "Primerjaj plošči...",
-            "syncPresets": "Prednastavitve sinhronizacije..."
+            "aerofileSync": "AeroFile Sync..."
         },
         "activityPanel": {
             "awaitingCommands": "Čakanje na ukaze...",
@@ -4620,6 +4618,46 @@
             "nothingToDo": "Prednastavitve sinhronizacije",
             "allSkipped": "Za to prednastavitev ni izvedljivih vnosov.",
             "deletesDeferred": "Prednastavitve sinhronizacije"
+        },
+        "aerofileSync": {
+            "title": "AeroFile Sync",
+            "toolbarButton": "AeroFile Sync",
+            "tabCompare": "Primerjaj",
+            "tabPlan": "Načrt",
+            "tabSync": "Sinhroniziraj",
+            "compareUnavailable": "Odprite drugo ploščo ali oddaljeno povezavo za primerjavo.",
+            "planUnavailable": "Pred izbiro prednastavitve je potreben rezultat primerjave. Najprej odprite zavihek Primerjaj.",
+            "totalEntries": "Skupno število vnosov",
+            "differences": "Razlike",
+            "totalBytes": "Skupno bajtov",
+            "mirrorHint": "Gumbi za zrcaljenje uvrstijo ujemajoče se vnose v enoten načrtovalnik prenosov za pregled.",
+            "mirrorLeftToRight": "Zrcali z leve na desno",
+            "mirrorRightToLeft": "Zrcali z desne na levo",
+            "directionLeftRight": "Z leve na desno",
+            "directionRightLeft": "Z desne na levo",
+            "conflictPolicy": "Pravilnik o konfliktih",
+            "ignoredForMirror": "PREZRTO ZA ZRCALJENJE",
+            "versionedBackup": "Različična varnostna kopija",
+            "enable": "Omogoči",
+            "versionedBackupHint": "Zajemite ciljno kopijo v tem imeniku pred vsako prepisom ali izbrisom.",
+            "actionable": "Za izvedbo",
+            "skipped": "Preskočeno",
+            "transfer": "Prenos",
+            "destructive": "Uničujoče",
+            "bucket": "Kategorija",
+            "count": "Število",
+            "action": "Dejanje",
+            "delete": "izbriši",
+            "overwrite": "prepiši",
+            "conflicts": "konflikt",
+            "destructiveWarning": "Ta prednastavitev bo izbrisala ali prepisala novejše datoteke.",
+            "confirmDestructive": "Pregledal sem uničujoča dejanja in želim nadaljevati.",
+            "executeHint": "Izvedi uvrsti izbor v vrsto in pošlje skozi enoten načrtovalnik prenosov.",
+            "executeUnavailable": "Izvedba ni na voljo za to vrsto para.",
+            "executeNothing": "Nič za narediti ali pot izvedbe ni na voljo",
+            "executeConfirm": "Potrdite uničujoča dejanja za omogočanje Izvedi",
+            "executePreset": "Izvedi prednastavitev",
+            "execute": "Izvedi"
         }
     }
 }

@@ -3369,9 +3369,7 @@
             "activityLog": "অ্যাক্টিভিটি লগ",
             "detailedCards": "বিস্তারিত সার্ভার কার্ড",
             "debugPanel": "Debug Panel",
-            "localSync": "লোকাল সিঙ্ক...",
-            "comparePanels": "প্যানেল তুলনা করুন...",
-            "syncPresets": "সিঙ্ক প্রিসেট..."
+            "aerofileSync": "AeroFile Sync..."
         },
         "activityPanel": {
             "awaitingCommands": "কমান্ডের অপেক্ষায়...",
@@ -4620,6 +4618,46 @@
             "nothingToDo": "সিঙ্ক প্রিসেট",
             "allSkipped": "এই প্রিসেটের জন্য কোনও কার্যকর এন্ট্রি নেই।",
             "deletesDeferred": "সিঙ্ক প্রিসেট"
+        },
+        "aerofileSync": {
+            "title": "AeroFile Sync",
+            "toolbarButton": "AeroFile Sync",
+            "tabCompare": "তুলনা",
+            "tabPlan": "পরিকল্পনা",
+            "tabSync": "সিঙ্ক",
+            "compareUnavailable": "তুলনা করতে দ্বিতীয় প্যানেল বা রিমোট সংযোগ খুলুন।",
+            "planUnavailable": "প্রিসেট নির্বাচন করার আগে তুলনার ফলাফল প্রয়োজন। প্রথমে তুলনা ট্যাব খুলুন।",
+            "totalEntries": "মোট এন্ট্রি",
+            "differences": "পার্থক্য",
+            "totalBytes": "মোট বাইট",
+            "mirrorHint": "মিরর বোতামগুলি পর্যালোচনার জন্য একীভূত ট্রান্সফার প্ল্যানারে মিলে যাওয়া এন্ট্রিগুলি সারিবদ্ধ করে।",
+            "mirrorLeftToRight": "বাম থেকে ডানে মিরর করুন",
+            "mirrorRightToLeft": "ডান থেকে বামে মিরর করুন",
+            "directionLeftRight": "বাম থেকে ডানে",
+            "directionRightLeft": "ডান থেকে বামে",
+            "conflictPolicy": "দ্বন্দ্ব নীতি",
+            "ignoredForMirror": "মিররের জন্য উপেক্ষিত",
+            "versionedBackup": "সংস্করণযুক্ত ব্যাকআপ",
+            "enable": "সক্রিয় করুন",
+            "versionedBackupHint": "প্রতিটি ওভাররাইট বা মুছে ফেলার আগে এই ডিরেক্টরির অধীনে গন্তব্য কপি ক্যাপচার করে।",
+            "actionable": "ক্রিয়াযোগ্য",
+            "skipped": "এড়ানো হয়েছে",
+            "transfer": "ট্রান্সফার",
+            "destructive": "ধ্বংসাত্মক",
+            "bucket": "বিভাগ",
+            "count": "গণনা",
+            "action": "ক্রিয়া",
+            "delete": "মুছুন",
+            "overwrite": "ওভাররাইট",
+            "conflicts": "দ্বন্দ্ব",
+            "destructiveWarning": "এই প্রিসেটটি নতুন ফাইলগুলি মুছে ফেলবে বা ওভাররাইট করবে।",
+            "confirmDestructive": "আমি ধ্বংসাত্মক ক্রিয়াগুলি পর্যালোচনা করেছি এবং এগিয়ে যেতে চাই।",
+            "executeHint": "এক্সিকিউট নির্বাচনটি সারিবদ্ধ করে এবং একীভূত ট্রান্সফার প্ল্যানারের মাধ্যমে প্রেরণ করে।",
+            "executeUnavailable": "এই জোড়া ধরনের জন্য এক্সিকিউশন উপলব্ধ নয়।",
+            "executeNothing": "করার কিছু নেই বা এক্সিকিউশন পথ উপলব্ধ নয়",
+            "executeConfirm": "এক্সিকিউট সক্রিয় করতে ধ্বংসাত্মক ক্রিয়াগুলি নিশ্চিত করুন",
+            "executePreset": "প্রিসেট এক্সিকিউট করুন",
+            "execute": "এক্সিকিউট"
         }
     }
 }

@@ -3369,9 +3369,7 @@
             "activityLog": "Журнал активності",
             "detailedCards": "Детальні картки серверів",
             "debugPanel": "Debug Panel",
-            "localSync": "Локальна синхронізація...",
-            "comparePanels": "Порівняти панелі...",
-            "syncPresets": "Пресети синхронізації..."
+            "aerofileSync": "AeroFile Sync..."
         },
         "activityPanel": {
             "awaitingCommands": "Очікування команд...",
@@ -4620,6 +4618,46 @@
             "nothingToDo": "Пресети синхронізації",
             "allSkipped": "Немає виконуваних записів для цього пресету.",
             "deletesDeferred": "Пресети синхронізації"
+        },
+        "aerofileSync": {
+            "title": "AeroFile Sync",
+            "toolbarButton": "AeroFile Sync",
+            "tabCompare": "Порівняти",
+            "tabPlan": "План",
+            "tabSync": "Синхронізувати",
+            "compareUnavailable": "Відкрийте другу панель або віддалене з'єднання для порівняння.",
+            "planUnavailable": "Перед вибором пресета потрібен результат порівняння. Спочатку відкрийте вкладку Порівняти.",
+            "totalEntries": "Усього записів",
+            "differences": "Відмінності",
+            "totalBytes": "Усього байтів",
+            "mirrorHint": "Кнопки дзеркалювання поміщають відповідні записи в єдиний планувальник передач для перегляду.",
+            "mirrorLeftToRight": "Дзеркалювати зліва направо",
+            "mirrorRightToLeft": "Дзеркалювати справа наліво",
+            "directionLeftRight": "Зліва направо",
+            "directionRightLeft": "Справа наліво",
+            "conflictPolicy": "Політика конфліктів",
+            "ignoredForMirror": "ІГНОРУЄТЬСЯ ДЛЯ ДЗЕРКАЛЮВАННЯ",
+            "versionedBackup": "Резервна копія з версіями",
+            "enable": "Увімкнути",
+            "versionedBackupHint": "Зберігайте копію призначення в цьому каталозі перед кожним перезаписом або видаленням.",
+            "actionable": "До виконання",
+            "skipped": "Пропущено",
+            "transfer": "Передача",
+            "destructive": "Деструктивні",
+            "bucket": "Категорія",
+            "count": "Кількість",
+            "action": "Дія",
+            "delete": "видалити",
+            "overwrite": "перезаписати",
+            "conflicts": "конфлікт",
+            "destructiveWarning": "Цей пресет видалить або перезапише новіші файли.",
+            "confirmDestructive": "Я переглянув деструктивні дії і хочу продовжити.",
+            "executeHint": "Виконати ставить вибір у чергу і відправляє через єдиний планувальник передач.",
+            "executeUnavailable": "Виконання недоступне для цього типу пари.",
+            "executeNothing": "Нічого робити або шлях виконання недоступний",
+            "executeConfirm": "Підтвердьте деструктивні дії, щоб увімкнути Виконати",
+            "executePreset": "Виконати пресет",
+            "execute": "Виконати"
         }
     }
 }

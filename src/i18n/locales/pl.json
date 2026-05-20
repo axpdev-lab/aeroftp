@@ -3369,9 +3369,7 @@
             "activityLog": "Dziennik aktywności",
             "detailedCards": "Szczegółowe karty serwerów",
             "debugPanel": "Debug Panel",
-            "localSync": "Synchronizacja lokalna...",
-            "comparePanels": "Porównaj panele...",
-            "syncPresets": "Profile synchronizacji..."
+            "aerofileSync": "AeroFile Sync..."
         },
         "activityPanel": {
             "awaitingCommands": "Oczekiwanie na polecenia...",
@@ -4620,6 +4618,46 @@
             "nothingToDo": "Profile synchronizacji",
             "allSkipped": "Brak wykonywalnych wpisów dla tego profilu.",
             "deletesDeferred": "Profile synchronizacji"
+        },
+        "aerofileSync": {
+            "title": "AeroFile Sync",
+            "toolbarButton": "AeroFile Sync",
+            "tabCompare": "Porównaj",
+            "tabPlan": "Plan",
+            "tabSync": "Synchronizuj",
+            "compareUnavailable": "Otwórz drugi panel lub połączenie zdalne, aby porównać.",
+            "planUnavailable": "Wynik porównania jest wymagany przed wyborem ustawienia. Najpierw otwórz kartę Porównaj.",
+            "totalEntries": "Łączna liczba wpisów",
+            "differences": "Różnice",
+            "totalBytes": "Łącznie bajtów",
+            "mirrorHint": "Przyciski mirrora umieszczają pasujące wpisy w ujednoliconym planerze transferu do przeglądu.",
+            "mirrorLeftToRight": "Mirror z lewej do prawej",
+            "mirrorRightToLeft": "Mirror z prawej do lewej",
+            "directionLeftRight": "Z lewej do prawej",
+            "directionRightLeft": "Z prawej do lewej",
+            "conflictPolicy": "Polityka konfliktów",
+            "ignoredForMirror": "IGNOROWANE DLA MIRRORA",
+            "versionedBackup": "Kopia zapasowa z wersjami",
+            "enable": "Włącz",
+            "versionedBackupHint": "Zapisz kopię docelową w tym katalogu przed każdym nadpisaniem lub usunięciem.",
+            "actionable": "Do wykonania",
+            "skipped": "Pominięte",
+            "transfer": "Transfer",
+            "destructive": "Destrukcyjne",
+            "bucket": "Kategoria",
+            "count": "Liczba",
+            "action": "Akcja",
+            "delete": "usuń",
+            "overwrite": "nadpisz",
+            "conflicts": "konflikt",
+            "destructiveWarning": "Ten preset usunie lub nadpisze nowsze pliki.",
+            "confirmDestructive": "Sprawdziłem destrukcyjne akcje i chcę kontynuować.",
+            "executeHint": "Wykonaj umieszcza wybór w kolejce i wysyła przez ujednolicony planer transferu.",
+            "executeUnavailable": "Wykonanie nie jest dostępne dla tego typu pary.",
+            "executeNothing": "Nic do zrobienia lub ścieżka wykonania niedostępna",
+            "executeConfirm": "Potwierdź destrukcyjne akcje, aby włączyć Wykonaj",
+            "executePreset": "Wykonaj preset",
+            "execute": "Wykonaj"
         }
     }
 }

@@ -3369,9 +3369,7 @@
             "activityLog": "Журнал активности",
             "detailedCards": "Подробные карточки серверов",
             "debugPanel": "Debug Panel",
-            "localSync": "Локальная синхронизация...",
-            "comparePanels": "Сравнить панели...",
-            "syncPresets": "Пресеты синхронизации..."
+            "aerofileSync": "AeroFile Sync..."
         },
         "activityPanel": {
             "awaitingCommands": "Ожидание команд...",
@@ -4620,6 +4618,46 @@
             "nothingToDo": "Пресеты синхронизации",
             "allSkipped": "Для этого пресета нет выполнимых записей.",
             "deletesDeferred": "Пресеты синхронизации"
+        },
+        "aerofileSync": {
+            "title": "AeroFile Sync",
+            "toolbarButton": "AeroFile Sync",
+            "tabCompare": "Сравнить",
+            "tabPlan": "План",
+            "tabSync": "Синхронизировать",
+            "compareUnavailable": "Откройте вторую панель или удаленное подключение для сравнения.",
+            "planUnavailable": "Перед выбором пресета требуется результат сравнения. Сначала откройте вкладку Сравнить.",
+            "totalEntries": "Всего записей",
+            "differences": "Различия",
+            "totalBytes": "Всего байт",
+            "mirrorHint": "Кнопки зеркалирования помещают соответствующие записи в единый планировщик передач для просмотра.",
+            "mirrorLeftToRight": "Зеркалировать слева направо",
+            "mirrorRightToLeft": "Зеркалировать справа налево",
+            "directionLeftRight": "Слева направо",
+            "directionRightLeft": "Справа налево",
+            "conflictPolicy": "Политика конфликтов",
+            "ignoredForMirror": "ИГНОРИРУЕТСЯ ДЛЯ ЗЕРКАЛИРОВАНИЯ",
+            "versionedBackup": "Резервная копия с версиями",
+            "enable": "Включить",
+            "versionedBackupHint": "Сохраните копию назначения в этом каталоге перед каждой перезаписью или удалением.",
+            "actionable": "К выполнению",
+            "skipped": "Пропущено",
+            "transfer": "Передача",
+            "destructive": "Деструктивные",
+            "bucket": "Категория",
+            "count": "Количество",
+            "action": "Действие",
+            "delete": "удалить",
+            "overwrite": "перезаписать",
+            "conflicts": "конфликт",
+            "destructiveWarning": "Этот пресет удалит или перезапишет более новые файлы.",
+            "confirmDestructive": "Я просмотрел деструктивные действия и хочу продолжить.",
+            "executeHint": "Выполнить помещает выбор в очередь и отправляет через единый планировщик передач.",
+            "executeUnavailable": "Выполнение недоступно для этого типа пары.",
+            "executeNothing": "Нечего делать или путь выполнения недоступен",
+            "executeConfirm": "Подтвердите деструктивные действия, чтобы включить Выполнить",
+            "executePreset": "Выполнить пресет",
+            "execute": "Выполнить"
         }
     }
 }

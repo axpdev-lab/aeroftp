@@ -3369,9 +3369,7 @@
             "activityLog": "Nhật ký hoạt động",
             "detailedCards": "Thẻ máy chủ chi tiết",
             "debugPanel": "Debug Panel",
-            "localSync": "Đồng bộ cục bộ...",
-            "comparePanels": "So sánh các bảng...",
-            "syncPresets": "Cài đặt sẵn đồng bộ..."
+            "aerofileSync": "AeroFile Sync..."
         },
         "activityPanel": {
             "awaitingCommands": "Đang chờ lệnh...",
@@ -4620,6 +4618,46 @@
             "nothingToDo": "Cài đặt sẵn đồng bộ",
             "allSkipped": "Không có mục nào có thể thực hiện cho cài đặt sẵn này.",
             "deletesDeferred": "Cài đặt sẵn đồng bộ"
+        },
+        "aerofileSync": {
+            "title": "AeroFile Sync",
+            "toolbarButton": "AeroFile Sync",
+            "tabCompare": "So sánh",
+            "tabPlan": "Kế hoạch",
+            "tabSync": "Đồng bộ",
+            "compareUnavailable": "Mở bảng thứ hai hoặc kết nối từ xa để so sánh.",
+            "planUnavailable": "Cần có kết quả so sánh trước khi chọn cài đặt sẵn. Mở tab So sánh trước.",
+            "totalEntries": "Tổng số mục",
+            "differences": "Khác biệt",
+            "totalBytes": "Tổng số byte",
+            "mirrorHint": "Các nút mirror đặt các mục phù hợp vào trình lập kế hoạch chuyển thống nhất để xem xét.",
+            "mirrorLeftToRight": "Mirror từ trái sang phải",
+            "mirrorRightToLeft": "Mirror từ phải sang trái",
+            "directionLeftRight": "Trái sang Phải",
+            "directionRightLeft": "Phải sang Trái",
+            "conflictPolicy": "Chính sách xung đột",
+            "ignoredForMirror": "BỎ QUA CHO MIRROR",
+            "versionedBackup": "Sao lưu có phiên bản",
+            "enable": "Bật",
+            "versionedBackupHint": "Lưu bản sao đích trong thư mục này trước mỗi lần ghi đè hoặc xóa.",
+            "actionable": "Có thể thực hiện",
+            "skipped": "Đã bỏ qua",
+            "transfer": "Chuyển",
+            "destructive": "Phá hủy",
+            "bucket": "Danh mục",
+            "count": "Số lượng",
+            "action": "Hành động",
+            "delete": "xóa",
+            "overwrite": "ghi đè",
+            "conflicts": "xung đột",
+            "destructiveWarning": "Cài đặt sẵn này sẽ xóa hoặc ghi đè các tệp mới hơn.",
+            "confirmDestructive": "Tôi đã xem xét các hành động phá hủy và muốn tiếp tục.",
+            "executeHint": "Thực thi đặt lựa chọn vào hàng đợi và gửi qua trình lập kế hoạch chuyển thống nhất.",
+            "executeUnavailable": "Thực thi không khả dụng cho loại cặp này.",
+            "executeNothing": "Không có gì để làm hoặc đường dẫn thực thi không khả dụng",
+            "executeConfirm": "Xác nhận các hành động phá hủy để kích hoạt Thực thi",
+            "executePreset": "Thực thi cài đặt sẵn",
+            "execute": "Thực thi"
         }
     }
 }

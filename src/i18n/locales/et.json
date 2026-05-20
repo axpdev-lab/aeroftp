@@ -3369,9 +3369,7 @@
             "activityLog": "Tegevuslogi",
             "detailedCards": "Üksikasjalikud serverikaardid",
             "debugPanel": "Debug Panel",
-            "localSync": "Kohalik sünkroonimine...",
-            "comparePanels": "Võrdle paneele...",
-            "syncPresets": "Sünkroonimise eelseaded..."
+            "aerofileSync": "AeroFile Sync..."
         },
         "activityPanel": {
             "awaitingCommands": "Käskude ootamine...",
@@ -4620,6 +4618,46 @@
             "nothingToDo": "Sünkroonimise eelseaded",
             "allSkipped": "Selle eelseade jaoks pole täidetavaid kirjeid.",
             "deletesDeferred": "Sünkroonimise eelseaded"
+        },
+        "aerofileSync": {
+            "title": "AeroFile Sync",
+            "toolbarButton": "AeroFile Sync",
+            "tabCompare": "Võrdle",
+            "tabPlan": "Plaan",
+            "tabSync": "Sünkrooni",
+            "compareUnavailable": "Võrdlemiseks avage teine paneel või kaugühendus.",
+            "planUnavailable": "Enne eelseade valimist on vaja võrdlustulemust. Avage esmalt vahekaart Võrdle.",
+            "totalEntries": "Kirjeid kokku",
+            "differences": "Erinevused",
+            "totalBytes": "Baite kokku",
+            "mirrorHint": "Peegelnupud seavad vastavad kirjed ülevaatuseks ühtsesse ülekande planeerijasse.",
+            "mirrorLeftToRight": "Peegelda vasakult paremale",
+            "mirrorRightToLeft": "Peegelda paremalt vasakule",
+            "directionLeftRight": "Vasakult Paremale",
+            "directionRightLeft": "Paremalt Vasakule",
+            "conflictPolicy": "Konfliktipoliitika",
+            "ignoredForMirror": "PEEGLI JAOKS IGNOREERITUD",
+            "versionedBackup": "Versioonidega varundus",
+            "enable": "Luba",
+            "versionedBackupHint": "Salvestab sihtfaili koopia selles kataloogis enne iga ülekirjutamist või kustutamist.",
+            "actionable": "Teostatav",
+            "skipped": "Vahele jäetud",
+            "transfer": "Ülekanne",
+            "destructive": "Hävitav",
+            "bucket": "Kategooria",
+            "count": "Arv",
+            "action": "Toiming",
+            "delete": "kustuta",
+            "overwrite": "kirjuta üle",
+            "conflicts": "konflikt",
+            "destructiveWarning": "See eelseade kustutab või kirjutab üle uuemad failid.",
+            "confirmDestructive": "Olen hävitavad toimingud üle vaadanud ja soovin jätkata.",
+            "executeHint": "Käivita seab valiku järjekorda ja saadab selle ühtse ülekande planeerija kaudu.",
+            "executeUnavailable": "Käivitamine pole selle paaritüübi jaoks saadaval.",
+            "executeNothing": "Pole midagi teha või käivitamistee pole saadaval",
+            "executeConfirm": "Käivita lubamiseks kinnitage hävitavad toimingud",
+            "executePreset": "Käivita eelseade",
+            "execute": "Käivita"
         }
     }
 }
