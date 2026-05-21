@@ -6,6 +6,7 @@ import {
     AlertTriangle,
     ArrowRight,
     CheckCircle2,
+    Gauge,
     ShieldAlert,
     ShieldCheck,
     Trash2,
@@ -99,6 +100,12 @@ const PresetChip: React.FC<{
     );
 };
 
+type SpeedMode = 'normal' | 'fast' | 'turbo' | 'extreme';
+type VerifyPolicy = 'none' | 'size_only' | 'size_and_mtime' | 'full_checksum';
+
+const SPEED_MODES: SpeedMode[] = ['normal', 'fast', 'turbo', 'extreme'];
+const VERIFY_POLICIES: VerifyPolicy[] = ['none', 'size_only', 'size_and_mtime', 'full_checksum'];
+
 export const PlanTabContent: React.FC<PlanTabContentProps> = ({
     result,
     pairKind: _pairKind,
@@ -114,6 +121,13 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
         backupDir: '.aeroftp-versions',
     });
     const [confirmedDestructive, setConfirmedDestructive] = React.useState(false);
+    // SLICE 3: speed-mode preset and verify policy land here as visible
+    // config knobs. The actual execution path (App.tsx onExecute) does
+    // not yet read these — they wire through in SLICE 4 when the
+    // delta-sync gate consolidates and the unified runner replaces the
+    // legacy SyncPanel runner.
+    const [speedMode, setSpeedMode] = React.useState<SpeedMode>('normal');
+    const [verifyPolicy, setVerifyPolicy] = React.useState<VerifyPolicy>('size_only');
 
     React.useEffect(() => {
         setConfirmedDestructive(false);
@@ -238,6 +252,57 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                         />
                         <p className="mt-1 text-[10px] leading-snug text-gray-500 dark:text-gray-400">
                             {t('aerosync.versionedBackupHint') || 'Capture the destination copy under this directory before each overwrite or delete.'}
+                        </p>
+                    </div>
+                </div>
+
+                {/* SLICE 3: Speed mode + Verify policy. Visible knobs that
+                    map onto the SyncPanel speed presets and verify
+                    pipeline; wired into the execution path in SLICE 4. */}
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <div>
+                        <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                            <Gauge size={11} className="mr-1 inline align-text-bottom" />
+                            {t('aerosync.speedMode') || 'Speed mode'}
+                        </label>
+                        <div className="inline-flex w-full overflow-hidden rounded-md border border-gray-200 dark:border-gray-700">
+                            {SPEED_MODES.map((mode) => (
+                                <button
+                                    key={mode}
+                                    type="button"
+                                    onClick={() => setSpeedMode(mode)}
+                                    className={`flex-1 px-2 py-1 text-[11px] font-medium capitalize ${
+                                        speedMode === mode
+                                            ? 'bg-blue-500 text-white'
+                                            : 'bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-900/40 dark:text-gray-300 dark:hover:bg-gray-700'
+                                    }`}
+                                >
+                                    {t(`aerosync.speedMode_${mode}`) || mode}
+                                </button>
+                            ))}
+                        </div>
+                        <p className="mt-1 text-[10px] leading-snug text-gray-500 dark:text-gray-400">
+                            {t('aerosync.speedModeHint') || 'Parallel streams + compression preset applied to the run.'}
+                        </p>
+                    </div>
+                    <div>
+                        <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                            <ShieldCheck size={11} className="mr-1 inline align-text-bottom" />
+                            {t('aerosync.verifyPolicy') || 'Verify policy'}
+                        </label>
+                        <select
+                            value={verifyPolicy}
+                            onChange={(event) => setVerifyPolicy(event.target.value as VerifyPolicy)}
+                            className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-800 focus:border-blue-400 focus:outline-none dark:border-gray-600 dark:bg-gray-900/60 dark:text-gray-100"
+                        >
+                            {VERIFY_POLICIES.map((policy) => (
+                                <option key={policy} value={policy}>
+                                    {t(`aerosync.verifyPolicy_${policy}`) || policy}
+                                </option>
+                            ))}
+                        </select>
+                        <p className="mt-1 text-[10px] leading-snug text-gray-500 dark:text-gray-400">
+                            {t('aerosync.verifyPolicyHint') || 'Post-transfer integrity check applied to each file.'}
                         </p>
                     </div>
                 </div>
