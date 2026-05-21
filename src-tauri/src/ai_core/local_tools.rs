@@ -26,11 +26,27 @@ use crate::ai_core::tools::{ToolCtx, ToolError};
 // ─── Helpers (portati da ai_tools.rs, self-contained) ────────────────────
 
 /// Risoluzione relativa. `base` = `ctx.context_local_path()`.
-/// Se `path` è già assoluto, non viene modificato.
+/// - path assoluto: ritornato invariato (no concatenazione col base).
+/// - `~` o `~/...`: espanso a `$HOME` / `%USERPROFILE%` quando disponibile.
+///   Indispensabile per il fallback `remote-unmounted` in App.tsx che inietta
+///   `~` come local panel path, e per i modelli che emettono shell-style
+///   abbreviations.
+/// - path relativo + base presente: join con il base.
+/// - path relativo + base assente: ritornato invariato (cwd del processo).
 pub(crate) fn resolve_local_path(path: &str, base: Option<&str>) -> String {
     let p = std::path::Path::new(path);
     if p.is_absolute() {
         return path.to_string();
+    }
+    // Tilde expansion: applies whether or not a base is provided.
+    if path == "~" {
+        if let Some(home) = home_dir_string() {
+            return home;
+        }
+    } else if let Some(rest) = path.strip_prefix("~/") {
+        if let Some(home) = home_dir_string() {
+            return format!("{}/{}", home.trim_end_matches('/'), rest);
+        }
     }
     if let Some(base_dir) = base {
         if !base_dir.is_empty() {
@@ -38,6 +54,13 @@ pub(crate) fn resolve_local_path(path: &str, base: Option<&str>) -> String {
         }
     }
     path.to_string()
+}
+
+fn home_dir_string() -> Option<String> {
+    std::env::var("HOME")
+        .ok()
+        .or_else(|| std::env::var("USERPROFILE").ok())
+        .filter(|s| !s.is_empty())
 }
 
 /// Component-aware prefix check. `/bootcamp` non matcha `/boot`,
@@ -201,11 +224,17 @@ fn resolve_paths_array(args: &Value, base: Option<&str>) -> Result<Vec<String>, 
 // ─── Handlers ────────────────────────────────────────────────────────────
 
 pub async fn local_list(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
-    let path = resolve_local_path(&get_str(args, "path")?, ctx.context_local_path());
+    let raw = get_str(args, "path")?;
+    let path = resolve_local_path(&raw, ctx.context_local_path());
     validate_path(&path, "path").map_err(map_str_err)?;
 
     let entries: Vec<Value> = std::fs::read_dir(&path)
-        .map_err(|e| ToolError::Exec(format!("Failed to read directory: {}", e)))?
+        .map_err(|e| {
+            ToolError::Exec(format!(
+                "Failed to read directory '{}' (resolved from '{}'): {}",
+                path, raw, e
+            ))
+        })?
         .filter_map(|e| e.ok())
         .take(100)
         .map(|e| {
@@ -222,7 +251,8 @@ pub async fn local_list(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolEr
 }
 
 pub async fn local_search(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
-    let path = resolve_local_path(&get_str(args, "path")?, ctx.context_local_path());
+    let raw = get_str(args, "path")?;
+    let path = resolve_local_path(&raw, ctx.context_local_path());
     let pattern = get_str(args, "pattern")?;
     validate_path(&path, "path").map_err(map_str_err)?;
 
@@ -243,7 +273,12 @@ pub async fn local_search(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, Tool
     };
 
     let results: Vec<Value> = std::fs::read_dir(&path)
-        .map_err(|e| ToolError::Exec(format!("Failed to read directory: {}", e)))?
+        .map_err(|e| {
+            ToolError::Exec(format!(
+                "Failed to read directory '{}' (resolved from '{}'): {}",
+                path, raw, e
+            ))
+        })?
         .filter_map(|e| e.ok())
         .filter(|e| matcher(&e.file_name().to_string_lossy().to_lowercase()))
         .take(100)
@@ -1383,8 +1418,9 @@ pub async fn local_diff(_ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolE
     }))
 }
 
-pub async fn local_tree(_ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
-    let path = get_str(args, "path")?;
+pub async fn local_tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
+    let raw = get_str(args, "path")?;
+    let path = resolve_local_path(&raw, ctx.context_local_path());
     validate_path(&path, "path").map_err(map_str_err)?;
     let max_depth = args
         .get("max_depth")
@@ -1399,7 +1435,10 @@ pub async fn local_tree(_ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolE
 
     let base_path = std::path::Path::new(&path);
     if !base_path.is_dir() {
-        return Err(ToolError::Exec(format!("Not a directory: {}", path)));
+        return Err(ToolError::Exec(format!(
+            "Not a directory: '{}' (resolved from '{}')",
+            path, raw
+        )));
     }
 
     let glob_re = if let Some(ref g) = glob_filter {
@@ -1543,4 +1582,94 @@ pub async fn local_tree(_ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolE
         },
         "truncated": tree_lines.len() >= MAX_ENTRIES,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_local_path;
+
+    fn with_home<T>(home: &str, f: impl FnOnce() -> T) -> T {
+        let prev = std::env::var("HOME").ok();
+        std::env::set_var("HOME", home);
+        let out = f();
+        match prev {
+            Some(v) => std::env::set_var("HOME", v),
+            None => std::env::remove_var("HOME"),
+        }
+        out
+    }
+
+    #[test]
+    fn absolute_path_returned_unchanged() {
+        assert_eq!(
+            resolve_local_path("/home/axpdev", Some("/tmp")),
+            "/home/axpdev"
+        );
+        assert_eq!(resolve_local_path("/", Some("/tmp")), "/");
+    }
+
+    #[test]
+    fn relative_path_joined_with_base() {
+        assert_eq!(
+            resolve_local_path("foo", Some("/home/axpdev")),
+            "/home/axpdev/foo"
+        );
+        assert_eq!(
+            resolve_local_path("axpdev/", Some("/home/axpdev")),
+            "/home/axpdev/axpdev/"
+        );
+        // Trailing slash in base must not produce double-slash on join.
+        assert_eq!(
+            resolve_local_path("foo", Some("/home/axpdev/")),
+            "/home/axpdev/foo"
+        );
+    }
+
+    #[test]
+    fn relative_path_without_base_returned_unchanged() {
+        assert_eq!(resolve_local_path("foo", None), "foo");
+        assert_eq!(resolve_local_path("foo", Some("")), "foo");
+    }
+
+    #[test]
+    fn tilde_expanded_to_home_when_alone() {
+        with_home("/home/axpdev", || {
+            assert_eq!(resolve_local_path("~", None), "/home/axpdev");
+            // Base must NOT override tilde expansion: `~` always means $HOME.
+            assert_eq!(resolve_local_path("~", Some("/tmp")), "/home/axpdev");
+        });
+    }
+
+    #[test]
+    fn tilde_slash_expanded_to_home_subpath() {
+        with_home("/home/axpdev", || {
+            assert_eq!(
+                resolve_local_path("~/Documents", None),
+                "/home/axpdev/Documents"
+            );
+            assert_eq!(
+                resolve_local_path("~/Documents/foo.txt", Some("/tmp")),
+                "/home/axpdev/Documents/foo.txt"
+            );
+        });
+    }
+
+    #[test]
+    fn tilde_without_home_falls_back_to_base() {
+        // If $HOME is unset and $USERPROFILE is unset, `~` is treated as a
+        // regular relative path and joined with base.
+        let prev_home = std::env::var("HOME").ok();
+        let prev_userprofile = std::env::var("USERPROFILE").ok();
+        std::env::remove_var("HOME");
+        std::env::remove_var("USERPROFILE");
+        assert_eq!(resolve_local_path("~", Some("/tmp")), "/tmp/~");
+        match prev_home {
+            Some(v) => std::env::set_var("HOME", v),
+            None => std::env::remove_var("HOME"),
+        }
+        match prev_userprofile {
+            Some(v) => std::env::set_var("USERPROFILE", v),
+            None => std::env::remove_var("USERPROFILE"),
+        }
+    }
 }
