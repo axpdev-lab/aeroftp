@@ -4572,7 +4572,8 @@
                 "colStatus": "상태",
                 "colBytes": "바이트",
                 "colAction": "작업"
-            }
+            },
+            "launcherScheduler": "스케줄러"
         }
     }
 }

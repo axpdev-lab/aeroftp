@@ -4572,7 +4572,8 @@
                 "colStatus": "Статус",
                 "colBytes": "Байти",
                 "colAction": "Дія"
-            }
+            },
+            "launcherScheduler": "Планувальник"
         }
     }
 }

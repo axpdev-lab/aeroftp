@@ -4572,7 +4572,8 @@
                 "colStatus": "Trạng thái",
                 "colBytes": "Byte",
                 "colAction": "Hành động"
-            }
+            },
+            "launcherScheduler": "Bộ lập lịch"
         }
     }
 }

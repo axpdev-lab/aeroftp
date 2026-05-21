@@ -4528,6 +4528,7 @@
             "launcherMultiPath": "Multi-Path",
             "launcherRollback": "Rollback snapshots",
             "launcherHistory": "Journal history",
+            "launcherScheduler": "Scheduler",
             "history": {
                 "title": "AeroSync history",
                 "refresh": "Refresh",

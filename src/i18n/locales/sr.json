@@ -4572,7 +4572,8 @@
                 "colStatus": "Статус",
                 "colBytes": "Бајтови",
                 "colAction": "Радња"
-            }
+            },
+            "launcherScheduler": "Распоређивач"
         }
     }
 }

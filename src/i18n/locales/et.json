@@ -4572,7 +4572,8 @@
                 "colStatus": "Olek",
                 "colBytes": "Baidid",
                 "colAction": "Toiming"
-            }
+            },
+            "launcherScheduler": "Ajastaja"
         }
     }
 }

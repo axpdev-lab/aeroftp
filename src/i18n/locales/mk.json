@@ -4591,7 +4591,8 @@
                 "colStatus": "Статус",
                 "colBytes": "Бајти",
                 "colAction": "Дејство"
-            }
+            },
+            "launcherScheduler": "Распоредувач"
         }
     }
 }

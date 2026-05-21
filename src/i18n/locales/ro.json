@@ -4572,7 +4572,8 @@
                 "colStatus": "Stare",
                 "colBytes": "Octeți",
                 "colAction": "Acțiune"
-            }
+            },
+            "launcherScheduler": "Planificator"
         }
     }
 }

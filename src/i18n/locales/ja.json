@@ -4572,7 +4572,8 @@
                 "colStatus": "状態",
                 "colBytes": "バイト",
                 "colAction": "操作"
-            }
+            },
+            "launcherScheduler": "スケジューラ"
         }
     }
 }

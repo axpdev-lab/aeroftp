@@ -4572,7 +4572,8 @@
                 "colStatus": "Tila",
                 "colBytes": "Tavua",
                 "colAction": "Toiminto"
-            }
+            },
+            "launcherScheduler": "Ajastin"
         }
     }
 }

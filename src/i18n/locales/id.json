@@ -4572,7 +4572,8 @@
                 "colStatus": "Status",
                 "colBytes": "Byte",
                 "colAction": "Tindakan"
-            }
+            },
+            "launcherScheduler": "Penjadwal"
         }
     }
 }

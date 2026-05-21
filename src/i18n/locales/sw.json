@@ -4572,7 +4572,8 @@
                 "colStatus": "Hali",
                 "colBytes": "Baiti",
                 "colAction": "Kitendo"
-            }
+            },
+            "launcherScheduler": "Mratibu wa Wakati"
         }
     }
 }

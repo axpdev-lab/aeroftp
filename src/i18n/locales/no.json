@@ -4591,7 +4591,8 @@
                 "colStatus": "Status",
                 "colBytes": "Byte",
                 "colAction": "Handling"
-            }
+            },
+            "launcherScheduler": "Planlegger"
         }
     }
 }
