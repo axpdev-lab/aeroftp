@@ -577,10 +577,12 @@ fn snapshot_directory_tree(root: &Path) -> Result<HashMap<String, String>, std::
 /// stripped by the grouping loop, so the check could never match and
 /// every restored plugin script was left at 0o600. The list is
 /// hand-extended from the plugin loader's actual interpreter table.
+#[cfg(unix)]
 const EXECUTABLE_SCRIPT_EXTENSIONS: &[&str] = &[
     ".sh", ".bash", ".zsh", ".py", ".js", ".mjs", ".rb", ".pl", ".ts",
 ];
 
+#[cfg(unix)]
 fn looks_like_executable_script(rel: &str) -> bool {
     let lower = rel.to_ascii_lowercase();
     EXECUTABLE_SCRIPT_EXTENSIONS
@@ -669,6 +671,7 @@ fn ensure_safe_restore_parent(root: &Path, rel: &Path) -> Result<PathBuf, std::i
 /// substring that was never present at this layer, so every restored
 /// plugin script silently lost its execute bit and the plugin loader
 /// stopped picking them up after a restore.
+#[cfg_attr(not(unix), allow(unused_variables))]
 fn restore_directory_tree(
     root: &Path,
     files: &HashMap<String, Vec<u8>>,
