@@ -4538,7 +4538,15 @@
             "verifyPolicy_size_only": "サイズのみ",
             "verifyPolicy_size_and_mtime": "サイズ + タイムスタンプ",
             "verifyPolicy_full_checksum": "完全チェックサム",
-            "verifyPolicyHint": "転送後の整合性チェックが各ファイルに適用されます。"
+            "verifyPolicyHint": "転送後の整合性チェックが各ファイルに適用されます。",
+            "deltaEligibility": {
+                "title": "Delta sync は利用できません",
+                "heading": "このサーバーでは Delta sync を利用できません。",
+                "serverLabel": "サーバー:",
+                "fallbackHint": "AeroSync は従来のコピー方式にフォールバックします。選択したプリセットはそのまま実行されます。",
+                "skipFuture": "このサーバーでは次回から確認しない",
+                "continue": "続行"
+            }
         }
     }
 }

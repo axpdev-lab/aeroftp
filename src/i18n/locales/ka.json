@@ -4538,7 +4538,15 @@
             "verifyPolicy_size_only": "მხოლოდ ზომა",
             "verifyPolicy_size_and_mtime": "ზომა + დროის შტამპი",
             "verifyPolicy_full_checksum": "სრული საკონტროლო ჯამი",
-            "verifyPolicyHint": "გადაცემის შემდგომი მთლიანობის შემოწმება გამოყენებულია თითოეულ ფაილზე."
+            "verifyPolicyHint": "გადაცემის შემდგომი მთლიანობის შემოწმება გამოყენებულია თითოეულ ფაილზე.",
+            "deltaEligibility": {
+                "title": "Delta sync მიუწვდომელია",
+                "heading": "Delta sync მიუწვდომელია ამ სერვერისთვის.",
+                "serverLabel": "სერვერი:",
+                "fallbackHint": "AeroSync დაუბრუნდება კოპირების კლასიკურ მეთოდს. არჩეული პრესეტი მაინც გაეშვება.",
+                "skipFuture": "აღარ მკითხო ამ სერვერისთვის",
+                "continue": "გაგრძელება"
+            }
         }
     }
 }

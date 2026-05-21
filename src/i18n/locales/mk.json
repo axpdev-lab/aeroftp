@@ -4557,7 +4557,15 @@
             "verifyPolicy_size_only": "Само големина",
             "verifyPolicy_size_and_mtime": "Големина + временска ознака",
             "verifyPolicy_full_checksum": "Целосна контролна сума",
-            "verifyPolicyHint": "Проверка на интегритет по преносот применета на секоја датотека."
+            "verifyPolicyHint": "Проверка на интегритет по преносот применета на секоја датотека.",
+            "deltaEligibility": {
+                "title": "Delta sync не е достапен",
+                "heading": "Delta sync не е достапен за овој сервер.",
+                "serverLabel": "Сервер:",
+                "fallbackHint": "AeroSync ќе се врати на класичниот пат на копирање. Избраната поставка сепак ќе се изврши.",
+                "skipFuture": "Не прашувај повторно за овој сервер",
+                "continue": "Продолжи"
+            }
         }
     }
 }

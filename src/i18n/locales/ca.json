@@ -4557,7 +4557,15 @@
             "verifyPolicy_size_only": "Només mida",
             "verifyPolicy_size_and_mtime": "Mida + marca de temps",
             "verifyPolicy_full_checksum": "Suma de verificació completa",
-            "verifyPolicyHint": "Comprovació d'integritat posterior a la transferència aplicada a cada fitxer."
+            "verifyPolicyHint": "Comprovació d'integritat posterior a la transferència aplicada a cada fitxer.",
+            "deltaEligibility": {
+                "title": "Delta sync no disponible",
+                "heading": "Delta sync no disponible per a aquest servidor.",
+                "serverLabel": "Servidor:",
+                "fallbackHint": "AeroSync passarà al camí de còpia clàssic. La predefinició escollida s'executarà igualment.",
+                "skipFuture": "No ho tornis a preguntar per a aquest servidor",
+                "continue": "Continua"
+            }
         }
     }
 }

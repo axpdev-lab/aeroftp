@@ -4538,7 +4538,15 @@
             "verifyPolicy_size_only": "Только размер",
             "verifyPolicy_size_and_mtime": "Размер + метка времени",
             "verifyPolicy_full_checksum": "Полная контрольная сумма",
-            "verifyPolicyHint": "Проверка целостности после передачи, применяемая к каждому файлу."
+            "verifyPolicyHint": "Проверка целостности после передачи, применяемая к каждому файлу.",
+            "deltaEligibility": {
+                "title": "Delta sync недоступен",
+                "heading": "Delta sync недоступен для этого сервера.",
+                "serverLabel": "Сервер:",
+                "fallbackHint": "AeroSync вернётся к классическому способу копирования. Выбранный пресет всё равно выполнится.",
+                "skipFuture": "Больше не спрашивать для этого сервера",
+                "continue": "Продолжить"
+            }
         }
     }
 }

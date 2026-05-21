@@ -4538,7 +4538,15 @@
             "verifyPolicy_size_only": "Vain koko",
             "verifyPolicy_size_and_mtime": "Koko + aikaleima",
             "verifyPolicy_full_checksum": "Täysi tarkistussumma",
-            "verifyPolicyHint": "Siirron jälkeinen eheystarkistus sovelletaan jokaiseen tiedostoon."
+            "verifyPolicyHint": "Siirron jälkeinen eheystarkistus sovelletaan jokaiseen tiedostoon.",
+            "deltaEligibility": {
+                "title": "Delta sync ei käytettävissä",
+                "heading": "Delta sync ei ole käytettävissä tälle palvelimelle.",
+                "serverLabel": "Palvelin:",
+                "fallbackHint": "AeroSync palaa klassiseen kopiointitapaan. Valittu esiasetus suoritetaan silti.",
+                "skipFuture": "Älä kysy uudelleen tälle palvelimelle",
+                "continue": "Jatka"
+            }
         }
     }
 }

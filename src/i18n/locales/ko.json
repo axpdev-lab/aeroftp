@@ -4538,7 +4538,15 @@
             "verifyPolicy_size_only": "크기만",
             "verifyPolicy_size_and_mtime": "크기 + 타임스탬프",
             "verifyPolicy_full_checksum": "전체 체크섬",
-            "verifyPolicyHint": "전송 후 무결성 검사가 각 파일에 적용됩니다."
+            "verifyPolicyHint": "전송 후 무결성 검사가 각 파일에 적용됩니다.",
+            "deltaEligibility": {
+                "title": "Delta sync를 사용할 수 없음",
+                "heading": "이 서버에서는 Delta sync를 사용할 수 없습니다.",
+                "serverLabel": "서버:",
+                "fallbackHint": "AeroSync는 기존 복사 방식으로 대체됩니다. 선택한 프리셋은 계속 실행됩니다.",
+                "skipFuture": "이 서버에 대해 다시 묻지 않기",
+                "continue": "계속"
+            }
         }
     }
 }

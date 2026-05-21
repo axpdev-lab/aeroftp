@@ -4538,7 +4538,15 @@
             "verifyPolicy_size_only": "Saiz sahaja",
             "verifyPolicy_size_and_mtime": "Saiz + cap masa",
             "verifyPolicy_full_checksum": "Checksum penuh",
-            "verifyPolicyHint": "Pemeriksaan integriti selepas pemindahan digunakan pada setiap fail."
+            "verifyPolicyHint": "Pemeriksaan integriti selepas pemindahan digunakan pada setiap fail.",
+            "deltaEligibility": {
+                "title": "Delta sync tidak tersedia",
+                "heading": "Delta sync tidak tersedia untuk pelayan ini.",
+                "serverLabel": "Pelayan:",
+                "fallbackHint": "AeroSync akan kembali kepada laluan salinan klasik. Praset yang dipilih masih akan dijalankan.",
+                "skipFuture": "Jangan tanya lagi untuk pelayan ini",
+                "continue": "Teruskan"
+            }
         }
     }
 }

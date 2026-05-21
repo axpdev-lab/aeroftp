@@ -4557,7 +4557,15 @@
             "verifyPolicy_size_only": "Aðeins stærð",
             "verifyPolicy_size_and_mtime": "Stærð + tímastimpill",
             "verifyPolicy_full_checksum": "Full eftirlitssumma",
-            "verifyPolicyHint": "Heilleikaathugun eftir flutning beitt á hverja skrá."
+            "verifyPolicyHint": "Heilleikaathugun eftir flutning beitt á hverja skrá.",
+            "deltaEligibility": {
+                "title": "Delta sync er ekki tiltækt",
+                "heading": "Delta sync er ekki tiltækt fyrir þennan netþjón.",
+                "serverLabel": "Netþjónn:",
+                "fallbackHint": "AeroSync mun nota klassísku afritunarleiðina. Valda forstillingin keyrir samt.",
+                "skipFuture": "Ekki spyrja aftur fyrir þennan netþjón",
+                "continue": "Halda áfram"
+            }
         }
     }
 }

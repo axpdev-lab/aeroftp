@@ -4527,6 +4527,14 @@
             "launcherTemplates": "Templates",
             "launcherMultiPath": "Multi-Path",
             "launcherRollback": "Rollback snapshots",
+            "deltaEligibility": {
+                "title": "Delta sync not available",
+                "heading": "Delta sync unavailable for this server.",
+                "serverLabel": "Server:",
+                "fallbackHint": "AeroSync will fall back to the classic copy path. The chosen preset still runs.",
+                "skipFuture": "Don't ask again for this server",
+                "continue": "Continue"
+            },
             "speedMode": "Speed mode",
             "speedMode_normal": "Normal",
             "speedMode_fast": "Fast",

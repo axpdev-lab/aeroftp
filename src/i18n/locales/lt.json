@@ -4538,7 +4538,15 @@
             "verifyPolicy_size_only": "Tik dydis",
             "verifyPolicy_size_and_mtime": "Dydis + laiko žyma",
             "verifyPolicy_full_checksum": "Visa kontrolinė suma",
-            "verifyPolicyHint": "Po perdavimo vientisumo patikrinimas taikomas kiekvienam failui."
+            "verifyPolicyHint": "Po perdavimo vientisumo patikrinimas taikomas kiekvienam failui.",
+            "deltaEligibility": {
+                "title": "Delta sync negalimas",
+                "heading": "Delta sync negalimas šiam serveriui.",
+                "serverLabel": "Serveris:",
+                "fallbackHint": "AeroSync grįš prie klasikinio kopijavimo būdo. Pasirinktas nustatymas vis tiek bus vykdomas.",
+                "skipFuture": "Nebeklausti dėl šio serverio",
+                "continue": "Tęsti"
+            }
         }
     }
 }

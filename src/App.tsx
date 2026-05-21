@@ -15,7 +15,8 @@ import {
   LocalFile, TransferEvent, TransferProgress, RemoteFile, FtpSession, ServerProfile,
   ProviderType, isOAuthProvider, isFourSharedProvider, isNonFtpProvider, isFtpProtocol, supportsStorageQuota, supportsNativeShareLink,
   resolveEffectiveQuota,
-  AeroVaultOverlaySession
+  AeroVaultOverlaySession,
+  DeltaEligibilityProbeResult
 } from './types';
 
 interface DownloadFolderParams {
@@ -120,6 +121,7 @@ import { DevToolsV2, PreviewFile, isPreviewable } from './components/DevTools';
 import { UniversalPreview, PreviewFileData, getPreviewCategory, isPreviewable as isMediaPreviewable } from './components/Preview';
 import { UnifiedTransferPlanDialog } from './components/UnifiedTransferPlanDialog';
 import { AeroSyncDialog } from './components/AeroSync/AeroSyncDialog';
+import { DeltaEligibilityDialog } from './components/AeroSync/DeltaEligibilityDialog';
 import type { AeroSyncTab, AeroSyncContext, AeroSyncRuntime } from './components/AeroSync/types';
 import { VaultPanel } from './components/VaultPanel';
 import { CryptomatorBrowser } from './components/CryptomatorBrowser';
@@ -633,6 +635,18 @@ const App: React.FC = () => {
   const [aeroSync, setAeroSync] = useState<{
     initialTab: AeroSyncTab;
     context: AeroSyncContext;
+  } | null>(null);
+  // CO-5: SFTP delta eligibility prompt. When the unified runner is
+  // about to execute a connected-SFTP preset, we run
+  // `sftp_probe_delta_eligibility`; if the verdict is "not eligible",
+  // we show this dialog with the reason plus an opt-out checkbox that
+  // persists `skipDeltaEligibilityPrompt: true` on the saved server.
+  // While the dialog is up the queued plan stays parked here.
+  const [deltaEligibilityPrompt, setDeltaEligibilityPrompt] = useState<{
+    reason: string;
+    serverLabel: string;
+    profileId: string;
+    onContinue: () => void;
   } | null>(null);
   const [inputDialog, setInputDialog] = useState<{ title: string; defaultValue: string; onConfirm: (v: string) => void; isPassword?: boolean; placeholder?: string } | null>(null);
   const [zohoShareLinksDialog, setZohoShareLinksDialog] = useState<{ fileName: string; links: Array<{ id: string; attributes: Record<string, unknown> }> } | null>(null);
@@ -7100,14 +7114,71 @@ interface UpdateVerificationInfo {
       // bisync follow-up as an info toast so the user can re-run it
       // manually — chaining inside the planner state would need a
       // bigger refactor in `setPendingUnifiedTransferPlan` flow.
-      setPendingUnifiedTransferPlan(queue[0]);
-      if (queue.length > 1) {
-        notify.info(
-          'Bisync',
-          `${queue.length - 1} additional pass(es) staged; re-open Sync Presets after the current run to dispatch them.`,
-        );
+      const dispatchQueue = () => {
+        setPendingUnifiedTransferPlan(queue[0]);
+        if (queue.length > 1) {
+          notify.info(
+            'Bisync',
+            `${queue.length - 1} additional pass(es) staged; re-open Sync Presets after the current run to dispatch them.`,
+          );
+        }
+        reportDeferredOps();
+      };
+
+      // CO-5: probe SFTP delta eligibility before dispatch. The probe
+      // is informational only: the chosen preset still runs against
+      // the classic copy path when delta is unavailable. If the saved
+      // server has opted out, skip the probe entirely.
+      const probeProfileId = context.activeProfileId;
+      const sessionProtocol = activeUnifiedRemoteProfile?.protocol;
+      const shouldProbe = sessionProtocol === 'sftp' && !!probeProfileId;
+      if (!shouldProbe) {
+        dispatchQueue();
+        return;
       }
-      reportDeferredOps();
+
+      (async () => {
+        try {
+          const stored = await secureGetWithFallback<ServerProfile[]>(
+            'server_profiles',
+            'aeroftp-saved-servers',
+          );
+          const profiles = stored || [];
+          const profile = profiles.find((p) => p.id === probeProfileId);
+          if (profile?.skipDeltaEligibilityPrompt) {
+            dispatchQueue();
+            return;
+          }
+
+          const verdict = await invoke<DeltaEligibilityProbeResult>(
+            'sftp_probe_delta_eligibility',
+          );
+          if (verdict.eligible) {
+            dispatchQueue();
+            return;
+          }
+
+          const reason = verdict.reason
+            || t('aerosync.deltaEligibility.heading')
+            || 'Delta sync unavailable for this server.';
+          const serverLabel = activeUnifiedRemoteProfile?.name
+            || verdict.server_identity?.host
+            || 'remote';
+          setDeltaEligibilityPrompt({
+            reason,
+            serverLabel,
+            profileId: probeProfileId,
+            onContinue: () => { dispatchQueue(); },
+          });
+        } catch (err) {
+          // Probe failures should not block the preset; log and dispatch.
+          if (debugMode) {
+            // eslint-disable-next-line no-console
+            console.debug('[AeroSync] sftp_probe_delta_eligibility failed', err);
+          }
+          dispatchQueue();
+        }
+      })();
       return;
     }
 
@@ -7126,6 +7197,7 @@ interface UpdateVerificationInfo {
     activeLocalTabId,
     activeSessionId,
     activeUnifiedRemoteProfile,
+    debugMode,
   ]);
 
   const clipboardCut = (files: { name: string; path: string; is_dir: boolean }[], isRemote: boolean, sourceDir: string) => {
@@ -11090,6 +11162,43 @@ interface UpdateVerificationInfo {
             onExecutePreset={executeSyncPresetPlan}
           />
         )}
+        <DeltaEligibilityDialog
+          isOpen={!!deltaEligibilityPrompt}
+          reason={deltaEligibilityPrompt?.reason || ''}
+          serverLabel={deltaEligibilityPrompt?.serverLabel || ''}
+          onClose={(skipFuturePrompts) => {
+            const prompt = deltaEligibilityPrompt;
+            setDeltaEligibilityPrompt(null);
+            if (!prompt) return;
+            if (skipFuturePrompts && prompt.profileId) {
+              // Persist `skipDeltaEligibilityPrompt: true` on the saved
+              // server so future runs against the same profile skip the
+              // probe entirely. Best-effort: vault errors don't block
+              // the queued plan from dispatching.
+              (async () => {
+                try {
+                  const stored = await secureGetWithFallback<ServerProfile[]>(
+                    'server_profiles',
+                    'aeroftp-saved-servers',
+                  );
+                  const profiles = stored || [];
+                  const idx = profiles.findIndex((p) => p.id === prompt.profileId);
+                  if (idx >= 0) {
+                    profiles[idx] = { ...profiles[idx], skipDeltaEligibilityPrompt: true };
+                    await secureStoreAndClean('server_profiles', 'aeroftp-saved-servers', profiles);
+                  }
+                } catch (err) {
+                  if (debugMode) {
+                    // eslint-disable-next-line no-console
+                    console.debug('[AeroSync] failed to persist skipDeltaEligibilityPrompt', err);
+                  }
+                }
+              })();
+            }
+            prompt.onContinue();
+          }}
+        />
+
         {inputDialog && <InputDialog title={inputDialog.title} defaultValue={inputDialog.defaultValue} onConfirm={inputDialog.onConfirm} onCancel={() => setInputDialog(null)} isPassword={inputDialog.isPassword} placeholder={inputDialog.placeholder} />}
         {zohoShareLinksDialog && (
           <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50" onClick={() => setZohoShareLinksDialog(null)}>

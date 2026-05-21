@@ -4538,7 +4538,15 @@
             "verifyPolicy_size_only": "Csak méret",
             "verifyPolicy_size_and_mtime": "Méret + időbélyeg",
             "verifyPolicy_full_checksum": "Teljes ellenőrzőösszeg",
-            "verifyPolicyHint": "Átvitel utáni integritás-ellenőrzés alkalmazva minden fájlra."
+            "verifyPolicyHint": "Átvitel utáni integritás-ellenőrzés alkalmazva minden fájlra.",
+            "deltaEligibility": {
+                "title": "A delta sync nem érhető el",
+                "heading": "A delta sync nem érhető el ehhez a kiszolgálóhoz.",
+                "serverLabel": "Kiszolgáló:",
+                "fallbackHint": "Az AeroSync a klasszikus másolási útvonalra vált. A választott előbeállítás továbbra is fut.",
+                "skipFuture": "Ne kérdezze újra ennél a kiszolgálónál",
+                "continue": "Folytatás"
+            }
         }
     }
 }

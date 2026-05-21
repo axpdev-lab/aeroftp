@@ -4557,7 +4557,15 @@
             "verifyPolicy_size_only": "Maint yn unig",
             "verifyPolicy_size_and_mtime": "Maint + stamp amser",
             "verifyPolicy_full_checksum": "Swm gwirio llawn",
-            "verifyPolicyHint": "Gwiriad cywirdeb ar ôl trosglwyddo wedi'i gymhwyso i bob ffeil."
+            "verifyPolicyHint": "Gwiriad cywirdeb ar ôl trosglwyddo wedi'i gymhwyso i bob ffeil.",
+            "deltaEligibility": {
+                "title": "Delta sync ddim ar gael",
+                "heading": "Delta sync ddim ar gael ar gyfer y gweinydd hwn.",
+                "serverLabel": "Gweinydd:",
+                "fallbackHint": "Bydd AeroSync yn dychwelyd i'r llwybr copïo clasurol. Bydd y rhagosodiad a ddewiswyd yn dal i redeg.",
+                "skipFuture": "Peidiwch â gofyn eto am y gweinydd hwn",
+                "continue": "Parhau"
+            }
         }
     }
 }

@@ -4538,7 +4538,15 @@
             "verifyPolicy_size_only": "Yalnızca boyut",
             "verifyPolicy_size_and_mtime": "Boyut + zaman damgası",
             "verifyPolicy_full_checksum": "Tam sağlama toplamı",
-            "verifyPolicyHint": "Her dosyaya uygulanan aktarım sonrası bütünlük kontrolü."
+            "verifyPolicyHint": "Her dosyaya uygulanan aktarım sonrası bütünlük kontrolü.",
+            "deltaEligibility": {
+                "title": "Delta sync kullanılamıyor",
+                "heading": "Delta sync bu sunucu için kullanılamıyor.",
+                "serverLabel": "Sunucu:",
+                "fallbackHint": "AeroSync klasik kopyalama yoluna geri dönecek. Seçilen ön ayar yine de çalışır.",
+                "skipFuture": "Bu sunucu için tekrar sorma",
+                "continue": "Devam et"
+            }
         }
     }
 }
