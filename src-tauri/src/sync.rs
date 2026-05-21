@@ -299,7 +299,6 @@ pub struct DeltaFileEntry {
     pub speedup: f64,
 }
 
-#[cfg(unix)]
 impl DeltaTransferStats {
     pub(crate) fn from_rsync(stats: &crate::rsync_over_ssh::RsyncStats) -> Self {
         Self {
@@ -974,15 +973,12 @@ pub async fn sync_tree_core(
     // support), or when delta policy is off: in those cases the
     // perform_upload/download functions fall through to the existing
     // single-shot try_delta_transfer / classic provider path.
-    #[cfg(unix)]
     let mut delta_batch: Option<Box<dyn DeltaBatch>> =
         if !opts.dry_run && matches!(opts.delta_policy, DeltaPolicy::Delta) {
             crate::delta_sync_rsync::open_delta_batch(provider.as_mut()).await
         } else {
             None
         };
-    #[cfg(not(unix))]
-    let mut delta_batch: Option<Box<dyn DeltaBatch>> = None;
 
     if matches!(opts.direction, SyncDirection::Upload | SyncDirection::Both) {
         for local_entry in &locals {
@@ -1546,7 +1542,6 @@ async fn perform_upload(
     // file is done; on hard_error the security failure surfaces; on
     // fallback we drop through to the single-shot try_delta_transfer
     // path below, which is the same recovery the legacy code does.
-    #[cfg(unix)]
     if matches!(transfer.requested_policy, DeltaPolicy::Delta) {
         if let Some(batch) = delta_batch.as_deref_mut() {
             let local_path_buf = std::path::PathBuf::from(&local_path);
@@ -1592,7 +1587,6 @@ async fn perform_upload(
     // through silently to the classic upload. A `hard_error` (e.g. SSH
     // host-key mismatch) surfaces as `FileOutcome::Failed` without falling
     // back, so security failures never get masked by the classic path.
-    #[cfg(unix)]
     if matches!(transfer.requested_policy, DeltaPolicy::Delta) {
         let local_path_buf = std::path::PathBuf::from(&local_path);
         match crate::delta_sync_rsync::try_delta_transfer(
@@ -1690,7 +1684,6 @@ async fn perform_download(
     }
 
     // P3-T01 W4.2: same batch-first routing as perform_upload, direction=Download.
-    #[cfg(unix)]
     if matches!(transfer.requested_policy, DeltaPolicy::Delta) {
         if let Some(batch) = delta_batch.as_deref_mut() {
             let local_path_buf = std::path::PathBuf::from(&local_path);
@@ -1727,7 +1720,6 @@ async fn perform_download(
     }
 
     // P1-T01: see `perform_upload` above. Same contract, direction=Download.
-    #[cfg(unix)]
     if matches!(transfer.requested_policy, DeltaPolicy::Delta) {
         let local_path_buf = std::path::PathBuf::from(&local_path);
         match crate::delta_sync_rsync::try_delta_transfer(

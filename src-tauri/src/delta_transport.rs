@@ -27,6 +27,7 @@
 use crate::providers::sftp::SharedSshHandle;
 #[cfg(unix)]
 use crate::rsync_over_ssh::{probe_local_rsync, probe_rsync, rsync_download, rsync_upload};
+#[cfg_attr(not(unix), allow(unused_imports))]
 use crate::rsync_over_ssh::{RsyncCapability, RsyncConfig, RsyncError, RsyncStats};
 use async_trait::async_trait;
 use std::path::Path;

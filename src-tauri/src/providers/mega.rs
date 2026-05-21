@@ -146,7 +146,7 @@ impl MegaCmdProvider {
             cmd_builder.args(args);
             #[cfg(windows)]
             {
-                use std::os::windows::process::CommandExt;
+                use std::os::windows::process::CommandExt as _;
                 cmd_builder.creation_flags(CREATE_NO_WINDOW);
             }
             let output_future = cmd_builder.output();
@@ -272,7 +272,7 @@ impl MegaCmdProvider {
             #[cfg(windows)]
             let output = {
                 // CREATE_NO_WINDOW prevents cmd.exe console flash
-                use std::os::windows::process::CommandExt;
+                use std::os::windows::process::CommandExt as _;
                 let mut cmd = Command::new(&resolved_cmd);
                 cmd.arg(&self.config.email).arg(&password);
                 if let Some(ref code) = auth_code {
@@ -359,7 +359,7 @@ impl MegaCmdProvider {
                     .stderr(std::process::Stdio::null());
                 #[cfg(windows)]
                 {
-                    use std::os::windows::process::CommandExt;
+                    use std::os::windows::process::CommandExt as _;
                     daemon_cmd.creation_flags(CREATE_NO_WINDOW);
                 }
                 let _ = daemon_cmd.spawn();

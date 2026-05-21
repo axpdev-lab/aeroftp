@@ -1018,7 +1018,6 @@ pub async fn provider_download_file(
     // fallback: security failures must not be masked. Same contract as
     // `sync::perform_download` in the sync_tree path.
     let mut delta_fallback_reason: Option<String> = None;
-    #[cfg(unix)]
     {
         if use_delta.unwrap_or(true) {
             let local_path_buf = std::path::PathBuf::from(&local_path);
@@ -2308,7 +2307,6 @@ pub async fn provider_upload_file(
     // / password-only auth (self-gated inside `try_delta_transfer`).
     // `hard_error` must not silently fall back to the classic path.
     let mut delta_fallback_reason: Option<String> = None;
-    #[cfg(unix)]
     {
         if use_delta.unwrap_or(true) {
             let local_path_buf = std::path::PathBuf::from(&local_path);

@@ -38,11 +38,17 @@ shipped as default on OpenBSD).
 ## Status
 
 > Cargo feature `aerorsync` is compiled by default. Runtime toggle
-> `native_rsync_enabled` defaults OFF since `aca4577c` pending the
-> host-key algorithm negotiation asymmetry fix (the config key retains
-> its historical name for backward compatibility of persisted user
-> settings). The module ships with wire-protocol 31 parity for the
-> single-file delta path.
+> `native_rsync_enabled` **defaults ON since `Z.1.5` (2026-05-12)**
+> for fresh installs after the `AERORSYNC_HOST_KEY_ALGS` + russh
+> `Preferred.key` follow-up closed the host-key algorithm negotiation
+> asymmetry that had motivated the temporary OFF default in `aca4577c`.
+> Existing installs keep the user-persisted value. The config key
+> retains its historical name for backward compatibility of persisted
+> settings. The module ships with wire-protocol 31 parity for the
+> single-file delta path on Unix; on Windows the Tauri / sync_tree
+> call surface compiles since Patch v2 (2026-05-21), but the runtime
+> batch path is currently tracked under `Z.4.3.f6` (channel-multiplex
+> deadlock on session reuse).
 >
 > **Production dispatch (Blocco B closed 2026-04-26)**: `AerorsyncDeltaTransport`
 > invokes stock `rsync --server` via `RemoteCommandFlavor::WrapperParity`

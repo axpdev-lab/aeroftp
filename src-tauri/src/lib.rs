@@ -3776,7 +3776,6 @@ async fn upload_file(
                 // no: in which case we must NOT silently fall back to
                 // the classic provider path. Same contract as
                 // `sync::perform_upload`.
-                #[cfg(unix)]
                 {
                     let local_path_buf = std::path::PathBuf::from(&params.local_path);
                     if params.use_delta {
@@ -9920,6 +9919,7 @@ fn provider_type_from_string(value: &str) -> Option<providers::ProviderType> {
 async fn sftp_probe_delta_eligibility(
     provider_state: State<'_, provider_commands::ProviderState>,
 ) -> Result<DeltaEligibilityProbeResult, String> {
+    #[cfg_attr(not(unix), allow(unused_variables))]
     let (active_session_is_sftp, private_key_configured, server_identity) = {
         let config_lock = provider_state.config.lock().await;
         let config = config_lock.as_ref();
@@ -9955,11 +9955,13 @@ async fn sftp_probe_delta_eligibility(
 
     #[cfg(not(unix))]
     {
-        return Ok(DeltaEligibilityProbeResult {
+        Ok(DeltaEligibilityProbeResult {
             eligible: false,
-            reason: Some("Delta Sync is currently available only on Unix builds.".to_string()),
+            reason: Some(
+                "Native delta sync runtime is currently only enabled on Unix builds (Windows support pending Z.4.3.f6 fix).".to_string(),
+            ),
             server_identity,
-        });
+        })
     }
 
     #[cfg(unix)]
