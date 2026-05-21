@@ -7970,15 +7970,46 @@ async fn is_rar_encrypted(archive_path: String) -> Result<bool, String> {
 }
 
 #[tauri::command]
-async fn ftp_read_file_base64(state: State<'_, AppState>, path: String) -> Result<String, String> {
+async fn ftp_read_file_base64(
+    state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
+    path: String,
+) -> Result<String, String> {
     use base64::{engine::general_purpose::STANDARD, Engine as _};
-
-    let mut ftp_manager = state.ftp_manager.lock().await;
 
     // Limit size for preview (10MB should be enough for most media files)
     let max_size: u64 = 10 * 1024 * 1024;
 
-    // Get file size first
+    // Try provider path first (cloud providers, GitHub, etc.).
+    // Mirrors `preview_remote_file` so image / binary preview works on every
+    // backend, not just FTP/SFTP/WebDAV.
+    let provider_connected = {
+        let guard = provider_state.provider.lock().await;
+        guard.is_some()
+    };
+
+    if provider_connected {
+        let mut guard = provider_state.provider.lock().await;
+        if let Some(provider) = guard.as_mut() {
+            let file_size = provider.size(&path).await.unwrap_or(0);
+            if file_size > max_size {
+                return Err(format!(
+                    "File too large for preview ({:.1} MB). Max: 10 MB",
+                    file_size as f64 / 1024.0 / 1024.0
+                ));
+            }
+
+            let data = provider
+                .download_to_bytes(&path)
+                .await
+                .map_err(|e| format!("Failed to download: {}", e))?;
+            return Ok(STANDARD.encode(data));
+        }
+    }
+
+    // Fallback to FTP manager for FTP/SFTP/WebDAV connections.
+    let mut ftp_manager = state.ftp_manager.lock().await;
+
     let file_size = ftp_manager.get_file_size(&path).await.unwrap_or(0);
 
     if file_size > max_size {
@@ -7988,7 +8019,6 @@ async fn ftp_read_file_base64(state: State<'_, AppState>, path: String) -> Resul
         ));
     }
 
-    // Download to memory
     let data = ftp_manager
         .download_to_bytes(&path)
         .await
