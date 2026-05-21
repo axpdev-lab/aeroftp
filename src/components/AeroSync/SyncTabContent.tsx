@@ -18,23 +18,64 @@ interface SyncTabContentProps {
     initialSource?: string;
     initialDestination?: string;
     pairKind?: AeroSyncPairKind | null;
+    activeProfileId?: string;
 }
 
-// SLICE 4: vault-persisted advanced override for the auto-detected
-// delta gate. Local-only key (no profile id); for connected-remote
-// sessions the SyncPanel runner still owns its own per-profile
-// preference until SLICE 6 retires it.
+// SLICE 4 + CO-4: advanced override for the auto-detected delta gate.
+// - `DELTA_OVERRIDE_KEY` is the legacy global slot. CO-4 keeps it alive
+//   as the fallback whenever no profile id is in scope (AeroFile / dual-
+//   local sessions).
+// - `DELTA_OVERRIDES_MAP_KEY` is the per-profile map introduced by CO-4
+//   so that connected-remote sessions can remember a different choice
+//   per saved server, mirroring what SyncPanel did via
+//   `skipDeltaEligibilityPrompt`.
 const DELTA_OVERRIDE_KEY = 'aerosync.delta.override';
+const DELTA_OVERRIDES_MAP_KEY = 'aerosync.delta.overrides';
 type DeltaOverride = 'auto' | 'force-on' | 'force-off';
-function readDeltaOverride(): DeltaOverride {
+function readOverrideMap(): Record<string, DeltaOverride> {
     try {
+        const raw = localStorage.getItem(DELTA_OVERRIDES_MAP_KEY);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') return {};
+        const cleaned: Record<string, DeltaOverride> = {};
+        for (const [k, v] of Object.entries(parsed)) {
+            if (v === 'force-on' || v === 'force-off' || v === 'auto') {
+                cleaned[k] = v;
+            }
+        }
+        return cleaned;
+    } catch { return {}; }
+}
+function writeOverrideMap(map: Record<string, DeltaOverride>) {
+    try {
+        const hasEntries = Object.keys(map).length > 0;
+        if (!hasEntries) localStorage.removeItem(DELTA_OVERRIDES_MAP_KEY);
+        else localStorage.setItem(DELTA_OVERRIDES_MAP_KEY, JSON.stringify(map));
+    } catch { /* localStorage unavailable */ }
+}
+function readDeltaOverride(profileId?: string): DeltaOverride {
+    try {
+        if (profileId) {
+            const map = readOverrideMap();
+            const v = map[profileId];
+            if (v === 'force-on' || v === 'force-off') return v;
+            return 'auto';
+        }
         const raw = localStorage.getItem(DELTA_OVERRIDE_KEY);
         if (raw === 'force-on' || raw === 'force-off') return raw;
     } catch { /* localStorage unavailable */ }
     return 'auto';
 }
-function writeDeltaOverride(value: DeltaOverride) {
+function writeDeltaOverride(value: DeltaOverride, profileId?: string) {
     try {
+        if (profileId) {
+            const map = readOverrideMap();
+            if (value === 'auto') delete map[profileId];
+            else map[profileId] = value;
+            writeOverrideMap(map);
+            return;
+        }
         if (value === 'auto') localStorage.removeItem(DELTA_OVERRIDE_KEY);
         else localStorage.setItem(DELTA_OVERRIDE_KEY, value);
     } catch { /* localStorage unavailable */ }
@@ -100,12 +141,17 @@ export const SyncTabContent: React.FC<SyncTabContentProps> = ({
     initialSource = '',
     initialDestination = '',
     pairKind = null,
+    activeProfileId,
 }) => {
     const t = useTranslation();
     const [source, setSource] = useState(initialSource);
     const [destination, setDestination] = useState(initialDestination);
     const [exclude, setExclude] = useState('');
-    const [deltaOverride, setDeltaOverride] = useState<DeltaOverride>(readDeltaOverride);
+    // CO-4: profile-keyed override; falls back to the global slot when
+    // no profile is in scope (AeroFile / dual-local sessions). The
+    // initial read uses the active profile id so dialog re-opens for a
+    // different profile render the right pill out of the box.
+    const [deltaOverride, setDeltaOverride] = useState<DeltaOverride>(() => readDeltaOverride(activeProfileId));
     const [uploadLimit, setUploadLimit] = useState<number>(() => readBandwidthLimit(UPLOAD_LIMIT_KEY));
     const [downloadLimit, setDownloadLimit] = useState<number>(() => readBandwidthLimit(DOWNLOAD_LIMIT_KEY));
     const [dryRun, setDryRun] = useState(false);
@@ -135,6 +181,13 @@ export const SyncTabContent: React.FC<SyncTabContentProps> = ({
         if (initialSource) setSource(initialSource);
         if (initialDestination) setDestination(initialDestination);
     }, [initialSource, initialDestination]);
+
+    // CO-4: re-read the override when the active profile changes (the
+    // dialog can swap between profiles without unmounting). Without
+    // this the pill would stay frozen on the first-mount profile.
+    useEffect(() => {
+        setDeltaOverride(readDeltaOverride(activeProfileId));
+    }, [activeProfileId]);
 
     useEffect(() => {
         let unlisten: UnlistenFn | null = null;
@@ -315,7 +368,7 @@ export const SyncTabContent: React.FC<SyncTabContentProps> = ({
                             onChange={(e) => {
                                 const v = e.target.value as DeltaOverride;
                                 setDeltaOverride(v);
-                                writeDeltaOverride(v);
+                                writeDeltaOverride(v, activeProfileId);
                             }}
                             disabled={running}
                             className="w-full px-2 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900/60 text-sm disabled:opacity-50"

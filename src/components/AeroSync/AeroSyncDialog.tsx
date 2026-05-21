@@ -179,6 +179,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                             initialSource={context.initialSource}
                             initialDestination={context.initialDestination}
                             pairKind={context.pairKind}
+                            activeProfileId={context.activeProfileId}
                         />
                     )}
                 </div>
