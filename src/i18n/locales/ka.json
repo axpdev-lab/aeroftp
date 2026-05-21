@@ -4572,7 +4572,8 @@
                 "colStatus": "სტატუსი",
                 "colBytes": "ბაიტი",
                 "colAction": "მოქმედება"
-            }
+            },
+            "launcherScheduler": "განრიგი"
         }
     }
 }

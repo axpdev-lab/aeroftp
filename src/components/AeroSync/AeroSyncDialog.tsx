@@ -7,13 +7,14 @@
 // disconnected entries in the View menu.
 
 import * as React from 'react';
-import { FileDown, FolderSync, History, Layers, Undo2, X } from 'lucide-react';
+import { CalendarClock, FileDown, FolderSync, History, Layers, Undo2, X } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
 import { CompareTabContent } from './CompareTabContent';
 import { PlanTabContent } from './PlanTabContent';
 import { SyncTabContent } from './SyncTabContent';
 import { JournalHistoryDialog } from './JournalHistoryDialog';
+import { SyncSchedulerDialog } from './SyncSchedulerDialog';
 import { SyncTemplateDialog } from '../Sync/SyncTemplateDialog';
 import { MultiPathEditor } from '../Sync/MultiPathEditor';
 import { RollbackDialog } from '../Sync/RollbackDialog';
@@ -37,6 +38,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
     const [showMultiPath, setShowMultiPath] = React.useState(false);
     const [showRollback, setShowRollback] = React.useState(false);
     const [showHistory, setShowHistory] = React.useState(false);
+    const [showScheduler, setShowScheduler] = React.useState(false);
 
     React.useEffect(() => {
         if (isOpen) setActiveTab(initialTab);
@@ -127,6 +129,15 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                                     aria-label={t('aerosync.launcherHistory') || 'Journal history'}
                                 >
                                     <History size={16} />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowScheduler(true)}
+                                    className="p-2 text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                                    title={t('aerosync.launcherScheduler') || 'Scheduler'}
+                                    aria-label={t('aerosync.launcherScheduler') || 'Scheduler'}
+                                >
+                                    <CalendarClock size={16} />
                                 </button>
                                 <div className="mx-1 h-6 w-px bg-gray-300 dark:bg-gray-600" />
                             </>
@@ -227,6 +238,10 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                         onClose={() => setShowHistory(false)}
                         localPath={localPath}
                         remotePath={remotePath}
+                    />
+                    <SyncSchedulerDialog
+                        isOpen={showScheduler}
+                        onClose={() => setShowScheduler(false)}
                     />
                 </>
             )}

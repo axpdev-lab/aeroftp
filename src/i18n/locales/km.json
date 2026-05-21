@@ -4591,7 +4591,8 @@
                 "colStatus": "ស្ថានភាព",
                 "colBytes": "បៃ",
                 "colAction": "សកម្មភាព"
-            }
+            },
+            "launcherScheduler": "កាលវិភាគ"
         }
     }
 }

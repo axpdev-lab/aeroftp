@@ -4572,7 +4572,8 @@
                 "colStatus": "Statuss",
                 "colBytes": "Baiti",
                 "colAction": "Darbība"
-            }
+            },
+            "launcherScheduler": "Plānotājs"
         }
     }
 }

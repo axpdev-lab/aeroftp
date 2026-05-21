@@ -4572,7 +4572,8 @@
                 "colStatus": "สถานะ",
                 "colBytes": "ไบต์",
                 "colAction": "การกระทำ"
-            }
+            },
+            "launcherScheduler": "ตัวกำหนดเวลา"
         }
     }
 }

@@ -4572,7 +4572,8 @@
                 "colStatus": "Būsena",
                 "colBytes": "Baitai",
                 "colAction": "Veiksmas"
-            }
+            },
+            "launcherScheduler": "Tvarkaraštis"
         }
     }
 }

@@ -4572,7 +4572,8 @@
                 "colStatus": "Stav",
                 "colBytes": "Bajty",
                 "colAction": "Akce"
-            }
+            },
+            "launcherScheduler": "Plánovač"
         }
     }
 }

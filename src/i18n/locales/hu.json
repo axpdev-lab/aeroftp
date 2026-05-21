@@ -4572,7 +4572,8 @@
                 "colStatus": "Állapot",
                 "colBytes": "Bájt",
                 "colAction": "Művelet"
-            }
+            },
+            "launcherScheduler": "Ütemező"
         }
     }
 }

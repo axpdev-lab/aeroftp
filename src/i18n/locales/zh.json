@@ -4572,7 +4572,8 @@
                 "colStatus": "状态",
                 "colBytes": "字节",
                 "colAction": "操作"
-            }
+            },
+            "launcherScheduler": "调度器"
         }
     }
 }

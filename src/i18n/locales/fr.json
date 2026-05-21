@@ -4572,7 +4572,8 @@
                 "colStatus": "Statut",
                 "colBytes": "Octets",
                 "colAction": "Action"
-            }
+            },
+            "launcherScheduler": "Planificateur"
         }
     }
 }

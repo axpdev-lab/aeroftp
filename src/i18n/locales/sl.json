@@ -4572,7 +4572,8 @@
                 "colStatus": "Stanje",
                 "colBytes": "Bajti",
                 "colAction": "Dejanje"
-            }
+            },
+            "launcherScheduler": "Razporejevalnik"
         }
     }
 }

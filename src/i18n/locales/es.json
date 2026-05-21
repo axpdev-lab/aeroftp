@@ -4572,7 +4572,8 @@
                 "colStatus": "Estado",
                 "colBytes": "Bytes",
                 "colAction": "Acción"
-            }
+            },
+            "launcherScheduler": "Programador"
         }
     }
 }

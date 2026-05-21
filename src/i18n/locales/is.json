@@ -4591,7 +4591,8 @@
                 "colStatus": "Staða",
                 "colBytes": "Bæti",
                 "colAction": "Aðgerð"
-            }
+            },
+            "launcherScheduler": "Tímaáætlun"
         }
     }
 }

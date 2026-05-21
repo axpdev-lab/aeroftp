@@ -4572,7 +4572,8 @@
                 "colStatus": "Κατάσταση",
                 "colBytes": "Bytes",
                 "colAction": "Ενέργεια"
-            }
+            },
+            "launcherScheduler": "Χρονοδιάγραμμα"
         }
     }
 }

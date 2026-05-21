@@ -4572,7 +4572,8 @@
                 "colStatus": "स्थिति",
                 "colBytes": "बाइट्स",
                 "colAction": "क्रिया"
-            }
+            },
+            "launcherScheduler": "अनुसूचक"
         }
     }
 }

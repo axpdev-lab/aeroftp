@@ -4591,7 +4591,8 @@
                 "colStatus": "Egoera",
                 "colBytes": "Byteak",
                 "colAction": "Ekintza"
-            }
+            },
+            "launcherScheduler": "Antolatzailea"
         }
     }
 }

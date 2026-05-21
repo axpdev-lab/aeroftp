@@ -4572,7 +4572,8 @@
                 "colStatus": "স্থিতি",
                 "colBytes": "বাইট",
                 "colAction": "ক্রিয়া"
-            }
+            },
+            "launcherScheduler": "শিডিউলার"
         }
     }
 }
