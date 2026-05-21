@@ -3335,7 +3335,7 @@
             "activityLog": "アクティビティログ",
             "detailedCards": "詳細なサーバーカード",
             "debugPanel": "Debug Panel",
-            "aerofileSync": "AeroFile Sync..."
+            "aerosync": "AeroSync..."
         },
         "activityPanel": {
             "awaitingCommands": "コマンド待機中...",
@@ -4587,29 +4587,6 @@
             "moveHereFromOtherPanelTooltip": "もう一方のパネルで選択された {count} 件をこのパネルに移動 (F6)",
             "syncToOtherPanel": "もう一方のパネルに同期 (delta)"
         },
-        "localSync": {
-            "title": "AeroSync: ローカルからローカルへ",
-            "description": "ローカルのソースディレクトリをローカルの宛先にミラーします。1 MiB 以上のファイルは組み込みの delta エンジンを使用し、それより小さいファイルは直接コピーを使用します。",
-            "source": "ソース",
-            "destination": "宛先",
-            "browse": "参照…",
-            "excludeLabel": "除外パターン (カンマまたは改行で区切る)",
-            "useDelta": "Delta トランスポートを使用 (≥ 1 MiB のファイル)",
-            "dryRun": "ドライラン (プレビューのみ)",
-            "running": "実行中…",
-            "start": "同期を開始",
-            "resultOk": "同期が完了しました",
-            "resultPartial": "エラーありで同期が完了しました",
-            "uploaded": "アップロード済み",
-            "skipped": "スキップ",
-            "errors": "エラー",
-            "elapsed": "経過時間",
-            "payload": "Payload",
-            "bytesOnWire": "ネットワーク上のバイト数",
-            "savings": "節約量",
-            "errorDetails": "件のエラー、詳細",
-            "errorPathsRequired": "ソースと宛先は必須です"
-        },
         "compare": {
             "title": "パネルを比較",
             "notAvailable": "比較するにはもう一つのパネルまたはリモート接続を開いてください。"
@@ -4620,9 +4597,9 @@
             "allSkipped": "このプリセットには実行可能なエントリがありません。",
             "deletesDeferred": "同期プリセット"
         },
-        "aerofileSync": {
-            "title": "AeroFile Sync",
-            "toolbarButton": "AeroFile Sync",
+        "aerosync": {
+            "title": "AeroSync",
+            "toolbarButton": "AeroSync",
             "tabCompare": "比較",
             "tabPlan": "プラン",
             "tabSync": "同期",
@@ -4658,7 +4635,30 @@
             "executeNothing": "実行する内容がないか、実行経路が利用できません",
             "executeConfirm": "実行を有効にするには破壊的操作を確認してください",
             "executePreset": "プリセットを実行",
-            "execute": "実行"
+            "execute": "実行",
+            "sync": {
+                "title": "AeroSync: ローカルからローカルへ",
+                "description": "ローカルのソースディレクトリをローカルの宛先にミラーします。1 MiB 以上のファイルは組み込みの delta エンジンを使用し、それより小さいファイルは直接コピーを使用します。",
+                "source": "ソース",
+                "destination": "宛先",
+                "browse": "参照…",
+                "excludeLabel": "除外パターン (カンマまたは改行で区切る)",
+                "useDelta": "Delta トランスポートを使用 (≥ 1 MiB のファイル)",
+                "dryRun": "ドライラン (プレビューのみ)",
+                "running": "実行中…",
+                "start": "同期を開始",
+                "resultOk": "同期が完了しました",
+                "resultPartial": "エラーありで同期が完了しました",
+                "uploaded": "アップロード済み",
+                "skipped": "スキップ",
+                "errors": "エラー",
+                "elapsed": "経過時間",
+                "payload": "Payload",
+                "bytesOnWire": "ネットワーク上のバイト数",
+                "savings": "節約量",
+                "errorDetails": "件のエラー、詳細",
+                "errorPathsRequired": "ソースと宛先は必須です"
+            }
         }
     }
 }

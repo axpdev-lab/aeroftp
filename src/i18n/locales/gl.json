@@ -3370,7 +3370,7 @@
             "activityLog": "Rexistro de actividade",
             "detailedCards": "Tarxetas de servidor detalladas",
             "debugPanel": "Debug Panel",
-            "aerofileSync": "AeroFile Sync..."
+            "aerosync": "AeroSync..."
         },
         "activityPanel": {
             "awaitingCommands": "Agardando comandos...",
@@ -4606,29 +4606,6 @@
             "moveHereFromOtherPanelTooltip": "Mover {count} seleccionados do outro panel a este panel (F6)",
             "syncToOtherPanel": "Sincronizar co outro panel (delta)"
         },
-        "localSync": {
-            "title": "AeroSync: de local a local",
-            "description": "Reflicte un directorio de orixe local nun destino local. Os ficheiros ≥ 1 MiB usan o motor delta integrado; os ficheiros máis pequenos usan a copia directa.",
-            "source": "Orixe",
-            "destination": "Destino",
-            "browse": "Examinar…",
-            "excludeLabel": "Patróns de exclusión (separados por coma ou salto de liña)",
-            "useDelta": "Usar transporte delta (ficheiros ≥ 1 MiB)",
-            "dryRun": "Simulación (só vista previa)",
-            "running": "En execución…",
-            "start": "Iniciar sincronización",
-            "resultOk": "Sincronización completada",
-            "resultPartial": "Sincronización completada con erros",
-            "uploaded": "Subidos",
-            "skipped": "Omitidos",
-            "errors": "Erros",
-            "elapsed": "Tempo transcorrido",
-            "payload": "Payload",
-            "bytesOnWire": "Bytes na rede",
-            "savings": "Aforro",
-            "errorDetails": "erro(s), detalles",
-            "errorPathsRequired": "A orixe e o destino son obrigatorios"
-        },
         "compare": {
             "title": "Comparar paneis",
             "notAvailable": "Abre un segundo panel ou unha conexión remota para comparar."
@@ -4639,9 +4616,9 @@
             "allSkipped": "Non hai entradas accionables para esta predefinición.",
             "deletesDeferred": "Predefinicións de sincronización"
         },
-        "aerofileSync": {
-            "title": "AeroFile Sync",
-            "toolbarButton": "AeroFile Sync",
+        "aerosync": {
+            "title": "AeroSync",
+            "toolbarButton": "AeroSync",
             "tabCompare": "Comparar",
             "tabPlan": "Plan",
             "tabSync": "Sincronizar",
@@ -4677,7 +4654,30 @@
             "executeNothing": "Nada que facer ou ruta de execución non dispoñible",
             "executeConfirm": "Confirma as accións destrutivas para habilitar Executar",
             "executePreset": "Executar preset",
-            "execute": "Executar"
+            "execute": "Executar",
+            "sync": {
+                "title": "AeroSync: de local a local",
+                "description": "Reflicte un directorio de orixe local nun destino local. Os ficheiros ≥ 1 MiB usan o motor delta integrado; os ficheiros máis pequenos usan a copia directa.",
+                "source": "Orixe",
+                "destination": "Destino",
+                "browse": "Examinar…",
+                "excludeLabel": "Patróns de exclusión (separados por coma ou salto de liña)",
+                "useDelta": "Usar transporte delta (ficheiros ≥ 1 MiB)",
+                "dryRun": "Simulación (só vista previa)",
+                "running": "En execución…",
+                "start": "Iniciar sincronización",
+                "resultOk": "Sincronización completada",
+                "resultPartial": "Sincronización completada con erros",
+                "uploaded": "Subidos",
+                "skipped": "Omitidos",
+                "errors": "Erros",
+                "elapsed": "Tempo transcorrido",
+                "payload": "Payload",
+                "bytesOnWire": "Bytes na rede",
+                "savings": "Aforro",
+                "errorDetails": "erro(s), detalles",
+                "errorPathsRequired": "A orixe e o destino son obrigatorios"
+            }
         }
     }
 }

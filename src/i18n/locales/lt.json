@@ -3370,7 +3370,7 @@
             "activityLog": "Veiklos zurnalas",
             "detailedCards": "Išsamios serverių kortelės",
             "debugPanel": "Debug Panel",
-            "aerofileSync": "AeroFile Sync..."
+            "aerosync": "AeroSync..."
         },
         "activityPanel": {
             "awaitingCommands": "Laukiama komandų...",
@@ -4587,29 +4587,6 @@
             "moveHereFromOtherPanelTooltip": "Perkelti {count} pasirinktų iš kito skydelio į šį skydelį (F6)",
             "syncToOtherPanel": "Sinchronizuoti į kitą skydelį (delta)"
         },
-        "localSync": {
-            "title": "AeroSync: iš vietinio į vietinį",
-            "description": "Atspindi vietinį šaltinio katalogą į vietinę paskirties vietą. Failai ≥ 1 MiB naudoja vidinį delta variklį; mažesni failai naudoja tiesioginį kopijavimą.",
-            "source": "Šaltinis",
-            "destination": "Paskirties vieta",
-            "browse": "Naršyti…",
-            "excludeLabel": "Išskyrimo šablonai (atskirti kableliu arba nauja eilute)",
-            "useDelta": "Naudoti delta transportą (failai ≥ 1 MiB)",
-            "dryRun": "Bandomasis paleidimas (tik peržiūra)",
-            "running": "Vykdoma…",
-            "start": "Pradėti sinchronizaciją",
-            "resultOk": "Sinchronizacija baigta",
-            "resultPartial": "Sinchronizacija baigta su klaidomis",
-            "uploaded": "Įkelta",
-            "skipped": "Praleista",
-            "errors": "Klaidos",
-            "elapsed": "Praėjęs laikas",
-            "payload": "Payload",
-            "bytesOnWire": "Baitai tinkle",
-            "savings": "Sutaupymas",
-            "errorDetails": "klaida(os), išsami informacija",
-            "errorPathsRequired": "Šaltinis ir paskirties vieta yra privalomi"
-        },
         "compare": {
             "title": "Palyginti skydelius",
             "notAvailable": "Atidaryk antrą skydelį arba nuotolinį ryšį palyginimui."
@@ -4620,9 +4597,9 @@
             "allSkipped": "Šiam išankstiniam nustatymui nėra vykdomų įrašų.",
             "deletesDeferred": "Sinchronizavimo išankstiniai nustatymai"
         },
-        "aerofileSync": {
-            "title": "AeroFile Sync",
-            "toolbarButton": "AeroFile Sync",
+        "aerosync": {
+            "title": "AeroSync",
+            "toolbarButton": "AeroSync",
             "tabCompare": "Palyginti",
             "tabPlan": "Planas",
             "tabSync": "Sinchronizuoti",
@@ -4658,7 +4635,30 @@
             "executeNothing": "Nera ka daryti arba vykdymo kelias neprieinamas",
             "executeConfirm": "Patvirtinkite naikinancius veiksmus, kad galetumete vykdyti",
             "executePreset": "Vykdyti isankstini nustatyma",
-            "execute": "Vykdyti"
+            "execute": "Vykdyti",
+            "sync": {
+                "title": "AeroSync: iš vietinio į vietinį",
+                "description": "Atspindi vietinį šaltinio katalogą į vietinę paskirties vietą. Failai ≥ 1 MiB naudoja vidinį delta variklį; mažesni failai naudoja tiesioginį kopijavimą.",
+                "source": "Šaltinis",
+                "destination": "Paskirties vieta",
+                "browse": "Naršyti…",
+                "excludeLabel": "Išskyrimo šablonai (atskirti kableliu arba nauja eilute)",
+                "useDelta": "Naudoti delta transportą (failai ≥ 1 MiB)",
+                "dryRun": "Bandomasis paleidimas (tik peržiūra)",
+                "running": "Vykdoma…",
+                "start": "Pradėti sinchronizaciją",
+                "resultOk": "Sinchronizacija baigta",
+                "resultPartial": "Sinchronizacija baigta su klaidomis",
+                "uploaded": "Įkelta",
+                "skipped": "Praleista",
+                "errors": "Klaidos",
+                "elapsed": "Praėjęs laikas",
+                "payload": "Payload",
+                "bytesOnWire": "Baitai tinkle",
+                "savings": "Sutaupymas",
+                "errorDetails": "klaida(os), išsami informacija",
+                "errorPathsRequired": "Šaltinis ir paskirties vieta yra privalomi"
+            }
         }
     }
 }

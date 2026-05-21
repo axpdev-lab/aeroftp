@@ -3363,7 +3363,7 @@
             "activityLog": "Գործունեության մատյան",
             "detailedCards": "Մանրամասն սերվերի քարտեր",
             "debugPanel": "Debug Panel",
-            "aerofileSync": "AeroFile Sync..."
+            "aerosync": "AeroSync..."
         },
         "activityPanel": {
             "awaitingCommands": "Սպասում է հրամանների...",
@@ -4587,29 +4587,6 @@
             "moveHereFromOtherPanelTooltip": "Տեղափոխել մյուս վահանակից ընտրված {count}-ը այս վահանակում (F6)",
             "syncToOtherPanel": "Համաժամացնել մյուս վահանակին (delta)"
         },
-        "localSync": {
-            "title": "AeroSync։ տեղականից տեղական",
-            "description": "Հայելի է տեղական աղբյուրի գրագրացուցակը տեղական նշանակետին։ ≥ 1 MiB ֆայլերը օգտագործում են ներքին delta շարժիչը, իսկ ավելի փոքր ֆայլերը՝ ուղիղ պատճենը։",
-            "source": "Աղբյուր",
-            "destination": "Նշանակետ",
-            "browse": "Բացել…",
-            "excludeLabel": "Բացառման շաբլոններ (ստորակետով կամ նոր տողով բաժանված)",
-            "useDelta": "Օգտագործել delta տրանսպորտ (≥ 1 MiB ֆայլեր)",
-            "dryRun": "Փորձարկում (միայն նախադիտում)",
-            "running": "Կատարվում է…",
-            "start": "Սկսել համանքարկումը",
-            "resultOk": "Համանքարկումը ավարտվեց",
-            "resultPartial": "Համանքարկումը ավարտվեց սխալներով",
-            "uploaded": "Վերբեռնված",
-            "skipped": "Բաց թողնված",
-            "errors": "Սխալներ",
-            "elapsed": "Անցած ժամանակ",
-            "payload": "Payload",
-            "bytesOnWire": "Բայթեր ցանցում",
-            "savings": "Խնայողություն",
-            "errorDetails": "սխալ(ներ), մանրամասներ",
-            "errorPathsRequired": "Աղբյուրը և նշանակետը պարտադիր են"
-        },
         "compare": {
             "title": "Համեմատել վահանակները",
             "notAvailable": "Բացիր երկրորդ վահանակ կամ հեռակա կապ՝ համեմատելու համար։"
@@ -4620,9 +4597,9 @@
             "allSkipped": "Այս կանխադրվածի համար գործողելի մուտքեր չկան։",
             "deletesDeferred": "Համաժամացման կանխադրվածներ"
         },
-        "aerofileSync": {
-            "title": "AeroFile Sync",
-            "toolbarButton": "AeroFile Sync",
+        "aerosync": {
+            "title": "AeroSync",
+            "toolbarButton": "AeroSync",
             "tabCompare": "Համեմատել",
             "tabPlan": "Պլան",
             "tabSync": "Համաժամեցնել",
@@ -4658,7 +4635,30 @@
             "executeNothing": "Անելու բան չկա կամ կատարման ուղին հասանելի չէ",
             "executeConfirm": "Հաստատեք կործանարար գործողությունները՝ Կատարել-ը միացնելու համար",
             "executePreset": "Կատարել կանխադրվածքը",
-            "execute": "Կատարել"
+            "execute": "Կատարել",
+            "sync": {
+                "title": "AeroSync։ տեղականից տեղական",
+                "description": "Հայելի է տեղական աղբյուրի գրագրացուցակը տեղական նշանակետին։ ≥ 1 MiB ֆայլերը օգտագործում են ներքին delta շարժիչը, իսկ ավելի փոքր ֆայլերը՝ ուղիղ պատճենը։",
+                "source": "Աղբյուր",
+                "destination": "Նշանակետ",
+                "browse": "Բացել…",
+                "excludeLabel": "Բացառման շաբլոններ (ստորակետով կամ նոր տողով բաժանված)",
+                "useDelta": "Օգտագործել delta տրանսպորտ (≥ 1 MiB ֆայլեր)",
+                "dryRun": "Փորձարկում (միայն նախադիտում)",
+                "running": "Կատարվում է…",
+                "start": "Սկսել համանքարկումը",
+                "resultOk": "Համանքարկումը ավարտվեց",
+                "resultPartial": "Համանքարկումը ավարտվեց սխալներով",
+                "uploaded": "Վերբեռնված",
+                "skipped": "Բաց թողնված",
+                "errors": "Սխալներ",
+                "elapsed": "Անցած ժամանակ",
+                "payload": "Payload",
+                "bytesOnWire": "Բայթեր ցանցում",
+                "savings": "Խնայողություն",
+                "errorDetails": "սխալ(ներ), մանրամասներ",
+                "errorPathsRequired": "Աղբյուրը և նշանակետը պարտադիր են"
+            }
         }
     }
 }

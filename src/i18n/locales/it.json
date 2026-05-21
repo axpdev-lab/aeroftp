@@ -3526,7 +3526,7 @@
             "mountManager": "Gestione mount...",
             "activityLog": "Registro attività",
             "debugPanel": "Debug Panel",
-            "aerofileSync": "AeroFile Sync..."
+            "aerosync": "AeroSync..."
         },
         "mountManager": {
             "title": "Gestione mount",
@@ -4587,29 +4587,6 @@
                 "dismiss": "Ho capito"
             }
         },
-        "localSync": {
-            "title": "AeroFile Sync: locale verso locale",
-            "description": "Replica una cartella sorgente locale in una destinazione locale. I file >= 1 MiB passano per il motore delta AeroRsync; i file più piccoli usano la copia diretta.",
-            "source": "Sorgente",
-            "destination": "Destinazione",
-            "browse": "Sfoglia...",
-            "excludeLabel": "Pattern di esclusione (separati da virgola o newline)",
-            "useDelta": "Usa AeroRsync delta transport (file >= 1 MiB)",
-            "dryRun": "Simulazione (solo anteprima)",
-            "running": "In esecuzione…",
-            "start": "Avvia sincronizzazione",
-            "resultOk": "Sincronizzazione completata",
-            "resultPartial": "Sincronizzazione completata con errori",
-            "uploaded": "Trasferiti",
-            "skipped": "Saltati",
-            "errors": "Errori",
-            "elapsed": "Tempo trascorso",
-            "payload": "Payload",
-            "bytesOnWire": "Byte sulla rete",
-            "savings": "Risparmio",
-            "errorDetails": "errore/i, dettagli",
-            "errorPathsRequired": "Sorgente e destinazione sono obbligatorie"
-        },
         "compare": {
             "title": "Confronta pannelli",
             "notAvailable": "Apri un secondo pannello o una connessione remota per confrontare."
@@ -4620,9 +4597,9 @@
             "allSkipped": "Nessuna voce eseguibile per questo preset.",
             "deletesDeferred": "Eliminazioni rimandate per sicurezza"
         },
-        "aerofileSync": {
-            "title": "AeroFile Sync",
-            "toolbarButton": "AeroFile Sync",
+        "aerosync": {
+            "title": "AeroSync",
+            "toolbarButton": "AeroSync",
             "tabCompare": "Confronta",
             "tabPlan": "Pianifica",
             "tabSync": "Sincronizza",
@@ -4658,7 +4635,30 @@
             "executeNothing": "Nulla da fare o percorso di esecuzione non disponibile",
             "executeConfirm": "Conferma le azioni distruttive per abilitare Esegui",
             "executePreset": "Esegui preset",
-            "execute": "Esegui"
+            "execute": "Esegui",
+            "sync": {
+                "title": "AeroFile Sync: locale verso locale",
+                "description": "Replica una cartella sorgente locale in una destinazione locale. I file >= 1 MiB passano per il motore delta AeroRsync; i file più piccoli usano la copia diretta.",
+                "source": "Sorgente",
+                "destination": "Destinazione",
+                "browse": "Sfoglia...",
+                "excludeLabel": "Pattern di esclusione (separati da virgola o newline)",
+                "useDelta": "Usa AeroRsync delta transport (file >= 1 MiB)",
+                "dryRun": "Simulazione (solo anteprima)",
+                "running": "In esecuzione…",
+                "start": "Avvia sincronizzazione",
+                "resultOk": "Sincronizzazione completata",
+                "resultPartial": "Sincronizzazione completata con errori",
+                "uploaded": "Trasferiti",
+                "skipped": "Saltati",
+                "errors": "Errori",
+                "elapsed": "Tempo trascorso",
+                "payload": "Payload",
+                "bytesOnWire": "Byte sulla rete",
+                "savings": "Risparmio",
+                "errorDetails": "errore/i, dettagli",
+                "errorPathsRequired": "Sorgente e destinazione sono obbligatorie"
+            }
         }
     }
 }

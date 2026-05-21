@@ -94,7 +94,7 @@ export const SyncTabContent: React.FC<SyncTabContentProps> = ({
         setReport(null);
         setProgress(null);
         if (!source || !destination) {
-            setError(t('localSync.errorPathsRequired') || 'Source and destination are required');
+            setError(t('aerosync.sync.errorPathsRequired') || 'Source and destination are required');
             return;
         }
         setRunning(true);
@@ -125,13 +125,13 @@ export const SyncTabContent: React.FC<SyncTabContentProps> = ({
     return (
         <div className="p-4 space-y-4">
             <p className="text-sm text-gray-600 dark:text-gray-400">
-                {t('localSync.description') ||
+                {t('aerosync.sync.description') ||
                     'Mirror a local source directory to a local destination. Files >= 1 MiB route through the AeroRsync delta engine; smaller files use plain copy.'}
             </p>
 
             <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                    {t('localSync.source') || 'Source'}
+                    {t('aerosync.sync.source') || 'Source'}
                 </label>
                 <div className="flex gap-2">
                     <input
@@ -149,14 +149,14 @@ export const SyncTabContent: React.FC<SyncTabContentProps> = ({
                         className="px-3 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors text-sm flex items-center gap-1.5 disabled:opacity-50"
                     >
                         <FolderOpen size={16} />
-                        {t('localSync.browse') || 'Browse...'}
+                        {t('aerosync.sync.browse') || 'Browse...'}
                     </button>
                 </div>
             </div>
 
             <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                    {t('localSync.destination') || 'Destination'}
+                    {t('aerosync.sync.destination') || 'Destination'}
                 </label>
                 <div className="flex gap-2">
                     <input
@@ -174,14 +174,14 @@ export const SyncTabContent: React.FC<SyncTabContentProps> = ({
                         className="px-3 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors text-sm flex items-center gap-1.5 disabled:opacity-50"
                     >
                         <FolderOpen size={16} />
-                        {t('localSync.browse') || 'Browse...'}
+                        {t('aerosync.sync.browse') || 'Browse...'}
                     </button>
                 </div>
             </div>
 
             <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                    {t('localSync.excludeLabel') || 'Exclude patterns (comma or newline separated)'}
+                    {t('aerosync.sync.excludeLabel') || 'Exclude patterns (comma or newline separated)'}
                 </label>
                 <input
                     type="text"
@@ -202,7 +202,7 @@ export const SyncTabContent: React.FC<SyncTabContentProps> = ({
                         disabled={running}
                         className="rounded border-gray-300 dark:border-gray-600"
                     />
-                    {t('localSync.useDelta') || 'Use AeroRsync delta transport (>= 1 MiB files)'}
+                    {t('aerosync.sync.useDelta') || 'Use AeroRsync delta transport (>= 1 MiB files)'}
                 </label>
                 <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
                     <input
@@ -212,7 +212,7 @@ export const SyncTabContent: React.FC<SyncTabContentProps> = ({
                         disabled={running}
                         className="rounded border-gray-300 dark:border-gray-600"
                     />
-                    {t('localSync.dryRun') || 'Dry run (preview only)'}
+                    {t('aerosync.sync.dryRun') || 'Dry run (preview only)'}
                 </label>
             </div>
 
@@ -254,24 +254,24 @@ export const SyncTabContent: React.FC<SyncTabContentProps> = ({
                         )}
                         <span className="font-semibold text-sm">
                             {report.status === 'ok'
-                                ? t('localSync.resultOk') || 'Sync completed'
-                                : t('localSync.resultPartial') || 'Sync completed with errors'}
+                                ? t('aerosync.sync.resultOk') || 'Sync completed'
+                                : t('aerosync.sync.resultPartial') || 'Sync completed with errors'}
                         </span>
                     </div>
                     <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-700 dark:text-gray-300">
-                        <dt>{t('localSync.uploaded') || 'Uploaded'}</dt>
+                        <dt>{t('aerosync.sync.uploaded') || 'Uploaded'}</dt>
                         <dd className="font-mono">{report.uploaded}</dd>
-                        <dt>{t('localSync.skipped') || 'Skipped'}</dt>
+                        <dt>{t('aerosync.sync.skipped') || 'Skipped'}</dt>
                         <dd className="font-mono">{report.skipped}</dd>
-                        <dt>{t('localSync.errors') || 'Errors'}</dt>
+                        <dt>{t('aerosync.sync.errors') || 'Errors'}</dt>
                         <dd className="font-mono">{report.errors}</dd>
-                        <dt>{t('localSync.elapsed') || 'Elapsed'}</dt>
+                        <dt>{t('aerosync.sync.elapsed') || 'Elapsed'}</dt>
                         <dd className="font-mono">{report.elapsed_ms} ms</dd>
-                        <dt>{t('localSync.payload') || 'Payload'}</dt>
+                        <dt>{t('aerosync.sync.payload') || 'Payload'}</dt>
                         <dd className="font-mono">{formatBytes(report.total_payload_bytes)}</dd>
-                        <dt>{t('localSync.bytesOnWire') || 'Bytes on wire'}</dt>
+                        <dt>{t('aerosync.sync.bytesOnWire') || 'Bytes on wire'}</dt>
                         <dd className="font-mono">{formatBytes(report.bytes_on_wire)}</dd>
-                        <dt>{t('localSync.savings') || 'Savings'}</dt>
+                        <dt>{t('aerosync.sync.savings') || 'Savings'}</dt>
                         <dd className="font-mono">
                             {((1 - report.savings_ratio) * 100).toFixed(2)}%
                         </dd>
@@ -280,7 +280,7 @@ export const SyncTabContent: React.FC<SyncTabContentProps> = ({
                         <details className="mt-2">
                             <summary className="text-xs cursor-pointer text-red-600 dark:text-red-400">
                                 {report.error_messages.length}{' '}
-                                {t('localSync.errorDetails') || 'error(s), details'}
+                                {t('aerosync.sync.errorDetails') || 'error(s), details'}
                             </summary>
                             <ul className="mt-1 text-xs text-red-700 dark:text-red-300 max-h-32 overflow-y-auto list-disc pl-5">
                                 {report.error_messages.map((m, i) => (
@@ -301,8 +301,8 @@ export const SyncTabContent: React.FC<SyncTabContentProps> = ({
                 >
                     <Play size={16} />
                     {running
-                        ? t('localSync.running') || 'Running...'
-                        : t('localSync.start') || 'Start sync'}
+                        ? t('aerosync.sync.running') || 'Running...'
+                        : t('aerosync.sync.start') || 'Start sync'}
                 </button>
             </div>
         </div>

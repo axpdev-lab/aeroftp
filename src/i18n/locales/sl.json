@@ -3370,7 +3370,7 @@
             "activityLog": "Dnevnik dejavnosti",
             "detailedCards": "Podrobne kartice strežnikov",
             "debugPanel": "Debug Panel",
-            "aerofileSync": "AeroFile Sync..."
+            "aerosync": "AeroSync..."
         },
         "activityPanel": {
             "awaitingCommands": "Čakanje na ukaze...",
@@ -4587,29 +4587,6 @@
             "moveHereFromOtherPanelTooltip": "Premakni {count} izbranih iz drugega podokna v to podokno (F6)",
             "syncToOtherPanel": "Sinhroniziraj na drugo ploščo (delta)"
         },
-        "localSync": {
-            "title": "AeroSync: lokalno v lokalno",
-            "description": "Zrcali lokalni izvorni imenik v lokalni cilj. Datoteke ≥ 1 MiB uporabljajo vgrajeni delta pogon; manjše datoteke uporabljajo neposredno kopiranje.",
-            "source": "Vir",
-            "destination": "Cilj",
-            "browse": "Brskaj…",
-            "excludeLabel": "Vzorci izključitve (ločeni z vejico ali novo vrstico)",
-            "useDelta": "Uporabi delta transport (datoteke ≥ 1 MiB)",
-            "dryRun": "Preizkusni zagon (samo predogled)",
-            "running": "Izvaja se…",
-            "start": "Začni sinhronizacijo",
-            "resultOk": "Sinhronizacija zaključena",
-            "resultPartial": "Sinhronizacija zaključena z napakami",
-            "uploaded": "Naloženo",
-            "skipped": "Preskočeno",
-            "errors": "Napake",
-            "elapsed": "Pretečen čas",
-            "payload": "Payload",
-            "bytesOnWire": "Bajti v omrežju",
-            "savings": "Prihranek",
-            "errorDetails": "napaka(e), podrobnosti",
-            "errorPathsRequired": "Vir in cilj sta obvezna"
-        },
         "compare": {
             "title": "Primerjaj plošči",
             "notAvailable": "Odpri drugo ploščo ali oddaljeno povezavo za primerjavo."
@@ -4620,9 +4597,9 @@
             "allSkipped": "Za to prednastavitev ni izvedljivih vnosov.",
             "deletesDeferred": "Prednastavitve sinhronizacije"
         },
-        "aerofileSync": {
-            "title": "AeroFile Sync",
-            "toolbarButton": "AeroFile Sync",
+        "aerosync": {
+            "title": "AeroSync",
+            "toolbarButton": "AeroSync",
             "tabCompare": "Primerjaj",
             "tabPlan": "Načrt",
             "tabSync": "Sinhroniziraj",
@@ -4658,7 +4635,30 @@
             "executeNothing": "Nič za narediti ali pot izvedbe ni na voljo",
             "executeConfirm": "Potrdite uničujoča dejanja za omogočanje Izvedi",
             "executePreset": "Izvedi prednastavitev",
-            "execute": "Izvedi"
+            "execute": "Izvedi",
+            "sync": {
+                "title": "AeroSync: lokalno v lokalno",
+                "description": "Zrcali lokalni izvorni imenik v lokalni cilj. Datoteke ≥ 1 MiB uporabljajo vgrajeni delta pogon; manjše datoteke uporabljajo neposredno kopiranje.",
+                "source": "Vir",
+                "destination": "Cilj",
+                "browse": "Brskaj…",
+                "excludeLabel": "Vzorci izključitve (ločeni z vejico ali novo vrstico)",
+                "useDelta": "Uporabi delta transport (datoteke ≥ 1 MiB)",
+                "dryRun": "Preizkusni zagon (samo predogled)",
+                "running": "Izvaja se…",
+                "start": "Začni sinhronizacijo",
+                "resultOk": "Sinhronizacija zaključena",
+                "resultPartial": "Sinhronizacija zaključena z napakami",
+                "uploaded": "Naloženo",
+                "skipped": "Preskočeno",
+                "errors": "Napake",
+                "elapsed": "Pretečen čas",
+                "payload": "Payload",
+                "bytesOnWire": "Bajti v omrežju",
+                "savings": "Prihranek",
+                "errorDetails": "napaka(e), podrobnosti",
+                "errorPathsRequired": "Vir in cilj sta obvezna"
+            }
         }
     }
 }

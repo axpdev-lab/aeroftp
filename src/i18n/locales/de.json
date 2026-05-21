@@ -3370,7 +3370,7 @@
             "activityLog": "Aktivitätsprotokoll",
             "detailedCards": "Detaillierte Serverkarten",
             "debugPanel": "Debug Panel",
-            "aerofileSync": "AeroFile Sync..."
+            "aerosync": "AeroSync..."
         },
         "activityPanel": {
             "awaitingCommands": "Warte auf Befehle...",
@@ -4587,29 +4587,6 @@
             "moveHereFromOtherPanelTooltip": "{count} ausgewählte aus dem anderen Panel in dieses Panel verschieben (F6)",
             "syncToOtherPanel": "Mit anderem Panel synchronisieren (delta)"
         },
-        "localSync": {
-            "title": "AeroSync: lokal zu lokal",
-            "description": "Spiegelt ein lokales Quellverzeichnis in ein lokales Zielverzeichnis. Dateien ≥ 1 MiB verwenden die integrierte Delta-Engine; kleinere Dateien verwenden direktes Kopieren.",
-            "source": "Quelle",
-            "destination": "Ziel",
-            "browse": "Durchsuchen…",
-            "excludeLabel": "Ausschlussmuster (durch Komma oder Zeilenumbruch getrennt)",
-            "useDelta": "Delta-Transport verwenden (Dateien ≥ 1 MiB)",
-            "dryRun": "Testlauf (nur Vorschau)",
-            "running": "Wird ausgeführt…",
-            "start": "Synchronisierung starten",
-            "resultOk": "Synchronisierung abgeschlossen",
-            "resultPartial": "Synchronisierung mit Fehlern abgeschlossen",
-            "uploaded": "Hochgeladen",
-            "skipped": "Übersprungen",
-            "errors": "Fehler",
-            "elapsed": "Verstrichene Zeit",
-            "payload": "Payload",
-            "bytesOnWire": "Bytes im Netzwerk",
-            "savings": "Einsparung",
-            "errorDetails": "Fehler, Details",
-            "errorPathsRequired": "Quelle und Ziel sind erforderlich"
-        },
         "compare": {
             "title": "Panels vergleichen",
             "notAvailable": "Öffne ein zweites Panel oder eine Remote-Verbindung zum Vergleichen."
@@ -4620,9 +4597,9 @@
             "allSkipped": "Keine ausführbaren Einträge für diese Voreinstellung.",
             "deletesDeferred": "Sync-Voreinstellungen"
         },
-        "aerofileSync": {
-            "title": "AeroFile Sync",
-            "toolbarButton": "AeroFile Sync",
+        "aerosync": {
+            "title": "AeroSync",
+            "toolbarButton": "AeroSync",
             "tabCompare": "Vergleichen",
             "tabPlan": "Plan",
             "tabSync": "Synchronisieren",
@@ -4658,7 +4635,30 @@
             "executeNothing": "Nichts zu tun oder Ausführungspfad nicht verfügbar",
             "executeConfirm": "Destruktive Aktionen bestätigen, um Ausführen zu aktivieren",
             "executePreset": "Preset ausführen",
-            "execute": "Ausführen"
+            "execute": "Ausführen",
+            "sync": {
+                "title": "AeroSync: lokal zu lokal",
+                "description": "Spiegelt ein lokales Quellverzeichnis in ein lokales Zielverzeichnis. Dateien ≥ 1 MiB verwenden die integrierte Delta-Engine; kleinere Dateien verwenden direktes Kopieren.",
+                "source": "Quelle",
+                "destination": "Ziel",
+                "browse": "Durchsuchen…",
+                "excludeLabel": "Ausschlussmuster (durch Komma oder Zeilenumbruch getrennt)",
+                "useDelta": "Delta-Transport verwenden (Dateien ≥ 1 MiB)",
+                "dryRun": "Testlauf (nur Vorschau)",
+                "running": "Wird ausgeführt…",
+                "start": "Synchronisierung starten",
+                "resultOk": "Synchronisierung abgeschlossen",
+                "resultPartial": "Synchronisierung mit Fehlern abgeschlossen",
+                "uploaded": "Hochgeladen",
+                "skipped": "Übersprungen",
+                "errors": "Fehler",
+                "elapsed": "Verstrichene Zeit",
+                "payload": "Payload",
+                "bytesOnWire": "Bytes im Netzwerk",
+                "savings": "Einsparung",
+                "errorDetails": "Fehler, Details",
+                "errorPathsRequired": "Quelle und Ziel sind erforderlich"
+            }
         }
     }
 }

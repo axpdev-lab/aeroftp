@@ -3370,7 +3370,7 @@
             "activityLog": "Journal d'activité",
             "detailedCards": "Cartes serveur détaillées",
             "debugPanel": "Debug Panel",
-            "aerofileSync": "AeroFile Sync..."
+            "aerosync": "AeroSync..."
         },
         "activityPanel": {
             "awaitingCommands": "En attente de commandes...",
@@ -4587,29 +4587,6 @@
             "moveHereFromOtherPanelTooltip": "Déplacer les {count} sélectionnés de l'autre panneau vers ce panneau (F6)",
             "syncToOtherPanel": "Synchroniser vers l'autre panneau (delta)"
         },
-        "localSync": {
-            "title": "AeroSync : local vers local",
-            "description": "Réplique un dossier source local vers une destination locale. Les fichiers ≥ 1 MiB utilisent le moteur delta intégré ; les fichiers plus petits utilisent une copie directe.",
-            "source": "Source",
-            "destination": "Destination",
-            "browse": "Parcourir…",
-            "excludeLabel": "Motifs d'exclusion (séparés par virgule ou retour à la ligne)",
-            "useDelta": "Utiliser le transport delta (fichiers ≥ 1 MiB)",
-            "dryRun": "Simulation (aperçu uniquement)",
-            "running": "En cours…",
-            "start": "Démarrer la synchronisation",
-            "resultOk": "Synchronisation terminée",
-            "resultPartial": "Synchronisation terminée avec des erreurs",
-            "uploaded": "Transférés",
-            "skipped": "Ignorés",
-            "errors": "Erreurs",
-            "elapsed": "Temps écoulé",
-            "payload": "Payload",
-            "bytesOnWire": "Octets sur le réseau",
-            "savings": "Économies",
-            "errorDetails": "erreur(s), détails",
-            "errorPathsRequired": "La source et la destination sont requises"
-        },
         "compare": {
             "title": "Comparer les panneaux",
             "notAvailable": "Ouvrir un second panneau ou une connexion distante pour comparer."
@@ -4620,9 +4597,9 @@
             "allSkipped": "Aucune entrée exploitable pour ce préréglage.",
             "deletesDeferred": "Préréglages de synchronisation"
         },
-        "aerofileSync": {
-            "title": "AeroFile Sync",
-            "toolbarButton": "AeroFile Sync",
+        "aerosync": {
+            "title": "AeroSync",
+            "toolbarButton": "AeroSync",
             "tabCompare": "Comparer",
             "tabPlan": "Plan",
             "tabSync": "Synchroniser",
@@ -4658,7 +4635,30 @@
             "executeNothing": "Rien à faire ou chemin d'exécution non disponible",
             "executeConfirm": "Confirmez les actions destructives pour activer Exécuter",
             "executePreset": "Exécuter le preset",
-            "execute": "Exécuter"
+            "execute": "Exécuter",
+            "sync": {
+                "title": "AeroSync : local vers local",
+                "description": "Réplique un dossier source local vers une destination locale. Les fichiers ≥ 1 MiB utilisent le moteur delta intégré ; les fichiers plus petits utilisent une copie directe.",
+                "source": "Source",
+                "destination": "Destination",
+                "browse": "Parcourir…",
+                "excludeLabel": "Motifs d'exclusion (séparés par virgule ou retour à la ligne)",
+                "useDelta": "Utiliser le transport delta (fichiers ≥ 1 MiB)",
+                "dryRun": "Simulation (aperçu uniquement)",
+                "running": "En cours…",
+                "start": "Démarrer la synchronisation",
+                "resultOk": "Synchronisation terminée",
+                "resultPartial": "Synchronisation terminée avec des erreurs",
+                "uploaded": "Transférés",
+                "skipped": "Ignorés",
+                "errors": "Erreurs",
+                "elapsed": "Temps écoulé",
+                "payload": "Payload",
+                "bytesOnWire": "Octets sur le réseau",
+                "savings": "Économies",
+                "errorDetails": "erreur(s), détails",
+                "errorPathsRequired": "La source et la destination sont requises"
+            }
         }
     }
 }

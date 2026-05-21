@@ -120,8 +120,8 @@ import { DevToolsV2, PreviewFile, isPreviewable } from './components/DevTools';
 import { UniversalPreview, PreviewFileData, getPreviewCategory, isPreviewable as isMediaPreviewable } from './components/Preview';
 import { SyncPanel } from './components/SyncPanel';
 import { UnifiedTransferPlanDialog } from './components/UnifiedTransferPlanDialog';
-import { AeroFileSyncDialog } from './components/AeroFileSync/AeroFileSyncDialog';
-import type { AeroFileSyncTab, AeroFileSyncContext } from './components/AeroFileSync/types';
+import { AeroSyncDialog } from './components/AeroSync/AeroSyncDialog';
+import type { AeroSyncTab, AeroSyncContext } from './components/AeroSync/types';
 import { VaultPanel } from './components/VaultPanel';
 import { CryptomatorBrowser } from './components/CryptomatorBrowser';
 import { RcloneCryptUnlock } from './components/RcloneCryptUnlock';
@@ -621,14 +621,14 @@ const App: React.FC = () => {
     transferEntries?: Array<{ name: string; path: string; is_dir: boolean; size?: number }>;
   } | null>(null);
   const [unifiedTransferExecuting, setUnifiedTransferExecuting] = useState(false);
-  // AeroFile Sync dialog: unified 3-tab modal (Compare + Plan + Sync).
+  // AeroSync dialog: unified 3-tab modal (Compare + Plan + Sync).
   // Replaces the legacy pendingCompareView + pendingSyncPresets +
   // showLocalSyncPanel triad that lived in separate View menu entries.
   // The dialog opens with an initial tab and a precomputed context
   // (compareResult for Compare/Plan, paths for Sync).
-  const [aeroFileSync, setAeroFileSync] = useState<{
-    initialTab: AeroFileSyncTab;
-    context: AeroFileSyncContext;
+  const [aeroSync, setAeroSync] = useState<{
+    initialTab: AeroSyncTab;
+    context: AeroSyncContext;
   } | null>(null);
   const [inputDialog, setInputDialog] = useState<{ title: string; defaultValue: string; onConfirm: (v: string) => void; isPassword?: boolean; placeholder?: string } | null>(null);
   const [zohoShareLinksDialog, setZohoShareLinksDialog] = useState<{ fileName: string; links: Array<{ id: string; attributes: Record<string, unknown> }> } | null>(null);
@@ -1684,7 +1684,7 @@ interface UpdateVerificationInfo {
     // F4: open AeroSync (unified compare/plan/sync modal). Mirrors the View
     // menu shortcut so muscle memory keeps working regardless of focus.
     'F4': () => {
-      openAeroFileSync('compare');
+      openAeroSync('compare');
     },
 
     // F7 / Ctrl+N: new folder (Total Commander style F7, classic Ctrl+N).
@@ -2840,7 +2840,7 @@ interface UpdateVerificationInfo {
     { id: 'tools-terminal', label: t('devtools.sshTerminal'), category: 'tools' as CommandCategory, icon: <Terminal size={14} />, action: () => window.dispatchEvent(new CustomEvent('devtools-panel-ensure', { detail: 'terminal' })), keywords: ['ssh', 'shell', 'console'] },
     // Sync
     { id: 'sync-panel', label: t('syncPanel.title'), category: 'sync' as CommandCategory, icon: <FolderSync size={14} />, action: () => setShowSyncPanel(true), keywords: ['synchronize', 'aerosync'] },
-    { id: 'aerofile-sync', label: t('aerofileSync.title') || 'AeroFile Sync', category: 'sync' as CommandCategory, icon: <FolderSync size={14} />, action: () => openAeroFileSync('sync'), keywords: ['synchronize', 'aerosync', 'aerofile', 'compare', 'plan', 'delta', 'aerorsync'] },
+    { id: 'aerosync', label: t('aerosync.title') || 'AeroSync', category: 'sync' as CommandCategory, icon: <FolderSync size={14} />, action: () => openAeroSync('sync'), keywords: ['synchronize', 'aerosync', 'aerofile', 'compare', 'plan', 'delta', 'aerorsync'] },
     // AeroVault overlay
     {
       id: 'tools-aerovault-overlay',
@@ -6658,7 +6658,7 @@ interface UpdateVerificationInfo {
   // tabs; the Sync tab pulls from initialSource/initialDestination. When
   // no comparable pair is available the dialog still opens (Sync tab is
   // always usable), and Compare/Plan render their empty-state hint.
-  const openAeroFileSync = useCallback((initialTab: AeroFileSyncTab = 'compare') => {
+  const openAeroSync = useCallback((initialTab: AeroSyncTab = 'compare') => {
     const toCompareEntry = (item: { name: string; is_dir: boolean; size: number | null; modified: string | null }): CompareInputEntry => {
       const mtimeMs = (() => {
         if (!item.modified) return null;
@@ -6673,7 +6673,7 @@ interface UpdateVerificationInfo {
       };
     };
 
-    let context: AeroFileSyncContext;
+    let context: AeroSyncContext;
 
     if (showDualLocalPanel && (!isConnected || !showRemotePanel)) {
       const leftEntries = localFiles.map(toCompareEntry);
@@ -6715,7 +6715,7 @@ interface UpdateVerificationInfo {
       };
     }
 
-    setAeroFileSync({ initialTab, context });
+    setAeroSync({ initialTab, context });
   }, [
     showDualLocalPanel,
     showRemotePanel,
@@ -6787,8 +6787,8 @@ interface UpdateVerificationInfo {
   }, [localFiles, remoteFiles]);
 
   const handleCompareMirrorLeftToRight = useCallback((entries: CompareResultEntry[]) => {
-    const context = aeroFileSync?.context;
-    setAeroFileSync(null);
+    const context = aeroSync?.context;
+    setAeroSync(null);
     if (!context || entries.length === 0) return;
 
     if (context.pairKind === 'local-local' && context.leftPanelId) {
@@ -6832,7 +6832,7 @@ interface UpdateVerificationInfo {
       });
     }
   }, [
-    aeroFileSync,
+    aeroSync,
     stageLocalSelectionFromCompare,
     buildTransferEntriesFromSide,
     currentLocalPath,
@@ -6843,8 +6843,8 @@ interface UpdateVerificationInfo {
   ]);
 
   const handleCompareMirrorRightToLeft = useCallback((entries: CompareResultEntry[]) => {
-    const context = aeroFileSync?.context;
-    setAeroFileSync(null);
+    const context = aeroSync?.context;
+    setAeroSync(null);
     if (!context || entries.length === 0) return;
 
     if (context.pairKind === 'local-local' && context.rightPanelId) {
@@ -6887,7 +6887,7 @@ interface UpdateVerificationInfo {
       });
     }
   }, [
-    aeroFileSync,
+    aeroSync,
     stageLocalSelectionFromCompare,
     buildTransferEntriesFromSide,
     currentLocalPath,
@@ -6911,8 +6911,8 @@ interface UpdateVerificationInfo {
    * adds backend support for batch deletes inside the planner.
    */
   const executeSyncPresetPlan = useCallback((plan: PresetPlan) => {
-    const context = aeroFileSync?.context;
-    setAeroFileSync(null);
+    const context = aeroSync?.context;
+    setAeroSync(null);
     if (!context) return;
 
     const deleteSummary = {
@@ -7081,7 +7081,7 @@ interface UpdateVerificationInfo {
       'Execution for this pair kind lands with Z.3.5.2 / Z.3.8.2.',
     );
   }, [
-    aeroFileSync,
+    aeroSync,
     notify,
     t,
     localFiles,
@@ -10782,7 +10782,7 @@ interface UpdateVerificationInfo {
           onToggleAgent={() => { setDevToolsOpen(true); window.dispatchEvent(new CustomEvent('devtools-panel-solo', { detail: 'agent' })); }}
           onToggleActivityLog={() => setShowActivityLog(v => !v)}
           onToggleDebugPanel={() => setShowDebugPanel(v => !v)}
-          onShowAeroFileSync={openAeroFileSync}
+          onShowAeroSync={openAeroSync}
           onQuit={async () => { try { await getCurrentWindow().close(); } catch { /* noop */ } }}
           onCheckForUpdates={() => checkForUpdate(true)}
           hasActivity={hasActivity || hasQueueActivity}
@@ -11044,12 +11044,12 @@ interface UpdateVerificationInfo {
             onClose={() => setPendingUnifiedTransferPlan(null)}
           />
         )}
-        {aeroFileSync && (
-          <AeroFileSyncDialog
+        {aeroSync && (
+          <AeroSyncDialog
             isOpen
-            initialTab={aeroFileSync.initialTab}
-            context={aeroFileSync.context}
-            onClose={() => setAeroFileSync(null)}
+            initialTab={aeroSync.initialTab}
+            context={aeroSync.context}
+            onClose={() => setAeroSync(null)}
             onApplyMirrorLeftToRight={handleCompareMirrorLeftToRight}
             onApplyMirrorRightToLeft={handleCompareMirrorRightToLeft}
             onExecutePreset={executeSyncPresetPlan}
@@ -12256,21 +12256,21 @@ interface UpdateVerificationInfo {
                     })()}
                   </button>
                   {/* Unified AeroSync entry: lit when two panels are actionable
-                      (local+remote OR dual-local). Opens the AeroFileSyncDialog
+                      (local+remote OR dual-local). Opens the AeroSyncDialog
                       with pairKind auto-detected. Replaces the legacy per-panel
                       sync icon and the connected-only toolbar button. */}
                   {(() => {
                     const isAeroSyncActionable = (isConnected && showRemotePanel) || showDualLocalPanel;
                     return (
                       <button
-                        onClick={() => openAeroFileSync()}
+                        onClick={() => openAeroSync()}
                         className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 transition-colors ${
                           isAeroSyncActionable
                             ? 'bg-blue-500 hover:bg-blue-600 text-white shadow-sm'
                             : 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-200'
                         }`}
-                        title={t('aerosync.toolbarButton') || t('aerofileSync.toolbarButton') || t('statusBar.syncFiles')}
-                        aria-label={t('aerosync.toolbarButton') || t('aerofileSync.toolbarButton') || t('statusBar.syncFiles')}
+                        title={t('aerosync.toolbarButton') || t('statusBar.syncFiles')}
+                        aria-label={t('aerosync.toolbarButton') || t('statusBar.syncFiles')}
                       >
                         <FolderSync size={16} /> AeroSync
                       </button>

@@ -3370,7 +3370,7 @@
             "activityLog": "활동 로그",
             "detailedCards": "상세 서버 카드",
             "debugPanel": "Debug Panel",
-            "aerofileSync": "AeroFile Sync..."
+            "aerosync": "AeroSync..."
         },
         "activityPanel": {
             "awaitingCommands": "명령 대기 중...",
@@ -4587,29 +4587,6 @@
             "moveHereFromOtherPanelTooltip": "다른 패널에서 선택된 {count}개를 이 패널로 이동 (F6)",
             "syncToOtherPanel": "다른 패널로 동기화 (delta)"
         },
-        "localSync": {
-            "title": "AeroSync: 로컬 대 로컬",
-            "description": "로컬 원본 디렉터리를 로컬 대상으로 미러링합니다. 1 MiB 이상의 파일은 내장 delta 엔진을 사용하고, 더 작은 파일은 직접 복사를 사용합니다.",
-            "source": "원본",
-            "destination": "대상",
-            "browse": "찾아보기…",
-            "excludeLabel": "제외 패턴 (쉼표 또는 줄바꿈으로 구분)",
-            "useDelta": "Delta 전송 사용 (≥ 1 MiB 파일)",
-            "dryRun": "시험 실행 (미리 보기만)",
-            "running": "실행 중…",
-            "start": "동기화 시작",
-            "resultOk": "동기화 완료",
-            "resultPartial": "오류와 함께 동기화 완료",
-            "uploaded": "업로드됨",
-            "skipped": "건너뜀",
-            "errors": "오류",
-            "elapsed": "경과 시간",
-            "payload": "Payload",
-            "bytesOnWire": "네트워크 바이트",
-            "savings": "절약",
-            "errorDetails": "개의 오류, 세부 정보",
-            "errorPathsRequired": "원본과 대상은 필수입니다"
-        },
         "compare": {
             "title": "패널 비교",
             "notAvailable": "비교하려면 두 번째 패널이나 원격 연결을 여십시오."
@@ -4620,9 +4597,9 @@
             "allSkipped": "이 프리셋에 대해 실행 가능한 항목이 없습니다.",
             "deletesDeferred": "동기화 프리셋"
         },
-        "aerofileSync": {
-            "title": "AeroFile Sync",
-            "toolbarButton": "AeroFile Sync",
+        "aerosync": {
+            "title": "AeroSync",
+            "toolbarButton": "AeroSync",
             "tabCompare": "비교",
             "tabPlan": "계획",
             "tabSync": "동기화",
@@ -4658,7 +4635,30 @@
             "executeNothing": "수행할 작업이 없거나 실행 경로를 사용할 수 없습니다",
             "executeConfirm": "실행을 활성화하려면 파괴적 동작을 확인하세요",
             "executePreset": "프리셋 실행",
-            "execute": "실행"
+            "execute": "실행",
+            "sync": {
+                "title": "AeroSync: 로컬 대 로컬",
+                "description": "로컬 원본 디렉터리를 로컬 대상으로 미러링합니다. 1 MiB 이상의 파일은 내장 delta 엔진을 사용하고, 더 작은 파일은 직접 복사를 사용합니다.",
+                "source": "원본",
+                "destination": "대상",
+                "browse": "찾아보기…",
+                "excludeLabel": "제외 패턴 (쉼표 또는 줄바꿈으로 구분)",
+                "useDelta": "Delta 전송 사용 (≥ 1 MiB 파일)",
+                "dryRun": "시험 실행 (미리 보기만)",
+                "running": "실행 중…",
+                "start": "동기화 시작",
+                "resultOk": "동기화 완료",
+                "resultPartial": "오류와 함께 동기화 완료",
+                "uploaded": "업로드됨",
+                "skipped": "건너뜀",
+                "errors": "오류",
+                "elapsed": "경과 시간",
+                "payload": "Payload",
+                "bytesOnWire": "네트워크 바이트",
+                "savings": "절약",
+                "errorDetails": "개의 오류, 세부 정보",
+                "errorPathsRequired": "원본과 대상은 필수입니다"
+            }
         }
     }
 }

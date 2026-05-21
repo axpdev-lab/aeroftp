@@ -3370,7 +3370,7 @@
             "activityLog": "Jurnal activitate",
             "detailedCards": "Carduri server detaliate",
             "debugPanel": "Debug Panel",
-            "aerofileSync": "AeroFile Sync..."
+            "aerosync": "AeroSync..."
         },
         "activityPanel": {
             "awaitingCommands": "Se asteapta comenzi...",
@@ -4587,29 +4587,6 @@
             "moveHereFromOtherPanelTooltip": "Mută {count} selectate din celălalt panou în acest panou (F6)",
             "syncToOtherPanel": "Sincronizează cu celălalt panou (delta)"
         },
-        "localSync": {
-            "title": "AeroSync: de la local la local",
-            "description": "Oglindește un director sursă local într-o destinație locală. Fișierele ≥ 1 MiB folosesc motorul delta integrat; fișierele mai mici folosesc copierea directă.",
-            "source": "Sursă",
-            "destination": "Destinație",
-            "browse": "Răsfoiește…",
-            "excludeLabel": "Tipare de excludere (separate prin virgulă sau linie nouă)",
-            "useDelta": "Folosește transportul delta (fișiere ≥ 1 MiB)",
-            "dryRun": "Rulare de probă (doar previzualizare)",
-            "running": "În execuție…",
-            "start": "Pornește sincronizarea",
-            "resultOk": "Sincronizare finalizată",
-            "resultPartial": "Sincronizare finalizată cu erori",
-            "uploaded": "Încărcate",
-            "skipped": "Omise",
-            "errors": "Erori",
-            "elapsed": "Timp scurs",
-            "payload": "Payload",
-            "bytesOnWire": "Octeți în rețea",
-            "savings": "Economie",
-            "errorDetails": "eroare(eri), detalii",
-            "errorPathsRequired": "Sursa și destinația sunt obligatorii"
-        },
         "compare": {
             "title": "Compară panourile",
             "notAvailable": "Deschide un al doilea panou sau o conexiune la distanță pentru comparare."
@@ -4620,9 +4597,9 @@
             "allSkipped": "Nu există intrări executabile pentru această presetare.",
             "deletesDeferred": "Presetări de sincronizare"
         },
-        "aerofileSync": {
-            "title": "AeroFile Sync",
-            "toolbarButton": "AeroFile Sync",
+        "aerosync": {
+            "title": "AeroSync",
+            "toolbarButton": "AeroSync",
             "tabCompare": "Compară",
             "tabPlan": "Plan",
             "tabSync": "Sincronizează",
@@ -4658,7 +4635,30 @@
             "executeNothing": "Nimic de făcut sau calea de execuție indisponibilă",
             "executeConfirm": "Confirmă acțiunile distructive pentru a activa Execută",
             "executePreset": "Execută presetarea",
-            "execute": "Execută"
+            "execute": "Execută",
+            "sync": {
+                "title": "AeroSync: de la local la local",
+                "description": "Oglindește un director sursă local într-o destinație locală. Fișierele ≥ 1 MiB folosesc motorul delta integrat; fișierele mai mici folosesc copierea directă.",
+                "source": "Sursă",
+                "destination": "Destinație",
+                "browse": "Răsfoiește…",
+                "excludeLabel": "Tipare de excludere (separate prin virgulă sau linie nouă)",
+                "useDelta": "Folosește transportul delta (fișiere ≥ 1 MiB)",
+                "dryRun": "Rulare de probă (doar previzualizare)",
+                "running": "În execuție…",
+                "start": "Pornește sincronizarea",
+                "resultOk": "Sincronizare finalizată",
+                "resultPartial": "Sincronizare finalizată cu erori",
+                "uploaded": "Încărcate",
+                "skipped": "Omise",
+                "errors": "Erori",
+                "elapsed": "Timp scurs",
+                "payload": "Payload",
+                "bytesOnWire": "Octeți în rețea",
+                "savings": "Economie",
+                "errorDetails": "eroare(eri), detalii",
+                "errorPathsRequired": "Sursa și destinația sunt obligatorii"
+            }
         }
     }
 }

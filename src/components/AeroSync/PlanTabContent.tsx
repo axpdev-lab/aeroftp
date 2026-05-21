@@ -122,7 +122,7 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
     if (!result) {
         return (
             <div className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">
-                {t('aerofileSync.planUnavailable') || 'A compare result is required before picking a preset. Open the Compare tab first.'}
+                {t('aerosync.planUnavailable') || 'A compare result is required before picking a preset. Open the Compare tab first.'}
             </div>
         );
     }
@@ -163,7 +163,7 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                                         : 'bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-900/40 dark:text-gray-300 dark:hover:bg-gray-700'
                                 }`}
                             >
-                                {t('aerofileSync.directionLeftRight') || 'Left to Right'}
+                                {t('aerosync.directionLeftRight') || 'Left to Right'}
                             </button>
                             <button
                                 type="button"
@@ -174,7 +174,7 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                                         : 'bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-900/40 dark:text-gray-300 dark:hover:bg-gray-700'
                                 }`}
                             >
-                                {t('aerofileSync.directionRightLeft') || 'Right to Left'}
+                                {t('aerosync.directionRightLeft') || 'Right to Left'}
                             </button>
                         </div>
                     )}
@@ -186,11 +186,11 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                     <div>
                         <div className="mb-1 flex items-center justify-between gap-2">
                             <label className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                {t('aerofileSync.conflictPolicy') || 'Conflict policy'}
+                                {t('aerosync.conflictPolicy') || 'Conflict policy'}
                             </label>
                             {preset === 'mirror' && (
                                 <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
-                                    {t('aerofileSync.ignoredForMirror') || 'IGNORED FOR MIRROR'}
+                                    {t('aerosync.ignoredForMirror') || 'IGNORED FOR MIRROR'}
                                 </span>
                             )}
                         </div>
@@ -216,7 +216,7 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                     <div>
                         <div className="mb-1 flex items-center justify-between gap-2">
                             <label className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                {t('aerofileSync.versionedBackup') || 'Versioned backup'}
+                                {t('aerosync.versionedBackup') || 'Versioned backup'}
                             </label>
                             <label className="inline-flex cursor-pointer items-center gap-1 text-[10px] font-medium text-gray-500 dark:text-gray-400">
                                 <input
@@ -225,7 +225,7 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                                     onChange={(event) => setVersionedBackup((prev) => ({ ...prev, enabled: event.target.checked }))}
                                     className="h-3 w-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                                 />
-                                {t('aerofileSync.enable') || 'Enable'}
+                                {t('aerosync.enable') || 'Enable'}
                             </label>
                         </div>
                         <input
@@ -237,7 +237,7 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                             className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 font-mono text-xs text-gray-800 focus:border-blue-400 focus:outline-none disabled:opacity-50 dark:border-gray-600 dark:bg-gray-900/60 dark:text-gray-100"
                         />
                         <p className="mt-1 text-[10px] leading-snug text-gray-500 dark:text-gray-400">
-                            {t('aerofileSync.versionedBackupHint') || 'Capture the destination copy under this directory before each overwrite or delete.'}
+                            {t('aerosync.versionedBackupHint') || 'Capture the destination copy under this directory before each overwrite or delete.'}
                         </p>
                     </div>
                 </div>
@@ -247,27 +247,27 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                 <div className="grid gap-3 sm:grid-cols-4">
                     <div className="rounded-md bg-gray-50 p-2 dark:bg-gray-900/40">
                         <div className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                            {t('aerofileSync.actionable') || 'Actionable'}
+                            {t('aerosync.actionable') || 'Actionable'}
                         </div>
                         <div className="text-base font-semibold text-gray-900 dark:text-white">{plan.totals.actionable}</div>
                     </div>
                     <div className="rounded-md bg-gray-50 p-2 dark:bg-gray-900/40">
                         <div className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                            {t('aerofileSync.skipped') || 'Skipped'}
+                            {t('aerosync.skipped') || 'Skipped'}
                         </div>
                         <div className="text-base font-semibold text-gray-900 dark:text-white">{plan.totals.skipped}</div>
                     </div>
                     <div className="rounded-md bg-gray-50 p-2 dark:bg-gray-900/40">
                         <div className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                            {t('aerofileSync.transfer') || 'Transfer'}
+                            {t('aerosync.transfer') || 'Transfer'}
                         </div>
                         <div className="text-base font-semibold text-gray-900 dark:text-white">{formatBytes(plan.totals.transferBytes)}</div>
                     </div>
                     <div className={`rounded-md p-2 ${plan.hasDestructive ? 'bg-amber-50 dark:bg-amber-900/30' : 'bg-gray-50 dark:bg-gray-900/40'}`}>
                         <div className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
                             {versionedBackup.enabled
-                                ? (t('aerofileSync.versionedBackup') || 'Versioned backup')
-                                : (t('aerofileSync.destructive') || 'Destructive')}
+                                ? (t('aerosync.versionedBackup') || 'Versioned backup')
+                                : (t('aerosync.destructive') || 'Destructive')}
                         </div>
                         <div className={`text-base font-semibold ${plan.hasDestructive ? 'text-amber-700 dark:text-amber-200' : 'text-gray-900 dark:text-white'}`}>
                             {versionedBackup.enabled
@@ -282,10 +282,10 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                 <table className="w-full text-[11px]">
                     <thead className="text-left text-gray-500 dark:text-gray-400">
                         <tr>
-                            <th className="px-2 py-1 font-medium">{t('aerofileSync.bucket') || 'Bucket'}</th>
-                            <th className="px-2 py-1 font-medium text-right">{t('aerofileSync.count') || 'Count'}</th>
-                            <th className="px-2 py-1 font-medium">{t('aerofileSync.action') || 'Action'}</th>
-                            <th className="px-2 py-1 font-medium text-right">{t('aerofileSync.transfer') || 'Transfer'}</th>
+                            <th className="px-2 py-1 font-medium">{t('aerosync.bucket') || 'Bucket'}</th>
+                            <th className="px-2 py-1 font-medium text-right">{t('aerosync.count') || 'Count'}</th>
+                            <th className="px-2 py-1 font-medium">{t('aerosync.action') || 'Action'}</th>
+                            <th className="px-2 py-1 font-medium text-right">{t('aerosync.transfer') || 'Transfer'}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -320,14 +320,14 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                         <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-300" />
                         <div className="flex-1 text-[12px] text-amber-900 dark:text-amber-100">
                             <p className="font-semibold">
-                                {t('aerofileSync.destructiveWarning') || 'This preset will delete or overwrite newer files.'}
+                                {t('aerosync.destructiveWarning') || 'This preset will delete or overwrite newer files.'}
                             </p>
                             <p className="text-[11px] text-amber-800 dark:text-amber-200/90">
-                                {plan.totals.deleteRight + plan.totals.deleteLeft} {t('aerofileSync.delete') || 'delete'}
+                                {plan.totals.deleteRight + plan.totals.deleteLeft} {t('aerosync.delete') || 'delete'}
                                 <span className="mx-1">&middot;</span>
-                                {plan.totals.overwriteRight + plan.totals.overwriteLeft} {t('aerofileSync.overwrite') || 'overwrite'}
+                                {plan.totals.overwriteRight + plan.totals.overwriteLeft} {t('aerosync.overwrite') || 'overwrite'}
                                 <span className="mx-1">&middot;</span>
-                                {plan.totals.conflicts} {t('aerofileSync.conflicts') || 'conflict'}
+                                {plan.totals.conflicts} {t('aerosync.conflicts') || 'conflict'}
                             </p>
                             <label className="mt-2 inline-flex cursor-pointer items-center gap-2 text-[11px] font-medium">
                                 <input
@@ -336,7 +336,7 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                                     onChange={(event) => setConfirmedDestructive(event.target.checked)}
                                     className="h-3.5 w-3.5 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
                                 />
-                                {t('aerofileSync.confirmDestructive') || 'I have reviewed the destructive actions and want to proceed.'}
+                                {t('aerosync.confirmDestructive') || 'I have reviewed the destructive actions and want to proceed.'}
                             </label>
                         </div>
                     </div>
@@ -346,8 +346,8 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
             <div className="flex flex-col gap-2 border-t border-gray-200 px-4 py-3 dark:border-gray-700 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-[11px] text-gray-500 dark:text-gray-400">
                     {canExecute
-                        ? (t('aerofileSync.executeHint') || 'Execute stages the selection and dispatches via the unified transfer planner.')
-                        : (t('aerofileSync.executeUnavailable') || 'Execution is not available for this pair kind.')}
+                        ? (t('aerosync.executeHint') || 'Execute stages the selection and dispatches via the unified transfer planner.')
+                        : (t('aerosync.executeUnavailable') || 'Execution is not available for this pair kind.')}
                 </p>
                 <div className="flex flex-wrap justify-end gap-2">
                     <button
@@ -359,14 +359,14 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                         }`}
                         title={
                             !executable
-                                ? (t('aerofileSync.executeNothing') || 'Nothing to do or execution path not available')
+                                ? (t('aerosync.executeNothing') || 'Nothing to do or execution path not available')
                                 : needsConfirm && !confirmedDestructive
-                                    ? (t('aerofileSync.executeConfirm') || 'Confirm destructive actions to enable Execute')
-                                    : (t('aerofileSync.executePreset') || 'Execute preset')
+                                    ? (t('aerosync.executeConfirm') || 'Confirm destructive actions to enable Execute')
+                                    : (t('aerosync.executePreset') || 'Execute preset')
                         }
                     >
                         {plan.hasDestructive ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />}
-                        {t('aerofileSync.execute') || 'Execute'} {describePreset(preset).name} ({plan.totals.actionable})
+                        {t('aerosync.execute') || 'Execute'} {describePreset(preset).name} ({plan.totals.actionable})
                     </button>
                 </div>
             </div>

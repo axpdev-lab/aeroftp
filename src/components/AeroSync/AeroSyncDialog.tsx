@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet -- AI-assisted (see AI-TRANSPARENCY.md)
 //
-// AeroFile Sync: unified modal that bundles Compare, Plan, and Sync into
-// a single 3-tab workflow. Replaces the legacy LocalSyncPanel,
+// AeroSync: unified modal that bundles Compare, Plan, and Sync into a
+// single 3-tab workflow. Replaces the legacy LocalSyncPanel,
 // UnifiedCompareDialog, and SyncPresetDialog dialogs which were
 // disconnected entries in the View menu.
 
@@ -13,11 +13,11 @@ import { useDraggableModal } from '../../hooks/useDraggableModal';
 import { CompareTabContent } from './CompareTabContent';
 import { PlanTabContent } from './PlanTabContent';
 import { SyncTabContent } from './SyncTabContent';
-import type { AeroFileSyncDialogProps, AeroFileSyncTab } from './types';
+import type { AeroSyncDialogProps, AeroSyncTab } from './types';
 
-const TAB_ORDER: AeroFileSyncTab[] = ['compare', 'plan', 'sync'];
+const TAB_ORDER: AeroSyncTab[] = ['compare', 'plan', 'sync'];
 
-export const AeroFileSyncDialog: React.FC<AeroFileSyncDialogProps> = ({
+export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
     isOpen,
     onClose,
     initialTab = 'compare',
@@ -28,7 +28,7 @@ export const AeroFileSyncDialog: React.FC<AeroFileSyncDialogProps> = ({
 }) => {
     const t = useTranslation();
     const modalDrag = useDraggableModal();
-    const [activeTab, setActiveTab] = React.useState<AeroFileSyncTab>(initialTab);
+    const [activeTab, setActiveTab] = React.useState<AeroSyncTab>(initialTab);
 
     React.useEffect(() => {
         if (isOpen) setActiveTab(initialTab);
@@ -41,10 +41,10 @@ export const AeroFileSyncDialog: React.FC<AeroFileSyncDialogProps> = ({
         || context.pairKind === 'remote-local';
     const canExecutePlan = canMirrorAny;
 
-    const tabLabels: Record<AeroFileSyncTab, string> = {
-        compare: t('aerofileSync.tabCompare') || 'Compare',
-        plan: t('aerofileSync.tabPlan') || 'Plan',
-        sync: t('aerofileSync.tabSync') || 'Sync',
+    const tabLabels: Record<AeroSyncTab, string> = {
+        compare: t('aerosync.tabCompare') || 'Compare',
+        plan: t('aerosync.tabPlan') || 'Plan',
+        sync: t('aerosync.tabSync') || 'Sync',
     };
 
     return (
@@ -52,7 +52,7 @@ export const AeroFileSyncDialog: React.FC<AeroFileSyncDialogProps> = ({
             className="fixed inset-0 z-[9998] flex items-start justify-center pt-[5vh] bg-black/50 animate-scale-in"
             role="dialog"
             aria-modal="true"
-            aria-label={t('aerofileSync.title') || 'AeroFile Sync'}
+            aria-label={t('aerosync.title') || 'AeroSync'}
             onClick={onClose}
         >
             <div
@@ -67,7 +67,7 @@ export const AeroFileSyncDialog: React.FC<AeroFileSyncDialogProps> = ({
                     <div className="flex items-center gap-2 pointer-events-none">
                         <FolderSync size={20} className="text-blue-500" />
                         <h2 className="text-lg font-semibold">
-                            {t('aerofileSync.title') || 'AeroFile Sync'}
+                            {t('aerosync.title') || 'AeroSync'}
                         </h2>
                     </div>
                     <button
@@ -135,4 +135,4 @@ export const AeroFileSyncDialog: React.FC<AeroFileSyncDialogProps> = ({
     );
 };
 
-export default AeroFileSyncDialog;
+export default AeroSyncDialog;

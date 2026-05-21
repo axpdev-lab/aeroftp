@@ -3370,7 +3370,7 @@
             "activityLog": "Aktivitetslog",
             "detailedCards": "Detaljerede serverkort",
             "debugPanel": "Debug Panel",
-            "aerofileSync": "AeroFile Sync..."
+            "aerosync": "AeroSync..."
         },
         "activityPanel": {
             "awaitingCommands": "Afventer kommandoer...",
@@ -4587,29 +4587,6 @@
             "moveHereFromOtherPanelTooltip": "Flyt {count} valgte fra det andet panel til dette panel (F6)",
             "syncToOtherPanel": "Synkroniser til andet panel (delta)"
         },
-        "localSync": {
-            "title": "AeroSync: lokal til lokal",
-            "description": "Spejler en lokal kildemappe til en lokal destinationsmappe. Filer ≥ 1 MiB bruger den indbyggede delta-motor; mindre filer bruger direkte kopiering.",
-            "source": "Kilde",
-            "destination": "Destination",
-            "browse": "Gennemse…",
-            "excludeLabel": "Ekskluderingsmønstre (adskilt med komma eller linjeskift)",
-            "useDelta": "Brug delta-transport (filer ≥ 1 MiB)",
-            "dryRun": "Tørkørsel (kun forhåndsvisning)",
-            "running": "Kører…",
-            "start": "Start synkronisering",
-            "resultOk": "Synkronisering fuldført",
-            "resultPartial": "Synkronisering fuldført med fejl",
-            "uploaded": "Uploadet",
-            "skipped": "Sprunget over",
-            "errors": "Fejl",
-            "elapsed": "Forløbet tid",
-            "payload": "Payload",
-            "bytesOnWire": "Bytes på netværket",
-            "savings": "Besparelse",
-            "errorDetails": "fejl, detaljer",
-            "errorPathsRequired": "Kilde og destination er påkrævet"
-        },
         "compare": {
             "title": "Sammenlign paneler",
             "notAvailable": "Åbn et andet panel eller en fjernforbindelse for at sammenligne."
@@ -4620,9 +4597,9 @@
             "allSkipped": "Ingen handlingsbare poster for denne preset.",
             "deletesDeferred": "Synkroniseringspresets"
         },
-        "aerofileSync": {
-            "title": "AeroFile Sync",
-            "toolbarButton": "AeroFile Sync",
+        "aerosync": {
+            "title": "AeroSync",
+            "toolbarButton": "AeroSync",
             "tabCompare": "Sammenlign",
             "tabPlan": "Plan",
             "tabSync": "Synkronisér",
@@ -4658,7 +4635,30 @@
             "executeNothing": "Intet at gøre eller udførelsessti ikke tilgængelig",
             "executeConfirm": "Bekræft destruktive handlinger for at aktivere Udfør",
             "executePreset": "Udfør forudindstilling",
-            "execute": "Udfør"
+            "execute": "Udfør",
+            "sync": {
+                "title": "AeroSync: lokal til lokal",
+                "description": "Spejler en lokal kildemappe til en lokal destinationsmappe. Filer ≥ 1 MiB bruger den indbyggede delta-motor; mindre filer bruger direkte kopiering.",
+                "source": "Kilde",
+                "destination": "Destination",
+                "browse": "Gennemse…",
+                "excludeLabel": "Ekskluderingsmønstre (adskilt med komma eller linjeskift)",
+                "useDelta": "Brug delta-transport (filer ≥ 1 MiB)",
+                "dryRun": "Tørkørsel (kun forhåndsvisning)",
+                "running": "Kører…",
+                "start": "Start synkronisering",
+                "resultOk": "Synkronisering fuldført",
+                "resultPartial": "Synkronisering fuldført med fejl",
+                "uploaded": "Uploadet",
+                "skipped": "Sprunget over",
+                "errors": "Fejl",
+                "elapsed": "Forløbet tid",
+                "payload": "Payload",
+                "bytesOnWire": "Bytes på netværket",
+                "savings": "Besparelse",
+                "errorDetails": "fejl, detaljer",
+                "errorPathsRequired": "Kilde og destination er påkrævet"
+            }
         }
     }
 }

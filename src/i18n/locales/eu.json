@@ -3370,7 +3370,7 @@
             "activityLog": "Jarduera erregistroa",
             "detailedCards": "Zerbitzari-txartel zehatzak",
             "debugPanel": "Debug Panel",
-            "aerofileSync": "AeroFile Sync..."
+            "aerosync": "AeroSync..."
         },
         "activityPanel": {
             "awaitingCommands": "Komandoen zain...",
@@ -4606,29 +4606,6 @@
             "moveHereFromOtherPanelTooltip": "Eraman beste paneletik hautatutako {count} panel honetara (F6)",
             "syncToOtherPanel": "Sinkronizatu beste paneletik (delta)"
         },
-        "localSync": {
-            "title": "AeroSync: lokaletik lokalera",
-            "description": "Iturburu-direktorio lokal bat helmuga lokal batera ispilatzen du. ≥ 1 MiB-eko fitxategiek prozesuko delta motorra erabiltzen dute; fitxategi txikiagoek kopia zuzena erabiltzen dute.",
-            "source": "Iturburua",
-            "destination": "Helmuga",
-            "browse": "Arakatu…",
-            "excludeLabel": "Bazterketa-ereduak (komaz edo lerro berriz bereiziak)",
-            "useDelta": "Erabili delta garraioa (≥ 1 MiB-eko fitxategiak)",
-            "dryRun": "Saiakera (aurrebista soilik)",
-            "running": "Exekutatzen…",
-            "start": "Hasi sinkronizazioa",
-            "resultOk": "Sinkronizazioa amaitu da",
-            "resultPartial": "Sinkronizazioa erroreekin amaitu da",
-            "uploaded": "Igota",
-            "skipped": "Saltatuta",
-            "errors": "Erroreak",
-            "elapsed": "Igarotako denbora",
-            "payload": "Payload",
-            "bytesOnWire": "Sareko byteak",
-            "savings": "Aurrezpena",
-            "errorDetails": "errore(ak), xehetasunak",
-            "errorPathsRequired": "Iturburua eta helmuga beharrezkoak dira"
-        },
         "compare": {
             "title": "Konparatu paneletak",
             "notAvailable": "Ireki bigarren panel bat edo urruneko konexio bat konparatzeko."
@@ -4639,9 +4616,9 @@
             "allSkipped": "Aurrezarpen honetarako ez dago sarrera exekutagarririk.",
             "deletesDeferred": "Sinkronizazio aurrezarpenak"
         },
-        "aerofileSync": {
-            "title": "AeroFile Sync",
-            "toolbarButton": "AeroFile Sync",
+        "aerosync": {
+            "title": "AeroSync",
+            "toolbarButton": "AeroSync",
             "tabCompare": "Konparatu",
             "tabPlan": "Plana",
             "tabSync": "Sinkronizatu",
@@ -4677,7 +4654,30 @@
             "executeNothing": "Egitekorik ez edo exekuzio-bidea ez dago erabilgarri",
             "executeConfirm": "Berretsi suntsipen ekintzak Exekutatu gaitzeko",
             "executePreset": "Exekutatu aurrezarpena",
-            "execute": "Exekutatu"
+            "execute": "Exekutatu",
+            "sync": {
+                "title": "AeroSync: lokaletik lokalera",
+                "description": "Iturburu-direktorio lokal bat helmuga lokal batera ispilatzen du. ≥ 1 MiB-eko fitxategiek prozesuko delta motorra erabiltzen dute; fitxategi txikiagoek kopia zuzena erabiltzen dute.",
+                "source": "Iturburua",
+                "destination": "Helmuga",
+                "browse": "Arakatu…",
+                "excludeLabel": "Bazterketa-ereduak (komaz edo lerro berriz bereiziak)",
+                "useDelta": "Erabili delta garraioa (≥ 1 MiB-eko fitxategiak)",
+                "dryRun": "Saiakera (aurrebista soilik)",
+                "running": "Exekutatzen…",
+                "start": "Hasi sinkronizazioa",
+                "resultOk": "Sinkronizazioa amaitu da",
+                "resultPartial": "Sinkronizazioa erroreekin amaitu da",
+                "uploaded": "Igota",
+                "skipped": "Saltatuta",
+                "errors": "Erroreak",
+                "elapsed": "Igarotako denbora",
+                "payload": "Payload",
+                "bytesOnWire": "Sareko byteak",
+                "savings": "Aurrezpena",
+                "errorDetails": "errore(ak), xehetasunak",
+                "errorPathsRequired": "Iturburua eta helmuga beharrezkoak dira"
+            }
         }
     }
 }

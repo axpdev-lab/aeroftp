@@ -3370,7 +3370,7 @@
             "activityLog": "Protokol aktivit",
             "detailedCards": "Detailní karty serverů",
             "debugPanel": "Debug Panel",
-            "aerofileSync": "AeroFile Sync..."
+            "aerosync": "AeroSync..."
         },
         "activityPanel": {
             "awaitingCommands": "Čekání na příkazy...",
@@ -4587,29 +4587,6 @@
             "moveHereFromOtherPanelTooltip": "Přesunout {count} vybraných z druhého panelu do tohoto panelu (F6)",
             "syncToOtherPanel": "Synchronizovat na druhý panel (delta)"
         },
-        "localSync": {
-            "title": "AeroSync: místní na místní",
-            "description": "Zrcadlí místní zdrojový adresář do místního cílového adresáře. Soubory ≥ 1 MiB používají interní delta engine; menší soubory používají přímou kopii.",
-            "source": "Zdroj",
-            "destination": "Cíl",
-            "browse": "Procházet…",
-            "excludeLabel": "Vzory pro vyloučení (oddělené čárkou nebo novým řádkem)",
-            "useDelta": "Použít delta transport (soubory ≥ 1 MiB)",
-            "dryRun": "Zkušební běh (pouze náhled)",
-            "running": "Probíhá…",
-            "start": "Spustit synchronizaci",
-            "resultOk": "Synchronizace dokončena",
-            "resultPartial": "Synchronizace dokončena s chybami",
-            "uploaded": "Nahráno",
-            "skipped": "Přeskočeno",
-            "errors": "Chyby",
-            "elapsed": "Uplynulý čas",
-            "payload": "Payload",
-            "bytesOnWire": "Bajty v síti",
-            "savings": "Úspora",
-            "errorDetails": "chyba(y), podrobnosti",
-            "errorPathsRequired": "Zdroj a cíl jsou povinné"
-        },
         "compare": {
             "title": "Porovnat panely",
             "notAvailable": "Otevři druhý panel nebo vzdálené připojení pro porovnání."
@@ -4620,9 +4597,9 @@
             "allSkipped": "Žádné proveditelné položky pro tuto předvolbu.",
             "deletesDeferred": "Předvolby synchronizace"
         },
-        "aerofileSync": {
-            "title": "AeroFile Sync",
-            "toolbarButton": "AeroFile Sync",
+        "aerosync": {
+            "title": "AeroSync",
+            "toolbarButton": "AeroSync",
             "tabCompare": "Porovnat",
             "tabPlan": "Plán",
             "tabSync": "Synchronizovat",
@@ -4658,7 +4635,30 @@
             "executeNothing": "Nic k provedení nebo cesta provedení není k dispozici",
             "executeConfirm": "Potvrďte destruktivní akce pro povolení Provést",
             "executePreset": "Provést předvolbu",
-            "execute": "Provést"
+            "execute": "Provést",
+            "sync": {
+                "title": "AeroSync: místní na místní",
+                "description": "Zrcadlí místní zdrojový adresář do místního cílového adresáře. Soubory ≥ 1 MiB používají interní delta engine; menší soubory používají přímou kopii.",
+                "source": "Zdroj",
+                "destination": "Cíl",
+                "browse": "Procházet…",
+                "excludeLabel": "Vzory pro vyloučení (oddělené čárkou nebo novým řádkem)",
+                "useDelta": "Použít delta transport (soubory ≥ 1 MiB)",
+                "dryRun": "Zkušební běh (pouze náhled)",
+                "running": "Probíhá…",
+                "start": "Spustit synchronizaci",
+                "resultOk": "Synchronizace dokončena",
+                "resultPartial": "Synchronizace dokončena s chybami",
+                "uploaded": "Nahráno",
+                "skipped": "Přeskočeno",
+                "errors": "Chyby",
+                "elapsed": "Uplynulý čas",
+                "payload": "Payload",
+                "bytesOnWire": "Bajty v síti",
+                "savings": "Úspora",
+                "errorDetails": "chyba(y), podrobnosti",
+                "errorPathsRequired": "Zdroj a cíl jsou povinné"
+            }
         }
     }
 }

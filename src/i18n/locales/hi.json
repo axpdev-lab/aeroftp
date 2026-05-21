@@ -3370,7 +3370,7 @@
             "activityLog": "गतिविधि लॉग",
             "detailedCards": "विस्तृत सर्वर कार्ड",
             "debugPanel": "Debug Panel",
-            "aerofileSync": "AeroFile Sync..."
+            "aerosync": "AeroSync..."
         },
         "activityPanel": {
             "awaitingCommands": "कमांड की प्रतीक्षा में...",
@@ -4587,29 +4587,6 @@
             "moveHereFromOtherPanelTooltip": "दूसरे पैनल से चयनित {count} को इस पैनल में स्थानांतरित करें (F6)",
             "syncToOtherPanel": "दूसरे पैनल में सिंक करें (delta)"
         },
-        "localSync": {
-            "title": "AeroSync: स्थानीय से स्थानीय",
-            "description": "एक स्थानीय स्रोत डायरेक्टरी को स्थानीय गंतव्य पर मिरर करता है। ≥ 1 MiB फ़ाइलें आंतरिक delta इंजन का उपयोग करती हैं; छोटी फ़ाइलें सीधी कॉपी का उपयोग करती हैं।",
-            "source": "स्रोत",
-            "destination": "गंतव्य",
-            "browse": "ब्राउज़…",
-            "excludeLabel": "बहिष्करण पैटर्न (कॉमा या नई पंक्ति से अलग)",
-            "useDelta": "Delta ट्रांसपोर्ट का उपयोग करें (≥ 1 MiB फ़ाइलें)",
-            "dryRun": "ड्राई रन (केवल पूर्वावलोकन)",
-            "running": "चल रहा है…",
-            "start": "सिंक प्रारंभ करें",
-            "resultOk": "सिंक पूर्ण हुआ",
-            "resultPartial": "सिंक त्रुटियों के साथ पूर्ण हुआ",
-            "uploaded": "अपलोड किए गए",
-            "skipped": "छोड़े गए",
-            "errors": "त्रुटियाँ",
-            "elapsed": "बीता समय",
-            "payload": "Payload",
-            "bytesOnWire": "नेटवर्क पर बाइट्स",
-            "savings": "बचत",
-            "errorDetails": "त्रुटि(याँ), विवरण",
-            "errorPathsRequired": "स्रोत और गंतव्य आवश्यक हैं"
-        },
         "compare": {
             "title": "पैनल तुलना",
             "notAvailable": "तुलना के लिए दूसरा पैनल या रिमोट कनेक्शन खोलें।"
@@ -4620,9 +4597,9 @@
             "allSkipped": "इस प्रीसेट के लिए कोई कार्रवाई योग्य प्रविष्टि नहीं है।",
             "deletesDeferred": "सिंक प्रीसेट"
         },
-        "aerofileSync": {
-            "title": "AeroFile Sync",
-            "toolbarButton": "AeroFile Sync",
+        "aerosync": {
+            "title": "AeroSync",
+            "toolbarButton": "AeroSync",
             "tabCompare": "तुलना करें",
             "tabPlan": "योजना",
             "tabSync": "सिंक",
@@ -4658,7 +4635,30 @@
             "executeNothing": "कुछ नहीं करना है या निष्पादन पथ उपलब्ध नहीं है",
             "executeConfirm": "एक्ज़ीक्यूट सक्षम करने के लिए विनाशकारी कार्रवाइयों की पुष्टि करें",
             "executePreset": "प्रीसेट निष्पादित करें",
-            "execute": "निष्पादित करें"
+            "execute": "निष्पादित करें",
+            "sync": {
+                "title": "AeroSync: स्थानीय से स्थानीय",
+                "description": "एक स्थानीय स्रोत डायरेक्टरी को स्थानीय गंतव्य पर मिरर करता है। ≥ 1 MiB फ़ाइलें आंतरिक delta इंजन का उपयोग करती हैं; छोटी फ़ाइलें सीधी कॉपी का उपयोग करती हैं।",
+                "source": "स्रोत",
+                "destination": "गंतव्य",
+                "browse": "ब्राउज़…",
+                "excludeLabel": "बहिष्करण पैटर्न (कॉमा या नई पंक्ति से अलग)",
+                "useDelta": "Delta ट्रांसपोर्ट का उपयोग करें (≥ 1 MiB फ़ाइलें)",
+                "dryRun": "ड्राई रन (केवल पूर्वावलोकन)",
+                "running": "चल रहा है…",
+                "start": "सिंक प्रारंभ करें",
+                "resultOk": "सिंक पूर्ण हुआ",
+                "resultPartial": "सिंक त्रुटियों के साथ पूर्ण हुआ",
+                "uploaded": "अपलोड किए गए",
+                "skipped": "छोड़े गए",
+                "errors": "त्रुटियाँ",
+                "elapsed": "बीता समय",
+                "payload": "Payload",
+                "bytesOnWire": "नेटवर्क पर बाइट्स",
+                "savings": "बचत",
+                "errorDetails": "त्रुटि(याँ), विवरण",
+                "errorPathsRequired": "स्रोत और गंतव्य आवश्यक हैं"
+            }
         }
     }
 }

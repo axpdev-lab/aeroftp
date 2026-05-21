@@ -3370,7 +3370,7 @@
             "activityLog": "Etkinlik Günlüğü",
             "detailedCards": "Ayrıntılı sunucu kartları",
             "debugPanel": "Debug Panel",
-            "aerofileSync": "AeroFile Sync..."
+            "aerosync": "AeroSync..."
         },
         "activityPanel": {
             "awaitingCommands": "Komut bekleniyor...",
@@ -4587,29 +4587,6 @@
             "moveHereFromOtherPanelTooltip": "Diğer panelden seçilen {count} öğeyi bu panele taşı (F6)",
             "syncToOtherPanel": "Diğer panele senkronize et (delta)"
         },
-        "localSync": {
-            "title": "AeroSync: yerelden yerele",
-            "description": "Yerel bir kaynak dizini yerel bir hedefe yansıtır. ≥ 1 MiB boyutundaki dosyalar yerleşik delta motorunu kullanır; daha küçük dosyalar doğrudan kopyalama kullanır.",
-            "source": "Kaynak",
-            "destination": "Hedef",
-            "browse": "Gözat…",
-            "excludeLabel": "Hariç tutma kalıpları (virgül veya yeni satırla ayrılmış)",
-            "useDelta": "Delta aktarımı kullan (≥ 1 MiB dosyalar)",
-            "dryRun": "Kuru çalıştırma (yalnızca önizleme)",
-            "running": "Çalışıyor…",
-            "start": "Eşitlemeyi başlat",
-            "resultOk": "Eşitleme tamamlandı",
-            "resultPartial": "Eşitleme hatalarla tamamlandı",
-            "uploaded": "Yüklendi",
-            "skipped": "Atlandı",
-            "errors": "Hatalar",
-            "elapsed": "Geçen süre",
-            "payload": "Payload",
-            "bytesOnWire": "Ağdaki bayt",
-            "savings": "Tasarruf",
-            "errorDetails": "hata, ayrıntılar",
-            "errorPathsRequired": "Kaynak ve hedef gereklidir"
-        },
         "compare": {
             "title": "Panelleri karşılaştır",
             "notAvailable": "Karşılaştırmak için ikinci bir panel veya uzak bağlantı açın."
@@ -4620,9 +4597,9 @@
             "allSkipped": "Bu önayar için yürütülebilir giriş yok.",
             "deletesDeferred": "Senkronizasyon önayarları"
         },
-        "aerofileSync": {
-            "title": "AeroFile Sync",
-            "toolbarButton": "AeroFile Sync",
+        "aerosync": {
+            "title": "AeroSync",
+            "toolbarButton": "AeroSync",
             "tabCompare": "Karşılaştır",
             "tabPlan": "Plan",
             "tabSync": "Senkronize Et",
@@ -4658,7 +4635,30 @@
             "executeNothing": "Yapılacak bir şey yok veya yürütme yolu kullanılamıyor",
             "executeConfirm": "Yürüt'ü etkinleştirmek için yıkıcı eylemleri onaylayın",
             "executePreset": "Önayarı yürüt",
-            "execute": "Yürüt"
+            "execute": "Yürüt",
+            "sync": {
+                "title": "AeroSync: yerelden yerele",
+                "description": "Yerel bir kaynak dizini yerel bir hedefe yansıtır. ≥ 1 MiB boyutundaki dosyalar yerleşik delta motorunu kullanır; daha küçük dosyalar doğrudan kopyalama kullanır.",
+                "source": "Kaynak",
+                "destination": "Hedef",
+                "browse": "Gözat…",
+                "excludeLabel": "Hariç tutma kalıpları (virgül veya yeni satırla ayrılmış)",
+                "useDelta": "Delta aktarımı kullan (≥ 1 MiB dosyalar)",
+                "dryRun": "Kuru çalıştırma (yalnızca önizleme)",
+                "running": "Çalışıyor…",
+                "start": "Eşitlemeyi başlat",
+                "resultOk": "Eşitleme tamamlandı",
+                "resultPartial": "Eşitleme hatalarla tamamlandı",
+                "uploaded": "Yüklendi",
+                "skipped": "Atlandı",
+                "errors": "Hatalar",
+                "elapsed": "Geçen süre",
+                "payload": "Payload",
+                "bytesOnWire": "Ağdaki bayt",
+                "savings": "Tasarruf",
+                "errorDetails": "hata, ayrıntılar",
+                "errorPathsRequired": "Kaynak ve hedef gereklidir"
+            }
         }
     }
 }
