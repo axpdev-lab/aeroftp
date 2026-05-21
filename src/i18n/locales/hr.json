@@ -2173,7 +2173,8 @@
             "templateScriptExportedToast": "Skripta izvezena",
             "templateScriptImportedToast": "Metapodaci skripte učitani",
             "templateScriptInvalidToast": "Skripta ne sadrži metapodatke AeroFTP-a",
-            "checksumPoolNote": "Usporedba checksuma u ovoj SFTP sesiji koristi jednu vezu (bez poola sesija): očekujte sporije skeniranje velikih stabala."
+            "checksumPoolNote": "Usporedba checksuma u ovoj SFTP sesiji koristi jednu vezu (bez poola sesija): očekujte sporije skeniranje velikih stabala.",
+            "deltaBatchSummaryNoSession": "Delta: {files} datoteka"
         },
         "ui": {
             "syncing": "Sinkronizacija...",

@@ -2173,7 +2173,8 @@
             "templateScriptExportedToast": "Sgript wedi ei allforio",
             "templateScriptImportedToast": "Metadata sgript wedi ei lwytho",
             "templateScriptInvalidToast": "Nid yw'r sgript yn cynnwys metadata AeroFTP",
-            "checksumPoolNote": "Mae cymharu checksum yn y sesiwn SFTP hwn yn defnyddio un cysylltiad (dim pwll sesiynau): disgwyliwch sganiau arafach ar goed mawr."
+            "checksumPoolNote": "Mae cymharu checksum yn y sesiwn SFTP hwn yn defnyddio un cysylltiad (dim pwll sesiynau): disgwyliwch sganiau arafach ar goed mawr.",
+            "deltaBatchSummaryNoSession": "Delta: {files} ffeil"
         },
         "ui": {
             "syncing": "Yn cysoni...",

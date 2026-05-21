@@ -2173,7 +2173,8 @@
             "templateScriptExportedToast": "Script eksporteret",
             "templateScriptImportedToast": "Scriptmetadata indlæst",
             "templateScriptInvalidToast": "Scriptet indeholder ikke AeroFTP-metadata",
-            "checksumPoolNote": "Checksum-sammenligning i denne SFTP-session bruger en enkelt forbindelse (ingen sessionspulje): forvent langsommere scanninger på store træer."
+            "checksumPoolNote": "Checksum-sammenligning i denne SFTP-session bruger en enkelt forbindelse (ingen sessionspulje): forvent langsommere scanninger på store træer.",
+            "deltaBatchSummaryNoSession": "Delta: {files} filer"
         },
         "ui": {
             "syncing": "Synkroniserer...",

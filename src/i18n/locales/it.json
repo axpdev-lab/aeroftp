@@ -2256,6 +2256,7 @@
             "checksumPoolNote": "Il confronto checksum su questa sessione SFTP usa una singola connessione (nessun pool di sessioni): su alberi grandi la scansione sarà più lenta.",
             "deltaSummary": "{files} file · {bytes} risparmiati · {speedup}x di velocità",
             "deltaBatchSummary": "Delta: {files} file in {sessions} sessione/i",
+            "deltaBatchSummaryNoSession": "Delta: {files} file",
             "deltaBytesOnWire": "{bytesOnWire} su rete",
             "deltaTitle": "Risparmio delta",
             "deltaSummaryOptimized": "{files} file trasferiti con ottimizzazione",

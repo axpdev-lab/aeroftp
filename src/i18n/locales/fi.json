@@ -2173,7 +2173,8 @@
             "templateScriptExportedToast": "Komentosarja viety",
             "templateScriptImportedToast": "Komentosarjan metatiedot ladattu",
             "templateScriptInvalidToast": "Komentosarja ei sisällä AeroFTP-metatietoja",
-            "checksumPoolNote": "Tarkistussumman vertailu tässä SFTP-istunnossa käyttää yhtä yhteyttä (ei istuntopoolia): suurten puiden skannaus on hitaampaa."
+            "checksumPoolNote": "Tarkistussumman vertailu tässä SFTP-istunnossa käyttää yhtä yhteyttä (ei istuntopoolia): suurten puiden skannaus on hitaampaa.",
+            "deltaBatchSummaryNoSession": "Delta: {files} tiedostoa"
         },
         "ui": {
             "syncing": "Synkronoidaan...",

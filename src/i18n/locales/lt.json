@@ -2173,7 +2173,8 @@
             "templateScriptExportedToast": "Scenarijus eksportuotas",
             "templateScriptImportedToast": "Scenarijaus metaduomenys įkelti",
             "templateScriptInvalidToast": "Scenarijuje nėra AeroFTP metaduomenų",
-            "checksumPoolNote": "Kontrolinės sumos palyginimas šioje SFTP sesijoje naudoja vieną ryšį (be sesijų telkinio): didelių medžių nuskaitymas bus lėtesnis."
+            "checksumPoolNote": "Kontrolinės sumos palyginimas šioje SFTP sesijoje naudoja vieną ryšį (be sesijų telkinio): didelių medžių nuskaitymas bus lėtesnis.",
+            "deltaBatchSummaryNoSession": "Delta: {files} failai"
         },
         "ui": {
             "syncing": "Sinchronizuojama...",

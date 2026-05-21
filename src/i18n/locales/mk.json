@@ -2173,7 +2173,8 @@
             "templateScriptExportedToast": "Скриптата е извезена",
             "templateScriptImportedToast": "Метаподатоците на скриптата се вчитани",
             "templateScriptInvalidToast": "Скриптата не содржи метаподатоци за AeroFTP",
-            "checksumPoolNote": "Споредбата на checksum во оваа SFTP сесија користи една врска (без pool на сесии): очекувајте побавно скенирање на големи дрва."
+            "checksumPoolNote": "Споредбата на checksum во оваа SFTP сесија користи една врска (без pool на сесии): очекувајте побавно скенирање на големи дрва.",
+            "deltaBatchSummaryNoSession": "Делта: {files} датотеки"
         },
         "ui": {
             "syncing": "Синхронизирање...",

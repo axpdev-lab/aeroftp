@@ -2173,7 +2173,8 @@
             "templateScriptExportedToast": "Đã xuất tập lệnh",
             "templateScriptImportedToast": "Đã tải siêu dữ liệu tập lệnh",
             "templateScriptInvalidToast": "Tập lệnh không chứa siêu dữ liệu AeroFTP",
-            "checksumPoolNote": "So sánh checksum trên phiên SFTP này dùng một kết nối duy nhất (không có pool phiên): hãy chuẩn bị quét chậm hơn trên cây lớn."
+            "checksumPoolNote": "So sánh checksum trên phiên SFTP này dùng một kết nối duy nhất (không có pool phiên): hãy chuẩn bị quét chậm hơn trên cây lớn.",
+            "deltaBatchSummaryNoSession": "Delta: {files} tệp"
         },
         "ui": {
             "syncing": "Đang đồng bộ...",

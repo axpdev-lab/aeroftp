@@ -2173,7 +2173,8 @@
             "templateScriptExportedToast": "Skript eksporditud",
             "templateScriptImportedToast": "Skripti metaandmed laaditud",
             "templateScriptInvalidToast": "Skript ei sisalda AeroFTP metaandmeid",
-            "checksumPoolNote": "Selle SFTP-seansi kontrollsumma võrdlus kasutab üht ühendust (seansipuuli pole): suurte puude skannimine on aeglasem."
+            "checksumPoolNote": "Selle SFTP-seansi kontrollsumma võrdlus kasutab üht ühendust (seansipuuli pole): suurte puude skannimine on aeglasem.",
+            "deltaBatchSummaryNoSession": "Delta: {files} faili"
         },
         "ui": {
             "syncing": "Sünkroniseerimine...",

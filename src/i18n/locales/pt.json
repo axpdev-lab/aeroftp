@@ -2173,7 +2173,8 @@
             "templateScriptExportedToast": "Script exportado",
             "templateScriptImportedToast": "Metadados do script carregados",
             "templateScriptInvalidToast": "O script não contém metadados do AeroFTP",
-            "checksumPoolNote": "A comparação de checksum nesta sessão SFTP usa uma única conexão (sem pool de sessões): espere verificações mais lentas em árvores grandes."
+            "checksumPoolNote": "A comparação de checksum nesta sessão SFTP usa uma única conexão (sem pool de sessões): espere verificações mais lentas em árvores grandes.",
+            "deltaBatchSummaryNoSession": "Delta: {files} ficheiros"
         },
         "ui": {
             "syncing": "Sincronizando...",

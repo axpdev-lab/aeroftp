@@ -2173,7 +2173,8 @@
             "templateScriptExportedToast": "Szkript exportálva",
             "templateScriptImportedToast": "Szkript metaadatai betöltve",
             "templateScriptInvalidToast": "A szkript nem tartalmaz AeroFTP-metaadatokat",
-            "checksumPoolNote": "Az ellenőrzőösszeg-összehasonlítás ebben az SFTP-munkamenetben egyetlen kapcsolatot használ (nincs munkamenet-pool): nagy fáknál lassabb vizsgálatra számíts."
+            "checksumPoolNote": "Az ellenőrzőösszeg-összehasonlítás ebben az SFTP-munkamenetben egyetlen kapcsolatot használ (nincs munkamenet-pool): nagy fáknál lassabb vizsgálatra számíts.",
+            "deltaBatchSummaryNoSession": "Delta: {files} fájl"
         },
         "ui": {
             "syncing": "Szinkronizálás...",
