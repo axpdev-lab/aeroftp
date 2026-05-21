@@ -4518,7 +4518,11 @@
                 "resultStatus": "Stare",
                 "resultsTruncated": "TRUNCHIAT",
                 "resultsDryRun": "Doar previzualizare rulare de probă.",
-                "resultsEmpty": "Niciun fișier procesat."
+                "resultsEmpty": "Niciun fișier procesat.",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = nelimitat. Bucla de oglindire locală limitează folosind cea mai mare dintre cele două limite.",
+                "bandwidthUnlimited": "Nelimitat"
             },
             "launcherTemplates": "Șabloane",
             "launcherMultiPath": "Căi multiple",

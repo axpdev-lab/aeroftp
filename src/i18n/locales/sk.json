@@ -4518,7 +4518,11 @@
                 "resultStatus": "Stav",
                 "resultsTruncated": "SKRÁTENÉ",
                 "resultsDryRun": "Iba náhľad skúšobného behu.",
-                "resultsEmpty": "Žiadne spracované súbory."
+                "resultsEmpty": "Žiadne spracované súbory.",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = neobmedzené. Slučka lokálneho zrkadlenia obmedzuje rýchlosť podľa vyššieho z dvoch limitov.",
+                "bandwidthUnlimited": "Neobmedzené"
             },
             "launcherTemplates": "Šablóny",
             "launcherMultiPath": "Viacero ciest",

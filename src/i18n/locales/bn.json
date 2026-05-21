@@ -4518,7 +4518,11 @@
                 "resultStatus": "স্থিতি",
                 "resultsTruncated": "ছাঁটাই করা",
                 "resultsDryRun": "শুধুমাত্র ড্রাই রান প্রিভিউ।",
-                "resultsEmpty": "কোনো ফাইল প্রক্রিয়া করা হয়নি।"
+                "resultsEmpty": "কোনো ফাইল প্রক্রিয়া করা হয়নি।",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = সীমাহীন। স্থানীয় মিরর লুপ দুটি সীমার মধ্যে উচ্চতরটি ব্যবহার করে গতি নিয়ন্ত্রণ করে।",
+                "bandwidthUnlimited": "সীমাহীন"
             },
             "launcherTemplates": "টেমপ্লেট",
             "launcherMultiPath": "একাধিক পাথ",

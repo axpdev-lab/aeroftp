@@ -4518,7 +4518,11 @@
                 "resultStatus": "Status",
                 "resultsTruncated": "INGEKORT",
                 "resultsDryRun": "Alleen voorbeeld van testuitvoering.",
-                "resultsEmpty": "Geen bestanden verwerkt."
+                "resultsEmpty": "Geen bestanden verwerkt.",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = onbeperkt. De lokale mirror-loop beperkt op basis van de hoogste van de twee limieten.",
+                "bandwidthUnlimited": "Onbeperkt"
             },
             "launcherTemplates": "Sjablonen",
             "launcherMultiPath": "Meerdere paden",

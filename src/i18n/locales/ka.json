@@ -4518,7 +4518,11 @@
                 "resultStatus": "სტატუსი",
                 "resultsTruncated": "შემოკლებულია",
                 "resultsDryRun": "მხოლოდ სატესტო გაშვების გადახედვა.",
-                "resultsEmpty": "ფაილები არ დამუშავებულა."
+                "resultsEmpty": "ფაილები არ დამუშავებულა.",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = შეუზღუდავი. ლოკალური სარკის ციკლი ზღუდავს ორი ლიმიტიდან უფრო მაღლის გამოყენებით.",
+                "bandwidthUnlimited": "შეუზღუდავი"
             },
             "launcherTemplates": "შაბლონები",
             "launcherMultiPath": "მრავალი გზა",

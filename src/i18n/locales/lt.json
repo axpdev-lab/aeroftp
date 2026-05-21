@@ -4518,7 +4518,11 @@
                 "resultStatus": "Būsena",
                 "resultsTruncated": "SUTRUMPINTA",
                 "resultsDryRun": "Tik bandomojo paleidimo peržiūra.",
-                "resultsEmpty": "Nė vienas failas nebuvo apdorotas."
+                "resultsEmpty": "Nė vienas failas nebuvo apdorotas.",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = neribota. Vietinio veidrodžio kilpa riboja naudodama didesnę iš dviejų ribų.",
+                "bandwidthUnlimited": "Neribota"
             },
             "launcherTemplates": "Šablonai",
             "launcherMultiPath": "Keli keliai",

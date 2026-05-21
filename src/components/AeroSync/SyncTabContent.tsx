@@ -40,6 +40,26 @@ function writeDeltaOverride(value: DeltaOverride) {
     } catch { /* localStorage unavailable */ }
 }
 
+// CO-3: bandwidth caps in KB/s. 0 = unlimited. Persisted under
+// dedicated localStorage keys so the user's preference survives
+// across runs (same pattern as the delta override).
+const UPLOAD_LIMIT_KEY = 'aerosync.bandwidth.upload';
+const DOWNLOAD_LIMIT_KEY = 'aerosync.bandwidth.download';
+function readBandwidthLimit(key: string): number {
+    try {
+        const raw = localStorage.getItem(key);
+        if (!raw) return 0;
+        const parsed = Number.parseInt(raw, 10);
+        return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+    } catch { return 0; }
+}
+function writeBandwidthLimit(key: string, value: number) {
+    try {
+        if (!value || value <= 0) localStorage.removeItem(key);
+        else localStorage.setItem(key, String(Math.floor(value)));
+    } catch { /* localStorage unavailable */ }
+}
+
 interface LocalSyncEntry {
     name: string;
     action: string; // 'delta' | 'copy' | 'skip' | 'dry-run' | 'error'
@@ -86,6 +106,8 @@ export const SyncTabContent: React.FC<SyncTabContentProps> = ({
     const [destination, setDestination] = useState(initialDestination);
     const [exclude, setExclude] = useState('');
     const [deltaOverride, setDeltaOverride] = useState<DeltaOverride>(readDeltaOverride);
+    const [uploadLimit, setUploadLimit] = useState<number>(() => readBandwidthLimit(UPLOAD_LIMIT_KEY));
+    const [downloadLimit, setDownloadLimit] = useState<number>(() => readBandwidthLimit(DOWNLOAD_LIMIT_KEY));
     const [dryRun, setDryRun] = useState(false);
     const [running, setRunning] = useState(false);
     const [progress, setProgress] = useState<LocalSyncProgress | null>(null);
@@ -159,6 +181,9 @@ export const SyncTabContent: React.FC<SyncTabContentProps> = ({
                     exclude: excludeList,
                     no_delta: !useDelta,
                     dry_run: dryRun,
+                    // CO-3: forward bandwidth caps (KB/s, 0 = unlimited).
+                    upload_limit_kbps: uploadLimit > 0 ? uploadLimit : null,
+                    download_limit_kbps: downloadLimit > 0 ? downloadLimit : null,
                 },
             });
             setReport(result);
@@ -312,6 +337,52 @@ export const SyncTabContent: React.FC<SyncTabContentProps> = ({
                             />
                             {t('aerosync.sync.dryRun') || 'Dry run (preview only)'}
                         </label>
+                        {/* CO-3: bandwidth caps. 0 = unlimited; the
+                            in-process planner divides the cap evenly
+                            between the source-read / dest-write loop. */}
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                            <div>
+                                <label className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">
+                                    {t('aerosync.sync.bandwidthUpload') || 'Upload KB/s'}
+                                </label>
+                                <input
+                                    type="number"
+                                    min={0}
+                                    step={64}
+                                    value={uploadLimit}
+                                    onChange={(e) => {
+                                        const v = Math.max(0, Number.parseInt(e.target.value, 10) || 0);
+                                        setUploadLimit(v);
+                                        writeBandwidthLimit(UPLOAD_LIMIT_KEY, v);
+                                    }}
+                                    disabled={running}
+                                    placeholder="0"
+                                    className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900/60 px-2 py-1.5 text-sm disabled:opacity-50"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">
+                                    {t('aerosync.sync.bandwidthDownload') || 'Download KB/s'}
+                                </label>
+                                <input
+                                    type="number"
+                                    min={0}
+                                    step={64}
+                                    value={downloadLimit}
+                                    onChange={(e) => {
+                                        const v = Math.max(0, Number.parseInt(e.target.value, 10) || 0);
+                                        setDownloadLimit(v);
+                                        writeBandwidthLimit(DOWNLOAD_LIMIT_KEY, v);
+                                    }}
+                                    disabled={running}
+                                    placeholder="0"
+                                    className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900/60 px-2 py-1.5 text-sm disabled:opacity-50"
+                                />
+                            </div>
+                        </div>
+                        <p className="mt-1 text-[10px] leading-snug text-gray-500 dark:text-gray-400">
+                            {t('aerosync.sync.bandwidthHint') || '0 = unlimited. The local mirror loop throttles using the higher of the two caps.'}
+                        </p>
                     </div>
                 )}
             </div>

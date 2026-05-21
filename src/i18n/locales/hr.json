@@ -4518,7 +4518,11 @@
                 "resultStatus": "Status",
                 "resultsTruncated": "SKRAĆENO",
                 "resultsDryRun": "Samo dry-run pregled.",
-                "resultsEmpty": "Nijedna datoteka nije obrađena."
+                "resultsEmpty": "Nijedna datoteka nije obrađena.",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = neograničeno. Petlja lokalnog zrcala ograničava prema višem od dvaju ograničenja.",
+                "bandwidthUnlimited": "Neograničeno"
             },
             "launcherTemplates": "Predlošci",
             "launcherMultiPath": "Više putanja",

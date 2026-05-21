@@ -4537,7 +4537,11 @@
                 "resultStatus": "Status",
                 "resultsTruncated": "AVKORTET",
                 "resultsDryRun": "Kun forhåndsvisning av prøvekjøring.",
-                "resultsEmpty": "Ingen filer behandlet."
+                "resultsEmpty": "Ingen filer behandlet.",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = ubegrenset. Den lokale speil-løkken begrenser ved å bruke den høyeste av de to grensene.",
+                "bandwidthUnlimited": "Ubegrenset"
             },
             "launcherTemplates": "Maler",
             "launcherMultiPath": "Flere baner",

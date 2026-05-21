@@ -4518,7 +4518,11 @@
                 "resultStatus": "Status",
                 "resultsTruncated": "TRUNCATED",
                 "resultsDryRun": "Dry run preview only.",
-                "resultsEmpty": "No files processed."
+                "resultsEmpty": "No files processed.",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = unlimited. The local mirror loop throttles using the higher of the two caps.",
+                "bandwidthUnlimited": "Unlimited"
             },
             "launcherTemplates": "Templates",
             "launcherMultiPath": "Multi-Path",

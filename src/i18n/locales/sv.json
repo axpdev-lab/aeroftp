@@ -4518,7 +4518,11 @@
                 "resultStatus": "Status",
                 "resultsTruncated": "AVKORTAD",
                 "resultsDryRun": "Endast förhandsvisning av testkörning.",
-                "resultsEmpty": "Inga filer bearbetade."
+                "resultsEmpty": "Inga filer bearbetade.",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = obegränsat. Den lokala speglingsloopen begränsar med den högsta av de två gränserna.",
+                "bandwidthUnlimited": "Obegränsat"
             },
             "launcherTemplates": "Mallar",
             "launcherMultiPath": "Flera sökvägar",

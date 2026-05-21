@@ -4518,7 +4518,11 @@
                 "resultStatus": "Hali",
                 "resultsTruncated": "IMEKATWA",
                 "resultsDryRun": "Onyesho la mtihani pekee.",
-                "resultsEmpty": "Hakuna faili zilizochakatwa."
+                "resultsEmpty": "Hakuna faili zilizochakatwa.",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = bila kikomo. Mzunguko wa kioo cha ndani hupunguza kasi kwa kutumia kikomo cha juu kati ya viwili.",
+                "bandwidthUnlimited": "Bila kikomo"
             },
             "launcherTemplates": "Violezo",
             "launcherMultiPath": "Njia nyingi",

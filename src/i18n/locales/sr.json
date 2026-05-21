@@ -4518,7 +4518,11 @@
                 "resultStatus": "Статус",
                 "resultsTruncated": "СКРАЋЕНО",
                 "resultsDryRun": "Само преглед пробног покретања.",
-                "resultsEmpty": "Ниједан фајл није обрађен."
+                "resultsEmpty": "Ниједан фајл није обрађен.",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = неограничено. Петља локалног огледања ограничава брзину користећи већи од два лимита.",
+                "bandwidthUnlimited": "Неограничено"
             },
             "launcherTemplates": "Шаблони",
             "launcherMultiPath": "Више путања",

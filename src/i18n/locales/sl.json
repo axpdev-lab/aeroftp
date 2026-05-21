@@ -4518,7 +4518,11 @@
                 "resultStatus": "Stanje",
                 "resultsTruncated": "SKRAJŠANO",
                 "resultsDryRun": "Samo predogled poskusnega zagona.",
-                "resultsEmpty": "Nobena datoteka ni bila obdelana."
+                "resultsEmpty": "Nobena datoteka ni bila obdelana.",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = neomejeno. Zanka lokalnega zrcaljenja omejuje hitrost glede na višjo od obeh meja.",
+                "bandwidthUnlimited": "Neomejeno"
             },
             "launcherTemplates": "Predloge",
             "launcherMultiPath": "Več poti",

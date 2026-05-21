@@ -4537,7 +4537,11 @@
                 "resultStatus": "Egoera",
                 "resultsTruncated": "MOZTUTA",
                 "resultsDryRun": "Dry-run aurrebista soilik.",
-                "resultsEmpty": "Ez da fitxategirik prozesatu."
+                "resultsEmpty": "Ez da fitxategirik prozesatu.",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = mugagabea. Ispilu lokalaren begiztak bi mugen artean handiena erabiliz mugatzen du.",
+                "bandwidthUnlimited": "Mugagabea"
             },
             "launcherTemplates": "Txantiloiak",
             "launcherMultiPath": "Bide anitz",

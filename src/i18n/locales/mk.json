@@ -4537,7 +4537,11 @@
                 "resultStatus": "Статус",
                 "resultsTruncated": "СКРАТЕНО",
                 "resultsDryRun": "Само преглед на пробно извршување.",
-                "resultsEmpty": "Не се обработени датотеки."
+                "resultsEmpty": "Не се обработени датотеки.",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = неограничено. Локалната јамка за огледало ограничува користејќи го повисокото од двете ограничувања.",
+                "bandwidthUnlimited": "Неограничено"
             },
             "launcherTemplates": "Шаблони",
             "launcherMultiPath": "Повеќе патеки",

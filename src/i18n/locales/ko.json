@@ -4518,7 +4518,11 @@
                 "resultStatus": "상태",
                 "resultsTruncated": "잘림",
                 "resultsDryRun": "드라이 런 미리 보기 전용입니다.",
-                "resultsEmpty": "처리된 파일이 없습니다."
+                "resultsEmpty": "처리된 파일이 없습니다.",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = 무제한. 로컬 미러 루프는 두 한도 중 더 높은 값을 사용하여 제한합니다.",
+                "bandwidthUnlimited": "무제한"
             },
             "launcherTemplates": "템플릿",
             "launcherMultiPath": "다중 경로",

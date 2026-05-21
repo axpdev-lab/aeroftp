@@ -4518,7 +4518,11 @@
                 "resultStatus": "Статус",
                 "resultsTruncated": "ОБРЕЗАНО",
                 "resultsDryRun": "Только предпросмотр пробного запуска.",
-                "resultsEmpty": "Файлы не обработаны."
+                "resultsEmpty": "Файлы не обработаны.",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = без ограничений. Цикл локального зеркалирования использует более высокий из двух лимитов.",
+                "bandwidthUnlimited": "Без ограничений"
             },
             "launcherTemplates": "Шаблоны",
             "launcherMultiPath": "Несколько путей",

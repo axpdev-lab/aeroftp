@@ -4537,7 +4537,11 @@
                 "resultStatus": "ស្ថានភាព",
                 "resultsTruncated": "បានកាត់ខ្លី",
                 "resultsDryRun": "មើលជាមុនរបៀបសាកល្បងតែប៉ុណ្ណោះ។",
-                "resultsEmpty": "មិនមានឯកសារត្រូវបានដំណើរការទេ។"
+                "resultsEmpty": "មិនមានឯកសារត្រូវបានដំណើរការទេ។",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = គ្មានកំណត់។ រង្វិលជុំកញ្ចក់មូលដ្ឋានកំណត់ដោយប្រើដែនកំណត់ខ្ពស់ជាងក្នុងចំណោមពីរ។",
+                "bandwidthUnlimited": "គ្មានកំណត់"
             },
             "launcherTemplates": "ពុម្ព",
             "launcherMultiPath": "ច្រកច្រើន",

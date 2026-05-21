@@ -43,6 +43,15 @@ pub struct LocalSyncRequest {
     /// report error count and append a `verify` error message.
     #[serde(default)]
     pub verify_policy: Option<VerifyPolicy>,
+    /// CO-3: AeroSync bandwidth caps in KB/s. 0 / None = unlimited.
+    /// `local_sync_run` is a single in-process pipeline; both caps
+    /// fold into a single effective limit (`max(upload, download)`)
+    /// because there is no real "wire" direction in a local-to-
+    /// local mirror.
+    #[serde(default)]
+    pub upload_limit_kbps: Option<u64>,
+    #[serde(default)]
+    pub download_limit_kbps: Option<u64>,
 }
 
 /// CO-2: per-file result row surfaced in the Sync tab table.
@@ -153,6 +162,15 @@ pub async fn local_sync_run(
         None
     } else {
         Some(LocalDeltaTransport::new(DEFAULT_MIN_FILE_SIZE))
+    };
+
+    // CO-3: fold both caps into a single effective bytes/s limit.
+    // Zero / None disables the throttle.
+    let throttle_bps: u64 = {
+        let up = request.upload_limit_kbps.unwrap_or(0);
+        let down = request.download_limit_kbps.unwrap_or(0);
+        let max_kbps = up.max(down);
+        max_kbps.saturating_mul(1024)
     };
 
     let mut processed: u32 = 0;
@@ -337,6 +355,19 @@ pub async fn local_sync_run(
                 status: entry_status.to_string(),
             },
         );
+
+        // CO-3: post-file throttle. Sleeps for the time the configured
+        // cap implies for the bytes we just produced. Skipped when no
+        // cap is set or the file did not move bytes.
+        if throttle_bps > 0 && wire_bytes > 0 {
+            let secs = wire_bytes as f64 / throttle_bps as f64;
+            // Hard cap the per-file delay at 30s to avoid pathological
+            // pauses if someone sets a 1 KB/s limit on a 30 MB file.
+            let secs = secs.min(30.0);
+            if secs > 0.001 {
+                tokio::time::sleep(std::time::Duration::from_secs_f64(secs)).await;
+            }
+        }
 
         processed += 1;
 

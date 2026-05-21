@@ -4518,7 +4518,11 @@
                 "resultStatus": "Estado",
                 "resultsTruncated": "TRUNCADO",
                 "resultsDryRun": "Apenas pré-visualização de execução simulada.",
-                "resultsEmpty": "Nenhum ficheiro processado."
+                "resultsEmpty": "Nenhum ficheiro processado.",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = ilimitado. O loop de espelho local limita usando o maior dos dois limites.",
+                "bandwidthUnlimited": "Ilimitado"
             },
             "launcherTemplates": "Modelos",
             "launcherMultiPath": "Múltiplos caminhos",

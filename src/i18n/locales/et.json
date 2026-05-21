@@ -4518,7 +4518,11 @@
                 "resultStatus": "Olek",
                 "resultsTruncated": "KÄRBITUD",
                 "resultsDryRun": "Ainult dry-run eelvaade.",
-                "resultsEmpty": "Faile ei töödeldud."
+                "resultsEmpty": "Faile ei töödeldud.",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = piiramatu. Kohaliku peegli tsükkel piirab kahest piirist kõrgema järgi.",
+                "bandwidthUnlimited": "Piiramatu"
             },
             "launcherTemplates": "Mallid",
             "launcherMultiPath": "Mitu rada",

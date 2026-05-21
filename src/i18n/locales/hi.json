@@ -4518,7 +4518,11 @@
                 "resultStatus": "स्थिति",
                 "resultsTruncated": "काटा गया",
                 "resultsDryRun": "केवल ड्राई रन पूर्वावलोकन।",
-                "resultsEmpty": "कोई फ़ाइल संसाधित नहीं हुई।"
+                "resultsEmpty": "कोई फ़ाइल संसाधित नहीं हुई।",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = असीमित। स्थानीय मिरर लूप दोनों सीमाओं में से उच्चतर का उपयोग करके गति को नियंत्रित करता है।",
+                "bandwidthUnlimited": "असीमित"
             },
             "launcherTemplates": "टेम्पलेट",
             "launcherMultiPath": "मल्टी-पाथ",

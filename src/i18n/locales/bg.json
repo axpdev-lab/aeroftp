@@ -4518,7 +4518,11 @@
                 "resultStatus": "Състояние",
                 "resultsTruncated": "СЪКРАТЕНО",
                 "resultsDryRun": "Само преглед в режим dry-run.",
-                "resultsEmpty": "Няма обработени файлове."
+                "resultsEmpty": "Няма обработени файлове.",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = неограничено. Локалният цикъл на огледалото се ограничава според по-високата от двете граници.",
+                "bandwidthUnlimited": "Неограничено"
             },
             "launcherTemplates": "Шаблони",
             "launcherMultiPath": "Множество пътища",

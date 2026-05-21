@@ -4537,7 +4537,11 @@
                 "resultStatus": "Staða",
                 "resultsTruncated": "STYTT",
                 "resultsDryRun": "Aðeins forskoðun í prufukeyrslu.",
-                "resultsEmpty": "Engar skrár voru unnar."
+                "resultsEmpty": "Engar skrár voru unnar.",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = ótakmarkað. Staðbundna spegillykkjan takmarkar með því að nota hærra af mörkunum tveimur.",
+                "bandwidthUnlimited": "Ótakmarkað"
             },
             "launcherTemplates": "Sniðmát",
             "launcherMultiPath": "Margar slóðir",
