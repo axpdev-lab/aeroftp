@@ -4546,6 +4546,32 @@
                 "fallbackHint": "AeroSync ক্লাসিক কপি পদ্ধতিতে ফিরে যাবে। নির্বাচিত প্রিসেট তবুও চলবে।",
                 "skipFuture": "এই সার্ভারের জন্য আর জিজ্ঞাসা করবেন না",
                 "continue": "চালিয়ে যান"
+            },
+            "launcherHistory": "জার্নাল ইতিহাস",
+            "history": {
+                "title": "AeroSync ইতিহাস",
+                "refresh": "রিফ্রেশ",
+                "cleanupOld": "৩০ দিনের পুরনো এন্ট্রি সরান",
+                "clearAll": "সব জার্নাল মুছুন",
+                "confirmClearAll": "সব সিঙ্ক জার্নাল মুছে ফেলবেন?",
+                "empty": "এখনো কোনো সিঙ্ক জার্নাল নেই। এই পাথ জোড়ার জন্য প্রথম প্রিসেট চালানোর সময় এগুলি তৈরি হয়।",
+                "selectPrompt": "প্রতিটি ফাইলের এন্ট্রি দেখতে বাম দিক থেকে একটি জার্নাল নির্বাচন করুন।",
+                "journalMissing": "জার্নাল পাওয়া যায়নি।",
+                "entriesEmpty": "কোনো এন্ট্রি নথিভুক্ত নেই।",
+                "verify": "যাচাই করুন",
+                "verifyOk": "যাচাইকৃত",
+                "verifyFailed": "বিকৃত",
+                "verifyNoSignature": "স্বাক্ষর নেই",
+                "statusCompleted": "সম্পন্ন",
+                "statusInProgress": "চলছে",
+                "delete": "জার্নাল মুছুন",
+                "created": "তৈরি হয়েছে",
+                "bytes": "বাইট",
+                "colPath": "পাথ",
+                "colDirection": "দিক",
+                "colStatus": "স্থিতি",
+                "colBytes": "বাইট",
+                "colAction": "ক্রিয়া"
             }
         }
     }

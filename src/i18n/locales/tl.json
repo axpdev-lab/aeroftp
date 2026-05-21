@@ -4565,6 +4565,32 @@
                 "fallbackHint": "Babalik ang AeroSync sa klasikong daan ng pagkopya. Tatakbo pa rin ang napiling preset.",
                 "skipFuture": "Huwag nang magtanong muli para sa server na ito",
                 "continue": "Magpatuloy"
+            },
+            "launcherHistory": "Kasaysayan ng journal",
+            "history": {
+                "title": "Kasaysayan ng AeroSync",
+                "refresh": "I-refresh",
+                "cleanupOld": "Alisin ang mga entry na mas matanda sa 30 araw",
+                "clearAll": "I-clear ang lahat ng journal",
+                "confirmClearAll": "I-clear ang LAHAT ng sync journal?",
+                "empty": "Wala pang sync journal. Nililikha ang mga ito sa unang pagpapatakbo ng preset para sa pares na ito ng path.",
+                "selectPrompt": "Pumili ng journal sa kaliwa para tingnan ang mga entry kada file.",
+                "journalMissing": "Hindi natagpuan ang journal.",
+                "entriesEmpty": "Walang naitala na entry.",
+                "verify": "I-verify",
+                "verifyOk": "NA-VERIFY",
+                "verifyFailed": "NABAGO",
+                "verifyNoSignature": "WALANG PIRMA",
+                "statusCompleted": "TAPOS NA",
+                "statusInProgress": "ISINASAGAWA",
+                "delete": "Tanggalin ang journal",
+                "created": "Nilikha",
+                "bytes": "Bytes",
+                "colPath": "Path",
+                "colDirection": "Direksyon",
+                "colStatus": "Status",
+                "colBytes": "Bytes",
+                "colAction": "Aksyon"
             }
         }
     }

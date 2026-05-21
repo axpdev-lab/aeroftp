@@ -4565,6 +4565,32 @@
                 "fallbackHint": "AeroSync mun nota klassísku afritunarleiðina. Valda forstillingin keyrir samt.",
                 "skipFuture": "Ekki spyrja aftur fyrir þennan netþjón",
                 "continue": "Halda áfram"
+            },
+            "launcherHistory": "Saga journals",
+            "history": {
+                "title": "AeroSync saga",
+                "refresh": "Endurnýja",
+                "cleanupOld": "Fjarlægja færslur eldri en 30 daga",
+                "clearAll": "Hreinsa öll journal",
+                "confirmClearAll": "Hreinsa ÖLL samstillingar-journal?",
+                "empty": "Engin samstillingar-journal enn. Þau eru búin til við fyrstu keyrslu forstillingar á þessu slóðapari.",
+                "selectPrompt": "Veldu journal til vinstri til að skoða færslur fyrir hverja skrá.",
+                "journalMissing": "Journal fannst ekki.",
+                "entriesEmpty": "Engar færslur skráðar.",
+                "verify": "Sannreyna",
+                "verifyOk": "SANNREYNT",
+                "verifyFailed": "BREYTT",
+                "verifyNoSignature": "EKKERT UNDIRSKRIFT",
+                "statusCompleted": "LOKIÐ",
+                "statusInProgress": "Í GANGI",
+                "delete": "Eyða journali",
+                "created": "Búið til",
+                "bytes": "Bæti",
+                "colPath": "Slóð",
+                "colDirection": "Stefna",
+                "colStatus": "Staða",
+                "colBytes": "Bæti",
+                "colAction": "Aðgerð"
             }
         }
     }

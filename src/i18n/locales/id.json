@@ -4546,6 +4546,32 @@
                 "fallbackHint": "AeroSync akan kembali ke jalur penyalinan klasik. Preset yang dipilih tetap dijalankan.",
                 "skipFuture": "Jangan tanya lagi untuk server ini",
                 "continue": "Lanjutkan"
+            },
+            "launcherHistory": "Riwayat journal",
+            "history": {
+                "title": "Riwayat AeroSync",
+                "refresh": "Segarkan",
+                "cleanupOld": "Hapus entri yang lebih lama dari 30 hari",
+                "clearAll": "Hapus semua journal",
+                "confirmClearAll": "Hapus SEMUA journal sinkronisasi?",
+                "empty": "Belum ada journal sinkronisasi. Mereka dibuat pada eksekusi preset pertama pada pasangan path ini.",
+                "selectPrompt": "Pilih journal di sebelah kiri untuk memeriksa entri per-file.",
+                "journalMissing": "Journal tidak ditemukan.",
+                "entriesEmpty": "Tidak ada entri tercatat.",
+                "verify": "Verifikasi",
+                "verifyOk": "TERVERIFIKASI",
+                "verifyFailed": "DIRUSAK",
+                "verifyNoSignature": "TANPA TANDA",
+                "statusCompleted": "SELESAI",
+                "statusInProgress": "BERLANGSUNG",
+                "delete": "Hapus journal",
+                "created": "Dibuat",
+                "bytes": "Byte",
+                "colPath": "Path",
+                "colDirection": "Arah",
+                "colStatus": "Status",
+                "colBytes": "Byte",
+                "colAction": "Tindakan"
             }
         }
     }

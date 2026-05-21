@@ -4546,6 +4546,32 @@
                 "fallbackHint": "AeroSync palaa klassiseen kopiointitapaan. Valittu esiasetus suoritetaan silti.",
                 "skipFuture": "Älä kysy uudelleen tälle palvelimelle",
                 "continue": "Jatka"
+            },
+            "launcherHistory": "Journalin historia",
+            "history": {
+                "title": "AeroSync-historia",
+                "refresh": "Päivitä",
+                "cleanupOld": "Poista yli 30 päivää vanhat merkinnät",
+                "clearAll": "Tyhjennä kaikki journalit",
+                "confirmClearAll": "Tyhjennetäänkö KAIKKI synkronointijournalit?",
+                "empty": "Synkronointijournaleita ei vielä ole. Ne luodaan, kun preset suoritetaan ensimmäisen kerran tälle polkuparille.",
+                "selectPrompt": "Valitse journal vasemmalta nähdäksesi sen tiedostokohtaiset merkinnät.",
+                "journalMissing": "Journalia ei löytynyt.",
+                "entriesEmpty": "Ei tallennettuja merkintöjä.",
+                "verify": "Vahvista",
+                "verifyOk": "VAHVISTETTU",
+                "verifyFailed": "MUOKATTU",
+                "verifyNoSignature": "EI ALLEKIRJ.",
+                "statusCompleted": "VALMIS",
+                "statusInProgress": "KÄYNNISSÄ",
+                "delete": "Poista journal",
+                "created": "Luotu",
+                "bytes": "Tavua",
+                "colPath": "Polku",
+                "colDirection": "Suunta",
+                "colStatus": "Tila",
+                "colBytes": "Tavua",
+                "colAction": "Toiminto"
             }
         }
     }

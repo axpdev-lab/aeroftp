@@ -4546,6 +4546,32 @@
                 "fallbackHint": "AeroSync 将回退到经典复制路径。所选预设仍会运行。",
                 "skipFuture": "不再为此服务器询问",
                 "continue": "继续"
+            },
+            "launcherHistory": "日志历史",
+            "history": {
+                "title": "AeroSync 历史",
+                "refresh": "刷新",
+                "cleanupOld": "删除超过 30 天的条目",
+                "clearAll": "清除所有日志",
+                "confirmClearAll": "清除所有同步日志?",
+                "empty": "尚无同步日志。当首次对此路径对执行预设时会自动创建。",
+                "selectPrompt": "在左侧选择一个日志以查看每个文件的条目。",
+                "journalMissing": "未找到日志。",
+                "entriesEmpty": "未记录任何条目。",
+                "verify": "验证",
+                "verifyOk": "已验证",
+                "verifyFailed": "已篡改",
+                "verifyNoSignature": "无签名",
+                "statusCompleted": "已完成",
+                "statusInProgress": "进行中",
+                "delete": "删除日志",
+                "created": "创建时间",
+                "bytes": "字节",
+                "colPath": "路径",
+                "colDirection": "方向",
+                "colStatus": "状态",
+                "colBytes": "字节",
+                "colAction": "操作"
             }
         }
     }

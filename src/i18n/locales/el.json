@@ -4546,6 +4546,32 @@
                 "fallbackHint": "Το AeroSync θα επιστρέψει στην κλασική διαδρομή αντιγραφής. Η επιλεγμένη προεπιλογή θα εκτελεστεί ούτως ή άλλως.",
                 "skipFuture": "Να μην ερωτηθώ ξανά για αυτόν τον διακομιστή",
                 "continue": "Συνέχεια"
+            },
+            "launcherHistory": "Ιστορικό journal",
+            "history": {
+                "title": "Ιστορικό AeroSync",
+                "refresh": "Ανανέωση",
+                "cleanupOld": "Αφαίρεση εγγραφών παλαιότερων των 30 ημερών",
+                "clearAll": "Εκκαθάριση όλων των journals",
+                "confirmClearAll": "Εκκαθάριση ΟΛΩΝ των journals συγχρονισμού;",
+                "empty": "Δεν υπάρχουν ακόμα journals συγχρονισμού. Δημιουργούνται κατά την πρώτη εκτέλεση preset για αυτό το ζεύγος διαδρομών.",
+                "selectPrompt": "Επιλέξτε ένα journal αριστερά για να δείτε τις εγγραφές ανά αρχείο.",
+                "journalMissing": "Το journal δεν βρέθηκε.",
+                "entriesEmpty": "Καμία καταγεγραμμένη εγγραφή.",
+                "verify": "Επαλήθευση",
+                "verifyOk": "ΕΠΑΛΗΘΕΥΜΕΝΟ",
+                "verifyFailed": "ΑΛΛΟΙΩΜΕΝΟ",
+                "verifyNoSignature": "ΧΩΡΙΣ ΥΠΟΓΡΑΦΗ",
+                "statusCompleted": "ΟΛΟΚΛΗΡΩΘΗΚΕ",
+                "statusInProgress": "ΣΕ ΕΞΕΛΙΞΗ",
+                "delete": "Διαγραφή journal",
+                "created": "Δημιουργήθηκε",
+                "bytes": "Bytes",
+                "colPath": "Διαδρομή",
+                "colDirection": "Κατεύθυνση",
+                "colStatus": "Κατάσταση",
+                "colBytes": "Bytes",
+                "colAction": "Ενέργεια"
             }
         }
     }

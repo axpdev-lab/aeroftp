@@ -4546,6 +4546,32 @@
                 "fallbackHint": "AeroSync는 기존 복사 방식으로 대체됩니다. 선택한 프리셋은 계속 실행됩니다.",
                 "skipFuture": "이 서버에 대해 다시 묻지 않기",
                 "continue": "계속"
+            },
+            "launcherHistory": "저널 기록",
+            "history": {
+                "title": "AeroSync 기록",
+                "refresh": "새로 고침",
+                "cleanupOld": "30일보다 오래된 항목 제거",
+                "clearAll": "모든 저널 지우기",
+                "confirmClearAll": "모든 동기화 저널을 지우시겠습니까?",
+                "empty": "아직 동기화 저널이 없습니다. 이 경로 쌍에서 프리셋을 처음 실행할 때 생성됩니다.",
+                "selectPrompt": "왼쪽에서 저널을 선택하여 파일별 항목을 확인하세요.",
+                "journalMissing": "저널을 찾을 수 없습니다.",
+                "entriesEmpty": "기록된 항목이 없습니다.",
+                "verify": "검증",
+                "verifyOk": "검증됨",
+                "verifyFailed": "변조됨",
+                "verifyNoSignature": "서명 없음",
+                "statusCompleted": "완료",
+                "statusInProgress": "진행 중",
+                "delete": "저널 삭제",
+                "created": "생성됨",
+                "bytes": "바이트",
+                "colPath": "경로",
+                "colDirection": "방향",
+                "colStatus": "상태",
+                "colBytes": "바이트",
+                "colAction": "작업"
             }
         }
     }

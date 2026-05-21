@@ -4546,6 +4546,32 @@
                 "fallbackHint": "AeroSync läheb tagasi klassikalisele kopeerimisteele. Valitud eelseadistus käivitub ikkagi.",
                 "skipFuture": "Ära küsi enam selle serveri kohta",
                 "continue": "Jätka"
+            },
+            "launcherHistory": "Journali ajalugu",
+            "history": {
+                "title": "AeroSynci ajalugu",
+                "refresh": "Värskenda",
+                "cleanupOld": "Eemalda üle 30 päeva vanad kirjed",
+                "clearAll": "Tühjenda kõik journalid",
+                "confirmClearAll": "Tühjendada KÕIK sünkroonimise journalid?",
+                "empty": "Sünkroonimise journale veel pole. Need luuakse selle teede paari esmasel preseti käivitamisel.",
+                "selectPrompt": "Vali vasakult journal, et näha selle failipõhiseid kirjeid.",
+                "journalMissing": "Journali ei leitud.",
+                "entriesEmpty": "Kirjeid pole salvestatud.",
+                "verify": "Kontrolli",
+                "verifyOk": "KONTROLLITUD",
+                "verifyFailed": "RIKUTUD",
+                "verifyNoSignature": "ALLKIRI PUUDUB",
+                "statusCompleted": "VALMIS",
+                "statusInProgress": "KÄIMAS",
+                "delete": "Kustuta journal",
+                "created": "Loodud",
+                "bytes": "Baidid",
+                "colPath": "Tee",
+                "colDirection": "Suund",
+                "colStatus": "Olek",
+                "colBytes": "Baidid",
+                "colAction": "Toiming"
             }
         }
     }

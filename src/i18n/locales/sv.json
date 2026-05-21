@@ -4546,6 +4546,32 @@
                 "fallbackHint": "AeroSync återgår till den klassiska kopieringsvägen. Den valda förinställningen körs ändå.",
                 "skipFuture": "Fråga inte igen för den här servern",
                 "continue": "Fortsätt"
+            },
+            "launcherHistory": "Journalhistorik",
+            "history": {
+                "title": "AeroSync-historik",
+                "refresh": "Uppdatera",
+                "cleanupOld": "Ta bort poster äldre än 30 dagar",
+                "clearAll": "Rensa alla journaler",
+                "confirmClearAll": "Rensa ALLA synkroniseringsjournaler?",
+                "empty": "Inga synkroniseringsjournaler ännu. De skapas vid första körningen av en förinställning för detta sökvägspar.",
+                "selectPrompt": "Välj en journal till vänster för att granska posterna per fil.",
+                "journalMissing": "Journal hittades inte.",
+                "entriesEmpty": "Inga poster registrerade.",
+                "verify": "Verifiera",
+                "verifyOk": "VERIFIERAD",
+                "verifyFailed": "MANIPULERAD",
+                "verifyNoSignature": "INGEN SIGNATUR",
+                "statusCompleted": "SLUTFÖRD",
+                "statusInProgress": "PÅGÅR",
+                "delete": "Ta bort journal",
+                "created": "Skapad",
+                "bytes": "Byte",
+                "colPath": "Sökväg",
+                "colDirection": "Riktning",
+                "colStatus": "Status",
+                "colBytes": "Byte",
+                "colAction": "Åtgärd"
             }
         }
     }

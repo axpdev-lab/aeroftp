@@ -4546,6 +4546,32 @@
                 "fallbackHint": "Az AeroSync a klasszikus másolási útvonalra vált. A választott előbeállítás továbbra is fut.",
                 "skipFuture": "Ne kérdezze újra ennél a kiszolgálónál",
                 "continue": "Folytatás"
+            },
+            "launcherHistory": "Journal előzmények",
+            "history": {
+                "title": "AeroSync előzmények",
+                "refresh": "Frissítés",
+                "cleanupOld": "30 napnál régebbi bejegyzések eltávolítása",
+                "clearAll": "Összes journal törlése",
+                "confirmClearAll": "Törli az ÖSSZES szinkronizációs journalt?",
+                "empty": "Még nincsenek szinkronizációs journalok. Az első preset futtatásakor jönnek létre ezen az útvonalpáron.",
+                "selectPrompt": "Válasszon journalt a bal oldalon a fájlonkénti bejegyzések megtekintéséhez.",
+                "journalMissing": "Journal nem található.",
+                "entriesEmpty": "Nincsenek rögzített bejegyzések.",
+                "verify": "Ellenőrzés",
+                "verifyOk": "ELLENŐRZÖTT",
+                "verifyFailed": "MEGHAMISÍTVA",
+                "verifyNoSignature": "NINCS ALÁÍRÁS",
+                "statusCompleted": "BEFEJEZVE",
+                "statusInProgress": "FOLYAMATBAN",
+                "delete": "Journal törlése",
+                "created": "Létrehozva",
+                "bytes": "Bájt",
+                "colPath": "Útvonal",
+                "colDirection": "Irány",
+                "colStatus": "Állapot",
+                "colBytes": "Bájt",
+                "colAction": "Művelet"
             }
         }
     }

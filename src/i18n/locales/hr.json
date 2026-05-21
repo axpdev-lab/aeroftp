@@ -4546,6 +4546,32 @@
                 "fallbackHint": "AeroSync će koristiti klasični put kopiranja. Odabrana postavka se i dalje izvršava.",
                 "skipFuture": "Ne pitaj više za ovaj poslužitelj",
                 "continue": "Nastavi"
+            },
+            "launcherHistory": "Povijest journala",
+            "history": {
+                "title": "Povijest AeroSync",
+                "refresh": "Osvježi",
+                "cleanupOld": "Ukloni unose starije od 30 dana",
+                "clearAll": "Obriši sve journale",
+                "confirmClearAll": "Obrisati SVE journale sinkronizacije?",
+                "empty": "Još nema journala sinkronizacije. Stvaraju se pri prvoj izvedbi presetа na ovom paru putanja.",
+                "selectPrompt": "Odaberite journal s lijeve strane za pregled unosa po datoteci.",
+                "journalMissing": "Journal nije pronađen.",
+                "entriesEmpty": "Nema zabilježenih unosa.",
+                "verify": "Provjeri",
+                "verifyOk": "PROVJERENO",
+                "verifyFailed": "NEOVLAŠTENO",
+                "verifyNoSignature": "BEZ POTPISA",
+                "statusCompleted": "DOVRŠENO",
+                "statusInProgress": "U TIJEKU",
+                "delete": "Izbriši journal",
+                "created": "Stvoreno",
+                "bytes": "Bajtova",
+                "colPath": "Putanja",
+                "colDirection": "Smjer",
+                "colStatus": "Status",
+                "colBytes": "Bajtova",
+                "colAction": "Radnja"
             }
         }
     }

@@ -4546,6 +4546,32 @@
                 "fallbackHint": "AeroSync grįš prie klasikinio kopijavimo būdo. Pasirinktas nustatymas vis tiek bus vykdomas.",
                 "skipFuture": "Nebeklausti dėl šio serverio",
                 "continue": "Tęsti"
+            },
+            "launcherHistory": "Žurnalo istorija",
+            "history": {
+                "title": "AeroSync istorija",
+                "refresh": "Atnaujinti",
+                "cleanupOld": "Pašalinti įrašus, senesnius nei 30 dienų",
+                "clearAll": "Išvalyti visus žurnalus",
+                "confirmClearAll": "Išvalyti VISUS sinchronizavimo žurnalus?",
+                "empty": "Sinchronizavimo žurnalų dar nėra. Jie sukuriami pirmą kartą paleidus išankstinį nustatymą šiai kelių porai.",
+                "selectPrompt": "Pasirinkite žurnalą kairėje, kad peržiūrėtumėte įrašus pagal failą.",
+                "journalMissing": "Žurnalas nerastas.",
+                "entriesEmpty": "Įrašų nėra.",
+                "verify": "Patikrinti",
+                "verifyOk": "PATVIRTINTA",
+                "verifyFailed": "PAŽEISTA",
+                "verifyNoSignature": "BE PARAŠO",
+                "statusCompleted": "BAIGTA",
+                "statusInProgress": "VYKDOMA",
+                "delete": "Pašalinti žurnalą",
+                "created": "Sukurta",
+                "bytes": "Baitų",
+                "colPath": "Kelias",
+                "colDirection": "Kryptis",
+                "colStatus": "Būsena",
+                "colBytes": "Baitai",
+                "colAction": "Veiksmas"
             }
         }
     }

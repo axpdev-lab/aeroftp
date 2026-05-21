@@ -4546,6 +4546,32 @@
                 "fallbackHint": "AeroSync sa vráti ku klasickej ceste kopírovania. Zvolený preset sa stále spustí.",
                 "skipFuture": "Pre tento server sa už nepýtať",
                 "continue": "Pokračovať"
+            },
+            "launcherHistory": "História denníka",
+            "history": {
+                "title": "História AeroSync",
+                "refresh": "Obnoviť",
+                "cleanupOld": "Odstrániť záznamy staršie ako 30 dní",
+                "clearAll": "Vymazať všetky denníky",
+                "confirmClearAll": "Vymazať VŠETKY denníky synchronizácie?",
+                "empty": "Zatiaľ žiadne denníky synchronizácie. Vytvárajú sa pri prvom spustení predvoľby pre túto dvojicu ciest.",
+                "selectPrompt": "Vyberte denník vľavo, aby ste si pozreli záznamy pre jednotlivé súbory.",
+                "journalMissing": "Denník sa nenašiel.",
+                "entriesEmpty": "Žiadne zaznamenané záznamy.",
+                "verify": "Overiť",
+                "verifyOk": "OVERENÉ",
+                "verifyFailed": "POZMENENÉ",
+                "verifyNoSignature": "BEZ PODPISU",
+                "statusCompleted": "DOKONČENÉ",
+                "statusInProgress": "PREBIEHA",
+                "delete": "Odstrániť denník",
+                "created": "Vytvorené",
+                "bytes": "Bajty",
+                "colPath": "Cesta",
+                "colDirection": "Smer",
+                "colStatus": "Stav",
+                "colBytes": "Bajty",
+                "colAction": "Akcia"
             }
         }
     }
