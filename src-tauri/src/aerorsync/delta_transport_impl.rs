@@ -1066,8 +1066,24 @@ fn file_mtime_components(metadata: &std::fs::Metadata) -> (i64, Option<i32>) {
     }
 }
 
-/// Pull the mode bits (`st_mode` on Unix, synthesised default on other
-/// platforms) out of metadata. `FileListEntry::mode` is a `u32`.
+/// Pull the mode bits (`st_mode` on Unix, synthesised cross-platform
+/// equivalent on Windows) out of metadata. `FileListEntry::mode` is a
+/// `u32` that mirrors POSIX `st_mode`: high bits encode the file type
+/// (`S_IFREG` / `S_IFDIR` / `S_IFLNK`), low bits encode the permission
+/// triplet (owner/group/other rwx).
+///
+/// Z.4.3.f6 (Windows leg): the previous non-unix branch returned a bare
+/// `0o644`, missing the `S_IFREG = 0o100000` file-type flag. Stock
+/// `rsync --server` checks `S_ISREG(mode)` early in
+/// `flist.c::recv_file_entry` and aborts with exit code 22
+/// (`RERR_MALLOC`) when the entry advertises an unknown file type,
+/// because the next branch tries to size-allocate based on a
+/// file-type-specific path. The fix here mirrors what `stat(2)` would
+/// have produced on Unix for the same file: file-type bits derived
+/// from `FileType` (cross-platform), permission bits synthesised from
+/// `readonly` to give either `0o644` (writable) or `0o444`
+/// (read-only). Empty `mode == 0` would also fail the receiver's
+/// validation, so the synthesis always emits a sensible default.
 fn file_mode_from_metadata(metadata: &std::fs::Metadata) -> u32 {
     #[cfg(unix)]
     {
@@ -1076,12 +1092,29 @@ fn file_mode_from_metadata(metadata: &std::fs::Metadata) -> u32 {
     }
     #[cfg(not(unix))]
     {
-        // Conservative default for non-unix prototype builds. The
-        // native path is `#[cfg(unix)]` at the call site today
-        // (U-05), so this branch is unreachable in production but
-        // keeps the helper testable across platforms.
-        let _ = metadata;
-        0o644
+        // POSIX `S_IF*` constants. Inlined to avoid a libc dependency
+        // on the non-unix branch; values are stable on Linux/BSD.
+        const S_IFREG: u32 = 0o100000;
+        const S_IFDIR: u32 = 0o040000;
+        const S_IFLNK: u32 = 0o120000;
+
+        let file_type = metadata.file_type();
+        let type_bits = if file_type.is_symlink() {
+            S_IFLNK
+        } else if file_type.is_dir() {
+            S_IFDIR
+        } else {
+            // Default to regular file. Devices/sockets/fifos do not
+            // exist as `FileType` on Windows, so anything else is
+            // safely funnelled into the `S_IFREG` bucket here.
+            S_IFREG
+        };
+        let perm_bits = if metadata.permissions().readonly() {
+            0o444
+        } else {
+            0o644
+        };
+        type_bits | perm_bits
     }
 }
 
