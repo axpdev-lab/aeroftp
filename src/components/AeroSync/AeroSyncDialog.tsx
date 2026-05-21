@@ -94,51 +94,27 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                     <div className="flex items-center gap-1">
                         {isConnectedRemote && (
                             <>
-                                <button
-                                    type="button"
-                                    onClick={() => setShowTemplates(true)}
-                                    className="p-2 text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-                                    title={t('aerosync.launcherTemplates') || 'Templates'}
-                                    aria-label={t('aerosync.launcherTemplates') || 'Templates'}
-                                >
-                                    <FileDown size={16} />
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setShowMultiPath(true)}
-                                    className="p-2 text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-                                    title={t('aerosync.launcherMultiPath') || 'Multi-Path'}
-                                    aria-label={t('aerosync.launcherMultiPath') || 'Multi-Path'}
-                                >
-                                    <Layers size={16} />
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setShowRollback(true)}
-                                    className="p-2 text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-                                    title={t('aerosync.launcherRollback') || 'Rollback snapshots'}
-                                    aria-label={t('aerosync.launcherRollback') || 'Rollback snapshots'}
-                                >
-                                    <Undo2 size={16} />
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setShowHistory(true)}
-                                    className="p-2 text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-                                    title={t('aerosync.launcherHistory') || 'Journal history'}
-                                    aria-label={t('aerosync.launcherHistory') || 'Journal history'}
-                                >
-                                    <History size={16} />
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setShowScheduler(true)}
-                                    className="p-2 text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-                                    title={t('aerosync.launcherScheduler') || 'Scheduler'}
-                                    aria-label={t('aerosync.launcherScheduler') || 'Scheduler'}
-                                >
-                                    <CalendarClock size={16} />
-                                </button>
+                                {([
+                                    { Icon: FileDown, labelKey: 'aerosync.launcherTemplates', fallback: 'Templates', onClick: () => setShowTemplates(true) },
+                                    { Icon: Layers, labelKey: 'aerosync.launcherMultiPath', fallback: 'Multi-Path', onClick: () => setShowMultiPath(true) },
+                                    { Icon: Undo2, labelKey: 'aerosync.launcherRollback', fallback: 'Rollback snapshots', onClick: () => setShowRollback(true) },
+                                    { Icon: History, labelKey: 'aerosync.launcherHistory', fallback: 'Journal history', onClick: () => setShowHistory(true) },
+                                    { Icon: CalendarClock, labelKey: 'aerosync.launcherScheduler', fallback: 'Scheduler', onClick: () => setShowScheduler(true) },
+                                ] as const).map(({ Icon, labelKey, fallback, onClick }) => {
+                                    const label = t(labelKey) || fallback;
+                                    return (
+                                        <button
+                                            key={labelKey}
+                                            type="button"
+                                            onClick={onClick}
+                                            className="p-2 text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                                            title={label}
+                                            aria-label={label}
+                                        >
+                                            <Icon size={16} />
+                                        </button>
+                                    );
+                                })}
                                 <div className="mx-1 h-6 w-px bg-gray-300 dark:bg-gray-600" />
                             </>
                         )}

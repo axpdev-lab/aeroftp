@@ -31,7 +31,12 @@ interface SyncTabContentProps {
 //   `skipDeltaEligibilityPrompt`.
 const DELTA_OVERRIDE_KEY = 'aerosync.delta.override';
 const DELTA_OVERRIDES_MAP_KEY = 'aerosync.delta.overrides';
-type DeltaOverride = 'auto' | 'force-on' | 'force-off';
+const DELTA_OVERRIDE_VALUES = ['auto', 'force-on', 'force-off'] as const;
+type DeltaOverride = typeof DELTA_OVERRIDE_VALUES[number];
+function isDeltaOverride(value: unknown): value is DeltaOverride {
+    return typeof value === 'string'
+        && (DELTA_OVERRIDE_VALUES as readonly string[]).includes(value);
+}
 function readOverrideMap(): Record<string, DeltaOverride> {
     try {
         const raw = localStorage.getItem(DELTA_OVERRIDES_MAP_KEY);
@@ -40,9 +45,7 @@ function readOverrideMap(): Record<string, DeltaOverride> {
         if (!parsed || typeof parsed !== 'object') return {};
         const cleaned: Record<string, DeltaOverride> = {};
         for (const [k, v] of Object.entries(parsed)) {
-            if (v === 'force-on' || v === 'force-off' || v === 'auto') {
-                cleaned[k] = v;
-            }
+            if (isDeltaOverride(v)) cleaned[k] = v;
         }
         return cleaned;
     } catch { return {}; }
@@ -57,13 +60,10 @@ function writeOverrideMap(map: Record<string, DeltaOverride>) {
 function readDeltaOverride(profileId?: string): DeltaOverride {
     try {
         if (profileId) {
-            const map = readOverrideMap();
-            const v = map[profileId];
-            if (v === 'force-on' || v === 'force-off') return v;
-            return 'auto';
+            return readOverrideMap()[profileId] || 'auto';
         }
         const raw = localStorage.getItem(DELTA_OVERRIDE_KEY);
-        if (raw === 'force-on' || raw === 'force-off') return raw;
+        if (isDeltaOverride(raw)) return raw;
     } catch { /* localStorage unavailable */ }
     return 'auto';
 }

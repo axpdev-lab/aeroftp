@@ -8,7 +8,7 @@
 // `clear_all_journals_cmd` Tauri commands plus the per-pair
 // `verify_journal_signature` (gated by `get_journal_signing_key`).
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
     X, History, Trash2, AlertTriangle, CheckCircle2, RefreshCw, ShieldCheck, ShieldAlert, Eraser,
@@ -20,6 +20,7 @@ import type {
     SyncJournal,
     SyncJournalEntry,
 } from '../../types';
+import { formatDate } from '../../utils/formatters';
 import { logger } from '../../utils/logger';
 
 interface JournalHistoryDialogProps {
@@ -35,20 +36,6 @@ interface JournalHistoryDialogProps {
 }
 
 type VerifyState = 'idle' | 'verifying' | 'ok' | 'failed' | 'no-signature';
-
-function formatDate(iso: string): string {
-    if (!iso) return '';
-    try {
-        const d = new Date(iso);
-        if (Number.isNaN(d.getTime())) return iso;
-        return new Intl.DateTimeFormat(undefined, {
-            dateStyle: 'medium',
-            timeStyle: 'short',
-        }).format(d);
-    } catch {
-        return iso;
-    }
-}
 
 function formatBytes(n: number): string {
     if (!Number.isFinite(n) || n <= 0) return '0 B';
@@ -94,11 +81,10 @@ export const JournalHistoryDialog: React.FC<JournalHistoryDialogProps> = ({
         return () => window.removeEventListener('keydown', handler);
     }, [isOpen, onClose]);
 
-    const loadList = async () => {
+    const loadList = useCallback(async () => {
         setLoading(true);
         try {
             const list = await invoke<JournalSummary[]>('list_sync_journals_cmd');
-            // Newest-first by updated_at.
             list.sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
             setSummaries(list);
         } catch (e) {
@@ -107,7 +93,7 @@ export const JournalHistoryDialog: React.FC<JournalHistoryDialogProps> = ({
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -115,7 +101,7 @@ export const JournalHistoryDialog: React.FC<JournalHistoryDialogProps> = ({
         setSelected(null);
         setJournal(null);
         setVerifyState({});
-    }, [isOpen]);
+    }, [isOpen, loadList]);
 
     const openJournal = async (s: JournalSummary) => {
         setSelected(s);
