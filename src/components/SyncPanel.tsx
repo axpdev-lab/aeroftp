@@ -2310,9 +2310,12 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
       totalBytes,
       durationMs: Date.now() - startTime,
       delta_savings,
-      // Best-effort fallback for the current client-driven sync loop.
-      // Backend-populated fields (when present) should override these.
-      delta_session_count: delta_savings ? 1 : undefined,
+      // The current client-driven sync loop has no visibility into
+      // `BatchStats.session_count` (only `sync_directories` populates it).
+      // Leave `delta_session_count` undefined so the UI renders the
+      // honest "files + bytes on wire" line without inventing "1 session".
+      // CLI/MCP go through the backend report and surface the real count.
+      delta_session_count: undefined,
       delta_bytes_on_wire: delta_savings?.total_bytes_sent,
       delta_batch_files: delta_savings?.files_using_delta,
     });
@@ -2989,18 +2992,21 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
                       const bytesOnWire =
                         syncReport.delta_bytes_on_wire ??
                         syncReport.delta_savings?.total_bytes_sent;
-                      const sessions =
-                        syncReport.delta_session_count ??
-                        (files && files > 0 ? 1 : undefined);
-                      if (!files || !bytesOnWire || !sessions) {
+                      const sessions = syncReport.delta_session_count;
+                      if (!files || !bytesOnWire) {
                         return null;
                       }
-                      return (
-                        <div className="mt-1.5 text-[11px] text-emerald-900 dark:text-emerald-200">
-                          {t("syncPanel.deltaBatchSummary", {
+                      const headline = sessions !== undefined
+                        ? t("syncPanel.deltaBatchSummary", {
                             files: String(files),
                             sessions: String(sessions),
-                          })}
+                          })
+                        : t("syncPanel.deltaBatchSummaryNoSession", {
+                            files: String(files),
+                          });
+                      return (
+                        <div className="mt-1.5 text-[11px] text-emerald-900 dark:text-emerald-200">
+                          {headline}
                           {" · "}
                           {t("syncPanel.deltaBytesOnWire", {
                             bytesOnWire: formatSize(Math.max(0, bytesOnWire)),

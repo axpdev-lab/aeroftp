@@ -2173,7 +2173,8 @@
             "templateScriptExportedToast": "Skrifta flutt út",
             "templateScriptImportedToast": "Lýsigögn skriftu hlaðin",
             "templateScriptInvalidToast": "Skriftan inniheldur ekki AeroFTP-lýsigögn",
-            "checksumPoolNote": "Eftirlitssamanburður (checksum) í þessari SFTP-lotu notar eina tengingu (engin lotusafn): búast má við hægari skönnun á stórum trjám."
+            "checksumPoolNote": "Eftirlitssamanburður (checksum) í þessari SFTP-lotu notar eina tengingu (engin lotusafn): búast má við hægari skönnun á stórum trjám.",
+            "deltaBatchSummaryNoSession": "Delta: {files} skrár"
         },
         "ui": {
             "syncing": "Samstillir...",

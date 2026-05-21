@@ -3346,6 +3346,7 @@
       "checksumPoolNote": "Checksum compare on this SFTP session runs single-lease (no session pool): expect slower scans on large trees.",
       "deltaSummary": "{files} files · {bytes} saved · {speedup}x speedup",
       "deltaBatchSummary": "Delta: {files} files in {sessions} session(s)",
+      "deltaBatchSummaryNoSession": "Delta: {files} files",
       "deltaBytesOnWire": "{bytesOnWire} on wire",
       "deltaSummaryOptimized": "{files} files served via optimized transfer",
       "deltaTitle": "Delta savings",

@@ -2173,7 +2173,8 @@
             "templateScriptExportedToast": "Skripts eksportēts",
             "templateScriptImportedToast": "Skripta metadati ielādēti",
             "templateScriptInvalidToast": "Skripts nesatur AeroFTP metadatus",
-            "checksumPoolNote": "Kontrolsummas salīdzināšana šajā SFTP sesijā izmanto vienu savienojumu (bez sesiju pūla): lieliem kokiem skenēšana būs lēnāka."
+            "checksumPoolNote": "Kontrolsummas salīdzināšana šajā SFTP sesijā izmanto vienu savienojumu (bez sesiju pūla): lieliem kokiem skenēšana būs lēnāka.",
+            "deltaBatchSummaryNoSession": "Delta: {files} faili"
         },
         "ui": {
             "syncing": "Sinhronizē...",

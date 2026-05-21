@@ -2173,7 +2173,8 @@
             "templateScriptExportedToast": "Skript exportovaný",
             "templateScriptImportedToast": "Metadáta skriptu načítané",
             "templateScriptInvalidToast": "Skript neobsahuje metadáta AeroFTP",
-            "checksumPoolNote": "Porovnanie kontrolného súčtu v tejto SFTP relácii používa jediné pripojenie (bez poolu relácií): pri veľkých stromoch očakávajte pomalšie skenovanie."
+            "checksumPoolNote": "Porovnanie kontrolného súčtu v tejto SFTP relácii používa jediné pripojenie (bez poolu relácií): pri veľkých stromoch očakávajte pomalšie skenovanie.",
+            "deltaBatchSummaryNoSession": "Delta: {files} súborov"
         },
         "ui": {
             "syncing": "Synchronizacia...",

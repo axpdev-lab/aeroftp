@@ -2173,7 +2173,8 @@
             "templateScriptExportedToast": "स्क्रिप्ट निर्यात की गई",
             "templateScriptImportedToast": "स्क्रिप्ट मेटाडेटा लोड किया गया",
             "templateScriptInvalidToast": "स्क्रिप्ट में AeroFTP मेटाडेटा नहीं है",
-            "checksumPoolNote": "इस SFTP सत्र में checksum तुलना एकल कनेक्शन का उपयोग करती है (कोई सत्र pool नहीं): बड़े ट्री पर धीमी स्कैनिंग की अपेक्षा करें।"
+            "checksumPoolNote": "इस SFTP सत्र में checksum तुलना एकल कनेक्शन का उपयोग करती है (कोई सत्र pool नहीं): बड़े ट्री पर धीमी स्कैनिंग की अपेक्षा करें।",
+            "deltaBatchSummaryNoSession": "डेल्टा: {files} फ़ाइलें"
         },
         "ui": {
             "syncing": "सिंक हो रहा है...",

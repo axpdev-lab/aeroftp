@@ -2173,7 +2173,8 @@
             "templateScriptExportedToast": "Скрипт експортовано",
             "templateScriptImportedToast": "Метадані скрипта завантажено",
             "templateScriptInvalidToast": "Скрипт не містить метаданих AeroFTP",
-            "checksumPoolNote": "Порівняння контрольних сум у цій сесії SFTP використовує одне з'єднання (без пулу сесій): сканування великих дерев буде повільнішим."
+            "checksumPoolNote": "Порівняння контрольних сум у цій сесії SFTP використовує одне з'єднання (без пулу сесій): сканування великих дерев буде повільнішим.",
+            "deltaBatchSummaryNoSession": "Дельта: {files} файлів"
         },
         "ui": {
             "syncing": "Синхронізація...",

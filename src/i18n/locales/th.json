@@ -2173,7 +2173,8 @@
             "templateScriptExportedToast": "ส่งออกสคริปต์แล้ว",
             "templateScriptImportedToast": "โหลดข้อมูลเมตาของสคริปต์แล้ว",
             "templateScriptInvalidToast": "สคริปต์ไม่มีข้อมูลเมตาของ AeroFTP",
-            "checksumPoolNote": "การเปรียบเทียบ checksum ในเซสชัน SFTP นี้ใช้การเชื่อมต่อเดียว (ไม่มี pool เซสชัน): การสแกนทรีขนาดใหญ่จะช้าลง"
+            "checksumPoolNote": "การเปรียบเทียบ checksum ในเซสชัน SFTP นี้ใช้การเชื่อมต่อเดียว (ไม่มี pool เซสชัน): การสแกนทรีขนาดใหญ่จะช้าลง",
+            "deltaBatchSummaryNoSession": "เดลตา: {files} ไฟล์"
         },
         "ui": {
             "syncing": "กำลังซิงค์...",

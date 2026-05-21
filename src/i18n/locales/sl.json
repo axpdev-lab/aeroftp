@@ -2173,7 +2173,8 @@
             "templateScriptExportedToast": "Skript izvožen",
             "templateScriptImportedToast": "Metapodatki skripta naloženi",
             "templateScriptInvalidToast": "Skript ne vsebuje metapodatkov AeroFTP",
-            "checksumPoolNote": "Primerjava kontrolne vsote v tej seji SFTP uporablja eno povezavo (brez nabora sej): pri velikih drevesih pričakujte počasnejše pregledovanje."
+            "checksumPoolNote": "Primerjava kontrolne vsote v tej seji SFTP uporablja eno povezavo (brez nabora sej): pri velikih drevesih pričakujte počasnejše pregledovanje.",
+            "deltaBatchSummaryNoSession": "Delta: {files} datotek"
         },
         "ui": {
             "syncing": "Sinhronizacija...",

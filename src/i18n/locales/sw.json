@@ -2173,7 +2173,8 @@
             "templateScriptExportedToast": "Hati imehamishwa",
             "templateScriptImportedToast": "Metadata ya hati imepakiwa",
             "templateScriptInvalidToast": "Hati haina metadata ya AeroFTP",
-            "checksumPoolNote": "Ulinganishaji wa checksum katika kipindi hiki cha SFTP hutumia muunganisho mmoja (hakuna pool ya vipindi): tarajia uchanganuzi wa polepole kwenye miti mikubwa."
+            "checksumPoolNote": "Ulinganishaji wa checksum katika kipindi hiki cha SFTP hutumia muunganisho mmoja (hakuna pool ya vipindi): tarajia uchanganuzi wa polepole kwenye miti mikubwa.",
+            "deltaBatchSummaryNoSession": "Delta: faili {files}"
         },
         "ui": {
             "syncing": "Inasawazisha...",

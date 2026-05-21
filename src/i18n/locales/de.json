@@ -2173,7 +2173,8 @@
             "templateScriptExportedToast": "Skript exportiert",
             "templateScriptImportedToast": "Skript-Metadaten geladen",
             "templateScriptInvalidToast": "Skript enthält keine AeroFTP-Metadaten",
-            "checksumPoolNote": "Der Prüfsummenvergleich in dieser SFTP-Sitzung verwendet eine einzelne Verbindung (kein Sitzungspool): bei großen Bäumen sind langsamere Scans zu erwarten."
+            "checksumPoolNote": "Der Prüfsummenvergleich in dieser SFTP-Sitzung verwendet eine einzelne Verbindung (kein Sitzungspool): bei großen Bäumen sind langsamere Scans zu erwarten.",
+            "deltaBatchSummaryNoSession": "Delta: {files} Dateien"
         },
         "ui": {
             "syncing": "Synchronisiere...",

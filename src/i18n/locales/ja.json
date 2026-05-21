@@ -2138,7 +2138,8 @@
             "templateScriptExportedToast": "スクリプトをエクスポートしました",
             "templateScriptImportedToast": "スクリプトのメタデータを読み込みました",
             "templateScriptInvalidToast": "スクリプトに AeroFTP のメタデータが含まれていません",
-            "checksumPoolNote": "このSFTPセッションでのchecksum比較は単一接続を使用します(セッションpoolなし)。大きなツリーではスキャンが遅くなります。"
+            "checksumPoolNote": "このSFTPセッションでのchecksum比較は単一接続を使用します(セッションpoolなし)。大きなツリーではスキャンが遅くなります。",
+            "deltaBatchSummaryNoSession": "デルタ: {files} ファイル"
         },
         "ui": {
             "syncing": "同期中...",

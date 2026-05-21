@@ -2173,7 +2173,8 @@
             "templateScriptExportedToast": "Script-a esportatua",
             "templateScriptImportedToast": "Script-aren metadatuak kargatuta",
             "templateScriptInvalidToast": "Script-ak ez du AeroFTP metadaturik",
-            "checksumPoolNote": "SFTP saio honetako checksum konparazioak konexio bakarra erabiltzen du (saio poolik gabe): zuhaitz handietan eskaneo motelagoak espero dira."
+            "checksumPoolNote": "SFTP saio honetako checksum konparazioak konexio bakarra erabiltzen du (saio poolik gabe): zuhaitz handietan eskaneo motelagoak espero dira.",
+            "deltaBatchSummaryNoSession": "Delta: {files} fitxategi"
         },
         "ui": {
             "syncing": "Sinkronizatzen...",

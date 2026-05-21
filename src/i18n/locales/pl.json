@@ -2173,7 +2173,8 @@
             "templateScriptExportedToast": "Skrypt wyeksportowany",
             "templateScriptImportedToast": "Metadane skryptu wczytane",
             "templateScriptInvalidToast": "Skrypt nie zawiera metadanych AeroFTP",
-            "checksumPoolNote": "Porównanie sumy kontrolnej w tej sesji SFTP używa jednego połączenia (bez puli sesji): w przypadku dużych drzew skanowanie będzie wolniejsze."
+            "checksumPoolNote": "Porównanie sumy kontrolnej w tej sesji SFTP używa jednego połączenia (bez puli sesji): w przypadku dużych drzew skanowanie będzie wolniejsze.",
+            "deltaBatchSummaryNoSession": "Delta: {files} plików"
         },
         "ui": {
             "syncing": "Synchronizacja...",

@@ -2173,7 +2173,8 @@
             "templateScriptExportedToast": "Skrip dieksport",
             "templateScriptImportedToast": "Metadata skrip dimuatkan",
             "templateScriptInvalidToast": "Skrip tidak mengandungi metadata AeroFTP",
-            "checksumPoolNote": "Perbandingan checksum pada sesi SFTP ini menggunakan satu sambungan (tiada pool sesi): jangkakan imbasan lebih perlahan pada pokok besar."
+            "checksumPoolNote": "Perbandingan checksum pada sesi SFTP ini menggunakan satu sambungan (tiada pool sesi): jangkakan imbasan lebih perlahan pada pokok besar.",
+            "deltaBatchSummaryNoSession": "Delta: {files} fail"
         },
         "ui": {
             "syncing": "Menyegerak...",

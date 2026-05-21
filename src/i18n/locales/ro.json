@@ -2173,7 +2173,8 @@
             "templateScriptExportedToast": "Script exportat",
             "templateScriptImportedToast": "Metadate script încărcate",
             "templateScriptInvalidToast": "Scriptul nu conține metadate AeroFTP",
-            "checksumPoolNote": "Compararea checksum în această sesiune SFTP folosește o singură conexiune (fără pool de sesiuni): scanările pe arbori mari vor fi mai lente."
+            "checksumPoolNote": "Compararea checksum în această sesiune SFTP folosește o singură conexiune (fără pool de sesiuni): scanările pe arbori mari vor fi mai lente.",
+            "deltaBatchSummaryNoSession": "Delta: {files} fișiere"
         },
         "ui": {
             "syncing": "Se sincronizează...",

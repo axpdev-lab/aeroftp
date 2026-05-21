@@ -2173,7 +2173,8 @@
             "templateScriptExportedToast": "Script geëxporteerd",
             "templateScriptImportedToast": "Scriptmetadata geladen",
             "templateScriptInvalidToast": "Script bevat geen AeroFTP-metadata",
-            "checksumPoolNote": "Checksumvergelijking in deze SFTP-sessie gebruikt één verbinding (geen sessiepool): verwacht tragere scans bij grote structuren."
+            "checksumPoolNote": "Checksumvergelijking in deze SFTP-sessie gebruikt één verbinding (geen sessiepool): verwacht tragere scans bij grote structuren.",
+            "deltaBatchSummaryNoSession": "Delta: {files} bestanden"
         },
         "ui": {
             "syncing": "Synchroniseren...",
