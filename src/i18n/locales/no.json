@@ -4557,7 +4557,15 @@
             "verifyPolicy_size_only": "Bare størrelse",
             "verifyPolicy_size_and_mtime": "Størrelse + tidsstempel",
             "verifyPolicy_full_checksum": "Full kontrollsum",
-            "verifyPolicyHint": "Integritetskontroll etter overføring brukes på hver fil."
+            "verifyPolicyHint": "Integritetskontroll etter overføring brukes på hver fil.",
+            "deltaEligibility": {
+                "title": "Delta sync er ikke tilgjengelig",
+                "heading": "Delta sync er ikke tilgjengelig for denne serveren.",
+                "serverLabel": "Server:",
+                "fallbackHint": "AeroSync går tilbake til den klassiske kopieringsmetoden. Den valgte forhåndsinnstillingen kjøres fortsatt.",
+                "skipFuture": "Ikke spør igjen for denne serveren",
+                "continue": "Fortsett"
+            }
         }
     }
 }

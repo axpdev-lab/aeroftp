@@ -4538,7 +4538,15 @@
             "verifyPolicy_size_only": "仅大小",
             "verifyPolicy_size_and_mtime": "大小 + 时间戳",
             "verifyPolicy_full_checksum": "完整校验和",
-            "verifyPolicyHint": "对每个文件应用的传输后完整性检查。"
+            "verifyPolicyHint": "对每个文件应用的传输后完整性检查。",
+            "deltaEligibility": {
+                "title": "Delta sync 不可用",
+                "heading": "此服务器不支持 delta sync。",
+                "serverLabel": "服务器:",
+                "fallbackHint": "AeroSync 将回退到经典复制路径。所选预设仍会运行。",
+                "skipFuture": "不再为此服务器询问",
+                "continue": "继续"
+            }
         }
     }
 }

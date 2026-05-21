@@ -4538,7 +4538,15 @@
             "verifyPolicy_size_only": "Samo veličina",
             "verifyPolicy_size_and_mtime": "Veličina + vremenska oznaka",
             "verifyPolicy_full_checksum": "Potpuna kontrolna suma",
-            "verifyPolicyHint": "Provjera integriteta nakon prijenosa primijenjena na svaku datoteku."
+            "verifyPolicyHint": "Provjera integriteta nakon prijenosa primijenjena na svaku datoteku.",
+            "deltaEligibility": {
+                "title": "Delta sync nije dostupan",
+                "heading": "Delta sync nije dostupan za ovaj poslužitelj.",
+                "serverLabel": "Poslužitelj:",
+                "fallbackHint": "AeroSync će koristiti klasični put kopiranja. Odabrana postavka se i dalje izvršava.",
+                "skipFuture": "Ne pitaj više za ovaj poslužitelj",
+                "continue": "Nastavi"
+            }
         }
     }
 }

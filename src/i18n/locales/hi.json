@@ -4538,7 +4538,15 @@
             "verifyPolicy_size_only": "केवल आकार",
             "verifyPolicy_size_and_mtime": "आकार + टाइमस्टैम्प",
             "verifyPolicy_full_checksum": "पूर्ण चेकसम",
-            "verifyPolicyHint": "प्रत्येक फ़ाइल पर लागू स्थानांतरण-पश्चात अखंडता जाँच।"
+            "verifyPolicyHint": "प्रत्येक फ़ाइल पर लागू स्थानांतरण-पश्चात अखंडता जाँच।",
+            "deltaEligibility": {
+                "title": "Delta sync उपलब्ध नहीं है",
+                "heading": "इस सर्वर के लिए delta sync उपलब्ध नहीं है।",
+                "serverLabel": "सर्वर:",
+                "fallbackHint": "AeroSync क्लासिक कॉपी पथ पर वापस आ जाएगा। चुना गया प्रीसेट फिर भी चलेगा।",
+                "skipFuture": "इस सर्वर के लिए दोबारा न पूछें",
+                "continue": "जारी रखें"
+            }
         }
     }
 }

@@ -4557,7 +4557,15 @@
             "verifyPolicy_size_only": "Tamaina soilik",
             "verifyPolicy_size_and_mtime": "Tamaina + denbora-marka",
             "verifyPolicy_full_checksum": "Egiaztapen-batura osoa",
-            "verifyPolicyHint": "Transferentzia osteko osotasun-egiaztapena fitxategi bakoitzari aplikatuta."
+            "verifyPolicyHint": "Transferentzia osteko osotasun-egiaztapena fitxategi bakoitzari aplikatuta.",
+            "deltaEligibility": {
+                "title": "Delta sync ez dago erabilgarri",
+                "heading": "Delta sync ez dago erabilgarri zerbitzari honetarako.",
+                "serverLabel": "Zerbitzaria:",
+                "fallbackHint": "AeroSync-ek kopia-bide klasikora joko du. Aukeratutako aurrezarpena, halere, exekutatuko da.",
+                "skipFuture": "Ez galdetu berriro zerbitzari honetaz",
+                "continue": "Jarraitu"
+            }
         }
     }
 }

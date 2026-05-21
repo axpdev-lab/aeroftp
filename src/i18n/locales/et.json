@@ -4538,7 +4538,15 @@
             "verifyPolicy_size_only": "Ainult suurus",
             "verifyPolicy_size_and_mtime": "Suurus + ajatempel",
             "verifyPolicy_full_checksum": "Täielik kontrollsumma",
-            "verifyPolicyHint": "Edastusjärgne terviklikkuse kontroll rakendatud igale failile."
+            "verifyPolicyHint": "Edastusjärgne terviklikkuse kontroll rakendatud igale failile.",
+            "deltaEligibility": {
+                "title": "Delta sync pole saadaval",
+                "heading": "Delta sync pole selle serveri jaoks saadaval.",
+                "serverLabel": "Server:",
+                "fallbackHint": "AeroSync läheb tagasi klassikalisele kopeerimisteele. Valitud eelseadistus käivitub ikkagi.",
+                "skipFuture": "Ära küsi enam selle serveri kohta",
+                "continue": "Jätka"
+            }
         }
     }
 }

@@ -4538,7 +4538,15 @@
             "verifyPolicy_size_only": "Ukubwa pekee",
             "verifyPolicy_size_and_mtime": "Ukubwa + alama ya wakati",
             "verifyPolicy_full_checksum": "Hundisha kamili",
-            "verifyPolicyHint": "Ukaguzi wa uadilifu baada ya kuhamisha unaotumika kwa kila faili."
+            "verifyPolicyHint": "Ukaguzi wa uadilifu baada ya kuhamisha unaotumika kwa kila faili.",
+            "deltaEligibility": {
+                "title": "Delta sync haipatikani",
+                "heading": "Delta sync haipatikani kwa seva hii.",
+                "serverLabel": "Seva:",
+                "fallbackHint": "AeroSync itarejea kwenye njia ya kawaida ya kunakili. Mpangilio uliochaguliwa bado utaendeshwa.",
+                "skipFuture": "Usiulize tena kwa seva hii",
+                "continue": "Endelea"
+            }
         }
     }
 }

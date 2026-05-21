@@ -4538,7 +4538,15 @@
             "verifyPolicy_size_only": "Doar dimensiunea",
             "verifyPolicy_size_and_mtime": "Dimensiune + marcaj temporal",
             "verifyPolicy_full_checksum": "Checksum complet",
-            "verifyPolicyHint": "Verificare a integrității post-transfer aplicată fiecărui fișier."
+            "verifyPolicyHint": "Verificare a integrității post-transfer aplicată fiecărui fișier.",
+            "deltaEligibility": {
+                "title": "Delta sync indisponibil",
+                "heading": "Delta sync indisponibil pentru acest server.",
+                "serverLabel": "Server:",
+                "fallbackHint": "AeroSync va reveni la calea clasică de copiere. Presetarea aleasă rulează în continuare.",
+                "skipFuture": "Nu mai întreba pentru acest server",
+                "continue": "Continuă"
+            }
         }
     }
 }

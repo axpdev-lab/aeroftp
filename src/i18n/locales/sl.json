@@ -4538,7 +4538,15 @@
             "verifyPolicy_size_only": "Samo velikost",
             "verifyPolicy_size_and_mtime": "Velikost + časovni žig",
             "verifyPolicy_full_checksum": "Polna kontrolna vsota",
-            "verifyPolicyHint": "Preverjanje celovitosti po prenosu, uporabljeno za vsako datoteko."
+            "verifyPolicyHint": "Preverjanje celovitosti po prenosu, uporabljeno za vsako datoteko.",
+            "deltaEligibility": {
+                "title": "Delta sync ni na voljo",
+                "heading": "Delta sync ni na voljo za ta strežnik.",
+                "serverLabel": "Strežnik:",
+                "fallbackHint": "AeroSync bo uporabil klasično pot kopiranja. Izbrana prednastavitev se vseeno izvede.",
+                "skipFuture": "Ne sprašuj več za ta strežnik",
+                "continue": "Nadaljuj"
+            }
         }
     }
 }

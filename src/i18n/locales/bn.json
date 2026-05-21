@@ -4538,7 +4538,15 @@
             "verifyPolicy_size_only": "শুধু আকার",
             "verifyPolicy_size_and_mtime": "আকার + টাইমস্ট্যাম্প",
             "verifyPolicy_full_checksum": "সম্পূর্ণ চেকসাম",
-            "verifyPolicyHint": "প্রতিটি ফাইলে প্রয়োগ করা ট্রান্সফার-পরবর্তী অখণ্ডতা পরীক্ষা।"
+            "verifyPolicyHint": "প্রতিটি ফাইলে প্রয়োগ করা ট্রান্সফার-পরবর্তী অখণ্ডতা পরীক্ষা।",
+            "deltaEligibility": {
+                "title": "Delta sync উপলব্ধ নয়",
+                "heading": "এই সার্ভারের জন্য delta sync উপলব্ধ নয়।",
+                "serverLabel": "সার্ভার:",
+                "fallbackHint": "AeroSync ক্লাসিক কপি পদ্ধতিতে ফিরে যাবে। নির্বাচিত প্রিসেট তবুও চলবে।",
+                "skipFuture": "এই সার্ভারের জন্য আর জিজ্ঞাসা করবেন না",
+                "continue": "চালিয়ে যান"
+            }
         }
     }
 }

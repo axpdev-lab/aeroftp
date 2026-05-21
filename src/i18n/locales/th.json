@@ -4538,7 +4538,15 @@
             "verifyPolicy_size_only": "เฉพาะขนาด",
             "verifyPolicy_size_and_mtime": "ขนาด + เวลา",
             "verifyPolicy_full_checksum": "เช็คซัมเต็มรูปแบบ",
-            "verifyPolicyHint": "การตรวจสอบความสมบูรณ์หลังการถ่ายโอนที่ใช้กับแต่ละไฟล์"
+            "verifyPolicyHint": "การตรวจสอบความสมบูรณ์หลังการถ่ายโอนที่ใช้กับแต่ละไฟล์",
+            "deltaEligibility": {
+                "title": "Delta sync ไม่พร้อมใช้งาน",
+                "heading": "Delta sync ไม่พร้อมใช้งานสำหรับเซิร์ฟเวอร์นี้",
+                "serverLabel": "เซิร์ฟเวอร์:",
+                "fallbackHint": "AeroSync จะย้อนกลับไปใช้เส้นทางการคัดลอกแบบคลาสสิก พรีเซ็ตที่เลือกจะยังคงทำงานต่อ",
+                "skipFuture": "ไม่ต้องถามอีกสำหรับเซิร์ฟเวอร์นี้",
+                "continue": "ดำเนินการต่อ"
+            }
         }
     }
 }

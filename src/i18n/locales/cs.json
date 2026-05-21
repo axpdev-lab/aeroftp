@@ -4538,7 +4538,15 @@
             "verifyPolicy_size_only": "Pouze velikost",
             "verifyPolicy_size_and_mtime": "Velikost + časové razítko",
             "verifyPolicy_full_checksum": "Úplný kontrolní součet",
-            "verifyPolicyHint": "Kontrola integrity po přenosu aplikovaná na každý soubor."
+            "verifyPolicyHint": "Kontrola integrity po přenosu aplikovaná na každý soubor.",
+            "deltaEligibility": {
+                "title": "Delta sync není k dispozici",
+                "heading": "Delta sync není pro tento server k dispozici.",
+                "serverLabel": "Server:",
+                "fallbackHint": "AeroSync přejde na klasický způsob kopírování. Zvolené přednastavení se přesto spustí.",
+                "skipFuture": "Pro tento server se již neptat",
+                "continue": "Pokračovat"
+            }
         }
     }
 }

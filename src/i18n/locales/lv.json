@@ -4538,7 +4538,15 @@
             "verifyPolicy_size_only": "Tikai izmērs",
             "verifyPolicy_size_and_mtime": "Izmērs + laikspiedols",
             "verifyPolicy_full_checksum": "Pilna kontrolsumma",
-            "verifyPolicyHint": "Pārsūtīšanas integritātes pārbaude tiek piemērota katram failam."
+            "verifyPolicyHint": "Pārsūtīšanas integritātes pārbaude tiek piemērota katram failam.",
+            "deltaEligibility": {
+                "title": "Delta sync nav pieejams",
+                "heading": "Delta sync nav pieejams šim serverim.",
+                "serverLabel": "Serveris:",
+                "fallbackHint": "AeroSync atgriezīsies pie klasiskā kopēšanas veida. Izvēlētais iestatījums joprojām tiks izpildīts.",
+                "skipFuture": "Vairs nejautāt par šo serveri",
+                "continue": "Turpināt"
+            }
         }
     }
 }

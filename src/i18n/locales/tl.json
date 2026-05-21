@@ -4557,7 +4557,15 @@
             "verifyPolicy_size_only": "Sukat lamang",
             "verifyPolicy_size_and_mtime": "Sukat + timestamp",
             "verifyPolicy_full_checksum": "Buong checksum",
-            "verifyPolicyHint": "Pagsusuri ng integridad pagkatapos ng paglilipat na inilapat sa bawat file."
+            "verifyPolicyHint": "Pagsusuri ng integridad pagkatapos ng paglilipat na inilapat sa bawat file.",
+            "deltaEligibility": {
+                "title": "Hindi available ang delta sync",
+                "heading": "Hindi available ang delta sync para sa server na ito.",
+                "serverLabel": "Server:",
+                "fallbackHint": "Babalik ang AeroSync sa klasikong daan ng pagkopya. Tatakbo pa rin ang napiling preset.",
+                "skipFuture": "Huwag nang magtanong muli para sa server na ito",
+                "continue": "Magpatuloy"
+            }
         }
     }
 }

@@ -4538,7 +4538,15 @@
             "verifyPolicy_size_only": "Hanya ukuran",
             "verifyPolicy_size_and_mtime": "Ukuran + stempel waktu",
             "verifyPolicy_full_checksum": "Checksum penuh",
-            "verifyPolicyHint": "Pemeriksaan integritas pasca-transfer diterapkan ke setiap file."
+            "verifyPolicyHint": "Pemeriksaan integritas pasca-transfer diterapkan ke setiap file.",
+            "deltaEligibility": {
+                "title": "Delta sync tidak tersedia",
+                "heading": "Delta sync tidak tersedia untuk server ini.",
+                "serverLabel": "Server:",
+                "fallbackHint": "AeroSync akan kembali ke jalur penyalinan klasik. Preset yang dipilih tetap dijalankan.",
+                "skipFuture": "Jangan tanya lagi untuk server ini",
+                "continue": "Lanjutkan"
+            }
         }
     }
 }

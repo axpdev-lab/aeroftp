@@ -4557,7 +4557,15 @@
             "verifyPolicy_size_only": "ទំហំតែប៉ុណ្ណោះ",
             "verifyPolicy_size_and_mtime": "ទំហំ + ត្រាពេលវេលា",
             "verifyPolicy_full_checksum": "ឆេកសាំពេញលេញ",
-            "verifyPolicyHint": "ការត្រួតពិនិត្យសុចរិតភាពក្រោយការផ្ទេរអនុវត្តលើឯកសារនីមួយៗ។"
+            "verifyPolicyHint": "ការត្រួតពិនិត្យសុចរិតភាពក្រោយការផ្ទេរអនុវត្តលើឯកសារនីមួយៗ។",
+            "deltaEligibility": {
+                "title": "Delta sync មិនអាចប្រើបានទេ",
+                "heading": "Delta sync មិនអាចប្រើបានសម្រាប់ម៉ាស៊ីនមេនេះទេ។",
+                "serverLabel": "ម៉ាស៊ីនមេ៖",
+                "fallbackHint": "AeroSync នឹងត្រឡប់ទៅផ្លូវចម្លងបែបបុរាណវិញ។ ការកំណត់ដែលបានជ្រើសរើសនៅតែដំណើរការ។",
+                "skipFuture": "កុំសួរម្តងទៀតសម្រាប់ម៉ាស៊ីនមេនេះ",
+                "continue": "បន្ត"
+            }
         }
     }
 }

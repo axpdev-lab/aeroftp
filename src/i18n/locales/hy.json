@@ -4538,7 +4538,15 @@
             "verifyPolicy_size_only": "Միայն չափսը",
             "verifyPolicy_size_and_mtime": "Չափս + ժամանակադրոշմ",
             "verifyPolicy_full_checksum": "Ամբողջական ստուգագումար",
-            "verifyPolicyHint": "Փոխանցումից հետո ամբողջականության ստուգում՝ կիրառված յուրաքանչյուր ֆայլի համար:"
+            "verifyPolicyHint": "Փոխանցումից հետո ամբողջականության ստուգում՝ կիրառված յուրաքանչյուր ֆայլի համար:",
+            "deltaEligibility": {
+                "title": "Delta sync-ը հասանելի չէ",
+                "heading": "Delta sync-ը հասանելի չէ այս սերվերի համար։",
+                "serverLabel": "Սերվեր՝",
+                "fallbackHint": "AeroSync-ը կանցնի պատճենահանման դասական ուղուն։ Ընտրված կարգավորումը դեռ կաշխատի։",
+                "skipFuture": "Այլևս չհարցնել այս սերվերի համար",
+                "continue": "Շարունակել"
+            }
         }
     }
 }

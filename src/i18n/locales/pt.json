@@ -4538,7 +4538,15 @@
             "verifyPolicy_size_only": "Apenas tamanho",
             "verifyPolicy_size_and_mtime": "Tamanho + carimbo de hora",
             "verifyPolicy_full_checksum": "Checksum completo",
-            "verifyPolicyHint": "Verificação de integridade pós-transferência aplicada a cada ficheiro."
+            "verifyPolicyHint": "Verificação de integridade pós-transferência aplicada a cada ficheiro.",
+            "deltaEligibility": {
+                "title": "Delta sync indisponível",
+                "heading": "Delta sync indisponível para este servidor.",
+                "serverLabel": "Servidor:",
+                "fallbackHint": "O AeroSync recorrerá ao caminho de cópia clássico. O preset escolhido continua a ser executado.",
+                "skipFuture": "Não perguntar novamente para este servidor",
+                "continue": "Continuar"
+            }
         }
     }
 }

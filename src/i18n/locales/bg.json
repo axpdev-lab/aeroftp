@@ -4538,7 +4538,15 @@
             "verifyPolicy_size_only": "Само размер",
             "verifyPolicy_size_and_mtime": "Размер + времеви маркер",
             "verifyPolicy_full_checksum": "Пълна контролна сума",
-            "verifyPolicyHint": "Проверка на целостта след прехвърлянето, приложена за всеки файл."
+            "verifyPolicyHint": "Проверка на целостта след прехвърлянето, приложена за всеки файл.",
+            "deltaEligibility": {
+                "title": "Delta sync не е достъпен",
+                "heading": "Delta sync не е достъпен за този сървър.",
+                "serverLabel": "Сървър:",
+                "fallbackHint": "AeroSync ще премине към класическия път за копиране. Избраната предварителна настройка все пак ще се изпълни.",
+                "skipFuture": "Не питай отново за този сървър",
+                "continue": "Продължи"
+            }
         }
     }
 }

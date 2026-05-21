@@ -4538,7 +4538,15 @@
             "verifyPolicy_size_only": "Chỉ kích thước",
             "verifyPolicy_size_and_mtime": "Kích thước + dấu thời gian",
             "verifyPolicy_full_checksum": "Tổng kiểm tra đầy đủ",
-            "verifyPolicyHint": "Kiểm tra tính toàn vẹn sau khi truyền được áp dụng cho mỗi tệp."
+            "verifyPolicyHint": "Kiểm tra tính toàn vẹn sau khi truyền được áp dụng cho mỗi tệp.",
+            "deltaEligibility": {
+                "title": "Delta sync không khả dụng",
+                "heading": "Delta sync không khả dụng cho máy chủ này.",
+                "serverLabel": "Máy chủ:",
+                "fallbackHint": "AeroSync sẽ quay lại đường sao chép cổ điển. Cài đặt sẵn đã chọn vẫn chạy.",
+                "skipFuture": "Không hỏi lại cho máy chủ này",
+                "continue": "Tiếp tục"
+            }
         }
     }
 }

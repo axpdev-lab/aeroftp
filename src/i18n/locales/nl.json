@@ -4538,7 +4538,15 @@
             "verifyPolicy_size_only": "Alleen grootte",
             "verifyPolicy_size_and_mtime": "Grootte + tijdstempel",
             "verifyPolicy_full_checksum": "Volledige checksum",
-            "verifyPolicyHint": "Integriteitscontrole na overdracht toegepast op elk bestand."
+            "verifyPolicyHint": "Integriteitscontrole na overdracht toegepast op elk bestand.",
+            "deltaEligibility": {
+                "title": "Delta sync niet beschikbaar",
+                "heading": "Delta sync is niet beschikbaar voor deze server.",
+                "serverLabel": "Server:",
+                "fallbackHint": "AeroSync schakelt terug naar het klassieke kopieerpad. De gekozen preset wordt nog steeds uitgevoerd.",
+                "skipFuture": "Niet meer vragen voor deze server",
+                "continue": "Doorgaan"
+            }
         }
     }
 }
