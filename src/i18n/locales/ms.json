@@ -3370,7 +3370,7 @@
             "activityLog": "Log Aktiviti",
             "detailedCards": "Kad pelayan terperinci",
             "debugPanel": "Debug Panel",
-            "aerofileSync": "AeroFile Sync..."
+            "aerosync": "AeroSync..."
         },
         "activityPanel": {
             "awaitingCommands": "Menunggu arahan...",
@@ -4587,29 +4587,6 @@
             "moveHereFromOtherPanelTooltip": "Alih {count} yang dipilih dari panel lain ke panel ini (F6)",
             "syncToOtherPanel": "Segerakkan ke panel lain (delta)"
         },
-        "localSync": {
-            "title": "AeroSync: tempatan ke tempatan",
-            "description": "Mencerminkan direktori sumber tempatan ke destinasi tempatan. Fail ≥ 1 MiB menggunakan enjin delta dalaman; fail yang lebih kecil menggunakan salinan langsung.",
-            "source": "Sumber",
-            "destination": "Destinasi",
-            "browse": "Layari…",
-            "excludeLabel": "Corak pengecualian (dipisahkan dengan koma atau baris baharu)",
-            "useDelta": "Gunakan pengangkutan delta (fail ≥ 1 MiB)",
-            "dryRun": "Larian percubaan (pratonton sahaja)",
-            "running": "Sedang berjalan…",
-            "start": "Mulakan penyegerakan",
-            "resultOk": "Penyegerakan selesai",
-            "resultPartial": "Penyegerakan selesai dengan ralat",
-            "uploaded": "Dimuat naik",
-            "skipped": "Dilangkau",
-            "errors": "Ralat",
-            "elapsed": "Masa berlalu",
-            "payload": "Payload",
-            "bytesOnWire": "Bait pada rangkaian",
-            "savings": "Penjimatan",
-            "errorDetails": "ralat, perincian",
-            "errorPathsRequired": "Sumber dan destinasi diperlukan"
-        },
         "compare": {
             "title": "Bandingkan panel",
             "notAvailable": "Buka panel kedua atau sambungan jauh untuk membandingkan."
@@ -4620,9 +4597,9 @@
             "allSkipped": "Tiada entri boleh dilaksanakan untuk pratetap ini.",
             "deletesDeferred": "Pratetap penyegerakan"
         },
-        "aerofileSync": {
-            "title": "AeroFile Sync",
-            "toolbarButton": "AeroFile Sync",
+        "aerosync": {
+            "title": "AeroSync",
+            "toolbarButton": "AeroSync",
             "tabCompare": "Bandingkan",
             "tabPlan": "Rancang",
             "tabSync": "Segerak",
@@ -4658,7 +4635,30 @@
             "executeNothing": "Tiada apa-apa untuk dilakukan atau laluan pelaksanaan tidak tersedia",
             "executeConfirm": "Sahkan tindakan destruktif untuk membolehkan Laksana",
             "executePreset": "Laksanakan pratetap",
-            "execute": "Laksana"
+            "execute": "Laksana",
+            "sync": {
+                "title": "AeroSync: tempatan ke tempatan",
+                "description": "Mencerminkan direktori sumber tempatan ke destinasi tempatan. Fail ≥ 1 MiB menggunakan enjin delta dalaman; fail yang lebih kecil menggunakan salinan langsung.",
+                "source": "Sumber",
+                "destination": "Destinasi",
+                "browse": "Layari…",
+                "excludeLabel": "Corak pengecualian (dipisahkan dengan koma atau baris baharu)",
+                "useDelta": "Gunakan pengangkutan delta (fail ≥ 1 MiB)",
+                "dryRun": "Larian percubaan (pratonton sahaja)",
+                "running": "Sedang berjalan…",
+                "start": "Mulakan penyegerakan",
+                "resultOk": "Penyegerakan selesai",
+                "resultPartial": "Penyegerakan selesai dengan ralat",
+                "uploaded": "Dimuat naik",
+                "skipped": "Dilangkau",
+                "errors": "Ralat",
+                "elapsed": "Masa berlalu",
+                "payload": "Payload",
+                "bytesOnWire": "Bait pada rangkaian",
+                "savings": "Penjimatan",
+                "errorDetails": "ralat, perincian",
+                "errorPathsRequired": "Sumber dan destinasi diperlukan"
+            }
         }
     }
 }

@@ -3370,7 +3370,7 @@
             "activityLog": "অ্যাক্টিভিটি লগ",
             "detailedCards": "বিস্তারিত সার্ভার কার্ড",
             "debugPanel": "Debug Panel",
-            "aerofileSync": "AeroFile Sync..."
+            "aerosync": "AeroSync..."
         },
         "activityPanel": {
             "awaitingCommands": "কমান্ডের অপেক্ষায়...",
@@ -4587,29 +4587,6 @@
             "moveHereFromOtherPanelTooltip": "অন্য প্যানেল থেকে নির্বাচিত {count} এই প্যানেলে সরান (F6)",
             "syncToOtherPanel": "অন্য প্যানেলে সিঙ্ক করুন (delta)"
         },
-        "localSync": {
-            "title": "AeroSync: লোকাল থেকে লোকাল",
-            "description": "একটি লোকাল উৎস ডিরেক্টরিকে লোকাল গন্তব্য ডিরেক্টরিতে মিরর করে। ১ MiB বা তার বেশি ফাইল ইন-প্রসেস delta ইঞ্জিন ব্যবহার করে; ছোট ফাইল সাধারণ কপি ব্যবহার করে।",
-            "source": "উৎস",
-            "destination": "গন্তব্য",
-            "browse": "ব্রাউজ…",
-            "excludeLabel": "এক্সক্লুড প্যাটার্ন (কমা বা নিউলাইন দ্বারা পৃথক)",
-            "useDelta": "Delta ট্রান্সপোর্ট ব্যবহার করুন (১ MiB বা তার বেশি ফাইল)",
-            "dryRun": "ড্রাই রান (শুধু প্রিভিউ)",
-            "running": "চলছে…",
-            "start": "সিঙ্ক শুরু করুন",
-            "resultOk": "সিঙ্ক সম্পন্ন হয়েছে",
-            "resultPartial": "ত্রুটির সাথে সিঙ্ক সম্পন্ন হয়েছে",
-            "uploaded": "আপলোড হয়েছে",
-            "skipped": "এড়ানো হয়েছে",
-            "errors": "ত্রুটি",
-            "elapsed": "অতিবাহিত সময়",
-            "payload": "Payload",
-            "bytesOnWire": "নেটওয়ার্কে বাইট",
-            "savings": "সঞ্চয়",
-            "errorDetails": "ত্রুটি, বিস্তারিত",
-            "errorPathsRequired": "উৎস এবং গন্তব্য আবশ্যক"
-        },
         "compare": {
             "title": "প্যানেল তুলনা",
             "notAvailable": "তুলনা করতে দ্বিতীয় প্যানেল বা একটি দূরবর্তী সংযোগ খুলুন।"
@@ -4620,9 +4597,9 @@
             "allSkipped": "এই প্রিসেটের জন্য কোনও কার্যকর এন্ট্রি নেই।",
             "deletesDeferred": "সিঙ্ক প্রিসেট"
         },
-        "aerofileSync": {
-            "title": "AeroFile Sync",
-            "toolbarButton": "AeroFile Sync",
+        "aerosync": {
+            "title": "AeroSync",
+            "toolbarButton": "AeroSync",
             "tabCompare": "তুলনা",
             "tabPlan": "পরিকল্পনা",
             "tabSync": "সিঙ্ক",
@@ -4658,7 +4635,30 @@
             "executeNothing": "করার কিছু নেই বা এক্সিকিউশন পথ উপলব্ধ নয়",
             "executeConfirm": "এক্সিকিউট সক্রিয় করতে ধ্বংসাত্মক ক্রিয়াগুলি নিশ্চিত করুন",
             "executePreset": "প্রিসেট এক্সিকিউট করুন",
-            "execute": "এক্সিকিউট"
+            "execute": "এক্সিকিউট",
+            "sync": {
+                "title": "AeroSync: লোকাল থেকে লোকাল",
+                "description": "একটি লোকাল উৎস ডিরেক্টরিকে লোকাল গন্তব্য ডিরেক্টরিতে মিরর করে। ১ MiB বা তার বেশি ফাইল ইন-প্রসেস delta ইঞ্জিন ব্যবহার করে; ছোট ফাইল সাধারণ কপি ব্যবহার করে।",
+                "source": "উৎস",
+                "destination": "গন্তব্য",
+                "browse": "ব্রাউজ…",
+                "excludeLabel": "এক্সক্লুড প্যাটার্ন (কমা বা নিউলাইন দ্বারা পৃথক)",
+                "useDelta": "Delta ট্রান্সপোর্ট ব্যবহার করুন (১ MiB বা তার বেশি ফাইল)",
+                "dryRun": "ড্রাই রান (শুধু প্রিভিউ)",
+                "running": "চলছে…",
+                "start": "সিঙ্ক শুরু করুন",
+                "resultOk": "সিঙ্ক সম্পন্ন হয়েছে",
+                "resultPartial": "ত্রুটির সাথে সিঙ্ক সম্পন্ন হয়েছে",
+                "uploaded": "আপলোড হয়েছে",
+                "skipped": "এড়ানো হয়েছে",
+                "errors": "ত্রুটি",
+                "elapsed": "অতিবাহিত সময়",
+                "payload": "Payload",
+                "bytesOnWire": "নেটওয়ার্কে বাইট",
+                "savings": "সঞ্চয়",
+                "errorDetails": "ত্রুটি, বিস্তারিত",
+                "errorPathsRequired": "উৎস এবং গন্তব্য আবশ্যক"
+            }
         }
     }
 }

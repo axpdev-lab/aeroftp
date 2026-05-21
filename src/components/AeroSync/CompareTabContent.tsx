@@ -204,7 +204,7 @@ export const CompareTabContent: React.FC<CompareTabContentProps> = ({
     if (!result) {
         return (
             <div className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">
-                {t('aerofileSync.compareUnavailable') || 'Open a second panel or a remote connection to compare.'}
+                {t('aerosync.compareUnavailable') || 'Open a second panel or a remote connection to compare.'}
             </div>
         );
     }
@@ -234,13 +234,13 @@ export const CompareTabContent: React.FC<CompareTabContentProps> = ({
             <div className="grid gap-3 px-4 py-3 sm:grid-cols-3">
                 <div className="rounded-md bg-gray-50 p-3 dark:bg-gray-900/40">
                     <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                        {t('aerofileSync.totalEntries') || 'Total entries'}
+                        {t('aerosync.totalEntries') || 'Total entries'}
                     </div>
                     <div className="font-semibold text-gray-900 dark:text-white">{result.totals.count}</div>
                 </div>
                 <div className="rounded-md bg-gray-50 p-3 dark:bg-gray-900/40">
                     <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                        {t('aerofileSync.differences') || 'Differences'}
+                        {t('aerosync.differences') || 'Differences'}
                     </div>
                     <div className="font-semibold text-gray-900 dark:text-white">
                         {result.totals.count - result.stats.same.count}
@@ -248,7 +248,7 @@ export const CompareTabContent: React.FC<CompareTabContentProps> = ({
                 </div>
                 <div className="rounded-md bg-gray-50 p-3 dark:bg-gray-900/40">
                     <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                        {t('aerofileSync.totalBytes') || 'Total bytes'}
+                        {t('aerosync.totalBytes') || 'Total bytes'}
                     </div>
                     <div className="font-semibold text-gray-900 dark:text-white">{formatBytes(result.totals.bytes)}</div>
                 </div>
@@ -275,7 +275,7 @@ export const CompareTabContent: React.FC<CompareTabContentProps> = ({
 
             <div className="flex flex-col gap-2 border-t border-gray-200 px-4 py-3 dark:border-gray-700 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                    {t('aerofileSync.mirrorHint') || 'Mirror buttons stage the matching entries in the unified transfer planner for review.'}
+                    {t('aerosync.mirrorHint') || 'Mirror buttons stage the matching entries in the unified transfer planner for review.'}
                 </p>
                 <div className="flex flex-wrap justify-end gap-2">
                     <button
@@ -284,7 +284,7 @@ export const CompareTabContent: React.FC<CompareTabContentProps> = ({
                         disabled={!canMirrorRightToLeft || rightToLeftEntries.length === 0}
                         className="inline-flex items-center gap-2 rounded-lg bg-gray-700 px-3 py-2 text-sm text-white transition-colors hover:bg-gray-800 disabled:opacity-40"
                     >
-                        &larr; {t('aerofileSync.mirrorRightToLeft') || 'Mirror right to left'} ({rightToLeftEntries.length})
+                        &larr; {t('aerosync.mirrorRightToLeft') || 'Mirror right to left'} ({rightToLeftEntries.length})
                     </button>
                     <button
                         type="button"
@@ -292,7 +292,7 @@ export const CompareTabContent: React.FC<CompareTabContentProps> = ({
                         disabled={!canMirrorLeftToRight || leftToRightEntries.length === 0}
                         className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm text-white transition-colors hover:bg-blue-700 disabled:opacity-40"
                     >
-                        {t('aerofileSync.mirrorLeftToRight') || 'Mirror left to right'} ({leftToRightEntries.length}) &rarr;
+                        {t('aerosync.mirrorLeftToRight') || 'Mirror left to right'} ({leftToRightEntries.length}) &rarr;
                     </button>
                 </div>
             </div>

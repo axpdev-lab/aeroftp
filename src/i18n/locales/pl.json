@@ -3370,7 +3370,7 @@
             "activityLog": "Dziennik aktywności",
             "detailedCards": "Szczegółowe karty serwerów",
             "debugPanel": "Debug Panel",
-            "aerofileSync": "AeroFile Sync..."
+            "aerosync": "AeroSync..."
         },
         "activityPanel": {
             "awaitingCommands": "Oczekiwanie na polecenia...",
@@ -4587,29 +4587,6 @@
             "moveHereFromOtherPanelTooltip": "Przenieś {count} zaznaczonych z drugiego panelu do tego panelu (F6)",
             "syncToOtherPanel": "Synchronizuj do drugiego panelu (delta)"
         },
-        "localSync": {
-            "title": "AeroSync: lokalnie do lokalnie",
-            "description": "Odzwierciedla lokalny katalog źródłowy do lokalnego celu. Pliki ≥ 1 MiB używają wbudowanego silnika delta; mniejsze pliki używają bezpośredniej kopii.",
-            "source": "Źródło",
-            "destination": "Cel",
-            "browse": "Przeglądaj…",
-            "excludeLabel": "Wzorce wykluczeń (oddzielone przecinkiem lub nową linią)",
-            "useDelta": "Użyj transportu delta (pliki ≥ 1 MiB)",
-            "dryRun": "Tryb testowy (tylko podgląd)",
-            "running": "W toku…",
-            "start": "Rozpocznij synchronizację",
-            "resultOk": "Synchronizacja zakończona",
-            "resultPartial": "Synchronizacja zakończona z błędami",
-            "uploaded": "Przesłane",
-            "skipped": "Pominięte",
-            "errors": "Błędy",
-            "elapsed": "Upłynęło",
-            "payload": "Payload",
-            "bytesOnWire": "Bajty w sieci",
-            "savings": "Oszczędność",
-            "errorDetails": "błąd/błędy, szczegóły",
-            "errorPathsRequired": "Źródło i cel są wymagane"
-        },
         "compare": {
             "title": "Porównaj panele",
             "notAvailable": "Otwórz drugi panel lub połączenie zdalne, aby porównać."
@@ -4620,9 +4597,9 @@
             "allSkipped": "Brak wykonywalnych wpisów dla tego profilu.",
             "deletesDeferred": "Profile synchronizacji"
         },
-        "aerofileSync": {
-            "title": "AeroFile Sync",
-            "toolbarButton": "AeroFile Sync",
+        "aerosync": {
+            "title": "AeroSync",
+            "toolbarButton": "AeroSync",
             "tabCompare": "Porównaj",
             "tabPlan": "Plan",
             "tabSync": "Synchronizuj",
@@ -4658,7 +4635,30 @@
             "executeNothing": "Nic do zrobienia lub ścieżka wykonania niedostępna",
             "executeConfirm": "Potwierdź destrukcyjne akcje, aby włączyć Wykonaj",
             "executePreset": "Wykonaj preset",
-            "execute": "Wykonaj"
+            "execute": "Wykonaj",
+            "sync": {
+                "title": "AeroSync: lokalnie do lokalnie",
+                "description": "Odzwierciedla lokalny katalog źródłowy do lokalnego celu. Pliki ≥ 1 MiB używają wbudowanego silnika delta; mniejsze pliki używają bezpośredniej kopii.",
+                "source": "Źródło",
+                "destination": "Cel",
+                "browse": "Przeglądaj…",
+                "excludeLabel": "Wzorce wykluczeń (oddzielone przecinkiem lub nową linią)",
+                "useDelta": "Użyj transportu delta (pliki ≥ 1 MiB)",
+                "dryRun": "Tryb testowy (tylko podgląd)",
+                "running": "W toku…",
+                "start": "Rozpocznij synchronizację",
+                "resultOk": "Synchronizacja zakończona",
+                "resultPartial": "Synchronizacja zakończona z błędami",
+                "uploaded": "Przesłane",
+                "skipped": "Pominięte",
+                "errors": "Błędy",
+                "elapsed": "Upłynęło",
+                "payload": "Payload",
+                "bytesOnWire": "Bajty w sieci",
+                "savings": "Oszczędność",
+                "errorDetails": "błąd/błędy, szczegóły",
+                "errorPathsRequired": "Źródło i cel są wymagane"
+            }
         }
     }
 }

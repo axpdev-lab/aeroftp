@@ -3370,7 +3370,7 @@
             "activityLog": "Aktivitetslogg",
             "detailedCards": "Detaljerade serverkort",
             "debugPanel": "Debug Panel",
-            "aerofileSync": "AeroFile Sync..."
+            "aerosync": "AeroSync..."
         },
         "activityPanel": {
             "awaitingCommands": "Vantar pa kommandon...",
@@ -4587,29 +4587,6 @@
             "moveHereFromOtherPanelTooltip": "Flytta {count} valda från den andra panelen till denna panel (F6)",
             "syncToOtherPanel": "Synkronisera till andra panelen (delta)"
         },
-        "localSync": {
-            "title": "AeroSync: lokalt till lokalt",
-            "description": "Speglar en lokal källkatalog till en lokal destination. Filer ≥ 1 MiB använder den inbyggda delta-motorn; mindre filer använder direkt kopiering.",
-            "source": "Källa",
-            "destination": "Destination",
-            "browse": "Bläddra…",
-            "excludeLabel": "Exkluderingsmönster (separerade med komma eller ny rad)",
-            "useDelta": "Använd delta-transport (filer ≥ 1 MiB)",
-            "dryRun": "Testkörning (endast förhandsvisning)",
-            "running": "Kör…",
-            "start": "Starta synkronisering",
-            "resultOk": "Synkronisering slutförd",
-            "resultPartial": "Synkronisering slutförd med fel",
-            "uploaded": "Uppladdade",
-            "skipped": "Hoppades över",
-            "errors": "Fel",
-            "elapsed": "Förfluten tid",
-            "payload": "Payload",
-            "bytesOnWire": "Byte på nätverket",
-            "savings": "Besparing",
-            "errorDetails": "fel, detaljer",
-            "errorPathsRequired": "Källa och destination krävs"
-        },
         "compare": {
             "title": "Jämför paneler",
             "notAvailable": "Öppna en andra panel eller en fjärranslutning för att jämföra."
@@ -4620,9 +4597,9 @@
             "allSkipped": "Inga utförbara poster för denna förinställning.",
             "deletesDeferred": "Synkroniseringsförinställningar"
         },
-        "aerofileSync": {
-            "title": "AeroFile Sync",
-            "toolbarButton": "AeroFile Sync",
+        "aerosync": {
+            "title": "AeroSync",
+            "toolbarButton": "AeroSync",
             "tabCompare": "Jämför",
             "tabPlan": "Plan",
             "tabSync": "Synkronisera",
@@ -4658,7 +4635,30 @@
             "executeNothing": "Inget att göra eller utförandeväg inte tillgänglig",
             "executeConfirm": "Bekräfta destruktiva åtgärder för att aktivera Utför",
             "executePreset": "Utför förinställning",
-            "execute": "Utför"
+            "execute": "Utför",
+            "sync": {
+                "title": "AeroSync: lokalt till lokalt",
+                "description": "Speglar en lokal källkatalog till en lokal destination. Filer ≥ 1 MiB använder den inbyggda delta-motorn; mindre filer använder direkt kopiering.",
+                "source": "Källa",
+                "destination": "Destination",
+                "browse": "Bläddra…",
+                "excludeLabel": "Exkluderingsmönster (separerade med komma eller ny rad)",
+                "useDelta": "Använd delta-transport (filer ≥ 1 MiB)",
+                "dryRun": "Testkörning (endast förhandsvisning)",
+                "running": "Kör…",
+                "start": "Starta synkronisering",
+                "resultOk": "Synkronisering slutförd",
+                "resultPartial": "Synkronisering slutförd med fel",
+                "uploaded": "Uppladdade",
+                "skipped": "Hoppades över",
+                "errors": "Fel",
+                "elapsed": "Förfluten tid",
+                "payload": "Payload",
+                "bytesOnWire": "Byte på nätverket",
+                "savings": "Besparing",
+                "errorDetails": "fel, detaljer",
+                "errorPathsRequired": "Källa och destination krävs"
+            }
         }
     }
 }

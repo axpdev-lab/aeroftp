@@ -3370,7 +3370,7 @@
             "activityLog": "Activiteitenlog",
             "detailedCards": "Gedetailleerde serverkaarten",
             "debugPanel": "Debug Panel",
-            "aerofileSync": "AeroFile Sync..."
+            "aerosync": "AeroSync..."
         },
         "activityPanel": {
             "awaitingCommands": "Wacht op opdrachten...",
@@ -4587,29 +4587,6 @@
             "moveHereFromOtherPanelTooltip": "{count} geselecteerde items uit het andere paneel naar dit paneel verplaatsen (F6)",
             "syncToOtherPanel": "Synchroniseren met ander paneel (delta)"
         },
-        "localSync": {
-            "title": "AeroSync: lokaal naar lokaal",
-            "description": "Spiegelt een lokale bronmap naar een lokale bestemming. Bestanden ≥ 1 MiB gebruiken de ingebouwde delta-engine; kleinere bestanden gebruiken directe kopie.",
-            "source": "Bron",
-            "destination": "Bestemming",
-            "browse": "Bladeren…",
-            "excludeLabel": "Uitsluitingspatronen (gescheiden door komma of nieuwe regel)",
-            "useDelta": "Delta-transport gebruiken (bestanden ≥ 1 MiB)",
-            "dryRun": "Proefrun (alleen voorbeeld)",
-            "running": "Bezig…",
-            "start": "Synchronisatie starten",
-            "resultOk": "Synchronisatie voltooid",
-            "resultPartial": "Synchronisatie voltooid met fouten",
-            "uploaded": "Geüpload",
-            "skipped": "Overgeslagen",
-            "errors": "Fouten",
-            "elapsed": "Verstreken tijd",
-            "payload": "Payload",
-            "bytesOnWire": "Bytes op het netwerk",
-            "savings": "Besparing",
-            "errorDetails": "fout(en), details",
-            "errorPathsRequired": "Bron en bestemming zijn vereist"
-        },
         "compare": {
             "title": "Vergelijk panelen",
             "notAvailable": "Open een tweede paneel of een externe verbinding om te vergelijken."
@@ -4620,9 +4597,9 @@
             "allSkipped": "Geen uitvoerbare items voor deze voorinstelling.",
             "deletesDeferred": "Synchronisatievoorinstellingen"
         },
-        "aerofileSync": {
-            "title": "AeroFile Sync",
-            "toolbarButton": "AeroFile Sync",
+        "aerosync": {
+            "title": "AeroSync",
+            "toolbarButton": "AeroSync",
             "tabCompare": "Vergelijken",
             "tabPlan": "Plan",
             "tabSync": "Synchroniseren",
@@ -4658,7 +4635,30 @@
             "executeNothing": "Niets te doen of uitvoeringspad niet beschikbaar",
             "executeConfirm": "Bevestig destructieve acties om Uitvoeren in te schakelen",
             "executePreset": "Preset uitvoeren",
-            "execute": "Uitvoeren"
+            "execute": "Uitvoeren",
+            "sync": {
+                "title": "AeroSync: lokaal naar lokaal",
+                "description": "Spiegelt een lokale bronmap naar een lokale bestemming. Bestanden ≥ 1 MiB gebruiken de ingebouwde delta-engine; kleinere bestanden gebruiken directe kopie.",
+                "source": "Bron",
+                "destination": "Bestemming",
+                "browse": "Bladeren…",
+                "excludeLabel": "Uitsluitingspatronen (gescheiden door komma of nieuwe regel)",
+                "useDelta": "Delta-transport gebruiken (bestanden ≥ 1 MiB)",
+                "dryRun": "Proefrun (alleen voorbeeld)",
+                "running": "Bezig…",
+                "start": "Synchronisatie starten",
+                "resultOk": "Synchronisatie voltooid",
+                "resultPartial": "Synchronisatie voltooid met fouten",
+                "uploaded": "Geüpload",
+                "skipped": "Overgeslagen",
+                "errors": "Fouten",
+                "elapsed": "Verstreken tijd",
+                "payload": "Payload",
+                "bytesOnWire": "Bytes op het netwerk",
+                "savings": "Besparing",
+                "errorDetails": "fout(en), details",
+                "errorPathsRequired": "Bron en bestemming zijn vereist"
+            }
         }
     }
 }

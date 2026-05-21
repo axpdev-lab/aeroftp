@@ -3370,7 +3370,7 @@
             "activityLog": "บันทึกกิจกรรม",
             "detailedCards": "การ์ดเซิร์ฟเวอร์แบบละเอียด",
             "debugPanel": "Debug Panel",
-            "aerofileSync": "AeroFile Sync..."
+            "aerosync": "AeroSync..."
         },
         "activityPanel": {
             "awaitingCommands": "รอคำสั่ง...",
@@ -4587,29 +4587,6 @@
             "moveHereFromOtherPanelTooltip": "ย้าย {count} ที่เลือกจากแผงอื่นมายังแผงนี้ (F6)",
             "syncToOtherPanel": "ซิงค์ไปยังแผงอีกอัน (delta)"
         },
-        "localSync": {
-            "title": "AeroSync: ในเครื่องสู่ในเครื่อง",
-            "description": "สะท้อนไดเรกทอรีต้นทางในเครื่องไปยังปลายทางในเครื่อง ไฟล์ขนาด ≥ 1 MiB ใช้เอนจิน delta ในตัว ไฟล์ที่เล็กกว่าใช้การคัดลอกตรง",
-            "source": "ต้นทาง",
-            "destination": "ปลายทาง",
-            "browse": "เรียกดู…",
-            "excludeLabel": "รูปแบบการยกเว้น (คั่นด้วยจุลภาคหรือบรรทัดใหม่)",
-            "useDelta": "ใช้การส่ง delta (ไฟล์ ≥ 1 MiB)",
-            "dryRun": "ทดลองรัน (ดูตัวอย่างเท่านั้น)",
-            "running": "กำลังทำงาน…",
-            "start": "เริ่มการซิงค์",
-            "resultOk": "ซิงค์เสร็จสมบูรณ์",
-            "resultPartial": "ซิงค์เสร็จสมบูรณ์โดยมีข้อผิดพลาด",
-            "uploaded": "อัปโหลดแล้ว",
-            "skipped": "ข้าม",
-            "errors": "ข้อผิดพลาด",
-            "elapsed": "เวลาที่ผ่านไป",
-            "payload": "Payload",
-            "bytesOnWire": "ไบต์บนเครือข่าย",
-            "savings": "ประหยัด",
-            "errorDetails": "ข้อผิดพลาด รายละเอียด",
-            "errorPathsRequired": "ต้องระบุต้นทางและปลายทาง"
-        },
         "compare": {
             "title": "เปรียบเทียบแผง",
             "notAvailable": "เปิดแผงที่สองหรือการเชื่อมต่อระยะไกลเพื่อเปรียบเทียบ"
@@ -4620,9 +4597,9 @@
             "allSkipped": "ไม่มีรายการที่สามารถดำเนินการได้สำหรับค่าที่ตั้งล่วงหน้านี้",
             "deletesDeferred": "ค่าที่ตั้งล่วงหน้าการซิงค์"
         },
-        "aerofileSync": {
-            "title": "AeroFile Sync",
-            "toolbarButton": "AeroFile Sync",
+        "aerosync": {
+            "title": "AeroSync",
+            "toolbarButton": "AeroSync",
             "tabCompare": "เปรียบเทียบ",
             "tabPlan": "แผน",
             "tabSync": "ซิงค์",
@@ -4658,7 +4635,30 @@
             "executeNothing": "ไม่มีอะไรให้ทำหรือเส้นทางการดำเนินการไม่พร้อมใช้งาน",
             "executeConfirm": "ยืนยันการกระทำที่ทำลายล้างเพื่อเปิดใช้งานดำเนินการ",
             "executePreset": "ดำเนินการพรีเซ็ต",
-            "execute": "ดำเนินการ"
+            "execute": "ดำเนินการ",
+            "sync": {
+                "title": "AeroSync: ในเครื่องสู่ในเครื่อง",
+                "description": "สะท้อนไดเรกทอรีต้นทางในเครื่องไปยังปลายทางในเครื่อง ไฟล์ขนาด ≥ 1 MiB ใช้เอนจิน delta ในตัว ไฟล์ที่เล็กกว่าใช้การคัดลอกตรง",
+                "source": "ต้นทาง",
+                "destination": "ปลายทาง",
+                "browse": "เรียกดู…",
+                "excludeLabel": "รูปแบบการยกเว้น (คั่นด้วยจุลภาคหรือบรรทัดใหม่)",
+                "useDelta": "ใช้การส่ง delta (ไฟล์ ≥ 1 MiB)",
+                "dryRun": "ทดลองรัน (ดูตัวอย่างเท่านั้น)",
+                "running": "กำลังทำงาน…",
+                "start": "เริ่มการซิงค์",
+                "resultOk": "ซิงค์เสร็จสมบูรณ์",
+                "resultPartial": "ซิงค์เสร็จสมบูรณ์โดยมีข้อผิดพลาด",
+                "uploaded": "อัปโหลดแล้ว",
+                "skipped": "ข้าม",
+                "errors": "ข้อผิดพลาด",
+                "elapsed": "เวลาที่ผ่านไป",
+                "payload": "Payload",
+                "bytesOnWire": "ไบต์บนเครือข่าย",
+                "savings": "ประหยัด",
+                "errorDetails": "ข้อผิดพลาด รายละเอียด",
+                "errorPathsRequired": "ต้องระบุต้นทางและปลายทาง"
+            }
         }
     }
 }

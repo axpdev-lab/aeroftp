@@ -3370,7 +3370,7 @@
             "activityLog": "Log Gweithgaredd",
             "detailedCards": "Cardiau gweinydd manwl",
             "debugPanel": "Debug Panel",
-            "aerofileSync": "AeroFile Sync..."
+            "aerosync": "AeroSync..."
         },
         "activityPanel": {
             "awaitingCommands": "Yn aros am orchmynion...",
@@ -4606,29 +4606,6 @@
             "moveHereFromOtherPanelTooltip": "Symud {count} a ddewiswyd o'r panel arall i'r panel hwn (F6)",
             "syncToOtherPanel": "Cysoni i'r panel arall (delta)"
         },
-        "localSync": {
-            "title": "AeroSync: o leol i leol",
-            "description": "Drycha gyfeiriadur ffynhonnell leol i gyfeiriadur cyrchfan lleol. Mae ffeiliau ≥ 1 MiB yn defnyddio'r peiriant delta mewnol; mae ffeiliau llai yn defnyddio copi uniongyrchol.",
-            "source": "Ffynhonnell",
-            "destination": "Cyrchfan",
-            "browse": "Pori…",
-            "excludeLabel": "Patrymau eithrio (wedi'u gwahanu gan goma neu linell newydd)",
-            "useDelta": "Defnyddio cludiant delta (ffeiliau ≥ 1 MiB)",
-            "dryRun": "Rhediad prawf (rhagolwg yn unig)",
-            "running": "Yn rhedeg…",
-            "start": "Cychwyn cydweddu",
-            "resultOk": "Cydweddu wedi'i gwblhau",
-            "resultPartial": "Cydweddu wedi'i gwblhau gyda gwallau",
-            "uploaded": "Wedi llwytho",
-            "skipped": "Wedi hepgor",
-            "errors": "Gwallau",
-            "elapsed": "Amser a aeth heibio",
-            "payload": "Payload",
-            "bytesOnWire": "Beitiau ar y rhwydwaith",
-            "savings": "Arbedion",
-            "errorDetails": "gwall(au), manylion",
-            "errorPathsRequired": "Mae angen ffynhonnell a chyrchfan"
-        },
         "compare": {
             "title": "Cymharu paneli",
             "notAvailable": "Agor ail banel neu gysylltiad pell i'w cymharu."
@@ -4639,9 +4616,9 @@
             "allSkipped": "Dim cofnodion gweithredadwy ar gyfer y rhag-osodiad hwn.",
             "deletesDeferred": "Rhag-osodiadau cysoni"
         },
-        "aerofileSync": {
-            "title": "AeroFile Sync",
-            "toolbarButton": "AeroFile Sync",
+        "aerosync": {
+            "title": "AeroSync",
+            "toolbarButton": "AeroSync",
             "tabCompare": "Cymharu",
             "tabPlan": "Cynllun",
             "tabSync": "Cysoni",
@@ -4677,7 +4654,30 @@
             "executeNothing": "Dim i'w wneud neu nid yw'r llwybr gweithredu ar gael",
             "executeConfirm": "Cadarnhau'r gweithredoedd dinistriol i alluogi Gweithredu",
             "executePreset": "Gweithredu rhagosod",
-            "execute": "Gweithredu"
+            "execute": "Gweithredu",
+            "sync": {
+                "title": "AeroSync: o leol i leol",
+                "description": "Drycha gyfeiriadur ffynhonnell leol i gyfeiriadur cyrchfan lleol. Mae ffeiliau ≥ 1 MiB yn defnyddio'r peiriant delta mewnol; mae ffeiliau llai yn defnyddio copi uniongyrchol.",
+                "source": "Ffynhonnell",
+                "destination": "Cyrchfan",
+                "browse": "Pori…",
+                "excludeLabel": "Patrymau eithrio (wedi'u gwahanu gan goma neu linell newydd)",
+                "useDelta": "Defnyddio cludiant delta (ffeiliau ≥ 1 MiB)",
+                "dryRun": "Rhediad prawf (rhagolwg yn unig)",
+                "running": "Yn rhedeg…",
+                "start": "Cychwyn cydweddu",
+                "resultOk": "Cydweddu wedi'i gwblhau",
+                "resultPartial": "Cydweddu wedi'i gwblhau gyda gwallau",
+                "uploaded": "Wedi llwytho",
+                "skipped": "Wedi hepgor",
+                "errors": "Gwallau",
+                "elapsed": "Amser a aeth heibio",
+                "payload": "Payload",
+                "bytesOnWire": "Beitiau ar y rhwydwaith",
+                "savings": "Arbedion",
+                "errorDetails": "gwall(au), manylion",
+                "errorPathsRequired": "Mae angen ffynhonnell a chyrchfan"
+            }
         }
     }
 }

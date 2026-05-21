@@ -3370,7 +3370,7 @@
             "activityLog": "Дневник активности",
             "detailedCards": "Детаљне картице сервера",
             "debugPanel": "Debug Panel",
-            "aerofileSync": "AeroFile Sync..."
+            "aerosync": "AeroSync..."
         },
         "activityPanel": {
             "awaitingCommands": "Чекање на команде...",
@@ -4587,29 +4587,6 @@
             "moveHereFromOtherPanelTooltip": "Премести {count} изабраних из другог панела у овај панел (F6)",
             "syncToOtherPanel": "Синхронизуј са другим панелом (delta)"
         },
-        "localSync": {
-            "title": "AeroSync: локално у локално",
-            "description": "Огледава локални изворни директоријум у локалну дестинацију. Датотеке ≥ 1 MiB користе уграђени delta мотор; мање датотеке користе директно копирање.",
-            "source": "Извор",
-            "destination": "Дестинација",
-            "browse": "Прегледај…",
-            "excludeLabel": "Обрасци искључивања (одвојени зарезом или новим редом)",
-            "useDelta": "Користи delta транспорт (датотеке ≥ 1 MiB)",
-            "dryRun": "Пробно извршавање (само преглед)",
-            "running": "Извршава се…",
-            "start": "Покрени синхронизацију",
-            "resultOk": "Синхронизација завршена",
-            "resultPartial": "Синхронизација завршена са грешкама",
-            "uploaded": "Отпремљено",
-            "skipped": "Прескочено",
-            "errors": "Грешке",
-            "elapsed": "Протекло време",
-            "payload": "Payload",
-            "bytesOnWire": "Бајтови на мрежи",
-            "savings": "Уштеда",
-            "errorDetails": "грешка(е), детаљи",
-            "errorPathsRequired": "Извор и дестинација су обавезни"
-        },
         "compare": {
             "title": "Упореди панеле",
             "notAvailable": "Отвори други панел или удаљену везу за поређење."
@@ -4620,9 +4597,9 @@
             "allSkipped": "Нема извршивих ставки за ово подешавање.",
             "deletesDeferred": "Подешавања синхронизације"
         },
-        "aerofileSync": {
-            "title": "AeroFile Sync",
-            "toolbarButton": "AeroFile Sync",
+        "aerosync": {
+            "title": "AeroSync",
+            "toolbarButton": "AeroSync",
             "tabCompare": "Упореди",
             "tabPlan": "План",
             "tabSync": "Синхронизуј",
@@ -4658,7 +4635,30 @@
             "executeNothing": "Ништа за урадити или путања извршења није доступна",
             "executeConfirm": "Потврдите разорне радње да бисте омогућили Изврши",
             "executePreset": "Изврши пресет",
-            "execute": "Изврши"
+            "execute": "Изврши",
+            "sync": {
+                "title": "AeroSync: локално у локално",
+                "description": "Огледава локални изворни директоријум у локалну дестинацију. Датотеке ≥ 1 MiB користе уграђени delta мотор; мање датотеке користе директно копирање.",
+                "source": "Извор",
+                "destination": "Дестинација",
+                "browse": "Прегледај…",
+                "excludeLabel": "Обрасци искључивања (одвојени зарезом или новим редом)",
+                "useDelta": "Користи delta транспорт (датотеке ≥ 1 MiB)",
+                "dryRun": "Пробно извршавање (само преглед)",
+                "running": "Извршава се…",
+                "start": "Покрени синхронизацију",
+                "resultOk": "Синхронизација завршена",
+                "resultPartial": "Синхронизација завршена са грешкама",
+                "uploaded": "Отпремљено",
+                "skipped": "Прескочено",
+                "errors": "Грешке",
+                "elapsed": "Протекло време",
+                "payload": "Payload",
+                "bytesOnWire": "Бајтови на мрежи",
+                "savings": "Уштеда",
+                "errorDetails": "грешка(е), детаљи",
+                "errorPathsRequired": "Извор и дестинација су обавезни"
+            }
         }
     }
 }

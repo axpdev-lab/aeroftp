@@ -3370,7 +3370,7 @@
             "activityLog": "Log Aktivitas",
             "detailedCards": "Kartu server terperinci",
             "debugPanel": "Debug Panel",
-            "aerofileSync": "AeroFile Sync..."
+            "aerosync": "AeroSync..."
         },
         "activityPanel": {
             "awaitingCommands": "Menunggu perintah...",
@@ -4587,29 +4587,6 @@
             "moveHereFromOtherPanelTooltip": "Pindahkan {count} yang dipilih dari panel lain ke panel ini (F6)",
             "syncToOtherPanel": "Sinkronkan ke panel lain (delta)"
         },
-        "localSync": {
-            "title": "AeroSync: lokal ke lokal",
-            "description": "Mencerminkan direktori sumber lokal ke tujuan lokal. File ≥ 1 MiB menggunakan mesin delta internal; file yang lebih kecil menggunakan salinan langsung.",
-            "source": "Sumber",
-            "destination": "Tujuan",
-            "browse": "Telusuri…",
-            "excludeLabel": "Pola pengecualian (dipisahkan koma atau baris baru)",
-            "useDelta": "Gunakan transport delta (file ≥ 1 MiB)",
-            "dryRun": "Uji coba (hanya pratinjau)",
-            "running": "Berjalan…",
-            "start": "Mulai sinkronisasi",
-            "resultOk": "Sinkronisasi selesai",
-            "resultPartial": "Sinkronisasi selesai dengan kesalahan",
-            "uploaded": "Diunggah",
-            "skipped": "Dilewati",
-            "errors": "Kesalahan",
-            "elapsed": "Waktu berlalu",
-            "payload": "Payload",
-            "bytesOnWire": "Byte di jaringan",
-            "savings": "Penghematan",
-            "errorDetails": "kesalahan, detail",
-            "errorPathsRequired": "Sumber dan tujuan wajib diisi"
-        },
         "compare": {
             "title": "Bandingkan panel",
             "notAvailable": "Buka panel kedua atau koneksi jarak jauh untuk membandingkan."
@@ -4620,9 +4597,9 @@
             "allSkipped": "Tidak ada entri yang dapat dieksekusi untuk preset ini.",
             "deletesDeferred": "Preset sinkronisasi"
         },
-        "aerofileSync": {
-            "title": "AeroFile Sync",
-            "toolbarButton": "AeroFile Sync",
+        "aerosync": {
+            "title": "AeroSync",
+            "toolbarButton": "AeroSync",
             "tabCompare": "Bandingkan",
             "tabPlan": "Rencana",
             "tabSync": "Sinkronkan",
@@ -4658,7 +4635,30 @@
             "executeNothing": "Tidak ada yang harus dilakukan atau jalur eksekusi tidak tersedia",
             "executeConfirm": "Konfirmasi tindakan destruktif untuk mengaktifkan Jalankan",
             "executePreset": "Jalankan preset",
-            "execute": "Jalankan"
+            "execute": "Jalankan",
+            "sync": {
+                "title": "AeroSync: lokal ke lokal",
+                "description": "Mencerminkan direktori sumber lokal ke tujuan lokal. File ≥ 1 MiB menggunakan mesin delta internal; file yang lebih kecil menggunakan salinan langsung.",
+                "source": "Sumber",
+                "destination": "Tujuan",
+                "browse": "Telusuri…",
+                "excludeLabel": "Pola pengecualian (dipisahkan koma atau baris baru)",
+                "useDelta": "Gunakan transport delta (file ≥ 1 MiB)",
+                "dryRun": "Uji coba (hanya pratinjau)",
+                "running": "Berjalan…",
+                "start": "Mulai sinkronisasi",
+                "resultOk": "Sinkronisasi selesai",
+                "resultPartial": "Sinkronisasi selesai dengan kesalahan",
+                "uploaded": "Diunggah",
+                "skipped": "Dilewati",
+                "errors": "Kesalahan",
+                "elapsed": "Waktu berlalu",
+                "payload": "Payload",
+                "bytesOnWire": "Byte di jaringan",
+                "savings": "Penghematan",
+                "errorDetails": "kesalahan, detail",
+                "errorPathsRequired": "Sumber dan tujuan wajib diisi"
+            }
         }
     }
 }

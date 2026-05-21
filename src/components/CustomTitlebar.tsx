@@ -79,13 +79,13 @@ interface TitlebarProps {
     onToggleAgent: () => void;
     onToggleActivityLog: () => void;
     onToggleDebugPanel: () => void;
-    /// AeroFile Sync: unified 3-tab modal (Compare + Plan + Sync) that
+    /// AeroSync: unified 3-tab modal (Compare + Plan + Sync) that
     /// replaces the legacy localSync / comparePanels / syncPresets
     /// triad. The optional initialTab preselects which tab opens first;
     /// the View menu binds to 'compare' so F4 muscle memory still lands
     /// on the diff view, while the command palette / toolbar can
     /// choose 'sync' or 'plan'.
-    onShowAeroFileSync: (initialTab?: import('../components/AeroFileSync/types').AeroFileSyncTab) => void;
+    onShowAeroSync: (initialTab?: import('../components/AeroSync/types').AeroSyncTab) => void;
     onQuit: () => void;
     onCheckForUpdates: () => void;
     hasActivity: boolean;
@@ -198,7 +198,7 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
         onToggleDebugMode, onRename, onDelete, onSelectAll,
         onCut, onCopy, onPaste, hasSelection, hasClipboard,
         onToggleEditor, onToggleTerminal, onToggleAgent, onToggleActivityLog, onToggleDebugPanel,
-        onShowAeroFileSync, onQuit,
+        onShowAeroSync, onQuit,
         onCheckForUpdates, hasActivity,
         cardLayout, onToggleCardLayout,
     } = props;
@@ -293,11 +293,11 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
         { label: t('menu.activityLog'), shortcut: 'Ctrl+Shift+L', onClick: onToggleActivityLog },
         { label: t('menu.debugPanel'), shortcut: 'Ctrl+Shift+M', onClick: onToggleDebugPanel },
         { separator: true },
-        // AeroFile Sync: unified Compare + Plan + Sync modal. Opens at the
+        // AeroSync: unified Compare + Plan + Sync modal. Opens at the
         // Compare tab so the F4 shortcut keeps its legacy meaning (diff view
         // first); the Plan and Sync tabs are reachable from the tab strip
         // inside the dialog and through the command palette.
-        { label: t('menu.aerofileSync') || 'AeroFile Sync...', shortcut: 'F4', onClick: () => onShowAeroFileSync('compare') },
+        { label: t('menu.aerosync') || 'AeroSync...', shortcut: 'F4', onClick: () => onShowAeroSync('compare') },
     ];
 
     const helpMenu: MenuEntry[] = [

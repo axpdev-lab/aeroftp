@@ -3370,7 +3370,7 @@
             "activityLog": "Tegevuslogi",
             "detailedCards": "Üksikasjalikud serverikaardid",
             "debugPanel": "Debug Panel",
-            "aerofileSync": "AeroFile Sync..."
+            "aerosync": "AeroSync..."
         },
         "activityPanel": {
             "awaitingCommands": "Käskude ootamine...",
@@ -4587,29 +4587,6 @@
             "moveHereFromOtherPanelTooltip": "Teisalda {count} valitut teisest paneelist sellesse paneeli (F6)",
             "syncToOtherPanel": "Sünkroniseeri teisele paneelile (delta)"
         },
-        "localSync": {
-            "title": "AeroSync: kohalikust kohalikku",
-            "description": "Peegeldab kohaliku lähtekataloogi kohalikku sihtkohta. Failid ≥ 1 MiB kasutavad sisseehitatud delta-mootorit; väiksemad failid kasutavad otsest kopeerimist.",
-            "source": "Lähe",
-            "destination": "Sihtkoht",
-            "browse": "Sirvi…",
-            "excludeLabel": "Välistusmustrid (eraldatud koma või reavahetusega)",
-            "useDelta": "Kasuta delta-transporti (failid ≥ 1 MiB)",
-            "dryRun": "Testkäivitus (ainult eelvaade)",
-            "running": "Töötab…",
-            "start": "Alusta sünkroonimist",
-            "resultOk": "Sünkroonimine lõpetatud",
-            "resultPartial": "Sünkroonimine lõpetatud vigadega",
-            "uploaded": "Üles laaditud",
-            "skipped": "Vahele jäetud",
-            "errors": "Vead",
-            "elapsed": "Möödunud aeg",
-            "payload": "Payload",
-            "bytesOnWire": "Baidid võrgus",
-            "savings": "Sääst",
-            "errorDetails": "viga/vigu, üksikasjad",
-            "errorPathsRequired": "Lähe ja sihtkoht on kohustuslikud"
-        },
         "compare": {
             "title": "Võrdle paneele",
             "notAvailable": "Ava teine paneel või kaugühendus, et võrrelda."
@@ -4620,9 +4597,9 @@
             "allSkipped": "Selle eelseade jaoks pole täidetavaid kirjeid.",
             "deletesDeferred": "Sünkroonimise eelseaded"
         },
-        "aerofileSync": {
-            "title": "AeroFile Sync",
-            "toolbarButton": "AeroFile Sync",
+        "aerosync": {
+            "title": "AeroSync",
+            "toolbarButton": "AeroSync",
             "tabCompare": "Võrdle",
             "tabPlan": "Plaan",
             "tabSync": "Sünkrooni",
@@ -4658,7 +4635,30 @@
             "executeNothing": "Pole midagi teha või käivitamistee pole saadaval",
             "executeConfirm": "Käivita lubamiseks kinnitage hävitavad toimingud",
             "executePreset": "Käivita eelseade",
-            "execute": "Käivita"
+            "execute": "Käivita",
+            "sync": {
+                "title": "AeroSync: kohalikust kohalikku",
+                "description": "Peegeldab kohaliku lähtekataloogi kohalikku sihtkohta. Failid ≥ 1 MiB kasutavad sisseehitatud delta-mootorit; väiksemad failid kasutavad otsest kopeerimist.",
+                "source": "Lähe",
+                "destination": "Sihtkoht",
+                "browse": "Sirvi…",
+                "excludeLabel": "Välistusmustrid (eraldatud koma või reavahetusega)",
+                "useDelta": "Kasuta delta-transporti (failid ≥ 1 MiB)",
+                "dryRun": "Testkäivitus (ainult eelvaade)",
+                "running": "Töötab…",
+                "start": "Alusta sünkroonimist",
+                "resultOk": "Sünkroonimine lõpetatud",
+                "resultPartial": "Sünkroonimine lõpetatud vigadega",
+                "uploaded": "Üles laaditud",
+                "skipped": "Vahele jäetud",
+                "errors": "Vead",
+                "elapsed": "Möödunud aeg",
+                "payload": "Payload",
+                "bytesOnWire": "Baidid võrgus",
+                "savings": "Sääst",
+                "errorDetails": "viga/vigu, üksikasjad",
+                "errorPathsRequired": "Lähe ja sihtkoht on kohustuslikud"
+            }
         }
     }
 }

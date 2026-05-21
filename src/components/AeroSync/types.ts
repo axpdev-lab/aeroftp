@@ -4,12 +4,12 @@
 import type { CompareResult, CompareResultEntry } from '../../utils/compareEndpoints';
 import type { PresetPlan } from '../../utils/syncPresets';
 
-export type AeroFileSyncTab = 'compare' | 'plan' | 'sync';
+export type AeroSyncTab = 'compare' | 'plan' | 'sync';
 
-export type AeroFileSyncPairKind = 'local-local' | 'local-remote' | 'remote-local';
+export type AeroSyncPairKind = 'local-local' | 'local-remote' | 'remote-local';
 
-export interface AeroFileSyncContext {
-    pairKind: AeroFileSyncPairKind | null;
+export interface AeroSyncContext {
+    pairKind: AeroSyncPairKind | null;
     leftLabel: string;
     rightLabel: string;
     leftPanelId?: 'local' | 'local2';
@@ -19,11 +19,11 @@ export interface AeroFileSyncContext {
     initialDestination?: string;
 }
 
-export interface AeroFileSyncDialogProps {
+export interface AeroSyncDialogProps {
     isOpen: boolean;
     onClose: () => void;
-    initialTab?: AeroFileSyncTab;
-    context: AeroFileSyncContext;
+    initialTab?: AeroSyncTab;
+    context: AeroSyncContext;
     onApplyMirrorLeftToRight: (entries: CompareResultEntry[]) => void;
     onApplyMirrorRightToLeft: (entries: CompareResultEntry[]) => void;
     onExecutePreset: (plan: PresetPlan) => void;

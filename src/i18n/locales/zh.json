@@ -3370,7 +3370,7 @@
             "activityLog": "活动日志",
             "detailedCards": "详细服务器卡片",
             "debugPanel": "Debug Panel",
-            "aerofileSync": "AeroFile Sync..."
+            "aerosync": "AeroSync..."
         },
         "activityPanel": {
             "awaitingCommands": "等待命令...",
@@ -4587,29 +4587,6 @@
             "moveHereFromOtherPanelTooltip": "将另一面板中选中的 {count} 项移动到此面板 (F6)",
             "syncToOtherPanel": "同步到另一个面板 (delta)"
         },
-        "localSync": {
-            "title": "AeroSync: 本地到本地",
-            "description": "将本地源目录镜像到本地目标。≥ 1 MiB 的文件使用内置 delta 引擎；较小的文件使用直接复制。",
-            "source": "源",
-            "destination": "目标",
-            "browse": "浏览…",
-            "excludeLabel": "排除模式（用逗号或换行符分隔）",
-            "useDelta": "使用 delta 传输（≥ 1 MiB 文件）",
-            "dryRun": "试运行（仅预览）",
-            "running": "运行中…",
-            "start": "开始同步",
-            "resultOk": "同步完成",
-            "resultPartial": "同步完成，但有错误",
-            "uploaded": "已上传",
-            "skipped": "已跳过",
-            "errors": "错误",
-            "elapsed": "已用时间",
-            "payload": "Payload",
-            "bytesOnWire": "网络字节数",
-            "savings": "节省",
-            "errorDetails": "个错误，详情",
-            "errorPathsRequired": "源和目标为必填项"
-        },
         "compare": {
             "title": "比较面板",
             "notAvailable": "打开第二个面板或远程连接以进行比较。"
@@ -4620,9 +4597,9 @@
             "allSkipped": "此预设没有可执行的条目。",
             "deletesDeferred": "同步预设"
         },
-        "aerofileSync": {
-            "title": "AeroFile Sync",
-            "toolbarButton": "AeroFile Sync",
+        "aerosync": {
+            "title": "AeroSync",
+            "toolbarButton": "AeroSync",
             "tabCompare": "比较",
             "tabPlan": "计划",
             "tabSync": "同步",
@@ -4658,7 +4635,30 @@
             "executeNothing": "无事可做或执行路径不可用",
             "executeConfirm": "确认破坏性操作以启用执行",
             "executePreset": "执行预设",
-            "execute": "执行"
+            "execute": "执行",
+            "sync": {
+                "title": "AeroSync: 本地到本地",
+                "description": "将本地源目录镜像到本地目标。≥ 1 MiB 的文件使用内置 delta 引擎；较小的文件使用直接复制。",
+                "source": "源",
+                "destination": "目标",
+                "browse": "浏览…",
+                "excludeLabel": "排除模式（用逗号或换行符分隔）",
+                "useDelta": "使用 delta 传输（≥ 1 MiB 文件）",
+                "dryRun": "试运行（仅预览）",
+                "running": "运行中…",
+                "start": "开始同步",
+                "resultOk": "同步完成",
+                "resultPartial": "同步完成，但有错误",
+                "uploaded": "已上传",
+                "skipped": "已跳过",
+                "errors": "错误",
+                "elapsed": "已用时间",
+                "payload": "Payload",
+                "bytesOnWire": "网络字节数",
+                "savings": "节省",
+                "errorDetails": "个错误，详情",
+                "errorPathsRequired": "源和目标为必填项"
+            }
         }
     }
 }

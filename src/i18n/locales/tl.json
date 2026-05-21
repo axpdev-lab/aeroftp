@@ -3370,7 +3370,7 @@
             "activityLog": "Log ng Aktibidad",
             "detailedCards": "Mga detalyadong card ng server",
             "debugPanel": "Debug Panel",
-            "aerofileSync": "AeroFile Sync..."
+            "aerosync": "AeroSync..."
         },
         "activityPanel": {
             "awaitingCommands": "Naghihintay ng mga command...",
@@ -4606,29 +4606,6 @@
             "moveHereFromOtherPanelTooltip": "Ilipat ang {count} napili mula sa kabilang panel papunta sa panel na ito (F6)",
             "syncToOtherPanel": "I-sync sa kabilang panel (delta)"
         },
-        "localSync": {
-            "title": "AeroSync: lokal sa lokal",
-            "description": "Sinasalamin ang lokal na source directory papunta sa lokal na destinasyon. Ang mga file na ≥ 1 MiB ay gumagamit ng built-in na delta engine; ang mas maliliit na file ay gumagamit ng direktang kopya.",
-            "source": "Pinagmulan",
-            "destination": "Destinasyon",
-            "browse": "Mag-browse…",
-            "excludeLabel": "Mga pattern ng pagbubukod (pinaghihiwalay ng kuwit o bagong linya)",
-            "useDelta": "Gumamit ng delta transport (mga file na ≥ 1 MiB)",
-            "dryRun": "Dry run (preview lamang)",
-            "running": "Tumatakbo…",
-            "start": "Simulan ang sync",
-            "resultOk": "Nakumpleto ang sync",
-            "resultPartial": "Nakumpleto ang sync na may mga error",
-            "uploaded": "Na-upload",
-            "skipped": "Nilaktawan",
-            "errors": "Mga error",
-            "elapsed": "Lumipas na oras",
-            "payload": "Payload",
-            "bytesOnWire": "Mga byte sa network",
-            "savings": "Naipon",
-            "errorDetails": "(mga) error, mga detalye",
-            "errorPathsRequired": "Kinakailangan ang pinagmulan at destinasyon"
-        },
         "compare": {
             "title": "Ihambing ang mga panel",
             "notAvailable": "Magbukas ng pangalawang panel o malayuang koneksyon upang ihambing."
@@ -4639,9 +4616,9 @@
             "allSkipped": "Walang maaaring isagawa na entry para sa preset na ito.",
             "deletesDeferred": "Mga preset ng sync"
         },
-        "aerofileSync": {
-            "title": "AeroFile Sync",
-            "toolbarButton": "AeroFile Sync",
+        "aerosync": {
+            "title": "AeroSync",
+            "toolbarButton": "AeroSync",
             "tabCompare": "Ihambing",
             "tabPlan": "Plano",
             "tabSync": "I-sync",
@@ -4677,7 +4654,30 @@
             "executeNothing": "Walang gagawin o hindi magagamit ang execution path",
             "executeConfirm": "Kumpirmahin ang mga mapanirang aksyon upang paganahin ang Isagawa",
             "executePreset": "Isagawa ang preset",
-            "execute": "Isagawa"
+            "execute": "Isagawa",
+            "sync": {
+                "title": "AeroSync: lokal sa lokal",
+                "description": "Sinasalamin ang lokal na source directory papunta sa lokal na destinasyon. Ang mga file na ≥ 1 MiB ay gumagamit ng built-in na delta engine; ang mas maliliit na file ay gumagamit ng direktang kopya.",
+                "source": "Pinagmulan",
+                "destination": "Destinasyon",
+                "browse": "Mag-browse…",
+                "excludeLabel": "Mga pattern ng pagbubukod (pinaghihiwalay ng kuwit o bagong linya)",
+                "useDelta": "Gumamit ng delta transport (mga file na ≥ 1 MiB)",
+                "dryRun": "Dry run (preview lamang)",
+                "running": "Tumatakbo…",
+                "start": "Simulan ang sync",
+                "resultOk": "Nakumpleto ang sync",
+                "resultPartial": "Nakumpleto ang sync na may mga error",
+                "uploaded": "Na-upload",
+                "skipped": "Nilaktawan",
+                "errors": "Mga error",
+                "elapsed": "Lumipas na oras",
+                "payload": "Payload",
+                "bytesOnWire": "Mga byte sa network",
+                "savings": "Naipon",
+                "errorDetails": "(mga) error, mga detalye",
+                "errorPathsRequired": "Kinakailangan ang pinagmulan at destinasyon"
+            }
         }
     }
 }

@@ -3370,7 +3370,7 @@
             "activityLog": "Tevékenységnapló",
             "detailedCards": "Részletes szerverkártyák",
             "debugPanel": "Debug Panel",
-            "aerofileSync": "AeroFile Sync..."
+            "aerosync": "AeroSync..."
         },
         "activityPanel": {
             "awaitingCommands": "Parancsokra vár...",
@@ -4587,29 +4587,6 @@
             "moveHereFromOtherPanelTooltip": "{count} kiválasztott elem áthelyezése a másik panelről erre a panelre (F6)",
             "syncToOtherPanel": "Szinkronizálás a másik panellel (delta)"
         },
-        "localSync": {
-            "title": "AeroSync: helyiről helyire",
-            "description": "Egy helyi forrásmappát tükröz egy helyi célmappába. Az ≥ 1 MiB méretű fájlok a beépített delta motort használják; a kisebb fájlok közvetlen másolást használnak.",
-            "source": "Forrás",
-            "destination": "Cél",
-            "browse": "Tallózás…",
-            "excludeLabel": "Kizárási minták (vesszővel vagy új sorral elválasztva)",
-            "useDelta": "Delta átvitel használata (≥ 1 MiB fájlok)",
-            "dryRun": "Próbafuttatás (csak előnézet)",
-            "running": "Folyamatban…",
-            "start": "Szinkronizálás indítása",
-            "resultOk": "Szinkronizálás befejezve",
-            "resultPartial": "Szinkronizálás hibákkal befejezve",
-            "uploaded": "Feltöltve",
-            "skipped": "Kihagyva",
-            "errors": "Hibák",
-            "elapsed": "Eltelt idő",
-            "payload": "Payload",
-            "bytesOnWire": "Hálózati bájtok",
-            "savings": "Megtakarítás",
-            "errorDetails": "hiba, részletek",
-            "errorPathsRequired": "A forrás és a cél kötelező"
-        },
         "compare": {
             "title": "Panelek összehasonlítása",
             "notAvailable": "Nyiss meg egy második panelt vagy egy távoli kapcsolatot az összehasonlításhoz."
@@ -4620,9 +4597,9 @@
             "allSkipped": "Nincs végrehajtható bejegyzés ehhez a beállításhoz.",
             "deletesDeferred": "Szinkronizációs beállítások"
         },
-        "aerofileSync": {
-            "title": "AeroFile Sync",
-            "toolbarButton": "AeroFile Sync",
+        "aerosync": {
+            "title": "AeroSync",
+            "toolbarButton": "AeroSync",
             "tabCompare": "Osszehasonlitas",
             "tabPlan": "Terv",
             "tabSync": "Szinkronizalas",
@@ -4658,7 +4635,30 @@
             "executeNothing": "Nincs teendo vagy a vegrehajtasi ut nem erheto el",
             "executeConfirm": "Erositsd meg a romboló muveleteket a Vegrehajtas engedelyezesehez",
             "executePreset": "Preset vegrehajtasa",
-            "execute": "Vegrehajtas"
+            "execute": "Vegrehajtas",
+            "sync": {
+                "title": "AeroSync: helyiről helyire",
+                "description": "Egy helyi forrásmappát tükröz egy helyi célmappába. Az ≥ 1 MiB méretű fájlok a beépített delta motort használják; a kisebb fájlok közvetlen másolást használnak.",
+                "source": "Forrás",
+                "destination": "Cél",
+                "browse": "Tallózás…",
+                "excludeLabel": "Kizárási minták (vesszővel vagy új sorral elválasztva)",
+                "useDelta": "Delta átvitel használata (≥ 1 MiB fájlok)",
+                "dryRun": "Próbafuttatás (csak előnézet)",
+                "running": "Folyamatban…",
+                "start": "Szinkronizálás indítása",
+                "resultOk": "Szinkronizálás befejezve",
+                "resultPartial": "Szinkronizálás hibákkal befejezve",
+                "uploaded": "Feltöltve",
+                "skipped": "Kihagyva",
+                "errors": "Hibák",
+                "elapsed": "Eltelt idő",
+                "payload": "Payload",
+                "bytesOnWire": "Hálózati bájtok",
+                "savings": "Megtakarítás",
+                "errorDetails": "hiba, részletek",
+                "errorPathsRequired": "A forrás és a cél kötelező"
+            }
         }
     }
 }

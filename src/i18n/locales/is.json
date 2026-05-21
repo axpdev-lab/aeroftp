@@ -3370,7 +3370,7 @@
             "activityLog": "Aðgerðaskrá",
             "detailedCards": "Ítarleg netþjónakort",
             "debugPanel": "Debug Panel",
-            "aerofileSync": "AeroFile Sync..."
+            "aerosync": "AeroSync..."
         },
         "activityPanel": {
             "awaitingCommands": "Bíð eftir skipunum...",
@@ -4606,29 +4606,6 @@
             "moveHereFromOtherPanelTooltip": "Færa {count} valin atriði úr hinum glugganum yfir í þennan glugga (F6)",
             "syncToOtherPanel": "Samstilla við hinn glugga (delta)"
         },
-        "localSync": {
-            "title": "AeroSync: staðbundið í staðbundið",
-            "description": "Speglar staðbundna upprunamöppu í staðbundna áfangastað. Skrár ≥ 1 MiB nota innbyggða delta-vélina; minni skrár nota beina afritun.",
-            "source": "Uppruni",
-            "destination": "Áfangastaður",
-            "browse": "Vafra…",
-            "excludeLabel": "Útilokunarmynstur (aðskilin með kommu eða nýrri línu)",
-            "useDelta": "Nota delta-flutning (skrár ≥ 1 MiB)",
-            "dryRun": "Þurrkeyrsla (aðeins forskoðun)",
-            "running": "Í gangi…",
-            "start": "Hefja samstillingu",
-            "resultOk": "Samstillingu lokið",
-            "resultPartial": "Samstillingu lokið með villum",
-            "uploaded": "Hlaðið upp",
-            "skipped": "Sleppt",
-            "errors": "Villur",
-            "elapsed": "Liðinn tími",
-            "payload": "Payload",
-            "bytesOnWire": "Bæti á neti",
-            "savings": "Sparnaður",
-            "errorDetails": "villa/villur, nánar",
-            "errorPathsRequired": "Uppruni og áfangastaður eru nauðsynleg"
-        },
         "compare": {
             "title": "Bera saman glugga",
             "notAvailable": "Opnaðu annan glugga eða fjartengingu til að bera saman."
@@ -4639,9 +4616,9 @@
             "allSkipped": "Engar framkvæmanlegar færslur fyrir þessa forstillingu.",
             "deletesDeferred": "Forstillingar samstillingar"
         },
-        "aerofileSync": {
-            "title": "AeroFile Sync",
-            "toolbarButton": "AeroFile Sync",
+        "aerosync": {
+            "title": "AeroSync",
+            "toolbarButton": "AeroSync",
             "tabCompare": "Bera saman",
             "tabPlan": "Aaetlun",
             "tabSync": "Samstilla",
@@ -4677,7 +4654,30 @@
             "executeNothing": "Ekkert til aae gera eaea framkvaemdarleiae er ekki tiltaek",
             "executeConfirm": "Stadfestu eyaeileggjandi aaegeraeir til aae virkja Framkvaema",
             "executePreset": "Framkvaema preset",
-            "execute": "Framkvaema"
+            "execute": "Framkvaema",
+            "sync": {
+                "title": "AeroSync: staðbundið í staðbundið",
+                "description": "Speglar staðbundna upprunamöppu í staðbundna áfangastað. Skrár ≥ 1 MiB nota innbyggða delta-vélina; minni skrár nota beina afritun.",
+                "source": "Uppruni",
+                "destination": "Áfangastaður",
+                "browse": "Vafra…",
+                "excludeLabel": "Útilokunarmynstur (aðskilin með kommu eða nýrri línu)",
+                "useDelta": "Nota delta-flutning (skrár ≥ 1 MiB)",
+                "dryRun": "Þurrkeyrsla (aðeins forskoðun)",
+                "running": "Í gangi…",
+                "start": "Hefja samstillingu",
+                "resultOk": "Samstillingu lokið",
+                "resultPartial": "Samstillingu lokið með villum",
+                "uploaded": "Hlaðið upp",
+                "skipped": "Sleppt",
+                "errors": "Villur",
+                "elapsed": "Liðinn tími",
+                "payload": "Payload",
+                "bytesOnWire": "Bæti á neti",
+                "savings": "Sparnaður",
+                "errorDetails": "villa/villur, nánar",
+                "errorPathsRequired": "Uppruni og áfangastaður eru nauðsynleg"
+            }
         }
     }
 }
