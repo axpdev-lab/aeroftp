@@ -10,12 +10,34 @@ import React, { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
-import { FolderOpen, Play, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, FolderOpen, Info, Play, AlertTriangle, CheckCircle2, Zap } from 'lucide-react';
 import { useTranslation } from '../../i18n';
+import type { AeroSyncPairKind } from './types';
 
 interface SyncTabContentProps {
     initialSource?: string;
     initialDestination?: string;
+    pairKind?: AeroSyncPairKind | null;
+}
+
+// SLICE 4: vault-persisted advanced override for the auto-detected
+// delta gate. Local-only key (no profile id); for connected-remote
+// sessions the SyncPanel runner still owns its own per-profile
+// preference until SLICE 6 retires it.
+const DELTA_OVERRIDE_KEY = 'aerosync.delta.override';
+type DeltaOverride = 'auto' | 'force-on' | 'force-off';
+function readDeltaOverride(): DeltaOverride {
+    try {
+        const raw = localStorage.getItem(DELTA_OVERRIDE_KEY);
+        if (raw === 'force-on' || raw === 'force-off') return raw;
+    } catch { /* localStorage unavailable */ }
+    return 'auto';
+}
+function writeDeltaOverride(value: DeltaOverride) {
+    try {
+        if (value === 'auto') localStorage.removeItem(DELTA_OVERRIDE_KEY);
+        else localStorage.setItem(DELTA_OVERRIDE_KEY, value);
+    } catch { /* localStorage unavailable */ }
 }
 
 interface LocalSyncReport {
@@ -48,17 +70,35 @@ function formatBytes(n: number): string {
 export const SyncTabContent: React.FC<SyncTabContentProps> = ({
     initialSource = '',
     initialDestination = '',
+    pairKind = null,
 }) => {
     const t = useTranslation();
     const [source, setSource] = useState(initialSource);
     const [destination, setDestination] = useState(initialDestination);
     const [exclude, setExclude] = useState('');
-    const [useDelta, setUseDelta] = useState(true);
+    const [deltaOverride, setDeltaOverride] = useState<DeltaOverride>(readDeltaOverride);
     const [dryRun, setDryRun] = useState(false);
     const [running, setRunning] = useState(false);
     const [progress, setProgress] = useState<LocalSyncProgress | null>(null);
     const [report, setReport] = useState<LocalSyncReport | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [showAdvanced, setShowAdvanced] = useState(false);
+
+    // SLICE 4 delta-sync gate consolidation:
+    //  - pairKind=local-local      -> always eligible (AeroRsync local engine)
+    //  - pairKind=local-remote /
+    //    pairKind=remote-local     -> Sync tab still runs local_sync_run, so
+    //                                  delta only applies when source AND
+    //                                  destination are both local paths.
+    //                                  SLICE 6 will route this tab through
+    //                                  the right backend per pairKind.
+    //  - pairKind=null             -> no panel context, fall back to auto.
+    const deltaEligible = pairKind === 'local-local' || pairKind === null;
+    const useDelta = deltaOverride === 'force-off'
+        ? false
+        : deltaOverride === 'force-on'
+            ? true
+            : deltaEligible;
 
     useEffect(() => {
         if (initialSource) setSource(initialSource);
@@ -193,27 +233,78 @@ export const SyncTabContent: React.FC<SyncTabContentProps> = ({
                 />
             </div>
 
-            <div className="flex items-center gap-6 pt-1">
-                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
-                    <input
-                        type="checkbox"
-                        checked={useDelta}
-                        onChange={(e) => setUseDelta(e.target.checked)}
-                        disabled={running}
-                        className="rounded border-gray-300 dark:border-gray-600"
-                    />
-                    {t('aerosync.sync.useDelta') || 'Use AeroRsync delta transport (>= 1 MiB files)'}
-                </label>
-                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
-                    <input
-                        type="checkbox"
-                        checked={dryRun}
-                        onChange={(e) => setDryRun(e.target.checked)}
-                        disabled={running}
-                        className="rounded border-gray-300 dark:border-gray-600"
-                    />
-                    {t('aerosync.sync.dryRun') || 'Dry run (preview only)'}
-                </label>
+            {/* SLICE 4: delta-sync auto-detect indicator. The legacy
+                per-run checkbox is now an advanced override hidden
+                behind a disclosure. */}
+            <div className="flex flex-col gap-2 pt-1">
+                <div className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40">
+                    <div className="flex items-center gap-2 text-sm">
+                        <Zap size={14} className={useDelta ? 'text-emerald-500' : 'text-gray-400'} />
+                        <span className="font-medium text-gray-700 dark:text-gray-200">
+                            {t('aerosync.sync.deltaStatus') || 'Delta sync'}
+                        </span>
+                        <span className={`text-[11px] rounded px-1.5 py-0.5 font-semibold ${
+                            useDelta
+                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+                                : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+                        }`}>
+                            {deltaOverride !== 'auto'
+                                ? (t('aerosync.sync.deltaOverridden') || 'OVERRIDE')
+                                : (useDelta ? (t('aerosync.sync.deltaAuto') || 'AUTO ON') : (t('aerosync.sync.deltaAutoOff') || 'AUTO OFF'))}
+                        </span>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => setShowAdvanced((v) => !v)}
+                        className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-300 hover:underline"
+                    >
+                        {showAdvanced ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                        {t('aerosync.sync.advanced') || 'Advanced'}
+                    </button>
+                </div>
+                {!deltaEligible && pairKind && (
+                    <div className="flex items-start gap-2 px-3 py-2 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 text-xs">
+                        <Info size={14} className="flex-shrink-0 mt-0.5" />
+                        <span>
+                            {t('aerosync.sync.localOnlyHint') ||
+                                'This tab runs a local -> local mirror. For local <-> remote sync, use the Plan tab and execute a preset.'}
+                        </span>
+                    </div>
+                )}
+                {showAdvanced && (
+                    <div className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50">
+                        <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1.5">
+                            {t('aerosync.sync.deltaOverrideLabel') || 'Delta-sync override'}
+                        </label>
+                        <select
+                            value={deltaOverride}
+                            onChange={(e) => {
+                                const v = e.target.value as DeltaOverride;
+                                setDeltaOverride(v);
+                                writeDeltaOverride(v);
+                            }}
+                            disabled={running}
+                            className="w-full px-2 py-1.5 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900/60 text-sm disabled:opacity-50"
+                        >
+                            <option value="auto">{t('aerosync.sync.deltaOverrideAuto') || 'Auto-detect (recommended)'}</option>
+                            <option value="force-on">{t('aerosync.sync.deltaOverrideOn') || 'Force on (use delta when possible)'}</option>
+                            <option value="force-off">{t('aerosync.sync.deltaOverrideOff') || 'Force off (plain copy)'}</option>
+                        </select>
+                        <p className="mt-1 text-[10px] leading-snug text-gray-500 dark:text-gray-400">
+                            {t('aerosync.sync.deltaOverrideHint') || 'Auto-detect uses AeroRsync for files >= 1 MiB when both sides are local. Override is remembered between runs.'}
+                        </p>
+                        <label className="mt-3 flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={dryRun}
+                                onChange={(e) => setDryRun(e.target.checked)}
+                                disabled={running}
+                                className="rounded border-gray-300 dark:border-gray-600"
+                            />
+                            {t('aerosync.sync.dryRun') || 'Dry run (preview only)'}
+                        </label>
+                    </div>
+                )}
             </div>
 
             {running && progress && (
