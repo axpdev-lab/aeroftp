@@ -1201,6 +1201,27 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
 
     /// Wrap `payload` in a `MSG_DATA` mux frame and write it to the raw
     /// stream. Rejects payloads larger than the 24-bit length field.
+    ///
+    /// Z.4.3.f6: the header (4 B) and payload were previously emitted as
+    /// two separate `write_bytes` calls, which russh turns into two
+    /// `SSH_MSG_CHANNEL_DATA` packets back-to-back. Against stock
+    /// `rsync --server` over an OpenSSH-side ForceCommand wrapper this
+    /// occasionally produced a deadlock: the server side observed the
+    /// 4-byte header packet first, started decoding the mux frame, then
+    /// blocked waiting for a payload chunk that arrived in a separate
+    /// SSH read pass: the receiver replied with a partial sum_head and
+    /// then hung waiting for follow-up bytes that never came on the same
+    /// read boundary. Trace at
+    /// `docs/dev/roadmap/APPENDIX-CHECKPOINTS/2026-05-21/win11-z43-f6-trace/trace_linux.log`
+    /// shows the symptom (silence for >13 s, only keepalives, no further
+    /// data) after a 12-byte server response that should have been
+    /// ~6800 B of signature blocks.
+    ///
+    /// Coalescing header + payload into a single `write_bytes` call
+    /// produces one `SSH_MSG_CHANNEL_DATA` packet, which both peers
+    /// agree to as a single logical mux frame on the wire. This is also
+    /// strictly fewer round-trips so it is a small efficiency win on
+    /// the happy path.
     async fn write_data_frame(&mut self, payload: &[u8]) -> Result<(), AerorsyncError> {
         if payload.len() > 0x00FF_FFFF {
             return Err(AerorsyncError::invalid_frame(format!(
@@ -1218,8 +1239,10 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             .stream
             .as_mut()
             .ok_or_else(|| AerorsyncError::transport("write_data_frame: stream not open"))?;
-        stream.write_bytes(&hdr_bytes).await?;
-        stream.write_bytes(payload).await?;
+        let mut frame = Vec::with_capacity(hdr_bytes.len() + payload.len());
+        frame.extend_from_slice(&hdr_bytes);
+        frame.extend_from_slice(payload);
+        stream.write_bytes(&frame).await?;
         self.sent_data_bytes += payload.len() as u64;
         Ok(())
     }
