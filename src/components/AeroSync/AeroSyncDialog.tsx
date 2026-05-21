@@ -178,6 +178,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                         <SyncTabContent
                             initialSource={context.initialSource}
                             initialDestination={context.initialDestination}
+                            pairKind={context.pairKind}
                         />
                     )}
                 </div>
