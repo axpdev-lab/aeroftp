@@ -8,6 +8,22 @@ export type AeroSyncTab = 'compare' | 'plan' | 'sync';
 
 export type AeroSyncPairKind = 'local-local' | 'local-remote' | 'remote-local';
 
+// CO-1: runtime hints attached to onExecute. Carry the Plan tab knobs
+// (speed mode + verify policy) into App.tsx so the unified executor can
+// forward them to the Rust planner. Kept separate from PresetPlan to
+// avoid mutating the shared syncPresets surface.
+export type AeroSyncSpeedMode = 'normal' | 'fast' | 'turbo' | 'extreme';
+export type AeroSyncVerifyPolicy =
+    | 'none'
+    | 'size_only'
+    | 'size_and_mtime'
+    | 'full_checksum';
+
+export interface AeroSyncRuntime {
+    speedMode: AeroSyncSpeedMode;
+    verifyPolicy: AeroSyncVerifyPolicy;
+}
+
 export interface AeroSyncContext {
     pairKind: AeroSyncPairKind | null;
     leftLabel: string;
@@ -38,5 +54,5 @@ export interface AeroSyncDialogProps {
     context: AeroSyncContext;
     onApplyMirrorLeftToRight: (entries: CompareResultEntry[]) => void;
     onApplyMirrorRightToLeft: (entries: CompareResultEntry[]) => void;
-    onExecutePreset: (plan: PresetPlan) => void;
+    onExecutePreset: (plan: PresetPlan, runtime: AeroSyncRuntime) => void;
 }

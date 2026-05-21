@@ -120,7 +120,7 @@ import { DevToolsV2, PreviewFile, isPreviewable } from './components/DevTools';
 import { UniversalPreview, PreviewFileData, getPreviewCategory, isPreviewable as isMediaPreviewable } from './components/Preview';
 import { UnifiedTransferPlanDialog } from './components/UnifiedTransferPlanDialog';
 import { AeroSyncDialog } from './components/AeroSync/AeroSyncDialog';
-import type { AeroSyncTab, AeroSyncContext } from './components/AeroSync/types';
+import type { AeroSyncTab, AeroSyncContext, AeroSyncRuntime } from './components/AeroSync/types';
 import { VaultPanel } from './components/VaultPanel';
 import { CryptomatorBrowser } from './components/CryptomatorBrowser';
 import { RcloneCryptUnlock } from './components/RcloneCryptUnlock';
@@ -618,6 +618,11 @@ const App: React.FC = () => {
     // selection state directly. `path` carries the full source-side
     // absolute path so the executor does not need to recompute it.
     transferEntries?: Array<{ name: string; path: string; is_dir: boolean; size?: number }>;
+    // CO-1: runtime knobs surfaced by the AeroSync Plan tab (Speed
+    // mode + Verify policy). When the executor reaches a branch that
+    // calls into the Rust planner (today: `local_sync_run`), these
+    // are forwarded as snake_case fields on the request payload.
+    runtime?: AeroSyncRuntime;
   } | null>(null);
   const [unifiedTransferExecuting, setUnifiedTransferExecuting] = useState(false);
   // AeroSync dialog: unified 3-tab modal (Compare + Plan + Sync).
@@ -6525,6 +6530,13 @@ interface UpdateVerificationInfo {
               exclude: [],
               no_delta: plan.engine !== 'local-delta',
               dry_run: false,
+              // CO-1: forward the Plan tab knobs when present so the
+              // Rust planner can apply post-copy verification (and,
+              // in a future slice, parallelism). When absent
+              // (Plan-tab-less invocations) the backend defaults
+              // remain unchanged via #[serde(default)].
+              speed_mode: pendingUnifiedTransferPlan.runtime?.speedMode,
+              verify_policy: pendingUnifiedTransferPlan.runtime?.verifyPolicy,
             },
           });
           setPendingUnifiedTransferPlan(null);
@@ -6915,10 +6927,26 @@ interface UpdateVerificationInfo {
    * remove them manually with the existing context menu before Z.3.8.2
    * adds backend support for batch deletes inside the planner.
    */
-  const executeSyncPresetPlan = useCallback((plan: PresetPlan) => {
+  const executeSyncPresetPlan = useCallback((plan: PresetPlan, runtime: AeroSyncRuntime) => {
     const context = aeroSync?.context;
     setAeroSync(null);
     if (!context) return;
+
+    // CO-1: surface the Plan tab runtime knobs in the debug log. They
+    // are forwarded to the Rust backend below for the local-local path
+    // (LocalSyncRequest.speed_mode / verify_policy); the per-file
+    // local-remote / remote-local execution path doesn't honour them
+    // yet (each entry still routes through uploadFile / downloadFile)
+    // — that's accepted debt picked up alongside CO-5.
+    if (debugMode) {
+      // eslint-disable-next-line no-console
+      console.debug('[AeroSync] executeSyncPresetPlan runtime', {
+        preset: plan.preset,
+        direction: plan.direction,
+        speedMode: runtime.speedMode,
+        verifyPolicy: runtime.verifyPolicy,
+      });
+    }
 
     const deleteSummary = {
       right: namesToDelete(plan, 'right'),
@@ -7017,6 +7045,7 @@ interface UpdateVerificationInfo {
       const queue: Array<{
         plan: UnifiedTransferPlan;
         transferEntries: Array<{ name: string; path: string; is_dir: boolean; size?: number }>;
+        runtime: AeroSyncRuntime;
       }> = [];
       for (const pass of passesPlan) {
         const sourceIsLocal = isLocalLeft ? pass.sourceSide === 'left' : pass.sourceSide === 'right';
@@ -7053,6 +7082,7 @@ interface UpdateVerificationInfo {
             preferDelta: false,
           }),
           transferEntries: allEntries,
+          runtime,
         });
       }
 

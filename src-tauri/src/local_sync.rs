@@ -17,6 +17,7 @@ use tauri::{AppHandle, Emitter};
 use crate::aerorsync::local_transport::LocalDeltaTransport;
 use crate::delta_transport::DeltaTransport;
 use crate::rsync_over_ssh::{RsyncError, DEFAULT_MIN_FILE_SIZE};
+use crate::sync::VerifyPolicy;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct LocalSyncRequest {
@@ -31,6 +32,17 @@ pub struct LocalSyncRequest {
     /// Preview mode: walk + report, do not write.
     #[serde(default)]
     pub dry_run: bool,
+    /// CO-1: AeroSync Plan tab "Speed mode" preset. Carried for
+    /// observability today; future slices map it to parallel workers
+    /// and per-file compression toggles.
+    #[serde(default)]
+    pub speed_mode: Option<String>,
+    /// CO-1: AeroSync Plan tab "Verify policy". When set, each
+    /// successfully transferred file is checked against the policy
+    /// (size / size+mtime / size+sha256). Failures increment the
+    /// report error count and append a `verify` error message.
+    #[serde(default)]
+    pub verify_policy: Option<VerifyPolicy>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -207,6 +219,36 @@ pub async fn local_sync_run(
 
         report.uploaded += 1;
         report.bytes_on_wire = report.bytes_on_wire.saturating_add(wire_bytes);
+
+        // CO-1: post-copy verification. Skipped when the policy is
+        // `None`, when the request did not include one (legacy
+        // callers), or when the destination file is missing because
+        // an earlier branch already accounted the error.
+        if let Some(policy) = request.verify_policy.as_ref() {
+            if *policy != VerifyPolicy::None {
+                let expected_mtime = std::fs::metadata(&src)
+                    .ok()
+                    .and_then(|m| m.modified().ok())
+                    .map(|t| <chrono::DateTime<chrono::Utc>>::from(t));
+                let dst_str = dst.to_string_lossy().to_string();
+                let verify = crate::sync::verify_local_file(
+                    dst_str.as_str(),
+                    src_size,
+                    expected_mtime,
+                    policy,
+                    None,
+                );
+                if !verify.passed {
+                    report.errors += 1;
+                    report.error_messages.push(format!(
+                        "verify {}: {}",
+                        rel_str,
+                        verify.message.unwrap_or_else(|| "policy not satisfied".to_string()),
+                    ));
+                }
+            }
+        }
+
         processed += 1;
 
         let _ = app.emit(
