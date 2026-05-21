@@ -4565,6 +4565,32 @@
                 "fallbackHint": "AeroSync-ek kopia-bide klasikora joko du. Aukeratutako aurrezarpena, halere, exekutatuko da.",
                 "skipFuture": "Ez galdetu berriro zerbitzari honetaz",
                 "continue": "Jarraitu"
+            },
+            "launcherHistory": "Journal historia",
+            "history": {
+                "title": "AeroSync historia",
+                "refresh": "Freskatu",
+                "cleanupOld": "Kendu 30 egun baino zaharragoak diren sarrerak",
+                "clearAll": "Garbitu journal guztiak",
+                "confirmClearAll": "Garbitu sinkronizazio journal GUZTIAK?",
+                "empty": "Oraindik ez dago sinkronizazio journalik. Bide-bikote honetan preset bat lehen aldiz exekutatzean sortzen dira.",
+                "selectPrompt": "Hautatu ezkerreko journal bat fitxategiko sarrerak ikusteko.",
+                "journalMissing": "Ez da journal aurkitu.",
+                "entriesEmpty": "Ez dago sarrera erregistraturik.",
+                "verify": "Egiaztatu",
+                "verifyOk": "EGIAZTATUA",
+                "verifyFailed": "MANIPULATUA",
+                "verifyNoSignature": "SINADURARIK EZ",
+                "statusCompleted": "AMAITUTA",
+                "statusInProgress": "MARTXAN",
+                "delete": "Ezabatu journal",
+                "created": "Sortua",
+                "bytes": "Byteak",
+                "colPath": "Bidea",
+                "colDirection": "Norabidea",
+                "colStatus": "Egoera",
+                "colBytes": "Byteak",
+                "colAction": "Ekintza"
             }
         }
     }

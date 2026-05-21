@@ -4546,6 +4546,32 @@
                 "fallbackHint": "AeroSync は従来のコピー方式にフォールバックします。選択したプリセットはそのまま実行されます。",
                 "skipFuture": "このサーバーでは次回から確認しない",
                 "continue": "続行"
+            },
+            "launcherHistory": "ジャーナル履歴",
+            "history": {
+                "title": "AeroSync 履歴",
+                "refresh": "更新",
+                "cleanupOld": "30日より古いエントリを削除",
+                "clearAll": "すべてのジャーナルをクリア",
+                "confirmClearAll": "すべての同期ジャーナルをクリアしますか？",
+                "empty": "同期ジャーナルはまだありません。このパスペアで最初にプリセットを実行したときに作成されます。",
+                "selectPrompt": "左側のジャーナルを選択して、ファイル別エントリを確認してください。",
+                "journalMissing": "ジャーナルが見つかりません。",
+                "entriesEmpty": "記録されたエントリはありません。",
+                "verify": "検証",
+                "verifyOk": "検証済",
+                "verifyFailed": "改ざん",
+                "verifyNoSignature": "署名なし",
+                "statusCompleted": "完了",
+                "statusInProgress": "進行中",
+                "delete": "ジャーナルを削除",
+                "created": "作成日時",
+                "bytes": "バイト",
+                "colPath": "パス",
+                "colDirection": "方向",
+                "colStatus": "状態",
+                "colBytes": "バイト",
+                "colAction": "操作"
             }
         }
     }

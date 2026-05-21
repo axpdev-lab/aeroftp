@@ -4546,6 +4546,32 @@
                 "fallbackHint": "AeroSync क्लासिक कॉपी पथ पर वापस आ जाएगा। चुना गया प्रीसेट फिर भी चलेगा।",
                 "skipFuture": "इस सर्वर के लिए दोबारा न पूछें",
                 "continue": "जारी रखें"
+            },
+            "launcherHistory": "जर्नल इतिहास",
+            "history": {
+                "title": "AeroSync इतिहास",
+                "refresh": "ताज़ा करें",
+                "cleanupOld": "30 दिन से पुरानी प्रविष्टियाँ हटाएँ",
+                "clearAll": "सभी जर्नल साफ़ करें",
+                "confirmClearAll": "सभी सिंक जर्नल साफ़ करें?",
+                "empty": "अभी तक कोई सिंक जर्नल नहीं है। इस पाथ जोड़ी पर पहली प्रीसेट चलाने पर बनाए जाते हैं।",
+                "selectPrompt": "प्रत्येक फ़ाइल की प्रविष्टियाँ देखने के लिए बायीं ओर से एक जर्नल चुनें।",
+                "journalMissing": "जर्नल नहीं मिला।",
+                "entriesEmpty": "कोई प्रविष्टि दर्ज नहीं है।",
+                "verify": "सत्यापित करें",
+                "verifyOk": "सत्यापित",
+                "verifyFailed": "छेड़छाड़",
+                "verifyNoSignature": "कोई हस्ताक्षर नहीं",
+                "statusCompleted": "पूर्ण",
+                "statusInProgress": "जारी",
+                "delete": "जर्नल हटाएँ",
+                "created": "बनाया गया",
+                "bytes": "बाइट्स",
+                "colPath": "पाथ",
+                "colDirection": "दिशा",
+                "colStatus": "स्थिति",
+                "colBytes": "बाइट्स",
+                "colAction": "क्रिया"
             }
         }
     }

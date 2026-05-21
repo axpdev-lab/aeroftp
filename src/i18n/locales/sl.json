@@ -4546,6 +4546,32 @@
                 "fallbackHint": "AeroSync bo uporabil klasično pot kopiranja. Izbrana prednastavitev se vseeno izvede.",
                 "skipFuture": "Ne sprašuj več za ta strežnik",
                 "continue": "Nadaljuj"
+            },
+            "launcherHistory": "Zgodovina dnevnika",
+            "history": {
+                "title": "Zgodovina AeroSync",
+                "refresh": "Osveži",
+                "cleanupOld": "Odstrani vnose, starejše od 30 dni",
+                "clearAll": "Počisti vse dnevnike",
+                "confirmClearAll": "Počistim VSE dnevnike sinhronizacije?",
+                "empty": "Še ni dnevnikov sinhronizacije. Ustvarijo se ob prvi izvedbi prednastavitve za ta par poti.",
+                "selectPrompt": "Izberite dnevnik na levi za pregled vnosov za posamezno datoteko.",
+                "journalMissing": "Dnevnik ni najden.",
+                "entriesEmpty": "Brez zabeleženih vnosov.",
+                "verify": "Preveri",
+                "verifyOk": "PREVERJENO",
+                "verifyFailed": "SPREMENJENO",
+                "verifyNoSignature": "BREZ PODPISA",
+                "statusCompleted": "DOKONČANO",
+                "statusInProgress": "V TEKU",
+                "delete": "Izbriši dnevnik",
+                "created": "Ustvarjeno",
+                "bytes": "Bajti",
+                "colPath": "Pot",
+                "colDirection": "Smer",
+                "colStatus": "Stanje",
+                "colBytes": "Bajti",
+                "colAction": "Dejanje"
             }
         }
     }

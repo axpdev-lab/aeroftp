@@ -4565,6 +4565,32 @@
                 "fallbackHint": "AeroSync passarà al camí de còpia clàssic. La predefinició escollida s'executarà igualment.",
                 "skipFuture": "No ho tornis a preguntar per a aquest servidor",
                 "continue": "Continua"
+            },
+            "launcherHistory": "Historial del journal",
+            "history": {
+                "title": "Historial d'AeroSync",
+                "refresh": "Actualitza",
+                "cleanupOld": "Elimina les entrades de més de 30 dies",
+                "clearAll": "Esborra tots els journals",
+                "confirmClearAll": "Esborrar TOTS els journals de sincronització?",
+                "empty": "Encara no hi ha journals de sincronització. Es creen en la primera execució d'un preset sobre aquesta parella de camins.",
+                "selectPrompt": "Selecciona un journal a l'esquerra per inspeccionar les seves entrades per fitxer.",
+                "journalMissing": "Journal no trobat.",
+                "entriesEmpty": "Cap entrada registrada.",
+                "verify": "Verifica",
+                "verifyOk": "VERIFICAT",
+                "verifyFailed": "MANIPULAT",
+                "verifyNoSignature": "SENSE SIGNATURA",
+                "statusCompleted": "COMPLETAT",
+                "statusInProgress": "EN CURS",
+                "delete": "Elimina journal",
+                "created": "Creat",
+                "bytes": "Bytes",
+                "colPath": "Camí",
+                "colDirection": "Direcció",
+                "colStatus": "Estat",
+                "colBytes": "Bytes",
+                "colAction": "Acció"
             }
         }
     }

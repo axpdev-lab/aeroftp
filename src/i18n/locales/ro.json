@@ -4546,6 +4546,32 @@
                 "fallbackHint": "AeroSync va reveni la calea clasică de copiere. Presetarea aleasă rulează în continuare.",
                 "skipFuture": "Nu mai întreba pentru acest server",
                 "continue": "Continuă"
+            },
+            "launcherHistory": "Istoric jurnal",
+            "history": {
+                "title": "Istoric AeroSync",
+                "refresh": "Reîmprospătează",
+                "cleanupOld": "Elimină intrările mai vechi de 30 de zile",
+                "clearAll": "Șterge toate jurnalele",
+                "confirmClearAll": "Ștergeți TOATE jurnalele de sincronizare?",
+                "empty": "Niciun jurnal de sincronizare încă. Acestea sunt create la prima execuție a unui preset pentru această pereche de căi.",
+                "selectPrompt": "Selectează un jurnal din stânga pentru a vedea intrările per fișier.",
+                "journalMissing": "Jurnalul nu a fost găsit.",
+                "entriesEmpty": "Nicio intrare înregistrată.",
+                "verify": "Verifică",
+                "verifyOk": "VERIFICAT",
+                "verifyFailed": "MODIFICAT",
+                "verifyNoSignature": "FĂRĂ SEMNĂTURĂ",
+                "statusCompleted": "FINALIZAT",
+                "statusInProgress": "ÎN CURS",
+                "delete": "Șterge jurnalul",
+                "created": "Creat",
+                "bytes": "Octeți",
+                "colPath": "Cale",
+                "colDirection": "Direcție",
+                "colStatus": "Stare",
+                "colBytes": "Octeți",
+                "colAction": "Acțiune"
             }
         }
     }

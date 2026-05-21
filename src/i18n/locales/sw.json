@@ -4546,6 +4546,32 @@
                 "fallbackHint": "AeroSync itarejea kwenye njia ya kawaida ya kunakili. Mpangilio uliochaguliwa bado utaendeshwa.",
                 "skipFuture": "Usiulize tena kwa seva hii",
                 "continue": "Endelea"
+            },
+            "launcherHistory": "Historia ya jarida",
+            "history": {
+                "title": "Historia ya AeroSync",
+                "refresh": "Onyesha upya",
+                "cleanupOld": "Ondoa rekodi zenye umri zaidi ya siku 30",
+                "clearAll": "Futa majarida yote",
+                "confirmClearAll": "Futa majarida YOTE ya usawazishaji?",
+                "empty": "Bado hakuna majarida ya usawazishaji. Yanaundwa wakati wa utekelezaji wa kwanza wa preset kwa jozi hii ya njia.",
+                "selectPrompt": "Chagua jarida upande wa kushoto ili kukagua rekodi kwa kila faili.",
+                "journalMissing": "Jarida halikupatikana.",
+                "entriesEmpty": "Hakuna rekodi zilizohifadhiwa.",
+                "verify": "Thibitisha",
+                "verifyOk": "IMETHIBITISHWA",
+                "verifyFailed": "IMEHARIBIWA",
+                "verifyNoSignature": "HAKUNA SAINI",
+                "statusCompleted": "IMEKAMILIKA",
+                "statusInProgress": "INAENDELEA",
+                "delete": "Futa jarida",
+                "created": "Imeundwa",
+                "bytes": "Baiti",
+                "colPath": "Njia",
+                "colDirection": "Mwelekeo",
+                "colStatus": "Hali",
+                "colBytes": "Baiti",
+                "colAction": "Kitendo"
             }
         }
     }

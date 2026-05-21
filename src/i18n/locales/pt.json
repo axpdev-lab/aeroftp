@@ -4546,6 +4546,32 @@
                 "fallbackHint": "O AeroSync recorrerá ao caminho de cópia clássico. O preset escolhido continua a ser executado.",
                 "skipFuture": "Não perguntar novamente para este servidor",
                 "continue": "Continuar"
+            },
+            "launcherHistory": "Histórico do journal",
+            "history": {
+                "title": "Histórico do AeroSync",
+                "refresh": "Atualizar",
+                "cleanupOld": "Remover entradas com mais de 30 dias",
+                "clearAll": "Limpar todos os journals",
+                "confirmClearAll": "Limpar TODOS os journals de sincronização?",
+                "empty": "Nenhum journal de sincronização ainda. São criados na primeira execução de um preset neste par de caminhos.",
+                "selectPrompt": "Selecione um journal à esquerda para inspecionar as entradas por arquivo.",
+                "journalMissing": "Journal não encontrado.",
+                "entriesEmpty": "Nenhuma entrada registrada.",
+                "verify": "Verificar",
+                "verifyOk": "VERIFICADO",
+                "verifyFailed": "ADULTERADO",
+                "verifyNoSignature": "SEM ASSINATURA",
+                "statusCompleted": "CONCLUÍDO",
+                "statusInProgress": "EM ANDAMENTO",
+                "delete": "Excluir journal",
+                "created": "Criado",
+                "bytes": "Bytes",
+                "colPath": "Caminho",
+                "colDirection": "Direção",
+                "colStatus": "Status",
+                "colBytes": "Bytes",
+                "colAction": "Ação"
             }
         }
     }

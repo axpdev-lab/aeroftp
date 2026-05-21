@@ -4565,6 +4565,32 @@
                 "fallbackHint": "AeroSync går tilbake til den klassiske kopieringsmetoden. Den valgte forhåndsinnstillingen kjøres fortsatt.",
                 "skipFuture": "Ikke spør igjen for denne serveren",
                 "continue": "Fortsett"
+            },
+            "launcherHistory": "Journalhistorikk",
+            "history": {
+                "title": "AeroSync-historikk",
+                "refresh": "Oppdater",
+                "cleanupOld": "Fjern oppføringer eldre enn 30 dager",
+                "clearAll": "Tøm alle journaler",
+                "confirmClearAll": "Tømme ALLE synkroniseringsjournaler?",
+                "empty": "Ingen synkroniseringsjournaler ennå. De opprettes ved første kjøring av en forhåndsinnstilling på dette stiparet.",
+                "selectPrompt": "Velg en journal til venstre for å se oppføringer per fil.",
+                "journalMissing": "Journal ikke funnet.",
+                "entriesEmpty": "Ingen registrerte oppføringer.",
+                "verify": "Verifiser",
+                "verifyOk": "VERIFISERT",
+                "verifyFailed": "MANIPULERT",
+                "verifyNoSignature": "INGEN SIGNATUR",
+                "statusCompleted": "FULLFØRT",
+                "statusInProgress": "PÅGÅR",
+                "delete": "Slett journal",
+                "created": "Opprettet",
+                "bytes": "Byte",
+                "colPath": "Sti",
+                "colDirection": "Retning",
+                "colStatus": "Status",
+                "colBytes": "Byte",
+                "colAction": "Handling"
             }
         }
     }

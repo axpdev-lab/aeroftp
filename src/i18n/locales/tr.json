@@ -4546,6 +4546,32 @@
                 "fallbackHint": "AeroSync klasik kopyalama yoluna geri dönecek. Seçilen ön ayar yine de çalışır.",
                 "skipFuture": "Bu sunucu için tekrar sorma",
                 "continue": "Devam et"
+            },
+            "launcherHistory": "Günlük geçmişi",
+            "history": {
+                "title": "AeroSync geçmişi",
+                "refresh": "Yenile",
+                "cleanupOld": "30 günden eski girdileri kaldır",
+                "clearAll": "Tüm günlükleri temizle",
+                "confirmClearAll": "TÜM senkronizasyon günlükleri temizlensin mi?",
+                "empty": "Henüz senkronizasyon günlüğü yok. Bu yol çifti için bir ön ayarın ilk çalıştırılmasında oluşturulur.",
+                "selectPrompt": "Dosya bazlı girdileri incelemek için soldan bir günlük seçin.",
+                "journalMissing": "Günlük bulunamadı.",
+                "entriesEmpty": "Kayıtlı girdi yok.",
+                "verify": "Doğrula",
+                "verifyOk": "DOĞRULANDI",
+                "verifyFailed": "DEĞİŞTİRİLMİŞ",
+                "verifyNoSignature": "İMZA YOK",
+                "statusCompleted": "TAMAMLANDI",
+                "statusInProgress": "DEVAM EDİYOR",
+                "delete": "Günlüğü sil",
+                "created": "Oluşturuldu",
+                "bytes": "Bayt",
+                "colPath": "Yol",
+                "colDirection": "Yön",
+                "colStatus": "Durum",
+                "colBytes": "Bayt",
+                "colAction": "Eylem"
             }
         }
     }

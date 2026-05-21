@@ -4546,6 +4546,32 @@
                 "fallbackHint": "AeroSync přejde na klasický způsob kopírování. Zvolené přednastavení se přesto spustí.",
                 "skipFuture": "Pro tento server se již neptat",
                 "continue": "Pokračovat"
+            },
+            "launcherHistory": "Historie journalu",
+            "history": {
+                "title": "Historie AeroSync",
+                "refresh": "Obnovit",
+                "cleanupOld": "Odstranit záznamy starší než 30 dní",
+                "clearAll": "Vymazat všechny journaly",
+                "confirmClearAll": "Vymazat VŠECHNY journaly synchronizace?",
+                "empty": "Zatím žádné journaly synchronizace. Vytvářejí se při prvním spuštění presetu nad touto dvojicí cest.",
+                "selectPrompt": "Vyberte journal vlevo pro zobrazení jeho záznamů po souborech.",
+                "journalMissing": "Journal nenalezen.",
+                "entriesEmpty": "Žádné zaznamenané položky.",
+                "verify": "Ověřit",
+                "verifyOk": "OVĚŘENO",
+                "verifyFailed": "POZMĚNĚNO",
+                "verifyNoSignature": "BEZ PODPISU",
+                "statusCompleted": "DOKONČENO",
+                "statusInProgress": "PROBÍHÁ",
+                "delete": "Smazat journal",
+                "created": "Vytvořeno",
+                "bytes": "Bajty",
+                "colPath": "Cesta",
+                "colDirection": "Směr",
+                "colStatus": "Stav",
+                "colBytes": "Bajty",
+                "colAction": "Akce"
             }
         }
     }

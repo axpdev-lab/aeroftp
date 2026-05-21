@@ -4546,6 +4546,32 @@
                 "fallbackHint": "AeroSync recurrirá a la ruta de copia clásica. El preajuste elegido se ejecutará igualmente.",
                 "skipFuture": "No volver a preguntar para este servidor",
                 "continue": "Continuar"
+            },
+            "launcherHistory": "Historial del journal",
+            "history": {
+                "title": "Historial de AeroSync",
+                "refresh": "Actualizar",
+                "cleanupOld": "Eliminar entradas con más de 30 días",
+                "clearAll": "Borrar todos los journals",
+                "confirmClearAll": "Borrar TODOS los journals de sincronización?",
+                "empty": "Aún no hay journals de sincronización. Se crean en la primera ejecución de un preset sobre este par de rutas.",
+                "selectPrompt": "Selecciona un journal a la izquierda para ver sus entradas por archivo.",
+                "journalMissing": "Journal no encontrado.",
+                "entriesEmpty": "Ninguna entrada registrada.",
+                "verify": "Verificar",
+                "verifyOk": "VERIFICADO",
+                "verifyFailed": "MANIPULADO",
+                "verifyNoSignature": "SIN FIRMA",
+                "statusCompleted": "COMPLETADO",
+                "statusInProgress": "EN CURSO",
+                "delete": "Eliminar journal",
+                "created": "Creado",
+                "bytes": "Bytes",
+                "colPath": "Ruta",
+                "colDirection": "Dirección",
+                "colStatus": "Estado",
+                "colBytes": "Bytes",
+                "colAction": "Acción"
             }
         }
     }

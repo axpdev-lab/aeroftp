@@ -4546,6 +4546,32 @@
                 "fallbackHint": "AeroSync akan kembali kepada laluan salinan klasik. Praset yang dipilih masih akan dijalankan.",
                 "skipFuture": "Jangan tanya lagi untuk pelayan ini",
                 "continue": "Teruskan"
+            },
+            "launcherHistory": "Sejarah journal",
+            "history": {
+                "title": "Sejarah AeroSync",
+                "refresh": "Muat semula",
+                "cleanupOld": "Buang entri yang lebih lama daripada 30 hari",
+                "clearAll": "Kosongkan semua journal",
+                "confirmClearAll": "Kosongkan SEMUA journal penyegerakan?",
+                "empty": "Belum ada journal penyegerakan. Ia dicipta semasa pelaksanaan preset pertama pada pasangan path ini.",
+                "selectPrompt": "Pilih journal di sebelah kiri untuk memeriksa entri setiap fail.",
+                "journalMissing": "Journal tidak dijumpai.",
+                "entriesEmpty": "Tiada entri direkodkan.",
+                "verify": "Sahkan",
+                "verifyOk": "DISAHKAN",
+                "verifyFailed": "DIUBAH SUAI",
+                "verifyNoSignature": "TIADA TANDATANGAN",
+                "statusCompleted": "SELESAI",
+                "statusInProgress": "SEDANG BERJALAN",
+                "delete": "Padam journal",
+                "created": "Dicipta",
+                "bytes": "Bait",
+                "colPath": "Path",
+                "colDirection": "Arah",
+                "colStatus": "Status",
+                "colBytes": "Bait",
+                "colAction": "Tindakan"
             }
         }
     }

@@ -4546,6 +4546,32 @@
                 "fallbackHint": "AeroSync schakelt terug naar het klassieke kopieerpad. De gekozen preset wordt nog steeds uitgevoerd.",
                 "skipFuture": "Niet meer vragen voor deze server",
                 "continue": "Doorgaan"
+            },
+            "launcherHistory": "Journaalgeschiedenis",
+            "history": {
+                "title": "AeroSync-geschiedenis",
+                "refresh": "Vernieuwen",
+                "cleanupOld": "Verwijder vermeldingen ouder dan 30 dagen",
+                "clearAll": "Alle journals wissen",
+                "confirmClearAll": "ALLE synchronisatie-journals wissen?",
+                "empty": "Nog geen synchronisatie-journals. Ze worden gemaakt bij de eerste preset-uitvoering op dit padpaar.",
+                "selectPrompt": "Kies links een journal om de invoer per bestand te bekijken.",
+                "journalMissing": "Journal niet gevonden.",
+                "entriesEmpty": "Geen vermeldingen geregistreerd.",
+                "verify": "Verifiëren",
+                "verifyOk": "GEVERIFIEERD",
+                "verifyFailed": "GEMANIPULEERD",
+                "verifyNoSignature": "GEEN HANDTEKENING",
+                "statusCompleted": "VOLTOOID",
+                "statusInProgress": "BEZIG",
+                "delete": "Journal verwijderen",
+                "created": "Gemaakt",
+                "bytes": "Bytes",
+                "colPath": "Pad",
+                "colDirection": "Richting",
+                "colStatus": "Status",
+                "colBytes": "Bytes",
+                "colAction": "Actie"
             }
         }
     }

@@ -4546,6 +4546,32 @@
                 "fallbackHint": "AeroSync wróci do klasycznej ścieżki kopiowania. Wybrany preset nadal zostanie uruchomiony.",
                 "skipFuture": "Nie pytaj ponownie dla tego serwera",
                 "continue": "Kontynuuj"
+            },
+            "launcherHistory": "Historia dziennika",
+            "history": {
+                "title": "Historia AeroSync",
+                "refresh": "Odśwież",
+                "cleanupOld": "Usuń wpisy starsze niż 30 dni",
+                "clearAll": "Wyczyść wszystkie dzienniki",
+                "confirmClearAll": "Wyczyścić WSZYSTKIE dzienniki synchronizacji?",
+                "empty": "Brak dzienników synchronizacji. Są tworzone przy pierwszym uruchomieniu presetu dla tej pary ścieżek.",
+                "selectPrompt": "Wybierz dziennik po lewej, aby zobaczyć wpisy dla poszczególnych plików.",
+                "journalMissing": "Nie znaleziono dziennika.",
+                "entriesEmpty": "Brak zarejestrowanych wpisów.",
+                "verify": "Weryfikuj",
+                "verifyOk": "ZWERYFIKOWANO",
+                "verifyFailed": "NARUSZONY",
+                "verifyNoSignature": "BRAK PODPISU",
+                "statusCompleted": "UKOŃCZONO",
+                "statusInProgress": "W TOKU",
+                "delete": "Usuń dziennik",
+                "created": "Utworzono",
+                "bytes": "Bajty",
+                "colPath": "Ścieżka",
+                "colDirection": "Kierunek",
+                "colStatus": "Status",
+                "colBytes": "Bajty",
+                "colAction": "Akcja"
             }
         }
     }

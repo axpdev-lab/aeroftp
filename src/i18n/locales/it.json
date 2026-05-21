@@ -4546,6 +4546,32 @@
                 "fallbackHint": "AeroSync userà il percorso classico di copia. Il preset scelto viene comunque eseguito.",
                 "skipFuture": "Non chiedere più per questo server",
                 "continue": "Continua"
+            },
+            "launcherHistory": "Cronologia journal",
+            "history": {
+                "title": "Cronologia AeroSync",
+                "refresh": "Aggiorna",
+                "cleanupOld": "Rimuovi le voci più vecchie di 30 giorni",
+                "clearAll": "Cancella tutti i journal",
+                "confirmClearAll": "Cancellare TUTTI i journal di sincronizzazione?",
+                "empty": "Nessun journal di sincronizzazione. Vengono creati alla prima esecuzione di un preset su questa coppia di path.",
+                "selectPrompt": "Seleziona un journal a sinistra per vederne le voci per-file.",
+                "journalMissing": "Journal non trovato.",
+                "entriesEmpty": "Nessuna voce registrata.",
+                "verify": "Verifica",
+                "verifyOk": "VERIFICATO",
+                "verifyFailed": "MANOMESSO",
+                "verifyNoSignature": "NESSUNA FIRMA",
+                "statusCompleted": "COMPLETATO",
+                "statusInProgress": "IN CORSO",
+                "delete": "Elimina journal",
+                "created": "Creato",
+                "bytes": "Byte",
+                "colPath": "Path",
+                "colDirection": "Direzione",
+                "colStatus": "Stato",
+                "colBytes": "Byte",
+                "colAction": "Azione"
             }
         }
     }

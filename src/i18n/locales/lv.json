@@ -4546,6 +4546,32 @@
                 "fallbackHint": "AeroSync atgriezīsies pie klasiskā kopēšanas veida. Izvēlētais iestatījums joprojām tiks izpildīts.",
                 "skipFuture": "Vairs nejautāt par šo serveri",
                 "continue": "Turpināt"
+            },
+            "launcherHistory": "Žurnāla vēsture",
+            "history": {
+                "title": "AeroSync vēsture",
+                "refresh": "Atsvaidzināt",
+                "cleanupOld": "Noņemt ierakstus, kas vecāki par 30 dienām",
+                "clearAll": "Notīrīt visus žurnālus",
+                "confirmClearAll": "Notīrīt VISUS sinhronizācijas žurnālus?",
+                "empty": "Sinhronizācijas žurnālu vēl nav. Tie tiek izveidoti pie pirmā priekšiestatījuma izpildīšanas šim ceļu pārim.",
+                "selectPrompt": "Izvēlieties žurnālu kreisajā pusē, lai apskatītu ierakstus pa failiem.",
+                "journalMissing": "Žurnāls nav atrasts.",
+                "entriesEmpty": "Nav reģistrētu ierakstu.",
+                "verify": "Pārbaudīt",
+                "verifyOk": "PĀRBAUDĪTS",
+                "verifyFailed": "BOJĀTS",
+                "verifyNoSignature": "BEZ PARAKSTA",
+                "statusCompleted": "PABEIGTS",
+                "statusInProgress": "NORIT",
+                "delete": "Dzēst žurnālu",
+                "created": "Izveidots",
+                "bytes": "Baiti",
+                "colPath": "Ceļš",
+                "colDirection": "Virziens",
+                "colStatus": "Statuss",
+                "colBytes": "Baiti",
+                "colAction": "Darbība"
             }
         }
     }

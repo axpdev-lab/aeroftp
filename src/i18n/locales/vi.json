@@ -4546,6 +4546,32 @@
                 "fallbackHint": "AeroSync sẽ quay lại đường sao chép cổ điển. Cài đặt sẵn đã chọn vẫn chạy.",
                 "skipFuture": "Không hỏi lại cho máy chủ này",
                 "continue": "Tiếp tục"
+            },
+            "launcherHistory": "Lịch sử nhật ký",
+            "history": {
+                "title": "Lịch sử AeroSync",
+                "refresh": "Làm mới",
+                "cleanupOld": "Xóa các mục cũ hơn 30 ngày",
+                "clearAll": "Xóa tất cả nhật ký",
+                "confirmClearAll": "Xóa TẤT CẢ nhật ký đồng bộ?",
+                "empty": "Chưa có nhật ký đồng bộ nào. Chúng được tạo khi thực hiện cài đặt sẵn lần đầu cho cặp đường dẫn này.",
+                "selectPrompt": "Chọn một nhật ký ở bên trái để xem các mục theo từng tệp.",
+                "journalMissing": "Không tìm thấy nhật ký.",
+                "entriesEmpty": "Không có mục nào được ghi lại.",
+                "verify": "Xác minh",
+                "verifyOk": "ĐÃ XÁC MINH",
+                "verifyFailed": "ĐÃ BỊ THAY ĐỔI",
+                "verifyNoSignature": "KHÔNG CÓ CHỮ KÝ",
+                "statusCompleted": "HOÀN TẤT",
+                "statusInProgress": "ĐANG XỬ LÝ",
+                "delete": "Xóa nhật ký",
+                "created": "Đã tạo",
+                "bytes": "Byte",
+                "colPath": "Đường dẫn",
+                "colDirection": "Hướng",
+                "colStatus": "Trạng thái",
+                "colBytes": "Byte",
+                "colAction": "Hành động"
             }
         }
     }

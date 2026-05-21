@@ -4546,6 +4546,32 @@
                 "fallbackHint": "AeroSync wechselt zum klassischen Kopiermodus. Die gewählte Voreinstellung wird trotzdem ausgeführt.",
                 "skipFuture": "Für diesen Server nicht mehr fragen",
                 "continue": "Fortfahren"
+            },
+            "launcherHistory": "Journal-Verlauf",
+            "history": {
+                "title": "AeroSync-Verlauf",
+                "refresh": "Aktualisieren",
+                "cleanupOld": "Einträge älter als 30 Tage entfernen",
+                "clearAll": "Alle Journale löschen",
+                "confirmClearAll": "ALLE Synchronisierungs-Journale löschen?",
+                "empty": "Noch keine Synchronisierungs-Journale. Sie werden bei der ersten Preset-Ausführung für dieses Pfadpaar erstellt.",
+                "selectPrompt": "Wählen Sie links ein Journal aus, um die Einträge pro Datei anzuzeigen.",
+                "journalMissing": "Journal nicht gefunden.",
+                "entriesEmpty": "Keine Einträge erfasst.",
+                "verify": "Verifizieren",
+                "verifyOk": "VERIFIZIERT",
+                "verifyFailed": "MANIPULIERT",
+                "verifyNoSignature": "KEINE SIGNATUR",
+                "statusCompleted": "ABGESCHLOSSEN",
+                "statusInProgress": "IN ARBEIT",
+                "delete": "Journal löschen",
+                "created": "Erstellt",
+                "bytes": "Bytes",
+                "colPath": "Pfad",
+                "colDirection": "Richtung",
+                "colStatus": "Status",
+                "colBytes": "Bytes",
+                "colAction": "Aktion"
             }
         }
     }
