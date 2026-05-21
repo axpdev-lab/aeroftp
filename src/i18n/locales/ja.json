@@ -4518,7 +4518,11 @@
                 "resultStatus": "ステータス",
                 "resultsTruncated": "切り詰め",
                 "resultsDryRun": "ドライランのプレビューのみ。",
-                "resultsEmpty": "処理されたファイルはありません。"
+                "resultsEmpty": "処理されたファイルはありません。",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = 無制限。ローカルミラーループは2つの上限のうち高い方を使用して制限します。",
+                "bandwidthUnlimited": "無制限"
             },
             "launcherTemplates": "テンプレート",
             "launcherMultiPath": "マルチパス",

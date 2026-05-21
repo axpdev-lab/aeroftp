@@ -4518,7 +4518,11 @@
                 "resultStatus": "Durum",
                 "resultsTruncated": "KISALTILDI",
                 "resultsDryRun": "Yalnızca deneme çalıştırması önizlemesi.",
-                "resultsEmpty": "İşlenen dosya yok."
+                "resultsEmpty": "İşlenen dosya yok.",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = sınırsız. Yerel yansıtma döngüsü iki sınırdan yüksek olanı kullanarak hızı kısıtlar.",
+                "bandwidthUnlimited": "Sınırsız"
             },
             "launcherTemplates": "Şablonlar",
             "launcherMultiPath": "Çoklu yol",

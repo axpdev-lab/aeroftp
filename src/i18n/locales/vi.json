@@ -4518,7 +4518,11 @@
                 "resultStatus": "Trạng thái",
                 "resultsTruncated": "ĐÃ CẮT BỚT",
                 "resultsDryRun": "Chỉ xem trước chạy thử.",
-                "resultsEmpty": "Không có tệp nào được xử lý."
+                "resultsEmpty": "Không có tệp nào được xử lý.",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = không giới hạn. Vòng lặp sao chép cục bộ điều tiết tốc độ theo giới hạn cao hơn trong hai mức.",
+                "bandwidthUnlimited": "Không giới hạn"
             },
             "launcherTemplates": "Mẫu",
             "launcherMultiPath": "Nhiều đường dẫn",

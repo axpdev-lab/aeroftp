@@ -4518,7 +4518,11 @@
                 "resultStatus": "Статус",
                 "resultsTruncated": "ОБРІЗАНО",
                 "resultsDryRun": "Лише попередній перегляд пробного запуску.",
-                "resultsEmpty": "Жодного файлу не оброблено."
+                "resultsEmpty": "Жодного файлу не оброблено.",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = без обмежень. Цикл локального дзеркалювання обмежує швидкість за вищим із двох лімітів.",
+                "bandwidthUnlimited": "Без обмежень"
             },
             "launcherTemplates": "Шаблони",
             "launcherMultiPath": "Кілька шляхів",

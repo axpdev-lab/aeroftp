@@ -4518,7 +4518,11 @@
                 "resultStatus": "Status",
                 "resultsTruncated": "DIPENDEKKAN",
                 "resultsDryRun": "Pratonton larian percubaan sahaja.",
-                "resultsEmpty": "Tiada fail diproses."
+                "resultsEmpty": "Tiada fail diproses.",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = tanpa had. Gelung cermin tempatan menghadkan menggunakan yang lebih tinggi daripada kedua-dua had.",
+                "bandwidthUnlimited": "Tanpa had"
             },
             "launcherTemplates": "Templat",
             "launcherMultiPath": "Pelbagai Laluan",

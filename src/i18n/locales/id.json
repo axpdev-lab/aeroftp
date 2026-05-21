@@ -4518,7 +4518,11 @@
                 "resultStatus": "Status",
                 "resultsTruncated": "DIPOTONG",
                 "resultsDryRun": "Hanya pratinjau dry run.",
-                "resultsEmpty": "Tidak ada file yang diproses."
+                "resultsEmpty": "Tidak ada file yang diproses.",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = tanpa batas. Loop mirror lokal membatasi menggunakan yang lebih tinggi dari kedua batas.",
+                "bandwidthUnlimited": "Tanpa batas"
             },
             "launcherTemplates": "Templat",
             "launcherMultiPath": "Multi-Jalur",

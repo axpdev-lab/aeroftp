@@ -4518,7 +4518,11 @@
                 "resultStatus": "Կարգավիճակ",
                 "resultsTruncated": "ԿՐՃԱՏՎԱԾ",
                 "resultsDryRun": "Միայն dry-run նախադիտումը։",
-                "resultsEmpty": "Ոչ մի ֆայլ չի մշակվել։"
+                "resultsEmpty": "Ոչ մի ֆայլ չի մշակվել։",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = անսահմանափակ։ Տեղական հայելու ցիկլը սահմանափակում է երկու սահմաններից բարձրի համաձայն։",
+                "bandwidthUnlimited": "Անսահմանափակ"
             },
             "launcherTemplates": "Կաղապարներ",
             "launcherMultiPath": "Բազմակի ուղիներ",

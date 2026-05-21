@@ -4537,7 +4537,11 @@
                 "resultStatus": "Statws",
                 "resultsTruncated": "WEDI TORRI",
                 "resultsDryRun": "Rhagolwg rhediad prawf yn unig.",
-                "resultsEmpty": "Dim ffeiliau wedi'u prosesu."
+                "resultsEmpty": "Dim ffeiliau wedi'u prosesu.",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = diderfyn. Mae'r ddolen drych leol yn cyfyngu ar y cyflymder gan ddefnyddio'r uchaf o'r ddau derfyn.",
+                "bandwidthUnlimited": "Diderfyn"
             },
             "launcherTemplates": "Templedi",
             "launcherMultiPath": "Aml-lwybr",

@@ -4518,7 +4518,11 @@
                 "resultStatus": "Status",
                 "resultsTruncated": "AFKORTET",
                 "resultsDryRun": "Kun forhåndsvisning i dry-run.",
-                "resultsEmpty": "Ingen filer behandlet."
+                "resultsEmpty": "Ingen filer behandlet.",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = ubegrænset. Den lokale spejlløkke begrænser ved hjælp af den højeste af de to grænser.",
+                "bandwidthUnlimited": "Ubegrænset"
             },
             "launcherTemplates": "Skabeloner",
             "launcherMultiPath": "Multi-sti",

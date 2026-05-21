@@ -4518,7 +4518,11 @@
                 "resultStatus": "Status",
                 "resultsTruncated": "GEKÜRZT",
                 "resultsDryRun": "Nur Dry-Run-Vorschau.",
-                "resultsEmpty": "Keine Dateien verarbeitet."
+                "resultsEmpty": "Keine Dateien verarbeitet.",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = unbegrenzt. Die lokale Spiegel-Schleife drosselt anhand der höheren der beiden Obergrenzen.",
+                "bandwidthUnlimited": "Unbegrenzt"
             },
             "launcherTemplates": "Vorlagen",
             "launcherMultiPath": "Mehrere Pfade",

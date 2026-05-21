@@ -4518,7 +4518,11 @@
                 "resultStatus": "Κατάσταση",
                 "resultsTruncated": "ΠΕΡΙΚΟΜΜΕΝΟ",
                 "resultsDryRun": "Μόνο προεπισκόπηση dry-run.",
-                "resultsEmpty": "Δεν επεξεργάστηκαν αρχεία."
+                "resultsEmpty": "Δεν επεξεργάστηκαν αρχεία.",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = απεριόριστο. Ο βρόχος τοπικού καθρέφτη περιορίζει με βάση το υψηλότερο από τα δύο όρια.",
+                "bandwidthUnlimited": "Απεριόριστο"
             },
             "launcherTemplates": "Πρότυπα",
             "launcherMultiPath": "Πολλαπλές διαδρομές",

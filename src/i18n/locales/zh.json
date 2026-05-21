@@ -4518,7 +4518,11 @@
                 "resultStatus": "状态",
                 "resultsTruncated": "已截断",
                 "resultsDryRun": "仅试运行预览。",
-                "resultsEmpty": "未处理任何文件。"
+                "resultsEmpty": "未处理任何文件。",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = 无限制。本地镜像循环按两个上限中较高者进行限速。",
+                "bandwidthUnlimited": "无限制"
             },
             "launcherTemplates": "模板",
             "launcherMultiPath": "多路径",

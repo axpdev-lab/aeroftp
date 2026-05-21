@@ -4518,7 +4518,11 @@
                 "resultStatus": "Állapot",
                 "resultsTruncated": "CSONKOLVA",
                 "resultsDryRun": "Csak dry-run előnézet.",
-                "resultsEmpty": "Nincs feldolgozott fájl."
+                "resultsEmpty": "Nincs feldolgozott fájl.",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = korlátlan. A helyi tükörhurok a két korlát közül a magasabb szerint szabályoz.",
+                "bandwidthUnlimited": "Korlátlan"
             },
             "launcherTemplates": "Sablonok",
             "launcherMultiPath": "Több útvonal",

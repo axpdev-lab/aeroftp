@@ -4518,7 +4518,11 @@
                 "resultStatus": "Tila",
                 "resultsTruncated": "KATKAISTU",
                 "resultsDryRun": "Vain dry-run-esikatselu.",
-                "resultsEmpty": "Ei käsiteltyjä tiedostoja."
+                "resultsEmpty": "Ei käsiteltyjä tiedostoja.",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = rajaton. Paikallinen peilisilmukka rajoittaa kahdesta katosta korkeamman mukaan.",
+                "bandwidthUnlimited": "Rajaton"
             },
             "launcherTemplates": "Mallit",
             "launcherMultiPath": "Monireitti",

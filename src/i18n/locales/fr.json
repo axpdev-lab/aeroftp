@@ -4518,7 +4518,11 @@
                 "resultStatus": "Statut",
                 "resultsTruncated": "TRONQUÉ",
                 "resultsDryRun": "Aperçu en mode dry-run uniquement.",
-                "resultsEmpty": "Aucun fichier traité."
+                "resultsEmpty": "Aucun fichier traité.",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = illimité. La boucle de miroir local limite selon la plus haute des deux bornes.",
+                "bandwidthUnlimited": "Illimité"
             },
             "launcherTemplates": "Modèles",
             "launcherMultiPath": "Multi-chemin",

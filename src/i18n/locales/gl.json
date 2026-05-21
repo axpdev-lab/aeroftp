@@ -4537,7 +4537,11 @@
                 "resultStatus": "Estado",
                 "resultsTruncated": "TRUNCADO",
                 "resultsDryRun": "Só vista previa en dry-run.",
-                "resultsEmpty": "Ningún ficheiro procesado."
+                "resultsEmpty": "Ningún ficheiro procesado.",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = ilimitado. O bucle do espello local limita empregando o maior dos dous topes.",
+                "bandwidthUnlimited": "Ilimitado"
             },
             "launcherTemplates": "Modelos",
             "launcherMultiPath": "Multi-ruta",

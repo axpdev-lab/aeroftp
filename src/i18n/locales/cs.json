@@ -4518,7 +4518,11 @@
                 "resultStatus": "Stav",
                 "resultsTruncated": "ZKRÁCENO",
                 "resultsDryRun": "Pouze náhled v režimu dry-run.",
-                "resultsEmpty": "Nebyly zpracovány žádné soubory."
+                "resultsEmpty": "Nebyly zpracovány žádné soubory.",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = neomezeno. Smyčka místního zrcadla omezuje rychlost podle vyššího ze dvou limitů.",
+                "bandwidthUnlimited": "Neomezeno"
             },
             "launcherTemplates": "Šablony",
             "launcherMultiPath": "Více cest",

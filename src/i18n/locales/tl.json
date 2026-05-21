@@ -4537,7 +4537,11 @@
                 "resultStatus": "Status",
                 "resultsTruncated": "PINUTOL",
                 "resultsDryRun": "Preview lamang ng dry run.",
-                "resultsEmpty": "Walang naprosesong file."
+                "resultsEmpty": "Walang naprosesong file.",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = walang limitasyon. Ang local mirror loop ay naglilimita gamit ang mas mataas sa dalawang cap.",
+                "bandwidthUnlimited": "Walang limitasyon"
             },
             "launcherTemplates": "Mga template",
             "launcherMultiPath": "Maramihang landas",

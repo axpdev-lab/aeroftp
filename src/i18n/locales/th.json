@@ -4518,7 +4518,11 @@
                 "resultStatus": "สถานะ",
                 "resultsTruncated": "ถูกตัด",
                 "resultsDryRun": "ดูตัวอย่างการทดลองรันเท่านั้น",
-                "resultsEmpty": "ไม่มีไฟล์ที่ประมวลผล"
+                "resultsEmpty": "ไม่มีไฟล์ที่ประมวลผล",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = ไม่จำกัด ลูปมิเรอร์ภายในจะจำกัดความเร็วโดยใช้ค่าที่สูงกว่าระหว่างสองขีดจำกัด",
+                "bandwidthUnlimited": "ไม่จำกัด"
             },
             "launcherTemplates": "เทมเพลต",
             "launcherMultiPath": "หลายเส้นทาง",

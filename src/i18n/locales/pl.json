@@ -4518,7 +4518,11 @@
                 "resultStatus": "Stan",
                 "resultsTruncated": "SKRÓCONO",
                 "resultsDryRun": "Tylko podgląd uruchomienia próbnego.",
-                "resultsEmpty": "Nie przetworzono żadnych plików."
+                "resultsEmpty": "Nie przetworzono żadnych plików.",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = bez ograniczeń. Lokalna pętla lustra ogranicza, używając wyższego z dwóch limitów.",
+                "bandwidthUnlimited": "Bez ograniczeń"
             },
             "launcherTemplates": "Szablony",
             "launcherMultiPath": "Wiele ścieżek",

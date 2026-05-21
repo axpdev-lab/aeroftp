@@ -4518,7 +4518,11 @@
                 "resultStatus": "Statuss",
                 "resultsTruncated": "SAĪSINĀTS",
                 "resultsDryRun": "Tikai izmēģinājuma palaišanas priekšskatījums.",
-                "resultsEmpty": "Neviens fails netika apstrādāts."
+                "resultsEmpty": "Neviens fails netika apstrādāts.",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = neierobežots. Vietējā spoguļa cilpa ierobežo, izmantojot augstāko no abiem ierobežojumiem.",
+                "bandwidthUnlimited": "Neierobežots"
             },
             "launcherTemplates": "Veidnes",
             "launcherMultiPath": "Vairāki ceļi",

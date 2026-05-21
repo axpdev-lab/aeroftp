@@ -4537,7 +4537,11 @@
                 "resultStatus": "Estat",
                 "resultsTruncated": "TRUNCAT",
                 "resultsDryRun": "Només previsualització en mode dry-run.",
-                "resultsEmpty": "Cap fitxer processat."
+                "resultsEmpty": "Cap fitxer processat.",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = il·limitat. El bucle de mirall local limita segons el més alt dels dos topalls.",
+                "bandwidthUnlimited": "Il·limitat"
             },
             "launcherTemplates": "Plantilles",
             "launcherMultiPath": "Multi-ruta",

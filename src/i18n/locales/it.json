@@ -4518,7 +4518,11 @@
                 "resultStatus": "Stato",
                 "resultsTruncated": "TRONCATO",
                 "resultsDryRun": "Solo anteprima dry-run.",
-                "resultsEmpty": "Nessun file elaborato."
+                "resultsEmpty": "Nessun file elaborato.",
+                "bandwidthUpload": "Upload KB/s",
+                "bandwidthDownload": "Download KB/s",
+                "bandwidthHint": "0 = illimitato. Il loop di mirror locale strozza usando il maggiore dei due limiti.",
+                "bandwidthUnlimited": "Illimitato"
             },
             "launcherTemplates": "Modelli",
             "launcherMultiPath": "Percorsi multipli",
