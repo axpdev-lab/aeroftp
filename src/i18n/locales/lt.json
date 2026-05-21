@@ -4510,7 +4510,15 @@
                 "deltaOverrideAuto": "Automatinis aptikimas (rekomenduojama)",
                 "deltaOverrideOn": "Priverstinai įjungti (naudoti delta, kai įmanoma)",
                 "deltaOverrideOff": "Priverstinai išjungti (paprastas kopijavimas)",
-                "deltaOverrideHint": "Automatinis aptikimas naudoja AeroRsync failams >= 1 MiB, kai abi pusės yra vietinės. Nepaisymas įsimenamas tarp paleidimų."
+                "deltaOverrideHint": "Automatinis aptikimas naudoja AeroRsync failams >= 1 MiB, kai abi pusės yra vietinės. Nepaisymas įsimenamas tarp paleidimų.",
+                "resultsTable": "Rezultatai pagal failą",
+                "resultName": "Pavadinimas",
+                "resultAction": "Veiksmas",
+                "resultBytes": "Baitai",
+                "resultStatus": "Būsena",
+                "resultsTruncated": "SUTRUMPINTA",
+                "resultsDryRun": "Tik bandomojo paleidimo peržiūra.",
+                "resultsEmpty": "Nė vienas failas nebuvo apdorotas."
             },
             "launcherTemplates": "Šablonai",
             "launcherMultiPath": "Keli keliai",

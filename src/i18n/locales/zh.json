@@ -4510,7 +4510,15 @@
                 "deltaOverrideAuto": "自动检测（推荐）",
                 "deltaOverrideOn": "强制开启（尽可能使用增量）",
                 "deltaOverrideOff": "强制关闭（普通复制）",
-                "deltaOverrideHint": "当双方都是本地时，自动检测对 >= 1 MiB 的文件使用 AeroRsync。覆盖在多次运行之间保留。"
+                "deltaOverrideHint": "当双方都是本地时，自动检测对 >= 1 MiB 的文件使用 AeroRsync。覆盖在多次运行之间保留。",
+                "resultsTable": "每个文件的结果",
+                "resultName": "名称",
+                "resultAction": "操作",
+                "resultBytes": "字节",
+                "resultStatus": "状态",
+                "resultsTruncated": "已截断",
+                "resultsDryRun": "仅试运行预览。",
+                "resultsEmpty": "未处理任何文件。"
             },
             "launcherTemplates": "模板",
             "launcherMultiPath": "多路径",

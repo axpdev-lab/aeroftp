@@ -4510,7 +4510,15 @@
                 "deltaOverrideAuto": "Automaatne tuvastus (soovitatav)",
                 "deltaOverrideOn": "Sunni sisse (kasuta deltat võimaluse korral)",
                 "deltaOverrideOff": "Sunni välja (lihtne kopeerimine)",
-                "deltaOverrideHint": "Automaatne tuvastus kasutab AeroRsync faile >= 1 MiB jaoks, kui mõlemad pooled on kohalikud. Alistamine jääb meelde käivituste vahel."
+                "deltaOverrideHint": "Automaatne tuvastus kasutab AeroRsync faile >= 1 MiB jaoks, kui mõlemad pooled on kohalikud. Alistamine jääb meelde käivituste vahel.",
+                "resultsTable": "Tulemused failide kaupa",
+                "resultName": "Nimi",
+                "resultAction": "Toiming",
+                "resultBytes": "Baidid",
+                "resultStatus": "Olek",
+                "resultsTruncated": "KÄRBITUD",
+                "resultsDryRun": "Ainult dry-run eelvaade.",
+                "resultsEmpty": "Faile ei töödeldud."
             },
             "launcherTemplates": "Mallid",
             "launcherMultiPath": "Mitu rada",

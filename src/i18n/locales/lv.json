@@ -4510,7 +4510,15 @@
                 "deltaOverrideAuto": "Automātiska noteikšana (ieteicams)",
                 "deltaOverrideOn": "Piespiedu ieslēgts (lietot delta, ja iespējams)",
                 "deltaOverrideOff": "Piespiedu izslēgts (parasta kopēšana)",
-                "deltaOverrideHint": "Automātiska noteikšana izmanto AeroRsync failiem >= 1 MiB, kad abas puses ir lokālas. Pārmantošana tiek atcerēta starp izpildēm."
+                "deltaOverrideHint": "Automātiska noteikšana izmanto AeroRsync failiem >= 1 MiB, kad abas puses ir lokālas. Pārmantošana tiek atcerēta starp izpildēm.",
+                "resultsTable": "Rezultāti pa failiem",
+                "resultName": "Nosaukums",
+                "resultAction": "Darbība",
+                "resultBytes": "Baiti",
+                "resultStatus": "Statuss",
+                "resultsTruncated": "SAĪSINĀTS",
+                "resultsDryRun": "Tikai izmēģinājuma palaišanas priekšskatījums.",
+                "resultsEmpty": "Neviens fails netika apstrādāts."
             },
             "launcherTemplates": "Veidnes",
             "launcherMultiPath": "Vairāki ceļi",

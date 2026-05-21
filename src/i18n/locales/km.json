@@ -4529,7 +4529,15 @@
                 "deltaOverrideAuto": "ការរកឃើញដោយស្វ័យប្រវត្តិ (បានណែនាំ)",
                 "deltaOverrideOn": "បង្ខំបើក (ប្រើដែលតានៅពេលអាច)",
                 "deltaOverrideOff": "បង្ខំបិទ (ការចម្លងធម្មតា)",
-                "deltaOverrideHint": "ការរកឃើញដោយស្វ័យប្រវត្តិប្រើ AeroRsync សម្រាប់ឯកសារ >= 1 MiB នៅពេលដែលភាគីទាំងពីរនៅមូលដ្ឋាន។ ការបដិសេធត្រូវបានចងចាំរវាងការដំណើរការ។"
+                "deltaOverrideHint": "ការរកឃើញដោយស្វ័យប្រវត្តិប្រើ AeroRsync សម្រាប់ឯកសារ >= 1 MiB នៅពេលដែលភាគីទាំងពីរនៅមូលដ្ឋាន។ ការបដិសេធត្រូវបានចងចាំរវាងការដំណើរការ។",
+                "resultsTable": "លទ្ធផលតាមឯកសារ",
+                "resultName": "ឈ្មោះ",
+                "resultAction": "សកម្មភាព",
+                "resultBytes": "បៃ",
+                "resultStatus": "ស្ថានភាព",
+                "resultsTruncated": "បានកាត់ខ្លី",
+                "resultsDryRun": "មើលជាមុនរបៀបសាកល្បងតែប៉ុណ្ណោះ។",
+                "resultsEmpty": "មិនមានឯកសារត្រូវបានដំណើរការទេ។"
             },
             "launcherTemplates": "ពុម្ព",
             "launcherMultiPath": "ច្រកច្រើន",

@@ -4510,7 +4510,15 @@
                 "deltaOverrideAuto": "Automatisk registrering (anbefalet)",
                 "deltaOverrideOn": "Tving til (brug delta, når det er muligt)",
                 "deltaOverrideOff": "Tving fra (almindelig kopi)",
-                "deltaOverrideHint": "Automatisk registrering bruger AeroRsync til filer >= 1 MiB, når begge sider er lokale. Tilsidesættelsen huskes mellem kørsler."
+                "deltaOverrideHint": "Automatisk registrering bruger AeroRsync til filer >= 1 MiB, når begge sider er lokale. Tilsidesættelsen huskes mellem kørsler.",
+                "resultsTable": "Resultater pr. fil",
+                "resultName": "Navn",
+                "resultAction": "Handling",
+                "resultBytes": "Bytes",
+                "resultStatus": "Status",
+                "resultsTruncated": "AFKORTET",
+                "resultsDryRun": "Kun forhåndsvisning i dry-run.",
+                "resultsEmpty": "Ingen filer behandlet."
             },
             "launcherTemplates": "Skabeloner",
             "launcherMultiPath": "Multi-sti",

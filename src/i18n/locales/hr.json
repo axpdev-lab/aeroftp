@@ -4510,7 +4510,15 @@
                 "deltaOverrideAuto": "Automatsko otkrivanje (preporučeno)",
                 "deltaOverrideOn": "Prisilno uključeno (koristi deltu kada je moguće)",
                 "deltaOverrideOff": "Prisilno isključeno (obično kopiranje)",
-                "deltaOverrideHint": "Automatsko otkrivanje koristi AeroRsync za datoteke >= 1 MiB kada su obje strane lokalne. Premošćivanje se pamti između izvođenja."
+                "deltaOverrideHint": "Automatsko otkrivanje koristi AeroRsync za datoteke >= 1 MiB kada su obje strane lokalne. Premošćivanje se pamti između izvođenja.",
+                "resultsTable": "Rezultati po datoteci",
+                "resultName": "Naziv",
+                "resultAction": "Radnja",
+                "resultBytes": "Bajtovi",
+                "resultStatus": "Status",
+                "resultsTruncated": "SKRAĆENO",
+                "resultsDryRun": "Samo dry-run pregled.",
+                "resultsEmpty": "Nijedna datoteka nije obrađena."
             },
             "launcherTemplates": "Predlošci",
             "launcherMultiPath": "Više putanja",

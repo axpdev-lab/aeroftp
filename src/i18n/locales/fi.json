@@ -4510,7 +4510,15 @@
                 "deltaOverrideAuto": "Automaattinen tunnistus (suositeltu)",
                 "deltaOverrideOn": "Pakota päälle (käytä deltaa mahdollisuuksien mukaan)",
                 "deltaOverrideOff": "Pakota pois (tavallinen kopio)",
-                "deltaOverrideHint": "Automaattinen tunnistus käyttää AeroRsynciä >= 1 MiB tiedostoille, kun molemmat puolet ovat paikallisia. Ohitus muistetaan suoritusten välillä."
+                "deltaOverrideHint": "Automaattinen tunnistus käyttää AeroRsynciä >= 1 MiB tiedostoille, kun molemmat puolet ovat paikallisia. Ohitus muistetaan suoritusten välillä.",
+                "resultsTable": "Tulokset tiedostoittain",
+                "resultName": "Nimi",
+                "resultAction": "Toiminto",
+                "resultBytes": "Tavut",
+                "resultStatus": "Tila",
+                "resultsTruncated": "KATKAISTU",
+                "resultsDryRun": "Vain dry-run-esikatselu.",
+                "resultsEmpty": "Ei käsiteltyjä tiedostoja."
             },
             "launcherTemplates": "Mallit",
             "launcherMultiPath": "Monireitti",

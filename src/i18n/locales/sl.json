@@ -4510,7 +4510,15 @@
                 "deltaOverrideAuto": "Samodejno zaznavanje (priporočeno)",
                 "deltaOverrideOn": "Prisilno vklopljeno (uporabi delto, ko je mogoče)",
                 "deltaOverrideOff": "Prisilno izklopljeno (navadno kopiranje)",
-                "deltaOverrideHint": "Samodejno zaznavanje uporablja AeroRsync za datoteke >= 1 MiB, ko sta obe strani lokalni. Preglasitev se ohrani med zagoni."
+                "deltaOverrideHint": "Samodejno zaznavanje uporablja AeroRsync za datoteke >= 1 MiB, ko sta obe strani lokalni. Preglasitev se ohrani med zagoni.",
+                "resultsTable": "Rezultati po datotekah",
+                "resultName": "Ime",
+                "resultAction": "Dejanje",
+                "resultBytes": "Bajti",
+                "resultStatus": "Stanje",
+                "resultsTruncated": "SKRAJŠANO",
+                "resultsDryRun": "Samo predogled poskusnega zagona.",
+                "resultsEmpty": "Nobena datoteka ni bila obdelana."
             },
             "launcherTemplates": "Predloge",
             "launcherMultiPath": "Več poti",

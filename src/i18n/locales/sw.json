@@ -4510,7 +4510,15 @@
                 "deltaOverrideAuto": "Tambua kiotomatiki (inapendekezwa)",
                 "deltaOverrideOn": "Lazimisha kuwasha (tumia delta inapowezekana)",
                 "deltaOverrideOff": "Lazimisha kuzima (nakala ya kawaida)",
-                "deltaOverrideHint": "Utambuzi otomatiki hutumia AeroRsync kwa faili >= 1 MiB wakati pande zote mbili ni za ndani. Ufutaji hukumbukwa kati ya utekelezaji."
+                "deltaOverrideHint": "Utambuzi otomatiki hutumia AeroRsync kwa faili >= 1 MiB wakati pande zote mbili ni za ndani. Ufutaji hukumbukwa kati ya utekelezaji.",
+                "resultsTable": "Matokeo kwa kila faili",
+                "resultName": "Jina",
+                "resultAction": "Kitendo",
+                "resultBytes": "Baiti",
+                "resultStatus": "Hali",
+                "resultsTruncated": "IMEKATWA",
+                "resultsDryRun": "Onyesho la mtihani pekee.",
+                "resultsEmpty": "Hakuna faili zilizochakatwa."
             },
             "launcherTemplates": "Violezo",
             "launcherMultiPath": "Njia nyingi",

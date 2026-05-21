@@ -4510,7 +4510,15 @@
                 "deltaOverrideAuto": "Detectare automată (recomandat)",
                 "deltaOverrideOn": "Forțează activat (folosește delta când e posibil)",
                 "deltaOverrideOff": "Forțează dezactivat (copiere simplă)",
-                "deltaOverrideHint": "Detectarea automată folosește AeroRsync pentru fișiere >= 1 MiB când ambele părți sunt locale. Suprascrierea este memorată între rulări."
+                "deltaOverrideHint": "Detectarea automată folosește AeroRsync pentru fișiere >= 1 MiB când ambele părți sunt locale. Suprascrierea este memorată între rulări.",
+                "resultsTable": "Rezultate per fișier",
+                "resultName": "Nume",
+                "resultAction": "Acțiune",
+                "resultBytes": "Octeți",
+                "resultStatus": "Stare",
+                "resultsTruncated": "TRUNCHIAT",
+                "resultsDryRun": "Doar previzualizare rulare de probă.",
+                "resultsEmpty": "Niciun fișier procesat."
             },
             "launcherTemplates": "Șabloane",
             "launcherMultiPath": "Căi multiple",

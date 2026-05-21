@@ -4510,7 +4510,15 @@
                 "deltaOverrideAuto": "Détection automatique (recommandé)",
                 "deltaOverrideOn": "Forcer activé (utiliser le delta si possible)",
                 "deltaOverrideOff": "Forcer désactivé (copie simple)",
-                "deltaOverrideHint": "La détection automatique utilise AeroRsync pour les fichiers >= 1 Mio lorsque les deux côtés sont locaux. Le remplacement est mémorisé entre les exécutions."
+                "deltaOverrideHint": "La détection automatique utilise AeroRsync pour les fichiers >= 1 Mio lorsque les deux côtés sont locaux. Le remplacement est mémorisé entre les exécutions.",
+                "resultsTable": "Résultats par fichier",
+                "resultName": "Nom",
+                "resultAction": "Action",
+                "resultBytes": "Octets",
+                "resultStatus": "Statut",
+                "resultsTruncated": "TRONQUÉ",
+                "resultsDryRun": "Aperçu en mode dry-run uniquement.",
+                "resultsEmpty": "Aucun fichier traité."
             },
             "launcherTemplates": "Modèles",
             "launcherMultiPath": "Multi-chemin",

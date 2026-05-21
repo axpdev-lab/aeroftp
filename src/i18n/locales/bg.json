@@ -4510,7 +4510,15 @@
                 "deltaOverrideAuto": "Автоматично откриване (препоръчително)",
                 "deltaOverrideOn": "Принудително вкл. (използвай делта когато е възможно)",
                 "deltaOverrideOff": "Принудително изкл. (обикновено копиране)",
-                "deltaOverrideHint": "Автоматичното откриване използва AeroRsync за файлове >= 1 MiB, когато и двете страни са локални. Замяната се запазва между изпълненията."
+                "deltaOverrideHint": "Автоматичното откриване използва AeroRsync за файлове >= 1 MiB, когато и двете страни са локални. Замяната се запазва между изпълненията.",
+                "resultsTable": "Резултати по файл",
+                "resultName": "Име",
+                "resultAction": "Действие",
+                "resultBytes": "Байтове",
+                "resultStatus": "Състояние",
+                "resultsTruncated": "СЪКРАТЕНО",
+                "resultsDryRun": "Само преглед в режим dry-run.",
+                "resultsEmpty": "Няма обработени файлове."
             },
             "launcherTemplates": "Шаблони",
             "launcherMultiPath": "Множество пътища",

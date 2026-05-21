@@ -4529,7 +4529,15 @@
                 "deltaOverrideAuto": "Awtomatikong pagtuklas (inirerekomenda)",
                 "deltaOverrideOn": "Pilitin na nakabukas (gamitin ang delta kapag posible)",
                 "deltaOverrideOff": "Pilitin na nakasara (simpleng pagkopya)",
-                "deltaOverrideHint": "Ang awtomatikong pagtuklas ay gumagamit ng AeroRsync para sa mga file na >= 1 MiB kapag pareho ang lokal. Naaalala ang pag-override sa pagitan ng mga pagtakbo."
+                "deltaOverrideHint": "Ang awtomatikong pagtuklas ay gumagamit ng AeroRsync para sa mga file na >= 1 MiB kapag pareho ang lokal. Naaalala ang pag-override sa pagitan ng mga pagtakbo.",
+                "resultsTable": "Mga resulta sa bawat file",
+                "resultName": "Pangalan",
+                "resultAction": "Aksyon",
+                "resultBytes": "Bytes",
+                "resultStatus": "Status",
+                "resultsTruncated": "PINUTOL",
+                "resultsDryRun": "Preview lamang ng dry run.",
+                "resultsEmpty": "Walang naprosesong file."
             },
             "launcherTemplates": "Mga template",
             "launcherMultiPath": "Maramihang landas",

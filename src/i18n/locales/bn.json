@@ -4510,7 +4510,15 @@
                 "deltaOverrideAuto": "স্বয়ংক্রিয় সনাক্তকরণ (প্রস্তাবিত)",
                 "deltaOverrideOn": "জোর করে চালু (সম্ভব হলে ডেল্টা ব্যবহার করুন)",
                 "deltaOverrideOff": "জোর করে বন্ধ (সাধারণ কপি)",
-                "deltaOverrideHint": "যখন উভয় পক্ষ স্থানীয় হয় তখন স্বয়ংক্রিয় সনাক্তকরণ >= 1 MiB ফাইলের জন্য AeroRsync ব্যবহার করে। ওভাররাইড রানের মধ্যে মনে রাখা হয়।"
+                "deltaOverrideHint": "যখন উভয় পক্ষ স্থানীয় হয় তখন স্বয়ংক্রিয় সনাক্তকরণ >= 1 MiB ফাইলের জন্য AeroRsync ব্যবহার করে। ওভাররাইড রানের মধ্যে মনে রাখা হয়।",
+                "resultsTable": "প্রতি ফাইল ফলাফল",
+                "resultName": "নাম",
+                "resultAction": "ক্রিয়া",
+                "resultBytes": "বাইট",
+                "resultStatus": "স্থিতি",
+                "resultsTruncated": "ছাঁটাই করা",
+                "resultsDryRun": "শুধুমাত্র ড্রাই রান প্রিভিউ।",
+                "resultsEmpty": "কোনো ফাইল প্রক্রিয়া করা হয়নি।"
             },
             "launcherTemplates": "টেমপ্লেট",
             "launcherMultiPath": "একাধিক পাথ",

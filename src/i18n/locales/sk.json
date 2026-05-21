@@ -4510,7 +4510,15 @@
                 "deltaOverrideAuto": "Automatická detekcia (odporúčané)",
                 "deltaOverrideOn": "Vynútiť zap. (použiť deltu, ak je to možné)",
                 "deltaOverrideOff": "Vynútiť vyp. (jednoduché kopírovanie)",
-                "deltaOverrideHint": "Automatická detekcia používa AeroRsync pre súbory >= 1 MiB, keď sú obe strany lokálne. Prepísanie sa pamätá medzi spusteniami."
+                "deltaOverrideHint": "Automatická detekcia používa AeroRsync pre súbory >= 1 MiB, keď sú obe strany lokálne. Prepísanie sa pamätá medzi spusteniami.",
+                "resultsTable": "Výsledky podľa súborov",
+                "resultName": "Názov",
+                "resultAction": "Akcia",
+                "resultBytes": "Bajty",
+                "resultStatus": "Stav",
+                "resultsTruncated": "SKRÁTENÉ",
+                "resultsDryRun": "Iba náhľad skúšobného behu.",
+                "resultsEmpty": "Žiadne spracované súbory."
             },
             "launcherTemplates": "Šablóny",
             "launcherMultiPath": "Viacero ciest",

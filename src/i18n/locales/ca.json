@@ -4529,7 +4529,15 @@
                 "deltaOverrideAuto": "Detecció automàtica (recomanada)",
                 "deltaOverrideOn": "Forçar activat (usar delta quan sigui possible)",
                 "deltaOverrideOff": "Forçar desactivat (còpia simple)",
-                "deltaOverrideHint": "La detecció automàtica utilitza AeroRsync per a fitxers >= 1 MiB quan ambdós costats són locals. La substitució es recorda entre execucions."
+                "deltaOverrideHint": "La detecció automàtica utilitza AeroRsync per a fitxers >= 1 MiB quan ambdós costats són locals. La substitució es recorda entre execucions.",
+                "resultsTable": "Resultats per fitxer",
+                "resultName": "Nom",
+                "resultAction": "Acció",
+                "resultBytes": "Bytes",
+                "resultStatus": "Estat",
+                "resultsTruncated": "TRUNCAT",
+                "resultsDryRun": "Només previsualització en mode dry-run.",
+                "resultsEmpty": "Cap fitxer processat."
             },
             "launcherTemplates": "Plantilles",
             "launcherMultiPath": "Multi-ruta",

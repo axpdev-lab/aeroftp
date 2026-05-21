@@ -4529,7 +4529,15 @@
                 "deltaOverrideAuto": "Automatisk gjenkjenning (anbefalt)",
                 "deltaOverrideOn": "Tving på (bruk delta når mulig)",
                 "deltaOverrideOff": "Tving av (vanlig kopi)",
-                "deltaOverrideHint": "Automatisk gjenkjenning bruker AeroRsync for filer >= 1 MiB når begge sider er lokale. Overstyringen huskes mellom kjøringer."
+                "deltaOverrideHint": "Automatisk gjenkjenning bruker AeroRsync for filer >= 1 MiB når begge sider er lokale. Overstyringen huskes mellom kjøringer.",
+                "resultsTable": "Resultater per fil",
+                "resultName": "Navn",
+                "resultAction": "Handling",
+                "resultBytes": "Byte",
+                "resultStatus": "Status",
+                "resultsTruncated": "AVKORTET",
+                "resultsDryRun": "Kun forhåndsvisning av prøvekjøring.",
+                "resultsEmpty": "Ingen filer behandlet."
             },
             "launcherTemplates": "Maler",
             "launcherMultiPath": "Flere baner",
