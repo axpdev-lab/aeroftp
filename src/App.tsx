@@ -6702,7 +6702,10 @@ interface UpdateVerificationInfo {
         rightLabel: leftLocal ? (activeUnifiedRemoteProfile?.name || 'Remote') : (currentLocalPath || 'Local'),
         pairKind: leftLocal ? 'local-remote' : 'remote-local',
         initialSource: currentLocalPath || '',
-        initialDestination: '',
+        initialDestination: currentRemotePath || '',
+        activeProfileId: activeUnifiedRemoteProfile?.id,
+        isProvider: usesProviderApi(activeUnifiedRemoteProfile?.protocol),
+        excludePatterns: [],
       };
     } else {
       context = {
@@ -6726,6 +6729,7 @@ interface UpdateVerificationInfo {
     remoteFiles,
     currentLocalPath,
     currentLocalPath2,
+    currentRemotePath,
     activeUnifiedRemoteProfile,
   ]);
 

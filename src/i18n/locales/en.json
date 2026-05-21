@@ -4658,7 +4658,22 @@
                 "savings": "Savings",
                 "errorDetails": "error(s), details",
                 "errorPathsRequired": "Source and destination are required"
-            }
+            },
+            "launcherTemplates": "Templates",
+            "launcherMultiPath": "Multi-Path",
+            "launcherRollback": "Rollback snapshots",
+            "speedMode": "Speed mode",
+            "speedMode_normal": "Normal",
+            "speedMode_fast": "Fast",
+            "speedMode_turbo": "Turbo",
+            "speedMode_extreme": "Extreme",
+            "speedModeHint": "Parallel streams + compression preset applied to the run.",
+            "verifyPolicy": "Verify policy",
+            "verifyPolicy_none": "None",
+            "verifyPolicy_size_only": "Size only",
+            "verifyPolicy_size_and_mtime": "Size + timestamp",
+            "verifyPolicy_full_checksum": "Full checksum",
+            "verifyPolicyHint": "Post-transfer integrity check applied to each file."
         }
     }
 }

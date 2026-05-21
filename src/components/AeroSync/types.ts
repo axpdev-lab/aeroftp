@@ -17,6 +17,18 @@ export interface AeroSyncContext {
     compareResult: CompareResult | null;
     initialSource?: string;
     initialDestination?: string;
+    /**
+     * Optional rich-sync context (SLICE 3+). When the dialog is opened
+     * against a connected remote, these fields enable the header
+     * launchers (Templates, Multi-Path, Rollback) and the Verify /
+     * Speed-mode controls in the Plan tab. They are populated by
+     * App.tsx based on the active remote profile; for local-only or
+     * disconnected sessions they remain undefined and the launchers
+     * stay hidden.
+     */
+    activeProfileId?: string;
+    isProvider?: boolean;
+    excludePatterns?: string[];
 }
 
 export interface AeroSyncDialogProps {

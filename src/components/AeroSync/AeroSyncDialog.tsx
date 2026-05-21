@@ -7,12 +7,15 @@
 // disconnected entries in the View menu.
 
 import * as React from 'react';
-import { FolderSync, X } from 'lucide-react';
+import { FileDown, FolderSync, Layers, Undo2, X } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
 import { CompareTabContent } from './CompareTabContent';
 import { PlanTabContent } from './PlanTabContent';
 import { SyncTabContent } from './SyncTabContent';
+import { SyncTemplateDialog } from '../Sync/SyncTemplateDialog';
+import { MultiPathEditor } from '../Sync/MultiPathEditor';
+import { RollbackDialog } from '../Sync/RollbackDialog';
 import type { AeroSyncDialogProps, AeroSyncTab } from './types';
 
 const TAB_ORDER: AeroSyncTab[] = ['compare', 'plan', 'sync'];
@@ -29,6 +32,9 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
     const t = useTranslation();
     const modalDrag = useDraggableModal();
     const [activeTab, setActiveTab] = React.useState<AeroSyncTab>(initialTab);
+    const [showTemplates, setShowTemplates] = React.useState(false);
+    const [showMultiPath, setShowMultiPath] = React.useState(false);
+    const [showRollback, setShowRollback] = React.useState(false);
 
     React.useEffect(() => {
         if (isOpen) setActiveTab(initialTab);
@@ -40,6 +46,17 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
         || context.pairKind === 'local-remote'
         || context.pairKind === 'remote-local';
     const canExecutePlan = canMirrorAny;
+
+    // Header launchers (Templates / Multi-Path / Rollback) require a
+    // connected remote session; they piggy-back on the existing Sync/*
+    // dialogs which were originally wired to SyncPanel.
+    const isConnectedRemote = (context.pairKind === 'local-remote' || context.pairKind === 'remote-local')
+        && !!context.activeProfileId;
+    const localPath = context.initialSource || '';
+    const remotePath = context.initialDestination || '';
+    const profileId = context.activeProfileId || '';
+    const excludePatterns = context.excludePatterns || [];
+    const isProvider = !!context.isProvider;
 
     const tabLabels: Record<AeroSyncTab, string> = {
         compare: t('aerosync.tabCompare') || 'Compare',
@@ -70,14 +87,48 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                             {t('aerosync.title') || 'AeroSync'}
                         </h2>
                     </div>
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        aria-label={t('common.close') || 'Close'}
-                        className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-                    >
-                        <X size={18} />
-                    </button>
+                    <div className="flex items-center gap-1">
+                        {isConnectedRemote && (
+                            <>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowTemplates(true)}
+                                    className="p-2 text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                                    title={t('aerosync.launcherTemplates') || 'Templates'}
+                                    aria-label={t('aerosync.launcherTemplates') || 'Templates'}
+                                >
+                                    <FileDown size={16} />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowMultiPath(true)}
+                                    className="p-2 text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                                    title={t('aerosync.launcherMultiPath') || 'Multi-Path'}
+                                    aria-label={t('aerosync.launcherMultiPath') || 'Multi-Path'}
+                                >
+                                    <Layers size={16} />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowRollback(true)}
+                                    className="p-2 text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                                    title={t('aerosync.launcherRollback') || 'Rollback snapshots'}
+                                    aria-label={t('aerosync.launcherRollback') || 'Rollback snapshots'}
+                                >
+                                    <Undo2 size={16} />
+                                </button>
+                                <div className="mx-1 h-6 w-px bg-gray-300 dark:bg-gray-600" />
+                            </>
+                        )}
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            aria-label={t('common.close') || 'Close'}
+                            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                        >
+                            <X size={18} />
+                        </button>
+                    </div>
                 </div>
 
                 <div className="flex gap-1 px-4 pt-3 border-b border-gray-200 dark:border-gray-700">
@@ -131,6 +182,35 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                     )}
                 </div>
             </div>
+
+            {/* Re-mounted Sync/* dialogs, surfaced from the AeroSync
+                header. They share the same path context and stay
+                self-contained: state lives inside each dialog. */}
+            {isConnectedRemote && (
+                <>
+                    <SyncTemplateDialog
+                        isOpen={showTemplates}
+                        onClose={() => setShowTemplates(false)}
+                        localPath={localPath}
+                        remotePath={remotePath}
+                        profileId={profileId}
+                        excludePatterns={excludePatterns}
+                    />
+                    <MultiPathEditor
+                        isOpen={showMultiPath}
+                        onClose={() => setShowMultiPath(false)}
+                        localPath={localPath}
+                        remotePath={remotePath}
+                    />
+                    <RollbackDialog
+                        isOpen={showRollback}
+                        onClose={() => setShowRollback(false)}
+                        localPath={localPath}
+                        remotePath={remotePath}
+                        isProvider={isProvider}
+                    />
+                </>
+            )}
         </div>
     );
 };

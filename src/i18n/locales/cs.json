@@ -4658,7 +4658,22 @@
                 "savings": "Úspora",
                 "errorDetails": "chyba(y), podrobnosti",
                 "errorPathsRequired": "Zdroj a cíl jsou povinné"
-            }
+            },
+            "launcherTemplates": "[NEEDS TRANSLATION] Templates",
+            "launcherMultiPath": "[NEEDS TRANSLATION] Multi-Path",
+            "launcherRollback": "[NEEDS TRANSLATION] Rollback snapshots",
+            "speedMode": "[NEEDS TRANSLATION] Speed mode",
+            "speedMode_normal": "[NEEDS TRANSLATION] Normal",
+            "speedMode_fast": "[NEEDS TRANSLATION] Fast",
+            "speedMode_turbo": "[NEEDS TRANSLATION] Turbo",
+            "speedMode_extreme": "[NEEDS TRANSLATION] Extreme",
+            "speedModeHint": "[NEEDS TRANSLATION] Parallel streams + compression preset applied to the run.",
+            "verifyPolicy": "[NEEDS TRANSLATION] Verify policy",
+            "verifyPolicy_none": "[NEEDS TRANSLATION] None",
+            "verifyPolicy_size_only": "[NEEDS TRANSLATION] Size only",
+            "verifyPolicy_size_and_mtime": "[NEEDS TRANSLATION] Size + timestamp",
+            "verifyPolicy_full_checksum": "[NEEDS TRANSLATION] Full checksum",
+            "verifyPolicyHint": "[NEEDS TRANSLATION] Post-transfer integrity check applied to each file."
         }
     }
 }
