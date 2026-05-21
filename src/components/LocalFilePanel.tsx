@@ -14,7 +14,7 @@
 import React from 'react';
 import {
   RefreshCw, Search, HardDrive, AlertTriangle, X, ClipboardList, FolderUp, Loader2,
-  Copy, ArrowRightLeft, FolderSync,
+  Copy, ArrowRightLeft,
 } from 'lucide-react';
 import { BreadcrumbBar } from './BreadcrumbBar';
 import { PlacesSidebar } from './PlacesSidebar';
@@ -90,12 +90,6 @@ export interface LocalFilePanelProps {
   setCurrentPath: (path: string) => void;
   onNavigate: (path: string) => void;
   onRefresh: (path: string) => void;
-  /**
-   * Optional handler that opens the AeroFile Sync dialog. Surfaced as a
-   * toolbar icon when present in AeroFile mode; gated by the parent so
-   * non-AeroFile callers do not get the button.
-   */
-  onShowAeroFileSync?: () => void;
   isPathCoherent: boolean;
   isSyncPathMismatch: boolean;
   isSyncNavigation: boolean;
@@ -235,7 +229,6 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
   setCurrentPath,
   onNavigate,
   onRefresh,
-  onShowAeroFileSync,
   isPathCoherent,
   isSyncPathMismatch,
   isSyncNavigation,
@@ -518,16 +511,6 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
             >
               <Search size={13} />
             </button>
-            {onShowAeroFileSync && (
-              <button
-                onClick={onShowAeroFileSync}
-                className="flex-shrink-0 p-1.5 rounded text-gray-400 hover:text-blue-600 dark:hover:text-blue-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-                title={t('aerofileSync.toolbarButton') || 'AeroFile Sync'}
-                aria-label={t('aerofileSync.toolbarButton') || 'AeroFile Sync'}
-              >
-                <FolderSync size={13} />
-              </button>
-            )}
           </div>
         ) : (
           <>

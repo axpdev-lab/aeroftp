@@ -1681,6 +1681,12 @@ interface UpdateVerificationInfo {
       }
     },
 
+    // F4: open AeroSync (unified compare/plan/sync modal). Mirrors the View
+    // menu shortcut so muscle memory keeps working regardless of focus.
+    'F4': () => {
+      openAeroFileSync('compare');
+    },
+
     // F7 / Ctrl+N: new folder (Total Commander style F7, classic Ctrl+N).
     // Both target whichever panel currently has keyboard focus.
     'F7': () => {
@@ -12249,6 +12255,27 @@ interface UpdateVerificationInfo {
                       ) : null;
                     })()}
                   </button>
+                  {/* Unified AeroSync entry: lit when two panels are actionable
+                      (local+remote OR dual-local). Opens the AeroFileSyncDialog
+                      with pairKind auto-detected. Replaces the legacy per-panel
+                      sync icon and the connected-only toolbar button. */}
+                  {(() => {
+                    const isAeroSyncActionable = (isConnected && showRemotePanel) || showDualLocalPanel;
+                    return (
+                      <button
+                        onClick={() => openAeroFileSync()}
+                        className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 transition-colors ${
+                          isAeroSyncActionable
+                            ? 'bg-blue-500 hover:bg-blue-600 text-white shadow-sm'
+                            : 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-200'
+                        }`}
+                        title={t('aerosync.toolbarButton') || t('aerofileSync.toolbarButton') || t('statusBar.syncFiles')}
+                        aria-label={t('aerosync.toolbarButton') || t('aerofileSync.toolbarButton') || t('statusBar.syncFiles')}
+                      >
+                        <FolderSync size={16} /> AeroSync
+                      </button>
+                    );
+                  })()}
                   {/* Separator */}
                   {isConnected && (
                     <div className="w-px h-7 bg-gray-300 dark:bg-gray-600 mx-1" />
@@ -12315,13 +12342,6 @@ interface UpdateVerificationInfo {
                       >
                         {isSyncNavigation ? <Link2 size={16} /> : <Unlink size={16} />}
                         {isSyncNavigation ? t('common.synced') : t('common.sync')}
-                      </button>
-                      <button
-                        onClick={() => setShowSyncPanel(true)}
-                        className="px-3 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg text-sm flex items-center gap-1.5 transition-colors"
-                        title={t('statusBar.syncFiles')}
-                      >
-                        <FolderSync size={16} /> {t('statusBar.syncFiles')}
                       </button>
                       <button
                         onClick={cycleTransferSpeedPreset}
@@ -13080,7 +13100,6 @@ interface UpdateVerificationInfo {
                   setCurrentPath={setCurrentLocalPath}
                   onNavigate={changeLocalDirectory}
                   onRefresh={loadLocalFiles}
-                  onShowAeroFileSync={() => openAeroFileSync()}
                   isPathCoherent={isLocalPathCoherent}
                   isSyncPathMismatch={isSyncPathMismatch}
                   isSyncNavigation={isSyncNavigation}
@@ -13221,7 +13240,6 @@ interface UpdateVerificationInfo {
                     setCurrentPath={setCurrentLocalPath2}
                     onNavigate={changeLocalDirectory2}
                     onRefresh={loadLocalFiles2}
-                    onShowAeroFileSync={() => openAeroFileSync()}
                     isPathCoherent
                     isSyncPathMismatch={false}
                     isSyncNavigation={false}
