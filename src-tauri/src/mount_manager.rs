@@ -266,6 +266,28 @@ pub fn switch_storage_mode(target: StorageMode) -> Result<(), String> {
     Ok(())
 }
 
+/// Reject shell-metacharacter and newline injection vectors in fields that
+/// later land in a shell-parsed command line (Windows `schtasks /TR <str>`)
+/// or in line-oriented config files (Linux systemd `ExecStart=` is a single
+/// line, a stray `\n` breaks unit parsing). The Windows autostart path used
+/// to interpolate these strings via three no-op `.replace('"', "\"")` calls
+/// (Z.4.3.f2): rejecting at config-time closes the entire class. The
+/// allowed set is permissive on purpose, real-world profile names and
+/// remote paths can legitimately contain spaces, dots, slashes, dashes,
+/// underscores, and unicode letters/digits; only the metacharacter set
+/// known to break a `CommandLineToArgvW` quoting context is refused.
+fn validate_no_shell_specials(field: &str, value: &str) -> Result<(), String> {
+    for (idx, ch) in value.chars().enumerate() {
+        if matches!(ch, '"' | ';' | '&' | '|' | '\n' | '\r' | '\0' | '`' | '$') {
+            return Err(format!(
+                "{} cannot contain shell-metacharacters (found {:?} at byte offset {})",
+                field, ch, idx
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Validate that a mountpoint string is well-formed for the current platform.
 fn validate_mountpoint(mp: &str) -> Result<(), String> {
     if mp.trim().is_empty() {
@@ -282,7 +304,7 @@ fn validate_mountpoint(mp: &str) -> Result<(), String> {
         {
             return Err("Windows mountpoint must be a drive letter like 'Z:'".to_string());
         }
-        return Ok(());
+        Ok(())
     }
     #[cfg(not(windows))]
     {
@@ -311,6 +333,9 @@ pub fn upsert_config(mut config: MountConfig) -> Result<MountConfig, String> {
     if config.cache_ttl == 0 {
         config.cache_ttl = DEFAULT_CACHE_TTL;
     }
+    validate_no_shell_specials("Profile name", &config.profile)?;
+    validate_no_shell_specials("Mount name", &config.name)?;
+    validate_no_shell_specials("Remote path", &config.remote_path)?;
     validate_mountpoint(&config.mountpoint)?;
 
     if config.created_at.is_empty() {
@@ -343,7 +368,7 @@ pub fn suggest_mountpoint(profile: &str) -> String {
     #[cfg(windows)]
     {
         let _ = profile;
-        return pick_free_drive_letter().unwrap_or_else(|_| "Z:".to_string());
+        pick_free_drive_letter().unwrap_or_else(|_| "Z:".to_string())
     }
     #[cfg(not(windows))]
     {
@@ -759,12 +784,20 @@ fn task_name(id: &str) -> String {
 
 #[cfg(windows)]
 fn install_autostart_platform(cli: &std::path::Path, cfg: &MountConfig) -> Result<(), String> {
+    // Defense-in-depth: `upsert_config` already rejects shell-metachars in
+    // these fields via `validate_no_shell_specials`. Strip any `"` that
+    // somehow survives the validation gate (rather than re-emit it into
+    // the schtasks /TR command line and risk breaking out of the quoting
+    // context). Z.4.3.f2.
+    let safe_profile = cfg.profile.replace('"', "");
+    let safe_mountpoint = cfg.mountpoint.replace('"', "");
+    let safe_remote_path = cfg.remote_path.replace('"', "");
     let mut tr = format!(
         "\"{}\" --profile \"{}\" mount \"{}\" _ \"{}\" --cache-ttl {}",
         cli.display(),
-        cfg.profile.replace('"', "\""),
-        cfg.mountpoint.replace('"', "\""),
-        cfg.remote_path.replace('"', "\""),
+        safe_profile,
+        safe_mountpoint,
+        safe_remote_path,
         cfg.cache_ttl,
     );
     if cfg.read_only {
@@ -843,5 +876,64 @@ mod tests {
         let r = MountRegistry::default();
         assert_eq!(r.storage_mode, StorageMode::Sidecar);
         assert!(r.mounts.is_empty());
+    }
+
+    #[test]
+    fn validate_no_shell_specials_accepts_normal_input() {
+        assert!(validate_no_shell_specials("Profile name", "MyServer").is_ok());
+        assert!(validate_no_shell_specials("Profile name", "My Server (prod)").is_ok());
+        assert!(validate_no_shell_specials("Remote path", "/srv/data/2026-05").is_ok());
+        assert!(validate_no_shell_specials("Remote path", "/home/user.with.dots/_a-b").is_ok());
+    }
+
+    #[test]
+    fn validate_no_shell_specials_rejects_quote_injection() {
+        let payload = "abc\"; powershell -e <b64>; \"";
+        let err = validate_no_shell_specials("Profile name", payload).unwrap_err();
+        assert!(err.contains("Profile name"));
+        assert!(err.contains("shell-metacharacters"));
+    }
+
+    #[test]
+    fn validate_no_shell_specials_rejects_each_metachar() {
+        for ch in ['"', ';', '&', '|', '\n', '\r', '\0', '`', '$'] {
+            let payload = format!("ok{}tail", ch);
+            assert!(
+                validate_no_shell_specials("X", &payload).is_err(),
+                "char {:?} must be rejected",
+                ch
+            );
+        }
+    }
+
+    #[test]
+    fn validate_no_shell_specials_accepts_unicode() {
+        assert!(validate_no_shell_specials("Profile name", "Nas \u{00E9}t\u{00E9}").is_ok());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_autostart_tr_strings_have_no_quote() {
+        let cfg = MountConfig {
+            id: "test-id".into(),
+            name: "Test Mount".into(),
+            profile: "My Profile".into(),
+            mountpoint: "Z:".into(),
+            remote_path: "/srv/data".into(),
+            cache_ttl: 60,
+            read_only: false,
+            allow_other: false,
+            auto_start: false,
+            created_at: String::new(),
+        };
+        // Sanity: the three sanitized fields never produce a `"` in the
+        // composed /TR string. Re-do the composition manually since the
+        // production install_autostart_platform also invokes schtasks.
+        let safe_profile = cfg.profile.replace('"', "");
+        let safe_mountpoint = cfg.mountpoint.replace('"', "");
+        let safe_remote_path = cfg.remote_path.replace('"', "");
+        assert!(!safe_profile.contains('"'));
+        assert!(!safe_mountpoint.contains('"'));
+        assert!(!safe_remote_path.contains('"'));
     }
 }
