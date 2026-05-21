@@ -27,12 +27,13 @@ import {
 } from '../../utils/syncPresets';
 import { formatBytes } from '../../utils/formatters';
 import { useTranslation } from '../../i18n';
+import type { AeroSyncRuntime, AeroSyncSpeedMode, AeroSyncVerifyPolicy } from './types';
 
 interface PlanTabContentProps {
     result: CompareResult | null;
     pairKind?: string | null;
     canExecute: boolean;
-    onExecute: (plan: PresetPlan) => void;
+    onExecute: (plan: PresetPlan, runtime: AeroSyncRuntime) => void;
 }
 
 const PRESET_ORDER: SyncPreset[] = ['backup', 'update', 'mirror', 'bisync'];
@@ -100,11 +101,8 @@ const PresetChip: React.FC<{
     );
 };
 
-type SpeedMode = 'normal' | 'fast' | 'turbo' | 'extreme';
-type VerifyPolicy = 'none' | 'size_only' | 'size_and_mtime' | 'full_checksum';
-
-const SPEED_MODES: SpeedMode[] = ['normal', 'fast', 'turbo', 'extreme'];
-const VERIFY_POLICIES: VerifyPolicy[] = ['none', 'size_only', 'size_and_mtime', 'full_checksum'];
+const SPEED_MODES: AeroSyncSpeedMode[] = ['normal', 'fast', 'turbo', 'extreme'];
+const VERIFY_POLICIES: AeroSyncVerifyPolicy[] = ['none', 'size_only', 'size_and_mtime', 'full_checksum'];
 
 export const PlanTabContent: React.FC<PlanTabContentProps> = ({
     result,
@@ -121,13 +119,12 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
         backupDir: '.aeroftp-versions',
     });
     const [confirmedDestructive, setConfirmedDestructive] = React.useState(false);
-    // SLICE 3: speed-mode preset and verify policy land here as visible
-    // config knobs. The actual execution path (App.tsx onExecute) does
-    // not yet read these — they wire through in SLICE 4 when the
-    // delta-sync gate consolidates and the unified runner replaces the
-    // legacy SyncPanel runner.
-    const [speedMode, setSpeedMode] = React.useState<SpeedMode>('normal');
-    const [verifyPolicy, setVerifyPolicy] = React.useState<VerifyPolicy>('size_only');
+    // CO-1: Speed mode + verify policy are now lifted into the
+    // `onExecute(plan, runtime)` callback so App.tsx can forward them
+    // to the unified runner (LocalSyncRequest.speed_mode /
+    // verify_policy) and the Rust backend can honour the verify pass.
+    const [speedMode, setSpeedMode] = React.useState<AeroSyncSpeedMode>('normal');
+    const [verifyPolicy, setVerifyPolicy] = React.useState<AeroSyncVerifyPolicy>('size_only');
 
     React.useEffect(() => {
         setConfirmedDestructive(false);
@@ -292,7 +289,7 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                         </label>
                         <select
                             value={verifyPolicy}
-                            onChange={(event) => setVerifyPolicy(event.target.value as VerifyPolicy)}
+                            onChange={(event) => setVerifyPolicy(event.target.value as AeroSyncVerifyPolicy)}
                             className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-800 focus:border-blue-400 focus:outline-none dark:border-gray-600 dark:bg-gray-900/60 dark:text-gray-100"
                         >
                             {VERIFY_POLICIES.map((policy) => (
@@ -417,7 +414,7 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                 <div className="flex flex-wrap justify-end gap-2">
                     <button
                         type="button"
-                        onClick={() => onExecute(plan)}
+                        onClick={() => onExecute(plan, { speedMode, verifyPolicy })}
                         disabled={!canFireExecute}
                         className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-white transition-colors disabled:opacity-40 ${
                             plan.hasDestructive ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'
