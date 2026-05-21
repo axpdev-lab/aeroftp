@@ -4529,7 +4529,15 @@
                 "deltaOverrideAuto": "Awto-ganfod (argymhellir)",
                 "deltaOverrideOn": "Gorfodi ymlaen (defnyddio delta pan fo'n bosibl)",
                 "deltaOverrideOff": "Gorfodi i ffwrdd (copi syml)",
-                "deltaOverrideHint": "Mae awto-ganfod yn defnyddio AeroRsync ar gyfer ffeiliau >= 1 MiB pan fydd y ddwy ochr yn lleol. Mae'r disodliad yn cael ei gofio rhwng rhediadau."
+                "deltaOverrideHint": "Mae awto-ganfod yn defnyddio AeroRsync ar gyfer ffeiliau >= 1 MiB pan fydd y ddwy ochr yn lleol. Mae'r disodliad yn cael ei gofio rhwng rhediadau.",
+                "resultsTable": "Canlyniadau fesul ffeil",
+                "resultName": "Enw",
+                "resultAction": "Gweithred",
+                "resultBytes": "Beit",
+                "resultStatus": "Statws",
+                "resultsTruncated": "WEDI TORRI",
+                "resultsDryRun": "Rhagolwg rhediad prawf yn unig.",
+                "resultsEmpty": "Dim ffeiliau wedi'u prosesu."
             },
             "launcherTemplates": "Templedi",
             "launcherMultiPath": "Aml-lwybr",

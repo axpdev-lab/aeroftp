@@ -4510,7 +4510,15 @@
                 "deltaOverrideAuto": "Pengesanan automatik (disyorkan)",
                 "deltaOverrideOn": "Paksa hidup (gunakan delta apabila boleh)",
                 "deltaOverrideOff": "Paksa mati (salinan biasa)",
-                "deltaOverrideHint": "Pengesanan automatik menggunakan AeroRsync untuk fail >= 1 MiB apabila kedua-dua pihak adalah tempatan. Penggantian diingat antara pelaksanaan."
+                "deltaOverrideHint": "Pengesanan automatik menggunakan AeroRsync untuk fail >= 1 MiB apabila kedua-dua pihak adalah tempatan. Penggantian diingat antara pelaksanaan.",
+                "resultsTable": "Hasil setiap fail",
+                "resultName": "Nama",
+                "resultAction": "Tindakan",
+                "resultBytes": "Bait",
+                "resultStatus": "Status",
+                "resultsTruncated": "DIPENDEKKAN",
+                "resultsDryRun": "Pratonton larian percubaan sahaja.",
+                "resultsEmpty": "Tiada fail diproses."
             },
             "launcherTemplates": "Templat",
             "launcherMultiPath": "Pelbagai Laluan",

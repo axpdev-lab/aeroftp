@@ -4510,7 +4510,15 @@
                 "deltaOverrideAuto": "Automatikus felismerés (ajánlott)",
                 "deltaOverrideOn": "Kényszerített be (delta használata ha lehetséges)",
                 "deltaOverrideOff": "Kényszerített ki (egyszerű másolás)",
-                "deltaOverrideHint": "Az automatikus felismerés AeroRsync-et használ >= 1 MiB fájlokhoz, ha mindkét oldal helyi. A felülbírálás megőrződik a futtatások között."
+                "deltaOverrideHint": "Az automatikus felismerés AeroRsync-et használ >= 1 MiB fájlokhoz, ha mindkét oldal helyi. A felülbírálás megőrződik a futtatások között.",
+                "resultsTable": "Eredmények fájlonként",
+                "resultName": "Név",
+                "resultAction": "Művelet",
+                "resultBytes": "Bájt",
+                "resultStatus": "Állapot",
+                "resultsTruncated": "CSONKOLVA",
+                "resultsDryRun": "Csak dry-run előnézet.",
+                "resultsEmpty": "Nincs feldolgozott fájl."
             },
             "launcherTemplates": "Sablonok",
             "launcherMultiPath": "Több útvonal",

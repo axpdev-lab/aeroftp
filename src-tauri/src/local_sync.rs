@@ -45,6 +45,26 @@ pub struct LocalSyncRequest {
     pub verify_policy: Option<VerifyPolicy>,
 }
 
+/// CO-2: per-file result row surfaced in the Sync tab table.
+///
+/// Capped at `MAX_ENTRY_ROWS` to keep the payload bounded on multi-
+/// thousand-file runs; the aggregate counters in `LocalSyncReport`
+/// keep the full picture.
+#[derive(Debug, Clone, Serialize)]
+pub struct LocalSyncEntry {
+    /// Relative path from the source root.
+    pub name: String,
+    /// One of: `delta`, `copy`, `skip`, `dry-run`, `error`.
+    pub action: String,
+    /// Wire bytes for this file (0 on skip / dry-run / error).
+    pub bytes: u64,
+    /// `ok` on success, `error` on failure, `skipped` on exclude
+    /// match, `dry-run` in preview mode.
+    pub status: String,
+}
+
+const MAX_ENTRY_ROWS: usize = 5000;
+
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct LocalSyncReport {
     pub status: String,
@@ -56,6 +76,15 @@ pub struct LocalSyncReport {
     pub bytes_on_wire: u64,
     pub savings_ratio: f64,
     pub error_messages: Vec<String>,
+    /// CO-2: per-file rows for the Sync tab results table. Capped
+    /// at `MAX_ENTRY_ROWS` to keep the payload bounded on multi-
+    /// thousand-file runs.
+    #[serde(default)]
+    pub entries: Vec<LocalSyncEntry>,
+    /// CO-2: true when the run captured more files than
+    /// `MAX_ENTRY_ROWS` and the table is therefore truncated.
+    #[serde(default)]
+    pub entries_truncated: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -65,6 +94,17 @@ pub struct LocalSyncProgress {
     pub current_path: String,
     pub bytes_on_wire: u64,
     pub used_delta: bool,
+}
+
+/// CO-2: bounded push helper for per-file rows. Once the report has
+/// reached `MAX_ENTRY_ROWS` we stop appending and just flag the
+/// truncation so the UI can surface it.
+fn push_entry(report: &mut LocalSyncReport, entry: LocalSyncEntry) {
+    if report.entries.len() >= MAX_ENTRY_ROWS {
+        report.entries_truncated = true;
+        return;
+    }
+    report.entries.push(entry);
 }
 
 /// Walk `source` and mirror every file into `destination`. Files at or above
@@ -144,6 +184,15 @@ pub async fn local_sync_run(
             .any(|m| m.is_match(rel_path_ref) || m.is_match(fname_path_ref))
         {
             report.skipped += 1;
+            push_entry(
+                &mut report,
+                LocalSyncEntry {
+                    name: rel_str.clone(),
+                    action: "skip".to_string(),
+                    bytes: 0,
+                    status: "skipped".to_string(),
+                },
+            );
             processed += 1;
             continue;
         }
@@ -153,6 +202,15 @@ pub async fn local_sync_run(
 
         if request.dry_run {
             report.uploaded += 1;
+            push_entry(
+                &mut report,
+                LocalSyncEntry {
+                    name: rel_str.clone(),
+                    action: "dry-run".to_string(),
+                    bytes: 0,
+                    status: "dry-run".to_string(),
+                },
+            );
             processed += 1;
             let _ = app.emit(
                 "local-sync-progress",
@@ -173,6 +231,15 @@ pub async fn local_sync_run(
                 report
                     .error_messages
                     .push(format!("mkdir {}: {}", parent.display(), e));
+                push_entry(
+                    &mut report,
+                    LocalSyncEntry {
+                        name: rel_str.clone(),
+                        action: "error".to_string(),
+                        bytes: 0,
+                        status: "error".to_string(),
+                    },
+                );
                 processed += 1;
                 continue;
             }
@@ -211,6 +278,15 @@ pub async fn local_sync_run(
                     report
                         .error_messages
                         .push(format!("copy {}: {}", rel_str, e));
+                    push_entry(
+                        &mut report,
+                        LocalSyncEntry {
+                            name: rel_str.clone(),
+                            action: "error".to_string(),
+                            bytes: 0,
+                            status: "error".to_string(),
+                        },
+                    );
                     processed += 1;
                     continue;
                 }
@@ -219,6 +295,8 @@ pub async fn local_sync_run(
 
         report.uploaded += 1;
         report.bytes_on_wire = report.bytes_on_wire.saturating_add(wire_bytes);
+        let mut entry_status: &str = "ok";
+        let entry_action: &str = if used_delta { "delta" } else { "copy" };
 
         // CO-1: post-copy verification. Skipped when the policy is
         // `None`, when the request did not include one (legacy
@@ -245,9 +323,20 @@ pub async fn local_sync_run(
                         rel_str,
                         verify.message.unwrap_or_else(|| "policy not satisfied".to_string()),
                     ));
+                    entry_status = "error";
                 }
             }
         }
+
+        push_entry(
+            &mut report,
+            LocalSyncEntry {
+                name: rel_str.clone(),
+                action: entry_action.to_string(),
+                bytes: wire_bytes,
+                status: entry_status.to_string(),
+            },
+        );
 
         processed += 1;
 

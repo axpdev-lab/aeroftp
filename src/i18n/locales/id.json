@@ -4510,7 +4510,15 @@
                 "deltaOverrideAuto": "Deteksi otomatis (disarankan)",
                 "deltaOverrideOn": "Paksa aktif (gunakan delta jika memungkinkan)",
                 "deltaOverrideOff": "Paksa nonaktif (salinan biasa)",
-                "deltaOverrideHint": "Deteksi otomatis menggunakan AeroRsync untuk file >= 1 MiB ketika kedua sisi adalah lokal. Penggantian diingat antar eksekusi."
+                "deltaOverrideHint": "Deteksi otomatis menggunakan AeroRsync untuk file >= 1 MiB ketika kedua sisi adalah lokal. Penggantian diingat antar eksekusi.",
+                "resultsTable": "Hasil per file",
+                "resultName": "Nama",
+                "resultAction": "Tindakan",
+                "resultBytes": "Byte",
+                "resultStatus": "Status",
+                "resultsTruncated": "DIPOTONG",
+                "resultsDryRun": "Hanya pratinjau dry run.",
+                "resultsEmpty": "Tidak ada file yang diproses."
             },
             "launcherTemplates": "Templat",
             "launcherMultiPath": "Multi-Jalur",

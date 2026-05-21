@@ -4510,7 +4510,15 @@
                 "deltaOverrideAuto": "ตรวจจับอัตโนมัติ (แนะนำ)",
                 "deltaOverrideOn": "บังคับเปิด (ใช้เดลตาเมื่อทำได้)",
                 "deltaOverrideOff": "บังคับปิด (คัดลอกแบบธรรมดา)",
-                "deltaOverrideHint": "การตรวจจับอัตโนมัติใช้ AeroRsync สำหรับไฟล์ >= 1 MiB เมื่อทั้งสองฝั่งเป็นโลคัล การแทนที่จะถูกจดจำระหว่างการทำงาน"
+                "deltaOverrideHint": "การตรวจจับอัตโนมัติใช้ AeroRsync สำหรับไฟล์ >= 1 MiB เมื่อทั้งสองฝั่งเป็นโลคัล การแทนที่จะถูกจดจำระหว่างการทำงาน",
+                "resultsTable": "ผลลัพธ์ต่อไฟล์",
+                "resultName": "ชื่อ",
+                "resultAction": "การดำเนินการ",
+                "resultBytes": "ไบต์",
+                "resultStatus": "สถานะ",
+                "resultsTruncated": "ถูกตัด",
+                "resultsDryRun": "ดูตัวอย่างการทดลองรันเท่านั้น",
+                "resultsEmpty": "ไม่มีไฟล์ที่ประมวลผล"
             },
             "launcherTemplates": "เทมเพลต",
             "launcherMultiPath": "หลายเส้นทาง",

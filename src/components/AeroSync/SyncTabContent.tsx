@@ -40,6 +40,13 @@ function writeDeltaOverride(value: DeltaOverride) {
     } catch { /* localStorage unavailable */ }
 }
 
+interface LocalSyncEntry {
+    name: string;
+    action: string; // 'delta' | 'copy' | 'skip' | 'dry-run' | 'error'
+    bytes: number;
+    status: string; // 'ok' | 'error' | 'skipped' | 'dry-run'
+}
+
 interface LocalSyncReport {
     status: string;
     uploaded: number;
@@ -50,6 +57,8 @@ interface LocalSyncReport {
     bytes_on_wire: number;
     savings_ratio: number;
     error_messages: string[];
+    entries?: LocalSyncEntry[];
+    entries_truncated?: boolean;
 }
 
 interface LocalSyncProgress {
@@ -380,6 +389,80 @@ export const SyncTabContent: React.FC<SyncTabContentProps> = ({
                             </ul>
                         </details>
                     )}
+                    {/* CO-2: per-file results table. Source of truth is
+                        the LocalSyncReport.entries array (capped at
+                        5000 rows by the backend). On dry-run all rows
+                        carry the `dry-run` action; the placeholder
+                        below covers the empty case. */}
+                    <details className="mt-2" open>
+                        <summary className="text-xs cursor-pointer text-gray-700 dark:text-gray-300 font-semibold">
+                            {t('aerosync.sync.resultsTable') || 'Per-file results'}
+                            {report.entries_truncated && (
+                                <span className="ml-1 rounded bg-amber-100 px-1 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                                    {t('aerosync.sync.resultsTruncated') || 'TRUNCATED'}
+                                </span>
+                            )}
+                        </summary>
+                        {report.entries && report.entries.length > 0 ? (
+                            <div className="mt-1 max-h-64 overflow-y-auto rounded border border-gray-200 dark:border-gray-700">
+                                <table className="w-full text-[11px]">
+                                    <thead className="sticky top-0 bg-gray-100 dark:bg-gray-800 text-left text-gray-600 dark:text-gray-300">
+                                        <tr>
+                                            <th className="px-2 py-1 font-medium">
+                                                {t('aerosync.sync.resultName') || 'Name'}
+                                            </th>
+                                            <th className="px-2 py-1 font-medium">
+                                                {t('aerosync.sync.resultAction') || 'Action'}
+                                            </th>
+                                            <th className="px-2 py-1 font-medium text-right">
+                                                {t('aerosync.sync.resultBytes') || 'Bytes'}
+                                            </th>
+                                            <th className="px-2 py-1 font-medium">
+                                                {t('aerosync.sync.resultStatus') || 'Status'}
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {report.entries.map((e, i) => (
+                                            <tr
+                                                key={i}
+                                                className={`border-t border-gray-100 dark:border-gray-700/60 ${
+                                                    e.status === 'error'
+                                                        ? 'bg-rose-50/60 dark:bg-rose-900/20'
+                                                        : ''
+                                                }`}
+                                            >
+                                                <td className="px-2 py-1 font-mono text-gray-800 dark:text-gray-200 break-all">
+                                                    {e.name}
+                                                </td>
+                                                <td className="px-2 py-1 text-gray-700 dark:text-gray-300">
+                                                    {e.action}
+                                                </td>
+                                                <td className="px-2 py-1 text-right font-mono text-gray-600 dark:text-gray-300">
+                                                    {e.bytes > 0 ? formatBytes(e.bytes) : '-'}
+                                                </td>
+                                                <td className={`px-2 py-1 ${
+                                                    e.status === 'error'
+                                                        ? 'text-rose-600 dark:text-rose-300'
+                                                        : e.status === 'skipped'
+                                                            ? 'text-gray-500 dark:text-gray-400'
+                                                            : 'text-emerald-600 dark:text-emerald-300'
+                                                }`}>
+                                                    {e.status}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ) : (
+                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 italic">
+                                {dryRun
+                                    ? (t('aerosync.sync.resultsDryRun') || 'Dry run preview only.')
+                                    : (t('aerosync.sync.resultsEmpty') || 'No files processed.')}
+                            </p>
+                        )}
+                    </details>
                 </div>
             )}
 

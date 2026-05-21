@@ -4510,7 +4510,15 @@
                 "deltaOverrideAuto": "Otomatik algılama (önerilen)",
                 "deltaOverrideOn": "Zorla aç (mümkün olduğunda delta kullan)",
                 "deltaOverrideOff": "Zorla kapat (düz kopyalama)",
-                "deltaOverrideHint": "Otomatik algılama, her iki taraf da yerel olduğunda >= 1 MiB dosyalar için AeroRsync kullanır. Geçersiz kılma çalıştırmalar arasında hatırlanır."
+                "deltaOverrideHint": "Otomatik algılama, her iki taraf da yerel olduğunda >= 1 MiB dosyalar için AeroRsync kullanır. Geçersiz kılma çalıştırmalar arasında hatırlanır.",
+                "resultsTable": "Dosya başına sonuçlar",
+                "resultName": "Ad",
+                "resultAction": "İşlem",
+                "resultBytes": "Bayt",
+                "resultStatus": "Durum",
+                "resultsTruncated": "KISALTILDI",
+                "resultsDryRun": "Yalnızca deneme çalıştırması önizlemesi.",
+                "resultsEmpty": "İşlenen dosya yok."
             },
             "launcherTemplates": "Şablonlar",
             "launcherMultiPath": "Çoklu yol",

@@ -4529,7 +4529,15 @@
                 "deltaOverrideAuto": "Sjálfvirk greining (mælt með)",
                 "deltaOverrideOn": "Þvinga á (nota delta þegar mögulegt)",
                 "deltaOverrideOff": "Þvinga af (venjuleg afritun)",
-                "deltaOverrideHint": "Sjálfvirk greining notar AeroRsync fyrir skrár >= 1 MiB þegar báðar hliðar eru staðbundnar. Yfirskriftin er munuð milli keyrslna."
+                "deltaOverrideHint": "Sjálfvirk greining notar AeroRsync fyrir skrár >= 1 MiB þegar báðar hliðar eru staðbundnar. Yfirskriftin er munuð milli keyrslna.",
+                "resultsTable": "Niðurstöður á hverja skrá",
+                "resultName": "Nafn",
+                "resultAction": "Aðgerð",
+                "resultBytes": "Bæti",
+                "resultStatus": "Staða",
+                "resultsTruncated": "STYTT",
+                "resultsDryRun": "Aðeins forskoðun í prufukeyrslu.",
+                "resultsEmpty": "Engar skrár voru unnar."
             },
             "launcherTemplates": "Sniðmát",
             "launcherMultiPath": "Margar slóðir",

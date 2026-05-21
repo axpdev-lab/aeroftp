@@ -4510,7 +4510,15 @@
                 "deltaOverrideAuto": "Tự động phát hiện (khuyên dùng)",
                 "deltaOverrideOn": "Bắt buộc bật (dùng delta khi có thể)",
                 "deltaOverrideOff": "Bắt buộc tắt (sao chép thường)",
-                "deltaOverrideHint": "Tự động phát hiện sử dụng AeroRsync cho các tệp >= 1 MiB khi cả hai bên đều cục bộ. Ghi đè được ghi nhớ giữa các lần chạy."
+                "deltaOverrideHint": "Tự động phát hiện sử dụng AeroRsync cho các tệp >= 1 MiB khi cả hai bên đều cục bộ. Ghi đè được ghi nhớ giữa các lần chạy.",
+                "resultsTable": "Kết quả theo từng tệp",
+                "resultName": "Tên",
+                "resultAction": "Hành động",
+                "resultBytes": "Byte",
+                "resultStatus": "Trạng thái",
+                "resultsTruncated": "ĐÃ CẮT BỚT",
+                "resultsDryRun": "Chỉ xem trước chạy thử.",
+                "resultsEmpty": "Không có tệp nào được xử lý."
             },
             "launcherTemplates": "Mẫu",
             "launcherMultiPath": "Nhiều đường dẫn",

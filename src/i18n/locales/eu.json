@@ -4529,7 +4529,15 @@
                 "deltaOverrideAuto": "Detekzio automatikoa (gomendatua)",
                 "deltaOverrideOn": "Behartu aktibo (erabili delta posible denean)",
                 "deltaOverrideOff": "Behartu inaktibo (kopia arrunta)",
-                "deltaOverrideHint": "Detekzio automatikoak AeroRsync erabiltzen du >= 1 MiB fitxategietarako bi aldeak lokalak direnean. Gainjartzea exekuzioen artean gogoratzen da."
+                "deltaOverrideHint": "Detekzio automatikoak AeroRsync erabiltzen du >= 1 MiB fitxategietarako bi aldeak lokalak direnean. Gainjartzea exekuzioen artean gogoratzen da.",
+                "resultsTable": "Emaitzak fitxategiko",
+                "resultName": "Izena",
+                "resultAction": "Ekintza",
+                "resultBytes": "Byte",
+                "resultStatus": "Egoera",
+                "resultsTruncated": "MOZTUTA",
+                "resultsDryRun": "Dry-run aurrebista soilik.",
+                "resultsEmpty": "Ez da fitxategirik prozesatu."
             },
             "launcherTemplates": "Txantiloiak",
             "launcherMultiPath": "Bide anitz",

@@ -4510,7 +4510,15 @@
                 "deltaOverrideAuto": "Automatisk identifiering (rekommenderas)",
                 "deltaOverrideOn": "Tvinga på (använd delta när möjligt)",
                 "deltaOverrideOff": "Tvinga av (vanlig kopiering)",
-                "deltaOverrideHint": "Automatisk identifiering använder AeroRsync för filer >= 1 MiB när båda sidor är lokala. Åsidosättning sparas mellan körningar."
+                "deltaOverrideHint": "Automatisk identifiering använder AeroRsync för filer >= 1 MiB när båda sidor är lokala. Åsidosättning sparas mellan körningar.",
+                "resultsTable": "Resultat per fil",
+                "resultName": "Namn",
+                "resultAction": "Åtgärd",
+                "resultBytes": "Byte",
+                "resultStatus": "Status",
+                "resultsTruncated": "AVKORTAD",
+                "resultsDryRun": "Endast förhandsvisning av testkörning.",
+                "resultsEmpty": "Inga filer bearbetade."
             },
             "launcherTemplates": "Mallar",
             "launcherMultiPath": "Flera sökvägar",

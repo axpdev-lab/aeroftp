@@ -4510,7 +4510,15 @@
                 "deltaOverrideAuto": "Automatische detectie (aanbevolen)",
                 "deltaOverrideOn": "Geforceerd aan (gebruik delta indien mogelijk)",
                 "deltaOverrideOff": "Geforceerd uit (gewone kopie)",
-                "deltaOverrideHint": "Automatische detectie gebruikt AeroRsync voor bestanden >= 1 MiB wanneer beide kanten lokaal zijn. De overschrijving wordt onthouden tussen uitvoeringen."
+                "deltaOverrideHint": "Automatische detectie gebruikt AeroRsync voor bestanden >= 1 MiB wanneer beide kanten lokaal zijn. De overschrijving wordt onthouden tussen uitvoeringen.",
+                "resultsTable": "Resultaten per bestand",
+                "resultName": "Naam",
+                "resultAction": "Actie",
+                "resultBytes": "Bytes",
+                "resultStatus": "Status",
+                "resultsTruncated": "INGEKORT",
+                "resultsDryRun": "Alleen voorbeeld van testuitvoering.",
+                "resultsEmpty": "Geen bestanden verwerkt."
             },
             "launcherTemplates": "Sjablonen",
             "launcherMultiPath": "Meerdere paden",

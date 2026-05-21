@@ -4510,7 +4510,15 @@
                 "deltaOverrideAuto": "自動検出 (推奨)",
                 "deltaOverrideOn": "強制オン (可能な場合はデルタを使用)",
                 "deltaOverrideOff": "強制オフ (通常コピー)",
-                "deltaOverrideHint": "自動検出は両側がローカルの場合、1 MiB 以上のファイルに AeroRsync を使用します。オーバーライドは実行間で記憶されます。"
+                "deltaOverrideHint": "自動検出は両側がローカルの場合、1 MiB 以上のファイルに AeroRsync を使用します。オーバーライドは実行間で記憶されます。",
+                "resultsTable": "ファイル別の結果",
+                "resultName": "名前",
+                "resultAction": "操作",
+                "resultBytes": "バイト",
+                "resultStatus": "ステータス",
+                "resultsTruncated": "切り詰め",
+                "resultsDryRun": "ドライランのプレビューのみ。",
+                "resultsEmpty": "処理されたファイルはありません。"
             },
             "launcherTemplates": "テンプレート",
             "launcherMultiPath": "マルチパス",

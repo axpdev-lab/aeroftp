@@ -4510,7 +4510,15 @@
                 "deltaOverrideAuto": "Automatische Erkennung (empfohlen)",
                 "deltaOverrideOn": "Erzwingen ein (Delta wenn möglich verwenden)",
                 "deltaOverrideOff": "Erzwingen aus (einfache Kopie)",
-                "deltaOverrideHint": "Die automatische Erkennung verwendet AeroRsync für Dateien >= 1 MiB, wenn beide Seiten lokal sind. Die Überschreibung wird zwischen den Läufen gespeichert."
+                "deltaOverrideHint": "Die automatische Erkennung verwendet AeroRsync für Dateien >= 1 MiB, wenn beide Seiten lokal sind. Die Überschreibung wird zwischen den Läufen gespeichert.",
+                "resultsTable": "Ergebnisse pro Datei",
+                "resultName": "Name",
+                "resultAction": "Aktion",
+                "resultBytes": "Bytes",
+                "resultStatus": "Status",
+                "resultsTruncated": "GEKÜRZT",
+                "resultsDryRun": "Nur Dry-Run-Vorschau.",
+                "resultsEmpty": "Keine Dateien verarbeitet."
             },
             "launcherTemplates": "Vorlagen",
             "launcherMultiPath": "Mehrere Pfade",
