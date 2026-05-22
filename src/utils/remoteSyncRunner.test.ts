@@ -1,0 +1,447 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet -- AI-assisted (see AI-TRANSPARENCY.md)
+
+import { describe, expect, it } from 'vitest';
+import {
+    runRemoteSync,
+    groupErrorsByKind,
+    filesFromJournal,
+    type SyncRunFile,
+    type SyncRunDirs,
+    type RemoteSyncConfig,
+    type RemoteSyncDeps,
+} from './remoteSyncRunner';
+import type {
+    RetryPolicy,
+    SyncErrorInfo,
+    SyncJournal,
+    VerifyResult,
+} from '../types';
+
+const RETRY: RetryPolicy = {
+    max_retries: 3,
+    base_delay_ms: 500,
+    max_delay_ms: 10_000,
+    timeout_ms: 0,
+    backoff_multiplier: 2,
+};
+
+const baseConfig = (over: Partial<RemoteSyncConfig> = {}): RemoteSyncConfig => ({
+    localRoot: '/home/u/work',
+    remoteRoot: '/srv/data',
+    isProvider: false,
+    isFtp: false,
+    retryPolicy: RETRY,
+    verifyPolicy: 'none',
+    deltaSyncEnabled: false,
+    versioningStrategy: null,
+    transferBudget: 0,
+    direction: 'bidirectional',
+    ...over,
+});
+
+const noDirs: SyncRunDirs = { remote: [], local: [] };
+
+interface Call {
+    cmd: string;
+    args: Record<string, unknown> | undefined;
+}
+
+type Handler = (
+    args: Record<string, unknown> | undefined,
+    cmdCallIndex: number,
+) => unknown;
+
+const makeInvoke = (handlers: Record<string, Handler> = {}) => {
+    const calls: Call[] = [];
+    const perCmd = new Map<string, number>();
+    const invoke = async <T = unknown>(
+        cmd: string,
+        args?: Record<string, unknown>,
+    ): Promise<T> => {
+        const idx = perCmd.get(cmd) ?? 0;
+        perCmd.set(cmd, idx + 1);
+        calls.push({ cmd, args });
+        const handler = handlers[cmd];
+        if (handler) return handler(args, idx) as T;
+        return undefined as T;
+    };
+    return { invoke, calls };
+};
+
+const noWaitDeps = (
+    invoke: RemoteSyncDeps['invoke'],
+    extra: Partial<RemoteSyncDeps> = {},
+): RemoteSyncDeps => ({
+    invoke,
+    delay: async () => undefined,
+    now: () => 0,
+    makeId: () => 'test-journal-id',
+    ...extra,
+});
+
+const file = (
+    relativePath: string,
+    action: SyncRunFile['action'],
+    over: Partial<SyncRunFile> = {},
+): SyncRunFile => ({
+    relativePath,
+    action,
+    size: 1024,
+    mtime: '2026-05-22T10:00:00Z',
+    ...over,
+});
+
+describe('remoteSyncRunner — copy legs', () => {
+    it('uploads and downloads, counting bytes and dirs', async () => {
+        const { invoke, calls } = makeInvoke();
+        const report = await runRemoteSync(
+            [
+                file('a.txt', 'upload', { size: 100 }),
+                file('docs/b.txt', 'download', { size: 200 }),
+            ],
+            { remote: ['newdir'], local: [] },
+            baseConfig(),
+            {},
+            noWaitDeps(invoke),
+        );
+
+        expect(report.uploaded).toBe(1);
+        expect(report.downloaded).toBe(1);
+        expect(report.totalBytes).toBe(300);
+        expect(report.dirsCreated).toBe(1);
+        expect(report.errors).toHaveLength(0);
+        expect(report.cancelled).toBe(false);
+
+        // Parent dir of docs/b.txt is pre-created locally.
+        expect(calls.some((c) => c.cmd === 'create_local_folder'
+            && c.args?.path === '/home/u/work/docs')).toBe(true);
+        // Standalone remote dir created.
+        expect(calls.some((c) => c.cmd === 'create_remote_folder'
+            && c.args?.path === '/srv/data/newdir')).toBe(true);
+        // Journal lifecycle: written then deleted on clean completion.
+        expect(calls.some((c) => c.cmd === 'save_sync_journal_cmd')).toBe(true);
+        expect(calls.some((c) => c.cmd === 'delete_sync_journal_cmd')).toBe(true);
+        expect(calls.some((c) => c.cmd === 'reset_cancel_flag')).toBe(true);
+    });
+
+    it('routes provider commands when isProvider is set', async () => {
+        const { invoke, calls } = makeInvoke();
+        await runRemoteSync(
+            [file('a.txt', 'upload')],
+            noDirs,
+            baseConfig({ isProvider: true }),
+            {},
+            noWaitDeps(invoke),
+        );
+        expect(calls.some((c) => c.cmd === 'provider_upload_file')).toBe(true);
+        expect(calls.some((c) => c.cmd === 'upload_file')).toBe(false);
+    });
+});
+
+describe('remoteSyncRunner — orphan deletes', () => {
+    it('deletes a remote orphan', async () => {
+        const { invoke, calls } = makeInvoke();
+        const report = await runRemoteSync(
+            [file('stale.txt', 'delete-remote')],
+            noDirs,
+            baseConfig(),
+            {},
+            noWaitDeps(invoke),
+        );
+        expect(report.deleted).toBe(1);
+        expect(calls.some((c) => c.cmd === 'delete_remote_file'
+            && c.args?.path === '/srv/data/stale.txt')).toBe(true);
+    });
+
+    it('archives a local file before deleting it when versioning is on', async () => {
+        const { invoke, calls } = makeInvoke();
+        const report = await runRemoteSync(
+            [file('old.txt', 'delete-local')],
+            noDirs,
+            baseConfig({ versioningStrategy: 'trash' }),
+            {},
+            noWaitDeps(invoke),
+        );
+        expect(report.deleted).toBe(1);
+        const archiveIdx = calls.findIndex((c) => c.cmd === 'archive_before_sync_delete');
+        const deleteIdx = calls.findIndex((c) => c.cmd === 'delete_local_file');
+        expect(archiveIdx).toBeGreaterThanOrEqual(0);
+        expect(deleteIdx).toBeGreaterThan(archiveIdx);
+    });
+
+    it('skips archiving when no versioning strategy is configured', async () => {
+        const { invoke, calls } = makeInvoke();
+        await runRemoteSync(
+            [file('old.txt', 'delete-local')],
+            noDirs,
+            baseConfig({ versioningStrategy: 'disabled' }),
+            {},
+            noWaitDeps(invoke),
+        );
+        expect(calls.some((c) => c.cmd === 'archive_before_sync_delete')).toBe(false);
+    });
+});
+
+describe('remoteSyncRunner — retry with backoff', () => {
+    it('retries a retryable failure then succeeds', async () => {
+        const delays: number[] = [];
+        const { invoke } = makeInvoke({
+            upload_file: (_args, idx) => {
+                if (idx < 2) throw new Error('network glitch');
+                return undefined;
+            },
+            classify_transfer_error: (args) => ({
+                kind: 'network',
+                message: String(args?.rawError),
+                retryable: true,
+                file_path: String(args?.filePath),
+            } satisfies SyncErrorInfo),
+        });
+        const report = await runRemoteSync(
+            [file('a.txt', 'upload')],
+            noDirs,
+            baseConfig(),
+            {},
+            noWaitDeps(invoke, { delay: async (ms) => { delays.push(ms); } }),
+        );
+        expect(report.uploaded).toBe(1);
+        expect(report.retried).toBe(1);
+        expect(report.errors).toHaveLength(0);
+        // Exponential backoff: 500ms then 1000ms.
+        expect(delays).toEqual([500, 1000]);
+    });
+
+    it('gives up on a non-retryable error and records it', async () => {
+        const { invoke } = makeInvoke({
+            upload_file: () => { throw new Error('permission denied'); },
+            classify_transfer_error: (args) => ({
+                kind: 'permission_denied',
+                message: String(args?.rawError),
+                retryable: false,
+                file_path: String(args?.filePath),
+            } satisfies SyncErrorInfo),
+        });
+        const report = await runRemoteSync(
+            [file('a.txt', 'upload')],
+            noDirs,
+            baseConfig(),
+            {},
+            noWaitDeps(invoke),
+        );
+        expect(report.uploaded).toBe(0);
+        expect(report.errors).toHaveLength(1);
+        expect(report.errors[0].kind).toBe('permission_denied');
+        expect(report.retried).toBe(0);
+    });
+});
+
+describe('remoteSyncRunner — verify policy', () => {
+    it('flags a download whose verification fails', async () => {
+        const statuses: Array<[string, string]> = [];
+        const { invoke } = makeInvoke({
+            verify_local_transfer: (): VerifyResult => ({
+                path: '/home/u/work/a.txt',
+                passed: false,
+                policy: 'size_only',
+                expected_size: 100,
+                actual_size: 40,
+                size_match: false,
+                mtime_match: null,
+                hash_match: null,
+                message: 'size mismatch',
+            }),
+        });
+        const report = await runRemoteSync(
+            [file('a.txt', 'download', { size: 100 })],
+            noDirs,
+            baseConfig({ verifyPolicy: 'size_only' }),
+            { onFileStatus: (p, s) => statuses.push([p, s]) },
+            noWaitDeps(invoke),
+        );
+        expect(report.downloaded).toBe(0);
+        expect(report.verifyFailed).toBe(1);
+        expect(report.errors).toHaveLength(1);
+        expect(statuses.some(([, s]) => s === 'verify_failed')).toBe(true);
+    });
+
+    it('does not call the verifier when policy is none', async () => {
+        const { invoke, calls } = makeInvoke();
+        await runRemoteSync(
+            [file('a.txt', 'download')],
+            noDirs,
+            baseConfig({ verifyPolicy: 'none' }),
+            {},
+            noWaitDeps(invoke),
+        );
+        expect(calls.some((c) => c.cmd === 'verify_local_transfer')).toBe(false);
+    });
+});
+
+describe('remoteSyncRunner — cancellation and budget', () => {
+    it('stops on cancel and leaves the journal undeleted', async () => {
+        let seen = 0;
+        const { invoke, calls } = makeInvoke();
+        const report = await runRemoteSync(
+            [file('a.txt', 'upload'), file('b.txt', 'upload'), file('c.txt', 'upload')],
+            noDirs,
+            baseConfig(),
+            { isCancelled: () => { seen += 1; return seen > 1; } },
+            noWaitDeps(invoke),
+        );
+        expect(report.uploaded).toBe(1);
+        expect(report.skipped).toBe(2);
+        expect(report.cancelled).toBe(true);
+        // Interrupted run keeps its journal for a later resume.
+        expect(calls.some((c) => c.cmd === 'delete_sync_journal_cmd')).toBe(false);
+    });
+
+    it('halts once the transfer budget is exhausted', async () => {
+        const { invoke } = makeInvoke();
+        const report = await runRemoteSync(
+            [
+                file('a.txt', 'upload', { size: 600 }),
+                file('b.txt', 'upload', { size: 600 }),
+                file('c.txt', 'upload', { size: 600 }),
+            ],
+            noDirs,
+            baseConfig({ transferBudget: 1000 }),
+            {},
+            noWaitDeps(invoke),
+        );
+        expect(report.uploaded).toBe(2);
+        expect(report.skipped).toBe(1);
+        expect(report.cancelled).toBe(true);
+    });
+});
+
+describe('remoteSyncRunner — journal resume', () => {
+    it('skips entries the resumed journal already completed', async () => {
+        const resumeJournal: SyncJournal = {
+            id: 'j1',
+            created_at: '2026-05-22T09:00:00Z',
+            updated_at: '2026-05-22T09:05:00Z',
+            local_path: '/home/u/work',
+            remote_path: '/srv/data',
+            direction: 'bidirectional',
+            retry_policy: RETRY,
+            verify_policy: 'none',
+            entries: [
+                { relative_path: 'a.txt', action: 'upload', status: 'completed', attempts: 1, last_error: null, verified: true, bytes_transferred: 100 },
+                { relative_path: 'b.txt', action: 'upload', status: 'pending', attempts: 0, last_error: null, verified: null, bytes_transferred: 0 },
+            ],
+            completed: false,
+        };
+        const { invoke, calls } = makeInvoke();
+        const report = await runRemoteSync(
+            [file('a.txt', 'upload', { size: 100 }), file('b.txt', 'upload', { size: 200 })],
+            noDirs,
+            baseConfig(),
+            {},
+            noWaitDeps(invoke, { resumeJournal }),
+        );
+        expect(report.uploaded).toBe(2); // 1 resumed + 1 fresh
+        expect(report.totalBytes).toBe(300);
+        // Only b.txt is re-uploaded; a.txt was already done.
+        const uploadCalls = calls.filter((c) => c.cmd === 'upload_file');
+        expect(uploadCalls).toHaveLength(1);
+        expect((uploadCalls[0].args?.params as { local_path: string }).local_path)
+            .toBe('/home/u/work/b.txt');
+    });
+});
+
+describe('remoteSyncRunner — delta savings', () => {
+    it('aggregates per-file delta stats into the report', async () => {
+        const { invoke } = makeInvoke();
+        const deltaStats = new Map([
+            ['a.txt', { bytes_sent: 20, total_size: 100, speedup: 5 }],
+            ['b.txt', { bytes_sent: 30, total_size: 300, speedup: 10 }],
+        ]);
+        const report = await runRemoteSync(
+            [file('a.txt', 'upload', { size: 100 }), file('b.txt', 'upload', { size: 300 })],
+            noDirs,
+            baseConfig({ deltaSyncEnabled: true }),
+            {},
+            noWaitDeps(invoke, { deltaStats }),
+        );
+        expect(report.delta_savings).toBeDefined();
+        expect(report.delta_savings?.files_using_delta).toBe(2);
+        expect(report.delta_savings?.total_bytes_sent).toBe(50);
+        expect(report.delta_savings?.bytes_saved).toBe(350);
+        expect(report.delta_bytes_on_wire).toBe(50);
+    });
+
+    it('omits delta_savings when no file used the delta path', async () => {
+        const { invoke } = makeInvoke();
+        const report = await runRemoteSync(
+            [file('a.txt', 'upload')],
+            noDirs,
+            baseConfig(),
+            {},
+            noWaitDeps(invoke, { deltaStats: new Map() }),
+        );
+        expect(report.delta_savings).toBeUndefined();
+    });
+});
+
+describe('remoteSyncRunner — progress + bandwidth', () => {
+    it('reports progress from 0 to total', async () => {
+        const { invoke } = makeInvoke();
+        const progress: Array<[number, number]> = [];
+        await runRemoteSync(
+            [file('a.txt', 'upload'), file('b.txt', 'upload')],
+            noDirs,
+            baseConfig(),
+            { onProgress: (c, t) => progress.push([c, t]) },
+            noWaitDeps(invoke),
+        );
+        expect(progress[0]).toEqual([0, 2]);
+        expect(progress[progress.length - 1]).toEqual([2, 2]);
+    });
+
+    it('applies bandwidth caps before transferring', async () => {
+        const { invoke, calls } = makeInvoke();
+        await runRemoteSync(
+            [file('a.txt', 'upload')],
+            noDirs,
+            baseConfig({ isFtp: true, uploadLimitKbps: 256, downloadLimitKbps: 512 }),
+            {},
+            noWaitDeps(invoke),
+        );
+        const limitCall = calls.find((c) => c.cmd === 'set_speed_limit');
+        expect(limitCall?.args).toEqual({ downloadKb: 512, uploadKb: 256 });
+    });
+});
+
+describe('remoteSyncRunner — helpers', () => {
+    it('groupErrorsByKind buckets errors by kind', () => {
+        const errors: SyncErrorInfo[] = [
+            { kind: 'network', message: 'a', retryable: true, file_path: 'a' },
+            { kind: 'network', message: 'b', retryable: true, file_path: 'b' },
+            { kind: 'auth', message: 'c', retryable: false, file_path: 'c' },
+        ];
+        const grouped = groupErrorsByKind(errors);
+        expect(grouped.get('network')).toHaveLength(2);
+        expect(grouped.get('auth')).toHaveLength(1);
+    });
+
+    it('filesFromJournal reconstructs upload/download entries only', () => {
+        const journal: SyncJournal = {
+            id: 'j',
+            created_at: '', updated_at: '',
+            local_path: '', remote_path: '',
+            direction: 'bidirectional',
+            retry_policy: RETRY, verify_policy: 'none',
+            entries: [
+                { relative_path: 'a', action: 'upload', status: 'pending', attempts: 0, last_error: null, verified: null, bytes_transferred: 0 },
+                { relative_path: 'b', action: 'download', status: 'pending', attempts: 0, last_error: null, verified: null, bytes_transferred: 0 },
+                { relative_path: 'c', action: 'delete', status: 'pending', attempts: 0, last_error: null, verified: null, bytes_transferred: 0 },
+            ],
+            completed: false,
+        };
+        const files = filesFromJournal(journal);
+        expect(files).toHaveLength(2);
+        expect(files.map((f) => f.action)).toEqual(['upload', 'download']);
+        expect(files[1].overwritesExisting).toBe(true);
+    });
+});
