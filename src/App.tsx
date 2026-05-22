@@ -7078,7 +7078,16 @@ interface UpdateVerificationInfo {
     }
 
     const protocol = activeUnifiedRemoteProfile?.protocol;
-    const isProvider = !!protocol && !isFtpProtocol(protocol);
+    // AeroSync runner routing must match how the connection was actually
+    // dialled. A modern FTP/FTPS session lives in `state.provider` (the
+    // StorageProvider impl), exactly like SFTP and the cloud providers, and
+    // the Compare step already uses `usesProviderApi` to pick
+    // `provider_compare_directories`. Computing this with `!isFtpProtocol`
+    // instead flagged FTP as a legacy `ftp_manager` connection, so the runner
+    // sent every transfer through `download_file`/`upload_file` against an
+    // `ftp_manager` that was never connected: every FTP file failed with
+    // "Not connected to server" while S3 (provider path) worked.
+    const isProvider = usesProviderApi(protocol);
 
     // Bandwidth caps come from the CO-3 Sync-tab inputs (localStorage).
     // GAP-9a: Maniac mode ignores them outright (MANIAC_OVERRIDES sets the

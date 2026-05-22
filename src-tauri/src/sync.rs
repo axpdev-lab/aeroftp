@@ -426,14 +426,17 @@ impl SyncProgressSink for NoopProgressSink {
     fn on_file_done(&mut self, _rel: &str, _outcome: &FileOutcome) {}
 }
 
-enum SyncTreeAction {
+// `pub(crate)`: the DAG-ENGINE phase-2 sync routing module
+// (`transfer_dag_sync`) reuses the planning decision types verbatim so the
+// graph path stays decision-equivalent to the legacy `sync_tree_core` loop.
+pub(crate) enum SyncTreeAction {
     Copy,
     Skip(String),
 }
 
-struct SyncTreeDecision {
-    action: SyncTreeAction,
-    decision_policy: DeltaPolicy,
+pub(crate) struct SyncTreeDecision {
+    pub(crate) action: SyncTreeAction,
+    pub(crate) decision_policy: DeltaPolicy,
 }
 
 #[derive(Clone, Copy)]
@@ -444,10 +447,10 @@ struct SyncFileMeta<'a> {
 }
 
 #[derive(Clone, Copy)]
-struct SyncTransferSpec<'a> {
-    rel: &'a str,
-    total: u64,
-    decision_policy: DeltaPolicy,
+pub(crate) struct SyncTransferSpec<'a> {
+    pub(crate) rel: &'a str,
+    pub(crate) total: u64,
+    pub(crate) decision_policy: DeltaPolicy,
     /// Policy originally requested by the caller. Kept distinct from
     /// `decision_policy` because the decide layer may downgrade the policy
     /// when required data is missing (e.g. `Hash` falls back to `Mtime` if
@@ -455,7 +458,7 @@ struct SyncTransferSpec<'a> {
     /// (P1-T01) is consulted on this field, not on `decision_policy`, so
     /// the native attempt fires if and only if the user explicitly asked
     /// for `Delta`.
-    requested_policy: DeltaPolicy,
+    pub(crate) requested_policy: DeltaPolicy,
 }
 
 /// Action to perform during sync
@@ -926,6 +929,24 @@ pub async fn sync_tree_core(
     opts: &SyncOptions,
     sink: &mut dyn SyncProgressSink,
 ) -> SyncReport {
+    // DAG-ENGINE phase 2 (F2-T07b): with the sync flag on, route a real
+    // (non-dry-run) sync through the shared graph engine instead of this
+    // hand-rolled interleaved decide/perform loop. Dry-run always stays on
+    // the legacy path below: it must never build or execute a DAG, so the
+    // dry-run plan is structurally guaranteed free of any mutating graph.
+    // Default OFF, so the legacy path is the default and a rollback is a
+    // runtime toggle, never a revert.
+    if crate::transfer_dag_sync::should_route_sync_to_dag(opts.dry_run) {
+        return crate::transfer_dag_sync::execute_sync_dag(
+            provider,
+            local_root,
+            remote_root,
+            opts,
+            sink,
+        )
+        .await;
+    }
+
     let start = std::time::Instant::now();
     sink.on_phase(SyncPhase::Scanning);
     let locals = scan_local_tree(local_root, &opts.scan);
@@ -1178,7 +1199,7 @@ pub async fn sync_tree_core(
     report
 }
 
-fn decide_upload(
+pub(crate) fn decide_upload(
     local_entry: &crate::sync_core::LocalEntry,
     remote_entry: Option<&crate::sync_core::RemoteEntry>,
     policy: DeltaPolicy,
@@ -1218,7 +1239,7 @@ fn decide_upload(
     }
 }
 
-fn decide_download(
+pub(crate) fn decide_download(
     remote_entry: &crate::sync_core::RemoteEntry,
     local_entry: Option<&crate::sync_core::LocalEntry>,
     policy: DeltaPolicy,
@@ -1443,7 +1464,7 @@ fn parse_scan_mtime(raw: &str) -> Option<chrono::DateTime<Utc>> {
         })
 }
 
-fn apply_sync_tree_outcome(
+pub(crate) fn apply_sync_tree_outcome(
     report: &mut SyncReport,
     rel: &str,
     operation: &'static str,
@@ -1512,7 +1533,7 @@ fn apply_sync_tree_outcome(
     sink.on_file_done(rel, &outcome);
 }
 
-async fn perform_upload(
+pub(crate) async fn perform_upload(
     provider: &mut Box<dyn StorageProvider>,
     local_root: &str,
     remote_root: &str,
@@ -1656,7 +1677,7 @@ async fn perform_upload(
 // tunables with intrinsic transfer attributes (rel/total/policy), so
 // the lint is suppressed here rather than refactored away.
 #[allow(clippy::too_many_arguments)]
-async fn perform_download(
+pub(crate) async fn perform_download(
     provider: &mut Box<dyn StorageProvider>,
     local_root: &str,
     remote_root: &str,
@@ -1852,7 +1873,7 @@ async fn sync_download_transfer(
         .map_err(|e| e.to_string())
 }
 
-async fn perform_remote_delete(
+pub(crate) async fn perform_remote_delete(
     provider: &mut Box<dyn StorageProvider>,
     remote_root: &str,
     rel: &str,
@@ -1875,7 +1896,7 @@ async fn perform_remote_delete(
     }
 }
 
-fn perform_local_delete(
+pub(crate) fn perform_local_delete(
     local_root: &str,
     rel: &str,
     decision_policy: DeltaPolicy,
@@ -1944,7 +1965,7 @@ fn mkdir_error_is_idempotent(err: &ProviderError) -> bool {
     }
 }
 
-async fn ensure_remote_dir(provider: &mut Box<dyn StorageProvider>, dir: &str) {
+pub(crate) async fn ensure_remote_dir(provider: &mut Box<dyn StorageProvider>, dir: &str) {
     // Walk the parent chain top-down. A failure on an intermediate level
     // (e.g. mkdir on `/mnt` denied because the user has no write access on
     // the SFTP root) must NOT short-circuit the chain: the leaf mkdir may

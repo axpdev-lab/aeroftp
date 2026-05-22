@@ -34,7 +34,7 @@ use std::time::{Duration, Instant};
 
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
-use super::resources::ResourceRequest;
+use super::resources::{ResourceRequest, TransferBudget};
 
 /// Resource classes the controller manages in v1 (decision D1). Checker,
 /// disk, and hash slots stay static and are intentionally absent.
@@ -228,10 +228,20 @@ impl DynamicSemaphore {
 /// Tuning for the AIMD controller. Defaults are prudent; tests inject short
 /// or zero windows. `cooldown` blocks any increase after a decrease;
 /// `healthy_window` is the minimum quiet interval before each `+1`.
+///
+/// `recovery_window` is the guard band against oscillation (decision F3-T09):
+/// after a congestion event the controller will not let additive increase
+/// climb straight back to the concurrency level that triggered congestion. It
+/// caps regrowth one slot below that level until a full `recovery_window` of
+/// uninterrupted quiet has elapsed, at which point the cap relaxes back to the
+/// honest ceiling. A zero `recovery_window` disables the guard band (the cap
+/// relaxes on the first healthy note), which is the pre-F3-T09 behaviour and
+/// is what unit tests of the bare additive mechanism opt into.
 #[derive(Debug, Clone, Copy)]
 pub struct AimdConfig {
     pub cooldown: Duration,
     pub healthy_window: Duration,
+    pub recovery_window: Duration,
 }
 
 impl Default for AimdConfig {
@@ -239,6 +249,9 @@ impl Default for AimdConfig {
         Self {
             cooldown: Duration::from_secs(5),
             healthy_window: Duration::from_secs(5),
+            // Long enough that a provider's rate-limit window has demonstrably
+            // cleared before AIMD risks the level that congested it again.
+            recovery_window: Duration::from_secs(30),
         }
     }
 }
@@ -249,6 +262,12 @@ struct ClassState {
     target: usize,
     cooldown_until: Option<Instant>,
     healthy_since: Option<Instant>,
+    /// Guard band (F3-T09): the highest target additive increase may reach.
+    /// Starts at `ceiling`; a congestion event drops it one below the level
+    /// that congested; a full `recovery_window` of quiet relaxes it back.
+    regrowth_cap: usize,
+    /// Instant of the most recent congestion event, for the recovery timer.
+    last_congestion: Option<Instant>,
 }
 
 impl ClassState {
@@ -262,6 +281,8 @@ impl ClassState {
             target: ceiling,
             cooldown_until: None,
             healthy_since: None,
+            regrowth_cap: ceiling,
+            last_congestion: None,
         }
     }
 }
@@ -296,6 +317,20 @@ impl AimdController {
         }
     }
 
+    /// Build a controller whose per-class ceilings are the honest effective
+    /// budget (F3-T05). Every class starts at its ceiling — AIMD is
+    /// decrease-biased — so a run with no congestion dispatches exactly as if
+    /// no controller were wired.
+    pub fn from_budget(budget: &TransferBudget, config: AimdConfig) -> Self {
+        Self::new(
+            budget.file_slots.max(1) as usize,
+            budget.chunk_slots.max(1) as usize,
+            budget.http_slots.max(1) as usize,
+            budget.api_slots.max(1) as usize,
+            config,
+        )
+    }
+
     fn state(&self, class: AdaptiveClass) -> &Mutex<ClassState> {
         match class {
             AdaptiveClass::File => &self.file,
@@ -307,27 +342,50 @@ impl AimdController {
 
     /// Multiplicative decrease: halve the target (floor 1) and arm a cooldown
     /// that blocks any increase until it elapses.
+    ///
+    /// The guard band (F3-T09) also records the concurrency level that
+    /// congested and drops `regrowth_cap` one slot below it, so additive
+    /// increase cannot immediately climb back into the same congestion.
     pub fn on_congestion(&self, class: AdaptiveClass) {
+        let now = Instant::now();
         let mut st = self.state(class).lock().expect("aimd mutex poisoned");
+        let level_at_congestion = st.target;
         st.target = (st.target / 2).max(1);
         st.sem.set_live(st.target);
-        st.cooldown_until = Some(Instant::now() + self.config.cooldown);
+        st.cooldown_until = Some(now + self.config.cooldown);
         st.healthy_since = None;
+        // Ratchet the regrowth cap down: never above one slot below the level
+        // that just congested, and a repeated congestion only tightens it.
+        st.regrowth_cap = level_at_congestion
+            .saturating_sub(1)
+            .max(1)
+            .min(st.regrowth_cap);
+        st.last_congestion = Some(now);
     }
 
     /// Note a healthy completion. After a quiet `healthy_window` with no
     /// congestion and no active cooldown, additively increase by one (never
-    /// above the ceiling).
+    /// above the ceiling, and never above the [`AimdConfig::recovery_window`]
+    /// guard band until the band has relaxed).
     pub fn note_healthy(&self, class: AdaptiveClass) {
         let now = Instant::now();
         let mut st = self.state(class).lock().expect("aimd mutex poisoned");
+        // Guard band relaxation: a full recovery window of quiet since the
+        // last congestion lifts the regrowth cap back to the honest ceiling.
+        if let Some(congested_at) = st.last_congestion {
+            if now.duration_since(congested_at) >= self.config.recovery_window {
+                st.regrowth_cap = st.ceiling;
+                st.last_congestion = None;
+            }
+        }
         if let Some(until) = st.cooldown_until {
             if now < until {
                 return;
             }
             st.cooldown_until = None;
         }
-        if st.target >= st.ceiling {
+        let growth_cap = st.ceiling.min(st.regrowth_cap);
+        if st.target >= growth_cap {
             return;
         }
         match st.healthy_since {
@@ -503,6 +561,7 @@ mod tests {
         let cfg = AimdConfig {
             cooldown: Duration::from_secs(3600),
             healthy_window: Duration::from_secs(0),
+            recovery_window: Duration::from_secs(0),
         };
         let ctrl = AimdController::new(8, 1, 1, 1, cfg);
         ctrl.on_congestion(AdaptiveClass::File);
@@ -518,11 +577,13 @@ mod tests {
 
     #[tokio::test]
     async fn aimd_additive_increase_after_quiet_window_capped_at_ceiling() {
-        // No cooldown, zero healthy window: each pair of notes yields +1, but
-        // never above the ceiling.
+        // No cooldown, zero healthy/recovery window: each pair of notes yields
+        // +1, but never above the ceiling. A zero recovery window disables the
+        // guard band so this test exercises the bare additive mechanism.
         let cfg = AimdConfig {
             cooldown: Duration::from_secs(0),
             healthy_window: Duration::from_secs(0),
+            recovery_window: Duration::from_secs(0),
         };
         let ctrl = AimdController::new(3, 1, 1, 1, cfg);
         ctrl.on_congestion(AdaptiveClass::File); // 3 -> 1 (floor)
@@ -550,5 +611,91 @@ mod tests {
         );
         let held = ctrl.acquire(&req).await;
         assert_eq!(held.len(), 2, "chunk + http permits, not file/api");
+    }
+
+    #[tokio::test]
+    async fn guard_band_blocks_regrowth_to_the_congested_level() {
+        // A long recovery window keeps the guard band armed: additive
+        // increase may climb back up but must stop one slot below the level
+        // that congested, never re-entering the same congestion.
+        let cfg = AimdConfig {
+            cooldown: Duration::from_secs(0),
+            healthy_window: Duration::from_secs(0),
+            recovery_window: Duration::from_secs(3600),
+        };
+        let ctrl = AimdController::new(8, 1, 1, 1, cfg);
+        ctrl.on_congestion(AdaptiveClass::File); // 8 -> 4, regrowth cap -> 7
+        assert_eq!(ctrl.target(AdaptiveClass::File), 4);
+        for _ in 0..40 {
+            ctrl.note_healthy(AdaptiveClass::File);
+        }
+        assert_eq!(
+            ctrl.target(AdaptiveClass::File),
+            7,
+            "guard band holds regrowth one slot below the congested level"
+        );
+    }
+
+    #[tokio::test]
+    async fn guard_band_relaxes_after_recovery_window() {
+        // A zero recovery window relaxes the guard band on the first healthy
+        // note, so additive increase may climb all the way to the ceiling.
+        let cfg = AimdConfig {
+            cooldown: Duration::from_secs(0),
+            healthy_window: Duration::from_secs(0),
+            recovery_window: Duration::from_secs(0),
+        };
+        let ctrl = AimdController::new(8, 1, 1, 1, cfg);
+        ctrl.on_congestion(AdaptiveClass::File); // 8 -> 4
+        for _ in 0..40 {
+            ctrl.note_healthy(AdaptiveClass::File);
+        }
+        assert_eq!(
+            ctrl.target(AdaptiveClass::File),
+            8,
+            "a relaxed guard band lets regrowth reach the honest ceiling"
+        );
+    }
+
+    #[tokio::test]
+    async fn guard_band_ratchets_down_on_repeated_congestion() {
+        let cfg = AimdConfig {
+            cooldown: Duration::from_secs(0),
+            healthy_window: Duration::from_secs(0),
+            recovery_window: Duration::from_secs(3600),
+        };
+        let ctrl = AimdController::new(16, 1, 1, 1, cfg);
+        ctrl.on_congestion(AdaptiveClass::File); // 16 -> 8, cap -> 15
+        for _ in 0..40 {
+            ctrl.note_healthy(AdaptiveClass::File);
+        }
+        assert_eq!(ctrl.target(AdaptiveClass::File), 15);
+        ctrl.on_congestion(AdaptiveClass::File); // 15 -> 7, cap -> 14
+        for _ in 0..40 {
+            ctrl.note_healthy(AdaptiveClass::File);
+        }
+        assert_eq!(
+            ctrl.target(AdaptiveClass::File),
+            14,
+            "a second congestion tightens the guard band further"
+        );
+    }
+
+    #[test]
+    fn from_budget_seeds_per_class_ceilings_from_the_effective_budget() {
+        let budget = TransferBudget {
+            file_slots: 6,
+            chunk_slots: 3,
+            http_slots: 9,
+            api_slots: 2,
+            ..TransferBudget::default()
+        };
+        let ctrl = AimdController::from_budget(&budget, AimdConfig::default());
+        // Every class starts at its ceiling: a no-congestion run is identical
+        // to having no controller at all.
+        assert_eq!(ctrl.target(AdaptiveClass::File), 6);
+        assert_eq!(ctrl.target(AdaptiveClass::Chunk), 3);
+        assert_eq!(ctrl.target(AdaptiveClass::Http), 9);
+        assert_eq!(ctrl.target(AdaptiveClass::Api), 2);
     }
 }

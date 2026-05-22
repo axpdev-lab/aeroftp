@@ -418,11 +418,13 @@ where
 /// `max_parallel`, exactly mirroring the JoinSet semaphore. The temp file is
 /// pre-allocated by the caller, so the only real dependency is satisfied
 /// before the graph runs and a Plan/Preallocate node would add nothing but a
-/// serial point: the graph is an honest pure fan-out. Observer is no-op and
-/// the AIMD controller is `None`: 1d migrates the executor only, diff-0;
-/// adaptivity on this path is a later concern. Outcome, error variant and
-/// cancel semantics are identical to [`run_ranges_via_joinset`]; only the
-/// scheduling differs (which diff-0 explicitly does not constrain).
+/// serial point: the graph is an honest pure fan-out. Observer is no-op; the
+/// AIMD controller (F3-T05) starts every class at its honest ceiling, so a
+/// congestion-free download dispatches identically to the prior `None` and
+/// only shrinks the in-flight range set under a real congestion signal.
+/// Outcome, error variant and cancel semantics are identical to
+/// [`run_ranges_via_joinset`]; only the scheduling differs (which diff-0
+/// explicitly does not constrain).
 pub(crate) async fn run_ranges_via_graph<W, WFut>(
     ranges: &[(u64, u64)],
     temp_path: &Path,
@@ -441,7 +443,8 @@ where
     use crate::transfer_dag::executor::{execute_dag, DagNodeRunner, NodeFuture, NodeOutcome};
     use crate::transfer_dag::graph::{TransferDag, TransferNode, TransferNodeKind};
     use crate::transfer_dag::{
-        DagObserver, NoopDagObserver, ResourceRequest, TransferBudget, TransferResourceManager,
+        AimdConfig, AimdController, DagObserver, NoopDagObserver, ResourceRequest, TransferBudget,
+        TransferResourceManager,
     };
     use std::sync::atomic::AtomicBool;
     use std::sync::Mutex;
@@ -465,6 +468,17 @@ where
         disk_write_slots: slots,
         ..TransferBudget::from_file_slots(1)
     });
+
+    // AIMD backpressure (F3-T05). The controller's per-class ceilings are the
+    // budget above, and every class starts at its ceiling: a download with no
+    // congestion dispatches every range immediately, identical to the prior
+    // `None`. It only ever shrinks the Chunk/Http dispatch target when a range
+    // fails with a genuine congestion signal (429/503/timeout/reset), where a
+    // smaller in-flight set is the safer, faster choice.
+    let aimd = Arc::new(AimdController::from_budget(
+        &manager.budget(),
+        AimdConfig::default(),
+    ));
 
     let ranges: Arc<Vec<(u64, u64)>> = Arc::new(ranges.to_vec());
     let aggregate = Arc::new(AtomicU64::new(0));
@@ -543,7 +557,7 @@ where
         &manager,
         runner,
         Arc::new(NoopDagObserver) as Arc<dyn DagObserver>,
-        None,
+        Some(aimd),
     )
     .await;
 

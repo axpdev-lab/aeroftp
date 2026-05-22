@@ -8,20 +8,31 @@
 //! scheduler, capability model, and resource leases become shared vocabulary.
 
 pub mod adaptive;
+pub mod builder;
 pub mod capabilities;
 pub mod executor;
 pub mod graph;
 pub mod metrics;
 pub mod observer;
 pub mod planner;
+pub mod probe;
 pub mod resources;
 pub mod session_pool;
 
 pub use adaptive::{
     congestion_from_error, AdaptiveClass, AimdConfig, AimdController, CongestionEvent,
 };
+pub use builder::{
+    BatchDag, BatchDagItem, BatchFileDag, CopyDag, ShapedFileDag, SingleFileDag, SyncDag,
+    SyncDagAction, SyncDagItem, SyncFileDag, TransferDagBuilder, TransferDirection,
+    TransferGraphProfile,
+};
 pub use capabilities::{Capability, TransferCapabilities};
-pub use observer::{DagObserver, NoopDagObserver, ObservedOutcome};
+pub use observer::{
+    DagObserver, NoopDagObserver, ObservedOutcome, OrderedDagObserver, SyncJournalDagObserver,
+    SyncJournalTerminal,
+};
+pub use probe::SessionProbeCache;
 pub use resources::{ResourceKind, ResourceRequest, TransferBudget, TransferResourceManager};
 pub use session_pool::{
     FtpPoolSessionLease, FtpSessionPoolAdapter, SessionLeaseId, SessionLeaseInfo, SessionLeaseKind,

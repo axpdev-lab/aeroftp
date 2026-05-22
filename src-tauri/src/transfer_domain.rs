@@ -5,6 +5,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::transfer_dag::TransferBudget;
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum TransferDirection {
@@ -55,6 +57,17 @@ impl Default for TransferBatchConfig {
             max_retries: 0,
             timeout_ms: 30_000,
         }
+    }
+}
+
+impl TransferBatchConfig {
+    /// Build the DAG budget used by the batch scheduler.
+    ///
+    /// GUI `Settings.maxConcurrentTransfers` arrives at the backend as
+    /// `max_concurrent`; this method is the explicit handoff into
+    /// `TransferBudget::file_slots`.
+    pub fn transfer_budget(&self) -> TransferBudget {
+        TransferBudget::from_file_slots(self.max_concurrent.min(u16::MAX as u32) as u16)
     }
 }
 
@@ -136,5 +149,27 @@ mod tests {
     fn exposes_redacted_user_facing_message() {
         let message = user_facing_transfer_failure_message(&TransferFailureKind::PermissionDenied);
         assert_eq!(message, "Permission denied during transfer");
+    }
+
+    #[test]
+    fn batch_config_maps_max_concurrent_to_dag_file_slots() {
+        let config = TransferBatchConfig {
+            max_concurrent: 6,
+            max_retries: 0,
+            timeout_ms: 30_000,
+        };
+
+        assert_eq!(config.transfer_budget().file_slots, 6);
+    }
+
+    #[test]
+    fn batch_config_floors_dag_file_slots_to_one() {
+        let config = TransferBatchConfig {
+            max_concurrent: 0,
+            max_retries: 0,
+            timeout_ms: 30_000,
+        };
+
+        assert_eq!(config.transfer_budget().file_slots, 1);
     }
 }

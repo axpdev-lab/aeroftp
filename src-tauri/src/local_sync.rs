@@ -339,7 +339,9 @@ pub async fn local_sync_run(
                     report.error_messages.push(format!(
                         "verify {}: {}",
                         rel_str,
-                        verify.message.unwrap_or_else(|| "policy not satisfied".to_string()),
+                        verify
+                            .message
+                            .unwrap_or_else(|| "policy not satisfied".to_string()),
                     ));
                     entry_status = "error";
                 }
