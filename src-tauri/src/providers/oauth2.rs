@@ -160,7 +160,16 @@ impl OAuthConfig {
                 "https://www.googleapis.com/auth/drive.file".to_string(),
             ],
             redirect_uri: format!("http://127.0.0.1:{}/callback", port),
-            extra_auth_params: vec![("access_type".to_string(), "offline".to_string())],
+            // prompt=consent forces Google to re-issue a refresh token on
+            // every authorization. Without it Google returns a refresh
+            // token only on the first consent: a re-auth after the token
+            // expires then yields an access-token-only response, and the
+            // profile breaks again as soon as that access token lapses.
+            // See issue #196.
+            extra_auth_params: vec![
+                ("access_type".to_string(), "offline".to_string()),
+                ("prompt".to_string(), "consent".to_string()),
+            ],
         }
     }
 
@@ -182,7 +191,12 @@ impl OAuthConfig {
                 "https://www.googleapis.com/auth/photoslibrary.appendonly".to_string(),
             ],
             redirect_uri: format!("http://127.0.0.1:{}/callback", port),
-            extra_auth_params: vec![("access_type".to_string(), "offline".to_string())],
+            // Same Google quirk as Drive: prompt=consent guarantees a
+            // refresh token on every re-authorization. See issue #196.
+            extra_auth_params: vec![
+                ("access_type".to_string(), "offline".to_string()),
+                ("prompt".to_string(), "consent".to_string()),
+            ],
         }
     }
 
