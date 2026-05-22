@@ -231,6 +231,10 @@ pub struct ProviderConnectionParams {
     /// Filen/MEGA/Internxt: Optional persisted base32 TOTP secret. When set,
     /// the backend derives the 6-digit code on every connect (no prompt).
     pub totp_secret: Option<String>,
+    /// Filen: Optional CLI API key. When set, the provider authenticates with
+    /// it and skips the `/v3/login` call (and therefore the 2FA TOTP window).
+    /// The password is still required: it derives the E2E master key.
+    pub filen_api_key: Option<String>,
     /// GitHub: auth mode used to obtain the token
     pub github_auth_mode: Option<String>,
     /// GitHub: App ID for installation-token mode
@@ -458,6 +462,15 @@ impl ProviderConnectionParams {
             if let Some(ref secret) = self.totp_secret {
                 if !secret.trim().is_empty() {
                     extra.insert("totp_secret".to_string(), secret.trim().to_string());
+                }
+            }
+            // Filen CLI API key: authenticates API transport without the
+            // /v3/login call, so reconnects skip the 2FA TOTP window.
+            if provider_type == ProviderType::Filen {
+                if let Some(ref api_key) = self.filen_api_key {
+                    if !api_key.trim().is_empty() {
+                        extra.insert("filen_api_key".to_string(), api_key.trim().to_string());
+                    }
                 }
             }
         }
@@ -9567,6 +9580,7 @@ mod tests {
             verify_cert: None,
             two_factor_code: None,
             totp_secret: None,
+            filen_api_key: None,
             github_auth_mode: None,
             github_app_id: None,
             github_installation_id: None,
