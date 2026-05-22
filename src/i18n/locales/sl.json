@@ -4114,6 +4114,7 @@
             },
             "confirmDeleteServer": "Izbrisati strežnik \"{name}\"? S tem se odstranijo shranjene poverilnice in tega ni mogoče razveljaviti.",
             "renameWithHotkey": "Preimenuj (F2)",
+            "doubleClickToRename": "Dvokliknite za preimenovanje",
             "setAsCrossProfileSource": "Nastavi kot vir Cross-Profile",
             "setAsCrossProfileDestination": "Nastavi kot cilj Cross-Profile",
             "crossProfileSourceSelected": "Izbrano kot vir Cross-Profile",

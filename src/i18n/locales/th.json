@@ -4114,6 +4114,7 @@
             },
             "confirmDeleteServer": "ลบเซิร์ฟเวอร์ \"{name}\"? การดำเนินการนี้จะลบข้อมูลรับรองที่บันทึกไว้และไม่สามารถย้อนกลับได้",
             "renameWithHotkey": "เปลี่ยนชื่อ (F2)",
+            "doubleClickToRename": "ดับเบิลคลิกเพื่อเปลี่ยนชื่อ",
             "setAsCrossProfileSource": "ตั้งเป็นต้นทาง Cross-Profile",
             "setAsCrossProfileDestination": "ตั้งเป็นปลายทาง Cross-Profile",
             "crossProfileSourceSelected": "เลือกเป็นต้นทาง Cross-Profile แล้ว",

@@ -4114,6 +4114,7 @@
             },
             "confirmDeleteServer": "წაიშალოს სერვერი \"{name}\"? ეს ამოშლის შენახულ სერთიფიკატებს და ვერ გაუქმდება.",
             "renameWithHotkey": "სახელის გადარქმევა (F2)",
+            "doubleClickToRename": "ორმაგი დაწკაპუნება გადასარქმევად",
             "setAsCrossProfileSource": "დაყენება Cross-Profile-ის წყაროდ",
             "setAsCrossProfileDestination": "დაყენება Cross-Profile-ის დანიშნულებად",
             "crossProfileSourceSelected": "არჩეულია Cross-Profile-ის წყაროდ",

@@ -40,6 +40,7 @@ interface MyServersTableProps {
     renamingId: string | null;
     onRenameSubmit: (server: ServerProfile, newName: string) => void;
     onRenameCancel: () => void;
+    onRenameStart: (server: ServerProfile) => void;
     canDrag: boolean;
     dragIdx: number | null;
     overIdx: number | null;
@@ -117,6 +118,7 @@ export function MyServersTable({
     renamingId,
     onRenameSubmit,
     onRenameCancel,
+    onRenameStart,
     canDrag,
     dragIdx,
     overIdx,
@@ -286,6 +288,7 @@ export function MyServersTable({
                                 isRenaming={renamingId === server.id}
                                 onRenameSubmit={onRenameSubmit}
                                 onRenameCancel={onRenameCancel}
+                                onRenameStart={onRenameStart}
                                 isDraggable={canDrag}
                                 isDragging={dragIdx === realIdx}
                                 isDragTarget={overIdx === realIdx && dragIdx !== null && dragIdx !== realIdx}

@@ -4133,6 +4133,7 @@
             },
             "confirmDeleteServer": "លុបម៉ាស៊ីនមេ \"{name}\"? វានឹងលុបព័ត៌មានសម្ងាត់ដែលបានរក្សាទុក ហើយមិនអាចត្រឡប់វិញបានទេ។",
             "renameWithHotkey": "ប្តូរឈ្មោះ (F2)",
+            "doubleClickToRename": "ចុចពីរដងដើម្បីប្តូរឈ្មោះ",
             "setAsCrossProfileSource": "កំណត់ជាប្រភព Cross-Profile",
             "setAsCrossProfileDestination": "កំណត់ជាគោលដៅ Cross-Profile",
             "crossProfileSourceSelected": "បានជ្រើសរើសជាប្រភព Cross-Profile",

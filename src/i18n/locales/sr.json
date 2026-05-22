@@ -4114,6 +4114,7 @@
             },
             "confirmDeleteServer": "Обрисати сервер \"{name}\"? Ово уклања сачуване акредитиве и не може се поништити.",
             "renameWithHotkey": "Преименуј (F2)",
+            "doubleClickToRename": "Двоструки клик за преименовање",
             "setAsCrossProfileSource": "Постави као извор Cross-Profile",
             "setAsCrossProfileDestination": "Постави као одредиште Cross-Profile",
             "crossProfileSourceSelected": "Изабрано као извор Cross-Profile",

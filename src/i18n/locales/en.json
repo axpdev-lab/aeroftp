@@ -4209,6 +4209,7 @@
                 "lastFailedAt": "Last failure {time} ago"
             },
             "renameWithHotkey": "Rename (F2)",
+            "doubleClickToRename": "Double-click to rename",
             "setAsCrossProfileSource": "Set as Cross-Profile source",
             "setAsCrossProfileDestination": "Set as Cross-Profile destination",
             "crossProfileSourceSelected": "Selected as Cross-Profile source",

@@ -4114,6 +4114,7 @@
             },
             "confirmDeleteServer": "Padam pelayan \"{name}\"? Ini akan mengalih keluar kelayakan yang disimpan dan tidak boleh dibuat asal.",
             "renameWithHotkey": "Namakan semula (F2)",
+            "doubleClickToRename": "Klik dua kali untuk menamakan semula",
             "setAsCrossProfileSource": "Tetapkan sebagai sumber Cross-Profile",
             "setAsCrossProfileDestination": "Tetapkan sebagai destinasi Cross-Profile",
             "crossProfileSourceSelected": "Dipilih sebagai sumber Cross-Profile",

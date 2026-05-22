@@ -4114,6 +4114,7 @@
             },
             "confirmDeleteServer": "Удалить сервер \"{name}\"? Это удалит сохранённые учётные данные и действие нельзя отменить.",
             "renameWithHotkey": "Переименовать (F2)",
+            "doubleClickToRename": "Двойной щелчок для переименования",
             "setAsCrossProfileSource": "Установить как источник Cross-Profile",
             "setAsCrossProfileDestination": "Установить как назначение Cross-Profile",
             "crossProfileSourceSelected": "Выбрано как источник Cross-Profile",

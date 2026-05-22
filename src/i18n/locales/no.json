@@ -4133,6 +4133,7 @@
             },
             "confirmDeleteServer": "Slett serveren \"{name}\"? Dette fjerner lagrede legitimasjonsopplysninger og kan ikke angres.",
             "renameWithHotkey": "Gi nytt navn (F2)",
+            "doubleClickToRename": "Dobbeltklikk for å gi nytt navn",
             "setAsCrossProfileSource": "Angi som Cross-Profile-kilde",
             "setAsCrossProfileDestination": "Angi som Cross-Profile-mål",
             "crossProfileSourceSelected": "Valgt som Cross-Profile-kilde",

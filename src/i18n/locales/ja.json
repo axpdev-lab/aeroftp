@@ -4114,6 +4114,7 @@
             },
             "confirmDeleteServer": "サーバー \"{name}\" を削除しますか？保存された認証情報が削除され、元に戻すことはできません。",
             "renameWithHotkey": "名前を変更 (F2)",
+            "doubleClickToRename": "ダブルクリックで名前を変更",
             "setAsCrossProfileSource": "Cross-Profile のソースに設定",
             "setAsCrossProfileDestination": "Cross-Profile の宛先に設定",
             "crossProfileSourceSelected": "Cross-Profile のソースとして選択中",

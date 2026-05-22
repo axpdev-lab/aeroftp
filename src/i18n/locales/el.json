@@ -4114,6 +4114,7 @@
             },
             "confirmDeleteServer": "Διαγραφή διακομιστή \"{name}\"; Αυτό αφαιρεί τα αποθηκευμένα διαπιστευτήρια και δεν μπορεί να αναιρεθεί.",
             "renameWithHotkey": "Μετονομασία (F2)",
+            "doubleClickToRename": "Διπλό κλικ για μετονομασία",
             "setAsCrossProfileSource": "Ορισμός ως πηγή Cross-Profile",
             "setAsCrossProfileDestination": "Ορισμός ως προορισμός Cross-Profile",
             "crossProfileSourceSelected": "Επιλέχθηκε ως πηγή Cross-Profile",

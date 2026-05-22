@@ -4114,6 +4114,7 @@
             },
             "confirmDeleteServer": "Server \"{name}\" verwijderen? Dit verwijdert opgeslagen inloggegevens en kan niet ongedaan worden gemaakt.",
             "renameWithHotkey": "Hernoemen (F2)",
+            "doubleClickToRename": "Dubbelklik om te hernoemen",
             "setAsCrossProfileSource": "Instellen als Cross-Profile bron",
             "setAsCrossProfileDestination": "Instellen als Cross-Profile bestemming",
             "crossProfileSourceSelected": "Geselecteerd als Cross-Profile bron",

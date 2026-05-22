@@ -4114,6 +4114,7 @@
             },
             "confirmDeleteServer": "¿Eliminar el servidor \"{name}\"? Esto elimina las credenciales guardadas y no se puede deshacer.",
             "renameWithHotkey": "Renombrar (F2)",
+            "doubleClickToRename": "Doble clic para renombrar",
             "setAsCrossProfileSource": "Establecer como origen Cross-Profile",
             "setAsCrossProfileDestination": "Establecer como destino Cross-Profile",
             "crossProfileSourceSelected": "Seleccionado como origen Cross-Profile",

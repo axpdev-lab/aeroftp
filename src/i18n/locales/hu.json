@@ -4114,6 +4114,7 @@
             },
             "confirmDeleteServer": "Törli a(z) \"{name}\" szervert? Ez eltávolítja a mentett hitelesítő adatokat, és nem vonható vissza.",
             "renameWithHotkey": "Átnevezés (F2)",
+            "doubleClickToRename": "Dupla kattintás az átnevezéshez",
             "setAsCrossProfileSource": "Beállítás Cross-Profile forrásként",
             "setAsCrossProfileDestination": "Beállítás Cross-Profile célként",
             "crossProfileSourceSelected": "Kiválasztva Cross-Profile forrásként",

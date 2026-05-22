@@ -4114,6 +4114,7 @@
             },
             "confirmDeleteServer": "Usunąć serwer \"{name}\"? Spowoduje to usunięcie zapisanych danych logowania i nie można tego cofnąć.",
             "renameWithHotkey": "Zmień nazwę (F2)",
+            "doubleClickToRename": "Kliknij dwukrotnie, aby zmienić nazwę",
             "setAsCrossProfileSource": "Ustaw jako zrodlo Cross-Profile",
             "setAsCrossProfileDestination": "Ustaw jako miejsce docelowe Cross-Profile",
             "crossProfileSourceSelected": "Wybrano jako zrodlo Cross-Profile",

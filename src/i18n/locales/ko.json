@@ -4114,6 +4114,7 @@
             },
             "confirmDeleteServer": "서버 \"{name}\"을(를) 삭제하시겠습니까? 저장된 자격 증명이 제거되며 되돌릴 수 없습니다.",
             "renameWithHotkey": "이름 바꾸기 (F2)",
+            "doubleClickToRename": "이름을 바꾸려면 더블 클릭",
             "setAsCrossProfileSource": "Cross-Profile 소스로 설정",
             "setAsCrossProfileDestination": "Cross-Profile 대상으로 설정",
             "crossProfileSourceSelected": "Cross-Profile 소스로 선택됨",

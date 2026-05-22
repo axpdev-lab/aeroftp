@@ -252,6 +252,10 @@ interface ServerCardProps {
     isRenaming?: boolean;
     onRenameSubmit?: (server: ServerProfile, newName: string) => void;
     onRenameCancel?: () => void;
+    /** Enters inline rename mode. Wired to a double-click on the name so the
+     *  gesture never collides with the single-click Cross-Profile selection
+     *  on the card body. */
+    onRenameStart?: (server: ServerProfile) => void;
     isDraggable?: boolean;
     isDragging?: boolean;
     isDragTarget?: boolean;
@@ -390,6 +394,7 @@ export const ServerCard = React.memo(function ServerCard({
     isRenaming = false,
     onRenameSubmit,
     onRenameCancel,
+    onRenameStart,
     isDraggable,
     isDragging,
     isDragTarget,
@@ -548,7 +553,18 @@ export const ServerCard = React.memo(function ServerCard({
                             sizeClass="text-sm"
                         />
                     ) : (
-                        <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{server.name}</div>
+                        <div
+                            // Double-click renames; the single clicks that
+                            // compose it are swallowed here so they never
+                            // bubble to the card's Cross-Profile select
+                            // handler. The card body stays the select target.
+                            className={`text-sm font-semibold text-gray-900 dark:text-gray-100 truncate select-none ${onRenameStart ? 'cursor-text hover:text-blue-600 dark:hover:text-blue-400' : ''}`}
+                            onClick={onRenameStart ? (e) => e.stopPropagation() : undefined}
+                            onDoubleClick={onRenameStart ? (e) => { e.stopPropagation(); onRenameStart(server); } : undefined}
+                            title={onRenameStart ? t('introHub.doubleClickToRename') : undefined}
+                        >
+                            {server.name}
+                        </div>
                     )}
                     <div className="flex items-center gap-1.5 mt-0.5">
                         <ServerBadges server={server} />

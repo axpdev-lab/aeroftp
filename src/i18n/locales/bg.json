@@ -4114,6 +4114,7 @@
             },
             "confirmDeleteServer": "Изтриване на сървъра \"{name}\"? Това ще премахне запазените идентификационни данни и не може да бъде отменено.",
             "renameWithHotkey": "Преименуване (F2)",
+            "doubleClickToRename": "Двойно щракване за преименуване",
             "setAsCrossProfileSource": "Задай като източник за Cross-Profile",
             "setAsCrossProfileDestination": "Задай като дестинация за Cross-Profile",
             "crossProfileSourceSelected": "Избран като източник за Cross-Profile",

@@ -4114,6 +4114,7 @@
             },
             "confirmDeleteServer": "Supprimer le serveur \"{name}\" ? Cela supprime les identifiants enregistrés et ne peut pas être annulé.",
             "renameWithHotkey": "Renommer (F2)",
+            "doubleClickToRename": "Double-cliquer pour renommer",
             "setAsCrossProfileSource": "Définir comme source Cross-Profile",
             "setAsCrossProfileDestination": "Définir comme destination Cross-Profile",
             "crossProfileSourceSelected": "Sélectionné comme source Cross-Profile",
