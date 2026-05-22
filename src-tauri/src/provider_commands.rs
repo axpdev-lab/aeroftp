@@ -7,7 +7,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use serde::{Deserialize, Serialize};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
 use tokio::sync::Mutex;
@@ -23,8 +23,9 @@ use crate::providers::{
     RemoteEntry, ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult, SharePermission,
     StorageInfo, StorageProvider,
 };
+use crate::transfer_dag::{DagObserver, TransferDagBuilder};
 use crate::transfer_domain::{TransferBatchConfig, TransferDirection, TransferEntry};
-use crate::transfer_event_sink::{AppHandleSink, TransferEventSink};
+use crate::transfer_event_sink::{AppHandleSink, GuiDagObserver, TransferEventSink};
 use crate::transfer_orchestrator::{execute_batch, ProgressObserver, TransferBatch};
 use crate::transfer_settings::{
     resolve_provider_transfer_settings, ResolvedTransferSettings, TransferSettingsInput,
@@ -905,6 +906,146 @@ pub async fn provider_pwd(state: State<'_, ProviderState>) -> Result<String, Str
         .map_err(|e| format!("Failed to get working directory: {}", e))
 }
 
+/// DAG-ENGINE phase 1: run a plain single-file download through the graph
+/// engine and emit the GUI completion / error events.
+///
+/// Reached only with the `transfer_engine_dag_single_file` flag on and only
+/// for the plain classic leaf (no delta consumed the transfer, no segmented
+/// engine ran, no resume offset). The `"start"` and `"progress"` events were
+/// already emitted by the shared pre-DAG code and the per-byte callback; this
+/// function owns only the terminal `"complete"` (via [`GuiDagObserver`]) and
+/// `"error"` (emitted here, where the typed error is in hand) events. The
+/// emitted events are byte-identical with the legacy single-file path.
+#[allow(clippy::too_many_arguments)]
+async fn run_dag_download_leaf(
+    app: AppHandle,
+    provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
+    transfer_id: String,
+    filename: String,
+    remote_path: String,
+    local_path: String,
+    modified: Option<String>,
+    progress_cb: Option<Box<dyn Fn(u64, u64) + Send>>,
+    file_size: u64,
+    delta_fallback_reason: Option<String>,
+) -> Result<String, String> {
+    let built = TransferDagBuilder::single_file(crate::transfer_dag::TransferDirection::Download);
+    // Seed with the discovered remote size; the transfer node overwrites it
+    // with the real on-disk size once the download succeeds.
+    let report_size = Arc::new(AtomicU64::new(file_size));
+    let sink: Arc<dyn TransferEventSink> = Arc::new(AppHandleSink::new(app.clone()));
+    let observer: Arc<dyn DagObserver> = Arc::new(GuiDagObserver::new(
+        sink,
+        transfer_id.clone(),
+        filename.clone(),
+        "download".to_string(),
+        built.emit_progress,
+        Arc::clone(&report_size),
+        delta_fallback_reason,
+    ));
+
+    match crate::transfer_dag_single_file::execute_single_file_dag(
+        &built,
+        provider,
+        remote_path,
+        local_path,
+        modified,
+        progress_cb,
+        observer,
+        report_size,
+    )
+    .await
+    {
+        Ok(()) => {
+            info!("Download completed: {}", filename);
+            Ok(format!("Downloaded: {}", filename))
+        }
+        Err(e) => {
+            let _ = app.emit(
+                "transfer_event",
+                crate::TransferEvent {
+                    event_type: "error".to_string(),
+                    transfer_id,
+                    filename: filename.clone(),
+                    direction: "download".to_string(),
+                    message: Some(format!("Download failed: {}", e)),
+                    progress: None,
+                    path: None,
+                    delta_stats: None,
+                    fallback_reason: None,
+                },
+            );
+            Err(format!("Download failed: {}", e))
+        }
+    }
+}
+
+/// DAG-ENGINE phase 1: run a plain single-file upload through the graph
+/// engine and emit the GUI completion / error events. The upload mirror of
+/// [`run_dag_download_leaf`]; GitHub keeps its dedicated commit-based path.
+#[allow(clippy::too_many_arguments)]
+async fn run_dag_upload_leaf(
+    app: AppHandle,
+    provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
+    transfer_id: String,
+    filename: String,
+    local_path: String,
+    remote_path: String,
+    progress_cb: Option<Box<dyn Fn(u64, u64) + Send>>,
+    file_size: u64,
+    delta_fallback_reason: Option<String>,
+) -> Result<String, String> {
+    let built = TransferDagBuilder::single_file(crate::transfer_dag::TransferDirection::Upload);
+    // The upload node does not touch the report size: the local file size is
+    // the value the legacy completion event reports.
+    let report_size = Arc::new(AtomicU64::new(file_size));
+    let sink: Arc<dyn TransferEventSink> = Arc::new(AppHandleSink::new(app.clone()));
+    let observer: Arc<dyn DagObserver> = Arc::new(GuiDagObserver::new(
+        sink,
+        transfer_id.clone(),
+        filename.clone(),
+        "upload".to_string(),
+        built.emit_progress,
+        Arc::clone(&report_size),
+        delta_fallback_reason,
+    ));
+
+    match crate::transfer_dag_single_file::execute_single_file_dag(
+        &built,
+        provider,
+        remote_path,
+        local_path,
+        None,
+        progress_cb,
+        observer,
+        report_size,
+    )
+    .await
+    {
+        Ok(()) => {
+            info!("Upload completed: {}", filename);
+            Ok(format!("Uploaded: {}", filename))
+        }
+        Err(e) => {
+            let _ = app.emit(
+                "transfer_event",
+                crate::TransferEvent {
+                    event_type: "error".to_string(),
+                    transfer_id,
+                    filename: filename.clone(),
+                    direction: "upload".to_string(),
+                    message: Some(format!("Upload failed: {}", e)),
+                    progress: None,
+                    path: None,
+                    delta_stats: None,
+                    fallback_reason: None,
+                },
+            );
+            Err(format!("Upload failed: {}", e))
+        }
+    }
+}
+
 /// Download a file from the remote server
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
@@ -1195,6 +1336,34 @@ pub async fn provider_download_file(
                 },
             );
         }));
+    }
+
+    // DAG-ENGINE phase 1: route the plain classic single-file leaf through
+    // the graph engine when the flag is on. The segmented engine and a resume
+    // offset keep their legacy code: they are not the plain leaf. With the
+    // flag off this branch is never entered and the legacy path below runs
+    // verbatim, so flag-off is provably diff-0.
+    if crate::transfer_dag_single_file::dag_single_file_enabled()
+        && segmented_result.is_none()
+        && partial_offset == 0
+    {
+        let provider_arc = Arc::clone(&state.provider);
+        // Release the command-level guard so the DAG transfer node can lock
+        // the same provider mutex from its spawned task.
+        drop(provider_lock);
+        return run_dag_download_leaf(
+            app,
+            provider_arc,
+            transfer_id,
+            filename,
+            remote_path,
+            local_path,
+            modified,
+            progress_cb,
+            file_size,
+            delta_fallback_reason,
+        )
+        .await;
     }
 
     let result = if let Some(Ok(())) = &segmented_result {
@@ -2369,6 +2538,30 @@ pub async fn provider_upload_file(
                 delta_fallback_reason = delta_result.fallback_reason;
             }
         }
+    }
+
+    // DAG-ENGINE phase 1: route the plain classic single-file upload through
+    // the graph engine when the flag is on. GitHub keeps its dedicated
+    // commit-based upload (a different API shape, not the plain leaf). With
+    // the flag off this branch is never entered and the legacy path below
+    // runs verbatim.
+    if crate::transfer_dag_single_file::dag_single_file_enabled()
+        && provider.provider_type() != ProviderType::GitHub
+    {
+        let provider_arc = Arc::clone(&state.provider);
+        drop(provider_lock);
+        return run_dag_upload_leaf(
+            app,
+            provider_arc,
+            transfer_id,
+            filename,
+            local_path,
+            remote_path,
+            progress_cb,
+            file_size,
+            delta_fallback_reason,
+        )
+        .await;
     }
 
     let result = if provider.provider_type() == ProviderType::GitHub {

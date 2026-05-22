@@ -29,7 +29,9 @@
 #![cfg(unix)]
 
 use std::path::{Path, PathBuf};
-use std::time::Instant;
+use std::sync::atomic::AtomicU64;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use ftp_client_gui_lib::credential_store::CredentialStore;
 use ftp_client_gui_lib::cross_profile_transfer::{
@@ -48,9 +50,13 @@ use ftp_client_gui_lib::sync::{
     sync_tree_core, ConflictMode, DeltaPolicy, NoopProgressSink, SyncDirection, SyncOptions,
 };
 use ftp_client_gui_lib::sync_core::scan::ScanOptions;
-use ftp_client_gui_lib::transfer_dag::Capability;
+use ftp_client_gui_lib::transfer_dag::{
+    Capability, DagObserver, NoopDagObserver, TransferDagBuilder, TransferDirection,
+};
+use ftp_client_gui_lib::transfer_dag_single_file::execute_single_file_dag;
 use secrecy::SecretString;
 use sha2::{Digest, Sha256};
+use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
@@ -993,6 +999,241 @@ async fn gtc_gui_s3_segmented_byte_identical_vs_single_stream() {
         speedup,
     );
 
+    let _ = base.delete(S3_REMOTE_BIG).await;
+    let _ = base.disconnect().await;
+    let _ = std::fs::remove_dir_all(&dst_root);
+    let _ = std::fs::remove_dir_all(&src_dir);
+}
+
+// ---------------------------------------------------------------------
+// DAG-ENGINE phase 1: single-file convergence
+//
+// These tests prove the byte-identical contract for the flag-on path:
+// `execute_single_file_dag` (the seven-node graph through `execute_dag`)
+// must produce the same bytes as a bare `provider.download`, the legacy
+// flag-off leaf. They are the parity oracle for the phase-1 closure gate.
+//
+// Run:
+// ```bash
+// cargo test --release --test integration_gtc_wan_segmented dag \
+//     -- --ignored --nocapture --test-threads=1
+// ```
+// ---------------------------------------------------------------------
+
+/// Run a plain single-file download through the phase-1 DAG path and hand
+/// the provider back. Mirrors exactly what the flag-on GUI / CLI routing
+/// does for the plain classic leaf: the same `provider.download`, behind
+/// the graph schedule, with a silent observer.
+async fn dag_download_once(
+    provider: Box<dyn StorageProvider>,
+    remote: &str,
+    local: &str,
+) -> (Box<dyn StorageProvider>, Result<(), String>) {
+    let arc = Arc::new(Mutex::new(Some(provider)));
+    let built = TransferDagBuilder::single_file(TransferDirection::Download);
+    let report = Arc::new(AtomicU64::new(0));
+    let observer: Arc<dyn DagObserver> = Arc::new(NoopDagObserver);
+    let res = execute_single_file_dag(
+        &built,
+        Arc::clone(&arc),
+        remote.to_string(),
+        local.to_string(),
+        None,
+        None,
+        observer,
+        report,
+    )
+    .await
+    .map_err(|e| e.to_string());
+    let provider = arc
+        .lock()
+        .await
+        .take()
+        .expect("provider is returned by the single-file DAG");
+    (provider, res)
+}
+
+/// Print one harness-readable parity line for a DAG-vs-legacy cell.
+fn report_dag_cell(label: &str, legacy: Duration, dag: Duration) {
+    let speedup = legacy.as_secs_f64() / dag.as_secs_f64().max(1e-6);
+    let overhead = (dag.as_secs_f64() / legacy.as_secs_f64().max(1e-6) - 1.0) * 100.0;
+    eprintln!(
+        "DAG-ENGINE phase1 {label}: 64MiB legacy {:.2}s  dag {:.2}s  \
+         speedup {:.2}x  dag-overhead {:+.1}%  byte-id=YES",
+        legacy.as_secs_f64(),
+        dag.as_secs_f64(),
+        speedup,
+        overhead,
+    );
+}
+
+#[tokio::test]
+#[ignore = "live WAN: DAG-ENGINE phase-1 SFTP single-file byte-identity (vault required)"]
+async fn gtc_dag_sftp_single_file_byte_identical() {
+    let Some(creds) = load_sftp_creds() else {
+        eprintln!("SKIP: SFTP credentials unavailable in vault");
+        return;
+    };
+
+    let src_dir = std::env::temp_dir().join("gtc-dag-sftp-src");
+    let _ = std::fs::remove_dir_all(&src_dir);
+    std::fs::create_dir_all(&src_dir).unwrap();
+    let src = src_dir.join("64MiB.bin");
+    std::fs::write(&src, random_buf(0xDA9D_5F11, FILE_BYTES)).unwrap();
+    let src_sha = sha256_file(&src);
+
+    let mut base = SftpProvider::new(sftp_config(creds));
+    base.connect().await.expect("base SFTP connect");
+    seed_remote(&mut base, &src).await.expect("seed SFTP");
+
+    let dst_root = std::env::temp_dir().join("gtc-dag-sftp-dst");
+    let _ = std::fs::remove_dir_all(&dst_root);
+    std::fs::create_dir_all(&dst_root).unwrap();
+
+    // Legacy baseline: a bare provider.download (the flag-off leaf).
+    let dst_legacy = dst_root.join("legacy.bin");
+    let mut legacy = base.clone_for_transfer().expect("clone SFTP legacy worker");
+    let t_legacy = Instant::now();
+    legacy
+        .download(REMOTE_BIG, dst_legacy.to_str().unwrap(), None)
+        .await
+        .expect("legacy SFTP download");
+    let e_legacy = t_legacy.elapsed();
+    assert_eq!(sha256_file(&dst_legacy), src_sha, "legacy SFTP sha mismatch");
+
+    // DAG path: the same download routed through execute_single_file_dag.
+    let dst_dag = dst_root.join("dag.bin");
+    let dag_worker = base.clone_for_transfer().expect("clone SFTP DAG worker");
+    let t_dag = Instant::now();
+    let (mut dag_worker, res) =
+        dag_download_once(dag_worker, REMOTE_BIG, dst_dag.to_str().unwrap()).await;
+    let e_dag = t_dag.elapsed();
+    res.expect("DAG SFTP download must succeed");
+    assert_eq!(
+        sha256_file(&dst_dag),
+        src_sha,
+        "DAG SFTP download must be byte-identical to the source",
+    );
+
+    report_dag_cell("SFTP @ axpbuntu", e_legacy, e_dag);
+
+    let _ = dag_worker.disconnect().await;
+    let _ = legacy.disconnect().await;
+    let _ = base.delete(REMOTE_BIG).await;
+    let _ = base.disconnect().await;
+    let _ = std::fs::remove_dir_all(&dst_root);
+    let _ = std::fs::remove_dir_all(&src_dir);
+}
+
+#[tokio::test]
+#[ignore = "live WAN: DAG-ENGINE phase-1 FTP single-file byte-identity (vault required)"]
+async fn gtc_dag_ftp_single_file_byte_identical() {
+    let Some(password) = load_ftp_password() else {
+        eprintln!("SKIP: FTP password unavailable in vault");
+        return;
+    };
+
+    let src_dir = std::env::temp_dir().join("gtc-dag-ftp-src");
+    let _ = std::fs::remove_dir_all(&src_dir);
+    std::fs::create_dir_all(&src_dir).unwrap();
+    let src = src_dir.join("64MiB.bin");
+    std::fs::write(&src, random_buf(0xF7B0_0DA6, FILE_BYTES)).unwrap();
+    let src_sha = sha256_file(&src);
+
+    let mut base = FtpProvider::new(ftp_config(password));
+    base.connect().await.expect("base FTP connect");
+    seed_remote_ftp(&mut base, &src).await.expect("seed FTP");
+
+    let dst_root = std::env::temp_dir().join("gtc-dag-ftp-dst");
+    let _ = std::fs::remove_dir_all(&dst_root);
+    std::fs::create_dir_all(&dst_root).unwrap();
+
+    let dst_legacy = dst_root.join("legacy.bin");
+    let mut legacy = base.clone_for_transfer().expect("clone FTP legacy worker");
+    let t_legacy = Instant::now();
+    legacy
+        .download(FTP_REMOTE_BIG, dst_legacy.to_str().unwrap(), None)
+        .await
+        .expect("legacy FTP download");
+    let e_legacy = t_legacy.elapsed();
+    assert_eq!(sha256_file(&dst_legacy), src_sha, "legacy FTP sha mismatch");
+
+    let dst_dag = dst_root.join("dag.bin");
+    let dag_worker = base.clone_for_transfer().expect("clone FTP DAG worker");
+    let t_dag = Instant::now();
+    let (mut dag_worker, res) =
+        dag_download_once(dag_worker, FTP_REMOTE_BIG, dst_dag.to_str().unwrap()).await;
+    let e_dag = t_dag.elapsed();
+    res.expect("DAG FTP download must succeed");
+    assert_eq!(
+        sha256_file(&dst_dag),
+        src_sha,
+        "DAG FTP download must be byte-identical to the source",
+    );
+
+    report_dag_cell("FTP @ axpbuntu", e_legacy, e_dag);
+
+    let _ = dag_worker.disconnect().await;
+    let _ = legacy.disconnect().await;
+    let _ = base.delete(FTP_REMOTE_BIG).await;
+    let _ = base.disconnect().await;
+    let _ = std::fs::remove_dir_all(&dst_root);
+    let _ = std::fs::remove_dir_all(&src_dir);
+}
+
+#[tokio::test]
+#[ignore = "live WAN: DAG-ENGINE phase-1 S3 single-file byte-identity against axpbuntu MinIO (vault required)"]
+async fn gtc_dag_s3_single_file_byte_identical() {
+    let Some(secret) = load_s3_secret() else {
+        eprintln!("SKIP: S3 secret unavailable in vault");
+        return;
+    };
+
+    let src_dir = std::env::temp_dir().join("gtc-dag-s3-src");
+    let _ = std::fs::remove_dir_all(&src_dir);
+    std::fs::create_dir_all(&src_dir).unwrap();
+    let src = src_dir.join("64MiB.bin");
+    std::fs::write(&src, random_buf(0x53D0_0DA6, FILE_BYTES)).unwrap();
+    let src_sha = sha256_file(&src);
+
+    let mut base = S3Provider::new(s3_config(secret)).expect("S3Provider::new");
+    base.connect().await.expect("base S3 connect");
+    let _ = base.delete(S3_REMOTE_BIG).await;
+    base.upload(src.to_str().unwrap(), S3_REMOTE_BIG, None)
+        .await
+        .expect("seed S3 upload");
+
+    let dst_root = std::env::temp_dir().join("gtc-dag-s3-dst");
+    let _ = std::fs::remove_dir_all(&dst_root);
+    std::fs::create_dir_all(&dst_root).unwrap();
+
+    let dst_legacy = dst_root.join("legacy.bin");
+    let mut legacy = base.clone_for_transfer().expect("clone S3 legacy worker");
+    let t_legacy = Instant::now();
+    legacy
+        .download(S3_REMOTE_BIG, dst_legacy.to_str().unwrap(), None)
+        .await
+        .expect("legacy S3 download");
+    let e_legacy = t_legacy.elapsed();
+    assert_eq!(sha256_file(&dst_legacy), src_sha, "legacy S3 sha mismatch");
+
+    let dst_dag = dst_root.join("dag.bin");
+    let dag_worker = base.clone_for_transfer().expect("clone S3 DAG worker");
+    let t_dag = Instant::now();
+    let (mut dag_worker, res) =
+        dag_download_once(dag_worker, S3_REMOTE_BIG, dst_dag.to_str().unwrap()).await;
+    let e_dag = t_dag.elapsed();
+    res.expect("DAG S3 download must succeed");
+    assert_eq!(
+        sha256_file(&dst_dag),
+        src_sha,
+        "DAG S3 download must be byte-identical to the source",
+    );
+
+    report_dag_cell("S3 @ axpbuntu MinIO", e_legacy, e_dag);
+
+    let _ = dag_worker.disconnect().await;
+    let _ = legacy.disconnect().await;
     let _ = base.delete(S3_REMOTE_BIG).await;
     let _ = base.disconnect().await;
     let _ = std::fs::remove_dir_all(&dst_root);
