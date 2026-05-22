@@ -4258,7 +4258,10 @@
             "description": "接続を続行するには、認証アプリの6桁のコードを入力してください。",
             "hint": "認証アプリ(Authy、Google Authenticator など)を開き、現在のコードをコピーしてください。",
             "connect": "接続",
-            "connecting": "接続中..."
+            "connecting": "接続中...",
+            "autoRetryCountdown": "新しい認証コードを待機中、{seconds}秒後に{account}へ再接続します",
+            "autoRetryFailedTitle": "二要素認証に失敗しました",
+            "autoRetryFailedBody": "AeroFTPは保存された2FAシークレットで認証できませんでした。プロフィールの編集フォームを開き、2FAシークレットを確認してください。"
         },
         "table": {
             "manageColumns": "列を管理",

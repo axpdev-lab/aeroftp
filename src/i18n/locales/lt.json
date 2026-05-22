@@ -4258,7 +4258,10 @@
             "description": "Norėdami tęsti prisijungimą, įveskite 6 skaitmenų kodą iš autentifikavimo programėlės.",
             "hint": "Atidarykite autentifikavimo programėlę (Authy, Google Authenticator ir kt.) ir nukopijuokite dabartinį kodą.",
             "connect": "Prisijungti",
-            "connecting": "Jungiamasi..."
+            "connecting": "Jungiamasi...",
+            "autoRetryCountdown": "Laukiama naujo autentifikatoriaus kodo, iš naujo jungiamasi prie {account} po {seconds} s",
+            "autoRetryFailedTitle": "Dviejų veiksnių autentifikavimas nepavyko",
+            "autoRetryFailedBody": "„AeroFTP“ nepavyko autentifikuoti naudojant įrašytą 2FA paslaptį. Atidarykite profilio redagavimo formą ir patikrinkite 2FA paslaptį."
         },
         "table": {
             "manageColumns": "Tvarkyti stulpelius",

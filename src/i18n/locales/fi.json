@@ -4258,7 +4258,10 @@
             "description": "Jatka yhteyden muodostamista syöttämällä 6-numeroinen koodi todennussovelluksestasi.",
             "hint": "Avaa todennussovelluksesi (Authy, Google Authenticator jne.) ja kopioi nykyinen koodi.",
             "connect": "Yhdistä",
-            "connecting": "Yhdistetään..."
+            "connecting": "Yhdistetään...",
+            "autoRetryCountdown": "Odotetaan uutta todennuskoodia, yhdistetään uudelleen tiliin {account} {seconds} s kuluttua",
+            "autoRetryFailedTitle": "Kaksivaiheinen todennus epäonnistui",
+            "autoRetryFailedBody": "AeroFTP ei voinut todentaa tallennetulla 2FA-salaisuudella. Avaa profiilin muokkauslomake ja tarkista 2FA-salaisuus."
         },
         "table": {
             "manageColumns": "Hallitse sarakkeita",

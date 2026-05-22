@@ -4258,7 +4258,10 @@
             "description": "Wprowadź 6-cyfrowy kod z aplikacji uwierzytelniającej, aby kontynuować łączenie.",
             "hint": "Otwórz aplikację uwierzytelniającą (Authy, Google Authenticator itp.) i skopiuj bieżący kod.",
             "connect": "Połącz",
-            "connecting": "Łączenie..."
+            "connecting": "Łączenie...",
+            "autoRetryCountdown": "Oczekiwanie na nowy kod uwierzytelniający, ponowne łączenie z kontem {account} za {seconds} s",
+            "autoRetryFailedTitle": "Uwierzytelnianie dwuskładnikowe nie powiodło się",
+            "autoRetryFailedBody": "AeroFTP nie mógł uwierzytelnić się przy użyciu zapisanego sekretu 2FA. Otwórz formularz edycji profilu i zweryfikuj sekret 2FA."
         },
         "table": {
             "manageColumns": "Zarządzaj kolumnami",

@@ -4258,7 +4258,10 @@
             "description": "Indtast den 6-cifrede kode fra din autentificeringsapp for at fortsætte forbindelsen.",
             "hint": "Åbn din autentificeringsapp (Authy, Google Authenticator osv.) og kopiér den aktuelle kode.",
             "connect": "Tilslut",
-            "connecting": "Tilslutter..."
+            "connecting": "Tilslutter...",
+            "autoRetryCountdown": "Venter på en ny godkendelseskode, genopretter forbindelse til {account} om {seconds} s",
+            "autoRetryFailedTitle": "Tofaktorgodkendelse mislykkedes",
+            "autoRetryFailedBody": "AeroFTP kunne ikke godkende med den gemte 2FA-hemmelighed. Åbn profilens redigeringsformular, og kontrollér 2FA-hemmeligheden."
         },
         "table": {
             "manageColumns": "Administrer kolonner",

@@ -4258,7 +4258,10 @@
             "description": "Nhập mã 6 chữ số từ ứng dụng xác thực của bạn để tiếp tục kết nối.",
             "hint": "Mở ứng dụng xác thực của bạn (Authy, Google Authenticator, v.v.) và sao chép mã hiện tại.",
             "connect": "Kết nối",
-            "connecting": "Đang kết nối..."
+            "connecting": "Đang kết nối...",
+            "autoRetryCountdown": "Đang chờ mã xác thực mới, kết nối lại với {account} sau {seconds} giây",
+            "autoRetryFailedTitle": "Xác thực hai yếu tố không thành công",
+            "autoRetryFailedBody": "AeroFTP không thể xác thực bằng khóa bí mật 2FA đã lưu. Mở biểu mẫu Chỉnh sửa của hồ sơ và kiểm tra khóa bí mật 2FA."
         },
         "table": {
             "manageColumns": "Quản lý cột",

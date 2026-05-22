@@ -4258,7 +4258,10 @@
             "description": "Masukkan kod 6 digit daripada aplikasi pengesah anda untuk meneruskan sambungan.",
             "hint": "Buka aplikasi pengesah anda (Authy, Google Authenticator, dll.) dan salin kod semasa.",
             "connect": "Sambung",
-            "connecting": "Menyambung..."
+            "connecting": "Menyambung...",
+            "autoRetryCountdown": "Menunggu kod pengesah baharu, menyambung semula ke {account} dalam {seconds} saat",
+            "autoRetryFailedTitle": "Pengesahan dua faktor gagal",
+            "autoRetryFailedBody": "AeroFTP tidak dapat mengesahkan dengan rahsia 2FA yang disimpan. Buka borang Edit profil dan sahkan Rahsia 2FA."
         },
         "table": {
             "manageColumns": "Urus lajur",

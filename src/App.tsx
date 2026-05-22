@@ -4408,6 +4408,21 @@ interface UpdateVerificationInfo {
     loading: boolean;
   } | null>(null);
 
+  // Auto-retry banner for the saved-2FA-secret reconnect case (issue #128).
+  // When a profile stores a totp_secret the backend regenerates the code
+  // itself and ignores any manually typed code, so a quick disconnect /
+  // reconnect inside the same 30s TOTP window fails with a reused code.
+  // Instead of a misleading manual prompt, wait for the next window and
+  // retry the connect once with a freshly generated code.
+  const [totpAutoRetry, setTotpAutoRetry] = useState<{
+    accountLabel: string;
+    secondsLeft: number;
+    params: ConnectionParams;
+  } | null>(null);
+  // Caps the saved-secret auto-retry at a single attempt: a second 2FA
+  // failure means the stored secret itself is wrong, not a reused code.
+  const totpRetryCountRef = useRef(0);
+
   /**
    * Pattern-match an error from a provider_connect failure and, if it looks
    * like a 2FA challenge from MEGA / Filen / Internxt, open the TOTP prompt.
@@ -4427,6 +4442,26 @@ interface UpdateVerificationInfo {
     // Filen v3 returns: "Please enter your Two Factor Authentication code."
     const matches2fa = /two[\s-]?factor|2fa|EMFAREQUIRED|MFA required|enter_2fa|wrong_2fa/i.test(msg);
     if (!matches2fa) return false;
+
+    // A saved 2FA secret means the backend derives the code itself and
+    // ignores any manually entered one, so the manual prompt is misleading
+    // here: a wrong code appears to "work" once the window rolls over, a
+    // right one fails inside it. The only real cause is a code reused inside
+    // the same 30s window (quick disconnect/reconnect). Wait for the next
+    // window and retry the connect once with a freshly derived code.
+    const savedSecret = params.options?.totp_secret;
+    if (savedSecret) {
+      if (totpRetryCountRef.current >= 1) {
+        totpRetryCountRef.current = 0;
+        setTotpAutoRetry(null);
+        notify.error(t('twoFactor.autoRetryFailedTitle'), t('twoFactor.autoRetryFailedBody'));
+        return true;
+      }
+      totpRetryCountRef.current += 1;
+      void scheduleTotpAutoRetry(params, accountLabel, savedSecret);
+      return true;
+    }
+
     setTwoFactorPrompt({
       open: true,
       providerKey: protocol,
@@ -4436,6 +4471,27 @@ interface UpdateVerificationInfo {
       loading: false,
     });
     return true;
+  };
+
+  /** Schedules a single auto-retry of a connect that failed 2FA because a
+   *  saved TOTP secret produced a code reused inside its 30s window. Waits
+   *  until the window rolls over, then reconnects with a fresh code. */
+  const scheduleTotpAutoRetry = async (
+    params: ConnectionParams,
+    accountLabel: string,
+    secret: string,
+  ) => {
+    let waitSeconds = 30;
+    try {
+      const preview = await invoke<{ code: string; seconds_remaining: number }>(
+        'preview_provider_totp',
+        { secret },
+      );
+      if (preview.seconds_remaining > 0) waitSeconds = preview.seconds_remaining + 2;
+    } catch {
+      // Keep the 30s worst-case default if the preview call fails.
+    }
+    setTotpAutoRetry({ accountLabel, secondsLeft: waitSeconds, params });
   };
 
   /** Modal callback. Closes the prompt; if the retry triggers another 2FA
@@ -4452,6 +4508,22 @@ interface UpdateVerificationInfo {
     setTwoFactorPrompt(null);
     await connectToFtp(newParams);
   };
+
+  // Drives the saved-secret auto-retry countdown. Ticks once a second and,
+  // when it reaches zero, reconnects with a freshly derived TOTP code.
+  useEffect(() => {
+    if (!totpAutoRetry) return;
+    if (totpAutoRetry.secondsLeft <= 0) {
+      const retryParams = totpAutoRetry.params;
+      setTotpAutoRetry(null);
+      void connectToFtp(retryParams);
+      return;
+    }
+    const id = window.setTimeout(() => {
+      setTotpAutoRetry((prev) => (prev ? { ...prev, secondsLeft: prev.secondsLeft - 1 } : null));
+    }, 1000);
+    return () => window.clearTimeout(id);
+  }, [totpAutoRetry]);
 
   // FTP operations
   const connectToFtp = async (overrideParams?: ConnectionParams) => {
@@ -4603,6 +4675,8 @@ interface UpdateVerificationInfo {
         const connHost = effectiveParams.server || getProviderHostFallback(protocol, effectiveParams.username);
         const { resolvedIp: connIp, connectingLogId } = await logConnectionSteps(connHost, effectiveParams.port || 443, protocol);
         await invoke('provider_connect', { params: providerParams });
+        // 2FA accepted: clear the saved-secret auto-retry budget (issue #128).
+        totpRetryCountRef.current = 0;
         if (connectingLogId) humanLog.updateEntry(connectingLogId, { status: 'success', message: t('activity.connected_to', { ip: connIp || connHost, port: String(effectiveParams.port || 443) }) });
         // Flip the My Servers card health dot to green immediately on a confirmed
         // connect, so users don't see a stale "unknown" indicator while waiting
@@ -11810,6 +11884,20 @@ interface UpdateVerificationInfo {
             onSubmit={handleTwoFactorSubmit}
             onCancel={() => setTwoFactorPrompt(null)}
           />
+        )}
+        {totpAutoRetry && (
+          <div className="fixed bottom-4 right-4 z-50 flex items-center gap-3 px-4 py-3 max-w-sm bg-white dark:bg-gray-800 border border-emerald-200 dark:border-emerald-800/50 rounded-lg shadow-xl animate-scale-in">
+            <Loader2 size={18} className="text-emerald-600 dark:text-emerald-400 animate-spin shrink-0" />
+            <p className="flex-1 text-sm text-gray-700 dark:text-gray-200 min-w-0">
+              {t('twoFactor.autoRetryCountdown', { account: totpAutoRetry.accountLabel, seconds: totpAutoRetry.secondsLeft })}
+            </p>
+            <button
+              onClick={() => { totpRetryCountRef.current = 0; setTotpAutoRetry(null); }}
+              className="shrink-0 px-2.5 py-1 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+            >
+              {t('common.cancel')}
+            </button>
+          </div>
         )}
         <OverwriteDialog
           isOpen={overwriteDialog.isOpen}

@@ -4258,7 +4258,10 @@
             "description": "Insira o código de 6 dígitos do seu aplicativo autenticador para continuar a conexão.",
             "hint": "Abra seu aplicativo autenticador (Authy, Google Authenticator, etc.) e copie o código atual.",
             "connect": "Conectar",
-            "connecting": "Conectando..."
+            "connecting": "Conectando...",
+            "autoRetryCountdown": "Aguardando um novo código do autenticador, reconectando a {account} em {seconds} s",
+            "autoRetryFailedTitle": "Falha na autenticação de dois fatores",
+            "autoRetryFailedBody": "O AeroFTP não conseguiu autenticar com o segredo 2FA salvo. Abra o formulário de edição do perfil e verifique o segredo 2FA."
         },
         "table": {
             "manageColumns": "Gerenciar colunas",

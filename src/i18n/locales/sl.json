@@ -4258,7 +4258,10 @@
             "description": "Za nadaljevanje povezovanja vnesite 6-mestno kodo iz aplikacije za preverjanje pristnosti.",
             "hint": "Odprite aplikacijo za preverjanje pristnosti (Authy, Google Authenticator itd.) in kopirajte trenutno kodo.",
             "connect": "Poveži",
-            "connecting": "Povezovanje..."
+            "connecting": "Povezovanje...",
+            "autoRetryCountdown": "Čakanje na novo kodo overitelja, ponovno povezovanje z računom {account} čez {seconds} s",
+            "autoRetryFailedTitle": "Dvostopenjsko preverjanje pristnosti ni uspelo",
+            "autoRetryFailedBody": "AeroFTP se ni mogel overiti s shranjeno skrivnostjo 2FA. Odprite obrazec za urejanje profila in preverite skrivnost 2FA."
         },
         "table": {
             "manageColumns": "Upravljanje stolpcev",

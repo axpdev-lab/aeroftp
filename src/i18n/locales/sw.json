@@ -4258,7 +4258,10 @@
             "description": "Weka msimbo wa tarakimu 6 kutoka kwa programu yako ya uthibitishaji ili kuendelea kuunganisha.",
             "hint": "Fungua programu yako ya uthibitishaji (Authy, Google Authenticator, n.k.) na nakili msimbo wa sasa.",
             "connect": "Unganisha",
-            "connecting": "Inaunganisha..."
+            "connecting": "Inaunganisha...",
+            "autoRetryCountdown": "Inasubiri msimbo mpya wa kithibitishaji, inaunganisha tena kwenye {account} baada ya sekunde {seconds}",
+            "autoRetryFailedTitle": "Uthibitishaji wa hatua mbili umeshindwa",
+            "autoRetryFailedBody": "AeroFTP haikuweza kuthibitisha kwa kutumia siri ya 2FA iliyohifadhiwa. Fungua fomu ya Kuhariri ya wasifu na uthibitishe Siri ya 2FA."
         },
         "table": {
             "manageColumns": "Dhibiti safuwima",

@@ -4258,7 +4258,10 @@
             "description": "Adja meg a hitelesítő alkalmazás 6 jegyű kódját a kapcsolódás folytatásához.",
             "hint": "Nyissa meg a hitelesítő alkalmazást (Authy, Google Authenticator stb.), és másolja ki az aktuális kódot.",
             "connect": "Kapcsolódás",
-            "connecting": "Kapcsolódás..."
+            "connecting": "Kapcsolódás...",
+            "autoRetryCountdown": "Várakozás új hitelesítő kódra, újracsatlakozás a(z) {account} fiókhoz {seconds} mp múlva",
+            "autoRetryFailedTitle": "A kétlépcsős hitelesítés sikertelen",
+            "autoRetryFailedBody": "Az AeroFTP nem tudott hitelesíteni a mentett 2FA titokkal. Nyissa meg a profil Szerkesztés űrlapját, és ellenőrizze a 2FA titkot."
         },
         "table": {
             "manageColumns": "Oszlopok kezelése",

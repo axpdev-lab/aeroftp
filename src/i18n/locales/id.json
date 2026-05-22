@@ -4258,7 +4258,10 @@
             "description": "Masukkan kode 6 digit dari aplikasi autentikator Anda untuk melanjutkan koneksi.",
             "hint": "Buka aplikasi autentikator Anda (Authy, Google Authenticator, dll.) dan salin kode saat ini.",
             "connect": "Hubungkan",
-            "connecting": "Menghubungkan..."
+            "connecting": "Menghubungkan...",
+            "autoRetryCountdown": "Menunggu kode autentikator baru, menyambungkan kembali ke {account} dalam {seconds} dtk",
+            "autoRetryFailedTitle": "Autentikasi dua faktor gagal",
+            "autoRetryFailedBody": "AeroFTP tidak dapat melakukan autentikasi dengan rahasia 2FA yang tersimpan. Buka formulir Edit profil dan verifikasi Rahasia 2FA."
         },
         "table": {
             "manageColumns": "Kelola kolom",

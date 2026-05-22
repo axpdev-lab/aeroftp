@@ -4258,7 +4258,10 @@
             "description": "Geben Sie den 6-stelligen Code aus Ihrer Authenticator-App ein, um die Verbindung fortzusetzen.",
             "hint": "Öffnen Sie Ihre Authenticator-App (Authy, Google Authenticator usw.) und kopieren Sie den aktuellen Code.",
             "connect": "Verbinden",
-            "connecting": "Verbinden..."
+            "connecting": "Verbinden...",
+            "autoRetryCountdown": "Warten auf einen neuen Authentifizierungscode, erneute Verbindung mit {account} in {seconds} s",
+            "autoRetryFailedTitle": "Zwei-Faktor-Authentifizierung fehlgeschlagen",
+            "autoRetryFailedBody": "AeroFTP konnte sich nicht mit dem gespeicherten 2FA-Geheimnis authentifizieren. Öffnen Sie das Bearbeitungsformular des Profils und überprüfen Sie das 2FA-Geheimnis."
         },
         "table": {
             "manageColumns": "Spalten verwalten",

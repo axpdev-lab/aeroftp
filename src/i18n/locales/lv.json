@@ -4258,7 +4258,10 @@
             "description": "Lai turpinātu savienojumu, ievadiet 6 ciparu kodu no autentifikācijas lietotnes.",
             "hint": "Atveriet autentifikācijas lietotni (Authy, Google Authenticator u.c.) un nokopējiet pašreizējo kodu.",
             "connect": "Savienot",
-            "connecting": "Savienojas..."
+            "connecting": "Savienojas...",
+            "autoRetryCountdown": "Tiek gaidīts jauns autentificētāja kods, atkārtota savienošanās ar {account} pēc {seconds} s",
+            "autoRetryFailedTitle": "Divfaktoru autentifikācija neizdevās",
+            "autoRetryFailedBody": "AeroFTP nevarēja autentificēties ar saglabāto 2FA noslēpumu. Atveriet profila rediģēšanas veidlapu un pārbaudiet 2FA noslēpumu."
         },
         "table": {
             "manageColumns": "Pārvaldīt kolonnas",

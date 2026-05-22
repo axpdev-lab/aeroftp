@@ -4258,7 +4258,10 @@
             "description": "Voer de 6-cijferige code uit je authenticator-app in om verbinding te blijven maken.",
             "hint": "Open je authenticator-app (Authy, Google Authenticator, enz.) en kopieer de huidige code.",
             "connect": "Verbinden",
-            "connecting": "Verbinden..."
+            "connecting": "Verbinden...",
+            "autoRetryCountdown": "Wachten op een nieuwe verificatiecode, opnieuw verbinden met {account} over {seconds} s",
+            "autoRetryFailedTitle": "Tweestapsverificatie mislukt",
+            "autoRetryFailedBody": "AeroFTP kon zich niet verifiëren met het opgeslagen 2FA-geheim. Open het bewerkingsformulier van het profiel en controleer het 2FA-geheim."
         },
         "table": {
             "manageColumns": "Kolommen beheren",

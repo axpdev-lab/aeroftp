@@ -4277,7 +4277,10 @@
             "description": "Introduïu el codi de 6 dígits de la vostra aplicació d'autenticació per continuar la connexió.",
             "hint": "Obriu la vostra aplicació d'autenticació (Authy, Google Authenticator, etc.) i copieu el codi actual.",
             "connect": "Connecta",
-            "connecting": "Connectant..."
+            "connecting": "Connectant...",
+            "autoRetryCountdown": "Esperant un codi nou de l'autenticador, tornant a connectar a {account} en {seconds} s",
+            "autoRetryFailedTitle": "L'autenticació de dos factors ha fallat",
+            "autoRetryFailedBody": "AeroFTP no ha pogut autenticar-se amb el secret 2FA desat. Obre el formulari d'edició del perfil i verifica el secret 2FA."
         },
         "table": {
             "manageColumns": "Gestionar columnes",

@@ -4258,7 +4258,10 @@
             "description": "연결을 계속하려면 인증 앱에서 6자리 코드를 입력하세요.",
             "hint": "인증 앱(Authy, Google Authenticator 등)을 열고 현재 코드를 복사하세요.",
             "connect": "연결",
-            "connecting": "연결 중..."
+            "connecting": "연결 중...",
+            "autoRetryCountdown": "새 인증 코드를 기다리는 중, {seconds}초 후 {account}에 다시 연결합니다",
+            "autoRetryFailedTitle": "2단계 인증 실패",
+            "autoRetryFailedBody": "AeroFTP가 저장된 2FA 비밀로 인증하지 못했습니다. 프로필의 편집 양식을 열고 2FA 비밀을 확인하세요."
         },
         "table": {
             "manageColumns": "열 관리",

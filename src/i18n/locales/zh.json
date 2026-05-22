@@ -4258,7 +4258,10 @@
             "description": "输入身份验证器应用中的 6 位数代码以继续连接。",
             "hint": "打开您的身份验证器应用(Authy、Google Authenticator 等)并复制当前代码。",
             "connect": "连接",
-            "connecting": "正在连接..."
+            "connecting": "正在连接...",
+            "autoRetryCountdown": "正在等待新的身份验证器代码，将在 {seconds} 秒后重新连接到 {account}",
+            "autoRetryFailedTitle": "双重身份验证失败",
+            "autoRetryFailedBody": "AeroFTP 无法使用已保存的 2FA 密钥进行身份验证。请打开配置文件的编辑表单并核对 2FA 密钥。"
         },
         "table": {
             "manageColumns": "管理列",

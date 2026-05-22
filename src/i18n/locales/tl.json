@@ -4277,7 +4277,10 @@
             "description": "Ilagay ang 6-digit na code mula sa iyong authenticator app upang magpatuloy sa pagkonekta.",
             "hint": "Buksan ang iyong authenticator app (Authy, Google Authenticator, atbp.) at kopyahin ang kasalukuyang code.",
             "connect": "Kumonekta",
-            "connecting": "Kumokonekta..."
+            "connecting": "Kumokonekta...",
+            "autoRetryCountdown": "Naghihintay ng bagong code ng authenticator, muling kumokonekta sa {account} sa loob ng {seconds} s",
+            "autoRetryFailedTitle": "Nabigo ang two-factor authentication",
+            "autoRetryFailedBody": "Hindi ma-authenticate ng AeroFTP gamit ang naka-save na 2FA secret. Buksan ang Edit form ng profile at i-verify ang 2FA Secret."
         },
         "table": {
             "manageColumns": "Pamahalaan ang mga column",

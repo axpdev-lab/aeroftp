@@ -4258,7 +4258,10 @@
             "description": "Introduceți codul din 6 cifre din aplicația de autentificare pentru a continua conectarea.",
             "hint": "Deschideți aplicația de autentificare (Authy, Google Authenticator etc.) și copiați codul curent.",
             "connect": "Conectare",
-            "connecting": "Se conectează..."
+            "connecting": "Se conectează...",
+            "autoRetryCountdown": "Se așteaptă un cod nou de autentificare, reconectare la {account} în {seconds} s",
+            "autoRetryFailedTitle": "Autentificarea în doi pași a eșuat",
+            "autoRetryFailedBody": "AeroFTP nu s-a putut autentifica cu secretul 2FA salvat. Deschide formularul de editare al profilului și verifică secretul 2FA."
         },
         "table": {
             "manageColumns": "Gestionați coloanele",

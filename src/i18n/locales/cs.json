@@ -4258,7 +4258,10 @@
             "description": "Pro pokračování v připojení zadejte 6místný kód z autentizační aplikace.",
             "hint": "Otevřete autentizační aplikaci (Authy, Google Authenticator atd.) a zkopírujte aktuální kód.",
             "connect": "Připojit",
-            "connecting": "Připojování..."
+            "connecting": "Připojování...",
+            "autoRetryCountdown": "Čekání na nový kód z autentizátoru, opětovné připojení k {account} za {seconds} s",
+            "autoRetryFailedTitle": "Dvoufázové ověření selhalo",
+            "autoRetryFailedBody": "AeroFTP se nepodařilo ověřit pomocí uloženého tajného klíče 2FA. Otevřete formulář úprav profilu a zkontrolujte tajný klíč 2FA."
         },
         "table": {
             "manageColumns": "Spravovat sloupce",
