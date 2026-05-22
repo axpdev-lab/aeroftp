@@ -55,7 +55,8 @@ use crate::providers::{ProviderError, StorageProvider};
 use crate::transfer_dag::executor::{execute_dag, DagNodeRunner, NodeFuture, NodeOutcome};
 use crate::transfer_dag::graph::{TransferNode, TransferNodeKind};
 use crate::transfer_dag::{
-    DagObserver, SingleFileDag, TransferBudget, TransferDirection, TransferResourceManager,
+    AimdConfig, AimdController, DagObserver, SingleFileDag, TransferBudget, TransferDirection,
+    TransferResourceManager,
 };
 
 /// Environment variable that gates the phase-1 single-file DAG path.
@@ -151,10 +152,7 @@ pub async fn execute_single_file_dag(
                         let cb = progress_slot.lock().expect("progress slot poisoned").take();
                         let mut guard = provider.lock().await;
                         let Some(p) = guard.as_mut() else {
-                            return record_failure(
-                                &first_error,
-                                ProviderError::NotConnected,
-                            );
+                            return record_failure(&first_error, ProviderError::NotConnected);
                         };
                         match p.download(&remote, &local, cb).await {
                             Ok(()) => {
@@ -172,10 +170,7 @@ pub async fn execute_single_file_dag(
                         let cb = progress_slot.lock().expect("progress slot poisoned").take();
                         let mut guard = provider.lock().await;
                         let Some(p) = guard.as_mut() else {
-                            return record_failure(
-                                &first_error,
-                                ProviderError::NotConnected,
-                            );
+                            return record_failure(&first_error, ProviderError::NotConnected);
                         };
                         match p.upload(&local, &remote, cb).await {
                             Ok(()) => NodeOutcome::Completed,
@@ -202,7 +197,18 @@ pub async fn execute_single_file_dag(
     // request nothing, so the graph cannot deadlock against its own budget.
     let manager = TransferResourceManager::new(TransferBudget::from_file_slots(1));
 
-    match execute_dag(&built.dag, &manager, runner, observer, None).await {
+    // AIMD backpressure (F3-T05), wired on every DAG transfer surface for
+    // uniformity. The controller starts each class at its ceiling, so a
+    // congestion-free single-file transfer dispatches exactly as before; the
+    // File ceiling of 1 cannot shrink, so today this is structurally inert,
+    // but the Api class becomes live once a capability-shaped graph reserves
+    // an api slot on a rate-limited provider.
+    let aimd = Arc::new(AimdController::from_budget(
+        &manager.budget(),
+        AimdConfig::default(),
+    ));
+
+    match execute_dag(&built.dag, &manager, runner, observer, Some(aimd)).await {
         Ok(_summary) => Ok(()),
         Err(dag_err) => Err(first_error
             .lock()

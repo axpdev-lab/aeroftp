@@ -1099,7 +1099,11 @@ async fn gtc_dag_sftp_single_file_byte_identical() {
         .await
         .expect("legacy SFTP download");
     let e_legacy = t_legacy.elapsed();
-    assert_eq!(sha256_file(&dst_legacy), src_sha, "legacy SFTP sha mismatch");
+    assert_eq!(
+        sha256_file(&dst_legacy),
+        src_sha,
+        "legacy SFTP sha mismatch"
+    );
 
     // DAG path: the same download routed through execute_single_file_dag.
     let dst_dag = dst_root.join("dag.bin");

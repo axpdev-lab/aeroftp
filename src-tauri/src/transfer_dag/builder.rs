@@ -40,8 +40,19 @@
 //! RAII concern of the transfer runner (the provider's own `.aerotmp` guard),
 //! which is the honest place for it.
 
+use super::capabilities::TransferCapabilities;
 use super::graph::{TransferDag, TransferNodeKind};
 use super::resources::ResourceRequest;
+
+/// Multipart chunk size used when a provider advertises `multipart_upload` but
+/// does not state a `preferred_chunk_size`. 8 MiB balances part count against
+/// per-part request overhead.
+const DEFAULT_MULTIPART_CHUNK_SIZE: u64 = 8 * 1024 * 1024;
+
+/// Hard cap on the number of `UploadPart` nodes a multipart graph may carry.
+/// Mirrors the S3 multipart-upload limit so a pathological chunk size cannot
+/// produce a graph with hundreds of thousands of nodes.
+const MAX_MULTIPART_PARTS: usize = 10_000;
 
 /// Transfer direction for [`TransferDagBuilder::single_file`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,6 +88,224 @@ pub struct SingleFileDag {
     pub emit_progress: usize,
 }
 
+/// One file to include in a batch transfer graph.
+///
+/// The builder only needs a stable key and direction. Runtime paths, sizes,
+/// retry policy, and provider handles stay with the runner that binds node ids
+/// to real I/O. `key` is intentionally opaque here: GUI batch callers may use
+/// a transfer entry id, while sync callers should use the relative path plus
+/// action when a plain relative path is ambiguous.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BatchDagItem {
+    pub key: String,
+    pub direction: TransferDirection,
+}
+
+impl BatchDagItem {
+    pub fn new(key: impl Into<String>, direction: TransferDirection) -> Self {
+        Self {
+            key: key.into(),
+            direction,
+        }
+    }
+}
+
+/// Node ids for one file sub-DAG inside a batch graph.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BatchFileDag {
+    pub key: String,
+    pub direction: TransferDirection,
+    pub discover: usize,
+    pub acquire: usize,
+    pub transfer: usize,
+    pub verify: usize,
+    pub preserve_metadata: usize,
+    pub commit: usize,
+    /// Terminal node for the file. Fase 2 journal observers attach durable
+    /// per-file completion to this id, never to the raw transfer node.
+    pub emit_progress: usize,
+}
+
+/// A built multi-file transfer graph plus per-file terminal metadata.
+#[derive(Debug, Clone)]
+pub struct BatchDag {
+    pub dag: TransferDag,
+    pub files: Vec<BatchFileDag>,
+}
+
+/// A planned sync action that can be represented in the transfer DAG.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SyncDagAction {
+    Upload,
+    Download,
+    DeleteLocal,
+    DeleteRemote,
+    Skip,
+    KeepBoth,
+}
+
+impl SyncDagAction {
+    fn transfer_direction(self) -> Option<TransferDirection> {
+        match self {
+            Self::Upload => Some(TransferDirection::Upload),
+            Self::Download => Some(TransferDirection::Download),
+            Self::DeleteLocal | Self::DeleteRemote | Self::Skip | Self::KeepBoth => None,
+        }
+    }
+}
+
+/// One entry in a sync plan.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SyncDagItem {
+    pub key: String,
+    pub action: SyncDagAction,
+}
+
+impl SyncDagItem {
+    pub fn new(key: impl Into<String>, action: SyncDagAction) -> Self {
+        Self {
+            key: key.into(),
+            action,
+        }
+    }
+}
+
+/// Node ids for one transfer-producing sync plan entry.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SyncFileDag {
+    pub key: String,
+    pub plan_index: usize,
+    pub action: SyncDagAction,
+    pub direction: TransferDirection,
+    pub acquire: usize,
+    pub transfer: usize,
+    pub verify: usize,
+    pub preserve_metadata: usize,
+    pub commit: usize,
+    /// Terminal node for the sync file. Fase 2 journal observers attach
+    /// durable completion to this id.
+    pub emit_progress: usize,
+}
+
+/// A built sync graph plus global discovery/compare ids and per-file
+/// transfer terminal metadata.
+#[derive(Debug, Clone)]
+pub struct SyncDag {
+    pub dag: TransferDag,
+    pub discover_local: usize,
+    pub discover_remote: usize,
+    pub compare: usize,
+    pub files: Vec<SyncFileDag>,
+}
+
+impl SyncDag {
+    /// Terminal-to-journal mapping when the legacy journal entries preserve
+    /// the same order as the sync plan passed to [`TransferDagBuilder::from_sync_plan`].
+    pub fn journal_terminals_for_plan_order(&self) -> Vec<super::observer::SyncJournalTerminal> {
+        self.files
+            .iter()
+            .map(|file| {
+                super::observer::SyncJournalTerminal::new(file.emit_progress, file.plan_index)
+            })
+            .collect()
+    }
+}
+
+/// Capability-derived shaping decisions for one file's transfer graph
+/// (DAG-ENGINE phase 3). Resolved once from a provider's
+/// [`TransferCapabilities`] and the file size; the builder reads it to decide
+/// how many transfer nodes to emit and what each one reserves.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TransferGraphProfile {
+    /// Number of upload parts. `1` is a single `UploadFile`; `> 1` fans the
+    /// transfer core out into that many parallel `UploadPart` nodes. Always
+    /// `1` on the download direction (multipart is an upload-only concept).
+    pub upload_parts: usize,
+    /// `true` when the provider can resume the transfer from a checkpoint, so
+    /// the `AcquireResource` node fetches the saved offset and the transfer
+    /// starts from there. The graph shape is unchanged; the runner reads it.
+    pub resume: bool,
+    /// Extra `api_slots` every API-bound transfer node reserves. `1` for
+    /// providers that advertise `rate_limited_api`, `0` otherwise: it lets the
+    /// shared `api_slots` budget (and the AIMD `Api` class) throttle the
+    /// API-bound providers without touching transport-bound ones.
+    pub api_slots: u16,
+}
+
+impl TransferGraphProfile {
+    /// Resolve the profile for `direction` from a provider's capabilities and
+    /// the known `file_size` (used only to size the multipart part count).
+    pub fn resolve(
+        direction: TransferDirection,
+        caps: &TransferCapabilities,
+        file_size: u64,
+    ) -> Self {
+        let api_slots = u16::from(caps.rate_limited_api.is_available());
+        let resume = match direction {
+            TransferDirection::Download => caps.resume_download,
+            TransferDirection::Upload => caps.resume_upload,
+        }
+        .is_available();
+
+        let upload_parts =
+            if direction == TransferDirection::Upload && caps.multipart_upload.is_available() {
+                let chunk = caps
+                    .preferred_chunk_size
+                    .filter(|size| *size > 0)
+                    .unwrap_or(DEFAULT_MULTIPART_CHUNK_SIZE);
+                let parts = file_size.div_ceil(chunk).max(1);
+                (parts as usize).clamp(1, MAX_MULTIPART_PARTS)
+            } else {
+                1
+            };
+
+        Self {
+            upload_parts,
+            resume,
+            api_slots,
+        }
+    }
+}
+
+/// A built capability-shaped single-file graph. Unlike [`SingleFileDag`] the
+/// transfer core is a `Vec`: one node for a plain transfer, or N `UploadPart`
+/// nodes for a multipart upload. `VerifyChecksum` joins every transfer node so
+/// it cannot run until the last part lands.
+#[derive(Debug, Clone)]
+pub struct ShapedFileDag {
+    pub dag: TransferDag,
+    pub direction: TransferDirection,
+    pub profile: TransferGraphProfile,
+    pub discover: usize,
+    pub acquire: usize,
+    /// The transfer core: one `DownloadFile` / `UploadFile`, or N `UploadPart`.
+    pub transfer: Vec<usize>,
+    pub verify: usize,
+    pub preserve_metadata: usize,
+    pub commit: usize,
+    pub emit_progress: usize,
+}
+
+/// A built capability-shaped copy graph. When the provider advertises
+/// `server_side_copy` the transfer core collapses into a single
+/// [`TransferNodeKind::ServerSideCopy`] node (the server moves the bytes, no
+/// disk I/O); otherwise it degrades honestly to a `DownloadFile` followed by
+/// an `UploadFile`.
+#[derive(Debug, Clone)]
+pub struct CopyDag {
+    pub dag: TransferDag,
+    /// `true` when the core is a single `ServerSideCopy` node.
+    pub server_side: bool,
+    pub discover: usize,
+    pub acquire: usize,
+    /// One `ServerSideCopy` node, or a `DownloadFile` then an `UploadFile`.
+    pub copy: Vec<usize>,
+    pub verify: usize,
+    pub preserve_metadata: usize,
+    pub commit: usize,
+    pub emit_progress: usize,
+}
+
 /// Stateless constructor of shared production transfer graphs.
 pub struct TransferDagBuilder;
 
@@ -94,27 +323,167 @@ impl TransferDagBuilder {
     /// budget.
     pub fn single_file(direction: TransferDirection) -> SingleFileDag {
         let mut dag = TransferDag::default();
+        let ids = append_single_file_chain(&mut dag, direction);
 
-        let (discover_kind, transfer_kind) = match direction {
-            TransferDirection::Download => (
-                TransferNodeKind::DiscoverRemote,
-                TransferNodeKind::DownloadFile,
-            ),
-            TransferDirection::Upload => {
-                (TransferNodeKind::DiscoverLocal, TransferNodeKind::UploadFile)
-            }
+        SingleFileDag {
+            dag,
+            direction,
+            discover: ids.discover,
+            acquire: ids.acquire,
+            transfer: ids.transfer,
+            verify: ids.verify,
+            preserve_metadata: ids.preserve_metadata,
+            commit: ids.commit,
+            emit_progress: ids.emit_progress,
+        }
+    }
+
+    /// Build a multi-file batch graph by merging one single-file sub-DAG per
+    /// item into the same [`TransferDag`].
+    ///
+    /// The sub-DAGs are intentionally independent: their discover/acquire
+    /// prefixes can enter the ready frontier together, while the real transfer
+    /// nodes all carry [`ResourceRequest::file_transfer`]. A single
+    /// [`TransferResourceManager`](super::resources::TransferResourceManager)
+    /// shared by the executor is therefore the only file-level concurrency
+    /// governor, matching the Fase 2 `file_slots` contract.
+    pub fn from_batch(items: &[BatchDagItem]) -> BatchDag {
+        let mut dag = TransferDag::default();
+        let mut files = Vec::with_capacity(items.len());
+
+        for item in items {
+            let ids = append_single_file_chain(&mut dag, item.direction);
+            files.push(BatchFileDag {
+                key: item.key.clone(),
+                direction: item.direction,
+                discover: ids.discover,
+                acquire: ids.acquire,
+                transfer: ids.transfer,
+                verify: ids.verify,
+                preserve_metadata: ids.preserve_metadata,
+                commit: ids.commit,
+                emit_progress: ids.emit_progress,
+            });
+        }
+
+        BatchDag { dag, files }
+    }
+
+    /// Build a sync-session graph.
+    ///
+    /// Sync has one global discovery/compare prefix:
+    /// `DiscoverLocal` and `DiscoverRemote` run independently, then `Compare`
+    /// joins them. Every transfer-producing plan entry hangs below `Compare`
+    /// as a per-file chain beginning at `AcquireResource`; delete/skip entries
+    /// do not produce file-transfer nodes in this Fase 2 slice.
+    pub fn from_sync_plan(plan: &[SyncDagItem]) -> SyncDag {
+        let mut dag = TransferDag::default();
+        let discover_local = dag.add_node(
+            TransferNodeKind::DiscoverLocal,
+            vec![],
+            ResourceRequest::default(),
+        );
+        let discover_remote = dag.add_node(
+            TransferNodeKind::DiscoverRemote,
+            vec![],
+            ResourceRequest::default(),
+        );
+        let compare = dag.add_node(
+            TransferNodeKind::Compare,
+            vec![discover_local, discover_remote],
+            ResourceRequest::default(),
+        );
+        let mut files = Vec::new();
+
+        for (plan_index, item) in plan.iter().enumerate() {
+            let Some(direction) = item.action.transfer_direction() else {
+                continue;
+            };
+            let ids = append_sync_file_chain(&mut dag, direction, compare);
+            files.push(SyncFileDag {
+                key: item.key.clone(),
+                plan_index,
+                action: item.action,
+                direction,
+                acquire: ids.acquire,
+                transfer: ids.transfer,
+                verify: ids.verify,
+                preserve_metadata: ids.preserve_metadata,
+                commit: ids.commit,
+                emit_progress: ids.emit_progress,
+            });
+        }
+
+        SyncDag {
+            dag,
+            discover_local,
+            discover_remote,
+            compare,
+            files,
+        }
+    }
+
+    /// Build a capability-shaped single-file graph (DAG-ENGINE phase 3).
+    ///
+    /// The graph reads the provider's [`TransferCapabilities`] and the file
+    /// size through [`TransferGraphProfile`]:
+    ///
+    /// - `multipart_upload` available on an upload large enough for more than
+    ///   one part: the transfer core fans out into N `UploadPart` nodes, each
+    ///   reserving one `chunk_slot`, so the shared chunk budget governs how
+    ///   many parts upload at once.
+    /// - `rate_limited_api` available: every transfer node also reserves one
+    ///   `api_slot`, exposing it to the shared API budget and the AIMD `Api`
+    ///   class.
+    /// - `resume_*` available: recorded on the profile so the runner's
+    ///   `AcquireResource` node fetches the checkpoint; the graph shape is
+    ///   unchanged.
+    ///
+    /// With a capability set that advertises none of the above this produces
+    /// the same seven-node linear chain as [`Self::single_file`].
+    pub fn shaped_file(
+        direction: TransferDirection,
+        caps: &TransferCapabilities,
+        file_size: u64,
+    ) -> ShapedFileDag {
+        let profile = TransferGraphProfile::resolve(direction, caps, file_size);
+        let mut dag = TransferDag::default();
+
+        let discover_kind = match direction {
+            TransferDirection::Download => TransferNodeKind::DiscoverRemote,
+            TransferDirection::Upload => TransferNodeKind::DiscoverLocal,
         };
-
         let discover = dag.add_node(discover_kind, vec![], ResourceRequest::default());
         let acquire = dag.add_node(
             TransferNodeKind::AcquireResource,
             vec![discover],
             ResourceRequest::default(),
         );
-        let transfer = dag.add_node(transfer_kind, vec![acquire], ResourceRequest::file_transfer());
+
+        let mut transfer = Vec::new();
+        if direction == TransferDirection::Upload && profile.upload_parts > 1 {
+            for _ in 0..profile.upload_parts {
+                transfer.push(dag.add_node(
+                    TransferNodeKind::UploadPart,
+                    vec![acquire],
+                    part_request(profile.api_slots),
+                ));
+            }
+        } else {
+            let transfer_kind = match direction {
+                TransferDirection::Download => TransferNodeKind::DownloadFile,
+                TransferDirection::Upload => TransferNodeKind::UploadFile,
+            };
+            transfer.push(dag.add_node(
+                transfer_kind,
+                vec![acquire],
+                transfer_request(profile.api_slots),
+            ));
+        }
+
         let verify = dag.add_node(
             TransferNodeKind::VerifyChecksum,
-            vec![transfer],
+            transfer.clone(),
             ResourceRequest::default(),
         );
         let preserve_metadata = dag.add_node(
@@ -133,9 +502,10 @@ impl TransferDagBuilder {
             ResourceRequest::default(),
         );
 
-        SingleFileDag {
+        ShapedFileDag {
             dag,
             direction,
+            profile,
             discover,
             acquire,
             transfer,
@@ -144,6 +514,233 @@ impl TransferDagBuilder {
             commit,
             emit_progress,
         }
+    }
+
+    /// Build a capability-shaped copy graph (DAG-ENGINE phase 3, F3-T02).
+    ///
+    /// When `caps.server_side_copy` is available the transfer core is a single
+    /// [`TransferNodeKind::ServerSideCopy`] node: the server moves the bytes,
+    /// so the node reserves only an `api_slot`, never a file or disk slot.
+    /// Otherwise the core degrades honestly to a `DownloadFile` followed by an
+    /// `UploadFile`, the two transfers a non-server-side copy actually needs.
+    pub fn shaped_copy(caps: &TransferCapabilities) -> CopyDag {
+        let api_slots = u16::from(caps.rate_limited_api.is_available());
+        let server_side = caps.server_side_copy.is_available();
+        let mut dag = TransferDag::default();
+
+        let discover = dag.add_node(
+            TransferNodeKind::DiscoverRemote,
+            vec![],
+            ResourceRequest::default(),
+        );
+        let acquire = dag.add_node(
+            TransferNodeKind::AcquireResource,
+            vec![discover],
+            ResourceRequest::default(),
+        );
+
+        let mut copy = Vec::new();
+        if server_side {
+            // A server-side copy is one API operation; it always reserves an
+            // api slot even when the provider does not flag rate limiting.
+            copy.push(dag.add_node(
+                TransferNodeKind::ServerSideCopy,
+                vec![acquire],
+                ResourceRequest {
+                    api_slots: api_slots.max(1),
+                    ..ResourceRequest::default()
+                },
+            ));
+        } else {
+            let download = dag.add_node(
+                TransferNodeKind::DownloadFile,
+                vec![acquire],
+                transfer_request(api_slots),
+            );
+            let upload = dag.add_node(
+                TransferNodeKind::UploadFile,
+                vec![download],
+                transfer_request(api_slots),
+            );
+            copy.push(download);
+            copy.push(upload);
+        }
+
+        let verify = dag.add_node(
+            TransferNodeKind::VerifyChecksum,
+            vec![*copy.last().expect("copy core is never empty")],
+            ResourceRequest::default(),
+        );
+        let preserve_metadata = dag.add_node(
+            TransferNodeKind::PreserveMetadata,
+            vec![verify],
+            ResourceRequest::default(),
+        );
+        let commit = dag.add_node(
+            TransferNodeKind::CommitTemp,
+            vec![preserve_metadata],
+            ResourceRequest::default(),
+        );
+        let emit_progress = dag.add_node(
+            TransferNodeKind::EmitProgress,
+            vec![commit],
+            ResourceRequest::default(),
+        );
+
+        CopyDag {
+            dag,
+            server_side,
+            discover,
+            acquire,
+            copy,
+            verify,
+            preserve_metadata,
+            commit,
+            emit_progress,
+        }
+    }
+}
+
+/// `ResourceRequest` for a whole-file transfer node, optionally rate-limited.
+fn transfer_request(api_slots: u16) -> ResourceRequest {
+    ResourceRequest {
+        file_slots: 1,
+        disk_read_slots: 1,
+        disk_write_slots: 1,
+        api_slots,
+        ..ResourceRequest::default()
+    }
+}
+
+/// `ResourceRequest` for one `UploadPart` node: a chunk slot (so the chunk
+/// budget governs part parallelism) plus a disk read, optionally rate-limited.
+fn part_request(api_slots: u16) -> ResourceRequest {
+    ResourceRequest {
+        chunk_slots: 1,
+        disk_read_slots: 1,
+        api_slots,
+        ..ResourceRequest::default()
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SingleFileNodeIds {
+    discover: usize,
+    acquire: usize,
+    transfer: usize,
+    verify: usize,
+    preserve_metadata: usize,
+    commit: usize,
+    emit_progress: usize,
+}
+
+fn append_single_file_chain(
+    dag: &mut TransferDag,
+    direction: TransferDirection,
+) -> SingleFileNodeIds {
+    let (discover_kind, transfer_kind) = match direction {
+        TransferDirection::Download => (
+            TransferNodeKind::DiscoverRemote,
+            TransferNodeKind::DownloadFile,
+        ),
+        TransferDirection::Upload => (
+            TransferNodeKind::DiscoverLocal,
+            TransferNodeKind::UploadFile,
+        ),
+    };
+
+    let discover = dag.add_node(discover_kind, vec![], ResourceRequest::default());
+    let acquire = dag.add_node(
+        TransferNodeKind::AcquireResource,
+        vec![discover],
+        ResourceRequest::default(),
+    );
+    let transfer = dag.add_node(
+        transfer_kind,
+        vec![acquire],
+        ResourceRequest::file_transfer(),
+    );
+    let verify = dag.add_node(
+        TransferNodeKind::VerifyChecksum,
+        vec![transfer],
+        ResourceRequest::default(),
+    );
+    let preserve_metadata = dag.add_node(
+        TransferNodeKind::PreserveMetadata,
+        vec![verify],
+        ResourceRequest::default(),
+    );
+    let commit = dag.add_node(
+        TransferNodeKind::CommitTemp,
+        vec![preserve_metadata],
+        ResourceRequest::default(),
+    );
+    let emit_progress = dag.add_node(
+        TransferNodeKind::EmitProgress,
+        vec![commit],
+        ResourceRequest::default(),
+    );
+
+    SingleFileNodeIds {
+        discover,
+        acquire,
+        transfer,
+        verify,
+        preserve_metadata,
+        commit,
+        emit_progress,
+    }
+}
+
+fn append_sync_file_chain(
+    dag: &mut TransferDag,
+    direction: TransferDirection,
+    compare: usize,
+) -> SingleFileNodeIds {
+    let transfer_kind = match direction {
+        TransferDirection::Download => TransferNodeKind::DownloadFile,
+        TransferDirection::Upload => TransferNodeKind::UploadFile,
+    };
+
+    let acquire = dag.add_node(
+        TransferNodeKind::AcquireResource,
+        vec![compare],
+        ResourceRequest::default(),
+    );
+    let transfer = dag.add_node(
+        transfer_kind,
+        vec![acquire],
+        ResourceRequest::file_transfer(),
+    );
+    let verify = dag.add_node(
+        TransferNodeKind::VerifyChecksum,
+        vec![transfer],
+        ResourceRequest::default(),
+    );
+    let preserve_metadata = dag.add_node(
+        TransferNodeKind::PreserveMetadata,
+        vec![verify],
+        ResourceRequest::default(),
+    );
+    let commit = dag.add_node(
+        TransferNodeKind::CommitTemp,
+        vec![preserve_metadata],
+        ResourceRequest::default(),
+    );
+    let emit_progress = dag.add_node(
+        TransferNodeKind::EmitProgress,
+        vec![commit],
+        ResourceRequest::default(),
+    );
+
+    SingleFileNodeIds {
+        discover: compare,
+        acquire,
+        transfer,
+        verify,
+        preserve_metadata,
+        commit,
+        emit_progress,
     }
 }
 
@@ -154,7 +751,9 @@ mod tests {
     use crate::transfer_dag::graph::TransferNode;
     use crate::transfer_dag::observer::NoopDagObserver;
     use crate::transfer_dag::resources::{TransferBudget, TransferResourceManager};
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::time::Duration;
 
     #[test]
     fn download_graph_has_seven_nodes_in_order() {
@@ -192,9 +791,9 @@ mod tests {
         let nodes = built.dag.nodes();
 
         assert_eq!(nodes[0].depends_on, Vec::<usize>::new());
-        for i in 1..nodes.len() {
+        for (i, node) in nodes.iter().enumerate().skip(1) {
             assert_eq!(
-                nodes[i].depends_on,
+                node.depends_on,
                 vec![i - 1],
                 "node {i} must depend solely on node {}",
                 i - 1
@@ -256,6 +855,473 @@ mod tests {
         .expect("single-file graph must schedule cleanly");
 
         assert_eq!(summary.nodes_completed, 7);
+        assert_eq!(summary.nodes_failed, 0);
+    }
+
+    #[test]
+    fn empty_batch_builds_empty_graph() {
+        let built = TransferDagBuilder::from_batch(&[]);
+
+        assert!(built.dag.nodes().is_empty());
+        assert!(built.files.is_empty());
+    }
+
+    #[test]
+    fn batch_merges_one_subdag_per_item() {
+        let built = TransferDagBuilder::from_batch(&[
+            BatchDagItem::new("a.txt", TransferDirection::Upload),
+            BatchDagItem::new("b.txt", TransferDirection::Download),
+        ]);
+        let nodes = built.dag.nodes();
+
+        assert_eq!(nodes.len(), 14);
+        assert_eq!(built.files.len(), 2);
+        assert_eq!(built.files[0].key, "a.txt");
+        assert_eq!(built.files[0].direction, TransferDirection::Upload);
+        assert_eq!(built.files[0].discover, 0);
+        assert_eq!(built.files[0].transfer, 2);
+        assert_eq!(built.files[0].emit_progress, 6);
+        assert_eq!(
+            nodes[built.files[0].discover].kind,
+            TransferNodeKind::DiscoverLocal
+        );
+        assert_eq!(
+            nodes[built.files[0].transfer].kind,
+            TransferNodeKind::UploadFile
+        );
+
+        assert_eq!(built.files[1].key, "b.txt");
+        assert_eq!(built.files[1].direction, TransferDirection::Download);
+        assert_eq!(built.files[1].discover, 7);
+        assert_eq!(built.files[1].transfer, 9);
+        assert_eq!(built.files[1].emit_progress, 13);
+        assert_eq!(
+            nodes[built.files[1].discover].kind,
+            TransferNodeKind::DiscoverRemote
+        );
+        assert_eq!(
+            nodes[built.files[1].transfer].kind,
+            TransferNodeKind::DownloadFile
+        );
+    }
+
+    #[test]
+    fn batch_subdags_are_independent_but_transfer_nodes_are_scarce() {
+        let built = TransferDagBuilder::from_batch(&[
+            BatchDagItem::new("one", TransferDirection::Upload),
+            BatchDagItem::new("two", TransferDirection::Upload),
+            BatchDagItem::new("three", TransferDirection::Upload),
+        ]);
+        let nodes = built.dag.nodes();
+
+        for file in &built.files {
+            assert!(nodes[file.discover].depends_on.is_empty());
+            assert_eq!(nodes[file.acquire].depends_on, vec![file.discover]);
+            assert_eq!(nodes[file.transfer].depends_on, vec![file.acquire]);
+            assert_eq!(
+                nodes[file.transfer].resources,
+                ResourceRequest::file_transfer()
+            );
+            assert_eq!(nodes[file.emit_progress].depends_on, vec![file.commit]);
+        }
+    }
+
+    #[tokio::test]
+    async fn batch_file_slots_serialize_real_transfer_nodes() {
+        let built = TransferDagBuilder::from_batch(&[
+            BatchDagItem::new("one", TransferDirection::Download),
+            BatchDagItem::new("two", TransferDirection::Download),
+            BatchDagItem::new("three", TransferDirection::Download),
+        ]);
+        let in_flight_transfers = Arc::new(AtomicUsize::new(0));
+        let peak_transfers = Arc::new(AtomicUsize::new(0));
+        let runner: Arc<dyn DagNodeRunner> = {
+            let in_flight_transfers = Arc::clone(&in_flight_transfers);
+            let peak_transfers = Arc::clone(&peak_transfers);
+            Arc::new(move |node: TransferNode| -> NodeFuture {
+                let in_flight_transfers = Arc::clone(&in_flight_transfers);
+                let peak_transfers = Arc::clone(&peak_transfers);
+                Box::pin(async move {
+                    if matches!(
+                        node.kind,
+                        TransferNodeKind::DownloadFile | TransferNodeKind::UploadFile
+                    ) {
+                        let now = in_flight_transfers.fetch_add(1, Ordering::SeqCst) + 1;
+                        peak_transfers.fetch_max(now, Ordering::SeqCst);
+                        tokio::time::sleep(Duration::from_millis(20)).await;
+                        in_flight_transfers.fetch_sub(1, Ordering::SeqCst);
+                    }
+                    NodeOutcome::Completed
+                })
+            })
+        };
+        let manager = TransferResourceManager::new(TransferBudget::from_file_slots(1));
+
+        let summary = execute_dag(
+            &built.dag,
+            &manager,
+            runner,
+            Arc::new(NoopDagObserver),
+            None,
+        )
+        .await
+        .expect("batch graph must schedule cleanly");
+
+        assert_eq!(summary.nodes_completed, 21);
+        assert_eq!(peak_transfers.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn batch_file_slots_allow_transfer_overlap_when_budget_allows() {
+        let built = TransferDagBuilder::from_batch(&[
+            BatchDagItem::new("one", TransferDirection::Upload),
+            BatchDagItem::new("two", TransferDirection::Upload),
+            BatchDagItem::new("three", TransferDirection::Upload),
+        ]);
+        let in_flight_transfers = Arc::new(AtomicUsize::new(0));
+        let peak_transfers = Arc::new(AtomicUsize::new(0));
+        let runner: Arc<dyn DagNodeRunner> = {
+            let in_flight_transfers = Arc::clone(&in_flight_transfers);
+            let peak_transfers = Arc::clone(&peak_transfers);
+            Arc::new(move |node: TransferNode| -> NodeFuture {
+                let in_flight_transfers = Arc::clone(&in_flight_transfers);
+                let peak_transfers = Arc::clone(&peak_transfers);
+                Box::pin(async move {
+                    if matches!(
+                        node.kind,
+                        TransferNodeKind::DownloadFile | TransferNodeKind::UploadFile
+                    ) {
+                        let now = in_flight_transfers.fetch_add(1, Ordering::SeqCst) + 1;
+                        peak_transfers.fetch_max(now, Ordering::SeqCst);
+                        tokio::time::sleep(Duration::from_millis(20)).await;
+                        in_flight_transfers.fetch_sub(1, Ordering::SeqCst);
+                    }
+                    NodeOutcome::Completed
+                })
+            })
+        };
+        let manager = TransferResourceManager::new(TransferBudget::from_file_slots(2));
+
+        execute_dag(
+            &built.dag,
+            &manager,
+            runner,
+            Arc::new(NoopDagObserver),
+            None,
+        )
+        .await
+        .expect("batch graph must schedule cleanly");
+
+        assert_eq!(peak_transfers.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn sync_plan_builds_global_discover_compare_prefix() {
+        let built = TransferDagBuilder::from_sync_plan(&[]);
+        let nodes = built.dag.nodes();
+
+        assert_eq!(nodes.len(), 3);
+        assert_eq!(built.discover_local, 0);
+        assert_eq!(built.discover_remote, 1);
+        assert_eq!(built.compare, 2);
+        assert_eq!(
+            nodes[built.discover_local].kind,
+            TransferNodeKind::DiscoverLocal
+        );
+        assert_eq!(
+            nodes[built.discover_remote].kind,
+            TransferNodeKind::DiscoverRemote
+        );
+        assert_eq!(nodes[built.compare].kind, TransferNodeKind::Compare);
+        assert_eq!(
+            nodes[built.compare].depends_on,
+            vec![built.discover_local, built.discover_remote]
+        );
+        assert!(built.files.is_empty());
+    }
+
+    #[test]
+    fn sync_plan_adds_transfer_chains_under_compare() {
+        let built = TransferDagBuilder::from_sync_plan(&[
+            SyncDagItem::new("upload:a.txt", SyncDagAction::Upload),
+            SyncDagItem::new("download:b.txt", SyncDagAction::Download),
+            SyncDagItem::new("skip:c.txt", SyncDagAction::Skip),
+            SyncDagItem::new("delete:d.txt", SyncDagAction::DeleteRemote),
+        ]);
+        let nodes = built.dag.nodes();
+
+        assert_eq!(built.files.len(), 2);
+        assert_eq!(nodes.len(), 15);
+
+        let upload = &built.files[0];
+        assert_eq!(upload.key, "upload:a.txt");
+        assert_eq!(upload.plan_index, 0);
+        assert_eq!(upload.action, SyncDagAction::Upload);
+        assert_eq!(upload.direction, TransferDirection::Upload);
+        assert_eq!(nodes[upload.acquire].depends_on, vec![built.compare]);
+        assert_eq!(nodes[upload.transfer].kind, TransferNodeKind::UploadFile);
+        assert_eq!(
+            nodes[upload.transfer].resources,
+            ResourceRequest::file_transfer()
+        );
+        assert_eq!(nodes[upload.emit_progress].depends_on, vec![upload.commit]);
+
+        let download = &built.files[1];
+        assert_eq!(download.key, "download:b.txt");
+        assert_eq!(download.plan_index, 1);
+        assert_eq!(download.action, SyncDagAction::Download);
+        assert_eq!(download.direction, TransferDirection::Download);
+        assert_eq!(nodes[download.acquire].depends_on, vec![built.compare]);
+        assert_eq!(
+            nodes[download.transfer].kind,
+            TransferNodeKind::DownloadFile
+        );
+        assert_eq!(
+            nodes[download.transfer].resources,
+            ResourceRequest::file_transfer()
+        );
+        assert_eq!(
+            nodes[download.emit_progress].depends_on,
+            vec![download.commit]
+        );
+    }
+
+    #[test]
+    fn sync_plan_exposes_terminal_to_legacy_journal_indices() {
+        let built = TransferDagBuilder::from_sync_plan(&[
+            SyncDagItem::new("upload:a.txt", SyncDagAction::Upload),
+            SyncDagItem::new("skip:b.txt", SyncDagAction::Skip),
+            SyncDagItem::new("download:c.txt", SyncDagAction::Download),
+        ]);
+
+        let terminals = built.journal_terminals_for_plan_order();
+
+        assert_eq!(terminals.len(), 2);
+        assert_eq!(terminals[0].node_id, built.files[0].emit_progress);
+        assert_eq!(terminals[0].entry_index, 0);
+        assert_eq!(terminals[1].node_id, built.files[1].emit_progress);
+        assert_eq!(terminals[1].entry_index, 2);
+    }
+
+    #[tokio::test]
+    async fn sync_file_slots_limit_only_transfer_nodes_after_compare() {
+        let built = TransferDagBuilder::from_sync_plan(&[
+            SyncDagItem::new("one", SyncDagAction::Upload),
+            SyncDagItem::new("two", SyncDagAction::Download),
+            SyncDagItem::new("three", SyncDagAction::Upload),
+        ]);
+        let in_flight_transfers = Arc::new(AtomicUsize::new(0));
+        let peak_transfers = Arc::new(AtomicUsize::new(0));
+        let runner: Arc<dyn DagNodeRunner> = {
+            let in_flight_transfers = Arc::clone(&in_flight_transfers);
+            let peak_transfers = Arc::clone(&peak_transfers);
+            Arc::new(move |node: TransferNode| -> NodeFuture {
+                let in_flight_transfers = Arc::clone(&in_flight_transfers);
+                let peak_transfers = Arc::clone(&peak_transfers);
+                Box::pin(async move {
+                    if matches!(
+                        node.kind,
+                        TransferNodeKind::DownloadFile | TransferNodeKind::UploadFile
+                    ) {
+                        let now = in_flight_transfers.fetch_add(1, Ordering::SeqCst) + 1;
+                        peak_transfers.fetch_max(now, Ordering::SeqCst);
+                        tokio::time::sleep(Duration::from_millis(20)).await;
+                        in_flight_transfers.fetch_sub(1, Ordering::SeqCst);
+                    }
+                    NodeOutcome::Completed
+                })
+            })
+        };
+        let manager = TransferResourceManager::new(TransferBudget::from_file_slots(1));
+
+        let summary = execute_dag(
+            &built.dag,
+            &manager,
+            runner,
+            Arc::new(NoopDagObserver),
+            None,
+        )
+        .await
+        .expect("sync graph must schedule cleanly");
+
+        assert_eq!(summary.nodes_completed, 21);
+        assert_eq!(peak_transfers.load(Ordering::SeqCst), 1);
+    }
+
+    // ---- Phase 3: capability-shaped graphs --------------------------------
+
+    use crate::transfer_dag::Capability;
+
+    fn caps_multipart(chunk_size: u64) -> TransferCapabilities {
+        TransferCapabilities {
+            multipart_upload: Capability::Supported,
+            preferred_chunk_size: Some(chunk_size),
+            ..TransferCapabilities::default()
+        }
+    }
+
+    #[test]
+    fn shaped_download_is_the_classic_seven_node_chain() {
+        let built = TransferDagBuilder::shaped_file(
+            TransferDirection::Download,
+            &TransferCapabilities::default(),
+            64 * 1024 * 1024,
+        );
+        let nodes = built.dag.nodes();
+
+        assert_eq!(nodes.len(), 7);
+        assert_eq!(built.transfer.len(), 1);
+        assert_eq!(
+            nodes[built.transfer[0]].kind,
+            TransferNodeKind::DownloadFile
+        );
+        assert_eq!(built.profile.upload_parts, 1);
+        assert!(!built.profile.resume);
+        assert_eq!(built.profile.api_slots, 0);
+        assert_eq!(nodes[built.verify].depends_on, built.transfer);
+    }
+
+    #[test]
+    fn shaped_upload_without_multipart_is_a_single_upload_node() {
+        let built = TransferDagBuilder::shaped_file(
+            TransferDirection::Upload,
+            &TransferCapabilities::default(),
+            500 * 1024 * 1024,
+        );
+
+        assert_eq!(built.transfer.len(), 1);
+        assert_eq!(
+            built.dag.nodes()[built.transfer[0]].kind,
+            TransferNodeKind::UploadFile
+        );
+    }
+
+    #[test]
+    fn shaped_upload_with_multipart_fans_out_upload_parts() {
+        // 5 MiB file, 1 MiB parts: five parallel UploadPart nodes.
+        let built = TransferDagBuilder::shaped_file(
+            TransferDirection::Upload,
+            &caps_multipart(1024 * 1024),
+            5 * 1024 * 1024,
+        );
+        let nodes = built.dag.nodes();
+
+        assert_eq!(built.profile.upload_parts, 5);
+        assert_eq!(built.transfer.len(), 5);
+        for &part in &built.transfer {
+            assert_eq!(nodes[part].kind, TransferNodeKind::UploadPart);
+            assert_eq!(nodes[part].depends_on, vec![built.acquire]);
+            assert_eq!(nodes[part].resources.chunk_slots, 1);
+        }
+        // VerifyChecksum joins every part: it cannot run until the last lands.
+        assert_eq!(nodes[built.verify].depends_on, built.transfer);
+        // discover + acquire + 5 parts + verify + preserve + commit + emit.
+        assert_eq!(nodes.len(), 11);
+    }
+
+    #[test]
+    fn shaped_upload_multipart_collapses_when_the_file_fits_one_chunk() {
+        // 512 KiB file, 1 MiB parts: a single UploadFile, no fan-out.
+        let built = TransferDagBuilder::shaped_file(
+            TransferDirection::Upload,
+            &caps_multipart(1024 * 1024),
+            512 * 1024,
+        );
+
+        assert_eq!(built.profile.upload_parts, 1);
+        assert_eq!(built.transfer.len(), 1);
+        assert_eq!(
+            built.dag.nodes()[built.transfer[0]].kind,
+            TransferNodeKind::UploadFile
+        );
+    }
+
+    #[test]
+    fn shaped_profile_marks_resume_from_capabilities() {
+        let caps = TransferCapabilities {
+            resume_download: Capability::Supported,
+            ..TransferCapabilities::default()
+        };
+        let download = TransferDagBuilder::shaped_file(TransferDirection::Download, &caps, 1024);
+        assert!(download.profile.resume);
+        // resume_upload is not advertised: the upload profile stays plain.
+        let upload = TransferDagBuilder::shaped_file(TransferDirection::Upload, &caps, 1024);
+        assert!(!upload.profile.resume);
+    }
+
+    #[test]
+    fn shaped_profile_reserves_api_slot_for_rate_limited_providers() {
+        let caps = TransferCapabilities {
+            rate_limited_api: Capability::Supported,
+            ..TransferCapabilities::default()
+        };
+        let built = TransferDagBuilder::shaped_file(TransferDirection::Download, &caps, 1024);
+
+        assert_eq!(built.profile.api_slots, 1);
+        assert_eq!(built.dag.nodes()[built.transfer[0]].resources.api_slots, 1);
+    }
+
+    #[test]
+    fn shaped_copy_collapses_into_one_server_side_copy_node() {
+        let caps = TransferCapabilities {
+            server_side_copy: Capability::Supported,
+            ..TransferCapabilities::default()
+        };
+        let built = TransferDagBuilder::shaped_copy(&caps);
+        let nodes = built.dag.nodes();
+
+        assert!(built.server_side);
+        assert_eq!(built.copy.len(), 1);
+        assert_eq!(nodes[built.copy[0]].kind, TransferNodeKind::ServerSideCopy);
+        // A server-side copy reserves no file or disk slot, only an api slot.
+        assert_eq!(nodes[built.copy[0]].resources.file_slots, 0);
+        assert_eq!(nodes[built.copy[0]].resources.api_slots, 1);
+        // discover + acquire + copy + verify + preserve + commit + emit.
+        assert_eq!(nodes.len(), 7);
+    }
+
+    #[test]
+    fn shaped_copy_degrades_to_download_then_upload() {
+        let built = TransferDagBuilder::shaped_copy(&TransferCapabilities::default());
+        let nodes = built.dag.nodes();
+
+        assert!(!built.server_side);
+        assert_eq!(built.copy.len(), 2);
+        assert_eq!(nodes[built.copy[0]].kind, TransferNodeKind::DownloadFile);
+        assert_eq!(nodes[built.copy[1]].kind, TransferNodeKind::UploadFile);
+        // The two transfers are a strict chain: upload after download.
+        assert_eq!(nodes[built.copy[1]].depends_on, vec![built.copy[0]]);
+        assert_eq!(nodes[built.verify].depends_on, vec![built.copy[1]]);
+    }
+
+    #[tokio::test]
+    async fn shaped_multipart_graph_runs_to_completion_on_the_executor() {
+        let built = TransferDagBuilder::shaped_file(
+            TransferDirection::Upload,
+            &caps_multipart(1024 * 1024),
+            4 * 1024 * 1024,
+        );
+        let runner: Arc<dyn DagNodeRunner> = Arc::new(|_node: TransferNode| -> NodeFuture {
+            Box::pin(async { NodeOutcome::Completed })
+        });
+        // chunk_slots sized for the four parts to overlap.
+        let manager = TransferResourceManager::new(TransferBudget {
+            chunk_slots: 4,
+            ..TransferBudget::from_file_slots(1)
+        });
+
+        let summary = execute_dag(
+            &built.dag,
+            &manager,
+            runner,
+            Arc::new(NoopDagObserver),
+            None,
+        )
+        .await
+        .expect("multipart graph must schedule cleanly");
+
+        // discover + acquire + 4 parts + verify + preserve + commit + emit.
+        assert_eq!(summary.nodes_completed, 10);
         assert_eq!(summary.nodes_failed, 0);
     }
 }

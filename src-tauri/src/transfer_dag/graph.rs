@@ -17,6 +17,7 @@ pub enum TransferNodeKind {
     DownloadRange,
     UploadFile,
     UploadPart,
+    ServerSideCopy,
     VerifyChecksum,
     PreserveMetadata,
     CommitTemp,

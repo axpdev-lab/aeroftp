@@ -94,7 +94,11 @@ fn rel_from_abs(abs_path: &str, root: &str) -> Option<String> {
     let p = abs_path.trim_matches('/');
     let r = root.trim_matches('/');
     if r.is_empty() {
-        return if p.is_empty() { None } else { Some(p.to_string()) };
+        return if p.is_empty() {
+            None
+        } else {
+            Some(p.to_string())
+        };
     }
     if p == r {
         // The scan root itself, not a child entry.
@@ -170,8 +174,7 @@ async fn try_recursive_fastpath(
     remote_root: &str,
     opts: &ScanOptions,
 ) -> Option<Vec<RemoteEntry>> {
-    let listing =
-        crate::used_scan::provider_list_recursive_fastpath(provider, remote_root).await?;
+    let listing = crate::used_scan::provider_list_recursive_fastpath(provider, remote_root).await?;
     if !listing.structured_paths {
         return None;
     }

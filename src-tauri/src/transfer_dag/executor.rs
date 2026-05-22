@@ -741,4 +741,63 @@ mod tests {
         // A not-found failure is not congestion: the target stays put.
         assert_eq!(controller.target(AdaptiveClass::File), 8);
     }
+
+    #[tokio::test]
+    async fn controller_at_ceiling_with_no_congestion_dispatches_like_none() {
+        // F3-T05 non-regression: a controller seeded from the budget starts
+        // every class at its ceiling, so a congestion-free run dispatches
+        // exactly as the prior `None` did. This is the evidence that wiring
+        // `Some(ctrl)` into the production segmented-download path is
+        // behaviourally identical on the happy path.
+        use crate::transfer_dag::adaptive::{AimdConfig, AimdController};
+
+        let build = || {
+            let mut dag = TransferDag::default();
+            for _ in 0..6 {
+                dag.add_node(
+                    TransferNodeKind::DownloadRange,
+                    vec![],
+                    ResourceRequest::range_chunk(),
+                );
+            }
+            dag
+        };
+        let budget = TransferBudget {
+            chunk_slots: 6,
+            http_slots: 6,
+            disk_write_slots: 6,
+            ..TransferBudget::from_file_slots(1)
+        };
+
+        let probe_none = Arc::new(ProbeRunner::default());
+        let summary_none = execute_dag(
+            &build(),
+            &TransferResourceManager::new(budget),
+            runner_arc(Arc::clone(&probe_none)),
+            noop_observer(),
+            None,
+        )
+        .await
+        .unwrap();
+
+        let probe_some = Arc::new(ProbeRunner::default());
+        let controller = Arc::new(AimdController::from_budget(&budget, AimdConfig::default()));
+        let summary_some = execute_dag(
+            &build(),
+            &TransferResourceManager::new(budget),
+            runner_arc(Arc::clone(&probe_some)),
+            noop_observer(),
+            Some(controller),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(summary_none, summary_some);
+        assert_eq!(probe_none.peak(), probe_some.peak());
+        assert_eq!(
+            probe_some.peak(),
+            6,
+            "an at-ceiling controller adds no throttle to a congestion-free run"
+        );
+    }
 }

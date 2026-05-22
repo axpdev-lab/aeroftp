@@ -9,14 +9,14 @@
 // changing its byte-identical output. UX spec: see APPENDIX-TRANSFER-QUEUE
 // `tasks/TQ-1_UX-spec.md` section 4.
 
-use crate::AppState;
 use crate::ftp::{FtpManager, RemoteFile};
 use crate::provider_commands::ProviderState;
 use crate::providers::{RemoteEntry, StorageProvider};
+use crate::AppState;
 use serde::Serialize;
 use std::collections::VecDeque;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use tauri::State;
 use tracing::{debug, warn};
 
@@ -132,20 +132,14 @@ pub async fn walk_remote_ftp(
         }
 
         if let Err(e) = ftp_manager.change_dir(&current_dir).await {
-            warn!(
-                "transfer_queue_scan: cannot enter {}: {}",
-                current_dir, e
-            );
+            warn!("transfer_queue_scan: cannot enter {}: {}", current_dir, e);
             continue;
         }
 
         let files: Vec<RemoteFile> = match ftp_manager.list_files().await {
             Ok(f) => f,
             Err(e) => {
-                warn!(
-                    "transfer_queue_scan: cannot list {}: {}",
-                    current_dir, e
-                );
+                warn!("transfer_queue_scan: cannot list {}: {}", current_dir, e);
                 continue;
             }
         };

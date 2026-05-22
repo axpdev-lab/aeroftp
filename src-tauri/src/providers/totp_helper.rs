@@ -31,9 +31,7 @@ pub fn generate_totp_code(secret: &SecretString) -> Result<String, ProviderError
 /// diagnostic that shows the live code + 30s countdown next to the saved
 /// secret field, so the user can confirm AeroFTP derives the same code as
 /// their authenticator app (issue #128).
-pub fn generate_totp_code_with_ttl(
-    secret: &SecretString,
-) -> Result<(String, u64), ProviderError> {
+pub fn generate_totp_code_with_ttl(secret: &SecretString) -> Result<(String, u64), ProviderError> {
     let totp = build_totp(secret)?;
     let code = totp
         .generate_current()
