@@ -4755,6 +4755,48 @@ async fn upload_with_resume(
     provider.upload(local_path, remote_path, progress_cb).await
 }
 
+/// DAG-ENGINE phase 1: run a plain single-file CLI transfer through the graph
+/// engine.
+///
+/// Reached only with the `transfer_engine_dag_single_file` flag on and only
+/// for the plain leaf (`!cli.partial`, so neither `download_with_resume` nor
+/// `upload_with_resume` would take a resume branch and the legacy leaf is a
+/// bare `provider.download` / `provider.upload`). The owned provider is
+/// briefly wrapped in an `Arc<Mutex<_>>` so the DAG transfer node can reach it
+/// from its spawned task, then handed back to the caller for the disconnect.
+/// The CLI renders progress through the `indicatif` callback and prints its
+/// own result line, so the graph runs with a `NoopDagObserver`.
+async fn cli_run_single_file_dag(
+    provider: Box<dyn StorageProvider>,
+    direction: ftp_client_gui_lib::transfer_dag::TransferDirection,
+    remote: &str,
+    local: &str,
+    progress_cb: Option<Box<dyn Fn(u64, u64) + Send>>,
+) -> (Box<dyn StorageProvider>, Result<(), ProviderError>) {
+    let arc = Arc::new(tokio::sync::Mutex::new(Some(provider)));
+    let built = ftp_client_gui_lib::transfer_dag::TransferDagBuilder::single_file(direction);
+    let report = Arc::new(AtomicU64::new(0));
+    let observer: Arc<dyn ftp_client_gui_lib::transfer_dag::DagObserver> =
+        Arc::new(ftp_client_gui_lib::transfer_dag::NoopDagObserver);
+    let result = ftp_client_gui_lib::transfer_dag_single_file::execute_single_file_dag(
+        &built,
+        Arc::clone(&arc),
+        remote.to_string(),
+        local.to_string(),
+        None,
+        progress_cb,
+        observer,
+        report,
+    )
+    .await;
+    let provider = arc
+        .lock()
+        .await
+        .take()
+        .expect("provider is returned by the single-file DAG");
+    (provider, result)
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn download_transfer_task(
     url: &str,
@@ -14318,7 +14360,28 @@ async fn cmd_get(
         }
     }
 
-    match download_with_resume(&mut *provider, remote, local_path, cli, progress_cb).await {
+    // DAG-ENGINE phase 1: route the plain classic single-file download
+    // through the graph engine when the flag is on. `--partial` keeps the
+    // legacy `download_with_resume` (its resume branch is not the plain
+    // leaf); with the flag off the legacy call runs verbatim.
+    let dl_result = if ftp_client_gui_lib::transfer_dag_single_file::dag_single_file_enabled()
+        && !cli.partial
+    {
+        let (returned, res) = cli_run_single_file_dag(
+            provider,
+            ftp_client_gui_lib::transfer_dag::TransferDirection::Download,
+            remote,
+            local_path,
+            progress_cb,
+        )
+        .await;
+        provider = returned;
+        res
+    } else {
+        download_with_resume(&mut *provider, remote, local_path, cli, progress_cb).await
+    };
+
+    match dl_result {
         Ok(()) => {
             let elapsed = start.elapsed();
             let file_size = std::fs::metadata(local_path).map(|m| m.len()).unwrap_or(0);
@@ -15504,7 +15567,28 @@ async fn cmd_put(
         }
     }
 
-    match upload_with_resume(&mut *provider, local, remote_path, cli, progress_cb).await {
+    // DAG-ENGINE phase 1: route the plain classic single-file upload through
+    // the graph engine when the flag is on. `--partial` keeps the legacy
+    // `upload_with_resume` (its resume branch is not the plain leaf); with the
+    // flag off the legacy call runs verbatim.
+    let up_result = if ftp_client_gui_lib::transfer_dag_single_file::dag_single_file_enabled()
+        && !cli.partial
+    {
+        let (returned, res) = cli_run_single_file_dag(
+            provider,
+            ftp_client_gui_lib::transfer_dag::TransferDirection::Upload,
+            remote_path,
+            local,
+            progress_cb,
+        )
+        .await;
+        provider = returned;
+        res
+    } else {
+        upload_with_resume(&mut *provider, local, remote_path, cli, progress_cb).await
+    };
+
+    match up_result {
         Ok(()) => {
             session_transfer_add(file_size);
             let elapsed = start.elapsed();
