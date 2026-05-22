@@ -41,6 +41,96 @@ pub struct UsedScan {
     pub method: &'static str,
 }
 
+/// Result of a provider-native single-shot recursive listing.
+pub struct FastPathListing {
+    /// Every entry under the scanned root, returned in one (paginated) call.
+    pub entries: Vec<crate::providers::RemoteEntry>,
+    /// Which provider fast-path produced this: `"s3-list-recursive"` or
+    /// `"webdav-infinity"`. Surfaced as `UsedScan::method`.
+    pub method: &'static str,
+    /// True when every entry carries a full, structurally-correct path under
+    /// the scan root, so a relative path can be derived by stripping the
+    /// root prefix (S3 `list_recursive` returns full object keys).
+    ///
+    /// False when the provider's recursive listing flattens nested paths:
+    /// `WebDavProvider::list_recursive` builds each entry's `name`/`path`
+    /// from `base + displayname`, so a deep `a/b/c.txt` collapses to
+    /// `root/c.txt`. That is harmless for a byte-sum (only `size`/`is_dir`
+    /// are read) but unusable for a structured per-file compare — a
+    /// `false` here tells `sync_core::scan` to fall back to the BFS.
+    pub structured_paths: bool,
+}
+
+/// Try a provider-native single-shot recursive listing.
+///
+/// Returns `Some` when the provider exposes one and it succeeded:
+/// - S3 → flat `ListObjectsV2` with no delimiter (`structured_paths = true`).
+/// - WebDAV → `PROPFIND Depth: infinity` (`structured_paths = false`; see
+///   `FastPathListing::structured_paths`), and only when the server actually
+///   recursed — some servers answer 207 without recursing, yielding zero
+///   files, in which case `None` is returned so the caller walks the BFS.
+///
+/// Returns `None` for every other provider, and on any fast-path error, so
+/// the caller falls back to the provider-agnostic BFS. This is the single
+/// shared specialization point: `used_scan` and `sync_core::scan` both call
+/// it instead of duplicating the downcast logic.
+pub async fn provider_list_recursive_fastpath(
+    provider: &mut Box<dyn StorageProvider>,
+    root: &str,
+) -> Option<FastPathListing> {
+    // --- S3 flat recursive listing -------------------------------------
+    if let Some(s3) = provider.as_any_mut().downcast_mut::<S3Provider>() {
+        return match s3.list_recursive(root).await {
+            Ok(entries) => Some(FastPathListing {
+                entries,
+                method: "s3-list-recursive",
+                structured_paths: true,
+            }),
+            Err(e) => {
+                tracing::info!(
+                    "[fastpath] S3 list_recursive failed ({}), falling back to BFS",
+                    e
+                );
+                None
+            }
+        };
+    }
+
+    // --- WebDAV PROPFIND Depth: infinity -------------------------------
+    if let Some(dav) = provider.as_any_mut().downcast_mut::<WebDavProvider>() {
+        return match dav.list_recursive(root).await {
+            Ok(entries) => {
+                // Some servers (CloudMe, DriveHQ, jianguoyun) answer 207 to
+                // Depth:infinity but do NOT recurse, returning only the
+                // requested collection. Trust infinity ONLY when it found
+                // files; otherwise fall back to the BFS.
+                let files = entries.iter().filter(|e| !e.is_dir).count();
+                if files > 0 {
+                    Some(FastPathListing {
+                        entries,
+                        method: "webdav-infinity",
+                        structured_paths: false,
+                    })
+                } else {
+                    tracing::info!(
+                        "[fastpath] WebDAV Depth:infinity returned no files (likely not recursed), falling back to BFS"
+                    );
+                    None
+                }
+            }
+            Err(e) => {
+                tracing::info!(
+                    "[fastpath] WebDAV Depth:infinity unavailable ({}), falling back to BFS",
+                    e
+                );
+                None
+            }
+        };
+    }
+
+    None
+}
+
 /// Recursively sum the bytes used under `root`.
 ///
 /// `max_depth` / `max_entries` reuse the project-wide scan caps. `cancel`
@@ -55,14 +145,16 @@ pub async fn scan_used_bytes(
     cancel: &AtomicBool,
     mut on_progress: impl FnMut(u64, u64),
 ) -> Result<UsedScan, ProviderError> {
-    // --- Specialization 1: S3 flat recursive listing -------------------
-    if let Some(s3) = provider.as_any_mut().downcast_mut::<S3Provider>() {
-        let entries = s3.list_recursive(root).await?;
+    // --- Provider-native single-shot recursive listing -----------------
+    // S3 / WebDAV collapse the per-directory BFS round-trips. The shared
+    // helper handles the downcast + the WebDAV not-recursed guard; any
+    // failure falls through to the BFS so the figure stays correct.
+    if let Some(fast) = provider_list_recursive_fastpath(provider, root).await {
         let mut used = 0u64;
         let mut files = 0u64;
         let mut dirs = 0u64;
         let mut truncated = false;
-        for e in entries {
+        for e in fast.entries {
             if e.is_dir {
                 dirs += 1;
                 continue;
@@ -80,62 +172,8 @@ pub async fn scan_used_bytes(
             file_count: files,
             dir_count: dirs,
             truncated,
-            method: "s3-list-recursive",
+            method: fast.method,
         });
-    }
-
-    // --- Specialization 2: WebDAV PROPFIND Depth: infinity -------------
-    // Attempt the single-request recursive listing; on any error (server
-    // forbids/limits infinity) fall through to the shared BFS so the
-    // figure stays correct.
-    if let Some(dav) = provider.as_any_mut().downcast_mut::<WebDavProvider>() {
-        match dav.list_recursive(root).await {
-            Ok(entries) => {
-                let mut used = 0u64;
-                let mut files = 0u64;
-                let mut dirs = 0u64;
-                let mut truncated = false;
-                for e in entries {
-                    if e.is_dir {
-                        dirs += 1;
-                        continue;
-                    }
-                    if files >= max_entries as u64 {
-                        truncated = true;
-                        break;
-                    }
-                    used = used.saturating_add(e.size);
-                    files += 1;
-                }
-                // Some servers (CloudMe, DriveHQ, jianguoyun) answer 207 to
-                // Depth:infinity but do NOT recurse: they return only the
-                // requested collection (and maybe its immediate
-                // subdirectories), so files==0 even though the tree has
-                // files. Trust infinity ONLY when it actually found files;
-                // otherwise fall back to the BFS, which walks explicitly
-                // and returns the true figure. A genuinely file-less tree
-                // also yields 0 via BFS, so the fallback is harmless.
-                if files > 0 {
-                    on_progress(files, used);
-                    return Ok(UsedScan {
-                        used_bytes: used,
-                        file_count: files,
-                        dir_count: dirs,
-                        truncated,
-                        method: "webdav-infinity",
-                    });
-                }
-                tracing::info!(
-                    "[used_scan] WebDAV Depth:infinity returned no entries (likely not recursed), falling back to BFS"
-                );
-            }
-            Err(e) => {
-                tracing::info!(
-                    "[used_scan] WebDAV Depth:infinity unavailable ({}), falling back to BFS",
-                    e
-                );
-            }
-        }
     }
 
     // --- Baseline: shared provider-agnostic BFS ------------------------
