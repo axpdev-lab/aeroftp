@@ -161,6 +161,7 @@ pub fn is_webdav_preset(provider_id: Option<&str>) -> bool {
         Some(
             "koofr-webdav"
                 | "opendrive-webdav"
+                | "pcloud-webdav"
                 | "yandex-storage-webdav"
                 | "infinicloud"
                 | "nextcloud"
@@ -197,16 +198,18 @@ pub fn is_s3_preset(provider_id: Option<&str>) -> bool {
 }
 
 /// Cross-protocol provider families. Koofr exposes WebDAV + REST that map to
-/// the same physical disk; OpenDrive does the same; Yandex Disk has WebDAV +
-/// OAuth + Object Storage. When a profile belongs to a known family AND the
-/// username is dedup-able, the key uses the `family:` prefix so all surfaces
-/// of the same account collapse into one drive.
+/// the same physical disk; OpenDrive does the same; pCloud has WebDAV + OAuth;
+/// Yandex Disk has WebDAV + OAuth + Object Storage. When a profile belongs to
+/// a known family AND the username is dedup-able, the key uses the `family:`
+/// prefix so all surfaces of the same account collapse into one drive.
 fn dedup_family(provider_id: Option<&str>, protocol: &str) -> Option<&'static str> {
     match (provider_id, protocol) {
         (Some("koofr-webdav") | Some("koofr"), _) => Some("koofr"),
         (_, "koofr") => Some("koofr"),
         (Some("opendrive-webdav") | Some("opendrive"), _) => Some("opendrive"),
         (_, "opendrive") => Some("opendrive"),
+        (Some("pcloud-webdav") | Some("pcloud"), _) => Some("pcloud"),
+        (_, "pcloud") => Some("pcloud"),
         (Some("yandex-storage-webdav") | Some("yandex-storage") | Some("yandexdisk"), _) => {
             Some("yandex")
         }
@@ -515,6 +518,44 @@ mod tests {
         assert_eq!(summary.deduped_quota_count, 1);
         let key = dedup_key(&profiles[0]);
         assert_eq!(key, "family:koofr:user@example.com");
+        assert_eq!(dedup_key(&profiles[0]), dedup_key(&profiles[1]));
+    }
+
+    #[test]
+    fn pcloud_webdav_and_oauth_same_email_collapse() {
+        // A pCloud profile reached via the WebDAV preset and the same account
+        // reached via OAuth must key on `family:pcloud:<email>` so the storage
+        // footer counts the drive once. Region (US vs EU endpoint) is
+        // irrelevant: the family key ignores the host.
+        let profiles = [
+            p(
+                "pw",
+                "webdav",
+                Some("pcloud-webdav"),
+                "https://ewebdav.pcloud.com",
+                443,
+                "user@example.com",
+                Some(3_000_000_000),
+                Some(10_000_000_000),
+            ),
+            p(
+                "po",
+                "pcloud",
+                Some("pcloud"),
+                "",
+                0,
+                "User@Example.com",
+                Some(3_000_000_000),
+                Some(10_000_000_000),
+            ),
+        ];
+        let summary = aggregate(&profiles);
+        assert_eq!(summary.profiles, 2);
+        assert_eq!(summary.unique_count, 1);
+        assert_eq!(summary.total_used, 3_000_000_000);
+        assert_eq!(summary.total_total, 10_000_000_000);
+        assert_eq!(summary.deduped_quota_count, 1);
+        assert_eq!(dedup_key(&profiles[0]), "family:pcloud:user@example.com");
         assert_eq!(dedup_key(&profiles[0]), dedup_key(&profiles[1]));
     }
 

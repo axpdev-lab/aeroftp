@@ -1651,6 +1651,7 @@
             "discoverFileLuWebdav": "FileLu przez WebDAV (wlacz w ustawieniach konta)",
             "discoverQuotalessWebdav": "Quotaless - przechowywanie w chmurze przez WebDAV (ownCloud)",
             "discoverNextcloud": "Samodzielnie hostowana platforma przechowywania w chmurze",
+            "discoverPCloudWebdav": "Szwajcarskie przechowywanie w chmurze przez WebDAV",
             "discoverBlomp": "Blomp (40 GB za darmo, OpenStack Swift)",
             "discoverFilen": "Bezpieczne przechowywanie z szyfrowaniem po stronie klienta",
             "discoverFileLu": "Przechowywanie w chmurze z FTP, WebDAV, S3 i natywnym API (1 GB za darmo)",

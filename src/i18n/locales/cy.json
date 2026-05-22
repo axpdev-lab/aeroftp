@@ -1651,6 +1651,7 @@
             "discoverFileLuWebdav": "FileLu trwy WebDAV (galluogwch yn Gosodiadau Cyfrif)",
             "discoverQuotalessWebdav": "Storfa cwmwl Quotaless trwy WebDAV (ownCloud)",
             "discoverNextcloud": "Platfform storfa cwmwl hunan-letyol",
+            "discoverPCloudWebdav": "Storfa cwmwl o'r Swistir trwy WebDAV",
             "discoverBlomp": "Blomp (40 GB am ddim, OpenStack Swift)",
             "discoverFilen": "Storfa cwmwl ddiogel gydag amgryptio ochr y cleient",
             "discoverFileLu": "Storfa cwmwl gyda FTP, WebDAV, S3 ac API brodorol (1 GB am ddim)",

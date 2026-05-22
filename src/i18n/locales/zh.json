@@ -1651,6 +1651,7 @@
             "discoverFileLuWebdav": "FileLu 通过 WebDAV（在账户设置中启用）",
             "discoverQuotalessWebdav": "Quotaless 通过 WebDAV 的云存储（ownCloud）",
             "discoverNextcloud": "自托管云存储平台",
+            "discoverPCloudWebdav": "瑞士云存储 通过 WebDAV",
             "discoverBlomp": "Blomp（40 GB 免费，OpenStack Swift）",
             "discoverFilen": "安全存储，支持客户端加密",
             "discoverFileLu": "云存储，支持 FTP、WebDAV、S3 和原生 API（1 GB 免费）",

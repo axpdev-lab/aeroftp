@@ -1644,6 +1644,7 @@
             "discoverFileLuWebdav": "FileLu WebDAV-ով (միացրեք Հաշվի կարգավորումներում)",
             "discoverQuotalessWebdav": "Quotaless ամպային պահեստավորում WebDAV-ով (ownCloud)",
             "discoverNextcloud": "Ինքնահոսթինգ ամպային պահեստավորման պլատֆորմ",
+            "discoverPCloudWebdav": "Շվեյցարական ամպային պահեստավորում WebDAV-ով",
             "discoverBlomp": "Blomp (40 GB անվճար, OpenStack Swift)",
             "discoverFilen": "Անվտանգ ամպային պահեստավորում հաճախորդի կողմի գաղտնագրմանով",
             "discoverFileLu": "Ամպային պահեստավորում FTP, WebDAV, S3 և նատիվ API-ով (1 GB անվճար)",

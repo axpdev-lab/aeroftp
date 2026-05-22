@@ -1651,6 +1651,7 @@
             "discoverFileLuWebdav": "FileLu via WebDAV (activar en Ajustes de cuenta)",
             "discoverQuotalessWebdav": "Almacenamiento en la nube Quotaless via WebDAV (ownCloud)",
             "discoverNextcloud": "Plataforma de almacenamiento en la nube autoalojada",
+            "discoverPCloudWebdav": "Almacenamiento en la nube suizo via WebDAV",
             "discoverBlomp": "Blomp (40 GB gratis, OpenStack Swift)",
             "discoverFilen": "Almacenamiento en la nube seguro con cifrado del lado del cliente",
             "discoverFileLu": "Almacenamiento en la nube con FTP, WebDAV, S3 y API nativa (1 GB gratis)",

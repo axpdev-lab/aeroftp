@@ -1651,6 +1651,7 @@
             "discoverFileLuWebdav": "FileLu WebDAV를 통해 (계정 설정에서 활성화)",
             "discoverQuotalessWebdav": "Quotaless WebDAV를 통한 클라우드 스토리지 (ownCloud)",
             "discoverNextcloud": "자체 호스팅 클라우드 스토리지 플랫폼",
+            "discoverPCloudWebdav": "스위스 클라우드 스토리지 WebDAV를 통해",
             "discoverBlomp": "Blomp (40 GB 무료, OpenStack Swift)",
             "discoverFilen": "클라이언트 측 암호화 보안 클라우드 스토리지",
             "discoverFileLu": "FTP, WebDAV, S3 및 네이티브 API 클라우드 스토리지 (1 GB 무료)",

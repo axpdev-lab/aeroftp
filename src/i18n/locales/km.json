@@ -1651,6 +1651,7 @@
             "discoverFileLuWebdav": "FileLu តាមរយៈ WebDAV (បើកនៅក្នុងការកំណត់គណនី)",
             "discoverQuotalessWebdav": "Quotaless ការផ្ទុកពពកតាមរយៈ WebDAV (ownCloud)",
             "discoverNextcloud": "វេទិកាផ្ទុកពពកម៉ាស៊ីនខ org្លួនឯង",
+            "discoverPCloudWebdav": "ការផ្ទុកពពកស្វ៊ីស តាមរយៈ WebDAV",
             "discoverBlomp": "Blomp (40 GB ឥតគិតថ្លៃ, OpenStack Swift)",
             "discoverFilen": "ការផ្ទុកពពកសុវត្ថិភាពជាមួយការអ៊ិនគ្រីបផ្នែកអតិថិជន",
             "discoverFileLu": "ការផ្ទុកពពកជាមួយ FTP, WebDAV, S3 និង API ដើម (1 GB ឥតគិតថ្លៃ)",

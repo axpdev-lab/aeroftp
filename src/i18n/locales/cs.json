@@ -1651,6 +1651,7 @@
             "discoverFileLuWebdav": "FileLu přes WebDAV (povolte v Nastavení účtu)",
             "discoverQuotalessWebdav": "Quotaless cloudové úložiště přes WebDAV (ownCloud)",
             "discoverNextcloud": "Platforma cloudového úložiště pro vlastní hosting",
+            "discoverPCloudWebdav": "Švýcarské cloudové úložiště přes WebDAV",
             "discoverBlomp": "Blomp (40 GB zdarma, OpenStack Swift)",
             "discoverFilen": "Bezpečné cloudové úložiště s šifrováním na straně klienta",
             "discoverFileLu": "Cloudové úložiště s FTP, WebDAV, S3 a nativním API (1 GB zdarma)",

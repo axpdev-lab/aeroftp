@@ -1651,6 +1651,7 @@
             "discoverFileLuWebdav": "FileLu kupitia WebDAV (washa katika mipangilio ya akaunti)",
             "discoverQuotalessWebdav": "Quotaless - hifadhi ya wingu kupitia WebDAV (ownCloud)",
             "discoverNextcloud": "Jukwaa la hifadhi ya wingu linalohifadhiwa binafsi",
+            "discoverPCloudWebdav": "Hifadhi ya wingu ya Uswisi kupitia WebDAV",
             "discoverBlomp": "Blomp (40 GB bure, OpenStack Swift)",
             "discoverFilen": "Hifadhi salama yenye usimbaji fiche upande wa mteja",
             "discoverFileLu": "Hifadhi ya wingu yenye FTP, WebDAV, S3 na API asili (1 GB bure)",

@@ -1651,6 +1651,7 @@
             "discoverFileLuWebdav": "WebDAV দ্বারা FileLu (অ্যাকাউন্ট সেটিংসে সক্রিয় করুন)",
             "discoverQuotalessWebdav": "WebDAV দ্বারা Quotaless ক্লাউড স্টোরেজ (ownCloud)",
             "discoverNextcloud": "স্ব-হোস্টেড ক্লাউড স্টোরেজ প্ল্যাটফর্ম",
+            "discoverPCloudWebdav": "WebDAV দ্বারা সুইস ক্লাউড স্টোরেজ",
             "discoverBlomp": "Blomp (40 GB বিনামূল্যে, OpenStack Swift)",
             "discoverFilen": "ক্লায়েন্ট-সাইড এনক্রিপশন সহ নিরাপদ ক্লাউড স্টোরেজ",
             "discoverFileLu": "FTP, WebDAV, S3 এবং নেটিভ API সহ ক্লাউড স্টোরেজ (1 GB বিনামূল্যে)",

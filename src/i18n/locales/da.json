@@ -1651,6 +1651,7 @@
             "discoverFileLuWebdav": "FileLu via WebDAV (aktivér i Kontoindstillinger)",
             "discoverQuotalessWebdav": "Quotaless cloud-lagring via WebDAV (ownCloud)",
             "discoverNextcloud": "Selvhostet cloud-lagringsplatform",
+            "discoverPCloudWebdav": "Schweizisk cloud-lagring via WebDAV",
             "discoverBlomp": "Blomp (40 GB gratis, OpenStack Swift)",
             "discoverFilen": "Sikker cloud-lagring med klientside-kryptering",
             "discoverFileLu": "Cloud-lagring med FTP, WebDAV, S3 og native API (1 GB gratis)",

@@ -1651,6 +1651,7 @@
             "discoverFileLuWebdav": "FileLu WebDAV:n kautta (ota kayttoon Tiliasetuksissa)",
             "discoverQuotalessWebdav": "Quotaless pilvitallennus WebDAV:n kautta (ownCloud)",
             "discoverNextcloud": "Itse isannoitu pilvitallennusalusta",
+            "discoverPCloudWebdav": "Sveitsilainen pilvitallennus WebDAV:n kautta",
             "discoverBlomp": "Blomp (40 GB ilmaiseksi, OpenStack Swift)",
             "discoverFilen": "Turvallinen pilvitallennus asiakaslaitteen salauksella",
             "discoverFileLu": "Pilvitallennus FTP, WebDAV, S3 ja natiivi API (1 GB ilmaiseksi)",

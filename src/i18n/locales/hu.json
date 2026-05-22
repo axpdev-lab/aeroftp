@@ -1651,6 +1651,7 @@
             "discoverFileLuWebdav": "FileLu WebDAV-on keresztül (engedélyezze a Fiókbeállításokban)",
             "discoverQuotalessWebdav": "Quotaless felhőtárolás WebDAV-on keresztül (ownCloud)",
             "discoverNextcloud": "Saját üzemeltetésű felhőtárolási platform",
+            "discoverPCloudWebdav": "Svájci felhőtárolás WebDAV-on keresztül",
             "discoverBlomp": "Blomp (40 GB ingyenes, OpenStack Swift)",
             "discoverFilen": "Biztonságos felhőtárolás kliensoldali titkosítással",
             "discoverFileLu": "Felhőtárolás FTP, WebDAV, S3 és natív API-val (1 GB ingyenes)",

@@ -1651,6 +1651,7 @@
             "discoverFileLuWebdav": "FileLu WebDAV kaudu (luba Konto seadetes)",
             "discoverQuotalessWebdav": "Quotaless pilvesalvestus WebDAV kaudu (ownCloud)",
             "discoverNextcloud": "Ise majutatav pilvesalvestusplatvorm",
+            "discoverPCloudWebdav": "Šveitsi pilvesalvestus WebDAV kaudu",
             "discoverBlomp": "Blomp (40 GB tasuta, OpenStack Swift)",
             "discoverFilen": "Turvaline pilvesalvestus kliendipoolse krüptimisega",
             "discoverFileLu": "Pilvesalvestus FTP, WebDAV, S3 ja natiivse API-ga (1 GB tasuta)",

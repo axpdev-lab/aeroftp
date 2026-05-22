@@ -1651,6 +1651,7 @@
             "discoverFileLuWebdav": "FileLu qua WebDAV (bat trong Cai dat Tai khoan)",
             "discoverQuotalessWebdav": "Quotaless luu tru dam may qua WebDAV (ownCloud)",
             "discoverNextcloud": "Nen tang luu tru dam may tu luu tru",
+            "discoverPCloudWebdav": "Luu tru dam may Thuy Si qua WebDAV",
             "discoverBlomp": "Blomp (40 GB mien phi, OpenStack Swift)",
             "discoverFilen": "Luu tru an toan voi ma hoa phia may khach",
             "discoverFileLu": "Luu tru dam may voi FTP, WebDAV, S3 va API goc (1 GB mien phi)",

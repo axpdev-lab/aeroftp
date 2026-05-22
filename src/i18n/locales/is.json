@@ -1651,6 +1651,7 @@
             "discoverFileLuWebdav": "FileLu í gegnum WebDAV (virkja í reikningsstillingum)",
             "discoverQuotalessWebdav": "Quotaless skýjageymsla í gegnum WebDAV (ownCloud)",
             "discoverNextcloud": "Sjálfshýstur skýjageymsluvettvangur",
+            "discoverPCloudWebdav": "Svissneskur skýjageymsla í gegnum WebDAV",
             "discoverBlomp": "Blomp (40 GB ókeypis, OpenStack Swift)",
             "discoverFilen": "Örugg skýjageymsla með dulkóðun á biðlarahlið",
             "discoverFileLu": "Skýjageymsla með FTP, WebDAV, S3 og innbyggðu API (1 GB ókeypis)",

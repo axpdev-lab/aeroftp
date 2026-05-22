@@ -1651,6 +1651,7 @@
             "discoverFileLuWebdav": "FileLu WebDAV-ით (ჩართეთ ანგარიშის პარამეტრებში)",
             "discoverQuotalessWebdav": "Quotaless ღრუბლოვანი შენახვა WebDAV-ით (ownCloud)",
             "discoverNextcloud": "თვითჰოსტირებული ღრუბლოვანი შენახვის პლატფორმა",
+            "discoverPCloudWebdav": "შვეიცარიული ღრუბლოვანი შენახვა WebDAV-ით",
             "discoverBlomp": "Blomp (40 GB უფასო, OpenStack Swift)",
             "discoverFilen": "უსაფრთხო ღრუბლოვანი შენახვა კლიენტის მხარეს დაშიფვრით",
             "discoverFileLu": "ღრუბლოვანი შენახვა FTP, WebDAV, S3 და მშობლიური API-ით (1 GB უფასო)",

@@ -1651,6 +1651,7 @@
             "discoverFileLuWebdav": "FileLu caur WebDAV (iespējojiet Konta iestatījumos)",
             "discoverQuotalessWebdav": "Quotaless mākoņkrātuve caur WebDAV (ownCloud)",
             "discoverNextcloud": "Pašmitināta mākoņkrātuves platforma",
+            "discoverPCloudWebdav": "Šveices mākoņkrātuve caur WebDAV",
             "discoverBlomp": "Blomp (40 GB bez maksas, OpenStack Swift)",
             "discoverFilen": "Droša mākoņkrātuve ar klienta puses šifrēšanu",
             "discoverFileLu": "Mākoņkrātuve ar FTP, WebDAV, S3 un vietējo API (1 GB bez maksas)",

@@ -1651,6 +1651,7 @@
             "discoverFileLuWebdav": "FileLu ผ่าน WebDAV (เปิดใช้ในการตั้งค่าบัญชี)",
             "discoverQuotalessWebdav": "Quotaless พื้นที่จัดเก็บบนคลาวด์ผ่าน WebDAV (ownCloud)",
             "discoverNextcloud": "แพลตฟอร์มพื้นที่จัดเก็บบนคลาวด์โฮสต์เอง",
+            "discoverPCloudWebdav": "พื้นที่จัดเก็บบนคลาวด์สวิส ผ่าน WebDAV",
             "discoverBlomp": "Blomp (40 GB ฟรี, OpenStack Swift)",
             "discoverFilen": "พื้นที่จัดเก็บปลอดภัยพร้อมการเข้ารหัสฝั่งไคลเอนต์",
             "discoverFileLu": "พื้นที่จัดเก็บบนคลาวด์พร้อม FTP, WebDAV, S3 และ API ดั้งเดิม (1 GB ฟรี)",

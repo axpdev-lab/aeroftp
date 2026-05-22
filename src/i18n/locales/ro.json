@@ -1651,6 +1651,7 @@
             "discoverFileLuWebdav": "FileLu prin WebDAV (activati din setarile contului)",
             "discoverQuotalessWebdav": "Quotaless - stocare in cloud prin WebDAV (ownCloud)",
             "discoverNextcloud": "Platforma de stocare in cloud auto-gazduita",
+            "discoverPCloudWebdav": "Stocare elvetiana in cloud prin WebDAV",
             "discoverBlomp": "Blomp (40 GB gratuit, OpenStack Swift)",
             "discoverFilen": "Stocare securizata cu criptare pe partea clientului",
             "discoverFileLu": "Stocare in cloud cu FTP, WebDAV, S3 si API nativ (1 GB gratuit)",

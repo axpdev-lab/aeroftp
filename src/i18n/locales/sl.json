@@ -1651,6 +1651,7 @@
             "discoverFileLuWebdav": "FileLu prek WebDAV (omogočite v nastavitvah računa)",
             "discoverQuotalessWebdav": "Quotaless - oblačno shranjevanje prek WebDAV (ownCloud)",
             "discoverNextcloud": "Samogostovana platforma za oblačno shranjevanje",
+            "discoverPCloudWebdav": "Švicarsko oblačno shranjevanje prek WebDAV",
             "discoverBlomp": "Blomp (40 GB brezplačno, OpenStack Swift)",
             "discoverFilen": "Varno shranjevanje s šifriranjem na strani odjemalca",
             "discoverFileLu": "Oblačno shranjevanje s FTP, WebDAV, S3 in izvirnim API-jem (1 GB brezplačno)",
