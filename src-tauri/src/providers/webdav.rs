@@ -260,7 +260,7 @@ impl WebDavProvider {
             );
         }
         let client = Client::builder()
-            .user_agent(crate::providers::AEROFTP_USER_AGENT)
+            .user_agent(crate::providers::AEROFTP_WEBDAV_USER_AGENT)
             .danger_accept_invalid_certs(!config.verify_cert)
             .connect_timeout(std::time::Duration::from_secs(30))
             // 1800s (30 min) accommodates large body uploads on slow links and

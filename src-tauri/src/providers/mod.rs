@@ -65,8 +65,16 @@ pub mod yandex_disk;
 pub mod zoho_workdrive;
 
 /// User-Agent sent with every HTTP request (auto-derived from Cargo.toml version).
-/// Used by all providers that make HTTP calls (WebDAV, S3, OAuth, REST APIs).
+/// Used by all providers that make HTTP calls (S3, OAuth, REST APIs).
 pub const AEROFTP_USER_AGENT: &str = concat!("AeroFTP/", env!("CARGO_PKG_VERSION"));
+
+/// User-Agent sent by the shared WebDAV client (major version only).
+/// pCloud and other WebDAV servers fingerprint the User-Agent as a device
+/// identifier: a full version string (`AeroFTP/3.8.1`) makes every app update
+/// register as a new device and forces a fresh email re-approval. Pinning to
+/// the major version (`AeroFTP/3`) keeps the device stable across patch and
+/// minor releases. `CARGO_PKG_VERSION_MAJOR` is provided by cargo at compile time.
+pub const AEROFTP_WEBDAV_USER_AGENT: &str = concat!("AeroFTP/", env!("CARGO_PKG_VERSION_MAJOR"));
 
 pub use types::*;
 // GAP-A01: retry infrastructure ready: integration into providers deferred to v2.5.0
