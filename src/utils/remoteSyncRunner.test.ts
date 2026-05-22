@@ -567,4 +567,78 @@ describe('remoteSyncRunner — GAP-8 retryPolicyForSpeed', () => {
     it('falls back to the default policy for an unknown mode', () => {
         expect(retryPolicyForSpeed('whatever').max_retries).toBe(3);
     });
+
+    it('GAP-9a — maniac uses 2 retries with a tight backoff and long timeout', () => {
+        const maniac = retryPolicyForSpeed('maniac');
+        expect(maniac.max_retries).toBe(2);
+        expect(maniac.base_delay_ms).toBe(250);
+        expect(maniac.max_delay_ms).toBe(2_000);
+        expect(maniac.timeout_ms).toBe(300_000);
+        expect(maniac.backoff_multiplier).toBe(1.5);
+    });
+});
+
+describe('remoteSyncRunner — GAP-9a maniac mode', () => {
+    it('skips journal persistence when journalEnabled is false', async () => {
+        const { invoke, calls } = makeInvoke();
+        await runRemoteSync(
+            [file('a.txt', 'upload')],
+            noDirs,
+            baseConfig({ journalEnabled: false }),
+            {},
+            noWaitDeps(invoke),
+        );
+        expect(calls.some((c) => c.cmd === 'save_sync_journal_cmd')).toBe(false);
+        expect(calls.some((c) => c.cmd === 'delete_sync_journal_cmd')).toBe(false);
+    });
+
+    it('still persists the journal when journalEnabled is left default', async () => {
+        const { invoke, calls } = makeInvoke();
+        await runRemoteSync(
+            [file('a.txt', 'upload')],
+            noDirs,
+            baseConfig(),
+            {},
+            noWaitDeps(invoke),
+        );
+        expect(calls.some((c) => c.cmd === 'save_sync_journal_cmd')).toBe(true);
+    });
+
+    it('runs a post-sync verification sweep over completed downloads', async () => {
+        const verifyCalls: Record<string, unknown>[] = [];
+        const { invoke } = makeInvoke({
+            verify_local_transfer: (args) => {
+                verifyCalls.push(args ?? {});
+                const passed = (args?.localPath as string).includes('good');
+                return { passed, message: passed ? 'ok' : 'size mismatch' } as VerifyResult;
+            },
+        });
+        const report = await runRemoteSync(
+            [
+                file('good.txt', 'download'),
+                file('bad.txt', 'download'),
+                file('up.txt', 'upload'),
+            ],
+            noDirs,
+            baseConfig({ journalEnabled: false, postSyncVerification: true }),
+            {},
+            noWaitDeps(invoke),
+        );
+        // Only the two downloads are swept; the upload is skipped.
+        expect(verifyCalls).toHaveLength(2);
+        expect(verifyCalls.every((a) => a.policy === 'size_and_mtime')).toBe(true);
+        expect(report.postSyncVerification).toEqual({ ok: 1, mismatches: 1, failed: 0 });
+    });
+
+    it('omits the post-sync report when postSyncVerification is unset', async () => {
+        const { invoke } = makeInvoke();
+        const report = await runRemoteSync(
+            [file('a.txt', 'download')],
+            noDirs,
+            baseConfig(),
+            {},
+            noWaitDeps(invoke),
+        );
+        expect(report.postSyncVerification).toBeUndefined();
+    });
 });

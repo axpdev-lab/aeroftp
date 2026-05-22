@@ -109,6 +109,20 @@ export interface RemoteSyncConfig {
     /** Optional bandwidth caps (KB/s, 0/undefined = unlimited) applied at start. */
     uploadLimitKbps?: number;
     downloadLimitKbps?: number;
+    /**
+     * GAP-9a — when `false`, the checkpoint journal is never persisted (the
+     * legacy Maniac mode disables it for raw speed). The in-memory journal
+     * object is still maintained so the sync-index merge stays correct.
+     * Defaults to `true`.
+     */
+    journalEnabled?: boolean;
+    /**
+     * GAP-9a — when `true`, the runner sweeps every completed download with a
+     * `size_and_mtime` check after the main loop, regardless of `verifyPolicy`.
+     * Maniac runs with verify off during the transfer for speed, then this
+     * mandatory pass catches any corruption.
+     */
+    postSyncVerification?: boolean;
 }
 
 /** The rich connected-remote report — superset of the local-local report. */
@@ -125,6 +139,12 @@ export interface SyncRunReport {
     durationMs: number;
     /** true iff the run stopped early on cancel or transfer budget. */
     cancelled: boolean;
+    /**
+     * GAP-9a — present only when `postSyncVerification` ran (Maniac mode). The
+     * counts feed the `syncPanel.maniacPostSyncReport` line in the result
+     * dialog.
+     */
+    postSyncVerification?: { ok: number; mismatches: number; failed: number };
     /** Absent when no file travelled the rsync delta path this run. */
     delta_savings?: DeltaSavingsSummary;
     delta_bytes_on_wire?: number;
@@ -220,9 +240,22 @@ export const filesFromJournal = (journal: SyncJournal): SyncRunFile[] =>
  * push harder: more attempts with a shorter backoff so a flaky transfer is
  * retried quickly rather than stalling the run. `normal` / `fast` keep the
  * conservative 3-retry default.
+ *
+ * GAP-9a — `maniac` mirrors the legacy `MANIAC_OVERRIDES.retryPolicy`: only 2
+ * attempts with a tight backoff and a long per-file timeout, trading recovery
+ * depth for raw throughput. Kept inline so this module stays free of any
+ * `components/` import.
  */
 export const retryPolicyForSpeed = (speedMode: string): RetryPolicy => {
     switch (speedMode) {
+        case 'maniac':
+            return {
+                max_retries: 2,
+                base_delay_ms: 250,
+                max_delay_ms: 2_000,
+                timeout_ms: 300_000,
+                backoff_multiplier: 1.5,
+            };
         case 'extreme':
             return {
                 max_retries: 5,
@@ -443,7 +476,12 @@ export const runRemoteSync = async (
     const journalEntryMap = new Map<string, number>();
     journal.entries.forEach((entry, idx) => journalEntryMap.set(entry.relative_path, idx));
 
+    // GAP-9a — Maniac mode disables journal persistence. The in-memory
+    // `journal` object is still maintained (it backs the sync-index merge);
+    // only the `save_sync_journal_cmd` round-trips are skipped.
+    const journalEnabled = config.journalEnabled !== false;
     const saveJournal = async (): Promise<void> => {
+        if (!journalEnabled) return;
         await invoke('save_sync_journal_cmd', { journal }).catch(() => undefined);
     };
     await saveJournal();
@@ -726,11 +764,45 @@ export const runRemoteSync = async (
     // ── Finalize the journal ───────────────────────────────────────────────
     journal.completed = !runCancelled;
     await saveJournal();
-    if (journal.completed) {
+    if (journalEnabled && journal.completed) {
         await invoke('delete_sync_journal_cmd', {
             localPath: localBase,
             remotePath: remoteBase,
         }).catch(() => undefined);
+    }
+
+    // ── GAP-9a: post-sync verification sweep (Maniac mode) ─────────────────
+    // Maniac transfers run with verify off for speed; this mandatory pass
+    // re-checks every completed download with a size+mtime probe so silent
+    // corruption is still surfaced. It never mutates the run outcome — the
+    // counts are purely informational.
+    let postSyncVerification:
+        | { ok: number; mismatches: number; failed: number }
+        | undefined;
+    if (config.postSyncVerification && !runCancelled) {
+        let pv_ok = 0;
+        let pv_mismatches = 0;
+        let pv_failed = 0;
+        for (const f of files) {
+            if (f.action !== 'download') continue;
+            const idx = journalEntryMap.get(f.relativePath);
+            const entry = idx !== undefined ? journal.entries[idx] : undefined;
+            if (entry?.status !== 'completed') continue;
+            const localFilePath = `${localBase}/${f.relativePath}`;
+            try {
+                const vr = await invoke<VerifyResult>('verify_local_transfer', {
+                    localPath: localFilePath,
+                    expectedSize: f.size,
+                    expectedMtime: f.mtime,
+                    policy: 'size_and_mtime',
+                });
+                if (vr.passed) pv_ok++;
+                else pv_mismatches++;
+            } catch {
+                pv_failed++;
+            }
+        }
+        postSyncVerification = { ok: pv_ok, mismatches: pv_mismatches, failed: pv_failed };
     }
 
     // ── GAP-6: merge the run into the persisted sync index ─────────────────
@@ -811,6 +883,7 @@ export const runRemoteSync = async (
         totalBytes,
         durationMs: now() - startTime,
         cancelled: runCancelled,
+        postSyncVerification,
         delta_savings,
         delta_bytes_on_wire: delta_savings?.total_bytes_sent,
         delta_batch_files: delta_savings?.files_using_delta,

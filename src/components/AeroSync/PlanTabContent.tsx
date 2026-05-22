@@ -11,6 +11,7 @@ import {
     Loader2,
     ShieldAlert,
     ShieldCheck,
+    Skull,
     Trash2,
 } from 'lucide-react';
 import type { CompareResult } from '../../utils/compareEndpoints';
@@ -29,6 +30,7 @@ import {
 } from '../../utils/syncPresets';
 import { formatBytes } from '../../utils/formatters';
 import { retryPolicyForSpeed } from '../../utils/remoteSyncRunner';
+import { isCyberTheme } from '../Sync/syncConstants';
 import { useTranslation } from '../../i18n';
 import type {
     AeroSyncCanarySelection,
@@ -111,7 +113,7 @@ const PresetChip: React.FC<{
     );
 };
 
-const SPEED_MODES: AeroSyncSpeedMode[] = ['normal', 'fast', 'turbo', 'extreme'];
+const BASE_SPEED_MODES: AeroSyncSpeedMode[] = ['normal', 'fast', 'turbo', 'extreme'];
 const VERIFY_POLICIES: AeroSyncVerifyPolicy[] = ['none', 'size_only', 'size_and_mtime', 'full_checksum'];
 const CANARY_PERCENTS = [5, 10, 25, 50];
 const CANARY_SELECTIONS: AeroSyncCanarySelection[] = ['random', 'newest', 'largest'];
@@ -145,11 +147,26 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
     // GAP-8: transfer budget in MB (0 = unlimited); retry policy is derived
     // from the speed mode, versioned-backup reuses the existing toggle.
     const [transferBudgetMb, setTransferBudgetMb] = React.useState(0);
+    // GAP-9a: Maniac is the Cyber-theme-gated 5th speed mode. Selecting it
+    // arms a warning card; Execute stays blocked until the user confirms.
+    const [maniacConfirmed, setManiacConfirmed] = React.useState(false);
     const isConnectedRemote = pairKind === 'local-remote' || pairKind === 'remote-local';
+    const showManiac = isCyberTheme();
+    const speedModes: AeroSyncSpeedMode[] = showManiac
+        ? [...BASE_SPEED_MODES, 'maniac']
+        : BASE_SPEED_MODES;
+    const maniacArmed = speedMode === 'maniac';
+    const maniacBlocked = maniacArmed && !maniacConfirmed;
 
     React.useEffect(() => {
         setConfirmedDestructive(false);
     }, [preset, direction, conflictPolicy, versionedBackup.enabled, versionedBackup.backupDir]);
+
+    // GAP-9a: any move away from Maniac re-arms the confirmation gate, so a
+    // later return to Maniac always re-prompts.
+    React.useEffect(() => {
+        if (speedMode !== 'maniac') setManiacConfirmed(false);
+    }, [speedMode]);
 
     if (!result) {
         if (loading) {
@@ -174,7 +191,12 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
     const needsConfirm = plan.hasDestructive;
     // A canary run is a non-destructive trial, so it does not gate on the
     // destructive-confirm checkbox.
-    const canFireExecute = executable && (canaryMode || !needsConfirm || confirmedDestructive);
+    // GAP-9a: Maniac additionally blocks Execute until its own warning card
+    // is acknowledged.
+    const canFireExecute =
+        executable
+        && (canaryMode || !needsConfirm || confirmedDestructive)
+        && !maniacBlocked;
 
     return (
         <div className="flex flex-col">
@@ -294,20 +316,32 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                             {t('aerosync.speedMode') || 'Speed mode'}
                         </label>
                         <div className="inline-flex w-full overflow-hidden rounded-md border border-gray-200 dark:border-gray-700">
-                            {SPEED_MODES.map((mode) => (
-                                <button
-                                    key={mode}
-                                    type="button"
-                                    onClick={() => setSpeedMode(mode)}
-                                    className={`flex-1 px-2 py-1 text-[11px] font-medium capitalize ${
-                                        speedMode === mode
-                                            ? 'bg-blue-500 text-white'
-                                            : 'bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-900/40 dark:text-gray-300 dark:hover:bg-gray-700'
-                                    }`}
-                                >
-                                    {t(`aerosync.speedMode_${mode}`) || mode}
-                                </button>
-                            ))}
+                            {speedModes.map((mode) => {
+                                const active = speedMode === mode;
+                                const isManiac = mode === 'maniac';
+                                return (
+                                    <button
+                                        key={mode}
+                                        type="button"
+                                        onClick={() => setSpeedMode(mode)}
+                                        title={isManiac
+                                            ? (t('syncPanel.speedManiacTooltip') || '')
+                                            : undefined}
+                                        className={`flex flex-1 items-center justify-center gap-1 px-2 py-1 text-[11px] font-medium capitalize ${
+                                            active
+                                                ? isManiac
+                                                    ? 'bg-rose-600 text-white'
+                                                    : 'bg-blue-500 text-white'
+                                                : 'bg-white text-gray-600 hover:bg-gray-50 dark:bg-gray-900/40 dark:text-gray-300 dark:hover:bg-gray-700'
+                                        }`}
+                                    >
+                                        {isManiac && <Skull size={11} />}
+                                        {isManiac
+                                            ? (t('syncPanel.speedManiac') || 'Maniac')
+                                            : (t(`aerosync.speedMode_${mode}`) || mode)}
+                                    </button>
+                                );
+                            })}
                         </div>
                         <p className="mt-1 text-[10px] leading-snug text-gray-500 dark:text-gray-400">
                             {t('aerosync.speedModeHint') || 'Parallel streams + compression preset applied to the run.'}
@@ -319,9 +353,10 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                             {t('aerosync.verifyPolicy') || 'Verify policy'}
                         </label>
                         <select
-                            value={verifyPolicy}
+                            value={maniacArmed ? 'none' : verifyPolicy}
                             onChange={(event) => setVerifyPolicy(event.target.value as AeroSyncVerifyPolicy)}
-                            className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-800 focus:border-blue-400 focus:outline-none dark:border-gray-600 dark:bg-gray-900/60 dark:text-gray-100"
+                            disabled={maniacArmed}
+                            className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-800 focus:border-blue-400 focus:outline-none disabled:opacity-50 dark:border-gray-600 dark:bg-gray-900/60 dark:text-gray-100"
                         >
                             {VERIFY_POLICIES.map((policy) => (
                                 <option key={policy} value={policy}>
@@ -330,10 +365,57 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                             ))}
                         </select>
                         <p className="mt-1 text-[10px] leading-snug text-gray-500 dark:text-gray-400">
-                            {t('aerosync.verifyPolicyHint') || 'Post-transfer integrity check applied to each file.'}
+                            {maniacArmed
+                                ? (t('syncPanel.maniacWarningBody') || 'Maniac mode runs with verification off; a full sweep runs after sync completes.')
+                                : (t('aerosync.verifyPolicyHint') || 'Post-transfer integrity check applied to each file.')}
                         </p>
                     </div>
                 </div>
+
+                {/* GAP-9a: Maniac confirmation gate. Selecting the Cyber-only
+                    5th speed mode arms this card; Execute is blocked until the
+                    user acknowledges it. Returning to any other mode re-arms
+                    the gate. */}
+                {maniacArmed && (
+                    <div className={`mt-3 rounded-md border p-2.5 ${
+                        maniacConfirmed
+                            ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-900/20'
+                            : 'border-rose-300 bg-rose-50 dark:border-rose-700 dark:bg-rose-900/20'
+                    }`}>
+                        <div className="flex items-center gap-2">
+                            <Skull size={14} className={maniacConfirmed
+                                ? 'text-emerald-500'
+                                : 'text-rose-500'} />
+                            <span className={`text-[12px] font-bold ${
+                                maniacConfirmed
+                                    ? 'text-emerald-700 dark:text-emerald-300'
+                                    : 'text-rose-700 dark:text-rose-300'
+                            }`}>
+                                {t('syncPanel.maniacWarningTitle') || 'MANIAC MODE'}
+                                {maniacConfirmed && (
+                                    <span className="ml-1 font-medium">
+                                        &middot; {t('syncPanel.maniacActive') || 'Active'}
+                                    </span>
+                                )}
+                            </span>
+                        </div>
+                        {!maniacConfirmed && (
+                            <>
+                                <p className="mt-1.5 text-[11px] leading-relaxed text-rose-800 dark:text-rose-200/90">
+                                    {t('syncPanel.maniacWarningBody')
+                                        || 'No journal. No verification. No retry. Maximum raw speed.'}
+                                </p>
+                                <button
+                                    type="button"
+                                    onClick={() => setManiacConfirmed(true)}
+                                    className="mt-2 rounded-lg border border-rose-400 bg-rose-500/20 px-3 py-1.5 text-[11px] font-medium text-rose-700 transition-colors hover:bg-rose-500/30 dark:text-rose-300"
+                                >
+                                    {t('syncPanel.maniacConfirm') || 'I understand, proceed'}
+                                </button>
+                            </>
+                        )}
+                    </div>
+                )}
 
                 {/* GAP-8: transfer budget — connected-remote only. Retry
                     policy derives from the speed mode; versioned backup
@@ -517,7 +599,10 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                         type="button"
                         onClick={() => onExecute(plan, {
                             speedMode,
-                            verifyPolicy,
+                            // GAP-9a: Maniac runs with verification off during
+                            // the transfer; a mandatory post-sync sweep runs
+                            // afterwards (handled by the runner).
+                            verifyPolicy: maniacArmed ? 'none' : verifyPolicy,
                             canary: canaryMode
                                 ? { percent: canaryPercent, selection: canarySelection }
                                 : undefined,

@@ -13,7 +13,13 @@ export type AeroSyncPairKind = 'local-local' | 'local-remote' | 'remote-local';
 // (speed mode + verify policy) into App.tsx so the unified executor can
 // forward them to the Rust planner. Kept separate from PresetPlan to
 // avoid mutating the shared syncPresets surface.
-export type AeroSyncSpeedMode = 'normal' | 'fast' | 'turbo' | 'extreme';
+//
+// GAP-9a: `maniac` is the Cyber-theme-gated 5th speed mode migrated from the
+// legacy SyncPanel. Selecting it requires an explicit in-tab confirmation;
+// when active the connected-remote runner applies the MANIAC_OVERRIDES
+// (journal off, verify none, maniac retry policy, no bandwidth cap) plus a
+// mandatory post-sync verification sweep.
+export type AeroSyncSpeedMode = 'normal' | 'fast' | 'turbo' | 'extreme' | 'maniac';
 export type AeroSyncVerifyPolicy =
     | 'none'
     | 'size_only'
