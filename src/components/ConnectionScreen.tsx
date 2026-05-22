@@ -505,6 +505,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const [showPassword, setShowPassword] = useState(false);
     // Reveal toggle for the saved 2FA Secret field, mirroring the password eye.
     const [showTotpSecret, setShowTotpSecret] = useState(false);
+    // Reveal toggle for the optional Filen CLI API Key field.
+    const [showFilenApiKey, setShowFilenApiKey] = useState(false);
 
     // Provider selection state (for S3/WebDAV)
     const [showAdvanced, setShowAdvanced] = useState(false);
@@ -3415,6 +3417,28 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             </div>
                                             <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{t('connection.totpSecretHelp')}</p>
                                             <TotpLivePreview secret={connectionParams.options?.totp_secret || ''} t={t} />
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm font-medium mb-1.5">{t('connection.filenApiKey')}</label>
+                                            <div className="relative">
+                                                <input
+                                                    type={showFilenApiKey ? 'text' : 'password'}
+                                                    value={connectionParams.options?.filen_api_key || ''}
+                                                    onChange={(e) => onConnectionParamsChange({
+                                                        ...connectionParams,
+                                                        options: { ...connectionParams.options, filen_api_key: e.target.value || undefined }
+                                                    })}
+                                                    className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-mono focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                                    placeholder={t('connection.filenApiKeyPlaceholder')}
+                                                    autoComplete="off"
+                                                    spellCheck={false}
+                                                />
+                                                <button type="button" tabIndex={-1} onClick={() => setShowFilenApiKey(!showFilenApiKey)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                    {showFilenApiKey ? <EyeOff size={18} /> : <Eye size={18} />}
+                                                </button>
+                                            </div>
+                                            <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{t('connection.filenApiKeyHelp')}</p>
                                         </div>
 
                                         <div className="bg-emerald-50 dark:bg-emerald-900/10 p-3 rounded-lg border border-emerald-100 dark:border-emerald-900/30 text-xs text-emerald-800 dark:text-emerald-200">

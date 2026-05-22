@@ -529,6 +529,46 @@ impl FilenProvider {
         Ok(format!("002{}{}", iv_chars, BASE64.encode(ciphertext)))
     }
 
+    /// Fetch the canonical encrypted master-keys blob via POST /v3/user/masterKeys.
+    ///
+    /// The API-key connect path skips /v3/login, which is where the password
+    /// path receives this blob for free. The request sends the current master
+    /// key encrypted under itself (Filen "002" metadata format); the server
+    /// replies with the full encrypted master-keys list in `data.keys`, the
+    /// same representation /v3/login returns in `data.masterKeys`.
+    ///
+    /// Best-effort by contract: the caller treats any error or a missing blob
+    /// as "no extra keys" and proceeds with the password-derived master key,
+    /// which already decrypts everything stored under the current password.
+    async fn fetch_master_keys_blob(
+        &self,
+        master_key: &str,
+    ) -> Result<Option<String>, ProviderError> {
+        let encrypted = Self::encrypt_metadata_with_key(master_key, master_key)?;
+        let resp: serde_json::Value = self
+            .client
+            .post(format!("{}/v3/user/masterKeys", GATEWAY))
+            .header(
+                "Authorization",
+                HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
+                    .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
+            )
+            .json(&serde_json::json!({ "masterKeys": encrypted }))
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?
+            .json()
+            .await
+            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+        if resp["status"].as_bool() == Some(false) {
+            let msg = resp["message"]
+                .as_str()
+                .unwrap_or("masterKeys request rejected");
+            return Err(ProviderError::AuthenticationFailed(msg.to_string()));
+        }
+        Ok(resp["data"]["keys"].as_str().map(|s| s.to_string()))
+    }
+
     /// F-ENC-02: Generate a single random alphanumeric character without modulo bias.
     /// Uses `rand::Rng::gen_range` which implements rejection sampling internally.
     fn random_alphanumeric_char() -> char {
@@ -737,80 +777,115 @@ impl StorageProvider for FilenProvider {
         let (auth_hash, derived_master_key) =
             Self::derive_auth_credentials(password, &auth_data.salt, auth_data.auth_version)?;
 
-        // Step 3: Login: Filen API requires twoFactorCode always; use "XXXXXX" when 2FA is not enabled.
+        // Step 3: obtain the API key and the encrypted master-keys blob.
         //
-        // The user can persist either a single-use code (typed at connection
-        // time) or a base32 TOTP secret (saved once, derived on demand). The
-        // secret takes precedence because it removes the manual prompt on
-        // every reconnect and matches what rclone does with Filen profiles.
-        let derived_totp = self
-            .config
-            .totp_secret
-            .as_ref()
-            .map(super::totp_helper::generate_totp_code)
-            .transpose()?;
-        let two_fa = derived_totp
-            .as_deref()
-            .or(self.config.two_factor_code.as_deref())
-            .unwrap_or("XXXXXX");
-        let login_body = serde_json::json!({
-            "email": self.config.email,
-            "password": auth_hash,
-            "authVersion": auth_data.auth_version,
-            "twoFactorCode": two_fa,
-        });
-        let login_resp: LoginResponse = self
-            .client
-            .post(format!("{}/v3/login", GATEWAY))
-            .json(&login_body)
-            .send()
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?
-            .json()
-            .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
-
-        if !login_resp.status {
-            return Err(ProviderError::AuthenticationFailed(
-                login_resp
-                    .message
-                    .unwrap_or_else(|| "Login failed".to_string()),
-            ));
-        }
-
-        let login_data = login_resp
-            .data
-            .ok_or_else(|| ProviderError::AuthenticationFailed("No login data".to_string()))?;
-
-        self.api_key = SecretString::from(login_data.api_key);
-
-        // Step 4: Use derived master key and decrypt additional master keys
+        // Two paths:
+        // - API-key path (config.api_key set): authenticate with the supplied
+        //   Filen CLI API key and skip POST /v3/login. /v3/login is the only
+        //   call that consumes a twoFactorCode, so this path never touches the
+        //   30s TOTP window, matching what a Filen rclone profile carrying an
+        //   api_key achieves. The master-keys blob is recovered from
+        //   POST /v3/user/masterKeys instead.
+        // - Password path (default): POST /v3/login returns both the API key
+        //   and the master-keys blob, but always requires a 2FA code.
+        //
+        // The password is required either way: it derived the E2E master key
+        // above. The api_key only authorises API transport, never decryption.
         self.master_keys = vec![SecretString::from(derived_master_key.clone())];
 
-        // Try to decrypt the encrypted master keys from the response
-        filen_log(&format!(
-            "master_keys field len={}",
-            login_data.master_keys.len()
-        ));
+        let configured_api_key = self
+            .config
+            .api_key
+            .as_ref()
+            .map(|k| k.expose_secret().trim().to_string())
+            .filter(|k| !k.is_empty());
+
+        let encrypted_master_keys: Option<String> = if let Some(api_key) = configured_api_key {
+            self.api_key = SecretString::from(api_key);
+            filen_log("connect: API-key path, skipping /v3/login (no 2FA window)");
+            // Best-effort: recover the canonical master-keys history. If the
+            // call fails, derived_master_key alone still decrypts everything
+            // encrypted under the current password.
+            match self.fetch_master_keys_blob(&derived_master_key).await {
+                Ok(blob) => blob,
+                Err(e) => {
+                    filen_log(&format!("connect: /v3/user/masterKeys failed: {}", e));
+                    None
+                }
+            }
+        } else {
+            // Password path: POST /v3/login. Filen requires twoFactorCode
+            // always; use "XXXXXX" when 2FA is not enabled.
+            //
+            // The user can persist either a single-use code (typed at
+            // connection time) or a base32 TOTP secret (saved once, derived
+            // on demand). The secret takes precedence because it removes the
+            // manual prompt on every reconnect and matches what rclone does
+            // with Filen profiles.
+            let derived_totp = self
+                .config
+                .totp_secret
+                .as_ref()
+                .map(super::totp_helper::generate_totp_code)
+                .transpose()?;
+            let two_fa = derived_totp
+                .as_deref()
+                .or(self.config.two_factor_code.as_deref())
+                .unwrap_or("XXXXXX");
+            let login_body = serde_json::json!({
+                "email": self.config.email,
+                "password": auth_hash,
+                "authVersion": auth_data.auth_version,
+                "twoFactorCode": two_fa,
+            });
+            let login_resp: LoginResponse = self
+                .client
+                .post(format!("{}/v3/login", GATEWAY))
+                .json(&login_body)
+                .send()
+                .await
+                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?
+                .json()
+                .await
+                .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+
+            if !login_resp.status {
+                return Err(ProviderError::AuthenticationFailed(
+                    login_resp
+                        .message
+                        .unwrap_or_else(|| "Login failed".to_string()),
+                ));
+            }
+
+            let login_data = login_resp
+                .data
+                .ok_or_else(|| ProviderError::AuthenticationFailed("No login data".to_string()))?;
+
+            self.api_key = SecretString::from(login_data.api_key);
+            Some(login_data.master_keys)
+        };
+
+        // Step 4: decrypt the additional master keys, when a blob was obtained.
         filen_log(&format!(
             "derived_master_key len={}",
             derived_master_key.len()
         ));
-        if let Some(decrypted) =
-            Self::try_decrypt_aes_gcm(&login_data.master_keys, &derived_master_key)
-        {
-            let decrypted_keys: Vec<SecretString> = decrypted
-                .split('|')
-                .map(|s| SecretString::from(s.to_string()))
-                .collect();
-            // Check if derived_master_key is already present
-            let already_present = decrypted_keys
-                .iter()
-                .any(|k| k.expose_secret() == derived_master_key);
-            self.master_keys = decrypted_keys;
-            if !already_present {
-                self.master_keys
-                    .push(SecretString::from(derived_master_key));
+        if let Some(blob) = encrypted_master_keys {
+            filen_log(&format!("master_keys blob len={}", blob.len()));
+            if let Some(decrypted) = Self::try_decrypt_aes_gcm(&blob, &derived_master_key) {
+                let decrypted_keys: Vec<SecretString> = decrypted
+                    .split('|')
+                    .map(|s| SecretString::from(s.to_string()))
+                    .collect();
+                // Check if derived_master_key is already present
+                let already_present = decrypted_keys
+                    .iter()
+                    .any(|k| k.expose_secret() == derived_master_key);
+                self.master_keys = decrypted_keys;
+                if !already_present {
+                    self.master_keys
+                        .push(SecretString::from(derived_master_key));
+                }
             }
         }
 
