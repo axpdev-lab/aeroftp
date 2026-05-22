@@ -955,6 +955,11 @@ impl StorageProvider for FtpProvider {
         use tokio::io::AsyncReadExt;
         let limit = super::MAX_DOWNLOAD_TO_BYTES;
 
+        // PD-FTP-1: dial the connection so an in-memory read works on a
+        // `clone_for_transfer()` pool worker too, symmetric with the
+        // streaming `download()`. A no-op when already connected.
+        self.ensure_connected().await?;
+
         let stream = self.stream_mut()?;
 
         // Check file size first if server supports SIZE command
@@ -1297,6 +1302,13 @@ impl StorageProvider for FtpProvider {
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
         use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt as _};
+
+        // PD-FTP-1: the transfer executor calls `resume_download()` instead of
+        // `download()` whenever a retry carries a partial offset, so a resumed
+        // download on a `clone_for_transfer()` pool worker hit `NotConnected`.
+        // Dial the connection first, symmetric with `download()`/`upload()`/
+        // `read_range()`. A no-op when already connected.
+        self.ensure_connected().await?;
 
         let stream = self.stream_mut()?;
 
