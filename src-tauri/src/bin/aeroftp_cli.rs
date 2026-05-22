@@ -19068,11 +19068,18 @@ fn cmd_alias_toggle(name: &str, bin_dir: Option<&Path>, format: OutputFormat) ->
         let exe = match std::env::current_exe() {
             Ok(path) => path,
             Err(e) => {
-                print_error(format, &format!("cannot resolve current executable: {}", e), 5);
+                print_error(
+                    format,
+                    &format!("cannot resolve current executable: {}", e),
+                    5,
+                );
                 return 5;
             }
         };
-        let bin_dir = match bin_dir.map(|p| p.to_path_buf()).map_or_else(default_opt_in_bin_dir, Ok) {
+        let bin_dir = match bin_dir
+            .map(|p| p.to_path_buf())
+            .map_or_else(default_opt_in_bin_dir, Ok)
+        {
             Ok(path) => path,
             Err(e) => {
                 print_error(format, &e, 5);

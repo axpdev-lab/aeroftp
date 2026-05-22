@@ -15,8 +15,7 @@ use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 
 use crate::transfer_dag::{
-    ResourceRequest, TransferBudget, TransferResourceManager, TransferSessionLease,
-    TransferSessionPoolHandle,
+    ResourceRequest, TransferResourceManager, TransferSessionLease, TransferSessionPoolHandle,
 };
 use crate::transfer_domain::{
     BatchProgressSnapshot, TransferBatchConfig, TransferBatchResult, TransferDirection,
@@ -64,6 +63,21 @@ pub async fn execute_batch<E>(
 where
     E: TransferExecutor + Send + Sync + 'static,
 {
+    // DAG-ENGINE phase 2 (F2-T07): with the batch flag on, schedule the whole
+    // batch through the shared graph engine instead of this hand-rolled
+    // sliding window. Default OFF, so the legacy path below is the default and
+    // a rollback is a runtime toggle, never a revert.
+    if crate::transfer_dag_batch::dag_batch_enabled() {
+        return crate::transfer_dag_batch::execute_batch_dag(
+            sink,
+            batch,
+            executor,
+            cancel,
+            progress_observer,
+        )
+        .await;
+    }
+
     let started_at = Instant::now();
     let total = batch.entries.len() as u32;
     let progress = Arc::new(Mutex::new(BatchProgressSnapshot {
@@ -71,9 +85,7 @@ where
         bytes_total: batch.entries.iter().map(|entry| entry.size).sum(),
         ..BatchProgressSnapshot::default()
     }));
-    let resource_manager = Arc::new(TransferResourceManager::new(
-        TransferBudget::from_file_slots(batch.config.max_concurrent.max(1) as u16),
-    ));
+    let resource_manager = Arc::new(TransferResourceManager::new(batch.config.transfer_budget()));
     let max_concurrent = batch.config.max_concurrent.max(1) as usize;
     let session_pool = Arc::new(executor.session_pool(max_concurrent));
     let mut join_set = JoinSet::new();

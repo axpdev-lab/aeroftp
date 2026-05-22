@@ -85,6 +85,15 @@ impl ResolvedTransferSettings {
             backoff_multiplier: 2.0,
         }
     }
+
+    /// Build the DAG budget implied by the resolved concurrency setting.
+    ///
+    /// This keeps the Settings-panel knob (`maxConcurrentTransfers` on the
+    /// frontend, `max_concurrent` in commands) and the graph scheduler's
+    /// `file_slots` vocabulary tied to the same resolved value.
+    pub fn transfer_budget(&self) -> TransferBudget {
+        TransferBudget::from_file_slots(self.max_concurrent.min(u16::MAX as u32) as u16)
+    }
 }
 
 pub fn resolve_transfer_settings(
@@ -219,5 +228,23 @@ mod tests {
 
         assert_eq!(resolved.requested_max_concurrent, 6);
         assert_eq!(resolved.max_concurrent, 2);
+    }
+
+    #[test]
+    fn resolved_settings_budget_uses_effective_max_concurrent() {
+        let resolved = resolve_transfer_settings_for_capabilities(
+            TransferSettingsInput {
+                max_concurrent: Some(6),
+                retry_count: None,
+                timeout_seconds: None,
+                download_segments: None,
+            },
+            &TransferCapabilities {
+                max_file_slots: Some(2),
+                ..TransferCapabilities::default()
+            },
+        );
+
+        assert_eq!(resolved.transfer_budget().file_slots, 2);
     }
 }

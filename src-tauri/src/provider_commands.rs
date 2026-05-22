@@ -1263,17 +1263,16 @@ pub async fn provider_download_file(
                     segments, filename, file_size
                 );
                 let cancel = tokio_util::sync::CancellationToken::new();
-                let outcome =
-                    crate::provider_transfer_executor::run_provider_segmented_download(
-                        provider.as_ref(),
-                        &remote_path,
-                        &local_path,
-                        file_size,
-                        segments,
-                        progress_cb.take(),
-                        cancel,
-                    )
-                    .await;
+                let outcome = crate::provider_transfer_executor::run_provider_segmented_download(
+                    provider.as_ref(),
+                    &remote_path,
+                    &local_path,
+                    file_size,
+                    segments,
+                    progress_cb.take(),
+                    cancel,
+                )
+                .await;
                 if let Err(ref e) = outcome {
                     warn!(
                         "Segmented download failed, falling back to single-stream: {}",

@@ -14,7 +14,9 @@ use tracing::warn;
 use crate::providers::{
     ProviderListExecutorKind, ProviderTransferExecutorKind, ProviderType, StorageProvider,
 };
-use crate::transfer_dag::{Capability, TransferSessionLease, TransferSessionPoolHandle};
+use crate::transfer_dag::{
+    Capability, TransferCapabilities, TransferSessionLease, TransferSessionPoolHandle,
+};
 use crate::transfer_domain::{
     transfer_failure_kind_from_sync, user_facing_transfer_failure_message, TransferEntry,
     TransferFailure, TransferOutcome,
@@ -89,7 +91,11 @@ pub fn provider_segmented_download_eligible(
 
     // Capability gate 2: provider must advertise strict concurrent
     // range download (the post-PD-CLI-CONV-E honest flag).
-    if primary.transfer_capabilities().strict_concurrent_range_download != Capability::Supported {
+    if primary
+        .transfer_capabilities()
+        .strict_concurrent_range_download
+        != Capability::Supported
+    {
         return None;
     }
 
@@ -268,8 +274,7 @@ pub async fn run_provider_segmented_download(
             Ok(())
         }
         Ok(ConcurrentRangeOutcome::ServerIgnoredRange) => Err(
-            "segmented download: server ignored Range; falling back to single-stream"
-                .to_string(),
+            "segmented download: server ignored Range; falling back to single-stream".to_string(),
         ),
         Err(e) => Err(format!("segmented download: {}", e)),
     }
@@ -380,21 +385,27 @@ impl ProviderListSessionModel {
     }
 }
 
-pub async fn resolve_provider_executor_session_model(
-    provider: &Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
+/// Decide the transfer session model purely from a provider's transfer
+/// capabilities and declared executor kind (DAG-ENGINE F3-T06).
+///
+/// This is the executor-kind decision extracted as a pure function: no async,
+/// no mutex lock, no I/O. `can_clone` is the one fact a probe must supply
+/// (`clone_for_transfer().is_ok()`), and `advertised_max_sessions` is the
+/// provider's fallback lease count when the capabilities do not pin one.
+///
+/// The decision is byte-identical to the previous inline logic; isolating it
+/// makes the capability-driven choice unit-testable without a live provider.
+pub fn resolve_session_model(
+    provider_type: ProviderType,
+    caps: &TransferCapabilities,
+    executor_kind: ProviderTransferExecutorKind,
+    can_clone: bool,
+    advertised_max_sessions: u16,
     max_concurrent: usize,
 ) -> ProviderExecutorSessionModel {
-    let provider_lock = provider.lock().await;
-    let Some(provider) = provider_lock.as_ref() else {
-        return ProviderExecutorSessionModel::locked(None);
-    };
-
-    let provider_type = provider.provider_type();
-    let caps = provider.transfer_capabilities();
-    let executor_kind = provider.transfer_executor_kind();
     let scheduler_can_parallelize = caps.file_parallel == Capability::Supported
         && caps.session_pool == Capability::Supported
-        && provider.clone_for_transfer().is_ok();
+        && can_clone;
 
     if !scheduler_can_parallelize {
         return ProviderExecutorSessionModel::locked(Some(provider_type));
@@ -402,7 +413,7 @@ pub async fn resolve_provider_executor_session_model(
 
     let max_leases = caps
         .max_file_slots
-        .unwrap_or_else(|| provider.transfer_executor_max_sessions())
+        .unwrap_or(advertised_max_sessions)
         .max(1) as usize;
     let max_leases = max_leases.min(max_concurrent.max(1)).max(1);
 
@@ -429,6 +440,28 @@ pub async fn resolve_provider_executor_session_model(
             ProviderExecutorSessionModel::locked(Some(provider_type))
         }
     }
+}
+
+/// Thin async wrapper over [`resolve_session_model`]: locks the provider,
+/// gathers the capability inputs and the `clone_for_transfer` probe, then
+/// delegates the decision to the pure function.
+pub async fn resolve_provider_executor_session_model(
+    provider: &Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
+    max_concurrent: usize,
+) -> ProviderExecutorSessionModel {
+    let provider_lock = provider.lock().await;
+    let Some(provider) = provider_lock.as_ref() else {
+        return ProviderExecutorSessionModel::locked(None);
+    };
+
+    resolve_session_model(
+        provider.provider_type(),
+        &provider.transfer_capabilities(),
+        provider.transfer_executor_kind(),
+        provider.clone_for_transfer().is_ok(),
+        provider.transfer_executor_max_sessions(),
+        max_concurrent,
+    )
 }
 
 pub async fn resolve_provider_list_session_model(
@@ -685,7 +718,6 @@ impl ProviderDownloadExecutor {
             )),
         }
     }
-
 
     /// Try the segmented (intra-file range) download path. Returns
     /// `None` when the path is not applicable — the caller falls
@@ -1301,5 +1333,127 @@ mod tests {
 
         assert_eq!(pool.capacity().kind, SessionLeaseKind::HttpList);
         assert_eq!(pool.capacity().max_leases, 3);
+    }
+
+    // ---- F3-T06: pure executor-kind resolver --------------------------------
+
+    /// Capabilities that advertise a real parallel session pool.
+    fn parallel_caps() -> TransferCapabilities {
+        TransferCapabilities {
+            file_parallel: Capability::Supported,
+            session_pool: Capability::Supported,
+            ..TransferCapabilities::default()
+        }
+    }
+
+    #[test]
+    fn resolve_session_model_locks_when_not_parallelizable() {
+        // file_parallel Unsupported: locked regardless of the executor kind.
+        let model = resolve_session_model(
+            ProviderType::S3,
+            &TransferCapabilities::default(),
+            ProviderTransferExecutorKind::HttpClonePool,
+            true,
+            8,
+            4,
+        );
+        assert!(matches!(
+            model,
+            ProviderExecutorSessionModel::LockedSingle { .. }
+        ));
+    }
+
+    #[test]
+    fn resolve_session_model_locks_when_clone_is_unavailable() {
+        // The capabilities advertise a pool, but the clone probe failed.
+        let model = resolve_session_model(
+            ProviderType::Ftp,
+            &parallel_caps(),
+            ProviderTransferExecutorKind::FtpConnectionPool,
+            false,
+            8,
+            4,
+        );
+        assert!(matches!(
+            model,
+            ProviderExecutorSessionModel::LockedSingle { .. }
+        ));
+    }
+
+    #[test]
+    fn resolve_session_model_clamps_http_clone_leases_to_max_concurrent() {
+        let caps = TransferCapabilities {
+            max_file_slots: Some(8),
+            ..parallel_caps()
+        };
+        let model = resolve_session_model(
+            ProviderType::S3,
+            &caps,
+            ProviderTransferExecutorKind::HttpClonePool,
+            true,
+            8,
+            3,
+        );
+        match model {
+            ProviderExecutorSessionModel::HttpClonePool { max_leases, .. } => {
+                assert_eq!(max_leases, 3, "user max_concurrent caps the lease count");
+            }
+            other => panic!("expected HttpClonePool, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn resolve_session_model_keeps_sftp_and_ftp_kinds_distinct() {
+        let caps = TransferCapabilities {
+            max_file_slots: Some(4),
+            ..parallel_caps()
+        };
+        let sftp = resolve_session_model(
+            ProviderType::Sftp,
+            &caps,
+            ProviderTransferExecutorKind::SftpConnectionPool,
+            true,
+            4,
+            8,
+        );
+        assert!(matches!(
+            sftp,
+            ProviderExecutorSessionModel::SftpConnectionPool { max_leases: 4, .. }
+        ));
+        let ftp = resolve_session_model(
+            ProviderType::Ftp,
+            &caps,
+            ProviderTransferExecutorKind::FtpConnectionPool,
+            true,
+            4,
+            8,
+        );
+        assert!(matches!(
+            ftp,
+            ProviderExecutorSessionModel::FtpConnectionPool { max_leases: 4, .. }
+        ));
+    }
+
+    #[test]
+    fn resolve_session_model_falls_back_to_advertised_sessions_without_caps_slots() {
+        // max_file_slots None: the provider's advertised count is the source.
+        let caps = TransferCapabilities {
+            max_file_slots: None,
+            ..parallel_caps()
+        };
+        let model = resolve_session_model(
+            ProviderType::S3,
+            &caps,
+            ProviderTransferExecutorKind::HttpClonePool,
+            true,
+            6,
+            16,
+        );
+        match model {
+            ProviderExecutorSessionModel::HttpClonePool { max_leases, .. } => {
+                assert_eq!(max_leases, 6, "advertised session count is the fallback");
+            }
+            other => panic!("expected HttpClonePool, got {other:?}"),
+        }
     }
 }

@@ -192,7 +192,10 @@ impl DagObserver for GuiDagObserver {
         if node_id != self.emit_progress_node_id {
             return;
         }
-        if !matches!(outcome, ObservedOutcome::Completed | ObservedOutcome::Fallback) {
+        if !matches!(
+            outcome,
+            ObservedOutcome::Completed | ObservedOutcome::Fallback
+        ) {
             return;
         }
         let size = self.report_size.load(Ordering::SeqCst);
