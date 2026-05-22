@@ -18,6 +18,7 @@ import { SyncSchedulerDialog } from './SyncSchedulerDialog';
 import { SyncTemplateDialog } from '../Sync/SyncTemplateDialog';
 import { MultiPathEditor } from '../Sync/MultiPathEditor';
 import { RollbackDialog } from '../Sync/RollbackDialog';
+import { useTransferCapabilities } from '../Sync/useTransferCapabilities';
 import type { AeroSyncDialogProps, AeroSyncTab } from './types';
 
 const TAB_ORDER: AeroSyncTab[] = ['compare', 'plan', 'sync'];
@@ -45,6 +46,20 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
     React.useEffect(() => {
         if (isOpen) setActiveTab(initialTab);
     }, [isOpen, initialTab]);
+
+    // GAP-9b: resolve the provider's real transfer capability so the Plan
+    // tab clamps the parallel-streams selector honestly. The hook is mounted
+    // for the modal's whole lifetime (the Plan tab itself unmounts on tab
+    // switch), so the lookup runs once per open instead of per tab visit.
+    const { caps: transferCaps } = useTransferCapabilities(context.protocol, isOpen);
+    const streamCap = React.useMemo(() => {
+        if (!transferCaps) return 8;
+        return Math.max(
+            1,
+            transferCaps.max_file_slots ?? 1,
+            transferCaps.max_chunk_slots ?? 1,
+        );
+    }, [transferCaps]);
 
     if (!isOpen) return null;
 
@@ -214,6 +229,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                             loading={context.compareLoading}
                             pairKind={context.pairKind}
                             canExecute={canExecutePlan}
+                            streamCap={streamCap}
                             onExecute={onExecutePreset}
                         />
                     )}

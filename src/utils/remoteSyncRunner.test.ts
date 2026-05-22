@@ -642,3 +642,21 @@ describe('remoteSyncRunner — GAP-9a maniac mode', () => {
         expect(report.postSyncVerification).toBeUndefined();
     });
 });
+
+describe('remoteSyncRunner — GAP-9b threaded transfer tuning', () => {
+    it('accepts parallelStreams + compressionMode config without altering the sequential run', async () => {
+        const { invoke, calls } = makeInvoke();
+        const report = await runRemoteSync(
+            [file('a.txt', 'upload'), file('b.txt', 'upload')],
+            noDirs,
+            baseConfig({ parallelStreams: 8, compressionMode: 'on' }),
+            {},
+            noWaitDeps(invoke),
+        );
+        // The run still completes both entries one at a time: the threaded
+        // tuning is config-only until APPENDIX-DAG-ENGINE Fase 2 consumes it.
+        expect(report.uploaded).toBe(2);
+        const uploads = calls.filter((c) => c.cmd === 'upload_file');
+        expect(uploads).toHaveLength(2);
+    });
+});
