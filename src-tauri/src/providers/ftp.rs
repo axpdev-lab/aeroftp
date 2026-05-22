@@ -1025,6 +1025,14 @@ impl StorageProvider for FtpProvider {
         use suppaftp::types::FileType;
         use tokio::io::AsyncReadExt;
 
+        // PD-FTP-1: a `clone_for_transfer()` pool worker starts unconnected
+        // and carries only the spec; it must dial its own control+data
+        // connection on the first transfer. `download()` and `read_range()`
+        // already do this; `upload()` omitted it, so every clone-pool upload
+        // (folder upload, multi-file batch via the executor) failed with
+        // `NotConnected`. A no-op when the provider is already connected.
+        self.ensure_connected().await?;
+
         // Capture before the &mut self borrow below; needed later to decide
         // whether to insert the TLS-drain sleep.
         let tls_active = !matches!(self.config.tls_mode, FtpTlsMode::None);
