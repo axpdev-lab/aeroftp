@@ -6,6 +6,7 @@ import {
     AlertTriangle,
     ArrowRight,
     CheckCircle2,
+    FlaskConical,
     Gauge,
     Loader2,
     ShieldAlert,
@@ -28,7 +29,12 @@ import {
 } from '../../utils/syncPresets';
 import { formatBytes } from '../../utils/formatters';
 import { useTranslation } from '../../i18n';
-import type { AeroSyncRuntime, AeroSyncSpeedMode, AeroSyncVerifyPolicy } from './types';
+import type {
+    AeroSyncCanarySelection,
+    AeroSyncRuntime,
+    AeroSyncSpeedMode,
+    AeroSyncVerifyPolicy,
+} from './types';
 
 interface PlanTabContentProps {
     result: CompareResult | null;
@@ -106,11 +112,13 @@ const PresetChip: React.FC<{
 
 const SPEED_MODES: AeroSyncSpeedMode[] = ['normal', 'fast', 'turbo', 'extreme'];
 const VERIFY_POLICIES: AeroSyncVerifyPolicy[] = ['none', 'size_only', 'size_and_mtime', 'full_checksum'];
+const CANARY_PERCENTS = [5, 10, 25, 50];
+const CANARY_SELECTIONS: AeroSyncCanarySelection[] = ['random', 'newest', 'largest'];
 
 export const PlanTabContent: React.FC<PlanTabContentProps> = ({
     result,
     loading,
-    pairKind: _pairKind,
+    pairKind,
     canExecute,
     onExecute,
 }) => {
@@ -129,6 +137,11 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
     // verify_policy) and the Rust backend can honour the verify pass.
     const [speedMode, setSpeedMode] = React.useState<AeroSyncSpeedMode>('normal');
     const [verifyPolicy, setVerifyPolicy] = React.useState<AeroSyncVerifyPolicy>('size_only');
+    // GAP-7: Canary trial — only meaningful for a connected remote.
+    const [canaryMode, setCanaryMode] = React.useState(false);
+    const [canaryPercent, setCanaryPercent] = React.useState(10);
+    const [canarySelection, setCanarySelection] = React.useState<AeroSyncCanarySelection>('random');
+    const isConnectedRemote = pairKind === 'local-remote' || pairKind === 'remote-local';
 
     React.useEffect(() => {
         setConfirmedDestructive(false);
@@ -155,7 +168,9 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
 
     const executable = canExecute && plan.totals.actionable > 0;
     const needsConfirm = plan.hasDestructive;
-    const canFireExecute = executable && (!needsConfirm || confirmedDestructive);
+    // A canary run is a non-destructive trial, so it does not gate on the
+    // destructive-confirm checkbox.
+    const canFireExecute = executable && (canaryMode || !needsConfirm || confirmedDestructive);
 
     return (
         <div className="flex flex-col">
@@ -315,6 +330,55 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                         </p>
                     </div>
                 </div>
+
+                {/* GAP-7: Canary trial — connected-remote only. */}
+                {isConnectedRemote && (
+                    <div className="mt-3 rounded-md border border-gray-200 p-2.5 dark:border-gray-700">
+                        <label className="flex cursor-pointer items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                            <input
+                                type="checkbox"
+                                checked={canaryMode}
+                                onChange={(event) => setCanaryMode(event.target.checked)}
+                                className="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            <FlaskConical size={12} className="text-blue-500" />
+                            {t('syncPanel.canaryMode') || 'Canary Mode'}
+                        </label>
+                        <p className="mt-1 text-[10px] leading-snug text-gray-500 dark:text-gray-400">
+                            {t('syncPanel.canaryDesc') || 'Run a trial sync on a subset of files before committing to the full operation.'}
+                        </p>
+                        {canaryMode && (
+                            <div className="mt-2 flex flex-wrap gap-3">
+                                <label className="flex items-center gap-1 text-[11px] text-gray-600 dark:text-gray-300">
+                                    {t('syncPanel.canarySample') || 'Sample'}
+                                    <select
+                                        value={canaryPercent}
+                                        onChange={(event) => setCanaryPercent(Number(event.target.value))}
+                                        className="rounded border border-gray-300 bg-white px-1.5 py-0.5 text-[11px] dark:border-gray-600 dark:bg-gray-900/60 dark:text-gray-100"
+                                    >
+                                        {CANARY_PERCENTS.map((p) => (
+                                            <option key={p} value={p}>{p}%</option>
+                                        ))}
+                                    </select>
+                                </label>
+                                <label className="flex items-center gap-1 text-[11px] text-gray-600 dark:text-gray-300">
+                                    {t('syncPanel.canaryStrategy') || 'Strategy'}
+                                    <select
+                                        value={canarySelection}
+                                        onChange={(event) => setCanarySelection(event.target.value as AeroSyncCanarySelection)}
+                                        className="rounded border border-gray-300 bg-white px-1.5 py-0.5 text-[11px] dark:border-gray-600 dark:bg-gray-900/60 dark:text-gray-100"
+                                    >
+                                        {CANARY_SELECTIONS.map((sel) => (
+                                            <option key={sel} value={sel}>
+                                                {t(`syncPanel.canary${sel.charAt(0).toUpperCase()}${sel.slice(1)}`) || sel}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </label>
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
 
             <div className="border-t border-gray-200 px-4 py-3 dark:border-gray-700">
@@ -426,21 +490,33 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                 <div className="flex flex-wrap justify-end gap-2">
                     <button
                         type="button"
-                        onClick={() => onExecute(plan, { speedMode, verifyPolicy })}
+                        onClick={() => onExecute(plan, {
+                            speedMode,
+                            verifyPolicy,
+                            canary: canaryMode
+                                ? { percent: canaryPercent, selection: canarySelection }
+                                : undefined,
+                        })}
                         disabled={!canFireExecute}
                         className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-white transition-colors disabled:opacity-40 ${
-                            plan.hasDestructive ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'
+                            canaryMode
+                                ? 'bg-violet-600 hover:bg-violet-700'
+                                : plan.hasDestructive ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'
                         }`}
                         title={
                             !executable
                                 ? (t('aerosync.executeNothing') || 'Nothing to do or execution path not available')
-                                : needsConfirm && !confirmedDestructive
+                                : !canaryMode && needsConfirm && !confirmedDestructive
                                     ? (t('aerosync.executeConfirm') || 'Confirm destructive actions to enable Execute')
                                     : (t('aerosync.executePreset') || 'Execute preset')
                         }
                     >
-                        {plan.hasDestructive ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />}
-                        {t('aerosync.execute') || 'Execute'} {describePreset(preset).name} ({plan.totals.actionable})
+                        {canaryMode
+                            ? <FlaskConical size={14} />
+                            : plan.hasDestructive ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />}
+                        {canaryMode
+                            ? (t('syncPanel.canaryRun') || 'Canary Sync')
+                            : `${t('aerosync.execute') || 'Execute'} ${describePreset(preset).name} (${plan.totals.actionable})`}
                     </button>
                 </div>
             </div>

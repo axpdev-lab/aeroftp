@@ -16,12 +16,14 @@ import type { SyncRunDirs, SyncRunFile } from './remoteSyncRunner';
 export interface RemoteSyncInput {
     files: SyncRunFile[];
     dirs: SyncRunDirs;
-    /**
-     * Count of `keep-both` rename actions, which the runner does not execute
-     * (no rename primitive). The caller surfaces them as deferred.
-     */
-    deferredRenames: number;
 }
+
+/**
+ * GAP-7: timestamp suffix for keep-both renames. `2026-05-22T14:30:12.123Z`
+ * collapses to `20260522T143012` — the legacy `SyncPanel` convention.
+ */
+export const defaultRenameSuffix = (): string =>
+    new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, '');
 
 const toIso = (ms: number | null | undefined): string | null =>
     typeof ms === 'number' && Number.isFinite(ms) ? new Date(ms).toISOString() : null;
@@ -57,14 +59,16 @@ const relPath = (e: CompareResultEntry): string => e.relativePath ?? e.name;
  * @param plan         The plan derived from the connected-remote compare.
  * @param leftIsLocal  true when the compare's left side is the local panel
  *                     (pairKind `local-remote`); false for `remote-local`.
+ * @param renameSuffix Timestamp suffix used for keep-both renames; injected
+ *                     so tests stay deterministic.
  */
 export const buildRemoteSyncInput = (
     plan: PresetPlan,
     leftIsLocal: boolean,
+    renameSuffix: string = defaultRenameSuffix(),
 ): RemoteSyncInput => {
     const files: SyncRunFile[] = [];
     const dirs: SyncRunDirs = { remote: [], local: [] };
-    let deferredRenames = 0;
 
     // Right is remote iff left is local; left is remote otherwise.
     const rightIsRemote = leftIsLocal;
@@ -109,6 +113,29 @@ export const buildRemoteSyncInput = (
         });
     };
 
+    // GAP-7: keep-both rename. Copy the source-side file to the destination
+    // under a timestamped suffix (`file.txt.20260522T143012.bak`) so neither
+    // diverging copy is lost. `sourcePath` carries the original path; the
+    // runner reads the source and writes the suffixed destination.
+    const pushRename = (
+        entry: CompareResultEntry,
+        sourceSide: 'left' | 'right',
+        destIsRemote: boolean,
+    ): void => {
+        const meta = sourceSide === 'left' ? leftMeta(entry) : rightMeta(entry);
+        if (meta.isDir) return; // keep-both applies to files only
+        const src = relPath(entry);
+        files.push({
+            relativePath: `${src}.${renameSuffix}.bak`,
+            sourcePath: src,
+            action: destIsRemote ? 'upload' : 'download',
+            size: meta.size,
+            mtime: meta.mtime,
+            overwritesExisting: false,
+            isDir: false,
+        });
+    };
+
     for (const bucket of plan.bucketPlans) {
         bucket.entries.forEach((entry, idx) => {
             const action: BucketAction = bucket.entryActions[idx] ?? bucket.action;
@@ -117,8 +144,10 @@ export const buildRemoteSyncInput = (
                 case 'conflict-skip':
                     return;
                 case 'rename-to-right':
+                    pushRename(entry, 'left', rightIsRemote);
+                    return;
                 case 'rename-to-left':
-                    deferredRenames += 1;
+                    pushRename(entry, 'right', leftIsRemote);
                     return;
                 case 'copy-to-right':
                     pushCopy(entry, 'left', rightIsRemote, false);
@@ -144,7 +173,7 @@ export const buildRemoteSyncInput = (
         });
     }
 
-    return { files, dirs, deferredRenames };
+    return { files, dirs };
 };
 
 /**
@@ -152,9 +181,9 @@ export const buildRemoteSyncInput = (
  *
  * The Compare tab's "Mirror left to right" / "Mirror right to left" buttons
  * hand over a flat list of `only-*` + `newer-*` entries. This builds a
- * copy-only `RemoteSyncInput` (no deletes, no renames) so a connected-remote
- * mirror runs through the same recursive-capable `runRemoteSync` engine as the
- * Plan tab, instead of the flat top-level transfer planner.
+ * copy-only `RemoteSyncInput` (no deletes) so a connected-remote mirror runs
+ * through the same recursive-capable `runRemoteSync` engine as the Plan tab,
+ * instead of the flat top-level transfer planner.
  *
  * @param entries     The `only-<side>` + `newer-<side>` rows to copy.
  * @param sourceSide  Which compare side is the copy source.
@@ -190,5 +219,5 @@ export const buildMirrorSyncInput = (
         });
     }
 
-    return { files, dirs, deferredRenames: 0 };
+    return { files, dirs };
 };

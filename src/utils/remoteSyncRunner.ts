@@ -68,6 +68,15 @@ export interface SyncRunFile {
      * `isDir` hint to the FTP delete command.
      */
     isDir?: boolean;
+    /**
+     * GAP-7: keep-both rename. When set, the runner reads the source from
+     * `sourcePath` and writes to `relativePath` (the suffixed destination),
+     * so a conflict can be resolved by copying the source side under a
+     * timestamped name without overwriting the existing destination copy.
+     * Undefined for every normal entry, where source and destination share
+     * `relativePath`.
+     */
+    sourcePath?: string;
 }
 
 /** Standalone directories to create (counted in `dirsCreated`). */
@@ -497,8 +506,16 @@ export const runRemoteSync = async (
         setStatus(item.relativePath, 'syncing');
         if (journalEntry) journalEntry.status = 'in_progress';
 
-        const localFilePath = `${localBase}/${item.relativePath}`;
-        const remoteFilePath = `${remoteBase}/${item.relativePath}`;
+        // GAP-7: for a keep-both rename the source side differs from the
+        // destination. `relativePath` is always the destination; `sourcePath`
+        // (when set) is the source. Normal entries share `relativePath`.
+        const srcRel = item.sourcePath ?? item.relativePath;
+        const localFilePath = item.action === 'download'
+            ? `${localBase}/${item.relativePath}`
+            : `${localBase}/${srcRel}`;
+        const remoteFilePath = item.action === 'upload'
+            ? `${remoteBase}/${item.relativePath}`
+            : `${remoteBase}/${srcRel}`;
         let didTransfer = false;
 
         if (item.action === 'upload') {
