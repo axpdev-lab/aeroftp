@@ -7,6 +7,7 @@ import {
     ArrowRight,
     CheckCircle2,
     Gauge,
+    Loader2,
     ShieldAlert,
     ShieldCheck,
     Trash2,
@@ -31,6 +32,8 @@ import type { AeroSyncRuntime, AeroSyncSpeedMode, AeroSyncVerifyPolicy } from '.
 
 interface PlanTabContentProps {
     result: CompareResult | null;
+    /** GAP-5: true while the recursive connected-remote scan is running. */
+    loading?: boolean;
     pairKind?: string | null;
     canExecute: boolean;
     onExecute: (plan: PresetPlan, runtime: AeroSyncRuntime) => void;
@@ -106,6 +109,7 @@ const VERIFY_POLICIES: AeroSyncVerifyPolicy[] = ['none', 'size_only', 'size_and_
 
 export const PlanTabContent: React.FC<PlanTabContentProps> = ({
     result,
+    loading,
     pairKind: _pairKind,
     canExecute,
     onExecute,
@@ -131,6 +135,14 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
     }, [preset, direction, conflictPolicy, versionedBackup.enabled, versionedBackup.backupDir]);
 
     if (!result) {
+        if (loading) {
+            return (
+                <div className="flex flex-col items-center gap-2 p-8 text-center text-sm text-gray-500 dark:text-gray-400">
+                    <Loader2 size={24} className="animate-spin text-blue-500" />
+                    {t('syncPanel.scanning') || 'Scanning directories'}
+                </div>
+            );
+        }
         return (
             <div className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">
                 {t('aerosync.planUnavailable') || 'A compare result is required before picking a preset. Open the Compare tab first.'}

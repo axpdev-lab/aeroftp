@@ -155,6 +155,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                     {activeTab === 'compare' && (
                         <CompareTabContent
                             result={context.compareResult}
+                            loading={context.compareLoading}
                             leftLabel={context.leftLabel}
                             rightLabel={context.rightLabel}
                             pairKind={context.pairKind}
@@ -167,6 +168,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                     {activeTab === 'plan' && (
                         <PlanTabContent
                             result={context.compareResult}
+                            loading={context.compareLoading}
                             pairKind={context.pairKind}
                             canExecute={canExecutePlan}
                             onExecute={onExecutePreset}

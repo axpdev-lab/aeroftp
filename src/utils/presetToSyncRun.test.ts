@@ -2,9 +2,12 @@
 // Copyright (c) 2024-2026 axpnet -- AI-assisted (see AI-TRANSPARENCY.md)
 
 import { describe, expect, it } from 'vitest';
-import { buildRemoteSyncInput } from './presetToSyncRun';
+import { buildRemoteSyncInput, buildMirrorSyncInput } from './presetToSyncRun';
+import { adaptFileComparisons } from './recursiveCompare';
+import { derivePresetPlan } from './syncPresets';
 import type { CompareResultEntry } from './compareEndpoints';
 import type { BucketAction, BucketPlan, PresetPlan } from './syncPresets';
+import type { FileComparison, FileInfo } from '../types';
 
 const entry = (
     name: string,
@@ -134,5 +137,132 @@ describe('buildRemoteSyncInput — directories and skips', () => {
         expect(dirs.remote).toEqual([]);
         expect(dirs.local).toEqual([]);
         expect(deferredRenames).toBe(0);
+    });
+});
+
+describe('buildRemoteSyncInput — GAP-5 recursive paths', () => {
+    it('carries a nested relativePath into the runner file', () => {
+        const plan = planOf([
+            {
+                entry: entry('a.txt', { relativePath: 'docs/reports/a.txt', leftSize: 5 }),
+                action: 'copy-to-right',
+            },
+        ]);
+        const { files } = buildRemoteSyncInput(plan, true);
+        expect(files[0].relativePath).toBe('docs/reports/a.txt');
+    });
+
+    it('routes a nested directory copy into dirs with the full path', () => {
+        const plan = planOf([
+            {
+                entry: entry('reports', { relativePath: 'docs/reports', leftIsDir: true }),
+                action: 'copy-to-right',
+            },
+        ]);
+        const { dirs } = buildRemoteSyncInput(plan, true);
+        expect(dirs.remote).toEqual(['docs/reports']);
+    });
+
+    it('carries a nested relativePath into a delete entry', () => {
+        const plan = planOf([
+            {
+                entry: entry('old.txt', { relativePath: 'archive/2025/old.txt' }),
+                action: 'delete-right',
+            },
+        ]);
+        const { files } = buildRemoteSyncInput(plan, true);
+        expect(files[0]).toMatchObject({
+            relativePath: 'archive/2025/old.txt',
+            action: 'delete-remote',
+        });
+    });
+
+    it('falls back to name when relativePath is absent (flat compare)', () => {
+        const plan = planOf([
+            { entry: entry('flat.txt', { leftSize: 1 }), action: 'copy-to-right' },
+        ]);
+        const { files } = buildRemoteSyncInput(plan, true);
+        expect(files[0].relativePath).toBe('flat.txt');
+    });
+});
+
+describe('buildMirrorSyncInput', () => {
+    it('mirrors left-side entries to remote uploads for a local-left pair', () => {
+        const entries: CompareResultEntry[] = [
+            entry('a.txt', { bucket: 'only-left', relativePath: 'a.txt', leftSize: 3 }),
+            entry('b.txt', { bucket: 'newer-left', relativePath: 'sub/b.txt', leftSize: 7 }),
+        ];
+        const { files } = buildMirrorSyncInput(entries, 'left', true);
+        expect(files[0]).toMatchObject({ relativePath: 'a.txt', action: 'upload', overwritesExisting: false });
+        expect(files[1]).toMatchObject({ relativePath: 'sub/b.txt', action: 'upload', overwritesExisting: true });
+    });
+
+    it('mirrors right-side entries to remote uploads for a remote-left pair', () => {
+        const entries: CompareResultEntry[] = [
+            entry('c.txt', { bucket: 'only-right', relativePath: 'c.txt', rightSize: 2 }),
+        ];
+        // sourceSide right, leftIsLocal false → destination is the (remote) left.
+        const { files } = buildMirrorSyncInput(entries, 'right', false);
+        expect(files[0]).toMatchObject({ relativePath: 'c.txt', action: 'upload' });
+    });
+
+    it('routes directory entries into dirs and never deletes', () => {
+        const entries: CompareResultEntry[] = [
+            entry('dir', { bucket: 'only-left', relativePath: 'nested/dir', leftIsDir: true }),
+        ];
+        const { files, dirs, deferredRenames } = buildMirrorSyncInput(entries, 'left', true);
+        expect(files).toHaveLength(0);
+        expect(dirs.remote).toEqual(['nested/dir']);
+        expect(deferredRenames).toBe(0);
+    });
+});
+
+describe('GAP-5 end-to-end — recursive compare survives the whole chain', () => {
+    const finfo = (over: Partial<FileInfo> = {}): FileInfo => ({
+        name: 'f', path: '/f', size: 100, modified: '2026-05-22T10:00:00Z',
+        is_dir: false, checksum: null, ...over,
+    });
+
+    it('a 3-level nested file flows adapt → derivePresetPlan → buildRemoteSyncInput', () => {
+        const comparisons: FileComparison[] = [
+            {
+                relative_path: 'a/b/c/deep.txt',
+                status: 'local_only',
+                local_info: finfo({ size: 42 }),
+                remote_info: null,
+                is_dir: false,
+                sync_reason: '',
+            },
+        ];
+        const compareResult = adaptFileComparisons(comparisons, true);
+        // derivePresetPlan is depth-agnostic: it never reads relativePath.
+        const plan = derivePresetPlan(compareResult, { preset: 'mirror', direction: 'left-to-right' });
+        const { files } = buildRemoteSyncInput(plan, true);
+        expect(files).toHaveLength(1);
+        expect(files[0]).toMatchObject({
+            relativePath: 'a/b/c/deep.txt',
+            action: 'upload',
+            size: 42,
+        });
+    });
+
+    it('nested orphans on the remote resolve to delete-remote under mirror', () => {
+        const comparisons: FileComparison[] = [
+            {
+                relative_path: 'logs/2025/stale.log',
+                status: 'remote_only',
+                local_info: null,
+                remote_info: finfo({ size: 9 }),
+                is_dir: false,
+                sync_reason: '',
+            },
+        ];
+        const compareResult = adaptFileComparisons(comparisons, true);
+        const plan = derivePresetPlan(compareResult, { preset: 'mirror', direction: 'left-to-right' });
+        const { files } = buildRemoteSyncInput(plan, true);
+        expect(files[0]).toMatchObject({
+            relativePath: 'logs/2025/stale.log',
+            action: 'delete-remote',
+        });
     });
 });

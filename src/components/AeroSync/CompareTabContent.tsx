@@ -9,6 +9,7 @@ import {
     ChevronRight,
     Equal,
     FileWarning,
+    Loader2,
     type LucideIcon,
 } from 'lucide-react';
 import type {
@@ -21,6 +22,8 @@ import { useTranslation } from '../../i18n';
 
 interface CompareTabContentProps {
     result: CompareResult | null;
+    /** GAP-5: true while the recursive connected-remote scan is running. */
+    loading?: boolean;
     leftLabel: string;
     rightLabel: string;
     pairKind?: string | null;
@@ -156,9 +159,9 @@ const BucketSection: React.FC<BucketSectionProps> = ({ bucket, entries, bytes, i
                                 </thead>
                                 <tbody>
                                     {visible.map((entry) => (
-                                        <tr key={entry.name} className="border-t border-gray-100 dark:border-gray-700/60">
+                                        <tr key={entry.relativePath ?? entry.name} className="border-t border-gray-100 dark:border-gray-700/60">
                                             <td className="px-2 py-1 font-mono text-gray-800 dark:text-gray-200">
-                                                {entry.name}
+                                                {entry.relativePath ?? entry.name}
                                             </td>
                                             <td className="px-2 py-1 text-right text-gray-600 dark:text-gray-300">
                                                 {entry.leftIsDir ? 'dir' : formatSize(entry.leftSize)}
@@ -191,6 +194,7 @@ const BucketSection: React.FC<BucketSectionProps> = ({ bucket, entries, bytes, i
 
 export const CompareTabContent: React.FC<CompareTabContentProps> = ({
     result,
+    loading,
     leftLabel,
     rightLabel,
     pairKind,
@@ -202,6 +206,14 @@ export const CompareTabContent: React.FC<CompareTabContentProps> = ({
     const t = useTranslation();
 
     if (!result) {
+        if (loading) {
+            return (
+                <div className="flex flex-col items-center gap-2 p-8 text-center text-sm text-gray-500 dark:text-gray-400">
+                    <Loader2 size={24} className="animate-spin text-blue-500" />
+                    {t('syncPanel.scanning') || 'Scanning directories'}
+                </div>
+            );
+        }
         return (
             <div className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">
                 {t('aerosync.compareUnavailable') || 'Open a second panel or a remote connection to compare.'}

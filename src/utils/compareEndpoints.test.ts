@@ -234,3 +234,21 @@ describe('compareEntries — output ordering', () => {
         });
     });
 });
+
+describe('compareEntries — GAP-5 relativePath', () => {
+    it('sets relativePath equal to name for every flat-compare row', () => {
+        const result = compareEntries(
+            [
+                { name: 'only-l.txt', isDir: false, size: 1, mtimeMs: 1_000 },
+                { name: 'both.txt', isDir: false, size: 2, mtimeMs: 1_000 },
+            ],
+            [
+                { name: 'only-r.txt', isDir: false, size: 3, mtimeMs: 1_000 },
+                { name: 'both.txt', isDir: false, size: 2, mtimeMs: 1_000 },
+            ],
+        );
+        for (const entry of result.entries) {
+            expect(entry.relativePath).toBe(entry.name);
+        }
+    });
+});
