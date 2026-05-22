@@ -215,6 +215,41 @@ export const filesFromJournal = (journal: SyncJournal): SyncRunFile[] =>
             overwritesExisting: e.action === 'download',
         }));
 
+/**
+ * GAP-8 — derive a `RetryPolicy` from the Plan tab's speed mode. Faster modes
+ * push harder: more attempts with a shorter backoff so a flaky transfer is
+ * retried quickly rather than stalling the run. `normal` / `fast` keep the
+ * conservative 3-retry default.
+ */
+export const retryPolicyForSpeed = (speedMode: string): RetryPolicy => {
+    switch (speedMode) {
+        case 'extreme':
+            return {
+                max_retries: 5,
+                base_delay_ms: 250,
+                max_delay_ms: 8_000,
+                timeout_ms: 120_000,
+                backoff_multiplier: 2,
+            };
+        case 'turbo':
+            return {
+                max_retries: 4,
+                base_delay_ms: 350,
+                max_delay_ms: 10_000,
+                timeout_ms: 120_000,
+                backoff_multiplier: 2,
+            };
+        default:
+            return {
+                max_retries: 3,
+                base_delay_ms: 500,
+                max_delay_ms: 10_000,
+                timeout_ms: 120_000,
+                backoff_multiplier: 2,
+            };
+    }
+};
+
 /** Map a runner action to the coarse journal action string. */
 const journalAction = (action: SyncRunAction): string => {
     if (action === 'upload') return 'upload';
