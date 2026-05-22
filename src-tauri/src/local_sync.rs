@@ -325,7 +325,7 @@ pub async fn local_sync_run(
                 let expected_mtime = std::fs::metadata(&src)
                     .ok()
                     .and_then(|m| m.modified().ok())
-                    .map(|t| <chrono::DateTime<chrono::Utc>>::from(t));
+                    .map(<chrono::DateTime<chrono::Utc>>::from);
                 let dst_str = dst.to_string_lossy().to_string();
                 let verify = crate::sync::verify_local_file(
                     dst_str.as_str(),

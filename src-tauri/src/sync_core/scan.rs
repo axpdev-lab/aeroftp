@@ -87,6 +87,97 @@ fn matches_any(matchers: &[globset::GlobMatcher], rel: &str, name: &str) -> bool
     matchers.iter().any(|m| m.is_match(rel) || m.is_match(name))
 }
 
+/// GAP-9f: derive a path relative to `root` from a provider-returned absolute
+/// path. Returns `None` when `abs_path` does not sit under `root` (the caller
+/// then abandons the fast-path and walks the BFS instead).
+fn rel_from_abs(abs_path: &str, root: &str) -> Option<String> {
+    let p = abs_path.trim_matches('/');
+    let r = root.trim_matches('/');
+    if r.is_empty() {
+        return if p.is_empty() { None } else { Some(p.to_string()) };
+    }
+    if p == r {
+        // The scan root itself, not a child entry.
+        return None;
+    }
+    p.strip_prefix(&format!("{}/", r)).map(|s| s.to_string())
+}
+
+/// GAP-9f: convert a provider-native flat recursive listing
+/// (`provider_list_recursive_fastpath`) into the scan's `RemoteEntry` rows,
+/// applying the same exclude / skip / files_from / cap filters the BFS path
+/// applies. Directories and symlinks are dropped (the scan result is
+/// files-only, exactly like the BFS).
+///
+/// Returns `None` when any file entry's path cannot be made relative to
+/// `root`: that means the flat listing and the root disagree, so the BFS is
+/// the safe choice rather than a silently-incomplete tree.
+fn adapt_fastpath_entries(
+    entries: Vec<crate::providers::RemoteEntry>,
+    root: &str,
+    opts: &ScanOptions,
+) -> Option<Vec<RemoteEntry>> {
+    let matchers = compile_matchers(&opts.exclude_patterns);
+    let cap = opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES);
+    let mut results = Vec::new();
+    for entry in entries {
+        if entry.is_dir || entry.is_symlink {
+            continue;
+        }
+        let rel = match rel_from_abs(&entry.path, root) {
+            Some(rel) if !rel.is_empty() => rel,
+            _ => {
+                tracing::info!(
+                    "[scan_remote_tree] fast-path entry {} is not under root {}, falling back to BFS",
+                    entry.path,
+                    root
+                );
+                return None;
+            }
+        };
+        if opts.skip_filenames.iter().any(|name| name == &entry.name) {
+            continue;
+        }
+        if !matchers.is_empty() && matches_any(&matchers, &rel, &entry.name) {
+            continue;
+        }
+        if let Some(ref set) = opts.files_from {
+            if !set.contains(rel.as_str()) {
+                continue;
+            }
+        }
+        results.push(RemoteEntry {
+            rel_path: rel,
+            size: entry.size,
+            mtime: entry.modified,
+            checksum_alg: None,
+            checksum_hex: None,
+        });
+        if results.len() >= cap {
+            break;
+        }
+    }
+    Some(results)
+}
+
+/// GAP-9f: attempt the provider-native single-shot recursive listing for the
+/// compare scan. Returns `Some(rows)` only for S3, whose flat
+/// `ListObjectsV2` carries full object keys; WebDAV's `Depth: infinity`
+/// flattens nested paths (`structured_paths = false`) so it is left to the
+/// BFS. `None` means "no fast-path, use the BFS".
+async fn try_recursive_fastpath(
+    provider: &mut Box<dyn StorageProvider>,
+    remote_root: &str,
+    opts: &ScanOptions,
+) -> Option<Vec<RemoteEntry>> {
+    let listing =
+        crate::used_scan::provider_list_recursive_fastpath(provider, remote_root).await?;
+    if !listing.structured_paths {
+        return None;
+    }
+    adapt_fastpath_entries(listing.entries, remote_root, opts)
+}
+
 /// Walk the local directory tree and return files matching the filter.
 /// Errors that hit non-root entries are silently dropped (same behaviour as
 /// the CLI) so that partial scans still return useful data on messy trees.
@@ -164,6 +255,16 @@ pub async fn scan_remote_tree(
     remote_root: &str,
     opts: &ScanOptions,
 ) -> Vec<RemoteEntry> {
+    // GAP-9f: provider-native single-shot recursive listing fast-path. S3
+    // collapses the per-directory BFS round-trips into one flat listing.
+    // Skipped when checksums are requested (the flat listing carries no
+    // per-file hash, so the BFS per-file `checksum()` is still required).
+    if !opts.compute_remote_checksum {
+        if let Some(results) = try_recursive_fastpath(provider, remote_root, opts).await {
+            return results;
+        }
+    }
+
     let matchers = compile_matchers(&opts.exclude_patterns);
     let cap = opts.max_entries.unwrap_or(MAX_SCAN_ENTRIES);
     let depth = opts.max_depth.unwrap_or(DEFAULT_SCAN_DEPTH);
@@ -257,6 +358,26 @@ pub async fn scan_remote_tree_with_provider_lock(
     cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
     observer: Option<&dyn DagObserver>,
 ) -> Vec<RemoteEntry> {
+    // GAP-9f: provider-native single-shot recursive listing fast-path,
+    // tried once before either BFS branch (clone-pool or locked). S3's flat
+    // ListObjectsV2 returns the whole subtree in one paginated call.
+    // Skipped when checksums are requested or the scan is already cancelled.
+    if !opts.compute_remote_checksum && !scan_cancelled(&cancel) {
+        let fast = {
+            let mut guard = provider.lock().await;
+            match guard.as_mut() {
+                Some(p) => try_recursive_fastpath(p, remote_root, opts).await,
+                None => None,
+            }
+        };
+        if let Some(results) = fast {
+            if let Some(obs) = observer {
+                obs.on_scan_progress(results.len(), 0);
+            }
+            return results;
+        }
+    }
+
     if !list_model.is_clone_pool() {
         return scan_remote_tree_locked(provider, remote_root, opts, list_model, cancel, observer)
             .await;
@@ -774,5 +895,121 @@ mod tests {
         let entries = scan_local_tree(root.to_str().unwrap(), &opts);
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].rel_path, "a.txt");
+    }
+
+    // --- GAP-9f: provider-native recursive listing fast-path ----------
+
+    use crate::providers::RemoteEntry as ProviderEntry;
+
+    fn provider_file(name: &str, path: &str, size: u64) -> ProviderEntry {
+        ProviderEntry::file(name.to_string(), path.to_string(), size)
+    }
+
+    #[test]
+    fn rel_from_abs_strips_the_root_prefix() {
+        assert_eq!(
+            rel_from_abs("/srv/data/a/b.txt", "/srv/data"),
+            Some("a/b.txt".to_string())
+        );
+        // Trailing slashes on either side are tolerated.
+        assert_eq!(
+            rel_from_abs("/srv/data/a/b.txt", "/srv/data/"),
+            Some("a/b.txt".to_string())
+        );
+        // A bucket-root scan keeps the whole key.
+        assert_eq!(
+            rel_from_abs("/photos/x.jpg", "/"),
+            Some("photos/x.jpg".to_string())
+        );
+    }
+
+    #[test]
+    fn rel_from_abs_rejects_paths_outside_the_root() {
+        assert_eq!(rel_from_abs("/other/x.txt", "/srv/data"), None);
+        // The root itself is not a child entry.
+        assert_eq!(rel_from_abs("/srv/data", "/srv/data"), None);
+    }
+
+    #[test]
+    fn adapt_fastpath_entries_derives_nested_relative_paths() {
+        let entries = vec![
+            provider_file("top.txt", "/root/top.txt", 10),
+            provider_file("c.txt", "/root/a/b/c.txt", 20),
+            ProviderEntry::directory("a".to_string(), "/root/a".to_string()),
+        ];
+        let rows = adapt_fastpath_entries(entries, "/root", &ScanOptions::default()).unwrap();
+        let mut paths: Vec<String> = rows.iter().map(|r| r.rel_path.clone()).collect();
+        paths.sort();
+        // The directory entry is dropped; both files keep their nesting.
+        assert_eq!(paths, vec!["a/b/c.txt".to_string(), "top.txt".to_string()]);
+    }
+
+    #[test]
+    fn adapt_fastpath_entries_honours_exclude_and_files_from_and_cap() {
+        let entries = vec![
+            provider_file("keep.txt", "/root/keep.txt", 1),
+            provider_file("skip.tmp", "/root/skip.tmp", 1),
+            provider_file("nested.txt", "/root/sub/nested.txt", 1),
+        ];
+        let excluded = adapt_fastpath_entries(
+            entries.clone(),
+            "/root",
+            &ScanOptions {
+                exclude_patterns: vec!["*.tmp".to_string()],
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert!(excluded.iter().all(|r| !r.rel_path.ends_with(".tmp")));
+
+        let mut files_from = HashSet::new();
+        files_from.insert("sub/nested.txt".to_string());
+        let filtered = adapt_fastpath_entries(
+            entries.clone(),
+            "/root",
+            &ScanOptions {
+                files_from: Some(files_from),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].rel_path, "sub/nested.txt");
+
+        let capped = adapt_fastpath_entries(
+            entries,
+            "/root",
+            &ScanOptions {
+                max_entries: Some(1),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(capped.len(), 1);
+    }
+
+    #[test]
+    fn adapt_fastpath_entries_bails_when_an_entry_is_outside_the_root() {
+        let entries = vec![
+            provider_file("ok.txt", "/root/ok.txt", 1),
+            provider_file("stray.txt", "/elsewhere/stray.txt", 1),
+        ];
+        // A key that does not sit under the scan root means the flat listing
+        // and the root disagree: the whole fast-path is abandoned.
+        assert!(adapt_fastpath_entries(entries, "/root", &ScanOptions::default()).is_none());
+    }
+
+    #[test]
+    fn adapt_fastpath_entries_drops_symlinks() {
+        let mut link = provider_file("link.txt", "/root/link.txt", 0);
+        link.is_symlink = true;
+        let rows = adapt_fastpath_entries(
+            vec![link, provider_file("real.txt", "/root/real.txt", 5)],
+            "/root",
+            &ScanOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].rel_path, "real.txt");
     }
 }
