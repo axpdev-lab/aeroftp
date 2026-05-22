@@ -3,6 +3,7 @@
 
 import type { CompareResult, CompareResultEntry } from '../../utils/compareEndpoints';
 import type { PresetPlan } from '../../utils/syncPresets';
+import type { SyncJournal } from '../../types';
 
 export type AeroSyncTab = 'compare' | 'plan' | 'sync';
 
@@ -37,6 +38,11 @@ export interface AeroSyncContext {
      * render a scanning placeholder instead of the empty-state hint.
      */
     compareLoading?: boolean;
+    /**
+     * GAP-6: an interrupted connected-remote sync journal for this path
+     * pair, if one exists. When set, the dialog surfaces a resume banner.
+     */
+    pendingJournal?: SyncJournal | null;
     initialSource?: string;
     initialDestination?: string;
     /**
@@ -61,4 +67,8 @@ export interface AeroSyncDialogProps {
     onApplyMirrorLeftToRight: (entries: CompareResultEntry[]) => void;
     onApplyMirrorRightToLeft: (entries: CompareResultEntry[]) => void;
     onExecutePreset: (plan: PresetPlan, runtime: AeroSyncRuntime) => void;
+    /** GAP-6: resume an interrupted journal from the resume banner. */
+    onResumeJournal: (journal: SyncJournal) => void;
+    /** GAP-6: discard the interrupted journal and clear the banner. */
+    onDismissJournal: () => void;
 }
