@@ -4133,6 +4133,7 @@
             },
             "confirmDeleteServer": "Да се избрише серверот \"{name}\"? Ова ги отстранува зачуваните ингеренции и не може да се поништи.",
             "renameWithHotkey": "Преименувај (F2)",
+            "doubleClickToRename": "Двоен клик за преименување",
             "setAsCrossProfileSource": "Постави како Cross-Profile извор",
             "setAsCrossProfileDestination": "Постави како Cross-Profile дестинација",
             "crossProfileSourceSelected": "Избрано како Cross-Profile извор",

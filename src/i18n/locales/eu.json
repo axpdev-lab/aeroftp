@@ -4133,6 +4133,7 @@
             },
             "confirmDeleteServer": "\"{name}\" zerbitzaria ezabatu? Honek gordetako kredentzialak kentzen ditu eta ezin da desegin.",
             "renameWithHotkey": "Berrizendatu (F2)",
+            "doubleClickToRename": "Klik bikoitza izena aldatzeko",
             "setAsCrossProfileSource": "Ezarri Cross-Profile iturburu gisa",
             "setAsCrossProfileDestination": "Ezarri Cross-Profile helburu gisa",
             "crossProfileSourceSelected": "Cross-Profile iturburu gisa hautatua",

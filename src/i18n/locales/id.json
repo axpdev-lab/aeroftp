@@ -4114,6 +4114,7 @@
             },
             "confirmDeleteServer": "Hapus server \"{name}\"? Ini akan menghapus kredensial yang tersimpan dan tidak dapat dibatalkan.",
             "renameWithHotkey": "Ganti nama (F2)",
+            "doubleClickToRename": "Klik dua kali untuk mengganti nama",
             "setAsCrossProfileSource": "Tetapkan sebagai sumber Cross-Profile",
             "setAsCrossProfileDestination": "Tetapkan sebagai tujuan Cross-Profile",
             "crossProfileSourceSelected": "Dipilih sebagai sumber Cross-Profile",

@@ -4133,6 +4133,7 @@
             },
             "confirmDeleteServer": "Dileu'r gweinydd \"{name}\"? Mae hyn yn dileu manylion mewngofnodi a gadwyd ac ni ellir ei ddadwneud.",
             "renameWithHotkey": "Ailenwi (F2)",
+            "doubleClickToRename": "Clic dwbl i ailenwi",
             "setAsCrossProfileSource": "Gosod fel ffynhonnell Cross-Profile",
             "setAsCrossProfileDestination": "Gosod fel cyrchfan Cross-Profile",
             "crossProfileSourceSelected": "Wedi'i ddewis fel ffynhonnell Cross-Profile",

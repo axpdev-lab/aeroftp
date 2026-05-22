@@ -4114,6 +4114,7 @@
             },
             "confirmDeleteServer": "Server \"{name}\" löschen? Dies entfernt gespeicherte Anmeldedaten und kann nicht rückgängig gemacht werden.",
             "renameWithHotkey": "Umbenennen (F2)",
+            "doubleClickToRename": "Zum Umbenennen doppelklicken",
             "setAsCrossProfileSource": "Als Cross-Profile-Quelle festlegen",
             "setAsCrossProfileDestination": "Als Cross-Profile-Ziel festlegen",
             "crossProfileSourceSelected": "Als Cross-Profile-Quelle ausgewählt",

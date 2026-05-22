@@ -4133,6 +4133,7 @@
             },
             "confirmDeleteServer": "Eyða þjóninum \"{name}\"? Þetta fjarlægir vistuð skilríki og er óafturkræft.",
             "renameWithHotkey": "Endurnefna (F2)",
+            "doubleClickToRename": "Tvísmelltu til að endurnefna",
             "setAsCrossProfileSource": "Stilla sem Cross-Profile uppruna",
             "setAsCrossProfileDestination": "Stilla sem Cross-Profile áfangastað",
             "crossProfileSourceSelected": "Valið sem Cross-Profile uppruni",

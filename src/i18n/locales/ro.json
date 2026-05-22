@@ -4114,6 +4114,7 @@
             },
             "confirmDeleteServer": "Ștergeți serverul \"{name}\"? Aceasta elimină acreditările salvate și nu poate fi anulată.",
             "renameWithHotkey": "Redenumire (F2)",
+            "doubleClickToRename": "Dublu clic pentru redenumire",
             "setAsCrossProfileSource": "Seteaza ca sursa Cross-Profile",
             "setAsCrossProfileDestination": "Seteaza ca destinatie Cross-Profile",
             "crossProfileSourceSelected": "Selectat ca sursa Cross-Profile",

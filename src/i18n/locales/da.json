@@ -4114,6 +4114,7 @@
             },
             "confirmDeleteServer": "Slet serveren \"{name}\"? Dette fjerner gemte legitimationsoplysninger og kan ikke fortrydes.",
             "renameWithHotkey": "Omdøb (F2)",
+            "doubleClickToRename": "Dobbeltklik for at omdøbe",
             "setAsCrossProfileSource": "Indstil som Cross-Profile-kilde",
             "setAsCrossProfileDestination": "Indstil som Cross-Profile-destination",
             "crossProfileSourceSelected": "Valgt som Cross-Profile-kilde",

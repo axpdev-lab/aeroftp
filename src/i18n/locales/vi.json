@@ -4114,6 +4114,7 @@
             },
             "confirmDeleteServer": "Xóa máy chủ \"{name}\"? Thao tác này sẽ xóa thông tin xác thực đã lưu và không thể hoàn tác.",
             "renameWithHotkey": "Đổi tên (F2)",
+            "doubleClickToRename": "Nhấp đúp để đổi tên",
             "setAsCrossProfileSource": "Dat lam nguon Cross-Profile",
             "setAsCrossProfileDestination": "Dat lam dich Cross-Profile",
             "crossProfileSourceSelected": "Da chon lam nguon Cross-Profile",

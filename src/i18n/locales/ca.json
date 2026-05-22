@@ -4133,6 +4133,7 @@
             },
             "confirmDeleteServer": "Voleu eliminar el servidor \"{name}\"? Això eliminarà les credencials desades i no es podrà desfer.",
             "renameWithHotkey": "Reanomena (F2)",
+            "doubleClickToRename": "Doble clic per canviar el nom",
             "setAsCrossProfileSource": "Estableix com a origen Cross-Profile",
             "setAsCrossProfileDestination": "Estableix com a destinació Cross-Profile",
             "crossProfileSourceSelected": "Seleccionat com a origen Cross-Profile",

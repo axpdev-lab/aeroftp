@@ -4133,6 +4133,7 @@
             },
             "confirmDeleteServer": "Burahin ang server na \"{name}\"? Aalisin nito ang mga naka-save na kredensyal at hindi ito maaaring ibalik.",
             "renameWithHotkey": "Palitan ang pangalan (F2)",
+            "doubleClickToRename": "I-double click para palitan ang pangalan",
             "setAsCrossProfileSource": "Itakda bilang pinagmulan ng Cross-Profile",
             "setAsCrossProfileDestination": "Itakda bilang patutunguhan ng Cross-Profile",
             "crossProfileSourceSelected": "Napili bilang pinagmulan ng Cross-Profile",

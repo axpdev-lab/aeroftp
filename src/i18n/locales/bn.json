@@ -4114,6 +4114,7 @@
             },
             "confirmDeleteServer": "সার্ভার \"{name}\" মুছে ফেলবেন? এটি সংরক্ষিত শংসাপত্র সরিয়ে দেবে এবং পূর্বাবস্থায় ফেরানো যাবে না।",
             "renameWithHotkey": "পুনঃনামকরণ (F2)",
+            "doubleClickToRename": "নাম পরিবর্তন করতে ডবল-ক্লিক করুন",
             "setAsCrossProfileSource": "Cross-Profile উৎস হিসেবে সেট করুন",
             "setAsCrossProfileDestination": "Cross-Profile গন্তব্য হিসেবে সেট করুন",
             "crossProfileSourceSelected": "Cross-Profile উৎস হিসেবে নির্বাচিত",

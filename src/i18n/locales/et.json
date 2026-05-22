@@ -4114,6 +4114,7 @@
             },
             "confirmDeleteServer": "Kustutada server \"{name}\"? See eemaldab salvestatud mandaadid ja seda ei saa tagasi võtta.",
             "renameWithHotkey": "Nimeta ümber (F2)",
+            "doubleClickToRename": "Topeltklõps ümbernimetamiseks",
             "setAsCrossProfileSource": "Määra Cross-Profile allikaks",
             "setAsCrossProfileDestination": "Määra Cross-Profile sihtkohaks",
             "crossProfileSourceSelected": "Valitud Cross-Profile allikaks",

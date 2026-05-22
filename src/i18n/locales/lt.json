@@ -4114,6 +4114,7 @@
             },
             "confirmDeleteServer": "Ištrinti serverį \"{name}\"? Tai pašalins išsaugotus kredencialus ir negalės būti atšaukta.",
             "renameWithHotkey": "Pervadinti (F2)",
+            "doubleClickToRename": "Dukart spustelėkite, kad pervardytumėte",
             "setAsCrossProfileSource": "Nustatyti kaip Cross-Profile šaltinį",
             "setAsCrossProfileDestination": "Nustatyti kaip Cross-Profile paskirties vietą",
             "crossProfileSourceSelected": "Pasirinkta kaip Cross-Profile šaltinis",

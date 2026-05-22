@@ -4114,6 +4114,7 @@
             },
             "confirmDeleteServer": "सर्वर \"{name}\" हटाएं? इससे सहेजी गई क्रेडेंशियल हट जाएंगी और इसे पूर्ववत नहीं किया जा सकता।",
             "renameWithHotkey": "नाम बदलें (F2)",
+            "doubleClickToRename": "नाम बदलने के लिए डबल-क्लिक करें",
             "setAsCrossProfileSource": "Cross-Profile स्रोत के रूप में सेट करें",
             "setAsCrossProfileDestination": "Cross-Profile गंतव्य के रूप में सेट करें",
             "crossProfileSourceSelected": "Cross-Profile स्रोत के रूप में चयनित",

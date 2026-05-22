@@ -4114,6 +4114,7 @@
             },
             "confirmDeleteServer": "Видалити сервер \"{name}\"? Це видалить збережені облікові дані і дію неможливо скасувати.",
             "renameWithHotkey": "Перейменувати (F2)",
+            "doubleClickToRename": "Подвійний клік для перейменування",
             "setAsCrossProfileSource": "Встановити як джерело Cross-Profile",
             "setAsCrossProfileDestination": "Встановити як призначення Cross-Profile",
             "crossProfileSourceSelected": "Вибрано як джерело Cross-Profile",

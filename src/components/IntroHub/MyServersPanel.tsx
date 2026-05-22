@@ -1244,6 +1244,7 @@ export function MyServersPanel({
                                     isRenaming={renamingId === server.id}
                                     onRenameSubmit={handleRenameSubmit}
                                     onRenameCancel={handleRenameCancel}
+                                    onRenameStart={handleRenameStart}
                                     isDraggable={canDrag}
                                     isDragging={dragIdx === realIdx}
                                     isDragTarget={overIdx === realIdx && dragIdx !== null && dragIdx !== realIdx}
@@ -1312,6 +1313,7 @@ export function MyServersPanel({
                         renamingId={renamingId}
                         onRenameSubmit={handleRenameSubmit}
                         onRenameCancel={handleRenameCancel}
+                        onRenameStart={handleRenameStart}
                         canDrag={canDrag}
                         dragIdx={dragIdx}
                         overIdx={overIdx}

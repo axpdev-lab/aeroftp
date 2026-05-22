@@ -4114,6 +4114,7 @@
             },
             "confirmDeleteServer": "Ta bort servern \"{name}\"? Detta tar bort sparade inloggningsuppgifter och kan inte ångras.",
             "renameWithHotkey": "Byt namn (F2)",
+            "doubleClickToRename": "Dubbelklicka för att byta namn",
             "setAsCrossProfileSource": "Ange som Cross-Profile-kalla",
             "setAsCrossProfileDestination": "Ange som Cross-Profile-destination",
             "crossProfileSourceSelected": "Vald som Cross-Profile-kalla",

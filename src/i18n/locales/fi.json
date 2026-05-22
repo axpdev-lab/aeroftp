@@ -4114,6 +4114,7 @@
             },
             "confirmDeleteServer": "Poistetaanko palvelin \"{name}\"? Tämä poistaa tallennetut tunnistetiedot eikä sitä voi kumota.",
             "renameWithHotkey": "Nimeä uudelleen (F2)",
+            "doubleClickToRename": "Nimeä uudelleen kaksoisnapsauttamalla",
             "setAsCrossProfileSource": "Aseta Cross-Profile-lähteeksi",
             "setAsCrossProfileDestination": "Aseta Cross-Profile-kohteeksi",
             "crossProfileSourceSelected": "Valittu Cross-Profile-lähteeksi",

@@ -4114,6 +4114,7 @@
             },
             "confirmDeleteServer": "Futa seva \"{name}\"? Hii itaondoa vitambulisho vilivyohifadhiwa na haiwezi kutendwa upya.",
             "renameWithHotkey": "Pa jina jipya (F2)",
+            "doubleClickToRename": "Bofya mara mbili ili kubadilisha jina",
             "setAsCrossProfileSource": "Weka kama chanzo cha Cross-Profile",
             "setAsCrossProfileDestination": "Weka kama lengo la Cross-Profile",
             "crossProfileSourceSelected": "Imechaguliwa kama chanzo cha Cross-Profile",
