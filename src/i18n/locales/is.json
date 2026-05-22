@@ -4277,7 +4277,10 @@
             "description": "Sláðu inn 6 stafa kóðann úr auðkenningarforritinu þínu til að halda áfram tengingu.",
             "hint": "Opnaðu auðkenningarforritið þitt (Authy, Google Authenticator o.s.frv.) og afritaðu núverandi kóða.",
             "connect": "Tengjast",
-            "connecting": "Tengist..."
+            "connecting": "Tengist...",
+            "autoRetryCountdown": "Bíð eftir nýjum auðkennikóða, tengist aftur við {account} eftir {seconds} sek",
+            "autoRetryFailedTitle": "Tveggja þrepa auðkenning mistókst",
+            "autoRetryFailedBody": "AeroFTP gat ekki auðkennt sig með vistaða 2FA leyndarmálinu. Opnaðu breytingaeyðublað sniðsins og staðfestu 2FA leyndarmálið."
         },
         "table": {
             "manageColumns": "Stjórna dálkum",

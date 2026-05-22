@@ -4277,7 +4277,10 @@
             "description": "Skriv inn den 6-sifrede koden fra autentiseringsappen for å fortsette tilkoblingen.",
             "hint": "Åpne autentiseringsappen din (Authy, Google Authenticator osv.) og kopier gjeldende kode.",
             "connect": "Koble til",
-            "connecting": "Kobler til..."
+            "connecting": "Kobler til...",
+            "autoRetryCountdown": "Venter på en ny autentiseringskode, kobler til {account} på nytt om {seconds} s",
+            "autoRetryFailedTitle": "Tofaktorautentisering mislyktes",
+            "autoRetryFailedBody": "AeroFTP kunne ikke autentisere med den lagrede 2FA-hemmeligheten. Åpne profilens redigeringsskjema og kontroller 2FA-hemmeligheten."
         },
         "table": {
             "manageColumns": "Administrer kolonner",

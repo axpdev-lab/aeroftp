@@ -296,7 +296,10 @@
             "description": "Inserisci il codice a 6 cifre dalla tua app authenticator per continuare la connessione.",
             "hint": "Apri la tua app authenticator (Authy, Google Authenticator, ecc.) e copia il codice corrente.",
             "connect": "Connetti",
-            "connecting": "Connessione..."
+            "connecting": "Connessione...",
+            "autoRetryCountdown": "In attesa di un nuovo codice dell'autenticatore, riconnessione a {account} tra {seconds} s",
+            "autoRetryFailedTitle": "Autenticazione a due fattori non riuscita",
+            "autoRetryFailedBody": "AeroFTP non è riuscito ad autenticarsi con il segreto 2FA salvato. Apri il modulo di modifica del profilo e verifica il segreto 2FA."
         },
         "protocol": {
             "selectProtocol": "Seleziona protocollo...",

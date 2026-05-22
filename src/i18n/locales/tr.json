@@ -4258,7 +4258,10 @@
             "description": "Bağlantıya devam etmek için kimlik doğrulayıcı uygulamanızdan 6 haneli kodu girin.",
             "hint": "Kimlik doğrulayıcı uygulamanızı (Authy, Google Authenticator vb.) açın ve mevcut kodu kopyalayın.",
             "connect": "Bağlan",
-            "connecting": "Bağlanıyor..."
+            "connecting": "Bağlanıyor...",
+            "autoRetryCountdown": "Yeni bir kimlik doğrulayıcı kodu bekleniyor, {seconds} sn içinde {account} hesabına yeniden bağlanılıyor",
+            "autoRetryFailedTitle": "İki faktörlü kimlik doğrulama başarısız oldu",
+            "autoRetryFailedBody": "AeroFTP, kaydedilen 2FA gizli anahtarıyla kimlik doğrulaması yapamadı. Profilin Düzenleme formunu açın ve 2FA gizli anahtarını doğrulayın."
         },
         "table": {
             "manageColumns": "Sütunları yönet",

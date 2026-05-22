@@ -4258,7 +4258,10 @@
             "description": "Ange den 6-siffriga koden från din autentiseringsapp för att fortsätta ansluta.",
             "hint": "Öppna din autentiseringsapp (Authy, Google Authenticator osv.) och kopiera den aktuella koden.",
             "connect": "Anslut",
-            "connecting": "Ansluter..."
+            "connecting": "Ansluter...",
+            "autoRetryCountdown": "Väntar på en ny autentiseringskod, återansluter till {account} om {seconds} s",
+            "autoRetryFailedTitle": "Tvåfaktorsautentisering misslyckades",
+            "autoRetryFailedBody": "AeroFTP kunde inte autentisera med den sparade 2FA-hemligheten. Öppna profilens redigeringsformulär och verifiera 2FA-hemligheten."
         },
         "table": {
             "manageColumns": "Hantera kolumner",

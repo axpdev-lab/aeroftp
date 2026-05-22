@@ -4258,7 +4258,10 @@
             "description": "Ühenduse jätkamiseks sisestage autentimisrakenduse 6-kohaline kood.",
             "hint": "Avage oma autentimisrakendus (Authy, Google Authenticator vms) ja kopeerige praegune kood.",
             "connect": "Ühenda",
-            "connecting": "Ühendamine..."
+            "connecting": "Ühendamine...",
+            "autoRetryCountdown": "Ootan uut autentija koodi, taasühendamine kontoga {account} {seconds} s pärast",
+            "autoRetryFailedTitle": "Kaheastmeline autentimine ebaõnnestus",
+            "autoRetryFailedBody": "AeroFTP ei suutnud salvestatud 2FA saladusega autentida. Avage profiili muutmisvorm ja kontrollige 2FA saladust."
         },
         "table": {
             "manageColumns": "Halda veerge",

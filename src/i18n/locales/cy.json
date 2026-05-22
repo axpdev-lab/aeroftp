@@ -4277,7 +4277,10 @@
             "description": "Rhowch y cod 6 digid o'ch ap dilysu i barhau i gysylltu.",
             "hint": "Agorwch eich ap dilysu (Authy, Google Authenticator, ac ati) a chopïwch y cod cyfredol.",
             "connect": "Cysylltu",
-            "connecting": "Cysylltu..."
+            "connecting": "Cysylltu...",
+            "autoRetryCountdown": "Yn aros am god dilysydd newydd, yn ailgysylltu â {account} ymhen {seconds} eiliad",
+            "autoRetryFailedTitle": "Methodd y dilysu dau ffactor",
+            "autoRetryFailedBody": "Ni allai AeroFTP ddilysu gyda'r gyfrinach 2FA a gadwyd. Agorwch ffurflen Golygu'r proffil a gwiriwch y gyfrinach 2FA."
         },
         "table": {
             "manageColumns": "Rheoli colofnau",

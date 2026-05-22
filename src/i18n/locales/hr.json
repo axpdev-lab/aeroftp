@@ -4258,7 +4258,10 @@
             "description": "Unesite 6-znamenkasti kod iz aplikacije za autentifikaciju za nastavak povezivanja.",
             "hint": "Otvorite aplikaciju za autentifikaciju (Authy, Google Authenticator itd.) i kopirajte trenutni kod.",
             "connect": "Poveži",
-            "connecting": "Povezivanje..."
+            "connecting": "Povezivanje...",
+            "autoRetryCountdown": "Čekanje novog koda autentifikatora, ponovno povezivanje s računom {account} za {seconds} s",
+            "autoRetryFailedTitle": "Dvofaktorska autentifikacija nije uspjela",
+            "autoRetryFailedBody": "AeroFTP se nije mogao autentificirati spremljenom 2FA tajnom. Otvorite obrazac za uređivanje profila i provjerite 2FA tajnu."
         },
         "table": {
             "manageColumns": "Upravljaj stupcima",

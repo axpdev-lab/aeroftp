@@ -4277,7 +4277,10 @@
             "description": "Introduce o código de 6 díxitos da túa aplicación de autenticación para continuar a conexión.",
             "hint": "Abre a túa aplicación de autenticación (Authy, Google Authenticator, etc.) e copia o código actual.",
             "connect": "Conectar",
-            "connecting": "Conectando..."
+            "connecting": "Conectando...",
+            "autoRetryCountdown": "Agardando un novo código do autenticador, reconectando a {account} en {seconds} s",
+            "autoRetryFailedTitle": "Produciuse un erro na autenticación en dous pasos",
+            "autoRetryFailedBody": "AeroFTP non puido autenticarse co segredo 2FA gardado. Abre o formulario de edición do perfil e verifica o segredo 2FA."
         },
         "table": {
             "manageColumns": "Xestionar columnas",

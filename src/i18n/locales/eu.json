@@ -4277,7 +4277,10 @@
             "description": "Sartu zure autentifikazio-aplikazioko 6 digituko kodea konexioarekin jarraitzeko.",
             "hint": "Ireki zure autentifikazio-aplikazioa (Authy, Google Authenticator, etab.) eta kopiatu uneko kodea.",
             "connect": "Konektatu",
-            "connecting": "Konektatzen..."
+            "connecting": "Konektatzen...",
+            "autoRetryCountdown": "Autentifikatzaile-kode berri baten zain, {account} kontura berriz konektatzen {seconds} s barru",
+            "autoRetryFailedTitle": "Bi faktoreko autentifikazioak huts egin du",
+            "autoRetryFailedBody": "AeroFTP-k ezin izan du autentifikatu gordetako 2FA sekretuarekin. Ireki profilaren Editatu inprimakia eta egiaztatu 2FA sekretua."
         },
         "table": {
             "manageColumns": "Kudeatu zutabeak",
