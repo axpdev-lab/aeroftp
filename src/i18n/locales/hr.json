@@ -4423,6 +4423,8 @@
             "enable": "Omoguci",
             "versionedBackupHint": "Spremi odredisnu kopiju u ovu mapu prije svake prepisivanja ili brisanja.",
             "actionable": "Za izvrsiti",
+            "reportCopiedRight": "Kopirano udesno",
+            "reportCopiedLeft": "Kopirano ulijevo",
             "skipped": "Preskoceno",
             "transfer": "Prijenos",
             "destructive": "Destruktivno",

@@ -4423,6 +4423,8 @@
             "enable": "Włącz",
             "versionedBackupHint": "Zapisz kopię docelową w tym katalogu przed każdym nadpisaniem lub usunięciem.",
             "actionable": "Do wykonania",
+            "reportCopiedRight": "Skopiowano w prawo",
+            "reportCopiedLeft": "Skopiowano w lewo",
             "skipped": "Pominięte",
             "transfer": "Transfer",
             "destructive": "Destrukcyjne",

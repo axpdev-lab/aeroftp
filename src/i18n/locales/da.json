@@ -4423,6 +4423,8 @@
             "enable": "Aktivér",
             "versionedBackupHint": "Indfanger destinationskopien i denne mappe før hver overskrivning eller sletning.",
             "actionable": "Handlingsdygtig",
+            "reportCopiedRight": "Kopieret til højre",
+            "reportCopiedLeft": "Kopieret til venstre",
             "skipped": "Sprunget over",
             "transfer": "Overførsel",
             "destructive": "Destruktiv",

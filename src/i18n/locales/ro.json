@@ -4423,6 +4423,8 @@
             "enable": "Activează",
             "versionedBackupHint": "Capturează copia destinației în acest director înainte de fiecare suprascriere sau ștergere.",
             "actionable": "De executat",
+            "reportCopiedRight": "Copiate la dreapta",
+            "reportCopiedLeft": "Copiate la stânga",
             "skipped": "Omise",
             "transfer": "Transfer",
             "destructive": "Distructiv",

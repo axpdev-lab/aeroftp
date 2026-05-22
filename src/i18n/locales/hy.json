@@ -4423,6 +4423,8 @@
             "enable": "Միացնել",
             "versionedBackupHint": "Պահպանեք նպատակակետի պատճենը այս թղթապանակում նախքան յուրաքանչյուր վերագրում կամ ջնջում։",
             "actionable": "Կատարելի",
+            "reportCopiedRight": "Պատճենվել է աջ",
+            "reportCopiedLeft": "Պատճենվել է ձախ",
             "skipped": "Բաց թողնված",
             "transfer": "Փոխանցում",
             "destructive": "Կործանարար",

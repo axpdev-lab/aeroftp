@@ -9046,6 +9046,88 @@ async fn compare_directories(
     Ok(results)
 }
 
+/// GAP-10: recursive comparison of two local directories.
+///
+/// The AeroSync modal opened against a dual-local AeroFile pair used to run a
+/// flat, top-level classify, so a Mirror / Backup preset only ever acted on
+/// the first directory level. This command scans both trees with the same
+/// `get_local_files_recursive_with_progress` walker that `compare_directories`
+/// uses for the local side, then reuses `build_comparison_results_with_index`
+/// so the unified Compare / Plan tabs and the runner operate on every nested
+/// level. The `left` directory maps onto `local_info`, `right` onto
+/// `remote_info`; the frontend adapts the result with `leftIsLocal = true`.
+#[tauri::command]
+async fn compare_local_directories(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    left_path: String,
+    right_path: String,
+    options: Option<CompareOptions>,
+) -> Result<Vec<FileComparison>, String> {
+    let options = options.unwrap_or_default();
+
+    validate_path(&left_path)?;
+    validate_path(&right_path)?;
+
+    info!(
+        "Comparing local directories: left={}, right={}",
+        left_path, right_path
+    );
+
+    // Take ownership of the shared cancel flag for the duration of this scan,
+    // matching `compare_directories`.
+    state.cancel_flag.store(false, Ordering::Relaxed);
+
+    let _ = app.emit(
+        "sync_scan_progress",
+        serde_json::json!({ "phase": "local", "files_found": 0 }),
+    );
+
+    // Both sides are filesystem scans; run them concurrently.
+    let left_future = get_local_files_recursive_with_progress(
+        &left_path,
+        &left_path,
+        &options.exclude_patterns,
+        options.compare_checksum,
+        Some(&state.cancel_flag),
+        Some(&app),
+    );
+    let right_future = get_local_files_recursive_with_progress(
+        &right_path,
+        &right_path,
+        &options.exclude_patterns,
+        options.compare_checksum,
+        Some(&state.cancel_flag),
+        Some(&app),
+    );
+
+    let (left_result, right_result) = tokio::join!(left_future, right_future);
+    let left_files = left_result.map_err(|e| format!("Failed to scan left directory: {}", e))?;
+    let right_files = right_result.map_err(|e| format!("Failed to scan right directory: {}", e))?;
+
+    let _ = app.emit(
+        "sync_scan_progress",
+        serde_json::json!({
+            "phase": "comparing",
+            "files_found": left_files.len() + right_files.len(),
+        }),
+    );
+
+    // The sync index is keyed by the (left, right) path pair, so previous
+    // local-local runs feed conflict detection just like the remote case.
+    let index = load_sync_index(&left_path, &right_path).ok().flatten();
+    let results =
+        build_comparison_results_with_index(left_files, right_files, &options, index.as_ref());
+
+    info!(
+        "Local comparison complete: {} differences found (index: {})",
+        results.len(),
+        if index.is_some() { "used" } else { "none" }
+    );
+
+    Ok(results)
+}
+
 /// Compute SHA-256 hash of a local file (streaming, 64KB chunks)
 async fn compute_sha256(path: &std::path::Path) -> Option<String> {
     use sha2::{Digest, Sha256};
@@ -14753,6 +14835,7 @@ pub fn run() {
             toggle_menu_bar,
             rebuild_menu,
             compare_directories,
+            compare_local_directories,
             get_compare_options_default,
             load_sync_index_cmd,
             save_sync_index_cmd,

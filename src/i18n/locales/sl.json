@@ -4423,6 +4423,8 @@
             "enable": "Omogoči",
             "versionedBackupHint": "Zajemite ciljno kopijo v tem imeniku pred vsako prepisom ali izbrisom.",
             "actionable": "Za izvedbo",
+            "reportCopiedRight": "Kopirano desno",
+            "reportCopiedLeft": "Kopirano levo",
             "skipped": "Preskočeno",
             "transfer": "Prenos",
             "destructive": "Uničujoče",

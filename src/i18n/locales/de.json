@@ -4423,6 +4423,8 @@
             "enable": "Aktivieren",
             "versionedBackupHint": "Speichert die Zielkopie in diesem Verzeichnis vor jedem Überschreiben oder Löschen.",
             "actionable": "Ausführbar",
+            "reportCopiedRight": "Nach rechts kopiert",
+            "reportCopiedLeft": "Nach links kopiert",
             "skipped": "Übersprungen",
             "transfer": "Übertragung",
             "destructive": "Destruktiv",

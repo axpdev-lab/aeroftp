@@ -4423,6 +4423,8 @@
             "enable": "Habilitar",
             "versionedBackupHint": "Captura la copia de destino en este directorio antes de cada sobrescritura o eliminación.",
             "actionable": "Accionable",
+            "reportCopiedRight": "Copiados a la derecha",
+            "reportCopiedLeft": "Copiados a la izquierda",
             "skipped": "Omitidos",
             "transfer": "Transferencia",
             "destructive": "Destructivo",

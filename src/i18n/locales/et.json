@@ -4423,6 +4423,8 @@
             "enable": "Luba",
             "versionedBackupHint": "Salvestab sihtfaili koopia selles kataloogis enne iga ülekirjutamist või kustutamist.",
             "actionable": "Teostatav",
+            "reportCopiedRight": "Kopeeritud paremale",
+            "reportCopiedLeft": "Kopeeritud vasakule",
             "skipped": "Vahele jäetud",
             "transfer": "Ülekanne",
             "destructive": "Hävitav",

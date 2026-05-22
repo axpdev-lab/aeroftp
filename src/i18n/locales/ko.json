@@ -4423,6 +4423,8 @@
             "enable": "활성화",
             "versionedBackupHint": "각 덮어쓰기 또는 삭제 전에 이 디렉터리에 대상 사본을 캡처합니다.",
             "actionable": "실행 가능",
+            "reportCopiedRight": "오른쪽으로 복사됨",
+            "reportCopiedLeft": "왼쪽으로 복사됨",
             "skipped": "건너뜀",
             "transfer": "전송",
             "destructive": "파괴적",

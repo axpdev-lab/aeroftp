@@ -4423,6 +4423,8 @@
             "enable": "Ota käyttöön",
             "versionedBackupHint": "Tallentaa kohdekopion tähän hakemistoon ennen jokaista korvaamista tai poistamista.",
             "actionable": "Suoritettavissa",
+            "reportCopiedRight": "Kopioitu oikealle",
+            "reportCopiedLeft": "Kopioitu vasemmalle",
             "skipped": "Ohitetut",
             "transfer": "Siirto",
             "destructive": "Tuhoava",

@@ -4423,6 +4423,8 @@
             "enable": "Омогући",
             "versionedBackupHint": "Сачувајте копију одредишта у овом директоријуму пре сваког преписивања или брисања.",
             "actionable": "За извршење",
+            "reportCopiedRight": "Копирано удесно",
+            "reportCopiedLeft": "Копирано улево",
             "skipped": "Прескочено",
             "transfer": "Пренос",
             "destructive": "Разорно",

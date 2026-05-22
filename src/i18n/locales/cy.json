@@ -4442,6 +4442,8 @@
             "enable": "Galluogi",
             "versionedBackupHint": "Yn dal y copi cyrchfan o dan y cyfeiriadur hwn cyn pob trosysgrifo neu ddileu.",
             "actionable": "Gweithredadwy",
+            "reportCopiedRight": "Copïwyd i'r dde",
+            "reportCopiedLeft": "Copïwyd i'r chwith",
             "skipped": "Wedi'u hepgor",
             "transfer": "Trosglwyddo",
             "destructive": "Dinistriol",
