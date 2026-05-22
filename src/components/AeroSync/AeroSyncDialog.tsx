@@ -7,7 +7,7 @@
 // disconnected entries in the View menu.
 
 import * as React from 'react';
-import { CalendarClock, FileDown, FolderSync, History, Layers, Undo2, X } from 'lucide-react';
+import { CalendarClock, FileDown, FolderSync, History, Layers, RotateCcw, Undo2, X } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
 import { CompareTabContent } from './CompareTabContent';
@@ -30,6 +30,8 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
     onApplyMirrorLeftToRight,
     onApplyMirrorRightToLeft,
     onExecutePreset,
+    onResumeJournal,
+    onDismissJournal,
 }) => {
     const t = useTranslation();
     const modalDrag = useDraggableModal();
@@ -150,6 +152,47 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                         );
                     })}
                 </div>
+
+                {/* GAP-6: interrupted-sync resume banner. Shown when an
+                    incomplete journal exists for the connected-remote pair. */}
+                {context.pendingJournal && (
+                    <div className="mx-4 my-2 rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-700 dark:bg-amber-900/20">
+                        <div className="mb-1 flex items-center gap-2">
+                            <RotateCcw size={16} className="text-amber-500" />
+                            <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">
+                                {t('syncPanel.journalFound') || 'Interrupted sync detected'}
+                            </span>
+                        </div>
+                        <p className="mb-2 text-xs text-gray-600 dark:text-gray-400">
+                            {t('syncPanel.journalDescription', {
+                                completed: String(
+                                    context.pendingJournal.entries.filter((e) => e.status === 'completed').length,
+                                ),
+                                total: String(context.pendingJournal.entries.length),
+                                date: new Date(context.pendingJournal.updated_at).toLocaleString(),
+                            })}
+                        </p>
+                        <div className="flex gap-2">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (context.pendingJournal) onResumeJournal(context.pendingJournal);
+                                }}
+                                className="inline-flex items-center gap-1 rounded bg-amber-500 px-3 py-1 text-xs font-medium text-white hover:bg-amber-600"
+                            >
+                                <RotateCcw size={12} />
+                                {t('syncPanel.resumeSync') || 'Resume'}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={onDismissJournal}
+                                className="rounded bg-gray-200 px-3 py-1 text-xs font-medium hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600"
+                            >
+                                {t('syncPanel.dismissJournal') || 'Dismiss'}
+                            </button>
+                        </div>
+                    </div>
+                )}
 
                 <div className="flex-1 overflow-y-auto">
                     {activeTab === 'compare' && (

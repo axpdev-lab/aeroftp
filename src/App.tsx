@@ -330,7 +330,7 @@ import { createUnifiedTransferPlan, UnifiedTransferPlan } from './utils/unifiedT
 import { buildCrossProfileEntries, runCrossProfileTransfer } from './utils/crossProfileExecution';
 import { compareEntries, type CompareInputEntry, type CompareResult, type CompareResultEntry } from './utils/compareEndpoints';
 import { namesFromBuckets, namesToDelete, namesToRename, type PresetPlan } from './utils/syncPresets';
-import { runRemoteSync, type RemoteSyncConfig, type SyncRunReport, type SyncRunFile, type SyncRunDirs } from './utils/remoteSyncRunner';
+import { runRemoteSync, filesFromJournal, type RemoteSyncConfig, type SyncRunReport, type SyncRunFile, type SyncRunDirs } from './utils/remoteSyncRunner';
 import { buildRemoteSyncInput, buildMirrorSyncInput } from './utils/presetToSyncRun';
 import { adaptFileComparisons } from './utils/recursiveCompare';
 import { useTranslation } from './i18n';
@@ -6827,6 +6827,25 @@ interface UpdateVerificationInfo {
             : prev,
         );
       })();
+
+      // GAP-6: in parallel, surface any interrupted journal for this pair
+      // so the dialog can offer a Resume banner.
+      void (async () => {
+        try {
+          const journal = await invoke<SyncJournal | null>('load_sync_journal_cmd', {
+            localPath: currentLocalPath,
+            remotePath: currentRemotePath,
+          });
+          if (aeroSyncCompareSeqRef.current !== mySeq) return;
+          if (journal && !journal.completed) {
+            setAeroSync((prev) =>
+              prev ? { ...prev, context: { ...prev.context, pendingJournal: journal } } : prev,
+            );
+          }
+        } catch {
+          // No journal or load failed: no resume banner.
+        }
+      })();
       return;
     }
 
@@ -6936,7 +6955,7 @@ interface UpdateVerificationInfo {
             runDirs,
             runConfig,
             {},
-            { invoke, deltaStats, resumeJournal: opts.resumeJournal },
+            { invoke, deltaStats, resumeJournal: opts.resumeJournal, writeIndex: true },
           );
           setRemoteSyncResult(report);
           if ((opts.deferredRenames ?? 0) > 0) {
@@ -7097,6 +7116,37 @@ interface UpdateVerificationInfo {
     stageLocalSelectionFromCompare,
     runConnectedRemoteSync,
   ]);
+
+  // GAP-6: resume an interrupted connected-remote journal. filesFromJournal
+  // reconstructs the upload/download set; the runner skips entries the prior
+  // run already finished and continues checkpointing the same journal.
+  const handleResumeJournal = useCallback((journal: SyncJournal) => {
+    const context = aeroSync?.context;
+    setAeroSync(null);
+    if (!context) return;
+    runConnectedRemoteSync(filesFromJournal(journal), { remote: [], local: [] }, {
+      direction: journal.direction,
+      deltaSyncEnabled: false,
+      verifyPolicy: journal.verify_policy,
+      retryPolicy: journal.retry_policy,
+      resumeJournal: journal,
+      profileId: context.activeProfileId,
+    });
+  }, [aeroSync, runConnectedRemoteSync]);
+
+  // GAP-6: discard an interrupted journal and clear the resume banner
+  // without closing the dialog.
+  const handleDismissJournal = useCallback(() => {
+    const context = aeroSync?.context;
+    if (!context) return;
+    void invoke('delete_sync_journal_cmd', {
+      localPath: context.initialSource || '',
+      remotePath: context.initialDestination || '',
+    }).catch(() => undefined);
+    setAeroSync((prev) =>
+      prev ? { ...prev, context: { ...prev.context, pendingJournal: null } } : prev,
+    );
+  }, [aeroSync]);
 
 
   /**
@@ -11215,6 +11265,8 @@ interface UpdateVerificationInfo {
             onApplyMirrorLeftToRight={handleCompareMirrorLeftToRight}
             onApplyMirrorRightToLeft={handleCompareMirrorRightToLeft}
             onExecutePreset={executeSyncPresetPlan}
+            onResumeJournal={handleResumeJournal}
+            onDismissJournal={handleDismissJournal}
           />
         )}
         <DeltaEligibilityDialog

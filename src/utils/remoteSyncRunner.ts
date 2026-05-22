@@ -24,6 +24,8 @@ import type {
     VerifyResult,
     DeltaTransferStats,
     DeltaSavingsSummary,
+    SyncIndex,
+    SyncIndexEntry,
 } from '../types';
 
 /** Per-file lifecycle status emitted to the caller for live UI updates. */
@@ -151,6 +153,12 @@ export interface RemoteSyncDeps {
      * checkpointed.
      */
     resumeJournal?: SyncJournal;
+    /**
+     * GAP-6: when true, the runner merges the successfully synced entries into
+     * the persisted sync index (`save_sync_index_cmd`) at the end of the run,
+     * so the next recursive compare is faster and bisync state stays correct.
+     */
+    writeIndex?: boolean;
 }
 
 const FTP_TRANSFER_DELAY_MS = 60;
@@ -671,6 +679,50 @@ export const runRemoteSync = async (
             localPath: localBase,
             remotePath: remoteBase,
         }).catch(() => undefined);
+    }
+
+    // ── GAP-6: merge the run into the persisted sync index ─────────────────
+    // The index records every entry that landed (size / mtime / is_dir) and
+    // drops every entry a successful delete removed. It is a pure
+    // optimisation + bisync-state aid: a failure here never fails the run.
+    if (deps.writeIndex) {
+        try {
+            const existing = await invoke<SyncIndex | null>('load_sync_index_cmd', {
+                localPath: localBase,
+                remotePath: remoteBase,
+            }).catch(() => null);
+            const mergedFiles: Record<string, SyncIndexEntry> = {
+                ...(existing?.files ?? {}),
+            };
+            for (const f of files) {
+                const idx = journalEntryMap.get(f.relativePath);
+                const entry = idx !== undefined ? journal.entries[idx] : undefined;
+                if (entry?.status !== 'completed') continue;
+                if (f.action === 'upload' || f.action === 'download') {
+                    mergedFiles[f.relativePath] = {
+                        size: f.size,
+                        modified: f.mtime,
+                        is_dir: false,
+                    };
+                } else {
+                    // A successful delete removes the entry from the index.
+                    delete mergedFiles[f.relativePath];
+                }
+            }
+            for (const dir of [...dirs.remote, ...dirs.local]) {
+                mergedFiles[dir] = { size: 0, modified: null, is_dir: true };
+            }
+            const index: SyncIndex = {
+                version: 1,
+                last_sync: new Date().toISOString(),
+                local_path: localBase,
+                remote_path: remoteBase,
+                files: mergedFiles,
+            };
+            await invoke('save_sync_index_cmd', { index });
+        } catch {
+            // Index is an optimisation; never let it break the run.
+        }
     }
 
     // ── Aggregate delta savings from the per-file map ──────────────────────

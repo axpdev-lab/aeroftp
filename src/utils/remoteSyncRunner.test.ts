@@ -469,3 +469,44 @@ describe('remoteSyncRunner — helpers', () => {
         expect(files[1].overwritesExisting).toBe(true);
     });
 });
+
+describe('remoteSyncRunner — GAP-6 sync index', () => {
+    it('does not touch the index when writeIndex is unset', async () => {
+        const { invoke, calls } = makeInvoke();
+        await runRemoteSync([file('a.txt', 'upload')], noDirs, baseConfig(), {}, noWaitDeps(invoke));
+        expect(calls.some((c) => c.cmd === 'save_sync_index_cmd')).toBe(false);
+    });
+
+    it('merges synced files into the index and drops successful deletes', async () => {
+        let savedIndex: Record<string, unknown> | undefined;
+        const { invoke } = makeInvoke({
+            load_sync_index_cmd: () => ({
+                version: 1,
+                last_sync: 'old',
+                local_path: '/home/u/work',
+                remote_path: '/srv/data',
+                files: { 'stale.txt': { size: 1, modified: null, is_dir: false } },
+            }),
+            save_sync_index_cmd: (args) => {
+                savedIndex = args?.index as Record<string, unknown>;
+            },
+        });
+        await runRemoteSync(
+            [
+                file('docs/up.txt', 'upload', { size: 200 }),
+                file('stale.txt', 'delete-remote'),
+            ],
+            { remote: ['emptydir'], local: [] },
+            baseConfig(),
+            {},
+            noWaitDeps(invoke, { writeIndex: true }),
+        );
+        const files = (savedIndex?.files ?? {}) as Record<string, { is_dir: boolean; size: number }>;
+        // Uploaded nested file recorded with its size.
+        expect(files['docs/up.txt']).toMatchObject({ size: 200, is_dir: false });
+        // The deleted file is dropped from the index.
+        expect(files['stale.txt']).toBeUndefined();
+        // Standalone directory recorded as a directory.
+        expect(files['emptydir']).toMatchObject({ is_dir: true });
+    });
+});
