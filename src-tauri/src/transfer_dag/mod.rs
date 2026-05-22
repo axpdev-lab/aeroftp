@@ -8,6 +8,7 @@
 //! scheduler, capability model, and resource leases become shared vocabulary.
 
 pub mod adaptive;
+pub mod builder;
 pub mod capabilities;
 pub mod executor;
 pub mod graph;
@@ -20,6 +21,7 @@ pub mod session_pool;
 pub use adaptive::{
     congestion_from_error, AdaptiveClass, AimdConfig, AimdController, CongestionEvent,
 };
+pub use builder::{SingleFileDag, TransferDagBuilder, TransferDirection};
 pub use capabilities::{Capability, TransferCapabilities};
 pub use observer::{DagObserver, NoopDagObserver, ObservedOutcome};
 pub use resources::{ResourceKind, ResourceRequest, TransferBudget, TransferResourceManager};
