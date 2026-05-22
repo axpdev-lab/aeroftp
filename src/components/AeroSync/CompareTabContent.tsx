@@ -8,15 +8,25 @@ import {
     ChevronDown,
     ChevronRight,
     Equal,
+    FileJson,
+    FileSpreadsheet,
     FileWarning,
     Loader2,
     type LucideIcon,
 } from 'lucide-react';
+import { save } from '@tauri-apps/plugin-dialog';
+import { writeTextFile } from '@tauri-apps/plugin-fs';
 import type {
     CompareBucket,
     CompareResult,
     CompareResultEntry,
 } from '../../utils/compareEndpoints';
+import {
+    buildCompareExportRows,
+    compareExportFilename,
+    compareRowsToCsv,
+    compareRowsToJson,
+} from '../../utils/compareExport';
 import { formatBytes } from '../../utils/formatters';
 import { useTranslation } from '../../i18n';
 
@@ -205,6 +215,74 @@ export const CompareTabContent: React.FC<CompareTabContentProps> = ({
 }) => {
     const t = useTranslation();
 
+    // Hooks must run unconditionally: the recursive connected-remote scan
+    // (GAP-5) flips `result` from null to a value while this component stays
+    // mounted, so an early return above a hook would change the hook count
+    // between renders. Each memo guards the null case instead.
+    const policyLabel = React.useMemo(() => {
+        switch (result?.appliedOptions.policy) {
+            case 'size-only':
+                return 'Size only';
+            case 'mtime-only':
+                return 'Timestamp only';
+            default:
+                return 'Size + timestamp';
+        }
+    }, [result?.appliedOptions.policy]);
+
+    const leftToRightEntries = React.useMemo(
+        () => (result
+            ? [...result.buckets['only-left'], ...result.buckets['newer-left']]
+            : []),
+        [result],
+    );
+    const rightToLeftEntries = React.useMemo(
+        () => (result
+            ? [...result.buckets['only-right'], ...result.buckets['newer-right']]
+            : []),
+        [result],
+    );
+
+    // GAP-9c: dry-run export of the compare result (#149, migrated from the
+    // legacy SyncPanel). The unified compare carries a recursive
+    // `relativePath`, so the export covers nested entries the legacy flat
+    // export missed.
+    const handleExportJson = async (): Promise<void> => {
+        if (!result || result.entries.length === 0) return;
+        try {
+            const filePath = await save({
+                defaultPath: compareExportFilename('json'),
+                filters: [{ name: 'JSON', extensions: ['json'] }],
+            });
+            if (filePath) {
+                await writeTextFile(
+                    filePath,
+                    compareRowsToJson(buildCompareExportRows(result)),
+                );
+            }
+        } catch {
+            /* dialog cancelled or write error */
+        }
+    };
+
+    const handleExportCsv = async (): Promise<void> => {
+        if (!result || result.entries.length === 0) return;
+        try {
+            const filePath = await save({
+                defaultPath: compareExportFilename('csv'),
+                filters: [{ name: 'CSV', extensions: ['csv'] }],
+            });
+            if (filePath) {
+                await writeTextFile(
+                    filePath,
+                    compareRowsToCsv(buildCompareExportRows(result)),
+                );
+            }
+        } catch {
+            /* dialog cancelled or write error */
+        }
+    };
+
     if (!result) {
         if (loading) {
             return (
@@ -220,26 +298,6 @@ export const CompareTabContent: React.FC<CompareTabContentProps> = ({
             </div>
         );
     }
-
-    const policyLabel = React.useMemo(() => {
-        switch (result.appliedOptions.policy) {
-            case 'size-only':
-                return 'Size only';
-            case 'mtime-only':
-                return 'Timestamp only';
-            default:
-                return 'Size + timestamp';
-        }
-    }, [result.appliedOptions.policy]);
-
-    const leftToRightEntries = React.useMemo(
-        () => [...result.buckets['only-left'], ...result.buckets['newer-left']],
-        [result.buckets],
-    );
-    const rightToLeftEntries = React.useMemo(
-        () => [...result.buckets['only-right'], ...result.buckets['newer-right']],
-        [result.buckets],
-    );
 
     return (
         <div className="flex flex-col">
@@ -290,6 +348,24 @@ export const CompareTabContent: React.FC<CompareTabContentProps> = ({
                     {t('aerosync.mirrorHint') || 'Mirror buttons stage the matching entries in the unified transfer planner for review.'}
                 </p>
                 <div className="flex flex-wrap justify-end gap-2">
+                    <button
+                        type="button"
+                        onClick={handleExportJson}
+                        disabled={result.entries.length === 0}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-2.5 py-2 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-40 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                    >
+                        <FileJson size={13} />
+                        {t('syncPanel.exportJSON') || 'Export JSON'}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={handleExportCsv}
+                        disabled={result.entries.length === 0}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-2.5 py-2 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-40 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                    >
+                        <FileSpreadsheet size={13} />
+                        {t('syncPanel.exportCSV') || 'Export CSV'}
+                    </button>
                     <button
                         type="button"
                         onClick={() => onApplyMirrorRightToLeft(rightToLeftEntries)}
