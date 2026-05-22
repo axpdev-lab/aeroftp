@@ -1651,6 +1651,7 @@
             "discoverFileLuWebdav": "FileLu per WebDAV (ijunkite Paskyros nustatymuose)",
             "discoverQuotalessWebdav": "Quotaless debesies saugykla per WebDAV (ownCloud)",
             "discoverNextcloud": "Savarankiskai talpinama debesies saugyklos platforma",
+            "discoverPCloudWebdav": "Sveicariska debesies saugykla per WebDAV",
             "discoverBlomp": "Blomp (40 GB nemokamai, OpenStack Swift)",
             "discoverFilen": "Saugi debesies saugykla su kliento puses sifravimu",
             "discoverFileLu": "Debesies saugykla su FTP, WebDAV, S3 ir gimtaja API (1 GB nemokamai)",

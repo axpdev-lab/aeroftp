@@ -1651,6 +1651,7 @@
             "discoverFileLuWebdav": "FileLu WebDAV経由 (アカウント設定で有効化)",
             "discoverQuotalessWebdav": "Quotaless WebDAV経由のクラウドストレージ (ownCloud)",
             "discoverNextcloud": "セルフホスト型クラウドストレージプラットフォーム",
+            "discoverPCloudWebdav": "スイスのクラウドストレージ WebDAV経由",
             "discoverBlomp": "Blomp (40 GB無料、OpenStack Swift)",
             "discoverFilen": "クライアント側暗号化による安全なクラウドストレージ",
             "discoverFileLu": "FTP、WebDAV、S3、ネイティブAPI対応クラウドストレージ (1 GB無料)",

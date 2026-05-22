@@ -1651,6 +1651,7 @@
             "discoverFileLuWebdav": "FileLu via WebDAV (aktifkan di Pengaturan Akun)",
             "discoverQuotalessWebdav": "Quotaless penyimpanan cloud via WebDAV (ownCloud)",
             "discoverNextcloud": "Platform penyimpanan cloud self-hosted",
+            "discoverPCloudWebdav": "Penyimpanan cloud Swiss via WebDAV",
             "discoverBlomp": "Blomp (40 GB gratis, OpenStack Swift)",
             "discoverFilen": "Penyimpanan cloud aman dengan enkripsi sisi klien",
             "discoverFileLu": "Penyimpanan cloud dengan FTP, WebDAV, S3 dan API native (1 GB gratis)",

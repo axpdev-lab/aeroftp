@@ -1651,6 +1651,7 @@
             "discoverFileLuWebdav": "FileLu WebDAV bidez (gaitu Kontu ezarpenetan)",
             "discoverQuotalessWebdav": "Quotaless hodei biltegiratzea WebDAV bidez (ownCloud)",
             "discoverNextcloud": "Auto-ostatatutako hodei biltegiratze plataforma",
+            "discoverPCloudWebdav": "Suitzako hodei biltegiratzea WebDAV bidez",
             "discoverBlomp": "Blomp (40 GB doan, OpenStack Swift)",
             "discoverFilen": "Hodei biltegiratze segurua bezero aldeko enkriptazioarekin",
             "discoverFileLu": "Hodei biltegiratzea FTP, WebDAV, S3 eta jatorrizko API-rekin (1 GB doan)",

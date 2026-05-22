@@ -1651,6 +1651,7 @@
             "discoverFileLuWebdav": "WebDAV के माध्यम से FileLu (खाता सेटिंग्स में सक्रिय करें)",
             "discoverQuotalessWebdav": "WebDAV के माध्यम से Quotaless क्लाउड स्टोरेज (ownCloud)",
             "discoverNextcloud": "स्व-होस्टेड क्लाउड स्टोरेज प्लेटफ़ॉर्म",
+            "discoverPCloudWebdav": "WebDAV के माध्यम से स्विस क्लाउड स्टोरेज",
             "discoverBlomp": "Blomp (40 GB मुफ्त, OpenStack Swift)",
             "discoverFilen": "क्लाइंट-साइड एन्क्रिप्शन के साथ सुरक्षित क्लाउड स्टोरेज",
             "discoverFileLu": "FTP, WebDAV, S3 और नेटिव API के साथ क्लाउड स्टोरेज (1 GB मुफ्त)",

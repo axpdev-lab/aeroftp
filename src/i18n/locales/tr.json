@@ -1651,6 +1651,7 @@
             "discoverFileLuWebdav": "FileLu - WebDAV ile (Hesap Ayarlarinda etkinlestirin)",
             "discoverQuotalessWebdav": "Quotaless bulut depolama - WebDAV ile (ownCloud)",
             "discoverNextcloud": "Kendi barindirilan bulut depolama platformu",
+            "discoverPCloudWebdav": "Isvicre bulut depolama - WebDAV ile",
             "discoverBlomp": "Blomp (40 GB ucretsiz, OpenStack Swift)",
             "discoverFilen": "Istemci tarafi sifreleme ile guvenli depolama",
             "discoverFileLu": "FTP, WebDAV, S3 ve yerel API ile bulut depolama (1 GB ucretsiz)",

@@ -1651,6 +1651,7 @@
             "discoverFileLuWebdav": "FileLu via WebDAV (activeer in Accountinstellingen)",
             "discoverQuotalessWebdav": "Quotaless cloudopslag via WebDAV (ownCloud)",
             "discoverNextcloud": "Zelfgehost cloudopslagplatform",
+            "discoverPCloudWebdav": "Zwitserse cloudopslag via WebDAV",
             "discoverBlomp": "Blomp (40 GB gratis, OpenStack Swift)",
             "discoverFilen": "Veilige cloudopslag met versleuteling aan clientzijde",
             "discoverFileLu": "Cloudopslag met FTP, WebDAV, S3 en native API (1 GB gratis)",
