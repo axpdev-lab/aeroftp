@@ -18,7 +18,7 @@ import {
   AeroVaultOverlaySession,
   DeltaEligibilityProbeResult,
   SyncDirection, VerifyPolicy, DeltaTransferStats,
-  FileComparison, RetryPolicy, SyncJournal
+  FileComparison, RetryPolicy, SyncJournal, CompressionMode
 } from './types';
 
 interface DownloadFolderParams {
@@ -63,6 +63,14 @@ interface ConnectedRemoteRunOptions {
    * caller (verify `none`, the maniac retry policy).
    */
   maniac?: boolean;
+  /**
+   * GAP-9b: parallel-streams + compression preset, threaded into
+   * RemoteSyncConfig as first-class config. The concurrent execution that
+   * consumes them is owned by APPENDIX-DAG-ENGINE Fase 2; until then the run
+   * stays sequential (legacy SyncPanel parity).
+   */
+  parallelStreams?: number;
+  compressionMode?: CompressionMode;
 }
 
 interface RcloneCryptBrowserEntry {
@@ -6796,6 +6804,7 @@ interface UpdateVerificationInfo {
           activeProfileId: activeUnifiedRemoteProfile?.id,
           isProvider: isProviderConn,
           excludePatterns: [],
+          protocol: activeUnifiedRemoteProfile?.protocol,
         },
       });
 
@@ -6945,6 +6954,9 @@ interface UpdateVerificationInfo {
       // GAP-9a: Maniac drops the journal and runs a post-sync verify sweep.
       journalEnabled: !opts.maniac,
       postSyncVerification: opts.maniac === true,
+      // GAP-9b: threaded config — consumed by APPENDIX-DAG-ENGINE Fase 2.
+      parallelStreams: opts.parallelStreams,
+      compressionMode: opts.compressionMode,
     };
 
     const launchRun = (): void => {
@@ -7301,6 +7313,8 @@ interface UpdateVerificationInfo {
           versioningStrategy: runtime.versioningStrategy,
           profileId: context.activeProfileId,
           maniac: runtime.speedMode === 'maniac',
+          parallelStreams: runtime.parallelStreams,
+          compressionMode: runtime.compressionMode,
         });
       };
 

@@ -9,10 +9,12 @@ import {
     FlaskConical,
     Gauge,
     Loader2,
+    Shrink,
     ShieldAlert,
     ShieldCheck,
     Skull,
     Trash2,
+    Zap,
 } from 'lucide-react';
 import type { CompareResult } from '../../utils/compareEndpoints';
 import {
@@ -30,8 +32,9 @@ import {
 } from '../../utils/syncPresets';
 import { formatBytes } from '../../utils/formatters';
 import { retryPolicyForSpeed } from '../../utils/remoteSyncRunner';
-import { isCyberTheme } from '../Sync/syncConstants';
+import { isCyberTheme, SPEED_PRESETS } from '../Sync/syncConstants';
 import { useTranslation } from '../../i18n';
+import type { CompressionMode } from '../../types';
 import type {
     AeroSyncCanarySelection,
     AeroSyncRuntime,
@@ -45,6 +48,12 @@ interface PlanTabContentProps {
     loading?: boolean;
     pairKind?: string | null;
     canExecute: boolean;
+    /**
+     * GAP-9b: real backend stream ceiling for the connected provider, from
+     * `get_transfer_capabilities`. Clamps the parallel-streams selector so it
+     * never advertises concurrency the backend cannot honor. Defaults to 8.
+     */
+    streamCap?: number;
     onExecute: (plan: PresetPlan, runtime: AeroSyncRuntime) => void;
 }
 
@@ -115,6 +124,10 @@ const PresetChip: React.FC<{
 
 const BASE_SPEED_MODES: AeroSyncSpeedMode[] = ['normal', 'fast', 'turbo', 'extreme'];
 const VERIFY_POLICIES: AeroSyncVerifyPolicy[] = ['none', 'size_only', 'size_and_mtime', 'full_checksum'];
+// GAP-9b: stream counts the legacy SyncPanel offered, filtered by the real
+// provider capability at render time.
+const STREAM_OPTIONS = [1, 2, 3, 4, 6, 8];
+const COMPRESSION_MODES: CompressionMode[] = ['off', 'auto', 'on'];
 const CANARY_PERCENTS = [5, 10, 25, 50];
 const CANARY_SELECTIONS: AeroSyncCanarySelection[] = ['random', 'newest', 'largest'];
 
@@ -123,6 +136,7 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
     loading,
     pairKind,
     canExecute,
+    streamCap = 8,
     onExecute,
 }) => {
     const t = useTranslation();
@@ -150,6 +164,16 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
     // GAP-9a: Maniac is the Cyber-theme-gated 5th speed mode. Selecting it
     // arms a warning card; Execute stays blocked until the user confirms.
     const [maniacConfirmed, setManiacConfirmed] = React.useState(false);
+    // GAP-9b: parallel-streams + compression preset migrated from the legacy
+    // SyncPanel. The speed mode seeds them; the explicit selectors below
+    // override. Threaded into RemoteSyncConfig; concurrent execution is
+    // owned by APPENDIX-DAG-ENGINE Fase 2.
+    const [parallelStreams, setParallelStreams] = React.useState(
+        SPEED_PRESETS.normal.parallelStreams,
+    );
+    const [compressionMode, setCompressionMode] = React.useState<CompressionMode>(
+        SPEED_PRESETS.normal.compressionMode,
+    );
     const isConnectedRemote = pairKind === 'local-remote' || pairKind === 'remote-local';
     const showManiac = isCyberTheme();
     const speedModes: AeroSyncSpeedMode[] = showManiac
@@ -157,6 +181,13 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
         : BASE_SPEED_MODES;
     const maniacArmed = speedMode === 'maniac';
     const maniacBlocked = maniacArmed && !maniacConfirmed;
+    // GAP-9b: clamp the parallel-streams selector to the real provider cap.
+    const effectiveStreamCap = Math.max(1, streamCap);
+    const effectiveParallelStreams = Math.max(
+        1,
+        Math.min(parallelStreams, effectiveStreamCap),
+    );
+    const streamChoices = STREAM_OPTIONS.filter((v) => v <= effectiveStreamCap);
 
     React.useEffect(() => {
         setConfirmedDestructive(false);
@@ -166,6 +197,15 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
     // later return to Maniac always re-prompts.
     React.useEffect(() => {
         if (speedMode !== 'maniac') setManiacConfirmed(false);
+    }, [speedMode]);
+
+    // GAP-9b: selecting a speed mode seeds the parallel-streams + compression
+    // controls from its preset, mirroring the legacy SyncPanel
+    // handleSpeedModeChange. The explicit selectors can still override after.
+    React.useEffect(() => {
+        const preset = SPEED_PRESETS[speedMode];
+        setParallelStreams(preset.parallelStreams);
+        setCompressionMode(preset.compressionMode);
     }, [speedMode]);
 
     if (!result) {
@@ -417,6 +457,58 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                     </div>
                 )}
 
+                {/* GAP-9b: transfer tuning — parallel streams + compression,
+                    connected-remote only. The speed mode seeds both; these
+                    selectors override. Threaded into RemoteSyncConfig; the
+                    concurrent execution is owned by APPENDIX-DAG-ENGINE
+                    Fase 2, so today the run stays sequential. */}
+                {isConnectedRemote && (
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                        <div>
+                            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                <Zap size={11} className="mr-1 inline align-text-bottom text-amber-500" />
+                                {t('syncPanel.parallelStreams') || 'Streams'}
+                            </label>
+                            <select
+                                value={effectiveParallelStreams}
+                                onChange={(event) => setParallelStreams(Number(event.target.value))}
+                                className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-800 focus:border-blue-400 focus:outline-none dark:border-gray-600 dark:bg-gray-900/60 dark:text-gray-100"
+                            >
+                                {streamChoices.map((v) => (
+                                    <option key={v} value={v}>
+                                        {v === 1
+                                            ? (t('syncPanel.parallelSequential') || 'Sequential')
+                                            : `${v} ${t('syncPanel.parallelStreamLabel') || 'streams'}`}
+                                    </option>
+                                ))}
+                            </select>
+                            <p className="mt-1 text-[10px] leading-snug text-gray-500 dark:text-gray-400">
+                                {effectiveStreamCap <= 1
+                                    ? (t('syncPanel.parallelSequential') || 'Sequential')
+                                    : (t('syncPanel.speedStreams', { count: effectiveParallelStreams })
+                                        || `${effectiveParallelStreams} streams`)}
+                            </p>
+                        </div>
+                        <div>
+                            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                <Shrink size={11} className="mr-1 inline align-text-bottom text-teal-500" />
+                                {t('syncPanel.compression') || 'Compression'}
+                            </label>
+                            <select
+                                value={compressionMode}
+                                onChange={(event) => setCompressionMode(event.target.value as CompressionMode)}
+                                className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-800 focus:border-blue-400 focus:outline-none dark:border-gray-600 dark:bg-gray-900/60 dark:text-gray-100"
+                            >
+                                {COMPRESSION_MODES.map((mode) => (
+                                    <option key={mode} value={mode}>
+                                        {t(`syncPanel.compression${mode.charAt(0).toUpperCase()}${mode.slice(1)}`) || mode}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+                )}
+
                 {/* GAP-8: transfer budget — connected-remote only. Retry
                     policy derives from the speed mode; versioned backup
                     reuses the toggle above. */}
@@ -611,6 +703,8 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                                 ? transferBudgetMb * 1024 * 1024
                                 : 0,
                             versioningStrategy: versionedBackup.enabled ? 'trash_can' : null,
+                            parallelStreams: effectiveParallelStreams,
+                            compressionMode,
                         })}
                         disabled={!canFireExecute}
                         className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-white transition-colors disabled:opacity-40 ${

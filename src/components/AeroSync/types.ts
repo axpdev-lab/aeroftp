@@ -3,7 +3,7 @@
 
 import type { CompareResult, CompareResultEntry } from '../../utils/compareEndpoints';
 import type { PresetPlan } from '../../utils/syncPresets';
-import type { RetryPolicy, SyncJournal } from '../../types';
+import type { CompressionMode, ProviderType, RetryPolicy, SyncJournal } from '../../types';
 
 export type AeroSyncTab = 'compare' | 'plan' | 'sync';
 
@@ -46,6 +46,16 @@ export interface AeroSyncRuntime {
     retryPolicy?: RetryPolicy;
     transferBudget?: number;
     versioningStrategy?: string | null;
+    /**
+     * GAP-9b: parallel-streams + compression preset migrated from the legacy
+     * SyncPanel. Sourced from the speed mode (and an explicit Plan-tab
+     * selector). Threaded through to `RemoteSyncConfig` as first-class
+     * config; the concurrent execution that consumes them is owned by
+     * `APPENDIX-DAG-ENGINE` Fase 2. Until then the run stays sequential,
+     * matching the legacy SyncPanel whose `handleSync` never wired the pool.
+     */
+    parallelStreams?: number;
+    compressionMode?: CompressionMode;
 }
 
 export interface AeroSyncContext {
@@ -80,6 +90,13 @@ export interface AeroSyncContext {
     activeProfileId?: string;
     isProvider?: boolean;
     excludePatterns?: string[];
+    /**
+     * GAP-9b: the connected remote's protocol, used by the Plan tab to clamp
+     * the parallel-streams selector to the provider's real transfer
+     * capability (`get_transfer_capabilities`). Undefined for local-only
+     * sessions.
+     */
+    protocol?: ProviderType;
 }
 
 export interface AeroSyncDialogProps {

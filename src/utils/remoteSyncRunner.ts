@@ -14,6 +14,7 @@
 // loop can be exercised under Vitest's `node` environment.
 
 import type {
+    CompressionMode,
     RetryPolicy,
     VerifyPolicy,
     SyncDirection,
@@ -123,6 +124,19 @@ export interface RemoteSyncConfig {
      * mandatory pass catches any corruption.
      */
     postSyncVerification?: boolean;
+    /**
+     * GAP-9b — parallel-streams + compression preset carried from the speed
+     * mode (and the explicit Plan-tab selector). These are first-class config
+     * fields preserved from the legacy SyncPanel, but the concurrent
+     * execution that consumes them is owned by `APPENDIX-DAG-ENGINE` Fase 2.
+     * Until that lands the per-file loop stays sequential and compression is
+     * left to the per-protocol transport — exactly as the legacy SyncPanel
+     * behaved, whose `handleSync` never invoked `parallel_sync_execute`. The
+     * runner threads them so the future DAG builder can read them off one
+     * config object.
+     */
+    parallelStreams?: number;
+    compressionMode?: CompressionMode;
 }
 
 /** The rich connected-remote report — superset of the local-local report. */
