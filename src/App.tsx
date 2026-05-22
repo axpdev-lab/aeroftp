@@ -56,6 +56,13 @@ interface ConnectedRemoteRunOptions {
   resumeJournal?: SyncJournal;
   /** Saved-server id, enables the CO-5 SFTP eligibility probe. */
   profileId?: string;
+  /**
+   * GAP-9a: Maniac mode. When true the run drops journal persistence and the
+   * bandwidth caps for raw speed, then runs a mandatory post-sync
+   * verification sweep. The verify/retry policies arrive pre-set by the
+   * caller (verify `none`, the maniac retry policy).
+   */
+  maniac?: boolean;
 }
 
 interface RcloneCryptBrowserEntry {
@@ -6908,7 +6915,10 @@ interface UpdateVerificationInfo {
     const isProvider = !!protocol && !isFtpProtocol(protocol);
 
     // Bandwidth caps come from the CO-3 Sync-tab inputs (localStorage).
+    // GAP-9a: Maniac mode ignores them outright (MANIAC_OVERRIDES sets the
+    // bandwidth limit to 0).
     const readLimit = (key: string): number => {
+      if (opts.maniac) return 0;
       const raw = Number.parseInt(localStorage.getItem(key) || '0', 10);
       return Number.isFinite(raw) && raw > 0 ? raw : 0;
     };
@@ -6932,6 +6942,9 @@ interface UpdateVerificationInfo {
       direction: opts.direction,
       uploadLimitKbps: readLimit('aerosync.bandwidth.upload'),
       downloadLimitKbps: readLimit('aerosync.bandwidth.download'),
+      // GAP-9a: Maniac drops the journal and runs a post-sync verify sweep.
+      journalEnabled: !opts.maniac,
+      postSyncVerification: opts.maniac === true,
     };
 
     const launchRun = (): void => {
@@ -7287,6 +7300,7 @@ interface UpdateVerificationInfo {
           transferBudget: runtime.transferBudget,
           versioningStrategy: runtime.versioningStrategy,
           profileId: context.activeProfileId,
+          maniac: runtime.speedMode === 'maniac',
         });
       };
 

@@ -20,6 +20,7 @@ import {
     Folder,
     RotateCcw,
     ShieldAlert,
+    ShieldCheck,
     CheckCircle2,
     AlertTriangle,
     Zap,
@@ -163,6 +164,26 @@ export const RemoteSyncResultDialog: React.FC<RemoteSyncResultDialogProps> = ({
                             </span>
                         </span>
                     </div>
+
+                    {report.postSyncVerification && (
+                        <div
+                            className={`flex items-center gap-2 rounded-md border px-3 py-2 text-[12px] ${
+                                report.postSyncVerification.mismatches > 0
+                                || report.postSyncVerification.failed > 0
+                                    ? 'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-100'
+                                    : 'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-100'
+                            }`}
+                        >
+                            <ShieldCheck size={14} className="shrink-0" />
+                            <span>
+                                {t('syncPanel.maniacPostSyncReport', {
+                                    ok: report.postSyncVerification.ok,
+                                    mismatches: report.postSyncVerification.mismatches,
+                                    failed: report.postSyncVerification.failed,
+                                })}
+                            </span>
+                        </div>
+                    )}
 
                     {report.delta_savings && report.delta_savings.files_using_delta > 0 && (
                         <div className="flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-[12px] text-blue-900 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-100">
