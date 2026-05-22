@@ -1261,10 +1261,10 @@
             "sshKeys": "SSH Keys",
             "syncInterval": "Sync Interval",
             "title": "Connect to Server",
-            "totpSecret": "TOTP Secret (optional, saved)",
+            "totpSecret": "2FA Secret (optional)",
             "totpSecretPlaceholder": "Base32 secret, e.g. JBSWY3DPEHPK3PXP",
             "totpSecretHelp": "Save your 2FA secret once. AeroFTP will generate the 6-digit code automatically at every reconnect, the same way an authenticator app does.",
-            "twoFactorCode": "2FA Code",
+            "twoFactorCode": "6-digit TOTP (optional, not saved)",
             "twoFactorOptional": "6-digit code (optional)",
             "username": "Username",
             "usernamePlaceholder": "your-username"
