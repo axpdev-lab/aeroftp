@@ -69,8 +69,8 @@ use crate::providers::StorageProvider;
 use crate::sync::{
     apply_sync_tree_outcome, decide_download, decide_upload, ensure_remote_dir, perform_download,
     perform_local_delete, perform_remote_delete, perform_upload, DeltaPolicy, FileOutcome,
-    SyncDirection, SyncOptions, SyncPhase, SyncProgressSink, SyncReport, SyncTransferSpec,
-    SyncTreeAction,
+    SyncDirection, SyncError, SyncOptions, SyncPhase, SyncProgressSink, SyncReport,
+    SyncTransferSpec, SyncTreeAction,
 };
 use crate::sync_core::scan::{scan_local_tree, scan_remote_tree, LocalEntry, RemoteEntry};
 use crate::transfer_dag::executor::{execute_dag, DagNodeRunner, NodeFuture, NodeOutcome};
@@ -443,7 +443,24 @@ pub async fn execute_sync_dag(
         tokio::task::spawn_blocking(move || scan_local_tree(&root, &scan_opts))
     };
     let remotes = scan_remote_tree(provider, remote_root, &opts.scan).await;
-    let locals = local_handle.await.unwrap_or_default();
+    // `scan_local_tree` itself returns a `Vec` (best-effort, mirroring
+    // `scan_remote_tree`), so the only way the join returns `Err` is a panic
+    // inside the blocking thread. `.unwrap_or_default()` would silently turn
+    // that panic into an empty local listing, which then drives a "no
+    // uploads needed" decision through the planner: the run would report
+    // success while the local side was never scanned. Surface the panic as
+    // a hard `SyncError` on the report so the caller sees the failure;
+    // keep `locals` empty so the remote-only side of the run still proceeds.
+    let (locals, local_scan_panic) = match local_handle.await {
+        Ok(entries) => (entries, None),
+        Err(join_err) => {
+            eprintln!(
+                "[execute_sync_dag] local scan task failed: {}",
+                join_err
+            );
+            (Vec::new(), Some(join_err.to_string()))
+        }
+    };
 
     // Phase 2: Planning. Decisions read only the pre-transfer scan
     // snapshots, so resolving the whole plan up front is decision-equivalent
@@ -455,6 +472,14 @@ pub async fn execute_sync_dag(
         delta_policy: Some(opts.delta_policy),
         ..SyncReport::default()
     };
+    if let Some(msg) = local_scan_panic {
+        report.errors.push(SyncError {
+            rel_path: local_root.to_string(),
+            operation: "scan",
+            message: format!("local scan task failed: {}", msg),
+            decision_policy: opts.delta_policy,
+        });
+    }
     let plan = plan_sync_dag(&locals, &remotes, opts);
 
     // Phase 3: Executing.
