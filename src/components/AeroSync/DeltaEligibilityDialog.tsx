@@ -33,6 +33,20 @@ export const DeltaEligibilityDialog: React.FC<DeltaEligibilityDialogProps> = ({
         if (isOpen) setSkipFuture(false);
     }, [isOpen]);
 
+    // Escape dismisses the dialog, matching the other AeroSync modals.
+    // The latest `skipFuture` value is read through a ref so the handler
+    // stays stable without re-binding the listener on every keystroke.
+    const skipFutureRef = React.useRef(skipFuture);
+    skipFutureRef.current = skipFuture;
+    React.useEffect(() => {
+        if (!isOpen) return;
+        const handler = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') onClose(skipFutureRef.current);
+        };
+        window.addEventListener('keydown', handler);
+        return () => window.removeEventListener('keydown', handler);
+    }, [isOpen, onClose]);
+
     if (!isOpen) return null;
 
     const dismiss = () => onClose(skipFuture);

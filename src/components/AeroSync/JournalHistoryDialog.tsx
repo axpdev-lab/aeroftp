@@ -73,6 +73,7 @@ export const JournalHistoryDialog: React.FC<JournalHistoryDialogProps> = ({
     const [journalLoading, setJournalLoading] = useState(false);
     const [verifyState, setVerifyState] = useState<Record<string, VerifyState>>({});
     const [busy, setBusy] = useState(false);
+    const [confirmingClearAll, setConfirmingClearAll] = useState(false);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -101,6 +102,7 @@ export const JournalHistoryDialog: React.FC<JournalHistoryDialogProps> = ({
         setSelected(null);
         setJournal(null);
         setVerifyState({});
+        setConfirmingClearAll(false);
     }, [isOpen, loadList]);
 
     const openJournal = async (s: JournalSummary) => {
@@ -151,7 +153,7 @@ export const JournalHistoryDialog: React.FC<JournalHistoryDialogProps> = ({
     };
 
     const clearAll = async () => {
-        if (!window.confirm(t('aerosync.history.confirmClearAll') || 'Clear ALL sync journals?')) return;
+        setConfirmingClearAll(false);
         setBusy(true);
         try {
             await invoke('clear_all_journals_cmd');
@@ -273,7 +275,7 @@ export const JournalHistoryDialog: React.FC<JournalHistoryDialogProps> = ({
                         </button>
                         <button
                             type="button"
-                            onClick={() => void clearAll()}
+                            onClick={() => setConfirmingClearAll(true)}
                             disabled={loading || busy || summaries.length === 0}
                             className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors disabled:opacity-50 text-rose-600 dark:text-rose-300"
                             title={t('aerosync.history.clearAll') || 'Clear all journals'}
@@ -290,6 +292,31 @@ export const JournalHistoryDialog: React.FC<JournalHistoryDialogProps> = ({
                         </button>
                     </div>
                 </div>
+
+                {confirmingClearAll && (
+                    <div className="flex items-center justify-between gap-3 px-4 py-2 border-b border-rose-200 bg-rose-50 dark:border-rose-800 dark:bg-rose-900/30">
+                        <div className="flex items-center gap-2 text-sm text-rose-800 dark:text-rose-200">
+                            <AlertTriangle size={15} className="shrink-0" />
+                            <span>{t('aerosync.history.confirmClearAll') || 'Clear ALL sync journals?'}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setConfirmingClearAll(false)}
+                                className="px-2.5 py-1 text-xs rounded-md border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700"
+                            >
+                                {t('common.cancel') || 'Cancel'}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => void clearAll()}
+                                className="px-2.5 py-1 text-xs rounded-md bg-rose-600 text-white font-medium hover:bg-rose-700"
+                            >
+                                {t('aerosync.history.clearAll') || 'Clear all journals'}
+                            </button>
+                        </div>
+                    </div>
+                )}
 
                 <div className="flex flex-1 min-h-0">
                     <div className="w-1/2 border-r border-gray-200 dark:border-gray-700 flex flex-col">
