@@ -16,7 +16,8 @@ import {
   ProviderType, isOAuthProvider, isFourSharedProvider, isNonFtpProvider, isFtpProtocol, supportsStorageQuota, supportsNativeShareLink,
   resolveEffectiveQuota,
   AeroVaultOverlaySession,
-  DeltaEligibilityProbeResult
+  DeltaEligibilityProbeResult,
+  SyncDirection, VerifyPolicy, DeltaTransferStats
 } from './types';
 
 interface DownloadFolderParams {
@@ -126,7 +127,8 @@ import { SyncPanel } from './components/SyncPanel';
 import { UnifiedTransferPlanDialog } from './components/UnifiedTransferPlanDialog';
 import { AeroSyncDialog } from './components/AeroSync/AeroSyncDialog';
 import { DeltaEligibilityDialog } from './components/AeroSync/DeltaEligibilityDialog';
-import type { AeroSyncTab, AeroSyncContext, AeroSyncRuntime } from './components/AeroSync/types';
+import type { AeroSyncTab, AeroSyncContext, AeroSyncRuntime, AeroSyncVerifyPolicy } from './components/AeroSync/types';
+import { RemoteSyncResultDialog } from './components/AeroSync/RemoteSyncResultDialog';
 import { VaultPanel } from './components/VaultPanel';
 import { CryptomatorBrowser } from './components/CryptomatorBrowser';
 import { RcloneCryptUnlock } from './components/RcloneCryptUnlock';
@@ -306,6 +308,8 @@ import { createUnifiedTransferPlan, UnifiedTransferPlan } from './utils/unifiedT
 import { buildCrossProfileEntries, runCrossProfileTransfer } from './utils/crossProfileExecution';
 import { compareEntries, type CompareInputEntry, type CompareResult, type CompareResultEntry } from './utils/compareEndpoints';
 import { namesFromBuckets, namesToDelete, namesToRename, type PresetPlan } from './utils/syncPresets';
+import { runRemoteSync, type RemoteSyncConfig, type SyncRunReport } from './utils/remoteSyncRunner';
+import { buildRemoteSyncInput } from './utils/presetToSyncRun';
 import { useTranslation } from './i18n';
 
 // Components
@@ -339,7 +343,7 @@ import { usePreview } from './hooks/usePreview';
 import { useOverwriteCheck } from './hooks/useOverwriteCheck';
 import { useDragAndDrop } from './hooks/useDragAndDrop';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
-import { useTransferEvents } from './hooks/useTransferEvents';
+import { useTransferEvents, TRANSFER_EVENT_BRIDGE } from './hooks/useTransferEvents';
 import { useCloudSync } from './hooks/useCloudSync';
 import { useFileTags } from './hooks/useFileTags';
 import { useFaviconDetection } from './hooks/useFaviconDetection';
@@ -723,6 +727,9 @@ const App: React.FC = () => {
 
   const [showDependenciesPanel, setShowDependenciesPanel] = useState(false);
   const [showSyncPanel, setShowSyncPanel] = useState(false);
+  // GAP-3: rich report from the connected-remote runRemoteSync run.
+  const [remoteSyncResult, setRemoteSyncResult] = useState<SyncRunReport | null>(null);
+  const remoteSyncRunningRef = useRef(false);
   const [showVaultPanel, setShowVaultPanel] = useState<false | { mode?: 'home' | 'create' | 'open'; path?: string; files?: string[]; folderPath?: string }>(false);
   const [aeroVaultOverlaySession, setAeroVaultOverlaySession] = useState<AeroVaultOverlaySession | null>(null);
   const [showCryptomatorBrowser, setShowCryptomatorBrowser] = useState(false);
@@ -7046,124 +7053,147 @@ interface UpdateVerificationInfo {
       return;
     }
 
-    // ── Z.2.4 local-remote / remote-local: build transferEntries from
-    // the side that's losing files (source) and dispatch via the
-    // unified planner's per-entry upload/download loop. Bisync runs
-    // two passes (L→R then R→L). ─────────────────────────────────────
+    // ── GAP-3 local-remote / remote-local: run the full connected-remote
+    // sync engine (runRemoteSync). Copies, orphan deletes, overwrites,
+    // post-transfer verify, retry with backoff and a resumable journal
+    // all execute. Keep-both renames stay deferred — the runner has no
+    // rename primitive — and are surfaced as an info toast. ──────────────
     if (context.pairKind === 'local-remote' || context.pairKind === 'remote-local') {
-      const isLocalLeft = context.pairKind === 'local-remote';
-      const passesPlan: Array<{ sourceSide: 'left' | 'right' }> = [];
-      if (plan.preset === 'bisync') {
-        passesPlan.push({ sourceSide: 'left' });
-        passesPlan.push({ sourceSide: 'right' });
-      } else if (plan.direction === 'left-to-right') {
-        passesPlan.push({ sourceSide: 'left' });
-      } else {
-        passesPlan.push({ sourceSide: 'right' });
-      }
+      const leftIsLocal = context.pairKind === 'local-remote';
+      const { files: runFiles, dirs: runDirs, deferredRenames } =
+        buildRemoteSyncInput(plan, leftIsLocal);
 
-      const queue: Array<{
-        plan: UnifiedTransferPlan;
-        transferEntries: Array<{ name: string; path: string; is_dir: boolean; size?: number }>;
-        runtime: AeroSyncRuntime;
-      }> = [];
-      for (const pass of passesPlan) {
-        const sourceIsLocal = isLocalLeft ? pass.sourceSide === 'left' : pass.sourceSide === 'right';
-        const names = new Set(namesFromBuckets(plan, pass.sourceSide));
-        if (names.size === 0) continue;
-        const allEntries = (sourceIsLocal ? localFiles : remoteFiles)
-          .filter((item) => names.has(item.name))
-          .map((item) => ({
-            name: item.name,
-            path: item.path,
-            is_dir: item.is_dir,
-            size: item.size ?? undefined,
-          }));
-        if (allEntries.length === 0) continue;
-        const sourceEndpoint = sourceIsLocal
-          ? createLocalEndpoint('local', currentLocalPath, activeLocalTabId)
-          : (activeUnifiedRemoteProfile
-            ? createRemoteEndpoint(activeUnifiedRemoteProfile, currentRemotePath, activeSessionId)
-            : null);
-        const destEndpoint = sourceIsLocal
-          ? (activeUnifiedRemoteProfile
-            ? createRemoteEndpoint(activeUnifiedRemoteProfile, currentRemotePath, activeSessionId)
-            : null)
-          : createLocalEndpoint('local', currentLocalPath, activeLocalTabId);
-        if (!sourceEndpoint || !destEndpoint) continue;
-        const totalBytes = allEntries.reduce((sum, entry) => sum + (entry.size ?? 0), 0);
-        queue.push({
-          plan: createUnifiedTransferPlan({
-            mode: 'copy',
-            source: sourceEndpoint,
-            destination: destEndpoint,
-            entryCount: allEntries.length,
-            totalBytes,
-            preferDelta: false,
-          }),
-          transferEntries: allEntries,
-          runtime,
-        });
-      }
-
-      if (queue.length === 0) {
+      const nothingToRun =
+        runFiles.length === 0
+        && runDirs.remote.length === 0
+        && runDirs.local.length === 0;
+      if (nothingToRun) {
         notify.info(
           t('syncPresets.nothingToDo') || 'Sync presets',
-          t('syncPresets.allSkipped') || 'No actionable entries for this preset.',
+          deferredRenames > 0
+            ? `${deferredRenames} keep-both rename(s) deferred`
+            : (t('syncPresets.allSkipped') || 'No actionable entries for this preset.'),
         );
         return;
       }
 
-      // Open the planner with the first pass; on close, drain the
-      // queue by chaining the next pass via a small ref-trick. For the
-      // slice we just open the first pass and surface the queued
-      // bisync follow-up as an info toast so the user can re-run it
-      // manually — chaining inside the planner state would need a
-      // bigger refactor in `setPendingUnifiedTransferPlan` flow.
-      const dispatchQueue = () => {
-        setPendingUnifiedTransferPlan(queue[0]);
-        if (queue.length > 1) {
-          notify.info(
-            'Bisync',
-            `${queue.length - 1} additional pass(es) staged; re-open Sync Presets after the current run to dispatch them.`,
-          );
-        }
-        reportDeferredOps();
+      const protocol = activeUnifiedRemoteProfile?.protocol;
+      const isProvider = !!protocol && !isFtpProtocol(protocol);
+
+      // The Plan tab's verify selector uses `full_checksum`; the backend
+      // `verify_local_transfer` policy enum spells it `full`.
+      const mapVerify = (v: AeroSyncVerifyPolicy): VerifyPolicy =>
+        v === 'full_checksum' ? 'full' : v;
+
+      // Bandwidth caps come from the CO-3 Sync-tab inputs (localStorage).
+      const readLimit = (key: string): number => {
+        const raw = Number.parseInt(localStorage.getItem(key) || '0', 10);
+        return Number.isFinite(raw) && raw > 0 ? raw : 0;
       };
 
-      // CO-5: probe SFTP delta eligibility before dispatch. The probe
-      // is informational only: the chosen preset still runs against
-      // the classic copy path when delta is unavailable. If the saved
-      // server has opted out, skip the probe entirely.
+      let direction: SyncDirection;
+      if (plan.preset === 'bisync') {
+        direction = 'bidirectional';
+      } else {
+        const toRight = plan.direction === 'left-to-right';
+        const destIsRemote = toRight ? leftIsLocal : !leftIsLocal;
+        direction = destIsRemote ? 'local_to_remote' : 'remote_to_local';
+      }
+
+      const runConfig: RemoteSyncConfig = {
+        localRoot: currentLocalPath,
+        remoteRoot: currentRemotePath,
+        isProvider,
+        isFtp: !isProvider,
+        retryPolicy: {
+          max_retries: 3,
+          base_delay_ms: 500,
+          max_delay_ms: 10_000,
+          timeout_ms: 120_000,
+          backoff_multiplier: 2,
+        },
+        verifyPolicy: mapVerify(runtime.verifyPolicy),
+        deltaSyncEnabled: runtime.speedMode !== 'normal',
+        versioningStrategy: null,
+        transferBudget: 0,
+        direction,
+        uploadLimitKbps: readLimit('aerosync.bandwidth.upload'),
+        downloadLimitKbps: readLimit('aerosync.bandwidth.download'),
+      };
+
+      const launchRun = (): void => {
+        if (remoteSyncRunningRef.current) {
+          notify.info(t('aerosync.title') || 'AeroSync', t('syncPanel.syncing') || 'Syncing');
+          return;
+        }
+        remoteSyncRunningRef.current = true;
+        // Per-file delta stats are captured from the global transfer-event
+        // bridge and handed to the runner for the savings aggregation.
+        const deltaStats = new Map<string, DeltaTransferStats>();
+        const onTransferEvent = (event: Event): void => {
+          const payload = (event as CustomEvent<TransferEvent>).detail;
+          if (payload?.event_type === 'complete' && payload.delta_stats) {
+            deltaStats.set(payload.filename, payload.delta_stats);
+          }
+        };
+        window.addEventListener(TRANSFER_EVENT_BRIDGE, onTransferEvent);
+        void (async () => {
+          try {
+            const report = await runRemoteSync(
+              runFiles,
+              runDirs,
+              runConfig,
+              {},
+              { invoke, deltaStats },
+            );
+            setRemoteSyncResult(report);
+            if (deferredRenames > 0) {
+              notify.info(
+                t('syncPresets.title') || 'Sync presets',
+                `${deferredRenames} keep-both rename(s) deferred`,
+              );
+            }
+            if (report.uploaded > 0 || report.downloaded > 0 || report.deleted > 0) {
+              await loadRemoteFiles();
+              await loadLocalFiles(currentLocalPath);
+            }
+          } catch (err) {
+            notify.error(t('aerosync.title') || 'AeroSync', String(err));
+          } finally {
+            window.removeEventListener(TRANSFER_EVENT_BRIDGE, onTransferEvent);
+            remoteSyncRunningRef.current = false;
+          }
+        })();
+      };
+
+      // CO-5: probe SFTP delta eligibility before the run. Informational
+      // only — the sync still runs against the classic path when delta is
+      // unavailable. A saved per-server opt-out skips the probe entirely.
       const probeProfileId = context.activeProfileId;
-      const sessionProtocol = activeUnifiedRemoteProfile?.protocol;
-      const shouldProbe = sessionProtocol === 'sftp' && !!probeProfileId;
+      const shouldProbe = protocol === 'sftp' && !!probeProfileId;
       if (!shouldProbe) {
-        dispatchQueue();
+        launchRun();
         return;
       }
 
-      (async () => {
+      void (async () => {
         try {
           const stored = await secureGetWithFallback<ServerProfile[]>(
             'server_profiles',
             'aeroftp-saved-servers',
           );
-          const profiles = stored || [];
-          const profile = profiles.find((p) => p.id === probeProfileId);
+          const profile = (stored || []).find((p) => p.id === probeProfileId);
           if (profile?.skipDeltaEligibilityPrompt) {
-            dispatchQueue();
+            launchRun();
             return;
           }
-
           const verdict = await invoke<DeltaEligibilityProbeResult>(
             'sftp_probe_delta_eligibility',
           );
           if (verdict.eligible) {
-            dispatchQueue();
+            launchRun();
             return;
           }
-
           const reason = verdict.reason
             || t('aerosync.deltaEligibility.heading')
             || 'Delta sync unavailable for this server.';
@@ -7174,15 +7204,15 @@ interface UpdateVerificationInfo {
             reason,
             serverLabel,
             profileId: probeProfileId,
-            onContinue: () => { dispatchQueue(); },
+            onContinue: () => { launchRun(); },
           });
         } catch (err) {
-          // Probe failures should not block the preset; log and dispatch.
+          // Probe failures should not block the preset; log and run.
           if (debugMode) {
             // eslint-disable-next-line no-console
             console.debug('[AeroSync] sftp_probe_delta_eligibility failed', err);
           }
-          dispatchQueue();
+          launchRun();
         }
       })();
       return;
@@ -7190,20 +7220,18 @@ interface UpdateVerificationInfo {
 
     notify.info(
       t('syncPresets.title') || 'Sync presets',
-      'Execution for this pair kind lands with Z.3.5.2 / Z.3.8.2.',
+      'Execution for this pair kind is not supported.',
     );
   }, [
     aeroSync,
     notify,
     t,
-    localFiles,
-    remoteFiles,
     currentLocalPath,
     currentRemotePath,
-    activeLocalTabId,
-    activeSessionId,
     activeUnifiedRemoteProfile,
     debugMode,
+    loadLocalFiles,
+    loadRemoteFiles,
   ]);
 
   const clipboardCut = (files: { name: string; path: string; is_dir: boolean }[], isRemote: boolean, sourceDir: string) => {
@@ -11203,6 +11231,11 @@ interface UpdateVerificationInfo {
             }
             prompt.onContinue();
           }}
+        />
+
+        <RemoteSyncResultDialog
+          report={remoteSyncResult}
+          onClose={() => setRemoteSyncResult(null)}
         />
 
         {inputDialog && <InputDialog title={inputDialog.title} defaultValue={inputDialog.defaultValue} onConfirm={inputDialog.onConfirm} onCancel={() => setInputDialog(null)} isPassword={inputDialog.isPassword} placeholder={inputDialog.placeholder} />}
