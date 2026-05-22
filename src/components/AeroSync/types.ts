@@ -31,6 +31,12 @@ export interface AeroSyncContext {
     leftPanelId?: 'local' | 'local2';
     rightPanelId?: 'local' | 'local2';
     compareResult: CompareResult | null;
+    /**
+     * GAP-5: true while a recursive connected-remote compare
+     * (`compare_directories`) is still running. The Compare and Plan tabs
+     * render a scanning placeholder instead of the empty-state hint.
+     */
+    compareLoading?: boolean;
     initialSource?: string;
     initialDestination?: string;
     /**

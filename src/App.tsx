@@ -17,7 +17,8 @@ import {
   resolveEffectiveQuota,
   AeroVaultOverlaySession,
   DeltaEligibilityProbeResult,
-  SyncDirection, VerifyPolicy, DeltaTransferStats
+  SyncDirection, VerifyPolicy, DeltaTransferStats,
+  FileComparison, RetryPolicy, SyncJournal
 } from './types';
 
 interface DownloadFolderParams {
@@ -36,6 +37,27 @@ interface UploadFolderParams {
   max_concurrent?: number;
   retry_count?: number;
   timeout_seconds?: number;
+}
+
+// GAP-5: runtime options for the shared connected-remote sync launcher.
+// Both the Plan tab (executeSyncPresetPlan) and the Compare-tab mirror
+// buttons dispatch through `runConnectedRemoteSync` with these knobs.
+interface ConnectedRemoteRunOptions {
+  direction: SyncDirection;
+  deltaSyncEnabled: boolean;
+  verifyPolicy: VerifyPolicy;
+  /** Defaults to 3 retries / 500 ms base / 2x backoff when omitted. */
+  retryPolicy?: RetryPolicy;
+  /** Stop transferring once this many bytes have moved. 0 = unlimited. */
+  transferBudget?: number;
+  /** Archive-before-mutation strategy; null/"disabled" turns it off. */
+  versioningStrategy?: string | null;
+  /** Resume an interrupted journal instead of starting fresh. */
+  resumeJournal?: SyncJournal;
+  /** Keep-both renames the caller could not express as copies. */
+  deferredRenames?: number;
+  /** Saved-server id, enables the CO-5 SFTP eligibility probe. */
+  profileId?: string;
 }
 
 interface RcloneCryptBrowserEntry {
@@ -127,7 +149,7 @@ import { SyncPanel } from './components/SyncPanel';
 import { UnifiedTransferPlanDialog } from './components/UnifiedTransferPlanDialog';
 import { AeroSyncDialog } from './components/AeroSync/AeroSyncDialog';
 import { DeltaEligibilityDialog } from './components/AeroSync/DeltaEligibilityDialog';
-import type { AeroSyncTab, AeroSyncContext, AeroSyncRuntime, AeroSyncVerifyPolicy } from './components/AeroSync/types';
+import type { AeroSyncTab, AeroSyncContext, AeroSyncRuntime } from './components/AeroSync/types';
 import { RemoteSyncResultDialog } from './components/AeroSync/RemoteSyncResultDialog';
 import { VaultPanel } from './components/VaultPanel';
 import { CryptomatorBrowser } from './components/CryptomatorBrowser';
@@ -308,8 +330,9 @@ import { createUnifiedTransferPlan, UnifiedTransferPlan } from './utils/unifiedT
 import { buildCrossProfileEntries, runCrossProfileTransfer } from './utils/crossProfileExecution';
 import { compareEntries, type CompareInputEntry, type CompareResult, type CompareResultEntry } from './utils/compareEndpoints';
 import { namesFromBuckets, namesToDelete, namesToRename, type PresetPlan } from './utils/syncPresets';
-import { runRemoteSync, type RemoteSyncConfig, type SyncRunReport } from './utils/remoteSyncRunner';
-import { buildRemoteSyncInput } from './utils/presetToSyncRun';
+import { runRemoteSync, type RemoteSyncConfig, type SyncRunReport, type SyncRunFile, type SyncRunDirs } from './utils/remoteSyncRunner';
+import { buildRemoteSyncInput, buildMirrorSyncInput } from './utils/presetToSyncRun';
+import { adaptFileComparisons } from './utils/recursiveCompare';
 import { useTranslation } from './i18n';
 
 // Components
@@ -730,6 +753,10 @@ const App: React.FC = () => {
   // GAP-3: rich report from the connected-remote runRemoteSync run.
   const [remoteSyncResult, setRemoteSyncResult] = useState<SyncRunReport | null>(null);
   const remoteSyncRunningRef = useRef(false);
+  // GAP-5: monotonic token guarding the async recursive compare. Each
+  // openAeroSync() bumps it; a stale scan (dialog closed or reopened
+  // meanwhile) sees a mismatched token and discards its result.
+  const aeroSyncCompareSeqRef = useRef(0);
   const [showVaultPanel, setShowVaultPanel] = useState<false | { mode?: 'home' | 'create' | 'open'; path?: string; files?: string[]; folderPath?: string }>(false);
   const [aeroVaultOverlaySession, setAeroVaultOverlaySession] = useState<AeroVaultOverlaySession | null>(null);
   const [showCryptomatorBrowser, setShowCryptomatorBrowser] = useState(false);
@@ -6689,12 +6716,18 @@ interface UpdateVerificationInfo {
   }, [pendingUnifiedTransferPlan, transferLocalSelectionAcrossPanels, notify, t]);
 
   // AeroFile Sync: unified opener for Compare + Plan + Sync tabs. Computes
-  // pairKind, labels, and (when a comparable pair is mounted) the compare
-  // result once. The dialog uses this context for the Compare and Plan
-  // tabs; the Sync tab pulls from initialSource/initialDestination. When
-  // no comparable pair is available the dialog still opens (Sync tab is
-  // always usable), and Compare/Plan render their empty-state hint.
+  // pairKind, labels, and the compare result. local-local stays a flat
+  // synchronous classify over the loaded listings; GAP-5 makes the
+  // connected-remote pair run a recursive `compare_directories` scan so the
+  // Compare/Plan tabs and the runner act on every subdirectory level. The
+  // dialog opens immediately with a scanning placeholder and is refreshed
+  // when the async scan resolves. When no comparable pair is mounted the
+  // dialog still opens (Sync tab is always usable).
   const openAeroSync = useCallback((initialTab: AeroSyncTab = 'compare') => {
+    // Bump the compare token: any recursive scan still in flight from a
+    // previous open is now stale and will discard its own result.
+    const mySeq = ++aeroSyncCompareSeqRef.current;
+
     const toCompareEntry = (item: { name: string; is_dir: boolean; size: number | null; modified: string | null }): CompareInputEntry => {
       const mtimeMs = (() => {
         if (!item.modified) return null;
@@ -6709,56 +6742,105 @@ interface UpdateVerificationInfo {
       };
     };
 
-    let context: AeroSyncContext;
-
     if (showDualLocalPanel && (!isConnected || !showRemotePanel)) {
       const leftEntries = localFiles.map(toCompareEntry);
       const rightEntries = localFiles2.map(toCompareEntry);
-      const result = compareEntries(leftEntries, rightEntries);
-      context = {
-        compareResult: result,
-        leftLabel: currentLocalPath || 'Local',
-        rightLabel: currentLocalPath2 || currentLocalPath || 'Local (right)',
-        pairKind: 'local-local',
-        leftPanelId: 'local',
-        rightPanelId: 'local2',
-        initialSource: currentLocalPath || '',
-        initialDestination: currentLocalPath2 || '',
-      };
-    } else if (isConnected && showRemotePanel) {
-      const localEntries = localFiles.map(toCompareEntry);
-      const remoteEntries = remoteFiles.map(toCompareEntry);
+      setAeroSync({
+        initialTab,
+        context: {
+          compareResult: compareEntries(leftEntries, rightEntries),
+          leftLabel: currentLocalPath || 'Local',
+          rightLabel: currentLocalPath2 || currentLocalPath || 'Local (right)',
+          pairKind: 'local-local',
+          leftPanelId: 'local',
+          rightPanelId: 'local2',
+          initialSource: currentLocalPath || '',
+          initialDestination: currentLocalPath2 || '',
+        },
+      });
+      return;
+    }
+
+    if (isConnected && showRemotePanel) {
       // Visual panel layout: when `swapPanels=false` (default) Remote
       // renders with `order-1` (left side) and Local with `order-2`
       // (right side). The swap toggle inverts those orders, so the
       // visually-left panel = Local iff swapPanels is true.
       const leftLocal = swapPanels;
-      const result = leftLocal
-        ? compareEntries(localEntries, remoteEntries)
-        : compareEntries(remoteEntries, localEntries);
-      context = {
-        compareResult: result,
-        leftLabel: leftLocal ? (currentLocalPath || 'Local') : (activeUnifiedRemoteProfile?.name || 'Remote'),
-        rightLabel: leftLocal ? (activeUnifiedRemoteProfile?.name || 'Remote') : (currentLocalPath || 'Local'),
-        pairKind: leftLocal ? 'local-remote' : 'remote-local',
-        initialSource: currentLocalPath || '',
-        initialDestination: currentRemotePath || '',
-        activeProfileId: activeUnifiedRemoteProfile?.id,
-        isProvider: usesProviderApi(activeUnifiedRemoteProfile?.protocol),
-        excludePatterns: [],
-      };
-    } else {
-      context = {
+      const isProviderConn = usesProviderApi(activeUnifiedRemoteProfile?.protocol);
+      const remoteLabel = activeUnifiedRemoteProfile?.name || 'Remote';
+
+      // Open immediately with a scanning placeholder so the modal is
+      // responsive while the recursive scan runs.
+      setAeroSync({
+        initialTab,
+        context: {
+          compareResult: null,
+          compareLoading: true,
+          leftLabel: leftLocal ? (currentLocalPath || 'Local') : remoteLabel,
+          rightLabel: leftLocal ? remoteLabel : (currentLocalPath || 'Local'),
+          pairKind: leftLocal ? 'local-remote' : 'remote-local',
+          initialSource: currentLocalPath || '',
+          initialDestination: currentRemotePath || '',
+          activeProfileId: activeUnifiedRemoteProfile?.id,
+          isProvider: isProviderConn,
+          excludePatterns: [],
+        },
+      });
+
+      void (async () => {
+        let resolved: CompareResult;
+        try {
+          const comparisons = await invoke<FileComparison[]>(
+            isProviderConn ? 'provider_compare_directories' : 'compare_directories',
+            {
+              localPath: currentLocalPath,
+              remotePath: currentRemotePath,
+              options: {
+                compare_timestamp: true,
+                compare_size: true,
+                compare_checksum: false,
+                exclude_patterns: [
+                  'node_modules', '.git', '.DS_Store', 'Thumbs.db',
+                  '__pycache__', '*.pyc', '.env', 'target',
+                ],
+                direction: 'bidirectional',
+              },
+            },
+          );
+          resolved = adaptFileComparisons(comparisons, leftLocal);
+        } catch (err) {
+          // Recursive scan failed: fall back to the flat top-level
+          // classify so the Compare tab still shows something actionable.
+          const localEntries = localFiles.map(toCompareEntry);
+          const remoteEntries = remoteFiles.map(toCompareEntry);
+          resolved = leftLocal
+            ? compareEntries(localEntries, remoteEntries)
+            : compareEntries(remoteEntries, localEntries);
+          notify.warning(t('aerosync.title') || 'AeroSync', String(err));
+        }
+        // Discard if the dialog was closed or reopened meanwhile.
+        if (aeroSyncCompareSeqRef.current !== mySeq) return;
+        setAeroSync((prev) =>
+          prev
+            ? { ...prev, context: { ...prev.context, compareResult: resolved, compareLoading: false } }
+            : prev,
+        );
+      })();
+      return;
+    }
+
+    setAeroSync({
+      initialTab,
+      context: {
         compareResult: null,
         leftLabel: currentLocalPath || 'Local',
         rightLabel: '',
         pairKind: null,
         initialSource: currentLocalPath || '',
         initialDestination: '',
-      };
-    }
-
-    setAeroSync({ initialTab, context });
+      },
+    });
   }, [
     showDualLocalPanel,
     showRemotePanel,
@@ -6771,6 +6853,166 @@ interface UpdateVerificationInfo {
     currentLocalPath2,
     currentRemotePath,
     activeUnifiedRemoteProfile,
+    notify,
+    t,
+  ]);
+
+  // GAP-5: shared connected-remote sync launcher. Builds the RemoteSyncConfig,
+  // runs the CO-5 SFTP delta-eligibility probe (informational, never blocks),
+  // dispatches `runRemoteSync`, surfaces the rich report and refreshes both
+  // panels. Both the Plan tab preset executor and the Compare-tab mirror
+  // buttons go through this so deletes / overwrites / verify / retry /
+  // resumable journal all execute on a full recursive tree.
+  const runConnectedRemoteSync = useCallback((
+    runFiles: SyncRunFile[],
+    runDirs: SyncRunDirs,
+    opts: ConnectedRemoteRunOptions,
+  ): void => {
+    const nothingToRun =
+      runFiles.length === 0
+      && runDirs.remote.length === 0
+      && runDirs.local.length === 0
+      && !opts.resumeJournal;
+    if (nothingToRun) {
+      notify.info(
+        t('syncPresets.nothingToDo') || 'AeroSync',
+        (opts.deferredRenames ?? 0) > 0
+          ? `${opts.deferredRenames} keep-both rename(s) deferred`
+          : (t('syncPresets.allSkipped') || 'No actionable entries for this preset.'),
+      );
+      return;
+    }
+
+    const protocol = activeUnifiedRemoteProfile?.protocol;
+    const isProvider = !!protocol && !isFtpProtocol(protocol);
+
+    // Bandwidth caps come from the CO-3 Sync-tab inputs (localStorage).
+    const readLimit = (key: string): number => {
+      const raw = Number.parseInt(localStorage.getItem(key) || '0', 10);
+      return Number.isFinite(raw) && raw > 0 ? raw : 0;
+    };
+
+    const runConfig: RemoteSyncConfig = {
+      localRoot: currentLocalPath,
+      remoteRoot: currentRemotePath,
+      isProvider,
+      isFtp: !isProvider,
+      retryPolicy: opts.retryPolicy ?? {
+        max_retries: 3,
+        base_delay_ms: 500,
+        max_delay_ms: 10_000,
+        timeout_ms: 120_000,
+        backoff_multiplier: 2,
+      },
+      verifyPolicy: opts.verifyPolicy,
+      deltaSyncEnabled: opts.deltaSyncEnabled,
+      versioningStrategy: opts.versioningStrategy ?? null,
+      transferBudget: opts.transferBudget ?? 0,
+      direction: opts.direction,
+      uploadLimitKbps: readLimit('aerosync.bandwidth.upload'),
+      downloadLimitKbps: readLimit('aerosync.bandwidth.download'),
+    };
+
+    const launchRun = (): void => {
+      if (remoteSyncRunningRef.current) {
+        notify.info(t('aerosync.title') || 'AeroSync', t('syncPanel.syncing') || 'Syncing');
+        return;
+      }
+      remoteSyncRunningRef.current = true;
+      // Per-file delta stats are captured from the global transfer-event
+      // bridge and handed to the runner for the savings aggregation.
+      const deltaStats = new Map<string, DeltaTransferStats>();
+      const onTransferEvent = (event: Event): void => {
+        const payload = (event as CustomEvent<TransferEvent>).detail;
+        if (payload?.event_type === 'complete' && payload.delta_stats) {
+          deltaStats.set(payload.filename, payload.delta_stats);
+        }
+      };
+      window.addEventListener(TRANSFER_EVENT_BRIDGE, onTransferEvent);
+      void (async () => {
+        try {
+          const report = await runRemoteSync(
+            runFiles,
+            runDirs,
+            runConfig,
+            {},
+            { invoke, deltaStats, resumeJournal: opts.resumeJournal },
+          );
+          setRemoteSyncResult(report);
+          if ((opts.deferredRenames ?? 0) > 0) {
+            notify.info(
+              t('syncPresets.title') || 'AeroSync',
+              `${opts.deferredRenames} keep-both rename(s) deferred`,
+            );
+          }
+          if (report.uploaded > 0 || report.downloaded > 0 || report.deleted > 0) {
+            await loadRemoteFiles();
+            await loadLocalFiles(currentLocalPath);
+          }
+        } catch (err) {
+          notify.error(t('aerosync.title') || 'AeroSync', String(err));
+        } finally {
+          window.removeEventListener(TRANSFER_EVENT_BRIDGE, onTransferEvent);
+          remoteSyncRunningRef.current = false;
+        }
+      })();
+    };
+
+    // CO-5: probe SFTP delta eligibility before the run. Informational
+    // only — the sync still runs against the classic path when delta is
+    // unavailable. A saved per-server opt-out skips the probe entirely.
+    const shouldProbe = protocol === 'sftp' && !!opts.profileId;
+    if (!shouldProbe) {
+      launchRun();
+      return;
+    }
+
+    void (async () => {
+      try {
+        const stored = await secureGetWithFallback<ServerProfile[]>(
+          'server_profiles',
+          'aeroftp-saved-servers',
+        );
+        const profile = (stored || []).find((p) => p.id === opts.profileId);
+        if (profile?.skipDeltaEligibilityPrompt) {
+          launchRun();
+          return;
+        }
+        const verdict = await invoke<DeltaEligibilityProbeResult>(
+          'sftp_probe_delta_eligibility',
+        );
+        if (verdict.eligible) {
+          launchRun();
+          return;
+        }
+        const reason = verdict.reason
+          || t('aerosync.deltaEligibility.heading')
+          || 'Delta sync unavailable for this server.';
+        const serverLabel = activeUnifiedRemoteProfile?.name
+          || verdict.server_identity?.host
+          || 'remote';
+        setDeltaEligibilityPrompt({
+          reason,
+          serverLabel,
+          profileId: opts.profileId!,
+          onContinue: () => { launchRun(); },
+        });
+      } catch (err) {
+        // Probe failures should not block the run; log and proceed.
+        if (debugMode) {
+          // eslint-disable-next-line no-console
+          console.debug('[AeroSync] sftp_probe_delta_eligibility failed', err);
+        }
+        launchRun();
+      }
+    })();
+  }, [
+    activeUnifiedRemoteProfile,
+    currentLocalPath,
+    currentRemotePath,
+    notify,
+    t,
+    debugMode,
   ]);
 
   // Z.3.7: stage the names returned by the Compare dialog into the local
@@ -6791,45 +7033,6 @@ interface UpdateVerificationInfo {
     setActivePanel('local');
   }, []);
 
-  // Z.2.4 — helper that builds the planner's `transferEntries` array
-  // (name + full source path + is_dir) for a given side of a local-
-  // remote compare run. `entries` are the rows from the Z.3.7 dialog;
-  // we look them up in the panel's loaded listing so each row carries
-  // the canonical source-side absolute path the executor needs.
-  const buildTransferEntriesFromSide = useCallback((
-    side: 'local' | 'remote',
-    entries: CompareResultEntry[],
-  ): Array<{ name: string; path: string; is_dir: boolean; size: number | undefined }> => {
-    if (side === 'local') {
-      const localByName = new Map(localFiles.map((file) => [file.name, file]));
-      return entries
-        .map((entry) => {
-          const item = localByName.get(entry.name);
-          if (!item) return null;
-          return {
-            name: item.name,
-            path: item.path,
-            is_dir: item.is_dir,
-            size: item.size ?? undefined,
-          };
-        })
-        .filter((entry): entry is { name: string; path: string; is_dir: boolean; size: number | undefined } => entry !== null);
-    }
-    const remoteByName = new Map(remoteFiles.map((file) => [file.name, file]));
-    return entries
-      .map((entry) => {
-        const item = remoteByName.get(entry.name);
-        if (!item) return null;
-        return {
-          name: item.name,
-          path: item.path,
-          is_dir: item.is_dir,
-          size: item.size ?? undefined,
-        };
-      })
-      .filter((entry): entry is { name: string; path: string; is_dir: boolean; size: number | undefined } => entry !== null);
-  }, [localFiles, remoteFiles]);
-
   const handleCompareMirrorLeftToRight = useCallback((entries: CompareResultEntry[]) => {
     const context = aeroSync?.context;
     setAeroSync(null);
@@ -6843,47 +7046,24 @@ interface UpdateVerificationInfo {
       return;
     }
 
-    // Z.2.4 — local-remote / remote-local mirror: open the planner with
-    // staged transferEntries on the source side. The executor reads
-    // `transferEntries` and dispatches the upload/download loop.
+    // GAP-5 — connected-remote mirror: source = the visual left side,
+    // destination = the right side. Route through the recursive-capable
+    // runner so nested files land in the right subdirs.
     if (context.pairKind === 'local-remote' || context.pairKind === 'remote-local') {
-      const sourceSide: 'local' | 'remote' = context.pairKind === 'local-remote' ? 'local' : 'remote';
-      const destSide: 'local' | 'remote' = sourceSide === 'local' ? 'remote' : 'local';
-      const transferEntries = buildTransferEntriesFromSide(sourceSide, entries);
-      if (transferEntries.length === 0) return;
-      const totalBytes = transferEntries.reduce((sum, entry) => sum + (entry.size ?? 0), 0);
-      const sourceEndpoint = sourceSide === 'local'
-        ? createLocalEndpoint('local', currentLocalPath, activeLocalTabId)
-        : (activeUnifiedRemoteProfile
-          ? createRemoteEndpoint(activeUnifiedRemoteProfile, currentRemotePath, activeSessionId)
-          : null);
-      const destEndpoint = destSide === 'local'
-        ? createLocalEndpoint('local', currentLocalPath, activeLocalTabId)
-        : (activeUnifiedRemoteProfile
-          ? createRemoteEndpoint(activeUnifiedRemoteProfile, currentRemotePath, activeSessionId)
-          : null);
-      if (!sourceEndpoint || !destEndpoint) return;
-      setPendingUnifiedTransferPlan({
-        plan: createUnifiedTransferPlan({
-          mode: 'copy',
-          source: sourceEndpoint,
-          destination: destEndpoint,
-          entryCount: transferEntries.length,
-          totalBytes,
-          preferDelta: false,
-        }),
-        transferEntries,
+      const leftIsLocal = context.pairKind === 'local-remote';
+      const { files, dirs } = buildMirrorSyncInput(entries, 'left', leftIsLocal);
+      // Source is the left side, so the destination is remote iff left is local.
+      runConnectedRemoteSync(files, dirs, {
+        direction: leftIsLocal ? 'local_to_remote' : 'remote_to_local',
+        deltaSyncEnabled: false,
+        verifyPolicy: 'size_only',
+        profileId: context.activeProfileId,
       });
     }
   }, [
     aeroSync,
     stageLocalSelectionFromCompare,
-    buildTransferEntriesFromSide,
-    currentLocalPath,
-    currentRemotePath,
-    activeLocalTabId,
-    activeSessionId,
-    activeUnifiedRemoteProfile,
+    runConnectedRemoteSync,
   ]);
 
   const handleCompareMirrorRightToLeft = useCallback((entries: CompareResultEntry[]) => {
@@ -6899,46 +7079,23 @@ interface UpdateVerificationInfo {
       return;
     }
 
+    // GAP-5 — connected-remote mirror flowing the other way: source = the
+    // visual right side, destination = the left side.
     if (context.pairKind === 'local-remote' || context.pairKind === 'remote-local') {
-      // Mirror flows the OTHER direction: source = the right side of
-      // the visual rendering, destination = the left side.
-      const sourceSide: 'local' | 'remote' = context.pairKind === 'local-remote' ? 'remote' : 'local';
-      const destSide: 'local' | 'remote' = sourceSide === 'local' ? 'remote' : 'local';
-      const transferEntries = buildTransferEntriesFromSide(sourceSide, entries);
-      if (transferEntries.length === 0) return;
-      const totalBytes = transferEntries.reduce((sum, entry) => sum + (entry.size ?? 0), 0);
-      const sourceEndpoint = sourceSide === 'local'
-        ? createLocalEndpoint('local', currentLocalPath, activeLocalTabId)
-        : (activeUnifiedRemoteProfile
-          ? createRemoteEndpoint(activeUnifiedRemoteProfile, currentRemotePath, activeSessionId)
-          : null);
-      const destEndpoint = destSide === 'local'
-        ? createLocalEndpoint('local', currentLocalPath, activeLocalTabId)
-        : (activeUnifiedRemoteProfile
-          ? createRemoteEndpoint(activeUnifiedRemoteProfile, currentRemotePath, activeSessionId)
-          : null);
-      if (!sourceEndpoint || !destEndpoint) return;
-      setPendingUnifiedTransferPlan({
-        plan: createUnifiedTransferPlan({
-          mode: 'copy',
-          source: sourceEndpoint,
-          destination: destEndpoint,
-          entryCount: transferEntries.length,
-          totalBytes,
-          preferDelta: false,
-        }),
-        transferEntries,
+      const leftIsLocal = context.pairKind === 'local-remote';
+      const { files, dirs } = buildMirrorSyncInput(entries, 'right', leftIsLocal);
+      // Source is the right side, so the destination is remote iff left is local.
+      runConnectedRemoteSync(files, dirs, {
+        direction: leftIsLocal ? 'remote_to_local' : 'local_to_remote',
+        deltaSyncEnabled: false,
+        verifyPolicy: 'size_only',
+        profileId: context.activeProfileId,
       });
     }
   }, [
     aeroSync,
     stageLocalSelectionFromCompare,
-    buildTransferEntriesFromSide,
-    currentLocalPath,
-    currentRemotePath,
-    activeLocalTabId,
-    activeSessionId,
-    activeUnifiedRemoteProfile,
+    runConnectedRemoteSync,
   ]);
 
 
@@ -6959,12 +7116,10 @@ interface UpdateVerificationInfo {
     setAeroSync(null);
     if (!context) return;
 
-    // CO-1: surface the Plan tab runtime knobs in the debug log. They
-    // are forwarded to the Rust backend below for the local-local path
-    // (LocalSyncRequest.speed_mode / verify_policy); the per-file
-    // local-remote / remote-local execution path doesn't honour them
-    // yet (each entry still routes through uploadFile / downloadFile)
-    // — that's accepted debt picked up alongside CO-5.
+    // CO-1: surface the Plan tab runtime knobs in the debug log. The
+    // local-local path forwards them to the Rust backend
+    // (LocalSyncRequest.speed_mode / verify_policy); the connected-remote
+    // path threads them into runConnectedRemoteSync (GAP-5).
     if (debugMode) {
       // eslint-disable-next-line no-console
       console.debug('[AeroSync] executeSyncPresetPlan runtime', {
@@ -7053,43 +7208,21 @@ interface UpdateVerificationInfo {
       return;
     }
 
-    // ── GAP-3 local-remote / remote-local: run the full connected-remote
-    // sync engine (runRemoteSync). Copies, orphan deletes, overwrites,
-    // post-transfer verify, retry with backoff and a resumable journal
-    // all execute. Keep-both renames stay deferred — the runner has no
-    // rename primitive — and are surfaced as an info toast. ──────────────
+    // ── GAP-3/GAP-5 local-remote / remote-local: run the full connected-
+    // remote sync engine through the shared launcher. buildRemoteSyncInput
+    // resolves the recursive plan into upload / download / delete entries
+    // carrying nested relative paths; runConnectedRemoteSync handles the
+    // SFTP probe, config, resumable journal and rich report. Keep-both
+    // renames stay deferred and are surfaced as an info toast. ────────────
     if (context.pairKind === 'local-remote' || context.pairKind === 'remote-local') {
       const leftIsLocal = context.pairKind === 'local-remote';
       const { files: runFiles, dirs: runDirs, deferredRenames } =
         buildRemoteSyncInput(plan, leftIsLocal);
 
-      const nothingToRun =
-        runFiles.length === 0
-        && runDirs.remote.length === 0
-        && runDirs.local.length === 0;
-      if (nothingToRun) {
-        notify.info(
-          t('syncPresets.nothingToDo') || 'Sync presets',
-          deferredRenames > 0
-            ? `${deferredRenames} keep-both rename(s) deferred`
-            : (t('syncPresets.allSkipped') || 'No actionable entries for this preset.'),
-        );
-        return;
-      }
-
-      const protocol = activeUnifiedRemoteProfile?.protocol;
-      const isProvider = !!protocol && !isFtpProtocol(protocol);
-
       // The Plan tab's verify selector uses `full_checksum`; the backend
       // `verify_local_transfer` policy enum spells it `full`.
-      const mapVerify = (v: AeroSyncVerifyPolicy): VerifyPolicy =>
-        v === 'full_checksum' ? 'full' : v;
-
-      // Bandwidth caps come from the CO-3 Sync-tab inputs (localStorage).
-      const readLimit = (key: string): number => {
-        const raw = Number.parseInt(localStorage.getItem(key) || '0', 10);
-        return Number.isFinite(raw) && raw > 0 ? raw : 0;
-      };
+      const verifyPolicy: VerifyPolicy =
+        runtime.verifyPolicy === 'full_checksum' ? 'full' : runtime.verifyPolicy;
 
       let direction: SyncDirection;
       if (plan.preset === 'bisync') {
@@ -7100,121 +7233,13 @@ interface UpdateVerificationInfo {
         direction = destIsRemote ? 'local_to_remote' : 'remote_to_local';
       }
 
-      const runConfig: RemoteSyncConfig = {
-        localRoot: currentLocalPath,
-        remoteRoot: currentRemotePath,
-        isProvider,
-        isFtp: !isProvider,
-        retryPolicy: {
-          max_retries: 3,
-          base_delay_ms: 500,
-          max_delay_ms: 10_000,
-          timeout_ms: 120_000,
-          backoff_multiplier: 2,
-        },
-        verifyPolicy: mapVerify(runtime.verifyPolicy),
-        deltaSyncEnabled: runtime.speedMode !== 'normal',
-        versioningStrategy: null,
-        transferBudget: 0,
+      runConnectedRemoteSync(runFiles, runDirs, {
         direction,
-        uploadLimitKbps: readLimit('aerosync.bandwidth.upload'),
-        downloadLimitKbps: readLimit('aerosync.bandwidth.download'),
-      };
-
-      const launchRun = (): void => {
-        if (remoteSyncRunningRef.current) {
-          notify.info(t('aerosync.title') || 'AeroSync', t('syncPanel.syncing') || 'Syncing');
-          return;
-        }
-        remoteSyncRunningRef.current = true;
-        // Per-file delta stats are captured from the global transfer-event
-        // bridge and handed to the runner for the savings aggregation.
-        const deltaStats = new Map<string, DeltaTransferStats>();
-        const onTransferEvent = (event: Event): void => {
-          const payload = (event as CustomEvent<TransferEvent>).detail;
-          if (payload?.event_type === 'complete' && payload.delta_stats) {
-            deltaStats.set(payload.filename, payload.delta_stats);
-          }
-        };
-        window.addEventListener(TRANSFER_EVENT_BRIDGE, onTransferEvent);
-        void (async () => {
-          try {
-            const report = await runRemoteSync(
-              runFiles,
-              runDirs,
-              runConfig,
-              {},
-              { invoke, deltaStats },
-            );
-            setRemoteSyncResult(report);
-            if (deferredRenames > 0) {
-              notify.info(
-                t('syncPresets.title') || 'Sync presets',
-                `${deferredRenames} keep-both rename(s) deferred`,
-              );
-            }
-            if (report.uploaded > 0 || report.downloaded > 0 || report.deleted > 0) {
-              await loadRemoteFiles();
-              await loadLocalFiles(currentLocalPath);
-            }
-          } catch (err) {
-            notify.error(t('aerosync.title') || 'AeroSync', String(err));
-          } finally {
-            window.removeEventListener(TRANSFER_EVENT_BRIDGE, onTransferEvent);
-            remoteSyncRunningRef.current = false;
-          }
-        })();
-      };
-
-      // CO-5: probe SFTP delta eligibility before the run. Informational
-      // only — the sync still runs against the classic path when delta is
-      // unavailable. A saved per-server opt-out skips the probe entirely.
-      const probeProfileId = context.activeProfileId;
-      const shouldProbe = protocol === 'sftp' && !!probeProfileId;
-      if (!shouldProbe) {
-        launchRun();
-        return;
-      }
-
-      void (async () => {
-        try {
-          const stored = await secureGetWithFallback<ServerProfile[]>(
-            'server_profiles',
-            'aeroftp-saved-servers',
-          );
-          const profile = (stored || []).find((p) => p.id === probeProfileId);
-          if (profile?.skipDeltaEligibilityPrompt) {
-            launchRun();
-            return;
-          }
-          const verdict = await invoke<DeltaEligibilityProbeResult>(
-            'sftp_probe_delta_eligibility',
-          );
-          if (verdict.eligible) {
-            launchRun();
-            return;
-          }
-          const reason = verdict.reason
-            || t('aerosync.deltaEligibility.heading')
-            || 'Delta sync unavailable for this server.';
-          const serverLabel = activeUnifiedRemoteProfile?.name
-            || verdict.server_identity?.host
-            || 'remote';
-          setDeltaEligibilityPrompt({
-            reason,
-            serverLabel,
-            profileId: probeProfileId,
-            onContinue: () => { launchRun(); },
-          });
-        } catch (err) {
-          // Probe failures should not block the preset; log and run.
-          if (debugMode) {
-            // eslint-disable-next-line no-console
-            console.debug('[AeroSync] sftp_probe_delta_eligibility failed', err);
-          }
-          launchRun();
-        }
-      })();
+        deltaSyncEnabled: runtime.speedMode !== 'normal',
+        verifyPolicy,
+        deferredRenames,
+        profileId: context.activeProfileId,
+      });
       return;
     }
 
@@ -7226,12 +7251,8 @@ interface UpdateVerificationInfo {
     aeroSync,
     notify,
     t,
-    currentLocalPath,
-    currentRemotePath,
-    activeUnifiedRemoteProfile,
     debugMode,
-    loadLocalFiles,
-    loadRemoteFiles,
+    runConnectedRemoteSync,
   ]);
 
   const clipboardCut = (files: { name: string; path: string; is_dir: boolean }[], isRemote: boolean, sourceDir: string) => {

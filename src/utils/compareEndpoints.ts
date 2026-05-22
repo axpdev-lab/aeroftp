@@ -45,6 +45,13 @@ export interface CompareInputEntry {
 
 export interface CompareResultEntry {
     name: string;
+    /**
+     * Path of the entry relative to the compare root. For the flat
+     * `compareEntries()` classifier this equals `name`; for a recursive
+     * connected-remote scan (GAP-5, `recursiveCompare.ts`) it carries the
+     * `/`-separated subdirectory path so the planner can recurse.
+     */
+    relativePath?: string;
     bucket: CompareBucket;
     leftIsDir?: boolean;
     rightIsDir?: boolean;
@@ -164,6 +171,7 @@ export const compareEntries = (
                 'only-left',
                 {
                     name,
+                    relativePath: name,
                     bucket: 'only-left',
                     leftIsDir: left.isDir,
                     leftSize: left.size ?? null,
@@ -178,6 +186,7 @@ export const compareEntries = (
                 'only-right',
                 {
                     name,
+                    relativePath: name,
                     bucket: 'only-right',
                     rightIsDir: right.isDir,
                     rightSize: right.size ?? null,
@@ -191,6 +200,7 @@ export const compareEntries = (
 
         const row: CompareResultEntry = {
             name,
+            relativePath: name,
             bucket: 'same',
             leftIsDir: left.isDir,
             rightIsDir: right.isDir,

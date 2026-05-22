@@ -45,6 +45,13 @@ const rightMeta = (e: CompareResultEntry): SideMeta => ({
 });
 
 /**
+ * The path the runner resolves against both roots. GAP-5: recursive
+ * connected-remote compares carry a `/`-separated `relativePath`; the flat
+ * classifier sets it equal to `name`, so the fallback keeps both cases sound.
+ */
+const relPath = (e: CompareResultEntry): string => e.relativePath ?? e.name;
+
+/**
  * Translate a resolved `PresetPlan` into the runner's input.
  *
  * @param plan         The plan derived from the connected-remote compare.
@@ -71,13 +78,14 @@ export const buildRemoteSyncInput = (
     ): void => {
         const meta = sourceSide === 'left' ? leftMeta(entry) : rightMeta(entry);
         if (meta.isDir) {
-            // Flat compare: a directory entry is created empty on the
-            // destination; its contents are out of scope for this pass.
-            (destIsRemote ? dirs.remote : dirs.local).push(entry.name);
+            // A directory entry is created (recursively, via the runner's
+            // parent-dir pre-pass) on the destination; nested files surface
+            // as their own rows in a recursive compare.
+            (destIsRemote ? dirs.remote : dirs.local).push(relPath(entry));
             return;
         }
         files.push({
-            relativePath: entry.name,
+            relativePath: relPath(entry),
             action: destIsRemote ? 'upload' : 'download',
             size: meta.size,
             mtime: meta.mtime,
@@ -93,7 +101,7 @@ export const buildRemoteSyncInput = (
     ): void => {
         const meta = targetSide === 'left' ? leftMeta(entry) : rightMeta(entry);
         files.push({
-            relativePath: entry.name,
+            relativePath: relPath(entry),
             action: targetIsRemote ? 'delete-remote' : 'delete-local',
             size: meta.size,
             mtime: null,
@@ -137,4 +145,50 @@ export const buildRemoteSyncInput = (
     }
 
     return { files, dirs, deferredRenames };
+};
+
+/**
+ * GAP-5 — translate a Compare-tab mirror selection into the runner's input.
+ *
+ * The Compare tab's "Mirror left to right" / "Mirror right to left" buttons
+ * hand over a flat list of `only-*` + `newer-*` entries. This builds a
+ * copy-only `RemoteSyncInput` (no deletes, no renames) so a connected-remote
+ * mirror runs through the same recursive-capable `runRemoteSync` engine as the
+ * Plan tab, instead of the flat top-level transfer planner.
+ *
+ * @param entries     The `only-<side>` + `newer-<side>` rows to copy.
+ * @param sourceSide  Which compare side is the copy source.
+ * @param leftIsLocal true for the `local-remote` pair kind.
+ */
+export const buildMirrorSyncInput = (
+    entries: CompareResultEntry[],
+    sourceSide: 'left' | 'right',
+    leftIsLocal: boolean,
+): RemoteSyncInput => {
+    const files: SyncRunFile[] = [];
+    const dirs: SyncRunDirs = { remote: [], local: [] };
+
+    // Right is remote iff left is local. The destination is the side
+    // opposite the source.
+    const destIsRemote = sourceSide === 'left' ? leftIsLocal : !leftIsLocal;
+
+    for (const entry of entries) {
+        const meta = sourceSide === 'left' ? leftMeta(entry) : rightMeta(entry);
+        const path = relPath(entry);
+        if (meta.isDir) {
+            (destIsRemote ? dirs.remote : dirs.local).push(path);
+            continue;
+        }
+        files.push({
+            relativePath: path,
+            action: destIsRemote ? 'upload' : 'download',
+            size: meta.size,
+            mtime: meta.mtime,
+            // `newer-*` rows overwrite an existing destination copy.
+            overwritesExisting: entry.bucket === 'newer-left' || entry.bucket === 'newer-right',
+            isDir: false,
+        });
+    }
+
+    return { files, dirs, deferredRenames: 0 };
 };
