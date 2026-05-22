@@ -216,6 +216,37 @@ describe('buildRemoteSyncInput — GAP-5 recursive paths', () => {
     });
 });
 
+describe('buildRemoteSyncInput — GAP-10 delete ordering', () => {
+    it('emits deletes deepest-first, after the copies', () => {
+        const plan = planOf([
+            { entry: entry('foo', { relativePath: 'foo', rightIsDir: true }), action: 'delete-right' },
+            { entry: entry('a.txt', { relativePath: 'foo/a.txt' }), action: 'delete-right' },
+            { entry: entry('b.txt', { relativePath: 'foo/bar/b.txt' }), action: 'delete-right' },
+            { entry: entry('new.txt', { relativePath: 'new.txt', leftSize: 4 }), action: 'copy-to-right' },
+        ]);
+        const { files } = buildRemoteSyncInput(plan, true);
+        const order = files.map((f) => `${f.action}:${f.relativePath}`);
+        // The copy runs before any delete.
+        expect(order[0]).toBe('upload:new.txt');
+        // Deletes follow, deepest path first so a recursive parent delete
+        // never strands its now-missing children as NotFound errors.
+        expect(order.slice(1)).toEqual([
+            'delete-remote:foo/bar/b.txt',
+            'delete-remote:foo/a.txt',
+            'delete-remote:foo',
+        ]);
+    });
+
+    it('keeps bucket order for deletes at the same depth (stable sort)', () => {
+        const plan = planOf([
+            { entry: entry('z.txt', { relativePath: 'z.txt' }), action: 'delete-right' },
+            { entry: entry('a.txt', { relativePath: 'a.txt' }), action: 'delete-left' },
+        ]);
+        const { files } = buildRemoteSyncInput(plan, true);
+        expect(files.map((f) => f.relativePath)).toEqual(['z.txt', 'a.txt']);
+    });
+});
+
 describe('buildMirrorSyncInput', () => {
     it('mirrors left-side entries to remote uploads for a local-left pair', () => {
         const entries: CompareResultEntry[] = [
