@@ -158,7 +158,6 @@ import { UniversalPreview, PreviewFileData, getPreviewCategory, isPreviewable as
 // GAP-1: legacy connected-remote sync engine, restored as a safety net
 // while the unified AeroSync modal absorbs delete/verify/journal/retry
 // (GAP-2..GAP-4). Reachable only via the Command Palette for now.
-import { SyncPanel } from './components/SyncPanel';
 import { UnifiedTransferPlanDialog } from './components/UnifiedTransferPlanDialog';
 import { AeroSyncDialog } from './components/AeroSync/AeroSyncDialog';
 import { DeltaEligibilityDialog } from './components/AeroSync/DeltaEligibilityDialog';
@@ -763,7 +762,6 @@ const App: React.FC = () => {
   }, [debugMode]);
 
   const [showDependenciesPanel, setShowDependenciesPanel] = useState(false);
-  const [showSyncPanel, setShowSyncPanel] = useState(false);
   // GAP-3: rich report from the connected-remote runRemoteSync run.
   const [remoteSyncResult, setRemoteSyncResult] = useState<SyncRunReport | null>(null);
   const remoteSyncRunningRef = useRef(false);
@@ -2914,7 +2912,6 @@ interface UpdateVerificationInfo {
     { id: 'tools-editor', label: t('devtools.codeEditor'), category: 'tools' as CommandCategory, icon: <Code size={14} />, action: () => window.dispatchEvent(new CustomEvent('devtools-panel-ensure', { detail: 'editor' })), keywords: ['code', 'monaco', 'edit'] },
     { id: 'tools-terminal', label: t('devtools.sshTerminal'), category: 'tools' as CommandCategory, icon: <Terminal size={14} />, action: () => window.dispatchEvent(new CustomEvent('devtools-panel-ensure', { detail: 'terminal' })), keywords: ['ssh', 'shell', 'console'] },
     // Sync
-    { id: 'sync-panel', label: t('syncPanel.title'), category: 'sync' as CommandCategory, icon: <FolderSync size={14} />, action: () => setShowSyncPanel(true), keywords: ['synchronize', 'aerosync', 'legacy'] },
     { id: 'aerosync', label: t('aerosync.title') || 'AeroSync', category: 'sync' as CommandCategory, icon: <FolderSync size={14} />, action: () => openAeroSync('sync'), keywords: ['synchronize', 'aerosync', 'aerofile', 'compare', 'plan', 'delta', 'aerorsync'] },
     // AeroVault overlay
     {
@@ -11749,18 +11746,6 @@ interface UpdateVerificationInfo {
           isOpen={universalPreviewOpen}
           file={universalPreviewFile}
           onClose={closeUniversalPreview}
-        />
-        <SyncPanel
-          isOpen={showSyncPanel}
-          onClose={() => setShowSyncPanel(false)}
-          localPath={currentLocalPath}
-          remotePath={currentRemotePath}
-          isConnected={isConnected}
-          protocol={connectionParams.protocol || sessions.find(s => s.id === activeSessionId)?.connectionParams?.protocol}
-          onSyncComplete={async () => {
-            await loadRemoteFiles();
-            await loadLocalFiles(currentLocalPath);
-          }}
         />
         <CloudPanel
           isOpen={showCloudPanel}
