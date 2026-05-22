@@ -54,11 +54,18 @@ export interface SyncRunFile {
     /** Source-side mtime ISO string — used for download verify + journal. */
     mtime: string | null;
     /**
-     * True iff the action overwrites or removes an existing local file, so
-     * the runner archives it first when a versioning strategy is active.
-     * Ignored for `upload` / `delete-remote`; `delete-local` always archives.
+     * True iff the action overwrites an existing local file, so the runner
+     * archives it first when a versioning strategy is active. Ignored for
+     * `upload` / `delete-remote`; a non-directory `delete-local` always
+     * archives regardless of this flag.
      */
     overwritesExisting?: boolean;
+    /**
+     * True for directory entries. Only meaningful for `delete-remote` /
+     * `delete-local`: directories skip the archive step and pass the
+     * `isDir` hint to the FTP delete command.
+     */
+    isDir?: boolean;
 }
 
 /** Standalone directories to create (counted in `dirsCreated`). */
@@ -603,10 +610,13 @@ export const runRemoteSync = async (
                     const cmd = config.isProvider ? 'provider_delete_file' : 'delete_remote_file';
                     const args = config.isProvider
                         ? { path: remoteFilePath }
-                        : { path: remoteFilePath, isDir: false };
+                        : { path: remoteFilePath, isDir: item.isDir === true };
                     await invoke(cmd, args);
                 } else {
-                    await archiveLocalBeforeMutation(localFilePath, item.relativePath);
+                    // Archive only real files; directories are not versioned.
+                    if (!item.isDir) {
+                        await archiveLocalBeforeMutation(localFilePath, item.relativePath);
+                    }
                     await invoke('delete_local_file', { path: localFilePath });
                 }
                 deleted++;

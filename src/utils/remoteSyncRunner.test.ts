@@ -170,6 +170,30 @@ describe('remoteSyncRunner — orphan deletes', () => {
         expect(deleteIdx).toBeGreaterThan(archiveIdx);
     });
 
+    it('passes the isDir hint and skips archiving for directory deletes', async () => {
+        const { invoke, calls } = makeInvoke();
+        await runRemoteSync(
+            [file('stale-dir', 'delete-remote', { isDir: true })],
+            noDirs,
+            baseConfig(),
+            {},
+            noWaitDeps(invoke),
+        );
+        const del = calls.find((c) => c.cmd === 'delete_remote_file');
+        expect(del?.args).toEqual({ path: '/srv/data/stale-dir', isDir: true });
+
+        const { invoke: invoke2, calls: calls2 } = makeInvoke();
+        await runRemoteSync(
+            [file('old-dir', 'delete-local', { isDir: true })],
+            noDirs,
+            baseConfig({ versioningStrategy: 'trash' }),
+            {},
+            noWaitDeps(invoke2),
+        );
+        expect(calls2.some((c) => c.cmd === 'archive_before_sync_delete')).toBe(false);
+        expect(calls2.some((c) => c.cmd === 'delete_local_file')).toBe(true);
+    });
+
     it('skips archiving when no versioning strategy is configured', async () => {
         const { invoke, calls } = makeInvoke();
         await runRemoteSync(
