@@ -57,10 +57,28 @@ fn write_stub(path: &Path, name: &str, exit_code: i32) {
 }
 
 fn run_dispatcher(dispatcher: &Path, arg0: &str, args: &[&str]) -> Output {
-    let mut cmd = Command::new(dispatcher);
-    cmd.arg0(arg0);
-    cmd.args(args);
-    cmd.output().unwrap()
+    // ETXTBSY ("Text file busy", errno 26): the kernel refuses to exec a file
+    // that is open for writing anywhere on the system. The parallel cargo test
+    // runner can transiently hold a writable fd on a just-copied dispatcher
+    // binary (a sibling test's process spawn inherits the fd for the brief
+    // window between fork and the close-on-exec), so a fresh exec can fail for
+    // reasons that are never a real defect. A bounded retry clears it well
+    // within a second.
+    const ETXTBSY: i32 = 26;
+    const MAX_ATTEMPTS: u32 = 50;
+    for attempt in 1..=MAX_ATTEMPTS {
+        let mut cmd = Command::new(dispatcher);
+        cmd.arg0(arg0);
+        cmd.args(args);
+        match cmd.output() {
+            Ok(output) => return output,
+            Err(e) if e.raw_os_error() == Some(ETXTBSY) && attempt < MAX_ATTEMPTS => {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            Err(e) => panic!("dispatcher exec failed after {attempt} attempt(s): {e}"),
+        }
+    }
+    unreachable!("retry loop returns an Output or panics")
 }
 
 #[test]

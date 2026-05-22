@@ -136,6 +136,9 @@ mod sync_scheduler;
 mod sync_versioning;
 mod totp;
 pub mod transfer_dag;
+pub mod transfer_dag_batch;
+pub mod transfer_dag_single_file;
+pub mod transfer_dag_sync;
 pub mod transfer_domain;
 pub mod transfer_event_sink;
 pub mod transfer_orchestrator;
@@ -395,10 +398,9 @@ fn drain_expired_overlay_sessions(
 /// a match at login.
 #[tauri::command]
 fn preview_provider_totp(secret: String) -> Result<serde_json::Value, String> {
-    let (code, seconds_remaining) = providers::totp_helper::generate_totp_code_with_ttl(
-        &secrecy::SecretString::from(secret),
-    )
-    .map_err(|e| e.to_string())?;
+    let (code, seconds_remaining) =
+        providers::totp_helper::generate_totp_code_with_ttl(&secrecy::SecretString::from(secret))
+            .map_err(|e| e.to_string())?;
     Ok(serde_json::json!({
         "code": code,
         "seconds_remaining": seconds_remaining,
@@ -14027,10 +14029,8 @@ pub fn run() {
                     let meta = std::fs::symlink_metadata(&canonical);
                     if meta.map(|m| m.is_file()).unwrap_or(false) {
                         if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.emit(
-                                "servers-open-file",
-                                canonical.to_string_lossy().to_string(),
-                            );
+                            let _ = window
+                                .emit("servers-open-file", canonical.to_string_lossy().to_string());
                         }
                     }
                 }
