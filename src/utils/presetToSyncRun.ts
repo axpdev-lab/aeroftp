@@ -136,6 +136,9 @@ export const buildRemoteSyncInput = (
         });
     };
 
+    const isDelete = (f: SyncRunFile): boolean =>
+        f.action === 'delete-remote' || f.action === 'delete-local';
+
     for (const bucket of plan.bucketPlans) {
         bucket.entries.forEach((entry, idx) => {
             const action: BucketAction = bucket.entryActions[idx] ?? bucket.action;
@@ -173,7 +176,21 @@ export const buildRemoteSyncInput = (
         });
     }
 
-    return { files, dirs };
+    // GAP-10 — deletes must run deepest-first. A recursive compare flags a
+    // pruned directory and every descendant inside it; if the directory is
+    // deleted before its children the child deletes strand as `NotFound`
+    // (the local `delete_local_file` and a recursive provider delete both
+    // remove the subtree). Sorting the delete entries by descending path
+    // depth — and moving them after the copies — guarantees a directory is
+    // only ever removed once it is already empty. The sort is stable, so
+    // entries at the same depth keep their bucket order.
+    const depthOf = (p: string): number => p.split('/').filter(Boolean).length;
+    const copies = files.filter((f) => !isDelete(f));
+    const deletes = files
+        .filter(isDelete)
+        .sort((a, b) => depthOf(b.relativePath) - depthOf(a.relativePath));
+
+    return { files: [...copies, ...deletes], dirs };
 };
 
 /**
