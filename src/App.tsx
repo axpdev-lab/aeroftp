@@ -54,8 +54,6 @@ interface ConnectedRemoteRunOptions {
   versioningStrategy?: string | null;
   /** Resume an interrupted journal instead of starting fresh. */
   resumeJournal?: SyncJournal;
-  /** Keep-both renames the caller could not express as copies. */
-  deferredRenames?: number;
   /** Saved-server id, enables the CO-5 SFTP eligibility probe. */
   profileId?: string;
 }
@@ -151,6 +149,7 @@ import { AeroSyncDialog } from './components/AeroSync/AeroSyncDialog';
 import { DeltaEligibilityDialog } from './components/AeroSync/DeltaEligibilityDialog';
 import type { AeroSyncTab, AeroSyncContext, AeroSyncRuntime } from './components/AeroSync/types';
 import { RemoteSyncResultDialog } from './components/AeroSync/RemoteSyncResultDialog';
+import { CanaryResultDialog, type CanaryResult } from './components/Sync/CanaryResultDialog';
 import { VaultPanel } from './components/VaultPanel';
 import { CryptomatorBrowser } from './components/CryptomatorBrowser';
 import { RcloneCryptUnlock } from './components/RcloneCryptUnlock';
@@ -753,6 +752,11 @@ const App: React.FC = () => {
   // GAP-3: rich report from the connected-remote runRemoteSync run.
   const [remoteSyncResult, setRemoteSyncResult] = useState<SyncRunReport | null>(null);
   const remoteSyncRunningRef = useRef(false);
+  // GAP-7: canary trial result + the deferred full-run approval callback.
+  const [canaryResult, setCanaryResult] = useState<{
+    result: CanaryResult;
+    onApprove: () => void;
+  } | null>(null);
   // GAP-5: monotonic token guarding the async recursive compare. Each
   // openAeroSync() bumps it; a stale scan (dialog closed or reopened
   // meanwhile) sees a mismatched token and discards its result.
@@ -6895,9 +6899,7 @@ interface UpdateVerificationInfo {
     if (nothingToRun) {
       notify.info(
         t('syncPresets.nothingToDo') || 'AeroSync',
-        (opts.deferredRenames ?? 0) > 0
-          ? `${opts.deferredRenames} keep-both rename(s) deferred`
-          : (t('syncPresets.allSkipped') || 'No actionable entries for this preset.'),
+        t('syncPresets.allSkipped') || 'No actionable entries for this preset.',
       );
       return;
     }
@@ -6958,12 +6960,6 @@ interface UpdateVerificationInfo {
             { invoke, deltaStats, resumeJournal: opts.resumeJournal, writeIndex: true },
           );
           setRemoteSyncResult(report);
-          if ((opts.deferredRenames ?? 0) > 0) {
-            notify.info(
-              t('syncPresets.title') || 'AeroSync',
-              `${opts.deferredRenames} keep-both rename(s) deferred`,
-            );
-          }
           if (report.uploaded > 0 || report.downloaded > 0 || report.deleted > 0) {
             await loadRemoteFiles();
             await loadLocalFiles(currentLocalPath);
@@ -7266,8 +7262,7 @@ interface UpdateVerificationInfo {
     // renames stay deferred and are surfaced as an info toast. ────────────
     if (context.pairKind === 'local-remote' || context.pairKind === 'remote-local') {
       const leftIsLocal = context.pairKind === 'local-remote';
-      const { files: runFiles, dirs: runDirs, deferredRenames } =
-        buildRemoteSyncInput(plan, leftIsLocal);
+      const { files: runFiles, dirs: runDirs } = buildRemoteSyncInput(plan, leftIsLocal);
 
       // The Plan tab's verify selector uses `full_checksum`; the backend
       // `verify_local_transfer` policy enum spells it `full`.
@@ -7283,13 +7278,36 @@ interface UpdateVerificationInfo {
         direction = destIsRemote ? 'local_to_remote' : 'remote_to_local';
       }
 
-      runConnectedRemoteSync(runFiles, runDirs, {
-        direction,
-        deltaSyncEnabled: runtime.speedMode !== 'normal',
-        verifyPolicy,
-        deferredRenames,
-        profileId: context.activeProfileId,
-      });
+      const runFull = (): void => {
+        runConnectedRemoteSync(runFiles, runDirs, {
+          direction,
+          deltaSyncEnabled: runtime.speedMode !== 'normal',
+          verifyPolicy,
+          profileId: context.activeProfileId,
+        });
+      };
+
+      // GAP-7: Canary trial. Run a sample-based dry-run and surface the
+      // projection; the dialog's Approve button kicks off the full preset.
+      if (runtime.canary) {
+        const { percent, selection } = runtime.canary;
+        void (async () => {
+          try {
+            const result = await invoke<CanaryResult>('sync_canary_run', {
+              localPath: currentLocalPath,
+              remotePath: currentRemotePath,
+              percent,
+              selection,
+            });
+            setCanaryResult({ result, onApprove: runFull });
+          } catch (err) {
+            notify.error(t('aerosync.title') || 'AeroSync', String(err));
+          }
+        })();
+        return;
+      }
+
+      runFull();
       return;
     }
 
@@ -7302,6 +7320,8 @@ interface UpdateVerificationInfo {
     notify,
     t,
     debugMode,
+    currentLocalPath,
+    currentRemotePath,
     runConnectedRemoteSync,
   ]);
 
@@ -11310,6 +11330,18 @@ interface UpdateVerificationInfo {
           report={remoteSyncResult}
           onClose={() => setRemoteSyncResult(null)}
         />
+
+        {canaryResult && (
+          <CanaryResultDialog
+            result={canaryResult.result}
+            onClose={() => setCanaryResult(null)}
+            onApprove={() => {
+              const approve = canaryResult.onApprove;
+              setCanaryResult(null);
+              approve();
+            }}
+          />
+        )}
 
         {inputDialog && <InputDialog title={inputDialog.title} defaultValue={inputDialog.defaultValue} onConfirm={inputDialog.onConfirm} onCancel={() => setInputDialog(null)} isPassword={inputDialog.isPassword} placeholder={inputDialog.placeholder} />}
         {zohoShareLinksDialog && (

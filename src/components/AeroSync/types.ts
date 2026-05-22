@@ -20,9 +20,17 @@ export type AeroSyncVerifyPolicy =
     | 'size_and_mtime'
     | 'full_checksum';
 
+// GAP-7: keep-both / canary sampling strategy passed to `sync_canary_run`.
+export type AeroSyncCanarySelection = 'random' | 'newest' | 'largest';
+
 export interface AeroSyncRuntime {
     speedMode: AeroSyncSpeedMode;
     verifyPolicy: AeroSyncVerifyPolicy;
+    /**
+     * GAP-7: when set, Execute runs a sample-based canary trial instead of
+     * the full sync; the result dialog's Approve button then runs it for real.
+     */
+    canary?: { percent: number; selection: AeroSyncCanarySelection };
 }
 
 export interface AeroSyncContext {

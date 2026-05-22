@@ -115,28 +115,58 @@ describe('buildRemoteSyncInput — directories and skips', () => {
         expect(dirs.local).toEqual([]);
     });
 
-    it('counts keep-both renames as deferred and never queues them', () => {
-        const plan = planOf([
-            { entry: entry('k1.txt'), action: 'rename-to-right' },
-            { entry: entry('k2.txt'), action: 'rename-to-left' },
-            { entry: entry('real.txt'), action: 'copy-to-right' },
-        ]);
-        const { files, deferredRenames } = buildRemoteSyncInput(plan, true);
-        expect(deferredRenames).toBe(2);
-        expect(files).toHaveLength(1);
-        expect(files[0].relativePath).toBe('real.txt');
-    });
-
     it('drops skip and conflict-skip entries entirely', () => {
         const plan = planOf([
             { entry: entry('s.txt'), action: 'skip' },
             { entry: entry('c.txt'), action: 'conflict-skip' },
         ]);
-        const { files, dirs, deferredRenames } = buildRemoteSyncInput(plan, true);
+        const { files, dirs } = buildRemoteSyncInput(plan, true);
         expect(files).toHaveLength(0);
         expect(dirs.remote).toEqual([]);
         expect(dirs.local).toEqual([]);
-        expect(deferredRenames).toBe(0);
+    });
+});
+
+describe('buildRemoteSyncInput — GAP-7 keep-both rename execution', () => {
+    it('resolves rename-to-right into a suffixed upload reading the source', () => {
+        const plan = planOf([
+            { entry: entry('report.txt', { leftSize: 12 }), action: 'rename-to-right' },
+        ]);
+        const { files } = buildRemoteSyncInput(plan, true, '20260522T143012');
+        expect(files).toHaveLength(1);
+        expect(files[0]).toMatchObject({
+            relativePath: 'report.txt.20260522T143012.bak',
+            sourcePath: 'report.txt',
+            action: 'upload',
+            overwritesExisting: false,
+            size: 12,
+        });
+    });
+
+    it('resolves rename-to-left into a suffixed download', () => {
+        const plan = planOf([
+            { entry: entry('notes.md', { rightSize: 5 }), action: 'rename-to-left' },
+        ]);
+        const { files } = buildRemoteSyncInput(plan, true, '20260522T143012');
+        expect(files[0]).toMatchObject({
+            relativePath: 'notes.md.20260522T143012.bak',
+            sourcePath: 'notes.md',
+            action: 'download',
+        });
+    });
+
+    it('preserves a nested path in the rename source and destination', () => {
+        const plan = planOf([
+            {
+                entry: entry('c.txt', { relativePath: 'a/b/c.txt', leftSize: 1 }),
+                action: 'rename-to-right',
+            },
+        ]);
+        const { files } = buildRemoteSyncInput(plan, true, 'TS');
+        expect(files[0]).toMatchObject({
+            sourcePath: 'a/b/c.txt',
+            relativePath: 'a/b/c.txt.TS.bak',
+        });
     });
 });
 
@@ -210,10 +240,10 @@ describe('buildMirrorSyncInput', () => {
         const entries: CompareResultEntry[] = [
             entry('dir', { bucket: 'only-left', relativePath: 'nested/dir', leftIsDir: true }),
         ];
-        const { files, dirs, deferredRenames } = buildMirrorSyncInput(entries, 'left', true);
+        const { files, dirs } = buildMirrorSyncInput(entries, 'left', true);
         expect(files).toHaveLength(0);
         expect(dirs.remote).toEqual(['nested/dir']);
-        expect(deferredRenames).toBe(0);
+        expect(files.every((f) => f.action !== 'delete-remote' && f.action !== 'delete-local')).toBe(true);
     });
 });
 

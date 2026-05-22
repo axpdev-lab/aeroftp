@@ -510,3 +510,42 @@ describe('remoteSyncRunner — GAP-6 sync index', () => {
         expect(files['emptydir']).toMatchObject({ is_dir: true });
     });
 });
+
+describe('remoteSyncRunner — GAP-7 keep-both rename', () => {
+    it('uploads from sourcePath and writes the suffixed relativePath', async () => {
+        const { invoke, calls } = makeInvoke();
+        await runRemoteSync(
+            [
+                file('report.txt.20260522T143012.bak', 'upload', {
+                    sourcePath: 'report.txt',
+                }),
+            ],
+            noDirs,
+            baseConfig(),
+            {},
+            noWaitDeps(invoke),
+        );
+        const upload = calls.find((c) => c.cmd === 'upload_file');
+        const params = upload?.args?.params as { local_path: string; remote_path: string };
+        // Source read from the original path, destination is the suffixed name.
+        expect(params.local_path).toBe('/home/u/work/report.txt');
+        expect(params.remote_path).toBe('/srv/data/report.txt.20260522T143012.bak');
+    });
+
+    it('downloads a rename from the remote source to the suffixed local path', async () => {
+        const { invoke, calls } = makeInvoke();
+        await runRemoteSync(
+            [
+                file('notes.md.TS.bak', 'download', { sourcePath: 'notes.md' }),
+            ],
+            noDirs,
+            baseConfig(),
+            {},
+            noWaitDeps(invoke),
+        );
+        const download = calls.find((c) => c.cmd === 'download_file');
+        const params = download?.args?.params as { local_path: string; remote_path: string };
+        expect(params.remote_path).toBe('/srv/data/notes.md');
+        expect(params.local_path).toBe('/home/u/work/notes.md.TS.bak');
+    });
+});
