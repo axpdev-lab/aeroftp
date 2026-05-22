@@ -503,6 +503,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const editingProfileIdRef = useRef<string | null>(null);
     const [savedServersUpdate, setSavedServersUpdate] = useState(0);
     const [showPassword, setShowPassword] = useState(false);
+    // Reveal toggle for the saved 2FA Secret field, mirroring the password eye.
+    const [showTotpSecret, setShowTotpSecret] = useState(false);
 
     // Provider selection state (for S3/WebDAV)
     const [showAdvanced, setShowAdvanced] = useState(false);
@@ -3394,18 +3396,23 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
                                         <div>
                                             <label className="block text-sm font-medium mb-1.5">{t('connection.totpSecret')}</label>
-                                            <input
-                                                type="password"
-                                                value={connectionParams.options?.totp_secret || ''}
-                                                onChange={(e) => onConnectionParamsChange({
-                                                    ...connectionParams,
-                                                    options: { ...connectionParams.options, totp_secret: e.target.value || undefined }
-                                                })}
-                                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-mono focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                                                placeholder={t('connection.totpSecretPlaceholder')}
-                                                autoComplete="off"
-                                                spellCheck={false}
-                                            />
+                                            <div className="relative">
+                                                <input
+                                                    type={showTotpSecret ? 'text' : 'password'}
+                                                    value={connectionParams.options?.totp_secret || ''}
+                                                    onChange={(e) => onConnectionParamsChange({
+                                                        ...connectionParams,
+                                                        options: { ...connectionParams.options, totp_secret: e.target.value || undefined }
+                                                    })}
+                                                    className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-mono focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                                    placeholder={t('connection.totpSecretPlaceholder')}
+                                                    autoComplete="off"
+                                                    spellCheck={false}
+                                                />
+                                                <button type="button" tabIndex={-1} onClick={() => setShowTotpSecret(!showTotpSecret)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                    {showTotpSecret ? <EyeOff size={18} /> : <Eye size={18} />}
+                                                </button>
+                                            </div>
                                             <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{t('connection.totpSecretHelp')}</p>
                                             <TotpLivePreview secret={connectionParams.options?.totp_secret || ''} t={t} />
                                         </div>
@@ -3775,18 +3782,23 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
                                         <div>
                                             <label className="block text-sm font-medium mb-1.5">{t('connection.totpSecret')}</label>
-                                            <input
-                                                type="password"
-                                                value={connectionParams.options?.totp_secret || ''}
-                                                onChange={(e) => onConnectionParamsChange({
-                                                    ...connectionParams,
-                                                    options: { ...connectionParams.options, totp_secret: e.target.value || undefined }
-                                                })}
-                                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-mono focus:ring-2 focus:ring-red-500 focus:border-red-500"
-                                                placeholder={t('connection.totpSecretPlaceholder')}
-                                                autoComplete="off"
-                                                spellCheck={false}
-                                            />
+                                            <div className="relative">
+                                                <input
+                                                    type={showTotpSecret ? 'text' : 'password'}
+                                                    value={connectionParams.options?.totp_secret || ''}
+                                                    onChange={(e) => onConnectionParamsChange({
+                                                        ...connectionParams,
+                                                        options: { ...connectionParams.options, totp_secret: e.target.value || undefined }
+                                                    })}
+                                                    className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-mono focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                                                    placeholder={t('connection.totpSecretPlaceholder')}
+                                                    autoComplete="off"
+                                                    spellCheck={false}
+                                                />
+                                                <button type="button" tabIndex={-1} onClick={() => setShowTotpSecret(!showTotpSecret)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                    {showTotpSecret ? <EyeOff size={18} /> : <Eye size={18} />}
+                                                </button>
+                                            </div>
                                             <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{t('connection.totpSecretHelp')}</p>
                                             <TotpLivePreview secret={connectionParams.options?.totp_secret || ''} t={t} />
                                         </div>
