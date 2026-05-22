@@ -3,7 +3,7 @@
 
 import type { CompareResult, CompareResultEntry } from '../../utils/compareEndpoints';
 import type { PresetPlan } from '../../utils/syncPresets';
-import type { SyncJournal } from '../../types';
+import type { RetryPolicy, SyncJournal } from '../../types';
 
 export type AeroSyncTab = 'compare' | 'plan' | 'sync';
 
@@ -31,6 +31,15 @@ export interface AeroSyncRuntime {
      * the full sync; the result dialog's Approve button then runs it for real.
      */
     canary?: { percent: number; selection: AeroSyncCanarySelection };
+    /**
+     * GAP-8: Plan-tab parity controls threaded into the connected-remote
+     * runner. `retryPolicy` is derived from the speed mode; `transferBudget`
+     * caps the bytes moved (0 = unlimited); `versioningStrategy` enables
+     * archive-before-mutation when the versioned-backup toggle is on.
+     */
+    retryPolicy?: RetryPolicy;
+    transferBudget?: number;
+    versioningStrategy?: string | null;
 }
 
 export interface AeroSyncContext {

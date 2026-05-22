@@ -7283,6 +7283,9 @@ interface UpdateVerificationInfo {
           direction,
           deltaSyncEnabled: runtime.speedMode !== 'normal',
           verifyPolicy,
+          retryPolicy: runtime.retryPolicy,
+          transferBudget: runtime.transferBudget,
+          versioningStrategy: runtime.versioningStrategy,
           profileId: context.activeProfileId,
         });
       };

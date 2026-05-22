@@ -28,6 +28,7 @@ import {
     type VersionedBackupConfig,
 } from '../../utils/syncPresets';
 import { formatBytes } from '../../utils/formatters';
+import { retryPolicyForSpeed } from '../../utils/remoteSyncRunner';
 import { useTranslation } from '../../i18n';
 import type {
     AeroSyncCanarySelection,
@@ -141,6 +142,9 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
     const [canaryMode, setCanaryMode] = React.useState(false);
     const [canaryPercent, setCanaryPercent] = React.useState(10);
     const [canarySelection, setCanarySelection] = React.useState<AeroSyncCanarySelection>('random');
+    // GAP-8: transfer budget in MB (0 = unlimited); retry policy is derived
+    // from the speed mode, versioned-backup reuses the existing toggle.
+    const [transferBudgetMb, setTransferBudgetMb] = React.useState(0);
     const isConnectedRemote = pairKind === 'local-remote' || pairKind === 'remote-local';
 
     React.useEffect(() => {
@@ -331,6 +335,27 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                     </div>
                 </div>
 
+                {/* GAP-8: transfer budget — connected-remote only. Retry
+                    policy derives from the speed mode; versioned backup
+                    reuses the toggle above. */}
+                {isConnectedRemote && (
+                    <div className="mt-3">
+                        <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                            {t('syncPanel.transferBudget') || 'Transfer budget'} (MB)
+                        </label>
+                        <input
+                            type="number"
+                            min={0}
+                            value={transferBudgetMb}
+                            onChange={(event) => setTransferBudgetMb(
+                                Math.max(0, Math.floor(Number(event.target.value) || 0)),
+                            )}
+                            placeholder="0"
+                            className="w-32 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-800 focus:border-blue-400 focus:outline-none dark:border-gray-600 dark:bg-gray-900/60 dark:text-gray-100"
+                        />
+                    </div>
+                )}
+
                 {/* GAP-7: Canary trial — connected-remote only. */}
                 {isConnectedRemote && (
                     <div className="mt-3 rounded-md border border-gray-200 p-2.5 dark:border-gray-700">
@@ -496,6 +521,11 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                             canary: canaryMode
                                 ? { percent: canaryPercent, selection: canarySelection }
                                 : undefined,
+                            retryPolicy: retryPolicyForSpeed(speedMode),
+                            transferBudget: transferBudgetMb > 0
+                                ? transferBudgetMb * 1024 * 1024
+                                : 0,
+                            versioningStrategy: versionedBackup.enabled ? 'trash_can' : null,
                         })}
                         disabled={!canFireExecute}
                         className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-white transition-colors disabled:opacity-40 ${

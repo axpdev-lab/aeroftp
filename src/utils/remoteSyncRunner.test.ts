@@ -6,6 +6,7 @@ import {
     runRemoteSync,
     groupErrorsByKind,
     filesFromJournal,
+    retryPolicyForSpeed,
     type SyncRunFile,
     type SyncRunDirs,
     type RemoteSyncConfig,
@@ -547,5 +548,23 @@ describe('remoteSyncRunner — GAP-7 keep-both rename', () => {
         const params = download?.args?.params as { local_path: string; remote_path: string };
         expect(params.remote_path).toBe('/srv/data/notes.md');
         expect(params.local_path).toBe('/home/u/work/notes.md.TS.bak');
+    });
+});
+
+describe('remoteSyncRunner — GAP-8 retryPolicyForSpeed', () => {
+    it('keeps the conservative 3-retry default for normal and fast', () => {
+        expect(retryPolicyForSpeed('normal').max_retries).toBe(3);
+        expect(retryPolicyForSpeed('fast').max_retries).toBe(3);
+    });
+
+    it('pushes harder with shorter backoff for turbo and extreme', () => {
+        expect(retryPolicyForSpeed('turbo').max_retries).toBe(4);
+        const extreme = retryPolicyForSpeed('extreme');
+        expect(extreme.max_retries).toBe(5);
+        expect(extreme.base_delay_ms).toBeLessThan(retryPolicyForSpeed('normal').base_delay_ms);
+    });
+
+    it('falls back to the default policy for an unknown mode', () => {
+        expect(retryPolicyForSpeed('whatever').max_retries).toBe(3);
     });
 });
