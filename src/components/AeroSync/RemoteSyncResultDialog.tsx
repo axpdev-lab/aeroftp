@@ -32,6 +32,13 @@ import { groupErrorsByKind, type SyncRunReport } from '../../utils/remoteSyncRun
 
 export interface RemoteSyncResultDialogProps {
     report: SyncRunReport | null;
+    /**
+     * GAP-10: when true the run synced two local directories. The runner still
+     * reports the counts under `uploaded` / `downloaded`, but for a dual-local
+     * pair "upload" is a copy onto the right panel and "download" a copy onto
+     * the left, so the labels are swapped for directional copy wording.
+     */
+    localLocal?: boolean;
     onClose: () => void;
 }
 
@@ -44,6 +51,7 @@ const formatDuration = (ms: number): string => {
 
 export const RemoteSyncResultDialog: React.FC<RemoteSyncResultDialogProps> = ({
     report,
+    localLocal = false,
     onClose,
 }) => {
     const t = useTranslation();
@@ -63,9 +71,18 @@ export const RemoteSyncResultDialog: React.FC<RemoteSyncResultDialogProps> = ({
     const hasErrors = report.errors.length > 0;
     const grouped = groupErrorsByKind(report.errors);
 
+    // GAP-10: a local-local run copies between the two panels, so frame the
+    // counts as "copied to the right / left panel" instead of upload/download.
+    const uploadedLabel = localLocal
+        ? (t('aerosync.reportCopiedRight') || 'Copied to right')
+        : t('syncPanel.reportUploaded');
+    const downloadedLabel = localLocal
+        ? (t('aerosync.reportCopiedLeft') || 'Copied to left')
+        : t('syncPanel.reportDownloaded');
+
     const stats: Array<{ icon: React.ReactNode; label: string; value: number; show: boolean }> = [
-        { icon: <ArrowUp size={14} className="text-blue-500" />, label: t('syncPanel.reportUploaded'), value: report.uploaded, show: report.uploaded > 0 },
-        { icon: <ArrowDown size={14} className="text-amber-500" />, label: t('syncPanel.reportDownloaded'), value: report.downloaded, show: report.downloaded > 0 },
+        { icon: <ArrowUp size={14} className="text-blue-500" />, label: uploadedLabel, value: report.uploaded, show: report.uploaded > 0 },
+        { icon: <ArrowDown size={14} className="text-amber-500" />, label: downloadedLabel, value: report.downloaded, show: report.downloaded > 0 },
         { icon: <Trash2 size={14} className="text-rose-500" />, label: t('syncPanel.reportDeleted'), value: report.deleted, show: report.deleted > 0 },
         { icon: <Folder size={14} className="text-emerald-500" />, label: t('syncPanel.reportDirsCreated'), value: report.dirsCreated, show: report.dirsCreated > 0 },
         { icon: <SkipForward size={14} className="text-gray-400" />, label: t('syncPanel.reportSkipped'), value: report.skipped, show: report.skipped > 0 },

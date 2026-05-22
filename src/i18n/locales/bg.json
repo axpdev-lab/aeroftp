@@ -4423,6 +4423,8 @@
             "enable": "Активиране",
             "versionedBackupHint": "Записва копието на целта в тази директория преди всяко презаписване или изтриване.",
             "actionable": "Изпълнимо",
+            "reportCopiedRight": "Копирани вдясно",
+            "reportCopiedLeft": "Копирани вляво",
             "skipped": "Пропуснати",
             "transfer": "Трансфер",
             "destructive": "Разрушително",

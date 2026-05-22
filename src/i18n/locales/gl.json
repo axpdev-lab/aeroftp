@@ -4442,6 +4442,8 @@
             "enable": "Habilitar",
             "versionedBackupHint": "Captura a copia de destino neste directorio antes de cada sobrescritura ou eliminación.",
             "actionable": "Accionable",
+            "reportCopiedRight": "Copiados á dereita",
+            "reportCopiedLeft": "Copiados á esquerda",
             "skipped": "Omitidos",
             "transfer": "Transferencia",
             "destructive": "Destrutivo",

@@ -4423,6 +4423,8 @@
             "enable": "Bật",
             "versionedBackupHint": "Lưu bản sao đích trong thư mục này trước mỗi lần ghi đè hoặc xóa.",
             "actionable": "Có thể thực hiện",
+            "reportCopiedRight": "Đã sao chép sang phải",
+            "reportCopiedLeft": "Đã sao chép sang trái",
             "skipped": "Đã bỏ qua",
             "transfer": "Chuyển",
             "destructive": "Phá hủy",

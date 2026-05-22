@@ -4423,6 +4423,8 @@
             "enable": "有効化",
             "versionedBackupHint": "上書きまたは削除のたびに、このディレクトリに宛先のコピーを保存します。",
             "actionable": "実行可能",
+            "reportCopiedRight": "右へコピー",
+            "reportCopiedLeft": "左へコピー",
             "skipped": "スキップ",
             "transfer": "転送",
             "destructive": "破壊的",

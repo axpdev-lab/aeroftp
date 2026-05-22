@@ -4423,6 +4423,8 @@
             "enable": "启用",
             "versionedBackupHint": "在每次覆盖或删除之前，将目标副本捕获到此目录中。",
             "actionable": "可执行",
+            "reportCopiedRight": "已复制到右侧",
+            "reportCopiedLeft": "已复制到左侧",
             "skipped": "已跳过",
             "transfer": "传输",
             "destructive": "破坏性",

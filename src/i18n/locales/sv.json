@@ -4423,6 +4423,8 @@
             "enable": "Aktivera",
             "versionedBackupHint": "Fånga målkopian i denna katalog före varje överskrivning eller radering.",
             "actionable": "Att utföra",
+            "reportCopiedRight": "Kopierat till höger",
+            "reportCopiedLeft": "Kopierat till vänster",
             "skipped": "Hoppade över",
             "transfer": "Överföring",
             "destructive": "Destruktivt",

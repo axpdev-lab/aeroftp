@@ -4423,6 +4423,8 @@
             "enable": "Wezesha",
             "versionedBackupHint": "Nakili nakala ya marudio katika saraka hii kabla ya kila kuandika juu au kufuta.",
             "actionable": "Inayoweza kutekelezwa",
+            "reportCopiedRight": "Imenakiliwa kulia",
+            "reportCopiedLeft": "Imenakiliwa kushoto",
             "skipped": "Yameruka",
             "transfer": "Uhamishaji",
             "destructive": "Hatari",

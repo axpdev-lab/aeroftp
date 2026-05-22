@@ -13,9 +13,6 @@ import {
     describeAction,
     describeConflictPolicy,
     describePreset,
-    namesFromBuckets,
-    namesToDelete,
-    namesToRename,
 } from './syncPresets';
 
 /**
@@ -181,34 +178,6 @@ describe('derivePresetPlan — totals & bytes', () => {
     });
 });
 
-describe('namesFromBuckets / namesToDelete selectors', () => {
-    it('left→right backup yields only-left + newer-left names from the LEFT side', () => {
-        const plan = derivePresetPlan(buildFixture(), { preset: 'backup' });
-        const names = namesFromBuckets(plan, 'left').sort();
-        expect(names).toEqual(['newer-left.txt', 'only-left.txt']);
-    });
-
-    it('bisync yields names from BOTH sides depending on the action target', () => {
-        const plan = derivePresetPlan(buildFixture(), { preset: 'bisync' });
-        const fromLeft = namesFromBuckets(plan, 'left').sort();
-        const fromRight = namesFromBuckets(plan, 'right').sort();
-        expect(fromLeft).toEqual(['newer-left.txt', 'only-left.txt']);
-        expect(fromRight).toEqual(['newer-right.txt', 'only-right.txt']);
-    });
-
-    it('mirror left→right surfaces delete-right names from the RIGHT side', () => {
-        const plan = derivePresetPlan(buildFixture(), { preset: 'mirror' });
-        expect(namesToDelete(plan, 'right')).toEqual(['only-right.txt']);
-        expect(namesToDelete(plan, 'left')).toEqual([]);
-    });
-
-    it('backup never returns delete names', () => {
-        const plan = derivePresetPlan(buildFixture(), { preset: 'backup' });
-        expect(namesToDelete(plan, 'right')).toEqual([]);
-        expect(namesToDelete(plan, 'left')).toEqual([]);
-    });
-});
-
 // ── Z.3.9 — conflict policy + versioned backup ─────────────────────────
 
 /**
@@ -252,7 +221,6 @@ describe('Z.3.9 — conflict policies', () => {
         expect(conflict?.entryActions).toEqual(['rename-to-right', 'rename-to-right']);
         expect(plan.totals.renameToRight).toBe(2);
         expect(plan.hasDestructive).toBe(false);
-        expect(namesToRename(plan, 'to-right').sort()).toEqual(['a.bin', 'b.bin']);
     });
 
     it('rename policy flips for right-to-left direction', () => {

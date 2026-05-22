@@ -4442,6 +4442,8 @@
             "enable": "Gaitu",
             "versionedBackupHint": "Helmugako kopia direktorio honetan kapturatzen du gainidatzi edo ezabatu aurretik.",
             "actionable": "Egingarria",
+            "reportCopiedRight": "Eskuinera kopiatuta",
+            "reportCopiedLeft": "Ezkerrera kopiatuta",
             "skipped": "Saltatutakoak",
             "transfer": "Transferentzia",
             "destructive": "Suntsigarria",

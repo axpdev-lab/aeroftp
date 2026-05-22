@@ -73,6 +73,26 @@ interface ConnectedRemoteRunOptions {
   compressionMode?: CompressionMode;
 }
 
+// GAP-10: runtime options for the local-local sync launcher. A dual-local
+// AeroFile pair has no protocol, no SFTP probe and no bandwidth caps, so this
+// is a trimmed subset of ConnectedRemoteRunOptions. Both the Plan tab
+// (executeSyncPresetPlan) and the Compare-tab mirror buttons dispatch through
+// `runLocalLocalSync` with these knobs.
+interface LocalLocalRunOptions {
+  direction: SyncDirection;
+  verifyPolicy: VerifyPolicy;
+  /** Defaults to 3 retries / 500 ms base / 2x backoff when omitted. */
+  retryPolicy?: RetryPolicy;
+  /** Stop transferring once this many bytes have moved. 0 = unlimited. */
+  transferBudget?: number;
+  /** Archive-before-mutation strategy; null/"disabled" turns it off. */
+  versioningStrategy?: string | null;
+  /** Resume an interrupted journal instead of starting fresh. */
+  resumeJournal?: SyncJournal;
+  /** Maniac mode: drop the journal, run the mandatory post-sync verify sweep. */
+  maniac?: boolean;
+}
+
 interface RcloneCryptBrowserEntry {
   name: string;
   path: string;
@@ -342,7 +362,7 @@ import { createLocalEndpoint, createRemoteEndpoint } from './utils/panelEndpoint
 import { createUnifiedTransferPlan, UnifiedTransferPlan } from './utils/unifiedTransferPlanner';
 import { buildCrossProfileEntries, runCrossProfileTransfer } from './utils/crossProfileExecution';
 import { compareEntries, type CompareInputEntry, type CompareResult, type CompareResultEntry } from './utils/compareEndpoints';
-import { namesFromBuckets, namesToDelete, namesToRename, type PresetPlan } from './utils/syncPresets';
+import type { PresetPlan } from './utils/syncPresets';
 import { runRemoteSync, filesFromJournal, type RemoteSyncConfig, type SyncRunReport, type SyncRunFile, type SyncRunDirs } from './utils/remoteSyncRunner';
 import { buildRemoteSyncInput, buildMirrorSyncInput } from './utils/presetToSyncRun';
 import { adaptFileComparisons } from './utils/recursiveCompare';
@@ -762,8 +782,12 @@ const App: React.FC = () => {
   }, [debugMode]);
 
   const [showDependenciesPanel, setShowDependenciesPanel] = useState(false);
-  // GAP-3: rich report from the connected-remote runRemoteSync run.
-  const [remoteSyncResult, setRemoteSyncResult] = useState<SyncRunReport | null>(null);
+  // GAP-3: rich report from the runRemoteSync run. `localLocal` re-labels the
+  // result dialog's transfer counts for a dual-local AeroFile sync (GAP-10).
+  const [remoteSyncResult, setRemoteSyncResult] = useState<{
+    report: SyncRunReport;
+    localLocal: boolean;
+  } | null>(null);
   const remoteSyncRunningRef = useRef(false);
   // GAP-7: canary trial result + the deferred full-run approval callback.
   const [canaryResult, setCanaryResult] = useState<{
@@ -6759,21 +6783,83 @@ interface UpdateVerificationInfo {
     };
 
     if (showDualLocalPanel && (!isConnected || !showRemotePanel)) {
-      const leftEntries = localFiles.map(toCompareEntry);
-      const rightEntries = localFiles2.map(toCompareEntry);
+      const leftPath = currentLocalPath || '';
+      const rightPath = currentLocalPath2 || '';
+      // GAP-10: with both panels rooted, run a recursive
+      // `compare_local_directories` scan (parity with the connected-remote
+      // pair) so a Mirror / Backup preset acts on every nested level. Without
+      // both roots, fall back to the flat top-level classify.
+      const canRecurse = leftPath !== '' && rightPath !== '';
+
       setAeroSync({
         initialTab,
         context: {
-          compareResult: compareEntries(leftEntries, rightEntries),
-          leftLabel: currentLocalPath || 'Local',
-          rightLabel: currentLocalPath2 || currentLocalPath || 'Local (right)',
+          compareResult: canRecurse
+            ? null
+            : compareEntries(localFiles.map(toCompareEntry), localFiles2.map(toCompareEntry)),
+          compareLoading: canRecurse,
+          leftLabel: leftPath || 'Local',
+          rightLabel: rightPath || currentLocalPath || 'Local (right)',
           pairKind: 'local-local',
-          leftPanelId: 'local',
-          rightPanelId: 'local2',
-          initialSource: currentLocalPath || '',
-          initialDestination: currentLocalPath2 || '',
+          initialSource: leftPath,
+          initialDestination: rightPath,
         },
       });
+
+      if (canRecurse) {
+        void (async () => {
+          let resolved: CompareResult;
+          try {
+            const comparisons = await invoke<FileComparison[]>('compare_local_directories', {
+              leftPath,
+              rightPath,
+              options: {
+                compare_timestamp: true,
+                compare_size: true,
+                compare_checksum: false,
+                exclude_patterns: [
+                  'node_modules', '.git', '.DS_Store', 'Thumbs.db',
+                  '__pycache__', '*.pyc', '.env', 'target',
+                ],
+                direction: 'bidirectional',
+              },
+            });
+            // Both sides are local: local_info = left, remote_info = right.
+            resolved = adaptFileComparisons(comparisons, true);
+          } catch (err) {
+            // Recursive scan failed: fall back to the flat top-level classify.
+            resolved = compareEntries(
+              localFiles.map(toCompareEntry),
+              localFiles2.map(toCompareEntry),
+            );
+            notify.warning(t('aerosync.title') || 'AeroSync', String(err));
+          }
+          if (aeroSyncCompareSeqRef.current !== mySeq) return;
+          setAeroSync((prev) =>
+            prev
+              ? { ...prev, context: { ...prev.context, compareResult: resolved, compareLoading: false } }
+              : prev,
+          );
+        })();
+
+        // GAP-10: surface an interrupted local-local journal for this pair.
+        void (async () => {
+          try {
+            const journal = await invoke<SyncJournal | null>('load_sync_journal_cmd', {
+              localPath: leftPath,
+              remotePath: rightPath,
+            });
+            if (aeroSyncCompareSeqRef.current !== mySeq) return;
+            if (journal && !journal.completed) {
+              setAeroSync((prev) =>
+                prev ? { ...prev, context: { ...prev.context, pendingJournal: journal } } : prev,
+              );
+            }
+          } catch {
+            // No journal or load failed: no resume banner.
+          }
+        })();
+      }
       return;
     }
 
@@ -6981,7 +7067,7 @@ interface UpdateVerificationInfo {
             {},
             { invoke, deltaStats, resumeJournal: opts.resumeJournal, writeIndex: true },
           );
-          setRemoteSyncResult(report);
+          setRemoteSyncResult({ report, localLocal: false });
           if (report.uploaded > 0 || report.downloaded > 0 || report.deleted > 0) {
             await loadRemoteFiles();
             await loadLocalFiles(currentLocalPath);
@@ -7052,33 +7138,115 @@ interface UpdateVerificationInfo {
     debugMode,
   ]);
 
-  // Z.3.7: stage the names returned by the Compare dialog into the local
-  // selection state and route the copy through the existing transfer
-  // planner. Only the local-local pair has an executable path right now;
-  // the dialog disables the buttons for other pair kinds.
-  const stageLocalSelectionFromCompare = useCallback((
-    panelId: 'local' | 'local2',
-    entries: CompareResultEntry[],
-  ) => {
-    const names = entries.map((entry) => entry.name);
-    if (panelId === 'local') {
-      setSelectedLocalFiles(new Set(names));
-    } else {
-      setSelectedLocalFiles2(new Set(names));
+  // GAP-10: shared local-local sync launcher. A dual-local AeroFile pair has
+  // no protocol and no SFTP probe, so this is the trimmed sibling of
+  // `runConnectedRemoteSync`: it builds a local-local `RemoteSyncConfig` and
+  // dispatches `runRemoteSync` in its `isLocalLocal` mode, where upload /
+  // download map to `copy_local_file` and delete-remote to
+  // `delete_local_file`. The Plan tab preset executor, the Compare-tab mirror
+  // buttons and the journal-resume banner all route through it, so deletes /
+  // overwrites / verify / retry / resumable journal execute on the full
+  // recursive tree. `localRoot` = the left panel, `remoteRoot` = the right.
+  const runLocalLocalSync = useCallback((
+    runFiles: SyncRunFile[],
+    runDirs: SyncRunDirs,
+    opts: LocalLocalRunOptions,
+  ): void => {
+    // Both panels must be rooted: the runner resolves every entry against
+    // both paths, so an empty root would build a bogus absolute path.
+    if (!currentLocalPath || !currentLocalPath2) {
+      notify.warning(
+        t('aerosync.title') || 'AeroSync',
+        t('aerosync.compareUnavailable') || 'Open a second panel to sync.',
+      );
+      return;
     }
-    setActiveLocalPanelId(panelId);
-    setActivePanel('local');
-  }, []);
+    const nothingToRun =
+      runFiles.length === 0
+      && runDirs.remote.length === 0
+      && runDirs.local.length === 0
+      && !opts.resumeJournal;
+    if (nothingToRun) {
+      notify.info(
+        t('syncPresets.nothingToDo') || 'AeroSync',
+        t('syncPresets.allSkipped') || 'No actionable entries for this preset.',
+      );
+      return;
+    }
+    if (remoteSyncRunningRef.current) {
+      notify.info(t('aerosync.title') || 'AeroSync', t('syncPanel.syncing') || 'Syncing');
+      return;
+    }
+
+    const runConfig: RemoteSyncConfig = {
+      localRoot: currentLocalPath,
+      remoteRoot: currentLocalPath2,
+      isProvider: false,
+      isFtp: false,
+      isLocalLocal: true,
+      retryPolicy: opts.retryPolicy ?? {
+        max_retries: 3,
+        base_delay_ms: 500,
+        max_delay_ms: 10_000,
+        timeout_ms: 120_000,
+        backoff_multiplier: 2,
+      },
+      verifyPolicy: opts.verifyPolicy,
+      // `copy_local_file` is a plain filesystem copy: no delta path.
+      deltaSyncEnabled: false,
+      versioningStrategy: opts.versioningStrategy ?? null,
+      transferBudget: opts.transferBudget ?? 0,
+      direction: opts.direction,
+      // Maniac drops the journal and runs a post-sync verify sweep.
+      journalEnabled: !opts.maniac,
+      postSyncVerification: opts.maniac === true,
+    };
+
+    remoteSyncRunningRef.current = true;
+    void (async () => {
+      try {
+        const report = await runRemoteSync(
+          runFiles,
+          runDirs,
+          runConfig,
+          {},
+          { invoke, resumeJournal: opts.resumeJournal, writeIndex: true },
+        );
+        setRemoteSyncResult({ report, localLocal: true });
+        if (report.uploaded > 0 || report.downloaded > 0 || report.deleted > 0) {
+          await loadLocalFiles(currentLocalPath);
+          await loadLocalFiles2(currentLocalPath2);
+        }
+      } catch (err) {
+        notify.error(t('aerosync.title') || 'AeroSync', String(err));
+      } finally {
+        remoteSyncRunningRef.current = false;
+      }
+    })();
+  }, [
+    currentLocalPath,
+    currentLocalPath2,
+    loadLocalFiles,
+    loadLocalFiles2,
+    notify,
+    t,
+  ]);
 
   const handleCompareMirrorLeftToRight = useCallback((entries: CompareResultEntry[]) => {
     const context = aeroSync?.context;
     setAeroSync(null);
     if (!context || entries.length === 0) return;
 
-    if (context.pairKind === 'local-local' && context.leftPanelId) {
-      stageLocalSelectionFromCompare(context.leftPanelId, entries);
-      Promise.resolve().then(() => {
-        void planLocalSelectionAcrossPanelsRef.current('copy', context.leftPanelId);
+    // GAP-10 — local-local mirror: source = the left panel, destination = the
+    // right. The recursive compare carries nested `relativePath`s, so this
+    // routes through the same `runRemoteSync` engine as the connected-remote
+    // case (via the `isLocalLocal` mode) instead of the flat name-staging
+    // dance, which could not address files inside subdirectories.
+    if (context.pairKind === 'local-local') {
+      const { files, dirs } = buildMirrorSyncInput(entries, 'left', true);
+      runLocalLocalSync(files, dirs, {
+        direction: 'local_to_remote',
+        verifyPolicy: 'size_only',
       });
       return;
     }
@@ -7099,7 +7267,7 @@ interface UpdateVerificationInfo {
     }
   }, [
     aeroSync,
-    stageLocalSelectionFromCompare,
+    runLocalLocalSync,
     runConnectedRemoteSync,
   ]);
 
@@ -7108,10 +7276,13 @@ interface UpdateVerificationInfo {
     setAeroSync(null);
     if (!context || entries.length === 0) return;
 
-    if (context.pairKind === 'local-local' && context.rightPanelId) {
-      stageLocalSelectionFromCompare(context.rightPanelId, entries);
-      Promise.resolve().then(() => {
-        void planLocalSelectionAcrossPanelsRef.current('copy', context.rightPanelId);
+    // GAP-10 — local-local mirror flowing the other way: source = the right
+    // panel, destination = the left.
+    if (context.pairKind === 'local-local') {
+      const { files, dirs } = buildMirrorSyncInput(entries, 'right', true);
+      runLocalLocalSync(files, dirs, {
+        direction: 'remote_to_local',
+        verifyPolicy: 'size_only',
       });
       return;
     }
@@ -7131,17 +7302,28 @@ interface UpdateVerificationInfo {
     }
   }, [
     aeroSync,
-    stageLocalSelectionFromCompare,
+    runLocalLocalSync,
     runConnectedRemoteSync,
   ]);
 
-  // GAP-6: resume an interrupted connected-remote journal. filesFromJournal
+  // GAP-6/GAP-10: resume an interrupted journal. filesFromJournal
   // reconstructs the upload/download set; the runner skips entries the prior
-  // run already finished and continues checkpointing the same journal.
+  // run already finished and continues checkpointing the same journal. The
+  // local-local pair resumes through `runLocalLocalSync`, every other pair
+  // through `runConnectedRemoteSync`.
   const handleResumeJournal = useCallback((journal: SyncJournal) => {
     const context = aeroSync?.context;
     setAeroSync(null);
     if (!context) return;
+    if (context.pairKind === 'local-local') {
+      runLocalLocalSync(filesFromJournal(journal), { remote: [], local: [] }, {
+        direction: journal.direction,
+        verifyPolicy: journal.verify_policy,
+        retryPolicy: journal.retry_policy,
+        resumeJournal: journal,
+      });
+      return;
+    }
     runConnectedRemoteSync(filesFromJournal(journal), { remote: [], local: [] }, {
       direction: journal.direction,
       deltaSyncEnabled: false,
@@ -7150,7 +7332,7 @@ interface UpdateVerificationInfo {
       resumeJournal: journal,
       profileId: context.activeProfileId,
     });
-  }, [aeroSync, runConnectedRemoteSync]);
+  }, [aeroSync, runConnectedRemoteSync, runLocalLocalSync]);
 
   // GAP-6: discard an interrupted journal and clear the resume banner
   // without closing the dialog.
@@ -7168,26 +7350,20 @@ interface UpdateVerificationInfo {
 
 
   /**
-   * Z.3.8 - execute the preset plan returned by the AeroFile Sync Plan tab.
-   * Today only the local-local pair has an executable path: we stage
-   * the relevant source-side names into the matching local selection
-   * and dispatch through the existing `planLocalSelectionAcrossPanels`
-   * flow. For bisync we run two passes (L→R then R→L) so each direction
-   * goes through the unified planner separately. Destructive deletes
-   * are NOT executed in this slice — only the copy/overwrite legs of
-   * the preset land; deletes are listed in the dialog so the user can
-   * remove them manually with the existing context menu before Z.3.8.2
-   * adds backend support for batch deletes inside the planner.
+   * Execute the preset plan returned by the AeroSync Plan tab. Every pair
+   * kind now runs the full `runRemoteSync` engine, so copies, overwrites,
+   * orphan deletes and keep-both renames all execute with retry, verify,
+   * archive-before-mutation and a resumable journal. The local-local pair
+   * dispatches through `runLocalLocalSync` (filesystem copy / delete via
+   * `copy_local_file` / `delete_local_file`); every other pair through
+   * `runConnectedRemoteSync`. GAP-10 retired the copy-only name-staging
+   * dance that left local-local deletes and renames unexecuted.
    */
   const executeSyncPresetPlan = useCallback((plan: PresetPlan, runtime: AeroSyncRuntime) => {
     const context = aeroSync?.context;
     setAeroSync(null);
     if (!context) return;
 
-    // CO-1: surface the Plan tab runtime knobs in the debug log. The
-    // local-local path forwards them to the Rust backend
-    // (LocalSyncRequest.speed_mode / verify_policy); the connected-remote
-    // path threads them into runConnectedRemoteSync (GAP-5).
     if (debugMode) {
       // eslint-disable-next-line no-console
       console.debug('[AeroSync] executeSyncPresetPlan runtime', {
@@ -7198,81 +7374,28 @@ interface UpdateVerificationInfo {
       });
     }
 
-    const deleteSummary = {
-      right: namesToDelete(plan, 'right'),
-      left: namesToDelete(plan, 'left'),
-    };
-    const renameSummary = {
-      toRight: namesToRename(plan, 'to-right'),
-      toLeft: namesToRename(plan, 'to-left'),
-    };
+    // The Plan tab's verify selector uses `full_checksum`; the backend
+    // `verify_local_transfer` policy enum spells it `full`.
+    const verifyPolicy: VerifyPolicy =
+      runtime.verifyPolicy === 'full_checksum' ? 'full' : runtime.verifyPolicy;
 
-    const reportDeferredOps = () => {
-      const deletes = deleteSummary.right.length + deleteSummary.left.length;
-      if (deletes > 0) {
-        notify.warning(
-          t('syncPresets.deletesDeferred') || 'Sync presets',
-          `${deletes} delete(s) skipped (Z.3.8.2): right ${deleteSummary.right.length}, left ${deleteSummary.left.length}`,
-        );
-      }
-      const renames = renameSummary.toRight.length + renameSummary.toLeft.length;
-      if (renames > 0) {
-        notify.info(
-          'Sync presets',
-          `${renames} keep-both rename(s) deferred to Z.3.9.2`,
-        );
-      }
-    };
-
-    // ── local-local path: stage selection per side and dispatch via
-    // the existing planLocalSelectionAcrossPanels flow (Z.3.8). ──────
-    if (context.pairKind === 'local-local' && context.leftPanelId && context.rightPanelId) {
-      const sourceSidesToRun: Array<{ source: 'left' | 'right'; panelId: 'local' | 'local2' }> = [];
-      if (plan.preset === 'bisync') {
-        sourceSidesToRun.push({ source: 'left', panelId: context.leftPanelId });
-        sourceSidesToRun.push({ source: 'right', panelId: context.rightPanelId });
-      } else if (plan.direction === 'left-to-right') {
-        sourceSidesToRun.push({ source: 'left', panelId: context.leftPanelId });
-      } else {
-        sourceSidesToRun.push({ source: 'right', panelId: context.rightPanelId });
-      }
-
-      const passes = sourceSidesToRun
-        .map(({ source, panelId }) => {
-          const names = namesFromBuckets(plan, source);
-          return { panelId, names: new Set(names) };
-        })
-        .filter((pass) => pass.names.size > 0);
-
-      if (passes.length === 0) {
-        notify.info(
-          t('syncPresets.nothingToDo') || 'Sync presets',
-          t('syncPresets.allSkipped') || 'No actionable entries for this preset.',
-        );
-        return;
-      }
-
-      let i = 0;
-      const runNext = () => {
-        if (i >= passes.length) {
-          reportDeferredOps();
-          return;
-        }
-        const pass = passes[i];
-        i += 1;
-        if (pass.panelId === 'local') {
-          setSelectedLocalFiles(pass.names);
-        } else {
-          setSelectedLocalFiles2(pass.names);
-        }
-        setActiveLocalPanelId(pass.panelId);
-        setActivePanel('local');
-        Promise.resolve().then(() => {
-          const maybePromise = planLocalSelectionAcrossPanelsRef.current('copy', pass.panelId);
-          Promise.resolve(maybePromise).finally(runNext);
-        });
-      };
-      runNext();
+    // ── GAP-10 local-local: resolve the recursive plan into copy / delete
+    // entries (buildRemoteSyncInput, leftIsLocal = true) and run them
+    // through the local-local engine. Deletes and keep-both renames now
+    // execute instead of being skipped with a toast. ─────────────────────
+    if (context.pairKind === 'local-local') {
+      const { files: runFiles, dirs: runDirs } = buildRemoteSyncInput(plan, true);
+      const direction: SyncDirection = plan.preset === 'bisync'
+        ? 'bidirectional'
+        : plan.direction === 'left-to-right' ? 'local_to_remote' : 'remote_to_local';
+      runLocalLocalSync(runFiles, runDirs, {
+        direction,
+        verifyPolicy,
+        retryPolicy: runtime.retryPolicy,
+        transferBudget: runtime.transferBudget,
+        versioningStrategy: runtime.versioningStrategy,
+        maniac: runtime.speedMode === 'maniac',
+      });
       return;
     }
 
@@ -7280,16 +7403,10 @@ interface UpdateVerificationInfo {
     // remote sync engine through the shared launcher. buildRemoteSyncInput
     // resolves the recursive plan into upload / download / delete entries
     // carrying nested relative paths; runConnectedRemoteSync handles the
-    // SFTP probe, config, resumable journal and rich report. Keep-both
-    // renames stay deferred and are surfaced as an info toast. ────────────
+    // SFTP probe, config, resumable journal and rich report. ─────────────
     if (context.pairKind === 'local-remote' || context.pairKind === 'remote-local') {
       const leftIsLocal = context.pairKind === 'local-remote';
       const { files: runFiles, dirs: runDirs } = buildRemoteSyncInput(plan, leftIsLocal);
-
-      // The Plan tab's verify selector uses `full_checksum`; the backend
-      // `verify_local_transfer` policy enum spells it `full`.
-      const verifyPolicy: VerifyPolicy =
-        runtime.verifyPolicy === 'full_checksum' ? 'full' : runtime.verifyPolicy;
 
       let direction: SyncDirection;
       if (plan.preset === 'bisync') {
@@ -7351,6 +7468,7 @@ interface UpdateVerificationInfo {
     currentLocalPath,
     currentRemotePath,
     runConnectedRemoteSync,
+    runLocalLocalSync,
   ]);
 
   const clipboardCut = (files: { name: string; path: string; is_dir: boolean }[], isRemote: boolean, sourceDir: string) => {
@@ -11355,7 +11473,8 @@ interface UpdateVerificationInfo {
         />
 
         <RemoteSyncResultDialog
-          report={remoteSyncResult}
+          report={remoteSyncResult?.report ?? null}
+          localLocal={remoteSyncResult?.localLocal ?? false}
           onClose={() => setRemoteSyncResult(null)}
         />
 

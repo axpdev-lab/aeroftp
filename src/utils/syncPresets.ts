@@ -569,59 +569,6 @@ export const derivePresetPlan = (
     };
 };
 
-/**
- * Convenience: pick the names that should be transferred from source to
- * destination under a given preset run. Useful for staging the existing
- * F5/F6 selection-driven planner without re-walking the result.
- */
-export const namesFromBuckets = (
-    plan: PresetPlan,
-    sourceSide: 'left' | 'right',
-): string[] => {
-    const wanted: BucketAction[] = sourceSide === 'left'
-        ? ['copy-to-right', 'overwrite-right']
-        : ['copy-to-left', 'overwrite-left'];
-    const names: string[] = [];
-    for (const bp of plan.bucketPlans) {
-        bp.entries.forEach((entry, idx) => {
-            if (wanted.includes(bp.entryActions[idx])) names.push(entry.name);
-        });
-    }
-    return names;
-};
-
-export const namesToDelete = (
-    plan: PresetPlan,
-    side: 'left' | 'right',
-): string[] => {
-    const target: BucketAction = side === 'right' ? 'delete-right' : 'delete-left';
-    const names: string[] = [];
-    for (const bp of plan.bucketPlans) {
-        bp.entries.forEach((entry, idx) => {
-            if (bp.entryActions[idx] === target) names.push(entry.name);
-        });
-    }
-    return names;
-};
-
-/**
- * Z.3.9 — return the names that should be renamed-on-copy (keep both)
- * when the conflict policy is set to `rename`.
- */
-export const namesToRename = (
-    plan: PresetPlan,
-    direction: 'to-right' | 'to-left',
-): string[] => {
-    const target: BucketAction = direction === 'to-right' ? 'rename-to-right' : 'rename-to-left';
-    const names: string[] = [];
-    for (const bp of plan.bucketPlans) {
-        bp.entries.forEach((entry, idx) => {
-            if (bp.entryActions[idx] === target) names.push(entry.name);
-        });
-    }
-    return names;
-};
-
 export const describePreset = (preset: SyncPreset): { name: string; tagline: string; safe: boolean } => {
     switch (preset) {
         case 'mirror':

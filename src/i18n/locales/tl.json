@@ -4442,6 +4442,8 @@
             "enable": "Paganahin",
             "versionedBackupHint": "Kunin ang kopya ng destinasyon sa direktoryong ito bago ang bawat pag-overwrite o pagtanggal.",
             "actionable": "Maaksyunan",
+            "reportCopiedRight": "Kinopya sa kanan",
+            "reportCopiedLeft": "Kinopya sa kaliwa",
             "skipped": "Nilaktawan",
             "transfer": "Paglilipat",
             "destructive": "Mapanira",

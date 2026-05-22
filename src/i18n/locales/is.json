@@ -4442,6 +4442,8 @@
             "enable": "Virkja",
             "versionedBackupHint": "Vista afanga afritiae i pessari mappu fyrir hvert yfirskrif eaea eyaeingu.",
             "actionable": "Aaegeraehaeft",
+            "reportCopiedRight": "Afritað til hægri",
+            "reportCopiedLeft": "Afritað til vinstri",
             "skipped": "Slepptu",
             "transfer": "Flutningur",
             "destructive": "Eyaeileggjandi",

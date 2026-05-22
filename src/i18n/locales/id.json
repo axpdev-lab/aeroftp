@@ -4423,6 +4423,8 @@
             "enable": "Aktifkan",
             "versionedBackupHint": "Tangkap salinan tujuan di direktori ini sebelum setiap penimpaan atau penghapusan.",
             "actionable": "Dapat dijalankan",
+            "reportCopiedRight": "Disalin ke kanan",
+            "reportCopiedLeft": "Disalin ke kiri",
             "skipped": "Dilewati",
             "transfer": "Transfer",
             "destructive": "Destruktif",

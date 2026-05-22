@@ -4423,6 +4423,8 @@
             "enable": "Povolit",
             "versionedBackupHint": "Před každým přepsáním nebo smazáním zachytí cílovou kopii v tomto adresáři.",
             "actionable": "Proveditelné",
+            "reportCopiedRight": "Zkopírováno doprava",
+            "reportCopiedLeft": "Zkopírováno doleva",
             "skipped": "Přeskočeno",
             "transfer": "Přenos",
             "destructive": "Destruktivní",

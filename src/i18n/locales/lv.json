@@ -4423,6 +4423,8 @@
             "enable": "Iespejot",
             "versionedBackupHint": "Saglabajiet merka kopiju saja direktorija pirms katras parrakstisanas vai dzesanas.",
             "actionable": "Izpildams",
+            "reportCopiedRight": "Kopēts pa labi",
+            "reportCopiedLeft": "Kopēts pa kreisi",
             "skipped": "Izlaists",
             "transfer": "Parsutisana",
             "destructive": "Iznicinosa",

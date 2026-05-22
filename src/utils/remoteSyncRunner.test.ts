@@ -660,3 +660,119 @@ describe('remoteSyncRunner — GAP-9b threaded transfer tuning', () => {
         expect(uploads).toHaveLength(2);
     });
 });
+
+describe('remoteSyncRunner — GAP-10 local-local mode', () => {
+    const localLocalConfig = (over: Partial<RemoteSyncConfig> = {}): RemoteSyncConfig =>
+        baseConfig({ isLocalLocal: true, ...over });
+
+    it('routes upload and download through copy_local_file between the two roots', async () => {
+        const { invoke, calls } = makeInvoke();
+        const report = await runRemoteSync(
+            [
+                file('up.txt', 'upload', { size: 100 }),
+                file('docs/down.txt', 'download', { size: 200 }),
+            ],
+            noDirs,
+            localLocalConfig(),
+            {},
+            noWaitDeps(invoke),
+        );
+
+        expect(report.uploaded).toBe(1);
+        expect(report.downloaded).toBe(1);
+        expect(report.totalBytes).toBe(300);
+        expect(report.errors).toHaveLength(0);
+
+        // No protocol transfer commands at all.
+        expect(calls.some((c) => c.cmd === 'upload_file')).toBe(false);
+        expect(calls.some((c) => c.cmd === 'download_file')).toBe(false);
+        expect(calls.some((c) => c.cmd === 'provider_upload_file')).toBe(false);
+
+        // upload = copy left → right.
+        expect(calls.some((c) => c.cmd === 'copy_local_file'
+            && c.args?.from === '/home/u/work/up.txt'
+            && c.args?.to === '/srv/data/up.txt')).toBe(true);
+        // download = copy right → left.
+        expect(calls.some((c) => c.cmd === 'copy_local_file'
+            && c.args?.from === '/srv/data/docs/down.txt'
+            && c.args?.to === '/home/u/work/docs/down.txt')).toBe(true);
+    });
+
+    it('creates the right-side parent directory with create_local_folder', async () => {
+        const { invoke, calls } = makeInvoke();
+        await runRemoteSync(
+            [file('nested/deep/f.txt', 'upload')],
+            { remote: ['emptydir'], local: [] },
+            localLocalConfig(),
+            {},
+            noWaitDeps(invoke),
+        );
+        // Never the remote/provider mkdir commands.
+        expect(calls.some((c) => c.cmd === 'create_remote_folder')).toBe(false);
+        expect(calls.some((c) => c.cmd === 'provider_mkdir')).toBe(false);
+        // Parent dirs of the upload land on the right root via create_local_folder.
+        expect(calls.some((c) => c.cmd === 'create_local_folder'
+            && c.args?.path === '/srv/data/nested')).toBe(true);
+        expect(calls.some((c) => c.cmd === 'create_local_folder'
+            && c.args?.path === '/srv/data/nested/deep')).toBe(true);
+        // Standalone dir too.
+        expect(calls.some((c) => c.cmd === 'create_local_folder'
+            && c.args?.path === '/srv/data/emptydir')).toBe(true);
+    });
+
+    it('deletes a right-side orphan with delete_local_file', async () => {
+        const { invoke, calls } = makeInvoke();
+        const report = await runRemoteSync(
+            [file('stale.txt', 'delete-remote')],
+            noDirs,
+            localLocalConfig(),
+            {},
+            noWaitDeps(invoke),
+        );
+        expect(report.deleted).toBe(1);
+        expect(calls.some((c) => c.cmd === 'delete_remote_file')).toBe(false);
+        expect(calls.some((c) => c.cmd === 'delete_local_file'
+            && c.args?.path === '/srv/data/stale.txt')).toBe(true);
+    });
+
+    it('never issues bandwidth-cap commands for a local-local run', async () => {
+        const { invoke, calls } = makeInvoke();
+        await runRemoteSync(
+            [file('a.txt', 'upload')],
+            noDirs,
+            localLocalConfig({ uploadLimitKbps: 512, downloadLimitKbps: 512 }),
+            {},
+            noWaitDeps(invoke),
+        );
+        expect(calls.some((c) => c.cmd === 'set_speed_limit')).toBe(false);
+        expect(calls.some((c) => c.cmd === 'provider_set_speed_limit')).toBe(false);
+    });
+
+    it('verifies a local-local download against the left-side copy', async () => {
+        const verifyResult: VerifyResult = {
+            path: '/home/u/work/v.txt',
+            passed: true,
+            policy: 'size_and_mtime',
+            expected_size: 64,
+            actual_size: 64,
+            size_match: true,
+            mtime_match: true,
+            hash_match: null,
+            message: 'ok',
+        };
+        const { invoke, calls } = makeInvoke({
+            verify_local_transfer: () => verifyResult,
+        });
+        const report = await runRemoteSync(
+            [file('v.txt', 'download', { size: 64 })],
+            noDirs,
+            localLocalConfig({ verifyPolicy: 'size_and_mtime' }),
+            {},
+            noWaitDeps(invoke),
+        );
+        expect(report.downloaded).toBe(1);
+        expect(report.verifyFailed).toBe(0);
+        expect(calls.some((c) => c.cmd === 'verify_local_transfer'
+            && c.args?.localPath === '/home/u/work/v.txt')).toBe(true);
+    });
+});

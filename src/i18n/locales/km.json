@@ -4442,6 +4442,8 @@
             "enable": "បើក",
             "versionedBackupHint": "ចាប់យកច្បាប់ចម្លងគោលដៅនៅក្នុងថតនេះមុនពេលសរសេរជាន់ ឬលុបនីមួយៗ។",
             "actionable": "អាចអនុវត្តបាន",
+            "reportCopiedRight": "បានចម្លងទៅស្ដាំ",
+            "reportCopiedLeft": "បានចម្លងទៅឆ្វេង",
             "skipped": "បានរំលង",
             "transfer": "ផ្ទេរ",
             "destructive": "បំផ្លាញ",

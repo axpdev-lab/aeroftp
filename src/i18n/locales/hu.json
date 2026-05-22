@@ -4423,6 +4423,8 @@
             "enable": "Engedelyezes",
             "versionedBackupHint": "Mentsd a celpeldanyt ebbe a konyvtarba minden felulirasi vagy torlesi muvelet elott.",
             "actionable": "Vegrehajthato",
+            "reportCopiedRight": "Jobbra másolva",
+            "reportCopiedLeft": "Balra másolva",
             "skipped": "Kihagyva",
             "transfer": "Atvitel",
             "destructive": "Romboló",

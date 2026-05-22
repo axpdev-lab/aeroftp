@@ -4442,6 +4442,8 @@
             "enable": "Aktiver",
             "versionedBackupHint": "Lagre destinasjonskopien i denne mappen for hver overskriving eller sletting.",
             "actionable": "Handlingsbar",
+            "reportCopiedRight": "Kopiert til høyre",
+            "reportCopiedLeft": "Kopiert til venstre",
             "skipped": "Hoppet over",
             "transfer": "Overforing",
             "destructive": "Destruktiv",

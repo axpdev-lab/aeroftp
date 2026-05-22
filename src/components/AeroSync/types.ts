@@ -62,8 +62,6 @@ export interface AeroSyncContext {
     pairKind: AeroSyncPairKind | null;
     leftLabel: string;
     rightLabel: string;
-    leftPanelId?: 'local' | 'local2';
-    rightPanelId?: 'local' | 'local2';
     compareResult: CompareResult | null;
     /**
      * GAP-5: true while a recursive connected-remote compare

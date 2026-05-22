@@ -4423,6 +4423,8 @@
             "enable": "Inschakelen",
             "versionedBackupHint": "Maak een kopie van de bestemming in deze map voor elke overschrijving of verwijdering.",
             "actionable": "Uitvoerbaar",
+            "reportCopiedRight": "Naar rechts gekopieerd",
+            "reportCopiedLeft": "Naar links gekopieerd",
             "skipped": "Overgeslagen",
             "transfer": "Overdracht",
             "destructive": "Destructief",

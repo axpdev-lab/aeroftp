@@ -4423,6 +4423,8 @@
             "enable": "เปิดใช้งาน",
             "versionedBackupHint": "บันทึกสำเนาปลายทางไว้ในไดเรกทอรีนี้ก่อนการเขียนทับหรือลบทุกครั้ง",
             "actionable": "ดำเนินการได้",
+            "reportCopiedRight": "คัดลอกไปทางขวา",
+            "reportCopiedLeft": "คัดลอกไปทางซ้าย",
             "skipped": "ข้ามไป",
             "transfer": "ถ่ายโอน",
             "destructive": "ทำลายล้าง",

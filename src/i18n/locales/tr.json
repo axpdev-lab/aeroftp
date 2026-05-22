@@ -4423,6 +4423,8 @@
             "enable": "Etkinleştir",
             "versionedBackupHint": "Her üzerine yazma veya silme işleminden önce hedef kopyasını bu dizinde yakalayın.",
             "actionable": "Yapılabilir",
+            "reportCopiedRight": "Sağa kopyalandı",
+            "reportCopiedLeft": "Sola kopyalandı",
             "skipped": "Atlandı",
             "transfer": "Aktarım",
             "destructive": "Yıkıcı",

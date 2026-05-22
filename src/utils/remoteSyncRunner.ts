@@ -137,6 +137,16 @@ export interface RemoteSyncConfig {
      */
     parallelStreams?: number;
     compressionMode?: CompressionMode;
+    /**
+     * GAP-10 — when `true`, both endpoints are local directories (the Plan
+     * tab / Compare-tab mirror on a dual-local AeroFile pair). The runner
+     * maps `upload` / `download` to `copy_local_file` between the two roots,
+     * `delete-remote` to `delete_local_file`, and the remote-side mkdir
+     * pre-pass to `create_local_folder`; it also skips the bandwidth-cap
+     * commands, which are meaningless for a filesystem copy. `isProvider`
+     * and `isFtp` must both be `false` when this is set.
+     */
+    isLocalLocal?: boolean;
 }
 
 /** The rich connected-remote report — superset of the local-local report. */
@@ -457,8 +467,12 @@ export const runRemoteSync = async (
     // otherwise fail every upload/download immediately.
     await invoke('reset_cancel_flag').catch(() => undefined);
 
-    // Apply bandwidth caps for the duration of the run.
-    if ((config.uploadLimitKbps ?? 0) > 0 || (config.downloadLimitKbps ?? 0) > 0) {
+    // Apply bandwidth caps for the duration of the run. Skipped entirely for
+    // a local-local run: throttling a filesystem copy has no meaning.
+    if (
+        !config.isLocalLocal
+        && ((config.uploadLimitKbps ?? 0) > 0 || (config.downloadLimitKbps ?? 0) > 0)
+    ) {
         const cmd = config.isFtp ? 'set_speed_limit' : 'provider_set_speed_limit';
         await invoke(cmd, {
             downloadKb: config.downloadLimitKbps ?? 0,
@@ -516,9 +530,15 @@ export const runRemoteSync = async (
     }
     const byDepth = (a: string, b: string): number =>
         a.split('/').length - b.split('/').length;
+    // GAP-10: a local-local run creates the "remote" side with the same
+    // local-filesystem command as the "local" side.
+    const remoteMkdirCmd = config.isLocalLocal
+        ? 'create_local_folder'
+        : config.isProvider
+            ? 'provider_mkdir'
+            : 'create_remote_folder';
     for (const dir of [...remoteParentDirs].sort(byDepth)) {
-        const cmd = config.isProvider ? 'provider_mkdir' : 'create_remote_folder';
-        await invoke(cmd, { path: `${remoteBase}/${dir}` }).catch(() => undefined);
+        await invoke(remoteMkdirCmd, { path: `${remoteBase}/${dir}` }).catch(() => undefined);
     }
     for (const dir of [...localParentDirs].sort(byDepth)) {
         await invoke('create_local_folder', { path: `${localBase}/${dir}` }).catch(
@@ -528,9 +548,8 @@ export const runRemoteSync = async (
 
     // ── Create standalone empty directories (counted in dirsCreated) ───────
     for (const dir of [...dirs.remote].sort(byDepth)) {
-        const cmd = config.isProvider ? 'provider_mkdir' : 'create_remote_folder';
         try {
-            await invoke(cmd, { path: `${remoteBase}/${dir}` });
+            await invoke(remoteMkdirCmd, { path: `${remoteBase}/${dir}` });
             dirsCreated++;
             setStatus(dir, 'success');
         } catch {
@@ -606,10 +625,19 @@ export const runRemoteSync = async (
         let didTransfer = false;
 
         if (item.action === 'upload') {
-            const cmd = config.isProvider ? 'provider_upload_file' : 'upload_file';
-            const args = config.isProvider
-                ? { localPath: localFilePath, remotePath: remoteFilePath, useDelta: config.deltaSyncEnabled }
-                : { params: { local_path: localFilePath, remote_path: remoteFilePath, use_delta: config.deltaSyncEnabled } };
+            // GAP-10: a local-local upload is a filesystem copy left → right.
+            let cmd: string;
+            let args: Record<string, unknown>;
+            if (config.isLocalLocal) {
+                cmd = 'copy_local_file';
+                args = { from: localFilePath, to: remoteFilePath };
+            } else if (config.isProvider) {
+                cmd = 'provider_upload_file';
+                args = { localPath: localFilePath, remotePath: remoteFilePath, useDelta: config.deltaSyncEnabled };
+            } else {
+                cmd = 'upload_file';
+                args = { params: { local_path: localFilePath, remote_path: remoteFilePath, use_delta: config.deltaSyncEnabled } };
+            }
             const result = await executeTransferWithRetry(cmd, args, item.relativePath);
             if (journalEntry) {
                 journalEntry.attempts = result.attempts;
@@ -663,10 +691,19 @@ export const runRemoteSync = async (
                     continue;
                 }
             }
-            const cmd = config.isProvider ? 'provider_download_file' : 'download_file';
-            const args = config.isProvider
-                ? { remotePath: remoteFilePath, localPath: localFilePath, modified: item.mtime || undefined, useDelta: config.deltaSyncEnabled }
-                : { params: { remote_path: remoteFilePath, local_path: localFilePath, modified: item.mtime || undefined, use_delta: config.deltaSyncEnabled } };
+            // GAP-10: a local-local download is a filesystem copy right → left.
+            let cmd: string;
+            let args: Record<string, unknown>;
+            if (config.isLocalLocal) {
+                cmd = 'copy_local_file';
+                args = { from: remoteFilePath, to: localFilePath };
+            } else if (config.isProvider) {
+                cmd = 'provider_download_file';
+                args = { remotePath: remoteFilePath, localPath: localFilePath, modified: item.mtime || undefined, useDelta: config.deltaSyncEnabled };
+            } else {
+                cmd = 'download_file';
+                args = { params: { remote_path: remoteFilePath, local_path: localFilePath, modified: item.mtime || undefined, use_delta: config.deltaSyncEnabled } };
+            }
             const result = await executeTransferWithRetry(cmd, args, item.relativePath);
             if (journalEntry) {
                 journalEntry.attempts = result.attempts;
@@ -719,11 +756,17 @@ export const runRemoteSync = async (
         } else if (item.action === 'delete-remote' || item.action === 'delete-local') {
             try {
                 if (item.action === 'delete-remote') {
-                    const cmd = config.isProvider ? 'provider_delete_file' : 'delete_remote_file';
-                    const args = config.isProvider
-                        ? { path: remoteFilePath }
-                        : { path: remoteFilePath, isDir: item.isDir === true };
-                    await invoke(cmd, args);
+                    if (config.isLocalLocal) {
+                        // GAP-10: the "remote" side is a local directory;
+                        // `delete_local_file` removes files and directories.
+                        await invoke('delete_local_file', { path: remoteFilePath });
+                    } else {
+                        const cmd = config.isProvider ? 'provider_delete_file' : 'delete_remote_file';
+                        const args = config.isProvider
+                            ? { path: remoteFilePath }
+                            : { path: remoteFilePath, isDir: item.isDir === true };
+                        await invoke(cmd, args);
+                    }
                 } else {
                     // Archive only real files; directories are not versioned.
                     if (!item.isDir) {

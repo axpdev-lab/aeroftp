@@ -4423,6 +4423,8 @@
             "enable": "Igalinti",
             "versionedBackupHint": "Issaugokite tikslines kopijos sia direktorija pries kiekviena perrasyma ar trinima.",
             "actionable": "Vykdytinas",
+            "reportCopiedRight": "Nukopijuota į dešinę",
+            "reportCopiedLeft": "Nukopijuota į kairę",
             "skipped": "Praleista",
             "transfer": "Perdavimas",
             "destructive": "Naikinantis",
