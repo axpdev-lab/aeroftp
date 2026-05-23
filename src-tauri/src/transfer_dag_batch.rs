@@ -55,8 +55,8 @@ use tokio::sync::Mutex;
 use crate::transfer_dag::executor::{execute_dag, DagNodeRunner, NodeFuture, NodeOutcome};
 use crate::transfer_dag::graph::{TransferNode, TransferNodeKind};
 use crate::transfer_dag::{
-    AimdConfig, AimdController, BatchDagItem, DagObserver, NoopDagObserver, TransferDagBuilder,
-    TransferDirection, TransferResourceManager,
+    AimdConfig, AimdController, BatchDagItem, DagObserver, NoopDagObserver, TransferCapabilities,
+    TransferDagBuilder, TransferDirection, TransferResourceManager,
 };
 use crate::transfer_domain::{
     BatchProgressSnapshot, TransferBatchResult, TransferDirection as DomainTransferDirection,
@@ -133,19 +133,39 @@ where
         ..BatchProgressSnapshot::default()
     }));
 
-    // One seven-node single-file sub-DAG per entry, merged into one graph.
+    // One capability-shaped sub-DAG per entry, merged into one graph.
+    // Every batch is bound to a single provider session, so the caps set is
+    // shared across files. The shared executor does not yet expose a
+    // capability snapshot to the batch surface (that is the SG-T14 wire-in
+    // gate for native multipart batch uploads); until it does, default caps
+    // produce a graph shape identical to the legacy single-transfer-core
+    // chain, so this is byte-identical with the previous wiring.
+    let caps = TransferCapabilities::default();
     let items: Vec<BatchDagItem> = entries
         .iter()
-        .map(|entry| BatchDagItem::new(entry.id.clone(), dag_direction))
+        .map(|entry| BatchDagItem::with_size(entry.id.clone(), dag_direction, entry.size))
         .collect();
-    let built = TransferDagBuilder::from_batch(&items);
+    let built = TransferDagBuilder::from_batch_shaped(&items, &caps);
 
     // The builder preserves entry order, so `built.files[i]` is `entries[i]`.
-    // Map the per-file transfer node id back to its entry index.
+    // Map every transfer-core node id back to its entry index. With the
+    // shaped batch builder a file may carry more than one transfer node
+    // (multipart fan-out), so we iterate `transfer_nodes` rather than
+    // binding the single `transfer` id.
     let mut node_to_entry: HashMap<usize, usize> = HashMap::with_capacity(built.files.len());
     for (index, file) in built.files.iter().enumerate() {
-        node_to_entry.insert(file.transfer, index);
+        for &node_id in &file.transfer_nodes {
+            node_to_entry.insert(node_id, index);
+        }
     }
+    // The legacy `execute_with_session` is per-file, not per-part: when the
+    // shaped graph hands out N `UploadPart` nodes for one entry, only the
+    // first one to enter the runner performs the transfer; the rest become
+    // structural no-ops. This preserves the batch contract (one
+    // `execute_with_session` per file, one progress snapshot per file) and
+    // keeps the multipart fan-out as a future optimisation gate that
+    // engages once the executor exposes a native per-part contract.
+    let entry_transferred = Arc::new(Mutex::new(vec![false; entries.len()]));
 
     let entries = Arc::new(entries);
     let node_to_entry = Arc::new(node_to_entry);
@@ -171,6 +191,7 @@ where
         let entries = Arc::clone(&entries);
         let node_to_entry = Arc::clone(&node_to_entry);
         let session_pool = Arc::clone(&session_pool);
+        let entry_transferred = Arc::clone(&entry_transferred);
         Arc::new(move |node: TransferNode| -> NodeFuture {
             let sink = Arc::clone(&sink);
             let executor = Arc::clone(&executor);
@@ -180,13 +201,16 @@ where
             let entries = Arc::clone(&entries);
             let node_to_entry = Arc::clone(&node_to_entry);
             let session_pool = Arc::clone(&session_pool);
+            let entry_transferred = Arc::clone(&entry_transferred);
             Box::pin(async move {
-                // Only the real transfer node does I/O; every structural node
+                // Only the real transfer nodes do I/O; every structural node
                 // (discover / acquire / verify / preserve / commit / emit) is
                 // a no-op anchor, exactly like the single-file bridge.
                 if !matches!(
                     node.kind,
-                    TransferNodeKind::DownloadFile | TransferNodeKind::UploadFile
+                    TransferNodeKind::DownloadFile
+                        | TransferNodeKind::UploadFile
+                        | TransferNodeKind::UploadPart
                 ) {
                     return NodeOutcome::Completed;
                 }
@@ -194,6 +218,19 @@ where
                     return NodeOutcome::Completed;
                 };
                 let entry = entries[entry_index].clone();
+
+                // Multiple UploadPart nodes can map to the same entry under
+                // the shaped fan-out shape. The legacy `execute_with_session`
+                // is a per-file contract, so only the first part to enter the
+                // runner performs the transfer; the others fall through as
+                // structural no-ops and let the graph drain.
+                {
+                    let mut transferred = entry_transferred.lock().await;
+                    if transferred[entry_index] {
+                        return NodeOutcome::Completed;
+                    }
+                    transferred[entry_index] = true;
+                }
 
                 // Cancellation: a cancelled batch leaves the remaining files
                 // untouched and unaccounted, mirroring the legacy task that
