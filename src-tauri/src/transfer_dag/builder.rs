@@ -188,10 +188,18 @@ impl SyncDagAction {
 }
 
 /// One entry in a sync plan.
+///
+/// `file_size` is observational for the legacy `from_sync_plan` shape (which
+/// ignores it) and structural for the shaped `from_sync_plan_shaped` shape:
+/// a sync entry large enough to span more than one preferred chunk on a
+/// multipart-capable provider fans out into N `UploadPart` nodes when the
+/// action is `Upload`. Defaults to `0` so existing call sites continue to
+/// produce the same single-transfer-core chain.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SyncDagItem {
     pub key: String,
     pub action: SyncDagAction,
+    pub file_size: u64,
 }
 
 impl SyncDagItem {
@@ -199,11 +207,26 @@ impl SyncDagItem {
         Self {
             key: key.into(),
             action,
+            file_size: 0,
+        }
+    }
+
+    /// Build a sync entry pre-populated with the source object's byte length.
+    pub fn with_size(key: impl Into<String>, action: SyncDagAction, file_size: u64) -> Self {
+        Self {
+            key: key.into(),
+            action,
+            file_size,
         }
     }
 }
 
 /// Node ids for one transfer-producing sync plan entry.
+///
+/// `transfer` is the primary transfer node and equals `transfer_nodes[0]`
+/// for both the legacy `from_sync_plan` shape and the single-core variant
+/// of the shaped path. Under multipart fan-out `transfer_nodes` carries
+/// every `UploadPart` node id in part-number order.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SyncFileDag {
     pub key: String,
@@ -212,6 +235,8 @@ pub struct SyncFileDag {
     pub direction: TransferDirection,
     pub acquire: usize,
     pub transfer: usize,
+    /// Full transfer core: one node for single-core, N for multipart fan-out.
+    pub transfer_nodes: Vec<usize>,
     pub verify: usize,
     pub preserve_metadata: usize,
     pub commit: usize,
@@ -480,6 +505,69 @@ impl TransferDagBuilder {
                 direction,
                 acquire: ids.acquire,
                 transfer: ids.transfer,
+                transfer_nodes: vec![ids.transfer],
+                verify: ids.verify,
+                preserve_metadata: ids.preserve_metadata,
+                commit: ids.commit,
+                emit_progress: ids.emit_progress,
+            });
+        }
+
+        SyncDag {
+            dag,
+            discover_local,
+            discover_remote,
+            compare,
+            files,
+        }
+    }
+
+    /// Build a sync-session graph with per-file capability shaping.
+    ///
+    /// Mirrors [`Self::from_sync_plan`] but routes every transfer-producing
+    /// entry through [`append_shaped_sync_file_chain`], so when the shared
+    /// `caps` advertise `multipart_upload` and an upload entry's
+    /// `file_size` spans more than one preferred chunk the transfer core
+    /// fans out into N `UploadPart` nodes. Default caps reproduce the
+    /// legacy single-transfer-core shape verbatim, so this is byte-
+    /// identical with [`Self::from_sync_plan`] when called with
+    /// `TransferCapabilities::default()`.
+    pub fn from_sync_plan_shaped(plan: &[SyncDagItem], caps: &TransferCapabilities) -> SyncDag {
+        let mut dag = TransferDag::default();
+        let discover_local = dag.add_node(
+            TransferNodeKind::DiscoverLocal,
+            vec![],
+            ResourceRequest::default(),
+        );
+        let discover_remote = dag.add_node(
+            TransferNodeKind::DiscoverRemote,
+            vec![],
+            ResourceRequest::default(),
+        );
+        let compare = dag.add_node(
+            TransferNodeKind::Compare,
+            vec![discover_local, discover_remote],
+            ResourceRequest::default(),
+        );
+        let mut files = Vec::new();
+
+        for (plan_index, item) in plan.iter().enumerate() {
+            let Some(direction) = item.action.transfer_direction() else {
+                continue;
+            };
+            let ids =
+                append_shaped_sync_file_chain(&mut dag, direction, compare, caps, item.file_size);
+            files.push(SyncFileDag {
+                key: item.key.clone(),
+                plan_index,
+                action: item.action,
+                direction,
+                acquire: ids.acquire,
+                transfer: *ids
+                    .transfer_nodes
+                    .first()
+                    .expect("shaped sync chain has at least one transfer node"),
+                transfer_nodes: ids.transfer_nodes,
                 verify: ids.verify,
                 preserve_metadata: ids.preserve_metadata,
                 commit: ids.commit,
@@ -848,6 +936,80 @@ fn append_shaped_file_chain(
 
     ShapedFileNodeIds {
         discover,
+        acquire,
+        transfer_nodes,
+        verify,
+        preserve_metadata,
+        commit,
+        emit_progress,
+    }
+}
+
+/// Append one capability-shaped sync sub-DAG to `dag` below the global
+/// `compare` join node.
+///
+/// Same node bindings as [`append_shaped_file_chain`] but with `compare`
+/// substituted for the absent per-file discover prefix, mirroring how
+/// [`append_sync_file_chain`] threads the global sync prefix.
+fn append_shaped_sync_file_chain(
+    dag: &mut TransferDag,
+    direction: TransferDirection,
+    compare: usize,
+    caps: &TransferCapabilities,
+    file_size: u64,
+) -> ShapedFileNodeIds {
+    let profile = TransferGraphProfile::resolve(direction, caps, file_size);
+
+    let acquire = dag.add_node(
+        TransferNodeKind::AcquireResource,
+        vec![compare],
+        ResourceRequest::default(),
+    );
+
+    let mut transfer_nodes = Vec::new();
+    if direction == TransferDirection::Upload && profile.upload_parts > 1 {
+        for _ in 0..profile.upload_parts {
+            transfer_nodes.push(dag.add_node(
+                TransferNodeKind::UploadPart,
+                vec![acquire],
+                part_request(profile.api_slots),
+            ));
+        }
+    } else {
+        let transfer_kind = match direction {
+            TransferDirection::Download => TransferNodeKind::DownloadFile,
+            TransferDirection::Upload => TransferNodeKind::UploadFile,
+        };
+        transfer_nodes.push(dag.add_node(
+            transfer_kind,
+            vec![acquire],
+            transfer_request(profile.api_slots),
+        ));
+    }
+
+    let verify = dag.add_node(
+        TransferNodeKind::VerifyChecksum,
+        transfer_nodes.clone(),
+        ResourceRequest::default(),
+    );
+    let preserve_metadata = dag.add_node(
+        TransferNodeKind::PreserveMetadata,
+        vec![verify],
+        ResourceRequest::default(),
+    );
+    let commit = dag.add_node(
+        TransferNodeKind::CommitTemp,
+        vec![preserve_metadata],
+        ResourceRequest::default(),
+    );
+    let emit_progress = dag.add_node(
+        TransferNodeKind::EmitProgress,
+        vec![commit],
+        ResourceRequest::default(),
+    );
+
+    ShapedFileNodeIds {
+        discover: compare,
         acquire,
         transfer_nodes,
         verify,
@@ -1234,6 +1396,59 @@ mod tests {
         actual_deps.sort_unstable();
         assert_eq!(actual_deps, expected_deps);
 
+        let download = &built.files[1];
+        assert_eq!(download.transfer_nodes.len(), 1);
+        assert_eq!(
+            nodes[download.transfer_nodes[0]].kind,
+            TransferNodeKind::DownloadFile
+        );
+    }
+
+    #[test]
+    fn shaped_sync_plan_with_default_caps_matches_legacy_shape() {
+        // Default caps reproduce the legacy `from_sync_plan` graph byte-
+        // identically: same node count, same single-core transfer shape per
+        // file, same global discover/compare prefix.
+        let items = vec![
+            SyncDagItem::with_size("a.txt", SyncDagAction::Upload, 0),
+            SyncDagItem::with_size("b.txt", SyncDagAction::Download, 0),
+        ];
+        let legacy = TransferDagBuilder::from_sync_plan(&items);
+        let shaped =
+            TransferDagBuilder::from_sync_plan_shaped(&items, &TransferCapabilities::default());
+        assert_eq!(legacy.dag.nodes().len(), shaped.dag.nodes().len());
+        assert_eq!(shaped.files.len(), 2);
+        for (l, s) in legacy.files.iter().zip(shaped.files.iter()) {
+            assert_eq!(s.transfer_nodes.len(), 1);
+            assert_eq!(s.transfer, s.transfer_nodes[0]);
+            assert_eq!(l.transfer, s.transfer);
+        }
+    }
+
+    #[test]
+    fn shaped_sync_plan_fans_out_multipart_uploads() {
+        let caps = TransferCapabilities {
+            multipart_upload: Capability::Supported,
+            preferred_chunk_size: Some(8 * 1024 * 1024),
+            ..TransferCapabilities::default()
+        };
+        let items = vec![
+            SyncDagItem::with_size("big.bin", SyncDagAction::Upload, 24 * 1024 * 1024),
+            SyncDagItem::with_size("small.txt", SyncDagAction::Download, 16 * 1024 * 1024),
+        ];
+        let built = TransferDagBuilder::from_sync_plan_shaped(&items, &caps);
+        assert_eq!(built.files.len(), 2);
+
+        let upload = &built.files[0];
+        assert_eq!(upload.transfer_nodes.len(), 3);
+        let nodes = built.dag.nodes();
+        for &id in &upload.transfer_nodes {
+            assert_eq!(nodes[id].kind, TransferNodeKind::UploadPart);
+            assert_eq!(nodes[id].depends_on, vec![upload.acquire]);
+        }
+
+        // Multipart is upload-only; the download item stays a single
+        // `DownloadFile` even on a multipart-capable cap set.
         let download = &built.files[1];
         assert_eq!(download.transfer_nodes.len(), 1);
         assert_eq!(
