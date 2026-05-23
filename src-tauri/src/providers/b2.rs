@@ -2523,6 +2523,69 @@ impl StorageProvider for B2Provider {
         Ok(())
     }
 
+    fn supports_server_copy(&self) -> bool {
+        true
+    }
+
+    fn supports_server_side_copy(&self) -> bool {
+        true
+    }
+
+    async fn server_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        // Legacy alias kept so the rest of the codebase
+        // (provider_commands::provider_supports_server_copy, CLI, MCP)
+        // keeps working unchanged. New DAG runner code reaches for
+        // `server_side_copy` directly, which owns the real
+        // `b2_copy_file` implementation.
+        StorageProvider::server_side_copy(self, from, to).await
+    }
+
+    async fn server_side_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        let from_abs = self.resolved_path(from);
+        let to_abs = self.resolved_path(to);
+        let from_key = self.b2_key(&from_abs);
+        let to_key = self.b2_key(&to_abs);
+        self.validate_header_budget(&to_key, 0)?;
+        let (file_id, size) = match self.lookup_file_id(&from_key).await {
+            Ok(v) => v,
+            Err(e) if is_b2_token_failure(&e) => {
+                if self.maybe_reauth(&e).await {
+                    self.lookup_file_id(&from_key).await?
+                } else {
+                    return Err(e);
+                }
+            }
+            Err(e) => return Err(e),
+        };
+        if size > COPY_MAX_SIZE {
+            // b2_copy_file is rejected above 5 GB. The chunked b2_copy_part
+            // workflow is only wired into rename() today (it always
+            // deletes the source); exposing it as a no-delete variant is
+            // tracked separately so the DAG shaped-graph runner can fall
+            // back to a client-side copy for files this large until that
+            // path lands.
+            return Err(ProviderError::NotSupported(format!(
+                "B2 server-side copy is capped at {} bytes; source is {} bytes",
+                COPY_MAX_SIZE, size
+            )));
+        }
+        match self.copy_file_to(&file_id, &to_key).await {
+            Ok(_) => Ok(()),
+            Err(e) if is_b2_token_failure(&e) => {
+                if self.maybe_reauth(&e).await {
+                    let _ = self.copy_file_to(&file_id, &to_key).await?;
+                    Ok(())
+                } else {
+                    Err(e)
+                }
+            }
+            Err(e) => Err(e),
+        }
+    }
+
     /// Advertise the parallel large-file capability honestly now that
     /// `upload_large_file` genuinely uploads parts concurrently (PD-UP-1).
     /// Only the multipart fields are set: B2's download path stays
@@ -3105,6 +3168,30 @@ mod tests {
         )
         .await;
         assert!(matches!(result, Err(ProviderError::NotConnected)));
+    }
+
+    /// SG-T07 gate: B2 advertises the server_side_copy capability under
+    /// both the legacy and the new slot so the DAG capability builder
+    /// picks it up regardless of which name the wiring uses.
+    #[test]
+    fn b2_advertises_server_side_copy_capability() {
+        let p = empty_provider();
+        assert!(p.supports_server_copy());
+        assert!(p.supports_server_side_copy());
+    }
+
+    /// SG-T07 gate: both the trait-level entry point and the legacy
+    /// delegate fail fast on the connection check before reaching the
+    /// network, matching `rename()`'s guard.
+    #[tokio::test]
+    async fn b2_server_side_copy_requires_connection() {
+        let mut p = empty_provider();
+        let direct =
+            StorageProvider::server_side_copy(&mut p, "/src/key.bin", "/dst/key.bin").await;
+        assert!(matches!(direct, Err(ProviderError::NotConnected)));
+
+        let via_legacy = p.server_copy("/src/key.bin", "/dst/key.bin").await;
+        assert!(matches!(via_legacy, Err(ProviderError::NotConnected)));
     }
 
     /// SG-T06 gate: `complete_multipart_upload` must sort parts by
