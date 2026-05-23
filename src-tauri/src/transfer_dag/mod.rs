@@ -23,8 +23,8 @@ pub use adaptive::{
     congestion_from_error, AdaptiveClass, AimdConfig, AimdController, CongestionEvent,
 };
 pub use builder::{
-    BatchDag, BatchDagItem, BatchFileDag, CopyDag, ShapedFileDag, SingleFileDag, SyncDag,
-    SyncDagAction, SyncDagItem, SyncFileDag, TransferDagBuilder, TransferDirection,
+    BatchDag, BatchDagItem, BatchFileDag, CopyDag, ShapedFileDag, ShapedRangesDag, SingleFileDag,
+    SyncDag, SyncDagAction, SyncDagItem, SyncFileDag, TransferDagBuilder, TransferDirection,
     TransferGraphProfile,
 };
 pub use capabilities::{Capability, TransferCapabilities};

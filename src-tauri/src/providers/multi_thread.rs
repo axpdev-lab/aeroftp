@@ -441,22 +441,22 @@ where
         + 'static,
 {
     use crate::transfer_dag::executor::{execute_dag, DagNodeRunner, NodeFuture, NodeOutcome};
-    use crate::transfer_dag::graph::{TransferDag, TransferNode, TransferNodeKind};
+    use crate::transfer_dag::graph::TransferNode;
     use crate::transfer_dag::{
-        AimdConfig, AimdController, DagObserver, NoopDagObserver, ResourceRequest, TransferBudget,
-        TransferResourceManager,
+        AimdConfig, AimdController, DagObserver, NoopDagObserver, TransferBudget,
+        TransferDagBuilder, TransferResourceManager,
     };
     use std::sync::atomic::AtomicBool;
     use std::sync::Mutex;
 
-    let mut dag = TransferDag::default();
-    for _ in ranges {
-        dag.add_node(
-            TransferNodeKind::DownloadRange,
-            vec![],
-            ResourceRequest::range_chunk(),
-        );
-    }
+    // The segmented-download shape is fixed and capability-irrelevant
+    // (every range is independent and reserves one `range_chunk` resource),
+    // so the shaped builder is a thin pass-through. Routing through it
+    // makes [`TransferDagBuilder`] the single source of truth for every
+    // production graph shape: SG-T19 collapses the manual node
+    // construction here once the flag-gated legacy JoinSet path is gone.
+    let shaped = TransferDagBuilder::shaped_ranges(ranges.len());
+    let dag = shaped.dag;
 
     // Size the controlled classes so up to `max_parallel` range_chunk nodes
     // run at once: identical effective concurrency to the JoinSet semaphore

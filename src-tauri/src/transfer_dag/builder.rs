@@ -344,6 +344,17 @@ pub struct ShapedFileDag {
     pub emit_progress: usize,
 }
 
+/// A built fan-out segmented-download graph: one `DownloadRange` node per
+/// requested segment, with no inter-segment dependencies. The shared chunk /
+/// HTTP / disk-write budget governs how many segments run at once.
+#[derive(Debug, Clone)]
+pub struct ShapedRangesDag {
+    pub dag: TransferDag,
+    /// One `DownloadRange` node per segment, in creation order. Callers map
+    /// `transfer[i]` to the i-th `(start, end)` pair of their plan.
+    pub transfer: Vec<usize>,
+}
+
 /// A built capability-shaped copy graph. When the provider advertises
 /// `server_side_copy` the transfer core collapses into a single
 /// [`TransferNodeKind::ServerSideCopy`] node (the server moves the bytes, no
@@ -582,6 +593,30 @@ impl TransferDagBuilder {
             compare,
             files,
         }
+    }
+
+    /// Build a fan-out segmented-download graph.
+    ///
+    /// Returns one [`TransferNodeKind::DownloadRange`] node per requested
+    /// segment, with no dependencies between them. Every node reserves one
+    /// `range_chunk` resource so the shared chunk / HTTP / disk-write budget
+    /// governs how many segments run at once. The legacy
+    /// [`crate::providers::multi_thread::run_ranges_via_graph`] runner
+    /// produced this exact shape inline; expressing it here keeps the
+    /// builder the single source of truth for every production graph shape
+    /// and unblocks the SG-T19 collapse where the manual node construction
+    /// goes away.
+    pub fn shaped_ranges(segments: usize) -> ShapedRangesDag {
+        let mut dag = TransferDag::default();
+        let mut transfer = Vec::with_capacity(segments);
+        for _ in 0..segments {
+            transfer.push(dag.add_node(
+                TransferNodeKind::DownloadRange,
+                vec![],
+                ResourceRequest::range_chunk(),
+            ));
+        }
+        ShapedRangesDag { dag, transfer }
     }
 
     /// Build a capability-shaped single-file graph (DAG-ENGINE phase 3).
@@ -1402,6 +1437,34 @@ mod tests {
             nodes[download.transfer_nodes[0]].kind,
             TransferNodeKind::DownloadFile
         );
+    }
+
+    #[test]
+    fn shaped_ranges_emits_one_download_range_node_per_segment() {
+        let built = TransferDagBuilder::shaped_ranges(4);
+        let nodes = built.dag.nodes();
+        assert_eq!(built.transfer.len(), 4);
+        assert_eq!(nodes.len(), 4);
+        for &id in &built.transfer {
+            assert_eq!(nodes[id].kind, TransferNodeKind::DownloadRange);
+            assert!(
+                nodes[id].depends_on.is_empty(),
+                "segments are independent: no inter-range dependencies"
+            );
+            assert_eq!(nodes[id].resources, ResourceRequest::range_chunk());
+        }
+        // Node ids match creation order, so callers can index their range
+        // plan by `node.id` (the segmented-download runner relies on this).
+        for (i, &id) in built.transfer.iter().enumerate() {
+            assert_eq!(id, i);
+        }
+    }
+
+    #[test]
+    fn shaped_ranges_zero_segments_produces_empty_graph() {
+        let built = TransferDagBuilder::shaped_ranges(0);
+        assert!(built.transfer.is_empty());
+        assert!(built.dag.nodes().is_empty());
     }
 
     #[test]
