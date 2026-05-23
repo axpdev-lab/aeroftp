@@ -4773,8 +4773,23 @@ async fn cli_run_single_file_dag(
     local: &str,
     progress_cb: Option<Box<dyn Fn(u64, u64) + Send>>,
 ) -> (Box<dyn StorageProvider>, Result<(), ProviderError>) {
+    // Resolve capabilities and the local file size before wrapping the
+    // provider in the shared Arc: the shaped-graph builder needs both to
+    // decide between the single-`UploadFile` shape and a multipart fan-out
+    // on the upload direction. For a download we still resolve caps so
+    // `rate_limited_api` and `resume_download` flags reach the builder; the
+    // file size on the download direction has no shaping effect today.
+    let caps = provider.transfer_capabilities();
+    let file_size: u64 = match direction {
+        ftp_client_gui_lib::transfer_dag::TransferDirection::Upload => {
+            std::fs::metadata(local).map(|m| m.len()).unwrap_or(0)
+        }
+        ftp_client_gui_lib::transfer_dag::TransferDirection::Download => 0,
+    };
     let arc = Arc::new(tokio::sync::Mutex::new(Some(provider)));
-    let built = ftp_client_gui_lib::transfer_dag::TransferDagBuilder::single_file(direction);
+    let built = ftp_client_gui_lib::transfer_dag::TransferDagBuilder::shaped_file(
+        direction, &caps, file_size,
+    );
     let report = Arc::new(AtomicU64::new(0));
     let observer: Arc<dyn ftp_client_gui_lib::transfer_dag::DagObserver> =
         Arc::new(ftp_client_gui_lib::transfer_dag::NoopDagObserver);
@@ -4787,6 +4802,7 @@ async fn cli_run_single_file_dag(
         progress_cb,
         observer,
         report,
+        file_size,
     )
     .await;
     let provider = arc
