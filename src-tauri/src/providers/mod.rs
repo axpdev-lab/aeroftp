@@ -556,6 +556,17 @@ pub trait StorageProvider: Send + Sync {
         false
     }
 
+    /// Capability gate for the DAG shaped-graph `ServerSideCopy` node.
+    ///
+    /// Default delegates to `supports_server_copy()` so all existing
+    /// provider overrides keep advertising the capability without
+    /// duplication. New code (capability builder, runner dispatch) should
+    /// reach for `supports_server_side_copy` because it matches the
+    /// `TransferCapabilities::server_side_copy` slot one-to-one.
+    fn supports_server_side_copy(&self) -> bool {
+        self.supports_server_copy()
+    }
+
     /// Copy file on server side (without download/upload)
     async fn server_copy(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
         Err(ProviderError::NotSupported("server_copy".to_string()))
@@ -931,7 +942,7 @@ pub trait StorageProvider: Send + Sync {
         let mut caps = crate::transfer_dag::TransferCapabilities::from_provider_hints(
             self.provider_type(),
             &self.transfer_optimization_hints(),
-            self.supports_server_copy(),
+            self.supports_server_side_copy(),
         );
 
         if matches!(
