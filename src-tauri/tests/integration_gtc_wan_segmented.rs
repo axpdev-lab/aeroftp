@@ -1029,8 +1029,13 @@ async fn dag_download_once(
     remote: &str,
     local: &str,
 ) -> (Box<dyn StorageProvider>, Result<(), String>) {
+    // Resolve capabilities before wrapping the provider: the shaped-graph
+    // builder needs them to pick the transfer-core shape. On the download
+    // direction the shape always collapses to one transfer node regardless,
+    // so `file_size = 0` is benign here (multipart fan-out is upload-only).
+    let caps = provider.transfer_capabilities();
     let arc = Arc::new(Mutex::new(Some(provider)));
-    let built = TransferDagBuilder::single_file(TransferDirection::Download);
+    let built = TransferDagBuilder::shaped_file(TransferDirection::Download, &caps, 0);
     let report = Arc::new(AtomicU64::new(0));
     let observer: Arc<dyn DagObserver> = Arc::new(NoopDagObserver);
     let res = execute_single_file_dag(
@@ -1042,6 +1047,7 @@ async fn dag_download_once(
         None,
         observer,
         report,
+        0,
     )
     .await
     .map_err(|e| e.to_string());

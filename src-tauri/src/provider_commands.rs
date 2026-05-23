@@ -942,7 +942,22 @@ async fn run_dag_download_leaf(
     file_size: u64,
     delta_fallback_reason: Option<String>,
 ) -> Result<String, String> {
-    let built = TransferDagBuilder::single_file(crate::transfer_dag::TransferDirection::Download);
+    // Capability snapshot drives the shaped-graph shape (single transfer
+    // core vs multipart fan-out). For downloads the shape collapses to one
+    // transfer node regardless, but we still resolve caps here so the
+    // builder picks up `rate_limited_api` / `resume_download` correctly.
+    let caps = {
+        let guard = provider.lock().await;
+        guard
+            .as_ref()
+            .map(|p| p.transfer_capabilities())
+            .unwrap_or_default()
+    };
+    let built = TransferDagBuilder::shaped_file(
+        crate::transfer_dag::TransferDirection::Download,
+        &caps,
+        file_size,
+    );
     // Seed with the discovered remote size; the transfer node overwrites it
     // with the real on-disk size once the download succeeds.
     let report_size = Arc::new(AtomicU64::new(file_size));
@@ -966,6 +981,7 @@ async fn run_dag_download_leaf(
         progress_cb,
         observer,
         report_size,
+        file_size,
     )
     .await
     {
@@ -1008,7 +1024,22 @@ async fn run_dag_upload_leaf(
     file_size: u64,
     delta_fallback_reason: Option<String>,
 ) -> Result<String, String> {
-    let built = TransferDagBuilder::single_file(crate::transfer_dag::TransferDirection::Upload);
+    // Capability snapshot drives the shaped-graph shape. On an upload, this
+    // is the gate between the legacy single-`UploadFile` core and a native
+    // multipart fan-out (`UploadPart` x N) when the provider advertises
+    // `multipart_upload`.
+    let caps = {
+        let guard = provider.lock().await;
+        guard
+            .as_ref()
+            .map(|p| p.transfer_capabilities())
+            .unwrap_or_default()
+    };
+    let built = TransferDagBuilder::shaped_file(
+        crate::transfer_dag::TransferDirection::Upload,
+        &caps,
+        file_size,
+    );
     // The upload node does not touch the report size: the local file size is
     // the value the legacy completion event reports.
     let report_size = Arc::new(AtomicU64::new(file_size));
@@ -1032,6 +1063,7 @@ async fn run_dag_upload_leaf(
         progress_cb,
         observer,
         report_size,
+        file_size,
     )
     .await
     {
