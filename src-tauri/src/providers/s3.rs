@@ -2808,7 +2808,20 @@ impl StorageProvider for S3Provider {
         true
     }
 
+    fn supports_server_side_copy(&self) -> bool {
+        true
+    }
+
     async fn server_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        // Legacy alias kept so the rest of the codebase
+        // (provider_commands::provider_supports_server_copy, CLI helpers,
+        // MCP tools) keeps working unchanged. New DAG runner code reaches
+        // for `server_side_copy` directly, which now owns the real
+        // x-amz-copy-source implementation.
+        StorageProvider::server_side_copy(self, from, to).await
+    }
+
+    async fn server_side_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -4061,5 +4074,30 @@ mod tests {
             }
             other => panic!("expected NotSupported, got {other:?}"),
         }
+    }
+
+    /// SG-T05 gate: S3 advertises the server_side_copy capability under
+    /// both the legacy `supports_server_copy` and the new
+    /// `supports_server_side_copy` slot so the DAG capability builder
+    /// picks it up regardless of which name the wiring uses.
+    #[test]
+    fn s3_advertises_server_side_copy_capability() {
+        let provider = make_provider(Some("http://localhost:9000"));
+        assert!(provider.supports_server_copy());
+        assert!(provider.supports_server_side_copy());
+    }
+
+    /// SG-T05 gate: the real x-amz-copy-source implementation lives on
+    /// `server_side_copy`; `server_copy` is a thin delegate. Both paths
+    /// must guard on the connection state before reaching the network.
+    #[tokio::test]
+    async fn s3_server_side_copy_within_bucket_requires_connection() {
+        let mut provider = make_provider(Some("http://localhost:9000"));
+        let direct =
+            StorageProvider::server_side_copy(&mut provider, "/src/key.bin", "/dst/key.bin").await;
+        assert!(matches!(direct, Err(ProviderError::NotConnected)));
+
+        let via_legacy = provider.server_copy("/src/key.bin", "/dst/key.bin").await;
+        assert!(matches!(via_legacy, Err(ProviderError::NotConnected)));
     }
 }
