@@ -5,6 +5,64 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.0] - 2026-05-24
+
+### DAG Transfer Engine Convergence
+
+v4.0.0 promotes the ready-frontier DAG engine introduced in v3.8.4 to the **single production path** for every transfer surface. The three rollout flags that gated the engine during the v3.8.x cycle are gone, the hand-rolled `JoinSet` batch orchestrator has been deleted, and the shaped builders are now the single source of truth for every graph the executor schedules: single-file leaves, multi-file batches, sync sessions, intra-file segmented downloads, and cross-bucket copies.
+
+The release introduces a small but principled trait expansion on `StorageProvider` so the engine can dispatch the right shape per call from a provider's `TransferCapabilities`, and ships the wiring + integration tests that prove the shapes work against live S3, B2, WebDAV and ImageKit backends.
+
+---
+
+### What's new
+
+#### Capability-aware shape per transfer
+
+The shaped graph builder picks the transfer-core shape per call from the provider's capability snapshot:
+
+- **Native multipart upload fan-out** on S3 and Backblaze B2: an upload above one preferred chunk now produces N `UploadPart` graph nodes (one per chunk). The runner orchestrates the lifecycle end-to-end — `begin_multipart_upload` opens the session lazily under a per-context mutex, `upload_part` dispatches each chunk through the shared chunk budget so parts upload in parallel, and the terminal `CommitTemp` node sorts receipts by part number and calls `complete_multipart_upload` to finalize atomically. On any failure the runner best-effort `abort_multipart_upload` so backends never accumulate orphan upload IDs. Mid-stream failure recovery is idempotent.
+- **Server-side copy** on every backend that advertises the capability — S3 `x-amz-copy-source`, B2 `b2_copy_file`, WebDAV RFC 4918 `COPY`, ImageKit `copyFile`, plus 14 other native providers. The shaped-copy graph collapses to a single `ServerSideCopy` node that reserves only an `api_slot`: no file slot, no disk I/O, no local host bytes. The server moves the data.
+- **Intra-file segmented downloads** through the shared `shaped_ranges` builder: when a provider proves it honours HTTP `Range` (a strict `206 Partial Content` with a coherent `Content-Range`), the segmented download fans out into N `DownloadRange` nodes with no inter-segment dependencies, governed by the shared chunk / HTTP / disk-write budget.
+
+For users on backends that advertise none of these capabilities the engine degrades honestly to the same single-transfer-core path that shipped pre-v4.0.0, byte-identical with the legacy `provider.upload` / `provider.download`.
+
+#### Provider trait expansion
+
+Five new methods extend `StorageProvider`:
+
+- `begin_multipart_upload(remote_path, total_size, content_type)`
+- `upload_part(handle, part_number, data)`
+- `complete_multipart_upload(handle, parts)`
+- `abort_multipart_upload(handle)`
+- `server_side_copy(from, to)` — alongside the existing `supports_server_side_copy()` capability gate.
+
+The default implementations return `NotSupported`, so a provider that never advertises a capability never reaches the new methods. Five native backends already implement them: S3 (multipart via `CreateMultipartUpload` / `UploadPart` / `CompleteMultipartUpload` / `AbortMultipartUpload`, server-side copy via `x-amz-copy-source`), B2 (multipart via `b2_start_large_file` / `b2_upload_part` / `b2_finish_large_file`, server-side copy via `b2_copy_file` with the 5 GB protocol cap), WebDAV (RFC 4918 `COPY`), and ImageKit (`copyFile` / `copyFolder`).
+
+#### Convergence cleanup
+
+- The three `AEROFTP_TRANSFER_ENGINE_DAG_*` environment-variable flags are removed.
+- The matching `dag_single_file_enabled()` / `dag_batch_enabled()` / `dag_sync_enabled()` functions are removed.
+- `should_route_sync_to_dag(dry_run)` collapses to `!dry_run`: the only exit from the shared engine is a dry-run sync.
+- The four engine-routing shims (`if dag_*_enabled() { ... }`) in `provider_commands`, the CLI, the batch orchestrator and the sync path drop their flag check.
+- The hand-rolled `JoinSet` sliding-window orchestrator in `transfer_orchestrator::execute_batch` (130+ lines including `spawn_transfer_task`) is removed: `execute_batch_dag` is the entire body.
+
+#### Documentation
+
+- New canonical technical reference at [`docs/DAG-TRANSFER-ENGINE.md`](docs/DAG-TRANSFER-ENGINE.md) (in-repo).
+- New long-form architecture walk-through at [docs.aeroftp.app/architecture/dag-transfer-engine](https://docs.aeroftp.app/architecture/dag-transfer-engine).
+- `AGENTS.md` grows a Transfer Engine section spelling out the three shapes the engine picks per call.
+
+#### Compatibility
+
+The MCP tool surface is unchanged: same names, same arguments, same notifications. Progress events are now sourced from the engine's per-node lifecycle, but downstream consumers see the same JSON shape and the same event cadence. The CLI exit codes and the GUI `transfer_event` channel are likewise unchanged.
+
+### Why v4.0.0
+
+The version bump reflects the architectural shift: the production transfer path is now a single, provider-agnostic, capability-aware DAG scheduler, with five new trait methods on the public `StorageProvider` API. Three flags, four shims, and the legacy batch orchestrator are gone. The convergence is complete; the cleanup pass for `provider_transfer_executor.rs` is filed as accepted technical debt for the post-v4.0.0 window (see `docs/dev/roadmap/APPENDIX-DAG-ENGINE/STATUS_TODO.md`).
+
+---
+
 ## [3.8.4] - 2026-05-20
 
 ### Unified Transfer DAG, Staging Queue and AeroFile Sync
