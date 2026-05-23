@@ -24,9 +24,9 @@ use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 use tracing::{debug, info, warn};
 
 use super::{
-    sanitize_api_error, FileVersion, ProviderError, ProviderTransferExecutorKind, ProviderType,
-    RemoteEntry, S3Config, ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult,
-    StorageProvider,
+    sanitize_api_error, FileVersion, MultipartHandle, ProviderError, ProviderTransferExecutorKind,
+    ProviderType, RemoteEntry, S3Config, ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult,
+    StorageProvider, UploadedPart,
 };
 
 /// Returns true when the S3 endpoint targets a loopback address or a known
@@ -1031,8 +1031,13 @@ impl S3Provider {
             .ok_or_else(|| ProviderError::ParseError("Missing UploadId in response".to_string()))
     }
 
-    /// Upload a single part, returns the ETag
-    async fn upload_part(
+    /// Upload a single part, returns the ETag.
+    ///
+    /// Internal inherent method; the public, trait-level entry point is
+    /// `<S3Provider as StorageProvider>::upload_part`. The `_internal`
+    /// suffix avoids shadowing the trait method when callers use
+    /// dot-notation on a concrete `S3Provider`.
+    async fn upload_part_internal(
         &self,
         key: &str,
         upload_id: &str,
@@ -1070,8 +1075,12 @@ impl S3Provider {
         Ok(etag)
     }
 
-    /// Complete a multipart upload
-    async fn complete_multipart_upload(
+    /// Complete a multipart upload (internal inherent path).
+    ///
+    /// Public trait-level entry point:
+    /// `<S3Provider as StorageProvider>::complete_multipart_upload`. The
+    /// `_internal` suffix avoids shadowing the trait method.
+    async fn complete_multipart_upload_internal(
         &self,
         key: &str,
         upload_id: &str,
@@ -1189,7 +1198,9 @@ impl S3Provider {
                 let uid = upload_id.clone();
                 let data_len = data.len() as u64;
                 joinset.spawn(async move {
-                    let etag = provider.upload_part(&key_owned, &uid, pn, data).await?;
+                    let etag = provider
+                        .upload_part_internal(&key_owned, &uid, pn, data)
+                        .await?;
                     Ok::<(u32, String, u64), ProviderError>((pn, etag, data_len))
                 });
             }
@@ -1208,13 +1219,13 @@ impl S3Provider {
                         // Drain aborted futures so JoinSet drops cleanly before
                         // we fire the S3 AbortMultipartUpload.
                         while joinset.join_next().await.is_some() {}
-                        let _ = self.abort_multipart_upload(key, &upload_id).await;
+                        let _ = self.abort_multipart_upload_internal(key, &upload_id).await;
                         return Err(e);
                     }
                     Err(e) => {
                         joinset.abort_all();
                         while joinset.join_next().await.is_some() {}
-                        let _ = self.abort_multipart_upload(key, &upload_id).await;
+                        let _ = self.abort_multipart_upload_internal(key, &upload_id).await;
                         return Err(ProviderError::TransferFailed(format!(
                             "Upload task panicked: {e}"
                         )));
@@ -1226,12 +1237,16 @@ impl S3Provider {
             parts.sort_by_key(|(pn, _)| *pn);
         }
 
-        self.complete_multipart_upload(key, &upload_id, &parts)
+        self.complete_multipart_upload_internal(key, &upload_id, &parts)
             .await
     }
 
-    /// Abort a multipart upload
-    async fn abort_multipart_upload(
+    /// Abort a multipart upload (internal inherent path).
+    ///
+    /// Public trait-level entry point:
+    /// `<S3Provider as StorageProvider>::abort_multipart_upload`. The
+    /// `_internal` suffix avoids shadowing the trait method.
+    async fn abort_multipart_upload_internal(
         &self,
         key: &str,
         upload_id: &str,
@@ -2875,6 +2890,81 @@ impl StorageProvider for S3Provider {
         }
     }
 
+    // Shaped-graph multipart trait wiring.
+    //
+    // The S3 path already had a private multipart pipeline used by
+    // `upload()` when total_size exceeds MULTIPART_THRESHOLD. Exposing it
+    // through the trait lets the DAG runner dispatch UploadPart nodes
+    // directly (chunk-parallel, AIMD-controlled) without going through
+    // the monolithic `upload_multipart_streaming` orchestrator.
+
+    async fn begin_multipart_upload(
+        &mut self,
+        remote_path: &str,
+        _total_size: u64,
+        content_type: Option<&str>,
+    ) -> Result<MultipartHandle, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        // Filen Desktop's local S3 bridge returns 501 on CreateMultipartUpload
+        // by design (it buffers the whole request body), so fail fast so the
+        // runner falls back to a single-PUT shape instead of burning a
+        // round trip.
+        if self.is_filen_s3_endpoint() {
+            return Err(ProviderError::NotSupported(
+                "S3 multipart upload disabled on filen-s3 endpoint".to_string(),
+            ));
+        }
+        let key = remote_path.trim_start_matches('/');
+        let upload_id = self.create_multipart_upload(key, content_type).await?;
+        Ok(MultipartHandle {
+            upload_id,
+            remote_path: key.to_string(),
+        })
+    }
+
+    async fn upload_part(
+        &mut self,
+        handle: &MultipartHandle,
+        part_number: u32,
+        data: Vec<u8>,
+    ) -> Result<UploadedPart, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        let etag = self
+            .upload_part_internal(&handle.remote_path, &handle.upload_id, part_number, data)
+            .await?;
+        Ok(UploadedPart { part_number, etag })
+    }
+
+    async fn complete_multipart_upload(
+        &mut self,
+        handle: MultipartHandle,
+        parts: Vec<UploadedPart>,
+    ) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        let mut numbered: Vec<(u32, String)> =
+            parts.into_iter().map(|p| (p.part_number, p.etag)).collect();
+        numbered.sort_by_key(|(pn, _)| *pn);
+        self.complete_multipart_upload_internal(&handle.remote_path, &handle.upload_id, &numbered)
+            .await
+    }
+
+    async fn abort_multipart_upload(
+        &mut self,
+        handle: MultipartHandle,
+    ) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        self.abort_multipart_upload_internal(&handle.remote_path, &handle.upload_id)
+            .await
+    }
+
     fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
         super::TransferOptimizationHints {
             supports_multipart: true,
@@ -3912,5 +4002,64 @@ mod tests {
         provider.set_multi_thread_download(4, 250 * 1024 * 1024);
         assert_eq!(provider.multi_thread_streams, 4);
         assert_eq!(provider.multi_thread_cutoff, 250 * 1024 * 1024);
+    }
+
+    fn make_provider(endpoint: Option<&str>) -> S3Provider {
+        S3Provider::new(S3Config {
+            endpoint: endpoint.map(String::from),
+            region: "us-east-1".to_string(),
+            access_key_id: "key".to_string(),
+            secret_access_key: secrecy::SecretString::from("secret".to_string()),
+            bucket: "test-bucket".to_string(),
+            prefix: None,
+            path_style: true,
+            storage_class: None,
+            sse_mode: None,
+            sse_kms_key_id: None,
+            verify_cert: true,
+        })
+        .expect("Failed to create S3Provider")
+    }
+
+    /// SG-T04 gate: the trait-level `begin_multipart_upload` is a different
+    /// method from the inherent `*_internal` pipeline that `upload()` uses
+    /// for multipart streaming. Both must coexist without shadowing.
+    /// When the provider is disconnected, the trait method fails fast on
+    /// the connection check before reaching the network, matching how
+    /// `upload()` guards itself today.
+    #[tokio::test]
+    async fn s3_multipart_via_trait_matches_internal_upload() {
+        let mut provider = make_provider(Some("http://localhost:9000"));
+        let result = StorageProvider::begin_multipart_upload(
+            &mut provider,
+            "/some/key.bin",
+            10 * 1024 * 1024,
+            Some("application/octet-stream"),
+        )
+        .await;
+        assert!(matches!(result, Err(ProviderError::NotConnected)));
+    }
+
+    /// SG-T04 gate: the trait-level multipart entry point must short-circuit
+    /// to NotSupported on Filen Desktop's local S3 bridge so the shaped-graph
+    /// runner falls back to a single-PUT shape instead of burning a round
+    /// trip on the 501 from CreateMultipartUpload.
+    #[tokio::test]
+    async fn s3_multipart_trait_rejects_filen_s3_bridge() {
+        let mut provider = make_provider(Some("https://local.s3.filen.io"));
+        provider.connected = true;
+        let result = StorageProvider::begin_multipart_upload(
+            &mut provider,
+            "/some/key.bin",
+            10 * 1024 * 1024,
+            Some("application/octet-stream"),
+        )
+        .await;
+        match result {
+            Err(ProviderError::NotSupported(msg)) => {
+                assert!(msg.contains("filen-s3"), "msg was {msg}");
+            }
+            other => panic!("expected NotSupported, got {other:?}"),
+        }
     }
 }
