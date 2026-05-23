@@ -27,7 +27,14 @@ jobs:
             target: linux
           - platform: windows-latest
             target: windows
-          - platform: macos-latest
+          # Pinned to macos-14 (Sonoma, arm64) instead of macos-latest:
+          # `macos-latest` now serves macOS 15 (Sequoia), and Tauri's
+          # `bundle_dmg.sh` consistently fails on Sequoia after a clean
+          # release build (the `.app` is created, then DMG bundling
+          # exits 1 with no actionable log). Sonoma keeps the bundler
+          # green. Revisit once upstream Tauri ships a Sequoia-compatible
+          # `bundle_dmg.sh` (or once we move to a custom DMG step).
+          - platform: macos-14
             target: macos
 
     runs-on: ${{ matrix.platform }}
