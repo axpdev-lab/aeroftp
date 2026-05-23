@@ -851,7 +851,18 @@ impl StorageProvider for ImageKitProvider {
         true
     }
 
+    fn supports_server_side_copy(&self) -> bool {
+        true
+    }
+
     async fn server_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        // Legacy alias kept so CLI / MCP / provider_commands callers keep
+        // working. The real `copyFile` / `copyFolder` implementation lives
+        // on `server_side_copy`.
+        StorageProvider::server_side_copy(self, from, to).await
+    }
+
+    async fn server_side_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -1029,4 +1040,41 @@ fn validate_download_url(url: &str) -> Result<(), ProviderError> {
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn empty_provider() -> ImageKitProvider {
+        ImageKitProvider::new(ImageKitConfig {
+            imagekit_id: "demo".to_string(),
+            private_key: SecretString::from("k".to_string()),
+            initial_path: None,
+        })
+    }
+
+    /// SG-T09 gate: ImageKit advertises the server_side_copy capability
+    /// under both the legacy and the new slot, so the DAG capability
+    /// builder picks it up regardless of which name the wiring uses.
+    #[test]
+    fn imagekit_advertises_server_side_copy_capability() {
+        let p = empty_provider();
+        assert!(p.supports_server_copy());
+        assert!(p.supports_server_side_copy());
+    }
+
+    /// SG-T09 gate: both the trait-level entry point and the legacy
+    /// delegate fail fast on the connection check before issuing a
+    /// `copyFile` / `copyFolder` API call.
+    #[tokio::test]
+    async fn imagekit_server_side_copy_requires_connection() {
+        let mut p = empty_provider();
+        let direct =
+            StorageProvider::server_side_copy(&mut p, "/src/file.png", "/dst/file.png").await;
+        assert!(matches!(direct, Err(ProviderError::NotConnected)));
+
+        let via_legacy = p.server_copy("/src/file.png", "/dst/file.png").await;
+        assert!(matches!(via_legacy, Err(ProviderError::NotConnected)));
+    }
 }
