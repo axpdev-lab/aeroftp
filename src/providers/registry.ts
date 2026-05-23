@@ -1359,11 +1359,12 @@ export const PROVIDERS: ProviderConfig[] = [
         },
         features: { shareLink: false, sync: true },
         healthCheckUrl: 'https://webdav.pcloud.com',
-        helpUrl: 'https://www.pcloud.com',
+        helpUrl: 'https://help.pcloud.com/article/webdav',
         signupUrl: 'https://www.pcloud.com',
         setupInstructions: [
             'Use your pCloud account email as the username',
             'Use your regular pCloud login password',
+            'The default server https://webdav.pcloud.com serves the US data region',
             'European region accounts: change the server to https://ewebdav.pcloud.com',
             'On the first connection pCloud may email a "New login attempt. Is this you?" confirmation: approve it to continue',
             'That confirmation email is sent by team@pcloud.com: ignore any lookalike sender',
