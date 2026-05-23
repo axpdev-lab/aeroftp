@@ -82,14 +82,14 @@ impl TransferCapabilities {
     pub fn from_provider_hints(
         provider_type: ProviderType,
         hints: &TransferOptimizationHints,
-        supports_server_copy: bool,
+        supports_server_side_copy: bool,
     ) -> Self {
         let mut caps = Self {
             resume_download: Capability::from_bool(hints.supports_resume_download),
             resume_upload: Capability::from_bool(hints.supports_resume_upload),
             multipart_upload: Capability::from_bool(hints.supports_multipart),
             server_checksum: Capability::from_bool(hints.supports_server_checksum),
-            server_side_copy: Capability::from_bool(supports_server_copy),
+            server_side_copy: Capability::from_bool(supports_server_side_copy),
             preferred_chunk_size: (hints.multipart_part_size > 0)
                 .then_some(hints.multipart_part_size),
             max_chunk_slots: Some(hints.multipart_max_parallel.max(1) as u16),
