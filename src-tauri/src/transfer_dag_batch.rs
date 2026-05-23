@@ -37,14 +37,6 @@
 //! - Cancellation leaves the remaining files untouched and unaccounted,
 //!   mirroring the legacy task that returns early after `cancel` is observed.
 //!
-//! ## Feature flag
-//!
-//! Gated by [`dag_batch_enabled`], read from [`DAG_BATCH_ENV`], default OFF.
-//! With the flag off, not one byte of this module executes and `execute_batch`
-//! runs its legacy path verbatim. The flag is a runtime toggle (not a
-//! recompile) so the parity harness can measure flag-OFF vs flag-ON in a
-//! single build, the same pattern as the phase-1 single-file flag.
-
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -65,37 +57,12 @@ use crate::transfer_domain::{
 use crate::transfer_event_sink::TransferEventSink;
 use crate::transfer_orchestrator::{ProgressObserver, TransferBatch, TransferExecutor};
 
-/// Environment variable that gates the phase-2 batch DAG path.
-///
-/// Recognised truthy values (case-insensitive, trimmed): `1`, `true`, `on`,
-/// `yes`. Anything else, including an unset variable, leaves the path OFF.
-pub const DAG_BATCH_ENV: &str = "AEROFTP_TRANSFER_ENGINE_DAG_BATCH";
-
-/// Returns `true` when the batch DAG path is enabled for this process.
-///
-/// Default OFF: a phased migration enters production behind a flag so a
-/// rollback is a toggle, never a revert (DAG-ENGINE plan, principle 2).
-pub fn dag_batch_enabled() -> bool {
-    std::env::var(DAG_BATCH_ENV)
-        .ok()
-        .map(|raw| flag_value_is_on(&raw))
-        .unwrap_or(false)
-}
-
-/// Parses one environment-variable value into the on/off flag state.
-fn flag_value_is_on(raw: &str) -> bool {
-    matches!(
-        raw.trim().to_ascii_lowercase().as_str(),
-        "1" | "true" | "on" | "yes"
-    )
-}
-
 /// Run a multi-file batch transfer through the graph engine.
 ///
 /// A drop-in replacement for [`crate::transfer_orchestrator::execute_batch`]:
-/// same arguments, same [`TransferBatchResult`]. Reached only with the
-/// [`DAG_BATCH_ENV`] flag on; the legacy `JoinSet` path is untouched and stays
-/// the default.
+/// same arguments, same [`TransferBatchResult`]. Every batch transfer
+/// routes through this function; the legacy `JoinSet` sliding window
+/// orchestrator is gone (DAG-ENGINE A-branch SG-T18 closure).
 pub async fn execute_batch_dag<E>(
     sink: Arc<dyn TransferEventSink>,
     batch: TransferBatch,
@@ -330,26 +297,6 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
     use std::sync::Mutex as StdMutex;
     use std::time::Duration;
-
-    #[test]
-    fn flag_recognises_truthy_values_case_insensitively() {
-        for on in ["1", "true", "TRUE", "On", "yes", " yes ", "Yes"] {
-            assert!(flag_value_is_on(on), "{on:?} must be on");
-        }
-    }
-
-    #[test]
-    fn flag_rejects_falsey_and_garbage_values() {
-        for off in ["0", "false", "off", "no", "", "  ", "enabled", "2", "y"] {
-            assert!(!flag_value_is_on(off), "{off:?} must be off");
-        }
-    }
-
-    #[test]
-    fn flag_is_off_when_env_is_unset() {
-        std::env::remove_var(DAG_BATCH_ENV);
-        assert!(!dag_batch_enabled());
-    }
 
     /// A `TransferExecutor` whose outcome per entry is scripted, with peak
     /// concurrency tracking and a configurable session-pool capacity.

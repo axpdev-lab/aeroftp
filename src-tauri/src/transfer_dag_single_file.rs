@@ -40,14 +40,6 @@
 //! observable result is the same finalized object on the remote, with a
 //! different on-the-wire control flow.
 //!
-//! ## Feature flag
-//!
-//! The whole path is gated by [`dag_single_file_enabled`], read from the
-//! [`DAG_SINGLE_FILE_ENV`] environment variable, default OFF. With the flag
-//! off, not one byte of this module executes and the legacy path is verbatim.
-//! The flag is a runtime toggle (not a recompile) so the parity harness can
-//! measure flag-OFF vs flag-ON in a single build.
-//!
 //! ## Node bindings
 //!
 //! For the seven-node single-file graph the runner binds:
@@ -94,12 +86,6 @@ use crate::transfer_dag::{
     TransferResourceManager,
 };
 
-/// Environment variable that gates the shaped-graph single-file DAG path.
-///
-/// Recognised truthy values (case-insensitive, trimmed): `1`, `true`, `on`,
-/// `yes`. Anything else, including an unset variable, leaves the path OFF.
-pub const DAG_SINGLE_FILE_ENV: &str = "AEROFTP_TRANSFER_ENGINE_DAG_SINGLE_FILE";
-
 /// A per-byte transfer progress callback, as accepted by
 /// [`StorageProvider::download`] / [`StorageProvider::upload`].
 pub type ProgressCallback = Box<dyn Fn(u64, u64) + Send>;
@@ -107,25 +93,6 @@ pub type ProgressCallback = Box<dyn Fn(u64, u64) + Send>;
 /// The connected-provider handle shared between the GUI command state and the
 /// spawned DAG node tasks. `Option` because a session may be disconnected.
 pub type SharedProvider = Arc<Mutex<Option<Box<dyn StorageProvider>>>>;
-
-/// Returns `true` when the single-file DAG path is enabled for this process.
-///
-/// Default OFF: a phased migration enters production behind a flag so a
-/// rollback is a toggle, never a revert (DAG-ENGINE plan, principle 2).
-pub fn dag_single_file_enabled() -> bool {
-    std::env::var(DAG_SINGLE_FILE_ENV)
-        .ok()
-        .map(|raw| flag_value_is_on(&raw))
-        .unwrap_or(false)
-}
-
-/// Parses one environment-variable value into the on/off flag state.
-fn flag_value_is_on(raw: &str) -> bool {
-    matches!(
-        raw.trim().to_ascii_lowercase().as_str(),
-        "1" | "true" | "on" | "yes"
-    )
-}
 
 /// Per-transfer multipart orchestration context, shared across every
 /// `UploadPart` runner invocation and the terminal `CommitTemp` finalize /
@@ -499,27 +466,6 @@ fn record_failure(
 mod tests {
     use super::*;
     use crate::transfer_dag::{Capability, TransferCapabilities, TransferDagBuilder};
-
-    #[test]
-    fn flag_recognises_truthy_values_case_insensitively() {
-        for on in ["1", "true", "TRUE", "On", "yes", " yes ", "Yes"] {
-            assert!(flag_value_is_on(on), "{on:?} must be on");
-        }
-    }
-
-    #[test]
-    fn flag_rejects_falsey_and_garbage_values() {
-        for off in ["0", "false", "off", "no", "", "  ", "enabled", "2", "y"] {
-            assert!(!flag_value_is_on(off), "{off:?} must be off");
-        }
-    }
-
-    #[test]
-    fn flag_is_off_when_env_is_unset() {
-        // The test runner does not set the variable; default must be OFF.
-        std::env::remove_var(DAG_SINGLE_FILE_ENV);
-        assert!(!dag_single_file_enabled());
-    }
 
     #[test]
     fn shaped_upload_without_multipart_keeps_single_transfer_core() {

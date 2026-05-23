@@ -14376,13 +14376,10 @@ async fn cmd_get(
         }
     }
 
-    // DAG-ENGINE phase 1: route the plain classic single-file download
-    // through the graph engine when the flag is on. `--partial` keeps the
-    // legacy `download_with_resume` (its resume branch is not the plain
-    // leaf); with the flag off the legacy call runs verbatim.
-    let dl_result = if ftp_client_gui_lib::transfer_dag_single_file::dag_single_file_enabled()
-        && !cli.partial
-    {
+    // DAG-ENGINE: route the plain classic single-file download through the
+    // graph engine. `--partial` keeps the legacy `download_with_resume`
+    // (its resume branch is not the plain leaf).
+    let dl_result = if !cli.partial {
         let (returned, res) = cli_run_single_file_dag(
             provider,
             ftp_client_gui_lib::transfer_dag::TransferDirection::Download,
@@ -15583,13 +15580,10 @@ async fn cmd_put(
         }
     }
 
-    // DAG-ENGINE phase 1: route the plain classic single-file upload through
-    // the graph engine when the flag is on. `--partial` keeps the legacy
-    // `upload_with_resume` (its resume branch is not the plain leaf); with the
-    // flag off the legacy call runs verbatim.
-    let up_result = if ftp_client_gui_lib::transfer_dag_single_file::dag_single_file_enabled()
-        && !cli.partial
-    {
+    // DAG-ENGINE: route the plain classic single-file upload through the
+    // graph engine. `--partial` keeps the legacy `upload_with_resume` (its
+    // resume branch is not the plain leaf).
+    let up_result = if !cli.partial {
         let (returned, res) = cli_run_single_file_dag(
             provider,
             ftp_client_gui_lib::transfer_dag::TransferDirection::Upload,
