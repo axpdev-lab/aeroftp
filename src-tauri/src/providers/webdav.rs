@@ -2781,7 +2781,17 @@ impl StorageProvider for WebDavProvider {
         true
     }
 
+    fn supports_server_side_copy(&self) -> bool {
+        true
+    }
+
     async fn server_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        // Legacy alias kept so CLI / MCP / provider_commands keep working.
+        // The real RFC 4918 COPY implementation lives on `server_side_copy`.
+        StorageProvider::server_side_copy(self, from, to).await
+    }
+
+    async fn server_side_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -3369,5 +3379,28 @@ mod tests {
     fn unknown_algo_degrades_not_dropped() {
         let m = parse_oc_checksums("WHIRLPOOL:dead");
         assert_eq!(m.get("whirlpool").map(String::as_str), Some("dead"));
+    }
+
+    /// SG-T08 gate: WebDAV advertises the server_side_copy capability under
+    /// both the legacy and the new slot, since the RFC 4918 COPY method is
+    /// universally available on compliant DAV servers.
+    #[test]
+    fn webdav_advertises_server_side_copy_capability() {
+        let p = WebDavProvider::new(test_config("https://cloud.example.com/")).expect("provider");
+        assert!(p.supports_server_copy());
+        assert!(p.supports_server_side_copy());
+    }
+
+    /// SG-T08 gate: both entry points fail fast on the connection check
+    /// before issuing a COPY request.
+    #[tokio::test]
+    async fn webdav_server_side_copy_requires_connection() {
+        let mut p =
+            WebDavProvider::new(test_config("https://cloud.example.com/")).expect("provider");
+        let direct = StorageProvider::server_side_copy(&mut p, "/src.txt", "/dst.txt").await;
+        assert!(matches!(direct, Err(ProviderError::NotConnected)));
+
+        let via_legacy = p.server_copy("/src.txt", "/dst.txt").await;
+        assert!(matches!(via_legacy, Err(ProviderError::NotConnected)));
     }
 }
