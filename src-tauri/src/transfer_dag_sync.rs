@@ -59,7 +59,7 @@
 //! phase-2 batch flags.
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Instant;
 
 use tokio::sync::{mpsc, oneshot};
@@ -77,7 +77,7 @@ use crate::transfer_dag::executor::{execute_dag, DagNodeRunner, NodeFuture, Node
 use crate::transfer_dag::graph::{TransferNode, TransferNodeKind};
 use crate::transfer_dag::{
     AimdConfig, AimdController, DagObserver, NoopDagObserver, SyncDagAction, SyncDagItem,
-    TransferBudget, TransferDagBuilder, TransferResourceManager,
+    TransferBudget, TransferCapabilities, TransferDagBuilder, TransferResourceManager,
 };
 
 /// Environment variable that gates the phase-2 sync DAG path.
@@ -318,21 +318,37 @@ struct TransferJob {
 /// like the phase-2 batch path. The graph therefore never aborts mid-sync.
 fn build_sync_runner(
     node_to_index: Arc<HashMap<usize, usize>>,
+    transfer_dispatched: Arc<StdMutex<Vec<bool>>>,
     job_tx: mpsc::Sender<TransferJob>,
 ) -> Arc<dyn DagNodeRunner> {
     Arc::new(move |node: TransferNode| -> NodeFuture {
         let node_to_index = Arc::clone(&node_to_index);
+        let transfer_dispatched = Arc::clone(&transfer_dispatched);
         let job_tx = job_tx.clone();
         Box::pin(async move {
             if !matches!(
                 node.kind,
-                TransferNodeKind::DownloadFile | TransferNodeKind::UploadFile
+                TransferNodeKind::DownloadFile
+                    | TransferNodeKind::UploadFile
+                    | TransferNodeKind::UploadPart
             ) {
                 return NodeOutcome::Completed;
             }
             let Some(&transfer_index) = node_to_index.get(&node.id) else {
                 return NodeOutcome::Completed;
             };
+            // Multiple `UploadPart` nodes can map to the same plan entry
+            // under multipart fan-out. The sync driver's `perform_upload`
+            // / `perform_download` is per-file: only the first part to win
+            // the dispatch guard hands off a `TransferJob`; the others
+            // become structural no-ops and let the graph drain.
+            {
+                let mut dispatched = transfer_dispatched.lock().expect("dispatch lock poisoned");
+                if dispatched[transfer_index] {
+                    return NodeOutcome::Completed;
+                }
+                dispatched[transfer_index] = true;
+            }
             let (ack_tx, ack_rx) = oneshot::channel::<()>();
             if job_tx
                 .send(TransferJob {
@@ -521,6 +537,10 @@ pub async fn execute_sync_dag(
     if !plan.transfers.is_empty() {
         // One sync graph: a global DiscoverLocal/DiscoverRemote -> Compare
         // prefix, then a per-file transfer chain for every upload/download.
+        // The shaped sync builder picks the transfer-core shape per entry
+        // from the shared capability snapshot; with default caps the graph
+        // is byte-identical with the legacy linear chain, so existing test
+        // surfaces and journal observers stay structurally equivalent.
         let sync_items: Vec<SyncDagItem> = plan
             .transfers
             .iter()
@@ -529,23 +549,37 @@ pub async fn execute_sync_dag(
                     "upload" => SyncDagAction::Upload,
                     _ => SyncDagAction::Download,
                 };
-                SyncDagItem::new(transfer.rel.clone(), action)
+                SyncDagItem::with_size(transfer.rel.clone(), action, transfer.total)
             })
             .collect();
-        let sync_dag = TransferDagBuilder::from_sync_plan(&sync_items);
+        // Sync runs against one provider session, so the cap set is shared
+        // across files. Until the sync engine exposes its provider snapshot
+        // to this surface (the SG-T15 wire-in gate), default caps produce
+        // the same single-transfer-core shape as the legacy builder.
+        let caps = TransferCapabilities::default();
+        let sync_dag = TransferDagBuilder::from_sync_plan_shaped(&sync_items, &caps);
 
         // The builder preserves plan order, so `files[i]` is `transfers[i]`.
-        let node_to_index: Arc<HashMap<usize, usize>> = Arc::new(
-            sync_dag
-                .files
-                .iter()
-                .enumerate()
-                .map(|(index, file)| (file.transfer, index))
-                .collect(),
-        );
+        // Every transfer-core node in `transfer_nodes` maps back to the
+        // same plan index: multipart fan-out (when it engages) hands every
+        // part to the same per-file driver invocation through the dedup
+        // guard inside the runner.
+        let mut node_to_index_map: HashMap<usize, usize> = HashMap::new();
+        for (index, file) in sync_dag.files.iter().enumerate() {
+            for &node_id in &file.transfer_nodes {
+                node_to_index_map.insert(node_id, index);
+            }
+        }
+        let node_to_index: Arc<HashMap<usize, usize>> = Arc::new(node_to_index_map);
+        // The legacy `perform_upload` / `perform_download` is a per-file
+        // contract, so when the shaped graph emits multiple `UploadPart`
+        // nodes for a single entry only the first one to win the dispatch
+        // guard hands a `TransferJob` to the driver; the others fall
+        // through as structural no-ops.
+        let transfer_dispatched = Arc::new(StdMutex::new(vec![false; plan.transfers.len()]));
 
         let (job_tx, job_rx) = mpsc::channel::<TransferJob>(JOB_CHANNEL_CAPACITY);
-        let runner = build_sync_runner(node_to_index, job_tx);
+        let runner = build_sync_runner(node_to_index, transfer_dispatched, job_tx);
         // A sync drives one provider connection: file_slots = 1 keeps the
         // transfer nodes strictly serial, matching the single delta-batch
         // session and the legacy core.
@@ -839,7 +873,8 @@ mod tests {
         );
 
         let (job_tx, mut job_rx) = mpsc::channel::<TransferJob>(JOB_CHANNEL_CAPACITY);
-        let runner = build_sync_runner(node_to_index, job_tx);
+        let transfer_dispatched = Arc::new(StdMutex::new(vec![false; sync_dag.files.len()]));
+        let runner = build_sync_runner(node_to_index, transfer_dispatched, job_tx);
         let manager = TransferResourceManager::new(TransferBudget::from_file_slots(1));
         let observer: Arc<dyn DagObserver> = Arc::new(NoopDagObserver);
 
@@ -869,7 +904,8 @@ mod tests {
         let sync_dag = TransferDagBuilder::from_sync_plan(&[]);
         let node_to_index: Arc<HashMap<usize, usize>> = Arc::new(HashMap::new());
         let (job_tx, mut job_rx) = mpsc::channel::<TransferJob>(JOB_CHANNEL_CAPACITY);
-        let runner = build_sync_runner(node_to_index, job_tx);
+        let transfer_dispatched = Arc::new(StdMutex::new(Vec::new()));
+        let runner = build_sync_runner(node_to_index, transfer_dispatched, job_tx);
         let manager = TransferResourceManager::new(TransferBudget::from_file_slots(1));
         let observer: Arc<dyn DagObserver> = Arc::new(NoopDagObserver);
 
