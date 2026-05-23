@@ -50,13 +50,12 @@
 //! orphan deletes; the legacy core interleaves skips with transfers in scan
 //! order. Same events, same counts, grouped by phase instead of interleaved.
 //!
-//! ## Feature flag
+//! ## Dry-run gate
 //!
-//! Gated by [`dag_sync_enabled`], read from [`DAG_SYNC_ENV`], default OFF.
-//! With the flag off, not one byte of this module executes and
-//! `sync_tree_core` runs its legacy path verbatim. The flag is a runtime
-//! toggle (not a recompile), the same pattern as the phase-1 single-file and
-//! phase-2 batch flags.
+//! A dry-run sync never routes through the DAG path: the plan output must
+//! be provably non-mutating, and gating on the action up front (in
+//! [`should_route_sync_to_dag`]) makes that a structural guarantee rather
+//! than a convention buried in the executor.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex as StdMutex};
@@ -80,44 +79,18 @@ use crate::transfer_dag::{
     TransferBudget, TransferCapabilities, TransferDagBuilder, TransferResourceManager,
 };
 
-/// Environment variable that gates the phase-2 sync DAG path.
-///
-/// Recognised truthy values (case-insensitive, trimmed): `1`, `true`, `on`,
-/// `yes`. Anything else, including an unset variable, leaves the path OFF.
-pub const DAG_SYNC_ENV: &str = "AEROFTP_TRANSFER_ENGINE_DAG_SYNC";
-
 /// Bounded capacity of the transfer-job channel. With `file_slots = 1` only
 /// one transfer node ever holds the slot, so at most one job is in flight;
 /// the buffer is pure headroom and the sender never blocks.
 const JOB_CHANNEL_CAPACITY: usize = 32;
 
-/// Returns `true` when the sync DAG path is enabled for this process.
-///
-/// Default OFF: a phased migration enters production behind a flag so a
-/// rollback is a toggle, never a revert (DAG-ENGINE plan, principle 2).
-pub fn dag_sync_enabled() -> bool {
-    std::env::var(DAG_SYNC_ENV)
-        .ok()
-        .map(|raw| flag_value_is_on(&raw))
-        .unwrap_or(false)
-}
-
 /// Whether a sync call should route through the graph engine.
 ///
-/// `true` requires both the flag on and a non-dry-run sync. Dry-run always
-/// returns `false`: the dry-run plan must never build or execute a mutating
-/// graph, and gating it here makes that a structural guarantee rather than a
-/// convention buried in the executor.
+/// Dry-run is the only exit: the plan output must be provably non-mutating,
+/// so a dry-run sync never builds or executes a mutating graph. Every other
+/// sync call routes through [`execute_sync_dag`].
 pub fn should_route_sync_to_dag(dry_run: bool) -> bool {
-    !dry_run && dag_sync_enabled()
-}
-
-/// Parses one environment-variable value into the on/off flag state.
-fn flag_value_is_on(raw: &str) -> bool {
-    matches!(
-        raw.trim().to_ascii_lowercase().as_str(),
-        "1" | "true" | "on" | "yes"
-    )
+    !dry_run
 }
 
 /// One resolved transfer in a sync plan, in plan order.
@@ -437,9 +410,9 @@ async fn drive_sync_transfers(
 /// Run a full sync session through the graph engine.
 ///
 /// A drop-in replacement for [`crate::sync::sync_tree_core`]: same arguments,
-/// same [`SyncReport`]. Reached only with [`should_route_sync_to_dag`] true,
-/// i.e. the [`DAG_SYNC_ENV`] flag on and a non-dry-run sync; the legacy
-/// interleaved path stays the default.
+/// same [`SyncReport`]. Reached for every non-dry-run sync; only a dry-run
+/// sync diverts to the legacy interleaved path (kept exclusively for the
+/// plan-output guarantee, see [`should_route_sync_to_dag`]).
 pub async fn execute_sync_dag(
     provider: &mut Box<dyn StorageProvider>,
     local_root: &str,
@@ -689,41 +662,17 @@ mod tests {
     use std::sync::Mutex as StdMutex;
     use std::time::Duration;
 
-    // ---- flag parsing -----------------------------------------------------
+    // ---- dry-run gate ----------------------------------------------------
 
+    /// The dry-run gate is the only thing that diverts a sync away from the
+    /// DAG runner. Every other call must route through it.
     #[test]
-    fn flag_recognises_truthy_values_case_insensitively() {
-        for on in ["1", "true", "TRUE", "On", "yes", " yes ", "Yes"] {
-            assert!(flag_value_is_on(on), "{on:?} must be on");
-        }
-    }
-
-    #[test]
-    fn flag_rejects_falsey_and_garbage_values() {
-        for off in ["0", "false", "off", "no", "", "  ", "enabled", "2", "y"] {
-            assert!(!flag_value_is_on(off), "{off:?} must be off");
-        }
-    }
-
-    /// Single env-touching test: no other test in this module reads the env
-    /// var, so this cannot race them.
-    #[test]
-    fn routing_respects_flag_and_dry_run() {
-        std::env::remove_var(DAG_SYNC_ENV);
-        assert!(!dag_sync_enabled());
-        assert!(!should_route_sync_to_dag(false));
-        assert!(!should_route_sync_to_dag(true));
-
-        std::env::set_var(DAG_SYNC_ENV, "1");
-        assert!(dag_sync_enabled());
-        // A real sync routes; a dry-run never does, even with the flag on.
+    fn dry_run_is_the_only_exit_from_the_dag_runner() {
         assert!(should_route_sync_to_dag(false));
         assert!(
             !should_route_sync_to_dag(true),
             "dry-run must never route to the mutating graph"
         );
-
-        std::env::remove_var(DAG_SYNC_ENV);
     }
 
     // ---- plan_sync_dag ----------------------------------------------------

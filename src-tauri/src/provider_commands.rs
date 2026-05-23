@@ -1382,15 +1382,11 @@ pub async fn provider_download_file(
         }));
     }
 
-    // DAG-ENGINE phase 1: route the plain classic single-file leaf through
-    // the graph engine when the flag is on. The segmented engine and a resume
-    // offset keep their legacy code: they are not the plain leaf. With the
-    // flag off this branch is never entered and the legacy path below runs
-    // verbatim, so flag-off is provably diff-0.
-    if crate::transfer_dag_single_file::dag_single_file_enabled()
-        && segmented_result.is_none()
-        && partial_offset == 0
-    {
+    // DAG-ENGINE: route the plain classic single-file leaf through the
+    // graph engine. The segmented engine and a resume offset keep their
+    // legacy code: they are not the plain leaf. The shaped runner handles
+    // both the single-`DownloadFile` core and the multipart fan-out shape.
+    if segmented_result.is_none() && partial_offset == 0 {
         let provider_arc = Arc::clone(&state.provider);
         // Release the command-level guard so the DAG transfer node can lock
         // the same provider mutex from its spawned task.
@@ -2584,14 +2580,11 @@ pub async fn provider_upload_file(
         }
     }
 
-    // DAG-ENGINE phase 1: route the plain classic single-file upload through
-    // the graph engine when the flag is on. GitHub keeps its dedicated
-    // commit-based upload (a different API shape, not the plain leaf). With
-    // the flag off this branch is never entered and the legacy path below
-    // runs verbatim.
-    if crate::transfer_dag_single_file::dag_single_file_enabled()
-        && provider.provider_type() != ProviderType::GitHub
-    {
+    // DAG-ENGINE: route the plain classic single-file upload through the
+    // graph engine. GitHub keeps its dedicated commit-based upload (a
+    // different API shape, not the plain leaf). The shaped runner handles
+    // both the single-`UploadFile` core and the multipart fan-out shape.
+    if provider.provider_type() != ProviderType::GitHub {
         let provider_arc = Arc::clone(&state.provider);
         drop(provider_lock);
         return run_dag_upload_leaf(
