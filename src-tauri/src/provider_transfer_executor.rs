@@ -2,6 +2,40 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 //! Provider-backed transfer executor for the shared orchestrator.
+//!
+//! ## Status (post DAG-ENGINE A-branch convergence)
+//!
+//! The flag-gated single-file / batch / sync routing this module used to
+//! own has been removed (SG-T18). The shared graph engine is the
+//! production path for every transfer; the legacy
+//! `JoinSet`-based `execute_batch` has been deleted from
+//! `transfer_orchestrator`.
+//!
+//! What still lives here:
+//!
+//! - [`ProviderDownloadExecutor`] / [`ProviderUploadExecutor`]: the
+//!   per-file [`TransferExecutor`] implementations the DAG batch runner
+//!   calls into through `execute_with_session`. They own the
+//!   per-provider clone pool, the per-file resource lease, and the
+//!   delta-batch session reuse, so collapsing them inline into the
+//!   shaped batch runner is a non-trivial re-home, deferred to the
+//!   v4.x cleanup window.
+//! - `provider_segmented_*` helpers: the eligibility gate + window-
+//!   worker driver for the GUI's intra-file segmented download.
+//!   Will move under `providers::multi_thread` once the shaped-graph
+//!   segmented runner consumes them directly (SG-T13 wired the
+//!   builder; the actual eligibility gate move is the follow-up).
+//! - [`ProviderListSessionModel`]: pure session-model enum the scan
+//!   layer consumes. The plan migrated `resolve_session_model` proper
+//!   to `transfer_dag/probe.rs`; the enum follows once the scan layer
+//!   imports it from there.
+//!
+//! The original SG-T19 goal of deleting this file outright is filed as
+//! accepted technical debt (see `docs/dev/roadmap/APPENDIX-DAG-ENGINE/STATUS_TODO.md`):
+//! the convergence target is reached, the legacy hand-rolled
+//! orchestrator is gone, and the helpers that remain are pure
+//! infrastructure that the DAG runners already consume rather than a
+//! parallel scheduling path.
 
 use std::sync::Arc;
 use std::time::Duration;

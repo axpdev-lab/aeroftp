@@ -4755,17 +4755,16 @@ async fn upload_with_resume(
     provider.upload(local_path, remote_path, progress_cb).await
 }
 
-/// DAG-ENGINE phase 1: run a plain single-file CLI transfer through the graph
-/// engine.
+/// Run a plain single-file CLI transfer through the graph engine.
 ///
-/// Reached only with the `transfer_engine_dag_single_file` flag on and only
-/// for the plain leaf (`!cli.partial`, so neither `download_with_resume` nor
-/// `upload_with_resume` would take a resume branch and the legacy leaf is a
-/// bare `provider.download` / `provider.upload`). The owned provider is
-/// briefly wrapped in an `Arc<Mutex<_>>` so the DAG transfer node can reach it
-/// from its spawned task, then handed back to the caller for the disconnect.
-/// The CLI renders progress through the `indicatif` callback and prints its
-/// own result line, so the graph runs with a `NoopDagObserver`.
+/// Reached for the plain leaf (`!cli.partial`, so neither
+/// `download_with_resume` nor `upload_with_resume` would take a resume
+/// branch and the leaf is a bare `provider.download` / `provider.upload`).
+/// The owned provider is briefly wrapped in an `Arc<Mutex<_>>` so the DAG
+/// transfer node can reach it from its spawned task, then handed back to
+/// the caller for the disconnect. The CLI renders progress through the
+/// `indicatif` callback and prints its own result line, so the graph runs
+/// with a `NoopDagObserver`.
 async fn cli_run_single_file_dag(
     provider: Box<dyn StorageProvider>,
     direction: ftp_client_gui_lib::transfer_dag::TransferDirection,

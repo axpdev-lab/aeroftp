@@ -919,16 +919,16 @@ pub async fn provider_pwd(state: State<'_, ProviderState>) -> Result<String, Str
         .map_err(|e| format!("Failed to get working directory: {}", e))
 }
 
-/// DAG-ENGINE phase 1: run a plain single-file download through the graph
-/// engine and emit the GUI completion / error events.
+/// Run a plain single-file download through the graph engine and emit the
+/// GUI completion / error events.
 ///
-/// Reached only with the `transfer_engine_dag_single_file` flag on and only
-/// for the plain classic leaf (no delta consumed the transfer, no segmented
-/// engine ran, no resume offset). The `"start"` and `"progress"` events were
-/// already emitted by the shared pre-DAG code and the per-byte callback; this
-/// function owns only the terminal `"complete"` (via [`GuiDagObserver`]) and
-/// `"error"` (emitted here, where the typed error is in hand) events. The
-/// emitted events are byte-identical with the legacy single-file path.
+/// Reached for the plain classic leaf (no delta consumed the transfer, no
+/// segmented engine ran, no resume offset). The `"start"` and `"progress"`
+/// events were already emitted by the shared pre-DAG code and the per-byte
+/// callback; this function owns only the terminal `"complete"` (via
+/// [`GuiDagObserver`]) and `"error"` (emitted here, where the typed error
+/// is in hand) events. The emitted events are byte-identical with the
+/// pre-convergence single-file path.
 #[allow(clippy::too_many_arguments)]
 async fn run_dag_download_leaf(
     app: AppHandle,
