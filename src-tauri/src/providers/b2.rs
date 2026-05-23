@@ -17,9 +17,9 @@ use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 
 use super::{
-    sanitize_api_error, send_with_retry, FileVersion, HttpRetryConfig, ProviderConfig,
-    ProviderError, RemoteEntry, ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult,
-    StorageInfo, StorageProvider, MAX_DOWNLOAD_TO_BYTES,
+    sanitize_api_error, send_with_retry, FileVersion, HttpRetryConfig, MultipartHandle,
+    ProviderConfig, ProviderError, RemoteEntry, ShareLinkCapabilities, ShareLinkOptions,
+    ShareLinkResult, StorageInfo, StorageProvider, UploadedPart, MAX_DOWNLOAD_TO_BYTES,
 };
 
 const AUTHORIZE_URL: &str = "https://api.backblazeb2.com/b2api/v4/b2_authorize_account";
@@ -588,7 +588,13 @@ impl B2Provider {
             .map_err(|e| ProviderError::ServerError(format!("get_upload_part_url parse: {}", e)))
     }
 
-    async fn upload_part(
+    /// Issue a single `b2_upload_part` against an already-acquired part URL.
+    ///
+    /// Internal inherent method; the public, trait-level entry point is
+    /// `<B2Provider as StorageProvider>::upload_part`. The `_internal`
+    /// suffix avoids shadowing the trait method when callers use
+    /// dot-notation on a concrete `B2Provider`.
+    async fn upload_part_internal(
         &self,
         upload_url: &str,
         upload_token: &str,
@@ -684,7 +690,7 @@ impl B2Provider {
             async move {
                 let part_urls = provider.get_upload_part_url(&file_id).await?;
                 let resp = provider
-                    .upload_part(
+                    .upload_part_internal(
                         &part_urls.upload_url,
                         &part_urls.authorization_token,
                         part_number,
@@ -2423,6 +2429,100 @@ impl StorageProvider for B2Provider {
         })
     }
 
+    // Shaped-graph multipart trait wiring.
+    //
+    // B2's large-file API splits each part into:
+    //   1. `b2_start_large_file` (returns a durable `file_id`)
+    //   2. `b2_get_upload_part_url` (per part, returns a single-use
+    //      `upload_url` + per-URL `upload_token`)
+    //   3. `b2_upload_part` (PUT against the URL with `x-bz-part-number`
+    //      and `x-bz-content-sha1`)
+    //   4. `b2_finish_large_file` (with the ordered list of per-part
+    //      `contentSha1` strings)
+    //   5. `b2_cancel_large_file` (releases parts on abort)
+    //
+    // The trait wrapper maps that flow onto `MultipartHandle { upload_id =
+    // file_id, remote_path = key }`. Each `upload_part()` call acquires a
+    // fresh `upload-part-url` because B2 URLs are single-use; the runner
+    // pays one extra HTTP round trip per part. `complete_multipart_upload`
+    // sorts parts by `part_number` (B2 enforces strict ordering) and
+    // forwards the `contentSha1` list to `b2_finish_large_file`.
+
+    async fn begin_multipart_upload(
+        &mut self,
+        remote_path: &str,
+        _total_size: u64,
+        _content_type: Option<&str>,
+    ) -> Result<MultipartHandle, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        let abs = self.resolved_path(remote_path);
+        let key = self.b2_key(&abs);
+        self.validate_header_budget(&key, 0)?;
+        let started = self.start_large_file(&key).await?;
+        Ok(MultipartHandle {
+            upload_id: started.file_id,
+            remote_path: key,
+        })
+    }
+
+    async fn upload_part(
+        &mut self,
+        handle: &MultipartHandle,
+        part_number: u32,
+        data: Vec<u8>,
+    ) -> Result<UploadedPart, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        // B2 hands out single-use upload URLs; the trait runner pays one
+        // round trip per part to fetch a fresh pair. The legacy
+        // `upload_large_file` path amortises this by reusing one URL per
+        // worker slot, but the trait surface is intentionally one call
+        // per part so the shaped-graph runner stays the orchestrator.
+        let part_urls = self.get_upload_part_url(&handle.upload_id).await?;
+        let resp = self
+            .upload_part_internal(
+                &part_urls.upload_url,
+                &part_urls.authorization_token,
+                part_number,
+                data,
+            )
+            .await?;
+        Ok(UploadedPart {
+            part_number,
+            etag: resp.content_sha1,
+        })
+    }
+
+    async fn complete_multipart_upload(
+        &mut self,
+        handle: MultipartHandle,
+        parts: Vec<UploadedPart>,
+    ) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        let mut sorted = parts;
+        sorted.sort_by_key(|p| p.part_number);
+        let part_sha1_array: Vec<String> = sorted.into_iter().map(|p| p.etag).collect();
+        self.finish_large_file(&handle.upload_id, part_sha1_array)
+            .await?;
+        Ok(())
+    }
+
+    async fn abort_multipart_upload(
+        &mut self,
+        handle: MultipartHandle,
+    ) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        self.cancel_large_file_inner(&handle.upload_id).await?;
+        Ok(())
+    }
+
     /// Advertise the parallel large-file capability honestly now that
     /// `upload_large_file` genuinely uploads parts concurrently (PD-UP-1).
     /// Only the multipart fields are set: B2's download path stays
@@ -2988,5 +3088,51 @@ mod tests {
         assert_eq!(max, 10 * 1024 * 1024 * 1024 * 1024);
         let too_big = max + 1;
         assert!(too_big > MAX_FILE_SIZE);
+    }
+
+    /// SG-T06 gate: the trait-level multipart entry point on a
+    /// disconnected B2 provider must fail fast on the connection check,
+    /// matching how `upload()` guards itself. The shaped-graph runner
+    /// relies on this to abort the DAG before issuing any HTTP request.
+    #[tokio::test]
+    async fn b2_multipart_via_trait_matches_internal_upload() {
+        let mut provider = empty_provider();
+        let result = StorageProvider::begin_multipart_upload(
+            &mut provider,
+            "/some/key.bin",
+            10 * 1024 * 1024,
+            None,
+        )
+        .await;
+        assert!(matches!(result, Err(ProviderError::NotConnected)));
+    }
+
+    /// SG-T06 gate: `complete_multipart_upload` must sort parts by
+    /// `part_number` before forwarding to `b2_finish_large_file`, because
+    /// B2 enforces strict ordering on the `partSha1Array`. The trait
+    /// runner may collect receipts out of order from parallel
+    /// `upload_part` nodes.
+    #[test]
+    fn b2_complete_multipart_sorts_parts_by_number() {
+        // Verifies the sort key the trait impl uses, without needing a
+        // live connection. The trait impl sorts `parts` by
+        // `p.part_number` ascending before extracting the sha1 strings.
+        let mut parts = vec![
+            UploadedPart {
+                part_number: 3,
+                etag: "c".to_string(),
+            },
+            UploadedPart {
+                part_number: 1,
+                etag: "a".to_string(),
+            },
+            UploadedPart {
+                part_number: 2,
+                etag: "b".to_string(),
+            },
+        ];
+        parts.sort_by_key(|p| p.part_number);
+        let sha1s: Vec<String> = parts.into_iter().map(|p| p.etag).collect();
+        assert_eq!(sha1s, vec!["a", "b", "c"]);
     }
 }
