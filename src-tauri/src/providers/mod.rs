@@ -387,6 +387,36 @@ pub struct ShareLinkInfo {
     pub permissions: Option<String>,
 }
 
+/// Opaque handle to an in-progress multipart upload.
+///
+/// Returned by `StorageProvider::begin_multipart_upload` and consumed by
+/// `upload_part`, `complete_multipart_upload`, and `abort_multipart_upload`.
+/// The shape is intentionally provider-agnostic: `upload_id` holds whatever
+/// the backend uses to identify a multipart session (S3 UploadId, B2
+/// fileId, etc.), and `remote_path` echoes the destination key so the
+/// runner can correlate handles with shaped-graph nodes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MultipartHandle {
+    /// Provider-assigned multipart upload identifier (opaque string).
+    pub upload_id: String,
+    /// Destination remote path or key the handle is bound to.
+    pub remote_path: String,
+}
+
+/// Receipt for a single uploaded part of a multipart session.
+///
+/// Returned by `StorageProvider::upload_part` and passed back to
+/// `complete_multipart_upload` so the backend can finalize the object.
+/// `etag` carries whatever per-part token the protocol uses to verify the
+/// part on completion (S3 ETag, B2 SHA-1, WebDAV ETag, etc.).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UploadedPart {
+    /// 1-based part number, as required by S3 and most multipart protocols.
+    pub part_number: u32,
+    /// Provider-issued verification tag for the uploaded part.
+    pub etag: String,
+}
+
 /// Unified storage provider trait
 ///
 /// All storage backends must implement this trait to be used with AeroFTP.
@@ -529,6 +559,97 @@ pub trait StorageProvider: Send + Sync {
     /// Copy file on server side (without download/upload)
     async fn server_copy(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
         Err(ProviderError::NotSupported("server_copy".to_string()))
+    }
+
+    // Multipart upload + server-side copy (DAG shaped-graph wiring).
+    //
+    // These methods carry the upload of a single object as a series of
+    // independent parts that the shaped-graph runner can dispatch in
+    // parallel. The default implementations return `NotSupported`; providers
+    // that have a native multipart API (S3, B2) and a native copy primitive
+    // (S3, B2, WebDAV, ImageKit, GDrive, Dropbox, OneDrive, ...) override
+    // them. Runner code must guard each call with the matching capability
+    // (`multipart_upload` / `server_side_copy`) before dispatch.
+
+    /// Begin a multipart upload session for `remote_path`.
+    ///
+    /// `total_size` and `content_type` are passed in so backends that need
+    /// to declare them upfront (S3 sets Content-Type on initiation; B2
+    /// validates the file_info hash later) can do so without a second
+    /// round trip. Returns an opaque `MultipartHandle` that callers must
+    /// thread through subsequent `upload_part` / `complete_multipart_upload`
+    /// / `abort_multipart_upload` calls.
+    async fn begin_multipart_upload(
+        &mut self,
+        _remote_path: &str,
+        _total_size: u64,
+        _content_type: Option<&str>,
+    ) -> Result<MultipartHandle, ProviderError> {
+        Err(ProviderError::NotSupported(
+            "begin_multipart_upload".to_string(),
+        ))
+    }
+
+    /// Upload a single part of a multipart session.
+    ///
+    /// `part_number` is 1-based to match the S3 contract that B2/WebDAV/Azure
+    /// all happen to follow. `data` is the raw bytes for this part; the
+    /// runner is responsible for slicing the source file into chunks of the
+    /// provider's preferred size (`TransferOptimizationHints::multipart_part_size`).
+    /// Returns an `UploadedPart` receipt that must be passed to
+    /// `complete_multipart_upload` in part-number order.
+    async fn upload_part(
+        &mut self,
+        _handle: &MultipartHandle,
+        _part_number: u32,
+        _data: Vec<u8>,
+    ) -> Result<UploadedPart, ProviderError> {
+        Err(ProviderError::NotSupported("upload_part".to_string()))
+    }
+
+    /// Finalize a multipart upload by submitting the ordered list of parts.
+    ///
+    /// The `handle` is consumed because the session is no longer valid after
+    /// the call (success or failure). `parts` must be sorted by
+    /// `part_number` ascending; backends may enforce this and the runner
+    /// guarantees it by collecting receipts in DAG topological order.
+    async fn complete_multipart_upload(
+        &mut self,
+        _handle: MultipartHandle,
+        _parts: Vec<UploadedPart>,
+    ) -> Result<(), ProviderError> {
+        Err(ProviderError::NotSupported(
+            "complete_multipart_upload".to_string(),
+        ))
+    }
+
+    /// Abort a multipart upload session, releasing any provider-side state.
+    ///
+    /// Called by the runner when one of the `upload_part` nodes fails and
+    /// the DAG decides not to retry the whole upload. Best-effort: backends
+    /// that cannot abort (or where abort is implicit on TTL) may return
+    /// `Ok(())`.
+    async fn abort_multipart_upload(
+        &mut self,
+        _handle: MultipartHandle,
+    ) -> Result<(), ProviderError> {
+        Err(ProviderError::NotSupported(
+            "abort_multipart_upload".to_string(),
+        ))
+    }
+
+    /// Copy an object on the server side without touching the network round
+    /// trip through the local host.
+    ///
+    /// Default delegates to the legacy `server_copy` method so all existing
+    /// provider overrides (Azure, Box, Dropbox, FileLu, Google Drive,
+    /// ImageKit, kDrive, Koofr, MEGA, OneDrive, pCloud, S3, Swift, WebDAV,
+    /// Yandex Disk, Zoho WorkDrive, drime_cloud) keep working untouched.
+    /// New code, runner wiring, and capability checks should reach for
+    /// `server_side_copy` because it matches the
+    /// `TransferCapabilities::server_side_copy` slot.
+    async fn server_side_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        self.server_copy(from, to).await
     }
 
     /// Check if provider supports share links
