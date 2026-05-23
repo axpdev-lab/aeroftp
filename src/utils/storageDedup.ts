@@ -54,6 +54,7 @@ const NATIVE_API_PROTOCOLS: ReadonlyArray<ProviderType> = [
 const WEBDAV_PRESET_IDS = new Set<string>([
     'koofr-webdav',
     'opendrive-webdav',
+    'pcloud-webdav',
     'yandex-storage-webdav',
     'infinicloud',
     'nextcloud',
@@ -125,10 +126,11 @@ export const normalizeUser = (raw: string | undefined): string | undefined => {
 
 /**
  * Cross-protocol provider families. Koofr (WebDAV + REST), OpenDrive (WebDAV
- * + REST), Yandex Disk (WebDAV + OAuth + Object Storage), FileLu (WebDAV +
- * REST) all expose the same physical disk through multiple protocols. When a
- * profile belongs to a known family AND the username is dedup-able, the key
- * uses the `family:` prefix so all surfaces collapse into one drive.
+ * + REST), pCloud (WebDAV + OAuth), Yandex Disk (WebDAV + OAuth + Object
+ * Storage), FileLu (WebDAV + REST) all expose the same physical disk through
+ * multiple protocols. When a profile belongs to a known family AND the
+ * username is dedup-able, the key uses the `family:` prefix so all surfaces
+ * collapse into one drive.
  */
 const dedupFamily = (
     providerId: string | undefined,
@@ -138,6 +140,8 @@ const dedupFamily = (
     if (protocol === 'koofr') return 'koofr';
     if (providerId === 'opendrive-webdav' || providerId === 'opendrive') return 'opendrive';
     if (protocol === 'opendrive') return 'opendrive';
+    if (providerId === 'pcloud-webdav' || providerId === 'pcloud') return 'pcloud';
+    if (protocol === 'pcloud') return 'pcloud';
     if (
         providerId === 'yandex-storage-webdav'
         || providerId === 'yandex-storage'
