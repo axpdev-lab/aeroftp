@@ -7,6 +7,15 @@ filone. See:
 - `docs/dev/roadmap/APPENDIX-GUI-TRANSFER-CONVERGENCE/baselines/2026-05-19_parity-oracle-spec.md`
 - `docs/dev/roadmap/APPENDIX-GUI-TRANSFER-CONVERGENCE/baselines/2026-05-19_legacy-call-chains-pin.md`
 
+## DAG engine status (post v4.0.0 convergence)
+
+The shared DAG engine is the only production path: the
+`AEROFTP_TRANSFER_ENGINE_DAG_*` env-var flags that previously gated
+single-file / batch / sync routing through the graph engine have been
+removed (DAG-ENGINE A-branch SG-T18). The harness therefore runs the
+"no-flag" configuration unconditionally: every CLI and GUI cell
+exercises the shaped-graph runner with no toggle on the command line.
+
 ## Prerequisites
 
 - `aeroftp-cli` >= 3.8.3 on PATH (installed system-wide from any
