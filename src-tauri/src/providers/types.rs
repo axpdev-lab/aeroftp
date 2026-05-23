@@ -1132,6 +1132,11 @@ pub struct FilenConfig {
     /// it as `twoFactorCode` to Filen, replicating what an authenticator app
     /// would do. Lets us drop the manual TOTP prompt on every reconnect.
     pub totp_secret: Option<secrecy::SecretString>,
+    /// Optional Filen CLI API key (the `api_key` field of a Filen rclone
+    /// profile). When present, `connect()` authenticates with it and skips the
+    /// `/v3/login` call, which is what triggers the 2FA TOTP window. The
+    /// password stays required: it derives the E2E master key.
+    pub api_key: Option<secrecy::SecretString>,
 }
 
 impl FilenConfig {
@@ -1154,11 +1159,18 @@ impl FilenConfig {
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .map(secrecy::SecretString::from);
+        let api_key = config
+            .extra
+            .get("filen_api_key")
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .map(secrecy::SecretString::from);
         Ok(Self {
             email,
             password: password.into(),
             two_factor_code,
             totp_secret,
+            api_key,
         })
     }
 }

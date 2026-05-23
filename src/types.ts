@@ -311,6 +311,7 @@ export interface ProviderOptions {
   // Filen-specific
   two_factor_code?: string; // Optional single-use TOTP 2FA code (NOT persisted)
   totp_secret?: string;     // Optional persisted base32 TOTP secret. When set, the backend derives the 6-digit code on every connect via totp_helper. Used by Filen and MEGA.
+  filen_api_key?: string;   // Optional Filen CLI API key. When set, the backend authenticates with it and skips the /v3/login call (and therefore the 2FA TOTP window). The password is still required for E2E decryption.
   filen_auth_version?: number; // Last observed Filen authVersion (v1/v2/v3)
 
   // kDrive-specific

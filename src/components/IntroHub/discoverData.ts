@@ -153,6 +153,7 @@ export const DISCOVER_DESC_KEYS: Record<string, string> = {
     'filelu-webdav': 'protocol.discoverFileLuWebdav',
     'quotaless-webdav': 'protocol.discoverQuotalessWebdav',
     'nextcloud': 'protocol.discoverNextcloud',
+    'pcloud-webdav': 'protocol.discoverPCloudWebdav',
     // FTP registry providers
     'hetzner-storage-box': 'protocol.discoverHetzner',
     'sourceforge': 'protocol.discoverSourceForge',
