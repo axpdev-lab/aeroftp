@@ -395,7 +395,7 @@ export const APP_KNOWLEDGE: KBSection[] = [
             'progress', 'speed', 'bandwidth', 'batch', 'resume', 'retry',
             'overwrite', 'skip', 'conflict', 'drag and drop',
         ],
-        compact: 'Transfers: drag & drop or toolbar buttons. Progress bar with speed graph. Queue shows all pending transfers. Overwrite dialog for conflicts.',
+        compact: 'Transfers: drag & drop or toolbar buttons. Progress bar with speed graph. Queue shows all pending transfers. Overwrite dialog for conflicts. Every transfer runs on the shared DAG engine (v4.0.0+): native multipart upload on S3/B2, server-side copy when supported, intra-file segmented downloads.',
         full: `File transfer operations in AeroFTP:
 
 **Upload**: Drag files from local panel to remote panel, or select files and click Upload button.
