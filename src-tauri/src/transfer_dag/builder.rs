@@ -90,15 +90,23 @@ pub struct SingleFileDag {
 
 /// One file to include in a batch transfer graph.
 ///
-/// The builder only needs a stable key and direction. Runtime paths, sizes,
-/// retry policy, and provider handles stay with the runner that binds node ids
-/// to real I/O. `key` is intentionally opaque here: GUI batch callers may use
+/// The builder only needs a stable key and direction. Runtime paths, retry
+/// policy, and provider handles stay with the runner that binds node ids to
+/// real I/O. `key` is intentionally opaque here: GUI batch callers may use
 /// a transfer entry id, while sync callers should use the relative path plus
 /// action when a plain relative path is ambiguous.
+///
+/// `file_size` is observational for the legacy `from_batch` shape (which
+/// ignores it) and structural for the shaped `from_batch_shaped` shape: an
+/// upload large enough to span more than one preferred chunk on a
+/// multipart-capable provider fans out into N `UploadPart` nodes. Defaults
+/// to `0` so existing call sites that only know the file key keep producing
+/// the same single-transfer-core graph.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BatchDagItem {
     pub key: String,
     pub direction: TransferDirection,
+    pub file_size: u64,
 }
 
 impl BatchDagItem {
@@ -106,11 +114,34 @@ impl BatchDagItem {
         Self {
             key: key.into(),
             direction,
+            file_size: 0,
+        }
+    }
+
+    /// Build a batch entry pre-populated with the source file's byte length.
+    ///
+    /// The size matters only when the batch graph is built via
+    /// [`TransferDagBuilder::from_batch_shaped`] with a capability set that
+    /// advertises multipart upload: it is the input the shaping profile uses
+    /// to decide the part count.
+    pub fn with_size(key: impl Into<String>, direction: TransferDirection, file_size: u64) -> Self {
+        Self {
+            key: key.into(),
+            direction,
+            file_size,
         }
     }
 }
 
 /// Node ids for one file sub-DAG inside a batch graph.
+///
+/// `transfer` is the primary transfer node id: for the legacy
+/// [`TransferDagBuilder::from_batch`] shape and the single-core variant of
+/// the shaped [`TransferDagBuilder::from_batch_shaped`] shape it is the only
+/// transfer node and equals `transfer_nodes[0]`. For the multipart fan-out
+/// variant `transfer_nodes` carries every `UploadPart` node id in part-number
+/// order (transfer_nodes[0] = part 1, ...), and `transfer` points to the
+/// first part so existing callers that bind one node id keep working.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BatchFileDag {
     pub key: String,
@@ -118,6 +149,8 @@ pub struct BatchFileDag {
     pub discover: usize,
     pub acquire: usize,
     pub transfer: usize,
+    /// Full transfer core: one node for single-core, N for multipart fan-out.
+    pub transfer_nodes: Vec<usize>,
     pub verify: usize,
     pub preserve_metadata: usize,
     pub commit: usize,
@@ -359,6 +392,46 @@ impl TransferDagBuilder {
                 discover: ids.discover,
                 acquire: ids.acquire,
                 transfer: ids.transfer,
+                transfer_nodes: vec![ids.transfer],
+                verify: ids.verify,
+                preserve_metadata: ids.preserve_metadata,
+                commit: ids.commit,
+                emit_progress: ids.emit_progress,
+            });
+        }
+
+        BatchDag { dag, files }
+    }
+
+    /// Build a multi-file batch graph with per-file capability shaping.
+    ///
+    /// Mirrors [`Self::from_batch`] but routes every file through
+    /// [`append_shaped_file_chain`], so when the shared `caps` advertise
+    /// `multipart_upload` and an entry carries a `file_size` above one
+    /// preferred chunk on the upload direction, the file's transfer core
+    /// fans out into N `UploadPart` nodes instead of one `UploadFile`.
+    ///
+    /// All files in a single batch share the same `caps` because every
+    /// batch is bound to one provider session; the shape per file still
+    /// varies through direction and `file_size`. A `caps` set with
+    /// `multipart_upload = Unsupported` (the default) reproduces the exact
+    /// graph shape of [`Self::from_batch`].
+    pub fn from_batch_shaped(items: &[BatchDagItem], caps: &TransferCapabilities) -> BatchDag {
+        let mut dag = TransferDag::default();
+        let mut files = Vec::with_capacity(items.len());
+
+        for item in items {
+            let ids = append_shaped_file_chain(&mut dag, item.direction, caps, item.file_size);
+            files.push(BatchFileDag {
+                key: item.key.clone(),
+                direction: item.direction,
+                discover: ids.discover,
+                acquire: ids.acquire,
+                transfer: *ids
+                    .transfer_nodes
+                    .first()
+                    .expect("shaped file chain has at least one transfer node"),
+                transfer_nodes: ids.transfer_nodes,
                 verify: ids.verify,
                 preserve_metadata: ids.preserve_metadata,
                 commit: ids.commit,
@@ -692,6 +765,98 @@ fn append_single_file_chain(
     }
 }
 
+/// Node ids for one shaped sub-DAG appended into a larger graph.
+///
+/// Mirrors [`SingleFileNodeIds`] but with a `Vec` of transfer nodes so the
+/// caller can preserve the multipart fan-out without re-scanning the graph.
+#[derive(Debug, Clone)]
+struct ShapedFileNodeIds {
+    discover: usize,
+    acquire: usize,
+    transfer_nodes: Vec<usize>,
+    verify: usize,
+    preserve_metadata: usize,
+    commit: usize,
+    emit_progress: usize,
+}
+
+/// Append one capability-shaped file sub-DAG to `dag`.
+///
+/// Same node bindings as [`TransferDagBuilder::shaped_file`], but emitted in
+/// place onto an existing graph so the batch (and, later, sync) builders can
+/// stitch per-file sub-DAGs into a single [`TransferDag`].
+fn append_shaped_file_chain(
+    dag: &mut TransferDag,
+    direction: TransferDirection,
+    caps: &TransferCapabilities,
+    file_size: u64,
+) -> ShapedFileNodeIds {
+    let profile = TransferGraphProfile::resolve(direction, caps, file_size);
+
+    let discover_kind = match direction {
+        TransferDirection::Download => TransferNodeKind::DiscoverRemote,
+        TransferDirection::Upload => TransferNodeKind::DiscoverLocal,
+    };
+    let discover = dag.add_node(discover_kind, vec![], ResourceRequest::default());
+    let acquire = dag.add_node(
+        TransferNodeKind::AcquireResource,
+        vec![discover],
+        ResourceRequest::default(),
+    );
+
+    let mut transfer_nodes = Vec::new();
+    if direction == TransferDirection::Upload && profile.upload_parts > 1 {
+        for _ in 0..profile.upload_parts {
+            transfer_nodes.push(dag.add_node(
+                TransferNodeKind::UploadPart,
+                vec![acquire],
+                part_request(profile.api_slots),
+            ));
+        }
+    } else {
+        let transfer_kind = match direction {
+            TransferDirection::Download => TransferNodeKind::DownloadFile,
+            TransferDirection::Upload => TransferNodeKind::UploadFile,
+        };
+        transfer_nodes.push(dag.add_node(
+            transfer_kind,
+            vec![acquire],
+            transfer_request(profile.api_slots),
+        ));
+    }
+
+    let verify = dag.add_node(
+        TransferNodeKind::VerifyChecksum,
+        transfer_nodes.clone(),
+        ResourceRequest::default(),
+    );
+    let preserve_metadata = dag.add_node(
+        TransferNodeKind::PreserveMetadata,
+        vec![verify],
+        ResourceRequest::default(),
+    );
+    let commit = dag.add_node(
+        TransferNodeKind::CommitTemp,
+        vec![preserve_metadata],
+        ResourceRequest::default(),
+    );
+    let emit_progress = dag.add_node(
+        TransferNodeKind::EmitProgress,
+        vec![commit],
+        ResourceRequest::default(),
+    );
+
+    ShapedFileNodeIds {
+        discover,
+        acquire,
+        transfer_nodes,
+        verify,
+        preserve_metadata,
+        commit,
+        emit_progress,
+    }
+}
+
 fn append_sync_file_chain(
     dag: &mut TransferDag,
     direction: TransferDirection,
@@ -1013,6 +1178,68 @@ mod tests {
         .expect("batch graph must schedule cleanly");
 
         assert_eq!(peak_transfers.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn shaped_batch_with_default_caps_matches_legacy_shape() {
+        // Default `TransferCapabilities` advertise nothing: the shaped
+        // batch builder must reproduce the same node count and the same
+        // single-transfer-core shape as `from_batch`.
+        let items = vec![
+            BatchDagItem::with_size("a.txt", TransferDirection::Upload, 0),
+            BatchDagItem::with_size("b.txt", TransferDirection::Download, 0),
+        ];
+        let legacy = TransferDagBuilder::from_batch(&items);
+        let shaped =
+            TransferDagBuilder::from_batch_shaped(&items, &TransferCapabilities::default());
+
+        assert_eq!(legacy.dag.nodes().len(), shaped.dag.nodes().len());
+        assert_eq!(legacy.files.len(), shaped.files.len());
+        for (l, s) in legacy.files.iter().zip(shaped.files.iter()) {
+            assert_eq!(l.transfer_nodes, s.transfer_nodes);
+            assert_eq!(s.transfer_nodes.len(), 1);
+            assert_eq!(s.transfer, s.transfer_nodes[0]);
+        }
+    }
+
+    #[test]
+    fn shaped_batch_with_multipart_caps_fans_out_uploads() {
+        // A multipart-capable cap set + 24 MiB upload over 8 MiB chunks
+        // produces 3 `UploadPart` nodes for the upload item and a single
+        // `DownloadFile` node for the download item (multipart is upload
+        // only). All three part nodes share the same `acquire` predecessor.
+        let caps = TransferCapabilities {
+            multipart_upload: Capability::Supported,
+            preferred_chunk_size: Some(8 * 1024 * 1024),
+            ..TransferCapabilities::default()
+        };
+        let items = vec![
+            BatchDagItem::with_size("big.bin", TransferDirection::Upload, 24 * 1024 * 1024),
+            BatchDagItem::with_size("small.txt", TransferDirection::Download, 1024),
+        ];
+        let built = TransferDagBuilder::from_batch_shaped(&items, &caps);
+
+        let upload = &built.files[0];
+        assert_eq!(upload.transfer_nodes.len(), 3);
+        assert_eq!(upload.transfer, upload.transfer_nodes[0]);
+        let nodes = built.dag.nodes();
+        for &part_id in &upload.transfer_nodes {
+            assert_eq!(nodes[part_id].kind, TransferNodeKind::UploadPart);
+            assert_eq!(nodes[part_id].depends_on, vec![upload.acquire]);
+        }
+        // `verify` must wait for every `UploadPart` node before it can run.
+        let mut expected_deps = upload.transfer_nodes.clone();
+        expected_deps.sort_unstable();
+        let mut actual_deps = nodes[upload.verify].depends_on.clone();
+        actual_deps.sort_unstable();
+        assert_eq!(actual_deps, expected_deps);
+
+        let download = &built.files[1];
+        assert_eq!(download.transfer_nodes.len(), 1);
+        assert_eq!(
+            nodes[download.transfer_nodes[0]].kind,
+            TransferNodeKind::DownloadFile
+        );
     }
 
     #[test]
