@@ -332,7 +332,7 @@ External MCP clients can now connect directly through AeroFTP without wrapping C
 aeroftp-cli agent --mcp
 ```
 
-Current MCP mode (v3.8.0) exposes:
+Current MCP mode (v4.0.0) exposes:
 - 39 curated tools across safe / medium / destructive tiers: file ops, batch (`aeroftp_delete_many`, `aeroftp_upload_many`), tree sync (`aeroftp_sync_tree` with `delta_files[]` + `plan[]`), tree diff (`aeroftp_check_tree` two-sided checksum + per-group caps + `omit_match`), preflight (`aeroftp_sync_doctor`, `aeroftp_reconcile`, `aeroftp_dedupe`), cross-profile copy (`aeroftp_transfer`, `aeroftp_transfer_tree`), agent ergonomics (`aeroftp_agent_connect`, `aeroftp_speed`, `aeroftp_touch`, `aeroftp_cleanup`)
 - resources for saved profiles, status, capabilities, and pooled connections
 - prompt templates for deploy, backup, sync, and clean workflows
@@ -349,6 +349,31 @@ Use this mode for Claude Desktop, Cursor, VS Code, or any other MCP client that 
 
 Full orchestration documentation with a verified field test report: **[Agent Orchestration](https://docs.aeroftp.app/features/agent-orchestration)**
 
+## Transfer Engine
+
+Starting with v4.0.0 every transfer (`get`, `put`, `sync`, `transfer`,
+`transfer-tree`, and their MCP counterparts) schedules through a
+shared, provider-agnostic DAG engine. The engine picks the right
+transfer shape per call from the provider's capabilities:
+
+- **Native multipart upload fan-out** on S3 / Backblaze B2: the
+  upload is split into N parts (one DAG node per chunk), parallelized
+  through a shared chunk budget, and finalized atomically.
+- **Server-side copy** when the backend advertises the capability
+  (S3 `x-amz-copy-source`, B2 `b2_copy_file`, WebDAV `COPY`,
+  ImageKit `copyFile`, plus 14 other native providers): the bytes
+  never traverse the local host.
+- **Intra-file segmented downloads** when the server proves it
+  honours HTTP `Range`: one DAG node per segment, no inter-segment
+  dependencies, governed by the shared chunk / HTTP / disk-write
+  budget.
+
+For an agent this is transparent: same commands, same exit codes,
+same JSON output shape. The engine handles the right shape for the
+backend.
+
+Architecture details: [docs.aeroftp.app/architecture/dag-transfer-engine](https://docs.aeroftp.app/architecture/dag-transfer-engine).
+
 ## Supported Protocols
 
 Saved profiles cover both direct-auth and browser-authorized providers.
@@ -361,4 +386,4 @@ Saved profiles cover both direct-auth and browser-authorized providers.
 
 ---
 
-*AeroFTP CLI v3.8.0 - [github.com/axpdev-lab/aeroftp](https://github.com/axpdev-lab/aeroftp)*
+*AeroFTP CLI v4.0.0 - [github.com/axpdev-lab/aeroftp](https://github.com/axpdev-lab/aeroftp)*
