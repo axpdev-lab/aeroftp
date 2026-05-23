@@ -799,18 +799,29 @@ impl StorageProvider for FilenProvider {
             .as_ref()
             .map(|k| k.expose_secret().trim().to_string())
             .filter(|k| !k.is_empty());
+        let api_key_path = configured_api_key.is_some();
 
         let encrypted_master_keys: Option<String> = if let Some(api_key) = configured_api_key {
             self.api_key = SecretString::from(api_key);
             filen_log("connect: API-key path, skipping /v3/login (no 2FA window)");
-            // Best-effort: recover the canonical master-keys history. If the
-            // call fails, derived_master_key alone still decrypts everything
-            // encrypted under the current password.
+            // The API-key path replaces /v3/login, so we must obtain and
+            // decrypt the canonical master-keys ring here. A partial ring
+            // would silently break decryption for files encrypted under
+            // previously-rotated keys.
             match self.fetch_master_keys_blob(&derived_master_key).await {
-                Ok(blob) => blob,
+                Ok(Some(blob)) => Some(blob),
+                Ok(None) => {
+                    filen_log("connect: /v3/user/masterKeys returned no blob");
+                    return Err(ProviderError::AuthenticationFailed(
+                        "Filen returned no master keys; reconnect with the account password to refresh the ring".to_string(),
+                    ));
+                }
                 Err(e) => {
                     filen_log(&format!("connect: /v3/user/masterKeys failed: {}", e));
-                    None
+                    return Err(ProviderError::AuthenticationFailed(format!(
+                        "Cannot load Filen master keys via API key ({}); reconnect with the account password to refresh the ring",
+                        e
+                    )));
                 }
             }
         } else {
@@ -872,19 +883,30 @@ impl StorageProvider for FilenProvider {
         ));
         if let Some(blob) = encrypted_master_keys {
             filen_log(&format!("master_keys blob len={}", blob.len()));
-            if let Some(decrypted) = Self::try_decrypt_aes_gcm(&blob, &derived_master_key) {
-                let decrypted_keys: Vec<SecretString> = decrypted
-                    .split('|')
-                    .map(|s| SecretString::from(s.to_string()))
-                    .collect();
-                // Check if derived_master_key is already present
-                let already_present = decrypted_keys
-                    .iter()
-                    .any(|k| k.expose_secret() == derived_master_key);
-                self.master_keys = decrypted_keys;
-                if !already_present {
-                    self.master_keys
-                        .push(SecretString::from(derived_master_key));
+            match Self::try_decrypt_aes_gcm(&blob, &derived_master_key) {
+                Some(decrypted) => {
+                    let decrypted_keys: Vec<SecretString> = decrypted
+                        .split('|')
+                        .map(|s| SecretString::from(s.to_string()))
+                        .collect();
+                    // Check if derived_master_key is already present
+                    let already_present = decrypted_keys
+                        .iter()
+                        .any(|k| k.expose_secret() == derived_master_key);
+                    self.master_keys = decrypted_keys;
+                    if !already_present {
+                        self.master_keys
+                            .push(SecretString::from(derived_master_key));
+                    }
+                }
+                None if api_key_path => {
+                    filen_log("connect: master_keys blob decrypt failed on API-key path");
+                    return Err(ProviderError::AuthenticationFailed(
+                        "Cannot decrypt Filen master keys with the account password; reconnect to refresh the ring".to_string(),
+                    ));
+                }
+                None => {
+                    filen_log("connect: master_keys blob decrypt failed; proceeding with derived_master_key only");
                 }
             }
         }
