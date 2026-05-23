@@ -259,7 +259,7 @@
             "totpSecretHelp": "2FA gizli anahtarınızı bir kez kaydedin. AeroFTP, bir kimlik doğrulayıcı uygulama gibi her yeniden bağlanmada 6 haneli kodu otomatik olarak üretir.",
             "filenApiKey": "Filen CLI API anahtarı (isteğe bağlı)",
             "filenApiKeyPlaceholder": "Filen CLI'den API anahtarı",
-            "filenApiKeyHelp": "Her yeniden bağlanışta 2FA kodunu atlamak için Filen CLI profilinizdeki API anahtarını yapıştırın. Hesap parolası yine de gereklidir: dosyalarınızı uçtan uca şifresini çözer.",
+            "filenApiKeyHelp": "Her yeniden bağlanışta 2FA kodunu atlamak için Filen CLI profilinizdeki API anahtarını yapıştırın. Hesap parolası yine de gereklidir: dosyalarınızın uçtan uca şifresini çözer.",
             "manualTotalStorage": "Toplam depolama (manuel)",
             "manualTotalStoragePlaceholder": "ör. 10 GB, 500 GB, 2 TB",
             "manualTotalStorageHint": "İsteğe bağlı. Kota API'si olmayan (FTP, S3, WebDAV) veya yalnızca kullanılan alanı bildiren (Backblaze B2) arka uçlar için plan veya hesap sınırı. Sağlayıcının kendi toplam değeri her zaman önceliklidir.",
