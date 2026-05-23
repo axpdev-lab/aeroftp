@@ -454,10 +454,7 @@ pub async fn execute_sync_dag(
     let (locals, local_scan_panic) = match local_handle.await {
         Ok(entries) => (entries, None),
         Err(join_err) => {
-            eprintln!(
-                "[execute_sync_dag] local scan task failed: {}",
-                join_err
-            );
+            eprintln!("[execute_sync_dag] local scan task failed: {}", join_err);
             (Vec::new(), Some(join_err.to_string()))
         }
     };
