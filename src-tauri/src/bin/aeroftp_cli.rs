@@ -19071,9 +19071,9 @@ fn cmd_alias_toggle(name: &str, bin_dir: Option<&Path>, format: OutputFormat) ->
                 print_error(
                     format,
                     &format!("cannot resolve current executable: {}", e),
-                    5,
+                    2,
                 );
-                return 5;
+                return 2;
             }
         };
         let bin_dir = match bin_dir
