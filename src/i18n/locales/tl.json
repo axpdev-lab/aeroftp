@@ -264,7 +264,15 @@
             "manualTotalStoragePlaceholder": "hal. 10 GB, 500 GB, 2 TB",
             "manualTotalStorageHint": "Opsyonal. Limitasyon ng plan o account para sa mga backend na walang quota API (FTP, S3, WebDAV) o nag-uulat lamang ng nagamit na espasyo (Backblaze B2). Ang sariling kabuuan ng provider ang palaging mauuna.",
             "autoScanUsedOnConnect": "Kalkulahin ang nagamit na storage kapag kumonekta",
-            "autoScanUsedOnConnectHint": "Para lamang sa mga backend na walang API ng nagamit na espasyo (FTP, S3, WebDAV). Naka-off bilang default: ang malaking tree (hal. isang web project) ay nire-recurse nang paulit-ulit, na maaaring mabagal. Kung hindi, gamitin ang aksyon sa StatusBar kapag kailangan."
+            "autoScanUsedOnConnectHint": "Para lamang sa mga backend na walang API ng nagamit na espasyo (FTP, S3, WebDAV). Naka-off bilang default: ang malaking tree (hal. isang web project) ay nire-recurse nang paulit-ulit, na maaaring mabagal. Kung hindi, gamitin ang aksyon sa StatusBar kapag kailangan.",
+            "saveAsNewProfile": "I-save bilang bagong profile",
+            "saveAsNewProfileTitle": "I-save ang kasalukuyang form bilang bagong profile sa mode na ito. Ang orihinal na profile ay mapapanatili.",
+            "convertToMode": "I-convert sa {{mode}}",
+            "convertReplacesOriginal": "Pinapalitan ang orihinal na profile",
+            "profileConverted": "Na-convert ang profile",
+            "profileDuplicated": "Na-duplicate ang profile",
+            "convertUndone": "Na-restore ang profile",
+            "undo": "I-undo"
         },
         "browser": {
             "remote": "Remote",

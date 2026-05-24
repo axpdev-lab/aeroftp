@@ -264,7 +264,15 @@
             "manualTotalStoragePlaceholder": "np. 10 GB, 500 GB, 2 TB",
             "manualTotalStorageHint": "Opcjonalne. Limit planu lub konta dla backendów bez API limitu (FTP, S3, WebDAV) lub zgłaszających tylko zajęte miejsce (Backblaze B2). Całkowita pojemność podana przez dostawcę zawsze ma pierwszeństwo.",
             "autoScanUsedOnConnect": "Oblicz zajęte miejsce przy łączeniu",
-            "autoScanUsedOnConnectHint": "Tylko dla backendów bez API zajętego miejsca (FTP, S3, WebDAV). Domyślnie wyłączone: duże drzewo (np. projekt webowy) jest przeszukiwane rekurencyjnie, co może być wolne. W przeciwnym razie użyj akcji w pasku StatusBar na żądanie."
+            "autoScanUsedOnConnectHint": "Tylko dla backendów bez API zajętego miejsca (FTP, S3, WebDAV). Domyślnie wyłączone: duże drzewo (np. projekt webowy) jest przeszukiwane rekurencyjnie, co może być wolne. W przeciwnym razie użyj akcji w pasku StatusBar na żądanie.",
+            "saveAsNewProfile": "Zapisz jako nowy profil",
+            "saveAsNewProfileTitle": "Zapisz bieżący formularz jako nowy profil w tym trybie. Oryginalny profil zostanie zachowany.",
+            "convertToMode": "Konwertuj na {{mode}}",
+            "convertReplacesOriginal": "Zastępuje oryginalny profil",
+            "profileConverted": "Profil przekonwertowany",
+            "profileDuplicated": "Profil zduplikowany",
+            "convertUndone": "Profil przywrócony",
+            "undo": "Cofnij"
         },
         "browser": {
             "remote": "Zdalny",

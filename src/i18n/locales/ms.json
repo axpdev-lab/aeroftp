@@ -264,7 +264,15 @@
             "manualTotalStoragePlaceholder": "cth. 10 GB, 500 GB, 2 TB",
             "manualTotalStorageHint": "Pilihan. Had pelan atau akaun untuk bahagian belakang tanpa API kuota (FTP, S3, WebDAV) atau yang hanya melaporkan ruang digunakan (Backblaze B2). Jumlah milik penyedia sendiri sentiasa diutamakan.",
             "autoScanUsedOnConnect": "Kira storan digunakan semasa menyambung",
-            "autoScanUsedOnConnectHint": "Hanya untuk bahagian belakang tanpa API ruang digunakan (FTP, S3, WebDAV). Dimatikan secara lalai: pepohon yang besar (cth. projek web) dilalui secara rekursif, yang boleh menjadi perlahan. Jika tidak, gunakan tindakan StatusBar mengikut keperluan."
+            "autoScanUsedOnConnectHint": "Hanya untuk bahagian belakang tanpa API ruang digunakan (FTP, S3, WebDAV). Dimatikan secara lalai: pepohon yang besar (cth. projek web) dilalui secara rekursif, yang boleh menjadi perlahan. Jika tidak, gunakan tindakan StatusBar mengikut keperluan.",
+            "saveAsNewProfile": "Simpan sebagai profil baru",
+            "saveAsNewProfileTitle": "Simpan borang semasa sebagai profil baru dalam mod ini. Profil asal dikekalkan.",
+            "convertToMode": "Tukar ke {{mode}}",
+            "convertReplacesOriginal": "Menggantikan profil asal",
+            "profileConverted": "Profil ditukar",
+            "profileDuplicated": "Profil diduplikasi",
+            "convertUndone": "Profil dipulihkan",
+            "undo": "Buat asal"
         },
         "browser": {
             "remote": "Jauh",

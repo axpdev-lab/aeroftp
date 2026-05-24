@@ -264,7 +264,15 @@
             "manualTotalStoragePlaceholder": "z. B. 10 GB, 500 GB, 2 TB",
             "manualTotalStorageHint": "Optional. Tarif- oder Kontolimit für Backends ohne quota API (FTP, S3, WebDAV) oder die nur den belegten Speicher melden (Backblaze B2). Der vom Anbieter gemeldete Gesamtwert hat immer Vorrang.",
             "autoScanUsedOnConnect": "Belegten Speicher beim Verbinden berechnen",
-            "autoScanUsedOnConnectHint": "Nur für Backends ohne API für belegten Speicher (FTP, S3, WebDAV). Standardmäßig deaktiviert: ein großer Baum (z. B. ein Webprojekt) wird rekursiv durchlaufen, was langsam sein kann. Verwenden Sie andernfalls die StatusBar-Aktion bei Bedarf."
+            "autoScanUsedOnConnectHint": "Nur für Backends ohne API für belegten Speicher (FTP, S3, WebDAV). Standardmäßig deaktiviert: ein großer Baum (z. B. ein Webprojekt) wird rekursiv durchlaufen, was langsam sein kann. Verwenden Sie andernfalls die StatusBar-Aktion bei Bedarf.",
+            "saveAsNewProfile": "Als neues Profil speichern",
+            "saveAsNewProfileTitle": "Aktuelles Formular als neues Profil in diesem Modus speichern. Das ursprüngliche Profil bleibt erhalten.",
+            "convertToMode": "In {{mode}} umwandeln",
+            "convertReplacesOriginal": "Ersetzt das ursprüngliche Profil",
+            "profileConverted": "Profil umgewandelt",
+            "profileDuplicated": "Profil dupliziert",
+            "convertUndone": "Profil wiederhergestellt",
+            "undo": "Rückgängig"
         },
         "browser": {
             "remote": "Remote",

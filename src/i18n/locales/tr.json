@@ -264,7 +264,15 @@
             "manualTotalStoragePlaceholder": "ör. 10 GB, 500 GB, 2 TB",
             "manualTotalStorageHint": "İsteğe bağlı. Kota API'si olmayan (FTP, S3, WebDAV) veya yalnızca kullanılan alanı bildiren (Backblaze B2) arka uçlar için plan veya hesap sınırı. Sağlayıcının kendi toplam değeri her zaman önceliklidir.",
             "autoScanUsedOnConnect": "Bağlanırken kullanılan depolamayı hesapla",
-            "autoScanUsedOnConnectHint": "Yalnızca kullanılan alan API'si olmayan arka uçlar için (FTP, S3, WebDAV). Varsayılan olarak kapalı: büyük bir ağaç (ör. bir web projesi) özyinelemeli olarak gezilir ve bu yavaş olabilir. Aksi halde StatusBar eylemini gerektiğinde kullanın."
+            "autoScanUsedOnConnectHint": "Yalnızca kullanılan alan API'si olmayan arka uçlar için (FTP, S3, WebDAV). Varsayılan olarak kapalı: büyük bir ağaç (ör. bir web projesi) özyinelemeli olarak gezilir ve bu yavaş olabilir. Aksi halde StatusBar eylemini gerektiğinde kullanın.",
+            "saveAsNewProfile": "Yeni profil olarak kaydet",
+            "saveAsNewProfileTitle": "Mevcut formu bu modda yeni bir profil olarak kaydedin. Orijinal profil korunur.",
+            "convertToMode": "{{mode}} moduna dönüştür",
+            "convertReplacesOriginal": "Orijinal profili değiştirir",
+            "profileConverted": "Profil dönüştürüldü",
+            "profileDuplicated": "Profil çoğaltıldı",
+            "convertUndone": "Profil geri yüklendi",
+            "undo": "Geri al"
         },
         "browser": {
             "remote": "Uzak",

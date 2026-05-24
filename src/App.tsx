@@ -1561,6 +1561,40 @@ interface UpdateVerificationInfo {
     }
   }), [showToastNotifications, toast, activityLog]);
 
+  // Issue #215: cross-component toast bus. Any component can dispatch a
+  // `CustomEvent('aeroftp-toast', { detail: {...} })` to surface a toast
+  // without plumbing the useToast handle through props. Used by
+  // ConnectionScreen's Convert-mode flow to show the 10s Undo toast.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      if (!showToastNotifications) return;
+      const detail = (e as CustomEvent).detail as
+        | {
+            type?: 'success' | 'error' | 'warning' | 'info';
+            title?: string;
+            message?: string;
+            duration?: number;
+            action?: { label: string; onClick: () => void };
+          }
+        | undefined;
+      if (!detail?.title) return;
+      const type = detail.type || 'info';
+      if (detail.action) {
+        toast.addToastWithAction(
+          type,
+          detail.title,
+          detail.message,
+          detail.action,
+          detail.duration ?? 10000,
+        );
+      } else {
+        toast.addToast(type, detail.title, detail.message, detail.duration);
+      }
+    };
+    window.addEventListener('aeroftp-toast', handler as EventListener);
+    return () => window.removeEventListener('aeroftp-toast', handler as EventListener);
+  }, [toast, showToastNotifications]);
+
   // Preview: handled by usePreview hook
   const preview = usePreview({ notify, toast });
   const {

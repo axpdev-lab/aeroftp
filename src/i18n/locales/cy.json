@@ -264,7 +264,15 @@
             "manualTotalStoragePlaceholder": "e.e. 10 GB, 500 GB, 2 TB",
             "manualTotalStorageHint": "Dewisol. Cap cynllun neu gyfrif ar gyfer ôl-bennau heb quota API (FTP, S3, WebDAV) neu rai sy'n adrodd am ofod a ddefnyddiwyd yn unig (Backblaze B2). Mae cyfanswm y darparwr ei hun bob amser yn cael blaenoriaeth.",
             "autoScanUsedOnConnect": "Cyfrifo'r storfa a ddefnyddiwyd wrth gysylltu",
-            "autoScanUsedOnConnectHint": "Ar gyfer ôl-bennau heb API gofod a ddefnyddiwyd yn unig (FTP, S3, WebDAV). I ffwrdd yn ddiofyn: cerddir trwy goeden fawr (e.e. prosiect gwe) yn ailadroddus, a all fod yn araf. Fel arall, defnyddiwch weithred y StatusBar yn ôl y galw."
+            "autoScanUsedOnConnectHint": "Ar gyfer ôl-bennau heb API gofod a ddefnyddiwyd yn unig (FTP, S3, WebDAV). I ffwrdd yn ddiofyn: cerddir trwy goeden fawr (e.e. prosiect gwe) yn ailadroddus, a all fod yn araf. Fel arall, defnyddiwch weithred y StatusBar yn ôl y galw.",
+            "saveAsNewProfile": "Cadw fel proffil newydd",
+            "saveAsNewProfileTitle": "Cadwch y ffurflen gyfredol fel proffil newydd yn y modd hwn. Cedwir y proffil gwreiddiol.",
+            "convertToMode": "Trosi i {{mode}}",
+            "convertReplacesOriginal": "Yn cymryd lle y proffil gwreiddiol",
+            "profileConverted": "Wedi trosi'r proffil",
+            "profileDuplicated": "Wedi dyblygu'r proffil",
+            "convertUndone": "Wedi adfer y proffil",
+            "undo": "Dadwneud"
         },
         "browser": {
             "remote": "Pell",

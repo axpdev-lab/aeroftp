@@ -264,7 +264,15 @@
             "manualTotalStoragePlaceholder": "例: 10 GB、500 GB、2 TB",
             "manualTotalStorageHint": "任意。クォータ API がないバックエンド (FTP、S3、WebDAV)、または使用容量のみを報告するバックエンド (Backblaze B2) 向けのプラン/アカウント上限です。プロバイダー自身の合計値が常に優先されます。",
             "autoScanUsedOnConnect": "接続時に使用ストレージを計算する",
-            "autoScanUsedOnConnectHint": "使用容量 API がないバックエンド (FTP、S3、WebDAV) のみ。既定ではオフです: 大きなツリー (例: Web プロジェクト) を再帰的にたどるため、処理が遅くなる場合があります。それ以外の場合は必要に応じて StatusBar の操作を使用してください。"
+            "autoScanUsedOnConnectHint": "使用容量 API がないバックエンド (FTP、S3、WebDAV) のみ。既定ではオフです: 大きなツリー (例: Web プロジェクト) を再帰的にたどるため、処理が遅くなる場合があります。それ以外の場合は必要に応じて StatusBar の操作を使用してください。",
+            "saveAsNewProfile": "新しいプロファイルとして保存",
+            "saveAsNewProfileTitle": "現在のフォームをこのモードで新しいプロファイルとして保存します。元のプロファイルは保持されます。",
+            "convertToMode": "{{mode}} に変換",
+            "convertReplacesOriginal": "元のプロファイルを置き換えます",
+            "profileConverted": "プロファイルが変換されました",
+            "profileDuplicated": "プロファイルが複製されました",
+            "convertUndone": "プロファイルが復元されました",
+            "undo": "元に戻す"
         },
         "browser": {
             "remote": "リモート",

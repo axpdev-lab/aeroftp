@@ -264,7 +264,15 @@
             "manualTotalStoragePlaceholder": "piem. 10 GB, 500 GB, 2 TB",
             "manualTotalStorageHint": "Neobligāti. Plāna vai konta ierobežojums aizmugursistēmām bez kvotas API (FTP, S3, WebDAV) vai kas ziņo tikai par izmantoto vietu (Backblaze B2). Pakalpojuma sniedzēja paša kopējam apjomam vienmēr ir prioritāte.",
             "autoScanUsedOnConnect": "Aprēķināt izmantoto krātuvi, izveidojot savienojumu",
-            "autoScanUsedOnConnectHint": "Tikai aizmugursistēmām bez izmantotās vietas API (FTP, S3, WebDAV). Pēc noklusējuma izslēgts: liels koks (piem. tīmekļa projekts) tiek apstaigāts rekursīvi, kas var būt lēni. Pretējā gadījumā izmantojiet StatusBar darbību pēc pieprasījuma."
+            "autoScanUsedOnConnectHint": "Tikai aizmugursistēmām bez izmantotās vietas API (FTP, S3, WebDAV). Pēc noklusējuma izslēgts: liels koks (piem. tīmekļa projekts) tiek apstaigāts rekursīvi, kas var būt lēni. Pretējā gadījumā izmantojiet StatusBar darbību pēc pieprasījuma.",
+            "saveAsNewProfile": "Saglabāt kā jaunu profilu",
+            "saveAsNewProfileTitle": "Saglabājiet pašreizējo veidlapu kā jaunu profilu šajā režīmā. Sākotnējais profils tiek saglabāts.",
+            "convertToMode": "Pārvērst uz {{mode}}",
+            "convertReplacesOriginal": "Aizvieto sākotnējo profilu",
+            "profileConverted": "Profils pārvērsts",
+            "profileDuplicated": "Profils dublēts",
+            "convertUndone": "Profils atjaunots",
+            "undo": "Atsaukt"
         },
         "browser": {
             "remote": "Attālināts",

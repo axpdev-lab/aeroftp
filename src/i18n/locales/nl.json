@@ -264,7 +264,15 @@
             "manualTotalStoragePlaceholder": "bijv. 10 GB, 500 GB, 2 TB",
             "manualTotalStorageHint": "Optioneel. Abonnement- of accountlimiet voor backends zonder quota-API (FTP, S3, WebDAV) of die alleen gebruikte ruimte rapporteren (Backblaze B2). Het eigen totaal van de provider heeft altijd voorrang.",
             "autoScanUsedOnConnect": "Gebruikte opslag berekenen bij verbinden",
-            "autoScanUsedOnConnectHint": "Alleen voor backends zonder API voor gebruikte ruimte (FTP, S3, WebDAV). Standaard uit: een grote boom (bijv. een webproject) wordt recursief doorlopen, wat traag kan zijn. Gebruik anders de StatusBar-actie wanneer nodig."
+            "autoScanUsedOnConnectHint": "Alleen voor backends zonder API voor gebruikte ruimte (FTP, S3, WebDAV). Standaard uit: een grote boom (bijv. een webproject) wordt recursief doorlopen, wat traag kan zijn. Gebruik anders de StatusBar-actie wanneer nodig.",
+            "saveAsNewProfile": "Opslaan als nieuw profiel",
+            "saveAsNewProfileTitle": "Sla het huidige formulier op als een nieuw profiel in deze modus. Het oorspronkelijke profiel blijft behouden.",
+            "convertToMode": "Converteren naar {{mode}}",
+            "convertReplacesOriginal": "Vervangt het oorspronkelijke profiel",
+            "profileConverted": "Profiel geconverteerd",
+            "profileDuplicated": "Profiel gedupliceerd",
+            "convertUndone": "Profiel hersteld",
+            "undo": "Ongedaan maken"
         },
         "browser": {
             "remote": "Extern",

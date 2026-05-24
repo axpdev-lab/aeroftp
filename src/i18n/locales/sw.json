@@ -264,7 +264,15 @@
             "manualTotalStoragePlaceholder": "mf. 10 GB, 500 GB, 2 TB",
             "manualTotalStorageHint": "Si lazima. Kikomo cha mpango au akaunti kwa backend zisizo na API ya kiwango (FTP, S3, WebDAV) au zinazoripoti tu nafasi iliyotumika (Backblaze B2). Jumla ya mtoa huduma daima inapewa kipaumbele.",
             "autoScanUsedOnConnect": "Kokotoa hifadhi iliyotumika unapounganisha",
-            "autoScanUsedOnConnectHint": "Kwa backend zisizo na API ya nafasi iliyotumika tu (FTP, S3, WebDAV). Imezimwa kwa chaguo-msingi: mti mkubwa (mf. mradi wa wavuti) hupitiwa kwa kujirudia, jambo ambalo linaweza kuwa polepole. Vinginevyo tumia kitendo cha StatusBar unapohitaji."
+            "autoScanUsedOnConnectHint": "Kwa backend zisizo na API ya nafasi iliyotumika tu (FTP, S3, WebDAV). Imezimwa kwa chaguo-msingi: mti mkubwa (mf. mradi wa wavuti) hupitiwa kwa kujirudia, jambo ambalo linaweza kuwa polepole. Vinginevyo tumia kitendo cha StatusBar unapohitaji.",
+            "saveAsNewProfile": "Hifadhi kama wasifu mpya",
+            "saveAsNewProfileTitle": "Hifadhi fomu ya sasa kama wasifu mpya katika hali hii. Wasifu wa awali utahifadhiwa.",
+            "convertToMode": "Badilisha kuwa {{mode}}",
+            "convertReplacesOriginal": "Inabadilisha wasifu wa awali",
+            "profileConverted": "Wasifu umebadilishwa",
+            "profileDuplicated": "Wasifu umenakiliwa",
+            "convertUndone": "Wasifu umerejeshwa",
+            "undo": "Tendua"
         },
         "browser": {
             "remote": "Mbali",

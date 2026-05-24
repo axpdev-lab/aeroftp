@@ -6,11 +6,11 @@
  * Initial connection form with Quick Connect and Saved Servers
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { readFile } from '@tauri-apps/plugin-fs';
-import { FolderOpen, HardDrive, ChevronRight, ChevronDown, Save, Copy, Cloud, Check, Settings, Clock, Folder, X, Lock, ArrowLeft, Eye, EyeOff, ExternalLink, Shield, ShieldCheck, KeyRound, Loader2, Image, Info, Pencil, Link2 } from 'lucide-react';
+import { FolderOpen, HardDrive, ChevronRight, ChevronDown, Save, Copy, Cloud, Check, Settings, Clock, Folder, X, Lock, ArrowLeft, Eye, EyeOff, ExternalLink, Shield, ShieldCheck, KeyRound, Loader2, Image, Info, Pencil, Link2, ArrowRightLeft } from 'lucide-react';
 import { ConnectionParams, ProviderType, isOAuthProvider, isAeroCloudProvider, isFourSharedProvider, isNativeApiProtocol, providerServesQuota, ServerProfile } from '../types';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { SavedServers } from './SavedServers';
@@ -19,7 +19,7 @@ import { useTranslation } from '../i18n';
 import { ProtocolSelector, ProtocolFields, getDefaultPort } from './ProtocolSelector';
 import { ProviderModeTabs } from './ProviderModeTabs';
 import { TotpLivePreview } from './TotpLivePreview';
-import { resolveModeHeader } from './providerModeGroups';
+import { findActiveMode, findActiveModeGroup, resolveModeHeader } from './providerModeGroups';
 import { OAuthConnect } from './OAuthConnect';
 import { ProviderSelector } from './ProviderSelector';
 import { AlertDialog } from './Dialogs';
@@ -501,6 +501,15 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // Edit state
     const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
     const editingProfileIdRef = useRef<string | null>(null);
+    // Snapshot of the (protocol, providerId) pair captured when the user
+    // entered edit mode. Used by `modeChanged` to detect when the operator
+    // has switched to a different mode of the SAME provider group (issue
+    // #215). When that happens the footer offers "Save as new" + "Convert"
+    // instead of the standard in-place Save.
+    const [originalEditMode, setOriginalEditMode] = useState<{
+        protocol: ProviderType;
+        providerId?: string;
+    } | null>(null);
     const [savedServersUpdate, setSavedServersUpdate] = useState(0);
     const [showPassword, setShowPassword] = useState(false);
     // Reveal toggle for the saved 2FA Secret field, mirroring the password eye.
@@ -696,6 +705,36 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             return false;
         }
     };
+
+    // Issue #215: Detect when the operator has switched to a different
+    // mode of the SAME provider group while editing a saved profile (e.g.
+    // Koofr WebDAV -> Koofr Native API, FileLu API -> FileLu S3). When
+    // true, the footer offers "Save as new" + "Convert to <mode>" instead
+    // of the standard in-place Save, to avoid silently mutating a saved
+    // profile across structurally different credential shapes.
+    const modeChanged = useMemo(() => {
+        if (!editingProfileId || !originalEditMode || !protocol) return false;
+        const currentProviderId = selectedProviderId || connectionParams.providerId || undefined;
+        const origProviderId = originalEditMode.providerId || undefined;
+        if (protocol === originalEditMode.protocol && currentProviderId === origProviderId) {
+            return false;
+        }
+        const oldGroup = findActiveModeGroup(origProviderId, originalEditMode.protocol);
+        const newGroup = findActiveModeGroup(currentProviderId, protocol);
+        return !!oldGroup && oldGroup === newGroup;
+    }, [editingProfileId, originalEditMode, protocol, selectedProviderId, connectionParams.providerId]);
+
+    // Resolved label of the active target mode (for the "Convert to X"
+    // button). Falls back to the protocol string when the active mode
+    // cannot be resolved.
+    const targetModeLabel = useMemo(() => {
+        if (!modeChanged || !protocol) return '';
+        const currentProviderId = selectedProviderId || connectionParams.providerId || undefined;
+        const group = findActiveModeGroup(currentProviderId, protocol);
+        if (!group) return protocol;
+        const mode = findActiveMode(group, currentProviderId, protocol);
+        return mode?.label || protocol;
+    }, [modeChanged, protocol, selectedProviderId, connectionParams.providerId]);
 
     const normalizeEndpointForDuplicate = (value?: string) => {
         const raw = (value || '').trim();
@@ -999,6 +1038,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             await saveToServers();
             setEditingProfileId(null);
             editingProfileIdRef.current = null;
+            setOriginalEditMode(null);
             setConnectionName('');
             setSaveConnection(false);
             onConnectionParamsChange({ server: '', username: '', password: '' });
@@ -1044,13 +1084,23 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         const existingServers = await secureGetWithFallback<ServerProfile[]>('server_profiles', SERVERS_STORAGE_KEY) || [];
         const originalServer = existingServers.find((s: ServerProfile) => s.id === editingProfileId);
         const newName = connectionName || connectionParams.server || protocol;
-        if (originalServer && newName === originalServer.name) {
+        // When the operator switched mode in edit (issue #215), the new
+        // profile is materially different (Native API vs WebDAV vs ...),
+        // so reusing the same display name is fine: skip the "(Copy)" auto
+        // suffix to keep the list readable. Otherwise (plain duplicate of
+        // the SAME mode), append "(Copy)" so the two rows are
+        // distinguishable.
+        const targetMode = modeChanged ? targetModeLabel : '';
+        const shouldSuffixCopy = !!originalServer && newName === originalServer.name && !modeChanged;
+        if (shouldSuffixCopy) {
             // Auto-append "(Copy)" if user didn't change the name
             setConnectionName(`${newName} (${t('common.copy')})`);
         }
-        const finalName = (originalServer && newName === originalServer.name)
+        const finalName = shouldSuffixCopy
             ? `${newName} (${t('common.copy')})`
-            : newName;
+            : (modeChanged && originalServer && newName === originalServer.name && targetMode
+                ? `${newName} (${targetMode})`
+                : newName);
 
         const normalizedParams = protocol === 'uploadcare'
             ? { ...connectionParams, server: connectionParams.server || 'api.uploadcare.com', port: connectionParams.port || 443, providerId: connectionParams.providerId || 'uploadcare' }
@@ -1081,6 +1131,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
         const newId = `srv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         const credentialStored = await tryStoreCredential(`server_${newId}`, connectionParams.password);
+        // Carry-over from the original profile when present: visual color
+        // tag + favicon (sort position is handled by the insert index
+        // below). Custom icon URL is already in component state via
+        // `customIconForSave`, set in handleEdit.
         const newServer: ServerProfile = {
             id: newId,
             name: finalName,
@@ -1094,19 +1148,146 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             options: optionsToSave,
             providerId: selectedProviderId || undefined,
             customIconUrl: customIconForSave,
+            color: originalServer?.color,
+            faviconUrl: faviconForSave || originalServer?.faviconUrl,
         };
 
-        const newServers = [...existingServers, newServer];
+        // Issue #215: when the user switched mode in edit, insert
+        // immediately AFTER the original profile (visual grouping). For a
+        // plain duplicate of the same mode, append at the end (legacy
+        // behavior).
+        const newServers = [...existingServers];
+        if (modeChanged) {
+            const originalIdx = existingServers.findIndex(s => s.id === editingProfileId);
+            const insertIdx = originalIdx >= 0 ? originalIdx + 1 : existingServers.length;
+            newServers.splice(insertIdx, 0, newServer);
+        } else {
+            newServers.push(newServer);
+        }
         await secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, newServers).catch(() => { });
         setSavedServersUpdate(Date.now());
 
         // Reset form
         setEditingProfileId(null);
         editingProfileIdRef.current = null;
+        setOriginalEditMode(null);
         setConnectionName('');
         setSaveConnection(false);
         onConnectionParamsChange({ server: '', username: '', password: '' });
         onQuickConnectDirsChange({ remoteDir: '', localDir: '' });
+        onFormSaved?.();
+    };
+
+    // Issue #215: "Convert profile to <mode>" — when the user is editing
+    // a saved profile and switched to a different mode of the SAME
+    // provider group (e.g. Koofr WebDAV -> Koofr Native API), this
+    // creates the new-mode profile and removes the original, keeping the
+    // original's sort position. An Undo toast restores the snapshot for
+    // 10 seconds.
+    const handleConvertMode = async () => {
+        if (!protocol || !editingProfileId || !modeChanged) return;
+
+        const existingServers = await secureGetWithFallback<ServerProfile[]>('server_profiles', SERVERS_STORAGE_KEY) || [];
+        const originalIdx = existingServers.findIndex(s => s.id === editingProfileId);
+        const originalServer = originalIdx >= 0 ? existingServers[originalIdx] : null;
+        if (!originalServer) return;
+
+        // Snapshot for Undo
+        const snapshotServers = existingServers.map(s => ({ ...s }));
+        const previousMode = originalEditMode?.protocol || originalServer.protocol;
+
+        // Same normalization rules as handleSaveAsNew so converted
+        // profiles end up with sensible host/port defaults for providers
+        // that fill them implicitly (Uploadcare / ImageKit / Cloudinary /
+        // FileLu / OpenDrive / GitHub / Backblaze) or via the registry
+        // preset defaults.
+        const normalizedParams = protocol === 'uploadcare'
+            ? { ...connectionParams, server: connectionParams.server || 'api.uploadcare.com', port: connectionParams.port || 443, providerId: connectionParams.providerId || 'uploadcare' }
+            : protocol === 'imagekit'
+            ? { ...connectionParams, server: connectionParams.server || 'api.imagekit.io', port: connectionParams.port || 443, providerId: connectionParams.providerId || 'imagekit' }
+            : protocol === 'cloudinary'
+            ? { ...connectionParams, server: connectionParams.server || 'api.cloudinary.com', port: connectionParams.port || 443, providerId: connectionParams.providerId || 'cloudinary' }
+            : protocol === 'filelu'
+            ? { ...connectionParams, server: connectionParams.server || 'filelu.com', username: connectionParams.username || 'api-key', port: connectionParams.port || 443 }
+            : protocol === 'opendrive'
+                ? { ...connectionParams, server: connectionParams.server || 'dev.opendrive.com', port: connectionParams.port || 443 }
+            : protocol === 'github' || protocol === 'gitlab'
+                ? { ...connectionParams, server: connectionParams.server || '', port: connectionParams.port || 443 }
+            : protocol === 'backblaze'
+                ? { ...connectionParams, server: connectionParams.server || 'api.backblazeb2.com', port: connectionParams.port || 443 }
+            : selectedProvider?.defaults?.server && !connectionParams.server
+                ? { ...connectionParams, server: selectedProvider.defaults.server, port: connectionParams.port || selectedProvider.defaults.port || getDefaultPort(protocol) }
+            : connectionParams;
+
+        const optionsToSave = protocol === 'mega'
+            ? normalizeMegaOptions(connectionParams.options)
+            : { ...connectionParams.options };
+        if ('two_factor_code' in optionsToSave) {
+            delete optionsToSave.two_factor_code;
+        }
+
+        const finalName = (connectionName || originalServer.name).trim() || originalServer.name;
+
+        const newId = `srv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const credentialStored = await tryStoreCredential(`server_${newId}`, connectionParams.password);
+        const newServer: ServerProfile = {
+            id: newId,
+            name: finalName,
+            host: normalizedParams.server,
+            port: normalizedParams.port || getDefaultPort(protocol),
+            username: normalizedParams.username,
+            hasStoredCredential: credentialStored,
+            protocol: protocol as ProviderType,
+            initialPath: quickConnectDirs.remoteDir,
+            localInitialPath: quickConnectDirs.localDir,
+            options: optionsToSave,
+            providerId: selectedProviderId || undefined,
+            customIconUrl: customIconForSave || originalServer.customIconUrl,
+            color: originalServer.color,
+            faviconUrl: faviconForSave || originalServer.faviconUrl,
+        };
+
+        // Replace in slot: remove original, insert new at the same index
+        const newServers = [...existingServers];
+        newServers.splice(originalIdx, 1, newServer);
+        await secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, newServers).catch(() => { });
+        setSavedServersUpdate(Date.now());
+
+        // 10s Undo toast (via window event so we don't need to plumb a
+        // toast handle through props; App.tsx listens for
+        // `aeroftp-toast`).
+        window.dispatchEvent(new CustomEvent('aeroftp-toast', {
+            detail: {
+                type: 'success',
+                title: t('connection.profileConverted'),
+                message: `${originalServer.name}: ${previousMode} → ${targetModeLabel}`,
+                duration: 10000,
+                action: {
+                    label: t('connection.undo'),
+                    onClick: async () => {
+                        await secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, snapshotServers).catch(() => { });
+                        setSavedServersUpdate(Date.now());
+                        window.dispatchEvent(new CustomEvent('aeroftp-toast', {
+                            detail: {
+                                type: 'info',
+                                title: t('connection.convertUndone'),
+                                duration: 3000,
+                            },
+                        }));
+                    },
+                },
+            },
+        }));
+
+        // Reset form
+        setEditingProfileId(null);
+        editingProfileIdRef.current = null;
+        setOriginalEditMode(null);
+        setConnectionName('');
+        setSaveConnection(false);
+        onConnectionParamsChange({ server: '', username: '', password: '' });
+        onQuickConnectDirsChange({ remoteDir: '', localDir: '' });
+        onFormSaved?.();
     };
 
     const handleEdit = async (profile: ServerProfile) => {
@@ -1180,6 +1361,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             }
         }
 
+        // Snapshot the mode at edit-open time so we can detect mode-group
+        // switches in the footer (issue #215).
+        setOriginalEditMode({
+            protocol: effectiveProtocol,
+            providerId: profile.providerId,
+        });
+
         // Immediately update form with new profile data (password empty initially)
         onConnectionParamsChange({
             server: profile.host,
@@ -1223,6 +1411,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const handleCancelEdit = () => {
         setEditingProfileId(null);
         editingProfileIdRef.current = null;
+        setOriginalEditMode(null);
         setConnectionName('');
         setCustomIconForSave(undefined);
         setFaviconForSave(undefined);
@@ -1284,10 +1473,63 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             return;
         }
 
+        // Issue #215: when editing a saved profile and switching to a
+        // different mode of the SAME provider group (e.g. Koofr WebDAV ->
+        // Koofr Native API, FileLu API -> FileLu S3), keep edit mode and
+        // update protocol/providerId/options so the form re-renders with
+        // mode-specific fields. The user then chooses Save-as-new or
+        // Convert in the footer (modeChanged === true).
+        if (editingProfileId && effectiveOldProtocol) {
+            const oldProviderId = selectedProviderId || connectionParams.providerId || undefined;
+            const oldGroup = findActiveModeGroup(oldProviderId, effectiveOldProtocol);
+            const newGroup = findActiveModeGroup(providerId, newProtocol);
+            if (oldGroup && oldGroup === newGroup) {
+                // Carry over server/username/password; replace
+                // protocol-specific options with the new preset defaults
+                // when a preset is provided, otherwise clear options for
+                // preset-less native modes.
+                if (providerId) {
+                    const provider = getProviderById(providerId);
+                    if (provider) {
+                        setSelectedProviderId(providerId);
+                        onConnectionParamsChange({
+                            ...connectionParams,
+                            protocol: newProtocol,
+                            port: provider.defaults?.port || getDefaultPort(newProtocol),
+                            providerId: provider.id,
+                            server: connectionParams.server || provider.defaults?.server || '',
+                            options: {
+                                pathStyle: provider.defaults?.pathStyle,
+                                region: provider.defaults?.region,
+                                endpoint: provider.defaults?.endpoint,
+                                anonymous: provider.defaults?.anonymous,
+                                webdavScheme: provider.defaults?.webdavScheme,
+                                bucket: provider.defaults?.bucket,
+                                verifyCert: provider.defaults?.verifyCert,
+                            },
+                        });
+                        return;
+                    }
+                }
+                // Preset-less native mode (Koofr native, OpenDrive native,
+                // Filen native): drop the providerId and switch protocol.
+                setSelectedProviderId(null);
+                onConnectionParamsChange({
+                    ...connectionParams,
+                    protocol: newProtocol,
+                    providerId: undefined,
+                    port: getDefaultPort(newProtocol),
+                    options: {},
+                });
+                return;
+            }
+        }
+
         // Exit edit mode when changing to an incompatible protocol
         if (editingProfileId) {
             setEditingProfileId(null);
             editingProfileIdRef.current = null;
+            setOriginalEditMode(null);
             setConnectionName('');
             setSaveConnection(false);
         }
@@ -1537,6 +1779,48 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     })();
 
     /**
+     * Issue #215: shared footer rendered whenever the operator switched
+     * to a different mode of the SAME provider group while editing a
+     * saved profile. Three explicit choices: Cancel, Save-as-new (the
+     * original is preserved), Convert (the original is replaced in slot
+     * with a 10s Undo toast).
+     */
+    const renderModeChangedFooter = () => (
+        <>
+            <div className="flex flex-wrap gap-2 pt-2">
+                <button
+                    onClick={handleCancelEdit}
+                    className="px-4 py-3 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-medium rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+                    title={t('connection.cancelEditing')}
+                >
+                    <X size={20} />
+                </button>
+                <button
+                    onClick={handleSaveAsNew}
+                    disabled={loading}
+                    className="flex-1 min-w-[140px] py-3 px-4 rounded-lg font-medium text-white bg-green-600 hover:bg-green-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title={t('connection.saveAsNewProfileTitle')}
+                >
+                    <Copy size={18} />
+                    <span className="truncate">{t('connection.saveAsNewProfile')}</span>
+                </button>
+                <button
+                    onClick={handleConvertMode}
+                    disabled={loading}
+                    className="flex-1 min-w-[140px] py-3 px-4 rounded-lg font-medium text-white bg-orange-600 hover:bg-orange-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title={t('connection.convertReplacesOriginal')}
+                >
+                    <ArrowRightLeft size={18} />
+                    <span className="truncate">{t('connection.convertToMode', { mode: targetModeLabel })}</span>
+                </button>
+            </div>
+            <p className="text-[11px] text-orange-700 dark:text-orange-300 text-center pt-1 leading-snug">
+                {t('connection.convertReplacesOriginal')}
+            </p>
+        </>
+    );
+
+    /**
      * Renders the right column (paths + save + button) for formOnly 2-column layout.
      * Also used inline for single-column providers.
      * This replaces 9+ duplicated blocks across protocol branches.
@@ -1700,32 +1984,38 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     </div>
                 </div>
                 )}
-                {/* Action Buttons */}
-                <div className={showCancelSaveAsNew ? 'flex gap-2' : 'pt-2'}>
-                    {showCancelSaveAsNew && editingProfileId && (
-                        <button onClick={handleCancelEdit} className="px-4 py-3 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-medium rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors" title={t('connection.cancelEditing')}>
-                            <X size={20} />
-                        </button>
-                    )}
-                    {showCancelSaveAsNew && editingProfileId && (
-                        <button onClick={handleSaveAsNew} className="px-4 py-3 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg transition-colors flex items-center gap-2" title={t('connection.saveAsNew')}>
-                            <Copy size={18} />
-                        </button>
-                    )}
-                    <button
-                        onClick={handleConnectAndSave}
-                        disabled={loading || btnDisabled}
-                        className={`${showCancelSaveAsNew ? 'flex-1' : 'w-full'} py-3 rounded-lg font-medium text-white cursor-pointer active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] disabled:opacity-50 ${loading ? 'bg-gray-400 !cursor-not-allowed' : buttonColorClass}`}
-                    >
-                        {loading ? (
-                            <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
-                        ) : buttonText ? buttonText : (
-                            editingProfileId ? <><Save size={18} /> {t('common.save')}</> :
-                            saveConnection ? <><Save size={18} /> {t('common.save')}</> :
-                            t('common.connect')
+                {/* Action Buttons. Issue #215: mode switch in edit takes
+                    over the footer with Save-as-new + Convert when the
+                    operator picked a different surface of the same group. */}
+                {modeChanged && editingProfileId ? (
+                    renderModeChangedFooter()
+                ) : (
+                    <div className={showCancelSaveAsNew ? 'flex gap-2' : 'pt-2'}>
+                        {showCancelSaveAsNew && editingProfileId && (
+                            <button onClick={handleCancelEdit} className="px-4 py-3 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-medium rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors" title={t('connection.cancelEditing')}>
+                                <X size={20} />
+                            </button>
                         )}
-                    </button>
-                </div>
+                        {showCancelSaveAsNew && editingProfileId && (
+                            <button onClick={handleSaveAsNew} className="px-4 py-3 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg transition-colors flex items-center gap-2" title={t('connection.saveAsNew')}>
+                                <Copy size={18} />
+                            </button>
+                        )}
+                        <button
+                            onClick={handleConnectAndSave}
+                            disabled={loading || btnDisabled}
+                            className={`${showCancelSaveAsNew ? 'flex-1' : 'w-full'} py-3 rounded-lg font-medium text-white cursor-pointer active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] disabled:opacity-50 ${loading ? 'bg-gray-400 !cursor-not-allowed' : buttonColorClass}`}
+                        >
+                            {loading ? (
+                                <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
+                            ) : buttonText ? buttonText : (
+                                editingProfileId ? <><Save size={18} /> {t('common.save')}</> :
+                                saveConnection ? <><Save size={18} /> {t('common.save')}</> :
+                                t('common.connect')
+                            )}
+                        </button>
+                    </div>
+                )}
                 {/* E2E note */}
                 {showE2ENote && (
                     <p className="text-center text-xs text-gray-400 flex items-center justify-center gap-1.5">
@@ -1888,11 +2178,17 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                             mode group (FileLu, Filen, ...). Lets the operator
                             swap surfaces (Native API, Rsync, WebDAV, S3, FTP,
                             local bridges) without leaving Connect. Mode groups
-                            are declared in `providerModeGroups.tsx`. */}
+                            are declared in `providerModeGroups.tsx`.
+
+                            Issue #215: in edit mode, mode switching is now
+                            ALLOWED for all groups. `handleProtocolChange`
+                            keeps edit mode when both old and new belong to
+                            the same group, and the footer offers Save-as-new
+                            / Convert. Earlier readOnly lock removed. */}
                         <ProviderModeTabs
                             activeProviderId={selectedProviderId || connectionParams.providerId}
                             activeProtocol={protocol}
-                            readOnly={!!editingProfileId}
+                            readOnly={false}
                             onSwitchMode={(newProtocol, newProviderId) => {
                                 handleProtocolChange(newProtocol as ProviderType, newProviderId);
                             }}
@@ -3296,6 +3592,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         <div className="pt-2">
                                             {editingProfileId ? (
                                                 (() => {
+                                                    if (modeChanged) {
+                                                        return renderModeChangedFooter();
+                                                    }
                                                     const hasFreshTotp = !!connectionParams.options?.two_factor_code;
                                                     return (
                                                         <div className="flex gap-2">
@@ -3507,6 +3806,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         <div className="pt-2">
                                             {editingProfileId ? (
                                                 (() => {
+                                                    if (modeChanged) {
+                                                        return renderModeChangedFooter();
+                                                    }
                                                     const hasFreshTotp = !!connectionParams.options?.two_factor_code;
                                                     return (
                                                         <div className="flex gap-2">
@@ -3982,6 +4284,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         <div className="pt-2">
                                             {editingProfileId ? (
                                                 (() => {
+                                                    if (modeChanged) {
+                                                        return renderModeChangedFooter();
+                                                    }
                                                     const hasFreshTotp = !!connectionParams.options?.two_factor_code;
                                                     return (
                                                         <div className="flex gap-2">

@@ -264,7 +264,15 @@
             "manualTotalStoragePlaceholder": "nt 10 GB, 500 GB, 2 TB",
             "manualTotalStorageHint": "Valikuline. Paketi või konto piir backendide jaoks, millel pole quota API-t (FTP, S3, WebDAV) või mis raporteerivad ainult kasutatud ruumi (Backblaze B2). Teenusepakkuja enda kogusumma on alati ülimuslik.",
             "autoScanUsedOnConnect": "Arvuta kasutatud salvestusruum ühendumisel",
-            "autoScanUsedOnConnectHint": "Ainult backendide jaoks, millel pole kasutatud ruumi API-t (FTP, S3, WebDAV). Vaikimisi väljas: suurt puud (nt veebiprojekt) läbitakse rekursiivselt, mis võib olla aeglane. Vastasel juhul kasutage vajadusel StatusBar toimingut."
+            "autoScanUsedOnConnectHint": "Ainult backendide jaoks, millel pole kasutatud ruumi API-t (FTP, S3, WebDAV). Vaikimisi väljas: suurt puud (nt veebiprojekt) läbitakse rekursiivselt, mis võib olla aeglane. Vastasel juhul kasutage vajadusel StatusBar toimingut.",
+            "saveAsNewProfile": "Salvesta uue profiilina",
+            "saveAsNewProfileTitle": "Salvesta praegune vorm uue profiilina selles režiimis. Algne profiil säilitatakse.",
+            "convertToMode": "Teisenda {{mode}}-ks",
+            "convertReplacesOriginal": "Asendab algse profiili",
+            "profileConverted": "Profiil teisendatud",
+            "profileDuplicated": "Profiil dubleeritud",
+            "convertUndone": "Profiil taastatud",
+            "undo": "Võta tagasi"
         },
         "browser": {
             "remote": "Kaugserver",

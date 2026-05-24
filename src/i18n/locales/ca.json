@@ -264,7 +264,15 @@
             "manualTotalStoragePlaceholder": "p. ex. 10 GB, 500 GB, 2 TB",
             "manualTotalStorageHint": "Opcional. Límit del pla o compte per a backends sense quota API (FTP, S3, WebDAV) o que només informen de l'espai utilitzat (Backblaze B2). El total propi del proveïdor sempre té prioritat.",
             "autoScanUsedOnConnect": "Calcular l'emmagatzematge utilitzat en connectar",
-            "autoScanUsedOnConnectHint": "Només per a backends sense API d'espai utilitzat (FTP, S3, WebDAV). Desactivat per defecte: un arbre gran (p. ex. un projecte web) es recorre recursivament, cosa que pot ser lenta. Si no, useu l'acció de la StatusBar quan calgui."
+            "autoScanUsedOnConnectHint": "Només per a backends sense API d'espai utilitzat (FTP, S3, WebDAV). Desactivat per defecte: un arbre gran (p. ex. un projecte web) es recorre recursivament, cosa que pot ser lenta. Si no, useu l'acció de la StatusBar quan calgui.",
+            "saveAsNewProfile": "Desa com a perfil nou",
+            "saveAsNewProfileTitle": "Desa el formulari actual com un nou perfil en aquest mode. El perfil original es conserva.",
+            "convertToMode": "Converteix a {{mode}}",
+            "convertReplacesOriginal": "Substitueix el perfil original",
+            "profileConverted": "Perfil convertit",
+            "profileDuplicated": "Perfil duplicat",
+            "convertUndone": "Perfil restaurat",
+            "undo": "Desfés"
         },
         "browser": {
             "remote": "Remot",

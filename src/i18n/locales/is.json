@@ -264,7 +264,15 @@
             "manualTotalStoragePlaceholder": "t.d. 10 GB, 500 GB, 2 TB",
             "manualTotalStorageHint": "Valfrjálst. Áskriftar- eða reikningsmörk fyrir bakenda án kvóta-API (FTP, S3, WebDAV) eða sem tilkynna aðeins notað pláss (Backblaze B2). Heildartala þjónustuveitunnar hefur alltaf forgang.",
             "autoScanUsedOnConnect": "Reikna notaða geymslu við tengingu",
-            "autoScanUsedOnConnectHint": "Aðeins fyrir bakenda án API fyrir notað pláss (FTP, S3, WebDAV). Sjálfgefið slökkt: stórt tré (t.d. vefverkefni) er gengið endurkvæmt, sem getur verið hægt. Annars notaðu StatusBar-aðgerðina eftir þörfum."
+            "autoScanUsedOnConnectHint": "Aðeins fyrir bakenda án API fyrir notað pláss (FTP, S3, WebDAV). Sjálfgefið slökkt: stórt tré (t.d. vefverkefni) er gengið endurkvæmt, sem getur verið hægt. Annars notaðu StatusBar-aðgerðina eftir þörfum.",
+            "saveAsNewProfile": "Vista sem nýja vistun",
+            "saveAsNewProfileTitle": "Vista núverandi eyðublað sem nýja vistun í þessum ham. Upprunalega vistunin er varðveitt.",
+            "convertToMode": "Umbreyta í {{mode}}",
+            "convertReplacesOriginal": "Kemur í stað upprunalegrar vistunar",
+            "profileConverted": "Vistun umbreytt",
+            "profileDuplicated": "Vistun afrituð",
+            "convertUndone": "Vistun endurheimt",
+            "undo": "Afturkalla"
         },
         "browser": {
             "remote": "Fjartengdur",

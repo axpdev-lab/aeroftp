@@ -264,7 +264,15 @@
             "manualTotalStoragePlaceholder": "f.eks. 10 GB, 500 GB, 2 TB",
             "manualTotalStorageHint": "Valgfrit. Plan- eller kontogrænse for backends uden quota API (FTP, S3, WebDAV) eller som kun rapporterer brugt plads (Backblaze B2). Udbyderens eget samlede tal har altid forrang.",
             "autoScanUsedOnConnect": "Beregn brugt lagerplads ved forbindelse",
-            "autoScanUsedOnConnectHint": "Kun for backends uden API for brugt plads (FTP, S3, WebDAV). Slået fra som standard: et stort træ (f.eks. et webprojekt) gennemløbes rekursivt, hvilket kan være langsomt. Brug ellers StatusBar-handlingen efter behov."
+            "autoScanUsedOnConnectHint": "Kun for backends uden API for brugt plads (FTP, S3, WebDAV). Slået fra som standard: et stort træ (f.eks. et webprojekt) gennemløbes rekursivt, hvilket kan være langsomt. Brug ellers StatusBar-handlingen efter behov.",
+            "saveAsNewProfile": "Gem som ny profil",
+            "saveAsNewProfileTitle": "Gem den aktuelle formular som en ny profil i denne tilstand. Den oprindelige profil bevares.",
+            "convertToMode": "Konverter til {{mode}}",
+            "convertReplacesOriginal": "Erstatter den oprindelige profil",
+            "profileConverted": "Profil konverteret",
+            "profileDuplicated": "Profil duplikeret",
+            "convertUndone": "Profil gendannet",
+            "undo": "Fortryd"
         },
         "browser": {
             "remote": "Ekstern",

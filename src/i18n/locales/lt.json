@@ -264,7 +264,15 @@
             "manualTotalStoragePlaceholder": "pvz. 10 GB, 500 GB, 2 TB",
             "manualTotalStorageHint": "Neprivaloma. Plano arba paskyros riba vidinėms sistemoms be kvotos API (FTP, S3, WebDAV) arba kurios praneša tik naudojamą vietą (Backblaze B2). Tiekėjo paties pateiktas bendras dydis visada turi pirmenybę.",
             "autoScanUsedOnConnect": "Apskaičiuoti naudojamą saugyklą prisijungus",
-            "autoScanUsedOnConnectHint": "Tik vidinėms sistemoms be naudojamos vietos API (FTP, S3, WebDAV). Pagal numatymą išjungta: didelis medis (pvz. žiniatinklio projektas) apeinamas rekursyviai, o tai gali būti lėta. Kitu atveju naudokite StatusBar veiksmą pagal poreikį."
+            "autoScanUsedOnConnectHint": "Tik vidinėms sistemoms be naudojamos vietos API (FTP, S3, WebDAV). Pagal numatymą išjungta: didelis medis (pvz. žiniatinklio projektas) apeinamas rekursyviai, o tai gali būti lėta. Kitu atveju naudokite StatusBar veiksmą pagal poreikį.",
+            "saveAsNewProfile": "Įrašyti kaip naują profilį",
+            "saveAsNewProfileTitle": "Įrašykite dabartinę formą kaip naują profilį šiame režime. Pradinis profilis išsaugomas.",
+            "convertToMode": "Konvertuoti į {{mode}}",
+            "convertReplacesOriginal": "Pakeičia pradinį profilį",
+            "profileConverted": "Profilis konvertuotas",
+            "profileDuplicated": "Profilis dubliuotas",
+            "convertUndone": "Profilis atkurtas",
+            "undo": "Anuliuoti"
         },
         "browser": {
             "remote": "Nuotolinis",

@@ -36,13 +36,14 @@ interface ProviderModeTabsProps {
      *  the form's own `handleProtocolChange(newProtocol, newProviderId?)`. */
     onSwitchMode: (protocol: ProviderType, providerId?: string) => void;
     /** When true the strip is shown but locked: it only indicates the
-     *  current mode of a saved profile being edited and cannot switch
-     *  surface. A profile keeps the mode chosen at creation time; to use
-     *  a different mode the user creates a new connection. Switching mode
-     *  in edit would silently rewrite the saved profile's
-     *  providerId/server/credentials (issue #215). The FTP/FTPS/SFTP
-     *  in-place switch is a separate, deliberately allowed path handled
-     *  by the ProtocolSelector, not by this strip. */
+     *  current mode and chips cannot be clicked. Issue #215 (resolved):
+     *  edit mode now allows switching surfaces within the same provider
+     *  group. The parent's `handleProtocolChange` keeps edit mode and
+     *  surfaces a Save-as-new / Convert-to footer when both the old and
+     *  new modes belong to the same group, so silent in-place rewrites
+     *  remain impossible. Callers should pass `readOnly={false}` in the
+     *  ConnectionScreen edit flow; this prop is kept for future contexts
+     *  that want a strictly informational strip. */
     readOnly?: boolean;
     /** Optional className override for the outer container. */
     className?: string;

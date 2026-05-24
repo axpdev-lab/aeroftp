@@ -264,7 +264,15 @@
             "manualTotalStoragePlaceholder": "ឧ. 10 GB, 500 GB, 2 TB",
             "manualTotalStorageHint": "ស្រេចចិត្ត។ ដែនកំណត់គម្រោង ឬគណនីសម្រាប់ backend ដែលគ្មាន API កូតា (FTP, S3, WebDAV) ឬដែលរាយការណ៍តែទំហំដែលប្រើ (Backblaze B2)។ តម្លៃសរុបរបស់អ្នកផ្ដល់សេវាតែងតែមានអាទិភាព។",
             "autoScanUsedOnConnect": "គណនាទំហំផ្ទុកដែលប្រើនៅពេលភ្ជាប់",
-            "autoScanUsedOnConnectHint": "សម្រាប់តែ backend ដែលគ្មាន API ទំហំដែលប្រើ (FTP, S3, WebDAV)។ បិទតាមលំនាំដើម៖ មែកធាងធំ (ឧ. គម្រោងវេប) ត្រូវបានឆ្លងកាត់ដោយ recursive ដែលអាចយឺត។ បើមិនដូច្នេះទេ សូមប្រើសកម្មភាព StatusBar តាមតម្រូវការ។"
+            "autoScanUsedOnConnectHint": "សម្រាប់តែ backend ដែលគ្មាន API ទំហំដែលប្រើ (FTP, S3, WebDAV)។ បិទតាមលំនាំដើម៖ មែកធាងធំ (ឧ. គម្រោងវេប) ត្រូវបានឆ្លងកាត់ដោយ recursive ដែលអាចយឺត។ បើមិនដូច្នេះទេ សូមប្រើសកម្មភាព StatusBar តាមតម្រូវការ។",
+            "saveAsNewProfile": "រក្សាទុកជាប្រវត្តិរូបថ្មី",
+            "saveAsNewProfileTitle": "រក្សាទុកទម្រង់បច្ចុប្បន្នជាប្រវត្តិរូបថ្មីក្នុងរបៀបនេះ។ ប្រវត្តិរូបដើមនឹងត្រូវរក្សាទុក។",
+            "convertToMode": "បំលែងទៅជា {{mode}}",
+            "convertReplacesOriginal": "ជំនួសប្រវត្តិរូបដើម",
+            "profileConverted": "ប្រវត្តិរូបបានបំលែង",
+            "profileDuplicated": "ប្រវត្តិរូបបានចម្លង",
+            "convertUndone": "ប្រវត្តិរូបបានស្ដារ",
+            "undo": "មិនធ្វើវិញ"
         },
         "browser": {
             "remote": "ពីចម្ងាយ",
