@@ -1020,7 +1020,8 @@
             "autoStartTransfers": "Hasiera automatikoa transferentziei",
             "autoStartTransfersHelp": "Aktibatuta dagoenean, arrastatu eta jaregin eta klik transferentziak berehala hasten dira. Desaktibatuta dagoenean, Transfer Queue-n aparkatzen dira staged gisa, karpeta zuhaitzak inausi eta berrordenatu ahal izateko Start sakatu aurretik.",
             "importKeystorePrompt": "Sartu keystore babeskopia hau zifratzeko erabilitako pasahitza.",
-            "importServersPrompt": "Sartu server-profiles babeskopia hau zifratzeko erabilitako pasahitza."
+            "importServersPrompt": "Sartu server-profiles babeskopia hau zifratzeko erabilitako pasahitza.",
+            "exportFormatComparisonHint": "[NEEDS TRANSLATION] The .aeroftp file carries everything a profile needs to connect on another device. For a full vault backup including AI provider keys and global settings use the .aeroftp-keystore export instead."
         },
         "devtools": {
             "title": "AeroTools",

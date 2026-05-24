@@ -6,6 +6,7 @@
 // File format: .aeroftp (JSON envelope with encrypted payload)
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::Path;
 
 const FILE_VERSION: u32 = 1;
@@ -49,6 +50,31 @@ pub struct ExportMetadata {
 #[derive(Serialize, Deserialize)]
 struct ExportPayload {
     servers: Vec<ServerProfileExport>,
+    /// Map of `profile_id` → encrypted provider tokens bound to that profile.
+    /// Currently carries OAuth2 blobs (Google, Dropbox, OneDrive, Box, pCloud,
+    /// Zoho, Yandex, Google Photos) and the Jottacloud OIDC refresh token, so
+    /// importing a profile on a fresh device reconnects without a re-auth
+    /// round-trip. `#[serde(default)]` keeps legacy `.aeroftp` files (file
+    /// version 1, exported before issue #214) importable without changes.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    provider_secrets: HashMap<String, ProviderSecrets>,
+}
+
+/// Per-profile bundle of provider-specific encrypted tokens. Each field is
+/// the JSON string the vault stored under its respective key, copied verbatim
+/// so the destination device can write it back without re-parsing. Issue
+/// #214.
+#[derive(Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderSecrets {
+    /// Serialized `StoredTokens` JSON for OAuth2 providers (`oauth_<provider>`
+    /// vault format). Absent when the profile is not OAuth-based.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oauth: Option<String>,
+    /// Serialized refresh-token JSON for Jottacloud (`jottacloud_refresh`
+    /// vault format). Absent when the profile is not a Jotta profile.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub jotta_refresh: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -76,6 +102,7 @@ pub struct ServerProfileExport {
 
 pub fn export_profiles(
     servers: Vec<ServerProfileExport>,
+    provider_secrets: HashMap<String, ProviderSecrets>,
     password: &str,
     file_path: &Path,
 ) -> Result<ExportMetadata, ExportError> {
@@ -83,14 +110,22 @@ pub fn export_profiles(
     let salt = crate::crypto::random_bytes(32);
     let key = crate::crypto::derive_key_strong(password, &salt).map_err(ExportError::Encryption)?;
 
+    let any_provider_secret = provider_secrets
+        .values()
+        .any(|s| s.oauth.is_some() || s.jotta_refresh.is_some());
     let metadata = ExportMetadata {
         export_date: chrono::Utc::now().to_rfc3339(),
         aeroftp_version: env!("CARGO_PKG_VERSION").to_string(),
         server_count: servers.len() as u32,
-        has_credentials: servers.iter().any(|s| s.credential.is_some()),
+        // Issue #214: the "has credentials" badge in the import dialog now
+        // also reflects OAuth / Jotta refresh tokens, not only password blobs.
+        has_credentials: servers.iter().any(|s| s.credential.is_some()) || any_provider_secret,
     };
 
-    let payload = ExportPayload { servers };
+    let payload = ExportPayload {
+        servers,
+        provider_secrets,
+    };
     let payload_json = serde_json::to_vec(&payload)?;
 
     let nonce = crate::crypto::random_bytes(12);
@@ -119,10 +154,16 @@ pub fn export_profiles(
     Ok(metadata)
 }
 
-pub fn import_profiles(
-    file_path: &Path,
-    password: &str,
-) -> Result<(Vec<ServerProfileExport>, ExportMetadata), ExportError> {
+/// Triple returned by `import_profiles`: the decrypted server list, the
+/// per-profile provider tokens (OAuth and Jotta refresh, may be empty for
+/// legacy v1 exports) and the public envelope metadata.
+pub type ImportedProfiles = (
+    Vec<ServerProfileExport>,
+    HashMap<String, ProviderSecrets>,
+    ExportMetadata,
+);
+
+pub fn import_profiles(file_path: &Path, password: &str) -> Result<ImportedProfiles, ExportError> {
     let file_data = std::fs::read(file_path)?;
     let export_file: ExportFile = serde_json::from_slice(&file_data)?;
 
@@ -153,7 +194,11 @@ pub fn import_profiles(
 
     let payload: ExportPayload = serde_json::from_slice(&payload_json)?;
 
-    Ok((payload.servers, export_file.metadata))
+    Ok((
+        payload.servers,
+        payload.provider_secrets,
+        export_file.metadata,
+    ))
 }
 
 pub fn read_metadata(file_path: &Path) -> Result<ExportMetadata, ExportError> {
@@ -163,3 +208,142 @@ pub fn read_metadata(file_path: &Path) -> Result<ExportMetadata, ExportError> {
 }
 
 // Crypto primitives shared via crate::crypto module
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_server(id: &str, protocol: &str) -> ServerProfileExport {
+        ServerProfileExport {
+            id: id.to_string(),
+            name: format!("Test {}", protocol),
+            host: format!("{}.example.com", protocol),
+            port: 443,
+            username: "user@example.com".to_string(),
+            protocol: Some(protocol.to_string()),
+            initial_path: None,
+            local_initial_path: None,
+            color: None,
+            last_connected: None,
+            options: None,
+            provider_id: None,
+            credential: None,
+            has_stored_credential: None,
+            public_url_base: None,
+        }
+    }
+
+    /// Issue #214: an export bundle carries `provider_secrets` keyed by
+    /// profile id; the round-trip must surface them intact so the destination
+    /// device can write the OAuth / Jotta blobs back into the per-profile
+    /// vault keys without re-parsing.
+    #[test]
+    fn round_trip_preserves_provider_secrets() {
+        let tmp = std::env::temp_dir().join(format!(
+            "aeroftp_export_secrets_{}_{}.aeroftp",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+
+        let server_a = sample_server("server-a", "googledrive");
+        let server_b = sample_server("server-b", "jottacloud");
+
+        let mut secrets = HashMap::new();
+        secrets.insert(
+            "server-a".to_string(),
+            ProviderSecrets {
+                oauth: Some(
+                    r#"{"access_token":"AT","refresh_token":"RT","expires_at":null,"token_type":"Bearer","scopes":[]}"#
+                        .to_string(),
+                ),
+                jotta_refresh: None,
+            },
+        );
+        secrets.insert(
+            "server-b".to_string(),
+            ProviderSecrets {
+                oauth: None,
+                jotta_refresh: Some(
+                    r#"{"refresh_token":"jotta-rt","token_endpoint":"https://example/token","username":"alice"}"#
+                        .to_string(),
+                ),
+            },
+        );
+
+        let metadata = export_profiles(
+            vec![server_a, server_b],
+            secrets.clone(),
+            "pw-12345678",
+            &tmp,
+        )
+        .expect("export should succeed");
+        assert!(
+            metadata.has_credentials,
+            "metadata.has_credentials must include provider tokens"
+        );
+
+        let (servers, restored_secrets, _meta) =
+            import_profiles(&tmp, "pw-12345678").expect("import should succeed");
+        assert_eq!(servers.len(), 2);
+        assert_eq!(restored_secrets.len(), 2);
+        assert_eq!(
+            restored_secrets
+                .get("server-a")
+                .and_then(|s| s.oauth.clone()),
+            secrets.get("server-a").and_then(|s| s.oauth.clone())
+        );
+        assert_eq!(
+            restored_secrets
+                .get("server-b")
+                .and_then(|s| s.jotta_refresh.clone()),
+            secrets
+                .get("server-b")
+                .and_then(|s| s.jotta_refresh.clone())
+        );
+
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    /// Issue #214: existing `.aeroftp` files (file version 1, exported before
+    /// the refactor) do not carry the `provider_secrets` section. Importing
+    /// them must succeed, returning an empty map instead of erroring on the
+    /// missing field.
+    #[test]
+    fn import_legacy_v1_without_provider_secrets() {
+        let tmp = std::env::temp_dir().join(format!(
+            "aeroftp_export_legacy_{}_{}.aeroftp",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+
+        let server = sample_server("server-a", "ftp");
+        export_profiles(vec![server], HashMap::new(), "pw-12345678", &tmp)
+            .expect("export should succeed");
+
+        let (servers, secrets, _meta) =
+            import_profiles(&tmp, "pw-12345678").expect("legacy import should succeed");
+        assert_eq!(servers.len(), 1);
+        assert!(
+            secrets.is_empty(),
+            "files exported without provider_secrets must yield an empty map"
+        );
+
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    /// Empty `ProviderSecrets` entries should not flip `has_credentials` on
+    /// when no actual password or token is present, so the import dialog
+    /// keeps showing the unobtrusive "no credentials" path.
+    #[test]
+    fn empty_provider_secrets_do_not_force_has_credentials() {
+        let tmp = std::env::temp_dir().join(format!(
+            "aeroftp_export_empty_{}_{}.aeroftp",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+        let server = sample_server("server-a", "ftp");
+        let metadata = export_profiles(vec![server], HashMap::new(), "pw-12345678", &tmp).unwrap();
+        assert!(!metadata.has_credentials);
+        let _ = std::fs::remove_file(&tmp);
+    }
+}

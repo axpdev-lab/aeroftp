@@ -132,8 +132,8 @@ pub mod sync;
 mod sync_badge;
 pub mod sync_core;
 mod sync_ignore;
-pub mod sync_script;
 mod sync_scheduler;
+pub mod sync_script;
 mod sync_versioning;
 mod totp;
 pub mod transfer_dag;
@@ -10309,30 +10309,18 @@ fn aerosync_export_script_cmd(
     let app_version = env!("CARGO_PKG_VERSION");
     let script = sync_script::generate_script(&script_profile, app_version);
 
-    std::fs::write(&canonical_path, &script).map_err(|e| {
-        format!(
-            "Failed to write '{}': {}",
-            canonical_path.display(),
-            e
-        )
-    })?;
+    std::fs::write(&canonical_path, &script)
+        .map_err(|e| format!("Failed to write '{}': {}", canonical_path.display(), e))?;
 
     let mut wrapper_path: Option<String> = None;
     if args.also_generate_wrapper {
         #[cfg(target_os = "windows")]
-        let (wrapper_ext, wrapper_body) = (
-            "ps1",
-            sync_script::ps1_wrapper(&canonical_filename),
-        );
+        let (wrapper_ext, wrapper_body) = ("ps1", sync_script::ps1_wrapper(&canonical_filename));
         #[cfg(not(target_os = "windows"))]
-        let (wrapper_ext, wrapper_body) = (
-            "sh",
-            sync_script::sh_wrapper(&canonical_filename),
-        );
+        let (wrapper_ext, wrapper_body) = ("sh", sync_script::sh_wrapper(&canonical_filename));
         let wrapper = canonical_path.with_extension(wrapper_ext);
-        std::fs::write(&wrapper, wrapper_body).map_err(|e| {
-            format!("Failed to write wrapper '{}': {}", wrapper.display(), e)
-        })?;
+        std::fs::write(&wrapper, wrapper_body)
+            .map_err(|e| format!("Failed to write wrapper '{}': {}", wrapper.display(), e))?;
         #[cfg(not(target_os = "windows"))]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -10390,8 +10378,7 @@ fn aerosync_import_script_cmd(
             None => (input_path, raw, false),
         };
 
-    let parsed = sync_script::parse_script(&content)
-        .map_err(|e| e.user_message())?;
+    let parsed = sync_script::parse_script(&content).map_err(|e| e.user_message())?;
 
     Ok(AerosyncImportScriptResult {
         profile: parsed.profile,
@@ -13250,6 +13237,60 @@ async fn app_master_password_check_timeout(
 
 // ============ Profile Export/Import ============
 
+/// Map a saved-server protocol identifier to the `OAuthProvider` slug used
+/// in the vault key (`oauth_<slug>_<profile_id>`). Returns `None` for
+/// protocols that do not use OAuth2 storage. Issue #214.
+fn oauth_vault_slug_for_protocol(protocol: &str) -> Option<&'static str> {
+    match protocol.to_lowercase().as_str() {
+        "googledrive" | "google_drive" | "google" => Some("google"),
+        "googlephotos" | "google_photos" => Some("googlephotos"),
+        "dropbox" => Some("dropbox"),
+        "onedrive" | "microsoft" => Some("onedrive"),
+        "box" => Some("box"),
+        "pcloud" => Some("pcloud"),
+        "zohoworkdrive" | "zoho_workdrive" | "zoho" => Some("zohoworkdrive"),
+        "yandexdisk" | "yandex_disk" | "yandex" => Some("yandexdisk"),
+        _ => None,
+    }
+}
+
+/// Read the per-profile OAuth or Jotta token blob for a server profile, with
+/// a one-shot fallback to the legacy singleton key. The export bundle copies
+/// the value verbatim so the destination device can write it back without
+/// re-parsing. Issue #214.
+fn collect_provider_secrets_for_server(
+    store: &credential_store::CredentialStore,
+    server: &profile_export::ServerProfileExport,
+) -> profile_export::ProviderSecrets {
+    let mut out = profile_export::ProviderSecrets::default();
+    let protocol = server.protocol.as_deref().unwrap_or("").to_lowercase();
+
+    if let Some(slug) = oauth_vault_slug_for_protocol(&protocol) {
+        let per_profile = format!("oauth_{}_{}", slug, server.id);
+        if let Ok(value) = store.get(&per_profile) {
+            out.oauth = Some(value);
+        } else {
+            // Legacy singleton key path: only honoured when nothing has been
+            // migrated yet for this provider on this device.
+            let legacy = format!("oauth_{}", slug);
+            if let Ok(value) = store.get(&legacy) {
+                out.oauth = Some(value);
+            }
+        }
+    }
+
+    if protocol == "jottacloud" {
+        let per_profile = format!("jottacloud_refresh_{}", server.id);
+        if let Ok(value) = store.get(&per_profile) {
+            out.jotta_refresh = Some(value);
+        } else if let Ok(value) = store.get("jottacloud_refresh") {
+            out.jotta_refresh = Some(value);
+        }
+    }
+
+    out
+}
+
 #[tauri::command]
 async fn export_server_profiles(
     servers_json: String,
@@ -13260,6 +13301,9 @@ async fn export_server_profiles(
     let mut servers: Vec<profile_export::ServerProfileExport> =
         serde_json::from_str(&servers_json).map_err(|e| format!("Invalid server data: {}", e))?;
 
+    let mut provider_secrets: std::collections::HashMap<String, profile_export::ProviderSecrets> =
+        std::collections::HashMap::new();
+
     // Fetch credentials from secure store if requested
     if include_credentials {
         match credential_store::CredentialStore::from_cache() {
@@ -13267,6 +13311,13 @@ async fn export_server_profiles(
                 for server in &mut servers {
                     if let Ok(cred) = store.get(&format!("server_{}", server.id)) {
                         server.credential = Some(cred);
+                    }
+                    // Issue #214: bundle OAuth / Jotta tokens alongside the
+                    // per-profile password so an import on a fresh device
+                    // reconnects without a browser re-auth.
+                    let secrets = collect_provider_secrets_for_server(&store, server);
+                    if secrets.oauth.is_some() || secrets.jotta_refresh.is_some() {
+                        provider_secrets.insert(server.id.clone(), secrets);
                     }
                 }
             }
@@ -13276,8 +13327,13 @@ async fn export_server_profiles(
         }
     }
 
-    profile_export::export_profiles(servers, &password, std::path::Path::new(&file_path))
-        .map_err(|e| e.to_string())
+    profile_export::export_profiles(
+        servers,
+        provider_secrets,
+        &password,
+        std::path::Path::new(&file_path),
+    )
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -13285,7 +13341,7 @@ async fn import_server_profiles(
     file_path: String,
     password: String,
 ) -> Result<serde_json::Value, String> {
-    let (servers, metadata) =
+    let (servers, provider_secrets, metadata) =
         profile_export::import_profiles(std::path::Path::new(&file_path), &password)
             .map_err(|e| e.to_string())?;
 
@@ -13300,6 +13356,42 @@ async fn import_server_profiles(
                     }
                 }
             }
+            // Issue #214: restore provider tokens under the per-profile vault
+            // key. The protocol identifier comes from the matching server
+            // entry: when the same id is missing from `servers` (corrupted
+            // export) we silently skip, which preserves the rule that
+            // tokens have no meaning without the profile they belong to.
+            let protocol_by_id: std::collections::HashMap<&str, String> = servers
+                .iter()
+                .map(|s| {
+                    (
+                        s.id.as_str(),
+                        s.protocol.clone().unwrap_or_default().to_lowercase(),
+                    )
+                })
+                .collect();
+            for (profile_id, secrets) in &provider_secrets {
+                let protocol = match protocol_by_id.get(profile_id.as_str()) {
+                    Some(p) => p,
+                    None => continue,
+                };
+                if let Some(ref oauth_json) = secrets.oauth {
+                    if let Some(slug) = oauth_vault_slug_for_protocol(protocol) {
+                        let key = format!("oauth_{}_{}", slug, profile_id);
+                        if let Err(e) = store.store(&key, oauth_json) {
+                            cred_errors.push(format!("{} oauth: {}", profile_id, e));
+                        }
+                    }
+                }
+                if let Some(ref jotta_json) = secrets.jotta_refresh {
+                    if protocol == "jottacloud" {
+                        let key = format!("jottacloud_refresh_{}", profile_id);
+                        if let Err(e) = store.store(&key, jotta_json) {
+                            cred_errors.push(format!("{} jotta: {}", profile_id, e));
+                        }
+                    }
+                }
+            }
         }
         None => {
             // Vault not ready: credentials cannot be stored
@@ -13308,6 +13400,16 @@ async fn import_server_profiles(
                 cred_errors.push(format!(
                     "Vault not ready, {} credentials not stored",
                     cred_count
+                ));
+            }
+            let token_count = provider_secrets
+                .values()
+                .filter(|s| s.oauth.is_some() || s.jotta_refresh.is_some())
+                .count();
+            if token_count > 0 {
+                cred_errors.push(format!(
+                    "Vault not ready, {} provider tokens not stored",
+                    token_count
                 ));
             }
         }
@@ -13400,6 +13502,41 @@ async fn import_rclone_config(file_path: String) -> Result<serde_json::Value, St
                     }
                 }
             }
+            // Issue #214: write OAuth and Jotta blobs into per-profile vault
+            // keys so the imported profile reconnects without forcing a
+            // browser re-auth on AeroFTP.
+            let protocol_by_id: std::collections::HashMap<&str, String> = result
+                .servers
+                .iter()
+                .map(|s| {
+                    (
+                        s.id.as_str(),
+                        s.protocol.clone().unwrap_or_default().to_lowercase(),
+                    )
+                })
+                .collect();
+            for (profile_id, secrets) in &result.provider_secrets {
+                let protocol = match protocol_by_id.get(profile_id.as_str()) {
+                    Some(p) => p,
+                    None => continue,
+                };
+                if let Some(ref oauth_json) = secrets.oauth {
+                    if let Some(slug) = oauth_vault_slug_for_protocol(protocol) {
+                        let key = format!("oauth_{}_{}", slug, profile_id);
+                        if let Err(e) = store.store(&key, oauth_json) {
+                            cred_errors.push(format!("{} oauth: {}", profile_id, e));
+                        }
+                    }
+                }
+                if let Some(ref jotta_json) = secrets.jotta_refresh {
+                    if protocol == "jottacloud" {
+                        let key = format!("jottacloud_refresh_{}", profile_id);
+                        if let Err(e) = store.store(&key, jotta_json) {
+                            cred_errors.push(format!("{} jotta: {}", profile_id, e));
+                        }
+                    }
+                }
+            }
         }
         None => {
             let cred_count = result
@@ -13411,6 +13548,17 @@ async fn import_rclone_config(file_path: String) -> Result<serde_json::Value, St
                 cred_errors.push(format!(
                     "Vault not ready, {} credentials not stored",
                     cred_count
+                ));
+            }
+            let token_count = result
+                .provider_secrets
+                .values()
+                .filter(|s| s.oauth.is_some() || s.jotta_refresh.is_some())
+                .count();
+            if token_count > 0 {
+                cred_errors.push(format!(
+                    "Vault not ready, {} provider tokens not stored",
+                    token_count
                 ));
             }
         }

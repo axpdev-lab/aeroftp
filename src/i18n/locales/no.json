@@ -1020,7 +1020,8 @@
             "autoStartTransfers": "Start overforinger automatisk",
             "autoStartTransfersHelp": "Nar pa, starter dra-og-slipp- og klikkoverforinger umiddelbart. Nar av, parkeres de i Transfer Queue som staged, slik at du kan beskjaere mappetraer og omorganisere for du trykker Start.",
             "importKeystorePrompt": "Skriv inn passordet som ble brukt til å kryptere denne keystore-sikkerhetskopien.",
-            "importServersPrompt": "Skriv inn passordet som ble brukt til å kryptere denne server-profiles-sikkerhetskopien."
+            "importServersPrompt": "Skriv inn passordet som ble brukt til å kryptere denne server-profiles-sikkerhetskopien.",
+            "exportFormatComparisonHint": "[NEEDS TRANSLATION] The .aeroftp file carries everything a profile needs to connect on another device. For a full vault backup including AI provider keys and global settings use the .aeroftp-keystore export instead."
         },
         "devtools": {
             "title": "AeroTools",

@@ -95,6 +95,9 @@ pub struct DropboxProvider {
     current_path: String,
     /// Authenticated user email
     account_email: Option<String>,
+    /// Server profile identifier owning these OAuth tokens. Empty when the
+    /// caller has not bound a profile (legacy singleton key path). Issue #214.
+    profile_id: String,
 }
 
 impl DropboxProvider {
@@ -111,12 +114,21 @@ impl DropboxProvider {
             connected: false,
             current_path: "".to_string(), // Dropbox root is ""
             account_email: None,
+            profile_id: String::new(),
         }
+    }
+
+    /// Bind this provider to a server profile so OAuth tokens are stored
+    /// under the per-profile vault key. Issue #214.
+    pub fn with_profile_id(mut self, profile_id: impl Into<String>) -> Self {
+        self.profile_id = profile_id.into();
+        self
     }
 
     /// Get OAuth config
     fn oauth_config(&self) -> OAuthConfig {
         OAuthConfig::dropbox(&self.config.app_key, &self.config.app_secret)
+            .with_profile_id(&self.profile_id)
     }
 
     /// Get authorization header
@@ -132,7 +144,8 @@ impl DropboxProvider {
 
     /// Check if authenticated
     pub fn is_authenticated(&self) -> bool {
-        self.oauth_manager.has_tokens(OAuthProvider::Dropbox)
+        self.oauth_manager
+            .has_tokens(OAuthProvider::Dropbox, &self.profile_id)
     }
 
     /// Start OAuth flow (called via oauth2_start_auth command)

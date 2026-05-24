@@ -1020,7 +1020,8 @@
             "autoStartTransfers": "Overdrachten automatisch starten",
             "autoStartTransfersHelp": "Indien aan, starten drag-and-drop- en klik-overdrachten direct. Indien uit, worden ze in de Transfer Queue als staged geparkeerd, zodat je mappenbomen kunt opschonen en herordenen voordat je op Start drukt.",
             "importKeystorePrompt": "Voer het wachtwoord in dat is gebruikt om deze keystore-back-up te versleutelen.",
-            "importServersPrompt": "Voer het wachtwoord in dat is gebruikt om deze server-profiles-back-up te versleutelen."
+            "importServersPrompt": "Voer het wachtwoord in dat is gebruikt om deze server-profiles-back-up te versleutelen.",
+            "exportFormatComparisonHint": "[NEEDS TRANSLATION] The .aeroftp file carries everything a profile needs to connect on another device. For a full vault backup including AI provider keys and global settings use the .aeroftp-keystore export instead."
         },
         "devtools": {
             "title": "AeroTools",

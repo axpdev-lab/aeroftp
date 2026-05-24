@@ -180,6 +180,9 @@ pub struct GooglePhotosProvider {
     /// Media item baseUrl cache: media_id -> (base_url, fetched_at)
     base_url_cache: HashMap<String, (String, Instant)>,
     account_email: Option<String>,
+    /// Server profile identifier owning these OAuth tokens. Empty when the
+    /// caller has not bound a profile (legacy singleton key path). Issue #214.
+    profile_id: String,
 }
 
 impl GooglePhotosProvider {
@@ -198,24 +201,21 @@ impl GooglePhotosProvider {
             album_cache: HashMap::new(),
             base_url_cache: HashMap::new(),
             account_email: None,
+            profile_id: String::new(),
         }
+    }
+
+    /// Bind this provider to a server profile so OAuth tokens are stored
+    /// under the per-profile vault key. Issue #214.
+    pub fn with_profile_id(mut self, profile_id: impl Into<String>) -> Self {
+        self.profile_id = profile_id.into();
+        self
     }
 
     /// Build OAuth2 config for Google Photos (separate scopes from Drive).
     fn oauth_config(&self) -> OAuthConfig {
-        OAuthConfig {
-            provider: OAuthProvider::GooglePhotos,
-            client_id: self.config.client_id.clone(),
-            client_secret: Some(self.config.client_secret.clone()),
-            auth_url: "https://accounts.google.com/o/oauth2/v2/auth".to_string(),
-            token_url: "https://oauth2.googleapis.com/token".to_string(),
-            scopes: vec![
-                "https://www.googleapis.com/auth/photoslibrary.readonly".to_string(),
-                "https://www.googleapis.com/auth/photoslibrary.appendonly".to_string(),
-            ],
-            redirect_uri: "http://127.0.0.1:0/callback".to_string(),
-            extra_auth_params: vec![("access_type".to_string(), "offline".to_string())],
-        }
+        OAuthConfig::google_photos(&self.config.client_id, &self.config.client_secret)
+            .with_profile_id(&self.profile_id)
     }
 
     /// Get Authorization header from the current OAuth2 token.
@@ -231,7 +231,8 @@ impl GooglePhotosProvider {
 
     /// Check if authenticated.
     pub fn is_authenticated(&self) -> bool {
-        self.oauth_manager.has_tokens(OAuthProvider::GooglePhotos)
+        self.oauth_manager
+            .has_tokens(OAuthProvider::GooglePhotos, &self.profile_id)
     }
 
     /// Start OAuth flow - returns (auth_url, state).
