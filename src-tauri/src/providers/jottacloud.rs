@@ -97,6 +97,10 @@ pub struct JottacloudProvider {
     token_endpoint: String,
     token_expiry: Instant,
     current_path: String,
+    /// Server profile identifier owning the persisted refresh token. Empty
+    /// when the caller has not bound a profile (legacy singleton key path).
+    /// Issue #214.
+    profile_id: String,
 }
 
 impl JottacloudProvider {
@@ -117,6 +121,25 @@ impl JottacloudProvider {
             token_endpoint: String::new(),
             token_expiry: Instant::now(),
             current_path: "/".to_string(),
+            profile_id: String::new(),
+        }
+    }
+
+    /// Bind this provider to a server profile so the persisted Jotta refresh
+    /// token is stored under `jottacloud_refresh_<profile_id>` instead of the
+    /// legacy singleton key. Issue #214.
+    pub fn with_profile_id(mut self, profile_id: impl Into<String>) -> Self {
+        self.profile_id = profile_id.into();
+        self
+    }
+
+    /// Vault key for the Jottacloud refresh token bound to this provider's
+    /// profile (legacy singleton when `profile_id` is empty). Issue #214.
+    fn refresh_token_account(&self) -> String {
+        if self.profile_id.is_empty() {
+            "jottacloud_refresh".to_string()
+        } else {
+            format!("jottacloud_refresh_{}", self.profile_id)
         }
     }
 
@@ -297,8 +320,9 @@ impl JottacloudProvider {
             "username": self.username,
         });
         let json = data.to_string();
+        let account = self.refresh_token_account();
         if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-            if store.store("jottacloud_refresh", &json).is_ok() {
+            if store.store(&account, &json).is_ok() {
                 jotta_log("Refresh token persisted to vault");
                 return;
             }
@@ -306,29 +330,65 @@ impl JottacloudProvider {
         // Try auto-init vault
         if crate::credential_store::CredentialStore::init().is_ok() {
             if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-                let _ = store.store("jottacloud_refresh", &json);
+                let _ = store.store(&account, &json);
                 jotta_log("Refresh token persisted to auto-initialized vault");
             }
         }
     }
 
-    /// Load persisted refresh token from vault.
-    fn load_persisted_refresh_token() -> Option<(String, String, String)> {
+    /// Load persisted refresh token from vault, honouring per-profile keys
+    /// with a one-shot lazy migration from the legacy singleton key when the
+    /// caller has bound a profile but no per-profile entry exists yet. The
+    /// legacy entry is removed after a successful rebind so a second Jotta
+    /// profile on the same device does not inherit the same refresh token
+    /// silently. Issue #214.
+    fn load_persisted_refresh_token(profile_id: &str) -> Option<(String, String, String)> {
         let store = crate::credential_store::CredentialStore::from_cache()?;
-        let json = store.get("jottacloud_refresh").ok()?;
-        let v: serde_json::Value = serde_json::from_str(&json).ok()?;
-        let rt = v["refresh_token"].as_str()?.to_string();
-        let te = v["token_endpoint"].as_str()?.to_string();
-        let un = v["username"].as_str()?.to_string();
-        if rt.is_empty() || te.is_empty() || un.is_empty() {
-            return None;
+
+        let parse = |json: String| -> Option<(String, String, String)> {
+            let v: serde_json::Value = serde_json::from_str(&json).ok()?;
+            let rt = v["refresh_token"].as_str()?.to_string();
+            let te = v["token_endpoint"].as_str()?.to_string();
+            let un = v["username"].as_str()?.to_string();
+            if rt.is_empty() || te.is_empty() || un.is_empty() {
+                None
+            } else {
+                Some((rt, te, un))
+            }
+        };
+
+        let account = if profile_id.is_empty() {
+            "jottacloud_refresh".to_string()
+        } else {
+            format!("jottacloud_refresh_{}", profile_id)
+        };
+        if let Ok(json) = store.get(&account) {
+            return parse(json);
         }
-        Some((rt, te, un))
+
+        if !profile_id.is_empty() {
+            if let Ok(json) = store.get("jottacloud_refresh") {
+                let migrated = if store.store(&account, &json).is_ok() {
+                    let _ = store.delete("jottacloud_refresh");
+                    jotta_log("Migrated legacy jottacloud_refresh to per-profile vault key");
+                    true
+                } else {
+                    false
+                };
+                let parsed = parse(json);
+                if migrated && parsed.is_none() {
+                    let _ = store.delete(&account);
+                }
+                return parsed;
+            }
+        }
+
+        None
     }
 
     /// Try to connect using a persisted refresh token (no login token needed).
     async fn try_connect_with_refresh(&mut self) -> Result<bool, ProviderError> {
-        let (rt, te, un) = match Self::load_persisted_refresh_token() {
+        let (rt, te, un) = match Self::load_persisted_refresh_token(&self.profile_id) {
             Some(data) => data,
             None => {
                 jotta_log("No persisted refresh token in vault: will use login token");
@@ -367,9 +427,9 @@ impl JottacloudProvider {
                 status,
                 sanitize_api_error(&body)
             ));
-            // Clear stale persisted token
+            // Clear stale persisted token for THIS profile only
             if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-                let _ = store.delete("jottacloud_refresh");
+                let _ = store.delete(&self.refresh_token_account());
             }
             return Ok(false);
         }

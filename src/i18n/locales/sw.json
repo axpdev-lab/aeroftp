@@ -1020,7 +1020,8 @@
             "autoStartTransfers": "Anza uhamishaji kiotomatiki",
             "autoStartTransfersHelp": "Inapowashwa, uhamishaji wa kuburuta na kudondosha na wa kubofya huanza mara moja. Inapozimwa, huegeshwa katika Transfer Queue kama staged ili uweze kupogoa miti ya folda na kupanga upya kabla ya kubonyeza Start.",
             "importKeystorePrompt": "Ingiza nenosiri lililotumika kusimba nakala hii ya keystore.",
-            "importServersPrompt": "Ingiza nenosiri lililotumika kusimba nakala hii ya server-profiles."
+            "importServersPrompt": "Ingiza nenosiri lililotumika kusimba nakala hii ya server-profiles.",
+            "exportFormatComparisonHint": "[NEEDS TRANSLATION] The .aeroftp file carries everything a profile needs to connect on another device. For a full vault backup including AI provider keys and global settings use the .aeroftp-keystore export instead."
         },
         "devtools": {
             "title": "AeroTools",

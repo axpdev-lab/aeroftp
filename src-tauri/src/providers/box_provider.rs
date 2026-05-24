@@ -221,6 +221,9 @@ pub struct BoxProvider {
     id_cache: HashMap<String, String>,
     /// Authenticated user email
     account_email: Option<String>,
+    /// Server profile identifier owning these OAuth tokens. Empty when the
+    /// caller has not bound a profile (legacy singleton key path). Issue #214.
+    profile_id: String,
 }
 
 impl BoxProvider {
@@ -243,12 +246,21 @@ impl BoxProvider {
                 m.insert("/".to_string(), "0".to_string());
                 m
             },
+            profile_id: String::new(),
         }
+    }
+
+    /// Bind this provider to a server profile so OAuth tokens are stored
+    /// under the per-profile vault key. Issue #214.
+    pub fn with_profile_id(mut self, profile_id: impl Into<String>) -> Self {
+        self.profile_id = profile_id.into();
+        self
     }
 
     /// Get access token from OAuth manager (returns SecretString for memory zeroization)
     async fn get_token(&self) -> Result<secrecy::SecretString, ProviderError> {
-        let config = OAuthConfig::box_cloud(&self.config.client_id, &self.config.client_secret);
+        let config = OAuthConfig::box_cloud(&self.config.client_id, &self.config.client_secret)
+            .with_profile_id(&self.profile_id);
         self.oauth_manager
             .get_valid_token(&config)
             .await

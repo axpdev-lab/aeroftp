@@ -5148,6 +5148,10 @@ interface UpdateVerificationInfo {
             provider: oauthProvider,
             client_id: clientId,
             client_secret: clientSecret,
+            // Per-profile vault key (issue #214): bind the OAuth tokens to
+            // the saved server profile so two profiles for the same provider
+            // (work + personal account) can coexist on the same device.
+            profile_id: targetSession.savedServerId ?? '',
             ...(region && { region }),
           };
           try {

@@ -1020,7 +1020,8 @@
             "autoStartTransfers": "Automatsko pokretanje prijenosa",
             "autoStartTransfersHelp": "Kad je ukljuceno, prijenosi povucenjem-i-ispustanjem i klikom krecu odmah. Kad je iskljuceno, parkiraju se u Transfer Queue kao staged, kako bi mogao prorijediti stabla mapa i preraspodijeliti prije pritiska na Start.",
             "importKeystorePrompt": "Unesi lozinku koja je korištena za šifriranje ove sigurnosne kopije keystore-a.",
-            "importServersPrompt": "Unesi lozinku koja je korištena za šifriranje ove sigurnosne kopije server-profiles-a."
+            "importServersPrompt": "Unesi lozinku koja je korištena za šifriranje ove sigurnosne kopije server-profiles-a.",
+            "exportFormatComparisonHint": "[NEEDS TRANSLATION] The .aeroftp file carries everything a profile needs to connect on another device. For a full vault backup including AI provider keys and global settings use the .aeroftp-keystore export instead."
         },
         "devtools": {
             "title": "AeroTools",

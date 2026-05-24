@@ -933,7 +933,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                             </div>
 
                             {/* Include credentials toggle */}
-                            <div className="flex items-center gap-3 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                            <div className="flex flex-col gap-2 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
                                 <Checkbox
                                     checked={includeCredentials}
                                     onChange={setIncludeCredentials}
@@ -949,6 +949,9 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                                         </div>
                                     }
                                 />
+                                <div className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug pl-7">
+                                    {t('settings.exportFormatComparisonHint')}
+                                </div>
                             </div>
 
                             {/* Password fields */}

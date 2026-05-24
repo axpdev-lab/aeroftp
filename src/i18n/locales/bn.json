@@ -1020,7 +1020,8 @@
             "autoStartTransfers": "স্থানান্তর স্বয়ংক্রিয়ভাবে শুরু করুন",
             "autoStartTransfersHelp": "চালু থাকলে, ড্র্যাগ-এন্ড-ড্রপ এবং ক্লিক স্থানান্তর সাথে সাথে শুরু হয়। বন্ধ থাকলে, সেগুলি Transfer Queue-এ staged হিসাবে পার্ক করা হয়, যাতে আপনি Start চাপার আগে ফোল্ডার ট্রি ছাঁটাই এবং পুনরায় সাজাতে পারেন।",
             "importKeystorePrompt": "এই keystore ব্যাকআপ এনক্রিপ্ট করতে ব্যবহৃত পাসওয়ার্ড লিখুন।",
-            "importServersPrompt": "এই server-profiles ব্যাকআপ এনক্রিপ্ট করতে ব্যবহৃত পাসওয়ার্ড লিখুন।"
+            "importServersPrompt": "এই server-profiles ব্যাকআপ এনক্রিপ্ট করতে ব্যবহৃত পাসওয়ার্ড লিখুন।",
+            "exportFormatComparisonHint": "[NEEDS TRANSLATION] The .aeroftp file carries everything a profile needs to connect on another device. For a full vault backup including AI provider keys and global settings use the .aeroftp-keystore export instead."
         },
         "devtools": {
             "title": "AeroTools",
