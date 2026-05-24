@@ -1521,6 +1521,65 @@ enum Commands {
         #[arg(long, value_name = "SIZE")]
         manual_total: Option<String>,
     },
+    /// Duplicate a profile into a different mode of the same provider group (issue #215)
+    ///
+    /// For providers that expose multiple transport surfaces against the
+    /// same account (Koofr API/WebDAV, OpenDrive API/WebDAV, Filen
+    /// API/Local-WebDAV/Local-S3, FileLu API/WebDAV/S3/FTP), creates a
+    /// new profile in the target mode and INSERTS IT RIGHT AFTER the
+    /// source. The source profile is preserved. Mode label values:
+    /// `api` (native REST), `webdav`, `s3`, `ftp` (FileLu only).
+    ProfileDuplicateMode {
+        /// Source profile selector (index, name, or id).
+        #[arg(value_name = "SELECTOR")]
+        selector: String,
+        /// Target mode within the same provider group: `api`, `webdav`,
+        /// `s3`, `ftp`.
+        #[arg(long, value_name = "MODE")]
+        mode: String,
+        /// Optional display name for the new profile.
+        #[arg(long, value_name = "NAME")]
+        name: Option<String>,
+        /// Override the username for the new profile (use when modes
+        /// expect different credential shapes, e.g. FileLu API key vs
+        /// WebDAV user).
+        #[arg(long, value_name = "USERNAME")]
+        username: Option<String>,
+        /// Override the stored password / token for the new profile. When
+        /// omitted, the source's credential is cloned (works only when
+        /// the two modes share credentials, e.g. Koofr/OpenDrive).
+        #[arg(long, value_name = "PASSWORD")]
+        password: Option<String>,
+    },
+    /// Convert a profile to a different mode (replaces the original, issue #215)
+    ///
+    /// Like `profile-duplicate-mode` but DELETES the source profile,
+    /// keeping the slot index. Equivalent to the GUI's "Convert to ..."
+    /// orange button. Requires `--yes` to skip confirmation; otherwise
+    /// prompts on stderr when stdin is a TTY.
+    ProfileConvertMode {
+        /// Source profile selector (index, name, or id).
+        #[arg(value_name = "SELECTOR")]
+        selector: String,
+        /// Target mode within the same provider group: `api`, `webdav`,
+        /// `s3`, `ftp`.
+        #[arg(long, value_name = "MODE")]
+        mode: String,
+        /// Optional display name for the converted profile. Defaults to
+        /// the source's name.
+        #[arg(long, value_name = "NAME")]
+        name: Option<String>,
+        /// Override the username for the converted profile.
+        #[arg(long, value_name = "USERNAME")]
+        username: Option<String>,
+        /// Override the stored password / token for the converted
+        /// profile. When omitted, the source's credential is cloned.
+        #[arg(long, value_name = "PASSWORD")]
+        password: Option<String>,
+        /// Skip the interactive confirmation prompt.
+        #[arg(long, short = 'y')]
+        yes: bool,
+    },
     /// Delete a saved server profile from the vault
     ///
     /// Mirrors the GUI `MyServersPanel` confirmDelete action: removes the
@@ -7397,11 +7456,14 @@ fn interactive_profiles_loop(store: &CredentialStore, profiles: Vec<serde_json::
                 "  r <selector>    rename (single target, prompts for new name, green rendering)"
             );
             eprintln!("  e <selector>    edit name/host/port/username/initialPath inline (green rendering)");
+            eprintln!("  s <selector>    save-as-new in a different mode of the same provider group (issue #215)");
+            eprintln!("  v <selector>    convert profile to a different mode, REPLACES the original (issue #215)");
             eprintln!("  Nl  Nt  Nd      legacy single-target compact form (e.g. '1l', 'l1')");
             eprintln!("  0/q             quit");
             eprintln!();
             eprintln!("  Selectors are space-separated; use double quotes for names with spaces.");
             eprintln!("  Example: c \"My Cloud Drive\" 7 box     d 4 box 10 7 mega     f mybox");
+            eprintln!("  Mode switch: s 3 (then prompts for mode label: api, webdav, s3, ftp)");
             continue;
         }
 
@@ -7421,9 +7483,9 @@ fn interactive_profiles_loop(store: &CredentialStore, profiles: Vec<serde_json::
             }
         };
 
-        if !matches!(action, 'l' | 't' | 'd' | 'f' | 'r' | 'c' | 'e') {
+        if !matches!(action, 'l' | 't' | 'd' | 'f' | 'r' | 'c' | 'e' | 's' | 'v') {
             eprintln!(
-                "Unknown action '{}'. Supported: l, t, d, f, r, c, e. Type '?' for help.",
+                "Unknown action '{}'. Supported: l, t, d, f, r, c, e, s, v. Type '?' for help.",
                 action
             );
             continue;
@@ -7818,6 +7880,89 @@ fn interactive_profiles_loop(store: &CredentialStore, profiles: Vec<serde_json::
                         "{}",
                         paint_red(&format!("Edit '{}' failed: {}", original_name, e))
                     ),
+                }
+            }
+            's' | 'v' => {
+                // Issue #215 mode switch in interactive mode.
+                //   's' = save-as-new in different mode (source preserved)
+                //   'v' = conVert (source REPLACED in slot)
+                // Single-target only (mode switch is per-profile). The mode
+                // label is collected via a follow-up prompt; --name /
+                // --username / --password overrides live only in the
+                // non-interactive subcommand for safety (interactive
+                // shouldn't silently capture secrets).
+                let replace = action == 'v';
+                if targets.len() != 1 {
+                    eprintln!(
+                        "Mode switch takes exactly one target. Got {}. Pick a single profile.",
+                        targets.len()
+                    );
+                    continue;
+                }
+                let (zero, profile) = targets[0].clone();
+                let name = profile
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("?")
+                    .to_string();
+                eprint!(
+                    "{} '{}' to which mode? (api, webdav, s3, ftp; empty to abort): ",
+                    if replace { "Convert" } else { "Save-as-new copy of" },
+                    name
+                );
+                let _ = io::stderr().flush();
+                let mut mode_input = String::new();
+                if io::stdin().lock().read_line(&mut mode_input).is_err() {
+                    eprintln!("Read error. Aborting.");
+                    continue;
+                }
+                let mode_input = mode_input.trim().to_string();
+                if mode_input.is_empty() {
+                    eprintln!("Empty mode: aborted.");
+                    continue;
+                }
+                if replace {
+                    eprint!(
+                        "Convert REPLACES profile '{}'. Type 'yes' to confirm: ",
+                        name
+                    );
+                    let _ = io::stderr().flush();
+                    let mut confirm = String::new();
+                    if io::stdin().lock().read_line(&mut confirm).is_err() {
+                        eprintln!("Read error. Aborting.");
+                        continue;
+                    }
+                    if !confirm.trim().eq_ignore_ascii_case("yes") {
+                        eprintln!("Confirmation did not match: NO profile changed.");
+                        continue;
+                    }
+                }
+                match duplicate_or_convert_mode_in_vault(
+                    store, &name, &mode_input, None, None, None, replace,
+                ) {
+                    Ok((_source_id, new_id, source_name, mode)) => {
+                        // Refresh in-memory snapshot from the vault so the
+                        // next iteration's render reflects the new layout.
+                        if let Ok(updated_raw) = store.get("config_server_profiles") {
+                            if let Ok(updated) = serde_json::from_str::<Vec<serde_json::Value>>(&updated_raw) {
+                                current = updated;
+                            }
+                        }
+                        eprintln!(
+                            "{}",
+                            paint_blue(&format!(
+                                "#{} '{}' {} to mode '{}' (new id={}).",
+                                zero + 1,
+                                source_name,
+                                if replace { "converted" } else { "saved as new" },
+                                mode,
+                                new_id
+                            ))
+                        );
+                    }
+                    Err((msg, _)) => {
+                        eprintln!("{}", paint_red(&format!("Mode switch failed: {}", msg)));
+                    }
                 }
             }
             _ => unreachable!(),
@@ -8497,6 +8642,385 @@ fn cmd_profile_duplicate(
         }
     }
     0
+}
+
+/// Issue #215: Rust mirror of the TS `PROVIDER_MODE_GROUPS` in
+/// `src/components/providerModeGroups.tsx`. Used by the CLI
+/// `profile-duplicate-mode` / `profile-convert-mode` commands to validate
+/// that a target mode belongs to the same group as the source profile.
+/// Keep in sync with the frontend registry.
+struct ModeGroupRow {
+    group_id: &'static str,
+    protocol: &'static str,
+    provider_id: Option<&'static str>,
+}
+
+const MODE_GROUPS: &[ModeGroupRow] = &[
+    // FileLu
+    ModeGroupRow { group_id: "filelu", protocol: "filelu", provider_id: Some("filelu") },
+    ModeGroupRow { group_id: "filelu", protocol: "webdav", provider_id: Some("filelu-webdav") },
+    ModeGroupRow { group_id: "filelu", protocol: "s3", provider_id: Some("filelu-s3") },
+    ModeGroupRow { group_id: "filelu", protocol: "ftp", provider_id: Some("filelu-ftp") },
+    // Filen (native API has no preset providerId)
+    ModeGroupRow { group_id: "filen", protocol: "filen", provider_id: None },
+    ModeGroupRow { group_id: "filen", protocol: "webdav", provider_id: Some("filen-desktop-webdav") },
+    ModeGroupRow { group_id: "filen", protocol: "s3", provider_id: Some("filen-desktop-s3") },
+    // OpenDrive (native API has no preset providerId)
+    ModeGroupRow { group_id: "opendrive", protocol: "opendrive", provider_id: None },
+    ModeGroupRow { group_id: "opendrive", protocol: "webdav", provider_id: Some("opendrive-webdav") },
+    // Koofr (native API has no preset providerId; `koofr` providerId is the WebDAV preset)
+    ModeGroupRow { group_id: "koofr", protocol: "koofr", provider_id: None },
+    ModeGroupRow { group_id: "koofr", protocol: "webdav", provider_id: Some("koofr") },
+];
+
+/// Short mode label per row: `api` for native modes, otherwise the
+/// protocol value verbatim (`webdav`, `s3`, `ftp`).
+fn mode_label_for_row(row: &ModeGroupRow) -> &'static str {
+    match row.protocol {
+        "webdav" => "webdav",
+        "s3" => "s3",
+        "ftp" => "ftp",
+        _ => "api",
+    }
+}
+
+/// Find the mode group that contains the given (protocol, provider_id)
+/// pair, mirroring `findActiveModeGroup` in providerModeGroups.tsx.
+fn find_mode_group_of(protocol: &str, provider_id: Option<&str>) -> Option<&'static str> {
+    for row in MODE_GROUPS {
+        let matches = match row.provider_id {
+            Some(pid) => Some(pid) == provider_id,
+            None => row.protocol == protocol
+                && (provider_id.is_none() || provider_id == Some(row.protocol)),
+        };
+        if matches {
+            return Some(row.group_id);
+        }
+    }
+    None
+}
+
+/// Resolve a short mode label (`api`, `webdav`, `s3`, `ftp`) into the
+/// target row inside the named group. Returns (protocol, provider_id).
+fn resolve_target_mode_in_group(
+    group_id: &str,
+    mode_label: &str,
+) -> Option<(&'static str, Option<&'static str>)> {
+    let needle = mode_label.trim().to_lowercase();
+    // Accept a few common aliases without bloating the table.
+    let needle = match needle.as_str() {
+        "native" | "native-api" | "nativeapi" | "rest" => "api".to_string(),
+        other => other.to_string(),
+    };
+    for row in MODE_GROUPS {
+        if row.group_id != group_id {
+            continue;
+        }
+        if mode_label_for_row(row) == needle {
+            return Some((row.protocol, row.provider_id));
+        }
+    }
+    None
+}
+
+/// Strip protocol-specific options from a profile's options blob so the
+/// converted/duplicated profile starts clean for the new mode. Conservative
+/// scrub: anything mode-specific (S3 region/endpoint/bucket, WebDAV scheme,
+/// FileLu API key) is removed. Mode-agnostic preferences (manualTotalBytes,
+/// initialPath, ...) are preserved.
+fn scrub_options_for_mode(opts: &mut serde_json::Map<String, serde_json::Value>) {
+    const MODE_SPECIFIC_KEYS: &[&str] = &[
+        // S3 mode
+        "pathStyle", "region", "endpoint", "anonymous", "bucket", "accountId",
+        // WebDAV mode
+        "webdavScheme", "verifyCert",
+        // TLS / FTP
+        "tlsMode",
+        // FileLu API
+        "filen_api_key", "two_factor_code",
+    ];
+    for k in MODE_SPECIFIC_KEYS {
+        opts.remove(*k);
+    }
+}
+
+/// Inner core for `profile-duplicate-mode` and `profile-convert-mode`.
+/// Reads the source profile, validates the target mode belongs to the same
+/// group, materializes the new profile (with the source's name/color/path
+/// carried over), and persists it. Returns (source_id, new_id, source_name,
+/// target_mode_label) on success. When `replace_in_slot` is true, the
+/// source is removed and the new profile takes its index; otherwise the
+/// new profile is inserted immediately after the source.
+fn duplicate_or_convert_mode_in_vault(
+    store: &CredentialStore,
+    selector: &str,
+    mode_label: &str,
+    new_name: Option<&str>,
+    username: Option<&str>,
+    password: Option<&str>,
+    replace_in_slot: bool,
+) -> Result<(String, String, String, String), (String, i32)> {
+    let raw = store
+        .get("config_server_profiles")
+        .map_err(|e| (format!("Failed to read profiles: {}", e), 5))?;
+    let mut profiles: Vec<serde_json::Value> = serde_json::from_str(&raw)
+        .map_err(|e| (format!("Failed to parse profiles: {}", e), 5))?;
+    let source_idx = resolve_profile_selector(&profiles, selector)
+        .map_err(|e| (format!("Profile lookup failed: {}", e), 2))?;
+    let source = profiles[source_idx].clone();
+    let source_id = source
+        .get("id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let source_name = source
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unnamed")
+        .to_string();
+    let source_protocol = source
+        .get("protocol")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let source_provider_id = source
+        .get("providerId")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    let group = find_mode_group_of(&source_protocol, source_provider_id.as_deref())
+        .ok_or_else(|| (
+            format!(
+                "Profile '{}' (protocol={}) is not part of a multi-mode provider group. Supported groups: koofr, opendrive, filen, filelu.",
+                source_name, source_protocol
+            ),
+            7,
+        ))?;
+    let (target_protocol, target_provider_id) = resolve_target_mode_in_group(group, mode_label)
+        .ok_or_else(|| (
+            format!(
+                "Mode '{}' is not available in the '{}' group. Valid modes for this group: {}",
+                mode_label,
+                group,
+                MODE_GROUPS
+                    .iter()
+                    .filter(|r| r.group_id == group)
+                    .map(|r| mode_label_for_row(r))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            ),
+            5,
+        ))?;
+    // Same mode: refuse so we don't silently create a confusing duplicate.
+    if target_protocol == source_protocol
+        && target_provider_id.map(|s| s.to_string()) == source_provider_id
+    {
+        return Err((
+            format!(
+                "Source profile is already in mode '{}'. Use `profile-duplicate` for a same-mode copy.",
+                mode_label
+            ),
+            5,
+        ));
+    }
+
+    let now_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;
+    let rand_suffix: String = {
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
+        (0..9)
+            .map(|_| {
+                let idx: u8 = rng.gen_range(0..36);
+                if idx < 10 { (b'0' + idx) as char } else { (b'a' + (idx - 10)) as char }
+            })
+            .collect()
+    };
+    let new_id = format!("srv_{}_{}", now_ms, rand_suffix);
+
+    let resolved_name = new_name
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| {
+            if replace_in_slot {
+                source_name.clone()
+            } else {
+                format!("{} ({})", source_name, mode_label)
+            }
+        });
+
+    let mut copy = source.clone();
+    if let serde_json::Value::Object(ref mut map) = copy {
+        map.insert("id".into(), serde_json::Value::String(new_id.clone()));
+        map.insert("name".into(), serde_json::Value::String(resolved_name));
+        map.insert("protocol".into(), serde_json::Value::String(target_protocol.to_string()));
+        match target_provider_id {
+            Some(pid) => {
+                map.insert("providerId".into(), serde_json::Value::String(pid.to_string()));
+            }
+            None => {
+                map.remove("providerId");
+            }
+        }
+        if let Some(u) = username {
+            map.insert("username".into(), serde_json::Value::String(u.to_string()));
+        }
+        map.remove("lastConnected");
+        map.remove("lastQuota");
+        // Scrub mode-specific options so the new profile starts clean.
+        let opts_entry = map
+            .entry("options")
+            .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
+        if let serde_json::Value::Object(opt_map) = opts_entry {
+            scrub_options_for_mode(opt_map);
+        }
+    }
+
+    if replace_in_slot {
+        // Take the source's slot; remove the original.
+        profiles[source_idx] = copy;
+    } else {
+        // Insert immediately after the source for visual grouping.
+        profiles.insert(source_idx + 1, copy);
+    }
+
+    let serialized = serde_json::to_string(&profiles)
+        .map_err(|e| (format!("Failed to serialize profiles: {}", e), 5))?;
+    store
+        .store("config_server_profiles", &serialized)
+        .map_err(|e| (format!("Failed to write profiles: {}", e), 5))?;
+
+    // Credential handling: explicit override wins; otherwise clone the
+    // source's credential best-effort (works for same-credentials groups
+    // like Koofr/OpenDrive; user must provide --password for the others).
+    if let Some(pwd) = password {
+        let _ = store.store(&format!("server_{}", new_id), pwd);
+    } else if !source_id.is_empty() {
+        if let Ok(cred) = store.get(&format!("server_{}", source_id)) {
+            let _ = store.store(&format!("server_{}", new_id), &cred);
+        }
+    }
+
+    // Convert: delete the source's profile-level credential too (the
+    // profile is gone from the list, the credential would orphan). Best-
+    // effort; ignore errors.
+    if replace_in_slot && !source_id.is_empty() {
+        let _ = store.delete(&format!("server_{}", source_id));
+    }
+
+    Ok((source_id, new_id, source_name, mode_label.to_string()))
+}
+
+fn cmd_profile_duplicate_mode(
+    cli: &Cli,
+    format: OutputFormat,
+    selector: &str,
+    mode_label: &str,
+    new_name: Option<&str>,
+    username: Option<&str>,
+    password: Option<&str>,
+) -> i32 {
+    let store = match open_vault(cli) {
+        Ok(s) => s,
+        Err(e) => {
+            print_error(format, &e, 5);
+            return 5;
+        }
+    };
+    match duplicate_or_convert_mode_in_vault(
+        &store, selector, mode_label, new_name, username, password, false,
+    ) {
+        Ok((source_id, new_id, source_name, mode)) => {
+            match format {
+                OutputFormat::Json => {
+                    let out = serde_json::json!({
+                        "id": new_id,
+                        "source_id": source_id,
+                        "source_name": source_name,
+                        "mode": mode,
+                        "operation": "duplicate-mode",
+                    });
+                    println!("{}", serde_json::to_string_pretty(&out).unwrap_or_default());
+                }
+                _ => {
+                    println!(
+                        "Duplicated '{}' into mode '{}' (new id={}, source preserved)",
+                        source_name, mode, new_id
+                    );
+                }
+            }
+            0
+        }
+        Err((msg, code)) => {
+            print_error(format, &msg, code);
+            code
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn cmd_profile_convert_mode(
+    cli: &Cli,
+    format: OutputFormat,
+    selector: &str,
+    mode_label: &str,
+    new_name: Option<&str>,
+    username: Option<&str>,
+    password: Option<&str>,
+    yes: bool,
+) -> i32 {
+    use std::io::IsTerminal;
+    // Confirm before the destructive replace, just like profile-delete.
+    if !yes && std::io::stdin().is_terminal() {
+        eprintln!(
+            "Convert profile '{}' to mode '{}'? The original profile will be deleted. [y/N]",
+            selector, mode_label
+        );
+        let mut buf = String::new();
+        if std::io::stdin().read_line(&mut buf).is_err() {
+            print_error(format, "Aborted (stdin error).", 5);
+            return 5;
+        }
+        let ans = buf.trim().to_lowercase();
+        if ans != "y" && ans != "yes" {
+            print_error(format, "Aborted by user.", 0);
+            return 0;
+        }
+    }
+    let store = match open_vault(cli) {
+        Ok(s) => s,
+        Err(e) => {
+            print_error(format, &e, 5);
+            return 5;
+        }
+    };
+    match duplicate_or_convert_mode_in_vault(
+        &store, selector, mode_label, new_name, username, password, true,
+    ) {
+        Ok((source_id, new_id, source_name, mode)) => {
+            match format {
+                OutputFormat::Json => {
+                    let out = serde_json::json!({
+                        "id": new_id,
+                        "source_id": source_id,
+                        "source_name": source_name,
+                        "mode": mode,
+                        "operation": "convert-mode",
+                    });
+                    println!("{}", serde_json::to_string_pretty(&out).unwrap_or_default());
+                }
+                _ => {
+                    println!(
+                        "Converted '{}' to mode '{}' (new id={}, source deleted)",
+                        source_name, mode, new_id
+                    );
+                }
+            }
+            0
+        }
+        Err((msg, code)) => {
+            print_error(format, &msg, code);
+            code
+        }
+    }
 }
 
 /// Remove a single profile by id from `config_server_profiles` and write the
@@ -36925,6 +37449,38 @@ async fn main() {
             selector,
             name.as_deref(),
             manual_total.as_deref(),
+        ),
+        Commands::ProfileDuplicateMode {
+            selector,
+            mode,
+            name,
+            username,
+            password,
+        } => cmd_profile_duplicate_mode(
+            &cli,
+            format,
+            selector,
+            mode,
+            name.as_deref(),
+            username.as_deref(),
+            password.as_deref(),
+        ),
+        Commands::ProfileConvertMode {
+            selector,
+            mode,
+            name,
+            username,
+            password,
+            yes,
+        } => cmd_profile_convert_mode(
+            &cli,
+            format,
+            selector,
+            mode,
+            name.as_deref(),
+            username.as_deref(),
+            password.as_deref(),
+            *yes,
         ),
         Commands::AiModels => list_ai_models(&cli, format),
         Commands::AgentBootstrap {
