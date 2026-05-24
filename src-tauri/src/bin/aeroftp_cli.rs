@@ -10540,9 +10540,22 @@ fn profile_to_provider_config(
         }
     }
 
+    // Include providerId (preset id) when present so the banner makes it
+    // obvious which preset variant is in use. Diagnostic surfaced after
+    // #196 reports of "PCLOUD via OAuth" appearing on profiles the user
+    // expected to be WebDAV: with the preset id visible (e.g.
+    // `pcloud-webdav`) any mismatch between protocol routing and the
+    // saved preset is immediately readable.
+    let preset_suffix = profile
+        .get("providerId")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|p| format!(" [{}]", p))
+        .unwrap_or_default();
     print_profile_banner_once(
         name,
-        format!("{} -> {}", protocol.to_uppercase(), host),
+        format!("{} -> {}{}", protocol.to_uppercase(), host, preset_suffix),
         cli.quiet,
     );
 
@@ -10766,6 +10779,7 @@ async fn try_create_oauth_provider(
     initial_path: &str,
     store: &ftp_client_gui_lib::credential_store::CredentialStore,
     quiet: bool,
+    provider_id: Option<&str>,
 ) -> Option<Result<(Box<dyn StorageProvider>, String), i32>> {
     use ftp_client_gui_lib::providers::{
         dropbox::DropboxConfig, google_drive::GoogleDriveConfig, onedrive::OneDriveConfig,
@@ -10927,7 +10941,16 @@ async fn try_create_oauth_provider(
                 eprintln!("Error: 4shared connection failed: {}", e);
                 return Some(Err(6));
             }
-            print_profile_banner_once(profile_name, "4SHARED via OAuth1".to_string(), quiet);
+            let preset_suffix = provider_id
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(|p| format!(" [{}]", p))
+                .unwrap_or_default();
+            print_profile_banner_once(
+                profile_name,
+                format!("4SHARED via OAuth1{}", preset_suffix),
+                quiet,
+            );
             return Some(Ok((
                 Box::new(provider) as Box<dyn StorageProvider>,
                 initial_path.to_string(),
@@ -10977,9 +11000,18 @@ async fn try_create_oauth_provider(
         }
     };
 
+    // Surface the preset id (providerId) in the banner so a saved profile
+    // that took the OAuth path is immediately distinguishable from one
+    // that took the WebDAV / FTP preset path of the same vendor (e.g.
+    // `pcloud` OAuth vs `pcloud-webdav` preset). #196 follow-up.
+    let preset_suffix = provider_id
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|p| format!(" [{}]", p))
+        .unwrap_or_default();
     print_profile_banner_once(
         profile_name,
-        format!("{} via OAuth", protocol.to_uppercase()),
+        format!("{} via OAuth{}", protocol.to_uppercase(), preset_suffix),
         quiet,
     );
 
@@ -11131,12 +11163,16 @@ async fn create_and_connect(
                             .get("initialPath")
                             .and_then(|v| v.as_str())
                             .unwrap_or("/");
+                        let provider_id = profile
+                            .get("providerId")
+                            .and_then(|v| v.as_str());
                         if let Some(result) = try_create_oauth_provider(
                             protocol,
                             name,
                             initial_path,
                             &store,
                             cli.quiet,
+                            provider_id,
                         )
                         .await
                         {
