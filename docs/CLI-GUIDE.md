@@ -1048,10 +1048,10 @@ Drop-in compatible with the format produced by [`rclone crypt`](https://rclone.o
 ### batch - Execute Script
 
 ```bash
-aeroftp-cli batch deploy.aeroftp
+aeroftp-cli batch deploy.aeroftp-script
 ```
 
-Executes a `.aeroftp` script file containing a sequence of commands. See [Batch Scripting](#batch-scripting) below.
+Executes a `.aeroftp-script` file containing a sequence of commands. See [Batch Scripting](#batch-scripting) below. The `.aeroftp` extension is reserved for profile-export backups (the GUI Settings -> Backup format) and is rejected here with a rename hint; pipe through stdin with `-` if you genuinely want to script directly from a pipe.
 
 ### rcat - Upload stdin Directly
 
@@ -1712,7 +1712,7 @@ echo "Exit code: $?"
 
 ## Batch Scripting
 
-Create `.aeroftp` script files for automated workflows:
+Create `.aeroftp-script` files for automated workflows:
 
 ### Script Format
 
@@ -1773,9 +1773,9 @@ ON_ERROR FAIL
 ### Running Batch Scripts
 
 ```bash
-aeroftp-cli batch deploy.aeroftp
-aeroftp-cli batch deploy.aeroftp --json    # JSON output for all commands
-aeroftp-cli batch deploy.aeroftp --quiet   # Errors only
+aeroftp-cli batch deploy.aeroftp-script
+aeroftp-cli batch deploy.aeroftp-script --json    # JSON output for all commands
+aeroftp-cli batch deploy.aeroftp-script --quiet   # Errors only
 ```
 
 ---
@@ -1950,7 +1950,7 @@ fi
 ### Batch Deployment
 
 ```
-# deploy.aeroftp
+# deploy.aeroftp-script
 SET SERVER=sftp://deploy@prod.example.com:2222
 ON_ERROR FAIL
 

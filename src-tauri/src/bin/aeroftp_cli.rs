@@ -24,7 +24,7 @@
 //!   aeroftp about <url>                       Server info and storage
 //!   aeroftp dedupe <url> [path]               Find duplicate files
 //!   aeroftp sync <url> <local> <remote>       Sync directories
-//!   aeroftp batch <file>                      Execute .aeroftp script
+//!   aeroftp batch <file>                      Execute .aeroftp-script file
 //!   aeroftp rcat <url> <remote>               Upload stdin directly to remote file
 //!   aeroftp serve http <url> [path]           Serve remote files over local HTTP
 //!   aeroftp serve webdav <url> [path]          Serve remote files over local WebDAV (read-write)
@@ -121,7 +121,7 @@ const SUPPORTED_URL_SCHEMES: &[&str] = &[
     about = "AeroFTP CLI - Multi-protocol file transfer client",
     version,
     long_about = "Direct URL schemes: FTP, FTPS, SFTP, WebDAV(S), S3, MEGA, Azure, Filen, Internxt, Jottacloud, FileLu, Koofr, OpenDrive, Yandex Disk, GitHub.\nSaved profiles additionally cover Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, 4shared, and Drime.\n\nConnect via saved profiles (--profile) or URL (protocol://user@host:port/path).\nAI agents: run 'aeroftp agent-bootstrap --json' for canonical task workflows and 'aeroftp agent-info --json' for full capability discovery.",
-    after_help = "EXAMPLES (profiles - no credentials needed):\n  aeroftp-cli profiles                                      List saved servers\n  aeroftp-cli ls --profile \"My Server\" /var/www/ -l          List files\n  aeroftp-cli put --profile \"Production\" ./app.js /www/      Upload file\n  aeroftp-cli get --profile \"NAS\" /backups/db.sql ./         Download file\n  aeroftp-cli sync --profile \"Staging\" ./build/ /www/ --dry-run\n  aeroftp-cli agent-bootstrap                                AI quick-start playbook\n  aeroftp-cli agent-info --json                              AI capability discovery\n\nEXAMPLES (URL mode):\n  aeroftp-cli connect sftp://user@myserver.com\n  aeroftp-cli ls sftp://user@myserver.com /var/www/ -l\n  aeroftp-cli get sftp://user@host \"/data/*.csv\"\n  aeroftp-cli cat sftp://user@host /config.ini | grep DB_HOST\n  aeroftp-cli batch deploy.aeroftp\n\nEXIT CODES:\n  0  Success                    5  Invalid config/usage\n  1  Connection/network error   6  Authentication failed\n  2  Not found                  7  Not supported\n  3  Permission denied          8  Timeout\n  4  Transfer failed/partial    9  Already exists / directory not empty\n 10  Server or parse error     11  Local I/O error\n 99  Unknown error            130  Interrupted (SIGINT)"
+    after_help = "EXAMPLES (profiles - no credentials needed):\n  aeroftp-cli profiles                                      List saved servers\n  aeroftp-cli ls --profile \"My Server\" /var/www/ -l          List files\n  aeroftp-cli put --profile \"Production\" ./app.js /www/      Upload file\n  aeroftp-cli get --profile \"NAS\" /backups/db.sql ./         Download file\n  aeroftp-cli sync --profile \"Staging\" ./build/ /www/ --dry-run\n  aeroftp-cli agent-bootstrap                                AI quick-start playbook\n  aeroftp-cli agent-info --json                              AI capability discovery\n\nEXAMPLES (URL mode):\n  aeroftp-cli connect sftp://user@myserver.com\n  aeroftp-cli ls sftp://user@myserver.com /var/www/ -l\n  aeroftp-cli get sftp://user@host \"/data/*.csv\"\n  aeroftp-cli cat sftp://user@host /config.ini | grep DB_HOST\n  aeroftp-cli batch deploy.aeroftp-script\n\nEXIT CODES:\n  0  Success                    5  Invalid config/usage\n  1  Connection/network error   6  Authentication failed\n  2  Not found                  7  Not supported\n  3  Permission denied          8  Timeout\n  4  Transfer failed/partial    9  Already exists / directory not empty\n 10  Server or parse error     11  Local I/O error\n 99  Unknown error            130  Interrupted (SIGINT)"
 )]
 struct Cli {
     /// Output format
@@ -1299,9 +1299,12 @@ enum Commands {
         #[arg(long)]
         skip_existing: bool,
     },
-    /// Execute commands from a batch script (.aeroftp file)
+    /// Execute commands from a batch script (.aeroftp-script file).
+    /// The `.aeroftp` extension is reserved for profile-export backups
+    /// and is rejected here with a rename hint (issue #225).
     Batch {
-        /// Path to .aeroftp script file
+        /// Path to the .aeroftp-script file, or "-" to read the script
+        /// from standard input.
         file: String,
     },
     /// Upload stdin directly to a remote file
@@ -10084,7 +10087,7 @@ fn cmd_agent_info(cli: &Cli) -> i32 {
                 {"name": "daemon", "syntax": "aeroftp-cli daemon <start|stop|status>", "description": "Manage the background jobs daemon"},
                 {"name": "jobs", "syntax": "aeroftp-cli jobs <add|list|status|cancel>", "description": "Manage queued background jobs"},
                 {"name": "crypt", "syntax": "aeroftp-cli crypt <init|ls|put|get> --profile NAME /path", "description": "Use encrypted overlay storage"},
-                {"name": "batch", "syntax": "aeroftp-cli batch file.aeroftp", "description": "Run batch automation scripts"},
+                {"name": "batch", "syntax": "aeroftp-cli batch file.aeroftp-script", "description": "Run batch automation scripts"},
                 {"name": "agent-info", "syntax": "aeroftp-cli agent-info --json", "description": "Show machine-readable CLI capabilities"}
             ]
         },
@@ -31862,6 +31865,23 @@ async fn run_audit_file_exists(
 }
 
 async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<AtomicBool>) -> i32 {
+    // The `.aeroftp` extension is the canonical profile-export format
+    // and is unrelated to batch scripts (issue #225). Reject it here
+    // with a rename hint instead of silently reading a file that the
+    // user almost certainly produced from the GUI export flow.
+    // `-` (stdin) and any other extension are accepted.
+    if file != "-" && file.to_ascii_lowercase().ends_with(".aeroftp") {
+        print_error(
+            format,
+            &format!(
+                "Refusing to execute '{}': the .aeroftp extension is reserved for profile-export backups. Rename your script to .aeroftp-script (or pipe it through stdin with `-`) and retry.",
+                file
+            ),
+            5,
+        );
+        return 5;
+    }
+
     let content = if file == "-" {
         let mut stdin = String::new();
         if let Err(e) = io::stdin().read_to_string(&mut stdin) {

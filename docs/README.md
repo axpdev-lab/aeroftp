@@ -91,7 +91,7 @@ AeroVault v2 encrypted containers now support **full directory hierarchies**: cr
 
 ## AeroFTP CLI
 
-Production command-line client with direct URL mode for core protocols plus vault-backed `--profile` access for saved servers and browser-authorized providers. Features structured `--json` output, glob and recursive transfers, `.aeroftp` batch scripting, `config.toml` defaults, aliases, shell completions, agent discovery, and AeroAgent orchestration. See **[CLI-GUIDE.md](./CLI-GUIDE.md)** for complete usage documentation.
+Production command-line client with direct URL mode for core protocols plus vault-backed `--profile` access for saved servers and browser-authorized providers. Features structured `--json` output, glob and recursive transfers, `.aeroftp-script` batch files, `config.toml` defaults, aliases, shell completions, agent discovery, and AeroAgent orchestration. See **[CLI-GUIDE.md](./CLI-GUIDE.md)** for complete usage documentation.
 
 ## AeroAgent
 

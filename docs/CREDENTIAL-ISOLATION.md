@@ -134,11 +134,11 @@ A single secret (the vault master password) unlocks access to all configured ser
 
 ```bash
 # Batch script: deploy to staging, verify, then deploy to production
-aeroftp-cli batch deploy.aeroftp --json
+aeroftp-cli batch deploy.aeroftp-script --json
 ```
 
 ```
-# deploy.aeroftp
+# deploy.aeroftp-script
 SET ON_ERROR=stop
 CONNECT staging-server
 PUT ./build/app.js /var/www/app.js
