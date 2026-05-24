@@ -288,6 +288,11 @@ pub struct TransferGraphProfile {
     /// shared `api_slots` budget (and the AIMD `Api` class) throttle the
     /// API-bound providers without touching transport-bound ones.
     pub api_slots: u16,
+    /// Maximum number of multipart chunks the runner may dispatch at once.
+    /// `1` preserves the legacy single-stream behavior for providers that
+    /// either do not support multipart upload or do not advertise a higher
+    /// chunk budget.
+    pub max_chunk_slots: u16,
 }
 
 impl TransferGraphProfile {
@@ -316,11 +321,18 @@ impl TransferGraphProfile {
             } else {
                 1
             };
+        let max_chunk_slots =
+            if direction == TransferDirection::Upload && caps.multipart_upload.is_available() {
+                caps.max_chunk_slots.unwrap_or(1).max(1)
+            } else {
+                1
+            };
 
         Self {
             upload_parts,
             resume,
             api_slots,
+            max_chunk_slots,
         }
     }
 }
@@ -1661,6 +1673,7 @@ mod tests {
         TransferCapabilities {
             multipart_upload: Capability::Supported,
             preferred_chunk_size: Some(chunk_size),
+            max_chunk_slots: Some(4),
             ..TransferCapabilities::default()
         }
     }
@@ -1683,6 +1696,7 @@ mod tests {
         assert_eq!(built.profile.upload_parts, 1);
         assert!(!built.profile.resume);
         assert_eq!(built.profile.api_slots, 0);
+        assert_eq!(built.profile.max_chunk_slots, 1);
         assert_eq!(nodes[built.verify].depends_on, built.transfer);
     }
 
@@ -1712,6 +1726,7 @@ mod tests {
         let nodes = built.dag.nodes();
 
         assert_eq!(built.profile.upload_parts, 5);
+        assert_eq!(built.profile.max_chunk_slots, 4);
         assert_eq!(built.transfer.len(), 5);
         for &part in &built.transfer {
             assert_eq!(nodes[part].kind, TransferNodeKind::UploadPart);
