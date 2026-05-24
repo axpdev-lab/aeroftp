@@ -165,6 +165,9 @@ pub struct PCloudProvider {
     current_path: String,
     /// Authenticated user email
     account_email: Option<String>,
+    /// Server profile identifier owning these OAuth tokens. Empty when the
+    /// caller has not bound a profile (legacy singleton key path). Issue #214.
+    profile_id: String,
 }
 
 impl PCloudProvider {
@@ -182,17 +185,32 @@ impl PCloudProvider {
             connected: false,
             current_path: "/".to_string(),
             account_email: None,
+            profile_id: String::new(),
         }
+    }
+
+    /// Bind this provider to a server profile so OAuth tokens are stored
+    /// under the per-profile vault key. Issue #214.
+    pub fn with_profile_id(mut self, profile_id: impl Into<String>) -> Self {
+        self.profile_id = profile_id.into();
+        self
+    }
+
+    /// Build the OAuth2 config bound to this provider's profile so the vault
+    /// honours per-profile token storage (issue #214).
+    fn oauth_config(&self) -> OAuthConfig {
+        OAuthConfig::pcloud(
+            &self.config.client_id,
+            &self.config.client_secret,
+            &self.config.region,
+        )
+        .with_profile_id(&self.profile_id)
     }
 
     /// Get Authorization header with Bearer token (token never exposed in URL)
     async fn auth_header(&self) -> Result<String, ProviderError> {
         use secrecy::ExposeSecret;
-        let config = OAuthConfig::pcloud(
-            &self.config.client_id,
-            &self.config.client_secret,
-            &self.config.region,
-        );
+        let config = self.oauth_config();
         let secret = self
             .oauth_manager
             .get_valid_token(&config)
@@ -256,11 +274,7 @@ impl PCloudProvider {
         base_url: &str,
     ) -> Result<reqwest::Response, ProviderError> {
         use secrecy::ExposeSecret;
-        let config = OAuthConfig::pcloud(
-            &self.config.client_id,
-            &self.config.client_secret,
-            &self.config.region,
-        );
+        let config = self.oauth_config();
         let token = self
             .oauth_manager
             .get_valid_token(&config)
@@ -699,11 +713,7 @@ impl StorageProvider for PCloudProvider {
         // pCloud uploadfile requires access_token as a form field (not Authorization header)
         let token = {
             use secrecy::ExposeSecret;
-            let config = OAuthConfig::pcloud(
-                &self.config.client_id,
-                &self.config.client_secret,
-                &self.config.region,
-            );
+            let config = self.oauth_config();
             let secret = self
                 .oauth_manager
                 .get_valid_token(&config)

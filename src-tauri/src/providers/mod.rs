@@ -1085,7 +1085,17 @@ impl ProviderFactory {
             }
             ProviderType::Jottacloud => {
                 let jotta_config = JottacloudConfig::from_provider_config(config)?;
-                Ok(Box::new(JottacloudProvider::new(jotta_config)))
+                let mut provider = JottacloudProvider::new(jotta_config);
+                // Issue #214: when the caller threaded a profile id through
+                // `ProviderConfig.extra["profile_id"]` we bind the refresh
+                // token to a per-profile vault key. Without it the legacy
+                // singleton key is used, preserving historic behaviour.
+                if let Some(pid) = config.extra.get("profile_id") {
+                    if !pid.is_empty() {
+                        provider = provider.with_profile_id(pid);
+                    }
+                }
+                Ok(Box::new(provider))
             }
             ProviderType::DrimeCloud => {
                 let drime_config = DrimeCloudConfig::from_provider_config(config)?;
