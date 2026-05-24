@@ -37,6 +37,11 @@ export const KEYSTORE_LS_WHITELIST: string[] = [
     'aerofile_show_sidebar',
     'aerofile_sidebar_mode',
     'aerofile_custom_locations',
+    // Places sidebar collapsible-section state (issue #216 follow-up).
+    // Defaults: Other Locations expanded, Recent and Tags collapsed.
+    'aerofile_places_section_other_expanded',
+    'aerofile_places_section_recent_expanded',
+    'aerofile_places_section_tags_expanded',
 
     // Server card UX
     'aeroftp-favorite-servers',

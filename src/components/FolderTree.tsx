@@ -196,13 +196,31 @@ export const FolderTree: React.FC<FolderTreeProps> = ({
       if (!mountedRef.current) return;
       setRootEntries(roots);
       setRootLoaded(true);
+
+      // Windows fallback path: a single drive letter root looks almost
+      // identical to Places' "+ Other Locations" row, so the tree feels
+      // pointless (issue #216 follow-up). Pre-fetch the first level of each
+      // drive and auto-expand them, so the user sees actual subdirectories
+      // straight away rather than just "Local Disk (C:)" with a chevron.
+      const initialCache = new Map<string, SubDirectory[]>();
+      const initialExpanded = new Set<string>();
+      await Promise.all(
+        roots.map(async (root) => {
+          const children = await fetchChildren(root.path);
+          if (!mountedRef.current) return;
+          initialCache.set(root.path, children);
+          if (children.length > 0) initialExpanded.add(root.path);
+        }),
+      );
+      if (!mountedRef.current) return;
       setChildrenCache((prev) => {
         const next = new Map(prev);
-        for (const root of roots) {
-          if (!next.has(root.path)) next.set(root.path, []);
-        }
+        for (const [path, children] of initialCache) next.set(path, children);
         return next;
       });
+      if (initialExpanded.size > 0) {
+        setExpandedPaths((prev) => new Set([...prev, ...initialExpanded]));
+      }
     };
     loadRoot();
     return () => { mountedRef.current = false; };

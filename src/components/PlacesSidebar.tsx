@@ -25,6 +25,25 @@ const SIDEBAR_MODE_KEY = 'aerofile_sidebar_mode';
 const CUSTOM_LOCATIONS_KEY = 'aerofile_custom_locations';
 const VOLUME_POLL_FALLBACK_MS = 30000; // Fallback polling for macOS/Windows (watcher handles Linux)
 
+// Collapsible-section persistence (issue #216 follow-up). Each section has a
+// localStorage key carrying its expand state. Defaults match the post-#216
+// design: Other Locations open on first run, Recent and Tags collapsed below.
+const SECTION_OTHER_KEY = 'aerofile_places_section_other_expanded';
+const SECTION_RECENT_KEY = 'aerofile_places_section_recent_expanded';
+const SECTION_TAGS_KEY = 'aerofile_places_section_tags_expanded';
+const KEYSTORE_RESTORED_EVENT = 'aeroftp-localstorage-restored';
+
+const readSectionFlag = (key: string, fallback: boolean): boolean => {
+  try {
+    const stored = localStorage.getItem(key);
+    if (stored === 'true') return true;
+    if (stored === 'false') return false;
+    return fallback;
+  } catch {
+    return fallback;
+  }
+};
+
 /** Map icon name strings (from Rust) to Lucide components */
 const iconMap: Record<string, LucideIcon> = {
   Home,
@@ -181,7 +200,9 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
     }
   });
 
-  const [showVolumes, setShowVolumes] = useState(false);
+  const [showVolumes, setShowVolumes] = useState(() => readSectionFlag(SECTION_OTHER_KEY, true));
+  const [showRecent, setShowRecent] = useState(() => readSectionFlag(SECTION_RECENT_KEY, false));
+  const [showTags, setShowTags] = useState(() => readSectionFlag(SECTION_TAGS_KEY, false));
   const [volumes, setVolumes] = useState<VolumeInfo[]>([]);
   const [unmountedPartitions, setUnmountedPartitions] = useState<UnmountedPartition[]>([]);
   const [volumesLoading, setVolumesLoading] = useState(false);
@@ -211,6 +232,33 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
   useEffect(() => {
     localStorage.setItem(CUSTOM_LOCATIONS_KEY, JSON.stringify(customLocations));
   }, [customLocations]);
+
+  // -----------------------------------------------------------------------
+  // Persist collapsible-section state (issue #216 follow-up)
+  // -----------------------------------------------------------------------
+
+  useEffect(() => {
+    try { localStorage.setItem(SECTION_OTHER_KEY, showVolumes ? 'true' : 'false'); } catch { /* quota */ }
+  }, [showVolumes]);
+  useEffect(() => {
+    try { localStorage.setItem(SECTION_RECENT_KEY, showRecent ? 'true' : 'false'); } catch { /* quota */ }
+  }, [showRecent]);
+  useEffect(() => {
+    try { localStorage.setItem(SECTION_TAGS_KEY, showTags ? 'true' : 'false'); } catch { /* quota */ }
+  }, [showTags]);
+
+  // Re-read section flags when a keystore import restores them. The same
+  // pipeline used for theme/icon/background after `applyLocalStorage`
+  // (see commit f3019e80 for the #214 bundle).
+  useEffect(() => {
+    const reload = () => {
+      setShowVolumes(readSectionFlag(SECTION_OTHER_KEY, true));
+      setShowRecent(readSectionFlag(SECTION_RECENT_KEY, false));
+      setShowTags(readSectionFlag(SECTION_TAGS_KEY, false));
+    };
+    window.addEventListener(KEYSTORE_RESTORED_EVENT, reload);
+    return () => window.removeEventListener(KEYSTORE_RESTORED_EVENT, reload);
+  }, []);
 
   // -----------------------------------------------------------------------
   // Fetch user directories on mount + global cleanup on unmount
@@ -403,6 +451,13 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
   // Render: Places mode content
   // -----------------------------------------------------------------------
 
+  // Section ordering (issue #216 follow-up):
+  //   1. User directories + Trash (standard places, always on top)
+  //   2. "+ Other Locations" header + mounted volumes  (default expanded, persisted)
+  //   3. Custom locations (only if any)
+  //   4. RECENT (default collapsed, persisted)
+  //   5. TAGS  (default collapsed, persisted)
+
   const renderPlacesContent = () => (
     <>
       {/* User Directories */}
@@ -439,83 +494,7 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
       {/* Separator */}
       <div className="border-b border-gray-200 dark:border-gray-700 my-1 mx-2" />
 
-      {/* Custom Locations */}
-      {customLocations.length > 0 && (
-        <div className="py-1">
-          {customLocations.map((loc, index) => (
-            <SidebarItem
-              key={loc}
-              icon={<Folder size={16} className="opacity-70 flex-shrink-0" />}
-              label={basename(loc)}
-              path={loc}
-              currentPath={currentPath}
-              tooltip={loc}
-              onNavigate={onNavigate}
-              onContextMenu={(e) => handleCustomLocationContextMenu(e, index)}
-            />
-          ))}
-        </div>
-      )}
-
-      {/* Separator (only if custom locations present) */}
-      {customLocations.length > 0 && (
-        <div className="border-b border-gray-200 dark:border-gray-700 my-1 mx-2" />
-      )}
-
-      {/* Recent Locations */}
-      {recentPaths.length > 0 && (
-        <>
-          <div className="flex items-center justify-between px-2 pr-4 pt-3 pb-1">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-              {t('sidebar.recent')}
-            </span>
-            {onClearRecent && (
-              <button
-                onClick={onClearRecent}
-                className="text-[10px] text-gray-500 hover:text-red-500 dark:hover:text-red-400 transition-colors"
-                title={t('sidebar.clear_recent')}
-              >
-                <X size={12} />
-              </button>
-            )}
-          </div>
-          {recentPaths.slice(0, 10).map((recentPath) => {
-            const folderName = recentPath.split('/').filter(Boolean).pop() || recentPath;
-            const isActive = currentPath === recentPath;
-            return (
-              <div
-                key={recentPath}
-                className="group relative flex items-center"
-              >
-                <button
-                  onClick={() => onNavigate(recentPath)}
-                  className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
-                    isActive
-                      ? 'bg-blue-100 text-blue-600 dark:bg-blue-600/20 dark:text-blue-400'
-                      : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700/50'
-                  }`}
-                  title={recentPath}
-                >
-                  <Clock size={14} className="text-gray-500 shrink-0" />
-                  <span className="truncate pr-4">{folderName}</span>
-                </button>
-                {onRemoveRecent && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onRemoveRecent(recentPath); }}
-                    className="absolute right-4 p-0.5 rounded opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:text-red-400 dark:hover:bg-gray-700/50 transition-all"
-                    title={t('common.delete')}
-                  >
-                    <X size={12} />
-                  </button>
-                )}
-              </div>
-            );
-          })}
-          <div className="border-b border-gray-200 dark:border-gray-700 my-1 mx-2" />
-        </>
-      )}
-
-      {/* Other Locations toggle */}
+      {/* Other Locations toggle (default expanded) */}
       <div className="py-1">
         <button
           aria-expanded={showVolumes}
@@ -632,31 +611,135 @@ export const PlacesSidebar: React.FC<PlacesSidebarProps> = ({
         </div>
       )}
 
-      {/* Tags */}
-      {labelCounts.length > 0 && onTagFilter && (
-        <div className="py-1 border-t border-gray-200 dark:border-gray-700/50">
-          <div className="px-3 py-1">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-              {t('tags.tags')}
-            </span>
-          </div>
-          {labelCounts.map(lc => (
-            <button
-              key={lc.id}
-              className={`flex items-center gap-2 px-3 py-1 text-sm cursor-pointer rounded-lg mx-1 w-[calc(100%-8px)] text-left transition-colors duration-100 ${
-                activeTagFilter === lc.id
-                  ? 'bg-blue-100 text-blue-600 dark:bg-blue-600/20 dark:text-blue-400'
-                  : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700/50'
-              }`}
-              onClick={() => onTagFilter(activeTagFilter === lc.id ? null : lc.id)}
-              title={`${lc.name} (${lc.count})`}
-            >
-              <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: lc.color }} />
-              <span className="truncate flex-1">{lc.name}</span>
-              <span className="text-[10px] text-gray-400 dark:text-gray-500 shrink-0">{lc.count}</span>
-            </button>
+      {/* Separator between Other Locations block and Custom locations */}
+      {customLocations.length > 0 && (
+        <div className="border-b border-gray-200 dark:border-gray-700 my-1 mx-2" />
+      )}
+
+      {/* Custom Locations */}
+      {customLocations.length > 0 && (
+        <div className="py-1">
+          {customLocations.map((loc, index) => (
+            <SidebarItem
+              key={loc}
+              icon={<Folder size={16} className="opacity-70 flex-shrink-0" />}
+              label={basename(loc)}
+              path={loc}
+              currentPath={currentPath}
+              tooltip={loc}
+              onNavigate={onNavigate}
+              onContextMenu={(e) => handleCustomLocationContextMenu(e, index)}
+            />
           ))}
         </div>
+      )}
+
+      {/* Recent Locations: collapsible, default closed */}
+      {recentPaths.length > 0 && (
+        <>
+          <div className="border-b border-gray-200 dark:border-gray-700 my-1 mx-2" />
+          <div className="flex items-center justify-between mx-1 pr-2">
+            <button
+              aria-expanded={showRecent}
+              className={`flex-1 flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer rounded-lg text-left transition-colors duration-100 ${
+                showRecent
+                  ? 'text-blue-600 dark:text-blue-400'
+                  : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-300 dark:hover:bg-gray-700/50'
+              }`}
+              onClick={() => setShowRecent((prev) => !prev)}
+            >
+              {showRecent ? (
+                <ChevronDown size={14} className="flex-shrink-0" />
+              ) : (
+                <ChevronRight size={14} className="flex-shrink-0" />
+              )}
+              <Clock size={14} className="flex-shrink-0 opacity-70" />
+              <span className="truncate">{t('sidebar.recent')}</span>
+            </button>
+            {showRecent && onClearRecent && (
+              <button
+                onClick={onClearRecent}
+                className="text-[10px] text-gray-500 hover:text-red-500 dark:hover:text-red-400 transition-colors p-1"
+                title={t('sidebar.clear_recent')}
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
+          {showRecent && recentPaths.slice(0, 10).map((recentPath) => {
+            const folderName = recentPath.split('/').filter(Boolean).pop() || recentPath;
+            const isActive = currentPath === recentPath;
+            return (
+              <div
+                key={recentPath}
+                className="group relative flex items-center"
+              >
+                <button
+                  onClick={() => onNavigate(recentPath)}
+                  className={`w-full flex items-center gap-2 px-2 py-1 rounded text-sm transition-colors ${
+                    isActive
+                      ? 'bg-blue-100 text-blue-600 dark:bg-blue-600/20 dark:text-blue-400'
+                      : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700/50'
+                  }`}
+                  title={recentPath}
+                >
+                  <Clock size={14} className="text-gray-500 shrink-0" />
+                  <span className="truncate pr-4">{folderName}</span>
+                </button>
+                {onRemoveRecent && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onRemoveRecent(recentPath); }}
+                    className="absolute right-4 p-0.5 rounded opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:text-red-400 dark:hover:bg-gray-700/50 transition-all"
+                    title={t('common.delete')}
+                  >
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </>
+      )}
+
+      {/* Tags: collapsible, default closed */}
+      {labelCounts.length > 0 && onTagFilter && (
+        <>
+          <div className="border-b border-gray-200 dark:border-gray-700 my-1 mx-2" />
+          <div className="py-1">
+            <button
+              aria-expanded={showTags}
+              className={`flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer rounded-lg mx-1 w-[calc(100%-8px)] text-left transition-colors duration-100 ${
+                showTags
+                  ? 'text-blue-600 dark:text-blue-400'
+                  : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-300 dark:hover:bg-gray-700/50'
+              }`}
+              onClick={() => setShowTags((prev) => !prev)}
+            >
+              {showTags ? (
+                <ChevronDown size={14} className="flex-shrink-0" />
+              ) : (
+                <ChevronRight size={14} className="flex-shrink-0" />
+              )}
+              <span className="truncate">{t('tags.tags')}</span>
+            </button>
+            {showTags && labelCounts.map(lc => (
+              <button
+                key={lc.id}
+                className={`flex items-center gap-2 px-3 py-1 text-sm cursor-pointer rounded-lg mx-1 w-[calc(100%-8px)] text-left transition-colors duration-100 ${
+                  activeTagFilter === lc.id
+                    ? 'bg-blue-100 text-blue-600 dark:bg-blue-600/20 dark:text-blue-400'
+                    : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700/50'
+                }`}
+                onClick={() => onTagFilter(activeTagFilter === lc.id ? null : lc.id)}
+                title={`${lc.name} (${lc.count})`}
+              >
+                <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: lc.color }} />
+                <span className="truncate flex-1">{lc.name}</span>
+                <span className="text-[10px] text-gray-400 dark:text-gray-500 shrink-0">{lc.count}</span>
+              </button>
+            ))}
+          </div>
+        </>
       )}
     </>
   );
