@@ -1021,7 +1021,8 @@
             "autoStartTransfersHelp": "Միացված վիճակում քաշել-և-թողնել և սեղմել փոխանցումները սկսվում են անմիջապես։ Անջատված վիճակում դրանք պահվում են Transfer Queue-ում որպես staged, որպեսզի կարողանաք էտել թղթապանակների ծառերը և վերադասավորել նախքան Start սեղմելը։",
             "importKeystorePrompt": "Մուտքագրեք գաղտնաբառը, որով գաղտնագրվել է այս keystore-ի պահուստավորումը։",
             "importServersPrompt": "Մուտքագրեք գաղտնաբառը, որով գաղտնագրվել է այս server-profiles-ի պահուստավորումը։",
-            "exportFormatComparisonHint": "[NEEDS TRANSLATION] The .aeroftp file carries everything a profile needs to connect on another device. For a full vault backup including AI provider keys and global settings use the .aeroftp-keystore export instead."
+            "exportFormatComparisonHint": ".aeroftp ֆայլը պարունակում է այն ամենը, ինչ պրոֆիլին անհրաժեշտ է մեկ այլ սարքում միանալու համար։ AI մատակարարների բանալիների և գլոբալ կարգավորումների հետ ամբողջական պահոցի կրկնօրինակման համար օգտագործեք .aeroftp-keystore արտահանումը։",
+            "keystoreRestartRequired": "Վերագործարկեք AeroFTP-ը՝ վերականգնված տվյալների բազաները և հավելումները կիրառելու համար։"
         },
         "devtools": {
             "title": "AeroTools",

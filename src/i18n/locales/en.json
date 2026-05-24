@@ -2844,6 +2844,7 @@
             "keystoreEntries": "{count} entries",
             "keystoreExported": "Keystore exported successfully ({count} entries)",
             "keystoreImported": "Imported {imported} entries ({skipped} skipped)",
+            "keystoreRestartRequired": "Restart AeroFTP to apply restored databases and plugins.",
             "keystorePassword": "Backup password (min 8 characters)",
             "keystoreExportModeTitle": "What to include in the backup",
             "keystoreExportModeFull": "Full backup (recommended)",

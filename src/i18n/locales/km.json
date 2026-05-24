@@ -1021,7 +1021,8 @@
             "autoStartTransfersHelp": "ពេលបើក ការផ្ទេរតាមរយៈ drag-and-drop និងចុចចាប់ផ្ដើមភ្លាមៗ។ ពេលបិទ វាត្រូវបានចតក្នុង Transfer Queue ជា staged ដើម្បីឱ្យអ្នកអាចកាត់ដើមថត និងរៀបចំឡើងវិញមុនពេលចុច Start។",
             "importKeystorePrompt": "បញ្ចូលពាក្យសម្ងាត់ដែលប្រើដើម្បីអ៊ិនគ្រីបការបម្រុងទុក keystore នេះ។",
             "importServersPrompt": "បញ្ចូលពាក្យសម្ងាត់ដែលប្រើដើម្បីអ៊ិនគ្រីបការបម្រុងទុក server-profiles នេះ។",
-            "exportFormatComparisonHint": "[NEEDS TRANSLATION] The .aeroftp file carries everything a profile needs to connect on another device. For a full vault backup including AI provider keys and global settings use the .aeroftp-keystore export instead."
+            "exportFormatComparisonHint": "ឯកសារ .aeroftp មានអ្វីៗគ្រប់យ៉ាងដែលប្រវត្តិរូបត្រូវការដើម្បីភ្ជាប់នៅលើឧបករណ៍ផ្សេងទៀត។ សម្រាប់ការបម្រុងទុកធុងសុវត្ថិភាពពេញលេញ រួមទាំងសោអ្នកផ្ដល់សេវាកម្ម AI និងការកំណត់សកល សូមប្រើការនាំចេញ .aeroftp-keystore ជំនួសវិញ។",
+            "keystoreRestartRequired": "ចាប់ផ្ដើម AeroFTP ឡើងវិញ ដើម្បីអនុវត្តមូលដ្ឋានទិន្នន័យ និងកម្មវិធីបន្ថែមដែលបានស្ដារ។"
         },
         "devtools": {
             "title": "AeroTools",

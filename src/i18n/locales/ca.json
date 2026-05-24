@@ -1021,7 +1021,8 @@
             "autoStartTransfersHelp": "Si esta activat, les transferencies per arrossegar i deixar anar i per clic s'inicien immediatament. Si esta desactivat, queden aparcades a la Transfer Queue com a staged perque puguis podar arbres de carpetes i reordenar abans de prémer Start.",
             "importKeystorePrompt": "Introdueix la contrasenya utilitzada per xifrar aquesta copia de seguretat del keystore.",
             "importServersPrompt": "Introdueix la contrasenya utilitzada per xifrar aquesta copia de seguretat de server-profiles.",
-            "exportFormatComparisonHint": "[NEEDS TRANSLATION] The .aeroftp file carries everything a profile needs to connect on another device. For a full vault backup including AI provider keys and global settings use the .aeroftp-keystore export instead."
+            "exportFormatComparisonHint": "El fitxer .aeroftp conté tot el que un perfil necessita per connectar-se a un altre dispositiu. Per a una còpia de seguretat completa del magatzem amb claus de proveïdors d'IA i paràmetres globals, utilitza en canvi l'exportació .aeroftp-keystore.",
+            "keystoreRestartRequired": "Reinicia AeroFTP per aplicar les bases de dades i els connectors restaurats."
         },
         "devtools": {
             "title": "AeroTools",

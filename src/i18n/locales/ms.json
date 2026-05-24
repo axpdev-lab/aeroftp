@@ -1021,7 +1021,8 @@
             "autoStartTransfersHelp": "Apabila aktif, pemindahan drag-and-drop dan klik dimulakan serta-merta. Apabila tidak aktif, ia diletakkan dalam Transfer Queue sebagai staged supaya kamu boleh mencantas pokok folder dan menyusun semula sebelum menekan Start.",
             "importKeystorePrompt": "Masukkan kata laluan yang digunakan untuk menyulitkan sandaran keystore ini.",
             "importServersPrompt": "Masukkan kata laluan yang digunakan untuk menyulitkan sandaran server-profiles ini.",
-            "exportFormatComparisonHint": "[NEEDS TRANSLATION] The .aeroftp file carries everything a profile needs to connect on another device. For a full vault backup including AI provider keys and global settings use the .aeroftp-keystore export instead."
+            "exportFormatComparisonHint": "Fail .aeroftp mengandungi semua yang diperlukan profil untuk menyambung pada peranti lain. Untuk sandaran peti besi yang lengkap termasuk kunci pembekal AI dan tetapan global, gunakan eksport .aeroftp-keystore sebagai gantinya.",
+            "keystoreRestartRequired": "Mulakan semula AeroFTP untuk menggunakan pangkalan data dan pemalam yang dipulihkan."
         },
         "devtools": {
             "title": "AeroTools",

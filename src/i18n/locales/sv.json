@@ -1021,7 +1021,8 @@
             "autoStartTransfersHelp": "Nar pa startas dra-och-slapp- och klick-overforingar omedelbart. Nar av parkeras de i Transfer Queue som staged sa att du kan beskara mapptrad och omordna innan du trycker Start.",
             "importKeystorePrompt": "Ange losenordet som anvandes for att kryptera denna keystore-sakerhetskopia.",
             "importServersPrompt": "Ange losenordet som anvandes for att kryptera denna server-profiles-sakerhetskopia.",
-            "exportFormatComparisonHint": "[NEEDS TRANSLATION] The .aeroftp file carries everything a profile needs to connect on another device. For a full vault backup including AI provider keys and global settings use the .aeroftp-keystore export instead."
+            "exportFormatComparisonHint": ".aeroftp-filen innehåller allt en profil behöver för att ansluta på en annan enhet. För en fullständig säkerhetskopia av valvet inklusive AI-leverantörsnycklar och globala inställningar, använd istället .aeroftp-keystore-exporten.",
+            "keystoreRestartRequired": "Starta om AeroFTP för att tillämpa de återställda databaserna och tilläggen."
         },
         "devtools": {
             "title": "AeroTools",

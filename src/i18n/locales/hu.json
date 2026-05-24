@@ -1021,7 +1021,8 @@
             "autoStartTransfersHelp": "Bekapcsolva a fogd-es-vidd es kattintasos atvitelek azonnal elindulnak. Kikapcsolva a Transfer Queue-ban staged allapotban parkolnak, igy a Start gomb megnyomasa elott megrostalhatod a mappafakat es atrendezheted oket.",
             "importKeystorePrompt": "Adja meg a keystore biztonsági mentés titkosításához használt jelszót.",
             "importServersPrompt": "Adja meg a server-profiles biztonsági mentés titkosításához használt jelszót.",
-            "exportFormatComparisonHint": "[NEEDS TRANSLATION] The .aeroftp file carries everything a profile needs to connect on another device. For a full vault backup including AI provider keys and global settings use the .aeroftp-keystore export instead."
+            "exportFormatComparisonHint": "A .aeroftp fájl mindent tartalmaz, amire egy profilnak szüksége van egy másik eszközhöz való csatlakozáshoz. A teljes széfmentéshez, beleértve az AI-szolgáltató kulcsokat és a globális beállításokat, használja inkább az .aeroftp-keystore exportot.",
+            "keystoreRestartRequired": "Indítsa újra az AeroFTP-t a visszaállított adatbázisok és bővítmények alkalmazásához."
         },
         "devtools": {
             "title": "AeroTools",

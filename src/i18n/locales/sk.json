@@ -1021,7 +1021,8 @@
             "autoStartTransfersHelp": "Ked je zapnute, prenosy cez drag-and-drop a klik sa spustia okamzite. Ked je vypnute, parkuju sa v Transfer Queue ako staged, aby si mohol prerediť stromy priecinkov a preusporiadat pred stlacenim Start.",
             "importKeystorePrompt": "Zadaj heslo použité na šifrovanie tejto zálohy keystore.",
             "importServersPrompt": "Zadaj heslo použité na šifrovanie tejto zálohy server-profiles.",
-            "exportFormatComparisonHint": "[NEEDS TRANSLATION] The .aeroftp file carries everything a profile needs to connect on another device. For a full vault backup including AI provider keys and global settings use the .aeroftp-keystore export instead."
+            "exportFormatComparisonHint": "Súbor .aeroftp obsahuje všetko, čo profil potrebuje na pripojenie na inom zariadení. Pre úplnú zálohu trezora vrátane kľúčov poskytovateľov AI a globálnych nastavení použite namiesto toho export .aeroftp-keystore.",
+            "keystoreRestartRequired": "Reštartujte AeroFTP, aby sa použili obnovené databázy a doplnky."
         },
         "devtools": {
             "title": "AeroTools",

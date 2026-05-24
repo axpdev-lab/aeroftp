@@ -1021,7 +1021,8 @@
             "autoStartTransfersHelp": "Wenn aktiv, starten Drag-and-Drop- und Klick-Ubertragungen sofort. Wenn deaktiviert, werden sie in der Transfer Queue als Staged geparkt, damit du Ordnerbaume bereinigen und neu sortieren kannst, bevor du Start drueckst.",
             "importKeystorePrompt": "Gib das Passwort ein, mit dem dieses Keystore-Backup verschlusselt wurde.",
             "importServersPrompt": "Gib das Passwort ein, mit dem dieses server-profiles-Backup verschlusselt wurde.",
-            "exportFormatComparisonHint": "[NEEDS TRANSLATION] The .aeroftp file carries everything a profile needs to connect on another device. For a full vault backup including AI provider keys and global settings use the .aeroftp-keystore export instead."
+            "exportFormatComparisonHint": "Die .aeroftp-Datei enthält alles, was ein Profil benötigt, um sich auf einem anderen Gerät zu verbinden. Für eine vollständige Tresor-Sicherung einschließlich KI-Anbieterschlüssel und globaler Einstellungen verwenden Sie stattdessen den .aeroftp-keystore-Export.",
+            "keystoreRestartRequired": "AeroFTP neu starten, um wiederhergestellte Datenbanken und Plugins zu übernehmen."
         },
         "devtools": {
             "title": "AeroTools",
