@@ -264,7 +264,15 @@
             "manualTotalStoragePlaceholder": "npr. 10 GB, 500 GB, 2 TB",
             "manualTotalStorageHint": "Neobavezno. Ograničenje plana ili računa za pozadinske sustave bez quota API-ja (FTP, S3, WebDAV) ili one koji prijavljuju samo iskorišteni prostor (Backblaze B2). Vlastiti ukupni iznos pružatelja uvijek ima prednost.",
             "autoScanUsedOnConnect": "Izračunaj iskorištenu pohranu pri povezivanju",
-            "autoScanUsedOnConnectHint": "Samo za pozadinske sustave bez API-ja za iskorišteni prostor (FTP, S3, WebDAV). Prema zadanim postavkama isključeno: veliko stablo (npr. web projekt) prolazi se rekurzivno, što može biti sporo. U protivnom koristite radnju StatusBar po potrebi."
+            "autoScanUsedOnConnectHint": "Samo za pozadinske sustave bez API-ja za iskorišteni prostor (FTP, S3, WebDAV). Prema zadanim postavkama isključeno: veliko stablo (npr. web projekt) prolazi se rekurzivno, što može biti sporo. U protivnom koristite radnju StatusBar po potrebi.",
+            "saveAsNewProfile": "Spremi kao novi profil",
+            "saveAsNewProfileTitle": "Spremi trenutni obrazac kao novi profil u ovom načinu. Izvorni profil ostaje sačuvan.",
+            "convertToMode": "Pretvori u {{mode}}",
+            "convertReplacesOriginal": "Zamjenjuje izvorni profil",
+            "profileConverted": "Profil pretvoren",
+            "profileDuplicated": "Profil dupliciran",
+            "convertUndone": "Profil vraćen",
+            "undo": "Poništi"
         },
         "browser": {
             "remote": "Udaljeno",

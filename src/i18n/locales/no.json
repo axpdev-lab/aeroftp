@@ -264,7 +264,15 @@
             "manualTotalStoragePlaceholder": "f.eks. 10 GB, 500 GB, 2 TB",
             "manualTotalStorageHint": "Valgfritt. Abonnements- eller kontogrense for bakgrunnssystemer uten kvote-API (FTP, S3, WebDAV) eller som bare rapporterer brukt plass (Backblaze B2). Leverandørens eget totaltall har alltid forrang.",
             "autoScanUsedOnConnect": "Beregn brukt lagring ved tilkobling",
-            "autoScanUsedOnConnectHint": "Kun for bakgrunnssystemer uten API for brukt plass (FTP, S3, WebDAV). Av som standard: et stort tre (f.eks. et webprosjekt) gjennomgås rekursivt, noe som kan være tregt. Ellers bruk StatusBar-handlingen ved behov."
+            "autoScanUsedOnConnectHint": "Kun for bakgrunnssystemer uten API for brukt plass (FTP, S3, WebDAV). Av som standard: et stort tre (f.eks. et webprosjekt) gjennomgås rekursivt, noe som kan være tregt. Ellers bruk StatusBar-handlingen ved behov.",
+            "saveAsNewProfile": "Lagre som ny profil",
+            "saveAsNewProfileTitle": "Lagre gjeldende skjema som en ny profil i denne modusen. Den opprinnelige profilen beholdes.",
+            "convertToMode": "Konverter til {{mode}}",
+            "convertReplacesOriginal": "Erstatter den opprinnelige profilen",
+            "profileConverted": "Profil konvertert",
+            "profileDuplicated": "Profil duplisert",
+            "convertUndone": "Profil gjenopprettet",
+            "undo": "Angre"
         },
         "browser": {
             "remote": "Ekstern",

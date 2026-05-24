@@ -264,7 +264,15 @@
             "manualTotalStoragePlaceholder": "ex.: 10 GB, 500 GB, 2 TB",
             "manualTotalStorageHint": "Opțional. Limita planului/contului pentru backend-uri fără API de cotă (FTP, S3, WebDAV) sau care raportează doar spațiul folosit (Backblaze B2). Totalul raportat de furnizor are întotdeauna prioritate.",
             "autoScanUsedOnConnect": "Calculează spațiul folosit la conectare",
-            "autoScanUsedOnConnectHint": "Doar pentru backend-uri fără API de spațiu folosit (FTP, S3, WebDAV). Dezactivat implicit: un arbore mare (ex.: un proiect web) este parcurs recursiv, ceea ce poate fi lent. În caz contrar, folosește acțiunea din StatusBar la cerere."
+            "autoScanUsedOnConnectHint": "Doar pentru backend-uri fără API de spațiu folosit (FTP, S3, WebDAV). Dezactivat implicit: un arbore mare (ex.: un proiect web) este parcurs recursiv, ceea ce poate fi lent. În caz contrar, folosește acțiunea din StatusBar la cerere.",
+            "saveAsNewProfile": "Salvează ca profil nou",
+            "saveAsNewProfileTitle": "Salvați formularul curent ca un profil nou în acest mod. Profilul original este păstrat.",
+            "convertToMode": "Convertește la {{mode}}",
+            "convertReplacesOriginal": "Înlocuiește profilul original",
+            "profileConverted": "Profil convertit",
+            "profileDuplicated": "Profil duplicat",
+            "convertUndone": "Profil restaurat",
+            "undo": "Anulează"
         },
         "browser": {
             "remote": "La distanță",

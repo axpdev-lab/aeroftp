@@ -264,7 +264,15 @@
             "manualTotalStoragePlaceholder": "例如 10 GB、500 GB、2 TB",
             "manualTotalStorageHint": "可选。适用于没有配额 API 的后端（FTP、S3、WebDAV），或仅报告已用空间的后端（Backblaze B2）的套餐或账户上限。提供商自身的总量始终优先。",
             "autoScanUsedOnConnect": "连接时计算已用存储",
-            "autoScanUsedOnConnectHint": "仅适用于没有已用空间 API 的后端（FTP、S3、WebDAV）。默认关闭：大型目录树（例如一个网站项目）会被递归遍历，可能较慢。否则请按需使用 StatusBar 中的操作。"
+            "autoScanUsedOnConnectHint": "仅适用于没有已用空间 API 的后端（FTP、S3、WebDAV）。默认关闭：大型目录树（例如一个网站项目）会被递归遍历，可能较慢。否则请按需使用 StatusBar 中的操作。",
+            "saveAsNewProfile": "另存为新配置",
+            "saveAsNewProfileTitle": "将当前表单作为此模式下的新配置保存。原始配置将被保留。",
+            "convertToMode": "转换为 {{mode}}",
+            "convertReplacesOriginal": "替换原始配置",
+            "profileConverted": "配置已转换",
+            "profileDuplicated": "配置已复制",
+            "convertUndone": "配置已恢复",
+            "undo": "撤销"
         },
         "browser": {
             "remote": "远程",

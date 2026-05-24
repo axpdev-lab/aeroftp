@@ -264,7 +264,15 @@
             "manualTotalStoragePlaceholder": "napr. 10 GB, 500 GB, 2 TB",
             "manualTotalStorageHint": "Voliteľné. Limit plánu alebo účtu pre backendy bez API kvóty (FTP, S3, WebDAV) alebo ktoré hlásia len využité miesto (Backblaze B2). Celkový objem od poskytovateľa má vždy prednosť.",
             "autoScanUsedOnConnect": "Vypočítať využité úložisko pri pripojení",
-            "autoScanUsedOnConnectHint": "Len pre backendy bez API využitého miesta (FTP, S3, WebDAV). Predvolene vypnuté: veľký strom (napr. webový projekt) sa prechádza rekurzívne, čo môže byť pomalé. Inak použite akciu v StatusBar na požiadanie."
+            "autoScanUsedOnConnectHint": "Len pre backendy bez API využitého miesta (FTP, S3, WebDAV). Predvolene vypnuté: veľký strom (napr. webový projekt) sa prechádza rekurzívne, čo môže byť pomalé. Inak použite akciu v StatusBar na požiadanie.",
+            "saveAsNewProfile": "Uložiť ako nový profil",
+            "saveAsNewProfileTitle": "Uložte aktuálny formulár ako nový profil v tomto režime. Pôvodný profil zostáva zachovaný.",
+            "convertToMode": "Previesť na {{mode}}",
+            "convertReplacesOriginal": "Nahradí pôvodný profil",
+            "profileConverted": "Profil prevedený",
+            "profileDuplicated": "Profil duplikovaný",
+            "convertUndone": "Profil obnovený",
+            "undo": "Späť"
         },
         "browser": {
             "remote": "Vzdialený",

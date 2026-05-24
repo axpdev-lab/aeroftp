@@ -264,7 +264,15 @@
             "manualTotalStoragePlaceholder": "esim. 10 GB, 500 GB, 2 TB",
             "manualTotalStorageHint": "Valinnainen. Paketti- tai tilirajan arvo taustajärjestelmille, joilla ei ole quota API:a (FTP, S3, WebDAV) tai jotka raportoivat vain käytetyn tilan (Backblaze B2). Palveluntarjoajan oma kokonaisarvo on aina ensisijainen.",
             "autoScanUsedOnConnect": "Laske käytetty tallennustila yhdistettäessä",
-            "autoScanUsedOnConnectHint": "Vain taustajärjestelmille, joilla ei ole käytetyn tilan API:a (FTP, S3, WebDAV). Oletuksena pois käytöstä: suuri puu (esim. verkkoprojekti) käydään läpi rekursiivisesti, mikä voi olla hidasta. Käytä muutoin StatusBar-toimintoa tarpeen mukaan."
+            "autoScanUsedOnConnectHint": "Vain taustajärjestelmille, joilla ei ole käytetyn tilan API:a (FTP, S3, WebDAV). Oletuksena pois käytöstä: suuri puu (esim. verkkoprojekti) käydään läpi rekursiivisesti, mikä voi olla hidasta. Käytä muutoin StatusBar-toimintoa tarpeen mukaan.",
+            "saveAsNewProfile": "Tallenna uudeksi profiiliksi",
+            "saveAsNewProfileTitle": "Tallenna nykyinen lomake uudeksi profiiliksi tässä tilassa. Alkuperäinen profiili säilyy.",
+            "convertToMode": "Muunna {{mode}}-tilaan",
+            "convertReplacesOriginal": "Korvaa alkuperäisen profiilin",
+            "profileConverted": "Profiili muunnettu",
+            "profileDuplicated": "Profiili monistettu",
+            "convertUndone": "Profiili palautettu",
+            "undo": "Kumoa"
         },
         "browser": {
             "remote": "Etä",

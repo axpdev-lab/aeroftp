@@ -264,7 +264,15 @@
             "manualTotalStoragePlaceholder": "pl. 10 GB, 500 GB, 2 TB",
             "manualTotalStorageHint": "Választható. Csomag- vagy fiókkorlát olyan háttérrendszerekhez, amelyeknek nincs kvóta API-ja (FTP, S3, WebDAV), vagy csak a használt helyet jelentik (Backblaze B2). A szolgáltató saját összértéke mindig elsőbbséget élvez.",
             "autoScanUsedOnConnect": "Használt tárhely kiszámítása csatlakozáskor",
-            "autoScanUsedOnConnectHint": "Csak olyan háttérrendszerekhez, amelyeknek nincs használthely-API-juk (FTP, S3, WebDAV). Alapértelmezés szerint kikapcsolva: egy nagy fát (pl. egy webprojektet) rekurzívan bejár, ami lassú lehet. Egyébként használd a StatusBar műveletét igény szerint."
+            "autoScanUsedOnConnectHint": "Csak olyan háttérrendszerekhez, amelyeknek nincs használthely-API-juk (FTP, S3, WebDAV). Alapértelmezés szerint kikapcsolva: egy nagy fát (pl. egy webprojektet) rekurzívan bejár, ami lassú lehet. Egyébként használd a StatusBar műveletét igény szerint.",
+            "saveAsNewProfile": "Mentés új profilként",
+            "saveAsNewProfileTitle": "Mentse el az aktuális űrlapot új profilként ebben a módban. Az eredeti profil megmarad.",
+            "convertToMode": "Konvertálás {{mode}} módra",
+            "convertReplacesOriginal": "Lecseréli az eredeti profilt",
+            "profileConverted": "Profil konvertálva",
+            "profileDuplicated": "Profil megkettőzve",
+            "convertUndone": "Profil visszaállítva",
+            "undo": "Visszavonás"
         },
         "browser": {
             "remote": "Távoli",

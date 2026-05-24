@@ -6,12 +6,18 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info';
 
+export interface ToastAction {
+    label: string;
+    onClick: () => void;
+}
+
 export interface ToastProps {
     id: string;
     type: ToastType;
     title: string;
     message?: string;
     duration?: number;
+    action?: ToastAction;
     onClose: (id: string) => void;
 }
 
@@ -51,6 +57,7 @@ export const Toast: React.FC<ToastProps> = ({
     title,
     message,
     duration = 2000,
+    action,
     onClose,
 }: ToastProps) => {
     const [isExiting, setIsExiting] = useState(false);
@@ -91,6 +98,17 @@ export const Toast: React.FC<ToastProps> = ({
                     <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{message}</p>
                 )}
             </div>
+            {action && (
+                <button
+                    onClick={() => {
+                        action.onClick();
+                        handleClose();
+                    }}
+                    className="px-2.5 py-1 text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded transition-colors shrink-0"
+                >
+                    {action.label}
+                </button>
+            )}
             <button
                 onClick={handleClose}
                 className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
@@ -110,6 +128,7 @@ export interface ToastItem {
     title: string;
     message?: string;
     duration?: number;
+    action?: ToastAction;
 }
 
 interface ToastContainerProps {
@@ -143,6 +162,21 @@ export const useToast = () => {
         return id;
     }, []);
 
+    const addToastWithAction = useCallback((
+        type: ToastType,
+        title: string,
+        message: string | undefined,
+        action: ToastAction,
+        duration: number = 10000,
+    ): string => {
+        const id = `toast-${++toastId}`;
+        setToasts((prev) => {
+            const newToasts = [...prev, { id, type, title, message, duration, action }];
+            return newToasts.slice(-3);
+        });
+        return id;
+    }, []);
+
     const removeToast = useCallback((id: string): void => {
         setToasts((prev) => prev.filter((t) => t.id !== id));
     }, []);
@@ -155,6 +189,7 @@ export const useToast = () => {
     return {
         toasts,
         addToast,
+        addToastWithAction,
         removeToast,
         success,
         error,

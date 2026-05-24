@@ -264,7 +264,15 @@
             "manualTotalStoragePlaceholder": "adib. 10 GB, 500 GB, 2 TB",
             "manualTotalStorageHint": "Aukerakoa. Plan edo kontuaren muga quota API-rik ez duten backend-entzat (FTP, S3, WebDAV) edo erabilitako espazioa soilik jakinarazten dutenentzat (Backblaze B2). Hornitzailearen guztizkoak beti du lehentasuna.",
             "autoScanUsedOnConnect": "Kalkulatu erabilitako biltegiratzea konektatzean",
-            "autoScanUsedOnConnectHint": "Erabilitako espazioaren API-rik ez duten backend-entzat soilik (FTP, S3, WebDAV). Lehenetsita desaktibatuta: zuhaitz handi bat (adib. web proiektu bat) modu errekurtsiboan zeharkatzen da, eta hori motela izan daiteke. Bestela, erabili StatusBar ekintza behar denean."
+            "autoScanUsedOnConnectHint": "Erabilitako espazioaren API-rik ez duten backend-entzat soilik (FTP, S3, WebDAV). Lehenetsita desaktibatuta: zuhaitz handi bat (adib. web proiektu bat) modu errekurtsiboan zeharkatzen da, eta hori motela izan daiteke. Bestela, erabili StatusBar ekintza behar denean.",
+            "saveAsNewProfile": "Gorde profil berri gisa",
+            "saveAsNewProfileTitle": "Gorde uneko inprimakia profil berri gisa modu honetan. Jatorrizko profila gordeko da.",
+            "convertToMode": "Bihurtu {{mode}}-ra",
+            "convertReplacesOriginal": "Jatorrizko profila ordezten du",
+            "profileConverted": "Profila bihurtuta",
+            "profileDuplicated": "Profila bikoiztuta",
+            "convertUndone": "Profila berreskuratuta",
+            "undo": "Desegin"
         },
         "browser": {
             "remote": "Urrunekoa",
