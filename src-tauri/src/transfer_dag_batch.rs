@@ -210,6 +210,20 @@ where
                     Ok(lease) => lease,
                     Err(error) => {
                         tracing::warn!("Transfer session acquisition failed: {}", error);
+                        // Issue #234: a transient session-pool acquire failure
+                        // must be recorded in the batch snapshot too, or the
+                        // GUI "X of Y completed" counters silently miss the
+                        // failed entry. Mirror the success/skip/fail branches
+                        // below: bump `failed`, emit progress, notify observer.
+                        let snapshot_clone = {
+                            let mut snapshot = progress.lock().await;
+                            snapshot.failed += 1;
+                            snapshot.clone()
+                        };
+                        sink.emit_batch_progress(&snapshot_clone);
+                        if let Some(observer) = progress_observer {
+                            observer(snapshot_clone);
+                        }
                         return NodeOutcome::Completed;
                     }
                 };
@@ -564,5 +578,98 @@ mod tests {
         .await;
 
         assert_eq!(observed.load(AtomicOrdering::SeqCst), 2);
+    }
+
+    // ============ Issue #234: session_pool.acquire() failure accounting ============
+
+    use crate::transfer_dag::session_pool::{
+        SessionLeaseKind, SessionPoolCapacity, SessionPoolError, TransferSessionLease,
+        TransferSessionPool,
+    };
+
+    /// A `TransferSessionPool` whose `acquire()` always fails with a
+    /// `Closed` error. Stand-in for the production failure mode where a
+    /// semaphore is closed mid-batch.
+    struct AlwaysFailingPool;
+
+    #[async_trait]
+    impl TransferSessionPool for AlwaysFailingPool {
+        async fn acquire(&self) -> Result<TransferSessionLease, SessionPoolError> {
+            Err(SessionPoolError::Closed {
+                kind: SessionLeaseKind::HttpClone,
+                label: "always-failing".to_string(),
+            })
+        }
+        fn label(&self) -> &str {
+            "always-failing"
+        }
+        fn kind(&self) -> SessionLeaseKind {
+            SessionLeaseKind::HttpClone
+        }
+        fn capacity(&self) -> SessionPoolCapacity {
+            SessionPoolCapacity {
+                kind: SessionLeaseKind::HttpClone,
+                label: "always-failing".to_string(),
+                max_leases: 1,
+            }
+        }
+    }
+
+    /// MockExecutor variant that hands out a pool whose acquire() always
+    /// fails. The transfer node never gets to call `execute_with_session`.
+    struct FailingPoolExecutor;
+
+    #[async_trait]
+    impl TransferExecutor for FailingPoolExecutor {
+        async fn execute(&self, _entry: TransferEntry) -> TransferOutcome {
+            unreachable!("execute() is unreachable when session_pool.acquire() always fails")
+        }
+        fn session_pool(&self, _max_concurrent: usize) -> TransferSessionPoolHandle {
+            TransferSessionPoolHandle::new(AlwaysFailingPool)
+        }
+    }
+
+    #[tokio::test]
+    async fn batch_dag_session_pool_acquire_failure_is_counted_in_snapshot() {
+        // Issue #234: when session_pool.acquire() returns Err for every
+        // entry, the batch result must report each entry as `failed` (not
+        // silently zero), and the sink must see one progress emission per
+        // entry to keep "X of Y completed" honest.
+        let executor = Arc::new(FailingPoolExecutor);
+        let sink = Arc::new(CountingSink::default());
+        let observed = Arc::new(AtomicUsize::new(0));
+        let progress_observer: ProgressObserver = {
+            let observed = Arc::clone(&observed);
+            Arc::new(move |_snapshot| {
+                observed.fetch_add(1, AtomicOrdering::SeqCst);
+            })
+        };
+
+        let result = execute_batch_dag(
+            Arc::clone(&sink) as Arc<dyn TransferEventSink>,
+            batch(vec![entry("a", 1), entry("b", 1), entry("c", 1)], 2),
+            executor,
+            Arc::new(AtomicBool::new(false)),
+            Some(progress_observer),
+        )
+        .await;
+
+        assert_eq!(result.total, 3);
+        assert_eq!(
+            result.failed, 3,
+            "each acquire failure must be recorded as a failed entry"
+        );
+        assert_eq!(result.completed, 0);
+        assert_eq!(result.skipped, 0);
+        assert_eq!(
+            sink.progress.load(AtomicOrdering::SeqCst),
+            3,
+            "every entry must emit a progress event, even on acquire failure"
+        );
+        assert_eq!(
+            observed.load(AtomicOrdering::SeqCst),
+            3,
+            "progress observer must be invoked on acquire failure too"
+        );
     }
 }
