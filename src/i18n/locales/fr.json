@@ -1019,8 +1019,8 @@
             "downloadSegmentsDesc": "Divise chaque téléchargement en plages d'octets parallèles. Auto conserve le comportement actuel à flux unique. Efficace avec les fournisseurs qui prennent en charge les requêtes range (SFTP, S3, HTTP) pour des fichiers suffisamment volumineux pour en tirer parti.",
             "autoStartTransfers": "Demarrage automatique des transferts",
             "autoStartTransfersHelp": "Active, les transferts par glisser-deposer ou clic demarrent immediatement. Desactive, ils sont parques dans la Transfer Queue comme staged, ce qui permet d'elaguer les arborescences de dossiers et de reordonner avant d'appuyer sur Start.",
-            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
-            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
+            "importKeystorePrompt": "Saisis le mot de passe utilisé pour chiffrer cette sauvegarde du keystore.",
+            "importServersPrompt": "Saisis le mot de passe utilisé pour chiffrer cette sauvegarde des server-profiles."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1992,7 +1992,17 @@
             "templateFormatPwsh": "Script PowerShell (.ps1)",
             "templateScriptExportedToast": "Script exporté",
             "templateScriptImportedToast": "Métadonnées du script chargées",
-            "templateScriptInvalidToast": "Le script ne contient pas de métadonnées AeroFTP"
+            "templateScriptInvalidToast": "Le script ne contient pas de métadonnées AeroFTP",
+            "templateFormatAeroftpScript": "Script AeroSync (.aeroftp-script)",
+            "templateFormatAeroftpScriptHint": "(recommandé, round-trip complet)",
+            "aerosyncScriptExportButton": "Exporter le script",
+            "aerosyncScriptExportedToast": "Script AeroSync exporté",
+            "aerosyncScriptImportedToast": "Script AeroSync importé",
+            "aerosyncScriptAlsoWrapper": "Générer aussi le wrapper OS-native (.ps1 / .sh)",
+            "aerosyncScriptFromWrapper": "(depuis le wrapper)",
+            "aerosyncScriptUnmappedFields": "Champs metadata non reconnus",
+            "aerosyncScriptApplyButton": "Enregistrer comme preset",
+            "aerosyncScriptAppliedToast": "Preset importé enregistré. Ouvre AeroSync pour l'utiliser."
         },
         "ui": {
             "syncing": "Synchronisation...",

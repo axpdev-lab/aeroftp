@@ -1019,8 +1019,8 @@
             "downloadSegmentsDesc": "Bagi setiap unduhan menjadi rentang byte paralel. Auto mempertahankan perilaku aliran tunggal saat ini. Efektif pada penyedia yang mendukung permintaan rentang (SFTP, S3, HTTP) untuk berkas yang cukup besar.",
             "autoStartTransfers": "Mulai transfer otomatis",
             "autoStartTransfersHelp": "Saat aktif, transfer drag-and-drop dan klik dimulai segera. Saat nonaktif, transfer diparkir di Transfer Queue sebagai staged sehingga kamu dapat memangkas pohon folder dan menyusun ulang sebelum menekan Start.",
-            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
-            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
+            "importKeystorePrompt": "Masukkan kata sandi yang digunakan untuk mengenkripsi backup keystore ini.",
+            "importServersPrompt": "Masukkan kata sandi yang digunakan untuk mengenkripsi backup server-profiles ini."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1992,7 +1992,17 @@
             "templateFormatPwsh": "Skrip PowerShell (.ps1)",
             "templateScriptExportedToast": "Skrip diekspor",
             "templateScriptImportedToast": "Metadata skrip dimuat",
-            "templateScriptInvalidToast": "Skrip tidak berisi metadata AeroFTP"
+            "templateScriptInvalidToast": "Skrip tidak berisi metadata AeroFTP",
+            "templateFormatAeroftpScript": "Skrip AeroSync (.aeroftp-script)",
+            "templateFormatAeroftpScriptHint": "(direkomendasikan, round-trip penuh)",
+            "aerosyncScriptExportButton": "Ekspor skrip",
+            "aerosyncScriptExportedToast": "Skrip AeroSync diekspor",
+            "aerosyncScriptImportedToast": "Skrip AeroSync diimpor",
+            "aerosyncScriptAlsoWrapper": "Hasilkan juga wrapper OS-native (.ps1 / .sh)",
+            "aerosyncScriptFromWrapper": "(dari wrapper)",
+            "aerosyncScriptUnmappedFields": "Bidang metadata tidak dikenal",
+            "aerosyncScriptApplyButton": "Simpan sebagai preset",
+            "aerosyncScriptAppliedToast": "Preset yang diimpor telah disimpan. Buka AeroSync untuk menggunakannya."
         },
         "ui": {
             "syncing": "Menyinkronkan...",

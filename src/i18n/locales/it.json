@@ -2088,7 +2088,17 @@
             "templateFormatPwsh": "Script PowerShell (.ps1)",
             "templateScriptExportedToast": "Script esportato",
             "templateScriptImportedToast": "Metadati script caricati",
-            "templateScriptInvalidToast": "Lo script non contiene metadati AeroFTP"
+            "templateScriptInvalidToast": "Lo script non contiene metadati AeroFTP",
+            "templateFormatAeroftpScript": "Script AeroSync (.aeroftp-script)",
+            "templateFormatAeroftpScriptHint": "(consigliato, round-trip completo)",
+            "aerosyncScriptExportButton": "Esporta script",
+            "aerosyncScriptExportedToast": "Script AeroSync esportato",
+            "aerosyncScriptImportedToast": "Script AeroSync importato",
+            "aerosyncScriptAlsoWrapper": "Genera anche il wrapper nativo del sistema operativo (.ps1 / .sh)",
+            "aerosyncScriptFromWrapper": "(da wrapper)",
+            "aerosyncScriptUnmappedFields": "Campi metadata non riconosciuti",
+            "aerosyncScriptApplyButton": "Salva come preset",
+            "aerosyncScriptAppliedToast": "Preset importato salvato. Apri AeroSync per usarlo."
         },
         "ui": {
             "syncing": "Sincronizzazione...",

@@ -1019,8 +1019,8 @@
             "downloadSegmentsDesc": "Opdel hver download i parallelle byte-intervaller. Auto bevarer den nuværende adfærd med enkelt stream. Virker hos udbydere, der understøtter range-anmodninger (SFTP, S3, HTTP), for filer der er store nok til at have gavn af det.",
             "autoStartTransfers": "Start overforsler automatisk",
             "autoStartTransfersHelp": "Hvis tilvalgt, starter drag-and-drop- og klik-overforsler med det samme. Hvis fravalgt, parkeres de i Transfer Queue som staged, sa du kan beskaere mappetraeer og omarrangere, for du trykker Start.",
-            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
-            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
+            "importKeystorePrompt": "Indtast adgangskoden, der blev brugt til at kryptere denne keystore-sikkerhedskopi.",
+            "importServersPrompt": "Indtast adgangskoden, der blev brugt til at kryptere denne server-profiles-sikkerhedskopi."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1992,7 +1992,17 @@
             "templateFormatPwsh": "PowerShell-script (.ps1)",
             "templateScriptExportedToast": "Script eksporteret",
             "templateScriptImportedToast": "Scriptmetadata indlæst",
-            "templateScriptInvalidToast": "Scriptet indeholder ikke AeroFTP-metadata"
+            "templateScriptInvalidToast": "Scriptet indeholder ikke AeroFTP-metadata",
+            "templateFormatAeroftpScript": "AeroSync-script (.aeroftp-script)",
+            "templateFormatAeroftpScriptHint": "(anbefalet, fuld round-trip)",
+            "aerosyncScriptExportButton": "Eksporter script",
+            "aerosyncScriptExportedToast": "AeroSync-script eksporteret",
+            "aerosyncScriptImportedToast": "AeroSync-script importeret",
+            "aerosyncScriptAlsoWrapper": "Generer ogsa OS-native wrapper (.ps1 / .sh)",
+            "aerosyncScriptFromWrapper": "(fra wrapper)",
+            "aerosyncScriptUnmappedFields": "Ukendte metadata-felter",
+            "aerosyncScriptApplyButton": "Gem som preset",
+            "aerosyncScriptAppliedToast": "Importeret preset gemt. Abn AeroSync for at bruge det."
         },
         "ui": {
             "syncing": "Synkroniserer...",

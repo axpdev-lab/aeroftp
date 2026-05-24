@@ -1019,8 +1019,8 @@
             "downloadSegmentsDesc": "Pecahkan setiap muat turun kepada julat bait selari. Auto mengekalkan tingkah laku strim tunggal sedia ada. Berkesan pada penyedia yang menyokong permintaan julat (SFTP, S3, HTTP) untuk fail yang cukup besar untuk mendapat manfaat.",
             "autoStartTransfers": "Mulakan pemindahan secara automatik",
             "autoStartTransfersHelp": "Apabila aktif, pemindahan drag-and-drop dan klik dimulakan serta-merta. Apabila tidak aktif, ia diletakkan dalam Transfer Queue sebagai staged supaya kamu boleh mencantas pokok folder dan menyusun semula sebelum menekan Start.",
-            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
-            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
+            "importKeystorePrompt": "Masukkan kata laluan yang digunakan untuk menyulitkan sandaran keystore ini.",
+            "importServersPrompt": "Masukkan kata laluan yang digunakan untuk menyulitkan sandaran server-profiles ini."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1992,7 +1992,17 @@
             "templateFormatPwsh": "Skrip PowerShell (.ps1)",
             "templateScriptExportedToast": "Skrip dieksport",
             "templateScriptImportedToast": "Metadata skrip dimuatkan",
-            "templateScriptInvalidToast": "Skrip tidak mengandungi metadata AeroFTP"
+            "templateScriptInvalidToast": "Skrip tidak mengandungi metadata AeroFTP",
+            "templateFormatAeroftpScript": "Skrip AeroSync (.aeroftp-script)",
+            "templateFormatAeroftpScriptHint": "(disyorkan, round-trip penuh)",
+            "aerosyncScriptExportButton": "Eksport skrip",
+            "aerosyncScriptExportedToast": "Skrip AeroSync dieksport",
+            "aerosyncScriptImportedToast": "Skrip AeroSync diimport",
+            "aerosyncScriptAlsoWrapper": "Jana juga wrapper OS-native (.ps1 / .sh)",
+            "aerosyncScriptFromWrapper": "(daripada wrapper)",
+            "aerosyncScriptUnmappedFields": "Medan metadata tidak dikenali",
+            "aerosyncScriptApplyButton": "Simpan sebagai preset",
+            "aerosyncScriptAppliedToast": "Preset yang diimport telah disimpan. Buka AeroSync untuk menggunakannya."
         },
         "ui": {
             "syncing": "Menyegerak...",

@@ -1019,8 +1019,8 @@
             "downloadSegmentsDesc": "แบ่งแต่ละการดาวน์โหลดเป็นช่วงไบต์แบบขนาน โหมดอัตโนมัติจะคงพฤติกรรมสตรีมเดียวเหมือนปัจจุบัน ใช้ได้ผลกับผู้ให้บริการที่รองรับคำขอช่วง (SFTP, S3, HTTP) สำหรับไฟล์ที่มีขนาดใหญ่พอที่จะได้ประโยชน์",
             "autoStartTransfers": "เริ่มการถ่ายโอนอัตโนมัติ",
             "autoStartTransfersHelp": "เมื่อเปิด การถ่ายโอนแบบลากและวางและคลิกจะเริ่มทันที เมื่อปิด จะถูกพักไว้ใน Transfer Queue เป็น staged เพื่อให้คุณตัดต้นโฟลเดอร์และจัดลำดับใหม่ก่อนกด Start",
-            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
-            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
+            "importKeystorePrompt": "ป้อนรหัสผ่านที่ใช้เข้ารหัสไฟล์สำรอง keystore นี้",
+            "importServersPrompt": "ป้อนรหัสผ่านที่ใช้เข้ารหัสไฟล์สำรอง server-profiles นี้"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1992,7 +1992,17 @@
             "templateFormatPwsh": "สคริปต์ PowerShell (.ps1)",
             "templateScriptExportedToast": "ส่งออกสคริปต์แล้ว",
             "templateScriptImportedToast": "โหลดข้อมูลเมตาของสคริปต์แล้ว",
-            "templateScriptInvalidToast": "สคริปต์ไม่มีข้อมูลเมตาของ AeroFTP"
+            "templateScriptInvalidToast": "สคริปต์ไม่มีข้อมูลเมตาของ AeroFTP",
+            "templateFormatAeroftpScript": "สคริปต์ AeroSync (.aeroftp-script)",
+            "templateFormatAeroftpScriptHint": "(แนะนำ, round-trip เต็มรูปแบบ)",
+            "aerosyncScriptExportButton": "ส่งออกสคริปต์",
+            "aerosyncScriptExportedToast": "ส่งออกสคริปต์ AeroSync แล้ว",
+            "aerosyncScriptImportedToast": "นำเข้าสคริปต์ AeroSync แล้ว",
+            "aerosyncScriptAlsoWrapper": "สร้าง OS-native wrapper (.ps1 / .sh) ด้วย",
+            "aerosyncScriptFromWrapper": "(จาก wrapper)",
+            "aerosyncScriptUnmappedFields": "ฟิลด์ metadata ที่ไม่รู้จัก",
+            "aerosyncScriptApplyButton": "บันทึกเป็น preset",
+            "aerosyncScriptAppliedToast": "บันทึก preset ที่นำเข้าแล้ว เปิด AeroSync เพื่อใช้งาน"
         },
         "ui": {
             "syncing": "กำลังซิงค์...",

@@ -1019,8 +1019,8 @@
             "downloadSegmentsDesc": "Разделя всяко изтегляне на паралелни байтови диапазони. Auto запазва текущото поведение с единичен поток. Действа при доставчици, които поддържат range заявки (SFTP, S3, HTTP) и при файлове, достатъчно големи, за да има полза.",
             "autoStartTransfers": "Автоматично стартиране на прехвърлянията",
             "autoStartTransfersHelp": "Когато е включено, прехвърлянията чрез drag-and-drop и щракване стартират веднага. Когато е изключено, те се паркират в Transfer Queue като staged, за да можете да подрязвате дървовидни структури на папки и да пренареждате преди натискане на Start.",
-            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
-            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
+            "importKeystorePrompt": "Въведете паролата, използвана за шифроване на това резервно копие на keystore.",
+            "importServersPrompt": "Въведете паролата, използвана за шифроване на това резервно копие на server-profiles."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1992,7 +1992,17 @@
             "templateFormatPwsh": "PowerShell скрипт (.ps1)",
             "templateScriptExportedToast": "Скриптът е експортиран",
             "templateScriptImportedToast": "Метаданните на скрипта са заредени",
-            "templateScriptInvalidToast": "Скриптът не съдържа метаданни на AeroFTP"
+            "templateScriptInvalidToast": "Скриптът не съдържа метаданни на AeroFTP",
+            "templateFormatAeroftpScript": "AeroSync скрипт (.aeroftp-script)",
+            "templateFormatAeroftpScriptHint": "(препоръчително, пълен round-trip)",
+            "aerosyncScriptExportButton": "Експортиране на скрипт",
+            "aerosyncScriptExportedToast": "AeroSync скриптът е експортиран",
+            "aerosyncScriptImportedToast": "AeroSync скриптът е импортиран",
+            "aerosyncScriptAlsoWrapper": "Генериране и на OS-native wrapper (.ps1 / .sh)",
+            "aerosyncScriptFromWrapper": "(от wrapper)",
+            "aerosyncScriptUnmappedFields": "Неразпознати metadata полета",
+            "aerosyncScriptApplyButton": "Запазване като preset",
+            "aerosyncScriptAppliedToast": "Импортираният preset е запазен. Отворете AeroSync, за да го използвате."
         },
         "ui": {
             "syncing": "Синхронизиране...",

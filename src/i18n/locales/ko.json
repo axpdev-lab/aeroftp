@@ -1019,8 +1019,8 @@
             "downloadSegmentsDesc": "각 다운로드를 병렬 바이트 범위로 분할합니다. 자동은 현재의 단일 스트림 동작을 유지합니다. 범위 요청을 지원하는 제공자(SFTP, S3, HTTP)에서 충분히 큰 파일에 대해 효과적입니다.",
             "autoStartTransfers": "전송 자동 시작",
             "autoStartTransfersHelp": "켜져 있으면 드래그 앤 드롭 및 클릭 전송이 즉시 시작됩니다. 꺼져 있으면 Transfer Queue 에 staged 상태로 보관되어 Start 를 누르기 전에 폴더 트리를 정리하고 순서를 바꿀 수 있습니다.",
-            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
-            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
+            "importKeystorePrompt": "이 keystore 백업을 암호화할 때 사용한 비밀번호를 입력하세요.",
+            "importServersPrompt": "이 server-profiles 백업을 암호화할 때 사용한 비밀번호를 입력하세요."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1992,7 +1992,17 @@
             "templateFormatPwsh": "PowerShell 스크립트 (.ps1)",
             "templateScriptExportedToast": "스크립트를 내보냈습니다",
             "templateScriptImportedToast": "스크립트 메타데이터를 불러왔습니다",
-            "templateScriptInvalidToast": "스크립트에 AeroFTP 메타데이터가 없습니다"
+            "templateScriptInvalidToast": "스크립트에 AeroFTP 메타데이터가 없습니다",
+            "templateFormatAeroftpScript": "AeroSync 스크립트 (.aeroftp-script)",
+            "templateFormatAeroftpScriptHint": "(권장, 완전한 round-trip)",
+            "aerosyncScriptExportButton": "스크립트 내보내기",
+            "aerosyncScriptExportedToast": "AeroSync 스크립트를 내보냈습니다",
+            "aerosyncScriptImportedToast": "AeroSync 스크립트를 가져왔습니다",
+            "aerosyncScriptAlsoWrapper": "OS-native wrapper 도 함께 생성 (.ps1 / .sh)",
+            "aerosyncScriptFromWrapper": "(wrapper 에서)",
+            "aerosyncScriptUnmappedFields": "인식되지 않은 metadata 필드",
+            "aerosyncScriptApplyButton": "preset 으로 저장",
+            "aerosyncScriptAppliedToast": "가져온 preset 을 저장했습니다. AeroSync 를 열어 사용하세요."
         },
         "ui": {
             "syncing": "동기화 중...",

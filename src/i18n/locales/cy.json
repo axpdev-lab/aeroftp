@@ -1019,8 +1019,8 @@
             "downloadSegmentsDesc": "Rhannu pob lawrlwythiad yn ystodau beit cyfochrog. Mae Auto yn cadw'r ymddygiad un ffrwd presennol. Effeithiol gyda darparwyr sy'n cefnogi ceisiadau ystod (SFTP, S3, HTTP) ar gyfer ffeiliau digon mawr i elwa.",
             "autoStartTransfers": "Cychwyn trosglwyddiadau yn awtomatig",
             "autoStartTransfersHelp": "Pan fydd ymlaen, mae trosglwyddiadau drag-and-drop a chlicio yn cychwyn ar unwaith. Pan fydd i ffwrdd, cant eu parcio yn y Transfer Queue fel staged er mwyn i ti docio coed ffolderi ac aildrefnu cyn pwyso Start.",
-            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
-            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
+            "importKeystorePrompt": "Rhowch y cyfrinair a ddefnyddiwyd i amgryptio'r copi wrth gefn keystore hwn.",
+            "importServersPrompt": "Rhowch y cyfrinair a ddefnyddiwyd i amgryptio'r copi wrth gefn server-profiles hwn."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1992,7 +1992,17 @@
             "templateFormatPwsh": "Sgript PowerShell (.ps1)",
             "templateScriptExportedToast": "Sgript wedi ei allforio",
             "templateScriptImportedToast": "Metadata sgript wedi ei lwytho",
-            "templateScriptInvalidToast": "Nid yw'r sgript yn cynnwys metadata AeroFTP"
+            "templateScriptInvalidToast": "Nid yw'r sgript yn cynnwys metadata AeroFTP",
+            "templateFormatAeroftpScript": "Sgript AeroSync (.aeroftp-script)",
+            "templateFormatAeroftpScriptHint": "(argymhellir, round-trip llawn)",
+            "aerosyncScriptExportButton": "Allforio sgript",
+            "aerosyncScriptExportedToast": "Sgript AeroSync wedi'i allforio",
+            "aerosyncScriptImportedToast": "Sgript AeroSync wedi'i fewnforio",
+            "aerosyncScriptAlsoWrapper": "Cynhyrchu wrapper OS-native hefyd (.ps1 / .sh)",
+            "aerosyncScriptFromWrapper": "(o'r wrapper)",
+            "aerosyncScriptUnmappedFields": "Meysydd metadata heb eu hadnabod",
+            "aerosyncScriptApplyButton": "Cadw fel preset",
+            "aerosyncScriptAppliedToast": "Preset wedi'i fewnforio wedi'i gadw. Agorwch AeroSync i'w ddefnyddio."
         },
         "ui": {
             "syncing": "Yn cysoni...",

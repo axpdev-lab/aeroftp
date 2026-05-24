@@ -1019,8 +1019,8 @@
             "downloadSegmentsDesc": "Divideix cada descàrrega en intervals de bytes paral·lels. Auto manté el comportament actual de flux únic. Efectiu en proveïdors compatibles amb sol·licituds de rang (SFTP, S3, HTTP) per a fitxers prou grans com per beneficiar-se'n.",
             "autoStartTransfers": "Inici automatic de transferencies",
             "autoStartTransfersHelp": "Si esta activat, les transferencies per arrossegar i deixar anar i per clic s'inicien immediatament. Si esta desactivat, queden aparcades a la Transfer Queue com a staged perque puguis podar arbres de carpetes i reordenar abans de prémer Start.",
-            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
-            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
+            "importKeystorePrompt": "Introdueix la contrasenya utilitzada per xifrar aquesta copia de seguretat del keystore.",
+            "importServersPrompt": "Introdueix la contrasenya utilitzada per xifrar aquesta copia de seguretat de server-profiles."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1992,7 +1992,17 @@
             "templateFormatPwsh": "Script PowerShell (.ps1)",
             "templateScriptExportedToast": "Script exportat",
             "templateScriptImportedToast": "Metadades del script carregades",
-            "templateScriptInvalidToast": "L'script no conté metadades d'AeroFTP"
+            "templateScriptInvalidToast": "L'script no conté metadades d'AeroFTP",
+            "templateFormatAeroftpScript": "Script d'AeroSync (.aeroftp-script)",
+            "templateFormatAeroftpScriptHint": "(recomanat, round-trip complet)",
+            "aerosyncScriptExportButton": "Exporta script",
+            "aerosyncScriptExportedToast": "Script d'AeroSync exportat",
+            "aerosyncScriptImportedToast": "Script d'AeroSync importat",
+            "aerosyncScriptAlsoWrapper": "Genera tambe el wrapper OS-native (.ps1 / .sh)",
+            "aerosyncScriptFromWrapper": "(des del wrapper)",
+            "aerosyncScriptUnmappedFields": "Camps metadata no reconeguts",
+            "aerosyncScriptApplyButton": "Desa com a preset",
+            "aerosyncScriptAppliedToast": "Preset importat desat. Obre AeroSync per utilitzar-lo."
         },
         "ui": {
             "syncing": "Sincronitzant...",

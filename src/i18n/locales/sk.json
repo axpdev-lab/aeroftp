@@ -1019,8 +1019,8 @@
             "downloadSegmentsDesc": "Rozdelí každé sťahovanie na paralelné rozsahy bajtov. Auto zachováva súčasné správanie s jedným prúdom. Účinné u poskytovateľov, ktorí podporujú požiadavky na rozsah (SFTP, S3, HTTP), pre súbory dostatočne veľké na to, aby to prinieslo úžitok.",
             "autoStartTransfers": "Automaticke spustenie prenosov",
             "autoStartTransfersHelp": "Ked je zapnute, prenosy cez drag-and-drop a klik sa spustia okamzite. Ked je vypnute, parkuju sa v Transfer Queue ako staged, aby si mohol prerediť stromy priecinkov a preusporiadat pred stlacenim Start.",
-            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
-            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
+            "importKeystorePrompt": "Zadaj heslo použité na šifrovanie tejto zálohy keystore.",
+            "importServersPrompt": "Zadaj heslo použité na šifrovanie tejto zálohy server-profiles."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1992,7 +1992,17 @@
             "templateFormatPwsh": "Skript PowerShell (.ps1)",
             "templateScriptExportedToast": "Skript exportovaný",
             "templateScriptImportedToast": "Metadáta skriptu načítané",
-            "templateScriptInvalidToast": "Skript neobsahuje metadáta AeroFTP"
+            "templateScriptInvalidToast": "Skript neobsahuje metadáta AeroFTP",
+            "templateFormatAeroftpScript": "Skript AeroSync (.aeroftp-script)",
+            "templateFormatAeroftpScriptHint": "(odporúčané, úplný round-trip)",
+            "aerosyncScriptExportButton": "Exportovať skript",
+            "aerosyncScriptExportedToast": "Skript AeroSync exportovaný",
+            "aerosyncScriptImportedToast": "Skript AeroSync importovaný",
+            "aerosyncScriptAlsoWrapper": "Vygenerovať aj OS-native wrapper (.ps1 / .sh)",
+            "aerosyncScriptFromWrapper": "(z wrapper)",
+            "aerosyncScriptUnmappedFields": "Nerozpoznané polia metadata",
+            "aerosyncScriptApplyButton": "Uložiť ako preset",
+            "aerosyncScriptAppliedToast": "Importovaný preset uložený. Otvor AeroSync na jeho použitie."
         },
         "ui": {
             "syncing": "Synchronizacia...",

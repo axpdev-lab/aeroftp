@@ -1019,8 +1019,8 @@
             "downloadSegmentsDesc": "Jakaa jokaisen latauksen rinnakkaisiin tavualueisiin. Auto säilyttää nykyisen yhden virran toiminnan. Tehokas palveluntarjoajilla, jotka tukevat range-pyyntöjä (SFTP, S3, HTTP), riittävän suurille tiedostoille, jotta hyöty näkyy.",
             "autoStartTransfers": "Aloita siirrot automaattisesti",
             "autoStartTransfersHelp": "Kun paalla, vedos-ja-pudota- ja napsautussiirrot kaynnistyvat heti. Kun pois paalta, ne pysakoidaan Transfer Queue -jonoon staged-tilassa, jotta voit karsia kansiopuita ja jarjestaa uudelleen ennen Start-painikkeen painamista.",
-            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
-            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
+            "importKeystorePrompt": "Syötä salasana, jota käytettiin tämän keystore-varmuuskopion salaamiseen.",
+            "importServersPrompt": "Syötä salasana, jota käytettiin tämän server-profiles-varmuuskopion salaamiseen."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1992,7 +1992,17 @@
             "templateFormatPwsh": "PowerShell-komentosarja (.ps1)",
             "templateScriptExportedToast": "Komentosarja viety",
             "templateScriptImportedToast": "Komentosarjan metatiedot ladattu",
-            "templateScriptInvalidToast": "Komentosarja ei sisällä AeroFTP-metatietoja"
+            "templateScriptInvalidToast": "Komentosarja ei sisällä AeroFTP-metatietoja",
+            "templateFormatAeroftpScript": "AeroSync-skripti (.aeroftp-script)",
+            "templateFormatAeroftpScriptHint": "(suositeltu, täysi round-trip)",
+            "aerosyncScriptExportButton": "Vie skripti",
+            "aerosyncScriptExportedToast": "AeroSync-skripti viety",
+            "aerosyncScriptImportedToast": "AeroSync-skripti tuotu",
+            "aerosyncScriptAlsoWrapper": "Luo myös OS-native wrapper (.ps1 / .sh)",
+            "aerosyncScriptFromWrapper": "(wrapperista)",
+            "aerosyncScriptUnmappedFields": "Tunnistamattomat metadata-kentät",
+            "aerosyncScriptApplyButton": "Tallenna presetinä",
+            "aerosyncScriptAppliedToast": "Tuotu preset tallennettu. Avaa AeroSync käyttääksesi sitä."
         },
         "ui": {
             "syncing": "Synkronoidaan...",

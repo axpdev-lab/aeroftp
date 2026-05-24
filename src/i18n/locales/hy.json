@@ -1019,8 +1019,8 @@
             "downloadSegmentsDesc": "Բաժանել յուրաքանչյուր ներբեռնում զուգահեռ բայթային տիրույթների։ Ավտոմատ ռեժիմը պահպանում է ընթացիկ մեկ-հոսքանի վարքագիծը։ Արդյունավետ է այն մատակարարների վրա, որոնք աջակցում են տիրույթի հարցումներ (SFTP, S3, HTTP) բավականաչափ մեծ ֆայլերի համար։",
             "autoStartTransfers": "Փոխանցումների ինքնաշխատ մեկնարկ",
             "autoStartTransfersHelp": "Միացված վիճակում քաշել-և-թողնել և սեղմել փոխանցումները սկսվում են անմիջապես։ Անջատված վիճակում դրանք պահվում են Transfer Queue-ում որպես staged, որպեսզի կարողանաք էտել թղթապանակների ծառերը և վերադասավորել նախքան Start սեղմելը։",
-            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
-            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
+            "importKeystorePrompt": "Մուտքագրեք գաղտնաբառը, որով գաղտնագրվել է այս keystore-ի պահուստավորումը։",
+            "importServersPrompt": "Մուտքագրեք գաղտնաբառը, որով գաղտնագրվել է այս server-profiles-ի պահուստավորումը։"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1985,7 +1985,17 @@
             "templateFormatPwsh": "PowerShell սկրիպտ (.ps1)",
             "templateScriptExportedToast": "Սկրիպտը արտահանվեց",
             "templateScriptImportedToast": "Սկրիպտի մետատվյալները բեռնված են",
-            "templateScriptInvalidToast": "Սկրիպտը չի պարունակում AeroFTP մետատվյալներ"
+            "templateScriptInvalidToast": "Սկրիպտը չի պարունակում AeroFTP մետատվյալներ",
+            "templateFormatAeroftpScript": "AeroSync սկրիպտ (.aeroftp-script)",
+            "templateFormatAeroftpScriptHint": "(խորհուրդ է տրվում, ամբողջական round-trip)",
+            "aerosyncScriptExportButton": "Արտահանել սկրիպտը",
+            "aerosyncScriptExportedToast": "AeroSync սկրիպտը արտահանվեց",
+            "aerosyncScriptImportedToast": "AeroSync սկրիպտը ներմուծվեց",
+            "aerosyncScriptAlsoWrapper": "Նաև գեներացնել OS-native wrapper (.ps1 / .sh)",
+            "aerosyncScriptFromWrapper": "(wrapper-ից)",
+            "aerosyncScriptUnmappedFields": "Չճանաչված metadata դաշտեր",
+            "aerosyncScriptApplyButton": "Պահպանել որպես preset",
+            "aerosyncScriptAppliedToast": "Ներմուծված preset-ը պահպանվեց։ Բացեք AeroSync-ը այն օգտագործելու համար։"
         },
         "ui": {
             "syncing": "Սինքրոնացում...",

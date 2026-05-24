@@ -1019,8 +1019,8 @@
             "downloadSegmentsDesc": "Jagab iga allalaadimise paralleelseteks baidivahemikeks. Auto säilitab praeguse ühe voo käitumise. Toimib pakkujatel, kes toetavad vahemikupäringuid (SFTP, S3, HTTP), ja piisavalt suurte failide korral, et sellest kasu oleks.",
             "autoStartTransfers": "Ulekannete automaatne kaivitamine",
             "autoStartTransfersHelp": "Sisselulitatuna kaivituvad lohista-ja-aseta ja kliki ulekanded kohe. Valjalulitatuna pargitakse need Transfer Queue'sse staged olekuna, et saaksid kaustapuid kuljendada ja umber jarjestada enne Start vajutamist.",
-            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
-            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
+            "importKeystorePrompt": "Sisesta parool, mida kasutati selle keystore varukoopia krüpteerimiseks.",
+            "importServersPrompt": "Sisesta parool, mida kasutati selle server-profiles varukoopia krüpteerimiseks."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1992,7 +1992,17 @@
             "templateFormatPwsh": "PowerShell-skript (.ps1)",
             "templateScriptExportedToast": "Skript eksporditud",
             "templateScriptImportedToast": "Skripti metaandmed laaditud",
-            "templateScriptInvalidToast": "Skript ei sisalda AeroFTP metaandmeid"
+            "templateScriptInvalidToast": "Skript ei sisalda AeroFTP metaandmeid",
+            "templateFormatAeroftpScript": "AeroSync skript (.aeroftp-script)",
+            "templateFormatAeroftpScriptHint": "(soovitatav, täielik round-trip)",
+            "aerosyncScriptExportButton": "Ekspordi skript",
+            "aerosyncScriptExportedToast": "AeroSync skript eksporditud",
+            "aerosyncScriptImportedToast": "AeroSync skript imporditud",
+            "aerosyncScriptAlsoWrapper": "Loo ka OS-native wrapper (.ps1 / .sh)",
+            "aerosyncScriptFromWrapper": "(wrapperist)",
+            "aerosyncScriptUnmappedFields": "Tundmatud metadata väljad",
+            "aerosyncScriptApplyButton": "Salvesta presetina",
+            "aerosyncScriptAppliedToast": "Imporditud preset salvestatud. Ava AeroSync selle kasutamiseks."
         },
         "ui": {
             "syncing": "Sünkroniseerimine...",
