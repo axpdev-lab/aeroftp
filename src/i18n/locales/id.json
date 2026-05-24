@@ -1010,7 +1010,9 @@
             "downloadSegmentsN": "{n} segmen per berkas",
             "downloadSegmentsDesc": "Bagi setiap unduhan menjadi rentang byte paralel. Auto mempertahankan perilaku aliran tunggal saat ini. Efektif pada penyedia yang mendukung permintaan rentang (SFTP, S3, HTTP) untuk berkas yang cukup besar.",
             "autoStartTransfers": "Mulai transfer otomatis",
-            "autoStartTransfersHelp": "Saat aktif, transfer drag-and-drop dan klik dimulai segera. Saat nonaktif, transfer diparkir di Transfer Queue sebagai staged sehingga kamu dapat memangkas pohon folder dan menyusun ulang sebelum menekan Start."
+            "autoStartTransfersHelp": "Saat aktif, transfer drag-and-drop dan klik dimulai segera. Saat nonaktif, transfer diparkir di Transfer Queue sebagai staged sehingga kamu dapat memangkas pohon folder dan menyusun ulang sebelum menekan Start.",
+            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
+            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
         },
         "devtools": {
             "title": "AeroTools",

@@ -1010,7 +1010,9 @@
             "downloadSegmentsN": "{n} სეგმენტი ფაილზე",
             "downloadSegmentsDesc": "გაყავი თითოეული ჩამოტვირთვა პარალელურ ბაიტურ დიაპაზონებად. ავტომატური ინარჩუნებს დღევანდელ ერთნაკადიან ქცევას. ეფექტურია იმ პროვაიდერებზე, რომლებიც მხარს უჭერენ დიაპაზონის მოთხოვნებს (SFTP, S3, HTTP) საკმარისად დიდი ფაილებისთვის.",
             "autoStartTransfers": "გადაცემების ავტომატური დაწყება",
-            "autoStartTransfersHelp": "ჩართულ მდგომარეობაში drag-and-drop და დაწკაპუნებით გადაცემები იწყება მაშინვე. გამორთულ მდგომარეობაში ისინი ჩერდება Transfer Queue-ში როგორც staged, რათა შეძლოთ საქაღალდის ხეების მოწესრიგება და გადალაგება Start-ის დაჭერამდე."
+            "autoStartTransfersHelp": "ჩართულ მდგომარეობაში drag-and-drop და დაწკაპუნებით გადაცემები იწყება მაშინვე. გამორთულ მდგომარეობაში ისინი ჩერდება Transfer Queue-ში როგორც staged, რათა შეძლოთ საქაღალდის ხეების მოწესრიგება და გადალაგება Start-ის დაჭერამდე.",
+            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
+            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
         },
         "devtools": {
             "title": "AeroTools",

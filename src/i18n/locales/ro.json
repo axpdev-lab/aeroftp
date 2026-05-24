@@ -1010,7 +1010,9 @@
             "downloadSegmentsN": "{n} segmente per fișier",
             "downloadSegmentsDesc": "Împarte fiecare descărcare în intervale de octeți paralele. Auto păstrează comportamentul actual cu flux unic. Eficient la furnizorii care acceptă cereri de interval (SFTP, S3, HTTP) pentru fișiere suficient de mari încât să beneficieze.",
             "autoStartTransfers": "Pornire automata a transferurilor",
-            "autoStartTransfersHelp": "Cand este activ, transferurile prin glisare si plasare si prin clic pornesc imediat. Cand este inactiv, sunt parcate in Transfer Queue ca staged, ca sa poti curata arborii de foldere si sa reordonezi inainte de a apasa Start."
+            "autoStartTransfersHelp": "Cand este activ, transferurile prin glisare si plasare si prin clic pornesc imediat. Cand este inactiv, sunt parcate in Transfer Queue ca staged, ca sa poti curata arborii de foldere si sa reordonezi inainte de a apasa Start.",
+            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
+            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
         },
         "devtools": {
             "title": "AeroTools",

@@ -4379,7 +4379,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 );
                                             })()}
 
-                                            {/* Export */}
+                                            {/* Export. Hidden while the user is in the
+                                                middle of an import: the import flow
+                                                renders its own password input below and
+                                                shows error feedback in the shared banner
+                                                above, so a tall Export block in between
+                                                pushed the error off-screen and forced a
+                                                scroll back up (issue #214 C3 pt.G+H). */}
+                                            {!keystoreMetadata && (
                                             <div className="space-y-3">
                                                 <div className="flex items-start gap-3">
                                                     <div className="w-10 h-10 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center shrink-0">
@@ -4466,6 +4473,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         setKeystoreExporting(true);
                                                         try {
                                                             const { collectLocalStorage } = await import('../utils/keystoreLocalStorage');
+                                                            const restoredLocalStorage = keystoreExportMode === 'full'
+                                                                ? await collectLocalStorage()
+                                                                : undefined;
                                                             const result = await invoke<{
                                                                 entriesCount: number;
                                                                 categories?: {
@@ -4477,9 +4487,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                 password: keystoreExportPassword,
                                                                 filePath,
                                                                 mode: keystoreExportMode,
-                                                                localStorage: keystoreExportMode === 'full'
-                                                                    ? collectLocalStorage()
-                                                                    : undefined,
+                                                                localStorage: restoredLocalStorage,
                                                             });
                                                             setKeystoreMessage({
                                                                 type: 'success',
@@ -4517,9 +4525,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     )}
                                                 </button>
                                             </div>
+                                            )}
 
-                                            {/* Divider */}
+                                            {/* Divider only when both sections are visible */}
+                                            {!keystoreMetadata && (
                                             <div className="border-t border-gray-200 dark:border-gray-700" />
+                                            )}
 
                                             {/* Import */}
                                             <div className="space-y-3">
@@ -4697,7 +4708,19 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                         if (result.localStorage && Object.keys(result.localStorage).length > 0) {
                                                                             try {
                                                                                 const { applyLocalStorage } = await import('../utils/keystoreLocalStorage');
-                                                                                applyLocalStorage(result.localStorage);
+                                                                                await applyLocalStorage(result.localStorage);
+                                                                                // The import may have toggled OS-level
+                                                                                // autostart through applyLocalStorage; pull
+                                                                                // the new state back into the local toggle
+                                                                                // so the UI reflects reality without
+                                                                                // forcing the user to reopen Settings
+                                                                                // (issue #214 C3 pt.E1).
+                                                                                try {
+                                                                                    const enabled = await isAutostartEnabled();
+                                                                                    setSettings(prev => ({ ...prev, launchOnStartup: enabled }));
+                                                                                } catch {
+                                                                                    /* plugin unavailable: ignore */
+                                                                                }
                                                                             } catch (e) {
                                                                                 console.warn('Failed to apply restored localStorage:', e);
                                                                             }

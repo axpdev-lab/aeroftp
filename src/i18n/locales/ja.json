@@ -1010,7 +1010,9 @@
             "downloadSegmentsN": "ファイルあたり {n} セグメント",
             "downloadSegmentsDesc": "各ダウンロードを並列のバイト範囲に分割します。「自動」は現在のシングルストリーム動作を維持します。範囲リクエストに対応したプロバイダー（SFTP、S3、HTTP）で、効果が見込める程度に大きいファイルで有効です。",
             "autoStartTransfers": "転送を自動開始",
-            "autoStartTransfersHelp": "オンの場合、ドラッグ&ドロップやクリックでの転送はすぐに開始されます。オフの場合、Transfer Queue に staged として保留され、Start を押す前にフォルダツリーを整理して並び替えできます。"
+            "autoStartTransfersHelp": "オンの場合、ドラッグ&ドロップやクリックでの転送はすぐに開始されます。オフの場合、Transfer Queue に staged として保留され、Start を押す前にフォルダツリーを整理して並び替えできます。",
+            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
+            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
         },
         "devtools": {
             "title": "AeroTools",

@@ -1010,7 +1010,9 @@
             "downloadSegmentsN": "{n} segmentów na plik",
             "downloadSegmentsDesc": "Dziel każde pobieranie na równoległe zakresy bajtów. Auto zachowuje obecne zachowanie z pojedynczym strumieniem. Działa u dostawców obsługujących żądania zakresów (SFTP, S3, HTTP) dla plików wystarczająco dużych, aby odnieść korzyść.",
             "autoStartTransfers": "Automatyczne uruchamianie transferow",
-            "autoStartTransfersHelp": "Gdy wlaczone, transfery przeciagnij-i-upusc oraz klikniecia startuja od razu. Gdy wylaczone, sa odkladane w Transfer Queue jako staged, abys mogl przyciac drzewa folderow i zmienic kolejnosc przed nacisnieciem Start."
+            "autoStartTransfersHelp": "Gdy wlaczone, transfery przeciagnij-i-upusc oraz klikniecia startuja od razu. Gdy wylaczone, sa odkladane w Transfer Queue jako staged, abys mogl przyciac drzewa folderow i zmienic kolejnosc przed nacisnieciem Start.",
+            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
+            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
         },
         "devtools": {
             "title": "AeroTools",

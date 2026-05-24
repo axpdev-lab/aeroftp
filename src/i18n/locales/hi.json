@@ -1010,7 +1010,9 @@
             "downloadSegmentsN": "{n} सेगमेंट प्रति फ़ाइल",
             "downloadSegmentsDesc": "प्रत्येक डाउनलोड को समानांतर बाइट रेंज में विभाजित करें। Auto वर्तमान एकल-स्ट्रीम व्यवहार बनाए रखता है। उन प्रदाताओं पर प्रभावी जो रेंज अनुरोधों का समर्थन करते हैं (SFTP, S3, HTTP) और उन फ़ाइलों के लिए जो लाभ उठाने के लिए पर्याप्त बड़ी हैं।",
             "autoStartTransfers": "स्थानांतरण स्वचालित रूप से प्रारंभ करें",
-            "autoStartTransfersHelp": "जब चालू हो, ड्रैग-एंड-ड्रॉप और क्लिक स्थानांतरण तुरंत शुरू हो जाते हैं। जब बंद हो, वे Transfer Queue में staged के रूप में पार्क किए जाते हैं, ताकि आप Start दबाने से पहले फ़ोल्डर ट्री को छाँट सकें और पुनः क्रमित कर सकें।"
+            "autoStartTransfersHelp": "जब चालू हो, ड्रैग-एंड-ड्रॉप और क्लिक स्थानांतरण तुरंत शुरू हो जाते हैं। जब बंद हो, वे Transfer Queue में staged के रूप में पार्क किए जाते हैं, ताकि आप Start दबाने से पहले फ़ोल्डर ट्री को छाँट सकें और पुनः क्रमित कर सकें।",
+            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
+            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
         },
         "devtools": {
             "title": "AeroTools",

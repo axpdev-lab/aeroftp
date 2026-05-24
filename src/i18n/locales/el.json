@@ -1010,7 +1010,9 @@
             "downloadSegmentsN": "{n} τμήματα ανά αρχείο",
             "downloadSegmentsDesc": "Χωρίζει κάθε λήψη σε παράλληλα εύρη byte. Το Auto διατηρεί την τρέχουσα συμπεριφορά μονής ροής. Αποτελεσματικό σε παρόχους που υποστηρίζουν αιτήματα εύρους (SFTP, S3, HTTP) και σε αρχεία αρκετά μεγάλα για να ωφεληθούν.",
             "autoStartTransfers": "Αυτόματη εκκίνηση μεταφορών",
-            "autoStartTransfersHelp": "Όταν είναι ενεργό, οι μεταφορές μέσω drag-and-drop και κλικ ξεκινούν αμέσως. Όταν είναι ανενεργό, σταθμεύουν στο Transfer Queue ως staged, ώστε να μπορείς να κλαδέψεις δέντρα φακέλων και να αναδιατάξεις πριν πατήσεις Start."
+            "autoStartTransfersHelp": "Όταν είναι ενεργό, οι μεταφορές μέσω drag-and-drop και κλικ ξεκινούν αμέσως. Όταν είναι ανενεργό, σταθμεύουν στο Transfer Queue ως staged, ώστε να μπορείς να κλαδέψεις δέντρα φακέλων και να αναδιατάξεις πριν πατήσεις Start.",
+            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
+            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
         },
         "devtools": {
             "title": "AeroTools",

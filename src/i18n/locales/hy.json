@@ -1010,7 +1010,9 @@
             "downloadSegmentsN": "{n} հատված ֆայլի համար",
             "downloadSegmentsDesc": "Բաժանել յուրաքանչյուր ներբեռնում զուգահեռ բայթային տիրույթների։ Ավտոմատ ռեժիմը պահպանում է ընթացիկ մեկ-հոսքանի վարքագիծը։ Արդյունավետ է այն մատակարարների վրա, որոնք աջակցում են տիրույթի հարցումներ (SFTP, S3, HTTP) բավականաչափ մեծ ֆայլերի համար։",
             "autoStartTransfers": "Փոխանցումների ինքնաշխատ մեկնարկ",
-            "autoStartTransfersHelp": "Միացված վիճակում քաշել-և-թողնել և սեղմել փոխանցումները սկսվում են անմիջապես։ Անջատված վիճակում դրանք պահվում են Transfer Queue-ում որպես staged, որպեսզի կարողանաք էտել թղթապանակների ծառերը և վերադասավորել նախքան Start սեղմելը։"
+            "autoStartTransfersHelp": "Միացված վիճակում քաշել-և-թողնել և սեղմել փոխանցումները սկսվում են անմիջապես։ Անջատված վիճակում դրանք պահվում են Transfer Queue-ում որպես staged, որպեսզի կարողանաք էտել թղթապանակների ծառերը և վերադասավորել նախքան Start սեղմելը։",
+            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
+            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
         },
         "devtools": {
             "title": "AeroTools",

@@ -1010,7 +1010,9 @@
             "downloadSegmentsN": "{n} ផ្នែកក្នុងមួយឯកសារ",
             "downloadSegmentsDesc": "បំបែកការទាញយកនីមួយៗទៅជាជួរបៃប៉ារ៉ាឡែល។ ស្វ័យប្រវត្តិរក្សាឥរិយាបថស្ទ្រីមតែមួយបច្ចុប្បន្ន។ មានប្រសិទ្ធភាពលើអ្នកផ្តល់សេវាដែលគាំទ្រសំណើជួរ (SFTP, S3, HTTP) សម្រាប់ឯកសារដែលធំល្មមនឹងទទួលផល។",
             "autoStartTransfers": "ចាប់ផ្ដើមការផ្ទេរដោយស្វ័យប្រវត្តិ",
-            "autoStartTransfersHelp": "ពេលបើក ការផ្ទេរតាមរយៈ drag-and-drop និងចុចចាប់ផ្ដើមភ្លាមៗ។ ពេលបិទ វាត្រូវបានចតក្នុង Transfer Queue ជា staged ដើម្បីឱ្យអ្នកអាចកាត់ដើមថត និងរៀបចំឡើងវិញមុនពេលចុច Start។"
+            "autoStartTransfersHelp": "ពេលបើក ការផ្ទេរតាមរយៈ drag-and-drop និងចុចចាប់ផ្ដើមភ្លាមៗ។ ពេលបិទ វាត្រូវបានចតក្នុង Transfer Queue ជា staged ដើម្បីឱ្យអ្នកអាចកាត់ដើមថត និងរៀបចំឡើងវិញមុនពេលចុច Start។",
+            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
+            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
         },
         "devtools": {
             "title": "AeroTools",

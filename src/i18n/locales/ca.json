@@ -1010,7 +1010,9 @@
             "downloadSegmentsN": "{n} segments per fitxer",
             "downloadSegmentsDesc": "Divideix cada descàrrega en intervals de bytes paral·lels. Auto manté el comportament actual de flux únic. Efectiu en proveïdors compatibles amb sol·licituds de rang (SFTP, S3, HTTP) per a fitxers prou grans com per beneficiar-se'n.",
             "autoStartTransfers": "Inici automatic de transferencies",
-            "autoStartTransfersHelp": "Si esta activat, les transferencies per arrossegar i deixar anar i per clic s'inicien immediatament. Si esta desactivat, queden aparcades a la Transfer Queue com a staged perque puguis podar arbres de carpetes i reordenar abans de prémer Start."
+            "autoStartTransfersHelp": "Si esta activat, les transferencies per arrossegar i deixar anar i per clic s'inicien immediatament. Si esta desactivat, queden aparcades a la Transfer Queue com a staged perque puguis podar arbres de carpetes i reordenar abans de prémer Start.",
+            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
+            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
         },
         "devtools": {
             "title": "AeroTools",

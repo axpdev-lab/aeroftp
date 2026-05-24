@@ -1010,7 +1010,9 @@
             "downloadSegmentsN": "{n} segmentos por ficheiro",
             "downloadSegmentsDesc": "Divide cada descarga en intervalos de bytes paralelos. Auto mantén o comportamento actual de fluxo único. Eficaz nos provedores que admiten solicitudes de rango (SFTP, S3, HTTP) para ficheiros suficientemente grandes como para beneficiarse.",
             "autoStartTransfers": "Inicio automatico de transferencias",
-            "autoStartTransfersHelp": "Cando esta activado, as transferencias por arrastrar e soltar e clic inicianse de inmediato. Cando esta desactivado, aparcanse na Transfer Queue como staged para que poidas podar arbores de cartafoles e reordenar antes de premer Start."
+            "autoStartTransfersHelp": "Cando esta activado, as transferencias por arrastrar e soltar e clic inicianse de inmediato. Cando esta desactivado, aparcanse na Transfer Queue como staged para que poidas podar arbores de cartafoles e reordenar antes de premer Start.",
+            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
+            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
         },
         "devtools": {
             "title": "AeroTools",

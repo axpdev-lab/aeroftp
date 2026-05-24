@@ -12,7 +12,7 @@
  *   light/dark (institutional) → filled, tokyo/cyber (special) → minimal
  */
 
-import React, { useState, useCallback, createContext, useContext } from 'react';
+import React, { useState, useCallback, createContext, useContext, useEffect } from 'react';
 import type { IconTheme } from '../utils/iconThemes';
 import type { EffectiveTheme } from './useTheme';
 
@@ -52,6 +52,21 @@ export const IconThemeProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const setIconTheme = useCallback((theme: IconTheme) => {
         setIconThemeState(theme);
         localStorage.setItem(ICON_THEME_KEY, theme);
+    }, []);
+
+    // Re-read the icon theme when a keystore import restores it.
+    // Same rationale as `useTheme`: initial value is captured once on
+    // mount, so an imported value would not surface until refresh
+    // (issue #214 C3 pt.E2).
+    useEffect(() => {
+        const reload = () => {
+            const saved = localStorage.getItem(ICON_THEME_KEY) as IconTheme | null;
+            if (saved && VALID_ICON_THEMES.includes(saved)) {
+                setIconThemeState(prev => (prev === saved ? prev : saved));
+            }
+        };
+        window.addEventListener('aeroftp-localstorage-restored', reload);
+        return () => window.removeEventListener('aeroftp-localstorage-restored', reload);
     }, []);
 
     return (

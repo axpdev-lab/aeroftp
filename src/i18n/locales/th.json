@@ -1010,7 +1010,9 @@
             "downloadSegmentsN": "{n} เซกเมนต์ต่อไฟล์",
             "downloadSegmentsDesc": "แบ่งแต่ละการดาวน์โหลดเป็นช่วงไบต์แบบขนาน โหมดอัตโนมัติจะคงพฤติกรรมสตรีมเดียวเหมือนปัจจุบัน ใช้ได้ผลกับผู้ให้บริการที่รองรับคำขอช่วง (SFTP, S3, HTTP) สำหรับไฟล์ที่มีขนาดใหญ่พอที่จะได้ประโยชน์",
             "autoStartTransfers": "เริ่มการถ่ายโอนอัตโนมัติ",
-            "autoStartTransfersHelp": "เมื่อเปิด การถ่ายโอนแบบลากและวางและคลิกจะเริ่มทันที เมื่อปิด จะถูกพักไว้ใน Transfer Queue เป็น staged เพื่อให้คุณตัดต้นโฟลเดอร์และจัดลำดับใหม่ก่อนกด Start"
+            "autoStartTransfersHelp": "เมื่อเปิด การถ่ายโอนแบบลากและวางและคลิกจะเริ่มทันที เมื่อปิด จะถูกพักไว้ใน Transfer Queue เป็น staged เพื่อให้คุณตัดต้นโฟลเดอร์และจัดลำดับใหม่ก่อนกด Start",
+            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
+            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
         },
         "devtools": {
             "title": "AeroTools",

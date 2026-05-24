@@ -549,6 +549,18 @@ const App: React.FC = () => {
     [appBackgroundId]
   );
 
+  // Re-read the background pattern when a keystore import restores it.
+  // App reads localStorage once on mount, so the imported value would
+  // otherwise stay invisible until refresh (issue #214 C3 pt.E2).
+  useEffect(() => {
+    const reload = () => {
+      const saved = localStorage.getItem(APP_BACKGROUND_KEY) || DEFAULT_APP_BACKGROUND;
+      setAppBackgroundId(prev => (prev === saved ? prev : saved));
+    };
+    window.addEventListener('aeroftp-localstorage-restored', reload);
+    return () => window.removeEventListener('aeroftp-localstorage-restored', reload);
+  }, []);
+
   const [isConnected, setIsConnected] = useState(false);
   // A6-01: Refs for menu-event listener to avoid stale closures
   const isConnectedRef = useRef(false);
@@ -712,7 +724,7 @@ const App: React.FC = () => {
     profileId: string;
     onContinue: () => void;
   } | null>(null);
-  const [inputDialog, setInputDialog] = useState<{ title: string; defaultValue: string; onConfirm: (v: string) => void; isPassword?: boolean; placeholder?: string } | null>(null);
+  const [inputDialog, setInputDialog] = useState<{ title: string; defaultValue: string; onConfirm: (v: string) => void; isPassword?: boolean; placeholder?: string; description?: string } | null>(null);
   const [zohoShareLinksDialog, setZohoShareLinksDialog] = useState<{ fileName: string; links: Array<{ id: string; attributes: Record<string, unknown> }> } | null>(null);
   const [zohoDeletedLinkIds] = useState(() => new Set<string>());
   const [gitHubCommitDialog, setGitHubCommitDialog] = useState<{
@@ -10218,6 +10230,7 @@ interface UpdateVerificationInfo {
   const importAeroFtpProfileFile = useCallback((filePath: string) => {
     setInputDialog({
       title: t('settings.importServers') || 'Import Servers',
+      description: t('settings.importServersPrompt') || 'Enter the password used to encrypt this server-profiles backup.',
       defaultValue: '',
       isPassword: true,
       onConfirm: async (password: string) => {
@@ -10251,6 +10264,7 @@ interface UpdateVerificationInfo {
   const importAeroFtpKeystoreFile = useCallback((filePath: string) => {
     setInputDialog({
       title: t('settings.importKeystore') || 'Import Keystore',
+      description: t('settings.importKeystorePrompt') || 'Enter the password used to encrypt this keystore backup.',
       defaultValue: '',
       isPassword: true,
       onConfirm: async (password: string) => {
@@ -10280,7 +10294,7 @@ interface UpdateVerificationInfo {
           if (result.localStorage && Object.keys(result.localStorage).length > 0) {
             try {
               const { applyLocalStorage } = await import('./utils/keystoreLocalStorage');
-              applyLocalStorage(result.localStorage);
+              await applyLocalStorage(result.localStorage);
             } catch (e) {
               console.warn('Failed to apply restored localStorage:', e);
             }
@@ -11575,7 +11589,7 @@ interface UpdateVerificationInfo {
           />
         )}
 
-        {inputDialog && <InputDialog title={inputDialog.title} defaultValue={inputDialog.defaultValue} onConfirm={inputDialog.onConfirm} onCancel={() => setInputDialog(null)} isPassword={inputDialog.isPassword} placeholder={inputDialog.placeholder} />}
+        {inputDialog && <InputDialog title={inputDialog.title} defaultValue={inputDialog.defaultValue} onConfirm={inputDialog.onConfirm} onCancel={() => setInputDialog(null)} isPassword={inputDialog.isPassword} placeholder={inputDialog.placeholder} description={inputDialog.description} />}
         {zohoShareLinksDialog && (
           <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50" onClick={() => setZohoShareLinksDialog(null)}>
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-[480px] max-h-[70vh] flex flex-col" onClick={e => e.stopPropagation()}>

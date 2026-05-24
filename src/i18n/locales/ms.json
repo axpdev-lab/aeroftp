@@ -1010,7 +1010,9 @@
             "downloadSegmentsN": "{n} segmen setiap fail",
             "downloadSegmentsDesc": "Pecahkan setiap muat turun kepada julat bait selari. Auto mengekalkan tingkah laku strim tunggal sedia ada. Berkesan pada penyedia yang menyokong permintaan julat (SFTP, S3, HTTP) untuk fail yang cukup besar untuk mendapat manfaat.",
             "autoStartTransfers": "Mulakan pemindahan secara automatik",
-            "autoStartTransfersHelp": "Apabila aktif, pemindahan drag-and-drop dan klik dimulakan serta-merta. Apabila tidak aktif, ia diletakkan dalam Transfer Queue sebagai staged supaya kamu boleh mencantas pokok folder dan menyusun semula sebelum menekan Start."
+            "autoStartTransfersHelp": "Apabila aktif, pemindahan drag-and-drop dan klik dimulakan serta-merta. Apabila tidak aktif, ia diletakkan dalam Transfer Queue sebagai staged supaya kamu boleh mencantas pokok folder dan menyusun semula sebelum menekan Start.",
+            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
+            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
         },
         "devtools": {
             "title": "AeroTools",
