@@ -1010,7 +1010,9 @@
             "downloadSegmentsN": "{n} сегментів на файл",
             "downloadSegmentsDesc": "Розділяє кожне завантаження на паралельні діапазони байтів. Режим «Авто» зберігає поточну поведінку з одним потоком. Ефективно у провайдерів, що підтримують запити діапазонів (SFTP, S3, HTTP), для файлів достатньо великих, щоб це давало виграш.",
             "autoStartTransfers": "Автозапуск передач",
-            "autoStartTransfersHelp": "Якщо увiмкнено, передачi через drag-and-drop та клiк стартують одразу. Якщо вимкнено, вони паркуються в Transfer Queue як staged, щоб можна було пiдрiзати дерева папок i перевпорядкувати перед натисканням Start."
+            "autoStartTransfersHelp": "Якщо увiмкнено, передачi через drag-and-drop та клiк стартують одразу. Якщо вимкнено, вони паркуються в Transfer Queue як staged, щоб можна було пiдрiзати дерева папок i перевпорядкувати перед натисканням Start.",
+            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
+            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
         },
         "devtools": {
             "title": "AeroTools",

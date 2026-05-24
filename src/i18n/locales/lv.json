@@ -1010,7 +1010,9 @@
             "downloadSegmentsN": "{n} segmenti vienam failam",
             "downloadSegmentsDesc": "Sadaliet katru lejupielādi paralēlos baitu diapazonos. Automātiski saglabā pašreizējo vienas plūsmas darbību. Efektīvi pakalpojumu sniedzējiem, kuri atbalsta diapazonu pieprasījumus (SFTP, S3, HTTP), pietiekami lieliem failiem.",
             "autoStartTransfers": "Parsutisanu automatiska sakums",
-            "autoStartTransfersHelp": "Kad ieslegts, vilksanas un nomesanas un klikskinasanas parsutisanas sakas nekavejoties. Kad izslegts, tas tiek novietotas Transfer Queue ka staged, lai tu varetu apgriezt mapju kokus un parkartot pirms nospiez Start."
+            "autoStartTransfersHelp": "Kad ieslegts, vilksanas un nomesanas un klikskinasanas parsutisanas sakas nekavejoties. Kad izslegts, tas tiek novietotas Transfer Queue ka staged, lai tu varetu apgriezt mapju kokus un parkartot pirms nospiez Start.",
+            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
+            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
         },
         "devtools": {
             "title": "AeroTools",

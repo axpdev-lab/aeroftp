@@ -1010,7 +1010,9 @@
             "downloadSegmentsN": "{n} segmentų viename faile",
             "downloadSegmentsDesc": "Padalykite kiekvieną atsisiuntimą į lygiagrečius baitų diapazonus. Automatinis išlaiko esamą vieno srauto elgseną. Veiksminga su tiekėjais, palaikančiais diapazonų užklausas (SFTP, S3, HTTP), pakankamai dideliems failams.",
             "autoStartTransfers": "Automatinis perdavimu paleidimas",
-            "autoStartTransfersHelp": "Kai ijungta, vilkimo ir spustelejimo perdavimai prasideda is karto. Kai isjungta, jie paliekami Transfer Queue kaip staged, kad galetum apkarpyti aplanku medzius ir pertvarkyti pries paspausdamas Start."
+            "autoStartTransfersHelp": "Kai ijungta, vilkimo ir spustelejimo perdavimai prasideda is karto. Kai isjungta, jie paliekami Transfer Queue kaip staged, kad galetum apkarpyti aplanku medzius ir pertvarkyti pries paspausdamas Start.",
+            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
+            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
         },
         "devtools": {
             "title": "AeroTools",

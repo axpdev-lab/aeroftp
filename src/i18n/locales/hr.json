@@ -1010,7 +1010,9 @@
             "downloadSegmentsN": "{n} segmenata po datoteci",
             "downloadSegmentsDesc": "Podijelite svako preuzimanje na paralelne raspone bajtova. Auto zadržava trenutno ponašanje s jednim tokom. Učinkovito na pružateljima koji podržavaju zahtjeve za raspon (SFTP, S3, HTTP) za datoteke dovoljno velike da imaju koristi.",
             "autoStartTransfers": "Automatsko pokretanje prijenosa",
-            "autoStartTransfersHelp": "Kad je ukljuceno, prijenosi povucenjem-i-ispustanjem i klikom krecu odmah. Kad je iskljuceno, parkiraju se u Transfer Queue kao staged, kako bi mogao prorijediti stabla mapa i preraspodijeliti prije pritiska na Start."
+            "autoStartTransfersHelp": "Kad je ukljuceno, prijenosi povucenjem-i-ispustanjem i klikom krecu odmah. Kad je iskljuceno, parkiraju se u Transfer Queue kao staged, kako bi mogao prorijediti stabla mapa i preraspodijeliti prije pritiska na Start.",
+            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
+            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
         },
         "devtools": {
             "title": "AeroTools",

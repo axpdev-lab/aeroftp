@@ -1010,7 +1010,9 @@
             "downloadSegmentsN": "{n} segmenten per bestand",
             "downloadSegmentsDesc": "Splits elke download op in parallelle byte-bereiken. Auto behoudt het huidige gedrag met één stream. Werkt bij providers die range-verzoeken ondersteunen (SFTP, S3, HTTP), voor bestanden die groot genoeg zijn om er baat bij te hebben.",
             "autoStartTransfers": "Overdrachten automatisch starten",
-            "autoStartTransfersHelp": "Indien aan, starten drag-and-drop- en klik-overdrachten direct. Indien uit, worden ze in de Transfer Queue als staged geparkeerd, zodat je mappenbomen kunt opschonen en herordenen voordat je op Start drukt."
+            "autoStartTransfersHelp": "Indien aan, starten drag-and-drop- en klik-overdrachten direct. Indien uit, worden ze in de Transfer Queue als staged geparkeerd, zodat je mappenbomen kunt opschonen en herordenen voordat je op Start drukt.",
+            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
+            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
         },
         "devtools": {
             "title": "AeroTools",

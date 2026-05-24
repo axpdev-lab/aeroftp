@@ -1010,7 +1010,9 @@
             "downloadSegmentsN": "{n} segmentů na soubor",
             "downloadSegmentsDesc": "Rozdělí každé stahování na paralelní bajtové rozsahy. Auto zachovává současné chování s jedním proudem. Funguje u poskytovatelů, kteří podporují požadavky na rozsah (SFTP, S3, HTTP), a u souborů dostatečně velkých, aby z toho měly užitek.",
             "autoStartTransfers": "Automaticke spousteni prenosu",
-            "autoStartTransfersHelp": "Kdyz je zapnuto, prenosy pres drag-and-drop a klik startuji okamzite. Kdyz je vypnuto, parkuji se v Transfer Queue jako staged, abys mohl prored'ovat stromy slozek a preusporadat pred stisknutim Start."
+            "autoStartTransfersHelp": "Kdyz je zapnuto, prenosy pres drag-and-drop a klik startuji okamzite. Kdyz je vypnuto, parkuji se v Transfer Queue jako staged, abys mohl prored'ovat stromy slozek a preusporadat pred stisknutim Start.",
+            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
+            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
         },
         "devtools": {
             "title": "AeroTools",

@@ -1010,7 +1010,9 @@
             "downloadSegmentsN": "{n} сегмента на файл",
             "downloadSegmentsDesc": "Разделя всяко изтегляне на паралелни байтови диапазони. Auto запазва текущото поведение с единичен поток. Действа при доставчици, които поддържат range заявки (SFTP, S3, HTTP) и при файлове, достатъчно големи, за да има полза.",
             "autoStartTransfers": "Автоматично стартиране на прехвърлянията",
-            "autoStartTransfersHelp": "Когато е включено, прехвърлянията чрез drag-and-drop и щракване стартират веднага. Когато е изключено, те се паркират в Transfer Queue като staged, за да можете да подрязвате дървовидни структури на папки и да пренареждате преди натискане на Start."
+            "autoStartTransfersHelp": "Когато е включено, прехвърлянията чрез drag-and-drop и щракване стартират веднага. Когато е изключено, те се паркират в Transfer Queue като staged, за да можете да подрязвате дървовидни структури на папки и да пренареждате преди натискане на Start.",
+            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
+            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
         },
         "devtools": {
             "title": "AeroTools",

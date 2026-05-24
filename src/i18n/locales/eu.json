@@ -1010,7 +1010,9 @@
             "downloadSegmentsN": "{n} segmentu fitxategiko",
             "downloadSegmentsDesc": "Deskarga bakoitza byte-tarte paraleloetan banatzen du. Auto-k egungo korronte bakarreko portaera mantentzen du. Tarte-eskaerak onartzen dituzten hornitzaileetan eraginkorra (SFTP, S3, HTTP), onura ateratzeko bezain handiak diren fitxategietarako.",
             "autoStartTransfers": "Hasiera automatikoa transferentziei",
-            "autoStartTransfersHelp": "Aktibatuta dagoenean, arrastatu eta jaregin eta klik transferentziak berehala hasten dira. Desaktibatuta dagoenean, Transfer Queue-n aparkatzen dira staged gisa, karpeta zuhaitzak inausi eta berrordenatu ahal izateko Start sakatu aurretik."
+            "autoStartTransfersHelp": "Aktibatuta dagoenean, arrastatu eta jaregin eta klik transferentziak berehala hasten dira. Desaktibatuta dagoenean, Transfer Queue-n aparkatzen dira staged gisa, karpeta zuhaitzak inausi eta berrordenatu ahal izateko Start sakatu aurretik.",
+            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
+            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
         },
         "devtools": {
             "title": "AeroTools",

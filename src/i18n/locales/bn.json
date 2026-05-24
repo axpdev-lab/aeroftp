@@ -1010,7 +1010,9 @@
             "downloadSegmentsN": "প্রতি ফাইলে {n} সেগমেন্ট",
             "downloadSegmentsDesc": "প্রতিটি ডাউনলোডকে সমান্তরাল বাইট রেঞ্জে ভাগ করুন। Auto বর্তমান একক-স্ট্রিম আচরণ বজায় রাখে। যেসব প্রোভাইডার রেঞ্জ রিকোয়েস্ট সমর্থন করে (SFTP, S3, HTTP) এবং ফাইল যথেষ্ট বড় হলে কার্যকর।",
             "autoStartTransfers": "স্থানান্তর স্বয়ংক্রিয়ভাবে শুরু করুন",
-            "autoStartTransfersHelp": "চালু থাকলে, ড্র্যাগ-এন্ড-ড্রপ এবং ক্লিক স্থানান্তর সাথে সাথে শুরু হয়। বন্ধ থাকলে, সেগুলি Transfer Queue-এ staged হিসাবে পার্ক করা হয়, যাতে আপনি Start চাপার আগে ফোল্ডার ট্রি ছাঁটাই এবং পুনরায় সাজাতে পারেন।"
+            "autoStartTransfersHelp": "চালু থাকলে, ড্র্যাগ-এন্ড-ড্রপ এবং ক্লিক স্থানান্তর সাথে সাথে শুরু হয়। বন্ধ থাকলে, সেগুলি Transfer Queue-এ staged হিসাবে পার্ক করা হয়, যাতে আপনি Start চাপার আগে ফোল্ডার ট্রি ছাঁটাই এবং পুনরায় সাজাতে পারেন।",
+            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
+            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
         },
         "devtools": {
             "title": "AeroTools",

@@ -104,6 +104,21 @@ export const useTheme = () => {
         return () => mediaQuery.removeEventListener('change', updateDarkMode);
     }, [theme]);
 
+    // Re-read theme from localStorage when a keystore import restores it.
+    // The hook seeds state only once on mount, so a write into
+    // localStorage by `applyLocalStorage` would otherwise stay invisible
+    // until the next page reload (issue #214 C3 pt.E2).
+    useEffect(() => {
+        const reload = () => {
+            const saved = localStorage.getItem('aeroftp-theme') as Theme | null;
+            if (saved) {
+                setTheme(prev => (prev === saved ? prev : saved));
+            }
+        };
+        window.addEventListener('aeroftp-localstorage-restored', reload);
+        return () => window.removeEventListener('aeroftp-localstorage-restored', reload);
+    }, []);
+
     useEffect(() => {
         const html = document.documentElement;
         // Suppress transitions cascade-wide for one frame so WebKit can repaint

@@ -1010,7 +1010,9 @@
             "downloadSegmentsN": "{n} segmenter per fil",
             "downloadSegmentsDesc": "Del hver nedlasting i parallelle byteområder. Auto beholder dagens oppførsel med én strøm. Effektivt på leverandører som støtter områdeforespørsler (SFTP, S3, HTTP) for filer som er store nok til å dra nytte av det.",
             "autoStartTransfers": "Start overforinger automatisk",
-            "autoStartTransfersHelp": "Nar pa, starter dra-og-slipp- og klikkoverforinger umiddelbart. Nar av, parkeres de i Transfer Queue som staged, slik at du kan beskjaere mappetraer og omorganisere for du trykker Start."
+            "autoStartTransfersHelp": "Nar pa, starter dra-og-slipp- og klikkoverforinger umiddelbart. Nar av, parkeres de i Transfer Queue som staged, slik at du kan beskjaere mappetraer og omorganisere for du trykker Start.",
+            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
+            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
         },
         "devtools": {
             "title": "AeroTools",

@@ -72,11 +72,39 @@ export const KEYSTORE_LS_WHITELIST: string[] = [
 ];
 
 /**
+ * Synthetic key carrying OS-level "launch on system startup" state in
+ * the keystore payload. The setting itself lives outside the WebView
+ * (LaunchAgent on macOS, .desktop file on Linux, Registry on Windows)
+ * via `tauri-plugin-autostart`, so the regular localStorage whitelist
+ * cannot capture it. We piggyback on the `local_storage` map in the
+ * keystore envelope: `collectLocalStorage` populates this key from the
+ * plugin at export time, `applyLocalStorage` translates it back into a
+ * plugin enable/disable call at import time and never writes it to
+ * `window.localStorage`. Older backups without the key simply leave
+ * the OS state untouched on import (issue #214 C3 pt.E1).
+ */
+const AUTOSTART_KEY = '_aeroftp_system_autostart';
+
+/**
+ * Event dispatched on the global `window` once `applyLocalStorage` has
+ * finished applying restored values. Reactive hooks that snapshot
+ * localStorage once on mount (`useTheme`, `useIconTheme`, App's
+ * `appBackgroundId`) listen for this and re-read their key so the
+ * imported preferences take effect without a manual refresh
+ * (issue #214 C3 pt.E2).
+ */
+export const KEYSTORE_RESTORED_EVENT = 'aeroftp-localstorage-restored';
+
+/**
  * Collect the whitelisted keys from `window.localStorage` into a plain
  * map suitable for serialisation. Missing keys are simply omitted (the
  * backup format treats absence as "user never set this").
+ *
+ * Also captures OS-level state that does not live in localStorage but
+ * is part of the user's identity on this install (currently: the
+ * autostart toggle).
  */
-export const collectLocalStorage = (): Record<string, string> => {
+export const collectLocalStorage = async (): Promise<Record<string, string>> => {
     const out: Record<string, string> = {};
     for (const key of KEYSTORE_LS_WHITELIST) {
         try {
@@ -85,6 +113,16 @@ export const collectLocalStorage = (): Record<string, string> => {
         } catch {
             // Storage quota or disabled storage: skip silently.
         }
+    }
+    // OS-level autostart state. Plugin import is dynamic so the helper
+    // stays usable in a browser preview where the Tauri plugin is
+    // unavailable.
+    try {
+        const { isEnabled } = await import('@tauri-apps/plugin-autostart');
+        const enabled = await isEnabled();
+        out[AUTOSTART_KEY] = enabled ? 'true' : 'false';
+    } catch {
+        // Plugin unavailable (web preview, dev): skip silently.
     }
     return out;
 };
@@ -96,13 +134,39 @@ export const collectLocalStorage = (): Record<string, string> => {
  * backup remains valid, the user just won't see ghosts of removed
  * features).
  *
- * Returns the number of keys actually written.
+ * The synthetic `AUTOSTART_KEY` is intercepted and translated into a
+ * `tauri-plugin-autostart` enable/disable call instead of being
+ * written to `window.localStorage`.
+ *
+ * After the map has been applied, dispatches `KEYSTORE_RESTORED_EVENT`
+ * on `window` so hooks that snapshot localStorage once on mount can
+ * re-read their key without requiring the user to refresh the page.
+ *
+ * Returns the number of keys actually applied (including the
+ * autostart toggle if present).
  */
-export const applyLocalStorage = (map: Record<string, string> | undefined | null): number => {
+export const applyLocalStorage = async (
+    map: Record<string, string> | undefined | null,
+): Promise<number> => {
     if (!map) return 0;
     let applied = 0;
     const allowed = new Set(KEYSTORE_LS_WHITELIST);
     for (const [key, value] of Object.entries(map)) {
+        if (key === AUTOSTART_KEY) {
+            try {
+                const { enable, disable } = await import('@tauri-apps/plugin-autostart');
+                if (value === 'true') {
+                    await enable();
+                } else {
+                    await disable();
+                }
+                applied++;
+            } catch {
+                // Plugin unavailable: skip silently rather than fail
+                // the whole import.
+            }
+            continue;
+        }
         if (!allowed.has(key)) continue;
         try {
             localStorage.setItem(key, value);
@@ -110,6 +174,17 @@ export const applyLocalStorage = (map: Record<string, string> | undefined | null
         } catch {
             // Quota: stop trying further keys to avoid partial-state churn.
             break;
+        }
+    }
+    if (applied > 0) {
+        try {
+            window.dispatchEvent(new CustomEvent(KEYSTORE_RESTORED_EVENT));
+            // The custom-icons manager already listens for its own
+            // pre-existing event; re-emit it so the library refreshes
+            // alongside theme + background.
+            window.dispatchEvent(new CustomEvent('aeroftp-custom-icons-changed'));
+        } catch {
+            // CustomEvent missing in some test environments: ignore.
         }
     }
     return applied;

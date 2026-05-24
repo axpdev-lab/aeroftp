@@ -1010,7 +1010,9 @@
             "downloadSegmentsN": "{n} сегменти по датотека",
             "downloadSegmentsDesc": "Поделете го секое преземање на паралелни бајт-опсези. Автоматски го задржува тековното однесување со еден поток. Ефективно кај провајдери што поддржуваат барања за опсег (SFTP, S3, HTTP), за датотеки доволно големи за да има корист.",
             "autoStartTransfers": "Автоматско стартување на преноси",
-            "autoStartTransfersHelp": "Кога е вклучено, преносите со повлечи-и-пушти и клик стартуваат веднаш. Кога е исклучено, тие се паркираат во Transfer Queue како staged, за да можеш да ги прекастриш дрвата на папки и да ги преподредиш пред да притиснеш Start."
+            "autoStartTransfersHelp": "Кога е вклучено, преносите со повлечи-и-пушти и клик стартуваат веднаш. Кога е исклучено, тие се паркираат во Transfer Queue како staged, за да можеш да ги прекастриш дрвата на папки и да ги преподредиш пред да притиснеш Start.",
+            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
+            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
         },
         "devtools": {
             "title": "AeroTools",

@@ -1010,7 +1010,9 @@
             "downloadSegmentsN": "{n} сегментов на файл",
             "downloadSegmentsDesc": "Разделяет каждую загрузку на параллельные диапазоны байтов. Режим «Авто» сохраняет текущее поведение с одним потоком. Эффективно у провайдеров, поддерживающих запросы диапазонов (SFTP, S3, HTTP), для файлов достаточно крупных, чтобы это давало выигрыш.",
             "autoStartTransfers": "Автозапуск передач",
-            "autoStartTransfersHelp": "Если включено, передачи через drag-and-drop и клик запускаются сразу. Если выключено, они паркуются в Transfer Queue как staged, чтобы можно было обрезать деревья папок и переупорядочить перед нажатием Start."
+            "autoStartTransfersHelp": "Если включено, передачи через drag-and-drop и клик запускаются сразу. Если выключено, они паркуются в Transfer Queue как staged, чтобы можно было обрезать деревья папок и переупорядочить перед нажатием Start.",
+            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
+            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
         },
         "devtools": {
             "title": "AeroTools",

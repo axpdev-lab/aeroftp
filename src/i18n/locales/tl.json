@@ -1010,7 +1010,9 @@
             "downloadSegmentsN": "{n} segment kada file",
             "downloadSegmentsDesc": "Hinahati ang bawat pag-download sa parehas na byte ranges. Pinapanatili ng Auto ang kasalukuyang single-stream na pag-uugali. Epektibo sa mga provider na sumusuporta sa range requests (SFTP, S3, HTTP) para sa mga file na sapat ang laki upang makinabang.",
             "autoStartTransfers": "Awtomatikong simulan ang mga paglilipat",
-            "autoStartTransfersHelp": "Kapag naka-on, kaagad nagsisimula ang mga drag-and-drop at click na paglilipat. Kapag naka-off, ipinaparada ang mga ito sa Transfer Queue bilang staged para magawa mong gupitin ang mga puno ng folder at muling ayusin bago pindutin ang Start."
+            "autoStartTransfersHelp": "Kapag naka-on, kaagad nagsisimula ang mga drag-and-drop at click na paglilipat. Kapag naka-off, ipinaparada ang mga ito sa Transfer Queue bilang staged para magawa mong gupitin ang mga puno ng folder at muling ayusin bago pindutin ang Start.",
+            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
+            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
         },
         "devtools": {
             "title": "AeroTools",

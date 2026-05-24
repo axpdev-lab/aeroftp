@@ -1010,7 +1010,9 @@
             "downloadSegmentsN": "每个文件 {n} 个分段",
             "downloadSegmentsDesc": "将每次下载拆分为并行的字节区间。自动模式保持当前的单流行为。在支持区间请求(SFTP、S3、HTTP)的提供商上,对足够大的文件有效。",
             "autoStartTransfers": "自动启动传输",
-            "autoStartTransfersHelp": "开启时,拖放和点击传输立即开始。关闭时,它们以 staged 状态停放在 Transfer Queue 中,你可以在按下 Start 之前修剪文件夹树并重新排序。"
+            "autoStartTransfersHelp": "开启时,拖放和点击传输立即开始。关闭时,它们以 staged 状态停放在 Transfer Queue 中,你可以在按下 Start 之前修剪文件夹树并重新排序。",
+            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
+            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
         },
         "devtools": {
             "title": "AeroTools",

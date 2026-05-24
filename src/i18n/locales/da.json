@@ -1010,7 +1010,9 @@
             "downloadSegmentsN": "{n} segmenter pr. fil",
             "downloadSegmentsDesc": "Opdel hver download i parallelle byte-intervaller. Auto bevarer den nuværende adfærd med enkelt stream. Virker hos udbydere, der understøtter range-anmodninger (SFTP, S3, HTTP), for filer der er store nok til at have gavn af det.",
             "autoStartTransfers": "Start overforsler automatisk",
-            "autoStartTransfersHelp": "Hvis tilvalgt, starter drag-and-drop- og klik-overforsler med det samme. Hvis fravalgt, parkeres de i Transfer Queue som staged, sa du kan beskaere mappetraeer og omarrangere, for du trykker Start."
+            "autoStartTransfersHelp": "Hvis tilvalgt, starter drag-and-drop- og klik-overforsler med det samme. Hvis fravalgt, parkeres de i Transfer Queue som staged, sa du kan beskaere mappetraeer og omarrangere, for du trykker Start.",
+            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
+            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
         },
         "devtools": {
             "title": "AeroTools",
