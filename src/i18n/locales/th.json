@@ -1020,7 +1020,8 @@
             "autoStartTransfers": "เริ่มการถ่ายโอนอัตโนมัติ",
             "autoStartTransfersHelp": "เมื่อเปิด การถ่ายโอนแบบลากและวางและคลิกจะเริ่มทันที เมื่อปิด จะถูกพักไว้ใน Transfer Queue เป็น staged เพื่อให้คุณตัดต้นโฟลเดอร์และจัดลำดับใหม่ก่อนกด Start",
             "importKeystorePrompt": "ป้อนรหัสผ่านที่ใช้เข้ารหัสไฟล์สำรอง keystore นี้",
-            "importServersPrompt": "ป้อนรหัสผ่านที่ใช้เข้ารหัสไฟล์สำรอง server-profiles นี้"
+            "importServersPrompt": "ป้อนรหัสผ่านที่ใช้เข้ารหัสไฟล์สำรอง server-profiles นี้",
+            "exportFormatComparisonHint": "[NEEDS TRANSLATION] The .aeroftp file carries everything a profile needs to connect on another device. For a full vault backup including AI provider keys and global settings use the .aeroftp-keystore export instead."
         },
         "devtools": {
             "title": "AeroTools",

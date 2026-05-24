@@ -1020,7 +1020,8 @@
             "autoStartTransfers": "გადაცემების ავტომატური დაწყება",
             "autoStartTransfersHelp": "ჩართულ მდგომარეობაში drag-and-drop და დაწკაპუნებით გადაცემები იწყება მაშინვე. გამორთულ მდგომარეობაში ისინი ჩერდება Transfer Queue-ში როგორც staged, რათა შეძლოთ საქაღალდის ხეების მოწესრიგება და გადალაგება Start-ის დაჭერამდე.",
             "importKeystorePrompt": "შეიყვანეთ პაროლი, რომელიც გამოყენებული იყო ამ keystore-ის ბექაფის დასაშიფრად.",
-            "importServersPrompt": "შეიყვანეთ პაროლი, რომელიც გამოყენებული იყო ამ server-profiles-ის ბექაფის დასაშიფრად."
+            "importServersPrompt": "შეიყვანეთ პაროლი, რომელიც გამოყენებული იყო ამ server-profiles-ის ბექაფის დასაშიფრად.",
+            "exportFormatComparisonHint": "[NEEDS TRANSLATION] The .aeroftp file carries everything a profile needs to connect on another device. For a full vault backup including AI provider keys and global settings use the .aeroftp-keystore export instead."
         },
         "devtools": {
             "title": "AeroTools",

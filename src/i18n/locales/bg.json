@@ -1020,7 +1020,8 @@
             "autoStartTransfers": "Автоматично стартиране на прехвърлянията",
             "autoStartTransfersHelp": "Когато е включено, прехвърлянията чрез drag-and-drop и щракване стартират веднага. Когато е изключено, те се паркират в Transfer Queue като staged, за да можете да подрязвате дървовидни структури на папки и да пренареждате преди натискане на Start.",
             "importKeystorePrompt": "Въведете паролата, използвана за шифроване на това резервно копие на keystore.",
-            "importServersPrompt": "Въведете паролата, използвана за шифроване на това резервно копие на server-profiles."
+            "importServersPrompt": "Въведете паролата, използвана за шифроване на това резервно копие на server-profiles.",
+            "exportFormatComparisonHint": "[NEEDS TRANSLATION] The .aeroftp file carries everything a profile needs to connect on another device. For a full vault backup including AI provider keys and global settings use the .aeroftp-keystore export instead."
         },
         "devtools": {
             "title": "AeroTools",

@@ -1020,7 +1020,8 @@
             "autoStartTransfers": "Mulai transfer otomatis",
             "autoStartTransfersHelp": "Saat aktif, transfer drag-and-drop dan klik dimulai segera. Saat nonaktif, transfer diparkir di Transfer Queue sebagai staged sehingga kamu dapat memangkas pohon folder dan menyusun ulang sebelum menekan Start.",
             "importKeystorePrompt": "Masukkan kata sandi yang digunakan untuk mengenkripsi backup keystore ini.",
-            "importServersPrompt": "Masukkan kata sandi yang digunakan untuk mengenkripsi backup server-profiles ini."
+            "importServersPrompt": "Masukkan kata sandi yang digunakan untuk mengenkripsi backup server-profiles ini.",
+            "exportFormatComparisonHint": "[NEEDS TRANSLATION] The .aeroftp file carries everything a profile needs to connect on another device. For a full vault backup including AI provider keys and global settings use the .aeroftp-keystore export instead."
         },
         "devtools": {
             "title": "AeroTools",
