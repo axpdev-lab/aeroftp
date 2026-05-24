@@ -36,9 +36,14 @@ const S3_USERNAME: &str = "aeroftp-admin";
 const S3_BUCKET: &str = "aeroftp-test";
 const S3_REGION: &str = "us-east-1";
 const S3_ENDPOINT: &str = "https://s3.lab.axpdev.it";
-const S3_REMOTE_MULTIPART: &str = "_dag_validation/multipart_24MiB.bin";
-const FILE_BYTES: usize = 24 * 1024 * 1024;
-const PART_SIZE: usize = 8 * 1024 * 1024;
+const S3_REMOTE_MULTIPART: &str = "_dag_validation/multipart_48MiB.bin";
+// 48 MiB fixture so the shaped builder produces >= 3 `UploadPart` nodes when
+// driven through the S3 provider's advertised `preferred_chunk_size` of 16 MiB
+// (`S3Provider::MULTIPART_PART_SIZE`, surfaced via `transfer_optimization_hints`
+// -> `TransferCapabilities::from_provider_hints`). The earlier 24 MiB fixture
+// silently degraded to 2 parts once S3 started advertising its real 16 MiB
+// preference instead of the builder's 8 MiB fallback.
+const FILE_BYTES: usize = 48 * 1024 * 1024;
 
 fn sha256_file(path: &Path) -> String {
     use std::io::Read;
@@ -120,12 +125,12 @@ async fn gtc_dag_s3_multipart_byte_identical() {
         return;
     };
 
-    // Seed a 24 MiB random fixture; the shaped builder will partition it
-    // into 3 x 8 MiB parts under the multipart-capable cap set.
+    // Seed a 48 MiB random fixture; the shaped builder partitions it into
+    // 3 x 16 MiB parts because S3 advertises a 16 MiB `preferred_chunk_size`.
     let src_dir = std::env::temp_dir().join("dag-s3-multipart-src");
     let _ = std::fs::remove_dir_all(&src_dir);
     std::fs::create_dir_all(&src_dir).unwrap();
-    let src = src_dir.join("24MiB.bin");
+    let src = src_dir.join("48MiB.bin");
     let payload = random_buf(0xD8A6_53A1, FILE_BYTES);
     std::fs::write(&src, &payload).unwrap();
     let src_sha = sha256_bytes(&payload);
@@ -170,7 +175,7 @@ async fn gtc_dag_s3_multipart_byte_identical() {
     let built = TransferDagBuilder::shaped_file(TransferDirection::Upload, &caps, file_size);
     assert!(
         built.transfer.len() >= 3,
-        "24 MiB / 8 MiB part size must produce >= 3 UploadPart nodes, got {}",
+        "48 MiB / 16 MiB part size must produce >= 3 UploadPart nodes, got {}",
         built.transfer.len()
     );
 
@@ -215,5 +220,4 @@ async fn gtc_dag_s3_multipart_byte_identical() {
         built.transfer.len(),
         src_sha
     );
-    let _ = PART_SIZE; // suppress unused warning on the doc-only constant
 }

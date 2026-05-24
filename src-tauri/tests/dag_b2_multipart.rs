@@ -31,8 +31,13 @@ use sha2::{Digest, Sha256};
 use tokio::sync::Mutex;
 
 const B2_PROFILE_ID: &str = "srv_b2_dag";
-const B2_REMOTE_MULTIPART: &str = "_dag_validation/multipart_24MiB.bin";
-const FILE_BYTES: usize = 24 * 1024 * 1024;
+const B2_REMOTE_MULTIPART: &str = "_dag_validation/multipart_256MiB.bin";
+// 256 MiB fixture: B2 advertises `LARGE_FILE_PART_SIZE = 100 MiB` as its
+// `preferred_chunk_size`, and `SINGLE_UPLOAD_RECOMMENDED_MAX = 200 MiB` is the
+// threshold below which B2 stays on the single-PUT path. 256 MiB clears both
+// gates: the shaped builder produces 3 `UploadPart` nodes, and B2 actually
+// drives `b2_start_large_file` -> `b2_upload_part` -> `b2_finish_large_file`.
+const FILE_BYTES: usize = 256 * 1024 * 1024;
 
 fn sha256_file(path: &Path) -> String {
     use std::io::Read;
@@ -114,7 +119,7 @@ async fn gtc_dag_b2_multipart_byte_identical() {
     let src_dir = std::env::temp_dir().join("dag-b2-multipart-src");
     let _ = std::fs::remove_dir_all(&src_dir);
     std::fs::create_dir_all(&src_dir).unwrap();
-    let src = src_dir.join("24MiB.bin");
+    let src = src_dir.join("256MiB.bin");
     let payload = random_buf(0xB2BA_FEED, FILE_BYTES);
     std::fs::write(&src, &payload).unwrap();
     let src_sha = sha256_bytes(&payload);
@@ -152,7 +157,7 @@ async fn gtc_dag_b2_multipart_byte_identical() {
     let built = TransferDagBuilder::shaped_file(TransferDirection::Upload, &caps, file_size);
     assert!(
         built.transfer.len() >= 3,
-        "24 MiB upload must produce >= 3 UploadPart nodes, got {}",
+        "256 MiB / 100 MiB part size must produce >= 3 UploadPart nodes, got {}",
         built.transfer.len()
     );
 
