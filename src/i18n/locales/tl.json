@@ -1021,7 +1021,8 @@
             "autoStartTransfersHelp": "Kapag naka-on, kaagad nagsisimula ang mga drag-and-drop at click na paglilipat. Kapag naka-off, ipinaparada ang mga ito sa Transfer Queue bilang staged para magawa mong gupitin ang mga puno ng folder at muling ayusin bago pindutin ang Start.",
             "importKeystorePrompt": "Ipasok ang password na ginamit upang i-encrypt ang keystore backup na ito.",
             "importServersPrompt": "Ipasok ang password na ginamit upang i-encrypt ang server-profiles backup na ito.",
-            "exportFormatComparisonHint": "[NEEDS TRANSLATION] The .aeroftp file carries everything a profile needs to connect on another device. For a full vault backup including AI provider keys and global settings use the .aeroftp-keystore export instead."
+            "exportFormatComparisonHint": "Ang .aeroftp file ay naglalaman ng lahat ng kailangan ng isang profile para kumonekta sa ibang device. Para sa kumpletong backup ng vault kasama ang mga AI provider key at pandaigdigang setting, gamitin ang .aeroftp-keystore export sa halip.",
+            "keystoreRestartRequired": "I-restart ang AeroFTP upang ilapat ang mga naibalik na database at plugin."
         },
         "devtools": {
             "title": "AeroTools",

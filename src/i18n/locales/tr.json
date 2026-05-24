@@ -1021,7 +1021,8 @@
             "autoStartTransfersHelp": "Aciksa, surukle-birak ve tiklama aktarimlari hemen baslar. Kapaliysa, Transfer Queue icinde staged olarak park edilir, boylece Start tusuna basmadan once klasor agaclarini ayiklayabilir ve yeniden siralayabilirsin.",
             "importKeystorePrompt": "Bu keystore yedeklemesini sifrelemek icin kullanilan parolayi girin.",
             "importServersPrompt": "Bu server-profiles yedeklemesini sifrelemek icin kullanilan parolayi girin.",
-            "exportFormatComparisonHint": "[NEEDS TRANSLATION] The .aeroftp file carries everything a profile needs to connect on another device. For a full vault backup including AI provider keys and global settings use the .aeroftp-keystore export instead."
+            "exportFormatComparisonHint": ".aeroftp dosyası, bir profilin başka bir cihazda bağlanması için ihtiyacı olan her şeyi içerir. AI sağlayıcı anahtarları ve genel ayarlar dahil tam kasa yedeklemesi için bunun yerine .aeroftp-keystore dışa aktarımını kullanın.",
+            "keystoreRestartRequired": "Geri yüklenen veritabanlarını ve eklentileri uygulamak için AeroFTP'yi yeniden başlatın."
         },
         "devtools": {
             "title": "AeroTools",

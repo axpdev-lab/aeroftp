@@ -1021,7 +1021,8 @@
             "autoStartTransfersHelp": "Khi bat, truyen bang keo-tha va nhap bat dau ngay lap tuc. Khi tat, chung duoc do trong Transfer Queue o trang thai staged de ban co the cat tia cay thu muc va sap xep lai truoc khi nhan Start.",
             "importKeystorePrompt": "Nhap mat khau da dung de ma hoa ban sao luu keystore nay.",
             "importServersPrompt": "Nhap mat khau da dung de ma hoa ban sao luu server-profiles nay.",
-            "exportFormatComparisonHint": "[NEEDS TRANSLATION] The .aeroftp file carries everything a profile needs to connect on another device. For a full vault backup including AI provider keys and global settings use the .aeroftp-keystore export instead."
+            "exportFormatComparisonHint": "Tệp .aeroftp chứa mọi thứ mà một hồ sơ cần để kết nối trên thiết bị khác. Để sao lưu kho lưu trữ đầy đủ bao gồm khóa nhà cung cấp AI và cài đặt toàn cục, hãy sử dụng xuất .aeroftp-keystore thay thế.",
+            "keystoreRestartRequired": "Khởi động lại AeroFTP để áp dụng cơ sở dữ liệu và tiện ích bổ sung đã khôi phục."
         },
         "devtools": {
             "title": "AeroTools",

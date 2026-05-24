@@ -968,6 +968,7 @@
             "importKeystorePrompt": "Inserisci la password usata per cifrare questo backup del keystore.",
             "keystoreExported": "Keystore esportato con successo ({count} voci)",
             "keystoreImported": "Importate {imported} voci ({skipped} saltate)",
+            "keystoreRestartRequired": "Riavvia AeroFTP per applicare i database e i plugin ripristinati.",
             "mergeStrategy": "Strategia di Importazione",
             "overwriteAll": "Sovrascrivi esistenti",
             "skipExisting": "Salta esistenti",

@@ -1021,7 +1021,8 @@
             "autoStartTransfersHelp": "जब चालू हो, ड्रैग-एंड-ड्रॉप और क्लिक स्थानांतरण तुरंत शुरू हो जाते हैं। जब बंद हो, वे Transfer Queue में staged के रूप में पार्क किए जाते हैं, ताकि आप Start दबाने से पहले फ़ोल्डर ट्री को छाँट सकें और पुनः क्रमित कर सकें।",
             "importKeystorePrompt": "इस keystore बैकअप को एन्क्रिप्ट करने के लिए उपयोग किया गया पासवर्ड दर्ज करें।",
             "importServersPrompt": "इस server-profiles बैकअप को एन्क्रिप्ट करने के लिए उपयोग किया गया पासवर्ड दर्ज करें।",
-            "exportFormatComparisonHint": "[NEEDS TRANSLATION] The .aeroftp file carries everything a profile needs to connect on another device. For a full vault backup including AI provider keys and global settings use the .aeroftp-keystore export instead."
+            "exportFormatComparisonHint": ".aeroftp फ़ाइल में वह सब कुछ शामिल है जो किसी प्रोफ़ाइल को किसी अन्य डिवाइस पर कनेक्ट करने के लिए चाहिए। AI प्रदाता कुंजियों और वैश्विक सेटिंग्स सहित पूर्ण वॉल्ट बैकअप के लिए, इसके बजाय .aeroftp-keystore निर्यात का उपयोग करें।",
+            "keystoreRestartRequired": "पुनर्स्थापित डेटाबेस और प्लगइन्स लागू करने के लिए AeroFTP को पुनः आरंभ करें।"
         },
         "devtools": {
             "title": "AeroTools",

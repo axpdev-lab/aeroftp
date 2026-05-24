@@ -1021,7 +1021,8 @@
             "autoStartTransfersHelp": "Saat aktif, transfer drag-and-drop dan klik dimulai segera. Saat nonaktif, transfer diparkir di Transfer Queue sebagai staged sehingga kamu dapat memangkas pohon folder dan menyusun ulang sebelum menekan Start.",
             "importKeystorePrompt": "Masukkan kata sandi yang digunakan untuk mengenkripsi backup keystore ini.",
             "importServersPrompt": "Masukkan kata sandi yang digunakan untuk mengenkripsi backup server-profiles ini.",
-            "exportFormatComparisonHint": "[NEEDS TRANSLATION] The .aeroftp file carries everything a profile needs to connect on another device. For a full vault backup including AI provider keys and global settings use the .aeroftp-keystore export instead."
+            "exportFormatComparisonHint": "File .aeroftp berisi semua yang dibutuhkan profil untuk terhubung di perangkat lain. Untuk pencadangan brankas penuh termasuk kunci penyedia AI dan pengaturan global, gunakan ekspor .aeroftp-keystore sebagai gantinya.",
+            "keystoreRestartRequired": "Mulai ulang AeroFTP untuk menerapkan basis data dan plugin yang dipulihkan."
         },
         "devtools": {
             "title": "AeroTools",

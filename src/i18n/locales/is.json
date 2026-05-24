@@ -1021,7 +1021,8 @@
             "autoStartTransfersHelp": "Kveikt hefjast drag-and-drop og smella flutningar strax. Slokkt eru their lagdir i Transfer Queue sem staged, svo thu getir snyrt mopputre og endurrada adur en thu yttir a Start.",
             "importKeystorePrompt": "Sláðu inn lykilorðið sem var notað til að dulkóða þetta keystore afrit.",
             "importServersPrompt": "Sláðu inn lykilorðið sem var notað til að dulkóða þetta server-profiles afrit.",
-            "exportFormatComparisonHint": "[NEEDS TRANSLATION] The .aeroftp file carries everything a profile needs to connect on another device. For a full vault backup including AI provider keys and global settings use the .aeroftp-keystore export instead."
+            "exportFormatComparisonHint": ".aeroftp skráin inniheldur allt sem snið þarf til að tengjast á öðru tæki. Fyrir fullt afrit af hvelfingu, þar á meðal AI veitulykla og almennar stillingar, notaðu .aeroftp-keystore útflutning í staðinn.",
+            "keystoreRestartRequired": "Endurræstu AeroFTP til að beita endurheimtum gagnagrunnum og viðbótum."
         },
         "devtools": {
             "title": "AeroTools",

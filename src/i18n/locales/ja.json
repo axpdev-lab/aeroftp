@@ -1021,7 +1021,8 @@
             "autoStartTransfersHelp": "オンの場合、ドラッグ&ドロップやクリックでの転送はすぐに開始されます。オフの場合、Transfer Queue に staged として保留され、Start を押す前にフォルダツリーを整理して並び替えできます。",
             "importKeystorePrompt": "この keystore バックアップを暗号化するために使用したパスワードを入力してください。",
             "importServersPrompt": "この server-profiles バックアップを暗号化するために使用したパスワードを入力してください。",
-            "exportFormatComparisonHint": "[NEEDS TRANSLATION] The .aeroftp file carries everything a profile needs to connect on another device. For a full vault backup including AI provider keys and global settings use the .aeroftp-keystore export instead."
+            "exportFormatComparisonHint": ".aeroftp ファイルには、プロファイルが別のデバイスで接続するために必要なすべてが含まれています。AI プロバイダーキーやグローバル設定を含む完全な保管庫のバックアップには、代わりに .aeroftp-keystore エクスポートを使用してください。",
+            "keystoreRestartRequired": "復元されたデータベースとプラグインを適用するために AeroFTP を再起動してください。"
         },
         "devtools": {
             "title": "AeroTools",

@@ -1021,7 +1021,8 @@
             "autoStartTransfersHelp": "开启时,拖放和点击传输立即开始。关闭时,它们以 staged 状态停放在 Transfer Queue 中,你可以在按下 Start 之前修剪文件夹树并重新排序。",
             "importKeystorePrompt": "请输入用于加密此 keystore 备份的密码。",
             "importServersPrompt": "请输入用于加密此 server-profiles 备份的密码。",
-            "exportFormatComparisonHint": "[NEEDS TRANSLATION] The .aeroftp file carries everything a profile needs to connect on another device. For a full vault backup including AI provider keys and global settings use the .aeroftp-keystore export instead."
+            "exportFormatComparisonHint": ".aeroftp 文件包含配置文件在另一台设备上连接所需的所有内容。如需完整的保险库备份(包括 AI 提供商密钥和全局设置),请改用 .aeroftp-keystore 导出。",
+            "keystoreRestartRequired": "重启 AeroFTP 以应用已恢复的数据库和插件。"
         },
         "devtools": {
             "title": "AeroTools",

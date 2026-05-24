@@ -1021,7 +1021,8 @@
             "autoStartTransfersHelp": "Kad ieslegts, vilksanas un nomesanas un klikskinasanas parsutisanas sakas nekavejoties. Kad izslegts, tas tiek novietotas Transfer Queue ka staged, lai tu varetu apgriezt mapju kokus un parkartot pirms nospiez Start.",
             "importKeystorePrompt": "Ievadiet paroli, kas izmantota si keystore dublejuma sifresanai.",
             "importServersPrompt": "Ievadiet paroli, kas izmantota si server-profiles dublejuma sifresanai.",
-            "exportFormatComparisonHint": "[NEEDS TRANSLATION] The .aeroftp file carries everything a profile needs to connect on another device. For a full vault backup including AI provider keys and global settings use the .aeroftp-keystore export instead."
+            "exportFormatComparisonHint": "Failā .aeroftp ir viss, kas profilam nepieciešams, lai izveidotu savienojumu citā ierīcē. Lai izveidotu pilnu seifa dublējumkopiju, ieskaitot AI nodrošinātāju atslēgas un globālos iestatījumus, izmantojiet .aeroftp-keystore eksportu.",
+            "keystoreRestartRequired": "Restartējiet AeroFTP, lai lietotu atjaunotās datu bāzes un spraudņus."
         },
         "devtools": {
             "title": "AeroTools",

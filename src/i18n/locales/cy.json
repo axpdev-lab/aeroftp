@@ -1021,7 +1021,8 @@
             "autoStartTransfersHelp": "Pan fydd ymlaen, mae trosglwyddiadau drag-and-drop a chlicio yn cychwyn ar unwaith. Pan fydd i ffwrdd, cant eu parcio yn y Transfer Queue fel staged er mwyn i ti docio coed ffolderi ac aildrefnu cyn pwyso Start.",
             "importKeystorePrompt": "Rhowch y cyfrinair a ddefnyddiwyd i amgryptio'r copi wrth gefn keystore hwn.",
             "importServersPrompt": "Rhowch y cyfrinair a ddefnyddiwyd i amgryptio'r copi wrth gefn server-profiles hwn.",
-            "exportFormatComparisonHint": "[NEEDS TRANSLATION] The .aeroftp file carries everything a profile needs to connect on another device. For a full vault backup including AI provider keys and global settings use the .aeroftp-keystore export instead."
+            "exportFormatComparisonHint": "Mae'r ffeil .aeroftp yn cynnwys popeth sydd ei angen ar broffil i gysylltu ar ddyfais arall. Ar gyfer copi wrth gefn llawn o'r gladdgell, gan gynnwys allweddi darparwyr AI a gosodiadau cyffredinol, defnyddiwch yr allforio .aeroftp-keystore yn lle hynny.",
+            "keystoreRestartRequired": "Ailgychwynnwch AeroFTP i osod y cronfeydd data a'r ategion sydd wedi'u hadfer."
         },
         "devtools": {
             "title": "AeroTools",
