@@ -132,6 +132,7 @@ pub mod sync;
 mod sync_badge;
 pub mod sync_core;
 mod sync_ignore;
+pub mod sync_script;
 mod sync_scheduler;
 mod sync_versioning;
 mod totp;
@@ -10218,6 +10219,190 @@ fn import_sync_script_cmd(script_content: String) -> Result<sync::SyncScriptMeta
 }
 
 // =============================
+// AeroSync canonical script export/import (issue #133)
+// =============================
+
+#[derive(serde::Deserialize)]
+struct AerosyncExportScriptArgs {
+    profile_id: String,
+    profile_display_name: Option<String>,
+    local_path: String,
+    remote_path: String,
+    connect_profile: Option<String>,
+    exclude_patterns_override: Option<Vec<String>>,
+    #[serde(default)]
+    dry_run: bool,
+    conflict_mode: Option<String>,
+    #[serde(default)]
+    track_renames: bool,
+    #[serde(default)]
+    skip_matching: bool,
+    #[serde(default)]
+    resync: bool,
+    #[serde(default)]
+    watch: bool,
+    output_path: String,
+    #[serde(default)]
+    also_generate_wrapper: bool,
+}
+
+#[derive(serde::Serialize)]
+struct AerosyncExportScriptResult {
+    canonical_path: String,
+    wrapper_path: Option<String>,
+}
+
+#[tauri::command]
+fn aerosync_export_script_cmd(
+    args: AerosyncExportScriptArgs,
+) -> Result<AerosyncExportScriptResult, String> {
+    let profiles = sync::load_sync_profiles()?;
+    let base_profile = profiles
+        .iter()
+        .find(|p| p.id == args.profile_id)
+        .cloned()
+        .ok_or_else(|| format!("Profile '{}' not found", args.profile_id))?;
+
+    let mut profile = base_profile;
+    if let Some(name) = args.profile_display_name.as_deref() {
+        if !name.is_empty() {
+            profile.name = name.to_string();
+        }
+    }
+    if let Some(overrides) = args.exclude_patterns_override.clone() {
+        profile.exclude_patterns = overrides;
+    }
+
+    let canonical_extension = sync_script::CANONICAL_EXTENSION;
+    let canonical_path = std::path::PathBuf::from(&args.output_path);
+    let canonical_path = if canonical_path
+        .extension()
+        .and_then(|s| s.to_str())
+        .map(|s| s.eq_ignore_ascii_case(canonical_extension))
+        .unwrap_or(false)
+    {
+        canonical_path
+    } else {
+        canonical_path.with_extension(canonical_extension)
+    };
+
+    let canonical_filename = canonical_path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| "Invalid output path: cannot derive filename".to_string())?
+        .to_string();
+
+    let script_profile = sync_script::AerosyncScriptProfile {
+        profile,
+        local_path: args.local_path.clone(),
+        remote_path: args.remote_path.clone(),
+        connect_profile: args.connect_profile.clone(),
+        connect_url: None,
+        dry_run: args.dry_run,
+        conflict_mode: args.conflict_mode.clone(),
+        track_renames: args.track_renames,
+        skip_matching: args.skip_matching,
+        resync: args.resync,
+        watch: args.watch,
+    };
+
+    let app_version = env!("CARGO_PKG_VERSION");
+    let script = sync_script::generate_script(&script_profile, app_version);
+
+    std::fs::write(&canonical_path, &script).map_err(|e| {
+        format!(
+            "Failed to write '{}': {}",
+            canonical_path.display(),
+            e
+        )
+    })?;
+
+    let mut wrapper_path: Option<String> = None;
+    if args.also_generate_wrapper {
+        #[cfg(target_os = "windows")]
+        let (wrapper_ext, wrapper_body) = (
+            "ps1",
+            sync_script::ps1_wrapper(&canonical_filename),
+        );
+        #[cfg(not(target_os = "windows"))]
+        let (wrapper_ext, wrapper_body) = (
+            "sh",
+            sync_script::sh_wrapper(&canonical_filename),
+        );
+        let wrapper = canonical_path.with_extension(wrapper_ext);
+        std::fs::write(&wrapper, wrapper_body).map_err(|e| {
+            format!("Failed to write wrapper '{}': {}", wrapper.display(), e)
+        })?;
+        #[cfg(not(target_os = "windows"))]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if let Ok(meta) = std::fs::metadata(&wrapper) {
+                let mut perm = meta.permissions();
+                perm.set_mode(0o755);
+                let _ = std::fs::set_permissions(&wrapper, perm);
+            }
+        }
+        wrapper_path = Some(wrapper.to_string_lossy().to_string());
+    }
+
+    Ok(AerosyncExportScriptResult {
+        canonical_path: canonical_path.to_string_lossy().to_string(),
+        wrapper_path,
+    })
+}
+
+#[derive(serde::Deserialize)]
+struct AerosyncImportScriptArgs {
+    input_path: String,
+}
+
+#[derive(serde::Serialize)]
+struct AerosyncImportScriptResult {
+    profile: sync_script::AerosyncScriptProfile,
+    unmapped_fields: Vec<String>,
+    warnings: Vec<String>,
+    canonical_path: String,
+    /// Set when the input was a wrapper (`.ps1` / `.sh`) and the
+    /// sibling `.aeroftp-script` was followed.
+    resolved_from_wrapper: bool,
+}
+
+#[tauri::command]
+fn aerosync_import_script_cmd(
+    args: AerosyncImportScriptArgs,
+) -> Result<AerosyncImportScriptResult, String> {
+    let input_path = std::path::PathBuf::from(&args.input_path);
+    let raw = std::fs::read_to_string(&input_path)
+        .map_err(|e| format!("Cannot read '{}': {}", input_path.display(), e))?;
+
+    let (canonical_path, content, resolved_from_wrapper) =
+        match sync_script::detect_wrapper_target(&input_path, &raw) {
+            Some(target) => {
+                let body = std::fs::read_to_string(&target).map_err(|e| {
+                    format!(
+                        "Wrapper references '{}' but it could not be read: {}",
+                        target.display(),
+                        e
+                    )
+                })?;
+                (target, body, true)
+            }
+            None => (input_path, raw, false),
+        };
+
+    let parsed = sync_script::parse_script(&content)
+        .map_err(|e| e.user_message())?;
+
+    Ok(AerosyncImportScriptResult {
+        profile: parsed.profile,
+        unmapped_fields: parsed.unmapped_fields,
+        warnings: parsed.warnings,
+        canonical_path: canonical_path.to_string_lossy().to_string(),
+        resolved_from_wrapper,
+    })
+}
+
+// =============================
 // Rollback Commands (#154)
 // =============================
 
@@ -14865,6 +15050,8 @@ pub fn run() {
             import_sync_template_cmd,
             export_sync_script_cmd,
             import_sync_script_cmd,
+            aerosync_export_script_cmd,
+            aerosync_import_script_cmd,
             flatten_local_descendants,
             create_sync_snapshot_cmd,
             list_sync_snapshots_cmd,

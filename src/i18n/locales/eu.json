@@ -1019,8 +1019,8 @@
             "downloadSegmentsDesc": "Deskarga bakoitza byte-tarte paraleloetan banatzen du. Auto-k egungo korronte bakarreko portaera mantentzen du. Tarte-eskaerak onartzen dituzten hornitzaileetan eraginkorra (SFTP, S3, HTTP), onura ateratzeko bezain handiak diren fitxategietarako.",
             "autoStartTransfers": "Hasiera automatikoa transferentziei",
             "autoStartTransfersHelp": "Aktibatuta dagoenean, arrastatu eta jaregin eta klik transferentziak berehala hasten dira. Desaktibatuta dagoenean, Transfer Queue-n aparkatzen dira staged gisa, karpeta zuhaitzak inausi eta berrordenatu ahal izateko Start sakatu aurretik.",
-            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
-            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
+            "importKeystorePrompt": "Sartu keystore babeskopia hau zifratzeko erabilitako pasahitza.",
+            "importServersPrompt": "Sartu server-profiles babeskopia hau zifratzeko erabilitako pasahitza."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1992,7 +1992,17 @@
             "templateFormatPwsh": "PowerShell script-a (.ps1)",
             "templateScriptExportedToast": "Script-a esportatua",
             "templateScriptImportedToast": "Script-aren metadatuak kargatuta",
-            "templateScriptInvalidToast": "Script-ak ez du AeroFTP metadaturik"
+            "templateScriptInvalidToast": "Script-ak ez du AeroFTP metadaturik",
+            "templateFormatAeroftpScript": "AeroSync script-a (.aeroftp-script)",
+            "templateFormatAeroftpScriptHint": "(gomendatua, round-trip osoa)",
+            "aerosyncScriptExportButton": "Esportatu script-a",
+            "aerosyncScriptExportedToast": "AeroSync script-a esportatuta",
+            "aerosyncScriptImportedToast": "AeroSync script-a inportatuta",
+            "aerosyncScriptAlsoWrapper": "Sortu OS-native wrapper-a ere (.ps1 / .sh)",
+            "aerosyncScriptFromWrapper": "(wrapper-etik)",
+            "aerosyncScriptUnmappedFields": "Ezagutzen ez diren metadata eremuak",
+            "aerosyncScriptApplyButton": "Gorde preset gisa",
+            "aerosyncScriptAppliedToast": "Inportatutako preset-a gordeta. Ireki AeroSync erabiltzeko."
         },
         "ui": {
             "syncing": "Sinkronizatzen...",

@@ -1019,8 +1019,8 @@
             "downloadSegmentsDesc": "各ダウンロードを並列のバイト範囲に分割します。「自動」は現在のシングルストリーム動作を維持します。範囲リクエストに対応したプロバイダー（SFTP、S3、HTTP）で、効果が見込める程度に大きいファイルで有効です。",
             "autoStartTransfers": "転送を自動開始",
             "autoStartTransfersHelp": "オンの場合、ドラッグ&ドロップやクリックでの転送はすぐに開始されます。オフの場合、Transfer Queue に staged として保留され、Start を押す前にフォルダツリーを整理して並び替えできます。",
-            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
-            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
+            "importKeystorePrompt": "この keystore バックアップを暗号化するために使用したパスワードを入力してください。",
+            "importServersPrompt": "この server-profiles バックアップを暗号化するために使用したパスワードを入力してください。"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1957,7 +1957,17 @@
             "templateFormatPwsh": "PowerShell スクリプト (.ps1)",
             "templateScriptExportedToast": "スクリプトをエクスポートしました",
             "templateScriptImportedToast": "スクリプトのメタデータを読み込みました",
-            "templateScriptInvalidToast": "スクリプトに AeroFTP のメタデータが含まれていません"
+            "templateScriptInvalidToast": "スクリプトに AeroFTP のメタデータが含まれていません",
+            "templateFormatAeroftpScript": "AeroSync スクリプト (.aeroftp-script)",
+            "templateFormatAeroftpScriptHint": "(推奨、完全な round-trip)",
+            "aerosyncScriptExportButton": "スクリプトをエクスポート",
+            "aerosyncScriptExportedToast": "AeroSync スクリプトをエクスポートしました",
+            "aerosyncScriptImportedToast": "AeroSync スクリプトをインポートしました",
+            "aerosyncScriptAlsoWrapper": "OS-native wrapper も生成する (.ps1 / .sh)",
+            "aerosyncScriptFromWrapper": "(wrapper から)",
+            "aerosyncScriptUnmappedFields": "認識されていない metadata フィールド",
+            "aerosyncScriptApplyButton": "preset として保存",
+            "aerosyncScriptAppliedToast": "インポートした preset を保存しました。AeroSync を開いて使用してください。"
         },
         "ui": {
             "syncing": "同期中...",

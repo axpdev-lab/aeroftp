@@ -1019,8 +1019,8 @@
             "downloadSegmentsDesc": "Dziel każde pobieranie na równoległe zakresy bajtów. Auto zachowuje obecne zachowanie z pojedynczym strumieniem. Działa u dostawców obsługujących żądania zakresów (SFTP, S3, HTTP) dla plików wystarczająco dużych, aby odnieść korzyść.",
             "autoStartTransfers": "Automatyczne uruchamianie transferow",
             "autoStartTransfersHelp": "Gdy wlaczone, transfery przeciagnij-i-upusc oraz klikniecia startuja od razu. Gdy wylaczone, sa odkladane w Transfer Queue jako staged, abys mogl przyciac drzewa folderow i zmienic kolejnosc przed nacisnieciem Start.",
-            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
-            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
+            "importKeystorePrompt": "Wprowadź hasło użyte do zaszyfrowania tej kopii zapasowej keystore.",
+            "importServersPrompt": "Wprowadź hasło użyte do zaszyfrowania tej kopii zapasowej server-profiles."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1992,7 +1992,17 @@
             "templateFormatPwsh": "Skrypt PowerShell (.ps1)",
             "templateScriptExportedToast": "Skrypt wyeksportowany",
             "templateScriptImportedToast": "Metadane skryptu wczytane",
-            "templateScriptInvalidToast": "Skrypt nie zawiera metadanych AeroFTP"
+            "templateScriptInvalidToast": "Skrypt nie zawiera metadanych AeroFTP",
+            "templateFormatAeroftpScript": "Skrypt AeroSync (.aeroftp-script)",
+            "templateFormatAeroftpScriptHint": "(zalecane, pełny round-trip)",
+            "aerosyncScriptExportButton": "Eksportuj skrypt",
+            "aerosyncScriptExportedToast": "Skrypt AeroSync wyeksportowany",
+            "aerosyncScriptImportedToast": "Skrypt AeroSync zaimportowany",
+            "aerosyncScriptAlsoWrapper": "Wygeneruj także wrapper OS-native (.ps1 / .sh)",
+            "aerosyncScriptFromWrapper": "(z wrapper)",
+            "aerosyncScriptUnmappedFields": "Nierozpoznane pola metadata",
+            "aerosyncScriptApplyButton": "Zapisz jako preset",
+            "aerosyncScriptAppliedToast": "Zaimportowany preset zapisany. Otwórz AeroSync, aby go użyć."
         },
         "ui": {
             "syncing": "Synchronizacja...",

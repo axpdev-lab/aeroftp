@@ -1019,8 +1019,8 @@
             "downloadSegmentsDesc": "Chia mỗi lần tải xuống thành các dải byte song song. Tự động giữ nguyên hành vi luồng đơn hiện tại. Hiệu quả với các nhà cung cấp hỗ trợ yêu cầu theo dải (SFTP, S3, HTTP) cho các tệp đủ lớn để có lợi.",
             "autoStartTransfers": "Tu dong bat dau truyen",
             "autoStartTransfersHelp": "Khi bat, truyen bang keo-tha va nhap bat dau ngay lap tuc. Khi tat, chung duoc do trong Transfer Queue o trang thai staged de ban co the cat tia cay thu muc va sap xep lai truoc khi nhan Start.",
-            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
-            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
+            "importKeystorePrompt": "Nhap mat khau da dung de ma hoa ban sao luu keystore nay.",
+            "importServersPrompt": "Nhap mat khau da dung de ma hoa ban sao luu server-profiles nay."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1992,7 +1992,17 @@
             "templateFormatPwsh": "Tập lệnh PowerShell (.ps1)",
             "templateScriptExportedToast": "Đã xuất tập lệnh",
             "templateScriptImportedToast": "Đã tải siêu dữ liệu tập lệnh",
-            "templateScriptInvalidToast": "Tập lệnh không chứa siêu dữ liệu AeroFTP"
+            "templateScriptInvalidToast": "Tập lệnh không chứa siêu dữ liệu AeroFTP",
+            "templateFormatAeroftpScript": "Script AeroSync (.aeroftp-script)",
+            "templateFormatAeroftpScriptHint": "(khuyen dung, round-trip day du)",
+            "aerosyncScriptExportButton": "Xuat script",
+            "aerosyncScriptExportedToast": "Da xuat script AeroSync",
+            "aerosyncScriptImportedToast": "Da nhap script AeroSync",
+            "aerosyncScriptAlsoWrapper": "Tao kem OS-native wrapper (.ps1 / .sh)",
+            "aerosyncScriptFromWrapper": "(tu wrapper)",
+            "aerosyncScriptUnmappedFields": "Cac truong metadata khong nhan dien",
+            "aerosyncScriptApplyButton": "Luu lam preset",
+            "aerosyncScriptAppliedToast": "Da luu preset duoc nhap. Mo AeroSync de su dung."
         },
         "ui": {
             "syncing": "Đang đồng bộ...",

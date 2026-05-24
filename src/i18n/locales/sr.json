@@ -1019,8 +1019,8 @@
             "downloadSegmentsDesc": "Дели свако преузимање на паралелне опсеге бајтова. Ауто задржава тренутно понашање са једним током. Делотворно код провајдера који подржавају захтеве опсега (SFTP, S3, HTTP) за фајлове довољно велике да имају користи.",
             "autoStartTransfers": "Аутоматско покретање преноса",
             "autoStartTransfersHelp": "Када је укључено, преноси превуци-и-пусти и кликом крећу одмах. Када је искључено, паркирају се у Transfer Queue као staged, како би могао да прорезујеш стабла фасцикли и преуређујеш пре притискања Start.",
-            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
-            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
+            "importKeystorePrompt": "Унеси лозинку коришћену за шифровање ове резервне копије keystore.",
+            "importServersPrompt": "Унеси лозинку коришћену за шифровање ове резервне копије server-profiles."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1992,7 +1992,17 @@
             "templateFormatPwsh": "PowerShell скрипта (.ps1)",
             "templateScriptExportedToast": "Скрипта је извезена",
             "templateScriptImportedToast": "Метаподаци скрипте су учитани",
-            "templateScriptInvalidToast": "Скрипта не садржи метаподатке AeroFTP-а"
+            "templateScriptInvalidToast": "Скрипта не садржи метаподатке AeroFTP-а",
+            "templateFormatAeroftpScript": "Скрипта AeroSync (.aeroftp-script)",
+            "templateFormatAeroftpScriptHint": "(препоручено, пуни round-trip)",
+            "aerosyncScriptExportButton": "Извези скрипту",
+            "aerosyncScriptExportedToast": "Скрипта AeroSync извежена",
+            "aerosyncScriptImportedToast": "Скрипта AeroSync увежена",
+            "aerosyncScriptAlsoWrapper": "Такође генериши OS-native wrapper (.ps1 / .sh)",
+            "aerosyncScriptFromWrapper": "(из wrapper)",
+            "aerosyncScriptUnmappedFields": "Непрепозната metadata поља",
+            "aerosyncScriptApplyButton": "Сачувај као preset",
+            "aerosyncScriptAppliedToast": "Увежени preset сачуван. Отвори AeroSync да га користиш."
         },
         "ui": {
             "syncing": "Sinhronizacija...",

@@ -1019,8 +1019,8 @@
             "downloadSegmentsDesc": "បំបែកការទាញយកនីមួយៗទៅជាជួរបៃប៉ារ៉ាឡែល។ ស្វ័យប្រវត្តិរក្សាឥរិយាបថស្ទ្រីមតែមួយបច្ចុប្បន្ន។ មានប្រសិទ្ធភាពលើអ្នកផ្តល់សេវាដែលគាំទ្រសំណើជួរ (SFTP, S3, HTTP) សម្រាប់ឯកសារដែលធំល្មមនឹងទទួលផល។",
             "autoStartTransfers": "ចាប់ផ្ដើមការផ្ទេរដោយស្វ័យប្រវត្តិ",
             "autoStartTransfersHelp": "ពេលបើក ការផ្ទេរតាមរយៈ drag-and-drop និងចុចចាប់ផ្ដើមភ្លាមៗ។ ពេលបិទ វាត្រូវបានចតក្នុង Transfer Queue ជា staged ដើម្បីឱ្យអ្នកអាចកាត់ដើមថត និងរៀបចំឡើងវិញមុនពេលចុច Start។",
-            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
-            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
+            "importKeystorePrompt": "បញ្ចូលពាក្យសម្ងាត់ដែលប្រើដើម្បីអ៊ិនគ្រីបការបម្រុងទុក keystore នេះ។",
+            "importServersPrompt": "បញ្ចូលពាក្យសម្ងាត់ដែលប្រើដើម្បីអ៊ិនគ្រីបការបម្រុងទុក server-profiles នេះ។"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1992,7 +1992,17 @@
             "templateFormatPwsh": "ស្គ្រីប PowerShell (.ps1)",
             "templateScriptExportedToast": "បាននាំចេញស្គ្រីប",
             "templateScriptImportedToast": "បានផ្ទុកទិន្នន័យមេតារបស់ស្គ្រីប",
-            "templateScriptInvalidToast": "ស្គ្រីបមិនមានទិន្នន័យមេតារបស់ AeroFTP ទេ"
+            "templateScriptInvalidToast": "ស្គ្រីបមិនមានទិន្នន័យមេតារបស់ AeroFTP ទេ",
+            "templateFormatAeroftpScript": "ស្គ្រីប AeroSync (.aeroftp-script)",
+            "templateFormatAeroftpScriptHint": "(បានណែនាំ, round-trip ពេញលេញ)",
+            "aerosyncScriptExportButton": "នាំចេញស្គ្រីប",
+            "aerosyncScriptExportedToast": "ស្គ្រីប AeroSync បាននាំចេញ",
+            "aerosyncScriptImportedToast": "ស្គ្រីប AeroSync បាននាំចូល",
+            "aerosyncScriptAlsoWrapper": "បង្កើត OS-native wrapper ផងដែរ (.ps1 / .sh)",
+            "aerosyncScriptFromWrapper": "(ពី wrapper)",
+            "aerosyncScriptUnmappedFields": "វាល metadata ដែលមិនស្គាល់",
+            "aerosyncScriptApplyButton": "រក្សាទុកជា preset",
+            "aerosyncScriptAppliedToast": "preset ដែលនាំចូលត្រូវបានរក្សាទុក។ បើក AeroSync ដើម្បីប្រើវា។"
         },
         "ui": {
             "syncing": "កំពុងធ្វើសមកាលកម្ម...",

@@ -1019,8 +1019,8 @@
             "downloadSegmentsDesc": "将每次下载拆分为并行的字节区间。自动模式保持当前的单流行为。在支持区间请求(SFTP、S3、HTTP)的提供商上,对足够大的文件有效。",
             "autoStartTransfers": "自动启动传输",
             "autoStartTransfersHelp": "开启时,拖放和点击传输立即开始。关闭时,它们以 staged 状态停放在 Transfer Queue 中,你可以在按下 Start 之前修剪文件夹树并重新排序。",
-            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
-            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
+            "importKeystorePrompt": "请输入用于加密此 keystore 备份的密码。",
+            "importServersPrompt": "请输入用于加密此 server-profiles 备份的密码。"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1992,7 +1992,17 @@
             "templateFormatPwsh": "PowerShell 脚本 (.ps1)",
             "templateScriptExportedToast": "脚本已导出",
             "templateScriptImportedToast": "已加载脚本元数据",
-            "templateScriptInvalidToast": "脚本不包含 AeroFTP 元数据"
+            "templateScriptInvalidToast": "脚本不包含 AeroFTP 元数据",
+            "templateFormatAeroftpScript": "AeroSync 脚本 (.aeroftp-script)",
+            "templateFormatAeroftpScriptHint": "(推荐,完整 round-trip)",
+            "aerosyncScriptExportButton": "导出脚本",
+            "aerosyncScriptExportedToast": "AeroSync 脚本已导出",
+            "aerosyncScriptImportedToast": "AeroSync 脚本已导入",
+            "aerosyncScriptAlsoWrapper": "同时生成 OS-native wrapper (.ps1 / .sh)",
+            "aerosyncScriptFromWrapper": "(来自 wrapper)",
+            "aerosyncScriptUnmappedFields": "无法识别的 metadata 字段",
+            "aerosyncScriptApplyButton": "另存为 preset",
+            "aerosyncScriptAppliedToast": "已保存导入的 preset。打开 AeroSync 即可使用。"
         },
         "ui": {
             "syncing": "正在同步...",

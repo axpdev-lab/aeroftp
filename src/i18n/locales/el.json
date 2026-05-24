@@ -1019,8 +1019,8 @@
             "downloadSegmentsDesc": "Χωρίζει κάθε λήψη σε παράλληλα εύρη byte. Το Auto διατηρεί την τρέχουσα συμπεριφορά μονής ροής. Αποτελεσματικό σε παρόχους που υποστηρίζουν αιτήματα εύρους (SFTP, S3, HTTP) και σε αρχεία αρκετά μεγάλα για να ωφεληθούν.",
             "autoStartTransfers": "Αυτόματη εκκίνηση μεταφορών",
             "autoStartTransfersHelp": "Όταν είναι ενεργό, οι μεταφορές μέσω drag-and-drop και κλικ ξεκινούν αμέσως. Όταν είναι ανενεργό, σταθμεύουν στο Transfer Queue ως staged, ώστε να μπορείς να κλαδέψεις δέντρα φακέλων και να αναδιατάξεις πριν πατήσεις Start.",
-            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
-            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
+            "importKeystorePrompt": "Εισαγάγετε τον κωδικό που χρησιμοποιήθηκε για την κρυπτογράφηση αυτού του αντιγράφου ασφαλείας keystore.",
+            "importServersPrompt": "Εισαγάγετε τον κωδικό που χρησιμοποιήθηκε για την κρυπτογράφηση αυτού του αντιγράφου ασφαλείας server-profiles."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1992,7 +1992,17 @@
             "templateFormatPwsh": "Σενάριο PowerShell (.ps1)",
             "templateScriptExportedToast": "Το σενάριο εξήχθη",
             "templateScriptImportedToast": "Τα μεταδεδομένα του σεναρίου φορτώθηκαν",
-            "templateScriptInvalidToast": "Το σενάριο δεν περιέχει μεταδεδομένα AeroFTP"
+            "templateScriptInvalidToast": "Το σενάριο δεν περιέχει μεταδεδομένα AeroFTP",
+            "templateFormatAeroftpScript": "Σενάριο AeroSync (.aeroftp-script)",
+            "templateFormatAeroftpScriptHint": "(συνιστάται, πλήρες round-trip)",
+            "aerosyncScriptExportButton": "Εξαγωγή σεναρίου",
+            "aerosyncScriptExportedToast": "Το σενάριο AeroSync εξήχθη",
+            "aerosyncScriptImportedToast": "Το σενάριο AeroSync εισήχθη",
+            "aerosyncScriptAlsoWrapper": "Δημιουργία και OS-native wrapper (.ps1 / .sh)",
+            "aerosyncScriptFromWrapper": "(από wrapper)",
+            "aerosyncScriptUnmappedFields": "Μη αναγνωρισμένα πεδία metadata",
+            "aerosyncScriptApplyButton": "Αποθήκευση ως preset",
+            "aerosyncScriptAppliedToast": "Το εισαγόμενο preset αποθηκεύτηκε. Ανοίξτε το AeroSync για να το χρησιμοποιήσετε."
         },
         "ui": {
             "syncing": "Συγχρονισμός...",

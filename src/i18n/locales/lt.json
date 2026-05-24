@@ -1019,8 +1019,8 @@
             "downloadSegmentsDesc": "Padalykite kiekvieną atsisiuntimą į lygiagrečius baitų diapazonus. Automatinis išlaiko esamą vieno srauto elgseną. Veiksminga su tiekėjais, palaikančiais diapazonų užklausas (SFTP, S3, HTTP), pakankamai dideliems failams.",
             "autoStartTransfers": "Automatinis perdavimu paleidimas",
             "autoStartTransfersHelp": "Kai ijungta, vilkimo ir spustelejimo perdavimai prasideda is karto. Kai isjungta, jie paliekami Transfer Queue kaip staged, kad galetum apkarpyti aplanku medzius ir pertvarkyti pries paspausdamas Start.",
-            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
-            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
+            "importKeystorePrompt": "Iveskite slaptazodi, naudota sifruoti si keystore atsargine kopija.",
+            "importServersPrompt": "Iveskite slaptazodi, naudota sifruoti si server-profiles atsargine kopija."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1992,7 +1992,17 @@
             "templateFormatPwsh": "PowerShell scenarijus (.ps1)",
             "templateScriptExportedToast": "Scenarijus eksportuotas",
             "templateScriptImportedToast": "Scenarijaus metaduomenys įkelti",
-            "templateScriptInvalidToast": "Scenarijuje nėra AeroFTP metaduomenų"
+            "templateScriptInvalidToast": "Scenarijuje nėra AeroFTP metaduomenų",
+            "templateFormatAeroftpScript": "AeroSync skriptas (.aeroftp-script)",
+            "templateFormatAeroftpScriptHint": "(rekomenduojama, pilnas round-trip)",
+            "aerosyncScriptExportButton": "Eksportuoti skripta",
+            "aerosyncScriptExportedToast": "AeroSync skriptas eksportuotas",
+            "aerosyncScriptImportedToast": "AeroSync skriptas importuotas",
+            "aerosyncScriptAlsoWrapper": "Taip pat sugeneruoti OS-native wrapper (.ps1 / .sh)",
+            "aerosyncScriptFromWrapper": "(is wrapper)",
+            "aerosyncScriptUnmappedFields": "Neatpazinti metadata laukai",
+            "aerosyncScriptApplyButton": "Issaugoti kaip preset",
+            "aerosyncScriptAppliedToast": "Importuotas preset issaugotas. Atidarykite AeroSync, kad ji naudotumete."
         },
         "ui": {
             "syncing": "Sinchronizuojama...",

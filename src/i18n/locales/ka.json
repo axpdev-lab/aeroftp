@@ -1019,8 +1019,8 @@
             "downloadSegmentsDesc": "გაყავი თითოეული ჩამოტვირთვა პარალელურ ბაიტურ დიაპაზონებად. ავტომატური ინარჩუნებს დღევანდელ ერთნაკადიან ქცევას. ეფექტურია იმ პროვაიდერებზე, რომლებიც მხარს უჭერენ დიაპაზონის მოთხოვნებს (SFTP, S3, HTTP) საკმარისად დიდი ფაილებისთვის.",
             "autoStartTransfers": "გადაცემების ავტომატური დაწყება",
             "autoStartTransfersHelp": "ჩართულ მდგომარეობაში drag-and-drop და დაწკაპუნებით გადაცემები იწყება მაშინვე. გამორთულ მდგომარეობაში ისინი ჩერდება Transfer Queue-ში როგორც staged, რათა შეძლოთ საქაღალდის ხეების მოწესრიგება და გადალაგება Start-ის დაჭერამდე.",
-            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
-            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
+            "importKeystorePrompt": "შეიყვანეთ პაროლი, რომელიც გამოყენებული იყო ამ keystore-ის ბექაფის დასაშიფრად.",
+            "importServersPrompt": "შეიყვანეთ პაროლი, რომელიც გამოყენებული იყო ამ server-profiles-ის ბექაფის დასაშიფრად."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1992,7 +1992,17 @@
             "templateFormatPwsh": "PowerShell სკრიპტი (.ps1)",
             "templateScriptExportedToast": "სკრიპტი ექსპორტირებულია",
             "templateScriptImportedToast": "სკრიპტის მეტამონაცემები ჩაიტვირთა",
-            "templateScriptInvalidToast": "სკრიპტი არ შეიცავს AeroFTP-ის მეტამონაცემებს"
+            "templateScriptInvalidToast": "სკრიპტი არ შეიცავს AeroFTP-ის მეტამონაცემებს",
+            "templateFormatAeroftpScript": "AeroSync სკრიპტი (.aeroftp-script)",
+            "templateFormatAeroftpScriptHint": "(რეკომენდებულია, სრული round-trip)",
+            "aerosyncScriptExportButton": "სკრიპტის ექსპორტი",
+            "aerosyncScriptExportedToast": "AeroSync სკრიპტი ექსპორტირებულია",
+            "aerosyncScriptImportedToast": "AeroSync სკრიპტი იმპორტირებულია",
+            "aerosyncScriptAlsoWrapper": "ასევე გენერირება OS-native wrapper-ისა (.ps1 / .sh)",
+            "aerosyncScriptFromWrapper": "(wrapper-იდან)",
+            "aerosyncScriptUnmappedFields": "ამოუცნობი metadata ველები",
+            "aerosyncScriptApplyButton": "შენახვა როგორც preset",
+            "aerosyncScriptAppliedToast": "იმპორტირებული preset შენახულია. გახსენით AeroSync მისი გამოსაყენებლად."
         },
         "ui": {
             "syncing": "სინქრონიზაცია...",

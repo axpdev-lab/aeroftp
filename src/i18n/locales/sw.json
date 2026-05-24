@@ -1019,8 +1019,8 @@
             "downloadSegmentsDesc": "Gawanya kila upakuaji katika safu sambamba za baiti. Otomatiki hudumisha tabia ya sasa ya mkondo mmoja. Hufanya kazi kwa watoa huduma wanaounga mkono maombi ya safu (SFTP, S3, HTTP) kwa faili kubwa za kutosha kufaidika.",
             "autoStartTransfers": "Anza uhamishaji kiotomatiki",
             "autoStartTransfersHelp": "Inapowashwa, uhamishaji wa kuburuta na kudondosha na wa kubofya huanza mara moja. Inapozimwa, huegeshwa katika Transfer Queue kama staged ili uweze kupogoa miti ya folda na kupanga upya kabla ya kubonyeza Start.",
-            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
-            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
+            "importKeystorePrompt": "Ingiza nenosiri lililotumika kusimba nakala hii ya keystore.",
+            "importServersPrompt": "Ingiza nenosiri lililotumika kusimba nakala hii ya server-profiles."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1992,7 +1992,17 @@
             "templateFormatPwsh": "Hati ya PowerShell (.ps1)",
             "templateScriptExportedToast": "Hati imehamishwa",
             "templateScriptImportedToast": "Metadata ya hati imepakiwa",
-            "templateScriptInvalidToast": "Hati haina metadata ya AeroFTP"
+            "templateScriptInvalidToast": "Hati haina metadata ya AeroFTP",
+            "templateFormatAeroftpScript": "Hati ya AeroSync (.aeroftp-script)",
+            "templateFormatAeroftpScriptHint": "(inapendekezwa, round-trip kamili)",
+            "aerosyncScriptExportButton": "Hamisha hati",
+            "aerosyncScriptExportedToast": "Hati ya AeroSync imehamishwa",
+            "aerosyncScriptImportedToast": "Hati ya AeroSync imeingizwa",
+            "aerosyncScriptAlsoWrapper": "Pia tengeneza OS-native wrapper (.ps1 / .sh)",
+            "aerosyncScriptFromWrapper": "(kutoka wrapper)",
+            "aerosyncScriptUnmappedFields": "Sehemu za metadata zisizotambulika",
+            "aerosyncScriptApplyButton": "Hifadhi kama preset",
+            "aerosyncScriptAppliedToast": "Preset iliyoingizwa imehifadhiwa. Fungua AeroSync kuitumia."
         },
         "ui": {
             "syncing": "Inasawazisha...",

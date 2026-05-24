@@ -1019,8 +1019,8 @@
             "downloadSegmentsDesc": "Podijelite svako preuzimanje na paralelne raspone bajtova. Auto zadržava trenutno ponašanje s jednim tokom. Učinkovito na pružateljima koji podržavaju zahtjeve za raspon (SFTP, S3, HTTP) za datoteke dovoljno velike da imaju koristi.",
             "autoStartTransfers": "Automatsko pokretanje prijenosa",
             "autoStartTransfersHelp": "Kad je ukljuceno, prijenosi povucenjem-i-ispustanjem i klikom krecu odmah. Kad je iskljuceno, parkiraju se u Transfer Queue kao staged, kako bi mogao prorijediti stabla mapa i preraspodijeliti prije pritiska na Start.",
-            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
-            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
+            "importKeystorePrompt": "Unesi lozinku koja je korištena za šifriranje ove sigurnosne kopije keystore-a.",
+            "importServersPrompt": "Unesi lozinku koja je korištena za šifriranje ove sigurnosne kopije server-profiles-a."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1992,7 +1992,17 @@
             "templateFormatPwsh": "PowerShell skripta (.ps1)",
             "templateScriptExportedToast": "Skripta izvezena",
             "templateScriptImportedToast": "Metapodaci skripte učitani",
-            "templateScriptInvalidToast": "Skripta ne sadrži metapodatke AeroFTP-a"
+            "templateScriptInvalidToast": "Skripta ne sadrži metapodatke AeroFTP-a",
+            "templateFormatAeroftpScript": "AeroSync skripta (.aeroftp-script)",
+            "templateFormatAeroftpScriptHint": "(preporučeno, puni round-trip)",
+            "aerosyncScriptExportButton": "Izvezi skriptu",
+            "aerosyncScriptExportedToast": "AeroSync skripta izvezena",
+            "aerosyncScriptImportedToast": "AeroSync skripta uvezena",
+            "aerosyncScriptAlsoWrapper": "Generiraj i OS-native wrapper (.ps1 / .sh)",
+            "aerosyncScriptFromWrapper": "(iz wrapper-a)",
+            "aerosyncScriptUnmappedFields": "Neprepoznata metadata polja",
+            "aerosyncScriptApplyButton": "Spremi kao preset",
+            "aerosyncScriptAppliedToast": "Uvezeni preset spremljen. Otvori AeroSync za korištenje."
         },
         "ui": {
             "syncing": "Sinkronizacija...",

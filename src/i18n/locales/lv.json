@@ -1019,8 +1019,8 @@
             "downloadSegmentsDesc": "Sadaliet katru lejupielādi paralēlos baitu diapazonos. Automātiski saglabā pašreizējo vienas plūsmas darbību. Efektīvi pakalpojumu sniedzējiem, kuri atbalsta diapazonu pieprasījumus (SFTP, S3, HTTP), pietiekami lieliem failiem.",
             "autoStartTransfers": "Parsutisanu automatiska sakums",
             "autoStartTransfersHelp": "Kad ieslegts, vilksanas un nomesanas un klikskinasanas parsutisanas sakas nekavejoties. Kad izslegts, tas tiek novietotas Transfer Queue ka staged, lai tu varetu apgriezt mapju kokus un parkartot pirms nospiez Start.",
-            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
-            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
+            "importKeystorePrompt": "Ievadiet paroli, kas izmantota si keystore dublejuma sifresanai.",
+            "importServersPrompt": "Ievadiet paroli, kas izmantota si server-profiles dublejuma sifresanai."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1992,7 +1992,17 @@
             "templateFormatPwsh": "PowerShell skripts (.ps1)",
             "templateScriptExportedToast": "Skripts eksportēts",
             "templateScriptImportedToast": "Skripta metadati ielādēti",
-            "templateScriptInvalidToast": "Skripts nesatur AeroFTP metadatus"
+            "templateScriptInvalidToast": "Skripts nesatur AeroFTP metadatus",
+            "templateFormatAeroftpScript": "AeroSync skripts (.aeroftp-script)",
+            "templateFormatAeroftpScriptHint": "(ieteicams, pilns round-trip)",
+            "aerosyncScriptExportButton": "Eksportet skriptu",
+            "aerosyncScriptExportedToast": "AeroSync skripts eksportets",
+            "aerosyncScriptImportedToast": "AeroSync skripts importets",
+            "aerosyncScriptAlsoWrapper": "Generet ari OS-native wrapper (.ps1 / .sh)",
+            "aerosyncScriptFromWrapper": "(no wrapper)",
+            "aerosyncScriptUnmappedFields": "Neatpazinti metadata lauki",
+            "aerosyncScriptApplyButton": "Saglabat ka preset",
+            "aerosyncScriptAppliedToast": "Importetais preset saglabats. Atveriet AeroSync, lai to izmantotu."
         },
         "ui": {
             "syncing": "Sinhronizē...",

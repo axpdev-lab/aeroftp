@@ -734,6 +734,37 @@ export interface SyncProfile {
   compression_mode: CompressionMode;
 }
 
+/**
+ * Wire format for `.aeroftp-script` export/import (issue #133). Mirrors
+ * `sync_script::AerosyncScriptProfile` on the Rust side.
+ */
+export interface AerosyncScriptProfile {
+  profile: SyncProfile;
+  local_path: string;
+  remote_path: string;
+  connect_profile: string | null;
+  connect_url: string | null;
+  dry_run: boolean;
+  conflict_mode: string | null;
+  track_renames: boolean;
+  skip_matching: boolean;
+  resync: boolean;
+  watch: boolean;
+}
+
+export interface AerosyncImportScriptResult {
+  profile: AerosyncScriptProfile;
+  unmapped_fields: string[];
+  warnings: string[];
+  canonical_path: string;
+  resolved_from_wrapper: boolean;
+}
+
+export interface AerosyncExportScriptResult {
+  canonical_path: string;
+  wrapper_path: string | null;
+}
+
 // Phase 3A+: Sync Scheduler
 export type Weekday = "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun";
 

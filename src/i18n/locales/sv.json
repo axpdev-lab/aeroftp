@@ -1019,8 +1019,8 @@
             "downloadSegmentsDesc": "Dela upp varje nedladdning i parallella byteintervall. Auto behåller dagens beteende med en enskild ström. Fungerar hos leverantörer som stöder intervallförfrågningar (SFTP, S3, HTTP) för filer som är tillräckligt stora för att tjäna på det.",
             "autoStartTransfers": "Starta overforingar automatiskt",
             "autoStartTransfersHelp": "Nar pa startas dra-och-slapp- och klick-overforingar omedelbart. Nar av parkeras de i Transfer Queue som staged sa att du kan beskara mapptrad och omordna innan du trycker Start.",
-            "importKeystorePrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this keystore backup.",
-            "importServersPrompt": "[NEEDS TRANSLATION] Enter the password used to encrypt this server-profiles backup."
+            "importKeystorePrompt": "Ange losenordet som anvandes for att kryptera denna keystore-sakerhetskopia.",
+            "importServersPrompt": "Ange losenordet som anvandes for att kryptera denna server-profiles-sakerhetskopia."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1992,7 +1992,17 @@
             "templateFormatPwsh": "PowerShell-skript (.ps1)",
             "templateScriptExportedToast": "Skript exporterat",
             "templateScriptImportedToast": "Skriptmetadata inläst",
-            "templateScriptInvalidToast": "Skriptet innehåller inga AeroFTP-metadata"
+            "templateScriptInvalidToast": "Skriptet innehåller inga AeroFTP-metadata",
+            "templateFormatAeroftpScript": "AeroSync-skript (.aeroftp-script)",
+            "templateFormatAeroftpScriptHint": "(rekommenderas, fullstandig round-trip)",
+            "aerosyncScriptExportButton": "Exportera skript",
+            "aerosyncScriptExportedToast": "AeroSync-skript exporterat",
+            "aerosyncScriptImportedToast": "AeroSync-skript importerat",
+            "aerosyncScriptAlsoWrapper": "Generera aven OS-native wrapper (.ps1 / .sh)",
+            "aerosyncScriptFromWrapper": "(fran wrapper)",
+            "aerosyncScriptUnmappedFields": "Okanda metadata-falt",
+            "aerosyncScriptApplyButton": "Spara som preset",
+            "aerosyncScriptAppliedToast": "Importerad preset sparad. Oppna AeroSync for att anvanda den."
         },
         "ui": {
             "syncing": "Synkroniserar...",
