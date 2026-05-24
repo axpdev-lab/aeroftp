@@ -49,6 +49,11 @@ pub struct SessionConnectionParams {
     pub client_secret: Option<String>,
     /// Display name override
     pub display_name: Option<String>,
+    /// Server profile identifier owning the OAuth tokens. When present the
+    /// vault stores tokens under `oauth_<provider>_<profile_id>`. Omitted
+    /// requests keep the legacy singleton key for compatibility. Issue #214.
+    #[serde(default)]
+    pub profile_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -192,11 +197,12 @@ async fn session_connect_oauth(
         .ok_or("OAuth requires client_secret")?;
 
     let protocol_lower = params.protocol.to_lowercase();
+    let profile_id = params.profile_id.clone().unwrap_or_default();
 
     let provider: Box<dyn StorageProvider> = match protocol_lower.as_str() {
         "googledrive" | "google_drive" => {
             let config = GoogleDriveConfig::new(client_id, client_secret);
-            let mut p = GoogleDriveProvider::new(config);
+            let mut p = GoogleDriveProvider::new(config).with_profile_id(&profile_id);
             p.connect()
                 .await
                 .map_err(|e| format!("Google Drive connection failed: {}", e))?;
@@ -204,7 +210,7 @@ async fn session_connect_oauth(
         }
         "dropbox" => {
             let config = DropboxConfig::new(client_id, client_secret);
-            let mut p = DropboxProvider::new(config);
+            let mut p = DropboxProvider::new(config).with_profile_id(&profile_id);
             p.connect()
                 .await
                 .map_err(|e| format!("Dropbox connection failed: {}", e))?;
@@ -212,7 +218,7 @@ async fn session_connect_oauth(
         }
         "onedrive" => {
             let config = OneDriveConfig::new(client_id, client_secret);
-            let mut p = OneDriveProvider::new(config);
+            let mut p = OneDriveProvider::new(config).with_profile_id(&profile_id);
             p.connect()
                 .await
                 .map_err(|e| format!("OneDrive connection failed: {}", e))?;

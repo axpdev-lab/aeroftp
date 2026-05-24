@@ -144,9 +144,49 @@ pub struct OAuthConfig {
     pub redirect_uri: String,
     /// Extra query parameters for the authorization URL (e.g., token_access_type=offline for Dropbox)
     pub extra_auth_params: Vec<(String, String)>,
+    /// Server profile identifier that owns these tokens. When non-empty the
+    /// vault stores tokens under `oauth_<provider>_<profile_id>`, enabling two
+    /// distinct profiles for the same provider (work + personal Google Drive)
+    /// to coexist on the same device. When empty the vault falls back to the
+    /// legacy singleton key `oauth_<provider>`, which preserves the historic
+    /// behaviour for callers that have not yet been wired through. A read with
+    /// a non-empty profile_id that misses the per-profile key migrates the
+    /// legacy entry under the new key on the first hit. Issue #214.
+    profile_id: String,
+}
+
+impl Default for OAuthConfig {
+    fn default() -> Self {
+        Self {
+            provider: OAuthProvider::Google,
+            client_id: String::new(),
+            client_secret: None,
+            auth_url: String::new(),
+            token_url: String::new(),
+            scopes: Vec::new(),
+            redirect_uri: String::new(),
+            extra_auth_params: Vec::new(),
+            profile_id: String::new(),
+        }
+    }
 }
 
 impl OAuthConfig {
+    /// Bind this configuration to a server profile so the vault layer stores
+    /// the resulting tokens under `oauth_<provider>_<profile_id>` instead of
+    /// the legacy singleton `oauth_<provider>` key. Issue #214.
+    pub fn with_profile_id(mut self, profile_id: &str) -> Self {
+        self.profile_id = profile_id.to_string();
+        self
+    }
+
+    /// Server profile identifier bound to this configuration. Empty when the
+    /// caller has not bound a profile yet, in which case the vault falls back
+    /// to the legacy per-provider key.
+    pub fn profile_id(&self) -> &str {
+        &self.profile_id
+    }
+
     /// Create Google Drive OAuth config with dynamic callback port
     pub fn google_with_port(client_id: &str, client_secret: &str, port: u16) -> Self {
         Self {
@@ -170,6 +210,7 @@ impl OAuthConfig {
                 ("access_type".to_string(), "offline".to_string()),
                 ("prompt".to_string(), "consent".to_string()),
             ],
+            profile_id: String::new(),
         }
     }
 
@@ -197,6 +238,7 @@ impl OAuthConfig {
                 ("access_type".to_string(), "offline".to_string()),
                 ("prompt".to_string(), "consent".to_string()),
             ],
+            profile_id: String::new(),
         }
     }
 
@@ -225,6 +267,7 @@ impl OAuthConfig {
             ],
             redirect_uri: format!("http://127.0.0.1:{}/callback", port),
             extra_auth_params: vec![("token_access_type".to_string(), "offline".to_string())],
+            profile_id: String::new(),
         }
     }
 
@@ -249,6 +292,7 @@ impl OAuthConfig {
             ],
             redirect_uri: format!("http://localhost:{}/callback", port),
             extra_auth_params: vec![],
+            profile_id: String::new(),
         }
     }
 
@@ -268,6 +312,7 @@ impl OAuthConfig {
             scopes: vec![],
             redirect_uri: format!("http://127.0.0.1:{}/callback", port),
             extra_auth_params: vec![],
+            profile_id: String::new(),
         }
     }
 
@@ -293,6 +338,7 @@ impl OAuthConfig {
             scopes: vec![],
             redirect_uri: format!("http://localhost:{}/callback", port),
             extra_auth_params: vec![],
+            profile_id: String::new(),
         }
     }
 
@@ -340,6 +386,7 @@ impl OAuthConfig {
                 ("access_type".to_string(), "offline".to_string()),
                 ("prompt".to_string(), "consent".to_string()),
             ],
+            profile_id: String::new(),
         }
     }
 
@@ -364,6 +411,7 @@ impl OAuthConfig {
             ],
             redirect_uri: format!("http://localhost:{}/callback", port),
             extra_auth_params: vec![],
+            profile_id: String::new(),
         }
     }
 
@@ -578,8 +626,9 @@ impl OAuth2Manager {
             scopes: config.scopes.clone(),
         };
 
-        // Store in keyring
-        self.store_tokens(config.provider, &tokens)?;
+        // Store in keyring under the profile-bound key (or the legacy key when
+        // `config.profile_id` is empty, preserving historic behaviour).
+        self.store_tokens(config.provider, &config.profile_id, &tokens)?;
 
         info!("OAuth2 tokens obtained for {:?}", config.provider);
 
@@ -617,8 +666,8 @@ impl OAuth2Manager {
             scopes: config.scopes.clone(),
         };
 
-        // Update keyring
-        self.store_tokens(config.provider, &tokens)?;
+        // Update keyring under the profile-bound key.
+        self.store_tokens(config.provider, &config.profile_id, &tokens)?;
 
         info!("OAuth2 tokens refreshed for {:?}", config.provider);
 
@@ -639,17 +688,19 @@ impl OAuth2Manager {
         config: &OAuthConfig,
     ) -> Result<SecretString, ProviderError> {
         let _guard = self.refresh_guard.lock().await;
-        let mut tokens = self.load_tokens(config.provider)?;
+        let mut tokens = self.load_tokens(config.provider, &config.profile_id)?;
 
         if tokens.is_expired() {
-            let slug = format!("oauth_{:?}", config.provider).to_lowercase();
+            // Per-profile lease: two profiles pointing at distinct accounts of
+            // the same provider must not block each other's refresh.
+            let slug = Self::token_account_key(config.provider, &config.profile_id);
             // Bounded, self-healing cross-process lease. `None` => another
             // process is the refresh owner (or no lock dir): fall through to
             // the re-load below and use whatever it persisted.
             let _lease = RefreshLease::acquire(&slug).await;
             // Double-check: the lease winner (possibly the other process)
             // may have already rotated+persisted a fresh token.
-            tokens = self.load_tokens(config.provider)?;
+            tokens = self.load_tokens(config.provider, &config.profile_id)?;
             if tokens.is_expired() {
                 if let Some(ref refresh_token) = tokens.refresh_token {
                     tokens = self.refresh_tokens(config, refresh_token).await?;
@@ -678,16 +729,37 @@ impl OAuth2Manager {
         Ok(token_dir)
     }
 
-    /// Store tokens in secure credential store (OS keyring or encrypted vault)
+    /// Compose the per-profile vault key when `profile_id` is non-empty,
+    /// falling back to the legacy singleton key otherwise. Issue #214.
+    fn token_account_key(provider: OAuthProvider, profile_id: &str) -> String {
+        if profile_id.is_empty() {
+            format!("oauth_{:?}", provider).to_lowercase()
+        } else {
+            format!("oauth_{:?}_{}", provider, profile_id).to_lowercase()
+        }
+    }
+
+    /// Legacy singleton vault key, used as fallback by `load_tokens` and
+    /// migrated lazily on first hit when the caller supplies a non-empty
+    /// `profile_id`. Issue #214.
+    fn legacy_token_account_key(provider: OAuthProvider) -> String {
+        format!("oauth_{:?}", provider).to_lowercase()
+    }
+
+    /// Store tokens for the given provider/profile pair. With an empty
+    /// `profile_id` this writes the legacy singleton key, preserving the
+    /// historic behaviour for callers that have not yet been wired through.
+    /// Issue #214.
     pub fn store_tokens(
         &self,
         provider: OAuthProvider,
+        profile_id: &str,
         tokens: &StoredTokens,
     ) -> Result<(), ProviderError> {
         let json = serde_json::to_string_pretty(tokens)
             .map_err(|e| ProviderError::Other(format!("Failed to serialize tokens: {}", e)))?;
 
-        let account = format!("oauth_{:?}", provider).to_lowercase();
+        let account = Self::token_account_key(provider, profile_id);
 
         // Store in universal vault
         if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
@@ -719,25 +791,64 @@ impl OAuth2Manager {
         Ok(())
     }
 
-    /// Load tokens from credential vault or legacy file
-    pub fn load_tokens(&self, provider: OAuthProvider) -> Result<StoredTokens, ProviderError> {
-        let account = format!("oauth_{:?}", provider).to_lowercase();
+    /// Load tokens for the given provider/profile pair. When `profile_id` is
+    /// non-empty and the per-profile key misses the vault, the legacy
+    /// singleton key is consulted as a one-shot fallback: on hit the value is
+    /// rebound under the per-profile key and the legacy entry is removed, so
+    /// the next profile of the same provider does not inherit the token
+    /// silently. Issue #214.
+    pub fn load_tokens(
+        &self,
+        provider: OAuthProvider,
+        profile_id: &str,
+    ) -> Result<StoredTokens, ProviderError> {
+        let account = Self::token_account_key(provider, profile_id);
+        let legacy = Self::legacy_token_account_key(provider);
 
-        // Try vault first
+        // Try vault first under the per-profile (or legacy when profile_id is empty) key.
         if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
             if let Ok(json) = store.get(&account) {
                 return serde_json::from_str(&json)
                     .map_err(|e| ProviderError::Other(format!("Failed to parse tokens: {}", e)));
             }
+
+            // Lazy migration: per-profile key missing, legacy hit ➜ rebind + remove.
+            if !profile_id.is_empty() {
+                if let Ok(json) = store.get(&legacy) {
+                    let tokens: StoredTokens = serde_json::from_str(&json).map_err(|e| {
+                        ProviderError::Other(format!("Failed to parse legacy tokens: {}", e))
+                    })?;
+                    if store.store(&account, &json).is_ok() {
+                        let _ = store.delete(&legacy);
+                        info!(
+                            "Migrated legacy {:?} token to per-profile vault key",
+                            provider
+                        );
+                    } else {
+                        warn!(
+                            "Per-profile vault write failed for {:?}; legacy token left in place",
+                            provider
+                        );
+                    }
+                    return Ok(tokens);
+                }
+            }
         }
 
-        // Fallback: try in-memory cache
+        // Fallback: try in-memory cache (mirror of the vault layout above).
         if let Ok(cache) = MEMORY_TOKEN_CACHE.lock() {
             if let Some(map) = cache.as_ref() {
                 if let Some(json) = map.get(&account) {
                     return serde_json::from_str(json).map_err(|e| {
                         ProviderError::Other(format!("Failed to parse tokens: {}", e))
                     });
+                }
+                if !profile_id.is_empty() {
+                    if let Some(json) = map.get(&legacy) {
+                        return serde_json::from_str(json).map_err(|e| {
+                            ProviderError::Other(format!("Failed to parse tokens: {}", e))
+                        });
+                    }
                 }
             }
         }
@@ -756,7 +867,7 @@ impl OAuth2Manager {
         let tokens: StoredTokens = serde_json::from_str(&json)
             .map_err(|e| ProviderError::Other(format!("Failed to parse tokens: {}", e)))?;
 
-        // Migrate to vault
+        // Migrate to vault under the per-profile key (or legacy when profile_id is empty).
         let mut migrated = false;
         if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
             if store.store(&account, &json).is_ok() {
@@ -806,8 +917,15 @@ impl OAuth2Manager {
     }
 
     /// Delete tokens from credential vault, memory cache, and legacy files
-    pub fn delete_tokens(&self, provider: OAuthProvider) -> Result<(), ProviderError> {
-        let account = format!("oauth_{:?}", provider).to_lowercase();
+    /// for the given provider/profile pair. With an empty `profile_id` this
+    /// targets the legacy singleton key. Plaintext file remnants and
+    /// per-provider keyring entries are cleared too. Issue #214.
+    pub fn delete_tokens(
+        &self,
+        provider: OAuthProvider,
+        profile_id: &str,
+    ) -> Result<(), ProviderError> {
+        let account = Self::token_account_key(provider, profile_id);
 
         // Delete from vault
         if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
@@ -839,13 +957,18 @@ impl OAuth2Manager {
     }
 
     /// Alias for delete_tokens
-    pub fn clear_tokens(&self, provider: OAuthProvider) -> Result<(), ProviderError> {
-        self.delete_tokens(provider)
+    pub fn clear_tokens(
+        &self,
+        provider: OAuthProvider,
+        profile_id: &str,
+    ) -> Result<(), ProviderError> {
+        self.delete_tokens(provider, profile_id)
     }
 
-    /// Check if tokens exist for provider
-    pub fn has_tokens(&self, provider: OAuthProvider) -> bool {
-        self.load_tokens(provider).is_ok()
+    /// Check if tokens exist for the given provider/profile pair. Honours the
+    /// same lazy-migration rules as `load_tokens`. Issue #214.
+    pub fn has_tokens(&self, provider: OAuthProvider, profile_id: &str) -> bool {
+        self.load_tokens(provider, profile_id).is_ok()
     }
 
     /// Create OAuth2 client from config (v5 builder API)
@@ -1272,6 +1395,42 @@ mod tests {
         let config = OAuthConfig::google("client_id", "client_secret");
         assert_eq!(config.provider, OAuthProvider::Google);
         assert!(!config.scopes.is_empty());
+    }
+
+    /// Issue #214: an empty `profile_id` keeps the legacy singleton vault key,
+    /// preserving historic behaviour for callers that have not yet been wired
+    /// through the per-profile flow.
+    #[test]
+    fn test_token_account_key_legacy_when_profile_id_empty() {
+        let key = OAuth2Manager::token_account_key(OAuthProvider::Google, "");
+        assert_eq!(key, "oauth_google");
+        assert_eq!(
+            key,
+            OAuth2Manager::legacy_token_account_key(OAuthProvider::Google)
+        );
+    }
+
+    /// Issue #214: a non-empty `profile_id` switches to the per-profile vault
+    /// key so two saved profiles for the same provider (work + personal
+    /// Google Drive) can coexist on the same device.
+    #[test]
+    fn test_token_account_key_per_profile_when_profile_id_present() {
+        let work = OAuth2Manager::token_account_key(OAuthProvider::Google, "abc-123");
+        let personal = OAuth2Manager::token_account_key(OAuthProvider::Google, "def-456");
+        assert_eq!(work, "oauth_google_abc-123");
+        assert_eq!(personal, "oauth_google_def-456");
+        assert_ne!(work, personal);
+    }
+
+    /// Issue #214: `with_profile_id` is the public surface for binding a
+    /// configuration to a profile id; the value flows through to the vault
+    /// key composer.
+    #[test]
+    fn test_with_profile_id_threaded_into_account_key() {
+        let config = OAuthConfig::google("cid", "csec").with_profile_id("server-7f3a");
+        assert_eq!(config.profile_id(), "server-7f3a");
+        let key = OAuth2Manager::token_account_key(config.provider, config.profile_id());
+        assert_eq!(key, "oauth_google_server-7f3a");
     }
 
     #[tokio::test]

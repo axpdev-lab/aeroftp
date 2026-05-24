@@ -21,6 +21,13 @@ interface OAuthConnectionParams {
   client_id: string;
   client_secret: string;
   region?: string;
+  /**
+   * Server profile identifier that owns the tokens. When supplied the vault
+   * scopes the OAuth blob to `oauth_<provider>_<profile_id>`, so two profiles
+   * pointing at distinct accounts of the same provider can coexist on the
+   * same device. Omitted requests keep the legacy singleton key. Issue #214.
+   */
+  profile_id?: string;
 }
 
 interface UseOAuth2Return {
@@ -29,8 +36,8 @@ interface UseOAuth2Return {
   startAuth: (params: OAuthConnectionParams) => Promise<OAuthFlowStarted>;
   completeAuth: (params: OAuthConnectionParams, code: string, state: string) => Promise<void>;
   connect: (params: OAuthConnectionParams) => Promise<string>;
-  hasTokens: (provider: OAuthProvider) => Promise<boolean>;
-  logout: (provider: OAuthProvider) => Promise<void>;
+  hasTokens: (provider: OAuthProvider, profileId?: string) => Promise<boolean>;
+  logout: (provider: OAuthProvider, profileId?: string) => Promise<void>;
 }
 
 /**
@@ -96,11 +103,13 @@ export function useOAuth2(): UseOAuth2Return {
   }, []);
 
   /**
-   * Check if tokens exist for a provider
+   * Check if tokens exist for a provider. `profileId` scopes the lookup to a
+   * per-profile vault key (`oauth_<provider>_<profile_id>`); omit it for the
+   * legacy singleton key. Issue #214.
    */
-  const hasTokens = useCallback(async (provider: OAuthProvider): Promise<boolean> => {
+  const hasTokens = useCallback(async (provider: OAuthProvider, profileId?: string): Promise<boolean> => {
     try {
-      return await invoke<boolean>('oauth2_has_tokens', { provider });
+      return await invoke<boolean>('oauth2_has_tokens', { provider, profile_id: profileId ?? '' });
     } catch (e) {
       console.error('Error checking tokens:', e);
       return false;
@@ -108,11 +117,13 @@ export function useOAuth2(): UseOAuth2Return {
   }, []);
 
   /**
-   * Logout from a provider (clear tokens)
+   * Logout from a provider (clear tokens). `profileId` scopes the deletion to
+   * a per-profile vault key (`oauth_<provider>_<profile_id>`); omit it to
+   * target the legacy singleton key. Issue #214.
    */
-  const logout = useCallback(async (provider: OAuthProvider): Promise<void> => {
+  const logout = useCallback(async (provider: OAuthProvider, profileId?: string): Promise<void> => {
     try {
-      await invoke('oauth2_logout', { provider });
+      await invoke('oauth2_logout', { provider, profile_id: profileId ?? '' });
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : String(e);
       setError(errorMsg);

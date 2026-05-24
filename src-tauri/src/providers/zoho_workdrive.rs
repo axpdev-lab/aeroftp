@@ -507,6 +507,9 @@ pub struct ZohoWorkdriveProvider {
     team_user_id: Option<String>,
     /// Team folders discovered during connect: (id, name)
     team_folders: Vec<(String, String)>,
+    /// Server profile identifier owning these OAuth tokens. Empty when the
+    /// caller has not bound a profile (legacy singleton key path). Issue #214.
+    profile_id: String,
 }
 
 impl ZohoWorkdriveProvider {
@@ -535,7 +538,15 @@ impl ZohoWorkdriveProvider {
             account_email: None,
             team_user_id: None,
             team_folders: Vec::new(),
+            profile_id: String::new(),
         }
+    }
+
+    /// Bind this provider to a server profile so OAuth tokens are stored
+    /// under the per-profile vault key. Issue #214.
+    pub fn with_profile_id(mut self, profile_id: impl Into<String>) -> Self {
+        self.profile_id = profile_id.into();
+        self
     }
 
     /// Get OAuth config for token operations
@@ -545,6 +556,7 @@ impl ZohoWorkdriveProvider {
             &self.config.client_secret,
             &self.config.region,
         )
+        .with_profile_id(&self.profile_id)
     }
 
     /// Get authorization header with valid token
@@ -1310,7 +1322,8 @@ impl ZohoWorkdriveProvider {
 
     /// Check if authenticated
     pub fn is_authenticated(&self) -> bool {
-        self.oauth_manager.has_tokens(OAuthProvider::ZohoWorkdrive)
+        self.oauth_manager
+            .has_tokens(OAuthProvider::ZohoWorkdrive, &self.profile_id)
     }
 
     /// Discover team ID and privatespace root folder

@@ -3099,6 +3099,12 @@ pub struct OAuthConnectionParams {
     /// Region for multi-region providers (Zoho: "us", "eu", "in", "au", "jp", "ca", "sa")
     #[serde(default = "default_region")]
     pub region: String,
+    /// Server profile identifier owning these tokens. When supplied the vault
+    /// stores OAuth tokens under `oauth_<provider>_<profile_id>`, so two
+    /// profiles backed by distinct cloud accounts coexist on the same device.
+    /// When omitted the legacy singleton key is used. Issue #214.
+    #[serde(default)]
+    pub profile_id: String,
 }
 
 fn default_region() -> String {
@@ -3140,7 +3146,8 @@ pub async fn oauth2_start_auth(params: OAuthConnectionParams) -> Result<OAuthFlo
             OAuthConfig::yandex_disk(&params.client_id, &params.client_secret)
         }
         other => return Err(format!("Unknown OAuth2 provider: {}", other)),
-    };
+    }
+    .with_profile_id(&params.profile_id);
 
     let manager = OAuth2Manager::new();
     let (auth_url, state) = manager
@@ -3185,7 +3192,8 @@ pub async fn oauth2_complete_auth(
             OAuthConfig::yandex_disk(&params.client_id, &params.client_secret)
         }
         other => return Err(format!("Unknown OAuth2 provider: {}", other)),
-    };
+    }
+    .with_profile_id(&params.profile_id);
 
     let manager = OAuth2Manager::new();
     manager
@@ -3221,7 +3229,7 @@ pub async fn oauth2_connect(
     let provider: Box<dyn StorageProvider> = match params.provider.to_lowercase().as_str() {
         "google_drive" | "googledrive" | "google" => {
             let config = GoogleDriveConfig::new(&params.client_id, &params.client_secret);
-            let mut p = GoogleDriveProvider::new(config);
+            let mut p = GoogleDriveProvider::new(config).with_profile_id(&params.profile_id);
             p.connect()
                 .await
                 .map_err(|e| format!("Google Drive connection failed: {}", e))?;
@@ -3229,7 +3237,7 @@ pub async fn oauth2_connect(
         }
         "googlephotos" | "google_photos" => {
             let config = GooglePhotosConfig::new(&params.client_id, &params.client_secret);
-            let mut p = GooglePhotosProvider::new(config);
+            let mut p = GooglePhotosProvider::new(config).with_profile_id(&params.profile_id);
             p.connect()
                 .await
                 .map_err(|e| format!("Google Photos connection failed: {}", e))?;
@@ -3237,7 +3245,7 @@ pub async fn oauth2_connect(
         }
         "dropbox" => {
             let config = DropboxConfig::new(&params.client_id, &params.client_secret);
-            let mut p = DropboxProvider::new(config);
+            let mut p = DropboxProvider::new(config).with_profile_id(&params.profile_id);
             p.connect()
                 .await
                 .map_err(|e| format!("Dropbox connection failed: {}", e))?;
@@ -3245,7 +3253,7 @@ pub async fn oauth2_connect(
         }
         "onedrive" | "microsoft" => {
             let config = OneDriveConfig::new(&params.client_id, &params.client_secret);
-            let mut p = OneDriveProvider::new(config);
+            let mut p = OneDriveProvider::new(config).with_profile_id(&params.profile_id);
             p.connect()
                 .await
                 .map_err(|e| format!("OneDrive connection failed: {}", e))?;
@@ -3256,7 +3264,7 @@ pub async fn oauth2_connect(
                 client_id: params.client_id.clone(),
                 client_secret: params.client_secret.clone(),
             };
-            let mut p = BoxProvider::new(config);
+            let mut p = BoxProvider::new(config).with_profile_id(&params.profile_id);
             p.connect()
                 .await
                 .map_err(|e| format!("Box connection failed: {}", e))?;
@@ -3273,7 +3281,7 @@ pub async fn oauth2_connect(
                 client_secret: params.client_secret.clone(),
                 region,
             };
-            let mut p = PCloudProvider::new(config);
+            let mut p = PCloudProvider::new(config).with_profile_id(&params.profile_id);
             p.connect()
                 .await
                 .map_err(|e| format!("pCloud connection failed: {}", e))?;
@@ -3282,7 +3290,7 @@ pub async fn oauth2_connect(
         "zoho" | "zoho_workdrive" | "zohoworkdrive" => {
             let config =
                 ZohoWorkdriveConfig::new(&params.client_id, &params.client_secret, &params.region);
-            let mut p = ZohoWorkdriveProvider::new(config);
+            let mut p = ZohoWorkdriveProvider::new(config).with_profile_id(&params.profile_id);
             p.connect()
                 .await
                 .map_err(|e| format!("Zoho WorkDrive connection failed: {}", e))?;
@@ -3293,7 +3301,7 @@ pub async fn oauth2_connect(
             use crate::providers::{OAuth2Manager, OAuthProvider};
             let manager = OAuth2Manager::new();
             let tokens = manager
-                .load_tokens(OAuthProvider::YandexDisk)
+                .load_tokens(OAuthProvider::YandexDisk, &params.profile_id)
                 .map_err(|e| format!("No Yandex Disk tokens found: {}", e))?;
             let mut p =
                 crate::providers::YandexDiskProvider::new(tokens.access_token.clone(), None);
@@ -3380,7 +3388,8 @@ pub async fn oauth2_full_auth(params: OAuthConnectionParams) -> Result<String, S
             OAuthConfig::yandex_disk_with_port(&params.client_id, &params.client_secret, port)
         }
         other => return Err(format!("Unknown OAuth2 provider: {}", other)),
-    };
+    }
+    .with_profile_id(&params.profile_id);
 
     // Create manager ONCE and keep it for the entire flow
     let manager = OAuth2Manager::new();
@@ -3543,7 +3552,7 @@ async fn pcloud_exchange_code(
         };
 
         let manager = OAuth2Manager::new();
-        manager.store_tokens(config.provider, &tokens)?;
+        manager.store_tokens(config.provider, config.profile_id(), &tokens)?;
 
         // Persist detected region so oauth2_connect uses the correct API endpoint
         let region = if endpoint.contains("eapi") {
@@ -3569,9 +3578,15 @@ async fn pcloud_exchange_code(
     )))
 }
 
-/// Check if OAuth2 tokens exist for a provider
+/// Check if OAuth2 tokens exist for a provider. When `profile_id` is supplied
+/// the per-profile vault key is consulted (with legacy fallback honoured by
+/// `OAuth2Manager::load_tokens`), otherwise the historic singleton key is
+/// used. Issue #214.
 #[tauri::command]
-pub async fn oauth2_has_tokens(provider: String) -> Result<bool, String> {
+pub async fn oauth2_has_tokens(
+    provider: String,
+    profile_id: Option<String>,
+) -> Result<bool, String> {
     use crate::providers::{OAuth2Manager, OAuthProvider};
 
     let oauth_provider = match provider.to_lowercase().as_str() {
@@ -3586,13 +3601,16 @@ pub async fn oauth2_has_tokens(provider: String) -> Result<bool, String> {
         other => return Err(format!("Unknown OAuth2 provider: {}", other)),
     };
 
+    let pid = profile_id.unwrap_or_default();
     let manager = OAuth2Manager::new();
-    Ok(manager.has_tokens(oauth_provider))
+    Ok(manager.has_tokens(oauth_provider, &pid))
 }
 
-/// Clear OAuth2 tokens for a provider (logout)
+/// Clear OAuth2 tokens for a provider (logout). When `profile_id` is supplied
+/// only that profile's tokens are removed; otherwise the legacy singleton key
+/// is targeted. Issue #214.
 #[tauri::command]
-pub async fn oauth2_logout(provider: String) -> Result<(), String> {
+pub async fn oauth2_logout(provider: String, profile_id: Option<String>) -> Result<(), String> {
     use crate::providers::{OAuth2Manager, OAuthProvider};
 
     let oauth_provider = match provider.to_lowercase().as_str() {
@@ -3607,9 +3625,10 @@ pub async fn oauth2_logout(provider: String) -> Result<(), String> {
         other => return Err(format!("Unknown OAuth2 provider: {}", other)),
     };
 
+    let pid = profile_id.unwrap_or_default();
     let manager = OAuth2Manager::new();
     manager
-        .clear_tokens(oauth_provider)
+        .clear_tokens(oauth_provider, &pid)
         .map_err(|e| format!("Failed to clear tokens: {}", e))?;
 
     info!("Logged out from {}", provider);
