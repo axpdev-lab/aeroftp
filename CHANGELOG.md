@@ -47,6 +47,11 @@ The default implementations return `NotSupported`, so a provider that never adve
 - The four engine-routing shims (`if dag_*_enabled() { ... }`) in `provider_commands`, the CLI, the batch orchestrator and the sync path drop their flag check.
 - The hand-rolled `JoinSet` sliding-window orchestrator in `transfer_orchestrator::execute_batch` (130+ lines including `spawn_transfer_task`) is removed: `execute_batch_dag` is the entire body.
 
+#### Fixed
+
+- **DAG single-file lock race** (closes #233): `provider_disconnect` and the `provider_connect` swap path now drain a per-transfer in-flight counter before mutating the provider slot. The DAG single-file leaf takes a `TransferOperationGuard` before releasing the command-level mutex, so an active download/upload cannot see the provider box yanked from under it. A disconnect issued mid-transfer waits up to 30 seconds for the in-flight transfer to complete; on timeout the disconnect proceeds and the transfer surfaces a clean `NotConnected` on its next provider mutex acquisition.
+- **DAG batch progress accounting** (closes #234): a transient `session_pool.acquire()` failure during a batch transfer now increments the `failed` counter on the `BatchProgressSnapshot` and emits a `batch_progress` event before the node completes. Previously the failure was logged but not surfaced, so the "X of Y completed" GUI counter silently drifted.
+
 #### Documentation
 
 - New canonical technical reference at [`docs/DAG-TRANSFER-ENGINE.md`](docs/DAG-TRANSFER-ENGINE.md) (in-repo).
@@ -60,6 +65,133 @@ The MCP tool surface is unchanged: same names, same arguments, same notification
 ### Why v4.0.0
 
 The version bump reflects the architectural shift: the production transfer path is now a single, provider-agnostic, capability-aware DAG scheduler, with five new trait methods on the public `StorageProvider` API. Three flags, four shims, and the legacy batch orchestrator are gone. The convergence is complete; the cleanup pass for `provider_transfer_executor.rs` is filed as accepted technical debt for the post-v4.0.0 window (see `docs/dev/roadmap/APPENDIX-DAG-ENGINE/STATUS_TODO.md`).
+
+---
+
+## [3.8.5] - 2026-05-23
+
+### AeroSync Unification, FTP Reliability and DAG Engine Foundation
+
+v3.8.5 is a consolidation release on top of v3.8.4. It collapses the three legacy sync surfaces (the standalone Sync panel, the AeroFile compare dialog and the Sync Presets entry) into a single unified AeroSync panel with three tabs that share state, lands four reliability fixes on the FTP transfer path, closes the cross-platform AeroRsync Z.4.3.f6 deadlock, and stages the foundation for a new shared transfer execution engine (default off, behind environment flags). It also picks up the v3.8.4 follow-ups: a pCloud WebDAV registry preset, an optional Filen CLI API key to skip 2FA on reconnect, a WebDAV User-Agent fingerprinting fix, and the OAuth refresh-token re-auth fix for Google providers.
+
+---
+
+### What's new
+
+#### Unified AeroSync panel
+
+The three previously disconnected sync surfaces collapse into one AeroSync dialog with three tabs: Compare, Plan and Sync. The same dialog covers local-to-local pairs, local-to-remote pairs and remote-to-remote pairs (with a connected profile), backed by a shared in-process runner and a recursive compare scan that uses each provider's native listing instead of a folder-by-folder walk. The Plan tab carries the Speed mode and Verify policy knobs (including Maniac), the retry/budget/versioning controls, the canary mode with keep-both rename execution, and a bandwidth control row. The Sync tab now ships a per-file results table. Journal History and the Scheduler are launched from inside the unified panel, and journal resume is wired into the Sync tab UI. The toolbar entry point and the F4 shortcut both open this same dialog.
+
+The previous Local Sync, Compare Panels and Sync Presets View-menu entries have been removed.
+
+#### Provider-native recursive compare scan
+
+The Compare scan now uses each provider's native recursive listing where one exists (S3 ListObjectsV2, Azure flat listing, Dropbox `list_folder` recursive, Filen tree, GDrive `q=trashed=false` with parents traversal, OneDrive children pagination, B2 b2_list_file_names, MEGA tree, pCloud listfolder recursive flag, koofr/kdrive recursive, OpenDrive list-tree, OAuth providers' batch listing), and falls back to a depth-bounded BFS walk on protocols that do not. Compare results are now exportable as JSON or CSV. The deepest-first ordering of recursive deletes prevents "directory not empty" failures on remote backends.
+
+#### Bandwidth, scheduler and canary in one place
+
+The unified panel surfaces the bandwidth control row directly in the Sync tab, the Scheduler launcher inside the panel header, and a canary mode that runs a single representative file first and confirms before committing the full batch. Canary uses the keep-both rename strategy on conflict so the source side stays untouched until the user accepts.
+
+#### FTP transfer reliability
+
+Four user-visible FTP fixes:
+
+- The FTP clone-pool upload path now dials the connection before reading credentials, eliminating a class of "command not connected" failures on parallel uploads.
+- The resume-download path and the in-memory `read_file` path on FTP both dial first, fixing intermittent zero-byte downloads and empty Properties previews on cold pools.
+- AeroSync now routes FTP transfers through the provider API instead of the bare-protocol path, so the bandwidth limiter and the retry policy apply identically to FTP and to cloud providers.
+- A panicking local scan inside the DAG sync path is now caught and surfaced as a structured `SyncError` instead of aborting the entire sync.
+
+#### pCloud WebDAV preset
+
+A `pcloud-webdav` registry preset is added (email + password, port 443, `https://webdav.pcloud.com` for US accounts, `https://ewebdav.pcloud.com` for EU accounts). Setup instructions cover the data-region split and the first-connection "New login attempt" confirmation email. The storage dedup layer recognises a pCloud WebDAV profile and a pCloud OAuth profile sharing the same email as a single account.
+
+The preset is picked up automatically by the Discover panel and carries a translated description in all 47 languages.
+
+#### Filen: optional CLI API key, hardened master-keys ring
+
+A new optional "Filen CLI API Key" field on the Filen connection form. When set, `connect()` authenticates with the supplied key and skips the `/v3/login` call, so reconnects no longer wait on the 30-second TOTP code window. The account password stays required: it derives the end-to-end master key, which the API key can never replace.
+
+The master-keys recovery path on the API-key flow now fails `connect()` with a clear error message when the encrypted master-keys ring cannot be fully assembled (network failure, empty blob or decrypt failure), instead of silently degrading to a session that would fail to decrypt files encrypted under previously-rotated keys.
+
+#### WebDAV User-Agent pinned to the major version
+
+The shared WebDAV client now sends `AeroFTP/3` instead of the full `AeroFTP/3.8.x`. WebDAV servers, including pCloud, fingerprint the User-Agent as a device identifier; the full version string made every patch release register as a new device and forced a fresh email re-approval. Pinning the User-Agent to the major version keeps the device stable across patch and minor releases. The other providers continue to send the full version string.
+
+#### Google OAuth: refresh token always reissued
+
+The Google authorization URL now carries `prompt=consent`, so re-authentication always re-issues a refresh token. Previously a previously-authorized Google account could be re-authorised silently and return a short-lived access token without a refresh token, which made `aeroftp-cli ls` and `aeroftp-cli tree` fail with `invalid_grant` until the user revoked and re-authorised manually.
+
+#### DAG transfer engine foundation (default off)
+
+A new shared transfer execution engine lands as foundational work for the next cycle. It runs single-file, batch and AeroSync transfers through a ready-frontier executor over a Directed Acyclic Graph (DAG), with AIMD backpressure and a session-probe cache. The engine is **off by default** in v3.8.5. It can be enabled per surface via:
+
+- `AEROFTP_TRANSFER_ENGINE_DAG_SINGLE_FILE=1`
+- `AEROFTP_TRANSFER_ENGINE_DAG_BATCH=1`
+- `AEROFTP_TRANSFER_ENGINE_DAG_SYNC=1`
+
+Existing transfer paths are unchanged when the flags are unset. The flag-gated convergence work was validated in CI (byte-identical output on SFTP, S3 and FTP across the GUI parity harness) before being merged.
+
+#### AeroRsync Z.4.3.f6 cross-platform closure
+
+Two orthogonal fixes close the last AeroRsync Blocco Z deadlock cross-platform:
+
+- The Linux leg: `MSG_DATA` header and payload writes are now coalesced into a single send, eliminating a framing-mismatch deadlock against embedded SSH servers (WD My Cloud NAS).
+- The Windows leg: the file-mode helper synthesises `S_IFREG|0o644` on non-unix builds, fixing rsync exit 22 after the coalesce work exposed an `S_ISREG(mode)==false` regression on Windows.
+
+The Windows 100-file batch validation completes in 55.4 seconds in a single SSH session with 0.68% bytes on the wire.
+
+---
+
+### Detailed changes
+
+#### Added
+
+- **AeroSync unified dialog** with Compare / Plan / Sync tabs, shared in-process runner, recursive provider-native compare scan, JSON/CSV compare export, journal resume UI, Scheduler and Journal History launchers, canary mode with keep-both rename, per-file results table, bandwidth control row, Plan-tab Speed/Verify/Retry/Budget/Versioning knobs, header launchers, F4 shortcut.
+- **Local-to-local sync execution** in the unified runner with recursive compare and deepest-first delete ordering.
+- **pCloud WebDAV registry preset** with US/EU data-region instructions and cross-protocol dedup against the pCloud OAuth profile.
+- **Optional Filen CLI API key** field on the Filen connection form (skips 2FA TOTP on reconnect).
+- **Filen reconnect auto-retry** when a TOTP secret is saved on the profile.
+- **DAG transfer engine foundation** (single-file, batch and sync entry points), behind `AEROFTP_TRANSFER_ENGINE_DAG_*` env flags, default off.
+- **macOS CI pin** to `macos-14` to dodge a Sequoia-only `bundle_dmg.sh` regression on `macos-latest`.
+
+#### Fixed
+
+- **FTP clone-pool upload**: dial the connection before the credential read.
+- **FTP resume download and in-memory read**: dial the connection before issuing the command, fixing intermittent zero-byte transfers on cold pools.
+- **AeroSync FTP transfers**: routed through the provider API so the bandwidth limiter and retry policy apply.
+- **DAG sync scan errors**: a panicking local scan now surfaces as a `SyncError` instead of aborting the run.
+- **AeroRsync Linux deadlock (Z.4.3.f6)**: coalesce `MSG_DATA` header and payload writes against embedded SSH servers.
+- **AeroRsync Windows leg**: synthesise `S_IFREG|0o644` on non-unix builds.
+- **AeroRsync delta call sites**: lift the `cfg(unix)` gate so Windows can reach them.
+- **WebDAV User-Agent**: pinned to `AeroFTP/<major>` to stop patch releases churning the device fingerprint at the server side.
+- **Google OAuth refresh token**: authorization URL carries `prompt=consent` so re-auth always re-issues a refresh token.
+- **Filen masterKeys ring**: API-key path fails `connect()` with a clear error when the ring cannot be fully assembled (closes #229).
+- **Filen 2FA terminology**: connection form labels match the saved-secret semantics, with a copyable secret display.
+- **AeroAgent local_list tilde**: the `local_*` path resolver now expands `~` ahead of base-joining, so `path="~"` resolves to the home directory instead of `<base>/~`.
+- **CLI exit code on `current_exe()` failure**: mapped from 5 (config error class) to 2 (path error), aligning with the rest of the CLI exit-code taxonomy (closes #232).
+- **pCloud WebDAV preset polish**: helpUrl points at the canonical pCloud WebDAV article, setup instructions make the US default region explicit, Turkish `filenApiKeyHelp` genitive case corrected (closes #231).
+- **IntroHub inline rename**: double-click a saved-profile name to start editing in place.
+- **Mount config shell metachars**: rejected at the boundary (Z.4.3.f2).
+- **File preview on cloud providers**: `ftp_read_file_base64` now supports cloud-backed profiles, so the preview pane works on S3/B2/Dropbox/GDrive/etc.
+- **Sync delta_session_count**: stop fabricating a count in the client-driven loop, the server-driven count is the source of truth.
+- **russh 0.60.3**: bumped for `GHSA-g9f8-wqj9-fjw5`.
+- **Dispatcher exec test**: retry on transient `ETXTBSY` in CI.
+
+#### Changed
+
+- **Three legacy View-menu entries (Local Sync, Compare Panels, Sync Presets)** removed. The unified AeroSync dialog replaces all three.
+- **Compare scan** uses provider-native recursive listing where available, with a bounded BFS fallback elsewhere.
+
+#### Removed
+
+- `src/components/SyncPanel.tsx`: the unified AeroSync dialog absorbs every code path it covered.
+
+---
+
+### Credits
+
+- The AeroSync unification work and the cross-platform AeroRsync Z.4.3.f6 closure sit on top of the GUI Transfer Convergence and AeroRsync filones tracked internally.
+- The DAG transfer engine foundation (phases 1-3) is the staging work for the next cycle and was validated against the GUI parity harness before merge.
 
 ---
 
