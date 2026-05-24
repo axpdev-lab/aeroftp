@@ -3408,6 +3408,50 @@ fn verbose_present(args: &[String]) -> bool {
     })
 }
 
+fn tracing_level_from_rust_log(value: &str) -> Option<tracing::Level> {
+    let mut selected: Option<tracing::Level> = None;
+
+    for directive in value.split(',').map(str::trim).filter(|v| !v.is_empty()) {
+        let token = directive
+            .rsplit('=')
+            .next()
+            .unwrap_or(directive)
+            .trim()
+            .to_ascii_lowercase();
+
+        let Some(level) = (match token.as_str() {
+            "trace" => Some(tracing::Level::TRACE),
+            "debug" => Some(tracing::Level::DEBUG),
+            "info" => Some(tracing::Level::INFO),
+            "warn" | "warning" => Some(tracing::Level::WARN),
+            "error" => Some(tracing::Level::ERROR),
+            "off" => None,
+            _ => Some(tracing::Level::DEBUG),
+        }) else {
+            continue;
+        };
+
+        selected = match selected {
+            Some(current) if tracing_level_rank(current) >= tracing_level_rank(level) => {
+                Some(current)
+            }
+            _ => Some(level),
+        };
+    }
+
+    selected
+}
+
+fn tracing_level_rank(level: tracing::Level) -> u8 {
+    match level {
+        tracing::Level::ERROR => 1,
+        tracing::Level::WARN => 2,
+        tracing::Level::INFO => 3,
+        tracing::Level::DEBUG => 4,
+        tracing::Level::TRACE => 5,
+    }
+}
+
 fn apply_config_defaults(args: &[String], config: &CliConfigFile) -> Vec<String> {
     let mut merged = vec![args[0].clone()];
 
@@ -22643,13 +22687,23 @@ async fn cmd_benchmark(
                 }
 
                 let start = Instant::now();
-                let upload_result = provider
-                    .upload(
-                        local_payload.path().to_string_lossy().as_ref(),
+                let local_payload_path = local_payload.path().to_string_lossy().to_string();
+                let upload_result = if !cli.partial {
+                    let (returned, result) = cli_run_single_file_dag(
+                        provider,
+                        ftp_client_gui_lib::transfer_dag::TransferDirection::Upload,
                         &remote_path,
+                        &local_payload_path,
                         None,
                     )
                     .await;
+                    provider = returned;
+                    result
+                } else {
+                    provider
+                        .upload(&local_payload_path, &remote_path, None)
+                        .await
+                };
                 let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
                 match upload_result {
                     Ok(()) => {
@@ -22703,13 +22757,23 @@ async fn cmd_benchmark(
 
             if needs_download {
                 let start = Instant::now();
-                let dl_result = provider
-                    .download(
+                let local_download_path = local_download.path().to_string_lossy().to_string();
+                let dl_result = if !cli.partial {
+                    let (returned, result) = cli_run_single_file_dag(
+                        provider,
+                        ftp_client_gui_lib::transfer_dag::TransferDirection::Download,
                         &remote_path,
-                        local_download.path().to_string_lossy().as_ref(),
+                        &local_download_path,
                         None,
                     )
                     .await;
+                    provider = returned;
+                    result
+                } else {
+                    provider
+                        .download(&remote_path, &local_download_path, None)
+                        .await
+                };
                 let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
                 match dl_result {
                     Ok(()) => {
@@ -36254,19 +36318,18 @@ async fn main() {
         JSON_MODE.store(true, Ordering::Relaxed);
     }
 
-    // Setup tracing based on verbosity. -vv forces TRACE; -v OR a non-empty
-    // RUST_LOG forces DEBUG. The env-filter feature is not enabled, so the
-    // RUST_LOG *value* is ignored — its mere presence flips the subscriber
-    // on so live diagnostic captures work without --verbose.
-    let rust_log_present = std::env::var("RUST_LOG")
-        .ok()
-        .is_some_and(|v| !v.is_empty());
+    // Setup tracing based on verbosity. -vv forces TRACE; -v forces DEBUG.
+    // Without the env-filter feature we still honor the common RUST_LOG
+    // levels globally, so `RUST_LOG=warn` does not accidentally enable the
+    // very chatty russh DEBUG stream during transfer benchmarks.
     let level = if cli.verbose >= 2 {
         Some(tracing::Level::TRACE)
-    } else if cli.verbose == 1 || rust_log_present {
+    } else if cli.verbose == 1 {
         Some(tracing::Level::DEBUG)
     } else {
-        None
+        std::env::var("RUST_LOG")
+            .ok()
+            .and_then(|value| tracing_level_from_rust_log(&value))
     };
     if let Some(level) = level {
         tracing_subscriber::fmt()
@@ -38372,6 +38435,27 @@ mod tests {
     use super::*;
     use ftp_client_gui_lib::profile_loader::insert_profile_option;
     use serde_json::json;
+
+    #[test]
+    fn rust_log_warn_does_not_enable_debug_tracing() {
+        assert_eq!(
+            tracing_level_from_rust_log("warn"),
+            Some(tracing::Level::WARN)
+        );
+        assert_eq!(
+            tracing_level_from_rust_log("ftp_client_gui_lib=warn,russh=error"),
+            Some(tracing::Level::WARN)
+        );
+    }
+
+    #[test]
+    fn rust_log_chooses_most_verbose_directive() {
+        assert_eq!(
+            tracing_level_from_rust_log("warn,russh=debug"),
+            Some(tracing::Level::DEBUG)
+        );
+        assert_eq!(tracing_level_from_rust_log("off"), None);
+    }
 
     #[test]
     fn parse_manual_total_size_matches_frontend() {
