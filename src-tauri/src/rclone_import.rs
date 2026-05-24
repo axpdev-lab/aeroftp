@@ -120,6 +120,7 @@ fn parse_rclone_conf(content: &str) -> HashMap<String, RcloneRemote> {
 
 // ============ Type Mapping ============
 
+#[derive(Default)]
 struct MappedProfile {
     protocol: String,
     provider_id: Option<String>,
@@ -129,6 +130,80 @@ struct MappedProfile {
     password: Option<String>,
     options: Option<serde_json::Value>,
     initial_path: Option<String>,
+    /// AeroFTP-format `StoredTokens` JSON converted from the rclone
+    /// `token = {...}` blob. The vault writer pairs this with the new
+    /// per-profile id once the import is materialised. Issue #214.
+    oauth_token: Option<String>,
+    /// Jottacloud refresh-token JSON in the shape `JottacloudProvider`
+    /// persists (`refresh_token`/`token_endpoint`/`username`), bound to the
+    /// new per-profile vault key on import. Issue #214.
+    jotta_refresh: Option<String>,
+}
+
+/// Convert an rclone `token = {...}` blob to the JSON shape AeroFTP's vault
+/// stores under `oauth_<provider>` keys (`StoredTokens`). rclone uses
+/// RFC 3339 `"expiry"` while AeroFTP uses a Unix `expires_at`; the
+/// conversion is otherwise field-for-field. Returns `None` when the blob
+/// lacks `access_token` or is not valid JSON. Issue #214.
+fn rclone_token_to_aeroftp(blob: &str) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(blob).ok()?;
+    let access_token = value.get("access_token")?.as_str()?.to_string();
+    if access_token.is_empty() {
+        return None;
+    }
+    let refresh_token = value
+        .get("refresh_token")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(String::from);
+    let token_type = value
+        .get("token_type")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .unwrap_or("Bearer")
+        .to_string();
+    let expires_at = value
+        .get("expiry")
+        .and_then(|v| v.as_str())
+        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+        .map(|dt| dt.timestamp());
+    let aeroftp = serde_json::json!({
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "expires_at": expires_at,
+        "token_type": token_type,
+        "scopes": serde_json::Value::Array(Vec::new()),
+    });
+    serde_json::to_string_pretty(&aeroftp).ok()
+}
+
+/// Build the Jotta refresh-token blob in the shape `JottacloudProvider`
+/// persists locally (issue #214). rclone stores `username`, `token = {...}`
+/// (with the same fields as OAuth2 providers) and a `client_id`. We extract
+/// the refresh token and rebuild the persistence shape so reconnecting on
+/// the destination device skips the single-use login token.
+fn rclone_jotta_to_aeroftp(remote: &RcloneRemote) -> Option<String> {
+    let token_blob = remote.get("token")?;
+    let token: serde_json::Value = serde_json::from_str(token_blob).ok()?;
+    let refresh_token = token
+        .get("refresh_token")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())?;
+    let username = remote.get("user").map(|s| s.as_str()).unwrap_or("");
+    // rclone's jottacloud backend uses the JAR token endpoint by default;
+    // surface it the same way `JottacloudProvider` does after a successful
+    // reconnect, but leave it empty when rclone did not store it so the
+    // provider re-discovers OIDC on first use.
+    let token_endpoint = remote
+        .get("token_endpoint")
+        .map(|s| s.as_str())
+        .unwrap_or("");
+    let blob = serde_json::json!({
+        "refresh_token": refresh_token,
+        "token_endpoint": token_endpoint,
+        "username": username,
+    });
+    serde_json::to_string(&blob).ok()
 }
 
 // Provider tables now live in `crate::bridge_shared` (Refactor 6): a single
@@ -183,6 +258,8 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
                 password: get_password("pass"),
                 options: None,
                 initial_path: None,
+                oauth_token: None,
+                jotta_refresh: None,
             })
         }
 
@@ -201,6 +278,8 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
                 password: get_password("pass"),
                 options: None,
                 initial_path: None,
+                oauth_token: None,
+                jotta_refresh: None,
             })
         }
 
@@ -256,6 +335,8 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
                 password: get_password("secret_access_key"),
                 options: Some(serde_json::Value::Object(options)),
                 initial_path: None,
+                oauth_token: None,
+                jotta_refresh: None,
             })
         }
 
@@ -289,6 +370,8 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
                     Some(serde_json::Value::Object(options))
                 },
                 initial_path: None,
+                oauth_token: None,
+                jotta_refresh: None,
             })
         }
 
@@ -299,9 +382,28 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
             host: "www.googleapis.com".to_string(),
             port: 443,
             username: name.to_string(), // rclone doesn't store email for drive
-            password: None,             // OAuth: token not importable
+            password: None,
             options: None,
             initial_path: get_str("root_folder_id").map(|s| s.to_string()),
+            // Issue #214: import the OAuth token blob so the destination
+            // device reconnects without a re-auth round-trip, symmetrically
+            // with how `.aeroftp` exports carry credentials.
+            oauth_token: get_str("token").and_then(rclone_token_to_aeroftp),
+            jotta_refresh: None,
+        }),
+
+        // ---- Google Photos ----
+        "gphotos" | "googlephotos" => Some(MappedProfile {
+            protocol: "googlephotos".to_string(),
+            provider_id: Some("googlephotos".to_string()),
+            host: "photoslibrary.googleapis.com".to_string(),
+            port: 443,
+            username: name.to_string(),
+            password: None,
+            options: None,
+            initial_path: None,
+            oauth_token: get_str("token").and_then(rclone_token_to_aeroftp),
+            jotta_refresh: None,
         }),
 
         // ---- Dropbox ----
@@ -311,9 +413,11 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
             host: "api.dropboxapi.com".to_string(),
             port: 443,
             username: name.to_string(),
-            password: None, // OAuth
+            password: None,
             options: None,
             initial_path: None,
+            oauth_token: get_str("token").and_then(rclone_token_to_aeroftp),
+            jotta_refresh: None,
         }),
 
         // ---- OneDrive ----
@@ -323,9 +427,11 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
             host: "graph.microsoft.com".to_string(),
             port: 443,
             username: name.to_string(),
-            password: None, // OAuth
+            password: None,
             options: None,
             initial_path: None,
+            oauth_token: get_str("token").and_then(rclone_token_to_aeroftp),
+            jotta_refresh: None,
         }),
 
         // ---- MEGA ----
@@ -338,6 +444,8 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
             password: get_password("pass"),
             options: None,
             initial_path: None,
+            oauth_token: None,
+            jotta_refresh: None,
         }),
 
         // ---- Box ----
@@ -347,9 +455,11 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
             host: "api.box.com".to_string(),
             port: 443,
             username: name.to_string(),
-            password: None, // OAuth
+            password: None,
             options: None,
             initial_path: None,
+            oauth_token: get_str("token").and_then(rclone_token_to_aeroftp),
+            jotta_refresh: None,
         }),
 
         // ---- pCloud ----
@@ -359,9 +469,11 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
             host: get_str("hostname").unwrap_or("eapi.pcloud.com").to_string(),
             port: 443,
             username: name.to_string(),
-            password: None, // OAuth
+            password: None,
             options: None,
             initial_path: None,
+            oauth_token: get_str("token").and_then(rclone_token_to_aeroftp),
+            jotta_refresh: None,
         }),
 
         // ---- Azure Blob Storage ----
@@ -391,6 +503,8 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
                     Some(serde_json::Value::Object(options))
                 },
                 initial_path: None,
+                oauth_token: None,
+                jotta_refresh: None,
             })
         }
 
@@ -444,6 +558,8 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
                     Some(serde_json::Value::Object(options))
                 },
                 initial_path: None,
+                oauth_token: None,
+                jotta_refresh: None,
             })
         }
 
@@ -454,9 +570,11 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
             host: "webdav.yandex.ru".to_string(),
             port: 443,
             username: name.to_string(),
-            password: None, // OAuth
+            password: None,
             options: None,
             initial_path: None,
+            oauth_token: get_str("token").and_then(rclone_token_to_aeroftp),
+            jotta_refresh: None,
         }),
 
         // ---- Koofr ----
@@ -473,6 +591,8 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
             password: get_password("password"),
             options: None,
             initial_path: None,
+            oauth_token: None,
+            jotta_refresh: None,
         }),
 
         // ---- Jottacloud ----
@@ -481,10 +601,12 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
             provider_id: Some("jottacloud".to_string()),
             host: "jottacloud.com".to_string(),
             port: 443,
-            username: name.to_string(),
-            password: None, // OAuth
+            username: get_str("user").unwrap_or(name).to_string(),
+            password: None,
             options: None,
             initial_path: None,
+            oauth_token: None,
+            jotta_refresh: rclone_jotta_to_aeroftp(remote),
         }),
 
         // ---- Backblaze B2 (native API v4) ----
@@ -515,6 +637,8 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
                 password: get_password("key"),
                 options: Some(serde_json::Value::Object(options)),
                 initial_path: None,
+                oauth_token: None,
+                jotta_refresh: None,
             })
         }
 
@@ -528,6 +652,8 @@ fn map_remote(name: &str, remote: &RcloneRemote) -> Option<MappedProfile> {
             password: get_password("password"),
             options: None,
             initial_path: None,
+            oauth_token: None,
+            jotta_refresh: None,
         }),
 
         // Unsupported rclone types: skip gracefully
@@ -726,6 +852,13 @@ pub struct RcloneImportResult {
     pub skipped: Vec<RcloneSkippedRemote>,
     pub source_path: String,
     pub total_remotes: usize,
+    /// Per-profile OAuth / Jotta token blobs imported from the rclone
+    /// `[remote]` sections, keyed by the freshly minted AeroFTP profile id.
+    /// `#[serde(skip)]` keeps them out of the renderer-bound response: the
+    /// vault writer in `lib.rs` consumes them server-side and only the
+    /// `hasStoredCredential` boolean reaches the frontend. Issue #214.
+    #[serde(skip)]
+    pub provider_secrets: std::collections::HashMap<String, crate::profile_export::ProviderSecrets>,
 }
 
 /// A remote that was skipped (unsupported type).
@@ -746,6 +879,10 @@ pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
     let total_remotes = sections.len();
     let mut servers = Vec::new();
     let mut skipped = Vec::new();
+    let mut provider_secrets: std::collections::HashMap<
+        String,
+        crate::profile_export::ProviderSecrets,
+    > = std::collections::HashMap::new();
 
     for (name, remote) in &sections {
         let rclone_type = remote.get("type").map(|s| s.as_str()).unwrap_or("unknown");
@@ -763,6 +900,18 @@ pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
                     name.to_lowercase().replace(' ', "-"),
                     &crate::bridge_shared::uuid_v4()[..8]
                 );
+
+                // Issue #214: capture per-profile OAuth / Jotta blobs so the
+                // vault writer can store them under the new per-profile key.
+                if mapped.oauth_token.is_some() || mapped.jotta_refresh.is_some() {
+                    provider_secrets.insert(
+                        id.clone(),
+                        crate::profile_export::ProviderSecrets {
+                            oauth: mapped.oauth_token,
+                            jotta_refresh: mapped.jotta_refresh,
+                        },
+                    );
+                }
 
                 servers.push(ServerProfileExport {
                     id,
@@ -802,6 +951,7 @@ pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
         skipped,
         source_path: config_path.display().to_string(),
         total_remotes,
+        provider_secrets,
     })
 }
 
@@ -1319,6 +1469,92 @@ region = eu-west-1
         remote.insert("type".into(), "fichier".into());
 
         assert!(map_remote("unsupported", &remote).is_none());
+    }
+
+    /// Issue #214: rclone stores `token = {"access_token", "refresh_token",
+    /// "expiry"}` per `[remote]`. The importer converts the blob to the
+    /// AeroFTP `StoredTokens` shape (Unix `expires_at` instead of RFC 3339
+    /// `expiry`) so the destination vault writes it back verbatim.
+    #[test]
+    fn test_rclone_token_to_aeroftp_full_conversion() {
+        let blob = r#"{
+            "access_token": "ya29.a0AfH6SM",
+            "token_type": "Bearer",
+            "refresh_token": "1//04abcdef",
+            "expiry": "2030-01-01T12:00:00Z"
+        }"#;
+        let aero = rclone_token_to_aeroftp(blob).expect("blob should convert");
+        let parsed: serde_json::Value = serde_json::from_str(&aero).unwrap();
+        assert_eq!(parsed["access_token"], "ya29.a0AfH6SM");
+        assert_eq!(parsed["refresh_token"], "1//04abcdef");
+        assert_eq!(parsed["token_type"], "Bearer");
+        // 2030-01-01T12:00:00Z == 1893499200
+        assert_eq!(parsed["expires_at"].as_i64().unwrap(), 1893499200);
+        assert!(parsed["scopes"].is_array());
+    }
+
+    /// A blob without `access_token` is unusable: the importer must skip it
+    /// rather than write a half-formed record into the destination vault.
+    #[test]
+    fn test_rclone_token_to_aeroftp_rejects_missing_access_token() {
+        let blob = r#"{"refresh_token": "r", "expiry": "2030-01-01T00:00:00Z"}"#;
+        assert!(rclone_token_to_aeroftp(blob).is_none());
+    }
+
+    /// A blob with an empty refresh_token serialises with `refresh_token:
+    /// null` so the destination vault treats the entry as a refreshless
+    /// session rather than trying to use the empty string as a refresh
+    /// token.
+    #[test]
+    fn test_rclone_token_to_aeroftp_normalises_empty_refresh() {
+        let blob =
+            r#"{"access_token": "a", "refresh_token": "", "expiry": "2030-01-01T00:00:00Z"}"#;
+        let aero = rclone_token_to_aeroftp(blob).expect("blob should convert");
+        let parsed: serde_json::Value = serde_json::from_str(&aero).unwrap();
+        assert!(parsed["refresh_token"].is_null());
+    }
+
+    /// Issue #214: an rclone Google Drive remote that carries `token = {...}`
+    /// produces a `MappedProfile` with the converted OAuth blob ready for
+    /// vault-side storage under `oauth_google_<profile_id>`.
+    #[test]
+    fn test_map_drive_extracts_oauth_token() {
+        let mut remote = HashMap::new();
+        remote.insert("type".into(), "drive".into());
+        remote.insert(
+            "token".into(),
+            r#"{"access_token":"abc","token_type":"Bearer","refresh_token":"r","expiry":"2030-01-01T00:00:00Z"}"#
+                .into(),
+        );
+        let mapped = map_remote("my-drive", &remote).expect("should map drive");
+        assert_eq!(mapped.protocol, "googledrive");
+        let oauth_json = mapped.oauth_token.expect("token must be propagated");
+        let parsed: serde_json::Value = serde_json::from_str(&oauth_json).unwrap();
+        assert_eq!(parsed["access_token"], "abc");
+        assert_eq!(parsed["refresh_token"], "r");
+    }
+
+    /// Issue #214: rclone Jotta remotes encode the refresh token inside the
+    /// same `token = {...}` shape. The importer reshapes it to the local
+    /// persistence layout (refresh_token / token_endpoint / username) so the
+    /// destination provider reconnects without burning the single-use login
+    /// token.
+    #[test]
+    fn test_map_jottacloud_extracts_refresh_token() {
+        let mut remote = HashMap::new();
+        remote.insert("type".into(), "jottacloud".into());
+        remote.insert("user".into(), "alice@example.com".into());
+        remote.insert(
+            "token".into(),
+            r#"{"access_token":"a","refresh_token":"rotated"}"#.into(),
+        );
+        let mapped = map_remote("jotta", &remote).expect("should map jotta");
+        assert_eq!(mapped.protocol, "jottacloud");
+        assert_eq!(mapped.username, "alice@example.com");
+        let refresh_json = mapped.jotta_refresh.expect("refresh must be propagated");
+        let parsed: serde_json::Value = serde_json::from_str(&refresh_json).unwrap();
+        assert_eq!(parsed["refresh_token"], "rotated");
+        assert_eq!(parsed["username"], "alice@example.com");
     }
 
     #[test]
