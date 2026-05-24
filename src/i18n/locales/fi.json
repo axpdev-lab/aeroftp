@@ -1020,7 +1020,8 @@
             "autoStartTransfers": "Aloita siirrot automaattisesti",
             "autoStartTransfersHelp": "Kun paalla, vedos-ja-pudota- ja napsautussiirrot kaynnistyvat heti. Kun pois paalta, ne pysakoidaan Transfer Queue -jonoon staged-tilassa, jotta voit karsia kansiopuita ja jarjestaa uudelleen ennen Start-painikkeen painamista.",
             "importKeystorePrompt": "Syötä salasana, jota käytettiin tämän keystore-varmuuskopion salaamiseen.",
-            "importServersPrompt": "Syötä salasana, jota käytettiin tämän server-profiles-varmuuskopion salaamiseen."
+            "importServersPrompt": "Syötä salasana, jota käytettiin tämän server-profiles-varmuuskopion salaamiseen.",
+            "exportFormatComparisonHint": "[NEEDS TRANSLATION] The .aeroftp file carries everything a profile needs to connect on another device. For a full vault backup including AI provider keys and global settings use the .aeroftp-keystore export instead."
         },
         "devtools": {
             "title": "AeroTools",

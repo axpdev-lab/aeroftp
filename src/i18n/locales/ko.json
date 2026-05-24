@@ -1020,7 +1020,8 @@
             "autoStartTransfers": "전송 자동 시작",
             "autoStartTransfersHelp": "켜져 있으면 드래그 앤 드롭 및 클릭 전송이 즉시 시작됩니다. 꺼져 있으면 Transfer Queue 에 staged 상태로 보관되어 Start 를 누르기 전에 폴더 트리를 정리하고 순서를 바꿀 수 있습니다.",
             "importKeystorePrompt": "이 keystore 백업을 암호화할 때 사용한 비밀번호를 입력하세요.",
-            "importServersPrompt": "이 server-profiles 백업을 암호화할 때 사용한 비밀번호를 입력하세요."
+            "importServersPrompt": "이 server-profiles 백업을 암호화할 때 사용한 비밀번호를 입력하세요.",
+            "exportFormatComparisonHint": "[NEEDS TRANSLATION] The .aeroftp file carries everything a profile needs to connect on another device. For a full vault backup including AI provider keys and global settings use the .aeroftp-keystore export instead."
         },
         "devtools": {
             "title": "AeroTools",

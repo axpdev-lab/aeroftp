@@ -1020,7 +1020,8 @@
             "autoStartTransfers": "Αυτόματη εκκίνηση μεταφορών",
             "autoStartTransfersHelp": "Όταν είναι ενεργό, οι μεταφορές μέσω drag-and-drop και κλικ ξεκινούν αμέσως. Όταν είναι ανενεργό, σταθμεύουν στο Transfer Queue ως staged, ώστε να μπορείς να κλαδέψεις δέντρα φακέλων και να αναδιατάξεις πριν πατήσεις Start.",
             "importKeystorePrompt": "Εισαγάγετε τον κωδικό που χρησιμοποιήθηκε για την κρυπτογράφηση αυτού του αντιγράφου ασφαλείας keystore.",
-            "importServersPrompt": "Εισαγάγετε τον κωδικό που χρησιμοποιήθηκε για την κρυπτογράφηση αυτού του αντιγράφου ασφαλείας server-profiles."
+            "importServersPrompt": "Εισαγάγετε τον κωδικό που χρησιμοποιήθηκε για την κρυπτογράφηση αυτού του αντιγράφου ασφαλείας server-profiles.",
+            "exportFormatComparisonHint": "[NEEDS TRANSLATION] The .aeroftp file carries everything a profile needs to connect on another device. For a full vault backup including AI provider keys and global settings use the .aeroftp-keystore export instead."
         },
         "devtools": {
             "title": "AeroTools",

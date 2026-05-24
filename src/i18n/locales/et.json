@@ -1020,7 +1020,8 @@
             "autoStartTransfers": "Ulekannete automaatne kaivitamine",
             "autoStartTransfersHelp": "Sisselulitatuna kaivituvad lohista-ja-aseta ja kliki ulekanded kohe. Valjalulitatuna pargitakse need Transfer Queue'sse staged olekuna, et saaksid kaustapuid kuljendada ja umber jarjestada enne Start vajutamist.",
             "importKeystorePrompt": "Sisesta parool, mida kasutati selle keystore varukoopia krüpteerimiseks.",
-            "importServersPrompt": "Sisesta parool, mida kasutati selle server-profiles varukoopia krüpteerimiseks."
+            "importServersPrompt": "Sisesta parool, mida kasutati selle server-profiles varukoopia krüpteerimiseks.",
+            "exportFormatComparisonHint": "[NEEDS TRANSLATION] The .aeroftp file carries everything a profile needs to connect on another device. For a full vault backup including AI provider keys and global settings use the .aeroftp-keystore export instead."
         },
         "devtools": {
             "title": "AeroTools",

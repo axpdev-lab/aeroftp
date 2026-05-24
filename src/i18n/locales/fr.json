@@ -1020,7 +1020,8 @@
             "autoStartTransfers": "Demarrage automatique des transferts",
             "autoStartTransfersHelp": "Active, les transferts par glisser-deposer ou clic demarrent immediatement. Desactive, ils sont parques dans la Transfer Queue comme staged, ce qui permet d'elaguer les arborescences de dossiers et de reordonner avant d'appuyer sur Start.",
             "importKeystorePrompt": "Saisis le mot de passe utilisé pour chiffrer cette sauvegarde du keystore.",
-            "importServersPrompt": "Saisis le mot de passe utilisé pour chiffrer cette sauvegarde des server-profiles."
+            "importServersPrompt": "Saisis le mot de passe utilisé pour chiffrer cette sauvegarde des server-profiles.",
+            "exportFormatComparisonHint": "[NEEDS TRANSLATION] The .aeroftp file carries everything a profile needs to connect on another device. For a full vault backup including AI provider keys and global settings use the .aeroftp-keystore export instead."
         },
         "devtools": {
             "title": "AeroTools",

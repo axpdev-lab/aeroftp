@@ -1020,7 +1020,8 @@
             "autoStartTransfers": "Automatinis perdavimu paleidimas",
             "autoStartTransfersHelp": "Kai ijungta, vilkimo ir spustelejimo perdavimai prasideda is karto. Kai isjungta, jie paliekami Transfer Queue kaip staged, kad galetum apkarpyti aplanku medzius ir pertvarkyti pries paspausdamas Start.",
             "importKeystorePrompt": "Iveskite slaptazodi, naudota sifruoti si keystore atsargine kopija.",
-            "importServersPrompt": "Iveskite slaptazodi, naudota sifruoti si server-profiles atsargine kopija."
+            "importServersPrompt": "Iveskite slaptazodi, naudota sifruoti si server-profiles atsargine kopija.",
+            "exportFormatComparisonHint": "[NEEDS TRANSLATION] The .aeroftp file carries everything a profile needs to connect on another device. For a full vault backup including AI provider keys and global settings use the .aeroftp-keystore export instead."
         },
         "devtools": {
             "title": "AeroTools",

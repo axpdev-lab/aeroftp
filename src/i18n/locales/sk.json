@@ -1020,7 +1020,8 @@
             "autoStartTransfers": "Automaticke spustenie prenosov",
             "autoStartTransfersHelp": "Ked je zapnute, prenosy cez drag-and-drop a klik sa spustia okamzite. Ked je vypnute, parkuju sa v Transfer Queue ako staged, aby si mohol prerediť stromy priecinkov a preusporiadat pred stlacenim Start.",
             "importKeystorePrompt": "Zadaj heslo použité na šifrovanie tejto zálohy keystore.",
-            "importServersPrompt": "Zadaj heslo použité na šifrovanie tejto zálohy server-profiles."
+            "importServersPrompt": "Zadaj heslo použité na šifrovanie tejto zálohy server-profiles.",
+            "exportFormatComparisonHint": "[NEEDS TRANSLATION] The .aeroftp file carries everything a profile needs to connect on another device. For a full vault backup including AI provider keys and global settings use the .aeroftp-keystore export instead."
         },
         "devtools": {
             "title": "AeroTools",

@@ -1020,7 +1020,8 @@
             "autoStartTransfers": "Pornire automata a transferurilor",
             "autoStartTransfersHelp": "Cand este activ, transferurile prin glisare si plasare si prin clic pornesc imediat. Cand este inactiv, sunt parcate in Transfer Queue ca staged, ca sa poti curata arborii de foldere si sa reordonezi inainte de a apasa Start.",
             "importKeystorePrompt": "Introdu parola folosita pentru a cripta acest backup keystore.",
-            "importServersPrompt": "Introdu parola folosita pentru a cripta acest backup al profilurilor server-profiles."
+            "importServersPrompt": "Introdu parola folosita pentru a cripta acest backup al profilurilor server-profiles.",
+            "exportFormatComparisonHint": "[NEEDS TRANSLATION] The .aeroftp file carries everything a profile needs to connect on another device. For a full vault backup including AI provider keys and global settings use the .aeroftp-keystore export instead."
         },
         "devtools": {
             "title": "AeroTools",

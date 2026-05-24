@@ -1020,7 +1020,8 @@
             "autoStartTransfers": "Tu dong bat dau truyen",
             "autoStartTransfersHelp": "Khi bat, truyen bang keo-tha va nhap bat dau ngay lap tuc. Khi tat, chung duoc do trong Transfer Queue o trang thai staged de ban co the cat tia cay thu muc va sap xep lai truoc khi nhan Start.",
             "importKeystorePrompt": "Nhap mat khau da dung de ma hoa ban sao luu keystore nay.",
-            "importServersPrompt": "Nhap mat khau da dung de ma hoa ban sao luu server-profiles nay."
+            "importServersPrompt": "Nhap mat khau da dung de ma hoa ban sao luu server-profiles nay.",
+            "exportFormatComparisonHint": "[NEEDS TRANSLATION] The .aeroftp file carries everything a profile needs to connect on another device. For a full vault backup including AI provider keys and global settings use the .aeroftp-keystore export instead."
         },
         "devtools": {
             "title": "AeroTools",
