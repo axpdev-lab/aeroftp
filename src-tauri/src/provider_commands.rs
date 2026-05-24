@@ -7,10 +7,11 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use serde::{Deserialize, Serialize};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, State};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Notify};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
@@ -67,6 +68,14 @@ pub struct ProviderState {
     /// Held GitHub App installation token: never crosses IPC.
     /// Set by `github_app_token_from_pem`/`_from_vault`, consumed by `provider_connect`.
     pub held_github_app_token: Mutex<Option<String>>,
+    /// Counter of transfer operations that hold a `SharedProvider` clone
+    /// from a spawned task without keeping the provider mutex locked.
+    /// `provider_disconnect` and the `provider_connect` swap path drain
+    /// this before mutating the slot so an active DAG transfer cannot see
+    /// the provider box yanked from under it (issue #233).
+    pub in_flight_transfers: Arc<AtomicUsize>,
+    /// Wakes drain waiters when an in-flight transfer guard drops.
+    in_flight_notify: Arc<Notify>,
 }
 
 impl ProviderState {
@@ -77,6 +86,8 @@ impl ProviderState {
             cancel_flag: Arc::new(AtomicBool::new(false)),
             cancel_token: Mutex::new(CancellationToken::new()),
             held_github_app_token: Mutex::new(None),
+            in_flight_transfers: Arc::new(AtomicUsize::new(0)),
+            in_flight_notify: Arc::new(Notify::new()),
         }
     }
 
@@ -100,6 +111,61 @@ impl ProviderState {
 impl Default for ProviderState {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// RAII guard around `ProviderState::in_flight_transfers`. Acquired by the
+/// command-level entry points before they hand a `SharedProvider` clone to
+/// a spawned DAG transfer task and dropped only when that task returns,
+/// so `provider_disconnect` / `provider_connect` (swap) can drain the
+/// counter to zero before mutating the provider slot. See [issue #233].
+pub struct TransferOperationGuard {
+    counter: Arc<AtomicUsize>,
+    notify: Arc<Notify>,
+}
+
+impl TransferOperationGuard {
+    fn acquire(state: &ProviderState) -> Self {
+        state.in_flight_transfers.fetch_add(1, Ordering::SeqCst);
+        Self {
+            counter: Arc::clone(&state.in_flight_transfers),
+            notify: Arc::clone(&state.in_flight_notify),
+        }
+    }
+}
+
+impl Drop for TransferOperationGuard {
+    fn drop(&mut self) {
+        if self.counter.fetch_sub(1, Ordering::SeqCst) == 1 {
+            self.notify.notify_waiters();
+        }
+    }
+}
+
+/// Best-effort wait until `state.in_flight_transfers` reaches zero, bounded
+/// by `total_timeout` so a hung transfer cannot indefinitely block a
+/// disconnect or a session swap. On timeout the function logs a warning
+/// and returns, restoring the pre-fix behaviour (the active transfer will
+/// surface `NotConnected` once the slot is mutated).
+async fn drain_in_flight_transfers(state: &ProviderState, total_timeout: Duration) {
+    let deadline = Instant::now() + total_timeout;
+    while state.in_flight_transfers.load(Ordering::SeqCst) > 0 {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            warn!(
+                "drain_in_flight_transfers: {} transfers still in flight after {:?}; \
+                 proceeding (active transfers will surface NotConnected)",
+                state.in_flight_transfers.load(Ordering::SeqCst),
+                total_timeout
+            );
+            return;
+        }
+        // Register interest BEFORE re-checking the counter so a notify from
+        // the last drop between check and wait is not lost. Cap the
+        // individual wait at 1s so a missed notification cannot stall the
+        // drain forever.
+        let notified = state.in_flight_notify.notified();
+        let _ = tokio::time::timeout(remaining.min(Duration::from_secs(1)), notified).await;
     }
 }
 
@@ -690,6 +756,10 @@ pub async fn provider_connect(
     // gracefully disconnect it first; synchronously dropping a connected
     // `Box<dyn StorageProvider>` does not run async disconnect, which leaks
     // server-side sessions, socket handles, and OAuth refresh tokens.
+    //
+    // Issue #233: drain in-flight DAG transfers BEFORE taking the slot, so
+    // an active download/upload cannot see the box yanked from under it.
+    drain_in_flight_transfers(&state, Duration::from_secs(30)).await;
     {
         let mut prov_lock = state.provider.lock().await;
         if let Some(mut previous) = prov_lock.take() {
@@ -714,6 +784,12 @@ pub async fn provider_connect(
 /// Disconnect from the current provider
 #[tauri::command]
 pub async fn provider_disconnect(state: State<'_, ProviderState>) -> Result<(), String> {
+    // Issue #233: wait for any in-flight DAG transfer to drain before
+    // mutating the provider slot. Without this, an active download/upload
+    // sees the box yanked and surfaces a spurious `NotConnected` instead
+    // of completing or failing on its real I/O error.
+    drain_in_flight_transfers(&state, Duration::from_secs(30)).await;
+
     let mut provider_lock = state.provider.lock().await;
 
     if let Some(ref mut provider) = *provider_lock {
@@ -933,6 +1009,10 @@ pub async fn provider_pwd(state: State<'_, ProviderState>) -> Result<String, Str
 async fn run_dag_download_leaf(
     app: AppHandle,
     provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
+    // Holds the in-flight counter for the lifetime of this leaf so
+    // `provider_disconnect` cannot drain past us. Held by name (not `_`)
+    // to make the lifetime explicit at the call site.
+    _op_guard: TransferOperationGuard,
     transfer_id: String,
     filename: String,
     remote_path: String,
@@ -1016,6 +1096,9 @@ async fn run_dag_download_leaf(
 async fn run_dag_upload_leaf(
     app: AppHandle,
     provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
+    // Same role as the download leaf: pin the in-flight counter against
+    // `provider_disconnect` (issue #233).
+    _op_guard: TransferOperationGuard,
     transfer_id: String,
     filename: String,
     local_path: String,
@@ -1388,12 +1471,18 @@ pub async fn provider_download_file(
     // both the single-`DownloadFile` core and the multipart fan-out shape.
     if segmented_result.is_none() && partial_offset == 0 {
         let provider_arc = Arc::clone(&state.provider);
+        // Acquire the operation guard BEFORE releasing the mutex: this
+        // closes the window where `provider_disconnect` could `.take()`
+        // the provider box between our drop and the DAG node's re-lock
+        // (issue #233). The guard lives for the entire DAG leaf call.
+        let op_guard = TransferOperationGuard::acquire(&state);
         // Release the command-level guard so the DAG transfer node can lock
         // the same provider mutex from its spawned task.
         drop(provider_lock);
         return run_dag_download_leaf(
             app,
             provider_arc,
+            op_guard,
             transfer_id,
             filename,
             remote_path,
@@ -2586,10 +2675,15 @@ pub async fn provider_upload_file(
     // both the single-`UploadFile` core and the multipart fan-out shape.
     if provider.provider_type() != ProviderType::GitHub {
         let provider_arc = Arc::clone(&state.provider);
+        // Issue #233: acquire the in-flight guard before releasing the
+        // mutex, so the swap or disconnect path waits for the DAG leaf
+        // to return instead of yanking the provider box from under it.
+        let op_guard = TransferOperationGuard::acquire(&state);
         drop(provider_lock);
         return run_dag_upload_leaf(
             app,
             provider_arc,
+            op_guard,
             transfer_id,
             filename,
             local_path,
@@ -9576,7 +9670,13 @@ pub async fn b2_permanent_delete(
 
 #[cfg(test)]
 mod tests {
-    use super::{remote_matches_repo, ProviderConnectionParams};
+    use super::{
+        drain_in_flight_transfers, remote_matches_repo, ProviderConnectionParams, ProviderState,
+        TransferOperationGuard,
+    };
+    use std::sync::atomic::Ordering;
+    use std::sync::Arc;
+    use std::time::{Duration, Instant};
 
     fn s3_params(path_style: Option<bool>) -> ProviderConnectionParams {
         ProviderConnectionParams {
@@ -9723,5 +9823,88 @@ mod tests {
             "axpdev-lab",
             "aeroftp"
         ));
+    }
+
+    // ============ Issue #233: in-flight transfer drain ============
+
+    #[tokio::test]
+    async fn transfer_operation_guard_tracks_in_flight_counter() {
+        let state = ProviderState::new();
+        assert_eq!(state.in_flight_transfers.load(Ordering::SeqCst), 0);
+        {
+            let _g1 = TransferOperationGuard::acquire(&state);
+            assert_eq!(state.in_flight_transfers.load(Ordering::SeqCst), 1);
+            let _g2 = TransferOperationGuard::acquire(&state);
+            assert_eq!(state.in_flight_transfers.load(Ordering::SeqCst), 2);
+        }
+        assert_eq!(state.in_flight_transfers.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn drain_in_flight_transfers_returns_immediately_when_zero() {
+        let state = ProviderState::new();
+        let started = Instant::now();
+        drain_in_flight_transfers(&state, Duration::from_secs(5)).await;
+        assert!(
+            started.elapsed() < Duration::from_millis(50),
+            "drain on idle state must not wait, took {:?}",
+            started.elapsed()
+        );
+    }
+
+    #[tokio::test]
+    async fn drain_in_flight_transfers_waits_for_guard_drop() {
+        let state = Arc::new(ProviderState::new());
+        let guard = TransferOperationGuard::acquire(&state);
+        let state_clone = Arc::clone(&state);
+        // Drop the guard after a short delay; drain must observe the
+        // decrement (via the notify) and return promptly after.
+        let dropper = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            drop(guard);
+            // touch state_clone so the borrow lives long enough on
+            // older rustc versions
+            let _ = state_clone.in_flight_transfers.load(Ordering::SeqCst);
+        });
+
+        let started = Instant::now();
+        drain_in_flight_transfers(&state, Duration::from_secs(5)).await;
+        let elapsed = started.elapsed();
+        dropper.await.unwrap();
+
+        assert_eq!(state.in_flight_transfers.load(Ordering::SeqCst), 0);
+        assert!(
+            elapsed >= Duration::from_millis(80),
+            "drain must wait for the guard, only waited {:?}",
+            elapsed
+        );
+        assert!(
+            elapsed < Duration::from_millis(1500),
+            "drain must wake up promptly after the notify, took {:?}",
+            elapsed
+        );
+    }
+
+    #[tokio::test]
+    async fn drain_in_flight_transfers_returns_on_timeout_when_held() {
+        let state = ProviderState::new();
+        let _held = TransferOperationGuard::acquire(&state);
+        let started = Instant::now();
+        drain_in_flight_transfers(&state, Duration::from_millis(150)).await;
+        let elapsed = started.elapsed();
+        // The guard is still alive on purpose; the drain must give up
+        // after roughly the timeout (the warn log is best-effort, the
+        // function MUST return so the caller can proceed).
+        assert_eq!(state.in_flight_transfers.load(Ordering::SeqCst), 1);
+        assert!(
+            elapsed >= Duration::from_millis(140),
+            "drain returned before its timeout, only waited {:?}",
+            elapsed
+        );
+        assert!(
+            elapsed < Duration::from_secs(2),
+            "drain returned much later than its timeout: {:?}",
+            elapsed
+        );
     }
 }
