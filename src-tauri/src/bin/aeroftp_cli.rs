@@ -2369,6 +2369,12 @@ enum ImportCommands {
         /// Output as JSON
         #[arg(long)]
         json: bool,
+        /// Write the imported profiles AND any OAuth / Jotta token blobs
+        /// into the vault, mirroring the GUI's `Settings > Import from rclone`
+        /// flow. Default is a dry-run: profiles are printed but the vault is
+        /// untouched. Issue #214.
+        #[arg(long)]
+        apply: bool,
     },
     /// Import sessions from WinSCP configuration file
     Winscp {
@@ -7910,7 +7916,11 @@ fn interactive_profiles_loop(store: &CredentialStore, profiles: Vec<serde_json::
                     .to_string();
                 eprint!(
                     "{} '{}' to which mode? (api, webdav, s3, ftp; empty to abort): ",
-                    if replace { "Convert" } else { "Save-as-new copy of" },
+                    if replace {
+                        "Convert"
+                    } else {
+                        "Save-as-new copy of"
+                    },
                     name
                 );
                 let _ = io::stderr().flush();
@@ -7941,13 +7951,21 @@ fn interactive_profiles_loop(store: &CredentialStore, profiles: Vec<serde_json::
                     }
                 }
                 match duplicate_or_convert_mode_in_vault(
-                    store, &name, &mode_input, None, None, None, replace,
+                    store,
+                    &name,
+                    &mode_input,
+                    None,
+                    None,
+                    None,
+                    replace,
                 ) {
                     Ok((_source_id, new_id, source_name, mode)) => {
                         // Refresh in-memory snapshot from the vault so the
                         // next iteration's render reflects the new layout.
                         if let Ok(updated_raw) = store.get("config_server_profiles") {
-                            if let Ok(updated) = serde_json::from_str::<Vec<serde_json::Value>>(&updated_raw) {
+                            if let Ok(updated) =
+                                serde_json::from_str::<Vec<serde_json::Value>>(&updated_raw)
+                            {
                                 current = updated;
                             }
                         }
@@ -8660,20 +8678,64 @@ struct ModeGroupRow {
 
 const MODE_GROUPS: &[ModeGroupRow] = &[
     // FileLu
-    ModeGroupRow { group_id: "filelu", protocol: "filelu", provider_id: Some("filelu") },
-    ModeGroupRow { group_id: "filelu", protocol: "webdav", provider_id: Some("filelu-webdav") },
-    ModeGroupRow { group_id: "filelu", protocol: "s3", provider_id: Some("filelu-s3") },
-    ModeGroupRow { group_id: "filelu", protocol: "ftp", provider_id: Some("filelu-ftp") },
+    ModeGroupRow {
+        group_id: "filelu",
+        protocol: "filelu",
+        provider_id: Some("filelu"),
+    },
+    ModeGroupRow {
+        group_id: "filelu",
+        protocol: "webdav",
+        provider_id: Some("filelu-webdav"),
+    },
+    ModeGroupRow {
+        group_id: "filelu",
+        protocol: "s3",
+        provider_id: Some("filelu-s3"),
+    },
+    ModeGroupRow {
+        group_id: "filelu",
+        protocol: "ftp",
+        provider_id: Some("filelu-ftp"),
+    },
     // Filen (native API has no preset providerId)
-    ModeGroupRow { group_id: "filen", protocol: "filen", provider_id: None },
-    ModeGroupRow { group_id: "filen", protocol: "webdav", provider_id: Some("filen-desktop-webdav") },
-    ModeGroupRow { group_id: "filen", protocol: "s3", provider_id: Some("filen-desktop-s3") },
+    ModeGroupRow {
+        group_id: "filen",
+        protocol: "filen",
+        provider_id: None,
+    },
+    ModeGroupRow {
+        group_id: "filen",
+        protocol: "webdav",
+        provider_id: Some("filen-desktop-webdav"),
+    },
+    ModeGroupRow {
+        group_id: "filen",
+        protocol: "s3",
+        provider_id: Some("filen-desktop-s3"),
+    },
     // OpenDrive (native API has no preset providerId)
-    ModeGroupRow { group_id: "opendrive", protocol: "opendrive", provider_id: None },
-    ModeGroupRow { group_id: "opendrive", protocol: "webdav", provider_id: Some("opendrive-webdav") },
+    ModeGroupRow {
+        group_id: "opendrive",
+        protocol: "opendrive",
+        provider_id: None,
+    },
+    ModeGroupRow {
+        group_id: "opendrive",
+        protocol: "webdav",
+        provider_id: Some("opendrive-webdav"),
+    },
     // Koofr (native API has no preset providerId; `koofr` providerId is the WebDAV preset)
-    ModeGroupRow { group_id: "koofr", protocol: "koofr", provider_id: None },
-    ModeGroupRow { group_id: "koofr", protocol: "webdav", provider_id: Some("koofr") },
+    ModeGroupRow {
+        group_id: "koofr",
+        protocol: "koofr",
+        provider_id: None,
+    },
+    ModeGroupRow {
+        group_id: "koofr",
+        protocol: "webdav",
+        provider_id: Some("koofr"),
+    },
 ];
 
 /// Short mode label per row: `api` for native modes, otherwise the
@@ -8693,8 +8755,10 @@ fn find_mode_group_of(protocol: &str, provider_id: Option<&str>) -> Option<&'sta
     for row in MODE_GROUPS {
         let matches = match row.provider_id {
             Some(pid) => Some(pid) == provider_id,
-            None => row.protocol == protocol
-                && (provider_id.is_none() || provider_id == Some(row.protocol)),
+            None => {
+                row.protocol == protocol
+                    && (provider_id.is_none() || provider_id == Some(row.protocol))
+            }
         };
         if matches {
             return Some(row.group_id);
@@ -8734,13 +8798,20 @@ fn resolve_target_mode_in_group(
 fn scrub_options_for_mode(opts: &mut serde_json::Map<String, serde_json::Value>) {
     const MODE_SPECIFIC_KEYS: &[&str] = &[
         // S3 mode
-        "pathStyle", "region", "endpoint", "anonymous", "bucket", "accountId",
+        "pathStyle",
+        "region",
+        "endpoint",
+        "anonymous",
+        "bucket",
+        "accountId",
         // WebDAV mode
-        "webdavScheme", "verifyCert",
+        "webdavScheme",
+        "verifyCert",
         // TLS / FTP
         "tlsMode",
         // FileLu API
-        "filen_api_key", "two_factor_code",
+        "filen_api_key",
+        "two_factor_code",
     ];
     for k in MODE_SPECIFIC_KEYS {
         opts.remove(*k);
@@ -8766,8 +8837,8 @@ fn duplicate_or_convert_mode_in_vault(
     let raw = store
         .get("config_server_profiles")
         .map_err(|e| (format!("Failed to read profiles: {}", e), 5))?;
-    let mut profiles: Vec<serde_json::Value> = serde_json::from_str(&raw)
-        .map_err(|e| (format!("Failed to parse profiles: {}", e), 5))?;
+    let mut profiles: Vec<serde_json::Value> =
+        serde_json::from_str(&raw).map_err(|e| (format!("Failed to parse profiles: {}", e), 5))?;
     let source_idx = resolve_profile_selector(&profiles, selector)
         .map_err(|e| (format!("Profile lookup failed: {}", e), 2))?;
     let source = profiles[source_idx].clone();
@@ -8800,20 +8871,22 @@ fn duplicate_or_convert_mode_in_vault(
             7,
         ))?;
     let (target_protocol, target_provider_id) = resolve_target_mode_in_group(group, mode_label)
-        .ok_or_else(|| (
-            format!(
-                "Mode '{}' is not available in the '{}' group. Valid modes for this group: {}",
-                mode_label,
-                group,
-                MODE_GROUPS
-                    .iter()
-                    .filter(|r| r.group_id == group)
-                    .map(|r| mode_label_for_row(r))
-                    .collect::<Vec<_>>()
-                    .join(", "),
-            ),
-            5,
-        ))?;
+        .ok_or_else(|| {
+            (
+                format!(
+                    "Mode '{}' is not available in the '{}' group. Valid modes for this group: {}",
+                    mode_label,
+                    group,
+                    MODE_GROUPS
+                        .iter()
+                        .filter(|r| r.group_id == group)
+                        .map(|r| mode_label_for_row(r))
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                ),
+                5,
+            )
+        })?;
     // Same mode: refuse so we don't silently create a confusing duplicate.
     if target_protocol == source_protocol
         && target_provider_id.map(|s| s.to_string()) == source_provider_id
@@ -8834,30 +8907,38 @@ fn duplicate_or_convert_mode_in_vault(
         (0..9)
             .map(|_| {
                 let idx: u8 = rng.gen_range(0..36);
-                if idx < 10 { (b'0' + idx) as char } else { (b'a' + (idx - 10)) as char }
+                if idx < 10 {
+                    (b'0' + idx) as char
+                } else {
+                    (b'a' + (idx - 10)) as char
+                }
             })
             .collect()
     };
     let new_id = format!("srv_{}_{}", now_ms, rand_suffix);
 
-    let resolved_name = new_name
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| {
-            if replace_in_slot {
-                source_name.clone()
-            } else {
-                format!("{} ({})", source_name, mode_label)
-            }
-        });
+    let resolved_name = new_name.map(|s| s.to_string()).unwrap_or_else(|| {
+        if replace_in_slot {
+            source_name.clone()
+        } else {
+            format!("{} ({})", source_name, mode_label)
+        }
+    });
 
     let mut copy = source.clone();
     if let serde_json::Value::Object(ref mut map) = copy {
         map.insert("id".into(), serde_json::Value::String(new_id.clone()));
         map.insert("name".into(), serde_json::Value::String(resolved_name));
-        map.insert("protocol".into(), serde_json::Value::String(target_protocol.to_string()));
+        map.insert(
+            "protocol".into(),
+            serde_json::Value::String(target_protocol.to_string()),
+        );
         match target_provider_id {
             Some(pid) => {
-                map.insert("providerId".into(), serde_json::Value::String(pid.to_string()));
+                map.insert(
+                    "providerId".into(),
+                    serde_json::Value::String(pid.to_string()),
+                );
             }
             None => {
                 map.remove("providerId");
@@ -11102,7 +11183,14 @@ fn profile_to_provider_config(
 
 /// Run OAuth2 browser authorization flow from CLI.
 /// Opens the browser for the user to authorize, waits for the callback, saves tokens to vault.
-async fn cli_oauth_browser_auth(protocol: &str, store: &CredentialStore) -> Result<(), String> {
+/// `profile_id` scopes the resulting tokens to a server profile vault key
+/// (`oauth_<provider>_<profile_id>`); pass an empty string to keep the legacy
+/// singleton key for compatibility. Issue #214.
+async fn cli_oauth_browser_auth(
+    protocol: &str,
+    store: &CredentialStore,
+    profile_id: &str,
+) -> Result<(), String> {
     use ftp_client_gui_lib::providers::{
         oauth2::{bind_callback_listener, bind_callback_listener_on_port, wait_for_callback},
         OAuth2Manager, OAuthConfig,
@@ -11157,7 +11245,8 @@ async fn cli_oauth_browser_auth(protocol: &str, store: &CredentialStore) -> Resu
             OAuthConfig::yandex_disk_with_port(&oauth_settings.0, &oauth_settings.1, port)
         }
         other => return Err(format!("OAuth not supported for: {}", other)),
-    };
+    }
+    .with_profile_id(profile_id);
 
     let manager = OAuth2Manager::new();
     let (auth_url, expected_state) = manager
@@ -11199,6 +11288,7 @@ async fn cli_oauth_browser_auth(protocol: &str, store: &CredentialStore) -> Resu
 fn create_oauth_provider_by_protocol(
     protocol: &str,
     store: &CredentialStore,
+    profile_id: &str,
 ) -> Result<Box<dyn StorageProvider>, String> {
     use ftp_client_gui_lib::providers::{
         dropbox::DropboxConfig, google_drive::GoogleDriveConfig, onedrive::OneDriveConfig,
@@ -11209,44 +11299,55 @@ fn create_oauth_provider_by_protocol(
 
     let oauth_settings = load_oauth_client_config(store, protocol);
     match protocol {
-        "googledrive" => Ok(Box::new(GoogleDriveProvider::new(GoogleDriveConfig::new(
-            &oauth_settings.0,
-            &oauth_settings.1,
-        )))),
-        "dropbox" => Ok(Box::new(DropboxProvider::new(DropboxConfig::new(
-            &oauth_settings.0,
-            &oauth_settings.1,
-        )))),
-        "onedrive" => Ok(Box::new(OneDriveProvider::new(OneDriveConfig::new(
-            &oauth_settings.0,
-            &oauth_settings.1,
-        )))),
-        "box" => Ok(Box::new(BoxProvider::new(BoxConfig {
-            client_id: oauth_settings.0,
-            client_secret: oauth_settings.1,
-        }))),
+        "googledrive" => Ok(Box::new(
+            GoogleDriveProvider::new(GoogleDriveConfig::new(&oauth_settings.0, &oauth_settings.1))
+                .with_profile_id(profile_id),
+        )),
+        "dropbox" => Ok(Box::new(
+            DropboxProvider::new(DropboxConfig::new(&oauth_settings.0, &oauth_settings.1))
+                .with_profile_id(profile_id),
+        )),
+        "onedrive" => Ok(Box::new(
+            OneDriveProvider::new(OneDriveConfig::new(&oauth_settings.0, &oauth_settings.1))
+                .with_profile_id(profile_id),
+        )),
+        "box" => Ok(Box::new(
+            BoxProvider::new(BoxConfig {
+                client_id: oauth_settings.0,
+                client_secret: oauth_settings.1,
+            })
+            .with_profile_id(profile_id),
+        )),
         "pcloud" => {
             let region = store
                 .get("oauth_pcloud_region")
                 .unwrap_or_else(|_| "us".to_string());
-            Ok(Box::new(PCloudProvider::new(PCloudConfig {
-                client_id: oauth_settings.0,
-                client_secret: oauth_settings.1,
-                region,
-            })))
+            Ok(Box::new(
+                PCloudProvider::new(PCloudConfig {
+                    client_id: oauth_settings.0,
+                    client_secret: oauth_settings.1,
+                    region,
+                })
+                .with_profile_id(profile_id),
+            ))
         }
         "zohoworkdrive" => {
             let region = store
                 .get("oauth_zohoworkdrive_region")
                 .unwrap_or_else(|_| "us".to_string());
-            Ok(Box::new(ZohoWorkdriveProvider::new(
-                ZohoWorkdriveConfig::new(&oauth_settings.0, &oauth_settings.1, &region),
-            )))
+            Ok(Box::new(
+                ZohoWorkdriveProvider::new(ZohoWorkdriveConfig::new(
+                    &oauth_settings.0,
+                    &oauth_settings.1,
+                    &region,
+                ))
+                .with_profile_id(profile_id),
+            ))
         }
         "yandexdisk" => {
             let manager = OAuth2Manager::new();
             let tokens = manager
-                .load_tokens(OAuthProvider::YandexDisk)
+                .load_tokens(OAuthProvider::YandexDisk, profile_id)
                 .map_err(|e| format!("No Yandex tokens: {}", e))?;
             Ok(Box::new(YandexDiskProvider::new(
                 tokens.access_token.clone(),
@@ -11307,6 +11408,7 @@ async fn try_create_oauth_provider(
     store: &ftp_client_gui_lib::credential_store::CredentialStore,
     quiet: bool,
     provider_id: Option<&str>,
+    profile_id: &str,
 ) -> Option<Result<(Box<dyn StorageProvider>, String), i32>> {
     use ftp_client_gui_lib::providers::{
         dropbox::DropboxConfig, google_drive::GoogleDriveConfig, onedrive::OneDriveConfig,
@@ -11320,36 +11422,45 @@ async fn try_create_oauth_provider(
     let (oauth_provider, create_fn): (OAuthProvider, OAuthCreateFn) = match protocol {
         "googledrive" => {
             let oauth_settings = load_oauth_client_config(store, "googledrive");
+            let pid = profile_id.to_string();
             (
                 OAuthProvider::Google,
                 Box::new(move |_| {
                     let config = GoogleDriveConfig::new(&oauth_settings.0, &oauth_settings.1);
-                    Ok(Box::new(GoogleDriveProvider::new(config)) as Box<dyn StorageProvider>)
+                    Ok(
+                        Box::new(GoogleDriveProvider::new(config).with_profile_id(pid))
+                            as Box<dyn StorageProvider>,
+                    )
                 }),
             )
         }
         "dropbox" => {
             let oauth_settings = load_oauth_client_config(store, "dropbox");
+            let pid = profile_id.to_string();
             (
                 OAuthProvider::Dropbox,
                 Box::new(move |_| {
                     let config = DropboxConfig::new(&oauth_settings.0, &oauth_settings.1);
-                    Ok(Box::new(DropboxProvider::new(config)) as Box<dyn StorageProvider>)
+                    Ok(Box::new(DropboxProvider::new(config).with_profile_id(pid))
+                        as Box<dyn StorageProvider>)
                 }),
             )
         }
         "onedrive" => {
             let oauth_settings = load_oauth_client_config(store, "onedrive");
+            let pid = profile_id.to_string();
             (
                 OAuthProvider::OneDrive,
                 Box::new(move |_| {
                     let config = OneDriveConfig::new(&oauth_settings.0, &oauth_settings.1);
-                    Ok(Box::new(OneDriveProvider::new(config)) as Box<dyn StorageProvider>)
+                    Ok(Box::new(OneDriveProvider::new(config).with_profile_id(pid))
+                        as Box<dyn StorageProvider>)
                 }),
             )
         }
         "box" => {
             let oauth_settings = load_oauth_client_config(store, "box");
+            let pid = profile_id.to_string();
             (
                 OAuthProvider::Box,
                 Box::new(move |_| {
@@ -11357,7 +11468,8 @@ async fn try_create_oauth_provider(
                         client_id: oauth_settings.0,
                         client_secret: oauth_settings.1,
                     };
-                    Ok(Box::new(BoxProvider::new(config)) as Box<dyn StorageProvider>)
+                    Ok(Box::new(BoxProvider::new(config).with_profile_id(pid))
+                        as Box<dyn StorageProvider>)
                 }),
             )
         }
@@ -11366,6 +11478,7 @@ async fn try_create_oauth_provider(
             let region = store
                 .get("oauth_pcloud_region")
                 .unwrap_or_else(|_| "us".to_string());
+            let pid = profile_id.to_string();
             (
                 OAuthProvider::PCloud,
                 Box::new(move |_| {
@@ -11374,7 +11487,8 @@ async fn try_create_oauth_provider(
                         client_secret: oauth_settings.1,
                         region,
                     };
-                    Ok(Box::new(PCloudProvider::new(config)) as Box<dyn StorageProvider>)
+                    Ok(Box::new(PCloudProvider::new(config).with_profile_id(pid))
+                        as Box<dyn StorageProvider>)
                 }),
             )
         }
@@ -11383,23 +11497,28 @@ async fn try_create_oauth_provider(
             let region = store
                 .get("oauth_zohoworkdrive_region")
                 .unwrap_or_else(|_| "us".to_string());
+            let pid = profile_id.to_string();
             (
                 OAuthProvider::ZohoWorkdrive,
                 Box::new(move |_| {
                     let config =
                         ZohoWorkdriveConfig::new(&oauth_settings.0, &oauth_settings.1, &region);
-                    Ok(Box::new(ZohoWorkdriveProvider::new(config)) as Box<dyn StorageProvider>)
+                    Ok(
+                        Box::new(ZohoWorkdriveProvider::new(config).with_profile_id(pid))
+                            as Box<dyn StorageProvider>,
+                    )
                 }),
             )
         }
         "yandexdisk" => {
             // Yandex uses OAuth2 but creates provider with raw token
+            let pid = profile_id.to_string();
             (
                 OAuthProvider::YandexDisk,
                 Box::new(move |_| {
                     let manager = OAuth2Manager::new();
                     let tokens = manager
-                        .load_tokens(OAuthProvider::YandexDisk)
+                        .load_tokens(OAuthProvider::YandexDisk, &pid)
                         .map_err(|e| format!("No Yandex Disk tokens: {}", e))?;
                     Ok(
                         Box::new(ftp_client_gui_lib::providers::YandexDiskProvider::new(
@@ -11491,7 +11610,7 @@ async fn try_create_oauth_provider(
     // GUI and CLI read. A missing key here usually means the user has not
     // authorized this provider yet from the GUI on this machine (issue #196).
     let manager = OAuth2Manager::new();
-    let needs_auth = !manager.has_tokens(oauth_provider);
+    let needs_auth = !manager.has_tokens(oauth_provider, profile_id);
 
     if needs_auth {
         let token_key = format!("oauth_{}", protocol);
@@ -11509,7 +11628,7 @@ async fn try_create_oauth_provider(
              Starting browser authorization...",
             profile_name, token_key
         );
-        match cli_oauth_browser_auth(protocol, store).await {
+        match cli_oauth_browser_auth(protocol, store, profile_id).await {
             Ok(()) => eprintln!("Authorization successful!"),
             Err(e) => {
                 eprintln!("Error: Authorization failed: {}", e);
@@ -11559,18 +11678,19 @@ async fn try_create_oauth_provider(
         }
         eprintln!("OAuth connect failed: {}", e);
         eprintln!("Starting browser re-authorization (Ctrl+C to cancel if the cause above is not an expired/revoked token)...");
-        match cli_oauth_browser_auth(protocol, store).await {
+        match cli_oauth_browser_auth(protocol, store, profile_id).await {
             Ok(()) => {
                 eprintln!("Re-authorization successful! Reconnecting...");
                 // Recreate provider with fresh tokens
                 // We need to recreate since create_fn was consumed - rebuild inline
-                let mut retry_provider = match create_oauth_provider_by_protocol(protocol, store) {
-                    Ok(p) => p,
-                    Err(e) => {
-                        eprintln!("Error: Failed to recreate provider: {}", e);
-                        return Some(Err(5));
-                    }
-                };
+                let mut retry_provider =
+                    match create_oauth_provider_by_protocol(protocol, store, profile_id) {
+                        Ok(p) => p,
+                        Err(e) => {
+                            eprintln!("Error: Failed to recreate provider: {}", e);
+                            return Some(Err(5));
+                        }
+                    };
                 if let Err(e2) = retry_provider.connect().await {
                     eprintln!("Error: Connection failed after re-authorization: {}", e2);
                     return Some(Err(6));
@@ -11690,9 +11810,12 @@ async fn create_and_connect(
                             .get("initialPath")
                             .and_then(|v| v.as_str())
                             .unwrap_or("/");
-                        let provider_id = profile
-                            .get("providerId")
-                            .and_then(|v| v.as_str());
+                        let provider_id = profile.get("providerId").and_then(|v| v.as_str());
+                        // Per-profile OAuth vault key (issue #214): when the
+                        // saved server carries an id we scope the token to
+                        // that profile, otherwise fall back to the legacy
+                        // singleton key by passing an empty string.
+                        let profile_id = profile.get("id").and_then(|v| v.as_str()).unwrap_or("");
                         if let Some(result) = try_create_oauth_provider(
                             protocol,
                             name,
@@ -11700,6 +11823,7 @@ async fn create_and_connect(
                             &store,
                             cli.quiet,
                             provider_id,
+                            profile_id,
                         )
                         .await
                         {
@@ -17265,7 +17389,7 @@ async fn cmd_rcat(url: &str, remote: &str, cli: &Cli, format: OutputFormat) -> i
     }
 }
 
-async fn cmd_import_rclone(path: Option<String>, json: bool) -> i32 {
+async fn cmd_import_rclone(path: Option<String>, json: bool, apply: bool, cli: &Cli) -> i32 {
     use ftp_client_gui_lib::rclone_import;
 
     let config_path = match path {
@@ -17303,9 +17427,34 @@ async fn cmd_import_rclone(path: Option<String>, json: bool) -> i32 {
 
     match rclone_import::import_rclone(&config_path) {
         Ok(result) => {
+            // Issue #214: --apply mirrors the GUI `import_rclone_config` Tauri
+            // command end-to-end: write the per-profile password under
+            // `server_<id>`, the OAuth blob under `oauth_<slug>_<id>`, the
+            // Jotta refresh under `jottacloud_refresh_<id>`, and append the
+            // saved profiles to the GUI-shared `config_server_profiles`
+            // entry. Without `--apply` the call is dry-run, preserving the
+            // previous CLI behaviour.
+            let mut applied_summary: Option<RcloneApplySummary> = None;
+            if apply {
+                match apply_rclone_import_to_vault(cli, &result).await {
+                    Ok(summary) => applied_summary = Some(summary),
+                    Err(err) => {
+                        if json {
+                            println!(
+                                "{}",
+                                serde_json::json!({"error": format!("Failed to apply import: {}", err)})
+                            );
+                        } else {
+                            eprintln!("Error: failed to apply import: {}", err);
+                        }
+                        return 1;
+                    }
+                }
+            }
+
             if json {
                 // Redact credentials: never output plaintext passwords to stdout
-                let redacted: serde_json::Value = serde_json::json!({
+                let mut redacted = serde_json::json!({
                     "servers": result.servers.iter().map(|s| serde_json::json!({
                         "id": s.id,
                         "name": s.name,
@@ -17320,7 +17469,16 @@ async fn cmd_import_rclone(path: Option<String>, json: bool) -> i32 {
                     "skipped": serde_json::to_value(&result.skipped).unwrap_or_default(),
                     "sourcePath": result.source_path,
                     "totalRemotes": result.total_remotes,
+                    "applied": apply,
                 });
+                if let Some(summary) = &applied_summary {
+                    redacted["appliedSummary"] = serde_json::json!({
+                        "passwordsStored": summary.passwords_stored,
+                        "oauthTokensStored": summary.oauth_tokens_stored,
+                        "jottaRefreshStored": summary.jotta_refresh_stored,
+                        "profilesAppended": summary.profiles_appended,
+                    });
+                }
                 println!(
                     "{}",
                     serde_json::to_string_pretty(&redacted).unwrap_or_default()
@@ -17357,9 +17515,19 @@ async fn cmd_import_rclone(path: Option<String>, json: bool) -> i32 {
                     println!();
                 }
 
-                println!(
-                    "To import into the GUI, use Settings > Export/Import > Import from rclone"
-                );
+                if let Some(summary) = &applied_summary {
+                    println!(
+                        "Applied to vault: {} profiles, {} passwords, {} OAuth tokens, {} Jotta refresh tokens",
+                        summary.profiles_appended,
+                        summary.passwords_stored,
+                        summary.oauth_tokens_stored,
+                        summary.jotta_refresh_stored,
+                    );
+                } else {
+                    println!(
+                        "Dry-run: re-run with --apply to write profiles + OAuth tokens into the vault."
+                    );
+                }
             }
             0
         }
@@ -17372,6 +17540,136 @@ async fn cmd_import_rclone(path: Option<String>, json: bool) -> i32 {
             1
         }
     }
+}
+
+/// Tally of vault-side side effects performed by `--apply`. Reported back
+/// through both the text and JSON output of `aeroftp-cli import rclone
+/// --apply`. Issue #214.
+struct RcloneApplySummary {
+    passwords_stored: usize,
+    oauth_tokens_stored: usize,
+    jotta_refresh_stored: usize,
+    profiles_appended: usize,
+}
+
+/// Map a saved-server protocol identifier to the `OAuthProvider` slug used
+/// in the vault key (`oauth_<slug>_<profile_id>`). Mirrors
+/// `oauth_vault_slug_for_protocol` in `lib.rs` so the CLI `--apply` path
+/// writes the same vault layout the GUI flow produces. Issue #214.
+fn cli_oauth_vault_slug_for_protocol(protocol: &str) -> Option<&'static str> {
+    match protocol.to_lowercase().as_str() {
+        "googledrive" | "google_drive" | "google" => Some("google"),
+        "googlephotos" | "google_photos" => Some("googlephotos"),
+        "dropbox" => Some("dropbox"),
+        "onedrive" | "microsoft" => Some("onedrive"),
+        "box" => Some("box"),
+        "pcloud" => Some("pcloud"),
+        "zohoworkdrive" | "zoho_workdrive" | "zoho" => Some("zohoworkdrive"),
+        "yandexdisk" | "yandex_disk" | "yandex" => Some("yandexdisk"),
+        _ => None,
+    }
+}
+
+/// Write the imported rclone profiles, passwords and OAuth / Jotta token
+/// blobs into the AeroFTP vault, then append the new profiles to
+/// `config_server_profiles` so the GUI lists them on next launch. Mirrors
+/// the `import_rclone_config` Tauri command in `lib.rs`. Issue #214.
+async fn apply_rclone_import_to_vault(
+    cli: &Cli,
+    result: &ftp_client_gui_lib::rclone_import::RcloneImportResult,
+) -> Result<RcloneApplySummary, String> {
+    let store = open_vault(cli)?;
+
+    let mut passwords_stored = 0usize;
+    let mut oauth_tokens_stored = 0usize;
+    let mut jotta_refresh_stored = 0usize;
+
+    for server in &result.servers {
+        if let Some(ref cred) = server.credential {
+            store
+                .store(&format!("server_{}", server.id), cred)
+                .map_err(|e| format!("vault write failed for {}: {}", server.id, e))?;
+            passwords_stored += 1;
+        }
+    }
+
+    let protocol_by_id: std::collections::HashMap<&str, String> = result
+        .servers
+        .iter()
+        .map(|s| {
+            (
+                s.id.as_str(),
+                s.protocol.clone().unwrap_or_default().to_lowercase(),
+            )
+        })
+        .collect();
+    for (profile_id, secrets) in &result.provider_secrets {
+        let protocol = match protocol_by_id.get(profile_id.as_str()) {
+            Some(p) => p,
+            None => continue,
+        };
+        if let Some(ref oauth_json) = secrets.oauth {
+            if let Some(slug) = cli_oauth_vault_slug_for_protocol(protocol) {
+                store
+                    .store(&format!("oauth_{}_{}", slug, profile_id), oauth_json)
+                    .map_err(|e| format!("vault write failed for oauth {}: {}", profile_id, e))?;
+                oauth_tokens_stored += 1;
+            }
+        }
+        if let Some(ref jotta_json) = secrets.jotta_refresh {
+            if protocol == "jottacloud" {
+                store
+                    .store(&format!("jottacloud_refresh_{}", profile_id), jotta_json)
+                    .map_err(|e| format!("vault write failed for jotta {}: {}", profile_id, e))?;
+                jotta_refresh_stored += 1;
+            }
+        }
+    }
+
+    // Append the imported profiles to the GUI-shared `config_server_profiles`
+    // list (a JSON array stored in the vault). Existing entries are
+    // preserved; new ids that already exist in the list are skipped to keep
+    // the operation idempotent on retry.
+    let mut profiles: Vec<serde_json::Value> = match store.get("config_server_profiles") {
+        Ok(json) => serde_json::from_str(&json).unwrap_or_default(),
+        Err(_) => Vec::new(),
+    };
+    let existing_ids: std::collections::HashSet<String> = profiles
+        .iter()
+        .filter_map(|p| p.get("id").and_then(|v| v.as_str()).map(String::from))
+        .collect();
+    let mut profiles_appended = 0usize;
+    for server in &result.servers {
+        if existing_ids.contains(&server.id) {
+            continue;
+        }
+        profiles.push(serde_json::json!({
+            "id": server.id,
+            "name": server.name,
+            "host": server.host,
+            "port": server.port,
+            "username": server.username,
+            "protocol": server.protocol,
+            "initialPath": server.initial_path,
+            "color": server.color,
+            "lastConnected": server.last_connected,
+            "options": server.options,
+            "providerId": server.provider_id,
+        }));
+        profiles_appended += 1;
+    }
+    let json =
+        serde_json::to_string(&profiles).map_err(|e| format!("serialize profiles list: {}", e))?;
+    store
+        .store("config_server_profiles", &json)
+        .map_err(|e| format!("vault write failed for config_server_profiles: {}", e))?;
+
+    Ok(RcloneApplySummary {
+        passwords_stored,
+        oauth_tokens_stored,
+        jotta_refresh_stored,
+        profiles_appended,
+    })
 }
 
 /// Shared text/JSON printer for every bridge importer. `v` is the
@@ -37674,7 +37972,9 @@ async fn main() {
             JobCommands::Cancel { id } => cmd_jobs_cancel(id, format).await,
         },
         Commands::Import { command } => match command {
-            ImportCommands::Rclone { path, json } => cmd_import_rclone(path.clone(), *json).await,
+            ImportCommands::Rclone { path, json, apply } => {
+                cmd_import_rclone(path.clone(), *json, *apply, &cli).await
+            }
             ImportCommands::Winscp { path, json } => cmd_import_winscp(path.clone(), *json).await,
             ImportCommands::Filezilla { path, json } => {
                 cmd_import_filezilla(path.clone(), *json).await
