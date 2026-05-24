@@ -120,7 +120,7 @@ The `profiles --json` output:
 | `crypt put` | `AEROFTP_CRYPT_PASSWORD=... aeroftp-cli --profile NAME crypt put ./file _ /dir` | Upload encrypted |
 | `crypt get` | `AEROFTP_CRYPT_PASSWORD=... aeroftp-cli --profile NAME crypt get filename _ /dir ./out` | Download + decrypt |
 | `crypt ls` | `AEROFTP_CRYPT_PASSWORD=... aeroftp-cli --profile NAME crypt ls _ /dir` | List decrypted names |
-| `batch` | `aeroftp-cli batch script.aeroftp` | Run batch script (.aeroftp) |
+| `batch` | `aeroftp-cli batch script.aeroftp-script` | Run batch script (.aeroftp-script) |
 | `import` | `aeroftp-cli import rclone [--json]` | Import profiles from rclone/FileZilla |
 
 ### Info Operations

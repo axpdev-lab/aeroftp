@@ -175,11 +175,11 @@ aeroftp-cli ls --profile "Server" /data/ --json 2>/dev/null | jq '.[] | select(.
 aeroftp-cli agent --provider ollama --message "run: ls /data && rm -rf /tmp/*"
 
 # GOOD - use batch files for multi-step operations
-cat > workflow.aeroftp << 'EOF'
+cat > workflow.aeroftp-script << 'EOF'
 CONNECT sftp://server
 LS /data
 EOF
-aeroftp-cli batch workflow.aeroftp --json 2>/dev/null
+aeroftp-cli batch workflow.aeroftp-script --json 2>/dev/null
 ```
 
 ### DO NOT: Embed Credentials in URLs
