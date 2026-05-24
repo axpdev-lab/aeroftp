@@ -658,6 +658,12 @@ impl S3Provider {
             xml_str.len()
         );
 
+        // Filen Desktop S3 returns <Key>/<Prefix> percent-encoded (e.g. `my%20folder`
+        // for "my folder"), unlike AWS-standard which returns them verbatim.
+        // Decode here so RemoteEntry holds the logical name and downstream `build_url`
+        // re-encodes consistently. Reported in #196 (Filen S3 tree shows `%20`).
+        let filen_decode = self.is_filen_s3_endpoint();
+
         let mut reader = Reader::from_str(xml_str);
         reader.config_mut().trim_text(true);
         let mut buf = Vec::new();
@@ -789,12 +795,19 @@ impl S3Provider {
                     let tag_name = String::from_utf8_lossy(e.name().as_ref()).to_string();
                     match tag_name.as_str() {
                         "CommonPrefixes" => {
-                            if let Some(ref full_prefix) = cp_prefix {
+                            if let Some(ref raw_prefix) = cp_prefix {
+                                let full_prefix: String = if filen_decode {
+                                    urlencoding::decode(raw_prefix)
+                                        .map(|c| c.into_owned())
+                                        .unwrap_or_else(|_| raw_prefix.clone())
+                                } else {
+                                    raw_prefix.clone()
+                                };
                                 let name = full_prefix
                                     .trim_end_matches('/')
                                     .rsplit('/')
                                     .next()
-                                    .unwrap_or(full_prefix)
+                                    .unwrap_or(&full_prefix)
                                     .to_string();
 
                                 if !name.is_empty() {
@@ -807,11 +820,19 @@ impl S3Provider {
                             context = Context::None;
                         }
                         "Contents" => {
-                            if let Some(ref key) = c_key {
+                            if let Some(ref raw_key) = c_key {
+                                let key: String = if filen_decode {
+                                    urlencoding::decode(raw_key)
+                                        .map(|c| c.into_owned())
+                                        .unwrap_or_else(|_| raw_key.clone())
+                                } else {
+                                    raw_key.clone()
+                                };
+                                let key = key.as_str();
                                 // Skip directory markers
                                 if !key.ends_with('/') {
                                     // Skip if key equals current prefix
-                                    let dominated = key == &self.current_prefix
+                                    let dominated = key == self.current_prefix
                                         || key.trim_start_matches('/')
                                             == self.current_prefix.trim_start_matches('/');
                                     if !dominated {
@@ -4099,5 +4120,85 @@ mod tests {
 
         let via_legacy = provider.server_copy("/src/key.bin", "/dst/key.bin").await;
         assert!(matches!(via_legacy, Err(ProviderError::NotConnected)));
+    }
+
+    /// Issue #196: Filen Desktop S3 returns `<Key>` / `<Prefix>` percent-encoded.
+    /// Verify `parse_list_response` decodes them so names appear correctly in
+    /// `ls`/`tree` and downstream `build_url` re-encodes once (no double encoding).
+    #[test]
+    fn parse_list_response_decodes_filen_keys_and_prefixes() {
+        let provider = S3Provider::new(S3Config {
+            endpoint: Some("https://local.s3.filen.io".to_string()),
+            region: "filen".to_string(),
+            access_key_id: "k".to_string(),
+            secret_access_key: secrecy::SecretString::from("s".to_string()),
+            bucket: "b".to_string(),
+            prefix: None,
+            path_style: true,
+            storage_class: None,
+            sse_mode: None,
+            sse_kms_key_id: None,
+            verify_cert: false,
+        })
+        .expect("provider");
+        assert!(provider.is_filen_s3_endpoint());
+
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ListBucketResult>
+  <Name>b</Name>
+  <Prefix></Prefix>
+  <Delimiter>/</Delimiter>
+  <CommonPrefixes><Prefix>my%20folder/</Prefix></CommonPrefixes>
+  <Contents>
+    <Key>foto%20vacanze.jpg</Key>
+    <Size>1024</Size>
+    <LastModified>2026-05-24T10:00:00.000Z</LastModified>
+    <ETag>"abc"</ETag>
+  </Contents>
+</ListBucketResult>"#;
+
+        let (entries, _) = provider.parse_list_response(xml).expect("parse");
+        let dir = entries.iter().find(|e| e.is_dir).expect("dir entry");
+        assert_eq!(dir.name, "my folder", "Filen dir name must be decoded");
+        assert_eq!(dir.path, "/my folder");
+
+        let file = entries.iter().find(|e| !e.is_dir).expect("file entry");
+        assert_eq!(file.name, "foto vacanze.jpg");
+        assert_eq!(file.path, "/foto vacanze.jpg");
+        assert_eq!(file.size, 1024);
+    }
+
+    /// AWS-standard S3 returns `<Key>` verbatim. A literal `%20` inside a key
+    /// name must survive unchanged on non-Filen endpoints (no false decode).
+    #[test]
+    fn parse_list_response_keeps_literal_percent_on_aws() {
+        let provider = S3Provider::new(S3Config {
+            endpoint: None,
+            region: "us-east-1".to_string(),
+            access_key_id: "k".to_string(),
+            secret_access_key: secrecy::SecretString::from("s".to_string()),
+            bucket: "b".to_string(),
+            prefix: None,
+            path_style: false,
+            storage_class: None,
+            sse_mode: None,
+            sse_kms_key_id: None,
+            verify_cert: true,
+        })
+        .expect("provider");
+        assert!(!provider.is_filen_s3_endpoint());
+
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ListBucketResult>
+  <Contents>
+    <Key>report%20final.pdf</Key>
+    <Size>10</Size>
+    <ETag>"x"</ETag>
+  </Contents>
+</ListBucketResult>"#;
+        let (entries, _) = provider.parse_list_response(xml).expect("parse");
+        let file = entries.iter().find(|e| !e.is_dir).expect("file entry");
+        assert_eq!(file.name, "report%20final.pdf");
+        assert_eq!(file.path, "/report%20final.pdf");
     }
 }
