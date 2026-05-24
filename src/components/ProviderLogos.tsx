@@ -503,6 +503,7 @@ export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     'gitlab': GitLabLogo,
     'box': BoxLogo,
     'pcloud': PCloudLogo,
+    'pcloud-webdav': PCloudLogo,
     'azure': AzureLogo,
     'filen': FilenLogo,
     'filen-desktop-s3': FilenLogo,
