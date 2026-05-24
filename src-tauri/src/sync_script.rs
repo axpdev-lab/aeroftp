@@ -35,9 +35,7 @@ const KNOWN_META_FIELDS: &[&str] = &[
     "compare_checksum",
 ];
 
-const CONFLICT_MODES: &[&str] = &[
-    "newer", "older", "larger", "smaller", "rename", "skip",
-];
+const CONFLICT_MODES: &[&str] = &["newer", "older", "larger", "smaller", "rename", "skip"];
 
 /// Wire format for AeroSync script export/import. Embeds the
 /// authoritative `SyncProfile`, the path pair, and a connection
@@ -197,8 +195,7 @@ pub fn parse_script(content: &str) -> Result<ParsedScript, ParseError> {
     let mut meta_collecting = false;
     let mut meta_lines: Vec<String> = Vec::new();
     let mut meta_start_line: usize = 0;
-    let mut variables: std::collections::HashMap<String, String> =
-        std::collections::HashMap::new();
+    let mut variables: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     let mut connect_args: Option<String> = None;
     let mut connect_line: usize = 0;
     let mut sync_args: Option<String> = None;
@@ -530,10 +527,7 @@ pub fn detect_wrapper_target(path: &Path, content: &str) -> Option<PathBuf> {
 // Private helpers
 // ---------------------------------------------------------------------
 
-fn build_metadata_json(
-    profile: &AerosyncScriptProfile,
-    app_version: &str,
-) -> serde_json::Value {
+fn build_metadata_json(profile: &AerosyncScriptProfile, app_version: &str) -> serde_json::Value {
     let mut map = serde_json::Map::new();
     map.insert(
         "format".to_string(),
@@ -706,14 +700,9 @@ fn collect_continued_line(first: &str, lines: &[&str], idx: &mut usize) -> Strin
     joined
 }
 
-fn parse_connect(
-    body: &str,
-    line: usize,
-) -> Result<(Option<String>, Option<String>), ParseError> {
-    let tokens = tokenize(body, line).map_err(|message| ParseError::MalformedConnect {
-        line,
-        message,
-    })?;
+fn parse_connect(body: &str, line: usize) -> Result<(Option<String>, Option<String>), ParseError> {
+    let tokens =
+        tokenize(body, line).map_err(|message| ParseError::MalformedConnect { line, message })?;
     let mut it = tokens.into_iter().peekable();
     let mut profile: Option<String> = None;
     let mut url: Option<String> = None;
@@ -726,9 +715,7 @@ fn parse_connect(
                 })?;
                 profile = Some(v);
             }
-            other
-                if !other.starts_with('-') && profile.is_none() && url.is_none() =>
-            {
+            other if !other.starts_with('-') && profile.is_none() && url.is_none() => {
                 // Treat the first positional token as a URL when no
                 // --profile is given.
                 url = Some(other.to_string());
@@ -759,10 +746,8 @@ struct ParsedSyncLine {
 }
 
 fn parse_sync(body: &str, line: usize) -> Result<ParsedSyncLine, ParseError> {
-    let tokens = tokenize(body, line).map_err(|message| ParseError::MalformedSync {
-        line,
-        message,
-    })?;
+    let tokens =
+        tokenize(body, line).map_err(|message| ParseError::MalformedSync { line, message })?;
     let mut positional: Vec<String> = Vec::new();
     let mut direction: Option<CompareDirection> = None;
     let mut delete_orphans = false;
@@ -781,12 +766,13 @@ fn parse_sync(body: &str, line: usize) -> Result<ParsedSyncLine, ParseError> {
                     line,
                     message: "--direction expects a value".to_string(),
                 })?;
-                direction = Some(flag_to_direction(&v).ok_or_else(|| {
-                    ParseError::MalformedSync {
-                        line,
-                        message: format!("unknown direction '{}'", v),
-                    }
-                })?);
+                direction =
+                    Some(
+                        flag_to_direction(&v).ok_or_else(|| ParseError::MalformedSync {
+                            line,
+                            message: format!("unknown direction '{}'", v),
+                        })?,
+                    );
             }
             "--delete" => delete_orphans = true,
             "--dry-run" => dry_run = true,
@@ -969,10 +955,7 @@ mod tests {
         let original = sample(SyncProfile::backup());
         let text = generate_script(&original, "3.8.5-test");
         let parsed = parse_script(&text).expect("must parse");
-        assert_eq!(
-            parsed.profile.profile.verify_policy,
-            VerifyPolicy::Full
-        );
+        assert_eq!(parsed.profile.profile.verify_policy, VerifyPolicy::Full);
         assert_eq!(parsed.profile.profile.retry_policy.max_retries, 5);
         assert!(parsed.profile.profile.compare_checksum);
         assert!(!parsed.profile.profile.compare_timestamp);
@@ -1045,20 +1028,14 @@ mod tests {
 
     #[test]
     fn missing_connect_rejected() {
-        let text = format!(
-            "{}\nSYNC /a /b --direction both\n",
-            HEADER_MARKER
-        );
+        let text = format!("{}\nSYNC /a /b --direction both\n", HEADER_MARKER);
         let err = parse_script(&text).expect_err("must reject");
         assert!(matches!(err, ParseError::MissingConnect));
     }
 
     #[test]
     fn missing_sync_rejected() {
-        let text = format!(
-            "{}\nCONNECT --profile \"x\"\nDISCONNECT\n",
-            HEADER_MARKER
-        );
+        let text = format!("{}\nCONNECT --profile \"x\"\nDISCONNECT\n", HEADER_MARKER);
         let err = parse_script(&text).expect_err("must reject");
         assert!(matches!(err, ParseError::MissingSync));
     }
