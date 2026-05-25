@@ -24,7 +24,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use tokio::task::JoinSet;
 
-use super::adaptive::{congestion_from_error, AimdController};
+use super::adaptive::{congestion_from_error, parse_embedded_retry_after, AimdController};
 use super::graph::{TransferDag, TransferNode};
 use super::metrics::TransferDagMetrics;
 use super::observer::{DagObserver, ObservedOutcome};
@@ -306,8 +306,12 @@ pub async fn execute_dag(
                 if let (Some(ctrl), Some(request)) = (&controller, node_request.as_ref()) {
                     if congestion_from_error(&message).is_some() {
                         summary.metrics.backpressure_events += 1;
+                        // T-DEBT-05: providers that parsed Retry-After embed
+                        // it in the message via embed_retry_after_marker.
+                        // Absent marker → None → legacy default-cooldown path.
+                        let hint = parse_embedded_retry_after(&message);
                         for class in AimdController::classes_for(request) {
-                            ctrl.on_congestion(class);
+                            ctrl.on_congestion_with_hint(class, hint);
                         }
                     }
                 }
@@ -710,6 +714,64 @@ mod tests {
         // grown it above the honest ceiling.
         assert_eq!(controller.target(AdaptiveClass::File), 4);
         assert_eq!(controller.live(AdaptiveClass::File), 4);
+    }
+
+    #[tokio::test]
+    async fn aimd_honors_embedded_retry_after_hint() {
+        // T-DEBT-05 S1-T02g: when a provider has embedded a Retry-After
+        // marker in the error message, the executor must extract it and
+        // pass it as a hint to on_congestion_with_hint so the AIMD cooldown
+        // is armed to the server-provided value (clamped) instead of the
+        // configured default.
+        use crate::transfer_dag::adaptive::{
+            embed_retry_after_marker, AdaptiveClass, AimdConfig, AimdController,
+        };
+        use std::time::{Duration, Instant};
+
+        let mut dag = TransferDag::default();
+        dag.add_node(
+            TransferNodeKind::DownloadFile,
+            vec![],
+            ResourceRequest::file_transfer(),
+        );
+
+        // The hint (45 s) is well above the lower clamp (1 s) and below the
+        // upper clamp (10 × default cooldown = 50 s), so it must pass through
+        // verbatim.
+        let marker = embed_retry_after_marker(45);
+        let msg = format!("HTTP 429 Too Many Requests{marker}");
+        let runner: Arc<dyn DagNodeRunner> = Arc::new(move |_n: TransferNode| -> NodeFuture {
+            let m = msg.clone();
+            Box::pin(async move { NodeOutcome::Failed(m) })
+        });
+        let controller = Arc::new(AimdController::new(8, 1, 1, 1, AimdConfig::default()));
+        let manager = TransferResourceManager::new(TransferBudget::from_file_slots(8));
+
+        let before = Instant::now();
+        let _ = execute_dag(
+            &dag,
+            &manager,
+            runner,
+            noop_observer(),
+            Some(Arc::clone(&controller)),
+        )
+        .await;
+
+        // Concurrency halved as before (8 -> 4).
+        assert_eq!(controller.target(AdaptiveClass::File), 4);
+
+        // The cooldown must be armed approximately to `before + 45s`, NOT
+        // to the default 5 s cooldown. A 1 s tolerance around the lower
+        // bound absorbs scheduling and lock-acquire overhead.
+        let until = controller
+            .cooldown_until(AdaptiveClass::File)
+            .expect("cooldown must be armed after a congestion event");
+        let armed = until.saturating_duration_since(before);
+        assert!(
+            armed >= Duration::from_secs(44) && armed <= Duration::from_secs(46),
+            "expected ~45s (server-provided hint), got {:?}",
+            armed
+        );
     }
 
     #[tokio::test]
