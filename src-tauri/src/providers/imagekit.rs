@@ -916,6 +916,18 @@ impl StorageProvider for ImageKitProvider {
     }
 
     fn transfer_optimization_hints(&self) -> TransferOptimizationHints {
+        // Shaped-graph multipart trait (S3-T06): intentionally not advertised.
+        //
+        // ImageKit's upload API is a single-POST `multipart/form-data` against
+        // `/api/v1/files/upload` carrying the file part, the per-call
+        // `signature`/`token`/`expire` triplet, and the optional folder/tags
+        // metadata. The API does not document a chunked append/commit flow:
+        // every upload is one atomic POST whose body is the whole file.
+        //
+        // A fake-multipart wrapper buffering chunks in memory would defeat
+        // streaming uploads without producing any per-chunk retry, so the
+        // trait is left as the `NotSupported` default and the runner falls
+        // back to the legacy `upload()` path (which already streams the body).
         TransferOptimizationHints {
             supports_range_download: true,
             supports_server_checksum: false,
