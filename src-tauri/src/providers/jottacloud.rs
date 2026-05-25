@@ -17,18 +17,34 @@ use async_trait::async_trait;
 use base64::Engine;
 use reqwest::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use secrecy::{ExposeSecret, SecretString};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::Instant;
 use tracing::info;
 
 use super::{
-    sanitize_api_error, send_with_retry, HttpRetryConfig, JottacloudConfig, ProviderError,
-    ProviderType, RemoteEntry, ShareLinkOptions, ShareLinkResult, StorageInfo, StorageProvider,
+    sanitize_api_error, send_with_retry, HttpRetryConfig, JottacloudConfig, MultipartHandle,
+    ProviderError, ProviderType, RemoteEntry, ShareLinkOptions, ShareLinkResult, StorageInfo,
+    StorageProvider, UploadedPart,
 };
 
 const JFS_BASE: &str = "https://jfs.jottacloud.com/jfs";
 const API_BASE: &str = "https://api.jottacloud.com";
+
+/// Jottacloud chunked-upload size threshold (S3-T08).
+///
+/// Below this size the runner keeps the legacy single-shot multipart-form
+/// path (`up.jottacloud.com/jfs/...`). At or above, it switches to the
+/// allocate API which returns a per-upload URL and accepts the body in
+/// `Content-Range`-driven pieces so the DAG can resume on transient
+/// failures.
+const JOTTACLOUD_MULTIPART_THRESHOLD: u64 = 5 * 1024 * 1024;
+
+/// Jottacloud chunked-upload preferred part size (S3-T08).
+///
+/// Jotta's upload URL accepts `Content-Range` but is single-stream;
+/// 5 MiB amortises the round-trip cost without blowing per-part memory.
+const JOTTACLOUD_MULTIPART_PART_SIZE: u64 = 5 * 1024 * 1024;
 
 fn jotta_log(msg: &str) {
     info!("[JOTTACLOUD] {}", msg);
@@ -81,6 +97,56 @@ struct CustomerInfo {
     usage: i64,
     #[serde(default)]
     quota: i64,
+}
+
+/// `/files/v1/allocate` response payload (S3-T08).
+///
+/// Jotta returns a per-upload URL when the file is novel; when the
+/// server already has matching md5+bytes it short-circuits with
+/// `state: "COMPLETED"` and no `upload_url`, which we treat as a
+/// deduplicated upload and skip every subsequent chunk POST.
+#[derive(Debug, Deserialize)]
+struct JottaAllocateResponse {
+    #[serde(default)]
+    upload_url: Option<String>,
+    #[serde(default)]
+    state: Option<String>,
+    #[serde(default)]
+    resume_pos: Option<u64>,
+}
+
+/// Side-band metadata embedded in `MultipartHandle.upload_id` for the
+/// Jottacloud allocate path. `dedup` carries the `COMPLETED` short-circuit
+/// so `upload_part` becomes a no-op when the server already has matching
+/// bytes — Jotta does this aggressively for big-files deduplication.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct JottaMultipartMeta {
+    upload_url: String,
+    md5: String,
+    name: String,
+    total: u64,
+    part: u64,
+    /// True when allocate reported the file was already on the server.
+    /// All subsequent chunk POSTs are skipped; complete just validates
+    /// the runner committed the advertised number of parts.
+    dedup: bool,
+}
+
+impl JottaMultipartMeta {
+    fn encode(&self) -> String {
+        serde_json::to_string(self).unwrap_or_default()
+    }
+
+    fn decode(raw: &str) -> Result<Self, ProviderError> {
+        serde_json::from_str(raw).map_err(|e| {
+            ProviderError::Other(format!("Jottacloud multipart handle decode failed: {}", e))
+        })
+    }
+}
+
+/// Compute the per-chunk size the runner should slice `total` bytes into.
+fn jottacloud_runner_part_size(total: u64) -> u64 {
+    JOTTACLOUD_MULTIPART_PART_SIZE.min(total.max(1))
 }
 
 // ─── Provider ───────────────────────────────────────────────────────────
@@ -492,6 +558,30 @@ impl JottacloudProvider {
         send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
             .map_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))
+    }
+
+    /// Stream the on-disk file in 1 MiB chunks and return its MD5 hex
+    /// digest. Used by the shaped-graph multipart wiring (S3-T08) so
+    /// `begin_multipart_upload` can fill the allocate body without
+    /// holding the whole file in RAM the way the legacy single-shot
+    /// `upload()` does.
+    async fn compute_md5(&self, local_path: &str) -> Result<String, ProviderError> {
+        use md5::{Digest, Md5};
+        use tokio::io::AsyncReadExt;
+
+        let mut file = tokio::fs::File::open(local_path)
+            .await
+            .map_err(ProviderError::IoError)?;
+        let mut hasher = Md5::new();
+        let mut buf = vec![0u8; 1024 * 1024];
+        loop {
+            let n = file.read(&mut buf).await.map_err(ProviderError::IoError)?;
+            if n == 0 {
+                break;
+            }
+            hasher.update(&buf[..n]);
+        }
+        Ok(format!("{:x}", hasher.finalize()))
     }
 
     // ─── Path Helpers ───────────────────────────────────────────────────
@@ -1653,9 +1743,276 @@ impl StorageProvider for JottacloudProvider {
 
     fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
         super::TransferOptimizationHints {
+            supports_multipart: true,
+            multipart_threshold: JOTTACLOUD_MULTIPART_THRESHOLD,
+            multipart_part_size: JOTTACLOUD_MULTIPART_PART_SIZE,
+            // Jotta's upload URL is single-stream: `Content-Range` must be
+            // monotonically increasing, so the runner stays sequential.
+            multipart_max_parallel: 1,
             supports_resume_download: true,
+            supports_resume_upload: true,
+            supports_server_checksum: true,
+            preferred_checksum_algo: Some("md5".to_string()),
             ..Default::default()
         }
+    }
+
+    // Shaped-graph multipart trait wiring (S3-T08).
+    //
+    // Jottacloud's allocate API maps onto the multipart trait as:
+    //   1. `begin_multipart_upload` → POST
+    //      `https://api.jottacloud.com/files/v1/allocate` with JSON body
+    //      `{path, bytes, md5, conflictHandler:"RENAME", created, modified}`.
+    //      The response carries an `upload_url` (or `state:"COMPLETED"`
+    //      when the server already has matching md5+bytes, in which
+    //      case we mark the handle as deduplicated).
+    //   2. `upload_part` → POST `<upload_url>` with `Content-Range:
+    //      bytes A-B/T` header. Jotta requires the chunks in offset
+    //      order, so `multipart_max_parallel=1` keeps the runner serial.
+    //      When the handle is marked `dedup`, every part is a no-op.
+    //   3. `complete_multipart_upload` → validate part count. Jotta
+    //      finalises implicitly when the final chunk lands; nothing
+    //      else is required.
+    //   4. `abort_multipart_upload` → no-op. Jotta GCs orphaned
+    //      allocate URLs after a few hours.
+    //
+    // `begin_multipart_upload` requires `local_source_path` because the
+    // allocate body needs the file's md5 hash up-front; the trait sig
+    // was extended in S2 for exactly this pre-commit-hash class of
+    // backends.
+    async fn begin_multipart_upload(
+        &mut self,
+        remote_path: &str,
+        total_size: u64,
+        _content_type: Option<&str>,
+        local_source_path: Option<&str>,
+    ) -> Result<MultipartHandle, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        if total_size == 0 {
+            return Err(ProviderError::Other(
+                "Jottacloud multipart upload requires non-zero total_size".to_string(),
+            ));
+        }
+        let local_path = local_source_path.ok_or_else(|| {
+            ProviderError::Other(
+                "Jottacloud multipart requires local_source_path for the file MD5 hash"
+                    .to_string(),
+            )
+        })?;
+
+        let resolved = self.resolve_path(remote_path);
+        let name = resolved
+            .rsplit('/')
+            .next()
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+            .ok_or_else(|| {
+                ProviderError::Other(format!(
+                    "Jottacloud multipart: cannot resolve file name from path '{}'",
+                    remote_path
+                ))
+            })?;
+
+        // MD5 of the entire file: needed by the allocate body. The legacy
+        // upload() reads the full file for the same reason; this path
+        // hashes via a streaming reader so big files don't double the
+        // resident set size.
+        let md5_hash = self.compute_md5(local_path).await?;
+
+        // Modified timestamp in Jotta's format `YYYY-MM-DD-THH:MM:SSZ`
+        // (extra dash before T). Fall back to wall-clock now when the
+        // filesystem can't tell us.
+        let modified = tokio::fs::metadata(local_path)
+            .await
+            .ok()
+            .and_then(|m| m.modified().ok())
+            .map(|t| {
+                let dt: chrono::DateTime<chrono::Utc> = t.into();
+                dt.format("%Y-%m-%d-T%H:%M:%SZ").to_string()
+            })
+            .unwrap_or_else(|| chrono::Utc::now().format("%Y-%m-%d-T%H:%M:%SZ").to_string());
+
+        // JFS-style path the allocate API expects: leading slash on
+        // /user/device/mount and percent-encoded remote_path segments.
+        let clean = resolved.trim_start_matches('/');
+        let encoded_path: String = clean
+            .split('/')
+            .filter(|s| !s.is_empty())
+            .map(|s| urlencoding::encode(s).into_owned())
+            .collect::<Vec<_>>()
+            .join("/");
+        let jfs_path = if encoded_path.is_empty() {
+            format!(
+                "/{}/{}/{}",
+                urlencoding::encode(&self.username),
+                urlencoding::encode(&self.config.device),
+                urlencoding::encode(&self.config.mountpoint)
+            )
+        } else {
+            format!(
+                "/{}/{}/{}/{}",
+                urlencoding::encode(&self.username),
+                urlencoding::encode(&self.config.device),
+                urlencoding::encode(&self.config.mountpoint),
+                encoded_path
+            )
+        };
+
+        let body = serde_json::json!({
+            "path": jfs_path,
+            "bytes": total_size,
+            "md5": md5_hash,
+            "conflictHandler": "RENAME",
+            "created": modified,
+            "modified": modified,
+        })
+        .to_string()
+        .into_bytes();
+
+        let url = format!("{}/files/v1/allocate", API_BASE);
+        let resp = self.post_with_retry(&url, "application/json", body).await?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::ServerError(format!(
+                "Jottacloud allocate failed ({}): {}",
+                status,
+                sanitize_api_error(&text)
+            )));
+        }
+
+        let parsed: JottaAllocateResponse = resp.json().await.map_err(|e| {
+            ProviderError::ParseError(format!("Parse allocate response failed: {}", e))
+        })?;
+
+        let dedup = parsed.state.as_deref() == Some("COMPLETED")
+            || (parsed.upload_url.is_none() && parsed.resume_pos.unwrap_or(0) >= total_size);
+        let upload_url = parsed.upload_url.unwrap_or_default();
+        if !dedup && upload_url.is_empty() {
+            return Err(ProviderError::ParseError(
+                "Jottacloud allocate returned neither upload_url nor COMPLETED state".to_string(),
+            ));
+        }
+
+        let meta = JottaMultipartMeta {
+            upload_url,
+            md5: md5_hash,
+            name,
+            total: total_size,
+            part: jottacloud_runner_part_size(total_size),
+            dedup,
+        };
+        Ok(MultipartHandle {
+            upload_id: meta.encode(),
+            remote_path: remote_path.to_string(),
+        })
+    }
+
+    async fn upload_part(
+        &mut self,
+        handle: &MultipartHandle,
+        part_number: u32,
+        data: Vec<u8>,
+    ) -> Result<UploadedPart, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        if part_number == 0 {
+            return Err(ProviderError::Other(
+                "Jottacloud upload_part requires 1-based part_number".to_string(),
+            ));
+        }
+        let meta = JottaMultipartMeta::decode(&handle.upload_id)?;
+
+        // Server-side dedup short-circuit: skip every chunk POST.
+        if meta.dedup {
+            return Ok(UploadedPart {
+                part_number,
+                etag: meta.md5.clone(),
+            });
+        }
+
+        if data.is_empty() {
+            return Err(ProviderError::Other(
+                "Jottacloud upload_part received empty data".to_string(),
+            ));
+        }
+
+        let offset = (part_number as u64 - 1) * meta.part;
+        let end = offset
+            .checked_add(data.len() as u64)
+            .ok_or_else(|| ProviderError::Other("Jottacloud part offset overflow".to_string()))?;
+        if end > meta.total {
+            return Err(ProviderError::Other(format!(
+                "Jottacloud part {} exceeds declared total: offset {} + len {} > total {}",
+                part_number,
+                offset,
+                data.len(),
+                meta.total
+            )));
+        }
+        let range = format!("bytes {}-{}/{}", offset, end - 1, meta.total);
+
+        self.refresh_if_needed().await?;
+        let resp = self
+            .client
+            .post(&meta.upload_url)
+            .header(AUTHORIZATION, self.auth_header())
+            .header(CONTENT_TYPE, "application/octet-stream")
+            .header("Content-Range", range)
+            .body(data)
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::TransferFailed(format!(
+                "Jottacloud upload chunk {} failed ({}): {}",
+                part_number,
+                status,
+                sanitize_api_error(&text)
+            )));
+        }
+        Ok(UploadedPart {
+            part_number,
+            etag: String::new(),
+        })
+    }
+
+    async fn complete_multipart_upload(
+        &mut self,
+        handle: MultipartHandle,
+        parts: Vec<UploadedPart>,
+    ) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        let meta = JottaMultipartMeta::decode(&handle.upload_id)?;
+        let expected = meta.total.div_ceil(meta.part).max(1) as usize;
+        if parts.len() != expected {
+            return Err(ProviderError::TransferFailed(format!(
+                "Jottacloud complete: expected {} parts, runner committed {}",
+                expected,
+                parts.len()
+            )));
+        }
+        // Jotta finalises implicitly when the closing chunk hits `total`.
+        // Nothing else is required; the dedup path is already complete.
+        Ok(())
+    }
+
+    async fn abort_multipart_upload(
+        &mut self,
+        _handle: MultipartHandle,
+    ) -> Result<(), ProviderError> {
+        // Jotta GCs orphaned allocate URLs after a few hours. No explicit
+        // abort endpoint exists; returning Ok keeps the abort from
+        // masking the original transfer error.
+        Ok(())
     }
 }
 
@@ -2122,5 +2479,91 @@ mod tests {
         // Fallback: string not parseable is returned cleaned (no "-T")
         let fallback = JottacloudProvider::parse_jotta_time("not-a-time");
         assert_eq!(fallback, "not-a-time");
+    }
+
+    // ---- S3-T08 multipart trait wiring ----
+
+    #[test]
+    fn jotta_multipart_meta_roundtrip_preserves_fields() {
+        let meta = JottaMultipartMeta {
+            upload_url: "https://up.jottacloud.com/files/v1/abc?signature=xyz".to_string(),
+            md5: "d41d8cd98f00b204e9800998ecf8427e".to_string(),
+            name: "weird name (1).bin".to_string(),
+            total: 1_073_741_824,
+            part: 5 * 1024 * 1024,
+            dedup: false,
+        };
+        let encoded = meta.encode();
+        let decoded = JottaMultipartMeta::decode(&encoded).expect("decode roundtrip");
+        assert_eq!(meta, decoded);
+
+        // dedup=true variant should roundtrip identically.
+        let dedup_meta = JottaMultipartMeta {
+            dedup: true,
+            ..meta
+        };
+        let dedup_encoded = dedup_meta.encode();
+        let dedup_decoded =
+            JottaMultipartMeta::decode(&dedup_encoded).expect("dedup decode roundtrip");
+        assert!(dedup_decoded.dedup);
+    }
+
+    #[test]
+    fn jotta_multipart_meta_decode_rejects_garbage() {
+        let err = JottaMultipartMeta::decode("not-json").unwrap_err();
+        assert!(matches!(err, ProviderError::Other(_)));
+    }
+
+    #[test]
+    fn jottacloud_runner_part_size_clamps_and_never_returns_zero() {
+        assert_eq!(jottacloud_runner_part_size(1024), 1024);
+        assert_eq!(
+            jottacloud_runner_part_size(JOTTACLOUD_MULTIPART_PART_SIZE),
+            JOTTACLOUD_MULTIPART_PART_SIZE
+        );
+        assert_eq!(
+            jottacloud_runner_part_size(50 * 1024 * 1024 * 1024),
+            JOTTACLOUD_MULTIPART_PART_SIZE
+        );
+        assert_eq!(jottacloud_runner_part_size(0), 1);
+    }
+
+    #[test]
+    fn jottacloud_content_range_math_is_inclusive_zero_based() {
+        let part = JOTTACLOUD_MULTIPART_PART_SIZE;
+        let total: u64 = 2 * part + 1024;
+        let range = |n: u32| -> String {
+            let offset = (n as u64 - 1) * part;
+            let end = if n as u64 * part > total {
+                total
+            } else {
+                n as u64 * part
+            };
+            format!("bytes {}-{}/{}", offset, end - 1, total)
+        };
+        assert_eq!(range(1), format!("bytes 0-{}/{}", part - 1, total));
+        assert_eq!(
+            range(2),
+            format!("bytes {}-{}/{}", part, 2 * part - 1, total)
+        );
+        // Final chunk lands inclusive of total-1
+        assert_eq!(
+            range(3),
+            format!("bytes {}-{}/{}", 2 * part, total - 1, total)
+        );
+    }
+
+    #[test]
+    fn jottacloud_transfer_hints_advertise_multipart_sequential_with_md5() {
+        let hints = test_provider().transfer_optimization_hints();
+        assert!(hints.supports_multipart);
+        assert_eq!(hints.multipart_threshold, JOTTACLOUD_MULTIPART_THRESHOLD);
+        assert_eq!(hints.multipart_part_size, JOTTACLOUD_MULTIPART_PART_SIZE);
+        // Content-Range monotonic ⇒ strict sequential dispatch.
+        assert_eq!(hints.multipart_max_parallel, 1);
+        assert!(hints.supports_resume_download);
+        assert!(hints.supports_resume_upload);
+        assert!(hints.supports_server_checksum);
+        assert_eq!(hints.preferred_checksum_algo.as_deref(), Some("md5"));
     }
 }
