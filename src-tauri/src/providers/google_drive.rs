@@ -83,16 +83,19 @@ impl GDriveMultipartMeta {
     }
 }
 
-/// Match the runner's `part_size = file_size.div_ceil(total_parts)` formula so
-/// `begin_multipart_upload` and the runner agree on chunk boundaries without
-/// piping `part_size` through the trait surface. Both sides start from the
-/// same `total_size` + advertised `GDRIVE_MULTIPART_PART_SIZE`.
+/// The runner uses `preferred_chunk_size` verbatim as the per-part byte
+/// length when `transfer_optimization_hints` returns a non-zero value
+/// (see `TransferGraphProfile::resolve`). Drive's resumable session
+/// requires `Content-Range` chunks to be a multiple of 256 KiB except
+/// the final one, which `GDRIVE_MULTIPART_PART_SIZE = 8 MiB` honours.
+/// The function returns 0 for an empty file so the trait method's
+/// `total_size == 0` guard rejects the call before it ever reaches
+/// the runner.
 fn runner_part_size(total_size: u64) -> u64 {
     if total_size == 0 {
         return 0;
     }
-    let parts = total_size.div_ceil(GDRIVE_MULTIPART_PART_SIZE).max(1);
-    total_size.div_ceil(parts)
+    GDRIVE_MULTIPART_PART_SIZE
 }
 
 /// Google Drive file metadata from API
@@ -3083,54 +3086,48 @@ mod tests {
     }
 
     #[test]
-    fn runner_part_size_matches_runner_div_ceil_formula() {
-        // Mirror the runner: parts = ceil(total / chunk); part = ceil(total / parts).
-        let cases: &[u64] = &[
-            0,
-            1,
-            GDRIVE_MULTIPART_PART_SIZE,        // exactly one part
-            GDRIVE_MULTIPART_PART_SIZE - 1,    // sub-chunk
-            GDRIVE_MULTIPART_PART_SIZE + 1,    // tiny tail
-            500 * 1024 * 1024,                 // realistic live smoke size
-            10 * 1024 * 1024 * 1024,           // 10 GiB
-        ];
-        for &total in cases {
-            let got = runner_part_size(total);
-            if total == 0 {
-                assert_eq!(got, 0, "zero total maps to zero part_size");
-                continue;
-            }
-            let expected_parts = total.div_ceil(GDRIVE_MULTIPART_PART_SIZE).max(1);
-            let expected_part = total.div_ceil(expected_parts);
-            assert_eq!(got, expected_part, "runner formula mismatch for total={total}");
-            // Every part_number from 1..=parts must produce an offset that
-            // stays within `total` — the trait method's bounds check would
-            // reject it otherwise.
-            for pn in 1..=expected_parts {
-                let offset = (pn - 1) * got;
-                assert!(offset < total, "offset overflow at total={total} pn={pn}");
-            }
-            // The last part covers exactly the closing byte.
-            let last_offset = (expected_parts - 1) * got;
-            let last_len = total - last_offset;
-            assert!(last_len > 0 && last_len <= got);
+    fn runner_part_size_returns_constant_chunk_size_for_nonzero_total() {
+        // The runner uses `preferred_chunk_size` verbatim, so the helper
+        // mirrors `GDRIVE_MULTIPART_PART_SIZE` for any non-zero total.
+        // Zero is the sentinel for an empty file (rejected at the trait
+        // boundary before the runner ever sees it).
+        assert_eq!(runner_part_size(0), 0);
+        for &total in &[
+            1u64,
+            GDRIVE_MULTIPART_PART_SIZE - 1,
+            GDRIVE_MULTIPART_PART_SIZE,
+            GDRIVE_MULTIPART_PART_SIZE + 1,
+            500 * 1024 * 1024,
+            10 * 1024 * 1024 * 1024,
+        ] {
+            assert_eq!(runner_part_size(total), GDRIVE_MULTIPART_PART_SIZE);
         }
     }
 
     #[test]
-    fn content_range_math_for_500_mib_chunks_in_8mib_steps() {
+    fn content_range_math_for_500_mib_with_8mib_chunks_covers_file_exactly() {
+        // With the runner forwarding `preferred_chunk_size = 8 MiB` verbatim,
+        // a 500 MiB upload fans into 63 parts: 62 full 8 MiB chunks + a
+        // final 4 MiB tail. Walk every part: offsets monotone, last byte
+        // covered, each non-final chunk is 256 KiB-aligned (Drive's API
+        // contract).
         let total: u64 = 500 * 1024 * 1024;
-        let part = runner_part_size(total);
+        let part = GDRIVE_MULTIPART_PART_SIZE;
         let parts = total.div_ceil(part);
-        // Walk every part: offsets monotone, last part closes the file.
+        assert_eq!(parts, 63);
         let mut last_end: i128 = -1;
         for pn in 1..=parts {
             let offset = (pn - 1) * part;
             let len = part.min(total - offset);
             let end = offset + len - 1;
+            // Non-final parts must be 256 KiB-aligned for Drive's
+            // resumable session.
+            if pn < parts {
+                assert_eq!(len % (256 * 1024), 0, "part {pn} not 256-KiB aligned");
+            }
             assert!(offset as i128 > last_end);
             last_end = end as i128;
         }
-        assert_eq!(last_end as u64, total - 1, "last part must reach total-1");
+        assert_eq!(last_end as u64, total - 1);
     }
 }

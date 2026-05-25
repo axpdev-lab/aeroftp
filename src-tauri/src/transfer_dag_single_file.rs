@@ -172,11 +172,18 @@ pub async fn execute_single_file_dag(
         && file_size > 0
     {
         let total_parts = built.profile.upload_parts as u64;
-        // ceil(file_size / total_parts) keeps every part the same size as
-        // the builder's preferred chunk modulo the last (slightly smaller)
-        // tail: the builder picked total_parts = ceil(file_size / chunk)
-        // exactly to honour that invariant.
-        let part_size = file_size.div_ceil(total_parts);
+        // Prefer the provider's exact advertised chunk size when supplied
+        // so chunks honour per-provider alignment contracts (Drive: 256 KiB
+        // multiple; OneDrive: 320 KiB multiple; B2 / S3: any size ≥ 5 MiB).
+        // The last part takes whatever remains; the `ctx.part_size.min(...)`
+        // slice below handles that automatically. When `preferred_chunk_size`
+        // is `0` (no provider hint) fall back to the legacy `div_ceil`
+        // equalisation that keeps every part the same size.
+        let part_size = if built.profile.preferred_chunk_size > 0 {
+            built.profile.preferred_chunk_size
+        } else {
+            file_size.div_ceil(total_parts)
+        };
         let node_to_part: HashMap<usize, u32> = built
             .transfer
             .iter()

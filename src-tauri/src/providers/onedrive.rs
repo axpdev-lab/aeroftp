@@ -57,15 +57,16 @@ impl OneDriveMultipartMeta {
     }
 }
 
-/// Match the runner's `part_size = file_size.div_ceil(total_parts)` formula
-/// so `begin_multipart_upload` and the runner agree on chunk boundaries
-/// without piping `part_size` through the trait surface.
+/// The runner uses `preferred_chunk_size` verbatim as the per-part byte
+/// length, so the handle simply mirrors the advertised value.
+/// `ONEDRIVE_MULTIPART_PART_SIZE = 10 MiB = 32 × 320 KiB` satisfies
+/// the Graph API contract that every non-final chunk be a multiple of
+/// 320 KiB.
 fn onedrive_runner_part_size(total_size: u64) -> u64 {
     if total_size == 0 {
         return 0;
     }
-    let parts = total_size.div_ceil(ONEDRIVE_MULTIPART_PART_SIZE).max(1);
-    total_size.div_ceil(parts)
+    ONEDRIVE_MULTIPART_PART_SIZE
 }
 
 /// T-DEBT-05 S1-T02d: Microsoft Graph (OneDrive) returns 429 and 503 with a
@@ -2306,41 +2307,40 @@ mod tests {
     }
 
     #[test]
-    fn onedrive_runner_part_size_matches_runner_div_ceil_formula() {
-        let cases: &[u64] = &[
-            0,
-            1,
+    fn onedrive_runner_part_size_returns_constant_chunk_size_for_nonzero_total() {
+        // The runner uses `preferred_chunk_size` verbatim, so the helper
+        // mirrors `ONEDRIVE_MULTIPART_PART_SIZE = 10 MiB = 32 × 320 KiB`
+        // for any non-zero total.
+        assert_eq!(onedrive_runner_part_size(0), 0);
+        for &total in &[
+            1u64,
+            ONEDRIVE_MULTIPART_PART_SIZE - 1,
             ONEDRIVE_MULTIPART_PART_SIZE,
             ONEDRIVE_MULTIPART_PART_SIZE + 1,
             ONEDRIVE_SESSION_THRESHOLD,
             500 * 1024 * 1024,
             10 * 1024 * 1024 * 1024,
-        ];
-        for &total in cases {
-            let got = onedrive_runner_part_size(total);
-            if total == 0 {
-                assert_eq!(got, 0);
-                continue;
-            }
-            let parts = total.div_ceil(ONEDRIVE_MULTIPART_PART_SIZE).max(1);
-            assert_eq!(got, total.div_ceil(parts), "mismatch for total={total}");
-            for pn in 1..=parts {
-                let offset = (pn - 1) * got;
-                assert!(offset < total, "offset overflow at total={total} pn={pn}");
-            }
+        ] {
+            assert_eq!(onedrive_runner_part_size(total), ONEDRIVE_MULTIPART_PART_SIZE);
         }
     }
 
     #[test]
-    fn onedrive_content_range_math_covers_500_mib_exactly() {
+    fn onedrive_content_range_math_covers_500_mib_with_10mib_chunks() {
+        // 500 MiB / 10 MiB chunks = 50 full parts, no tail.
         let total: u64 = 500 * 1024 * 1024;
-        let part = onedrive_runner_part_size(total);
+        let part = ONEDRIVE_MULTIPART_PART_SIZE;
         let parts = total.div_ceil(part);
+        assert_eq!(parts, 50);
         let mut last_end: i128 = -1;
         for pn in 1..=parts {
             let offset = (pn - 1) * part;
             let len = part.min(total - offset);
             let end = offset + len - 1;
+            // Non-final parts MUST be 320 KiB-aligned per the Graph API.
+            if pn < parts {
+                assert_eq!(len % (320 * 1024), 0, "part {pn} not 320 KiB-aligned");
+            }
             assert!(offset as i128 > last_end);
             last_end = end as i128;
         }
