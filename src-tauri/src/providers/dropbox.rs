@@ -23,6 +23,44 @@ use super::{
 const API_BASE: &str = "https://api.dropboxapi.com/2";
 const CONTENT_BASE: &str = "https://content.dropboxapi.com/2";
 
+/// T-DEBT-05 S1-T02c: Dropbox throttles by returning 429 with the hint in
+/// the JSON body's `retry_after` field (float seconds). The `Retry-After`
+/// header is sometimes present too; we prefer the body field as the
+/// authoritative source per Dropbox API docs and fall back to the header
+/// when the body cannot be parsed.
+fn dropbox_is_rate_limited(status: u16, body: &str) -> bool {
+    if status == 429 {
+        return true;
+    }
+    // Dropbox occasionally surfaces throttles as 409 with an explicit error
+    // tag. The tag is the authoritative marker.
+    body.contains("too_many_requests") || body.contains("too_many_write_operations")
+}
+
+/// Compute the marker substring for a Dropbox rate-limit response. Prefers
+/// the JSON body's top-level `retry_after` field; falls back to the
+/// `Retry-After` header.
+fn dropbox_retry_marker_tail(
+    status: u16,
+    body: &str,
+    retry_header: Option<&str>,
+) -> Option<String> {
+    if !dropbox_is_rate_limited(status, body) {
+        return None;
+    }
+    let hint = serde_json::from_str::<serde_json::Value>(body)
+        .ok()
+        .and_then(|json| super::retry_after::parse_retry_after_dropbox_value(&json))
+        .or_else(|| {
+            retry_header
+                .and_then(super::retry_after::parse_retry_after_seconds)
+        })?;
+    Some(crate::transfer_dag::adaptive::embed_retry_after_marker(
+        hint.as_secs(),
+    ))
+}
+
+
 /// Dropbox file metadata
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
@@ -229,6 +267,11 @@ impl DropboxProvider {
 
         if !response.status().is_success() {
             let status = response.status();
+            let retry_header = response
+                .headers()
+                .get(reqwest::header::RETRY_AFTER)
+                .and_then(|v| v.to_str().ok())
+                .map(String::from);
             let text = response.text().await.unwrap_or_default();
 
             // Check for path not found error
@@ -236,11 +279,13 @@ impl DropboxProvider {
                 return Err(ProviderError::NotFound(sanitize_api_error(&text)));
             }
 
-            return Err(ProviderError::Other(format!(
-                "API error {}: {}",
-                status,
-                sanitize_api_error(&text)
-            )));
+            let mut msg = format!("API error {}: {}", status, sanitize_api_error(&text));
+            if let Some(tail) =
+                dropbox_retry_marker_tail(status.as_u16(), &text, retry_header.as_deref())
+            {
+                msg.push_str(&tail);
+            }
+            return Err(ProviderError::Other(msg));
         }
 
         response
@@ -356,6 +401,11 @@ impl DropboxProvider {
 
         if !response.status().is_success() {
             let status = response.status();
+            let retry_header = response
+                .headers()
+                .get(reqwest::header::RETRY_AFTER)
+                .and_then(|v| v.to_str().ok())
+                .map(String::from);
             let text = response.text().await.unwrap_or_default();
             let sanitized = sanitize_api_error(&text);
             // Surface the missing-scope case explicitly: tokens issued before
@@ -370,10 +420,13 @@ impl DropboxProvider {
                         .to_string(),
                 ));
             }
-            return Err(ProviderError::Other(format!(
-                "Permanent delete failed {}: {}",
-                status, sanitized
-            )));
+            let mut msg = format!("Permanent delete failed {}: {}", status, sanitized);
+            if let Some(tail) =
+                dropbox_retry_marker_tail(status.as_u16(), &text, retry_header.as_deref())
+            {
+                msg.push_str(&tail);
+            }
+            return Err(ProviderError::Other(msg));
         }
 
         info!("Permanently deleted: {}", path);
@@ -1990,5 +2043,60 @@ mod tests {
         let out = DropboxConfig::from_provider_config(&cfg).unwrap();
         assert_eq!(out.app_key, "fallback");
         assert_eq!(out.app_secret, "s");
+    }
+
+    // T-DEBT-05 S1-T02c: Dropbox rate-limit detection + marker emission.
+
+    #[test]
+    fn dropbox_is_rate_limited_recognises_429() {
+        assert!(dropbox_is_rate_limited(429, ""));
+        assert!(dropbox_is_rate_limited(429, "anything"));
+    }
+
+    #[test]
+    fn dropbox_is_rate_limited_recognises_409_with_too_many_requests_tag() {
+        let body = r#"{"error":{".tag":"too_many_requests"},"retry_after":30}"#;
+        assert!(dropbox_is_rate_limited(409, body));
+        let body_w = r#"{"error":{".tag":"too_many_write_operations"},"retry_after":15}"#;
+        assert!(dropbox_is_rate_limited(409, body_w));
+    }
+
+    #[test]
+    fn dropbox_is_rate_limited_rejects_non_throttle() {
+        assert!(!dropbox_is_rate_limited(500, ""));
+        assert!(!dropbox_is_rate_limited(409, r#"{"error":{".tag":"path/conflict"}}"#));
+        assert!(!dropbox_is_rate_limited(200, "any"));
+    }
+
+    #[test]
+    fn dropbox_retry_marker_tail_prefers_body_field() {
+        // Body wins over header when both are present.
+        let body = r#"{"error":{".tag":"too_many_requests"},"retry_after":45}"#;
+        let tail = dropbox_retry_marker_tail(429, body, Some("10")).expect("body field wins");
+        assert!(tail.contains("retry-after-secs=45"));
+    }
+
+    #[test]
+    fn dropbox_retry_marker_tail_falls_back_to_header_when_body_unparseable() {
+        let body = "not even JSON";
+        let tail = dropbox_retry_marker_tail(429, body, Some("12")).expect("header fallback");
+        assert!(tail.contains("retry-after-secs=12"));
+    }
+
+    #[test]
+    fn dropbox_retry_marker_tail_returns_none_when_not_rate_limited() {
+        // 500 with both signals: not a throttle.
+        let body = r#"{"retry_after":30}"#;
+        assert_eq!(dropbox_retry_marker_tail(500, body, Some("30")), None);
+    }
+
+    #[test]
+    fn dropbox_retry_marker_tail_returns_none_when_no_hint_anywhere() {
+        // 429 but the body field is missing and the header is absent: marker
+        // absent → executor falls back to default cooldown.
+        assert_eq!(
+            dropbox_retry_marker_tail(429, r#"{"error":{}}"#, None),
+            None
+        );
     }
 }
