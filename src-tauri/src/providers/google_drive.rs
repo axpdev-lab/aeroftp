@@ -87,6 +87,59 @@ struct DriveFileList {
     next_page_token: Option<String>,
 }
 
+/// T-DEBT-05 S1-T02b: Drive returns 429 Too Many Requests, plus 403 with a
+/// JSON body containing `rateLimitExceeded` or `userRateLimitExceeded`
+/// (per-second per-user / per-project quota). Both are throttle signals
+/// for which the `Retry-After` header (seconds form) is the authoritative
+/// cooldown hint. Other 403 reasons (insufficient permissions, …) are NOT
+/// congestion.
+fn drive_is_rate_limited(status: u16, body: &str) -> bool {
+    if status == 429 {
+        return true;
+    }
+    if status == 403 {
+        return body.contains("rateLimitExceeded") || body.contains("userRateLimitExceeded");
+    }
+    false
+}
+
+/// Compute the marker tail to append to a Drive `ProviderError` message
+/// when the response was rate-limited and a usable `Retry-After` header was
+/// present. Returns `None` when the response is not a throttle signal or
+/// the hint is missing/unparseable. Pure-fn for test coverage; the call
+/// site does the I/O.
+fn drive_retry_marker_tail(status: u16, body: &str, retry_header: Option<&str>) -> Option<String> {
+    if !drive_is_rate_limited(status, body) {
+        return None;
+    }
+    let hint = super::retry_after::parse_retry_after_seconds(retry_header.unwrap_or(""))?;
+    Some(crate::transfer_dag::adaptive::embed_retry_after_marker(
+        hint.as_secs(),
+    ))
+}
+
+/// Build a `ProviderError::Other` from a Drive HTTP error response, appending
+/// the Retry-After marker if the response is a throttle signal. The
+/// `context_prefix` is prepended verbatim (no formatting placeholders) and
+/// the standard tail `<status>: <sanitised body>` is appended.
+async fn drive_error_from_response(
+    response: reqwest::Response,
+    context_prefix: &str,
+) -> ProviderError {
+    let status = response.status();
+    let retry_header = response
+        .headers()
+        .get(reqwest::header::RETRY_AFTER)
+        .and_then(|v| v.to_str().ok())
+        .map(String::from);
+    let text = response.text().await.unwrap_or_default();
+    let mut msg = format!("{} {}: {}", context_prefix, status, sanitize_api_error(&text));
+    if let Some(tail) = drive_retry_marker_tail(status.as_u16(), &text, retry_header.as_deref()) {
+        msg.push_str(&tail);
+    }
+    ProviderError::Other(msg)
+}
+
 /// Google Drive provider configuration
 #[derive(Debug, Clone)]
 pub struct GoogleDriveConfig {
@@ -228,13 +281,7 @@ impl GoogleDriveProvider {
                 .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
             if !response.status().is_success() {
-                let status = response.status();
-                let text = response.text().await.unwrap_or_default();
-                return Err(ProviderError::Other(format!(
-                    "API error {}: {}",
-                    status,
-                    sanitize_api_error(&text)
-                )));
+                return Err(drive_error_from_response(response, "API error").await);
             }
 
             let list: DriveFileList = response
@@ -425,13 +472,7 @@ impl GoogleDriveProvider {
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
-            let status = response.status();
-            let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!(
-                "Download failed {}: {}",
-                status,
-                sanitize_api_error(&text)
-            )));
+            return Err(drive_error_from_response(response, "Download failed").await);
         }
 
         // H2: Size-limited download to prevent OOM on large files
@@ -462,13 +503,7 @@ impl GoogleDriveProvider {
                 .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
             if !response.status().is_success() {
-                let status = response.status();
-                let text = response.text().await.unwrap_or_default();
-                return Err(ProviderError::Other(format!(
-                    "List trash error {}: {}",
-                    status,
-                    sanitize_api_error(&text)
-                )));
+                return Err(drive_error_from_response(response, "List trash error").await);
             }
 
             let list: DriveFileList = response
@@ -908,13 +943,7 @@ impl GoogleDriveProvider {
             .await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
         if !response.status().is_success() {
-            let status = response.status();
-            let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!(
-                "Trash search failed ({}): {}",
-                status,
-                sanitize_api_error(&text)
-            )));
+            return Err(drive_error_from_response(response, "Trash search failed:").await);
         }
         let list: DriveFileList = response
             .json()
@@ -1184,13 +1213,7 @@ impl StorageProvider for GoogleDriveProvider {
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
-            let status = response.status();
-            let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!(
-                "Download failed {}: {}",
-                status,
-                sanitize_api_error(&text)
-            )));
+            return Err(drive_error_from_response(response, "Download failed").await);
         }
 
         let mut stream = response.bytes_stream();
@@ -1757,13 +1780,9 @@ impl StorageProvider for GoogleDriveProvider {
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
-            let status = response.status();
-            let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!(
-                "Failed to create share permission: {} - {}",
-                status,
-                sanitize_api_error(&text)
-            )));
+            return Err(
+                drive_error_from_response(response, "Failed to create share permission:").await,
+            );
         }
 
         // Get the web view link
@@ -2684,5 +2703,64 @@ mod tests {
         );
         let entry = p.to_remote_entry(&file, "/");
         assert_eq!(entry.size, 0);
+    }
+
+    // T-DEBT-05 S1-T02b: Drive Retry-After detection.
+
+    #[test]
+    fn drive_is_rate_limited_recognises_429() {
+        assert!(drive_is_rate_limited(429, ""));
+        assert!(drive_is_rate_limited(429, "anything"));
+    }
+
+    #[test]
+    fn drive_is_rate_limited_recognises_403_with_rate_limit_reasons() {
+        let body_user = r#"{"error":{"errors":[{"reason":"userRateLimitExceeded"}]}}"#;
+        let body_proj = r#"{"error":{"errors":[{"reason":"rateLimitExceeded"}]}}"#;
+        assert!(drive_is_rate_limited(403, body_user));
+        assert!(drive_is_rate_limited(403, body_proj));
+    }
+
+    #[test]
+    fn drive_is_rate_limited_rejects_403_with_other_reasons() {
+        let body = r#"{"error":{"errors":[{"reason":"insufficientPermissions"}]}}"#;
+        assert!(!drive_is_rate_limited(403, body));
+        assert!(!drive_is_rate_limited(403, ""));
+    }
+
+    #[test]
+    fn drive_is_rate_limited_rejects_non_throttle_status() {
+        assert!(!drive_is_rate_limited(500, ""));
+        assert!(!drive_is_rate_limited(404, "rateLimitExceeded"));
+        assert!(!drive_is_rate_limited(200, "rateLimitExceeded"));
+    }
+
+    #[test]
+    fn drive_retry_marker_tail_emits_marker_on_429_with_header() {
+        let tail = drive_retry_marker_tail(429, "", Some("30")).expect("rate-limited + valid hint");
+        assert!(tail.contains("retry-after-secs=30"));
+    }
+
+    #[test]
+    fn drive_retry_marker_tail_emits_marker_on_403_rate_limit_with_header() {
+        let body = r#"{"error":{"errors":[{"reason":"userRateLimitExceeded"}]}}"#;
+        let tail = drive_retry_marker_tail(403, body, Some("45")).expect("403 rate-limit + hint");
+        assert!(tail.contains("retry-after-secs=45"));
+    }
+
+    #[test]
+    fn drive_retry_marker_tail_returns_none_when_not_rate_limited() {
+        // 500 with Retry-After is NOT a throttle signal for Drive: we treat
+        // generic 5xx as non-congestion, so no marker even if header present.
+        assert_eq!(drive_retry_marker_tail(500, "server error", Some("30")), None);
+    }
+
+    #[test]
+    fn drive_retry_marker_tail_returns_none_without_header() {
+        // 429 without Retry-After: marker absent → executor falls back to
+        // default cooldown via parse_embedded_retry_after returning None.
+        assert_eq!(drive_retry_marker_tail(429, "", None), None);
+        assert_eq!(drive_retry_marker_tail(429, "", Some("")), None);
+        assert_eq!(drive_retry_marker_tail(429, "", Some("not-a-number")), None);
     }
 }
