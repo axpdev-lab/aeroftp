@@ -354,6 +354,22 @@ struct Cli {
     #[arg(long, global = true)]
     default_time: Option<String>,
 
+    /// Single-file transfer engine selection. `auto` consults the data-driven
+    /// router (default), `dag` forces every transfer through the shaped-graph
+    /// DAG engine, `legacy` forces the provider-direct path. The router is
+    /// populated from Phase A benchmark measurements (see
+    /// `docs/dev/benchmarks/2026-05-2{4,5}_phaseA-*/`): the only narrow case
+    /// where `legacy` wins on default is vanilla-WebDAV download in the
+    /// 4MiB-1GiB range. Reads default from `AEROFTP_TRANSFER_ENGINE`.
+    #[arg(
+        long,
+        global = true,
+        default_value = "auto",
+        env = "AEROFTP_TRANSFER_ENGINE",
+        value_parser = ["auto", "dag", "legacy"]
+    )]
+    transfer_engine: String,
+
     /// Use recursive listing in a single API call (S3 only, faster for large datasets)
     #[arg(long, global = true)]
     fast_list: bool,
@@ -4867,7 +4883,9 @@ async fn upload_with_resume(
     provider.upload(local_path, remote_path, progress_cb).await
 }
 
-/// Run a plain single-file CLI transfer through the graph engine.
+/// Run a plain single-file CLI transfer through the engine chosen by the
+/// data-driven router (or by the user override, when `--transfer-engine`
+/// is not `auto`).
 ///
 /// Reached for the plain leaf (`!cli.partial`, so neither
 /// `download_with_resume` nor `upload_with_resume` would take a resume
@@ -4883,6 +4901,8 @@ async fn cli_run_single_file_dag(
     remote: &str,
     local: &str,
     progress_cb: Option<Box<dyn Fn(u64, u64) + Send>>,
+    cli: &Cli,
+    server_url: Option<&str>,
 ) -> (Box<dyn StorageProvider>, Result<(), ProviderError>) {
     // Resolve capabilities and the local file size before wrapping the
     // provider in the shared Arc: the shaped-graph builder needs both to
@@ -4891,12 +4911,87 @@ async fn cli_run_single_file_dag(
     // `rate_limited_api` and `resume_download` flags reach the builder; the
     // file size on the download direction has no shaping effect today.
     let caps = provider.transfer_capabilities();
+    let local_size: u64 = std::fs::metadata(local).map(|m| m.len()).unwrap_or(0);
     let file_size: u64 = match direction {
-        ftp_client_gui_lib::transfer_dag::TransferDirection::Upload => {
-            std::fs::metadata(local).map(|m| m.len()).unwrap_or(0)
-        }
+        ftp_client_gui_lib::transfer_dag::TransferDirection::Upload => local_size,
         ftp_client_gui_lib::transfer_dag::TransferDirection::Download => 0,
     };
+
+    // Data-driven routing decision (Phase B). The hint is taken from the
+    // provider's own `router_hint()` (which inspects its config URL via
+    // the WebDavProvider trait override) so a `--profile` invocation
+    // gets the right classification even when `server_url` (the CLI
+    // argument) is empty. The optional `server_url` parameter survives
+    // as a fallback for callers that constructed the provider without
+    // a URL in its config.
+    let hint = {
+        let provider_hint = provider.router_hint();
+        // If the provider trait returned vanilla but the caller has a
+        // URL with extra signal (e.g. `--profile` lookup populated
+        // `cli.url`), re-evaluate so the URL-allowlist branches catch
+        // Tab.digital / Koofr / FeliCloud.
+        if matches!(provider_hint, ftp_client_gui_lib::transfer_router::ProviderHint::WebDavVanilla) {
+            ftp_client_gui_lib::transfer_router::hints::from_provider_type(
+                provider.provider_type(),
+                server_url,
+                None,
+            )
+        } else {
+            provider_hint
+        }
+    };
+    // For Upload the local size is exact. For Download we don't know
+    // the remote size at routing time (the leaf is the bare
+    // `provider.download` path), so we assume the worst case
+    // (`u64::MAX`): on WebDAV vanilla this lands the lookup in the
+    // `>= MEDIUM_CUTOFF` branch and routes to Legacy (avoiding the
+    // -18% regression observed on 1G download). On every other
+    // provider the hint table has no size-conditional rule for
+    // download, so the result is the same as any other size.
+    let route_size: u64 = match direction {
+        ftp_client_gui_lib::transfer_dag::TransferDirection::Upload => local_size,
+        ftp_client_gui_lib::transfer_dag::TransferDirection::Download => u64::MAX,
+    };
+    let op = match direction {
+        ftp_client_gui_lib::transfer_dag::TransferDirection::Upload => {
+            ftp_client_gui_lib::transfer_router::Operation::Upload
+        }
+        ftp_client_gui_lib::transfer_dag::TransferDirection::Download => {
+            ftp_client_gui_lib::transfer_router::Operation::Download
+        }
+    };
+    let user_override = match cli.transfer_engine.as_str() {
+        "dag" => ftp_client_gui_lib::transfer_router::Override::ForceDag,
+        "legacy" => ftp_client_gui_lib::transfer_router::Override::ForceLegacy,
+        _ => ftp_client_gui_lib::transfer_router::Override::None,
+    };
+    let ctx = ftp_client_gui_lib::transfer_router::RouteContext::new(hint, op, route_size)
+        .with_override(user_override);
+    let decision = ftp_client_gui_lib::transfer_router::Router::new().pick(ctx);
+
+    if cli.verbose > 0 {
+        eprintln!(
+            "Transfer engine: {} (reason: {})",
+            decision.engine, decision.reason
+        );
+    }
+
+    // Legacy branch: call the provider directly without wrapping in the
+    // DAG node graph. Restores the pre-DAG behaviour for cases the router
+    // flagged as regressing under the shaped engine.
+    if decision.engine == ftp_client_gui_lib::transfer_router::Engine::Legacy {
+        let mut provider = provider;
+        let result = match direction {
+            ftp_client_gui_lib::transfer_dag::TransferDirection::Upload => {
+                provider.upload(local, remote, progress_cb).await
+            }
+            ftp_client_gui_lib::transfer_dag::TransferDirection::Download => {
+                provider.download(remote, local, progress_cb).await
+            }
+        };
+        return (provider, result);
+    }
+
     let arc = Arc::new(tokio::sync::Mutex::new(Some(provider)));
     let built = ftp_client_gui_lib::transfer_dag::TransferDagBuilder::shaped_file(
         direction, &caps, file_size,
@@ -15116,6 +15211,8 @@ async fn cmd_get(
             remote,
             local_path,
             progress_cb,
+            cli,
+            Some(url),
         )
         .await;
         provider = returned;
@@ -16320,6 +16417,8 @@ async fn cmd_put(
             remote_path,
             local,
             progress_cb,
+            cli,
+            Some(url),
         )
         .await;
         provider = returned;
@@ -22695,6 +22794,8 @@ async fn cmd_benchmark(
                         &remote_path,
                         &local_payload_path,
                         None,
+                        cli,
+                        None,
                     )
                     .await;
                     provider = returned;
@@ -22764,6 +22865,8 @@ async fn cmd_benchmark(
                         ftp_client_gui_lib::transfer_dag::TransferDirection::Download,
                         &remote_path,
                         &local_download_path,
+                        None,
+                        cli,
                         None,
                     )
                     .await;
