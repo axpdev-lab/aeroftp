@@ -30,9 +30,46 @@ fn filen_log(msg: &str) {
 use super::http_retry::{send_with_retry, HttpRetryConfig};
 use super::types::FilenConfig;
 use super::{
-    ProviderError, ProviderType, RemoteEntry, ShareLinkCapabilities, ShareLinkOptions,
-    ShareLinkResult, StorageInfo, StorageProvider,
+    MultipartHandle, ProviderError, ProviderType, RemoteEntry, ShareLinkCapabilities,
+    ShareLinkOptions, ShareLinkResult, StorageInfo, StorageProvider, UploadedPart,
 };
+use serde::Serialize;
+
+/// Side-band metadata embedded in `MultipartHandle.upload_id` for the
+/// Filen v3 chunked upload trait wiring (S3-T02). The runner pre-resolves
+/// the parent folder UUID, generates the per-upload random file UUID,
+/// file key, and upload key in `begin_multipart_upload`, then passes them
+/// through every chunk and the closing `/v3/upload/done` call without
+/// touching the gateway again until completion.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct FilenMultipartMeta {
+    file_uuid: String,
+    parent_uuid: String,
+    file_key: String,
+    upload_key: String,
+    file_name: String,
+    mime: String,
+    total: u64,
+    part: u64,
+    total_chunks: u64,
+}
+
+impl FilenMultipartMeta {
+    fn encode(&self) -> String {
+        serde_json::to_string(self).unwrap_or_default()
+    }
+
+    fn decode(raw: &str) -> Result<Self, ProviderError> {
+        serde_json::from_str(raw).map_err(|e| {
+            ProviderError::Other(format!("Filen multipart handle decode failed: {}", e))
+        })
+    }
+}
+
+/// Compute the per-chunk size the runner should slice `total` bytes into.
+fn filen_runner_part_size(total: u64) -> u64 {
+    (FILEN_CHUNK_SIZE as u64).min(total.max(1))
+}
 
 /// Filen API gateway
 const GATEWAY: &str = "https://gateway.filen.io";
@@ -2237,6 +2274,251 @@ impl StorageProvider for FilenProvider {
 
         Ok(results)
     }
+
+    fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
+        super::TransferOptimizationHints {
+            supports_multipart: true,
+            // Filen rejects empty files; surface the chunked path from the
+            // first non-zero byte.
+            multipart_threshold: FILEN_CHUNK_SIZE as u64,
+            multipart_part_size: FILEN_CHUNK_SIZE as u64,
+            // upload_filen_chunk uses an independent POST per chunk
+            // against `/v3/upload?index=N`; chunks parallelise freely.
+            // Match the legacy FILEN_PARALLEL_CHUNK_UPLOADS cap so the
+            // fan-out does not exceed Filen's per-session connection
+            // budget.
+            multipart_max_parallel: FILEN_PARALLEL_CHUNK_UPLOADS as u8,
+            supports_resume_download: true,
+            supports_resume_upload: true,
+            ..Default::default()
+        }
+    }
+
+    // Shaped-graph multipart trait wiring (S3-T02).
+    //
+    // Filen's v3 chunked upload maps onto the trait as:
+    //   1. `begin_multipart_upload` → no server round-trip: generate the
+    //      per-upload random `file_uuid`, `file_key`, `upload_key`,
+    //      resolve the parent folder UUID, and stash everything in the
+    //      handle alongside the total / part-size / total_chunks
+    //      derived from `FILEN_CHUNK_SIZE`.
+    //   2. `upload_part` → reuse the existing `upload_filen_chunk`
+    //      helper (AES-256-GCM encryption + SHA-512 chunk hash + POST
+    //      `/v3/upload?uuid=&index=&parent=&uploadKey=&hash=`). The
+    //      `index` field uses 0-based numbering, so the trait's
+    //      1-based `part_number` is decremented before the call.
+    //   3. `complete_multipart_upload` → POST `/v3/upload/done` with
+    //      the encrypted metadata bundle (name, size, mime, key,
+    //      lastModified) plus the original `upload_key` and `rm`
+    //      tokens. Mirrors the legacy `upload()` finaliser byte-for-byte.
+    //   4. `abort_multipart_upload` → no-op. Filen GCs orphaned uploads
+    //      automatically.
+    //
+    // Per-chunk nonces are random (12 bytes from `rand::random`) per
+    // `encrypt_file_content`. Retries from the runner always re-encrypt
+    // with a fresh nonce, matching the legacy upload() retry semantics.
+    async fn begin_multipart_upload(
+        &mut self,
+        remote_path: &str,
+        total_size: u64,
+        _content_type: Option<&str>,
+        _local_source_path: Option<&str>,
+    ) -> Result<MultipartHandle, ProviderError> {
+        if total_size == 0 {
+            return Err(ProviderError::TransferFailed(
+                "Filen does not accept empty files".to_string(),
+            ));
+        }
+        if total_size > FILEN_MAX_UPLOAD_SIZE {
+            return Err(ProviderError::TransferFailed(format!(
+                "File too large for Filen ({:.1} GiB). Max {:.0} GiB.",
+                total_size as f64 / (1024.0 * 1024.0 * 1024.0),
+                FILEN_MAX_UPLOAD_SIZE as f64 / (1024.0 * 1024.0 * 1024.0),
+            )));
+        }
+
+        let normalized = Self::normalize_path(remote_path);
+        let (parent_path, file_name) = match normalized.rfind('/') {
+            Some(pos) if pos > 0 => (&normalized[..pos], &normalized[pos + 1..]),
+            _ => ("/", normalized.trim_start_matches('/')),
+        };
+        if file_name.is_empty() {
+            return Err(ProviderError::InvalidPath(format!(
+                "Filen multipart: cannot resolve file name from path '{}'",
+                remote_path
+            )));
+        }
+
+        let parent_uuid = self.resolve_folder_uuid(parent_path).await?;
+
+        let file_key: String = (0..32)
+            .map(|_| format!("{:02x}", rand::random::<u8>()))
+            .collect();
+        let upload_key: String = (0..32)
+            .map(|_| format!("{:02x}", rand::random::<u8>()))
+            .collect();
+        let file_uuid = uuid::Uuid::new_v4().to_string();
+        let mime = mime_guess::from_path(file_name)
+            .first_or_octet_stream()
+            .to_string();
+        let part = filen_runner_part_size(total_size);
+        let total_chunks = total_size.div_ceil(part);
+
+        let meta = FilenMultipartMeta {
+            file_uuid,
+            parent_uuid,
+            file_key,
+            upload_key,
+            file_name: file_name.to_string(),
+            mime,
+            total: total_size,
+            part,
+            total_chunks,
+        };
+        Ok(MultipartHandle {
+            upload_id: meta.encode(),
+            remote_path: remote_path.to_string(),
+        })
+    }
+
+    async fn upload_part(
+        &mut self,
+        handle: &MultipartHandle,
+        part_number: u32,
+        data: Vec<u8>,
+    ) -> Result<UploadedPart, ProviderError> {
+        if part_number == 0 {
+            return Err(ProviderError::Other(
+                "Filen upload_part requires 1-based part_number".to_string(),
+            ));
+        }
+        if data.is_empty() {
+            return Err(ProviderError::Other(
+                "Filen upload_part received empty data".to_string(),
+            ));
+        }
+        let meta = FilenMultipartMeta::decode(&handle.upload_id)?;
+        let zero_index = (part_number as u64) - 1;
+        if zero_index >= meta.total_chunks {
+            return Err(ProviderError::Other(format!(
+                "Filen part {} exceeds declared total_chunks {}",
+                part_number, meta.total_chunks
+            )));
+        }
+        let offset = zero_index * meta.part;
+        let end = offset
+            .checked_add(data.len() as u64)
+            .ok_or_else(|| ProviderError::Other("Filen part offset overflow".to_string()))?;
+        if end > meta.total {
+            return Err(ProviderError::Other(format!(
+                "Filen part {} exceeds declared total: offset {} + len {} > total {}",
+                part_number,
+                offset,
+                data.len(),
+                meta.total
+            )));
+        }
+
+        upload_filen_chunk(
+            &self.client,
+            &self.api_key,
+            &meta.file_uuid,
+            &meta.parent_uuid,
+            &meta.upload_key,
+            &meta.file_key,
+            zero_index,
+            data,
+        )
+        .await?;
+
+        Ok(UploadedPart {
+            part_number,
+            etag: String::new(),
+        })
+    }
+
+    async fn complete_multipart_upload(
+        &mut self,
+        handle: MultipartHandle,
+        parts: Vec<UploadedPart>,
+    ) -> Result<(), ProviderError> {
+        let meta = FilenMultipartMeta::decode(&handle.upload_id)?;
+        if parts.len() != meta.total_chunks as usize {
+            return Err(ProviderError::TransferFailed(format!(
+                "Filen complete: expected {} chunks, runner committed {}",
+                meta.total_chunks,
+                parts.len()
+            )));
+        }
+
+        // Build the same /v3/upload/done envelope as the legacy upload()
+        // path so the file metadata and the file table stay byte-compatible.
+        let now = chrono::Utc::now().timestamp_millis();
+        let metadata = serde_json::json!({
+            "name": meta.file_name,
+            "size": meta.total,
+            "mime": meta.mime,
+            "key": meta.file_key,
+            "lastModified": now,
+        });
+        let encrypted_metadata = self.encrypt_metadata(&metadata.to_string())?;
+        let encrypted_name = self.encrypt_metadata(&meta.file_name)?;
+        let encrypted_size = self.encrypt_metadata(&meta.total.to_string())?;
+        let name_hashed = Self::hash_name(&meta.file_name);
+
+        let rm: String = (0..32)
+            .map(|_| format!("{:02x}", rand::random::<u8>()))
+            .collect();
+
+        let done_request = self
+            .client
+            .post(format!("{}/v3/upload/done", GATEWAY))
+            .header(
+                "Authorization",
+                HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
+                    .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
+            )
+            .header(CONTENT_TYPE, "application/json")
+            .json(&serde_json::json!({
+                "uuid": meta.file_uuid,
+                "name": encrypted_name,
+                "nameHashed": name_hashed,
+                "size": encrypted_size,
+                "chunks": meta.total_chunks,
+                "mime": meta.mime,
+                "rm": rm,
+                "metadata": encrypted_metadata,
+                "version": 2,
+                "uploadKey": meta.upload_key,
+            }))
+            .build()
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        let done_resp: serde_json::Value = self
+            .send_retry(done_request)
+            .await?
+            .json()
+            .await
+            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+
+        if done_resp["status"].as_bool() != Some(true) {
+            return Err(ProviderError::TransferFailed(
+                done_resp["message"]
+                    .as_str()
+                    .unwrap_or("Upload finalization failed")
+                    .to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    async fn abort_multipart_upload(
+        &mut self,
+        _handle: MultipartHandle,
+    ) -> Result<(), ProviderError> {
+        // Filen has no documented abort endpoint for incomplete uploads;
+        // orphans are GCed by the gateway after their TTL expires.
+        Ok(())
+    }
 }
 
 /// Encrypt a single plaintext chunk and POST it to `/v3/upload?index={index}`.
@@ -2464,5 +2746,52 @@ mod tests {
             "two encryptions of the same plaintext must differ (random nonce)"
         );
         assert_ne!(&a[..12], &b[..12], "nonces must differ");
+    }
+
+    // ---- S3-T02 multipart trait wiring ----
+
+    #[test]
+    fn filen_multipart_meta_roundtrip_preserves_fields() {
+        let meta = FilenMultipartMeta {
+            file_uuid: "550e8400-e29b-41d4-a716-446655440000".to_string(),
+            parent_uuid: "11111111-2222-3333-4444-555555555555".to_string(),
+            file_key: (0..32).map(|i| format!("{:02x}", i as u8)).collect(),
+            upload_key: (0..32).map(|i| format!("{:02x}", 255 - i as u8)).collect(),
+            file_name: "weird name (1).bin".to_string(),
+            mime: "application/octet-stream".to_string(),
+            total: 16 * 1024 * 1024,
+            part: 1024 * 1024,
+            total_chunks: 16,
+        };
+        let encoded = meta.encode();
+        let decoded = FilenMultipartMeta::decode(&encoded).expect("decode roundtrip");
+        assert_eq!(meta, decoded);
+    }
+
+    #[test]
+    fn filen_multipart_meta_decode_rejects_garbage() {
+        let err = FilenMultipartMeta::decode("not-json").unwrap_err();
+        assert!(matches!(err, ProviderError::Other(_)));
+    }
+
+    #[test]
+    fn filen_runner_part_size_clamps_and_never_returns_zero() {
+        assert_eq!(filen_runner_part_size(1024), 1024);
+        assert_eq!(filen_runner_part_size(FILEN_CHUNK_SIZE as u64), FILEN_CHUNK_SIZE as u64);
+        assert_eq!(
+            filen_runner_part_size(50 * 1024 * 1024 * 1024),
+            FILEN_CHUNK_SIZE as u64
+        );
+        assert_eq!(filen_runner_part_size(0), 1);
+    }
+
+    #[test]
+    fn filen_total_chunks_matches_runner_formula() {
+        let p = FILEN_CHUNK_SIZE as u64;
+        // div_ceil semantics: exact multiple ⇒ same number; +1 byte ⇒ +1 chunk
+        assert_eq!(p.div_ceil(p), 1);
+        assert_eq!((4 * p).div_ceil(p), 4);
+        assert_eq!((p + 1).div_ceil(p), 2);
+        assert_eq!((1u64).div_ceil(p), 1);
     }
 }
