@@ -13,16 +13,31 @@ use futures_util::future::BoxFuture;
 use md5::{Digest, Md5};
 use reqwest::multipart;
 use secrecy::{ExposeSecret, SecretString};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::time::{SystemTime, UNIX_EPOCH};
 use url::form_urlencoded;
 
 use super::{
-    response_bytes_with_limit, sanitize_api_error, ProviderConfig, ProviderError, ProviderType,
-    RemoteEntry, ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult, StorageInfo,
-    StorageProvider, MAX_DOWNLOAD_TO_BYTES,
+    response_bytes_with_limit, sanitize_api_error, MultipartHandle, ProviderConfig, ProviderError,
+    ProviderType, RemoteEntry, ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult,
+    StorageInfo, StorageProvider, UploadedPart, MAX_DOWNLOAD_TO_BYTES,
 };
+
+/// OpenDrive chunked-upload size threshold (S3-T04).
+///
+/// Below this size the runner keeps the legacy single-shot path that
+/// gzips the whole file and POSTs it through `upload_file_chunk2` with
+/// `chunk_offset=0`. At or above, it switches to the multipart trait
+/// path which dispatches independent chunks with the same temp_location.
+const OPENDRIVE_MULTIPART_THRESHOLD: u64 = 5 * 1024 * 1024;
+
+/// OpenDrive chunked-upload preferred part size (S3-T04).
+///
+/// OpenDrive accepts arbitrary chunk sizes against `temp_location` but
+/// recommends 5-10 MiB. 5 MiB matches the threshold so a 6 MiB file
+/// produces two chunks rather than one tail-heavy chunk.
+const OPENDRIVE_MULTIPART_PART_SIZE: u64 = 5 * 1024 * 1024;
 
 #[derive(Debug, Clone)]
 pub struct OpenDriveConfig {
@@ -272,6 +287,41 @@ struct FileInfoResponse {
 struct CreateFolderResponse {
     #[serde(rename = "FolderID", alias = "FolderId")]
     _folder_id: Option<String>,
+}
+
+/// Side-band metadata embedded in `MultipartHandle.upload_id` for the
+/// OpenDrive chunked-session path (S3-T04). Carries the server-issued
+/// `file_id` and `temp_location` alongside the resolved `file_hash`,
+/// `file_name`, and total/part-size pair so `upload_part` and
+/// `complete_multipart_upload` can rebuild every form post without a
+/// second resolve round-trip.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct OpenDriveMultipartMeta {
+    file_id: String,
+    temp_location: String,
+    file_hash: String,
+    name: String,
+    total: u64,
+    part: u64,
+}
+
+impl OpenDriveMultipartMeta {
+    fn encode(&self) -> String {
+        serde_json::to_string(self).unwrap_or_default()
+    }
+
+    fn decode(raw: &str) -> Result<Self, ProviderError> {
+        serde_json::from_str(raw).map_err(|e| {
+            ProviderError::Other(format!("OpenDrive multipart handle decode failed: {}", e))
+        })
+    }
+}
+
+/// Compute the per-chunk size the runner should slice `total` bytes into.
+///
+/// Caps at `OPENDRIVE_MULTIPART_PART_SIZE` and never returns zero.
+fn opendrive_runner_part_size(total: u64) -> u64 {
+    OPENDRIVE_MULTIPART_PART_SIZE.min(total.max(1))
 }
 
 #[derive(Debug, Deserialize)]
@@ -1968,9 +2018,282 @@ impl StorageProvider for OpenDriveProvider {
 
     fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
         super::TransferOptimizationHints {
+            supports_multipart: true,
+            multipart_threshold: OPENDRIVE_MULTIPART_THRESHOLD,
+            multipart_part_size: OPENDRIVE_MULTIPART_PART_SIZE,
+            // OpenDrive doesn't document a hard fan-out cap; 4 matches the
+            // AIMD default budget the runner ships with and stays under
+            // the per-account concurrency throttle observed in practice.
+            multipart_max_parallel: 4,
             supports_resume_download: true,
+            supports_resume_upload: true,
+            supports_server_checksum: true,
+            preferred_checksum_algo: Some("md5".to_string()),
             ..Default::default()
         }
+    }
+
+    // Shaped-graph multipart trait wiring (S3-T04).
+    //
+    // OpenDrive's chunked-upload protocol is a 4-step session:
+    //   1. `upload/create_file.json` POST form (session_id, folder_id,
+    //      file_name, file_size, file_hash) returns the `file_id` and a
+    //      `temp_location` URL the chunks are POSTed against.
+    //   2. `upload/open_file_upload.json` POST form (session_id, file_id,
+    //      file_size, file_hash) confirms the upload window and may return
+    //      a fresh `temp_location` overriding step 1's.
+    //   3. `upload/upload_file_chunk2.json/{session_id}/{file_id}` accepts
+    //      multipart form bodies with `file_data`, `temp_location`,
+    //      `chunk_offset`, `chunk_size`. Chunks can land in any order as
+    //      long as their offsets sum to the declared `file_size`.
+    //   4. `upload/close_file_upload.json` finalises the upload.
+    //
+    // The multipart trait path forces `file_compressed=0` (the chunked
+    // body is raw bytes), which is allowed regardless of the server's
+    // `require_compression` hint - that hint only matters for the
+    // legacy single-shot path that gzips the whole file in memory.
+    //
+    // `begin_multipart_upload` requires `local_source_path` to compute
+    // the file MD5 hash up-front (OpenDrive rejects `create_file`
+    // without one). The trait sig was extended in S2 for exactly this
+    // class of pre-commit-hash backends.
+    async fn begin_multipart_upload(
+        &mut self,
+        remote_path: &str,
+        total_size: u64,
+        _content_type: Option<&str>,
+        local_source_path: Option<&str>,
+    ) -> Result<MultipartHandle, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        if total_size == 0 {
+            return Err(ProviderError::Other(
+                "OpenDrive multipart upload requires non-zero total_size".to_string(),
+            ));
+        }
+        let local_path = local_source_path.ok_or_else(|| {
+            ProviderError::Other(
+                "OpenDrive multipart requires local_source_path for the file MD5 hash".to_string(),
+            )
+        })?;
+
+        let resolved = self.resolve_path(remote_path)?;
+        let (parent_path, file_name) = split_parent_child(&resolved);
+        if file_name.is_empty() {
+            return Err(ProviderError::InvalidPath("Missing file name".into()));
+        }
+
+        let folder_id = self
+            .with_reauth(|this| {
+                let parent_path = parent_path.clone();
+                Box::pin(async move { this.folder_id_by_path(&parent_path).await })
+            })
+            .await?;
+
+        let file_hash = self.compute_md5(local_path).await?;
+
+        let created: CreateFileResponse = self
+            .with_reauth(|this| {
+                let folder_id = folder_id.clone();
+                let file_name = file_name.clone();
+                let file_hash = file_hash.clone();
+                Box::pin(async move {
+                    this.post_form(
+                        "upload/create_file.json",
+                        &[
+                            ("session_id", this.session_id.clone()),
+                            ("folder_id", folder_id),
+                            ("file_name", file_name),
+                            ("file_size", total_size.to_string()),
+                            ("file_hash", file_hash),
+                            ("open_if_exists", "1".to_string()),
+                        ],
+                    )
+                    .await
+                })
+            })
+            .await?;
+
+        let file_id = created.file_id.ok_or_else(|| {
+            ProviderError::ParseError("Missing FileId from create_file".into())
+        })?;
+
+        let opened: OpenUploadResponse = self
+            .with_reauth(|this| {
+                let file_id = file_id.clone();
+                let file_hash = file_hash.clone();
+                Box::pin(async move {
+                    this.post_form(
+                        "upload/open_file_upload.json",
+                        &[
+                            ("session_id", this.session_id.clone()),
+                            ("file_id", file_id),
+                            ("file_size", total_size.to_string()),
+                            ("file_hash", file_hash),
+                        ],
+                    )
+                    .await
+                })
+            })
+            .await?;
+
+        let temp_location = opened
+            .temp_location
+            .or(created.temp_location)
+            .ok_or_else(|| {
+                ProviderError::ParseError("Missing TempLocation from upload flow".into())
+            })?;
+
+        let meta = OpenDriveMultipartMeta {
+            file_id,
+            temp_location,
+            file_hash,
+            name: file_name,
+            total: total_size,
+            part: opendrive_runner_part_size(total_size),
+        };
+        Ok(MultipartHandle {
+            upload_id: meta.encode(),
+            remote_path: remote_path.to_string(),
+        })
+    }
+
+    async fn upload_part(
+        &mut self,
+        handle: &MultipartHandle,
+        part_number: u32,
+        data: Vec<u8>,
+    ) -> Result<UploadedPart, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        if part_number == 0 {
+            return Err(ProviderError::Other(
+                "OpenDrive upload_part requires 1-based part_number".to_string(),
+            ));
+        }
+        if data.is_empty() {
+            return Err(ProviderError::Other(
+                "OpenDrive upload_part received empty data".to_string(),
+            ));
+        }
+        let meta = OpenDriveMultipartMeta::decode(&handle.upload_id)?;
+        let offset = (part_number as u64 - 1) * meta.part;
+        let end = offset
+            .checked_add(data.len() as u64)
+            .ok_or_else(|| ProviderError::Other("OpenDrive part offset overflow".to_string()))?;
+        if end > meta.total {
+            return Err(ProviderError::Other(format!(
+                "OpenDrive part {} exceeds declared total: offset {} + len {} > total {}",
+                part_number,
+                offset,
+                data.len(),
+                meta.total
+            )));
+        }
+        let chunk_size = data.len().to_string();
+        let chunk_offset = offset.to_string();
+        let body_part = multipart::Part::bytes(data).file_name(meta.name.clone());
+
+        let mut url = reqwest::Url::parse(&self.endpoint(&format!(
+            "upload/upload_file_chunk2.json/{}/{}",
+            self.session_id, meta.file_id
+        )))
+        .map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
+        url.query_pairs_mut()
+            .append_pair("temp_location", &meta.temp_location)
+            .append_pair("chunk_offset", &chunk_offset)
+            .append_pair("chunk_size", &chunk_size);
+
+        let form = multipart::Form::new().part("file_data", body_part);
+        let resp = self
+            .client
+            .post(url)
+            .multipart(form)
+            .send()
+            .await
+            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+
+        if !resp.status().is_success() {
+            return Err(self.parse_error(resp).await);
+        }
+        Ok(UploadedPart {
+            part_number,
+            etag: String::new(),
+        })
+    }
+
+    async fn complete_multipart_upload(
+        &mut self,
+        handle: MultipartHandle,
+        parts: Vec<UploadedPart>,
+    ) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        let meta = OpenDriveMultipartMeta::decode(&handle.upload_id)?;
+        let expected = meta.total.div_ceil(meta.part).max(1) as usize;
+        if parts.len() != expected {
+            return Err(ProviderError::TransferFailed(format!(
+                "OpenDrive complete: expected {} parts, runner committed {}",
+                expected,
+                parts.len()
+            )));
+        }
+
+        let file_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs().to_string())
+            .unwrap_or_else(|_| "0".to_string());
+
+        self.with_reauth(|this| {
+            let file_id = meta.file_id.clone();
+            let temp_location = meta.temp_location.clone();
+            let file_hash = meta.file_hash.clone();
+            let file_time = file_time.clone();
+            Box::pin(async move {
+                this.post_form_unit(
+                    "upload/close_file_upload.json",
+                    &[
+                        ("session_id", this.session_id.clone()),
+                        ("file_id", file_id),
+                        ("file_size", meta.total.to_string()),
+                        ("temp_location", temp_location),
+                        ("file_time", file_time),
+                        ("file_hash", file_hash),
+                        ("file_compressed", "0".to_string()),
+                    ],
+                )
+                .await
+            })
+        })
+        .await?;
+
+        self.last_activity = std::time::Instant::now();
+        Ok(())
+    }
+
+    async fn abort_multipart_upload(
+        &mut self,
+        handle: MultipartHandle,
+    ) -> Result<(), ProviderError> {
+        // OpenDrive does not document an explicit abort endpoint for an
+        // open upload session. The closest approximation is moving the
+        // partially-created file to trash, which is best-effort: any
+        // failure must not mask the original transfer error.
+        if let Ok(meta) = OpenDriveMultipartMeta::decode(&handle.upload_id) {
+            let _ = self
+                .post_form_unit(
+                    "file/trash.json",
+                    &[
+                        ("session_id", self.session_id.clone()),
+                        ("file_id", meta.file_id),
+                    ],
+                )
+                .await;
+        }
+        Ok(())
     }
 }
 
@@ -2044,5 +2367,81 @@ mod tests {
             split_parent_child("/a/b/file.txt"),
             ("/a/b".to_string(), "file.txt".to_string())
         );
+    }
+
+    // ---- S3-T04 multipart trait wiring ----
+
+    #[test]
+    fn opendrive_multipart_meta_roundtrip_preserves_fields() {
+        let meta = OpenDriveMultipartMeta {
+            file_id: "12345-XYZ".to_string(),
+            temp_location: "https://upload.opendrive.com/tmp/abc123".to_string(),
+            file_hash: "d41d8cd98f00b204e9800998ecf8427e".to_string(),
+            name: "weird name (1).bin".to_string(),
+            total: 1_073_741_824,
+            part: 5 * 1024 * 1024,
+        };
+        let encoded = meta.encode();
+        let decoded = OpenDriveMultipartMeta::decode(&encoded).expect("decode roundtrip");
+        assert_eq!(meta, decoded);
+    }
+
+    #[test]
+    fn opendrive_multipart_meta_decode_rejects_garbage() {
+        let err = OpenDriveMultipartMeta::decode("{not json}").unwrap_err();
+        assert!(matches!(err, ProviderError::Other(_)));
+    }
+
+    #[test]
+    fn opendrive_runner_part_size_clamps_and_never_returns_zero() {
+        assert_eq!(opendrive_runner_part_size(1024), 1024);
+        assert_eq!(
+            opendrive_runner_part_size(OPENDRIVE_MULTIPART_PART_SIZE),
+            OPENDRIVE_MULTIPART_PART_SIZE
+        );
+        assert_eq!(
+            opendrive_runner_part_size(50 * 1024 * 1024 * 1024),
+            OPENDRIVE_MULTIPART_PART_SIZE
+        );
+        assert_eq!(opendrive_runner_part_size(0), 1);
+    }
+
+    #[test]
+    fn opendrive_chunk_offset_math_matches_runner_formula() {
+        let part = OPENDRIVE_MULTIPART_PART_SIZE;
+        // part_number is 1-based, so offset = (n-1)*part.
+        let off = |n: u32| -> u64 { (n as u64 - 1) * part };
+        assert_eq!(off(1), 0);
+        assert_eq!(off(2), part);
+        assert_eq!(off(3), 2 * part);
+        // last chunk ends at total (no zero-byte tail allowed)
+        let total: u64 = 2 * part + 1024;
+        let last = 3u32; // ceil(total / part)
+        let last_offset = off(last);
+        assert_eq!(last_offset, 2 * part);
+        let last_len = (total - last_offset) as usize;
+        assert_eq!(last_len, 1024);
+    }
+
+    #[test]
+    fn opendrive_transfer_hints_advertise_multipart_with_md5() {
+        // Constructing a real provider needs an authenticated session;
+        // the hints are static so we can exercise them via a stub.
+        let cfg = OpenDriveConfig {
+            host: "dev.opendrive.com".to_string(),
+            username: "u".to_string(),
+            password: SecretString::from("p".to_string()),
+            initial_path: None,
+        };
+        let p = OpenDriveProvider::new(cfg);
+        let hints = p.transfer_optimization_hints();
+        assert!(hints.supports_multipart);
+        assert_eq!(hints.multipart_threshold, OPENDRIVE_MULTIPART_THRESHOLD);
+        assert_eq!(hints.multipart_part_size, OPENDRIVE_MULTIPART_PART_SIZE);
+        assert_eq!(hints.multipart_max_parallel, 4);
+        assert!(hints.supports_resume_download);
+        assert!(hints.supports_resume_upload);
+        assert!(hints.supports_server_checksum);
+        assert_eq!(hints.preferred_checksum_algo.as_deref(), Some("md5"));
     }
 }
