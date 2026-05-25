@@ -1617,6 +1617,29 @@ impl StorageProvider for FourSharedProvider {
     // FS-014: TODO: 4shared does not support file versioning. No version API available.
 
     fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
+        // Shaped-graph multipart trait (S3-T10): intentionally NotSupported
+        // by design.
+        //
+        // 4shared's public REST API documents exactly one upload entry
+        // point: `POST {upload_base}/files?folderId&fileName` with the
+        // raw file body. There is no documented chunked-session,
+        // resumable-upload, or part-append endpoint, and the OAuth 1.0
+        // signature applies to the whole request URL+body so even if
+        // we synthesised a "fake" chunked flow each chunk would still
+        // need an independent signed POST against the same single
+        // upload URL (which produces undefined behavior server-side -
+        // 4shared treats each POST as a fresh new file).
+        //
+        // The legacy upload() already streams the body via
+        // tokio_util::io::ReaderStream so big files do not pin RAM;
+        // what's missing is per-chunk retry. Wrapping the legacy POST
+        // into a fake-multipart trait would defeat the streaming
+        // property without producing any real resumability.
+        //
+        // Additional context: 4shared OAuth 1.0 access tokens get
+        // server-side-revoked on a regular cadence (see memory
+        // reference-4shared-oauth1-revoke), so even a hypothetical
+        // chunked flow would need re-auth handling on top.
         super::TransferOptimizationHints {
             supports_resume_download: true,
             ..Default::default()
