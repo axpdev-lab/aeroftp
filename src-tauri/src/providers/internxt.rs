@@ -2326,6 +2326,32 @@ impl StorageProvider for InternxtProvider {
             free: total.saturating_sub(used),
         })
     }
+
+    fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
+        // Shaped-graph multipart trait (S3-T07): intentionally NotSupported
+        // by design.
+        //
+        // Internxt's storage layer is built on Storj-style erasure coding:
+        // every file is split client-side into k-of-n shards and each
+        // shard is uploaded to a different farmer node bridge. The
+        // multipart trait's `upload_part` contract (independent
+        // append-able byte slices with a deterministic byte offset)
+        // does not map onto sharding - parts and shards are not the
+        // same thing, and pretending otherwise would corrupt the
+        // erasure-coding metadata.
+        //
+        // A wrapper that buffered shards in memory and pretended each
+        // shard was a `upload_part` would defeat both the bandwidth
+        // budget (parallel sharding is the whole point of the protocol)
+        // and the streaming property the legacy upload() relies on.
+        //
+        // The legacy `upload()` already streams + shards correctly, so
+        // the runner picks that path for every file on this backend.
+        super::TransferOptimizationHints {
+            supports_resume_download: true,
+            ..Default::default()
+        }
+    }
 }
 
 // ─── Helper methods (not part of trait) ────────────────────────────────────
