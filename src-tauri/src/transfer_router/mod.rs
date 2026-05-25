@@ -7,19 +7,18 @@
 //!
 //! Net finding: DAG wins on average and wins massively on high-latency
 //! providers (Koofr WAN upload 1G: +132.9% throughput, download 100M:
-//! +161.6%). It under-performs in a narrow scenario: WebDAV "vanilla"
-//! servers (Apache mod_dav, Tab.digital) on download payloads >=100M
-//! when run from a low-latency network. PHP-backed WebDAV (Nextcloud)
-//! and gateway WebDAV (Koofr) do not show the regression.
+//! +161.6%). A suspected WebDAV "vanilla" download regression was
+//! revalidated in T-DEBT-RTR-04 and not reproduced as an engine-level
+//! difference: forced DAG and forced Legacy had identical network syscall
+//! shape. Default routing is therefore DAG everywhere except local-to-local.
 //!
 //! Design decisions:
-//! - Default policy is `Engine::Dag` for every shape that does not have
-//!   a measured regression. The router is conservative: it falls back to
-//!   `Engine::Legacy` only when the hint table tells it so, never on a
-//!   guess.
+//! - Default policy is `Engine::Dag` for every network-backed provider.
+//!   `Engine::Legacy` remains available as an explicit override and for
+//!   local-to-local transfers.
 //! - The router is a pure function: `(provider_hint, operation, size) ->
 //!   Engine`. No I/O, no global state, trivial to test.
-//! - User overrides (`--force-dag` / `--force-legacy`) short-circuit the
+//! - User overrides (`--transfer-engine dag|legacy`) short-circuit the
 //!   lookup before the hint table is consulted.
 //! - The hint table is owned by [`hints`] and lives alongside the unit
 //!   tests that lock in the Phase A measurements. Updating it requires
@@ -65,10 +64,9 @@ pub enum Operation {
 /// exactly what the Phase A matrix found to matter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ProviderHint {
-    /// Apache mod_dav, lighttpd mod_webdav, nginx_dav, Tab.digital
-    /// (Nextcloud Enterprise whose URL does not match the Nextcloud
-    /// detection pattern), and anything else that responds to WebDAV
-    /// requests without PHP backend overhead.
+    /// Apache mod_dav, lighttpd mod_webdav, nginx_dav, and anything else
+    /// that responds to WebDAV requests without a known Nextcloud or
+    /// gateway signal.
     WebDavVanilla,
     /// Nextcloud / ownCloud detected via URL pattern. Koofr WebDAV
     /// gateway also belongs here in spirit: gateway-style WebDAV with
@@ -84,6 +82,9 @@ pub enum ProviderHint {
     S3,
     /// Backblaze B2 native.
     B2,
+    /// Azure Blob Storage native. Uses Put Block / Put Block List for
+    /// multipart uploads and HTTP Range for segmented downloads.
+    AzureBlob,
     /// SFTP.
     Sftp,
     /// Plain FTP / FTPS.
@@ -100,20 +101,15 @@ pub enum ProviderHint {
 
 /// Caller-provided override (typically `--force-dag` / `--force-legacy`
 /// on the CLI, or a session-level toggle in the GUI).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum Override {
     /// No override, the router consults the hint table.
+    #[default]
     None,
     /// Force `Engine::Dag` regardless of hints.
     ForceDag,
     /// Force `Engine::Legacy` regardless of hints.
     ForceLegacy,
-}
-
-impl Default for Override {
-    fn default() -> Self {
-        Override::None
-    }
 }
 
 impl Override {
@@ -224,7 +220,9 @@ mod tests {
         // User override beats even the structural local-to-local rule:
         // this lets developers benchmark the DAG against a local mock
         // without removing the safety default.
-        let d = Router::new().pick(ctx(ProviderHint::Local, Operation::Upload, 100).with_override(Override::ForceDag));
+        let d = Router::new().pick(
+            ctx(ProviderHint::Local, Operation::Upload, 100).with_override(Override::ForceDag),
+        );
         assert_eq!(d.engine, Engine::Dag);
         assert!(d.reason.contains("override"));
     }
@@ -232,8 +230,12 @@ mod tests {
     #[test]
     fn force_legacy_short_circuits_dag_winning_provider() {
         let d = Router::new().pick(
-            ctx(ProviderHint::WebDavGateway, Operation::Download, 100 * 1024 * 1024)
-                .with_override(Override::ForceLegacy),
+            ctx(
+                ProviderHint::WebDavGateway,
+                Operation::Download,
+                100 * 1024 * 1024,
+            )
+            .with_override(Override::ForceLegacy),
         );
         assert_eq!(d.engine, Engine::Legacy);
     }
