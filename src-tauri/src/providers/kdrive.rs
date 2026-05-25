@@ -15,6 +15,7 @@ use async_trait::async_trait;
 use reqwest::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use tracing::info;
 
@@ -25,6 +26,20 @@ use super::{
 };
 
 const API_BASE: &str = "https://api.infomaniak.com";
+
+/// Host for kDrive chunked-session upload endpoints (S3-T03).
+///
+/// kDrive splits its public API across two subdomains:
+///   - `api.infomaniak.com` handles the legacy single-shot `/3/drive/<id>/upload`
+///     (used by the legacy `upload()`) and all metadata/list/move operations.
+///   - `api.kdrive.infomaniak.com` handles the session-based chunked upload
+///     (`/upload/session/start`, `/.../chunk`, `/.../finish`). Hitting the
+///     session paths on `api.infomaniak.com` returns
+///     `404 method_not_found` (verified live 2026-05-26).
+///
+/// Documented in `docs/dev/guides/kDrive/06-upload-file.md` (sourced from
+/// Infomaniak's iOS SDK).
+const KDRIVE_SESSION_HOST: &str = "https://api.kdrive.infomaniak.com";
 
 /// kDrive chunked-upload size threshold (S3-T03).
 ///
@@ -1728,17 +1743,21 @@ impl StorageProvider for KDriveProvider {
 
     // Shaped-graph multipart trait wiring (S3-T03).
     //
-    // kDrive's upload session maps onto the trait as:
-    //   1. `begin_multipart_upload` → POST `/upload/session` with
-    //      `{file_name, directory_id, total_size, total_chunks,
-    //      conflict:"version"}`. The response carries an opaque session
-    //      `token`; the trait handle embeds it together with parent_id,
-    //      name, total, part, total_chunks so subsequent calls don't need
-    //      a second resolve round-trip.
-    //   2. `upload_part` → POST `/upload/session/{token}/chunk?chunk_number=N`
-    //      with the raw chunk bytes. kDrive accepts chunks in any order
-    //      and any concurrency as long as they share the same token.
-    //   3. `complete_multipart_upload` → POST `/upload/session/{token}/finish`
+    // kDrive's session-upload protocol (see `docs/dev/guides/kDrive/
+    // 06-upload-file.md`, sourced from Infomaniak's iOS SDK) maps onto
+    // the trait as:
+    //   1. `begin_multipart_upload` → POST
+    //      `https://api.kdrive.infomaniak.com/3/drive/<id>/upload/session/start`
+    //      with JSON body `{file_name, directory_id, total_size,
+    //      total_chunks, conflict:"version", drive_id}`. The response
+    //      carries an opaque `token`; the handle embeds it together
+    //      with parent_id, name, total, part, total_chunks so
+    //      subsequent calls don't need to re-resolve.
+    //   2. `upload_part` → POST `.../upload/session/{token}/chunk`
+    //      with the raw chunk bytes and query params
+    //      `chunk_number={0-based}&chunk_size={bytes}&chunk_hash=sha256:HEX`.
+    //      Chunks parallelise freely against the same token.
+    //   3. `complete_multipart_upload` → POST `.../upload/session/{token}/finish`
     //      with an empty body. The server stitches the chunks server-side
     //      and returns the final FileInfo.
     //   4. `abort_multipart_upload` → best-effort DELETE on the session;
@@ -1771,8 +1790,17 @@ impl StorageProvider for KDriveProvider {
         let part = kdrive_runner_part_size(total_size);
         let total_chunks = kdrive_total_chunks(total_size, part);
 
-        let url = self.api_url_v3("/upload/session");
+        // Session-upload endpoints live on api.kdrive.infomaniak.com,
+        // NOT api.infomaniak.com (which only serves the legacy
+        // single-shot /upload). Hitting `api.infomaniak.com/.../upload/session*`
+        // returns `404 method_not_found` (verified live 2026-05-26).
+        let url = format!(
+            "{}/3/drive/{}/upload/session/start",
+            KDRIVE_SESSION_HOST, self.config.drive_id
+        );
+        let drive_id_num = self.config.drive_id.parse::<i64>().unwrap_or(0);
         let body_json = serde_json::json!({
+            "drive_id": drive_id_num,
             "file_name": filename,
             "directory_id": parent_id,
             "total_size": total_size,
@@ -1856,11 +1884,24 @@ impl StorageProvider for KDriveProvider {
             )));
         }
 
-        let url = self.api_url_v3(&format!(
-            "/upload/session/{}/chunk?chunk_number={}",
+        // kDrive's chunk endpoint requires three query params:
+        //   chunk_number = 0-based index (convert from the trait's 1-based
+        //                  `part_number`)
+        //   chunk_size   = exact byte length of this chunk
+        //   chunk_hash   = "sha256:<lowercase hex digest>"
+        let mut hasher = Sha256::new();
+        hasher.update(&data);
+        let chunk_hash = format!("sha256:{:x}", hasher.finalize());
+        let chunk_size = data.len();
+        let url = format!(
+            "{}/3/drive/{}/upload/session/{}/chunk?chunk_number={}&chunk_size={}&chunk_hash={}",
+            KDRIVE_SESSION_HOST,
+            self.config.drive_id,
             urlencoding::encode(&meta.token),
-            part_number
-        ));
+            part_number - 1,
+            chunk_size,
+            urlencoding::encode(&chunk_hash)
+        );
         let resp = self
             .post_with_retry(&url, "application/octet-stream", data)
             .await?;
@@ -1876,7 +1917,7 @@ impl StorageProvider for KDriveProvider {
         }
         Ok(UploadedPart {
             part_number,
-            etag: String::new(),
+            etag: chunk_hash,
         })
     }
 
@@ -1897,10 +1938,12 @@ impl StorageProvider for KDriveProvider {
             )));
         }
 
-        let url = self.api_url_v3(&format!(
-            "/upload/session/{}/finish",
+        let url = format!(
+            "{}/3/drive/{}/upload/session/{}/finish",
+            KDRIVE_SESSION_HOST,
+            self.config.drive_id,
             urlencoding::encode(&meta.token)
-        ));
+        );
         let resp = self
             .post_with_retry(&url, "application/json", Vec::new())
             .await?;
@@ -1921,10 +1964,12 @@ impl StorageProvider for KDriveProvider {
         handle: MultipartHandle,
     ) -> Result<(), ProviderError> {
         let meta = KDriveMultipartMeta::decode(&handle.upload_id)?;
-        let url = self.api_url_v3(&format!(
-            "/upload/session/{}",
+        let url = format!(
+            "{}/3/drive/{}/upload/session/{}",
+            KDRIVE_SESSION_HOST,
+            self.config.drive_id,
             urlencoding::encode(&meta.token)
-        ));
+        );
         // Best-effort: kDrive GCs stale sessions a few hours after
         // last activity. Swallow failures so the abort never masks
         // the original transfer error.
