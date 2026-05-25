@@ -1611,6 +1611,21 @@ impl StorageProvider for WebDavProvider {
         ProviderType::WebDav
     }
 
+    /// WebDAV-specific routing hint: inspect the configured URL so the
+    /// router can tell Nextcloud (`/remote.php/dav/files/`) and Koofr
+    /// gateway (`koofr.net`) apart from vanilla WebDAV (mod_dav,
+    /// lighttpd, nginx_dav, Tab.digital nude). The default trait impl
+    /// passes `None` for the URL and would always classify WebDAV as
+    /// vanilla, which is the wrong default for the two URL-detected
+    /// variants.
+    fn router_hint(&self) -> crate::transfer_router::ProviderHint {
+        crate::transfer_router::hints::from_provider_type(
+            ProviderType::WebDav,
+            Some(&self.config.url),
+            None,
+        )
+    }
+
     fn display_name(&self) -> String {
         if self.config.anonymous {
             return self
