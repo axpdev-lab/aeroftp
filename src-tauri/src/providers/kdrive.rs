@@ -14,17 +14,32 @@
 use async_trait::async_trait;
 use reqwest::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use secrecy::ExposeSecret;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tracing::info;
 
 use super::{
-    sanitize_api_error, send_with_retry, FileVersion, HttpRetryConfig, KDriveConfig, ProviderError,
-    ProviderType, RemoteEntry, ShareLinkCapabilities, ShareLinkInfo, ShareLinkOptions,
-    ShareLinkResult, StorageInfo, StorageProvider,
+    sanitize_api_error, send_with_retry, FileVersion, HttpRetryConfig, KDriveConfig,
+    MultipartHandle, ProviderError, ProviderType, RemoteEntry, ShareLinkCapabilities, ShareLinkInfo,
+    ShareLinkOptions, ShareLinkResult, StorageInfo, StorageProvider, UploadedPart,
 };
 
 const API_BASE: &str = "https://api.infomaniak.com";
+
+/// kDrive chunked-upload size threshold (S3-T03).
+///
+/// Below this size the runner keeps the legacy single-shot `/upload` path;
+/// at or above, it switches to the upload-session API
+/// (`/upload/session` + `/chunk` + `/finish`) so the DAG shaped-graph can
+/// fan out chunks and gain per-chunk retry.
+const KDRIVE_MULTIPART_THRESHOLD: u64 = 4 * 1024 * 1024;
+
+/// kDrive chunked-upload preferred part size (S3-T03).
+///
+/// Infomaniak's docs recommend a 4 MiB chunk granularity; the upload session
+/// API rejects anything below 1 MiB (except the closing tail) so this is the
+/// safe sweet spot.
+const KDRIVE_MULTIPART_PART_SIZE: u64 = 4 * 1024 * 1024;
 
 fn kdrive_log(msg: &str) {
     info!("[KDRIVE] {}", msg);
@@ -94,6 +109,52 @@ struct UploadResponse {
     id: Option<i64>,
     #[allow(dead_code)]
     name: Option<String>,
+}
+
+/// `/3/drive/<id>/upload/session` response payload (S3-T03).
+#[derive(Debug, Deserialize)]
+struct KDriveUploadSession {
+    token: String,
+}
+
+/// Side-band metadata embedded in `MultipartHandle.upload_id` for the
+/// kDrive chunked-session path. Carries everything `upload_part` and
+/// `complete_multipart_upload` need to dispatch chunks against the
+/// session without re-resolving the destination parent on every call.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct KDriveMultipartMeta {
+    token: String,
+    parent_id: i64,
+    name: String,
+    total: u64,
+    part: u64,
+    total_chunks: u32,
+}
+
+impl KDriveMultipartMeta {
+    fn encode(&self) -> String {
+        serde_json::to_string(self).unwrap_or_default()
+    }
+
+    fn decode(raw: &str) -> Result<Self, ProviderError> {
+        serde_json::from_str(raw).map_err(|e| {
+            ProviderError::Other(format!("kDrive multipart handle decode failed: {}", e))
+        })
+    }
+}
+
+/// Compute the per-chunk size the runner should slice `total` bytes into.
+///
+/// Caps at `KDRIVE_MULTIPART_PART_SIZE` and never returns zero so a
+/// `total < part_size` upload always produces exactly one chunk.
+fn kdrive_runner_part_size(total: u64) -> u64 {
+    KDRIVE_MULTIPART_PART_SIZE.min(total.max(1))
+}
+
+/// Derive `total_chunks` from `total / part` matching the runner formula.
+fn kdrive_total_chunks(total: u64, part: u64) -> u32 {
+    let raw = total.div_ceil(part.max(1)).max(1);
+    raw.min(u32::MAX as u64) as u32
 }
 
 #[derive(Debug, Deserialize)]
@@ -1652,9 +1713,223 @@ impl StorageProvider for KDriveProvider {
 
     fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
         super::TransferOptimizationHints {
+            supports_multipart: true,
+            multipart_threshold: KDRIVE_MULTIPART_THRESHOLD,
+            multipart_part_size: KDRIVE_MULTIPART_PART_SIZE,
+            // Infomaniak documents parallel chunk POSTs against the same
+            // session token. 4 matches the AIMD default budget the runner
+            // ships with so the fan-out actually parallelises.
+            multipart_max_parallel: 4,
             supports_resume_download: true,
+            supports_resume_upload: true,
             ..Default::default()
         }
+    }
+
+    // Shaped-graph multipart trait wiring (S3-T03).
+    //
+    // kDrive's upload session maps onto the trait as:
+    //   1. `begin_multipart_upload` → POST `/upload/session` with
+    //      `{file_name, directory_id, total_size, total_chunks,
+    //      conflict:"version"}`. The response carries an opaque session
+    //      `token`; the trait handle embeds it together with parent_id,
+    //      name, total, part, total_chunks so subsequent calls don't need
+    //      a second resolve round-trip.
+    //   2. `upload_part` → POST `/upload/session/{token}/chunk?chunk_number=N`
+    //      with the raw chunk bytes. kDrive accepts chunks in any order
+    //      and any concurrency as long as they share the same token.
+    //   3. `complete_multipart_upload` → POST `/upload/session/{token}/finish`
+    //      with an empty body. The server stitches the chunks server-side
+    //      and returns the final FileInfo.
+    //   4. `abort_multipart_upload` → best-effort DELETE on the session;
+    //      kDrive auto-GCs incomplete sessions after a few hours.
+    async fn begin_multipart_upload(
+        &mut self,
+        remote_path: &str,
+        total_size: u64,
+        _content_type: Option<&str>,
+        _local_source_path: Option<&str>,
+    ) -> Result<MultipartHandle, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        if total_size == 0 {
+            return Err(ProviderError::Other(
+                "kDrive multipart upload requires non-zero total_size".to_string(),
+            ));
+        }
+
+        let resolved = self.resolve_path(remote_path);
+        let (parent_path, filename) = Self::split_path(&resolved);
+        if filename.is_empty() {
+            return Err(ProviderError::Other(format!(
+                "kDrive multipart: cannot resolve file name from path '{}'",
+                remote_path
+            )));
+        }
+        let parent_id = self.resolve_folder_id(parent_path).await?;
+        let part = kdrive_runner_part_size(total_size);
+        let total_chunks = kdrive_total_chunks(total_size, part);
+
+        let url = self.api_url_v3("/upload/session");
+        let body_json = serde_json::json!({
+            "file_name": filename,
+            "directory_id": parent_id,
+            "total_size": total_size,
+            "total_chunks": total_chunks,
+            "conflict": "version",
+        })
+        .to_string()
+        .into_bytes();
+
+        let resp = self
+            .post_with_retry(&url, "application/json", body_json)
+            .await?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::ServerError(format!(
+                "kDrive upload/session failed ({}): {}",
+                status,
+                sanitize_api_error(&body)
+            )));
+        }
+
+        let api_resp: ApiResponse<KDriveUploadSession> = resp.json().await.map_err(|e| {
+            ProviderError::ParseError(format!("Parse upload/session response failed: {}", e))
+        })?;
+        let session = api_resp.data.ok_or_else(|| {
+            ProviderError::Other("kDrive upload/session returned no token".to_string())
+        })?;
+
+        let meta = KDriveMultipartMeta {
+            token: session.token,
+            parent_id,
+            name: filename.to_string(),
+            total: total_size,
+            part,
+            total_chunks,
+        };
+        Ok(MultipartHandle {
+            upload_id: meta.encode(),
+            remote_path: remote_path.to_string(),
+        })
+    }
+
+    async fn upload_part(
+        &mut self,
+        handle: &MultipartHandle,
+        part_number: u32,
+        data: Vec<u8>,
+    ) -> Result<UploadedPart, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        if part_number == 0 {
+            return Err(ProviderError::Other(
+                "kDrive upload_part requires 1-based part_number".to_string(),
+            ));
+        }
+        if data.is_empty() {
+            return Err(ProviderError::Other(
+                "kDrive upload_part received empty data".to_string(),
+            ));
+        }
+        let meta = KDriveMultipartMeta::decode(&handle.upload_id)?;
+        if part_number > meta.total_chunks {
+            return Err(ProviderError::Other(format!(
+                "kDrive part {} exceeds declared total_chunks {}",
+                part_number, meta.total_chunks
+            )));
+        }
+        let offset = (part_number as u64 - 1) * meta.part;
+        let end = offset
+            .checked_add(data.len() as u64)
+            .ok_or_else(|| ProviderError::Other("kDrive part offset overflow".to_string()))?;
+        if end > meta.total {
+            return Err(ProviderError::Other(format!(
+                "kDrive part {} exceeds declared total: offset {} + len {} > total {}",
+                part_number,
+                offset,
+                data.len(),
+                meta.total
+            )));
+        }
+
+        let url = self.api_url_v3(&format!(
+            "/upload/session/{}/chunk?chunk_number={}",
+            urlencoding::encode(&meta.token),
+            part_number
+        ));
+        let resp = self
+            .post_with_retry(&url, "application/octet-stream", data)
+            .await?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::TransferFailed(format!(
+                "kDrive chunk {} failed ({}): {}",
+                part_number,
+                status,
+                sanitize_api_error(&body)
+            )));
+        }
+        Ok(UploadedPart {
+            part_number,
+            etag: String::new(),
+        })
+    }
+
+    async fn complete_multipart_upload(
+        &mut self,
+        handle: MultipartHandle,
+        parts: Vec<UploadedPart>,
+    ) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        let meta = KDriveMultipartMeta::decode(&handle.upload_id)?;
+        if parts.len() != meta.total_chunks as usize {
+            return Err(ProviderError::TransferFailed(format!(
+                "kDrive complete: expected {} parts, runner committed {}",
+                meta.total_chunks,
+                parts.len()
+            )));
+        }
+
+        let url = self.api_url_v3(&format!(
+            "/upload/session/{}/finish",
+            urlencoding::encode(&meta.token)
+        ));
+        let resp = self
+            .post_with_retry(&url, "application/json", Vec::new())
+            .await?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::ServerError(format!(
+                "kDrive upload/session/finish failed ({}): {}",
+                status,
+                sanitize_api_error(&body)
+            )));
+        }
+        Ok(())
+    }
+
+    async fn abort_multipart_upload(
+        &mut self,
+        handle: MultipartHandle,
+    ) -> Result<(), ProviderError> {
+        let meta = KDriveMultipartMeta::decode(&handle.upload_id)?;
+        let url = self.api_url_v3(&format!(
+            "/upload/session/{}",
+            urlencoding::encode(&meta.token)
+        ));
+        // Best-effort: kDrive GCs stale sessions a few hours after
+        // last activity. Swallow failures so the abort never masks
+        // the original transfer error.
+        let _ = self.delete_with_retry(&url).await;
+        Ok(())
     }
 }
 
@@ -1867,5 +2142,68 @@ mod tests {
         let mut p2 = test_provider();
         p2.current_path = "/".to_string();
         assert_eq!(p2.resolve_path("child"), "/child");
+    }
+
+    // ---- S3-T03 multipart trait wiring ----
+
+    #[test]
+    fn kdrive_multipart_meta_roundtrip_preserves_fields() {
+        let meta = KDriveMultipartMeta {
+            token: "abc-XYZ_123.tok".to_string(),
+            parent_id: 9_999_999,
+            name: "weird name (1).bin".to_string(),
+            total: 1_073_741_824,
+            part: 4 * 1024 * 1024,
+            total_chunks: 256,
+        };
+        let encoded = meta.encode();
+        let decoded = KDriveMultipartMeta::decode(&encoded).expect("decode roundtrip");
+        assert_eq!(meta, decoded);
+    }
+
+    #[test]
+    fn kdrive_multipart_meta_decode_rejects_garbage() {
+        let err = KDriveMultipartMeta::decode("{not json}").unwrap_err();
+        assert!(matches!(err, ProviderError::Other(_)));
+    }
+
+    #[test]
+    fn kdrive_runner_part_size_clamps_and_never_returns_zero() {
+        assert_eq!(kdrive_runner_part_size(1024), 1024);
+        assert_eq!(
+            kdrive_runner_part_size(KDRIVE_MULTIPART_PART_SIZE),
+            KDRIVE_MULTIPART_PART_SIZE
+        );
+        assert_eq!(
+            kdrive_runner_part_size(50 * 1024 * 1024 * 1024),
+            KDRIVE_MULTIPART_PART_SIZE
+        );
+        assert_eq!(kdrive_runner_part_size(0), 1);
+    }
+
+    #[test]
+    fn kdrive_total_chunks_matches_runner_formula() {
+        let p = KDRIVE_MULTIPART_PART_SIZE;
+        // total=0 ⇒ at least one chunk so abort/finish never get a zero loop.
+        assert_eq!(kdrive_total_chunks(0, p), 1);
+        // exact multiple
+        assert_eq!(kdrive_total_chunks(p, p), 1);
+        assert_eq!(kdrive_total_chunks(4 * p, p), 4);
+        // tail chunk rounds up
+        assert_eq!(kdrive_total_chunks(p + 1, p), 2);
+        // part=0 guard: never divide by zero (treated as part=1)
+        assert_eq!(kdrive_total_chunks(7, 0), 7);
+    }
+
+    #[test]
+    fn kdrive_transfer_hints_advertise_multipart() {
+        let hints = test_provider().transfer_optimization_hints();
+        assert!(hints.supports_multipart);
+        assert_eq!(hints.multipart_threshold, KDRIVE_MULTIPART_THRESHOLD);
+        assert_eq!(hints.multipart_part_size, KDRIVE_MULTIPART_PART_SIZE);
+        // 4-slot fan-out matches AIMD default budget.
+        assert_eq!(hints.multipart_max_parallel, 4);
+        assert!(hints.supports_resume_download);
+        assert!(hints.supports_resume_upload);
     }
 }
