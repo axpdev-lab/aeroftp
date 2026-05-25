@@ -4148,6 +4148,7 @@ interface UpdateVerificationInfo {
     const protocol = effectiveParams.protocol;
     const providerParams = {
       protocol,
+      provider_id: effectiveParams.providerId || null,
       server: effectiveParams.server,
       port: effectiveParams.port,
       username: effectiveParams.username,

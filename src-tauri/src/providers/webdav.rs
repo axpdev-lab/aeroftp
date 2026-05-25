@@ -1622,7 +1622,7 @@ impl StorageProvider for WebDavProvider {
         crate::transfer_router::hints::from_provider_type(
             ProviderType::WebDav,
             Some(&self.config.url),
-            None,
+            self.config.provider_id.as_deref(),
         )
     }
 
@@ -3058,6 +3058,7 @@ mod tests {
             username: "user".to_string(),
             password: secrecy::SecretString::from("pass".to_string()),
             initial_path: None,
+            provider_id: None,
             verify_cert: true,
             anonymous: false,
         }
@@ -3073,6 +3074,18 @@ mod tests {
         assert_eq!(
             provider.build_url("/Documents"),
             "https://cloud.example.com/remote.php/dav/files/user/Documents"
+        );
+    }
+
+    #[test]
+    fn router_hint_prefers_provider_id_over_bare_url() {
+        let mut config = test_config("https://cloud.lab.axpdev.it");
+        config.provider_id = Some("nextcloud".to_string());
+        let provider = WebDavProvider::new(config).expect("Failed to create WebDavProvider");
+
+        assert_eq!(
+            provider.router_hint(),
+            crate::transfer_router::ProviderHint::WebDavNextcloud
         );
     }
 
