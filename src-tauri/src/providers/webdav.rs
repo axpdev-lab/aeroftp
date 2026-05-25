@@ -3130,6 +3130,7 @@ impl StorageProvider for WebDavProvider {
         remote_path: &str,
         total_size: u64,
         _content_type: Option<&str>,
+        _local_source_path: Option<&str>,
     ) -> Result<MultipartHandle, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
@@ -4227,12 +4228,12 @@ mod tests {
     async fn nextcloud_multipart_methods_require_connection_and_nextcloud_gating() {
         let mut p = WebDavProvider::new(test_config("https://cloud.example.com")).expect("provider");
         // Not connected: every method bails with NotConnected.
-        let r = p.begin_multipart_upload("/x.bin", 100, None).await;
+        let r = p.begin_multipart_upload("/x.bin", 100, None, None).await;
         assert!(matches!(r, Err(ProviderError::NotConnected)));
 
         // Connected but vanilla WebDAV: NotSupported, no MKCOL emitted.
         p.connected = true;
-        let r = p.begin_multipart_upload("/x.bin", 100, None).await;
+        let r = p.begin_multipart_upload("/x.bin", 100, None, None).await;
         assert!(matches!(r, Err(ProviderError::NotSupported(_))));
 
         // Connected + Nextcloud-class: upload_part rejects part_number = 0.

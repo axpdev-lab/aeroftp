@@ -2453,6 +2453,7 @@ impl StorageProvider for B2Provider {
         remote_path: &str,
         _total_size: u64,
         _content_type: Option<&str>,
+        _local_source_path: Option<&str>,
     ) -> Result<MultipartHandle, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
@@ -3164,6 +3165,7 @@ mod tests {
             &mut provider,
             "/some/key.bin",
             10 * 1024 * 1024,
+            None,
             None,
         )
         .await;

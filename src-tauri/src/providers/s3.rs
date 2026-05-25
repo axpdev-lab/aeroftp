@@ -3206,6 +3206,7 @@ impl StorageProvider for S3Provider {
         remote_path: &str,
         _total_size: u64,
         content_type: Option<&str>,
+        _local_source_path: Option<&str>,
     ) -> Result<MultipartHandle, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
@@ -4338,6 +4339,7 @@ mod tests {
             "/some/key.bin",
             10 * 1024 * 1024,
             Some("application/octet-stream"),
+            None,
         )
         .await;
         assert!(matches!(result, Err(ProviderError::NotConnected)));
@@ -4356,6 +4358,7 @@ mod tests {
             "/some/key.bin",
             10 * 1024 * 1024,
             Some("application/octet-stream"),
+            None,
         )
         .await;
         match result {

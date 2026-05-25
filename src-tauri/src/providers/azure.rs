@@ -971,6 +971,7 @@ impl StorageProvider for AzureProvider {
         remote_path: &str,
         _total_size: u64,
         _content_type: Option<&str>,
+        _local_source_path: Option<&str>,
     ) -> Result<MultipartHandle, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
@@ -2101,7 +2102,7 @@ Time:2026-01-01</Message>
         p.connected = true;
         p.current_prefix = "project/".to_string();
 
-        let handle = StorageProvider::begin_multipart_upload(&mut p, "asset.bin", 10, None)
+        let handle = StorageProvider::begin_multipart_upload(&mut p, "asset.bin", 10, None, None)
             .await
             .unwrap();
 

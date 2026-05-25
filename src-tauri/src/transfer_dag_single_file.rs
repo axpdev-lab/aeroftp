@@ -287,6 +287,7 @@ pub async fn execute_single_file_dag(
                                         &remote,
                                         ctx.total_size,
                                         Some(&ctx.content_type),
+                                        Some(&local),
                                     )
                                     .await
                                 {
