@@ -21,6 +21,75 @@ use super::{
 /// Microsoft Graph API base URL
 const GRAPH_API_BASE: &str = "https://graph.microsoft.com/v1.0";
 
+/// T-DEBT-05 S1-T02d: Microsoft Graph (OneDrive) returns 429 and 503 with a
+/// standard `Retry-After` header in seconds form. As a fallback when the
+/// header is absent, Graph occasionally exposes `X-RateLimit-Reset` (epoch
+/// UTC seconds) which we convert into a delta against the local clock.
+fn onedrive_is_rate_limited(status: u16) -> bool {
+    status == 429 || status == 503
+}
+
+/// Compute the marker substring for a OneDrive rate-limit response.
+/// Reads the standard `Retry-After` header first; falls back to
+/// `X-RateLimit-Reset` (epoch UTC seconds) if the primary header is
+/// missing. Pure-fn body: the call site does the I/O of capturing both
+/// header values from the live response.
+fn onedrive_retry_marker_tail(
+    status: u16,
+    retry_header: Option<&str>,
+    reset_header: Option<&str>,
+    now_epoch_secs: u64,
+) -> Option<String> {
+    if !onedrive_is_rate_limited(status) {
+        return None;
+    }
+    let hint = retry_header
+        .and_then(super::retry_after::parse_retry_after_seconds)
+        .or_else(|| {
+            reset_header.and_then(|raw| {
+                super::retry_after::parse_x_ratelimit_reset(raw, now_epoch_secs)
+            })
+        })?;
+    Some(crate::transfer_dag::adaptive::embed_retry_after_marker(
+        hint.as_secs(),
+    ))
+}
+
+/// Build a `ProviderError::Other` from a failed OneDrive HTTP response,
+/// appending the Retry-After marker when the response is a throttle
+/// signal. The `context_prefix` is prepended verbatim.
+async fn onedrive_error_from_response(
+    response: reqwest::Response,
+    context_prefix: &str,
+) -> ProviderError {
+    let status = response.status();
+    let retry_header = response
+        .headers()
+        .get(reqwest::header::RETRY_AFTER)
+        .and_then(|v| v.to_str().ok())
+        .map(String::from);
+    let reset_header = response
+        .headers()
+        .get("X-RateLimit-Reset")
+        .and_then(|v| v.to_str().ok())
+        .map(String::from);
+    let text = response.text().await.unwrap_or_default();
+    let mut msg = format!("{} {}: {}", context_prefix, status, sanitize_api_error(&text));
+    let now_epoch = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    if let Some(tail) = onedrive_retry_marker_tail(
+        status.as_u16(),
+        retry_header.as_deref(),
+        reset_header.as_deref(),
+        now_epoch,
+    ) {
+        msg.push_str(&tail);
+    }
+    ProviderError::Other(msg)
+}
+
 /// OneDrive item metadata (fields needed for API response deserialization)
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -292,11 +361,7 @@ impl OneDriveProvider {
         }
 
         if !response.status().is_success() {
-            let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!(
-                "API error: {}",
-                sanitize_api_error(&text)
-            )));
+            return Err(onedrive_error_from_response(response, "API error").await);
         }
 
         response
@@ -342,11 +407,7 @@ impl OneDriveProvider {
                 .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
             if !response.status().is_success() {
-                let text = response.text().await.unwrap_or_default();
-                return Err(ProviderError::Other(format!(
-                    "List error: {}",
-                    sanitize_api_error(&text)
-                )));
+                return Err(onedrive_error_from_response(response, "List error").await);
             }
 
             let result: ChildrenResponse = response
@@ -396,11 +457,7 @@ impl OneDriveProvider {
                 .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
             if !response.status().is_success() {
-                let text = response.text().await.unwrap_or_default();
-                return Err(ProviderError::Other(format!(
-                    "List trash failed: {}",
-                    sanitize_api_error(&text)
-                )));
+                return Err(onedrive_error_from_response(response, "List trash failed:").await);
             }
 
             let result: ChildrenResponse = response
@@ -436,11 +493,7 @@ impl OneDriveProvider {
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() && response.status().as_u16() != 204 {
-            let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!(
-                "Trash failed: {}",
-                sanitize_api_error(&text)
-            )));
+            return Err(onedrive_error_from_response(response, "Trash failed:").await);
         }
 
         info!("Trashed: {}", path);
@@ -462,11 +515,7 @@ impl OneDriveProvider {
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() && response.status().as_u16() != 204 {
-            let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!(
-                "Restore failed: {}",
-                sanitize_api_error(&text)
-            )));
+            return Err(onedrive_error_from_response(response, "Restore failed:").await);
         }
 
         info!("Restored from trash: {}", item_id);
@@ -925,11 +974,7 @@ impl StorageProvider for OneDriveProvider {
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
-            let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!(
-                "Upload failed: {}",
-                sanitize_api_error(&text)
-            )));
+            return Err(onedrive_error_from_response(response, "Upload failed:").await);
         }
 
         info!("Uploaded {} to {}", local_path, remote_path);
@@ -1948,5 +1993,53 @@ mod tests {
             p.api_item("01ABC123"),
             format!("{}/me/drive/items/01ABC123", GRAPH_API_BASE)
         );
+    }
+
+    // T-DEBT-05 S1-T02d: OneDrive rate-limit detection + marker emission.
+
+    #[test]
+    fn onedrive_is_rate_limited_recognises_429_and_503() {
+        assert!(onedrive_is_rate_limited(429));
+        assert!(onedrive_is_rate_limited(503));
+        assert!(!onedrive_is_rate_limited(500));
+        assert!(!onedrive_is_rate_limited(404));
+        assert!(!onedrive_is_rate_limited(200));
+    }
+
+    #[test]
+    fn onedrive_retry_marker_tail_primary_header_wins() {
+        // Retry-After=15 must win over X-RateLimit-Reset; the test sets
+        // reset to a 60s future delta to ensure the primary path is taken.
+        let tail = onedrive_retry_marker_tail(429, Some("15"), Some("160"), 100)
+            .expect("primary header path");
+        assert!(tail.contains("retry-after-secs=15"));
+    }
+
+    #[test]
+    fn onedrive_retry_marker_tail_falls_back_to_x_ratelimit_reset() {
+        // No Retry-After header; X-RateLimit-Reset=160 with now=100 → 60s.
+        let tail = onedrive_retry_marker_tail(429, None, Some("160"), 100)
+            .expect("X-RateLimit-Reset fallback");
+        assert!(tail.contains("retry-after-secs=60"));
+    }
+
+    #[test]
+    fn onedrive_retry_marker_tail_returns_none_if_reset_in_past() {
+        // X-RateLimit-Reset = 90 but now = 100: stale signal, no marker.
+        assert_eq!(onedrive_retry_marker_tail(429, None, Some("90"), 100), None);
+    }
+
+    #[test]
+    fn onedrive_retry_marker_tail_returns_none_when_not_rate_limited() {
+        // 500 is not a throttle for OneDrive; ignore both headers.
+        assert_eq!(
+            onedrive_retry_marker_tail(500, Some("30"), Some("160"), 100),
+            None
+        );
+    }
+
+    #[test]
+    fn onedrive_retry_marker_tail_returns_none_when_both_headers_missing() {
+        assert_eq!(onedrive_retry_marker_tail(429, None, None, 100), None);
     }
 }
