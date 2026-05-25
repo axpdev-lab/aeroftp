@@ -2757,6 +2757,7 @@ impl StorageProvider for GoogleDriveProvider {
         remote_path: &str,
         total_size: u64,
         content_type: Option<&str>,
+        _local_source_path: Option<&str>,
     ) -> Result<MultipartHandle, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);

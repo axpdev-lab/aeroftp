@@ -588,14 +588,21 @@ pub trait StorageProvider: Send + Sync {
     /// `total_size` and `content_type` are passed in so backends that need
     /// to declare them upfront (S3 sets Content-Type on initiation; B2
     /// validates the file_info hash later) can do so without a second
-    /// round trip. Returns an opaque `MultipartHandle` that callers must
-    /// thread through subsequent `upload_part` / `complete_multipart_upload`
-    /// / `abort_multipart_upload` calls.
+    /// round trip. `local_source_path` is the on-disk source file the
+    /// runner is uploading, threaded through for backends whose commit
+    /// step requires a whole-file checksum (Box's `Digest: sha=...` on
+    /// `/upload_sessions/<id>/commit`) so the provider can stream the
+    /// file once at commit time. Backends that do not need it ignore it.
+    ///
+    /// Returns an opaque `MultipartHandle` that callers must thread
+    /// through subsequent `upload_part` / `complete_multipart_upload` /
+    /// `abort_multipart_upload` calls.
     async fn begin_multipart_upload(
         &mut self,
         _remote_path: &str,
         _total_size: u64,
         _content_type: Option<&str>,
+        _local_source_path: Option<&str>,
     ) -> Result<MultipartHandle, ProviderError> {
         Err(ProviderError::NotSupported(
             "begin_multipart_upload".to_string(),

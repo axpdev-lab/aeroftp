@@ -2046,6 +2046,7 @@ impl StorageProvider for OneDriveProvider {
         remote_path: &str,
         total_size: u64,
         _content_type: Option<&str>,
+        _local_source_path: Option<&str>,
     ) -> Result<MultipartHandle, ProviderError> {
         if total_size == 0 {
             return Err(ProviderError::Other(
