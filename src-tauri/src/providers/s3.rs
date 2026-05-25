@@ -76,6 +76,31 @@ fn etag_to_md5(raw: &str) -> Option<String> {
     }
 }
 
+/// Plan the `UploadPartCopy` parts for a server-side multipart copy of
+/// `source_size` bytes at the given `part_size`. Returns a vector of
+/// `(part_number, range_start, range_end_inclusive)` triples ready to be
+/// dispatched as `x-amz-copy-source-range: bytes=A-B` headers.
+///
+/// Pure function so the part-planning logic can be unit-tested without
+/// any HTTP mocking. The S3 cap of 10000 parts per upload is not
+/// enforced here: the caller decides how to surface it.
+fn plan_copy_parts(source_size: u64, part_size: u64) -> Vec<(u32, u64, u64)> {
+    if source_size == 0 || part_size == 0 {
+        return Vec::new();
+    }
+    let total = source_size.div_ceil(part_size);
+    let mut out = Vec::with_capacity(total as usize);
+    let mut offset = 0u64;
+    let mut part_number = 1u32;
+    while offset < source_size {
+        let end_inclusive = (offset + part_size - 1).min(source_size - 1);
+        out.push((part_number, offset, end_inclusive));
+        offset = end_inclusive + 1;
+        part_number = part_number.saturating_add(1);
+    }
+    out
+}
+
 fn is_local_s3_endpoint(endpoint: &str) -> bool {
     let lower = endpoint.trim().to_ascii_lowercase();
     let stripped = lower
@@ -987,6 +1012,18 @@ impl S3Provider {
     /// list with thousands of tiny segments.
     const MULTIPART_PART_SIZE: usize = 16 * 1024 * 1024;
 
+    /// S3 spec: single-PUT CopyObject (`x-amz-copy-source`) is hard-capped
+    /// at 5 GiB. Above this size the copy must be expressed as a multipart
+    /// upload whose parts are filled by UploadPartCopy. Below or equal,
+    /// the single-PUT path is preferred (one round trip, atomic).
+    const COPY_OBJECT_MAX: u64 = 5 * 1024 * 1024 * 1024;
+    /// Part size for server-side multipart copy. 100 MiB keeps the part
+    /// count bounded (5 GiB → 50 parts, 100 GiB → 1000 parts; S3 max is
+    /// 10000 parts per upload). Each UploadPartCopy is server-to-server,
+    /// so no client disk read happens and part-size tuning is purely an
+    /// API round-trip vs. parallelism tradeoff.
+    const COPY_MULTIPART_PART_SIZE: u64 = 100 * 1024 * 1024;
+
     /// Effective part size, using override if set. Capped on the low end
     /// at the S3 spec minimum (5 MiB), not at the multipart cutoff (which
     /// is now 200 MiB and would otherwise reject any sane part size).
@@ -1094,6 +1131,77 @@ impl S3Provider {
             })?;
 
         Ok(etag)
+    }
+
+    /// UploadPartCopy: server-side copy of a byte range from `copy_source`
+    /// into the destination multipart part. Used by `server_side_copy`
+    /// when the source object exceeds the single-PUT CopyObject limit of
+    /// 5 GiB.
+    ///
+    /// `copy_source` is the SigV4-canonical form `/<bucket>/<encoded-key>`
+    /// (same encoding rule as `server_side_copy`'s `x-amz-copy-source`).
+    /// `range_start..=range_end_inclusive` is sent verbatim in the
+    /// `x-amz-copy-source-range` header (S3 spec: inclusive on both ends).
+    ///
+    /// Unlike UploadPart, the response ETag arrives inside the XML body
+    /// (`<CopyPartResult><ETag>...</ETag></CopyPartResult>`), not in the
+    /// `ETag` response header, which is why we parse the body explicitly.
+    async fn upload_part_copy_internal(
+        &self,
+        dest_key: &str,
+        upload_id: &str,
+        part_number: u32,
+        copy_source: &str,
+        range_start: u64,
+        range_end_inclusive: u64,
+    ) -> Result<String, ProviderError> {
+        let part_num_str = part_number.to_string();
+        let range_value = format!("bytes={}-{}", range_start, range_end_inclusive);
+        let params: &[(&str, &str)] = &[
+            ("partNumber", &part_num_str),
+            ("uploadId", upload_id),
+        ];
+        let extra: &[(&str, &str)] = &[
+            ("x-amz-copy-source", copy_source),
+            ("x-amz-copy-source-range", &range_value),
+        ];
+        let response = self
+            .s3_request_ext(Method::PUT, dest_key, Some(params), None, extra)
+            .await?;
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(ProviderError::TransferFailed(format!(
+                "UploadPartCopy {} failed ({}): {}",
+                part_number,
+                status,
+                sanitize_api_error(&body)
+            )));
+        }
+        // S3-compatible servers (AWS + MinIO + Filen bridge) can return HTTP
+        // 200 with an `<Error>` XML body when validation fails late on the
+        // server side. Mirror the single-PUT copy path's 200-with-error
+        // handling so the caller doesn't silently complete a broken upload.
+        if body.to_ascii_lowercase().contains("<error>") {
+            let err_code = self
+                .extract_xml_tag(&body, "Code")
+                .unwrap_or_else(|| "CopyPartError".to_string());
+            let err_msg = self
+                .extract_xml_tag(&body, "Message")
+                .unwrap_or_else(|| "Server reported error during UploadPartCopy".to_string());
+            return Err(ProviderError::TransferFailed(format!(
+                "UploadPartCopy {} 200-with-error ({}): {}",
+                part_number,
+                sanitize_api_error(&err_code),
+                sanitize_api_error(&err_msg)
+            )));
+        }
+        self.extract_xml_tag(&body, "ETag").ok_or_else(|| {
+            ProviderError::ParseError(format!(
+                "Missing ETag in UploadPartCopy {} response",
+                part_number
+            ))
+        })
     }
 
     /// Complete a multipart upload (internal inherent path).
@@ -1275,6 +1383,213 @@ impl S3Provider {
         let _ = self
             .s3_request(Method::DELETE, key, Some(&[("uploadId", upload_id)]), None)
             .await;
+        Ok(())
+    }
+
+    /// Single-PUT server-side copy (`x-amz-copy-source` header). Used by
+    /// `server_side_copy` for sources ≤ 5 GiB. Caller must have already
+    /// validated `self.connected`.
+    ///
+    /// Issue #128 follow-up: `x-amz-copy-source` must be percent-encoded
+    /// the same way the destination URL is encoded under `build_url`,
+    /// otherwise SigV4 canonicalisation reconstructs a different wire
+    /// path from the (lenient) request and the bridge returns
+    /// `401 SignatureDoesNotMatch`. Filen Desktop's local S3 bridge is
+    /// strict about this: any space, emoji or RFC-3986 reserved char in
+    /// the source key triggered the mismatch on rename / move. AWS and
+    /// MinIO tolerated the unencoded form, which is why this went
+    /// unnoticed until the Filen reproduction.
+    async fn server_side_copy_single(
+        &self,
+        from_key: &str,
+        to_key: &str,
+    ) -> Result<(), ProviderError> {
+        let copy_source = format!("/{}/{}", self.config.bucket, encode_s3_key_path(from_key));
+
+        let url = self.build_url(to_key);
+
+        use sha2::{Digest, Sha256};
+        let payload_hash = {
+            let mut hasher = Sha256::new();
+            hasher.update(b"");
+            hex::encode(hasher.finalize())
+        };
+
+        let mut headers = HashMap::new();
+        headers.insert("x-amz-copy-source".to_string(), copy_source);
+        // COPY-01: Preserve original object metadata during copy
+        headers.insert("x-amz-metadata-directive".to_string(), "COPY".to_string());
+        let authorization = self.sign_request("PUT", &url, &mut headers, &payload_hash)?;
+
+        let mut request = self.client.put(&url);
+        for (key, value) in headers.iter() {
+            request = request.header(key, value);
+        }
+        request = request.header("Authorization", &authorization);
+        request = request.header("Content-Length", "0");
+
+        let response = request
+            .send()
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+
+        match status {
+            StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => {
+                // S3-compatible providers may return HTTP 200 with an XML <Error> payload.
+                // Treat this as a failed copy to avoid deleting the source during rename.
+                if body.to_ascii_lowercase().contains("<error>") {
+                    let err_code = body
+                        .split("<Code>")
+                        .nth(1)
+                        .and_then(|s| s.split("</Code>").next())
+                        .unwrap_or("CopyError");
+                    let err_msg = body
+                        .split("<Message>")
+                        .nth(1)
+                        .and_then(|s| s.split("</Message>").next())
+                        .unwrap_or("S3 provider returned an error during copy");
+                    return Err(ProviderError::ServerError(format!(
+                        "Copy failed ({}): {} - {}",
+                        status,
+                        sanitize_api_error(err_code),
+                        sanitize_api_error(err_msg)
+                    )));
+                }
+
+                info!("Copied {} to {}", from_key, to_key);
+                Ok(())
+            }
+            _ => Err(ProviderError::ServerError(format!(
+                "Copy failed ({}): {}",
+                status,
+                sanitize_api_error(&body)
+            ))),
+        }
+    }
+
+    /// Server-side multipart copy for sources > 5 GiB (T-DEBT-08).
+    ///
+    /// Implementation:
+    /// 1. `CreateMultipartUpload(to_key)` → `upload_id`, preserving the
+    ///    source `content_type` best-effort.
+    /// 2. Plan the parts via `plan_copy_parts(source_size, part_size)`.
+    /// 3. Fan out `UploadPartCopy` up to 4 concurrent server-to-server
+    ///    requests (no client disk read, no client egress beyond signed
+    ///    headers): `x-amz-copy-source` + `x-amz-copy-source-range`.
+    /// 4. Collect ETags, sort by part number, `CompleteMultipartUpload`.
+    /// 5. On any error along the way, `AbortMultipartUpload` best-effort
+    ///    so we don't leak server-side storage cost.
+    ///
+    /// Caller must have validated `self.connected`. The destination
+    /// `to_key` should be the trimmed key (no leading `/`).
+    async fn server_side_copy_multipart(
+        &self,
+        from_key: &str,
+        to_key: &str,
+        source_size: u64,
+        content_type: Option<&str>,
+    ) -> Result<(), ProviderError> {
+        let copy_source = format!("/{}/{}", self.config.bucket, encode_s3_key_path(from_key));
+
+        let part_size = Self::COPY_MULTIPART_PART_SIZE;
+        let planned = plan_copy_parts(source_size, part_size);
+        // S3 caps multipart at 10000 parts per upload. With a 100 MiB
+        // part size that's 1 TiB; refuse louder than failing mid-stream
+        // so the caller can re-tune part size in a follow-up if they
+        // really need to copy a >1 TiB object.
+        if planned.len() > 10_000 {
+            return Err(ProviderError::ServerError(format!(
+                "Server-side copy of {} ({} bytes) would need {} parts at {} MiB each; \
+                 exceeds S3 cap of 10000 parts per multipart upload",
+                from_key,
+                source_size,
+                planned.len(),
+                part_size / (1024 * 1024)
+            )));
+        }
+
+        let upload_id = self.create_multipart_upload(to_key, content_type).await?;
+
+        let max_parallel = 4usize;
+        let mut parts: Vec<(u32, String)> = Vec::with_capacity(planned.len());
+        let mut cursor = planned.into_iter();
+
+        loop {
+            let mut joinset = tokio::task::JoinSet::new();
+            for _ in 0..max_parallel {
+                let Some((part_number, range_start, range_end_inclusive)) = cursor.next() else {
+                    break;
+                };
+                let provider = self.clone();
+                let dest_key = to_key.to_string();
+                let upload_id_owned = upload_id.clone();
+                let copy_source_owned = copy_source.clone();
+                joinset.spawn(async move {
+                    let etag = provider
+                        .upload_part_copy_internal(
+                            &dest_key,
+                            &upload_id_owned,
+                            part_number,
+                            &copy_source_owned,
+                            range_start,
+                            range_end_inclusive,
+                        )
+                        .await?;
+                    Ok::<(u32, String), ProviderError>((part_number, etag))
+                });
+            }
+
+            if joinset.is_empty() {
+                break;
+            }
+
+            while let Some(joined) = joinset.join_next().await {
+                match joined {
+                    Ok(Ok((pn, etag))) => parts.push((pn, etag)),
+                    Ok(Err(e)) => {
+                        joinset.abort_all();
+                        while joinset.join_next().await.is_some() {}
+                        let _ = self
+                            .abort_multipart_upload_internal(to_key, &upload_id)
+                            .await;
+                        return Err(e);
+                    }
+                    Err(e) => {
+                        joinset.abort_all();
+                        while joinset.join_next().await.is_some() {}
+                        let _ = self
+                            .abort_multipart_upload_internal(to_key, &upload_id)
+                            .await;
+                        return Err(ProviderError::TransferFailed(format!(
+                            "UploadPartCopy task panicked: {e}"
+                        )));
+                    }
+                }
+            }
+        }
+
+        parts.sort_by_key(|(pn, _)| *pn);
+
+        if let Err(e) = self
+            .complete_multipart_upload_internal(to_key, &upload_id, &parts)
+            .await
+        {
+            let _ = self
+                .abort_multipart_upload_internal(to_key, &upload_id)
+                .await;
+            return Err(e);
+        }
+
+        info!(
+            "Server-side multipart copied {} -> {} ({} bytes in {} parts)",
+            from_key,
+            to_key,
+            source_size,
+            parts.len()
+        );
         Ok(())
     }
 
@@ -2849,79 +3164,33 @@ impl StorageProvider for S3Provider {
 
         let from_key = from.trim_start_matches('/');
         let to_key = to.trim_start_matches('/');
-        // Issue #128 follow-up: `x-amz-copy-source` must be percent-encoded
-        // the same way the destination URL is encoded under `build_url`,
-        // otherwise SigV4 canonicalisation reconstructs a different wire
-        // path from the (lenient) request and the bridge returns
-        // `401 SignatureDoesNotMatch`. Filen Desktop's local S3 bridge is
-        // strict about this: any space, emoji or RFC-3986 reserved char in
-        // the source key triggered the mismatch on rename / move. AWS and
-        // MinIO tolerated the unencoded form, which is why this went
-        // unnoticed until the Filen reproduction.
-        let copy_source = format!("/{}/{}", self.config.bucket, encode_s3_key_path(from_key));
 
-        let url = self.build_url(to_key);
+        // HEAD source up front so we know whether to take the single-PUT
+        // CopyObject path or compose the copy as a multipart sequence of
+        // UploadPartCopy operations. The HEAD is one cheap round trip per
+        // copy and surfaces a `NotFound` immediately instead of waiting
+        // for the PUT to fail downstream. Network egress is unchanged:
+        // headers only.
+        let source_meta = self.stat(from).await?;
+        let source_size = source_meta.size;
 
-        use sha2::{Digest, Sha256};
-        let payload_hash = {
-            let mut hasher = Sha256::new();
-            hasher.update(b"");
-            hex::encode(hasher.finalize())
-        };
-
-        let mut headers = HashMap::new();
-        headers.insert("x-amz-copy-source".to_string(), copy_source);
-        // COPY-01: Preserve original object metadata during copy
-        headers.insert("x-amz-metadata-directive".to_string(), "COPY".to_string());
-        let authorization = self.sign_request("PUT", &url, &mut headers, &payload_hash)?;
-
-        let mut request = self.client.put(&url);
-        for (key, value) in headers.iter() {
-            request = request.header(key, value);
+        if source_size <= Self::COPY_OBJECT_MAX {
+            return self.server_side_copy_single(from_key, to_key).await;
         }
-        request = request.header("Authorization", &authorization);
-        request = request.header("Content-Length", "0");
 
-        let response = request
-            .send()
-            .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-
-        let status = response.status();
-        let body = response.text().await.unwrap_or_default();
-
-        match status {
-            StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => {
-                // S3-compatible providers may return HTTP 200 with an XML <Error> payload.
-                // Treat this as a failed copy to avoid deleting the source during rename.
-                if body.to_ascii_lowercase().contains("<error>") {
-                    let err_code = body
-                        .split("<Code>")
-                        .nth(1)
-                        .and_then(|s| s.split("</Code>").next())
-                        .unwrap_or("CopyError");
-                    let err_msg = body
-                        .split("<Message>")
-                        .nth(1)
-                        .and_then(|s| s.split("</Message>").next())
-                        .unwrap_or("S3 provider returned an error during copy");
-                    return Err(ProviderError::ServerError(format!(
-                        "Copy failed ({}): {} - {}",
-                        status,
-                        sanitize_api_error(err_code),
-                        sanitize_api_error(err_msg)
-                    )));
-                }
-
-                info!("Copied {} to {}", from, to);
-                Ok(())
-            }
-            _ => Err(ProviderError::ServerError(format!(
-                "Copy failed ({}): {}",
-                status,
-                sanitize_api_error(&body)
-            ))),
-        }
+        // T-DEBT-08: source > 5 GiB, single CopyObject would fail with
+        // `EntityTooLarge`. Fall through to multipart copy. Content-Type
+        // is preserved best-effort from the HEAD response; the rest of
+        // the source metadata is not (S3 multipart copy lacks the
+        // single-PUT `metadata-directive: COPY` slot).
+        let content_type = source_meta.mime_type;
+        self.server_side_copy_multipart(
+            from_key,
+            to_key,
+            source_size,
+            content_type.as_deref(),
+        )
+        .await
     }
 
     // Shaped-graph multipart trait wiring.
@@ -4166,6 +4435,68 @@ mod tests {
         assert_eq!(file.name, "foto vacanze.jpg");
         assert_eq!(file.path, "/foto vacanze.jpg");
         assert_eq!(file.size, 1024);
+    }
+
+    /// T-DEBT-08: `plan_copy_parts` is the pure half of server-side
+    /// multipart copy. Validates the part-planning math without touching
+    /// any HTTP path: the actual UploadPartCopy sequencing is verified
+    /// in the owner-side MinIO smoke documented in the task plan.
+    #[test]
+    fn plan_copy_parts_returns_empty_for_zero_size_or_part_size() {
+        assert!(plan_copy_parts(0, 100).is_empty());
+        assert!(plan_copy_parts(1024, 0).is_empty());
+    }
+
+    #[test]
+    fn plan_copy_parts_single_aligned_full_part() {
+        let parts = plan_copy_parts(100, 100);
+        assert_eq!(parts, vec![(1, 0, 99)]);
+    }
+
+    #[test]
+    fn plan_copy_parts_unaligned_tail_under_part_size() {
+        // 250 bytes at part size 100 → parts [0-99], [100-199], [200-249]
+        let parts = plan_copy_parts(250, 100);
+        assert_eq!(parts, vec![(1, 0, 99), (2, 100, 199), (3, 200, 249)]);
+    }
+
+    #[test]
+    fn plan_copy_parts_six_gib_at_hundred_mib_yields_sixty_one_parts() {
+        // 6 GiB at 100 MiB parts: 6144 MiB / 100 MiB = 61.44 → ceil = 62.
+        // Last part covers 44 MiB and 1-indexed numbering caps at 62.
+        let six_gib: u64 = 6 * 1024 * 1024 * 1024;
+        let hundred_mib: u64 = 100 * 1024 * 1024;
+        let parts = plan_copy_parts(six_gib, hundred_mib);
+        assert_eq!(parts.len(), 62);
+        // Part numbers are contiguous starting at 1.
+        for (idx, (pn, _, _)) in parts.iter().enumerate() {
+            assert_eq!(*pn as usize, idx + 1);
+        }
+        // Ranges fully cover the source with no gap and no overlap.
+        let mut expected_start = 0u64;
+        for (_, start, end_inclusive) in &parts {
+            assert_eq!(*start, expected_start);
+            assert!(end_inclusive >= start);
+            expected_start = end_inclusive + 1;
+        }
+        assert_eq!(expected_start, six_gib);
+        // First 61 parts are full-size; the last carries the remainder.
+        let last = parts.last().unwrap();
+        let last_size = last.2 - last.1 + 1;
+        let expected_last = six_gib - hundred_mib * 61;
+        assert_eq!(last_size, expected_last);
+    }
+
+    #[test]
+    fn plan_copy_parts_at_or_below_copy_object_max_still_plans() {
+        // The pure planner doesn't know about the 5 GiB CopyObject cap;
+        // the caller (`server_side_copy`) is responsible for routing
+        // small sources to the single-PUT path. Verify the planner still
+        // emits the obvious one-part plan when called below the cap.
+        let four_gib: u64 = 4 * 1024 * 1024 * 1024;
+        let huge_part: u64 = 8 * 1024 * 1024 * 1024;
+        let parts = plan_copy_parts(four_gib, huge_part);
+        assert_eq!(parts, vec![(1, 0, four_gib - 1)]);
     }
 
     /// AWS-standard S3 returns `<Key>` verbatim. A literal `%20` inside a key
