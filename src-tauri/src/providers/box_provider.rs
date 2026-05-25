@@ -2657,6 +2657,20 @@ impl StorageProvider for BoxProvider {
             .open_chunked_upload_session(remote_path, total_size)
             .await?;
         meta.local_path = local_source.to_string();
+        // The runner uses the advertised `multipart_part_size` (8 MiB) as
+        // the per-part length; the Box session returns its own server-
+        // decided `part_size`. They MUST match or upload_part calls will
+        // overlap byte ranges. For files < 5 GiB Box returns 8 MiB so
+        // this almost always matches; surface a typed error otherwise so
+        // the runner aborts cleanly instead of producing corrupt commits.
+        const BOX_ADVERTISED_PART_SIZE: u64 = 8 * 1024 * 1024;
+        if meta.part != BOX_ADVERTISED_PART_SIZE {
+            return Err(ProviderError::TransferFailed(format!(
+                "Box server returned part_size {} but the runner expects {}; \
+                 cannot proceed without runner re-shaping (out-of-scope for S2)",
+                meta.part, BOX_ADVERTISED_PART_SIZE
+            )));
+        }
         Ok(MultipartHandle {
             upload_id: meta.encode(),
             remote_path: remote_path.to_string(),

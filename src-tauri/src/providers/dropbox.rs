@@ -59,15 +59,15 @@ impl DropboxMultipartMeta {
     }
 }
 
-/// Match the runner's `part_size = file_size.div_ceil(total_parts)` formula
-/// so `begin_multipart_upload` and the runner agree on chunk boundaries
-/// without piping `part_size` through the trait surface.
+/// The runner uses `preferred_chunk_size` verbatim as the per-part byte
+/// length, so the handle simply mirrors the advertised value. Dropbox's
+/// concurrent session accepts any chunk size from 1 byte up to 150 MiB,
+/// so the 8 MiB hint is the only contract we need to enforce here.
 fn dropbox_runner_part_size(total_size: u64) -> u64 {
     if total_size == 0 {
         return 0;
     }
-    let parts = total_size.div_ceil(DROPBOX_MULTIPART_PART_SIZE).max(1);
-    total_size.div_ceil(parts)
+    DROPBOX_MULTIPART_PART_SIZE
 }
 
 /// T-DEBT-05 S1-T02c: Dropbox throttles by returning 429 with the hint in
@@ -2439,48 +2439,38 @@ mod tests {
     }
 
     #[test]
-    fn dropbox_runner_part_size_matches_runner_div_ceil_formula() {
-        let cases: &[u64] = &[
-            0,
-            1,
-            DROPBOX_MULTIPART_PART_SIZE,
+    fn dropbox_runner_part_size_returns_constant_chunk_size_for_nonzero_total() {
+        // The runner uses `preferred_chunk_size` verbatim, so the helper
+        // mirrors `DROPBOX_MULTIPART_PART_SIZE` for any non-zero total.
+        // Zero is the sentinel for an empty file (rejected at the trait
+        // boundary before the runner ever sees it).
+        assert_eq!(dropbox_runner_part_size(0), 0);
+        for &total in &[
+            1u64,
             DROPBOX_MULTIPART_PART_SIZE - 1,
+            DROPBOX_MULTIPART_PART_SIZE,
             DROPBOX_MULTIPART_PART_SIZE + 1,
             DROPBOX_SESSION_THRESHOLD,
             500 * 1024 * 1024,
             10 * 1024 * 1024 * 1024,
-        ];
-        for &total in cases {
-            let got = dropbox_runner_part_size(total);
-            if total == 0 {
-                assert_eq!(got, 0);
-                continue;
-            }
-            let parts = total.div_ceil(DROPBOX_MULTIPART_PART_SIZE).max(1);
-            assert_eq!(got, total.div_ceil(parts), "mismatch for total={total}");
-            // Sanity: every part_number from 1..=parts has a valid offset.
-            for pn in 1..=parts {
-                let offset = (pn - 1) * got;
-                assert!(offset < total, "offset overflow at total={total} pn={pn}");
-            }
-            let last_offset = (parts - 1) * got;
-            assert!(total - last_offset > 0);
+        ] {
+            assert_eq!(dropbox_runner_part_size(total), DROPBOX_MULTIPART_PART_SIZE);
         }
     }
 
     #[test]
-    fn dropbox_offset_math_covers_500_mib_exactly() {
+    fn dropbox_offset_math_covers_500_mib_with_8mib_chunks() {
+        // With the runner forwarding `preferred_chunk_size = 8 MiB`,
+        // 500 MiB fans into 63 parts: 62 full 8 MiB chunks + a 4 MiB tail.
         let total: u64 = 500 * 1024 * 1024;
-        let part = dropbox_runner_part_size(total);
+        let part = DROPBOX_MULTIPART_PART_SIZE;
         let parts = total.div_ceil(part);
+        assert_eq!(parts, 63);
         let mut seen_end: i128 = -1;
         for pn in 1..=parts {
             let offset = (pn - 1) * part;
             let len = part.min(total - offset);
             let end = offset + len - 1;
-            // Monotonic but non-overlapping (Dropbox concurrent mode demands
-            // distinct byte ranges; sequential ordering matters only here
-            // because the test walks parts in order).
             assert!(offset as i128 > seen_end);
             seen_end = end as i128;
         }

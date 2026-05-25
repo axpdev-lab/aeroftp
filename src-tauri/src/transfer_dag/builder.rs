@@ -293,6 +293,13 @@ pub struct TransferGraphProfile {
     /// either do not support multipart upload or do not advertise a higher
     /// chunk budget.
     pub max_chunk_slots: u16,
+    /// Provider's preferred multipart chunk size (bytes). The runner uses
+    /// this verbatim as the per-part byte length so chunks honour the
+    /// provider's alignment contract (Google Drive: 256 KiB; OneDrive:
+    /// 320 KiB; S3 / B2: any size ≥ 5 MiB). The last part takes whatever
+    /// remains of the file. `0` means no preference — the runner falls
+    /// back to the `file_size / upload_parts` div_ceil distribution.
+    pub preferred_chunk_size: u64,
 }
 
 impl TransferGraphProfile {
@@ -310,13 +317,14 @@ impl TransferGraphProfile {
         }
         .is_available();
 
+        let chunk_hint = caps
+            .preferred_chunk_size
+            .filter(|size| *size > 0)
+            .unwrap_or(DEFAULT_MULTIPART_CHUNK_SIZE);
+
         let upload_parts =
             if direction == TransferDirection::Upload && caps.multipart_upload.is_available() {
-                let chunk = caps
-                    .preferred_chunk_size
-                    .filter(|size| *size > 0)
-                    .unwrap_or(DEFAULT_MULTIPART_CHUNK_SIZE);
-                let parts = file_size.div_ceil(chunk).max(1);
+                let parts = file_size.div_ceil(chunk_hint).max(1);
                 (parts as usize).clamp(1, MAX_MULTIPART_PARTS)
             } else {
                 1
@@ -327,12 +335,19 @@ impl TransferGraphProfile {
             } else {
                 1
             };
+        let preferred_chunk_size =
+            if direction == TransferDirection::Upload && caps.multipart_upload.is_available() {
+                chunk_hint
+            } else {
+                0
+            };
 
         Self {
             upload_parts,
             resume,
             api_slots,
             max_chunk_slots,
+            preferred_chunk_size,
         }
     }
 }
@@ -670,10 +685,29 @@ impl TransferDagBuilder {
 
         let mut transfer = Vec::new();
         if direction == TransferDirection::Upload && profile.upload_parts > 1 {
-            for _ in 0..profile.upload_parts {
+            // Providers that hit one chunk slot at a time (`max_chunk_slots
+            // == 1`) usually require monotonic per-part ordering: Drive's
+            // resumable session enforces a strictly increasing
+            // `Content-Range`; OneDrive's Graph session does the same.
+            // Without explicit inter-part dependencies the DAG executor is
+            // free to dispatch any ready node, so even with a single
+            // chunk slot we could see part 7 land before part 2. Chain
+            // the `UploadPart` nodes (N depends on N-1) whenever
+            // parallelism is 1 so the runner's lazy `begin` sees parts
+            // in order. Backends with `max_chunk_slots > 1` (S3, B2,
+            // Dropbox concurrent sessions, Box chunked v2) keep the
+            // unconstrained fan-out shape so the runner can dispatch
+            // chunk uploads in parallel up to `max_chunk_slots`.
+            let serialise = profile.max_chunk_slots <= 1;
+            for idx in 0..profile.upload_parts {
+                let parent_dep = if serialise && idx > 0 {
+                    vec![transfer[idx - 1]]
+                } else {
+                    vec![acquire]
+                };
                 transfer.push(dag.add_node(
                     TransferNodeKind::UploadPart,
-                    vec![acquire],
+                    parent_dep,
                     part_request(profile.api_slots),
                 ));
             }
