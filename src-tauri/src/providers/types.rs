@@ -348,6 +348,12 @@ pub struct WebDavConfig {
     pub username: String,
     pub password: secrecy::SecretString,
     pub initial_path: Option<String>,
+    /// Optional saved-profile preset id (`nextcloud`, `koofr`, ...).
+    ///
+    /// This is more reliable than URL inspection for self-hosted profiles
+    /// whose URL is a bare cloud hostname and whose DAV root is carried in
+    /// `initial_path`.
+    pub provider_id: Option<String>,
     /// Whether to verify TLS certificates (default: true). Set to false for self-signed certs.
     pub verify_cert: bool,
     /// Whether requests should omit Authorization headers.
@@ -412,6 +418,12 @@ impl WebDavConfig {
             .initial_path
             .as_ref()
             .map(|p| p.replace("{username}", &username));
+        let provider_id = config
+            .extra
+            .get("provider_id")
+            .or_else(|| config.extra.get("providerId"))
+            .map(|p| p.trim().to_string())
+            .filter(|p| !p.is_empty());
 
         let verify_cert = config
             .extra
@@ -429,6 +441,7 @@ impl WebDavConfig {
             username,
             password: secrecy::SecretString::from(config.password.clone().unwrap_or_default()),
             initial_path,
+            provider_id,
             verify_cert,
             anonymous,
         })
@@ -609,6 +622,24 @@ mod webdav_config_tests {
         let resolved = WebDavConfig::from_provider_config(&cfg).unwrap();
         assert_eq!(resolved.url, "https://webdav.cloudme.com/bob");
         assert!(resolved.initial_path.is_none());
+    }
+
+    #[test]
+    fn provider_id_is_forwarded_from_extra() {
+        let mut extra = std::collections::HashMap::new();
+        extra.insert("provider_id".to_string(), "nextcloud".to_string());
+        let cfg = ProviderConfig {
+            name: "nextcloud".to_string(),
+            provider_type: ProviderType::WebDav,
+            host: "https://cloud.lab.axpdev.it".to_string(),
+            port: Some(443),
+            username: Some("admin".to_string()),
+            password: Some("p".to_string()),
+            initial_path: Some("/remote.php/dav/files/admin".to_string()),
+            extra,
+        };
+        let resolved = WebDavConfig::from_provider_config(&cfg).unwrap();
+        assert_eq!(resolved.provider_id.as_deref(), Some("nextcloud"));
     }
 
     #[test]
