@@ -23,6 +23,49 @@ use super::{
 
 /// Box API endpoints
 const API_BASE: &str = "https://api.box.com/2.0";
+
+/// T-DEBT-05 S1-T02e: Box returns 429 with a standard `Retry-After` header
+/// (seconds form). Box does not use a JSON body field for the hint; the
+/// header is the authoritative source. Box may also return 503 in
+/// maintenance windows, which is congestion the same way OneDrive's 503
+/// is.
+fn box_is_rate_limited(status: u16) -> bool {
+    status == 429 || status == 503
+}
+
+/// Compute the marker substring for a Box rate-limit response. Pure-fn
+/// so the test exercises the header-parsing branches without any HTTP
+/// scaffolding.
+fn box_retry_marker_tail(status: u16, retry_header: Option<&str>) -> Option<String> {
+    if !box_is_rate_limited(status) {
+        return None;
+    }
+    let hint = super::retry_after::parse_retry_after_seconds(retry_header.unwrap_or(""))?;
+    Some(crate::transfer_dag::adaptive::embed_retry_after_marker(
+        hint.as_secs(),
+    ))
+}
+
+/// Build a `ProviderError::Other` from a failed Box HTTP response,
+/// appending the Retry-After marker when the response is a throttle
+/// signal. The `context_prefix` is prepended verbatim.
+async fn box_error_from_response(
+    response: reqwest::Response,
+    context_prefix: &str,
+) -> ProviderError {
+    let status = response.status();
+    let retry_header = response
+        .headers()
+        .get(reqwest::header::RETRY_AFTER)
+        .and_then(|v| v.to_str().ok())
+        .map(String::from);
+    let text = response.text().await.unwrap_or_default();
+    let mut msg = format!("{} {}: {}", context_prefix, status, sanitize_api_error(&text));
+    if let Some(tail) = box_retry_marker_tail(status.as_u16(), retry_header.as_deref()) {
+        msg.push_str(&tail);
+    }
+    ProviderError::Other(msg)
+}
 const UPLOAD_BASE: &str = "https://upload.box.com/api/2.0";
 
 /// Box watermark info (returned by fields=watermark_info)
@@ -455,11 +498,7 @@ impl BoxProvider {
                 .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
             if !resp.status().is_success() {
-                let body = resp.text().await.unwrap_or_default();
-                return Err(ProviderError::Other(format!(
-                    "List trash failed: {}",
-                    sanitize_api_error(&body)
-                )));
+                return Err(box_error_from_response(resp, "List trash failed:").await);
             }
 
             let page: BoxTrashCollection = resp
@@ -527,11 +566,7 @@ impl BoxProvider {
                 .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
             if !resp.status().is_success() {
-                let body = resp.text().await.unwrap_or_default();
-                return Err(ProviderError::Other(format!(
-                    "Trash failed: {}",
-                    sanitize_api_error(&body)
-                )));
+                return Err(box_error_from_response(resp, "Trash failed:").await);
             }
             info!("Box: trashed {} {}", item_type, path);
         }
@@ -567,11 +602,7 @@ impl BoxProvider {
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
-            let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!(
-                "Restore failed: {}",
-                sanitize_api_error(&body)
-            )));
+            return Err(box_error_from_response(resp, "Restore failed:").await);
         }
         info!("Box: restored {} {} from trash", item_type, item_id);
         Ok(())
@@ -604,11 +635,7 @@ impl BoxProvider {
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
-            let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!(
-                "Permanent delete failed: {}",
-                sanitize_api_error(&body)
-            )));
+            return Err(box_error_from_response(resp, "Permanent delete failed:").await);
         }
         info!(
             "Box: permanently deleted {} {} from trash",
@@ -649,11 +676,7 @@ impl BoxProvider {
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
-            let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!(
-                "Move failed: {}",
-                sanitize_api_error(&body)
-            )));
+            return Err(box_error_from_response(resp, "Move failed:").await);
         }
         info!("Box: moved {} {} -> {}", item_type, from_path, to_folder);
         Ok(())
@@ -681,11 +704,7 @@ impl BoxProvider {
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
-            let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!(
-                "List comments failed: {}",
-                sanitize_api_error(&body)
-            )));
+            return Err(box_error_from_response(resp, "List comments failed:").await);
         }
 
         let result: BoxCommentCollection = resp
@@ -2452,5 +2471,41 @@ mod tests {
     fn bearer_header_rejects_control_chars_in_token() {
         let bad_token = SecretString::from("bad\ntoken".to_string());
         assert!(BoxProvider::bearer_header(&bad_token).is_err());
+    }
+
+    // T-DEBT-05 S1-T02e: Box rate-limit detection + marker emission.
+
+    #[test]
+    fn box_is_rate_limited_recognises_429_and_503() {
+        assert!(box_is_rate_limited(429));
+        assert!(box_is_rate_limited(503));
+        assert!(!box_is_rate_limited(500));
+        assert!(!box_is_rate_limited(404));
+        assert!(!box_is_rate_limited(200));
+    }
+
+    #[test]
+    fn box_retry_marker_tail_emits_marker_on_429_with_header() {
+        let tail = box_retry_marker_tail(429, Some("30")).expect("rate-limited + valid hint");
+        assert!(tail.contains("retry-after-secs=30"));
+    }
+
+    #[test]
+    fn box_retry_marker_tail_emits_marker_on_503_with_header() {
+        let tail = box_retry_marker_tail(503, Some("120")).expect("503 maintenance");
+        assert!(tail.contains("retry-after-secs=120"));
+    }
+
+    #[test]
+    fn box_retry_marker_tail_returns_none_when_not_rate_limited() {
+        assert_eq!(box_retry_marker_tail(500, Some("30")), None);
+        assert_eq!(box_retry_marker_tail(404, Some("30")), None);
+    }
+
+    #[test]
+    fn box_retry_marker_tail_returns_none_without_header() {
+        assert_eq!(box_retry_marker_tail(429, None), None);
+        assert_eq!(box_retry_marker_tail(429, Some("")), None);
+        assert_eq!(box_retry_marker_tail(429, Some("abc")), None);
     }
 }
