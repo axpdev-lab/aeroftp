@@ -2226,6 +2226,51 @@ impl StorageProvider for DropboxProvider {
             )));
         }
 
+        // Concurrent upload sessions MUST be closed explicitly before
+        // `finish` is invoked. The protocol path: send a no-op
+        // `append_v2` with `close: true` and an empty body at the
+        // closing offset; then call `finish`. Without this Dropbox
+        // returns 409 `concurrent_session_not_closed/`.
+        let close_url = format!("{}/files/upload_session/append_v2", CONTENT_BASE);
+        let close_arg = serde_json::json!({
+            "cursor": {
+                "session_id": meta.session_id,
+                "offset": meta.total
+            },
+            "close": true
+        });
+        let auth_close = self.auth_header().await?;
+        let close_response = self
+            .client
+            .post(&close_url)
+            .header(AUTHORIZATION, auth_close)
+            .header(CONTENT_TYPE, "application/octet-stream")
+            .header("Dropbox-API-Arg", close_arg.to_string())
+            .body(Vec::<u8>::new())
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+        if !close_response.status().is_success() {
+            let status = close_response.status();
+            let retry_header = close_response
+                .headers()
+                .get(reqwest::header::RETRY_AFTER)
+                .and_then(|v| v.to_str().ok())
+                .map(String::from);
+            let text = close_response.text().await.unwrap_or_default();
+            let mut msg = format!(
+                "Dropbox upload_session/append_v2 close=true failed (HTTP {}): {}",
+                status,
+                sanitize_api_error(&text)
+            );
+            if let Some(tail) =
+                dropbox_retry_marker_tail(status.as_u16(), &text, retry_header.as_deref())
+            {
+                msg.push_str(&tail);
+            }
+            return Err(ProviderError::Other(msg));
+        }
+
         let finish_url = format!("{}/files/upload_session/finish", CONTENT_BASE);
         let finish_arg = serde_json::json!({
             "cursor": {
