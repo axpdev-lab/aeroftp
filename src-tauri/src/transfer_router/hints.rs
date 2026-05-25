@@ -51,6 +51,7 @@ pub fn from_provider_type(
         ProviderType::Ftp | ProviderType::Ftps => ProviderHint::Ftp,
         ProviderType::S3 => ProviderHint::S3,
         ProviderType::Backblaze => ProviderHint::B2,
+        ProviderType::Azure => ProviderHint::AzureBlob,
         ProviderType::WebDav => webdav_variant(server_url, preset_id),
         // Cloud providers (OAuth or token-based) without per-class
         // measurement yet. DAG default until a benchmark says otherwise.
@@ -62,7 +63,6 @@ pub fn from_provider_type(
         | ProviderType::Mega
         | ProviderType::Box
         | ProviderType::PCloud
-        | ProviderType::Azure
         | ProviderType::Filen
         | ProviderType::FourShared
         | ProviderType::ZohoWorkdrive
@@ -135,24 +135,23 @@ fn webdav_variant(server_url: Option<&str>, preset_id: Option<&str>) -> Provider
     ProviderHint::WebDavVanilla
 }
 
-/// Files <= this size are dominated by per-request latency, not bandwidth;
-/// the DAG vs Legacy delta is mostly rumour. Default to DAG.
-const SMALL_CUTOFF: u64 = 4 * 1024 * 1024; // 4 MiB
-
-/// Files between `SMALL_CUTOFF` and `MEDIUM_CUTOFF` are where the WebDAV
-/// vanilla download regression bites. The lower bound is set above the
-/// small-file noise floor; the upper bound is the threshold above which
-/// even vanilla WebDAV download starts to recover (the multi-thread
-/// provider cutoff is 250 MiB by default).
+/// Large-file threshold used by providers with multipart fan-out decisions.
 const MEDIUM_CUTOFF: u64 = 250 * 1024 * 1024; // 250 MiB
 
 pub fn recommend(ctx: RouteContext) -> Decision {
     match ctx.provider {
         ProviderHint::WebDavVanilla => recommend_webdav_vanilla(ctx),
-        ProviderHint::WebDavNextcloud => default_dag("WebDAV Nextcloud: all sizes WIN on Phase A (download 100M +6.0%, 1G +16.8%)"),
-        ProviderHint::WebDavGateway => default_dag("WebDAV gateway (Koofr): WIN +132% upload 1G, +161% download 100M"),
+        ProviderHint::WebDavNextcloud => default_dag(
+            "WebDAV Nextcloud: all sizes WIN on Phase A (download 100M +6.0%, 1G +16.8%)",
+        ),
+        ProviderHint::WebDavGateway => {
+            default_dag("WebDAV gateway (Koofr): WIN +132% upload 1G, +161% download 100M")
+        }
         ProviderHint::S3 => recommend_s3(ctx),
         ProviderHint::B2 => recommend_b2(ctx),
+        ProviderHint::AzureBlob => {
+            default_dag("Azure Blob: native Put Block multipart + Range; DAG default")
+        }
         ProviderHint::Sftp => default_dag("SFTP: borderline within +-3% on Phase A, DAG default"),
         ProviderHint::Ftp => default_dag("FTP: Phase A gate green"),
         ProviderHint::OAuthCloud => default_dag("OAuth cloud: no measured regression, DAG default"),
@@ -164,25 +163,18 @@ pub fn recommend(ctx: RouteContext) -> Decision {
 }
 
 fn recommend_webdav_vanilla(ctx: RouteContext) -> Decision {
-    // Phase A finding (overnight 2026-05-25): vanilla WebDAV download
-    // 100M = -16.3%, 1G = -18.3%, raw v4 [71.4, 55.6, 52.3] degrades
-    // run-after-run. Tab.digital WAN shows the same shape on 100M
-    // (-12.5%). The regression is in the medium-size window; below
-    // SMALL_CUTOFF latency dominates and above MEDIUM_CUTOFF the
-    // provider's own multi-thread path takes over.
-    match ctx.operation {
-        Operation::Download if ctx.size_bytes >= SMALL_CUTOFF && ctx.size_bytes < MEDIUM_CUTOFF => {
-            Decision {
-                engine: Engine::Legacy,
-                reason: "WebDAV vanilla download 4M..250M: Phase A regression -16.3% (mod_dav LAN) / -12.5% (Tab.digital WAN)",
-            }
+    // Revalidation 2026-05-25 (T-DEBT-RTR-04): forced DAG vs forced Legacy
+    // on the same v4 binary showed no structural WebDAV-vanilla regression.
+    // `strace -c -e trace=network` was byte-shape identical (51 network
+    // syscalls in both paths); the earlier mod_dav decay is treated as lab
+    // load / paired-run noise, not a router-worthy engine distinction.
+    let reason = match ctx.operation {
+        Operation::Download => {
+            "WebDAV vanilla download: revalidated DAG/Legacy parity; DAG default"
         }
-        Operation::Download if ctx.size_bytes >= MEDIUM_CUTOFF => Decision {
-            engine: Engine::Legacy,
-            reason: "WebDAV vanilla download >=250M: Phase A regression -18.3% on 1G mod_dav LAN",
-        },
-        _ => default_dag("WebDAV vanilla upload / small download: Phase A within gate"),
-    }
+        Operation::Upload => "WebDAV vanilla upload: Phase A within gate; DAG default",
+    };
+    default_dag(reason)
 }
 
 fn recommend_s3(ctx: RouteContext) -> Decision {
@@ -190,9 +182,9 @@ fn recommend_s3(ctx: RouteContext) -> Decision {
     // after the chunk-parallel fix (`b8217fe1`), upload 1G +38.6%,
     // download 1G +40.7%. Small files are no-op for multipart.
     match (ctx.operation, ctx.size_bytes) {
-        (Operation::Upload, sz) if sz >= MEDIUM_CUTOFF => default_dag(
-            "S3 upload >=250M: Phase A WIN +38.6% (multipart fan-out parallel)",
-        ),
+        (Operation::Upload, sz) if sz >= MEDIUM_CUTOFF => {
+            default_dag("S3 upload >=250M: Phase A WIN +38.6% (multipart fan-out parallel)")
+        }
         _ => default_dag("S3: Phase A gate green"),
     }
 }
@@ -220,35 +212,55 @@ mod tests {
         RouteContext::new(p, op, size)
     }
 
-    // ── WebDAV vanilla: the regression case ───────────────────────────
+    // ── WebDAV vanilla: revalidated DAG default ───────────────────────
 
     #[test]
-    fn webdav_vanilla_download_medium_routes_to_legacy() {
-        // The 100M-on-mod-dav case where v4 dropped to 55 Mbps from 66.
-        let d = Router::new().pick(ctx(ProviderHint::WebDavVanilla, Operation::Download, 100 * 1024 * 1024));
-        assert_eq!(d.engine, Engine::Legacy);
-        assert!(d.reason.contains("Phase A regression"));
+    fn webdav_vanilla_download_medium_stays_on_dag() {
+        let d = Router::new().pick(ctx(
+            ProviderHint::WebDavVanilla,
+            Operation::Download,
+            100 * 1024 * 1024,
+        ));
+        assert_eq!(d.engine, Engine::Dag);
+        assert!(d.reason.contains("revalidated"));
     }
 
     #[test]
-    fn webdav_vanilla_download_1g_routes_to_legacy() {
-        let d = Router::new().pick(ctx(ProviderHint::WebDavVanilla, Operation::Download, 1 << 30));
-        assert_eq!(d.engine, Engine::Legacy);
+    fn webdav_vanilla_download_1g_stays_on_dag() {
+        let d = Router::new().pick(ctx(
+            ProviderHint::WebDavVanilla,
+            Operation::Download,
+            1 << 30,
+        ));
+        assert_eq!(d.engine, Engine::Dag);
     }
 
     #[test]
     fn webdav_vanilla_download_small_stays_on_dag() {
         // Small files: latency-bound, DAG default.
-        let d = Router::new().pick(ctx(ProviderHint::WebDavVanilla, Operation::Download, 1024 * 1024));
+        let d = Router::new().pick(ctx(
+            ProviderHint::WebDavVanilla,
+            Operation::Download,
+            1024 * 1024,
+        ));
         assert_eq!(d.engine, Engine::Dag);
     }
 
     #[test]
     fn webdav_vanilla_upload_always_dag() {
         // Upload was within gate on every measured size for mod_dav.
-        let d_small = Router::new().pick(ctx(ProviderHint::WebDavVanilla, Operation::Upload, 1024 * 1024));
-        let d_med = Router::new().pick(ctx(ProviderHint::WebDavVanilla, Operation::Upload, 100 * 1024 * 1024));
-        let d_big = Router::new().pick(ctx(ProviderHint::WebDavVanilla, Operation::Upload, 1 << 30));
+        let d_small = Router::new().pick(ctx(
+            ProviderHint::WebDavVanilla,
+            Operation::Upload,
+            1024 * 1024,
+        ));
+        let d_med = Router::new().pick(ctx(
+            ProviderHint::WebDavVanilla,
+            Operation::Upload,
+            100 * 1024 * 1024,
+        ));
+        let d_big =
+            Router::new().pick(ctx(ProviderHint::WebDavVanilla, Operation::Upload, 1 << 30));
         assert_eq!(d_small.engine, Engine::Dag);
         assert_eq!(d_med.engine, Engine::Dag);
         assert_eq!(d_big.engine, Engine::Dag);
@@ -260,7 +272,11 @@ mod tests {
     fn webdav_nextcloud_download_medium_stays_on_dag() {
         // The case ieri sera looked broken but the overnight matrix
         // proved was an artefact: +6.0% on the clean re-run.
-        let d = Router::new().pick(ctx(ProviderHint::WebDavNextcloud, Operation::Download, 100 * 1024 * 1024));
+        let d = Router::new().pick(ctx(
+            ProviderHint::WebDavNextcloud,
+            Operation::Download,
+            100 * 1024 * 1024,
+        ));
         assert_eq!(d.engine, Engine::Dag);
     }
 
@@ -273,7 +289,7 @@ mod tests {
         assert!(d.reason.contains("Koofr") || d.reason.contains("gateway"));
     }
 
-    // ── S3 / B2: multipart WIN ────────────────────────────────────────
+    // ── S3 / B2 / Azure: multipart WIN ────────────────────────────────
 
     #[test]
     fn s3_upload_1g_routes_to_dag_with_multipart_reason() {
@@ -286,6 +302,17 @@ mod tests {
     fn b2_inherits_s3_multipart_path() {
         let d = Router::new().pick(ctx(ProviderHint::B2, Operation::Upload, 500 * 1024 * 1024));
         assert_eq!(d.engine, Engine::Dag);
+    }
+
+    #[test]
+    fn azure_blob_routes_to_dag_with_native_multipart_reason() {
+        let d = Router::new().pick(ctx(
+            ProviderHint::AzureBlob,
+            Operation::Upload,
+            500 * 1024 * 1024,
+        ));
+        assert_eq!(d.engine, Engine::Dag);
+        assert!(d.reason.contains("Put Block"));
     }
 
     // ── SFTP / FTP / OAuth / Local ────────────────────────────────────
@@ -311,12 +338,31 @@ mod tests {
     // ── ProviderType -> ProviderHint detection ────────────────────────
 
     #[test]
-    fn detect_sftp_ftp_s3_b2() {
-        assert_eq!(from_provider_type(ProviderType::Sftp, None, None), ProviderHint::Sftp);
-        assert_eq!(from_provider_type(ProviderType::Ftp, None, None), ProviderHint::Ftp);
-        assert_eq!(from_provider_type(ProviderType::Ftps, None, None), ProviderHint::Ftp);
-        assert_eq!(from_provider_type(ProviderType::S3, None, None), ProviderHint::S3);
-        assert_eq!(from_provider_type(ProviderType::Backblaze, None, None), ProviderHint::B2);
+    fn detect_sftp_ftp_s3_b2_azure() {
+        assert_eq!(
+            from_provider_type(ProviderType::Sftp, None, None),
+            ProviderHint::Sftp
+        );
+        assert_eq!(
+            from_provider_type(ProviderType::Ftp, None, None),
+            ProviderHint::Ftp
+        );
+        assert_eq!(
+            from_provider_type(ProviderType::Ftps, None, None),
+            ProviderHint::Ftp
+        );
+        assert_eq!(
+            from_provider_type(ProviderType::S3, None, None),
+            ProviderHint::S3
+        );
+        assert_eq!(
+            from_provider_type(ProviderType::Backblaze, None, None),
+            ProviderHint::B2
+        );
+        assert_eq!(
+            from_provider_type(ProviderType::Azure, None, None),
+            ProviderHint::AzureBlob
+        );
     }
 
     #[test]
@@ -379,7 +425,11 @@ mod tests {
         // mod_dav puro: no /remote.php/dav/files/, no known hostname,
         // no preset id matching a Nextcloud/Koofr-like family.
         assert_eq!(
-            from_provider_type(ProviderType::WebDav, Some("https://dav.lab.axpdev.it/"), None),
+            from_provider_type(
+                ProviderType::WebDav,
+                Some("https://dav.lab.axpdev.it/"),
+                None
+            ),
             ProviderHint::WebDavVanilla
         );
         assert_eq!(
