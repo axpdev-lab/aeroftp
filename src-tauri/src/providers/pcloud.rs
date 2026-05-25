@@ -8,7 +8,7 @@
 
 use async_trait::async_trait;
 use chrono;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tracing::info;
 
@@ -16,10 +16,25 @@ use super::types::PCloudConfig;
 use super::{
     http_retry::{send_with_retry, HttpRetryConfig},
     oauth2::{OAuth2Manager, OAuthConfig},
-    sanitize_api_error, FileVersion, ProviderError, ProviderType, RemoteEntry,
+    sanitize_api_error, FileVersion, MultipartHandle, ProviderError, ProviderType, RemoteEntry,
     ShareLinkCapabilities, ShareLinkInfo, ShareLinkOptions, ShareLinkResult, StorageInfo,
-    StorageProvider,
+    StorageProvider, UploadedPart,
 };
+
+/// pCloud chunked-upload size threshold (S3-T01).
+///
+/// Below this size the runner uses the legacy single-shot `uploadfile`
+/// multipart-form path; at or above, it switches to the
+/// `upload_create`/`upload_write`/`upload_save` session API so the DAG
+/// shaped-graph can dispatch chunks and benefit from per-chunk retry.
+const PCLOUD_MULTIPART_THRESHOLD: u64 = 4 * 1024 * 1024;
+
+/// pCloud chunked-upload preferred part size (S3-T01).
+///
+/// pCloud's `upload_write` accepts any byte-aligned chunk; 4 MiB matches
+/// the threshold and keeps the per-chunk HTTP round-trip cost amortized
+/// against pCloud's ~30 ms RTT on the EU/US APIs.
+const PCLOUD_MULTIPART_PART_SIZE: u64 = 4 * 1024 * 1024;
 
 /// pCloud folder metadata
 #[derive(Debug, Deserialize)]
@@ -154,6 +169,52 @@ struct PCloudUploadResponse {
     result: u32,
     #[serde(default)]
     error: Option<String>,
+}
+
+/// `upload_create` response carrying the chunked-session id (S3-T01).
+#[derive(Debug, Deserialize)]
+struct PCloudUploadCreateResponse {
+    result: u32,
+    #[serde(default)]
+    error: Option<String>,
+    #[serde(default)]
+    uploadid: Option<u64>,
+}
+
+/// Side-band metadata embedded in `MultipartHandle.upload_id` for the
+/// pCloud chunked path. Carries everything `upload_part` and
+/// `complete_multipart_upload` need to derive the per-chunk byte offset,
+/// commit folder, and final file name without a second resolve round-trip.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct PCloudMultipartMeta {
+    uploadid: u64,
+    folderid: u64,
+    name: String,
+    total: u64,
+    part: u64,
+}
+
+impl PCloudMultipartMeta {
+    fn encode(&self) -> String {
+        // Infallible: every field is JSON-serialisable. Falling back to
+        // an empty string would surface as a decode error downstream.
+        serde_json::to_string(self).unwrap_or_default()
+    }
+
+    fn decode(raw: &str) -> Result<Self, ProviderError> {
+        serde_json::from_str(raw).map_err(|e| {
+            ProviderError::Other(format!("pCloud multipart handle decode failed: {}", e))
+        })
+    }
+}
+
+/// Compute the per-chunk size the runner should slice `total` bytes into.
+///
+/// Mirrors `gdrive_runner_part_size` / `dropbox_runner_part_size`: clamps to
+/// the advertised `PCLOUD_MULTIPART_PART_SIZE` and never returns zero, so a
+/// `total < part_size` upload always produces exactly one chunk.
+fn pcloud_runner_part_size(total: u64) -> u64 {
+    PCLOUD_MULTIPART_PART_SIZE.min(total.max(1))
 }
 
 /// pCloud Storage Provider
@@ -353,6 +414,95 @@ impl PCloudProvider {
             });
         }
         Ok(())
+    }
+
+    /// Look up the `folderid` of a directory by path, creating the directory
+    /// (idempotently) if pCloud reports it missing.
+    ///
+    /// Used by the shaped-graph multipart wiring (S3-T01) so
+    /// `complete_multipart_upload` has a folder id to pass to
+    /// `upload_save` without a second resolve round-trip.
+    async fn resolve_or_create_folder_id(&self, dir_path: &str) -> Result<u64, ProviderError> {
+        let normalised = if dir_path.is_empty() {
+            "/".to_string()
+        } else {
+            Self::normalize_path(dir_path)
+        };
+        let url = format!(
+            "{}/listfolder?path={}&nofiles=1",
+            self.config.api_base(),
+            urlencoding::encode(&normalised)
+        );
+        let auth = self.auth_header().await?;
+        let resp: PCloudResponse = self
+            .get_with_retry(&url, &auth)
+            .await?
+            .json()
+            .await
+            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+
+        match Self::check_response(&resp) {
+            Ok(()) => resp
+                .metadata
+                .and_then(|m| m.folderid)
+                .ok_or_else(|| {
+                    ProviderError::Other(format!(
+                        "pCloud listfolder for '{}' returned no folderid",
+                        normalised
+                    ))
+                }),
+            Err(ProviderError::NotFound(_)) => {
+                // Create the missing parent and re-resolve.
+                let create_url = format!(
+                    "{}/createfolderifnotexists?path={}",
+                    self.config.api_base(),
+                    urlencoding::encode(&normalised)
+                );
+                let create_resp: PCloudResponse = self
+                    .get_with_retry(&create_url, &auth)
+                    .await?
+                    .json()
+                    .await
+                    .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+                Self::check_response(&create_resp)?;
+                create_resp
+                    .metadata
+                    .and_then(|m| m.folderid)
+                    .ok_or_else(|| {
+                        ProviderError::Other(format!(
+                            "pCloud createfolderifnotexists for '{}' returned no folderid",
+                            normalised
+                        ))
+                    })
+            }
+            Err(other) => Err(other),
+        }
+    }
+
+    /// Open a chunked-upload session and return the server-issued `uploadid`.
+    ///
+    /// Used by `begin_multipart_upload`. Fails fast if pCloud returns a
+    /// non-zero `result` or omits the id so the runner does not try to
+    /// proceed against a phantom session.
+    async fn upload_create(&self) -> Result<u64, ProviderError> {
+        let url = format!("{}/upload_create", self.config.api_base());
+        let auth = self.auth_header().await?;
+        let resp: PCloudUploadCreateResponse = self
+            .get_with_retry(&url, &auth)
+            .await?
+            .json()
+            .await
+            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+        if resp.result != 0 {
+            return Err(ProviderError::ServerError(sanitize_api_error(
+                &resp
+                    .error
+                    .unwrap_or_else(|| format!("upload_create result {}", resp.result)),
+            )));
+        }
+        resp.uploadid.ok_or_else(|| {
+            ProviderError::Other("pCloud upload_create returned no uploadid".to_string())
+        })
     }
 }
 
@@ -1569,9 +1719,216 @@ impl StorageProvider for PCloudProvider {
 
     fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
         super::TransferOptimizationHints {
+            supports_multipart: true,
+            multipart_threshold: PCLOUD_MULTIPART_THRESHOLD,
+            multipart_part_size: PCLOUD_MULTIPART_PART_SIZE,
+            // pCloud's free tier is rate-limited around 2 API calls/sec per
+            // IP. Keeping the fan-out at 2 leaves slack for the runner's
+            // commit + abort calls without tripping `4006 Throttle limit
+            // reached`.
+            multipart_max_parallel: 2,
             supports_resume_download: true,
+            supports_resume_upload: true,
             ..Default::default()
         }
+    }
+
+    // Shaped-graph multipart trait wiring (S3-T01).
+    //
+    // pCloud's chunked upload protocol maps onto the multipart trait as:
+    //   1. `upload_create` → returns `uploadid` (u64). The trait handle
+    //      encodes it alongside the resolved `folderid` of the destination
+    //      parent + `name` + `total` + `part` so subsequent calls don't
+    //      need to re-resolve the path.
+    //   2. `upload_write?uploadid=N&uploadoffset=M` PUT with the raw chunk
+    //      body. pCloud accepts independent offsets so the runner can
+    //      fan out up to `multipart_max_parallel` parallel writes.
+    //   3. `upload_save?uploadid=N&folderid=Y&name=Z` finalises and atomically
+    //      moves the staged bytes into place. Idempotent: a repeated call
+    //      on the same uploadid returns the same fileid.
+    //   4. `upload_delete?uploadid=N` best-effort cancel. pCloud GCs stale
+    //      sessions after a few days, so the abort never re-raises.
+    async fn begin_multipart_upload(
+        &mut self,
+        remote_path: &str,
+        total_size: u64,
+        _content_type: Option<&str>,
+        _local_source_path: Option<&str>,
+    ) -> Result<MultipartHandle, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        if total_size == 0 {
+            return Err(ProviderError::Other(
+                "pCloud multipart upload requires non-zero total_size".to_string(),
+            ));
+        }
+
+        let resolved = self.resolve_path(remote_path);
+        let (dir_path, file_name) = match resolved.rfind('/') {
+            Some(0) => ("/".to_string(), resolved[1..].to_string()),
+            Some(pos) => (resolved[..pos].to_string(), resolved[pos + 1..].to_string()),
+            None => ("/".to_string(), resolved.clone()),
+        };
+        if file_name.is_empty() {
+            return Err(ProviderError::Other(format!(
+                "pCloud multipart: cannot resolve file name from path '{}'",
+                remote_path
+            )));
+        }
+
+        let folderid = self.resolve_or_create_folder_id(&dir_path).await?;
+        let uploadid = self.upload_create().await?;
+
+        let meta = PCloudMultipartMeta {
+            uploadid,
+            folderid,
+            name: file_name,
+            total: total_size,
+            part: pcloud_runner_part_size(total_size),
+        };
+        Ok(MultipartHandle {
+            upload_id: meta.encode(),
+            remote_path: remote_path.to_string(),
+        })
+    }
+
+    async fn upload_part(
+        &mut self,
+        handle: &MultipartHandle,
+        part_number: u32,
+        data: Vec<u8>,
+    ) -> Result<UploadedPart, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        if part_number == 0 {
+            return Err(ProviderError::Other(
+                "pCloud upload_part requires 1-based part_number".to_string(),
+            ));
+        }
+        if data.is_empty() {
+            return Err(ProviderError::Other(
+                "pCloud upload_part received empty data".to_string(),
+            ));
+        }
+        let meta = PCloudMultipartMeta::decode(&handle.upload_id)?;
+        let offset = (part_number as u64 - 1) * meta.part;
+        let end = offset
+            .checked_add(data.len() as u64)
+            .ok_or_else(|| ProviderError::Other("pCloud part offset overflow".to_string()))?;
+        if end > meta.total {
+            return Err(ProviderError::Other(format!(
+                "pCloud part {} exceeds declared total: offset {} + len {} > total {}",
+                part_number,
+                offset,
+                data.len(),
+                meta.total
+            )));
+        }
+
+        let url = format!(
+            "{}/upload_write?uploadid={}&uploadoffset={}",
+            self.config.api_base(),
+            meta.uploadid,
+            offset
+        );
+        let auth = self.auth_header().await?;
+
+        let resp = self
+            .client
+            .put(&url)
+            .header(reqwest::header::AUTHORIZATION, auth)
+            .header(reqwest::header::CONTENT_TYPE, "application/octet-stream")
+            .body(data)
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::TransferFailed(format!(
+                "pCloud upload_write part {} failed (HTTP {}): {}",
+                part_number,
+                status,
+                sanitize_api_error(&text)
+            )));
+        }
+
+        // pCloud `upload_write` returns `{result:0}` on success, no per-part
+        // ETag. The committing `upload_save` ties the parts together by
+        // uploadid, so the receipt body can stay empty.
+        let parsed: PCloudUploadResponse = resp
+            .json()
+            .await
+            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+        if parsed.result != 0 {
+            return Err(ProviderError::TransferFailed(format!(
+                "pCloud upload_write part {} returned result {}: {}",
+                part_number,
+                parsed.result,
+                parsed.error.unwrap_or_default()
+            )));
+        }
+        Ok(UploadedPart {
+            part_number,
+            etag: String::new(),
+        })
+    }
+
+    async fn complete_multipart_upload(
+        &mut self,
+        handle: MultipartHandle,
+        parts: Vec<UploadedPart>,
+    ) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        let meta = PCloudMultipartMeta::decode(&handle.upload_id)?;
+        let expected = meta.total.div_ceil(meta.part).max(1) as usize;
+        if parts.len() != expected {
+            return Err(ProviderError::TransferFailed(format!(
+                "pCloud complete: expected {} parts, runner committed {}",
+                expected,
+                parts.len()
+            )));
+        }
+
+        let url = format!(
+            "{}/upload_save?uploadid={}&folderid={}&name={}",
+            self.config.api_base(),
+            meta.uploadid,
+            meta.folderid,
+            urlencoding::encode(&meta.name)
+        );
+        let auth = self.auth_header().await?;
+        let resp: PCloudResponse = self
+            .get_with_retry(&url, &auth)
+            .await?
+            .json()
+            .await
+            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+        Self::check_response(&resp)?;
+        Ok(())
+    }
+
+    async fn abort_multipart_upload(
+        &mut self,
+        handle: MultipartHandle,
+    ) -> Result<(), ProviderError> {
+        let meta = PCloudMultipartMeta::decode(&handle.upload_id)?;
+        // Best-effort: if `upload_delete` fails we let the server GC the
+        // session. Re-raising would mask the original transfer error.
+        let url = format!(
+            "{}/upload_delete?uploadid={}",
+            self.config.api_base(),
+            meta.uploadid
+        );
+        if let Ok(auth) = self.auth_header().await {
+            let _ = self.client.get(&url).header("Authorization", &auth).send().await;
+        }
+        Ok(())
     }
 }
 
@@ -1794,5 +2151,60 @@ mod tests {
     fn check_response_synthesizes_error_when_none_provided() {
         let err = PCloudProvider::check_response(&api_response(5000, None)).unwrap_err();
         assert!(format!("{}", err).contains("5000"));
+    }
+
+    // ---- S3-T01 multipart trait wiring ----
+
+    #[test]
+    fn pcloud_multipart_meta_roundtrip_preserves_fields() {
+        let meta = PCloudMultipartMeta {
+            uploadid: 0xdead_beef_cafe_babe,
+            folderid: 42,
+            name: "file with spaces & symbols.bin".to_string(),
+            total: 1024 * 1024 * 1024,
+            part: 4 * 1024 * 1024,
+        };
+        let encoded = meta.encode();
+        let decoded = PCloudMultipartMeta::decode(&encoded).expect("decode roundtrip");
+        assert_eq!(meta, decoded);
+    }
+
+    #[test]
+    fn pcloud_multipart_meta_decode_rejects_garbage() {
+        let err = PCloudMultipartMeta::decode("not-json").unwrap_err();
+        assert!(matches!(err, ProviderError::Other(_)));
+    }
+
+    #[test]
+    fn pcloud_runner_part_size_clamps_and_never_returns_zero() {
+        // Below threshold: part shrinks down to total so single chunk covers
+        // the file exactly (no zero-byte tail, no oversize chunk).
+        assert_eq!(pcloud_runner_part_size(1024), 1024);
+        // total == part: one chunk of advertised size.
+        assert_eq!(
+            pcloud_runner_part_size(PCLOUD_MULTIPART_PART_SIZE),
+            PCLOUD_MULTIPART_PART_SIZE
+        );
+        // total > part: caps at advertised size.
+        assert_eq!(
+            pcloud_runner_part_size(100 * 1024 * 1024 * 1024),
+            PCLOUD_MULTIPART_PART_SIZE
+        );
+        // total == 0 must not produce a 0 part (degenerate guard against
+        // division by zero in callers).
+        assert_eq!(pcloud_runner_part_size(0), 1);
+    }
+
+    #[test]
+    fn pcloud_transfer_hints_advertise_multipart() {
+        let hints = test_provider().transfer_optimization_hints();
+        assert!(hints.supports_multipart);
+        assert_eq!(hints.multipart_threshold, PCLOUD_MULTIPART_THRESHOLD);
+        assert_eq!(hints.multipart_part_size, PCLOUD_MULTIPART_PART_SIZE);
+        // pCloud free-tier rate-limits to ~2 calls/s; keep fan-out at 2
+        // so commit + abort calls don't trip throttle errors.
+        assert_eq!(hints.multipart_max_parallel, 2);
+        assert!(hints.supports_resume_download);
+        assert!(hints.supports_resume_upload);
     }
 }
