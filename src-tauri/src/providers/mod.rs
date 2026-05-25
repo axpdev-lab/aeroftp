@@ -931,6 +931,16 @@ pub trait StorageProvider: Send + Sync {
         Err(ProviderError::NotSupported("clone_for_list".to_string()))
     }
 
+    /// Routing hint for the [`crate::transfer_router`] data-driven engine
+    /// selector. Default implementation maps the [`ProviderType`] to a
+    /// [`crate::transfer_router::ProviderHint`] without inspecting any
+    /// server URL, which is the right answer for every provider except
+    /// WebDAV (Nextcloud vs gateway vs vanilla discrimination needs the
+    /// URL). The WebDAV provider overrides this method.
+    fn router_hint(&self) -> crate::transfer_router::ProviderHint {
+        crate::transfer_router::hints::from_provider_type(self.provider_type(), None, None)
+    }
+
     /// Get scheduler-facing transfer capabilities for the Core DAG engine.
     ///
     /// This is deliberately stricter than the legacy hint surface: a provider
