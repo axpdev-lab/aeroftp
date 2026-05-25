@@ -115,6 +115,7 @@ mod provider_commands;
 // executor + orchestrator the GUI uses (sink-agnostic after
 // PD-CLI-CONV-A). Additive visibility only: no behaviour change, no API
 // break (visibility only widens).
+pub mod copy_fallback;
 pub mod provider_transfer_executor;
 pub mod providers;
 mod pty;

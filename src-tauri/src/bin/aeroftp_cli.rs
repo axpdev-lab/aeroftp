@@ -358,9 +358,9 @@ struct Cli {
     /// router (default), `dag` forces every transfer through the shaped-graph
     /// DAG engine, `legacy` forces the provider-direct path. The router is
     /// populated from Phase A benchmark measurements (see
-    /// `docs/dev/benchmarks/2026-05-2{4,5}_phaseA-*/`): the only narrow case
-    /// where `legacy` wins on default is vanilla-WebDAV download in the
-    /// 4MiB-1GiB range. Reads default from `AEROFTP_TRANSFER_ENGINE`.
+    /// `docs/dev/benchmarks/2026-05-2{4,5}_phaseA-*/`) and revalidated by
+    /// T-DEBT-RTR-04. The default is DAG everywhere; `legacy` remains an
+    /// operator override. Reads default from `AEROFTP_TRANSFER_ENGINE`.
     #[arg(
         long,
         global = true,
@@ -4930,7 +4930,10 @@ async fn cli_run_single_file_dag(
         // URL with extra signal (e.g. `--profile` lookup populated
         // `cli.url`), re-evaluate so the URL-allowlist branches catch
         // Tab.digital / Koofr / FeliCloud.
-        if matches!(provider_hint, ftp_client_gui_lib::transfer_router::ProviderHint::WebDavVanilla) {
+        if matches!(
+            provider_hint,
+            ftp_client_gui_lib::transfer_router::ProviderHint::WebDavVanilla
+        ) {
             ftp_client_gui_lib::transfer_router::hints::from_provider_type(
                 provider.provider_type(),
                 server_url,
@@ -4940,14 +4943,9 @@ async fn cli_run_single_file_dag(
             provider_hint
         }
     };
-    // For Upload the local size is exact. For Download we don't know
-    // the remote size at routing time (the leaf is the bare
-    // `provider.download` path), so we assume the worst case
-    // (`u64::MAX`): on WebDAV vanilla this lands the lookup in the
-    // `>= MEDIUM_CUTOFF` branch and routes to Legacy (avoiding the
-    // -18% regression observed on 1G download). On every other
-    // provider the hint table has no size-conditional rule for
-    // download, so the result is the same as any other size.
+    // For Upload the local size is exact. For Download the current hint
+    // table has no size-conditional rule, so the placeholder cannot affect
+    // the decision and avoids an extra remote stat round-trip.
     let route_size: u64 = match direction {
         ftp_client_gui_lib::transfer_dag::TransferDirection::Upload => local_size,
         ftp_client_gui_lib::transfer_dag::TransferDirection::Download => u64::MAX,
@@ -11205,6 +11203,14 @@ fn profile_to_provider_config(
 
     // Load provider-specific options from profile
     apply_profile_options(&mut extra, profile);
+    if let Some(provider_id) = profile
+        .get("providerId")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        extra.insert("provider_id".to_string(), provider_id.to_string());
+    }
 
     // CLI overrides take precedence
     if let Some(ref key) = cli.key {
@@ -13310,55 +13316,24 @@ async fn webdav_dispatch(
             };
             let dest_remote = build_served_remote_path(&state.base_path, &dest_relative);
             let mut provider = state.provider.lock().await;
-            if provider.supports_server_copy() {
-                match provider.server_copy(&remote_path, &dest_remote).await {
-                    Ok(()) => {
-                        let mut response = Response::new(Body::empty());
-                        *response.status_mut() = StatusCode::CREATED;
-                        response
-                    }
-                    Err(e) => {
-                        serve_error_response(provider_error_to_status_code(&e), &e.to_string())
-                    }
+            // Shared fallback policy: tries server_copy first, then streams
+            // through a local temp file on capability-boundary failures
+            // (S3 cross-bucket, WebDAV 501, Nextcloud cross-share) so the
+            // bridged COPY always returns 201 when the bytes did move,
+            // regardless of which path got us there.
+            match ftp_client_gui_lib::copy_fallback::server_side_copy_with_fallback(
+                provider.as_mut(),
+                &remote_path,
+                &dest_remote,
+            )
+            .await
+            {
+                Ok(_outcome) => {
+                    let mut response = Response::new(Body::empty());
+                    *response.status_mut() = StatusCode::CREATED;
+                    response
                 }
-            } else {
-                // Fallback: download then upload
-                match provider.download_to_bytes(&remote_path).await {
-                    Ok(data) => {
-                        let temp = match NamedTempFile::new() {
-                            Ok(t) => t,
-                            Err(e) => {
-                                return serve_error_response(
-                                    StatusCode::INTERNAL_SERVER_ERROR,
-                                    &format!("Temp file error: {}", e),
-                                )
-                            }
-                        };
-                        if let Err(e) = std::fs::write(temp.path(), &data) {
-                            return serve_error_response(
-                                StatusCode::INTERNAL_SERVER_ERROR,
-                                &format!("Write error: {}", e),
-                            );
-                        }
-                        match provider
-                            .upload(&temp.path().to_string_lossy(), &dest_remote, None)
-                            .await
-                        {
-                            Ok(()) => {
-                                let mut response = Response::new(Body::empty());
-                                *response.status_mut() = StatusCode::CREATED;
-                                response
-                            }
-                            Err(e) => serve_error_response(
-                                provider_error_to_status_code(&e),
-                                &e.to_string(),
-                            ),
-                        }
-                    }
-                    Err(e) => {
-                        serve_error_response(provider_error_to_status_code(&e), &e.to_string())
-                    }
-                }
+                Err(e) => serve_error_response(provider_error_to_status_code(&e), &e.to_string()),
             }
         }
 
@@ -17026,27 +17001,35 @@ async fn cmd_cp(url: &str, from: &str, to: &str, cli: &Cli, format: OutputFormat
 
     let from = &resolve_cli_remote_path(&initial_path, from);
     let to = &resolve_cli_remote_path(&initial_path, to);
-    if !provider.supports_server_copy() {
-        print_error(
-            format,
-            "Server-side copy is not supported by this provider",
-            7,
-        );
-        let _ = provider.disconnect().await;
-        return 7;
-    }
 
-    match provider.server_copy(from, to).await {
-        Ok(()) => {
+    // Goes through `server_side_copy_with_fallback` so the CLI exits 0
+    // even when the provider does not advertise server-side copy or
+    // rejects this specific operation (S3 cross-bucket without IAM,
+    // WebDAV 501, Nextcloud cross-share). Hard errors (auth, source not
+    // found, quota) still surface with their original exit code.
+    match ftp_client_gui_lib::copy_fallback::server_side_copy_with_fallback(
+        provider.as_mut(),
+        from,
+        to,
+    )
+    .await
+    {
+        Ok(outcome) => {
+            let suffix = match outcome {
+                ftp_client_gui_lib::copy_fallback::CopyOutcome::ServerSide => "",
+                ftp_client_gui_lib::copy_fallback::CopyOutcome::Fallback { .. } => {
+                    " (fallback: download→upload)"
+                }
+            };
             match format {
                 OutputFormat::Text => {
                     if !cli.quiet {
-                        eprintln!("{} ⇒ {}", from, to);
+                        eprintln!("{} ⇒ {}{}", from, to, suffix);
                     }
                 }
                 OutputFormat::Json => print_json(&CliOk {
                     status: "ok",
-                    message: format!("{} ⇒ {}", from, to),
+                    message: format!("{} ⇒ {}{}", from, to, suffix),
                 }),
             }
             let _ = provider.disconnect().await;

@@ -248,6 +248,9 @@ async fn try_silent_reconnect(
 pub struct ProviderConnectionParams {
     /// Protocol type: "ftp", "ftps", "sftp", "webdav", "s3", "mega", "opendrive"
     pub protocol: String,
+    /// Optional saved-provider preset id (`nextcloud`, `koofr`, `custom-webdav`, ...).
+    #[serde(default, alias = "providerId")]
+    pub provider_id: Option<String>,
     /// Host/URL (FTP server, WebDAV URL, or S3 endpoint)
     pub server: String,
     /// Port (optional, defaults based on protocol)
@@ -350,6 +353,14 @@ impl ProviderConnectionParams {
         };
 
         let mut extra = std::collections::HashMap::new();
+        if let Some(provider_id) = self
+            .provider_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            extra.insert("provider_id".to_string(), provider_id.to_string());
+        }
 
         // Add S3-specific options
         if provider_type == ProviderType::S3 {
@@ -3031,7 +3042,14 @@ pub async fn provider_rename(
     Ok(())
 }
 
-/// Server-side copy (if supported by provider)
+/// Server-side copy with automatic download → upload fallback.
+///
+/// Tries the provider's native `server_copy` first; if the provider does
+/// not advertise the capability OR advertises it but rejects this specific
+/// operation with a recoverable error (S3 cross-bucket without IAM, WebDAV
+/// 501 / Method Not Allowed, Nextcloud cross-share), degrades to a
+/// streaming download-then-upload so the user-visible operation succeeds.
+/// Hard errors (auth, source not found, quota) propagate unchanged.
 #[tauri::command]
 pub async fn provider_server_copy(
     state: State<'_, ProviderState>,
@@ -3044,18 +3062,17 @@ pub async fn provider_server_copy(
         .as_mut()
         .ok_or("Not connected to any provider")?;
 
-    if !provider.supports_server_copy() {
-        return Err("Server-side copy not supported by this provider".to_string());
-    }
-
     info!("Server copy: {} -> {}", from, to);
 
-    provider
-        .server_copy(&from, &to)
-        .await
-        .map_err(|e| format!("Failed to copy: {}", e))?;
-
-    Ok(())
+    match crate::copy_fallback::server_side_copy_with_fallback(provider.as_mut(), &from, &to).await
+    {
+        Ok(crate::copy_fallback::CopyOutcome::ServerSide) => Ok(()),
+        Ok(crate::copy_fallback::CopyOutcome::Fallback { note }) => {
+            info!("Server copy fell back to download→upload: {}", note);
+            Ok(())
+        }
+        Err(e) => Err(format!("Failed to copy: {}", e)),
+    }
 }
 
 /// Check if provider supports server-side copy
@@ -9797,6 +9814,7 @@ mod tests {
     fn s3_params(path_style: Option<bool>) -> ProviderConnectionParams {
         ProviderConnectionParams {
             protocol: "s3".to_string(),
+            provider_id: None,
             server: "http://localhost".to_string(),
             port: Some(3900),
             username: "access".to_string(),
@@ -9867,6 +9885,19 @@ mod tests {
         assert_eq!(
             config.extra.get("anonymous").map(String::as_str),
             Some("true")
+        );
+    }
+
+    #[test]
+    fn test_provider_params_forward_provider_id() {
+        let mut params = s3_params(None);
+        params.protocol = "webdav".to_string();
+        params.bucket = None;
+        params.provider_id = Some("nextcloud".to_string());
+        let config = params.to_provider_config().unwrap();
+        assert_eq!(
+            config.extra.get("provider_id").map(String::as_str),
+            Some("nextcloud")
         );
     }
 
