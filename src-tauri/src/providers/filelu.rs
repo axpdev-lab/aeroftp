@@ -2085,6 +2085,20 @@ impl StorageProvider for FileLuProvider {
     }
 
     fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
+        // Shaped-graph multipart trait (S3-T11): intentionally not advertised.
+        //
+        // FileLu's documented upload protocol is a single-shot multipart-form
+        // POST against the `/upload/server`-issued URL with one `file_0` part.
+        // The server does not document a chunked append/commit endpoint, and
+        // the upload session cannot be resumed across multiple HTTP calls.
+        //
+        // The legacy `upload()` path already streams the body via
+        // `tokio_util::io::ReaderStream`, so large files do not pin RAM even
+        // without trait-level chunking - what's missing is per-chunk retry.
+        // Adding a fake-multipart wrapper that buffered chunks in memory
+        // would defeat the streaming property without adding any real
+        // resumability, so we leave `supports_multipart=false` and let
+        // the runner pick the legacy path.
         super::TransferOptimizationHints {
             supports_resume_download: true,
             ..Default::default()
