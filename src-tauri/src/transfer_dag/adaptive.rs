@@ -109,6 +109,35 @@ pub fn congestion_from_error(raw: &str) -> Option<CongestionEvent> {
     }
 }
 
+/// Marker prefix for embedding a `Retry-After` hint inside a `ProviderError`
+/// message string. The call chain provider → executor doesn't carry typed
+/// metadata, so per-provider helpers (`parse_retry_after_drive` /
+/// `_dropbox` / `_onedrive` / `_box`) append the marker when they emit the
+/// error, and [`parse_embedded_retry_after`] consumes it in the executor.
+///
+/// Format: ` [retry-after-secs=NN]` appended to the error text, where `NN`
+/// is a non-negative integer of seconds. Sub-second hints round up at the
+/// provider site to avoid defeating the AIMD throttle, matching
+/// [`AimdController::MIN_HINT_COOLDOWN`]. T-DEBT-05.
+const RETRY_HINT_MARKER: &str = " [retry-after-secs=";
+
+/// Build the marker substring to append to a `ProviderError` message after a
+/// rate-limit response. Pair with [`parse_embedded_retry_after`] in the
+/// executor to recover the value without changing `ProviderError`'s shape.
+pub fn embed_retry_after_marker(seconds: u64) -> String {
+    format!("{RETRY_HINT_MARKER}{seconds}]")
+}
+
+/// Extract a `Retry-After` hint that a provider embedded in the error
+/// message via [`embed_retry_after_marker`]. Returns `None` when the marker
+/// is absent, malformed, or carries a value that does not parse as a u64.
+pub fn parse_embedded_retry_after(message: &str) -> Option<Duration> {
+    let start = message.find(RETRY_HINT_MARKER)?;
+    let rest = &message[start + RETRY_HINT_MARKER.len()..];
+    let end = rest.find(']')?;
+    rest[..end].parse::<u64>().ok().map(Duration::from_secs)
+}
+
 /// RAII permit from a [`DynamicSemaphore`]. On drop the underlying permit is
 /// returned, then if the semaphore still owes a shrink the freed slot is
 /// absorbed instead of being handed to the next waiter.
@@ -831,6 +860,56 @@ mod tests {
             elapsed_d >= Duration::from_secs(4) && elapsed_d <= Duration::from_secs(6),
             "expected ~5s (default cooldown), got {:?}",
             elapsed_d
+        );
+    }
+
+    // T-DEBT-05 S1-T02f: marker convention helpers. The marker carries the
+    // server-provided Retry-After across the provider→executor boundary
+    // without requiring a typed field on ProviderError.
+
+    #[test]
+    fn marker_roundtrips_seconds_value() {
+        let msg = format!("HTTP 429 Too Many Requests{}", embed_retry_after_marker(45));
+        assert_eq!(
+            parse_embedded_retry_after(&msg),
+            Some(Duration::from_secs(45))
+        );
+    }
+
+    #[test]
+    fn marker_returns_none_when_absent() {
+        let msg = "HTTP 429 Too Many Requests";
+        assert_eq!(parse_embedded_retry_after(msg), None);
+    }
+
+    #[test]
+    fn marker_returns_none_on_malformed_value() {
+        // Negative is not a valid u64.
+        assert_eq!(
+            parse_embedded_retry_after("err [retry-after-secs=-5]"),
+            None
+        );
+        // Non-numeric.
+        assert_eq!(
+            parse_embedded_retry_after("err [retry-after-secs=abc]"),
+            None
+        );
+        // Missing closing bracket.
+        assert_eq!(parse_embedded_retry_after("err [retry-after-secs=30"), None);
+    }
+
+    #[test]
+    fn marker_extracts_first_occurrence_only() {
+        // If a provider double-appends (defensive: should not happen), the
+        // first valid value wins. This keeps the helper deterministic.
+        let msg = format!(
+            "err{}{}",
+            embed_retry_after_marker(30),
+            embed_retry_after_marker(60)
+        );
+        assert_eq!(
+            parse_embedded_retry_after(&msg),
+            Some(Duration::from_secs(30))
         );
     }
 }
