@@ -28,17 +28,32 @@ use async_trait::async_trait;
 use futures_util::StreamExt;
 use reqwest::{multipart, StatusCode};
 use secrecy::{ExposeSecret, SecretString};
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Mutex;
 use tokio_util::io::ReaderStream;
 
 use super::{
-    response_bytes_with_limit, sanitize_api_error, ProviderConfig, ProviderError, ProviderType,
-    RemoteEntry, StorageInfo, StorageProvider, TransferOptimizationHints, AEROFTP_USER_AGENT,
-    MAX_DOWNLOAD_TO_BYTES,
+    response_bytes_with_limit, sanitize_api_error, MultipartHandle, ProviderConfig, ProviderError,
+    ProviderType, RemoteEntry, StorageInfo, StorageProvider, TransferOptimizationHints,
+    UploadedPart, AEROFTP_USER_AGENT, MAX_DOWNLOAD_TO_BYTES,
 };
+
+/// Cloudinary chunked-upload kick-in threshold (S3-T14).
+///
+/// Below this size the runner keeps the legacy single-shot multipart POST.
+/// At or above, it switches to the chunked path which carries the
+/// `X-Unique-Upload-Id` header so Cloudinary stitches the chunks
+/// server-side. Cloudinary documents 100 MB as the cutover.
+const CLOUDINARY_MULTIPART_THRESHOLD: u64 = 100 * 1024 * 1024;
+
+/// Cloudinary chunked-upload preferred part size (S3-T14).
+///
+/// Cloudinary's chunked upload accepts arbitrary part sizes; 20 MiB
+/// amortises the multipart-form overhead while keeping per-chunk
+/// memory bounded for the live test rig.
+const CLOUDINARY_MULTIPART_PART_SIZE: u64 = 20 * 1024 * 1024;
 
 /// Tolerant null-to-default deserializer (mirrors imagekit.rs `null_to_default`).
 fn null_to_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
@@ -226,6 +241,44 @@ struct CloudinaryError {
 struct CloudinaryErrorBody {
     #[serde(default)]
     message: Option<String>,
+}
+
+/// Side-band metadata embedded in `MultipartHandle.upload_id` for the
+/// Cloudinary chunked-upload path (S3-T14). `unique_upload_id` is the
+/// per-upload random tag every chunk must carry in the
+/// `X-Unique-Upload-Id` header so Cloudinary stitches the chunks
+/// together server-side; `folder` is pre-resolved so upload_part does
+/// not have to re-parse the remote_path.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct CloudinaryMultipartMeta {
+    unique_upload_id: String,
+    upload_url: String,
+    folder: String,
+    file_name: String,
+    total: u64,
+    part: u64,
+    total_parts: u32,
+}
+
+impl CloudinaryMultipartMeta {
+    fn encode(&self) -> String {
+        serde_json::to_string(self).unwrap_or_default()
+    }
+
+    fn decode(raw: &str) -> Result<Self, ProviderError> {
+        serde_json::from_str(raw).map_err(|e| {
+            ProviderError::Other(format!("Cloudinary multipart handle decode failed: {}", e))
+        })
+    }
+}
+
+fn cloudinary_runner_part_size(total: u64) -> u64 {
+    CLOUDINARY_MULTIPART_PART_SIZE.min(total.max(1))
+}
+
+fn cloudinary_total_parts(total: u64, part: u64) -> u32 {
+    let raw = total.div_ceil(part.max(1)).max(1);
+    raw.min(u32::MAX as u64) as u32
 }
 
 pub struct CloudinaryProvider {
@@ -1170,10 +1223,185 @@ impl StorageProvider for CloudinaryProvider {
 
     fn transfer_optimization_hints(&self) -> TransferOptimizationHints {
         TransferOptimizationHints {
+            supports_multipart: true,
+            multipart_threshold: CLOUDINARY_MULTIPART_THRESHOLD,
+            multipart_part_size: CLOUDINARY_MULTIPART_PART_SIZE,
+            // Cloudinary's chunked upload demands a monotonic
+            // `Content-Range`; chunks are not idempotent across the
+            // same `X-Unique-Upload-Id`. Strict sequential dispatch.
+            multipart_max_parallel: 1,
             supports_range_download: true,
             supports_resume_download: true,
+            supports_resume_upload: true,
             ..TransferOptimizationHints::default()
         }
+    }
+
+    // Shaped-graph multipart trait wiring (S3-T14).
+    //
+    // Cloudinary's chunked upload maps onto the trait as:
+    //   1. `begin_multipart_upload` → no server round-trip: generate a
+    //      per-upload `X-Unique-Upload-Id` (UUID v4) and stash it
+    //      together with the resolved folder, target file name,
+    //      total/part-size pair, and the precomputed upload URL.
+    //   2. `upload_part` → POST `<upload_url>` with multipart form
+    //      `{file:chunk_bytes, ...auth, asset_folder, folder,
+    //      use_filename, unique_filename}` plus headers
+    //      `X-Unique-Upload-Id: <id>` and `Content-Range: bytes A-B/T`.
+    //      Cloudinary returns the final `CloudinaryUploadResponse` on
+    //      the closing chunk; intermediate chunks return `done: false`.
+    //   3. `complete_multipart_upload` → validate part count. Cloudinary
+    //      finalises implicitly when the last chunk's Content-Range
+    //      covers `total - 1`; no separate commit call exists.
+    //   4. `abort_multipart_upload` → no-op. Cloudinary GCs incomplete
+    //      uploads after their TTL.
+    async fn begin_multipart_upload(
+        &mut self,
+        remote_path: &str,
+        total_size: u64,
+        _content_type: Option<&str>,
+        _local_source_path: Option<&str>,
+    ) -> Result<MultipartHandle, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        if total_size == 0 {
+            return Err(ProviderError::Other(
+                "Cloudinary multipart upload requires non-zero total_size".to_string(),
+            ));
+        }
+
+        let target = self.resolve_path(remote_path);
+        let file_name = if target.is_empty() || target.ends_with('/') {
+            return Err(ProviderError::InvalidPath(
+                "Cloudinary multipart upload requires a filename".to_string(),
+            ));
+        } else {
+            basename(&target).to_string()
+        };
+        let folder = parent_segments(&target);
+        let part = cloudinary_runner_part_size(total_size);
+        let total_parts = cloudinary_total_parts(total_size, part);
+
+        let meta = CloudinaryMultipartMeta {
+            unique_upload_id: uuid::Uuid::new_v4().simple().to_string(),
+            upload_url: format!("{}/auto/upload", self.api_base()),
+            folder,
+            file_name,
+            total: total_size,
+            part,
+            total_parts,
+        };
+        Ok(MultipartHandle {
+            upload_id: meta.encode(),
+            remote_path: remote_path.to_string(),
+        })
+    }
+
+    async fn upload_part(
+        &mut self,
+        handle: &MultipartHandle,
+        part_number: u32,
+        data: Vec<u8>,
+    ) -> Result<UploadedPart, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        if part_number == 0 {
+            return Err(ProviderError::Other(
+                "Cloudinary upload_part requires 1-based part_number".to_string(),
+            ));
+        }
+        if data.is_empty() {
+            return Err(ProviderError::Other(
+                "Cloudinary upload_part received empty data".to_string(),
+            ));
+        }
+        let meta = CloudinaryMultipartMeta::decode(&handle.upload_id)?;
+        if part_number > meta.total_parts {
+            return Err(ProviderError::Other(format!(
+                "Cloudinary part {} exceeds declared total_parts {}",
+                part_number, meta.total_parts
+            )));
+        }
+        let offset = (part_number as u64 - 1) * meta.part;
+        let len = data.len() as u64;
+        let end = offset
+            .checked_add(len)
+            .ok_or_else(|| ProviderError::Other("Cloudinary part offset overflow".to_string()))?;
+        if end > meta.total {
+            return Err(ProviderError::Other(format!(
+                "Cloudinary part {} exceeds declared total: offset {} + len {} > total {}",
+                part_number, offset, len, meta.total
+            )));
+        }
+        let content_range = format!("bytes {}-{}/{}", offset, end - 1, meta.total);
+
+        let mime = mime_guess::from_path(&meta.file_name).first_or_octet_stream();
+        let file_part = multipart::Part::bytes(data)
+            .file_name(meta.file_name.clone())
+            .mime_str(mime.as_ref())
+            .map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
+        let mut form = multipart::Form::new()
+            .part("file", file_part)
+            .text("use_filename", "true")
+            .text("unique_filename", "false");
+        if !meta.folder.is_empty() {
+            form = form
+                .text("asset_folder", meta.folder.clone())
+                .text("folder", meta.folder.clone());
+        }
+
+        let resp = self
+            .auth(self.client.post(&meta.upload_url))
+            .header("X-Unique-Upload-Id", &meta.unique_upload_id)
+            .header("Content-Range", content_range)
+            .multipart(form)
+            .send()
+            .await
+            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+        if !resp.status().is_success() {
+            return Err(self.parse_error(resp).await);
+        }
+        // Intermediate chunks return `{"done": false}`, the final chunk
+        // returns the full CloudinaryUploadResponse. We don't care which
+        // shape it is at the trait level - the runner uses the count
+        // check in `complete_multipart_upload` to detect truncation.
+        Ok(UploadedPart {
+            part_number,
+            etag: meta.unique_upload_id,
+        })
+    }
+
+    async fn complete_multipart_upload(
+        &mut self,
+        handle: MultipartHandle,
+        parts: Vec<UploadedPart>,
+    ) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        let meta = CloudinaryMultipartMeta::decode(&handle.upload_id)?;
+        if parts.len() != meta.total_parts as usize {
+            return Err(ProviderError::TransferFailed(format!(
+                "Cloudinary complete: expected {} parts, runner committed {}",
+                meta.total_parts,
+                parts.len()
+            )));
+        }
+        // Cloudinary finalises implicitly on the closing chunk; nothing
+        // else is required.
+        Ok(())
+    }
+
+    async fn abort_multipart_upload(
+        &mut self,
+        _handle: MultipartHandle,
+    ) -> Result<(), ProviderError> {
+        // Cloudinary has no documented abort endpoint for incomplete
+        // chunked uploads; orphans are GCed automatically. Returning
+        // Ok keeps the abort from masking the original transfer error.
+        Ok(())
     }
 }
 
@@ -1430,5 +1658,75 @@ mod tests {
         let parsed = CloudinaryConfig::from_provider_config(&cfg).unwrap();
         assert_eq!(parsed.cloud_name, "dxz9abc12");
         assert_eq!(parsed.api_key, "key");
+    }
+
+    // ---- S3-T14 multipart trait wiring ----
+
+    #[test]
+    fn cloudinary_multipart_meta_roundtrip_preserves_fields() {
+        let meta = CloudinaryMultipartMeta {
+            unique_upload_id: "abc123def456".to_string(),
+            upload_url: "https://api.cloudinary.com/v1_1/test/auto/upload".to_string(),
+            folder: "Documents/2026".to_string(),
+            file_name: "weird name (1).bin".to_string(),
+            total: 1_073_741_824,
+            part: 20 * 1024 * 1024,
+            total_parts: 52,
+        };
+        let encoded = meta.encode();
+        let decoded = CloudinaryMultipartMeta::decode(&encoded).expect("decode roundtrip");
+        assert_eq!(meta, decoded);
+    }
+
+    #[test]
+    fn cloudinary_multipart_meta_decode_rejects_garbage() {
+        let err = CloudinaryMultipartMeta::decode("not-json").unwrap_err();
+        assert!(matches!(err, ProviderError::Other(_)));
+    }
+
+    #[test]
+    fn cloudinary_runner_part_size_clamps_and_never_returns_zero() {
+        assert_eq!(cloudinary_runner_part_size(1024), 1024);
+        assert_eq!(
+            cloudinary_runner_part_size(CLOUDINARY_MULTIPART_PART_SIZE),
+            CLOUDINARY_MULTIPART_PART_SIZE
+        );
+        assert_eq!(
+            cloudinary_runner_part_size(50 * 1024 * 1024 * 1024),
+            CLOUDINARY_MULTIPART_PART_SIZE
+        );
+        assert_eq!(cloudinary_runner_part_size(0), 1);
+    }
+
+    #[test]
+    fn cloudinary_total_parts_matches_runner_formula() {
+        let p = CLOUDINARY_MULTIPART_PART_SIZE;
+        assert_eq!(cloudinary_total_parts(0, p), 1);
+        assert_eq!(cloudinary_total_parts(p, p), 1);
+        assert_eq!(cloudinary_total_parts(4 * p, p), 4);
+        assert_eq!(cloudinary_total_parts(p + 1, p), 2);
+        // part=0 guard
+        assert_eq!(cloudinary_total_parts(7, 0), 7);
+    }
+
+    #[test]
+    fn cloudinary_content_range_math_is_inclusive_zero_based() {
+        let part = CLOUDINARY_MULTIPART_PART_SIZE;
+        let total: u64 = 2 * part + 4096;
+        let range = |n: u32| -> String {
+            let offset = (n as u64 - 1) * part;
+            let len = ((total - offset).min(part)) as usize;
+            let end = offset + len as u64;
+            format!("bytes {}-{}/{}", offset, end - 1, total)
+        };
+        assert_eq!(range(1), format!("bytes 0-{}/{}", part - 1, total));
+        assert_eq!(
+            range(2),
+            format!("bytes {}-{}/{}", part, 2 * part - 1, total)
+        );
+        assert_eq!(
+            range(3),
+            format!("bytes {}-{}/{}", 2 * part, total - 1, total)
+        );
     }
 }
