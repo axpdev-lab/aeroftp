@@ -1026,13 +1026,62 @@ async fn run_dag_download_leaf(
     // core vs multipart fan-out). For downloads the shape collapses to one
     // transfer node regardless, but we still resolve caps here so the
     // builder picks up `rate_limited_api` / `resume_download` correctly.
-    let caps = {
+    let (caps, route_hint) = {
         let guard = provider.lock().await;
-        guard
+        let caps = guard
             .as_ref()
             .map(|p| p.transfer_capabilities())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        let hint = guard
+            .as_ref()
+            .map(|p| p.router_hint())
+            .unwrap_or(crate::transfer_router::ProviderHint::OAuthCloud);
+        (caps, hint)
     };
+
+    // Phase B routing decision: only env override is honoured in GUI
+    // commands (no flag surface). Default keeps the shaped DAG path
+    // exactly as it was before the router was wired in.
+    let route_ctx = crate::transfer_router::RouteContext::new(
+        route_hint,
+        crate::transfer_router::Operation::Download,
+        file_size,
+    )
+    .with_override(crate::transfer_router::Override::from_env());
+    let decision = crate::transfer_router::Router::new().pick(route_ctx);
+
+    if decision.engine == crate::transfer_router::Engine::Legacy {
+        info!(
+            "Download routed to Legacy engine: {} ({})",
+            filename, decision.reason
+        );
+        let mut guard = provider.lock().await;
+        let result = match guard.as_mut() {
+            Some(p) => p.download(&remote_path, &local_path, progress_cb).await,
+            None => Err(ProviderError::NotConnected),
+        };
+        return match result {
+            Ok(()) => Ok(format!("Downloaded: {}", filename)),
+            Err(e) => {
+                let _ = app.emit(
+                    "transfer_event",
+                    crate::TransferEvent {
+                        event_type: "error".to_string(),
+                        transfer_id,
+                        filename: filename.clone(),
+                        direction: "download".to_string(),
+                        message: Some(format!("Download failed: {}", e)),
+                        progress: None,
+                        path: None,
+                        delta_stats: None,
+                        fallback_reason: None,
+                    },
+                );
+                Err(format!("Download failed: {}", e))
+            }
+        };
+    }
+
     let built = TransferDagBuilder::shaped_file(
         crate::transfer_dag::TransferDirection::Download,
         &caps,
@@ -1111,13 +1160,61 @@ async fn run_dag_upload_leaf(
     // is the gate between the legacy single-`UploadFile` core and a native
     // multipart fan-out (`UploadPart` x N) when the provider advertises
     // `multipart_upload`.
-    let caps = {
+    let (caps, route_hint) = {
         let guard = provider.lock().await;
-        guard
+        let caps = guard
             .as_ref()
             .map(|p| p.transfer_capabilities())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        let hint = guard
+            .as_ref()
+            .map(|p| p.router_hint())
+            .unwrap_or(crate::transfer_router::ProviderHint::OAuthCloud);
+        (caps, hint)
     };
+
+    // Phase B routing decision: same pattern as the download leaf, env
+    // override only. Default path stays on the shaped DAG.
+    let route_ctx = crate::transfer_router::RouteContext::new(
+        route_hint,
+        crate::transfer_router::Operation::Upload,
+        file_size,
+    )
+    .with_override(crate::transfer_router::Override::from_env());
+    let decision = crate::transfer_router::Router::new().pick(route_ctx);
+
+    if decision.engine == crate::transfer_router::Engine::Legacy {
+        info!(
+            "Upload routed to Legacy engine: {} ({})",
+            filename, decision.reason
+        );
+        let mut guard = provider.lock().await;
+        let result = match guard.as_mut() {
+            Some(p) => p.upload(&local_path, &remote_path, progress_cb).await,
+            None => Err(ProviderError::NotConnected),
+        };
+        return match result {
+            Ok(()) => Ok(format!("Uploaded: {}", filename)),
+            Err(e) => {
+                let _ = app.emit(
+                    "transfer_event",
+                    crate::TransferEvent {
+                        event_type: "error".to_string(),
+                        transfer_id,
+                        filename: filename.clone(),
+                        direction: "upload".to_string(),
+                        message: Some(format!("Upload failed: {}", e)),
+                        progress: None,
+                        path: None,
+                        delta_stats: None,
+                        fallback_reason: None,
+                    },
+                );
+                Err(format!("Upload failed: {}", e))
+            }
+        };
+    }
+
     let built = TransferDagBuilder::shaped_file(
         crate::transfer_dag::TransferDirection::Upload,
         &caps,
