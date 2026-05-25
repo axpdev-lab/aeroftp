@@ -345,12 +345,26 @@ pub async fn execute_single_file_dag(
                         // Forward-compat: the shaped-copy graph emits this
                         // kind, the shaped-file graph does not. Wired for
                         // SG-T12 when shaped-copy lands in the sync runner.
+                        //
+                        // Goes through `server_side_copy_with_fallback` so
+                        // providers that advertise the capability but reject
+                        // a specific operation (S3 cross-bucket without IAM,
+                        // WebDAV 501, Nextcloud cross-share MOVE) degrade to
+                        // streaming download → upload instead of failing the
+                        // node outright. Hard errors (auth, missing source)
+                        // still propagate via `record_failure`.
                         let mut guard = provider.lock().await;
                         let Some(p) = guard.as_mut() else {
                             return record_failure(&first_error, ProviderError::NotConnected);
                         };
-                        match p.server_side_copy(&remote, &local).await {
-                            Ok(()) => NodeOutcome::Completed,
+                        match crate::copy_fallback::server_side_copy_with_fallback(
+                            p.as_mut(),
+                            &remote,
+                            &local,
+                        )
+                        .await
+                        {
+                            Ok(_outcome) => NodeOutcome::Completed,
                             Err(e) => record_failure(&first_error, e),
                         }
                     }
