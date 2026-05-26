@@ -93,6 +93,7 @@ fn webdav_config(url: String, username: String, password: String) -> WebDavConfi
         username,
         password: SecretString::from(password),
         initial_path: None,
+        provider_id: None,
         verify_cert: true,
         anonymous: false,
     }
