@@ -272,7 +272,8 @@
             "profileConverted": "Profiel geconverteerd",
             "profileDuplicated": "Profiel gedupliceerd",
             "convertUndone": "Profiel hersteld",
-            "undo": "Ongedaan maken"
+            "undo": "Ongedaan maken",
+            "megacmdDfHint": "[NEEDS TRANSLATION] MEGAcmd uses mega-df directly to query used and total storage. The manual total override is not needed."
         },
         "browser": {
             "remote": "Extern",

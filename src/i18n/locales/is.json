@@ -272,7 +272,8 @@
             "profileConverted": "Vistun umbreytt",
             "profileDuplicated": "Vistun afrituð",
             "convertUndone": "Vistun endurheimt",
-            "undo": "Afturkalla"
+            "undo": "Afturkalla",
+            "megacmdDfHint": "[NEEDS TRANSLATION] MEGAcmd uses mega-df directly to query used and total storage. The manual total override is not needed."
         },
         "browser": {
             "remote": "Fjartengdur",

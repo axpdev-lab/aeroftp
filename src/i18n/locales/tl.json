@@ -272,7 +272,8 @@
             "profileConverted": "Na-convert ang profile",
             "profileDuplicated": "Na-duplicate ang profile",
             "convertUndone": "Na-restore ang profile",
-            "undo": "I-undo"
+            "undo": "I-undo",
+            "megacmdDfHint": "[NEEDS TRANSLATION] MEGAcmd uses mega-df directly to query used and total storage. The manual total override is not needed."
         },
         "browser": {
             "remote": "Remote",

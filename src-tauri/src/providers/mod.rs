@@ -46,6 +46,7 @@ pub mod kdrive;
 pub mod koofr;
 pub mod mega;
 pub mod mega_crypto;
+pub mod mega_df;
 pub mod mega_native;
 pub mod multi_thread;
 pub mod oauth1;

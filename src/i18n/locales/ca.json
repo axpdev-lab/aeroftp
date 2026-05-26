@@ -272,7 +272,8 @@
             "profileConverted": "Perfil convertit",
             "profileDuplicated": "Perfil duplicat",
             "convertUndone": "Perfil restaurat",
-            "undo": "Desfés"
+            "undo": "Desfés",
+            "megacmdDfHint": "[NEEDS TRANSLATION] MEGAcmd uses mega-df directly to query used and total storage. The manual total override is not needed."
         },
         "browser": {
             "remote": "Remot",

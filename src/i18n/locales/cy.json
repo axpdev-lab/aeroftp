@@ -272,7 +272,8 @@
             "profileConverted": "Wedi trosi'r proffil",
             "profileDuplicated": "Wedi dyblygu'r proffil",
             "convertUndone": "Wedi adfer y proffil",
-            "undo": "Dadwneud"
+            "undo": "Dadwneud",
+            "megacmdDfHint": "[NEEDS TRANSLATION] MEGAcmd uses mega-df directly to query used and total storage. The manual total override is not needed."
         },
         "browser": {
             "remote": "Pell",

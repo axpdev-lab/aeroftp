@@ -272,7 +272,8 @@
             "profileConverted": "프로필이 변환되었습니다",
             "profileDuplicated": "프로필이 복제되었습니다",
             "convertUndone": "프로필이 복원되었습니다",
-            "undo": "실행 취소"
+            "undo": "실행 취소",
+            "megacmdDfHint": "[NEEDS TRANSLATION] MEGAcmd uses mega-df directly to query used and total storage. The manual total override is not needed."
         },
         "browser": {
             "remote": "원격",

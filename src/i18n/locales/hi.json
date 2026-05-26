@@ -272,7 +272,8 @@
             "profileConverted": "प्रोफ़ाइल बदल दिया गया",
             "profileDuplicated": "प्रोफ़ाइल नकल किया गया",
             "convertUndone": "प्रोफ़ाइल पुनर्स्थापित",
-            "undo": "पूर्ववत्"
+            "undo": "पूर्ववत्",
+            "megacmdDfHint": "[NEEDS TRANSLATION] MEGAcmd uses mega-df directly to query used and total storage. The manual total override is not needed."
         },
         "browser": {
             "remote": "दूरस्थ",

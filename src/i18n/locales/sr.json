@@ -272,7 +272,8 @@
             "profileConverted": "Профил претворен",
             "profileDuplicated": "Профил дуплиран",
             "convertUndone": "Профил враћен",
-            "undo": "Опозови"
+            "undo": "Опозови",
+            "megacmdDfHint": "[NEEDS TRANSLATION] MEGAcmd uses mega-df directly to query used and total storage. The manual total override is not needed."
         },
         "browser": {
             "remote": "Удаљено",

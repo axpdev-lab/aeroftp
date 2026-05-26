@@ -272,7 +272,8 @@
             "profileConverted": "แปลงโปรไฟล์แล้ว",
             "profileDuplicated": "ทำซ้ำโปรไฟล์แล้ว",
             "convertUndone": "กู้คืนโปรไฟล์แล้ว",
-            "undo": "เลิกทำ"
+            "undo": "เลิกทำ",
+            "megacmdDfHint": "[NEEDS TRANSLATION] MEGAcmd uses mega-df directly to query used and total storage. The manual total override is not needed."
         },
         "browser": {
             "remote": "ระยะไกล",

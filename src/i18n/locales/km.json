@@ -272,7 +272,8 @@
             "profileConverted": "ប្រវត្តិរូបបានបំលែង",
             "profileDuplicated": "ប្រវត្តិរូបបានចម្លង",
             "convertUndone": "ប្រវត្តិរូបបានស្ដារ",
-            "undo": "មិនធ្វើវិញ"
+            "undo": "មិនធ្វើវិញ",
+            "megacmdDfHint": "[NEEDS TRANSLATION] MEGAcmd uses mega-df directly to query used and total storage. The manual total override is not needed."
         },
         "browser": {
             "remote": "ពីចម្ងាយ",

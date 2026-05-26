@@ -272,7 +272,8 @@
             "profileConverted": "Պրոֆիլը փոխարկվել է",
             "profileDuplicated": "Պրոֆիլը կրկնօրինակվել է",
             "convertUndone": "Պրոֆիլը վերականգնվել է",
-            "undo": "Հետարկել"
+            "undo": "Հետարկել",
+            "megacmdDfHint": "[NEEDS TRANSLATION] MEGAcmd uses mega-df directly to query used and total storage. The manual total override is not needed."
         },
         "browser": {
             "remote": "Հեռավոր",

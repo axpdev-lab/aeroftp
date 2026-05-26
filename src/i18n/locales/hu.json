@@ -272,7 +272,8 @@
             "profileConverted": "Profil konvertálva",
             "profileDuplicated": "Profil megkettőzve",
             "convertUndone": "Profil visszaállítva",
-            "undo": "Visszavonás"
+            "undo": "Visszavonás",
+            "megacmdDfHint": "[NEEDS TRANSLATION] MEGAcmd uses mega-df directly to query used and total storage. The manual total override is not needed."
         },
         "browser": {
             "remote": "Távoli",

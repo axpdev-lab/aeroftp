@@ -248,6 +248,8 @@ async fn try_silent_reconnect(
 pub struct ProviderConnectionParams {
     /// Protocol type: "ftp", "ftps", "sftp", "webdav", "s3", "mega", "opendrive"
     pub protocol: String,
+    /// Registry preset id, when connected through a named preset.
+    pub provider_id: Option<String>,
     /// Host/URL (FTP server, WebDAV URL, or S3 endpoint)
     pub server: String,
     /// Port (optional, defaults based on protocol)
@@ -350,6 +352,15 @@ impl ProviderConnectionParams {
         };
 
         let mut extra = std::collections::HashMap::new();
+
+        if let Some(ref provider_id) = self.provider_id {
+            if !provider_id.trim().is_empty() {
+                extra.insert(
+                    crate::providers::mega_df::PROVIDER_ID_META_KEY.to_string(),
+                    provider_id.trim().to_string(),
+                );
+            }
+        }
 
         // Add S3-specific options
         if provider_type == ProviderType::S3 {
@@ -3761,6 +3772,15 @@ pub async fn provider_storage_info(state: State<'_, ProviderState>) -> Result<St
         .storage_info()
         .await
         .map_err(|e| format!("Failed to get storage info: {}", e))
+}
+
+/// Query MEGAcmd quota directly through `mega-df`.
+#[tauri::command]
+pub async fn mega_df_query(profile_id: String) -> Result<(u64, u64), String> {
+    let _ = profile_id;
+    crate::providers::mega_df::mega_df_query()
+        .await
+        .map_err(|e| format!("Failed to query mega-df: {}", e))
 }
 
 /// Get disk usage for a path in bytes
@@ -9700,6 +9720,7 @@ mod tests {
     fn s3_params(path_style: Option<bool>) -> ProviderConnectionParams {
         ProviderConnectionParams {
             protocol: "s3".to_string(),
+            provider_id: None,
             server: "http://localhost".to_string(),
             port: Some(3900),
             username: "access".to_string(),
