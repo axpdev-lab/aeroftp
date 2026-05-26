@@ -125,6 +125,68 @@ fn is_local_s3_endpoint(endpoint: &str) -> bool {
         || host == "local.s3.filen.io"
 }
 
+/// KE-E1: S3 rate-limit detection.
+///
+/// AWS S3 and every S3-compatible backend (MinIO, Wasabi, Backblaze S3,
+/// Cloudflare R2, Storj, DO Spaces, IDrive e2, ...) signal throttling
+/// through one of two codes:
+/// - **429 Too Many Requests** (Wasabi, Backblaze S3, R2, generic compat),
+/// - **503 Slow Down** with `<Code>SlowDown</Code>` in the XML body
+///   (AWS S3 canonical throttle signal).
+///
+/// Other 503 reasons (`<Code>ServiceUnavailable</Code>`, `InternalError`)
+/// are surfaced as retryable transients by `send_with_retry`, but they are
+/// NOT rate-limit signals: feeding them to AIMD as a Retry-After hint
+/// would conflate genuine backend faults with quota pressure. Only the
+/// explicit `SlowDown` body counts.
+fn s3_is_rate_limited(status: u16, body: &str) -> bool {
+    if status == 429 {
+        return true;
+    }
+    if status == 503 {
+        // SlowDown is the canonical AWS throttle code. Match case-sensitively
+        // on the XML tag form because S3 always upper-cases the first letter.
+        return body.contains("<Code>SlowDown</Code>");
+    }
+    false
+}
+
+/// KE-E1: Compute the marker tail to append to an S3 `ProviderError`
+/// message when the response was rate-limited and a usable `Retry-After`
+/// header was present. Returns `None` when the response is not a throttle
+/// signal or the hint is missing/unparseable. Pure-fn for test coverage;
+/// the call site does the I/O.
+fn s3_retry_marker_tail(status: u16, body: &str, retry_header: Option<&str>) -> Option<String> {
+    if !s3_is_rate_limited(status, body) {
+        return None;
+    }
+    let hint = super::retry_after::parse_retry_after_seconds(retry_header.unwrap_or(""))?;
+    Some(crate::transfer_dag::adaptive::embed_retry_after_marker(
+        hint.as_secs(),
+    ))
+}
+
+/// KE-E1: Build the error message tail for an S3 HTTP failure, appending
+/// the Retry-After marker if the response is a throttle signal. Use this
+/// at every error site that returns `ProviderError::TransferFailed(...)`
+/// or `ProviderError::Other(...)` from an S3 HTTP response.
+///
+/// The `prefix` is prepended verbatim; the standard tail
+/// `<status>: <sanitised body>` is appended; the optional marker
+/// ` [retry-after-secs=NN]` is appended last.
+fn format_s3_error(
+    prefix: &str,
+    status: reqwest::StatusCode,
+    body: &str,
+    retry_header: Option<&str>,
+) -> String {
+    let mut msg = format!("{} ({}): {}", prefix, status, sanitize_api_error(body));
+    if let Some(tail) = s3_retry_marker_tail(status.as_u16(), body, retry_header) {
+        msg.push_str(&tail);
+    }
+    msg
+}
+
 /// S3 Storage Provider
 #[derive(Clone)]
 pub struct S3Provider {
@@ -1075,13 +1137,19 @@ impl S3Provider {
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         let status = response.status();
+        let retry_header = response
+            .headers()
+            .get(reqwest::header::RETRY_AFTER)
+            .and_then(|v| v.to_str().ok())
+            .map(String::from);
         let body = response.text().await.unwrap_or_default();
 
         if !status.is_success() {
-            return Err(ProviderError::TransferFailed(format!(
-                "CreateMultipartUpload failed ({}): {}",
+            return Err(ProviderError::TransferFailed(format_s3_error(
+                "CreateMultipartUpload failed",
                 status,
-                sanitize_api_error(&body)
+                &body,
+                retry_header.as_deref(),
             )));
         }
 
@@ -1111,12 +1179,17 @@ impl S3Provider {
 
         let status = response.status();
         if !status.is_success() {
+            let retry_header = response
+                .headers()
+                .get(reqwest::header::RETRY_AFTER)
+                .and_then(|v| v.to_str().ok())
+                .map(String::from);
             let body = response.text().await.unwrap_or_default();
-            return Err(ProviderError::TransferFailed(format!(
-                "UploadPart {} failed ({}): {}",
-                part_number,
+            return Err(ProviderError::TransferFailed(format_s3_error(
+                &format!("UploadPart {} failed", part_number),
                 status,
-                sanitize_api_error(&body)
+                &body,
+                retry_header.as_deref(),
             )));
         }
 
@@ -1169,13 +1242,18 @@ impl S3Provider {
             .s3_request_ext(Method::PUT, dest_key, Some(params), None, extra)
             .await?;
         let status = response.status();
+        let retry_header = response
+            .headers()
+            .get(reqwest::header::RETRY_AFTER)
+            .and_then(|v| v.to_str().ok())
+            .map(String::from);
         let body = response.text().await.unwrap_or_default();
         if !status.is_success() {
-            return Err(ProviderError::TransferFailed(format!(
-                "UploadPartCopy {} failed ({}): {}",
-                part_number,
+            return Err(ProviderError::TransferFailed(format_s3_error(
+                &format!("UploadPartCopy {} failed", part_number),
                 status,
-                sanitize_api_error(&body)
+                &body,
+                retry_header.as_deref(),
             )));
         }
         // S3-compatible servers (AWS + MinIO + Filen bridge) can return HTTP
@@ -1235,13 +1313,19 @@ impl S3Provider {
             .await?;
 
         let status = response.status();
+        let retry_header = response
+            .headers()
+            .get(reqwest::header::RETRY_AFTER)
+            .and_then(|v| v.to_str().ok())
+            .map(String::from);
         let body = response.text().await.unwrap_or_default();
 
         if !status.is_success() {
-            return Err(ProviderError::TransferFailed(format!(
-                "CompleteMultipartUpload failed ({}): {}",
+            return Err(ProviderError::TransferFailed(format_s3_error(
+                "CompleteMultipartUpload failed",
                 status,
-                sanitize_api_error(&body)
+                &body,
+                retry_header.as_deref(),
             )));
         }
 
@@ -1434,6 +1518,11 @@ impl S3Provider {
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         let status = response.status();
+        let retry_header = response
+            .headers()
+            .get(reqwest::header::RETRY_AFTER)
+            .and_then(|v| v.to_str().ok())
+            .map(String::from);
         let body = response.text().await.unwrap_or_default();
 
         match status {
@@ -1462,10 +1551,11 @@ impl S3Provider {
                 info!("Copied {} to {}", from_key, to_key);
                 Ok(())
             }
-            _ => Err(ProviderError::ServerError(format!(
-                "Copy failed ({}): {}",
+            _ => Err(ProviderError::ServerError(format_s3_error(
+                "Copy failed",
                 status,
-                sanitize_api_error(&body)
+                &body,
+                retry_header.as_deref(),
             ))),
         }
     }
@@ -2458,11 +2548,17 @@ impl StorageProvider for S3Provider {
                 Ok(())
             }
             status => {
+                let retry_header = response
+                    .headers()
+                    .get(reqwest::header::RETRY_AFTER)
+                    .and_then(|v| v.to_str().ok())
+                    .map(String::from);
                 let body = response.text().await.unwrap_or_default();
-                Err(ProviderError::TransferFailed(format!(
-                    "Upload failed ({}): {}",
+                Err(ProviderError::TransferFailed(format_s3_error(
+                    "Upload failed",
                     status,
-                    sanitize_api_error(&body)
+                    &body,
+                    retry_header.as_deref(),
                 )))
             }
         }
@@ -4534,5 +4630,96 @@ mod tests {
         let file = entries.iter().find(|e| !e.is_dir).expect("file entry");
         assert_eq!(file.name, "report%20final.pdf");
         assert_eq!(file.path, "/report%20final.pdf");
+    }
+
+    // ---------------------------------------------------------------------
+    // KE-E1: S3 Retry-After detection (Sprint K1)
+    // ---------------------------------------------------------------------
+
+    #[test]
+    fn s3_is_rate_limited_recognises_429() {
+        assert!(s3_is_rate_limited(429, ""));
+        assert!(s3_is_rate_limited(429, "anything"));
+    }
+
+    #[test]
+    fn s3_is_rate_limited_recognises_503_slow_down() {
+        let body = r#"<?xml version="1.0"?><Error><Code>SlowDown</Code><Message>Please reduce your request rate.</Message></Error>"#;
+        assert!(s3_is_rate_limited(503, body));
+    }
+
+    #[test]
+    fn s3_is_rate_limited_rejects_503_service_unavailable() {
+        // Generic 503 is a transient retried by send_with_retry, but NOT a
+        // throttle signal: AIMD should not get a Retry-After hint from it.
+        let body = r#"<Error><Code>ServiceUnavailable</Code><Message>backend down</Message></Error>"#;
+        assert!(!s3_is_rate_limited(503, body));
+        assert!(!s3_is_rate_limited(503, ""));
+    }
+
+    #[test]
+    fn s3_is_rate_limited_rejects_non_throttle_status() {
+        assert!(!s3_is_rate_limited(500, "<Code>SlowDown</Code>"));
+        assert!(!s3_is_rate_limited(404, ""));
+        assert!(!s3_is_rate_limited(200, "<Code>SlowDown</Code>"));
+        assert!(!s3_is_rate_limited(403, "<Code>SlowDown</Code>"));
+    }
+
+    #[test]
+    fn s3_retry_marker_tail_emits_marker_on_429_with_header() {
+        let tail = s3_retry_marker_tail(429, "", Some("12")).expect("rate-limited + hint");
+        assert!(tail.contains("retry-after-secs=12"));
+    }
+
+    #[test]
+    fn s3_retry_marker_tail_emits_marker_on_503_slow_down_with_header() {
+        let body = r#"<Error><Code>SlowDown</Code></Error>"#;
+        let tail = s3_retry_marker_tail(503, body, Some("30")).expect("SlowDown + hint");
+        assert!(tail.contains("retry-after-secs=30"));
+    }
+
+    #[test]
+    fn s3_retry_marker_tail_returns_none_without_header() {
+        // 429 without Retry-After: marker absent → executor falls back to
+        // default cooldown via parse_embedded_retry_after returning None.
+        assert_eq!(s3_retry_marker_tail(429, "", None), None);
+        assert_eq!(s3_retry_marker_tail(429, "", Some("")), None);
+        assert_eq!(s3_retry_marker_tail(429, "", Some("not-a-number")), None);
+    }
+
+    #[test]
+    fn s3_retry_marker_tail_returns_none_when_not_rate_limited() {
+        // Generic 5xx / 4xx with Retry-After are NOT throttle signals: no marker.
+        assert_eq!(s3_retry_marker_tail(500, "server error", Some("30")), None);
+        assert_eq!(s3_retry_marker_tail(404, "missing", Some("30")), None);
+        assert_eq!(
+            s3_retry_marker_tail(503, r#"<Code>ServiceUnavailable</Code>"#, Some("30")),
+            None
+        );
+    }
+
+    #[test]
+    fn format_s3_error_appends_marker_on_throttle() {
+        let msg = format_s3_error(
+            "UploadPart 3 failed",
+            reqwest::StatusCode::TOO_MANY_REQUESTS,
+            "",
+            Some("45"),
+        );
+        assert!(msg.contains("UploadPart 3 failed"));
+        assert!(msg.contains("429"));
+        assert!(msg.contains("retry-after-secs=45"));
+    }
+
+    #[test]
+    fn format_s3_error_omits_marker_on_non_throttle() {
+        let msg = format_s3_error(
+            "UploadPart 3 failed",
+            reqwest::StatusCode::NOT_FOUND,
+            "key gone",
+            Some("45"),
+        );
+        assert!(msg.contains("404"));
+        assert!(!msg.contains("retry-after-secs"));
     }
 }
