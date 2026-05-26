@@ -1691,6 +1691,26 @@ impl StorageProvider for KoofrProvider {
     }
 
     fn transfer_optimization_hints(&self) -> TransferOptimizationHints {
+        // Shaped-graph multipart trait (S3-T09): intentionally NotSupported
+        // by design on this Koofr native-API path.
+        //
+        // The Koofr REST API exposes upload via
+        // `PUT /content/api/v2/mounts/<mount>/files/put?path=…` as a
+        // single-shot streaming PUT against the content endpoint. There
+        // is no documented chunked append/commit endpoint, no resumable
+        // session URL, and no per-chunk offset write primitive. Real
+        // file-level parallelism for Koofr customers comes from the
+        // WebDAV gateway, which `WebDavProvider` already covers with
+        // its Nextcloud-style chunked upload trait wiring (when the
+        // host is detected as a Nextcloud-compatible endpoint - see
+        // `is_nextcloud_for_dav()` in webdav.rs). For Koofr's own native
+        // gateway (`app.koofr.net`) the gateway returns single-PUT
+        // semantics, so no per-part fan-out is feasible.
+        //
+        // The legacy upload() path already streams the body via
+        // `tokio_util::io::ReaderStream` so large files do not pin RAM.
+        // We leave `supports_multipart=false` and let the runner pick
+        // the legacy single-stream path.
         TransferOptimizationHints {
             supports_resume_download: true,
             // The Koofr content endpoint honours HTTP Range (used by
