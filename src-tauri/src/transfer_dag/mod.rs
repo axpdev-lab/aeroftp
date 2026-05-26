@@ -21,7 +21,8 @@ pub mod resources;
 pub mod session_pool;
 
 pub use adaptive::{
-    congestion_from_error, AdaptiveClass, AimdConfig, AimdController, CongestionEvent,
+    congestion_from_error, AdaptiveClass, AimdClassOverrides, AimdClassWindow, AimdConfig,
+    AimdController, CongestionEvent,
 };
 pub use aimd_hints::AimdHint;
 pub use builder::{

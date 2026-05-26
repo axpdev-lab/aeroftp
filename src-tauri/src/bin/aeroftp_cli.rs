@@ -639,6 +639,41 @@ struct Cli {
     #[arg(long, global = true, env = "AEROFTP_AIMD_DISABLE")]
     aimd_disable: bool,
 
+    /// KE-D2: Floor for the AIMD `target` after multiplicative decrease.
+    /// Broadcast to every controlled class (file / chunk / http / api).
+    /// Use the TOML file (`--aimd-config`) for per-class overrides. A
+    /// value of `0` is sanitized to `1`. Default: `1`.
+    #[arg(long, global = true, env = "AEROFTP_AIMD_MIN_WINDOW")]
+    aimd_min_window: Option<usize>,
+
+    /// KE-D2: Ceiling cap for the AIMD `target`. Broadcast to every
+    /// controlled class. The value clamps the budget-derived ceiling
+    /// from below: it can only shrink the honest cap, never raise it
+    /// (AIMD is decrease-biased). Default: `ceiling` (no extra clamp).
+    #[arg(long, global = true, env = "AEROFTP_AIMD_MAX_WINDOW")]
+    aimd_max_window: Option<usize>,
+
+    /// KE-D2: Additive step applied to the AIMD `target` once per quiet
+    /// `healthy_window`. Broadcast to every controlled class. A value
+    /// of `0` is sanitized to `1`. Default: `1`.
+    #[arg(long, global = true, env = "AEROFTP_AIMD_STEP_WINDOW")]
+    aimd_step_window: Option<usize>,
+
+    /// KE-D2: Path to a TOML file with per-class AIMD window overrides.
+    /// When unset, AeroFTP looks at `$XDG_CONFIG_HOME/aeroftp/aimd.toml`
+    /// (or `~/.config/aeroftp/aimd.toml`) and loads it silently if it
+    /// exists. CLI broadcast flags (`--aimd-min-window`, etc.) take
+    /// precedence over file values per class.
+    ///
+    /// File schema:
+    ///   [aimd.file]   min = 1   max = 8   step = 2
+    ///   [aimd.chunk]  min = 4   max = 32
+    ///   [aimd.http]   ...
+    ///   [aimd.api]    ...
+    /// Every section and every key is optional.
+    #[arg(long, global = true, env = "AEROFTP_AIMD_CONFIG", value_name = "PATH")]
+    aimd_config: Option<PathBuf>,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -5316,20 +5351,125 @@ fn init_aimd_runtime_hints(cli: &Cli) -> Result<(), String> {
     Ok(())
 }
 
-/// KE-D1: Snapshot the CLI knobs that tune the AIMD controller itself
-/// (currently only `--aimd-disable`) into the process-wide
-/// [`AimdConfig`] runtime so every downstream transfer surface picks
-/// them up without an explicit plumbing argument.
-fn build_aimd_runtime_config(cli: &Cli) -> ftp_client_gui_lib::transfer_dag::AimdConfig {
+/// KE-D2 TOML schema. Each `[aimd.<class>]` section is optional; missing
+/// keys fall back to the historical `(min=1, max=ceiling, step=+1)`
+/// triple. The file is parsed with `serde(default)` so a partial schema
+/// (e.g. only `[aimd.api]`) is just as valid as a fully-populated one.
+#[derive(serde::Deserialize, Default)]
+struct AimdTomlFile {
+    #[serde(default)]
+    aimd: AimdTomlClasses,
+}
+
+#[derive(serde::Deserialize, Default)]
+struct AimdTomlClasses {
+    #[serde(default)]
+    file: AimdTomlClassWindow,
+    #[serde(default)]
+    chunk: AimdTomlClassWindow,
+    #[serde(default)]
+    http: AimdTomlClassWindow,
+    #[serde(default)]
+    api: AimdTomlClassWindow,
+}
+
+#[derive(serde::Deserialize, Default, Clone, Copy)]
+struct AimdTomlClassWindow {
+    #[serde(default)]
+    min: Option<usize>,
+    #[serde(default)]
+    max: Option<usize>,
+    #[serde(default)]
+    step: Option<usize>,
+}
+
+impl From<AimdTomlClassWindow> for ftp_client_gui_lib::transfer_dag::AimdClassWindow {
+    fn from(value: AimdTomlClassWindow) -> Self {
+        ftp_client_gui_lib::transfer_dag::AimdClassWindow {
+            min: value.min,
+            max: value.max,
+            step: value.step,
+        }
+    }
+}
+
+/// Default TOML path used when `--aimd-config` is unset. Returns
+/// `<XDG_CONFIG_HOME>/aeroftp/aimd.toml` (or `~/.config/aeroftp/aimd.toml`),
+/// or `None` when neither environment variable resolves.
+fn default_aimd_config_path() -> Option<PathBuf> {
+    dirs::config_dir().map(|d| d.join("aeroftp").join("aimd.toml"))
+}
+
+/// Load per-class AIMD window overrides from a TOML file. Returns
+/// `Ok(None)` when the file does not exist (silent fallback), so a
+/// missing default-path file is non-fatal. A malformed file fails
+/// loudly with an error the operator can act on.
+fn load_aimd_overrides_from_file(
+    path: &Path,
+) -> Result<Option<ftp_client_gui_lib::transfer_dag::AimdClassOverrides>, String> {
+    let raw = match std::fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(err) => return Err(format!("could not read {}: {}", path.display(), err)),
+    };
+    let parsed: AimdTomlFile = toml::from_str(&raw)
+        .map_err(|err| format!("could not parse {}: {}", path.display(), err))?;
+    Ok(Some(
+        ftp_client_gui_lib::transfer_dag::AimdClassOverrides {
+            file: parsed.aimd.file.into(),
+            chunk: parsed.aimd.chunk.into(),
+            http: parsed.aimd.http.into(),
+            api: parsed.aimd.api.into(),
+        },
+    ))
+}
+
+/// Compose the broadcast CLI overrides on top of the per-class TOML file
+/// overrides. CLI values win whenever they are `Some`, matching the
+/// documented precedence ("CLI vince sul file se entrambi presenti").
+fn merge_aimd_overrides(
+    cli: &Cli,
+    file_overrides: ftp_client_gui_lib::transfer_dag::AimdClassOverrides,
+) -> ftp_client_gui_lib::transfer_dag::AimdClassOverrides {
+    let cli_broadcast = ftp_client_gui_lib::transfer_dag::AimdClassOverrides::broadcast(
+        ftp_client_gui_lib::transfer_dag::AimdClassWindow {
+            min: cli.aimd_min_window,
+            max: cli.aimd_max_window,
+            step: cli.aimd_step_window,
+        },
+    );
+    file_overrides.merge_on_top(cli_broadcast)
+}
+
+/// KE-D1 + KE-D2: Snapshot the CLI knobs that tune the AIMD controller
+/// itself (`--aimd-disable`, `--aimd-min-window`, `--aimd-max-window`,
+/// `--aimd-step-window`, plus the per-class TOML file) into the
+/// process-wide [`AimdConfig`] runtime so every downstream transfer
+/// surface picks them up without an explicit plumbing argument.
+fn build_aimd_runtime_config(
+    cli: &Cli,
+) -> Result<ftp_client_gui_lib::transfer_dag::AimdConfig, String> {
     let mut cfg = ftp_client_gui_lib::transfer_dag::AimdConfig::default();
     if cli.aimd_disable {
         cfg.disabled = true;
     }
-    cfg
+
+    let file_overrides = match &cli.aimd_config {
+        Some(explicit) => load_aimd_overrides_from_file(explicit)?
+            .ok_or_else(|| format!("AIMD config file not found: {}", explicit.display()))?,
+        None => match default_aimd_config_path() {
+            Some(default_path) => load_aimd_overrides_from_file(&default_path)?.unwrap_or_default(),
+            None => ftp_client_gui_lib::transfer_dag::AimdClassOverrides::default(),
+        },
+    };
+    cfg.class_overrides = merge_aimd_overrides(cli, file_overrides);
+
+    Ok(cfg)
 }
 
-fn init_aimd_runtime_config(cli: &Cli) {
-    ftp_client_gui_lib::transfer_dag::AimdConfig::install_runtime(build_aimd_runtime_config(cli));
+fn init_aimd_runtime_config(cli: &Cli) -> Result<(), String> {
+    ftp_client_gui_lib::transfer_dag::AimdConfig::install_runtime(build_aimd_runtime_config(cli)?);
+    Ok(())
 }
 
 // ── Dump helper (--dump headers,bodies,auth) ──────────────────────
@@ -37170,7 +37310,10 @@ async fn main() {
         eprintln!("Error: {}", error);
         std::process::exit(5);
     }
-    init_aimd_runtime_config(&cli);
+    if let Err(error) = init_aimd_runtime_config(&cli) {
+        eprintln!("Error: {}", error);
+        std::process::exit(5);
+    }
 
     // KE-A3: install the global tpslimit token bucket. `0.0` means
     // unlimited (default); any positive value installs the limiter.
@@ -39556,6 +39699,10 @@ mod tests {
             drive_acknowledge_abuse: false,
             aimd_hint: Vec::new(),
             aimd_disable: false,
+            aimd_min_window: None,
+            aimd_max_window: None,
+            aimd_step_window: None,
+            aimd_config: None,
             transfer_engine: "auto".to_string(),
             files_from: None,
             files_from_raw: None,
@@ -40066,13 +40213,13 @@ mod tests {
     #[test]
     fn test_build_aimd_runtime_config_default_preserves_legacy_behaviour() {
         let cli = test_cli();
-        let cfg = build_aimd_runtime_config(&cli);
+        let cfg = build_aimd_runtime_config(&cli).expect("default config must build");
         assert!(
             !cfg.disabled,
             "default CLI must not disable the AIMD controller"
         );
         // Other tunings remain the prudent defaults (cooldown, healthy
-        // window, recovery window): KE-D2 will add overrides for these.
+        // window, recovery window).
         let baseline = ftp_client_gui_lib::transfer_dag::AimdConfig::default();
         assert_eq!(cfg.cooldown, baseline.cooldown);
         assert_eq!(cfg.healthy_window, baseline.healthy_window);
@@ -40085,12 +40232,160 @@ mod tests {
             aimd_disable: true,
             ..test_cli()
         };
-        let cfg = build_aimd_runtime_config(&cli);
+        let cfg = build_aimd_runtime_config(&cli).expect("disable config must build");
         assert!(
             cfg.disabled,
             "--aimd-disable must flip AimdConfig::disabled"
         );
     }
+
+    // KE-D2: filesystem-free tests for the CLI broadcast layer and the
+    // TOML loader. They exercise `merge_aimd_overrides` and
+    // `load_aimd_overrides_from_file` directly so the test does not
+    // depend on any `~/.config/aeroftp/aimd.toml` that may exist on the
+    // developer's machine.
+
+    #[test]
+    fn test_aimd_overrides_cli_broadcasts_to_every_class() {
+        let cli = Cli {
+            aimd_min_window: Some(2),
+            aimd_max_window: Some(32),
+            aimd_step_window: Some(4),
+            ..test_cli()
+        };
+        let merged = merge_aimd_overrides(
+            &cli,
+            ftp_client_gui_lib::transfer_dag::AimdClassOverrides::default(),
+        );
+        for class in [
+            ftp_client_gui_lib::transfer_dag::AdaptiveClass::File,
+            ftp_client_gui_lib::transfer_dag::AdaptiveClass::Chunk,
+            ftp_client_gui_lib::transfer_dag::AdaptiveClass::Http,
+            ftp_client_gui_lib::transfer_dag::AdaptiveClass::Api,
+        ] {
+            let w = merged.for_class(class);
+            assert_eq!(w.min, Some(2));
+            assert_eq!(w.max, Some(32));
+            assert_eq!(w.step, Some(4));
+        }
+    }
+
+    #[test]
+    fn test_aimd_overrides_cli_beats_file_when_both_set() {
+        // File says max=8 for the api class; CLI broadcasts max=32.
+        // CLI must win on every class because the precedence is
+        // "CLI overrides file when CLI is Some".
+        let file_overrides = ftp_client_gui_lib::transfer_dag::AimdClassOverrides {
+            api: ftp_client_gui_lib::transfer_dag::AimdClassWindow {
+                max: Some(8),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let cli = Cli {
+            aimd_max_window: Some(32),
+            ..test_cli()
+        };
+        let merged = merge_aimd_overrides(&cli, file_overrides);
+        assert_eq!(
+            merged
+                .for_class(ftp_client_gui_lib::transfer_dag::AdaptiveClass::Api)
+                .max,
+            Some(32),
+            "CLI broadcast must win over the file value when both are set"
+        );
+    }
+
+    #[test]
+    fn test_aimd_overrides_file_only_passes_through_when_cli_absent() {
+        let file_overrides = ftp_client_gui_lib::transfer_dag::AimdClassOverrides {
+            file: ftp_client_gui_lib::transfer_dag::AimdClassWindow {
+                min: Some(1),
+                max: Some(8),
+                step: Some(2),
+            },
+            api: ftp_client_gui_lib::transfer_dag::AimdClassWindow {
+                min: Some(4),
+                max: Some(32),
+                step: None,
+            },
+            ..Default::default()
+        };
+        let cli = test_cli();
+        let merged = merge_aimd_overrides(&cli, file_overrides);
+        // File values reach the merged bundle untouched.
+        let file = merged.for_class(ftp_client_gui_lib::transfer_dag::AdaptiveClass::File);
+        assert_eq!(file.min, Some(1));
+        assert_eq!(file.max, Some(8));
+        assert_eq!(file.step, Some(2));
+        let api = merged.for_class(ftp_client_gui_lib::transfer_dag::AdaptiveClass::Api);
+        assert_eq!(api.min, Some(4));
+        assert_eq!(api.max, Some(32));
+        assert_eq!(api.step, None);
+    }
+
+    #[test]
+    fn test_aimd_toml_per_class_overrides_parse() {
+        let toml = r#"
+            [aimd.file]
+            min = 1
+            max = 8
+            step = 2
+
+            [aimd.chunk]
+            min = 4
+            max = 32
+
+            [aimd.api]
+            step = 3
+        "#;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("aimd.toml");
+        std::fs::write(&path, toml).expect("write toml");
+        let overrides = load_aimd_overrides_from_file(&path)
+            .expect("loader must not fail on a well-formed file")
+            .expect("file exists so loader returns Some");
+        let file = overrides.for_class(ftp_client_gui_lib::transfer_dag::AdaptiveClass::File);
+        assert_eq!(file.min, Some(1));
+        assert_eq!(file.max, Some(8));
+        assert_eq!(file.step, Some(2));
+        let chunk = overrides.for_class(ftp_client_gui_lib::transfer_dag::AdaptiveClass::Chunk);
+        assert_eq!(chunk.min, Some(4));
+        assert_eq!(chunk.max, Some(32));
+        assert_eq!(chunk.step, None);
+        // http section absent => all None.
+        let http = overrides.for_class(ftp_client_gui_lib::transfer_dag::AdaptiveClass::Http);
+        assert_eq!(http.min, None);
+        assert_eq!(http.max, None);
+        assert_eq!(http.step, None);
+        let api = overrides.for_class(ftp_client_gui_lib::transfer_dag::AdaptiveClass::Api);
+        assert_eq!(api.step, Some(3));
+        assert_eq!(api.min, None);
+        assert_eq!(api.max, None);
+    }
+
+    #[test]
+    fn test_aimd_toml_missing_file_is_silent() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("never-created.toml");
+        let result = load_aimd_overrides_from_file(&path).expect("missing file must not error");
+        assert!(
+            result.is_none(),
+            "missing default-path file must produce no overrides"
+        );
+    }
+
+    #[test]
+    fn test_aimd_toml_malformed_file_errors_loudly() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("aimd.toml");
+        std::fs::write(&path, "this is not = valid {{{").expect("write garbage");
+        assert!(
+            load_aimd_overrides_from_file(&path).is_err(),
+            "a malformed file must surface a parse error to the operator"
+        );
+    }
+
 
     // ── sanitize_filename tests ───────────────────────────────────────
 
