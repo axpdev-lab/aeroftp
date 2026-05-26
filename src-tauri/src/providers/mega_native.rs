@@ -23,14 +23,39 @@ use super::{
         mega_base64_decode, mega_base64_encode, meta_mac, meta_mac_legacy, pack_node_key,
         rsa_decrypt_csid, unpack_node_key_legacy, unpack_node_key_with_mac, username_hash_v1,
     },
-    MegaConfig, ProviderError, ProviderType, RemoteEntry, ShareLinkOptions, ShareLinkResult,
-    StorageInfo, StorageProvider,
+    MegaConfig, MultipartHandle, ProviderError, ProviderType, RemoteEntry, ShareLinkOptions,
+    ShareLinkResult, StorageInfo, StorageProvider, UploadedPart,
 };
 
 const MEGA_API_BASE_URL: &str = "https://g.api.mega.co.nz/cs";
 const MEGA_API_VERSION: &str = "2";
 const AERORSYNC_MAX_RETRIES: u32 = 2;
 const AERORSYNC_RETRY_DELAY_MS: u64 = 2000;
+
+/// Multipart threshold: files >= 32 MiB are routed through the shaped-graph
+/// multipart trait so the runner can fan out parallel PUTs against the
+/// per-session upload URL. Below the threshold the legacy single-stream
+/// `upload()` path already pipelines MEGA's 128 KiB...1 MiB ramp efficiently.
+const MEGA_MULTIPART_THRESHOLD: u64 = 32 * 1024 * 1024;
+
+/// Multipart part size: 1 MiB matches MEGA's steady-state chunk boundary after
+/// the initial 128/256/.../1024 KiB ramp. Aligning the runner's slice size to
+/// the per-chunk MAC boundary lets `complete_multipart_upload` re-derive the
+/// chunk MACs from the local source file in a single sequential pass without
+/// keeping per-part plaintext in memory across the upload window.
+const MEGA_MULTIPART_PART_SIZE: u64 = 1024 * 1024;
+
+/// gfs* enforces the canonical 128 KiB → 1 MiB ramp + steady-state chunk
+/// layout (`-7 EACCESS` on uniform-size PUTs; empirically confirmed against
+/// `MEGA Dev` on 2026-05-26). The shaped-graph trait honours this by
+/// buffering runner-sized parts inside `MegaMultipartState` and only
+/// flushing to gfs* when a canonical chunk boundary lands. That state
+/// machine is intrinsically serial, so the trait advertises
+/// `multipart_max_parallel = 1` and the runner serialises `UploadPart`
+/// nodes via the dependency chain in `shaped_file`. Real parallelism
+/// against MEGA would need either N upload URLs per file or a redesign of
+/// the buffer protocol; both are out of scope for v4.0.0.
+const MEGA_MULTIPART_MAX_PARALLEL: u8 = 1;
 
 // ─── Wire types ───────────────────────────────────────────────────────────
 
@@ -129,6 +154,75 @@ struct RequestUploadUrlResponseWire {
 struct PutNodesResponseWire {
     #[allow(dead_code)]
     f: Vec<RawMegaNodeWire>,
+}
+
+/// Side-band metadata embedded in `MultipartHandle.upload_id` for the
+/// shaped-graph multipart upload trait wiring (S4-T01).
+/// `begin_multipart_upload` resolves the destination parent, generates the
+/// per-session file_key and nonce, and requests the upload URL from MEGA,
+/// then encodes everything here so subsequent `upload_part` and
+/// `complete_multipart_upload` invocations don't need to re-resolve.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct MegaMultipartMeta {
+    upload_url: String,
+    file_key: [u8; 16],
+    nonce: [u8; 8],
+    parent_handle: String,
+    file_name: String,
+    total: u64,
+    part_size: u64,
+    total_chunks: u32,
+}
+
+impl MegaMultipartMeta {
+    fn encode(&self) -> String {
+        serde_json::to_string(self).unwrap_or_default()
+    }
+
+    fn decode(raw: &str) -> Result<Self, ProviderError> {
+        serde_json::from_str(raw)
+            .map_err(|e| ProviderError::Other(format!("MEGA multipart handle decode failed: {e}")))
+    }
+}
+
+/// Provider-internal state for an in-flight shaped-graph multipart upload.
+///
+/// MEGA's gfs* storage nodes are strict about the chunk layout that lands on
+/// each PUT: they expect the canonical 128 KiB → 1 MiB ramp scheme that every
+/// official client (MEGA SDK C++, megalib, mega-cmd, megajs) uses. Posting
+/// uniformly-sized parts elicits a `-7 EACCESS` reply even when the offsets
+/// stay inside the declared file size (confirmed empirically against
+/// `MEGA Dev` profile, 2026-05-26). The trait wiring therefore decouples the
+/// runner's slice size from the wire chunk size: `upload_part` accepts data
+/// at the runner's preferred `multipart_part_size` and accumulates it into
+/// the next MEGA-canonical chunk via this state machine, flushing to gfs*
+/// only when the buffer reaches the expected ramp boundary.
+///
+/// `chunk_macs` is populated as each chunk completes (MAC computed on the
+/// plaintext *before* the in-place AES-CTR encryption that feeds the PUT)
+/// so `complete_multipart_upload` doesn't need to touch the local source
+/// file a second time. `upload_handle` captures the cumulative completion
+/// token gfs* returns on whichever PUT lands the final byte of the file.
+///
+/// The runner serialises `upload_part` invocations for MEGA
+/// (`clone_multipart_worker` returns `None` for it), so this state lives on
+/// a plain `&mut self` borrow without further synchronisation.
+struct MegaMultipartState {
+    /// MEGA-canonical chunk boundaries (offset, size) covering `[0, total)`.
+    /// Same scheme as `compute_chunk_boundaries(total)`: 128 KiB, 256 KiB,
+    /// ..., up to 1 MiB, then 1 MiB steady-state.
+    ramp_chunks: Vec<(u64, usize)>,
+    /// Index of the next MEGA chunk to flush to gfs*.
+    chunk_idx: usize,
+    /// Plaintext bytes pending the next chunk boundary.
+    chunk_buffer: Vec<u8>,
+    /// Per-chunk CBC-MACs accumulated in canonical chunk order. Consumed by
+    /// `complete_multipart_upload` to derive the file's `meta_mac`.
+    chunk_macs: Vec<[u8; 16]>,
+    /// Cumulative completion token returned by gfs* on the PUT that lands
+    /// the last byte of the file. `complete_multipart_upload` rejects the
+    /// finalize call when this is still `None`.
+    upload_handle: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -398,6 +492,13 @@ pub struct MegaNativeProvider {
     root_handle: Option<String>,
     trash_handle: Option<String>,
     nodes_loaded: bool,
+    /// In-flight shaped-graph multipart upload state. Holds the canonical
+    /// MEGA chunk boundary list, a partial-chunk buffer, the accumulating
+    /// per-chunk MAC chain and the cumulative completion token. Lives only
+    /// between `begin_multipart_upload` and `complete_multipart_upload` /
+    /// `abort_multipart_upload`. Reset on `clear_runtime_session` so a
+    /// disconnect drops any half-built session.
+    multipart_state: Option<MegaMultipartState>,
 }
 
 /// Ensure all sensitive material is zeroized when the provider is dropped,
@@ -439,6 +540,7 @@ impl MegaNativeProvider {
             root_handle: None,
             trash_handle: None,
             nodes_loaded: false,
+            multipart_state: None,
         }
     }
 
@@ -490,6 +592,10 @@ impl MegaNativeProvider {
         self.root_handle = None;
         self.trash_handle = None;
         self.nodes_loaded = false;
+        // Drop any in-flight multipart session: an upload URL bound to a
+        // disconnected session is no longer reachable, and the gfs* node
+        // GCs orphaned URLs after their TTL expires.
+        self.multipart_state = None;
 
         if let Some(mut mk) = self.master_key.take() {
             mk.zeroize();
@@ -1759,6 +1865,354 @@ impl StorageProvider for MegaNativeProvider {
             password: None,
             expires_at: None,
         })
+    }
+
+    fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
+        // Shaped-graph multipart trait (S4-T01).
+        //
+        // MEGA's upload protocol is "one upload URL, N independent POSTs at
+        // strict per-chunk boundaries". Empirical testing (2026-05-26)
+        // against `MEGA Dev` shows gfs* rejects uniform 1 MiB PUTs with
+        // `-7 EACCESS` — every official client (MEGA SDK C++, megalib,
+        // mega-cmd, megajs) sticks to the canonical 128 KiB → 1 MiB ramp
+        // and steady-state scheme returned by `compute_chunk_boundaries()`.
+        // We honour the trait by accepting the runner's chosen
+        // `multipart_part_size` and accumulating bytes into the next
+        // canonical chunk inside `upload_part`, flushing to gfs* only when
+        // the buffer hits the expected boundary. Parallel fan-out is left
+        // at 1 because the buffer state machine is intrinsically serial;
+        // moving to N parallel upload URLs is a future iteration.
+        super::TransferOptimizationHints {
+            supports_multipart: true,
+            multipart_threshold: MEGA_MULTIPART_THRESHOLD,
+            multipart_part_size: MEGA_MULTIPART_PART_SIZE,
+            multipart_max_parallel: MEGA_MULTIPART_MAX_PARALLEL,
+            supports_resume_download: true,
+            supports_resume_upload: true,
+            ..Default::default()
+        }
+    }
+
+    // Shaped-graph multipart trait wiring (S4-T01).
+    //
+    // MEGA's upload protocol maps onto the trait as:
+    //   1. `begin_multipart_upload` → POST `{"a":"u","s":size,"ssl":2}` for
+    //      the per-session upload URL, generate the random file_key (16 B)
+    //      and nonce (8 B), resolve `(parent_handle, file_name)` from the
+    //      destination path, snapshot the canonical chunk boundaries via
+    //      `compute_chunk_boundaries(total)`, and prime the
+    //      `MegaMultipartState` buffer machine.
+    //   2. `upload_part` → append the part's plaintext bytes to the buffer.
+    //      Every time the buffer hits the next ramp boundary the helper
+    //      computes the chunk MAC on the plaintext, encrypts the chunk in
+    //      place with AES-CTR keyed to that chunk's absolute byte offset,
+    //      POSTs `{upload_url}/{offset}` and captures gfs*'s reply (empty
+    //      = intermediate, non-empty = cumulative completion token).
+    //   3. `complete_multipart_upload` → consume the accumulated chunk MACs
+    //      to derive the 8-byte meta MAC, pack `(file_key, nonce, meta_mac)`
+    //      into MEGA's 32-byte node key, wrap with the master key, and POST
+    //      `{"a":"p", ...}` to create the file node under the parent folder.
+    //      Mirrors the legacy `upload()` finalizer byte-for-byte.
+    //   4. `abort_multipart_upload` → no wire call (MEGA has no abort verb;
+    //      orphan upload URLs lapse via gfs* TTL). Drops in-flight state so
+    //      the next `begin_multipart_upload` starts clean.
+    //
+    // The runner serialises `upload_part` invocations for MEGA
+    // (`clone_multipart_worker` returns `None`), so the `multipart_state`
+    // field lives on a plain `&mut self` borrow without further locking.
+    async fn begin_multipart_upload(
+        &mut self,
+        remote_path: &str,
+        total_size: u64,
+        _content_type: Option<&str>,
+        _local_source_path: Option<&str>,
+    ) -> Result<MultipartHandle, ProviderError> {
+        if total_size == 0 {
+            return Err(ProviderError::TransferFailed(
+                "MEGA does not accept empty files via multipart upload".to_string(),
+            ));
+        }
+
+        self.ensure_nodes_loaded().await?;
+        // master_key is needed at commit time, fail fast if the session
+        // dropped before we even opened the upload URL.
+        if self.master_key.is_none() {
+            return Err(ProviderError::NotConnected);
+        }
+        let (parent_handle, file_name) = self.resolve_parent_and_name(remote_path)?;
+
+        // Random per-session content key and CTR nonce.
+        let file_key: [u8; 16] = rand::random();
+        let nonce: [u8; 8] = rand::random();
+
+        // Request the upload URL from MEGA. `s` is the full file size so the
+        // storage node can pre-allocate and signal the cumulative completion
+        // token on the PUT that lands the final byte.
+        let upload_resp: RequestUploadUrlResponseWire = self
+            .command_with_retry(json!({ "a": "u", "s": total_size, "ssl": 2 }))
+            .await?;
+
+        let part_size = MEGA_MULTIPART_PART_SIZE;
+        let total_chunks = u32::try_from(total_size.div_ceil(part_size)).map_err(|_| {
+            ProviderError::TransferFailed(format!(
+                "MEGA multipart: total_chunks overflow for {total_size} B / {part_size} B"
+            ))
+        })?;
+
+        let ramp_chunks = compute_chunk_boundaries(total_size);
+        let mac_capacity = ramp_chunks.len();
+
+        let meta = MegaMultipartMeta {
+            upload_url: upload_resp.p,
+            file_key,
+            nonce,
+            parent_handle,
+            file_name,
+            total: total_size,
+            part_size,
+            total_chunks,
+        };
+
+        self.multipart_state = Some(MegaMultipartState {
+            ramp_chunks,
+            chunk_idx: 0,
+            chunk_buffer: Vec::new(),
+            chunk_macs: Vec::with_capacity(mac_capacity),
+            upload_handle: None,
+        });
+
+        Ok(MultipartHandle {
+            upload_id: meta.encode(),
+            remote_path: remote_path.to_string(),
+        })
+    }
+
+    async fn upload_part(
+        &mut self,
+        handle: &MultipartHandle,
+        part_number: u32,
+        data: Vec<u8>,
+    ) -> Result<UploadedPart, ProviderError> {
+        if part_number == 0 {
+            return Err(ProviderError::Other(
+                "MEGA upload_part requires 1-based part_number".to_string(),
+            ));
+        }
+        if data.is_empty() {
+            return Err(ProviderError::Other(
+                "MEGA upload_part received empty data".to_string(),
+            ));
+        }
+        let meta = MegaMultipartMeta::decode(&handle.upload_id)?;
+        let zero_index = u64::from(part_number - 1);
+        if zero_index >= u64::from(meta.total_chunks) {
+            return Err(ProviderError::Other(format!(
+                "MEGA part {part_number} exceeds declared total_chunks {}",
+                meta.total_chunks
+            )));
+        }
+        let part_offset = zero_index * meta.part_size;
+        let part_end = part_offset
+            .checked_add(data.len() as u64)
+            .ok_or_else(|| ProviderError::Other("MEGA part offset overflow".to_string()))?;
+        if part_end > meta.total {
+            return Err(ProviderError::Other(format!(
+                "MEGA part {part_number} exceeds declared total: offset {part_offset} + len {} > total {}",
+                data.len(),
+                meta.total
+            )));
+        }
+
+        // file_key and nonce are `Copy`; pulling them onto the stack avoids
+        // re-borrowing `meta` after we hand a mutable borrow to the state
+        // machine below.
+        let file_key = meta.file_key;
+        let nonce = meta.nonce;
+        let upload_url = meta.upload_url.clone();
+
+        let mut cursor = 0usize;
+        while cursor < data.len() {
+            // Look up the size of the next canonical MEGA chunk we are
+            // filling. The state borrow is released before we kick off the
+            // async POST so the borrow checker stays happy across awaits.
+            let (chunk_offset, target_size, need) = {
+                let state = self.multipart_state.as_ref().ok_or_else(|| {
+                    ProviderError::Other(
+                        "MEGA upload_part called without an active multipart session"
+                            .to_string(),
+                    )
+                })?;
+                if state.chunk_idx >= state.ramp_chunks.len() {
+                    return Err(ProviderError::Other(
+                        "MEGA upload_part: bytes received beyond declared file size"
+                            .to_string(),
+                    ));
+                }
+                let (off, sz) = state.ramp_chunks[state.chunk_idx];
+                let need = sz - state.chunk_buffer.len();
+                (off, sz, need)
+            };
+
+            let take = (data.len() - cursor).min(need);
+            self.multipart_state
+                .as_mut()
+                .expect("state checked above")
+                .chunk_buffer
+                .extend_from_slice(&data[cursor..cursor + take]);
+            cursor += take;
+
+            let buffer_full = self
+                .multipart_state
+                .as_ref()
+                .expect("state checked above")
+                .chunk_buffer
+                .len()
+                == target_size;
+            if !buffer_full {
+                continue;
+            }
+
+            // Detach the completed plaintext buffer from the state so the
+            // POST body owns it (Vec<u8> for reqwest), then advance the
+            // chunk pointer. The MAC is computed on plaintext before the
+            // in-place AES-CTR pass.
+            let plaintext = {
+                let state = self
+                    .multipart_state
+                    .as_mut()
+                    .expect("state checked above");
+                std::mem::take(&mut state.chunk_buffer)
+            };
+            let mac = chunk_mac(&plaintext, &file_key, &nonce)?;
+            {
+                let state = self
+                    .multipart_state
+                    .as_mut()
+                    .expect("state checked above");
+                state.chunk_macs.push(mac);
+                state.chunk_idx += 1;
+            }
+
+            let mut ciphertext = plaintext;
+            aes_ctr_apply_inplace(&mut ciphertext, &file_key, &nonce, chunk_offset);
+
+            let url = format!("{upload_url}/{chunk_offset}");
+            let resp = self
+                .api_client
+                .client
+                .post(&url)
+                .body(ciphertext)
+                .send()
+                .await
+                .map_err(map_reqwest_error)?;
+
+            let status = resp.status();
+            let body = resp.text().await.map_err(|e| {
+                ProviderError::TransferFailed(format!("MEGA upload chunk failed: {e}"))
+            })?;
+
+            if !status.is_success() {
+                return Err(ProviderError::TransferFailed(format!(
+                    "MEGA upload chunk failed ({status}): {body}"
+                )));
+            }
+            if body.starts_with('-') {
+                return Err(ProviderError::TransferFailed(format!(
+                    "MEGA upload chunk rejected: {body}"
+                )));
+            }
+            if !body.is_empty() {
+                // gfs* returns the cumulative completion token on the PUT
+                // that lands the last byte of the file. Capture it for the
+                // commit step.
+                let state = self
+                    .multipart_state
+                    .as_mut()
+                    .expect("state checked above");
+                state.upload_handle = Some(body);
+            }
+        }
+
+        Ok(UploadedPart {
+            part_number,
+            // MEGA does not surface a per-part ETag; the cumulative upload
+            // handle is captured separately and consumed in
+            // complete_multipart_upload.
+            etag: String::new(),
+        })
+    }
+
+    async fn complete_multipart_upload(
+        &mut self,
+        handle: MultipartHandle,
+        parts: Vec<UploadedPart>,
+    ) -> Result<(), ProviderError> {
+        let meta = MegaMultipartMeta::decode(&handle.upload_id)?;
+        if parts.len() != meta.total_chunks as usize {
+            return Err(ProviderError::TransferFailed(format!(
+                "MEGA complete: expected {} runner parts, got {}",
+                meta.total_chunks,
+                parts.len()
+            )));
+        }
+        let state = self.multipart_state.take().ok_or_else(|| {
+            ProviderError::TransferFailed(
+                "MEGA complete: no active multipart session in provider state".to_string(),
+            )
+        })?;
+        if !state.chunk_buffer.is_empty() {
+            return Err(ProviderError::TransferFailed(format!(
+                "MEGA complete: partial canonical chunk pending ({} B in buffer); runner stopped feeding data before the last MEGA chunk closed",
+                state.chunk_buffer.len()
+            )));
+        }
+        if state.chunk_idx != state.ramp_chunks.len() {
+            return Err(ProviderError::TransferFailed(format!(
+                "MEGA complete: flushed {} of {} canonical chunks",
+                state.chunk_idx,
+                state.ramp_chunks.len()
+            )));
+        }
+        let upload_handle = state.upload_handle.ok_or_else(|| {
+            ProviderError::TransferFailed(
+                "MEGA complete: gfs* never returned the cumulative upload handle; storage node likely rejected the final PUT".to_string(),
+            )
+        })?;
+        let master_key = self.master_key.ok_or(ProviderError::NotConnected)?;
+
+        let file_meta_mac = meta_mac(&state.chunk_macs, &meta.file_key)?;
+        let packed_key = pack_node_key(&meta.file_key, &meta.nonce, &file_meta_mac)?;
+        let encrypted_key = aes_ecb_encrypt_multi(&packed_key, &master_key)?;
+        let key_b64 = mega_base64_encode(&encrypted_key);
+        let encrypted_attrs = encrypt_node_attrs(&meta.file_name, &packed_key)?;
+        let attrs_b64 = mega_base64_encode(&encrypted_attrs);
+
+        let _resp: PutNodesResponseWire = self
+            .command_with_retry(json!({
+                "a": "p",
+                "t": meta.parent_handle,
+                "n": [{
+                    "h": upload_handle,
+                    "t": 0,
+                    "a": attrs_b64,
+                    "k": key_b64,
+                }],
+            }))
+            .await?;
+
+        self.invalidate_nodes();
+        Ok(())
+    }
+
+    async fn abort_multipart_upload(
+        &mut self,
+        _handle: MultipartHandle,
+    ) -> Result<(), ProviderError> {
+        // MEGA has no explicit abort verb. Orphan upload URLs lapse via
+        // gfs* TTL, so the only thing we need to do is drop any in-flight
+        // state so the next `begin_multipart_upload` starts clean.
+        self.multipart_state = None;
+        Ok(())
     }
 }
 
