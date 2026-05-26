@@ -273,7 +273,7 @@
             "profileDuplicated": "Profiili monistettu",
             "convertUndone": "Profiili palautettu",
             "undo": "Kumoa",
-            "megacmdDfHint": "[NEEDS TRANSLATION] MEGAcmd uses mega-df directly to query used and total storage. The manual total override is not needed."
+            "megacmdDfHint": "MEGAcmd käyttää suoraan mega-df-komentoa käytetyn ja kokonaistallennustilan kyselyyn. Manuaalista kokonaismäärän ohitusta ei tarvita."
         },
         "browser": {
             "remote": "Etä",

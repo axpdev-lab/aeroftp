@@ -273,7 +273,7 @@
             "profileDuplicated": "პროფილი დუბლირებულია",
             "convertUndone": "პროფილი აღდგენილია",
             "undo": "გაუქმება",
-            "megacmdDfHint": "[NEEDS TRANSLATION] MEGAcmd uses mega-df directly to query used and total storage. The manual total override is not needed."
+            "megacmdDfHint": "MEGAcmd იყენებს mega-df-ს უშუალოდ გამოყენებული და მთლიანი საცავის შესაკითხად. მთლიანის ხელით გადაჭარბება არ არის საჭირო."
         },
         "browser": {
             "remote": "დისტანციური",

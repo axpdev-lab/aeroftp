@@ -273,7 +273,7 @@
             "profileDuplicated": "Wasifu umenakiliwa",
             "convertUndone": "Wasifu umerejeshwa",
             "undo": "Tendua",
-            "megacmdDfHint": "[NEEDS TRANSLATION] MEGAcmd uses mega-df directly to query used and total storage. The manual total override is not needed."
+            "megacmdDfHint": "MEGAcmd inatumia mega-df moja kwa moja kuuliza hifadhi iliyotumika na jumla. Kubadilisha jumla kwa mkono hakuhitajiki."
         },
         "browser": {
             "remote": "Mbali",

@@ -273,7 +273,7 @@
             "profileDuplicated": "Profil megkettőzve",
             "convertUndone": "Profil visszaállítva",
             "undo": "Visszavonás",
-            "megacmdDfHint": "[NEEDS TRANSLATION] MEGAcmd uses mega-df directly to query used and total storage. The manual total override is not needed."
+            "megacmdDfHint": "A MEGAcmd közvetlenül a mega-df parancsot használja a használt és teljes tárhely lekérdezéséhez. A teljes érték manuális felülbírálására nincs szükség."
         },
         "browser": {
             "remote": "Távoli",

@@ -273,7 +273,7 @@
             "profileDuplicated": "Na-duplicate ang profile",
             "convertUndone": "Na-restore ang profile",
             "undo": "I-undo",
-            "megacmdDfHint": "[NEEDS TRANSLATION] MEGAcmd uses mega-df directly to query used and total storage. The manual total override is not needed."
+            "megacmdDfHint": "Direktang ginagamit ng MEGAcmd ang mega-df upang i-query ang nagamit at kabuuang storage. Hindi kailangan ang manu-manong pag-override ng kabuuan."
         },
         "browser": {
             "remote": "Remote",

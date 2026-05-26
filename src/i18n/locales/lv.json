@@ -273,7 +273,7 @@
             "profileDuplicated": "Profils dublēts",
             "convertUndone": "Profils atjaunots",
             "undo": "Atsaukt",
-            "megacmdDfHint": "[NEEDS TRANSLATION] MEGAcmd uses mega-df directly to query used and total storage. The manual total override is not needed."
+            "megacmdDfHint": "MEGAcmd tieši izmanto mega-df, lai vaicātu izmantoto un kopējo krātuvi. Manuālā kopējās vērtības aizstāšana nav nepieciešama."
         },
         "browser": {
             "remote": "Attālināts",

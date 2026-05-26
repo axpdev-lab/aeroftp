@@ -273,7 +273,7 @@
             "profileDuplicated": "Profil duplicerad",
             "convertUndone": "Profil återställd",
             "undo": "Ångra",
-            "megacmdDfHint": "[NEEDS TRANSLATION] MEGAcmd uses mega-df directly to query used and total storage. The manual total override is not needed."
+            "megacmdDfHint": "MEGAcmd använder mega-df direkt för att fråga efter använt och totalt lagringsutrymme. Manuell åsidosättning av totalen behövs inte."
         },
         "browser": {
             "remote": "Fjärr",

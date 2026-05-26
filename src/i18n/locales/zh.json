@@ -273,7 +273,7 @@
             "profileDuplicated": "配置已复制",
             "convertUndone": "配置已恢复",
             "undo": "撤销",
-            "megacmdDfHint": "[NEEDS TRANSLATION] MEGAcmd uses mega-df directly to query used and total storage. The manual total override is not needed."
+            "megacmdDfHint": "MEGAcmd 直接使用 mega-df 查询已用和总存储空间。无需手动覆盖总量。"
         },
         "browser": {
             "remote": "远程",

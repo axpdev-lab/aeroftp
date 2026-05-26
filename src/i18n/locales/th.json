@@ -273,7 +273,7 @@
             "profileDuplicated": "ทำซ้ำโปรไฟล์แล้ว",
             "convertUndone": "กู้คืนโปรไฟล์แล้ว",
             "undo": "เลิกทำ",
-            "megacmdDfHint": "[NEEDS TRANSLATION] MEGAcmd uses mega-df directly to query used and total storage. The manual total override is not needed."
+            "megacmdDfHint": "MEGAcmd ใช้ mega-df โดยตรงเพื่อสอบถามพื้นที่จัดเก็บที่ใช้และทั้งหมด ไม่จำเป็นต้องแทนที่ค่ารวมด้วยตนเอง"
         },
         "browser": {
             "remote": "ระยะไกล",

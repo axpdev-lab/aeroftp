@@ -273,7 +273,7 @@
             "profileDuplicated": "Profil duplikován",
             "convertUndone": "Profil obnoven",
             "undo": "Zpět",
-            "megacmdDfHint": "[NEEDS TRANSLATION] MEGAcmd uses mega-df directly to query used and total storage. The manual total override is not needed."
+            "megacmdDfHint": "MEGAcmd používá mega-df přímo k dotazu na použité a celkové úložiště. Manuální přepsání celkové hodnoty není potřeba."
         },
         "browser": {
             "remote": "Vzdálený",

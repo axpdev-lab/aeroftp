@@ -273,7 +273,7 @@
             "profileDuplicated": "Vistun afrituð",
             "convertUndone": "Vistun endurheimt",
             "undo": "Afturkalla",
-            "megacmdDfHint": "[NEEDS TRANSLATION] MEGAcmd uses mega-df directly to query used and total storage. The manual total override is not needed."
+            "megacmdDfHint": "MEGAcmd notar mega-df beint til að fyrirspyrja notaða og heildargeymslu. Ekki er þörf á handvirkri yfirfærslu á heildinni."
         },
         "browser": {
             "remote": "Fjartengdur",

@@ -273,7 +273,7 @@
             "profileDuplicated": "Wedi dyblygu'r proffil",
             "convertUndone": "Wedi adfer y proffil",
             "undo": "Dadwneud",
-            "megacmdDfHint": "[NEEDS TRANSLATION] MEGAcmd uses mega-df directly to query used and total storage. The manual total override is not needed."
+            "megacmdDfHint": "Mae MEGAcmd yn defnyddio mega-df yn uniongyrchol i ymholi storfa a ddefnyddir a chyfanswm. Nid oes angen y diystyriad cyfanswm â llaw."
         },
         "browser": {
             "remote": "Pell",

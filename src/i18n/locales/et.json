@@ -273,7 +273,7 @@
             "profileDuplicated": "Profiil dubleeritud",
             "convertUndone": "Profiil taastatud",
             "undo": "Võta tagasi",
-            "megacmdDfHint": "[NEEDS TRANSLATION] MEGAcmd uses mega-df directly to query used and total storage. The manual total override is not needed."
+            "megacmdDfHint": "MEGAcmd kasutab mega-df otse, et küsida kasutatud ja kogusalvestust. Käsitsi koguarvu alistamine pole vajalik."
         },
         "browser": {
             "remote": "Kaugserver",

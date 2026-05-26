@@ -273,7 +273,7 @@
             "profileDuplicated": "Profilis dubliuotas",
             "convertUndone": "Profilis atkurtas",
             "undo": "Anuliuoti",
-            "megacmdDfHint": "[NEEDS TRANSLATION] MEGAcmd uses mega-df directly to query used and total storage. The manual total override is not needed."
+            "megacmdDfHint": "MEGAcmd tiesiogiai naudoja mega-df, kad užklaustų sunaudotos ir bendros saugyklos. Rankinis bendros vertės pakeitimas nebūtinas."
         },
         "browser": {
             "remote": "Nuotolinis",
