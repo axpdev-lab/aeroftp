@@ -583,6 +583,27 @@ struct Cli {
     #[arg(long, global = true, env = "AEROFTP_AZURE_ARCHIVE_TIER_DELETE")]
     azure_archive_tier_delete: bool,
 
+    /// KE-B2.3: Append `supportsAllDrives=true` to Google Drive
+    /// `files.copy` so the server-side copy succeeds across Shared
+    /// Drives and between My Drive and a Shared Drive. Without this
+    /// flag, copies that cross drive boundaries can fail with 404 / 403
+    /// even when the OAuth scopes are sufficient. Aligned with rclone's
+    /// `--drive-server-side-across-configs`. Silently ignored when the
+    /// remote is not Google Drive.
+    #[arg(long, global = true, env = "AEROFTP_DRIVE_CROSS_ACCOUNT_COPY")]
+    drive_cross_account_copy: bool,
+
+    /// KE-B2.4: Append `acknowledgeAbuse=true` to Google Drive binary
+    /// download URLs (`alt=media`) so files flagged by Google as
+    /// abusive still download instead of failing with
+    /// `cannotDownloadAbusiveFile` (rclone `--drive-acknowledge-abuse`).
+    /// Workspace export endpoints are not affected. By enabling this
+    /// flag the user acknowledges the risk associated with downloading
+    /// content Google's classifier flagged. Silently ignored when the
+    /// remote is not Google Drive.
+    #[arg(long, global = true, env = "AEROFTP_DRIVE_ACKNOWLEDGE_ABUSE")]
+    drive_acknowledge_abuse: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -4704,6 +4725,32 @@ fn apply_azure_runtime_knobs(provider: &mut Box<dyn StorageProvider>, cli: &Cli)
     }
     if cli.verbose > 0 && !applied.is_empty() && !JSON_MODE.load(Ordering::Relaxed) {
         eprintln!("Azure knobs: {}", applied.join(", "));
+    }
+}
+
+/// KE-B2 (non-AIMD subset): Apply the `--drive-*` knobs that do not
+/// require the per-provider AIMD plumbing. The remaining two Drive flags
+/// (`--drive-pacer-burst`, `--drive-pacer-min-sleep`) are blocked on the
+/// AIMD-per-provider design decision; this helper only wires the
+/// permission-level flags that map cleanly to existing Drive code paths.
+fn apply_google_drive_runtime_knobs(provider: &mut Box<dyn StorageProvider>, cli: &Cli) {
+    let Some(gd) = provider
+        .as_any_mut()
+        .downcast_mut::<ftp_client_gui_lib::providers::google_drive::GoogleDriveProvider>()
+    else {
+        return;
+    };
+    let mut applied: Vec<String> = Vec::new();
+    if cli.drive_cross_account_copy {
+        gd.set_cross_account_copy(true);
+        applied.push("--drive-cross-account-copy".to_string());
+    }
+    if cli.drive_acknowledge_abuse {
+        gd.set_acknowledge_abuse(true);
+        applied.push("--drive-acknowledge-abuse".to_string());
+    }
+    if cli.verbose > 0 && !applied.is_empty() && !JSON_MODE.load(Ordering::Relaxed) {
+        eprintln!("Drive knobs: {}", applied.join(", "));
     }
 }
 
@@ -12380,13 +12427,16 @@ async fn create_and_connect(
                         )
                         .await
                         {
-                            // KE-B3: OAuth path returns an already-connected provider.
-                            // Apply OneDrive runtime knobs after the connect so the
-                            // setters take effect on subsequent upload / list / share
-                            // calls. (S3 knobs do not apply here because S3 is never
-                            // routed through the OAuth helper.)
+                            // KE-B3 / KE-B2: OAuth path returns an already-connected
+                            // provider. Apply OneDrive and Drive runtime knobs
+                            // after the connect so the setters take effect on
+                            // subsequent upload / list / share / copy / download
+                            // calls. (S3 / Azure knobs do not apply here because
+                            // those backends are never routed through the OAuth
+                            // helper.)
                             if let Ok((mut p, path)) = result {
                                 apply_onedrive_runtime_knobs(&mut p, cli);
+                                apply_google_drive_runtime_knobs(&mut p, cli);
                                 return Ok((p, path));
                             } else {
                                 return result;
@@ -12423,6 +12473,9 @@ async fn create_and_connect(
     apply_onedrive_runtime_knobs(&mut provider, cli);
     // KE-B4: Azure Blob knobs (no-op for non-Azure).
     apply_azure_runtime_knobs(&mut provider, cli);
+    // KE-B2: Google Drive non-AIMD knobs (no-op for non-Drive). Same
+    // OAuth-early-return caveat as KE-B3.
+    apply_google_drive_runtime_knobs(&mut provider, cli);
 
     if let Err(e) = provider.connect().await {
         let code = provider_error_to_exit_code(&e);
@@ -31546,13 +31599,15 @@ async fn cmd_transfer_doctor(
         }
     };
 
-    // KE-B1 / KE-B3 / KE-B4: per-backend knobs apply symmetrically to source and dest.
+    // KE-B1 / KE-B2 / KE-B3 / KE-B4: per-backend knobs apply symmetrically to source and dest.
     apply_s3_runtime_knobs(&mut source, cli);
     apply_s3_runtime_knobs(&mut dest, cli);
     apply_onedrive_runtime_knobs(&mut source, cli);
     apply_onedrive_runtime_knobs(&mut dest, cli);
     apply_azure_runtime_knobs(&mut source, cli);
     apply_azure_runtime_knobs(&mut dest, cli);
+    apply_google_drive_runtime_knobs(&mut source, cli);
+    apply_google_drive_runtime_knobs(&mut dest, cli);
 
     if let Err(e) = source.connect().await {
         print_error(
@@ -31749,13 +31804,15 @@ async fn cmd_transfer_profiles(
         }
     };
 
-    // KE-B1 / KE-B3 / KE-B4: per-backend knobs apply symmetrically to source and dest.
+    // KE-B1 / KE-B2 / KE-B3 / KE-B4: per-backend knobs apply symmetrically to source and dest.
     apply_s3_runtime_knobs(&mut source, cli);
     apply_s3_runtime_knobs(&mut dest, cli);
     apply_onedrive_runtime_knobs(&mut source, cli);
     apply_onedrive_runtime_knobs(&mut dest, cli);
     apply_azure_runtime_knobs(&mut source, cli);
     apply_azure_runtime_knobs(&mut dest, cli);
+    apply_google_drive_runtime_knobs(&mut source, cli);
+    apply_google_drive_runtime_knobs(&mut dest, cli);
 
     // Connect source
     if !quiet {
@@ -32115,10 +32172,11 @@ async fn batch_connect_profile(
         );
         provider_error_to_exit_code(&e)
     })?;
-    // KE-B1 / KE-B3 / KE-B4: apply per-backend knobs before connect.
+    // KE-B1 / KE-B2 / KE-B3 / KE-B4: apply per-backend knobs before connect.
     apply_s3_runtime_knobs(&mut provider, cli);
     apply_onedrive_runtime_knobs(&mut provider, cli);
     apply_azure_runtime_knobs(&mut provider, cli);
+    apply_google_drive_runtime_knobs(&mut provider, cli);
     provider.connect().await.map_err(|e| {
         print_error(
             format,
@@ -32390,10 +32448,11 @@ async fn audit_connect_profile(
         .map_err(|_code| "profile resolution failed".to_string())?;
     let mut provider =
         ProviderFactory::create(&cfg).map_err(|e| format!("provider creation failed: {}", e))?;
-    // KE-B1 / KE-B3 / KE-B4: apply per-backend knobs before connect.
+    // KE-B1 / KE-B2 / KE-B3 / KE-B4: apply per-backend knobs before connect.
     apply_s3_runtime_knobs(&mut provider, cli);
     apply_onedrive_runtime_knobs(&mut provider, cli);
     apply_azure_runtime_knobs(&mut provider, cli);
+    apply_google_drive_runtime_knobs(&mut provider, cli);
     provider
         .connect()
         .await
@@ -39355,6 +39414,8 @@ mod tests {
             azure_disable_checksum: false,
             azure_access_tier: None,
             azure_archive_tier_delete: false,
+            drive_cross_account_copy: false,
+            drive_acknowledge_abuse: false,
             transfer_engine: "auto".to_string(),
             files_from: None,
             files_from_raw: None,
