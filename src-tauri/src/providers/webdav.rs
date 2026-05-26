@@ -2448,6 +2448,7 @@ impl StorageProvider for WebDavProvider {
                 url: self.build_url(remote_path),
                 headers,
                 local_path: local_path.to_string(),
+                provider_type: ProviderType::WebDav,
                 streams: self.multi_thread_streams,
                 max_streams: WEBDAV_MULTI_THREAD_MAX_STREAMS,
                 cutoff: self.multi_thread_cutoff,

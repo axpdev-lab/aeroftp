@@ -1082,6 +1082,7 @@ async fn pget_via_shared_engine(
 
     let cfg = ConcurrentRangeConfig {
         final_path: out.to_path_buf(),
+        provider_type: ftp_client_gui_lib::providers::ProviderType::Sftp,
         total_size: file_size,
         streams: segments,
         max_streams: segments,

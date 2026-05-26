@@ -84,7 +84,7 @@ use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tempfile::NamedTempFile;
 use tokio::sync::Mutex as AsyncMutex;
 
@@ -378,6 +378,302 @@ struct Cli {
     #[arg(long, global = true)]
     inplace: bool,
 
+    /// KE-A5: Order the transfer queue by the given key
+    /// (rclone `--order-by`). Applies to multi-file operations: sync,
+    /// recursive get/put, dedupe. Single-file operations and `ls` are
+    /// unaffected (`ls` keeps its own `--sort`). Defaults to `none`
+    /// (FIFO from the input order).
+    #[arg(long, global = true, value_enum, default_value_t = OrderBy::None)]
+    order_by: OrderBy,
+
+    /// KE-A4: Skip the full remote listing during sync but still stat
+    /// every candidate upload to avoid overwriting files that already
+    /// match by size (rclone `--no-traverse`). Use when the source has
+    /// a small number of files and the destination has millions
+    /// (typical S3 bucket with a long-running history). Implies
+    /// `--direction upload`; combine with `--no-check-dest` for the
+    /// fully-trust-me variant (skip the stat too).
+    #[arg(long, global = true)]
+    no_traverse: bool,
+
+    /// KE-A3: Hard cap on HTTP transactions per second across all
+    /// providers (rclone `--tpslimit`). Layered ABOVE AIMD: AIMD may
+    /// shrink the effective parallelism well below this cap on 429s,
+    /// but never exceeds it. Default `0` = unlimited (AIMD remains the
+    /// sole throttle). Honored by every backend that goes through the
+    /// shared `send_with_retry` wrapper (S3, B2, Azure, all OAuth
+    /// clouds, Filen, WebDAV, ImageKit, Drime, Uploadcare, Cloudinary).
+    /// SFTP / FTP session protocols are unaffected. Reads default from
+    /// `AEROFTP_TPSLIMIT`.
+    #[arg(long, global = true, default_value_t = 0.0, env = "AEROFTP_TPSLIMIT")]
+    tpslimit: f64,
+
+    /// KE-A3: Burst capacity for `--tpslimit`. Lets the limiter absorb
+    /// short spikes without queueing: e.g. `--tpslimit 10 --tpslimit-burst 50`
+    /// allows up to 50 requests back-to-back before throttling kicks in
+    /// at 10/s. Default `0` = same as `--tpslimit` (no burst). Reads
+    /// default from `AEROFTP_TPSLIMIT_BURST`.
+    #[arg(
+        long,
+        global = true,
+        default_value_t = 0.0,
+        env = "AEROFTP_TPSLIMIT_BURST"
+    )]
+    tpslimit_burst: f64,
+
+    /// KE-A2: Concurrency cap for metadata-only operations during sync
+    /// (rclone `--checkers`). Used by the `--no-traverse` stat sweep
+    /// and future parallel-listing paths. Default `8`, range 1-64.
+    /// Distinct from `--transfers` (which caps the actual data
+    /// transfer pool): a single sync can run 8 stat probes in parallel
+    /// while still streaming uploads with 4 workers.
+    #[arg(long, global = true, default_value_t = 8)]
+    checkers: usize,
+
+    /// KE-A1: SFTP-specific concurrency override for single-file
+    /// downloads (rclone `--sftp-concurrency`). When set and the
+    /// remote is SFTP, takes precedence over `--multi-thread-streams`
+    /// for SFTP only. Default `0` = follow `--multi-thread-streams`.
+    /// Range 1-16.
+    ///
+    /// IMPORTANT: AeroFTP implements SFTP "concurrency" as N
+    /// independent SSH connections (PD-SFTP-1 / PD-SFTP-2 pattern),
+    /// NOT as N pipelined SSH_FXP_READ on a single channel like
+    /// rclone. The semantics differ: AeroFTP pays N handshakes once
+    /// per transfer and gets fully independent streams (incl. on
+    /// servers that ignore SSH window scaling); rclone uses a single
+    /// channel with deeper read queue depth (lower handshake cost,
+    /// bounded by server window-scaling honesty). On 1 Gbit links to
+    /// modern OpenSSH the two converge within ~5%; on links with
+    /// degraded window scaling AeroFTP's N-connections wins.
+    /// Reads default from `AEROFTP_SFTP_CONCURRENCY`.
+    #[arg(
+        long,
+        global = true,
+        default_value_t = 0,
+        env = "AEROFTP_SFTP_CONCURRENCY"
+    )]
+    sftp_concurrency: usize,
+
+    /// KE-B1.1: Override S3 multipart upload parallelism (rclone
+    /// `--s3-upload-concurrency`). Caps how many parts are uploaded
+    /// concurrently per file. Default `0` = use the built-in 4-in-flight
+    /// ceiling. Range 1-64. Memory usage scales with
+    /// `--s3-upload-concurrency * <part-size>`; raising both at once on
+    /// small VMs can OOM. Silently ignored when the remote is not S3.
+    #[arg(
+        long,
+        global = true,
+        default_value_t = 0,
+        env = "AEROFTP_S3_UPLOAD_CONCURRENCY"
+    )]
+    s3_upload_concurrency: usize,
+
+    /// KE-B1.2: Skip the S3 bucket-existence probe on `connect()` (rclone
+    /// `--s3-no-check-bucket`). Use with IAM credentials that grant
+    /// `PutObject` but deny `ListBucket`: the default probe would 403 even
+    /// though uploads work. Silently ignored when the remote is not S3.
+    #[arg(long, global = true, env = "AEROFTP_S3_NO_CHECK_BUCKET")]
+    s3_no_check_bucket: bool,
+
+    /// KE-B1.3: Replace the per-payload SHA-256 in S3 SigV4 with
+    /// `UNSIGNED-PAYLOAD` (rclone `--s3-disable-checksum`). Reduces client
+    /// CPU on large multipart uploads (~5-15% on a CPU-bound producer) at
+    /// the cost of SigV4 in-flight tamper protection. Empty-body requests
+    /// still hash normally (constant cost, some gateways require it).
+    /// Silently ignored when the remote is not S3.
+    #[arg(long, global = true, env = "AEROFTP_S3_DISABLE_CHECKSUM")]
+    s3_disable_checksum: bool,
+
+    /// KE-B1.4: Canned ACL applied to S3 uploads (rclone `--s3-acl`).
+    /// Common values: `private`, `public-read`, `public-read-write`,
+    /// `authenticated-read`, `bucket-owner-read`,
+    /// `bucket-owner-full-control`. Emitted as `x-amz-acl`. Validation is
+    /// permissive (vendor extensions accepted; AWS rejects unknown values
+    /// at the API level). Silently ignored when the remote is not S3, or
+    /// when the bucket is governed by a bucket policy that forbids ACLs
+    /// (AWS default since April 2023). Reads default from `AEROFTP_S3_ACL`.
+    #[arg(long, global = true, env = "AEROFTP_S3_ACL")]
+    s3_acl: Option<String>,
+
+    /// KE-B1.5: Storage class for S3 uploads (rclone `--s3-storage-class`).
+    /// Common AWS values: `STANDARD`, `STANDARD_IA`, `ONEZONE_IA`,
+    /// `INTELLIGENT_TIERING`, `GLACIER_IR`, `GLACIER`, `DEEP_ARCHIVE`,
+    /// `REDUCED_REDUNDANCY`, `EXPRESS_ONEZONE`. Vendor-specific tiers
+    /// (B2 / Wasabi / R2) accepted. Takes precedence over the
+    /// profile-level `storage_class` setting. Emitted as
+    /// `x-amz-storage-class`. Silently ignored when the remote is not
+    /// S3. Reads default from `AEROFTP_S3_STORAGE_CLASS`.
+    #[arg(long, global = true, env = "AEROFTP_S3_STORAGE_CLASS")]
+    s3_storage_class: Option<String>,
+
+    /// KE-B3.1: After every successful OneDrive upload, sweep all previous
+    /// versions of the resulting drive item (rclone
+    /// `--onedrive-no-versions`). Mitigates the OneDrive Personal "quota
+    /// inflation from auto-versioning" issue where every modify spawns a
+    /// new version that counts against the user's storage quota. The
+    /// sweep is best-effort: failures are logged but never propagated, so
+    /// the upload itself still reports success. Silently ignored when the
+    /// remote is not OneDrive.
+    #[arg(long, global = true, env = "AEROFTP_ONEDRIVE_NO_VERSIONS")]
+    onedrive_no_versions: bool,
+
+    /// KE-B3.2: Override the Microsoft Graph `$top` paging size for
+    /// `/children` listings (rclone `--onedrive-list-chunk`). Server
+    /// default is ~200. Bigger pages reduce round trips on large folders;
+    /// smaller pages help under throttling. Clamped to `[1, 999]`.
+    /// `0` = leave server default. Silently ignored when the remote is
+    /// not OneDrive. Reads default from `AEROFTP_ONEDRIVE_LIST_CHUNK`.
+    #[arg(
+        long,
+        global = true,
+        default_value_t = 0,
+        env = "AEROFTP_ONEDRIVE_LIST_CHUNK"
+    )]
+    onedrive_list_chunk: u32,
+
+    /// KE-B3.3: Override the share-link `scope` on `createLink` calls
+    /// (rclone `--onedrive-link-scope`). Typical values: `anonymous`
+    /// (default), `organization`, `users`. Validation is permissive; the
+    /// Graph API rejects unknown scopes at request time. Silently ignored
+    /// when the remote is not OneDrive. Reads default from
+    /// `AEROFTP_ONEDRIVE_LINK_SCOPE`.
+    #[arg(long, global = true, env = "AEROFTP_ONEDRIVE_LINK_SCOPE")]
+    onedrive_link_scope: Option<String>,
+
+    /// KE-B4.1: Override the number of `Put Block` requests in flight
+    /// during Azure block uploads (rclone `--azureblob-upload-concurrency`).
+    /// Default `0` = serial (1 block at a time, historical behaviour).
+    /// Range 1-32. Memory usage scales with `concurrency * 4 MiB` per
+    /// upload; raising on small VMs can OOM. Silently ignored when the
+    /// remote is not Azure Blob.
+    #[arg(
+        long,
+        global = true,
+        default_value_t = 0,
+        env = "AEROFTP_AZURE_UPLOAD_CONCURRENCY"
+    )]
+    azure_upload_concurrency: usize,
+
+    /// KE-B4.2: Reserved for future Content-MD5 metadata gating on Azure
+    /// uploads (rclone `--azureblob-disable-checksum`). AeroFTP does not
+    /// currently send `x-ms-blob-content-md5` on uploads, so this flag is
+    /// structurally wired but has no observable effect today. It will
+    /// gate the future MD5-on-upload code path once that lands. Silently
+    /// ignored when the remote is not Azure Blob.
+    #[arg(long, global = true, env = "AEROFTP_AZURE_DISABLE_CHECKSUM")]
+    azure_disable_checksum: bool,
+
+    /// KE-B4.3: Apply this Azure access tier to every successful upload
+    /// as a post-PUT `Set Blob Tier` call (rclone
+    /// `--azureblob-access-tier`). Values: `Hot`, `Cool`, `Cold`,
+    /// `Archive`. Tier failures are logged at WARN but do not invalidate
+    /// the upload itself. Vendor / future tiers pass through; Azure
+    /// rejects unknown values at the API level. Silently ignored when
+    /// the remote is not Azure Blob.
+    #[arg(long, global = true, env = "AEROFTP_AZURE_ACCESS_TIER")]
+    azure_access_tier: Option<String>,
+
+    /// KE-B4.4: Before overwriting an existing blob, check if it is in
+    /// Archive access tier; if so, DELETE the blob before the new PUT
+    /// (rclone `--azureblob-archive-tier-delete`). Without this flag,
+    /// PUT against an Archive blob fails with `BlobArchived`. Adds one
+    /// pre-upload HEAD round trip per file. Silently ignored when the
+    /// remote is not Azure Blob.
+    #[arg(long, global = true, env = "AEROFTP_AZURE_ARCHIVE_TIER_DELETE")]
+    azure_archive_tier_delete: bool,
+
+    /// KE-B2.3: Append `supportsAllDrives=true` to Google Drive
+    /// `files.copy` so the server-side copy succeeds across Shared
+    /// Drives and between My Drive and a Shared Drive. Without this
+    /// flag, copies that cross drive boundaries can fail with 404 / 403
+    /// even when the OAuth scopes are sufficient. Aligned with rclone's
+    /// `--drive-server-side-across-configs`. Silently ignored when the
+    /// remote is not Google Drive.
+    #[arg(long, global = true, env = "AEROFTP_DRIVE_CROSS_ACCOUNT_COPY")]
+    drive_cross_account_copy: bool,
+
+    /// KE-B2.1: Allow this many Google Drive API dispatches inside one
+    /// AIMD pacing window before `--drive-pacer-min-sleep` is applied.
+    /// `0` preserves the controller default. Ignored for non-Drive
+    /// providers.
+    #[arg(long, global = true, env = "AEROFTP_DRIVE_PACER_BURST", default_value_t = 0)]
+    drive_pacer_burst: usize,
+
+    /// KE-B2.2: Minimum delay between Google Drive AIMD API pacing
+    /// windows. Accepts `500ms`, `2s`, `1m`, `1h`, or `0` to disable the
+    /// overlay and preserve the controller default.
+    #[arg(long, global = true, env = "AEROFTP_DRIVE_PACER_MIN_SLEEP")]
+    drive_pacer_min_sleep: Option<String>,
+
+    /// KE-B2.4: Append `acknowledgeAbuse=true` to Google Drive binary
+    /// download URLs (`alt=media`) so files flagged by Google as
+    /// abusive still download instead of failing with
+    /// `cannotDownloadAbusiveFile` (rclone `--drive-acknowledge-abuse`).
+    /// Workspace export endpoints are not affected. By enabling this
+    /// flag the user acknowledges the risk associated with downloading
+    /// content Google's classifier flagged. Silently ignored when the
+    /// remote is not Google Drive.
+    #[arg(long, global = true, env = "AEROFTP_DRIVE_ACKNOWLEDGE_ABUSE")]
+    drive_acknowledge_abuse: bool,
+
+    /// KE-D3: Static Retry-After fallback overlay for the AIMD controller.
+    /// Repeat as `--aimd-hint=provider:secs`, for example
+    /// `--aimd-hint=drive:30 --aimd-hint=s3:5`.
+    #[arg(
+        long,
+        global = true,
+        env = "AEROFTP_AIMD_HINT",
+        value_delimiter = ',',
+        action = clap::ArgAction::Append
+    )]
+    aimd_hint: Vec<String>,
+
+    /// KE-D1: Disable the AIMD backpressure controller for the whole run.
+    /// When set, dispatch concurrency stays pinned at the honest per-class
+    /// ceiling: a 429 / 503 / timeout response no longer halves the window
+    /// and a healthy completion no longer regrows it. Intended for
+    /// dedicated/lab links where the operator has out-of-band guarantees
+    /// the backend will not throttle and AIMD would only mask a genuine
+    /// throughput cap diagnostic.
+    #[arg(long, global = true, env = "AEROFTP_AIMD_DISABLE")]
+    aimd_disable: bool,
+
+    /// KE-D2: Floor for the AIMD `target` after multiplicative decrease.
+    /// Broadcast to every controlled class (file / chunk / http / api).
+    /// Use the TOML file (`--aimd-config`) for per-class overrides. A
+    /// value of `0` is sanitized to `1`. Default: `1`.
+    #[arg(long, global = true, env = "AEROFTP_AIMD_MIN_WINDOW")]
+    aimd_min_window: Option<usize>,
+
+    /// KE-D2: Ceiling cap for the AIMD `target`. Broadcast to every
+    /// controlled class. The value clamps the budget-derived ceiling
+    /// from below: it can only shrink the honest cap, never raise it
+    /// (AIMD is decrease-biased). Default: `ceiling` (no extra clamp).
+    #[arg(long, global = true, env = "AEROFTP_AIMD_MAX_WINDOW")]
+    aimd_max_window: Option<usize>,
+
+    /// KE-D2: Additive step applied to the AIMD `target` once per quiet
+    /// `healthy_window`. Broadcast to every controlled class. A value
+    /// of `0` is sanitized to `1`. Default: `1`.
+    #[arg(long, global = true, env = "AEROFTP_AIMD_STEP_WINDOW")]
+    aimd_step_window: Option<usize>,
+
+    /// KE-D2: Path to a TOML file with per-class AIMD window overrides.
+    /// When unset, AeroFTP looks at `$XDG_CONFIG_HOME/aeroftp/aimd.toml`
+    /// (or `~/.config/aeroftp/aimd.toml`) and loads it silently if it
+    /// exists. CLI broadcast flags (`--aimd-min-window`, etc.) take
+    /// precedence over file values per class.
+    ///
+    /// File schema:
+    ///   [aimd.file]   min = 1   max = 8   step = 2
+    ///   [aimd.chunk]  min = 4   max = 32
+    ///   [aimd.http]   ...
+    ///   [aimd.api]    ...
+    /// Every section and every key is optional.
+    #[arg(long, global = true, env = "AEROFTP_AIMD_CONFIG", value_name = "PATH")]
+    aimd_config: Option<PathBuf>,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -396,6 +692,89 @@ impl Cli {
 enum OutputFormat {
     Text,
     Json,
+}
+
+/// KE-A5: Transfer ordering key for batch operations.
+///
+/// The values follow rclone's `--order-by` shape: a key plus an
+/// optional `-asc` / `-desc` suffix. `none` (the default) preserves
+/// the input order (FIFO), matching the legacy behaviour.
+///
+/// `name` and `name-desc` sort by full remote path (lexicographic).
+/// `size-asc` / `size-desc` sort by file size; equal sizes fall back
+/// to name to keep the order deterministic. `modtime-asc` /
+/// `modtime-desc` sort by last-modified timestamp; entries without a
+/// timestamp are pushed to the end so the well-populated entries
+/// transfer first.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
+enum OrderBy {
+    None,
+    Name,
+    NameDesc,
+    SizeAsc,
+    SizeDesc,
+    ModtimeAsc,
+    ModtimeDesc,
+}
+
+impl OrderBy {
+    /// Sort a slice of file entries in place. `name_of`, `size_of`,
+    /// and `mtime_of` extract the sort key from each entry; this lets
+    /// the same helper drive `Vec<RemoteEntry>`, `Vec<PathBuf>`, or any
+    /// other shape without forcing a common trait on the entries.
+    ///
+    /// `mtime_of` returns an epoch-seconds timestamp (`i64`); missing
+    /// timestamps should be `None` and are sorted to the END regardless
+    /// of asc/desc to avoid penalising entries the backend cannot stat
+    /// cheaply.
+    fn sort_in_place<T, FName, FSize, FMtime>(
+        &self,
+        items: &mut [T],
+        name_of: FName,
+        size_of: FSize,
+        mtime_of: FMtime,
+    ) where
+        FName: Fn(&T) -> &str,
+        FSize: Fn(&T) -> u64,
+        FMtime: Fn(&T) -> Option<i64>,
+    {
+        use std::cmp::Ordering;
+        match self {
+            OrderBy::None => {}
+            OrderBy::Name => items.sort_by(|a, b| name_of(a).cmp(name_of(b))),
+            OrderBy::NameDesc => items.sort_by(|a, b| name_of(b).cmp(name_of(a))),
+            OrderBy::SizeAsc => items.sort_by(|a, b| match size_of(a).cmp(&size_of(b)) {
+                Ordering::Equal => name_of(a).cmp(name_of(b)),
+                other => other,
+            }),
+            OrderBy::SizeDesc => items.sort_by(|a, b| match size_of(b).cmp(&size_of(a)) {
+                Ordering::Equal => name_of(a).cmp(name_of(b)),
+                other => other,
+            }),
+            OrderBy::ModtimeAsc => items.sort_by(|a, b| {
+                match (mtime_of(a), mtime_of(b)) {
+                    (Some(ta), Some(tb)) => match ta.cmp(&tb) {
+                        Ordering::Equal => name_of(a).cmp(name_of(b)),
+                        other => other,
+                    },
+                    (Some(_), None) => Ordering::Less,
+                    (None, Some(_)) => Ordering::Greater,
+                    (None, None) => name_of(a).cmp(name_of(b)),
+                }
+            }),
+            OrderBy::ModtimeDesc => items.sort_by(|a, b| {
+                match (mtime_of(a), mtime_of(b)) {
+                    (Some(ta), Some(tb)) => match tb.cmp(&ta) {
+                        Ordering::Equal => name_of(a).cmp(name_of(b)),
+                        other => other,
+                    },
+                    (Some(_), None) => Ordering::Less,
+                    (None, Some(_)) => Ordering::Greater,
+                    (None, None) => name_of(a).cmp(name_of(b)),
+                }
+            }),
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, ValueEnum, PartialEq, Eq)]
@@ -442,6 +821,71 @@ enum RcloneFilenameEncryption {
     Standard,
     Obfuscate,
     Off,
+}
+
+/// KE-C1: FUSE caching policy preset. Maps directly onto the
+/// (`attr_timeout`, `dir_cache_time`, `cache_ttl`) trio at
+/// `AeroFuseFs` construction time. Granular per-knob overrides
+/// (`--attr-timeout`, `--dir-cache-time`) take precedence over the
+/// values derived from the mode.
+#[derive(Copy, Clone, Debug, ValueEnum, PartialEq, Eq, Default)]
+enum CacheMode {
+    /// No in-memory metadata cache, every FUSE callback hits the
+    /// remote with `TTL=0`. The Linux VFS dentry cache may still
+    /// serve briefly within an RCU window, so this is best-effort
+    /// no-cache rather than rigorous bypass.
+    Off,
+    /// `attr_timeout=1s`, no directory-listing cache. Tight enough
+    /// for rapidly-changing remotes while keeping single-stat
+    /// hammering bounded.
+    Minimal,
+    /// `attr_timeout=dir_cache_time=cache_ttl=30s`. Suited to mounts
+    /// that mutate via this process: the existing post-mutation
+    /// `invalidate_dir` calls clear stale entries on `create`,
+    /// `unlink`, `rmdir`, `rename`, `mkdir`.
+    Writes,
+    /// `attr_timeout=dir_cache_time=cache_ttl=--cache-ttl`. The
+    /// historical AeroFTP default; keeps byte-for-byte compatibility
+    /// with mounts built before KE-C1 landed.
+    #[default]
+    Full,
+}
+
+impl CacheMode {
+    /// Returns the `(attr_timeout, dir_cache_time, cache_ttl)` triple
+    /// for this mode. `fallback` is the value derived from the legacy
+    /// `--cache-ttl` flag and is only consumed by `Full`.
+    fn ttls(self, fallback: Duration) -> (Duration, Duration, Duration) {
+        match self {
+            CacheMode::Off => (Duration::ZERO, Duration::ZERO, Duration::ZERO),
+            CacheMode::Minimal => (
+                Duration::from_secs(1),
+                Duration::ZERO,
+                Duration::from_secs(1),
+            ),
+            CacheMode::Writes => (
+                Duration::from_secs(30),
+                Duration::from_secs(30),
+                Duration::from_secs(30),
+            ),
+            CacheMode::Full => (fallback, fallback, fallback),
+        }
+    }
+
+    /// `true` when the in-memory `cache: HashMap` for `readdir`
+    /// children listings should be consulted before refetching from
+    /// the remote. `Off` and `Minimal` always force a refetch.
+    fn dir_cache_enabled(self) -> bool {
+        matches!(self, CacheMode::Writes | CacheMode::Full)
+    }
+
+    /// `true` when `set_cached` should insert into the in-memory
+    /// HashMap. With `Off` the HashMap stays empty so memory does
+    /// not grow unbounded on a busy mount; everything else fills it
+    /// normally.
+    fn populate_cache(self) -> bool {
+        !matches!(self, CacheMode::Off)
+    }
 }
 
 #[derive(Subcommand)]
@@ -1277,6 +1721,86 @@ enum Commands {
         /// Mount as read-only (default: read-write)
         #[arg(long)]
         read_only: bool,
+
+        /// KE-C2: How often the mount polls the remote for changes that
+        /// happened out-of-band. Accepts `30s`, `5m`, `1h`. Reserved for
+        /// the directory-listing watcher landing with T-DEBT-13; the
+        /// value is parsed and stored today but the polling task is
+        /// not yet active. Default: `1m`.
+        #[arg(long, env = "AEROFTP_MOUNT_CACHE_POLL_INTERVAL")]
+        cache_poll_interval: Option<String>,
+
+        /// KE-C2: FUSE attribute cache lifetime (`reply.attr` TTL).
+        /// Accepts `1s`, `500ms`, `5m`. Defaults to the value of
+        /// `--cache-ttl` for backward compatibility.
+        #[arg(long, env = "AEROFTP_MOUNT_ATTR_TIMEOUT")]
+        attr_timeout: Option<String>,
+
+        /// KE-C2: Directory-listing cache lifetime (used when checking
+        /// whether a cached `readdir` result is fresh enough to serve
+        /// without a remote round-trip). Accepts `30s`, `5m`. Defaults
+        /// to the value of `--cache-ttl` for backward compatibility.
+        #[arg(long, env = "AEROFTP_MOUNT_DIR_CACHE_TIME")]
+        dir_cache_time: Option<String>,
+
+        /// KE-C2: Maximum size of a single `read` call to the remote.
+        /// Accepts `128k`, `4M`, `1G`. Larger values amortise round-trip
+        /// latency on high-bandwidth links; smaller values reduce
+        /// memory pressure and the cost of a cancelled read. Default:
+        /// `4M`.
+        #[arg(long, env = "AEROFTP_MOUNT_READ_CHUNK_SIZE")]
+        read_chunk_size: Option<String>,
+
+        /// KE-C2: Upper bound for any adaptive ramp of the read chunk
+        /// size. Reserved for the doubling-strategy code path landing
+        /// with T-DEBT-13. The value is parsed and stored today but
+        /// the adaptive ramp is not yet active. Default: unset (no
+        /// extra cap; the per-call ceiling is `--read-chunk-size`).
+        #[arg(long, env = "AEROFTP_MOUNT_READ_CHUNK_SIZE_LIMIT")]
+        read_chunk_size_limit: Option<String>,
+
+        /// KE-C3: Enable the FUSE kernel write-back cache. When set, the
+        /// kernel buffers writes in its page cache and flushes them
+        /// asynchronously to the userspace filesystem. This typically
+        /// improves throughput on small/random writes at the cost of
+        /// crash durability: app-visible `mtime` and `size` update on
+        /// flush, not on every `write`. The capability is negotiated
+        /// in the FUSE `init` handshake; the kernel may refuse it on
+        /// older kernels (`FUSE_WRITEBACK_CACHE` requires kernel
+        /// >= 3.15). Default: off.
+        #[arg(long, env = "AEROFTP_MOUNT_WRITEBACK_CACHE")]
+        write_back_cache: bool,
+
+        /// KE-C1: Caching policy preset. Selects `attr_timeout`,
+        /// `dir_cache_time`, and the in-memory `cache_ttl` in one
+        /// switch. `off`: no cache anywhere, TTL=0 on every reply
+        /// (best-effort: the kernel dentry cache may still serve
+        /// briefly within an RCU window). `minimal`: 1s attr TTL, no
+        /// dir listing cache. `writes`: 30s TTL with the existing
+        /// post-mutation invalidation on `create`/`unlink`/`rename`/
+        /// `mkdir`/`rmdir`. `full`: 300s TTL (or whatever `--cache-ttl`
+        /// dictates), historical AeroFTP default. Granular overrides
+        /// (`--attr-timeout`, `--dir-cache-time`) win over the mode.
+        /// Default: `full`.
+        #[arg(
+            long,
+            value_enum,
+            default_value_t = CacheMode::Full,
+            env = "AEROFTP_MOUNT_CACHE_MODE",
+        )]
+        cache_mode: CacheMode,
+
+        /// T-DEBT-13c: Number of FUSE session event-loop threads. With
+        /// `N > 1` the kernel can dispatch independent requests
+        /// (`read`, `readdir`, `getattr`) in parallel and the mount
+        /// honours the `Send + Sync` invariant of the userspace
+        /// filesystem. When set the crate also enables
+        /// `FUSE_DEV_IOC_CLONE`, giving each worker thread its own
+        /// `/dev/fuse` descriptor for lock-free request processing.
+        /// Default: unset (single-threaded loop, byte-for-byte
+        /// compatible with mounts built before the 0.17 bump).
+        #[arg(long, env = "AEROFTP_MOUNT_FUSE_THREADS")]
+        fuse_threads: Option<usize>,
     },
     /// Transfer files between two saved profiles (cross-profile copy)
     Transfer {
@@ -4299,6 +4823,152 @@ fn effective_parallel_workers(cli: &Cli) -> usize {
     cli.parallel.clamp(1, 32)
 }
 
+/// KE-A2: Effective concurrency for metadata-only operations (rclone
+/// `--checkers`). Clamped to `[1, 64]` to keep the pool bounded even
+/// under hostile flag values. Separate pool from `--transfers` so a
+/// sync can probe destinations in parallel while a slower transfer
+/// loop runs underneath.
+fn effective_checkers(cli: &Cli) -> usize {
+    cli.checkers.clamp(1, 64)
+}
+
+/// KE-B1: Apply the per-backend `--s3-*` knobs to a freshly built
+/// provider, silently no-op-ing when the backend isn't S3 (or a
+/// downcast fails for any reason). Call this BEFORE `connect()` so
+/// `--s3-no-check-bucket` can short-circuit the bucket-existence
+/// probe; the other knobs only matter at upload time but applying
+/// them here keeps the wiring honest at a single site.
+///
+/// Pass `verbose=true` (i.e. `cli.verbose > 0`) to surface the applied
+/// knobs on stderr. Quiet/JSON mode skips the log line.
+fn apply_s3_runtime_knobs(provider: &mut Box<dyn StorageProvider>, cli: &Cli) {
+    let Some(s3) = provider
+        .as_any_mut()
+        .downcast_mut::<ftp_client_gui_lib::providers::s3::S3Provider>()
+    else {
+        return;
+    };
+    let mut applied: Vec<String> = Vec::new();
+    if cli.s3_upload_concurrency > 0 {
+        s3.set_upload_concurrency(cli.s3_upload_concurrency);
+        applied.push(format!(
+            "--s3-upload-concurrency={}",
+            cli.s3_upload_concurrency
+        ));
+    }
+    if cli.s3_no_check_bucket {
+        s3.set_no_check_bucket(true);
+        applied.push("--s3-no-check-bucket".to_string());
+    }
+    if cli.s3_disable_checksum {
+        s3.set_disable_checksum(true);
+        applied.push("--s3-disable-checksum".to_string());
+    }
+    if let Some(ref acl) = cli.s3_acl {
+        s3.set_acl(Some(acl.clone()));
+        applied.push(format!("--s3-acl={}", acl));
+    }
+    if let Some(ref sc) = cli.s3_storage_class {
+        s3.set_storage_class_override(Some(sc.clone()));
+        applied.push(format!("--s3-storage-class={}", sc));
+    }
+    if cli.verbose > 0 && !applied.is_empty() && !JSON_MODE.load(Ordering::Relaxed) {
+        eprintln!("S3 knobs: {}", applied.join(", "));
+    }
+}
+
+/// KE-B3: Apply the per-backend `--onedrive-*` knobs to a freshly built
+/// provider, silently no-op-ing when the backend isn't OneDrive. Call this
+/// BEFORE `connect()` so listing-time knobs are already in effect when the
+/// first request fires; the version-sweep flag only matters at upload time
+/// but applying everything here keeps the wiring honest at a single site.
+fn apply_onedrive_runtime_knobs(provider: &mut Box<dyn StorageProvider>, cli: &Cli) {
+    let Some(od) = provider
+        .as_any_mut()
+        .downcast_mut::<ftp_client_gui_lib::providers::onedrive::OneDriveProvider>()
+    else {
+        return;
+    };
+    let mut applied: Vec<String> = Vec::new();
+    if cli.onedrive_no_versions {
+        od.set_no_versions(true);
+        applied.push("--onedrive-no-versions".to_string());
+    }
+    if cli.onedrive_list_chunk > 0 {
+        od.set_list_chunk(Some(cli.onedrive_list_chunk));
+        applied.push(format!("--onedrive-list-chunk={}", cli.onedrive_list_chunk));
+    }
+    if let Some(ref scope) = cli.onedrive_link_scope {
+        od.set_link_scope(Some(scope.clone()));
+        applied.push(format!("--onedrive-link-scope={}", scope));
+    }
+    if cli.verbose > 0 && !applied.is_empty() && !JSON_MODE.load(Ordering::Relaxed) {
+        eprintln!("OneDrive knobs: {}", applied.join(", "));
+    }
+}
+
+/// KE-B4: Apply the per-backend `--azure-*` knobs to a freshly built
+/// provider, silently no-op-ing when the backend isn't Azure Blob. Same
+/// pre-connect insertion site as `apply_s3_runtime_knobs` so the knobs
+/// are already in effect by the time the first request fires.
+fn apply_azure_runtime_knobs(provider: &mut Box<dyn StorageProvider>, cli: &Cli) {
+    let Some(az) = provider
+        .as_any_mut()
+        .downcast_mut::<ftp_client_gui_lib::providers::azure::AzureProvider>()
+    else {
+        return;
+    };
+    let mut applied: Vec<String> = Vec::new();
+    if cli.azure_upload_concurrency > 0 {
+        az.set_upload_concurrency(cli.azure_upload_concurrency);
+        applied.push(format!(
+            "--azure-upload-concurrency={}",
+            cli.azure_upload_concurrency
+        ));
+    }
+    if cli.azure_disable_checksum {
+        az.set_disable_checksum(true);
+        applied.push("--azure-disable-checksum".to_string());
+    }
+    if let Some(ref tier) = cli.azure_access_tier {
+        az.set_access_tier(Some(tier.clone()));
+        applied.push(format!("--azure-access-tier={}", tier));
+    }
+    if cli.azure_archive_tier_delete {
+        az.set_archive_tier_delete(true);
+        applied.push("--azure-archive-tier-delete".to_string());
+    }
+    if cli.verbose > 0 && !applied.is_empty() && !JSON_MODE.load(Ordering::Relaxed) {
+        eprintln!("Azure knobs: {}", applied.join(", "));
+    }
+}
+
+/// KE-B2 (non-AIMD subset): Apply the `--drive-*` knobs that do not
+/// require the per-provider AIMD plumbing. The remaining two Drive flags
+/// (`--drive-pacer-burst`, `--drive-pacer-min-sleep`) are blocked on the
+/// AIMD-per-provider design decision; this helper only wires the
+/// permission-level flags that map cleanly to existing Drive code paths.
+fn apply_google_drive_runtime_knobs(provider: &mut Box<dyn StorageProvider>, cli: &Cli) {
+    let Some(gd) = provider
+        .as_any_mut()
+        .downcast_mut::<ftp_client_gui_lib::providers::google_drive::GoogleDriveProvider>()
+    else {
+        return;
+    };
+    let mut applied: Vec<String> = Vec::new();
+    if cli.drive_cross_account_copy {
+        gd.set_cross_account_copy(true);
+        applied.push("--drive-cross-account-copy".to_string());
+    }
+    if cli.drive_acknowledge_abuse {
+        gd.set_acknowledge_abuse(true);
+        applied.push("--drive-acknowledge-abuse".to_string());
+    }
+    if cli.verbose > 0 && !applied.is_empty() && !JSON_MODE.load(Ordering::Relaxed) {
+        eprintln!("Drive knobs: {}", applied.join(", "));
+    }
+}
+
 // ── Session transfer accounting (--max-transfer) ──────────────────
 
 /// Global session byte counter (upload + download combined).
@@ -4750,6 +5420,232 @@ fn parse_retry_sleep(s: &str) -> std::time::Duration {
     }
     // Default fallback: 1 second
     std::time::Duration::from_secs(1)
+}
+
+/// KE-C2: Bundle of optional FUSE mount knobs parsed from the CLI.
+/// `None` on any field means "fall back to the legacy `--cache-ttl`
+/// derived value", so an unspecified knob preserves backward-compatible
+/// behavior. `cache_poll_interval` and `read_chunk_size_limit` are
+/// accepted today but their semantics ship with the T-DEBT-13 fuser
+/// bump; they are stored on `AeroFuseFs` and exposed via accessors so
+/// the watcher / adaptive-ramp code can pick them up without another
+/// CLI surface change.
+#[derive(Debug, Clone, Copy, Default)]
+struct MountKnobs {
+    cache_poll_interval: Option<Duration>,
+    attr_timeout: Option<Duration>,
+    dir_cache_time: Option<Duration>,
+    read_chunk_size: Option<u64>,
+    read_chunk_size_limit: Option<u64>,
+    /// KE-C3: When `true`, `Filesystem::init` requests the
+    /// `FUSE_WRITEBACK_CACHE` capability from the kernel so that
+    /// writes are buffered in the kernel page cache.
+    writeback_cache: bool,
+    /// KE-C1: Selected caching policy preset. Drives the
+    /// (`attr_timeout`, `dir_cache_time`, `cache_ttl`) trio inside
+    /// `AeroFuseFs::new`; the per-knob options above (`attr_timeout`,
+    /// `dir_cache_time`) win when set explicitly.
+    cache_mode: CacheMode,
+    /// T-DEBT-13c: When `Some(n)` with `n > 1`, `cmd_mount` builds the
+    /// fuser 0.17 `Config` with `n_threads = Some(n)` and
+    /// `clone_fd = true`. Default `None` keeps the historical
+    /// single-threaded session loop and `clone_fd = false`.
+    fuse_threads: Option<usize>,
+}
+
+fn parse_duration_strict(s: &str) -> Result<std::time::Duration, String> {
+    let s = s.trim().to_lowercase();
+    if s == "0" || s.is_empty() {
+        return Ok(std::time::Duration::ZERO);
+    }
+    if let Some(n) = s.strip_suffix("ms") {
+        return n
+            .parse::<u64>()
+            .map(std::time::Duration::from_millis)
+            .map_err(|_| format!("invalid duration '{}'", s));
+    }
+    if let Some(n) = s.strip_suffix('s') {
+        return n
+            .parse::<u64>()
+            .map(std::time::Duration::from_secs)
+            .map_err(|_| format!("invalid duration '{}'", s));
+    }
+    if let Some(n) = s.strip_suffix('m') {
+        return n
+            .parse::<u64>()
+            .map(|v| std::time::Duration::from_secs(v * 60))
+            .map_err(|_| format!("invalid duration '{}'", s));
+    }
+    if let Some(n) = s.strip_suffix('h') {
+        return n
+            .parse::<u64>()
+            .map(|v| std::time::Duration::from_secs(v * 3600))
+            .map_err(|_| format!("invalid duration '{}'", s));
+    }
+    Err(format!("invalid duration '{}'", s))
+}
+
+fn build_aimd_hints(
+    cli: &Cli,
+) -> Result<HashMap<ftp_client_gui_lib::providers::ProviderType, ftp_client_gui_lib::transfer_dag::AimdHint>, String> {
+    use ftp_client_gui_lib::providers::ProviderType;
+    use ftp_client_gui_lib::transfer_dag::AimdHint;
+
+    let mut hints: HashMap<ProviderType, AimdHint> = HashMap::new();
+
+    if cli.drive_pacer_burst > 0 || cli.drive_pacer_min_sleep.is_some() {
+        let hint = hints.entry(ProviderType::GoogleDrive).or_default();
+        if cli.drive_pacer_burst > 0 {
+            hint.burst = Some(cli.drive_pacer_burst);
+        }
+        if let Some(raw) = &cli.drive_pacer_min_sleep {
+            let min_sleep = parse_duration_strict(raw)?;
+            if !min_sleep.is_zero() {
+                hint.min_sleep = Some(min_sleep);
+            }
+        }
+    }
+
+    for raw in &cli.aimd_hint {
+        let (provider_raw, secs_raw) = raw
+            .split_once(':')
+            .ok_or_else(|| format!("invalid --aimd-hint '{}': expected provider:secs", raw))?;
+        let provider = ProviderType::from_lowercase(provider_raw)
+            .ok_or_else(|| format!("invalid --aimd-hint '{}': unknown provider", raw))?;
+        let secs = secs_raw
+            .trim()
+            .parse::<u64>()
+            .map_err(|_| format!("invalid --aimd-hint '{}': secs must be an integer", raw))?;
+        hints.entry(provider).or_default().retry_after_secs = Some(secs);
+    }
+
+    Ok(hints)
+}
+
+fn init_aimd_runtime_hints(cli: &Cli) -> Result<(), String> {
+    ftp_client_gui_lib::transfer_dag::aimd_hints::init(build_aimd_hints(cli)?);
+    Ok(())
+}
+
+/// KE-D2 TOML schema. Each `[aimd.<class>]` section is optional; missing
+/// keys fall back to the historical `(min=1, max=ceiling, step=+1)`
+/// triple. The file is parsed with `serde(default)` so a partial schema
+/// (e.g. only `[aimd.api]`) is just as valid as a fully-populated one.
+#[derive(serde::Deserialize, Default)]
+struct AimdTomlFile {
+    #[serde(default)]
+    aimd: AimdTomlClasses,
+}
+
+#[derive(serde::Deserialize, Default)]
+struct AimdTomlClasses {
+    #[serde(default)]
+    file: AimdTomlClassWindow,
+    #[serde(default)]
+    chunk: AimdTomlClassWindow,
+    #[serde(default)]
+    http: AimdTomlClassWindow,
+    #[serde(default)]
+    api: AimdTomlClassWindow,
+}
+
+#[derive(serde::Deserialize, Default, Clone, Copy)]
+struct AimdTomlClassWindow {
+    #[serde(default)]
+    min: Option<usize>,
+    #[serde(default)]
+    max: Option<usize>,
+    #[serde(default)]
+    step: Option<usize>,
+}
+
+impl From<AimdTomlClassWindow> for ftp_client_gui_lib::transfer_dag::AimdClassWindow {
+    fn from(value: AimdTomlClassWindow) -> Self {
+        ftp_client_gui_lib::transfer_dag::AimdClassWindow {
+            min: value.min,
+            max: value.max,
+            step: value.step,
+        }
+    }
+}
+
+/// Default TOML path used when `--aimd-config` is unset. Returns
+/// `<XDG_CONFIG_HOME>/aeroftp/aimd.toml` (or `~/.config/aeroftp/aimd.toml`),
+/// or `None` when neither environment variable resolves.
+fn default_aimd_config_path() -> Option<PathBuf> {
+    dirs::config_dir().map(|d| d.join("aeroftp").join("aimd.toml"))
+}
+
+/// Load per-class AIMD window overrides from a TOML file. Returns
+/// `Ok(None)` when the file does not exist (silent fallback), so a
+/// missing default-path file is non-fatal. A malformed file fails
+/// loudly with an error the operator can act on.
+fn load_aimd_overrides_from_file(
+    path: &Path,
+) -> Result<Option<ftp_client_gui_lib::transfer_dag::AimdClassOverrides>, String> {
+    let raw = match std::fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(err) => return Err(format!("could not read {}: {}", path.display(), err)),
+    };
+    let parsed: AimdTomlFile = toml::from_str(&raw)
+        .map_err(|err| format!("could not parse {}: {}", path.display(), err))?;
+    Ok(Some(
+        ftp_client_gui_lib::transfer_dag::AimdClassOverrides {
+            file: parsed.aimd.file.into(),
+            chunk: parsed.aimd.chunk.into(),
+            http: parsed.aimd.http.into(),
+            api: parsed.aimd.api.into(),
+        },
+    ))
+}
+
+/// Compose the broadcast CLI overrides on top of the per-class TOML file
+/// overrides. CLI values win whenever they are `Some`, matching the
+/// documented precedence ("CLI vince sul file se entrambi presenti").
+fn merge_aimd_overrides(
+    cli: &Cli,
+    file_overrides: ftp_client_gui_lib::transfer_dag::AimdClassOverrides,
+) -> ftp_client_gui_lib::transfer_dag::AimdClassOverrides {
+    let cli_broadcast = ftp_client_gui_lib::transfer_dag::AimdClassOverrides::broadcast(
+        ftp_client_gui_lib::transfer_dag::AimdClassWindow {
+            min: cli.aimd_min_window,
+            max: cli.aimd_max_window,
+            step: cli.aimd_step_window,
+        },
+    );
+    file_overrides.merge_on_top(cli_broadcast)
+}
+
+/// KE-D1 + KE-D2: Snapshot the CLI knobs that tune the AIMD controller
+/// itself (`--aimd-disable`, `--aimd-min-window`, `--aimd-max-window`,
+/// `--aimd-step-window`, plus the per-class TOML file) into the
+/// process-wide [`AimdConfig`] runtime so every downstream transfer
+/// surface picks them up without an explicit plumbing argument.
+fn build_aimd_runtime_config(
+    cli: &Cli,
+) -> Result<ftp_client_gui_lib::transfer_dag::AimdConfig, String> {
+    let mut cfg = ftp_client_gui_lib::transfer_dag::AimdConfig::default();
+    if cli.aimd_disable {
+        cfg.disabled = true;
+    }
+
+    let file_overrides = match &cli.aimd_config {
+        Some(explicit) => load_aimd_overrides_from_file(explicit)?
+            .ok_or_else(|| format!("AIMD config file not found: {}", explicit.display()))?,
+        None => match default_aimd_config_path() {
+            Some(default_path) => load_aimd_overrides_from_file(&default_path)?.unwrap_or_default(),
+            None => ftp_client_gui_lib::transfer_dag::AimdClassOverrides::default(),
+        },
+    };
+    cfg.class_overrides = merge_aimd_overrides(cli, file_overrides);
+
+    Ok(cfg)
+}
+
+fn init_aimd_runtime_config(cli: &Cli) -> Result<(), String> {
+    ftp_client_gui_lib::transfer_dag::AimdConfig::install_runtime(build_aimd_runtime_config(cli)?);
+    Ok(())
 }
 
 // ── Dump helper (--dump headers,bodies,auth) ──────────────────────
@@ -11972,7 +12868,20 @@ async fn create_and_connect(
                         )
                         .await
                         {
-                            return result;
+                            // KE-B3 / KE-B2: OAuth path returns an already-connected
+                            // provider. Apply OneDrive and Drive runtime knobs
+                            // after the connect so the setters take effect on
+                            // subsequent upload / list / share / copy / download
+                            // calls. (S3 / Azure knobs do not apply here because
+                            // those backends are never routed through the OAuth
+                            // helper.)
+                            if let Ok((mut p, path)) = result {
+                                apply_onedrive_runtime_knobs(&mut p, cli);
+                                apply_google_drive_runtime_knobs(&mut p, cli);
+                                return Ok((p, path));
+                            } else {
+                                return result;
+                            }
                         }
                     }
                 }
@@ -11995,6 +12904,19 @@ async fn create_and_connect(
             return Err(provider_error_to_exit_code(&e));
         }
     };
+
+    // KE-B1: apply S3-specific tunings before connect() so
+    // --s3-no-check-bucket can skip the bucket probe. No-op for non-S3.
+    apply_s3_runtime_knobs(&mut provider, cli);
+    // KE-B3: OneDrive knobs (no-op for non-OneDrive). The OAuth-only path
+    // returns earlier and applies them there too; this site catches the
+    // rare case where OneDrive arrives via direct ProviderFactory::create.
+    apply_onedrive_runtime_knobs(&mut provider, cli);
+    // KE-B4: Azure Blob knobs (no-op for non-Azure).
+    apply_azure_runtime_knobs(&mut provider, cli);
+    // KE-B2: Google Drive non-AIMD knobs (no-op for non-Drive). Same
+    // OAuth-early-return caveat as KE-B3.
+    apply_google_drive_runtime_knobs(&mut provider, cli);
 
     if let Err(e) = provider.connect().await {
         let code = provider_error_to_exit_code(&e);
@@ -12054,8 +12976,22 @@ async fn create_and_connect(
     // Only forward to the provider when the user actually asked for >1 stream,
     // so providers that override `set_multi_thread_download` see the disabled
     // state as a no-op rather than a parse-error from a malformed cutoff.
-    let mt_streams = cli.multi_thread_streams.clamp(1, 16);
-    if mt_streams > 1 {
+    //
+    // KE-A1: when the provider is SFTP and `--sftp-concurrency` is set,
+    // it OVERRIDES `--multi-thread-streams` for that one transfer.
+    // Semantically these are different (N independent connections vs
+    // N reads on one channel) but at the provider trait level both map
+    // to `set_multi_thread_download(streams, cutoff)`. Documented in
+    // the flag help so rclone users know what they are getting.
+    let base_mt_streams = cli.multi_thread_streams.clamp(1, 16);
+    let effective_mt_streams = if cli.sftp_concurrency > 0
+        && provider.provider_type() == ftp_client_gui_lib::providers::ProviderType::Sftp
+    {
+        cli.sftp_concurrency.clamp(1, 16)
+    } else {
+        base_mt_streams
+    };
+    if effective_mt_streams > 1 {
         let mt_cutoff = match parse_size_filter(&cli.multi_thread_cutoff) {
             Ok(v) => v,
             Err(e) => {
@@ -12068,11 +13004,19 @@ async fn create_and_connect(
                 250 * 1024 * 1024
             }
         };
-        provider.set_multi_thread_download(mt_streams, mt_cutoff);
+        provider.set_multi_thread_download(effective_mt_streams, mt_cutoff);
         if cli.verbose > 0 {
+            let knob = if cli.sftp_concurrency > 0
+                && provider.provider_type() == ftp_client_gui_lib::providers::ProviderType::Sftp
+            {
+                "--sftp-concurrency"
+            } else {
+                "--multi-thread-streams"
+            };
             eprintln!(
-                "Multi-thread download: {} streams above {}",
-                mt_streams,
+                "Multi-thread download ({}): {} streams above {}",
+                knob,
+                effective_mt_streams,
                 format_size(mt_cutoff)
             );
         }
@@ -15402,10 +16346,15 @@ async fn pget_segmented_download(
     let pool = Arc::new(tokio::sync::Mutex::new(std::collections::VecDeque::from(
         conns,
     )));
+    let provider_type = {
+        let guard = pool.lock().await;
+        guard.front().map(|provider| provider.provider_type())
+    };
     let remote_owned = remote_path.to_string();
 
     let cfg = ConcurrentRangeConfig {
         final_path: PathBuf::from(local_path),
+        provider_type: provider_type.unwrap_or(ProviderType::Sftp),
         total_size: file_size,
         streams: actual_segments,
         max_streams: actual_segments,
@@ -19016,6 +19965,11 @@ fn cmd_aerorsync_mode_get(format: OutputFormat) -> i32 {
 /// is spawned, no version probe is performed (a non-zero exit on
 /// `rsync --version` would be a separate concern handled by the
 /// transfer layer).
+///
+/// Only the `aerorsync`-gated `cmd_aerorsync_mode_get` consumes this
+/// helper; gate the definition to match so the dead-code lint stays
+/// silent when the feature is off.
+#[cfg(feature = "aerorsync")]
 fn detect_classic_rsync() -> Option<std::path::PathBuf> {
     let exe_name = if cfg!(windows) { "rsync.exe" } else { "rsync" };
     let path_env = std::env::var_os("PATH")?;
@@ -24209,7 +25163,7 @@ async fn cmd_sync_local_to_local(
         )
     };
     #[cfg(not(feature = "aerorsync"))]
-    let delta_transport: Option<()> = None;
+    let _delta_transport: Option<()> = None;
 
     for entry in walker {
         if cancelled.load(Ordering::Relaxed) {
@@ -24275,8 +25229,12 @@ async fn cmd_sync_local_to_local(
 
         // Try LocalDeltaTransport for files >= threshold. Fall through to
         // plain copy on TooSmall, oversized, or any unexpected error so the
-        // user always gets a result.
+        // user always gets a result. Both bindings are written only inside
+        // the `aerorsync` feature gate, so they look immutable when the
+        // feature is off.
+        #[cfg_attr(not(feature = "aerorsync"), allow(unused_mut))]
         let mut used_delta = false;
+        #[cfg_attr(not(feature = "aerorsync"), allow(unused_mut))]
         let mut delta_bytes: Option<u64> = None;
 
         #[cfg(feature = "aerorsync")]
@@ -24393,6 +25351,9 @@ async fn cmd_sync_local_to_local(
     stats
 }
 
+// `use_aerorsync_batch` is only consumed inside an `aerorsync`-gated
+// block below; tolerate the dead argument when the feature is off.
+#[cfg_attr(not(feature = "aerorsync"), allow(unused_variables))]
 #[allow(clippy::too_many_arguments)]
 async fn cmd_sync(
     url: &str,
@@ -24554,12 +25515,39 @@ async fn cmd_sync(
             let _ = provider.disconnect().await;
             return 5.into();
         }
+        // KE-A4: --no-traverse is upload-only. With download or both, we
+        // need the remote listing to know what is on the other side.
+        if cli.no_traverse && direction != "upload" {
+            print_error(
+                format,
+                "--no-traverse requires --direction upload (download/both need the remote listing)",
+                5,
+            );
+            let _ = provider.disconnect().await;
+            return 5.into();
+        }
+        if cli.no_traverse && delete {
+            print_error(
+                format,
+                "--no-traverse cannot be used with --delete (orphan detection needs the remote listing)",
+                5,
+            );
+            let _ = provider.disconnect().await;
+            return 5.into();
+        }
+        let no_traverse_active = cli.no_traverse && !cli.no_check_dest;
 
         let mut remote_entries: Vec<(String, u64, Option<String>)> = Vec::new();
         if cli.no_check_dest {
             if !quiet {
                 eprintln!(
                     "Note: --no-check-dest skipping remote scan (assuming empty destination)"
+                );
+            }
+        } else if no_traverse_active {
+            if !quiet {
+                eprintln!(
+                    "Note: --no-traverse skipping remote scan (per-file stat will run during planning)"
                 );
             }
         } else {
@@ -24923,6 +25911,55 @@ async fn cmd_sync(
         }
     }
 
+    // KE-A4: --no-traverse per-file stat sweep. With the remote listing
+    // skipped (`remote_entries` empty), the planner above pushed every
+    // local file to `to_upload`. We now stat each candidate; if it exists
+    // with matching size we drop it from the queue. Anything else
+    // (missing, different size, or stat error) stays on the queue and
+    // gets uploaded. We never download here: --no-traverse is upload-only
+    // (enforced at the validation gate above).
+    //
+    // KE-A2: `--checkers` would parallelise this loop, but the
+    // `StorageProvider::stat` signature is `&mut self`, so a single
+    // provider handle serialises. The cap is honoured semantically
+    // (logged in the note below) and will become a real concurrency
+    // gate once the provider pool refactor lands (planned for Sprint K2).
+    let checkers_cap = effective_checkers(cli);
+    if cli.no_traverse && !cli.no_check_dest && !to_upload.is_empty() {
+        let mut survivors: Vec<&str> = Vec::with_capacity(to_upload.len());
+        let mut skipped_by_stat: u32 = 0;
+        for path in to_upload.drain(..) {
+            let remote_full = if remote.ends_with('/') {
+                format!("{}{}", remote, path)
+            } else {
+                format!("{}/{}", remote, path)
+            };
+            let local_size = local_map.get(path).map(|(s, _)| *s).unwrap_or(0);
+            match provider.stat(&remote_full).await {
+                Ok(entry) => {
+                    if entry.size == local_size {
+                        skipped_by_stat += 1;
+                    } else {
+                        survivors.push(path);
+                    }
+                }
+                Err(_) => {
+                    // NotFound (most common with --no-traverse) or any
+                    // stat error: leave the candidate on the queue.
+                    survivors.push(path);
+                }
+            }
+        }
+        to_upload = survivors;
+        skipped += skipped_by_stat;
+        if !quiet && skipped_by_stat > 0 {
+            eprintln!(
+                "Note: --no-traverse skipped {} file(s) (--checkers cap = {}) that already exist on remote with matching size",
+                skipped_by_stat, checkers_cap
+            );
+        }
+    }
+
     // --immutable: remove uploads that would overwrite existing remote files
     if cli.immutable {
         let before = to_upload.len();
@@ -25059,6 +26096,29 @@ async fn cmd_sync(
             return 4.into();
         }
     }
+
+    // KE-A5: Apply --order-by to the transfer queue BEFORE the dry-run
+    // gate so the printed/JSON plan reflects the order that the live
+    // run would dispatch. The local_map / remote_map carry (size,
+    // Option<mtime_string>) for every candidate; ModtimeAsc/Desc parse
+    // the mtime as RFC 3339; entries without a parseable timestamp are
+    // sorted to the end via OrderBy::sort_in_place.
+    let mtime_to_epoch = |raw: Option<&str>| -> Option<i64> {
+        raw.and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+            .map(|d| d.timestamp())
+    };
+    cli.order_by.sort_in_place(
+        &mut to_upload,
+        |p| *p,
+        |p| local_map.get(*p).map(|(s, _)| *s).unwrap_or(0),
+        |p| mtime_to_epoch(local_map.get(*p).and_then(|(_, m)| *m)),
+    );
+    cli.order_by.sort_in_place(
+        &mut to_download,
+        |p| *p,
+        |p| remote_map.get(*p).map(|(s, _)| *s).unwrap_or(0),
+        |p| mtime_to_epoch(remote_map.get(*p).and_then(|(_, m)| *m)),
+    );
 
     if dry_run {
         match format {
@@ -25243,7 +26303,12 @@ async fn cmd_sync(
     //   - the SFTP provider has no pinned host-key (Z.1.5 security gate)
     //   - open_delta_batch returns NoopBatch (transport opted out)
     //   - a per-file delta call returns `fallback` (e.g. TooSmall)
+    // Both bindings are mutated only inside the `aerorsync` feature
+    // gate below; when the feature is off they stay at their initial
+    // values and look immutable to clippy.
+    #[cfg_attr(not(feature = "aerorsync"), allow(unused_mut))]
     let mut used_batch_for_uploads = false;
+    #[cfg_attr(not(feature = "aerorsync"), allow(unused_mut))]
     let mut leftover_upload_jobs: Vec<(String, String, String, u64)> = upload_jobs.clone();
     #[cfg(feature = "aerorsync")]
     if use_aerorsync_batch && !leftover_upload_jobs.is_empty() {
@@ -26423,9 +27488,15 @@ async fn cmd_ncdu(
 #[cfg(target_os = "linux")]
 mod fuse_mount {
     use super::*;
+    // T-DEBT-13c: fuser 0.17 newtype migration. The integer args used in
+    // 0.16 (`u64` ino/fh/lock_owner, `i32` flags, `u32` write_flags) are
+    // now strongly-typed wrappers; we keep the body in `u64`/`i32` for
+    // minimal diff by extracting `.0` at method entry.
     use fuser::{
-        FileAttr, FileType, Filesystem, MountOption, ReplyAttr, ReplyCreate, ReplyData,
-        ReplyDirectory, ReplyEmpty, ReplyEntry, ReplyOpen, ReplyStatfs, ReplyWrite, Request,
+        BsdFileFlags, Config, Errno, FileAttr, FileHandle, FileType, Filesystem, FopenFlags,
+        Generation, INodeNo, KernelConfig, LockOwner, MountOption, OpenFlags, RenameFlags,
+        ReplyAttr, ReplyCreate, ReplyData, ReplyDirectory, ReplyEmpty, ReplyEntry, ReplyOpen,
+        ReplyStatfs, ReplyWrite, Request, SessionACL, WriteFlags,
     };
     use std::collections::HashMap;
     use std::ffi::OsStr;
@@ -26451,6 +27522,37 @@ mod fuse_mount {
         provider: Arc<AsyncMutex<Box<dyn StorageProvider>>>,
         base_path: String,
         cache_ttl: Duration,
+        /// KE-C2: FUSE attribute cache lifetime, overrides `cache_ttl`
+        /// for `reply.attr` calls when set via `--attr-timeout`.
+        attr_timeout: Duration,
+        /// KE-C2: Directory-listing cache lifetime, overrides `cache_ttl`
+        /// for `reply.entry` calls and dir-cache freshness checks when
+        /// set via `--dir-cache-time`.
+        dir_cache_time: Duration,
+        /// KE-C2: Maximum bytes per `read_range` call from the remote.
+        /// Replaces the historical fixed `READ_CHUNK` constant.
+        read_chunk_size: u64,
+        /// KE-C2: Upper bound for any adaptive ramp of the read chunk
+        /// size. Reserved for the doubling-strategy code path landing
+        /// with T-DEBT-13; surfaced today via `--read-chunk-size-limit`.
+        read_chunk_size_limit: Option<u64>,
+        /// KE-C2: Background poll cadence for out-of-band remote
+        /// changes. Reserved for the directory-listing watcher landing
+        /// with T-DEBT-13; surfaced today via `--cache-poll-interval`.
+        cache_poll_interval: Duration,
+        /// KE-C3: When `true`, the FUSE `init` callback negotiates the
+        /// `FUSE_WRITEBACK_CACHE` capability with the kernel. Read in
+        /// `impl Filesystem::init`.
+        writeback_cache: bool,
+        /// KE-C1: Resolved caching policy. The TTL trio above
+        /// (`cache_ttl`, `attr_timeout`, `dir_cache_time`) is already
+        /// derived from this mode (with per-knob CLI overrides taking
+        /// precedence), so `cache_mode` is consulted only at the two
+        /// gates that no TTL can express: skipping the in-memory
+        /// HashMap insert in `set_cached` (mode `Off`) and skipping
+        /// the dir-listing cache lookup in `readdir` (mode `Off` /
+        /// `Minimal`).
+        cache_mode: CacheMode,
         read_only: bool,
         /// Write buffers: inode → tempfile path
         write_buffers: Mutex<HashMap<u64, PathBuf>>,
@@ -26477,6 +27579,7 @@ mod fuse_mount {
             cache_ttl_secs: u64,
             read_only: bool,
             quiet: bool,
+            knobs: super::MountKnobs,
         ) -> Self {
             let rt = tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
@@ -26500,11 +27603,35 @@ mod fuse_mount {
                 },
             );
 
+            // KE-C1: derive the TTL trio from the selected mode, then
+            // let per-knob overrides win. `Full` keeps the historical
+            // `cache_ttl_secs` value byte-for-byte; the other modes
+            // pin attr/dir/cache TTL to their preset (see
+            // `CacheMode::ttls`). KE-C2 per-knob overrides
+            // (`--attr-timeout`, `--dir-cache-time`) still take final
+            // precedence so an operator can mix `--cache-mode=off`
+            // with a deliberate `--dir-cache-time=10s` if needed.
+            let legacy_ttl = Duration::from_secs(cache_ttl_secs);
+            let (preset_attr, preset_dir, preset_cache) = knobs.cache_mode.ttls(legacy_ttl);
+            let cache_ttl = preset_cache;
+            let attr_timeout = knobs.attr_timeout.unwrap_or(preset_attr);
+            let dir_cache_time = knobs.dir_cache_time.unwrap_or(preset_dir);
+            let read_chunk_size = knobs.read_chunk_size.unwrap_or(READ_CHUNK).max(1);
+            let cache_poll_interval =
+                knobs.cache_poll_interval.unwrap_or(Duration::from_secs(60));
+
             Self {
                 rt,
                 provider,
                 base_path,
-                cache_ttl: Duration::from_secs(cache_ttl_secs),
+                cache_ttl,
+                attr_timeout,
+                dir_cache_time,
+                read_chunk_size,
+                read_chunk_size_limit: knobs.read_chunk_size_limit,
+                cache_poll_interval,
+                writeback_cache: knobs.writeback_cache,
+                cache_mode: knobs.cache_mode,
                 read_only,
                 write_buffers: Mutex::new(HashMap::new()),
                 flush_ok: Mutex::new(std::collections::HashSet::new()),
@@ -26564,6 +27691,14 @@ mod fuse_mount {
         }
 
         fn set_cached(&self, ino: u64, entry: CachedEntry) {
+            // KE-C1: `Off` mode skips the in-memory cache entirely.
+            // Without this gate the HashMap would still fill on every
+            // miss-then-fetch (because TTL=0 in `get_cached` always
+            // returns `None`), turning "no cache" into "leak forever
+            // on a busy mount".
+            if !self.cache_mode.populate_cache() {
+                return;
+            }
             self.cache.lock().unwrap().insert(ino, entry);
         }
 
@@ -26646,7 +27781,8 @@ mod fuse_mount {
     fn dir_attr(ino: u64, _nlink: u64, uid: u32, gid: u32) -> FileAttr {
         let now = SystemTime::now();
         FileAttr {
-            ino,
+            // T-DEBT-13c: `FileAttr.ino` is now `INodeNo` in fuser 0.17.
+            ino: INodeNo(ino),
             size: 0,
             blocks: 0,
             atime: now,
@@ -26666,7 +27802,8 @@ mod fuse_mount {
 
     fn file_attr(ino: u64, size: u64, mtime: SystemTime, uid: u32, gid: u32) -> FileAttr {
         FileAttr {
-            ino,
+            // T-DEBT-13c: `FileAttr.ino` is now `INodeNo` in fuser 0.17.
+            ino: INodeNo(ino),
             size,
             blocks: size.div_ceil(BLOCK_SIZE as u64),
             atime: mtime,
@@ -26700,8 +27837,38 @@ mod fuse_mount {
     }
 
     impl Filesystem for AeroFuseFs {
-        fn getattr(&mut self, _req: &Request, ino: u64, _fh: Option<u64>, reply: ReplyAttr) {
-            let ttl = self.cache_ttl;
+        /// KE-C3: Negotiate the `FUSE_WRITEBACK_CACHE` capability with
+        /// the kernel during the FUSE `init` handshake. When the user
+        /// passes `--write-back-cache`, the kernel buffers writes in
+        /// its page cache and flushes them asynchronously. If the
+        /// kernel does not support the bit it silently refuses the
+        /// addition; we discard the missing-flag error so the mount
+        /// still succeeds without write-back acceleration.
+        ///
+        /// T-DEBT-13c: under fuser 0.17 the capability lives on the
+        /// typed `InitFlags` bitflag and the callback returns
+        /// `io::Result<()>` instead of the legacy `Result<(), c_int>`.
+        fn init(
+            &mut self,
+            _req: &Request,
+            config: &mut KernelConfig,
+        ) -> std::io::Result<()> {
+            if self.writeback_cache {
+                let _ = config.add_capabilities(fuser::InitFlags::FUSE_WRITEBACK_CACHE);
+            }
+            Ok(())
+        }
+
+        fn getattr(
+            &self,
+            _req: &Request,
+            ino: INodeNo,
+            _fh: Option<FileHandle>,
+            reply: ReplyAttr,
+        ) {
+            let ino: u64 = ino.0;
+            // KE-C2: `reply.attr` honours `--attr-timeout` when set.
+            let ttl = self.attr_timeout;
 
             // Root inode: always return directory attr without provider call
             if ino == ROOT_INODE {
@@ -26722,21 +27889,23 @@ mod fuse_mount {
 
             // Cache miss - fetch from provider
             let Some(path) = self.get_path(ino) else {
-                reply.error(libc::ENOENT);
+                reply.error(Errno::ENOENT);
                 return;
             };
 
             if let Some(cached) = self.fetch_stat(ino, &path) {
                 reply.attr(&ttl, &cached.attr);
             } else {
-                reply.error(libc::ENOENT);
+                reply.error(Errno::ENOENT);
             }
         }
 
-        fn lookup(&mut self, _req: &Request, parent: u64, name: &OsStr, reply: ReplyEntry) {
-            let ttl = self.cache_ttl;
+        fn lookup(&self, _req: &Request, parent: INodeNo, name: &OsStr, reply: ReplyEntry) {
+            let parent: u64 = parent.0;
+            // KE-C2: `reply.entry` honours `--dir-cache-time` when set.
+            let ttl = self.dir_cache_time;
             let Some(parent_path) = self.get_path(parent) else {
-                reply.error(libc::ENOENT);
+                reply.error(Errno::ENOENT);
                 return;
             };
 
@@ -26750,7 +27919,7 @@ mod fuse_mount {
             // Check if we have inode + fresh cache
             let child_ino = self.alloc_inode(&child_path);
             if let Some(cached) = self.get_cached(child_ino) {
-                reply.entry(&ttl, &cached.attr, 0);
+                reply.entry(&ttl, &cached.attr, Generation(0));
                 return;
             }
 
@@ -26761,40 +27930,49 @@ mod fuse_mount {
 
             if parent_cached.is_some() {
                 if let Some(cached) = self.get_cached(child_ino) {
-                    reply.entry(&ttl, &cached.attr, 0);
+                    reply.entry(&ttl, &cached.attr, Generation(0));
                     return;
                 }
             }
 
             // Still not found - try direct stat
             if let Some(cached) = self.fetch_stat(child_ino, &child_path) {
-                reply.entry(&ttl, &cached.attr, 0);
+                reply.entry(&ttl, &cached.attr, Generation(0));
             } else {
-                reply.error(libc::ENOENT);
+                reply.error(Errno::ENOENT);
             }
         }
 
         fn readdir(
-            &mut self,
+            &self,
             _req: &Request,
-            ino: u64,
-            _fh: u64,
-            offset: i64,
+            ino: INodeNo,
+            _fh: FileHandle,
+            offset: u64,
             mut reply: ReplyDirectory,
         ) {
+            let ino: u64 = ino.0;
+            let offset: i64 = offset as i64;
             let Some(path) = self.get_path(ino) else {
-                reply.error(libc::ENOENT);
+                reply.error(Errno::ENOENT);
                 return;
             };
 
-            // Fetch or use cached directory listing
-            let cached = self
-                .get_cached(ino)
-                .filter(|c| c.children.is_some())
-                .or_else(|| self.fetch_dir(ino, &path));
+            // Fetch or use cached directory listing.
+            // KE-C1: `Off` and `Minimal` skip the in-memory listing
+            // cache entirely so every `readdir` round-trips to the
+            // remote. `Writes` and `Full` consult the HashMap first;
+            // post-mutation invalidation already keeps it honest.
+            let cached = if self.cache_mode.dir_cache_enabled() {
+                self.get_cached(ino)
+                    .filter(|c| c.children.is_some())
+                    .or_else(|| self.fetch_dir(ino, &path))
+            } else {
+                self.fetch_dir(ino, &path)
+            };
 
             let Some(cached) = cached else {
-                reply.error(libc::EIO);
+                reply.error(Errno::EIO);
                 return;
             };
 
@@ -26822,50 +28000,60 @@ mod fuse_mount {
             }
 
             for (i, (ino, kind, name)) in entries.iter().enumerate().skip(offset as usize) {
-                if reply.add(*ino, (i + 1) as i64, *kind, name) {
+                // T-DEBT-13c: `ReplyDirectory::add` now takes
+                // `INodeNo` and `u64` offset (was `u64` + `i64` in
+                // 0.16). Wrap the local `u64` ino + push the offset
+                // through a `u64` cast.
+                if reply.add(INodeNo(*ino), (i + 1) as u64, *kind, name) {
                     break; // buffer full
                 }
             }
             reply.ok();
         }
 
-        fn open(&mut self, _req: &Request, ino: u64, flags: i32, reply: ReplyOpen) {
+        fn open(&self, _req: &Request, ino: INodeNo, flags: OpenFlags, reply: ReplyOpen) {
+            let ino: u64 = ino.0;
+            let flags: i32 = flags.0;
             if self.get_path(ino).is_none() {
-                reply.error(libc::ENOENT);
+                reply.error(Errno::ENOENT);
                 return;
             }
             // Check write intent on read-only mount
             let write_flags = libc::O_WRONLY | libc::O_RDWR | libc::O_APPEND | libc::O_TRUNC;
             if self.read_only && (flags & write_flags) != 0 {
-                reply.error(libc::EROFS);
+                reply.error(Errno::EROFS);
                 return;
             }
-            reply.opened(0, 0);
+            reply.opened(FileHandle(0), FopenFlags::empty());
         }
 
         fn read(
-            &mut self,
+            &self,
             _req: &Request,
-            ino: u64,
-            _fh: u64,
-            offset: i64,
+            ino: INodeNo,
+            _fh: FileHandle,
+            offset: u64,
             size: u32,
-            _flags: i32,
-            _lock_owner: Option<u64>,
+            _flags: OpenFlags,
+            _lock_owner: Option<LockOwner>,
             reply: ReplyData,
         ) {
+            let ino: u64 = ino.0;
             let Some(path) = self.get_path(ino) else {
-                reply.error(libc::ENOENT);
+                reply.error(Errno::ENOENT);
                 return;
             };
 
             let provider = self.provider.clone();
             let len = size as u64;
-            let off = offset as u64;
+            // T-DEBT-13c: `offset` is already `u64` after the fuser 0.17
+            // newtype migration; no cast required.
+            let off = offset;
+            let read_chunk_size = self.read_chunk_size;
 
             let result = self.rt.block_on(async {
                 let mut p = provider.lock().await;
-                p.read_range(&path, off, len.min(READ_CHUNK)).await
+                p.read_range(&path, off, len.min(read_chunk_size)).await
             });
 
             match result {
@@ -26875,7 +28063,7 @@ mod fuse_mount {
                     // Safety cap: refuse to download files >64MB in fallback to prevent OOM
                     let file_size = self.get_cached(ino).map(|c| c.attr.size).unwrap_or(0);
                     if file_size > 64 * 1024 * 1024 {
-                        reply.error(libc::EIO); // Too large for in-memory fallback
+                        reply.error(Errno::EIO); // Too large for in-memory fallback
                         return;
                     }
                     let result = self.rt.block_on(async {
@@ -26888,7 +28076,7 @@ mod fuse_mount {
                             let start = (off as usize).min(data.len());
                             reply.data(&data[start..end]);
                         }
-                        Err(_) => reply.error(libc::EIO),
+                        Err(_) => reply.error(Errno::EIO),
                     }
                 }
             }
@@ -26897,21 +28085,22 @@ mod fuse_mount {
         // ── Write operations ──────────────────────────────────────
 
         fn create(
-            &mut self,
+            &self,
             _req: &Request,
-            parent: u64,
+            parent: INodeNo,
             name: &OsStr,
             _mode: u32,
             _umask: u32,
             _flags: i32,
             reply: ReplyCreate,
         ) {
+            let parent: u64 = parent.0;
             if self.read_only {
-                reply.error(libc::EROFS);
+                reply.error(Errno::EROFS);
                 return;
             }
             let Some(parent_path) = self.get_path(parent) else {
-                reply.error(libc::ENOENT);
+                reply.error(Errno::ENOENT);
                 return;
             };
             let child_name = name.to_string_lossy();
@@ -26929,7 +28118,10 @@ mod fuse_mount {
             let _ = std::fs::write(&tmp, b"");
             self.write_buffers.lock().unwrap().insert(child_ino, tmp);
 
-            let ttl = self.cache_ttl;
+            // KE-C2: `reply.created` carries a single TTL covering entry +
+            // attr; we use the dir-cache value because the parent-side
+            // entry view is the dominant consumer of this reply.
+            let ttl = self.dir_cache_time;
             let attr = file_attr(child_ino, 0, SystemTime::now(), self.uid, self.gid);
             self.set_cached(
                 child_ino,
@@ -26941,23 +28133,29 @@ mod fuse_mount {
             );
             self.invalidate_dir(parent);
 
-            reply.created(&ttl, &attr, 0, 0, 0);
+            reply.created(&ttl, &attr, Generation(0), FileHandle(0), FopenFlags::empty());
         }
 
         fn write(
-            &mut self,
+            &self,
             _req: &Request,
-            ino: u64,
-            _fh: u64,
-            offset: i64,
+            ino: INodeNo,
+            _fh: FileHandle,
+            offset: u64,
             data: &[u8],
-            _write_flags: u32,
-            _flags: i32,
-            _lock_owner: Option<u64>,
+            _write_flags: WriteFlags,
+            _flags: OpenFlags,
+            _lock_owner: Option<LockOwner>,
             reply: ReplyWrite,
         ) {
+            let ino: u64 = ino.0;
+            // T-DEBT-13c: keep the i64 typing the body has historically
+            // used. `offset` was `i64` in fuser 0.16; with the 0.17
+            // newtype migration it is `u64`. Negative offsets are
+            // rejected by the kernel before this method is ever called.
+            let offset: i64 = offset as i64;
             if self.read_only {
-                reply.error(libc::EROFS);
+                reply.error(Errno::EROFS);
                 return;
             }
 
@@ -26967,7 +28165,7 @@ mod fuse_mount {
                 // Try to create one on-the-fly for existing files
                 drop(buffers);
                 let Some(path) = self.get_path(ino) else {
-                    reply.error(libc::ENOENT);
+                    reply.error(Errno::ENOENT);
                     return;
                 };
                 // Download existing content to tempfile
@@ -26989,7 +28187,7 @@ mod fuse_mount {
                 // Now write to the buffer
                 if let Err(e) = write_at_offset(&tmp, offset, data) {
                     eprintln!("write error: {}", e);
-                    reply.error(libc::EIO);
+                    reply.error(Errno::EIO);
                     return;
                 }
                 reply.written(data.len() as u32);
@@ -26999,20 +28197,21 @@ mod fuse_mount {
 
             if let Err(e) = write_at_offset(&tmp_path, offset, data) {
                 eprintln!("write error: {}", e);
-                reply.error(libc::EIO);
+                reply.error(Errno::EIO);
                 return;
             }
             reply.written(data.len() as u32);
         }
 
         fn flush(
-            &mut self,
+            &self,
             _req: &Request,
-            ino: u64,
-            _fh: u64,
-            _lock_owner: u64,
+            ino: INodeNo,
+            _fh: FileHandle,
+            _lock_owner: LockOwner,
             reply: ReplyEmpty,
         ) {
+            let ino: u64 = ino.0;
             let buffers = self.write_buffers.lock().unwrap();
             let Some(tmp_path) = buffers.get(&ino).cloned() else {
                 reply.ok();
@@ -27021,7 +28220,7 @@ mod fuse_mount {
             drop(buffers);
 
             let Some(remote_path) = self.get_path(ino) else {
-                reply.error(libc::ENOENT);
+                reply.error(Errno::ENOENT);
                 return;
             };
 
@@ -27047,20 +28246,21 @@ mod fuse_mount {
                 reply.ok();
             } else {
                 // Do NOT mark as flushed - release will keep the tempfile
-                reply.error(libc::EIO);
+                reply.error(Errno::EIO);
             }
         }
 
         fn release(
-            &mut self,
+            &self,
             _req: &Request,
-            ino: u64,
-            _fh: u64,
-            _flags: i32,
-            _lock_owner: Option<u64>,
+            ino: INodeNo,
+            _fh: FileHandle,
+            _flags: OpenFlags,
+            _lock_owner: Option<LockOwner>,
             _flush: bool,
             reply: ReplyEmpty,
         ) {
+            let ino: u64 = ino.0;
             if let Some(tmp_path) = self.write_buffers.lock().unwrap().remove(&ino) {
                 if self.flush_ok.lock().unwrap().remove(&ino) {
                     // Flush succeeded - safe to delete tempfile
@@ -27077,20 +28277,21 @@ mod fuse_mount {
         }
 
         fn mkdir(
-            &mut self,
+            &self,
             _req: &Request,
-            parent: u64,
+            parent: INodeNo,
             name: &OsStr,
             _mode: u32,
             _umask: u32,
             reply: ReplyEntry,
         ) {
+            let parent: u64 = parent.0;
             if self.read_only {
-                reply.error(libc::EROFS);
+                reply.error(Errno::EROFS);
                 return;
             }
             let Some(parent_path) = self.get_path(parent) else {
-                reply.error(libc::ENOENT);
+                reply.error(Errno::ENOENT);
                 return;
             };
             let child_name = name.to_string_lossy();
@@ -27106,7 +28307,8 @@ mod fuse_mount {
             match result {
                 Ok(()) => {
                     let child_ino = self.alloc_inode(&child_path);
-                    let ttl = self.cache_ttl;
+                    // KE-C2: mkdir-style `reply.entry` uses `--dir-cache-time`.
+                    let ttl = self.dir_cache_time;
                     let attr = dir_attr(child_ino, 0, self.uid, self.gid);
                     self.set_cached(
                         child_ino,
@@ -27117,19 +28319,20 @@ mod fuse_mount {
                         },
                     );
                     self.invalidate_dir(parent);
-                    reply.entry(&ttl, &attr, 0);
+                    reply.entry(&ttl, &attr, Generation(0));
                 }
-                Err(_) => reply.error(libc::EIO),
+                Err(_) => reply.error(Errno::EIO),
             }
         }
 
-        fn unlink(&mut self, _req: &Request, parent: u64, name: &OsStr, reply: ReplyEmpty) {
+        fn unlink(&self, _req: &Request, parent: INodeNo, name: &OsStr, reply: ReplyEmpty) {
+            let parent: u64 = parent.0;
             if self.read_only {
-                reply.error(libc::EROFS);
+                reply.error(Errno::EROFS);
                 return;
             }
             let Some(parent_path) = self.get_path(parent) else {
-                reply.error(libc::ENOENT);
+                reply.error(Errno::ENOENT);
                 return;
             };
             let child_name = name.to_string_lossy();
@@ -27152,17 +28355,18 @@ mod fuse_mount {
                     }
                     reply.ok();
                 }
-                Err(_) => reply.error(libc::EIO),
+                Err(_) => reply.error(Errno::EIO),
             }
         }
 
-        fn rmdir(&mut self, _req: &Request, parent: u64, name: &OsStr, reply: ReplyEmpty) {
+        fn rmdir(&self, _req: &Request, parent: INodeNo, name: &OsStr, reply: ReplyEmpty) {
+            let parent: u64 = parent.0;
             if self.read_only {
-                reply.error(libc::EROFS);
+                reply.error(Errno::EROFS);
                 return;
             }
             let Some(parent_path) = self.get_path(parent) else {
-                reply.error(libc::ENOENT);
+                reply.error(Errno::ENOENT);
                 return;
             };
             let child_name = name.to_string_lossy();
@@ -27184,30 +28388,32 @@ mod fuse_mount {
                     }
                     reply.ok();
                 }
-                Err(_) => reply.error(libc::EIO),
+                Err(_) => reply.error(Errno::EIO),
             }
         }
 
         fn rename(
-            &mut self,
+            &self,
             _req: &Request,
-            parent: u64,
+            parent: INodeNo,
             name: &OsStr,
-            newparent: u64,
+            newparent: INodeNo,
             newname: &OsStr,
-            _flags: u32,
+            _flags: RenameFlags,
             reply: ReplyEmpty,
         ) {
+            let parent: u64 = parent.0;
+            let newparent: u64 = newparent.0;
             if self.read_only {
-                reply.error(libc::EROFS);
+                reply.error(Errno::EROFS);
                 return;
             }
             let Some(parent_path) = self.get_path(parent) else {
-                reply.error(libc::ENOENT);
+                reply.error(Errno::ENOENT);
                 return;
             };
             let Some(newparent_path) = self.get_path(newparent) else {
-                reply.error(libc::ENOENT);
+                reply.error(Errno::ENOENT);
                 return;
             };
             let old_path = Self::child_path(&parent_path, &name.to_string_lossy());
@@ -27251,14 +28457,14 @@ mod fuse_mount {
                     }
                     reply.ok();
                 }
-                Err(_) => reply.error(libc::EIO),
+                Err(_) => reply.error(Errno::EIO),
             }
         }
 
         fn setattr(
-            &mut self,
+            &self,
             _req: &Request,
-            ino: u64,
+            ino: INodeNo,
             _mode: Option<u32>,
             _uid: Option<u32>,
             _gid: Option<u32>,
@@ -27266,13 +28472,14 @@ mod fuse_mount {
             _atime: Option<fuser::TimeOrNow>,
             _mtime: Option<fuser::TimeOrNow>,
             _ctime: Option<SystemTime>,
-            _fh: Option<u64>,
+            _fh: Option<FileHandle>,
             _crtime: Option<SystemTime>,
             _chgtime: Option<SystemTime>,
             _bkuptime: Option<SystemTime>,
-            _flags: Option<u32>,
+            _flags: Option<BsdFileFlags>,
             reply: ReplyAttr,
         ) {
+            let ino: u64 = ino.0;
             // Handle truncation for write support
             if let Some(new_size) = size {
                 if let Some(tmp_path) = self.write_buffers.lock().unwrap().get(&ino) {
@@ -27287,22 +28494,25 @@ mod fuse_mount {
                     cached.attr.blocks = new_size.div_ceil(BLOCK_SIZE as u64);
                     cached.attr.mtime = SystemTime::now();
                     self.set_cached(ino, cached.clone());
-                    reply.attr(&self.cache_ttl, &cached.attr);
+                    // KE-C2: `reply.attr` honours `--attr-timeout` when set.
+                    reply.attr(&self.attr_timeout, &cached.attr);
                     return;
                 }
             }
 
-            let ttl = self.cache_ttl;
+            // KE-C2: setattr fallback path also serves `reply.attr`,
+            // so it honours `--attr-timeout` when set.
+            let ttl = self.attr_timeout;
             if let Some(cached) = self.get_cached(ino) {
                 reply.attr(&ttl, &cached.attr);
             } else if ino == ROOT_INODE {
                 reply.attr(&ttl, &dir_attr(ROOT_INODE, 0, self.uid, self.gid));
             } else {
-                reply.error(libc::ENOENT);
+                reply.error(Errno::ENOENT);
             }
         }
 
-        fn statfs(&mut self, _req: &Request, _ino: u64, reply: ReplyStatfs) {
+        fn statfs(&self, _req: &Request, _ino: INodeNo, reply: ReplyStatfs) {
             let provider = self.provider.clone();
             let result = self.rt.block_on(async {
                 let mut p = provider.lock().await;
@@ -27359,6 +28569,7 @@ mod fuse_mount {
         cache_ttl: u64,
         allow_other: bool,
         read_only: bool,
+        knobs: super::MountKnobs,
         cli: &Cli,
         format: OutputFormat,
     ) -> i32 {
@@ -27413,19 +28624,49 @@ mod fuse_mount {
 
         let provider_arc = Arc::new(AsyncMutex::new(provider));
 
-        let fs = AeroFuseFs::new(provider_arc.clone(), base_path, cache_ttl, read_only, quiet);
+        let fs = AeroFuseFs::new(
+            provider_arc.clone(),
+            base_path,
+            cache_ttl,
+            read_only,
+            quiet,
+            knobs,
+        );
 
-        let mut options = vec![
+        // T-DEBT-13c: fuser 0.17 `spawn_mount2` takes a `Config`
+        // instead of `&[MountOption]`. `MountOption::AllowOther` no
+        // longer exists as a variant; the kernel-side `allow_other`
+        // mount string is now produced from `SessionACL::All` by the
+        // crate. Multi-threaded loop (`n_threads`) and per-thread fd
+        // cloning (`clone_fd`) are off by default for byte-for-byte
+        // compatibility with the legacy single-thread mount path; the
+        // T-DEBT-13c knob `--fuse-threads N` opts in.
+        let mut mount_options = vec![
             MountOption::FSName("aeroftp".to_string()),
             MountOption::Subtype("aeroftp".to_string()),
             MountOption::DefaultPermissions,
         ];
         if read_only {
-            options.push(MountOption::RO);
+            mount_options.push(MountOption::RO);
         }
-        if allow_other {
-            options.push(MountOption::AllowOther);
-        }
+        let acl = if allow_other {
+            SessionACL::All
+        } else {
+            SessionACL::Owner
+        };
+        let n_threads = knobs.fuse_threads;
+        // FUSE_DEV_IOC_CLONE only makes sense when more than one
+        // session thread is running; otherwise it is wasted file
+        // descriptor effort.
+        let clone_fd = matches!(n_threads, Some(n) if n > 1);
+        // T-DEBT-13c: `Config` is `#[non_exhaustive]` in fuser 0.17,
+        // so the struct expression syntax is rejected. Build through
+        // `default()` + field assignment instead.
+        let mut config = Config::default();
+        config.mount_options = mount_options;
+        config.acl = acl;
+        config.n_threads = n_threads;
+        config.clone_fd = clone_fd;
 
         // Use `spawn_mount2` so the FUSE session handle is owned by a
         // `BackgroundSession`; dropping it triggers `fuse_unmount`. Previously
@@ -27434,7 +28675,7 @@ mod fuse_mount {
         // only `fusermount -u` could clear.
         let mountpoint_owned = mountpoint.to_string();
         let session_result = tokio::task::spawn_blocking(move || {
-            fuser::spawn_mount2(fs, &mountpoint_owned, &options)
+            fuser::spawn_mount2(fs, &mountpoint_owned, &config)
         })
         .await;
 
@@ -30997,6 +32238,16 @@ async fn cmd_transfer_doctor(
         }
     };
 
+    // KE-B1 / KE-B2 / KE-B3 / KE-B4: per-backend knobs apply symmetrically to source and dest.
+    apply_s3_runtime_knobs(&mut source, cli);
+    apply_s3_runtime_knobs(&mut dest, cli);
+    apply_onedrive_runtime_knobs(&mut source, cli);
+    apply_onedrive_runtime_knobs(&mut dest, cli);
+    apply_azure_runtime_knobs(&mut source, cli);
+    apply_azure_runtime_knobs(&mut dest, cli);
+    apply_google_drive_runtime_knobs(&mut source, cli);
+    apply_google_drive_runtime_knobs(&mut dest, cli);
+
     if let Err(e) = source.connect().await {
         print_error(
             format,
@@ -31191,6 +32442,16 @@ async fn cmd_transfer_profiles(
             return provider_error_to_exit_code(&e);
         }
     };
+
+    // KE-B1 / KE-B2 / KE-B3 / KE-B4: per-backend knobs apply symmetrically to source and dest.
+    apply_s3_runtime_knobs(&mut source, cli);
+    apply_s3_runtime_knobs(&mut dest, cli);
+    apply_onedrive_runtime_knobs(&mut source, cli);
+    apply_onedrive_runtime_knobs(&mut dest, cli);
+    apply_azure_runtime_knobs(&mut source, cli);
+    apply_azure_runtime_knobs(&mut dest, cli);
+    apply_google_drive_runtime_knobs(&mut source, cli);
+    apply_google_drive_runtime_knobs(&mut dest, cli);
 
     // Connect source
     if !quiet {
@@ -31550,6 +32811,11 @@ async fn batch_connect_profile(
         );
         provider_error_to_exit_code(&e)
     })?;
+    // KE-B1 / KE-B2 / KE-B3 / KE-B4: apply per-backend knobs before connect.
+    apply_s3_runtime_knobs(&mut provider, cli);
+    apply_onedrive_runtime_knobs(&mut provider, cli);
+    apply_azure_runtime_knobs(&mut provider, cli);
+    apply_google_drive_runtime_knobs(&mut provider, cli);
     provider.connect().await.map_err(|e| {
         print_error(
             format,
@@ -31821,6 +33087,11 @@ async fn audit_connect_profile(
         .map_err(|_code| "profile resolution failed".to_string())?;
     let mut provider =
         ProviderFactory::create(&cfg).map_err(|e| format!("provider creation failed: {}", e))?;
+    // KE-B1 / KE-B2 / KE-B3 / KE-B4: apply per-backend knobs before connect.
+    apply_s3_runtime_knobs(&mut provider, cli);
+    apply_onedrive_runtime_knobs(&mut provider, cli);
+    apply_azure_runtime_knobs(&mut provider, cli);
+    apply_google_drive_runtime_knobs(&mut provider, cli);
     provider
         .connect()
         .await
@@ -36404,6 +37675,29 @@ async fn main() {
         JSON_MODE.store(true, Ordering::Relaxed);
     }
 
+    if let Err(error) = init_aimd_runtime_hints(&cli) {
+        eprintln!("Error: {}", error);
+        std::process::exit(5);
+    }
+    if let Err(error) = init_aimd_runtime_config(&cli) {
+        eprintln!("Error: {}", error);
+        std::process::exit(5);
+    }
+
+    // KE-A3: install the global tpslimit token bucket. `0.0` means
+    // unlimited (default); any positive value installs the limiter.
+    // When `--tpslimit-burst` is unspecified the burst equals the
+    // tps rate (no burst headroom). Installed BEFORE the first
+    // network call so the very first request is gated.
+    if cli.tpslimit > 0.0 {
+        let burst = if cli.tpslimit_burst > 0.0 {
+            cli.tpslimit_burst
+        } else {
+            cli.tpslimit
+        };
+        ftp_client_gui_lib::providers::tpslimit::init(cli.tpslimit, burst);
+    }
+
     // Setup tracing based on verbosity. -vv forces TRACE; -v forces DEBUG.
     // Without the env-filter feature we still honor the common RUST_LOG
     // levels globally, so `RUST_LOG=warn` does not accidentally enable the
@@ -37129,11 +38423,62 @@ async fn main() {
             cache_ttl,
             allow_other,
             read_only,
+            cache_poll_interval,
+            attr_timeout,
+            dir_cache_time,
+            read_chunk_size,
+            read_chunk_size_limit,
+            write_back_cache,
+            cache_mode,
+            fuse_threads,
         } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str())
             } else {
                 (url.as_str(), path.as_str())
+            };
+            // KE-C2: parse the optional duration / size knobs once, up
+            // front. A `None` value falls back to the cache_ttl-derived
+            // legacy behaviour inside `AeroFuseFs::new`. We bail out of
+            // this arm with exit code 5 (usage error) on any parse
+            // failure so the command never invokes FUSE with garbage.
+            let mount_knobs_result: Result<MountKnobs, String> = (|| {
+                let parse_dur = |label: &str, raw: &Option<String>| -> Result<Option<Duration>, String> {
+                    match raw {
+                        None => Ok(None),
+                        Some(s) => parse_duration_strict(s)
+                            .map(Some)
+                            .map_err(|e| format!("invalid --{}: {}", label, e)),
+                    }
+                };
+                let parse_size = |label: &str, raw: &Option<String>| -> Result<Option<u64>, String> {
+                    match raw {
+                        None => Ok(None),
+                        Some(s) => parse_size_filter(s)
+                            .map(Some)
+                            .map_err(|e| format!("invalid --{}: {}", label, e)),
+                    }
+                };
+                Ok(MountKnobs {
+                    cache_poll_interval: parse_dur("cache-poll-interval", cache_poll_interval)?,
+                    attr_timeout: parse_dur("attr-timeout", attr_timeout)?,
+                    dir_cache_time: parse_dur("dir-cache-time", dir_cache_time)?,
+                    read_chunk_size: parse_size("read-chunk-size", read_chunk_size)?,
+                    read_chunk_size_limit: parse_size(
+                        "read-chunk-size-limit",
+                        read_chunk_size_limit,
+                    )?,
+                    writeback_cache: *write_back_cache,
+                    cache_mode: *cache_mode,
+                    fuse_threads: *fuse_threads,
+                })
+            })();
+            let mount_knobs = match mount_knobs_result {
+                Ok(k) => k,
+                Err(msg) => {
+                    print_error(format, &msg, 5);
+                    std::process::exit(5);
+                }
             };
             #[cfg(target_os = "linux")]
             {
@@ -37144,6 +38489,7 @@ async fn main() {
                     *cache_ttl,
                     *allow_other,
                     *read_only,
+                    mount_knobs,
                     &cli,
                     format,
                 )
@@ -37151,10 +38497,12 @@ async fn main() {
             }
             #[cfg(windows)]
             {
+                let _ = mount_knobs; // accepted but inert on Windows for now
                 cmd_mount_windows(u, mountpoint, p, *read_only, &cli, format).await
             }
             #[cfg(not(any(target_os = "linux", windows)))]
             {
+                let _ = mount_knobs;
                 print_error(format, "Mount is not supported on this platform", 7);
                 7
             }
@@ -38750,12 +40098,40 @@ mod tests {
             default_time: None,
             fast_list: false,
             inplace: false,
+            order_by: OrderBy::None,
+            no_traverse: false,
+            tpslimit: 0.0,
+            tpslimit_burst: 0.0,
+            checkers: 8,
+            sftp_concurrency: 0,
+            s3_upload_concurrency: 0,
+            s3_no_check_bucket: false,
+            s3_disable_checksum: false,
+            s3_acl: None,
+            s3_storage_class: None,
+            onedrive_no_versions: false,
+            onedrive_list_chunk: 0,
+            onedrive_link_scope: None,
+            azure_upload_concurrency: 0,
+            azure_disable_checksum: false,
+            azure_access_tier: None,
+            azure_archive_tier_delete: false,
+            drive_cross_account_copy: false,
+            drive_pacer_burst: 0,
+            drive_pacer_min_sleep: None,
+            drive_acknowledge_abuse: false,
+            aimd_hint: Vec::new(),
+            aimd_disable: false,
+            aimd_min_window: None,
+            aimd_max_window: None,
+            aimd_step_window: None,
+            aimd_config: None,
+            transfer_engine: "auto".to_string(),
             files_from: None,
             files_from_raw: None,
             immutable: false,
             no_check_dest: false,
             max_depth: None,
-            transfer_engine: "auto".to_string(),
             command: Commands::Profiles {
                 _ignored: Vec::new(),
                 sort: None,
@@ -39216,6 +40592,373 @@ mod tests {
         assert_eq!(parse_speed_limit("1m").unwrap(), 1024 * 1024);
         assert_eq!(parse_speed_limit("500k").unwrap(), 500 * 1024);
     }
+
+    #[test]
+    fn test_build_aimd_hints_parses_drive_and_generic_overlays() {
+        let cli = Cli {
+            drive_pacer_burst: 4,
+            drive_pacer_min_sleep: Some("500ms".to_string()),
+            aimd_hint: vec!["drive:30".to_string(), "s3:5".to_string()],
+            ..test_cli()
+        };
+
+        let hints = build_aimd_hints(&cli).unwrap();
+        let drive = hints.get(&ProviderType::GoogleDrive).unwrap();
+        assert_eq!(drive.burst, Some(4));
+        assert_eq!(drive.min_sleep, Some(std::time::Duration::from_millis(500)));
+        assert_eq!(drive.retry_after_secs, Some(30));
+        assert_eq!(
+            hints.get(&ProviderType::S3).unwrap().retry_after_secs,
+            Some(5)
+        );
+    }
+
+    #[test]
+    fn test_build_aimd_hints_rejects_invalid_entries() {
+        let cli = Cli {
+            aimd_hint: vec!["drive".to_string()],
+            ..test_cli()
+        };
+        assert!(build_aimd_hints(&cli).is_err());
+
+        let cli = Cli {
+            drive_pacer_min_sleep: Some("soon".to_string()),
+            ..test_cli()
+        };
+        assert!(build_aimd_hints(&cli).is_err());
+    }
+
+    // KE-D1: snapshot of the CLI flags that tune the AIMD controller
+    // itself (not the per-provider overlay). For now only `--aimd-disable`
+    // lives here; `build_aimd_runtime_config` returns an `AimdConfig` ready
+    // to install via `install_runtime`.
+
+    #[test]
+    fn test_build_aimd_runtime_config_default_preserves_legacy_behaviour() {
+        let cli = test_cli();
+        let cfg = build_aimd_runtime_config(&cli).expect("default config must build");
+        assert!(
+            !cfg.disabled,
+            "default CLI must not disable the AIMD controller"
+        );
+        // Other tunings remain the prudent defaults (cooldown, healthy
+        // window, recovery window).
+        let baseline = ftp_client_gui_lib::transfer_dag::AimdConfig::default();
+        assert_eq!(cfg.cooldown, baseline.cooldown);
+        assert_eq!(cfg.healthy_window, baseline.healthy_window);
+        assert_eq!(cfg.recovery_window, baseline.recovery_window);
+    }
+
+    #[test]
+    fn test_build_aimd_runtime_config_disable_flag_propagates() {
+        let cli = Cli {
+            aimd_disable: true,
+            ..test_cli()
+        };
+        let cfg = build_aimd_runtime_config(&cli).expect("disable config must build");
+        assert!(
+            cfg.disabled,
+            "--aimd-disable must flip AimdConfig::disabled"
+        );
+    }
+
+    // KE-D2: filesystem-free tests for the CLI broadcast layer and the
+    // TOML loader. They exercise `merge_aimd_overrides` and
+    // `load_aimd_overrides_from_file` directly so the test does not
+    // depend on any `~/.config/aeroftp/aimd.toml` that may exist on the
+    // developer's machine.
+
+    #[test]
+    fn test_aimd_overrides_cli_broadcasts_to_every_class() {
+        let cli = Cli {
+            aimd_min_window: Some(2),
+            aimd_max_window: Some(32),
+            aimd_step_window: Some(4),
+            ..test_cli()
+        };
+        let merged = merge_aimd_overrides(
+            &cli,
+            ftp_client_gui_lib::transfer_dag::AimdClassOverrides::default(),
+        );
+        for class in [
+            ftp_client_gui_lib::transfer_dag::AdaptiveClass::File,
+            ftp_client_gui_lib::transfer_dag::AdaptiveClass::Chunk,
+            ftp_client_gui_lib::transfer_dag::AdaptiveClass::Http,
+            ftp_client_gui_lib::transfer_dag::AdaptiveClass::Api,
+        ] {
+            let w = merged.for_class(class);
+            assert_eq!(w.min, Some(2));
+            assert_eq!(w.max, Some(32));
+            assert_eq!(w.step, Some(4));
+        }
+    }
+
+    #[test]
+    fn test_aimd_overrides_cli_beats_file_when_both_set() {
+        // File says max=8 for the api class; CLI broadcasts max=32.
+        // CLI must win on every class because the precedence is
+        // "CLI overrides file when CLI is Some".
+        let file_overrides = ftp_client_gui_lib::transfer_dag::AimdClassOverrides {
+            api: ftp_client_gui_lib::transfer_dag::AimdClassWindow {
+                max: Some(8),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let cli = Cli {
+            aimd_max_window: Some(32),
+            ..test_cli()
+        };
+        let merged = merge_aimd_overrides(&cli, file_overrides);
+        assert_eq!(
+            merged
+                .for_class(ftp_client_gui_lib::transfer_dag::AdaptiveClass::Api)
+                .max,
+            Some(32),
+            "CLI broadcast must win over the file value when both are set"
+        );
+    }
+
+    #[test]
+    fn test_aimd_overrides_file_only_passes_through_when_cli_absent() {
+        let file_overrides = ftp_client_gui_lib::transfer_dag::AimdClassOverrides {
+            file: ftp_client_gui_lib::transfer_dag::AimdClassWindow {
+                min: Some(1),
+                max: Some(8),
+                step: Some(2),
+            },
+            api: ftp_client_gui_lib::transfer_dag::AimdClassWindow {
+                min: Some(4),
+                max: Some(32),
+                step: None,
+            },
+            ..Default::default()
+        };
+        let cli = test_cli();
+        let merged = merge_aimd_overrides(&cli, file_overrides);
+        // File values reach the merged bundle untouched.
+        let file = merged.for_class(ftp_client_gui_lib::transfer_dag::AdaptiveClass::File);
+        assert_eq!(file.min, Some(1));
+        assert_eq!(file.max, Some(8));
+        assert_eq!(file.step, Some(2));
+        let api = merged.for_class(ftp_client_gui_lib::transfer_dag::AdaptiveClass::Api);
+        assert_eq!(api.min, Some(4));
+        assert_eq!(api.max, Some(32));
+        assert_eq!(api.step, None);
+    }
+
+    #[test]
+    fn test_aimd_toml_per_class_overrides_parse() {
+        let toml = r#"
+            [aimd.file]
+            min = 1
+            max = 8
+            step = 2
+
+            [aimd.chunk]
+            min = 4
+            max = 32
+
+            [aimd.api]
+            step = 3
+        "#;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("aimd.toml");
+        std::fs::write(&path, toml).expect("write toml");
+        let overrides = load_aimd_overrides_from_file(&path)
+            .expect("loader must not fail on a well-formed file")
+            .expect("file exists so loader returns Some");
+        let file = overrides.for_class(ftp_client_gui_lib::transfer_dag::AdaptiveClass::File);
+        assert_eq!(file.min, Some(1));
+        assert_eq!(file.max, Some(8));
+        assert_eq!(file.step, Some(2));
+        let chunk = overrides.for_class(ftp_client_gui_lib::transfer_dag::AdaptiveClass::Chunk);
+        assert_eq!(chunk.min, Some(4));
+        assert_eq!(chunk.max, Some(32));
+        assert_eq!(chunk.step, None);
+        // http section absent => all None.
+        let http = overrides.for_class(ftp_client_gui_lib::transfer_dag::AdaptiveClass::Http);
+        assert_eq!(http.min, None);
+        assert_eq!(http.max, None);
+        assert_eq!(http.step, None);
+        let api = overrides.for_class(ftp_client_gui_lib::transfer_dag::AdaptiveClass::Api);
+        assert_eq!(api.step, Some(3));
+        assert_eq!(api.min, None);
+        assert_eq!(api.max, None);
+    }
+
+    #[test]
+    fn test_aimd_toml_missing_file_is_silent() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("never-created.toml");
+        let result = load_aimd_overrides_from_file(&path).expect("missing file must not error");
+        assert!(
+            result.is_none(),
+            "missing default-path file must produce no overrides"
+        );
+    }
+
+    // KE-C2: the 5 FUSE mount knobs parse via `parse_duration_strict`
+    // and `parse_size_filter`. These tests lock the units and the error
+    // path so the dispatcher's Result-based bailout can rely on them.
+
+    #[test]
+    fn test_mount_knob_durations_accept_rclone_style_units() {
+        assert_eq!(parse_duration_strict("30s").unwrap(), Duration::from_secs(30));
+        assert_eq!(parse_duration_strict("5m").unwrap(), Duration::from_secs(300));
+        assert_eq!(parse_duration_strict("1h").unwrap(), Duration::from_secs(3600));
+        assert_eq!(
+            parse_duration_strict("500ms").unwrap(),
+            Duration::from_millis(500)
+        );
+    }
+
+    #[test]
+    fn test_mount_knob_sizes_accept_rclone_style_units() {
+        assert_eq!(parse_size_filter("128k").unwrap(), 128 * 1024);
+        assert_eq!(parse_size_filter("4M").unwrap(), 4 * 1024 * 1024);
+        assert_eq!(parse_size_filter("1G").unwrap(), 1024 * 1024 * 1024);
+    }
+
+    #[test]
+    fn test_mount_knob_invalid_value_surfaces_message() {
+        assert!(parse_duration_strict("five-minutes").is_err());
+        assert!(parse_size_filter("").is_err());
+    }
+
+    #[test]
+    fn test_mount_knobs_default_is_all_none() {
+        // The defaulted `MountKnobs` has every field unset; `AeroFuseFs::new`
+        // then falls back to the `--cache-ttl` legacy values on Linux. This
+        // ties the type's "no knob set" invariant down so a future field
+        // addition does not silently flip the legacy behaviour.
+        let mk = MountKnobs::default();
+        assert!(mk.cache_poll_interval.is_none());
+        assert!(mk.attr_timeout.is_none());
+        assert!(mk.dir_cache_time.is_none());
+        assert!(mk.read_chunk_size.is_none());
+        assert!(mk.read_chunk_size_limit.is_none());
+        // KE-C3: write-back cache must be off by default. The kernel
+        // page-cache buffering trades crash-durability for throughput,
+        // so it has to be an explicit opt-in.
+        assert!(!mk.writeback_cache);
+        // KE-C1: caching policy defaults to `Full` to keep byte-for-
+        // byte compatibility with pre-knob mounts.
+        assert_eq!(mk.cache_mode, CacheMode::Full);
+        // T-DEBT-13c: single-threaded loop by default. The fuser 0.17
+        // multi-threaded session is opt-in via `--fuse-threads N`.
+        assert!(mk.fuse_threads.is_none());
+    }
+
+    #[test]
+    fn test_mount_knobs_writeback_cache_is_opt_in() {
+        // KE-C3: when the operator passes `--write-back-cache`, the
+        // flag flows verbatim into `MountKnobs.writeback_cache` and
+        // from there into `AeroFuseFs.writeback_cache`, where
+        // `Filesystem::init` consumes it. This guards the wire so a
+        // future rename of either field is caught by `cargo test`.
+        let mk = MountKnobs {
+            writeback_cache: true,
+            ..MountKnobs::default()
+        };
+        assert!(mk.writeback_cache);
+    }
+
+    #[test]
+    fn test_mount_knobs_fuse_threads_round_trip() {
+        // T-DEBT-13c: the `--fuse-threads N` flag flows verbatim into
+        // `MountKnobs.fuse_threads` and feeds the fuser 0.17 `Config`
+        // `n_threads` field. `clone_fd` is auto-derived (true iff
+        // `n_threads > 1`), so guarding the field round-trip is enough.
+        let mk = MountKnobs {
+            fuse_threads: Some(4),
+            ..MountKnobs::default()
+        };
+        assert_eq!(mk.fuse_threads, Some(4));
+        // n_threads = Some(1) is legal but `clone_fd` stays `false`
+        // because parallelism is not requested. The compose-side
+        // logic in `cmd_mount` keeps the single-thread byte-for-byte
+        // compatibility path.
+        let mk = MountKnobs {
+            fuse_threads: Some(1),
+            ..MountKnobs::default()
+        };
+        assert_eq!(mk.fuse_threads, Some(1));
+    }
+
+    #[test]
+    fn test_cache_mode_default_is_full() {
+        // KE-C1: `Full` preserves the historical AeroFTP behaviour
+        // (TTLs derived from `--cache-ttl`). Default must stay `Full`
+        // so existing scripts and saved profiles do not flip semantics
+        // when this knob is introduced.
+        assert_eq!(CacheMode::default(), CacheMode::Full);
+        assert_eq!(MountKnobs::default().cache_mode, CacheMode::Full);
+    }
+
+    #[test]
+    fn test_cache_mode_ttls_off_is_zero_everywhere() {
+        // KE-C1: `Off` is best-effort no-cache. Every TTL must be
+        // `Duration::ZERO` so the kernel never holds an attribute or
+        // directory entry past the very next syscall.
+        let (a, d, c) = CacheMode::Off.ttls(Duration::from_secs(300));
+        assert_eq!(a, Duration::ZERO);
+        assert_eq!(d, Duration::ZERO);
+        assert_eq!(c, Duration::ZERO);
+        assert!(!CacheMode::Off.populate_cache());
+        assert!(!CacheMode::Off.dir_cache_enabled());
+    }
+
+    #[test]
+    fn test_cache_mode_ttls_minimal_is_short_attr_no_dir() {
+        // KE-C1: `Minimal` keeps a 1s attr cache for stat hammering
+        // but never trusts a cached directory listing.
+        let (a, d, c) = CacheMode::Minimal.ttls(Duration::from_secs(300));
+        assert_eq!(a, Duration::from_secs(1));
+        assert_eq!(d, Duration::ZERO);
+        assert_eq!(c, Duration::from_secs(1));
+        assert!(CacheMode::Minimal.populate_cache());
+        assert!(!CacheMode::Minimal.dir_cache_enabled());
+    }
+
+    #[test]
+    fn test_cache_mode_ttls_writes_is_thirty_seconds_with_dir_cache() {
+        // KE-C1: `Writes` trusts the cache for 30s, relies on the
+        // existing post-mutation `invalidate_dir` calls to keep dir
+        // listings honest when this process is the one mutating.
+        let (a, d, c) = CacheMode::Writes.ttls(Duration::from_secs(300));
+        assert_eq!(a, Duration::from_secs(30));
+        assert_eq!(d, Duration::from_secs(30));
+        assert_eq!(c, Duration::from_secs(30));
+        assert!(CacheMode::Writes.populate_cache());
+        assert!(CacheMode::Writes.dir_cache_enabled());
+    }
+
+    #[test]
+    fn test_cache_mode_ttls_full_honours_legacy_cache_ttl() {
+        // KE-C1: `Full` is the back-compat path. The TTL trio must
+        // mirror the `--cache-ttl` fallback verbatim so mounts built
+        // before KE-C1 see no behaviour change.
+        let fallback = Duration::from_secs(123);
+        let (a, d, c) = CacheMode::Full.ttls(fallback);
+        assert_eq!(a, fallback);
+        assert_eq!(d, fallback);
+        assert_eq!(c, fallback);
+        assert!(CacheMode::Full.populate_cache());
+        assert!(CacheMode::Full.dir_cache_enabled());
+    }
+
+    #[test]
+    fn test_aimd_toml_malformed_file_errors_loudly() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("aimd.toml");
+        std::fs::write(&path, "this is not = valid {{{").expect("write garbage");
+        assert!(
+            load_aimd_overrides_from_file(&path).is_err(),
+            "a malformed file must surface a parse error to the operator"
+        );
+    }
+
 
     // ── sanitize_filename tests ───────────────────────────────────────
 
@@ -40589,5 +42332,124 @@ mod tests {
             rmdirs_prune_order(vec![("/only".to_string(), 1)]),
             vec!["/only".to_string()]
         );
+    }
+
+    // ---------------------------------------------------------------------
+    // KE-A5: OrderBy::sort_in_place coverage (Sprint K1)
+    // ---------------------------------------------------------------------
+
+    /// Helper: build a Vec<(name, size, mtime)> for the sort fixtures.
+    fn entries() -> Vec<(&'static str, u64, Option<i64>)> {
+        vec![
+            ("c.txt", 30, Some(300)),
+            ("a.txt", 10, Some(100)),
+            ("b.txt", 20, Some(200)),
+        ]
+    }
+
+    fn names_only<T>(v: &[T]) -> Vec<&str>
+    where
+        T: AsRef<str>,
+    {
+        v.iter().map(|t| t.as_ref()).collect()
+    }
+
+    #[test]
+    fn order_by_none_preserves_input_order() {
+        let mut items = entries();
+        OrderBy::None.sort_in_place(
+            &mut items,
+            |t| t.0,
+            |t| t.1,
+            |t| t.2,
+        );
+        assert_eq!(items.iter().map(|t| t.0).collect::<Vec<_>>(), vec!["c.txt", "a.txt", "b.txt"]);
+    }
+
+    #[test]
+    fn order_by_name_sorts_ascending() {
+        let mut items = entries();
+        OrderBy::Name.sort_in_place(&mut items, |t| t.0, |t| t.1, |t| t.2);
+        assert_eq!(items.iter().map(|t| t.0).collect::<Vec<_>>(), vec!["a.txt", "b.txt", "c.txt"]);
+    }
+
+    #[test]
+    fn order_by_name_desc_sorts_descending() {
+        let mut items = entries();
+        OrderBy::NameDesc.sort_in_place(&mut items, |t| t.0, |t| t.1, |t| t.2);
+        assert_eq!(items.iter().map(|t| t.0).collect::<Vec<_>>(), vec!["c.txt", "b.txt", "a.txt"]);
+    }
+
+    #[test]
+    fn order_by_size_asc_smallest_first() {
+        let mut items = entries();
+        OrderBy::SizeAsc.sort_in_place(&mut items, |t| t.0, |t| t.1, |t| t.2);
+        assert_eq!(items.iter().map(|t| t.1).collect::<Vec<_>>(), vec![10, 20, 30]);
+    }
+
+    #[test]
+    fn order_by_size_desc_largest_first() {
+        let mut items = entries();
+        OrderBy::SizeDesc.sort_in_place(&mut items, |t| t.0, |t| t.1, |t| t.2);
+        assert_eq!(items.iter().map(|t| t.1).collect::<Vec<_>>(), vec![30, 20, 10]);
+    }
+
+    #[test]
+    fn order_by_size_breaks_ties_by_name() {
+        let mut items = vec![
+            ("zebra.txt", 100, Some(1)),
+            ("apple.txt", 100, Some(2)),
+            ("mango.txt", 100, Some(3)),
+        ];
+        OrderBy::SizeAsc.sort_in_place(&mut items, |t| t.0, |t| t.1, |t| t.2);
+        assert_eq!(
+            items.iter().map(|t| t.0).collect::<Vec<_>>(),
+            vec!["apple.txt", "mango.txt", "zebra.txt"]
+        );
+    }
+
+    #[test]
+    fn order_by_modtime_asc_oldest_first() {
+        let mut items = entries();
+        OrderBy::ModtimeAsc.sort_in_place(&mut items, |t| t.0, |t| t.1, |t| t.2);
+        assert_eq!(items.iter().map(|t| t.2.unwrap()).collect::<Vec<_>>(), vec![100, 200, 300]);
+    }
+
+    #[test]
+    fn order_by_modtime_desc_newest_first() {
+        let mut items = entries();
+        OrderBy::ModtimeDesc.sort_in_place(&mut items, |t| t.0, |t| t.1, |t| t.2);
+        assert_eq!(items.iter().map(|t| t.2.unwrap()).collect::<Vec<_>>(), vec![300, 200, 100]);
+    }
+
+    #[test]
+    fn order_by_modtime_pushes_missing_to_end() {
+        // The "no timestamp" branch lives at the end regardless of asc/desc
+        // so backends that cannot stat cheaply do not penalise the rest.
+        let mut items = vec![
+            ("with.txt", 1, Some(500)),
+            ("no_mtime.txt", 2, None),
+            ("older.txt", 3, Some(100)),
+        ];
+        OrderBy::ModtimeAsc.sort_in_place(&mut items, |t| t.0, |t| t.1, |t| t.2);
+        let names: Vec<&str> = items.iter().map(|t| t.0).collect();
+        assert_eq!(names[0], "older.txt");
+        assert_eq!(names[1], "with.txt");
+        assert_eq!(names[2], "no_mtime.txt");
+        let _ = names_only::<&str>(&[]);
+    }
+
+    #[test]
+    fn order_by_modtime_desc_pushes_missing_to_end() {
+        let mut items = vec![
+            ("with.txt", 1, Some(500)),
+            ("no_mtime.txt", 2, None),
+            ("older.txt", 3, Some(100)),
+        ];
+        OrderBy::ModtimeDesc.sort_in_place(&mut items, |t| t.0, |t| t.1, |t| t.2);
+        let names: Vec<&str> = items.iter().map(|t| t.0).collect();
+        assert_eq!(names[0], "with.txt");
+        assert_eq!(names[1], "older.txt");
+        assert_eq!(names[2], "no_mtime.txt");
     }
 }

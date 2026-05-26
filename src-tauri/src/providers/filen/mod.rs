@@ -71,6 +71,54 @@ fn filen_runner_part_size(total: u64) -> u64 {
     (FILEN_CHUNK_SIZE as u64).min(total.max(1))
 }
 
+/// KE-E3: Filen rate-limit detection.
+///
+/// Filen's REST API (`gateway.filen.io`) and ingest CDN (`ingest.filen.io`)
+/// signal throttling via:
+///
+/// - **429 Too Many Requests** on either endpoint when the per-account or
+///   per-IP rate cap is exceeded.
+/// - **503 Service Unavailable** during sustained ingest pressure on the
+///   shared free-tier nodes.
+///
+/// In both cases the `Retry-After` header is sent (numeric seconds). We do
+/// NOT inspect the JSON body: Filen's `{"status": false, "message": "..."}`
+/// envelope is used for application errors (auth failure, invalid path,
+/// file too large, etc.) that are NOT rate-limit signals.
+fn filen_is_rate_limited(status: u16) -> bool {
+    matches!(status, 429 | 503)
+}
+
+/// KE-E3: Compute the marker tail to append to a Filen `ProviderError`
+/// message when the response was rate-limited and a usable `Retry-After`
+/// header was present. Pure-fn for test coverage.
+fn filen_retry_marker_tail(status: u16, retry_header: Option<&str>) -> Option<String> {
+    if !filen_is_rate_limited(status) {
+        return None;
+    }
+    let hint = super::retry_after::parse_retry_after_seconds(retry_header.unwrap_or(""))?;
+    Some(crate::transfer_dag::adaptive::embed_retry_after_marker(
+        hint.as_secs(),
+    ))
+}
+
+/// KE-E3: Format a Filen HTTP error message with optional Retry-After
+/// marker. The `prefix` is prepended verbatim; `status` and a body
+/// preview (truncated to keep error logs bounded) are appended; the
+/// marker ` [retry-after-secs=NN]` is appended last when present.
+fn format_filen_error(
+    prefix: &str,
+    status: reqwest::StatusCode,
+    body_preview: &str,
+    retry_header: Option<&str>,
+) -> String {
+    let mut msg = format!("{}: {} - {}", prefix, status, body_preview);
+    if let Some(tail) = filen_retry_marker_tail(status.as_u16(), retry_header) {
+        msg.push_str(&tail);
+    }
+    msg
+}
+
 /// Filen API gateway
 const GATEWAY: &str = "https://gateway.filen.io";
 
@@ -2566,17 +2614,22 @@ async fn upload_filen_chunk(
         .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
     let status = resp.status();
+    let retry_header = resp
+        .headers()
+        .get(reqwest::header::RETRY_AFTER)
+        .and_then(|v| v.to_str().ok())
+        .map(String::from);
     let resp_text = resp
         .text()
         .await
         .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
     if !status.is_success() {
-        return Err(ProviderError::TransferFailed(format!(
-            "Upload chunk {} failed: {} - {}",
-            index,
+        return Err(ProviderError::TransferFailed(format_filen_error(
+            &format!("Upload chunk {} failed", index),
             status,
             &resp_text[..resp_text.len().min(200)],
+            retry_header.as_deref(),
         )));
     }
 
@@ -2793,5 +2846,77 @@ mod tests {
         assert_eq!((4 * p).div_ceil(p), 4);
         assert_eq!((p + 1).div_ceil(p), 2);
         assert_eq!((1u64).div_ceil(p), 1);
+    }
+
+    // ---------------------------------------------------------------------
+    // KE-E3: Filen Retry-After detection (Sprint K1)
+    // ---------------------------------------------------------------------
+
+    #[test]
+    fn filen_is_rate_limited_recognises_429_and_503() {
+        assert!(filen_is_rate_limited(429));
+        assert!(filen_is_rate_limited(503));
+    }
+
+    #[test]
+    fn filen_is_rate_limited_rejects_other_statuses() {
+        assert!(!filen_is_rate_limited(200));
+        assert!(!filen_is_rate_limited(400));
+        assert!(!filen_is_rate_limited(401));
+        assert!(!filen_is_rate_limited(404));
+        assert!(!filen_is_rate_limited(500));
+        assert!(!filen_is_rate_limited(502));
+        assert!(!filen_is_rate_limited(504));
+    }
+
+    #[test]
+    fn filen_retry_marker_tail_emits_marker_on_429_with_header() {
+        let tail = filen_retry_marker_tail(429, Some("15")).expect("rate-limited + hint");
+        assert!(tail.contains("retry-after-secs=15"));
+    }
+
+    #[test]
+    fn filen_retry_marker_tail_emits_marker_on_503_with_header() {
+        let tail = filen_retry_marker_tail(503, Some("40")).expect("503 + hint");
+        assert!(tail.contains("retry-after-secs=40"));
+    }
+
+    #[test]
+    fn filen_retry_marker_tail_returns_none_without_header() {
+        assert_eq!(filen_retry_marker_tail(429, None), None);
+        assert_eq!(filen_retry_marker_tail(429, Some("")), None);
+        assert_eq!(filen_retry_marker_tail(503, Some("not-numeric")), None);
+    }
+
+    #[test]
+    fn filen_retry_marker_tail_returns_none_for_non_throttle_status() {
+        assert_eq!(filen_retry_marker_tail(500, Some("10")), None);
+        assert_eq!(filen_retry_marker_tail(404, Some("10")), None);
+        assert_eq!(filen_retry_marker_tail(200, Some("10")), None);
+    }
+
+    #[test]
+    fn format_filen_error_appends_marker_on_throttle() {
+        let msg = format_filen_error(
+            "Upload chunk 7 failed",
+            reqwest::StatusCode::TOO_MANY_REQUESTS,
+            "Too many requests",
+            Some("25"),
+        );
+        assert!(msg.contains("Upload chunk 7 failed"));
+        assert!(msg.contains("429"));
+        assert!(msg.contains("retry-after-secs=25"));
+    }
+
+    #[test]
+    fn format_filen_error_omits_marker_on_non_throttle() {
+        let msg = format_filen_error(
+            "Upload chunk 7 failed",
+            reqwest::StatusCode::BAD_REQUEST,
+            "invalid uuid",
+            Some("25"),
+        );
+        assert!(msg.contains("400"));
+        assert!(!msg.contains("retry-after-secs"));
     }
 }

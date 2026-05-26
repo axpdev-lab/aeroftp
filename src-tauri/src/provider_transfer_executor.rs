@@ -209,6 +209,7 @@ pub async fn run_provider_segmented_download(
 
     let cfg = ConcurrentRangeConfig {
         final_path: PathBuf::from(local_path),
+        provider_type: primary.provider_type(),
         total_size: file_size,
         streams: segments,
         max_streams: segments,
@@ -378,6 +379,15 @@ impl ProviderExecutorSessionModel {
             Self::HttpClonePool { max_leases, .. } => *max_leases,
             Self::SftpConnectionPool { max_leases, .. } => *max_leases,
             Self::FtpConnectionPool { max_leases, .. } => *max_leases,
+        }
+    }
+
+    pub fn provider_type(&self) -> Option<ProviderType> {
+        match self {
+            Self::LockedSingle { provider_type } => *provider_type,
+            Self::HttpClonePool { provider_type, .. }
+            | Self::SftpConnectionPool { provider_type, .. }
+            | Self::FtpConnectionPool { provider_type, .. } => Some(*provider_type),
         }
     }
 }
@@ -1198,6 +1208,10 @@ impl ProviderUploadExecutor {
 
 #[async_trait]
 impl TransferExecutor for ProviderDownloadExecutor {
+    fn provider_type(&self) -> Option<ProviderType> {
+        self.session_model.provider_type()
+    }
+
     fn session_pool(&self, _max_concurrent: usize) -> TransferSessionPoolHandle {
         self.session_model.session_pool("provider-download")
     }
@@ -1228,6 +1242,10 @@ impl TransferExecutor for ProviderDownloadExecutor {
 
 #[async_trait]
 impl TransferExecutor for ProviderUploadExecutor {
+    fn provider_type(&self) -> Option<ProviderType> {
+        self.session_model.provider_type()
+    }
+
     fn session_pool(&self, _max_concurrent: usize) -> TransferSessionPoolHandle {
         self.session_model.session_pool("provider-upload")
     }

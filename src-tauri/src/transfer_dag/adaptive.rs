@@ -28,13 +28,17 @@
 //! waiting for a dispatch permit has not begun its transfer yet, so shrinking
 //! is always safe.
 
+use std::cmp::Ordering as CmpOrdering;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+use tokio::time::sleep;
 
+use super::aimd_hints;
 use super::resources::{ResourceRequest, TransferBudget};
+use crate::providers::ProviderType;
 
 /// Resource classes the controller manages in v1 (decision D1). Checker,
 /// disk, and hash slots stay static and are intentionally absent.
@@ -254,6 +258,84 @@ impl DynamicSemaphore {
     }
 }
 
+/// KE-D2: per-class override for the AIMD window sizing parameters.
+///
+/// - `min` overrides the floor applied to `target` after multiplicative
+///   decrease. The default floor is `1` (a single permit per class).
+/// - `max` caps the controller's effective ceiling for the class: it is
+///   clamped against the budget-derived ceiling, never raises it. A value
+///   below `1` is sanitized to `1` at build time.
+/// - `step` overrides the additive increase amount applied once per
+///   `healthy_window`. The default is `+1`.
+///
+/// All three fields are independent: an operator can lift the floor
+/// without touching the step, or vice versa. Every field defaults to
+/// `None`, meaning "use the historical built-in (1 / ceiling / 1)".
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct AimdClassWindow {
+    pub min: Option<usize>,
+    pub max: Option<usize>,
+    pub step: Option<usize>,
+}
+
+/// KE-D2: bundle of per-class window overrides. Each [`AimdClassWindow`]
+/// addresses one controlled resource class; classes are kept independent
+/// so a power user can throttle the API class while leaving the File
+/// class at its native ceiling. Defaults to "no overrides anywhere".
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct AimdClassOverrides {
+    pub file: AimdClassWindow,
+    pub chunk: AimdClassWindow,
+    pub http: AimdClassWindow,
+    pub api: AimdClassWindow,
+}
+
+impl AimdClassOverrides {
+    /// Return the override bundle for a controlled class.
+    pub fn for_class(&self, class: AdaptiveClass) -> AimdClassWindow {
+        match class {
+            AdaptiveClass::File => self.file,
+            AdaptiveClass::Chunk => self.chunk,
+            AdaptiveClass::Http => self.http,
+            AdaptiveClass::Api => self.api,
+        }
+    }
+
+    /// Apply a global override to every class. CLI uses this to lift the
+    /// "broadcast to all four" sugar (`--aimd-min-window N`); the more
+    /// explicit per-class TOML file fills individual entries instead.
+    pub fn broadcast(window: AimdClassWindow) -> Self {
+        Self {
+            file: window,
+            chunk: window,
+            http: window,
+            api: window,
+        }
+    }
+
+    /// Merge `other` on top of `self`, with `other` winning on every
+    /// field that is `Some`. Used to layer CLI flags (which broadcast
+    /// to all classes) on top of a TOML file (which may target a
+    /// single class), so `--aimd-min-window=2` from the command line
+    /// reliably overrides whatever the file said.
+    pub fn merge_on_top(self, other: AimdClassOverrides) -> Self {
+        Self {
+            file: merge_window(self.file, other.file),
+            chunk: merge_window(self.chunk, other.chunk),
+            http: merge_window(self.http, other.http),
+            api: merge_window(self.api, other.api),
+        }
+    }
+}
+
+fn merge_window(base: AimdClassWindow, top: AimdClassWindow) -> AimdClassWindow {
+    AimdClassWindow {
+        min: top.min.or(base.min),
+        max: top.max.or(base.max),
+        step: top.step.or(base.step),
+    }
+}
+
 /// Tuning for the AIMD controller. Defaults are prudent; tests inject short
 /// or zero windows. `cooldown` blocks any increase after a decrease;
 /// `healthy_window` is the minimum quiet interval before each `+1`.
@@ -266,11 +348,25 @@ impl DynamicSemaphore {
 /// honest ceiling. A zero `recovery_window` disables the guard band (the cap
 /// relaxes on the first healthy note), which is the pre-F3-T09 behaviour and
 /// is what unit tests of the bare additive mechanism opt into.
+///
+/// `disabled` is the KE-D1 kill switch. When `true`, `on_congestion`,
+/// `on_congestion_with_hint` and `note_healthy` are full no-ops: the
+/// controller is built at the honest ceiling for every class and never
+/// shrinks or regrows. Designed for dedicated/lab links where the operator
+/// has out-of-band guarantees that the backend will not throttle and the
+/// AIMD machinery would only mask a true throughput cap diagnostic.
+///
+/// `class_overrides` (KE-D2) lets the operator pin MIN / MAX / STEP per
+/// controlled class. All-`None` entries fall back to the legacy
+/// `(1, ceiling, +1)` triple, so an unconfigured controller is bit-identical
+/// to its pre-KE-D2 self.
 #[derive(Debug, Clone, Copy)]
 pub struct AimdConfig {
     pub cooldown: Duration,
     pub healthy_window: Duration,
     pub recovery_window: Duration,
+    pub disabled: bool,
+    pub class_overrides: AimdClassOverrides,
 }
 
 impl Default for AimdConfig {
@@ -281,7 +377,30 @@ impl Default for AimdConfig {
             // Long enough that a provider's rate-limit window has demonstrably
             // cleared before AIMD risks the level that congested it again.
             recovery_window: Duration::from_secs(30),
+            disabled: false,
+            class_overrides: AimdClassOverrides::default(),
         }
+    }
+}
+
+static RUNTIME_CONFIG: OnceLock<AimdConfig> = OnceLock::new();
+
+impl AimdConfig {
+    /// Install the process-wide AIMD config snapshot built from CLI flags
+    /// (`--aimd-disable`, etc.). Subsequent calls are ignored so every
+    /// downstream transfer surface observes a stable view for the entire
+    /// process lifetime, matching [`aimd_hints::init`]. Idempotent.
+    pub fn install_runtime(cfg: AimdConfig) {
+        let _ = RUNTIME_CONFIG.set(cfg);
+    }
+
+    /// Read the installed runtime AIMD config, or fall back to
+    /// [`AimdConfig::default`] when nothing has been installed (the GUI
+    /// path that never calls [`install_runtime`]). Production transfer
+    /// surfaces should call this instead of [`Default::default`] so CLI
+    /// runtime knobs propagate without an explicit plumbing argument.
+    pub fn runtime() -> AimdConfig {
+        RUNTIME_CONFIG.get().copied().unwrap_or_default()
     }
 }
 
@@ -297,11 +416,70 @@ struct ClassState {
     regrowth_cap: usize,
     /// Instant of the most recent congestion event, for the recovery timer.
     last_congestion: Option<Instant>,
+    /// KE-D2 floor for `target` after multiplicative decrease. Always
+    /// `>= 1` and `<= ceiling`. Pre-KE-D2 behaviour is the default `1`.
+    min_target: usize,
+    /// KE-D2 additive increase amount applied once per quiet
+    /// `healthy_window`. Always `>= 1`. Pre-KE-D2 behaviour is `1`.
+    step: usize,
+}
+
+#[derive(Debug, Default)]
+struct ApiPacerState {
+    window_started_at: Option<Instant>,
+    grants_in_window: usize,
+}
+
+impl ApiPacerState {
+    fn reserve_delay(&mut self, now: Instant, burst: usize, min_sleep: Duration) -> Duration {
+        let burst = burst.max(1);
+        match self.window_started_at {
+            None => {
+                self.window_started_at = Some(now);
+                self.grants_in_window = 1;
+                Duration::ZERO
+            }
+            Some(start) => {
+                let window_end = start + min_sleep;
+                match now.cmp(&window_end) {
+                    CmpOrdering::Greater | CmpOrdering::Equal => {
+                        self.window_started_at = Some(now);
+                        self.grants_in_window = 1;
+                        Duration::ZERO
+                    }
+                    CmpOrdering::Less if self.grants_in_window < burst => {
+                        self.grants_in_window += 1;
+                        Duration::ZERO
+                    }
+                    CmpOrdering::Less => {
+                        self.window_started_at = Some(window_end);
+                        self.grants_in_window = 1;
+                        window_end.duration_since(now)
+                    }
+                }
+            }
+        }
+    }
 }
 
 impl ClassState {
-    fn new(ceiling: usize) -> Self {
-        let ceiling = ceiling.max(1);
+    /// KE-D2: build a class with operator-supplied window overrides.
+    /// Clamping rules — applied here so [`AimdConfig::class_overrides`]
+    /// values cannot ever yield an unsafe controller state:
+    /// - `max` only ever shrinks the budget-derived `ceiling`; it cannot
+    ///   raise it above the honest cap (AIMD is decrease-biased).
+    /// - `min` is clamped to `[1, ceiling]`; values below `1` collapse to
+    ///   `1`, values above the clamped ceiling collapse to the ceiling.
+    /// - `step` is clamped to `[1, usize::MAX]`; a `step == 0` request is
+    ///   coerced to `1` so additive increase still makes forward progress.
+    fn with_overrides(ceiling: usize, overrides: AimdClassWindow) -> Self {
+        let budget_ceiling = ceiling.max(1);
+        let ceiling = match overrides.max {
+            Some(cap) => budget_ceiling.min(cap.max(1)),
+            None => budget_ceiling,
+        };
+        let min_target = overrides.min.unwrap_or(1).clamp(1, ceiling);
+        let step = overrides.step.unwrap_or(1).max(1);
         Self {
             // Start at the honest ceiling: AIMD is decrease-biased and only
             // ever reduces below the effective budget, never above it.
@@ -312,6 +490,8 @@ impl ClassState {
             healthy_since: None,
             regrowth_cap: ceiling,
             last_congestion: None,
+            min_target,
+            step,
         }
     }
 }
@@ -321,10 +501,12 @@ impl ClassState {
 /// grows back by one after a quiet window.
 pub struct AimdController {
     config: AimdConfig,
+    current_provider: Option<ProviderType>,
     file: Mutex<ClassState>,
     chunk: Mutex<ClassState>,
     http: Mutex<ClassState>,
     api: Mutex<ClassState>,
+    api_pacer: Mutex<ApiPacerState>,
 }
 
 impl AimdController {
@@ -337,12 +519,49 @@ impl AimdController {
         api_ceiling: usize,
         config: AimdConfig,
     ) -> Self {
+        Self::new_for_provider(
+            file_ceiling,
+            chunk_ceiling,
+            http_ceiling,
+            api_ceiling,
+            None,
+            config,
+        )
+    }
+
+    /// Build a controller bound to a specific provider so per-provider AIMD
+    /// overlays can tune cooldown and API pacing. KE-D2 per-class window
+    /// overrides from `config.class_overrides` are applied here so callers
+    /// stay oblivious of the override plumbing.
+    pub fn new_for_provider(
+        file_ceiling: usize,
+        chunk_ceiling: usize,
+        http_ceiling: usize,
+        api_ceiling: usize,
+        current_provider: Option<ProviderType>,
+        config: AimdConfig,
+    ) -> Self {
+        let overrides = config.class_overrides;
         Self {
             config,
-            file: Mutex::new(ClassState::new(file_ceiling)),
-            chunk: Mutex::new(ClassState::new(chunk_ceiling)),
-            http: Mutex::new(ClassState::new(http_ceiling)),
-            api: Mutex::new(ClassState::new(api_ceiling)),
+            current_provider,
+            file: Mutex::new(ClassState::with_overrides(
+                file_ceiling,
+                overrides.for_class(AdaptiveClass::File),
+            )),
+            chunk: Mutex::new(ClassState::with_overrides(
+                chunk_ceiling,
+                overrides.for_class(AdaptiveClass::Chunk),
+            )),
+            http: Mutex::new(ClassState::with_overrides(
+                http_ceiling,
+                overrides.for_class(AdaptiveClass::Http),
+            )),
+            api: Mutex::new(ClassState::with_overrides(
+                api_ceiling,
+                overrides.for_class(AdaptiveClass::Api),
+            )),
+            api_pacer: Mutex::new(ApiPacerState::default()),
         }
     }
 
@@ -351,13 +570,44 @@ impl AimdController {
     /// decrease-biased — so a run with no congestion dispatches exactly as if
     /// no controller were wired.
     pub fn from_budget(budget: &TransferBudget, config: AimdConfig) -> Self {
-        Self::new(
+        Self::from_budget_for_provider(budget, None, config)
+    }
+
+    /// Build a controller from the effective budget plus an optional provider
+    /// type so per-provider overlays can tune cooldown and pacing.
+    pub fn from_budget_for_provider(
+        budget: &TransferBudget,
+        current_provider: Option<ProviderType>,
+        config: AimdConfig,
+    ) -> Self {
+        Self::new_for_provider(
             budget.file_slots.max(1) as usize,
             budget.chunk_slots.max(1) as usize,
             budget.http_slots.max(1) as usize,
             budget.api_slots.max(1) as usize,
+            current_provider,
             config,
         )
+    }
+
+    fn provider_hint(&self) -> Option<aimd_hints::AimdHint> {
+        self.current_provider.map(aimd_hints::for_provider)
+    }
+
+    fn effective_cooldown_hint(&self, cooldown_hint: Option<Duration>) -> Option<Duration> {
+        cooldown_hint.or_else(|| {
+            self.provider_hint()
+                .and_then(|hint| hint.retry_after_secs)
+                .map(Duration::from_secs)
+        })
+    }
+
+    fn api_pacing_delay_at(&self, now: Instant) -> Option<Duration> {
+        let hint = self.provider_hint()?;
+        let min_sleep = hint.min_sleep?;
+        let burst = hint.burst.unwrap_or(1);
+        let mut pacer = self.api_pacer.lock().expect("aimd api pacer mutex poisoned");
+        Some(pacer.reserve_delay(now, burst, min_sleep))
     }
 
     fn state(&self, class: AdaptiveClass) -> &Mutex<ClassState> {
@@ -416,8 +666,16 @@ impl AimdController {
         class: AdaptiveClass,
         cooldown_hint: Option<Duration>,
     ) {
+        // KE-D1: when the operator has explicitly disabled AIMD the
+        // controller must not halve or arm a cooldown. The window stays at
+        // the honest ceiling for the full run and congestion feedback is
+        // dropped on the floor. This keeps the diagnostic value of
+        // "throughput is capped — is it AIMD?" intact for dedicated links.
+        if self.config.disabled {
+            return;
+        }
         let now = Instant::now();
-        let effective_cooldown = match cooldown_hint {
+        let effective_cooldown = match self.effective_cooldown_hint(cooldown_hint) {
             None => self.config.cooldown,
             Some(hint) => {
                 let upper = self
@@ -429,7 +687,9 @@ impl AimdController {
         };
         let mut st = self.state(class).lock().expect("aimd mutex poisoned");
         let level_at_congestion = st.target;
-        st.target = (st.target / 2).max(1);
+        // KE-D2: the operator-supplied floor wins over the historical `1`.
+        let floor = st.min_target.max(1).min(st.ceiling);
+        st.target = (st.target / 2).max(floor);
         st.sem.set_live(st.target);
         st.cooldown_until = Some(now + effective_cooldown);
         st.healthy_since = None;
@@ -447,6 +707,12 @@ impl AimdController {
     /// above the ceiling, and never above the [`AimdConfig::recovery_window`]
     /// guard band until the band has relaxed).
     pub fn note_healthy(&self, class: AdaptiveClass) {
+        // KE-D1: the kill switch silences additive growth too. The window is
+        // already pinned at the honest ceiling (built that way at `new`); a
+        // healthy note must not change anything.
+        if self.config.disabled {
+            return;
+        }
         let now = Instant::now();
         let mut st = self.state(class).lock().expect("aimd mutex poisoned");
         // Guard band relaxation: a full recovery window of quiet since the
@@ -471,7 +737,9 @@ impl AimdController {
             None => st.healthy_since = Some(now),
             Some(since) => {
                 if now.duration_since(since) >= self.config.healthy_window {
-                    st.target += 1;
+                    // KE-D2: additive step is operator-tunable; default is `+1`.
+                    let step = st.step.max(1);
+                    st.target = st.target.saturating_add(step).min(growth_cap);
                     st.sem.set_live(st.target);
                     st.healthy_since = Some(now);
                 }
@@ -492,6 +760,13 @@ impl AimdController {
             };
             if wants == 0 {
                 continue;
+            }
+            if class == AdaptiveClass::Api {
+                if let Some(delay) = self.api_pacing_delay_at(Instant::now()) {
+                    if !delay.is_zero() {
+                        sleep(delay).await;
+                    }
+                }
             }
             let sem = {
                 let st = self.state(class).lock().expect("aimd mutex poisoned");
@@ -536,11 +811,27 @@ impl AimdController {
     pub fn cooldown_until(&self, class: AdaptiveClass) -> Option<Instant> {
         self.state(class).lock().unwrap().cooldown_until
     }
+
+    #[cfg(test)]
+    pub fn api_pacing_delay_for_test(&self, now: Instant) -> Option<Duration> {
+        self.api_pacing_delay_at(now)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn install_google_drive_test_hint() {
+        aimd_hints::init(std::collections::HashMap::from([(
+            ProviderType::GoogleDrive,
+            aimd_hints::AimdHint {
+                burst: Some(2),
+                min_sleep: Some(Duration::from_millis(500)),
+                retry_after_secs: Some(30),
+            },
+        )]));
+    }
 
     #[test]
     fn congestion_mapping_covers_the_trigger_set_only() {
@@ -646,6 +937,8 @@ mod tests {
             cooldown: Duration::from_secs(3600),
             healthy_window: Duration::from_secs(0),
             recovery_window: Duration::from_secs(0),
+            disabled: false,
+            class_overrides: AimdClassOverrides::default(),
         };
         let ctrl = AimdController::new(8, 1, 1, 1, cfg);
         ctrl.on_congestion(AdaptiveClass::File);
@@ -668,6 +961,8 @@ mod tests {
             cooldown: Duration::from_secs(0),
             healthy_window: Duration::from_secs(0),
             recovery_window: Duration::from_secs(0),
+            disabled: false,
+            class_overrides: AimdClassOverrides::default(),
         };
         let ctrl = AimdController::new(3, 1, 1, 1, cfg);
         ctrl.on_congestion(AdaptiveClass::File); // 3 -> 1 (floor)
@@ -706,6 +1001,8 @@ mod tests {
             cooldown: Duration::from_secs(0),
             healthy_window: Duration::from_secs(0),
             recovery_window: Duration::from_secs(3600),
+            disabled: false,
+            class_overrides: AimdClassOverrides::default(),
         };
         let ctrl = AimdController::new(8, 1, 1, 1, cfg);
         ctrl.on_congestion(AdaptiveClass::File); // 8 -> 4, regrowth cap -> 7
@@ -728,6 +1025,8 @@ mod tests {
             cooldown: Duration::from_secs(0),
             healthy_window: Duration::from_secs(0),
             recovery_window: Duration::from_secs(0),
+            disabled: false,
+            class_overrides: AimdClassOverrides::default(),
         };
         let ctrl = AimdController::new(8, 1, 1, 1, cfg);
         ctrl.on_congestion(AdaptiveClass::File); // 8 -> 4
@@ -747,6 +1046,8 @@ mod tests {
             cooldown: Duration::from_secs(0),
             healthy_window: Duration::from_secs(0),
             recovery_window: Duration::from_secs(3600),
+            disabled: false,
+            class_overrides: AimdClassOverrides::default(),
         };
         let ctrl = AimdController::new(16, 1, 1, 1, cfg);
         ctrl.on_congestion(AdaptiveClass::File); // 16 -> 8, cap -> 15
@@ -793,6 +1094,8 @@ mod tests {
             cooldown: Duration::from_secs(5),
             healthy_window: Duration::from_secs(5),
             recovery_window: Duration::from_secs(30),
+            disabled: false,
+            class_overrides: AimdClassOverrides::default(),
         };
         let ctrl = AimdController::new(8, 1, 1, 1, cfg);
         let before = Instant::now();
@@ -821,6 +1124,8 @@ mod tests {
             cooldown: Duration::from_secs(5),
             healthy_window: Duration::from_secs(5),
             recovery_window: Duration::from_secs(30),
+            disabled: false,
+            class_overrides: AimdClassOverrides::default(),
         };
 
         // Lower clamp: a 200 ms hint must be raised to MIN_HINT_COOLDOWN
@@ -860,6 +1165,59 @@ mod tests {
             elapsed_d >= Duration::from_secs(4) && elapsed_d <= Duration::from_secs(6),
             "expected ~5s (default cooldown), got {:?}",
             elapsed_d
+        );
+    }
+
+    #[test]
+    fn provider_retry_after_hint_applies_when_server_hint_is_missing() {
+        install_google_drive_test_hint();
+
+        let cfg = AimdConfig {
+            cooldown: Duration::from_secs(5),
+            healthy_window: Duration::from_secs(5),
+            recovery_window: Duration::from_secs(30),
+            disabled: false,
+            class_overrides: AimdClassOverrides::default(),
+        };
+        let ctrl = AimdController::new_for_provider(
+            8,
+            1,
+            1,
+            1,
+            Some(ProviderType::GoogleDrive),
+            cfg,
+        );
+        let before = Instant::now();
+        ctrl.on_congestion_with_hint(AdaptiveClass::Api, None);
+        let until = ctrl
+            .cooldown_until(AdaptiveClass::Api)
+            .expect("provider retry-after hint must arm cooldown_until");
+        let elapsed = until.saturating_duration_since(before);
+        assert!(elapsed >= Duration::from_secs(29) && elapsed <= Duration::from_secs(31));
+    }
+
+    #[test]
+    fn provider_api_pacer_delays_after_burst() {
+        install_google_drive_test_hint();
+
+        let ctrl = AimdController::new_for_provider(
+            1,
+            1,
+            1,
+            1,
+            Some(ProviderType::GoogleDrive),
+            AimdConfig::default(),
+        );
+        let t0 = Instant::now();
+        assert_eq!(ctrl.api_pacing_delay_for_test(t0), Some(Duration::ZERO));
+        assert_eq!(ctrl.api_pacing_delay_for_test(t0), Some(Duration::ZERO));
+        assert_eq!(
+            ctrl.api_pacing_delay_for_test(t0),
+            Some(Duration::from_millis(500))
+        );
+        assert_eq!(
+            ctrl.api_pacing_delay_for_test(t0 + Duration::from_millis(500)),
+            Some(Duration::ZERO)
         );
     }
 
@@ -911,5 +1269,211 @@ mod tests {
             parse_embedded_retry_after(&msg),
             Some(Duration::from_secs(30))
         );
+    }
+
+    // KE-D1: `--aimd-disable` kill switch. When the operator installs
+    // `AimdConfig { disabled: true, .. }` the controller must remain pinned
+    // at the honest ceiling for the whole run: congestion feedback is a
+    // no-op (no halving, no cooldown armed) and healthy notes do not grow
+    // the window further. Use case: dedicated/lab links where AIMD masks a
+    // genuine throughput cap diagnostic.
+
+    #[tokio::test]
+    async fn aimd_disable_skips_congestion_reset() {
+        let cfg = AimdConfig {
+            cooldown: Duration::from_secs(5),
+            healthy_window: Duration::from_secs(5),
+            recovery_window: Duration::from_secs(30),
+            disabled: true,
+            class_overrides: AimdClassOverrides::default(),
+        };
+        let ctrl = AimdController::new(8, 1, 1, 1, cfg);
+        // Even after a congestion event the target must not halve and no
+        // cooldown must be armed.
+        ctrl.on_congestion(AdaptiveClass::File);
+        assert_eq!(
+            ctrl.target(AdaptiveClass::File),
+            8,
+            "disabled controller must not halve on congestion"
+        );
+        assert!(
+            ctrl.cooldown_until(AdaptiveClass::File).is_none(),
+            "disabled controller must not arm a cooldown"
+        );
+        // Repeated congestion is still a no-op (no ratchet).
+        ctrl.on_congestion(AdaptiveClass::File);
+        ctrl.on_congestion(AdaptiveClass::File);
+        assert_eq!(ctrl.target(AdaptiveClass::File), 8);
+        // Healthy notes are also no-ops (window already at ceiling).
+        ctrl.note_healthy(AdaptiveClass::File);
+        ctrl.note_healthy(AdaptiveClass::File);
+        assert_eq!(ctrl.target(AdaptiveClass::File), 8);
+    }
+
+    // KE-D2: per-class window overrides (`--aimd-min-window`,
+    // `--aimd-max-window`, `--aimd-step-window`, plus the per-class TOML
+    // file). The CLI layer is covered by tests in `aeroftp_cli.rs`; here
+    // we cover the controller's runtime behaviour once the overrides
+    // have been baked into `AimdConfig`.
+
+    fn cfg_with_window(window: AimdClassWindow) -> AimdConfig {
+        AimdConfig {
+            cooldown: Duration::from_secs(0),
+            healthy_window: Duration::from_secs(0),
+            recovery_window: Duration::from_secs(0),
+            disabled: false,
+            class_overrides: AimdClassOverrides::broadcast(window),
+        }
+    }
+
+    #[tokio::test]
+    async fn aimd_min_window_floors_target_after_halving() {
+        // min=4 says "never let `target` drop below 4 after multiplicative
+        // decrease". Halving 8 normally goes to 4, then 2, then 1; the
+        // floor pins the second and third events at 4.
+        let cfg = cfg_with_window(AimdClassWindow {
+            min: Some(4),
+            ..Default::default()
+        });
+        let ctrl = AimdController::new(8, 1, 1, 1, cfg);
+        assert_eq!(ctrl.target(AdaptiveClass::File), 8);
+        ctrl.on_congestion(AdaptiveClass::File);
+        assert_eq!(ctrl.target(AdaptiveClass::File), 4);
+        ctrl.on_congestion(AdaptiveClass::File);
+        assert_eq!(
+            ctrl.target(AdaptiveClass::File),
+            4,
+            "the operator-supplied floor must hold across repeated congestion"
+        );
+        assert_eq!(ctrl.live(AdaptiveClass::File), 4);
+    }
+
+    #[tokio::test]
+    async fn aimd_max_window_clamps_ceiling() {
+        // max=3 says "never grow ceiling above 3" even though the budget
+        // would allow up to 8. AIMD is decrease-biased, so max only
+        // shrinks the ceiling, never raises it.
+        let cfg = cfg_with_window(AimdClassWindow {
+            max: Some(3),
+            ..Default::default()
+        });
+        let ctrl = AimdController::new(8, 1, 1, 1, cfg);
+        assert_eq!(
+            ctrl.target(AdaptiveClass::File),
+            3,
+            "`--aimd-max-window` must clamp the budget-derived ceiling"
+        );
+        // Healthy notes cannot push past the clamped ceiling.
+        for _ in 0..10 {
+            ctrl.note_healthy(AdaptiveClass::File);
+        }
+        assert_eq!(ctrl.target(AdaptiveClass::File), 3);
+    }
+
+    #[tokio::test]
+    async fn aimd_step_window_multiplies_additive_increase() {
+        // step=4 means each quiet `healthy_window` adds 4 instead of 1.
+        // Starting from a halved target of 1 (8 -> 1 with a min=1 floor),
+        // two healthy notes climb to 5, three notes to 8 (clamped to
+        // ceiling), four notes still 8.
+        let cfg = cfg_with_window(AimdClassWindow {
+            step: Some(4),
+            ..Default::default()
+        });
+        let ctrl = AimdController::new(8, 1, 1, 1, cfg);
+        ctrl.on_congestion(AdaptiveClass::File); // 8 -> 4
+        ctrl.on_congestion(AdaptiveClass::File); // 4 -> 2
+        ctrl.on_congestion(AdaptiveClass::File); // 2 -> 1
+        assert_eq!(ctrl.target(AdaptiveClass::File), 1);
+        // First note arms `healthy_since`, second crosses the (zero)
+        // window: +4 to 5.
+        ctrl.note_healthy(AdaptiveClass::File);
+        ctrl.note_healthy(AdaptiveClass::File);
+        assert_eq!(ctrl.target(AdaptiveClass::File), 5);
+        ctrl.note_healthy(AdaptiveClass::File);
+        // Next step would push to 9 but the honest ceiling is 8.
+        assert_eq!(ctrl.target(AdaptiveClass::File), 8);
+        ctrl.note_healthy(AdaptiveClass::File);
+        assert_eq!(ctrl.target(AdaptiveClass::File), 8);
+    }
+
+    #[tokio::test]
+    async fn aimd_overrides_clamp_to_safe_range() {
+        // Pathological `min = 0`, `max = 0`, `step = 0` from a config
+        // file or CLI flag must not collapse the controller: `min` and
+        // `step` are sanitized to `1`, `max` is sanitized to `1` (so the
+        // ceiling becomes `1` too — AIMD is decrease-biased and cannot
+        // raise the ceiling above the budget anyway).
+        let cfg = cfg_with_window(AimdClassWindow {
+            min: Some(0),
+            max: Some(0),
+            step: Some(0),
+        });
+        let ctrl = AimdController::new(8, 8, 8, 8, cfg);
+        assert_eq!(
+            ctrl.target(AdaptiveClass::File),
+            1,
+            "max=0 must clamp the ceiling to 1, never below"
+        );
+        ctrl.on_congestion(AdaptiveClass::File);
+        assert_eq!(
+            ctrl.target(AdaptiveClass::File),
+            1,
+            "min=0 must clamp the floor to 1, halving cannot go below"
+        );
+        ctrl.note_healthy(AdaptiveClass::File);
+        ctrl.note_healthy(AdaptiveClass::File);
+        assert_eq!(
+            ctrl.target(AdaptiveClass::File),
+            1,
+            "step=0 must coerce to +1; ceiling is 1 so no growth happens"
+        );
+    }
+
+    #[tokio::test]
+    async fn aimd_class_overrides_are_independent_per_class() {
+        // The api class lifts its floor to 4; the file class is unmodified.
+        let cfg = AimdConfig {
+            cooldown: Duration::from_secs(0),
+            healthy_window: Duration::from_secs(0),
+            recovery_window: Duration::from_secs(0),
+            disabled: false,
+            class_overrides: AimdClassOverrides {
+                api: AimdClassWindow {
+                    min: Some(4),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        };
+        let ctrl = AimdController::new(8, 8, 8, 8, cfg);
+        // File class halves all the way to 1: no override there.
+        ctrl.on_congestion(AdaptiveClass::File);
+        ctrl.on_congestion(AdaptiveClass::File);
+        ctrl.on_congestion(AdaptiveClass::File);
+        ctrl.on_congestion(AdaptiveClass::File);
+        assert_eq!(ctrl.target(AdaptiveClass::File), 1);
+        // Api class halves only down to its operator-supplied floor of 4.
+        ctrl.on_congestion(AdaptiveClass::Api);
+        ctrl.on_congestion(AdaptiveClass::Api);
+        ctrl.on_congestion(AdaptiveClass::Api);
+        assert_eq!(ctrl.target(AdaptiveClass::Api), 4);
+    }
+
+    #[tokio::test]
+    async fn aimd_disable_ignores_retry_after_hint() {
+        let cfg = AimdConfig {
+            cooldown: Duration::from_secs(5),
+            healthy_window: Duration::from_secs(5),
+            recovery_window: Duration::from_secs(30),
+            disabled: true,
+            class_overrides: AimdClassOverrides::default(),
+        };
+        let ctrl = AimdController::new(8, 1, 1, 1, cfg);
+        // A server-provided Retry-After hint is dropped on the floor when
+        // disabled — same as a hint-less congestion event.
+        ctrl.on_congestion_with_hint(AdaptiveClass::File, Some(Duration::from_secs(60)));
+        assert_eq!(ctrl.target(AdaptiveClass::File), 8);
+        assert!(ctrl.cooldown_until(AdaptiveClass::File).is_none());
     }
 }

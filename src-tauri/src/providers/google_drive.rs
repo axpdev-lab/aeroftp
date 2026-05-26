@@ -238,6 +238,21 @@ pub struct GoogleDriveProvider {
     /// Server profile identifier owning these OAuth tokens. Empty when the
     /// caller has not bound a profile (legacy singleton key path). Issue #214.
     profile_id: String,
+    /// KE-B2.3: When true, `server_copy` appends `supportsAllDrives=true`
+    /// so Google's `files.copy` succeeds across Shared Drives and between
+    /// My Drive and a Shared Drive. Default false preserves the legacy
+    /// (My-Drive-only) copy semantics. Rclone aligns this with the broader
+    /// `--drive-server-side-across-configs` knob; we expose it under the
+    /// more descriptive `--drive-cross-account-copy` name.
+    cross_account_copy: bool,
+    /// KE-B2.4: When true, every binary download URL (the `alt=media`
+    /// variant; NOT Workspace export endpoints) is augmented with
+    /// `acknowledgeAbuse=true` so Google returns the file body even when
+    /// it has been flagged by the abuse classifier with
+    /// `cannotDownloadAbusiveFile`. Without the flag the API returns 403
+    /// with that error code. Users opt in explicitly because the flag is
+    /// a legal acknowledgement of the abusive content risk.
+    acknowledge_abuse: bool,
 }
 
 impl GoogleDriveProvider {
@@ -258,6 +273,8 @@ impl GoogleDriveProvider {
             cache_access_counter: 0,
             account_email: None,
             profile_id: String::new(),
+            cross_account_copy: false,
+            acknowledge_abuse: false,
         }
     }
 
@@ -266,6 +283,32 @@ impl GoogleDriveProvider {
     pub fn with_profile_id(mut self, profile_id: impl Into<String>) -> Self {
         self.profile_id = profile_id.into();
         self
+    }
+
+    /// KE-B2.3: Toggle `supportsAllDrives=true` on `files.copy` so the
+    /// server-side copy succeeds across Shared Drives and between My
+    /// Drive and a Shared Drive.
+    pub fn set_cross_account_copy(&mut self, enabled: bool) {
+        self.cross_account_copy = enabled;
+    }
+
+    /// KE-B2.4: Toggle the `acknowledgeAbuse=true` query parameter on
+    /// `alt=media` binary downloads. Users opt in explicitly because the
+    /// flag is a legal acknowledgement of the abuse-flag risk.
+    pub fn set_acknowledge_abuse(&mut self, enabled: bool) {
+        self.acknowledge_abuse = enabled;
+    }
+
+    /// KE-B2.4 helper: produce the `&acknowledgeAbuse=true` suffix when
+    /// the knob is active, else an empty string. Caller concatenates onto
+    /// an `alt=media` URL that already has a `?` (so the leading char is
+    /// always `&`).
+    fn acknowledge_abuse_suffix(&self) -> &'static str {
+        if self.acknowledge_abuse {
+            "&acknowledgeAbuse=true"
+        } else {
+            ""
+        }
     }
 
     /// Get OAuth config
@@ -510,8 +553,16 @@ impl GoogleDriveProvider {
                 urlencoding::encode(export_mime)
             )
         } else {
-            // Regular file: use alt=media
-            format!("{}/files/{}?alt=media", DRIVE_API_BASE, file_id)
+            // Regular file: use alt=media. KE-B2.4 appends
+            // `acknowledgeAbuse=true` when the user opted in via
+            // --drive-acknowledge-abuse so files flagged by Google as
+            // abusive still download.
+            format!(
+                "{}/files/{}?alt=media{}",
+                DRIVE_API_BASE,
+                file_id,
+                self.acknowledge_abuse_suffix()
+            )
         };
 
         let response = self
@@ -1341,7 +1392,13 @@ impl StorageProvider for GoogleDriveProvider {
                 urlencoding::encode(export_mime)
             )
         } else {
-            format!("{}/files/{}?alt=media", DRIVE_API_BASE, file.id)
+            // KE-B2.4: append acknowledgeAbuse when opted in.
+            format!(
+                "{}/files/{}?alt=media{}",
+                DRIVE_API_BASE,
+                file.id,
+                self.acknowledge_abuse_suffix()
+            )
         };
 
         let response = self
@@ -1409,7 +1466,13 @@ impl StorageProvider for GoogleDriveProvider {
             return self.download(remote_path, local_path, on_progress).await;
         }
 
-        let url = format!("{}/files/{}?alt=media", DRIVE_API_BASE, file.id);
+        // KE-B2.4: append acknowledgeAbuse when opted in.
+        let url = format!(
+            "{}/files/{}?alt=media{}",
+            DRIVE_API_BASE,
+            file.id,
+            self.acknowledge_abuse_suffix()
+        );
         let auth = self.auth_header().await?;
 
         super::http_resumable_download(
@@ -2017,7 +2080,19 @@ impl StorageProvider for GoogleDriveProvider {
             "parents": [to_parent_id]
         });
 
-        let url = format!("{}/files/{}/copy", DRIVE_API_BASE, file.id);
+        // KE-B2.3: when --drive-cross-account-copy is active, append
+        // `supportsAllDrives=true` so the copy succeeds when either the
+        // source or destination lives on a Shared Drive. Without this
+        // parameter Google returns 404 / 403 even when the OAuth scopes
+        // are sufficient.
+        let url = if self.cross_account_copy {
+            format!(
+                "{}/files/{}/copy?supportsAllDrives=true",
+                DRIVE_API_BASE, file.id
+            )
+        } else {
+            format!("{}/files/{}/copy", DRIVE_API_BASE, file.id)
+        };
 
         let response = self
             .client
@@ -2280,9 +2355,14 @@ impl StorageProvider for GoogleDriveProvider {
             .await?
             .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
 
+        // KE-B2.4: revision download also honours --drive-acknowledge-abuse
+        // because Google flags the underlying file, not a specific version.
         let url = format!(
-            "{}/files/{}/revisions/{}?alt=media",
-            DRIVE_API_BASE, file.id, version_id
+            "{}/files/{}/revisions/{}?alt=media{}",
+            DRIVE_API_BASE,
+            file.id,
+            version_id,
+            self.acknowledge_abuse_suffix()
         );
 
         let response = self
@@ -3129,5 +3209,36 @@ mod tests {
             last_end = end as i128;
         }
         assert_eq!(last_end as u64, total - 1);
+    }
+
+    // ── KE-B2 per-backend Google Drive knob tests (non-AIMD subset) ────
+
+    /// KE-B2.3: setter toggles the flag; default false preserves the
+    /// legacy My-Drive-only copy semantics.
+    #[test]
+    fn set_cross_account_copy_toggles_flag() {
+        let mut p = test_provider();
+        assert!(!p.cross_account_copy);
+        p.set_cross_account_copy(true);
+        assert!(p.cross_account_copy);
+        p.set_cross_account_copy(false);
+        assert!(!p.cross_account_copy);
+    }
+
+    /// KE-B2.4: setter toggles the flag and `acknowledge_abuse_suffix`
+    /// reflects the current state. Default false produces an empty
+    /// suffix so existing `alt=media` URLs are unchanged.
+    #[test]
+    fn set_acknowledge_abuse_toggles_url_suffix() {
+        let mut p = test_provider();
+        assert!(!p.acknowledge_abuse);
+        assert_eq!(p.acknowledge_abuse_suffix(), "");
+
+        p.set_acknowledge_abuse(true);
+        assert!(p.acknowledge_abuse);
+        assert_eq!(p.acknowledge_abuse_suffix(), "&acknowledgeAbuse=true");
+
+        p.set_acknowledge_abuse(false);
+        assert_eq!(p.acknowledge_abuse_suffix(), "");
     }
 }
