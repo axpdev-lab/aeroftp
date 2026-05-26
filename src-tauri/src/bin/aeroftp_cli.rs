@@ -40132,7 +40132,6 @@ mod tests {
             immutable: false,
             no_check_dest: false,
             max_depth: None,
-            transfer_engine: "auto".to_string(),
             command: Commands::Profiles {
                 _ignored: Vec::new(),
                 sort: None,
