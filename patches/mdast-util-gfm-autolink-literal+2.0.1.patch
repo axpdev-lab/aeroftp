@@ -1,0 +1,22 @@
+diff --git a/node_modules/mdast-util-gfm-autolink-literal/lib/index.js b/node_modules/mdast-util-gfm-autolink-literal/lib/index.js
+index c5ca771..ecfd390 100644
+--- a/node_modules/mdast-util-gfm-autolink-literal/lib/index.js
++++ b/node_modules/mdast-util-gfm-autolink-literal/lib/index.js
+@@ -132,7 +132,16 @@ function transformGfmAutolinkLiterals(tree) {
+     tree,
+     [
+       [/(https?:\/\/|www(?=\.))([-.\w]+)([^ \t\r\n]*)/gi, findUrl],
+-      [/(?<=^|\s|\p{P}|\p{S})([-.\w+]+)@([-\w]+(?:\.[-\w]+)+)/gu, findEmail]
++      // AeroFTP patch (issue #241): the original regex used a lookbehind
++      // `(?<=...)` which Safari/WebKit only support from 16.4+. On Big Sur
++      // (Safari <= 15) the whole bundle fails to parse with "Invalid
++      // regular expression: invalid group specifier name". The word-boundary
++      // `\b` below is zero-width too, preserves match.index / match[1] /
++      // match[2] semantics, and the previous() helper around line 270 still
++      // gates the real character-class check on `match.input.charCodeAt
++      // (match.index - 1)`. So output is equivalent on conforming engines
++      // and the bundle parses on older WebKit.
++      [/\b([-.\w+]+)@([-\w]+(?:\.[-\w]+)+)/gu, findEmail]
+     ],
+     {ignore: ['link', 'linkReference']}
+   )

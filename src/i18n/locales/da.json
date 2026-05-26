@@ -272,7 +272,8 @@
             "profileConverted": "Profil konverteret",
             "profileDuplicated": "Profil duplikeret",
             "convertUndone": "Profil gendannet",
-            "undo": "Fortryd"
+            "undo": "Fortryd",
+            "megacmdDfHint": "MEGAcmd bruger mega-df direkte til at forespørge brugt og samlet lagerplads. Manuel tilsidesættelse af totalen er ikke nødvendig."
         },
         "browser": {
             "remote": "Ekstern",

@@ -316,6 +316,19 @@ const stripLegacyNextcloudWebdavRoot = (
   return initialPath;
 };
 
+const isMegaCmdQuotaProfile = (
+  params?: Pick<ConnectionParams, 'protocol' | 'providerId' | 'options'> | null,
+  profile?: Pick<ServerProfile, 'protocol' | 'providerId' | 'options'> | null,
+): boolean => {
+  const protocol = params?.protocol || profile?.protocol;
+  const providerId = params?.providerId || profile?.providerId;
+  const megaMode = params?.options?.mega_mode || profile?.options?.mega_mode;
+  return (
+    (protocol === 'mega' && megaMode === 'megacmd') ||
+    (protocol === 'webdav' && (providerId === 'megacmd' || providerId === 'megacmd-webdav'))
+  );
+};
+
 const Github = ({ size = 24, className = '' }: { size?: number; className?: string }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className}>
     <path fillRule="evenodd" clipRule="evenodd" d="M12.026 2c-5.509 0-9.974 4.465-9.974 9.974 0 4.406 2.857 8.145 6.821 9.465.499.09.679-.217.679-.481 0-.237-.008-.865-.011-1.696-2.775.602-3.361-1.338-3.361-1.338-.452-1.152-1.107-1.459-1.107-1.459-.905-.619.069-.605.069-.605 1.002.07 1.527 1.028 1.527 1.028.89 1.524 2.336 1.084 2.902.829.091-.645.351-1.085.635-1.334-2.214-.251-4.542-1.107-4.542-4.93 0-1.087.389-1.979 1.024-2.675-.101-.253-.446-1.268.099-2.64 0 0 .837-.269 2.742 1.021a9.582 9.582 0 0 1 2.496-.336 9.554 9.554 0 0 1 2.496.336c1.906-1.291 2.742-1.021 2.742-1.021.545 1.372.203 2.387.099 2.64.64.696 1.024 1.587 1.024 2.675 0 3.833-2.33 4.675-4.552 4.922.355.308.675.916.675 1.846 0 1.334-.012 2.41-.012 2.737 0 .267.178.577.687.479C19.146 20.115 22 16.379 22 11.974 22 6.465 17.535 2 12.026 2z"/>
@@ -2397,7 +2410,9 @@ interface UpdateVerificationInfo {
         void persistQuotaToProfile(profileId, { used: info.used, total: info.total, usedSource: 'api' });
         const autoScan = !!(prof?.options?.autoScanUsedOnConnect || opts?.autoScanUsedOnConnect);
         const hasScanBaseline = !!prof?.lastQuota && (prof.lastQuota.usedSource === 'scan' || prof.lastQuota.used > 0);
-        const scanEligibleProtocol = ['ftp', 'ftps', 'sftp', 's3', 'webdav'].includes(protocol);
+        const scanEligibleProtocol =
+          ['ftp', 'ftps', 'sftp', 's3', 'webdav'].includes(protocol) ||
+          isMegaCmdQuotaProfile(liveCp, prof);
         if (autoScan && scanEligibleProtocol && !hasScanBaseline) {
           void scanUsedStorage({
             automatic: true,
@@ -2511,11 +2526,13 @@ interface UpdateVerificationInfo {
     let manualTotal: number | undefined;
     let scanRoot = currentRemotePath || '/';
     let profileId: string | undefined;
+    let quotaProfile: ServerProfile | undefined;
     try {
       const all = await loadSavedServerProfiles();
       const prof = scanOptions?.profileHint
         || resolveLiveProfile(all, cp, activeSession, scanOptions?.connectionParams?.savedServerId);
       if (prof) {
+        quotaProfile = prof;
         profileId = prof.id;
         if (prof.initialPath?.trim()) {
           const resolved = resolveUsernameTemplate(prof.initialPath.trim(), cp.username);
@@ -2554,6 +2571,45 @@ interface UpdateVerificationInfo {
       `${t('statusBar.usedScanRunning')} ${scanRoot}`,
       'running',
     );
+    if (isMegaCmdQuotaProfile(cp, quotaProfile)) {
+      try {
+        const [used, total] = await invoke<[number, number]>('mega_df_query', {
+          profileId: profileId || '',
+        });
+        const eff = resolveEffectiveQuota(used, total, manualTotal);
+        if (version === quotaVersionRef.current) {
+          setStorageQuota({
+            used: eff.used,
+            total: eff.total,
+            free: eff.total > eff.used ? eff.total - eff.used : 0,
+          });
+        }
+        await persistQuotaToProfile(profileId, {
+          used,
+          total,
+          usedSource: 'api',
+          used_at: new Date().toISOString(),
+        });
+        const doneDetail = formatBytes(used);
+        notify.success(t('statusBar.usedScanDone'), doneDetail);
+        activityLog.updateEntry(scanLogId, {
+          status: 'success',
+          message: t('statusBar.usedScanDone'),
+          details: `${doneDetail} [mega-df]`,
+        });
+      } catch (err) {
+        notify.error(t('statusBar.usedScanFailed'), String(err));
+        activityLog.updateEntry(scanLogId, {
+          status: 'error',
+          message: t('statusBar.usedScanFailed'),
+          details: String(err),
+        });
+      } finally {
+        setUsedScanStatus(null);
+        scanInFlightRef.current = false;
+      }
+      return;
+    }
     const unlisten = await listen<{ used: number; file_count: number; scanning: boolean }>(
       'used-scan-progress',
       (event) => {
@@ -12369,7 +12425,7 @@ interface UpdateVerificationInfo {
         )}
 
 
-        <main className={`flex-1 min-h-0 p-6 overflow-auto flex flex-col ${devToolsMaximized && devToolsOpen ? 'hidden' : ''}`}>
+        <main className={`flex-1 min-h-0 p-6 overflow-hidden flex flex-col ${devToolsMaximized && devToolsOpen ? 'hidden' : ''}`}>
           {/* IntroHub stays mounted across connect/disconnect so the saved
               servers list is already rendered when the user comes back via
               the Home button or '+' tab. Hidden via CSS when a session is in
@@ -12735,7 +12791,7 @@ interface UpdateVerificationInfo {
                 onLocalReorder2={(!isConnected || !showRemotePanel) && showDualLocalPanel ? setLocalTabs2 : undefined}
               />
               {/* Toolbar */}
-              <div role="toolbar" aria-label="File operations" className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
+              <div role="toolbar" aria-label="File operations" className="flex-shrink-0 flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
                 <div className="flex gap-2">
                   {/* Up button is rendered per-panel inside each path bar (see remote
                       path bar above and LocalFilePanel) so the affordance is bound to
@@ -12983,7 +13039,7 @@ interface UpdateVerificationInfo {
                 {isConnected && showRemotePanel && <div
                   role="region"
                   aria-label="Remote files"
-                  className={`relative w-1/2 ${swapPanels ? 'border-l order-2' : 'border-r order-1'} border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-150 ${crossPanelTarget === 'remote' ? 'ring-2 ring-inset ring-blue-400 bg-blue-50/30 dark:bg-blue-900/10' : ''}`}
+                  className={`relative w-1/2 min-h-0 ${swapPanels ? 'border-l order-2' : 'border-r order-1'} border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-150 ${crossPanelTarget === 'remote' ? 'ring-2 ring-inset ring-blue-400 bg-blue-50/30 dark:bg-blue-900/10' : ''}`}
                   onDragOver={(e) => handlePanelDragOver(e, 'remote')}
                   onDrop={(e) => handlePanelDrop(e, 'remote')}
                   onDragLeave={handlePanelDragLeave}
@@ -12998,7 +13054,7 @@ interface UpdateVerificationInfo {
                       <Loader2 size={20} className="animate-spin text-blue-500/80" />
                     </div>
                   )}
-                  <div className="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 text-sm font-medium flex items-center gap-2">
+                  <div className="flex-shrink-0 px-3 py-1.5 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 text-sm font-medium flex items-center gap-2">
                     <div className={`flex-1 flex items-center bg-white dark:bg-gray-800 rounded-md border ${isSyncPathMismatch ? 'border-amber-400 dark:border-amber-500' : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500'} focus-within:border-blue-500 dark:focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all overflow-hidden`}>
                       {/* Protocol icon inside address bar (like Chrome favicon) */}
                       <div className="flex-shrink-0 pl-2.5 pr-1 flex items-center" title={(() => {

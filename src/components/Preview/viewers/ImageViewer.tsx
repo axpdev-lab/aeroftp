@@ -101,15 +101,29 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         onError?.(t('preview.image.loadFailed'));
     }, [onError, t]);
 
-    // Zoom controls
+    // Zoom controls.
+    //
+    // Wheel and toolbar zoom act as a multiplier on top of the current
+    // object-fit mode. They do not silently flip the user out of
+    // fit-to-screen: that switch is reserved for the explicit Fit /
+    // Actual-size button. When the new zoom drops to 1 or below the pan
+    // offset is reset, otherwise a pan applied during a zoom-in session
+    // would leave the image off-centre after scrolling back out. See
+    // issue #239.
     const zoomIn = useCallback(() => {
-        setZoom(prev => Math.min(MAX_ZOOM, prev + ZOOM_STEP));
-        setIsFitToScreen(false);
+        setZoom(prev => {
+            const next = Math.min(MAX_ZOOM, prev + ZOOM_STEP);
+            if (next <= 1) setPosition({ x: 0, y: 0 });
+            return next;
+        });
     }, []);
 
     const zoomOut = useCallback(() => {
-        setZoom(prev => Math.max(MIN_ZOOM, prev - ZOOM_STEP));
-        setIsFitToScreen(false);
+        setZoom(prev => {
+            const next = Math.max(MIN_ZOOM, prev - ZOOM_STEP);
+            if (next <= 1) setPosition({ x: 0, y: 0 });
+            return next;
+        });
     }, []);
 
     // Rotate 90° clockwise (view rotation)
@@ -129,13 +143,18 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         setIsFitToScreen(!isFitToScreen);
     }, [isFitToScreen]);
 
-    // Mouse wheel zoom
+    // Mouse wheel zoom. Same contract as zoomIn / zoomOut: never flips the
+    // Fit / Actual-size mode, and resets the pan offset when zoom returns
+    // to fit (issue #239).
     const handleWheel = useCallback((e: React.WheelEvent) => {
         if (cropMode) return;
         e.preventDefault();
         const delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
-        setZoom(prev => Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, prev + delta)));
-        setIsFitToScreen(false);
+        setZoom(prev => {
+            const next = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, prev + delta));
+            if (next <= 1) setPosition({ x: 0, y: 0 });
+            return next;
+        });
     }, [cropMode]);
 
     // Drag handlers for panning

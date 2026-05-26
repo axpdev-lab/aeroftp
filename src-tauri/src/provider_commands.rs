@@ -248,7 +248,7 @@ async fn try_silent_reconnect(
 pub struct ProviderConnectionParams {
     /// Protocol type: "ftp", "ftps", "sftp", "webdav", "s3", "mega", "opendrive"
     pub protocol: String,
-    /// Optional saved-provider preset id (`nextcloud`, `koofr`, `custom-webdav`, ...).
+    /// Optional saved-provider preset id (`nextcloud`, `koofr`, `custom-webdav`, `megacmd`, ...).
     #[serde(default, alias = "providerId")]
     pub provider_id: Option<String>,
     /// Host/URL (FTP server, WebDAV URL, or S3 endpoint)
@@ -360,6 +360,15 @@ impl ProviderConnectionParams {
             .filter(|s| !s.is_empty())
         {
             extra.insert("provider_id".to_string(), provider_id.to_string());
+        }
+
+        if let Some(ref provider_id) = self.provider_id {
+            if !provider_id.trim().is_empty() {
+                extra.insert(
+                    crate::providers::mega_df::PROVIDER_ID_META_KEY.to_string(),
+                    provider_id.trim().to_string(),
+                );
+            }
         }
 
         // Add S3-specific options
@@ -3875,6 +3884,15 @@ pub async fn provider_storage_info(state: State<'_, ProviderState>) -> Result<St
         .storage_info()
         .await
         .map_err(|e| format!("Failed to get storage info: {}", e))
+}
+
+/// Query MEGAcmd quota directly through `mega-df`.
+#[tauri::command]
+pub async fn mega_df_query(profile_id: String) -> Result<(u64, u64), String> {
+    let _ = profile_id;
+    crate::providers::mega_df::mega_df_query()
+        .await
+        .map_err(|e| format!("Failed to query mega-df: {}", e))
 }
 
 /// Get disk usage for a path in bytes
