@@ -84,7 +84,7 @@ use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tempfile::NamedTempFile;
 use tokio::sync::Mutex as AsyncMutex;
 
@@ -1656,6 +1656,43 @@ enum Commands {
         /// Mount as read-only (default: read-write)
         #[arg(long)]
         read_only: bool,
+
+        /// KE-C2: How often the mount polls the remote for changes that
+        /// happened out-of-band. Accepts `30s`, `5m`, `1h`. Reserved for
+        /// the directory-listing watcher landing with T-DEBT-13; the
+        /// value is parsed and stored today but the polling task is
+        /// not yet active. Default: `1m`.
+        #[arg(long, env = "AEROFTP_MOUNT_CACHE_POLL_INTERVAL")]
+        cache_poll_interval: Option<String>,
+
+        /// KE-C2: FUSE attribute cache lifetime (`reply.attr` TTL).
+        /// Accepts `1s`, `500ms`, `5m`. Defaults to the value of
+        /// `--cache-ttl` for backward compatibility.
+        #[arg(long, env = "AEROFTP_MOUNT_ATTR_TIMEOUT")]
+        attr_timeout: Option<String>,
+
+        /// KE-C2: Directory-listing cache lifetime (used when checking
+        /// whether a cached `readdir` result is fresh enough to serve
+        /// without a remote round-trip). Accepts `30s`, `5m`. Defaults
+        /// to the value of `--cache-ttl` for backward compatibility.
+        #[arg(long, env = "AEROFTP_MOUNT_DIR_CACHE_TIME")]
+        dir_cache_time: Option<String>,
+
+        /// KE-C2: Maximum size of a single `read` call to the remote.
+        /// Accepts `128k`, `4M`, `1G`. Larger values amortise round-trip
+        /// latency on high-bandwidth links; smaller values reduce
+        /// memory pressure and the cost of a cancelled read. Default:
+        /// `4M`.
+        #[arg(long, env = "AEROFTP_MOUNT_READ_CHUNK_SIZE")]
+        read_chunk_size: Option<String>,
+
+        /// KE-C2: Upper bound for any adaptive ramp of the read chunk
+        /// size. Reserved for the doubling-strategy code path landing
+        /// with T-DEBT-13. The value is parsed and stored today but
+        /// the adaptive ramp is not yet active. Default: unset (no
+        /// extra cap; the per-call ceiling is `--read-chunk-size`).
+        #[arg(long, env = "AEROFTP_MOUNT_READ_CHUNK_SIZE_LIMIT")]
+        read_chunk_size_limit: Option<String>,
     },
     /// Transfer files between two saved profiles (cross-profile copy)
     Transfer {
@@ -5275,6 +5312,23 @@ fn parse_retry_sleep(s: &str) -> std::time::Duration {
     }
     // Default fallback: 1 second
     std::time::Duration::from_secs(1)
+}
+
+/// KE-C2: Bundle of optional FUSE mount knobs parsed from the CLI.
+/// `None` on any field means "fall back to the legacy `--cache-ttl`
+/// derived value", so an unspecified knob preserves backward-compatible
+/// behavior. `cache_poll_interval` and `read_chunk_size_limit` are
+/// accepted today but their semantics ship with the T-DEBT-13 fuser
+/// bump; they are stored on `AeroFuseFs` and exposed via accessors so
+/// the watcher / adaptive-ramp code can pick them up without another
+/// CLI surface change.
+#[derive(Debug, Clone, Copy, Default)]
+struct MountKnobs {
+    cache_poll_interval: Option<Duration>,
+    attr_timeout: Option<Duration>,
+    dir_cache_time: Option<Duration>,
+    read_chunk_size: Option<u64>,
+    read_chunk_size_limit: Option<u64>,
 }
 
 fn parse_duration_strict(s: &str) -> Result<std::time::Duration, String> {
@@ -27323,6 +27377,24 @@ mod fuse_mount {
         provider: Arc<AsyncMutex<Box<dyn StorageProvider>>>,
         base_path: String,
         cache_ttl: Duration,
+        /// KE-C2: FUSE attribute cache lifetime, overrides `cache_ttl`
+        /// for `reply.attr` calls when set via `--attr-timeout`.
+        attr_timeout: Duration,
+        /// KE-C2: Directory-listing cache lifetime, overrides `cache_ttl`
+        /// for `reply.entry` calls and dir-cache freshness checks when
+        /// set via `--dir-cache-time`.
+        dir_cache_time: Duration,
+        /// KE-C2: Maximum bytes per `read_range` call from the remote.
+        /// Replaces the historical fixed `READ_CHUNK` constant.
+        read_chunk_size: u64,
+        /// KE-C2: Upper bound for any adaptive ramp of the read chunk
+        /// size. Reserved for the doubling-strategy code path landing
+        /// with T-DEBT-13; surfaced today via `--read-chunk-size-limit`.
+        read_chunk_size_limit: Option<u64>,
+        /// KE-C2: Background poll cadence for out-of-band remote
+        /// changes. Reserved for the directory-listing watcher landing
+        /// with T-DEBT-13; surfaced today via `--cache-poll-interval`.
+        cache_poll_interval: Duration,
         read_only: bool,
         /// Write buffers: inode → tempfile path
         write_buffers: Mutex<HashMap<u64, PathBuf>>,
@@ -27349,6 +27421,7 @@ mod fuse_mount {
             cache_ttl_secs: u64,
             read_only: bool,
             quiet: bool,
+            knobs: super::MountKnobs,
         ) -> Self {
             let rt = tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
@@ -27372,11 +27445,26 @@ mod fuse_mount {
                 },
             );
 
+            // KE-C2 defaults: missing knobs fall back to the existing
+            // `cache_ttl_secs` for backward compatibility. The chunk
+            // size default matches the historical `READ_CHUNK = 4 MiB`.
+            let cache_ttl = Duration::from_secs(cache_ttl_secs);
+            let attr_timeout = knobs.attr_timeout.unwrap_or(cache_ttl);
+            let dir_cache_time = knobs.dir_cache_time.unwrap_or(cache_ttl);
+            let read_chunk_size = knobs.read_chunk_size.unwrap_or(READ_CHUNK).max(1);
+            let cache_poll_interval =
+                knobs.cache_poll_interval.unwrap_or(Duration::from_secs(60));
+
             Self {
                 rt,
                 provider,
                 base_path,
-                cache_ttl: Duration::from_secs(cache_ttl_secs),
+                cache_ttl,
+                attr_timeout,
+                dir_cache_time,
+                read_chunk_size,
+                read_chunk_size_limit: knobs.read_chunk_size_limit,
+                cache_poll_interval,
                 read_only,
                 write_buffers: Mutex::new(HashMap::new()),
                 flush_ok: Mutex::new(std::collections::HashSet::new()),
@@ -27573,7 +27661,8 @@ mod fuse_mount {
 
     impl Filesystem for AeroFuseFs {
         fn getattr(&mut self, _req: &Request, ino: u64, _fh: Option<u64>, reply: ReplyAttr) {
-            let ttl = self.cache_ttl;
+            // KE-C2: `reply.attr` honours `--attr-timeout` when set.
+            let ttl = self.attr_timeout;
 
             // Root inode: always return directory attr without provider call
             if ino == ROOT_INODE {
@@ -27606,7 +27695,8 @@ mod fuse_mount {
         }
 
         fn lookup(&mut self, _req: &Request, parent: u64, name: &OsStr, reply: ReplyEntry) {
-            let ttl = self.cache_ttl;
+            // KE-C2: `reply.entry` honours `--dir-cache-time` when set.
+            let ttl = self.dir_cache_time;
             let Some(parent_path) = self.get_path(parent) else {
                 reply.error(libc::ENOENT);
                 return;
@@ -27734,10 +27824,11 @@ mod fuse_mount {
             let provider = self.provider.clone();
             let len = size as u64;
             let off = offset as u64;
+            let read_chunk_size = self.read_chunk_size;
 
             let result = self.rt.block_on(async {
                 let mut p = provider.lock().await;
-                p.read_range(&path, off, len.min(READ_CHUNK)).await
+                p.read_range(&path, off, len.min(read_chunk_size)).await
             });
 
             match result {
@@ -27801,7 +27892,10 @@ mod fuse_mount {
             let _ = std::fs::write(&tmp, b"");
             self.write_buffers.lock().unwrap().insert(child_ino, tmp);
 
-            let ttl = self.cache_ttl;
+            // KE-C2: `reply.created` carries a single TTL covering entry +
+            // attr; we use the dir-cache value because the parent-side
+            // entry view is the dominant consumer of this reply.
+            let ttl = self.dir_cache_time;
             let attr = file_attr(child_ino, 0, SystemTime::now(), self.uid, self.gid);
             self.set_cached(
                 child_ino,
@@ -27978,7 +28072,8 @@ mod fuse_mount {
             match result {
                 Ok(()) => {
                     let child_ino = self.alloc_inode(&child_path);
-                    let ttl = self.cache_ttl;
+                    // KE-C2: mkdir-style `reply.entry` uses `--dir-cache-time`.
+                    let ttl = self.dir_cache_time;
                     let attr = dir_attr(child_ino, 0, self.uid, self.gid);
                     self.set_cached(
                         child_ino,
@@ -28159,12 +28254,15 @@ mod fuse_mount {
                     cached.attr.blocks = new_size.div_ceil(BLOCK_SIZE as u64);
                     cached.attr.mtime = SystemTime::now();
                     self.set_cached(ino, cached.clone());
-                    reply.attr(&self.cache_ttl, &cached.attr);
+                    // KE-C2: `reply.attr` honours `--attr-timeout` when set.
+                    reply.attr(&self.attr_timeout, &cached.attr);
                     return;
                 }
             }
 
-            let ttl = self.cache_ttl;
+            // KE-C2: setattr fallback path also serves `reply.attr`,
+            // so it honours `--attr-timeout` when set.
+            let ttl = self.attr_timeout;
             if let Some(cached) = self.get_cached(ino) {
                 reply.attr(&ttl, &cached.attr);
             } else if ino == ROOT_INODE {
@@ -28231,6 +28329,7 @@ mod fuse_mount {
         cache_ttl: u64,
         allow_other: bool,
         read_only: bool,
+        knobs: super::MountKnobs,
         cli: &Cli,
         format: OutputFormat,
     ) -> i32 {
@@ -28285,7 +28384,14 @@ mod fuse_mount {
 
         let provider_arc = Arc::new(AsyncMutex::new(provider));
 
-        let fs = AeroFuseFs::new(provider_arc.clone(), base_path, cache_ttl, read_only, quiet);
+        let fs = AeroFuseFs::new(
+            provider_arc.clone(),
+            base_path,
+            cache_ttl,
+            read_only,
+            quiet,
+            knobs,
+        );
 
         let mut options = vec![
             MountOption::FSName("aeroftp".to_string()),
@@ -38054,11 +38160,56 @@ async fn main() {
             cache_ttl,
             allow_other,
             read_only,
+            cache_poll_interval,
+            attr_timeout,
+            dir_cache_time,
+            read_chunk_size,
+            read_chunk_size_limit,
         } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str())
             } else {
                 (url.as_str(), path.as_str())
+            };
+            // KE-C2: parse the optional duration / size knobs once, up
+            // front. A `None` value falls back to the cache_ttl-derived
+            // legacy behaviour inside `AeroFuseFs::new`. We bail out of
+            // this arm with exit code 5 (usage error) on any parse
+            // failure so the command never invokes FUSE with garbage.
+            let mount_knobs_result: Result<MountKnobs, String> = (|| {
+                let parse_dur = |label: &str, raw: &Option<String>| -> Result<Option<Duration>, String> {
+                    match raw {
+                        None => Ok(None),
+                        Some(s) => parse_duration_strict(s)
+                            .map(Some)
+                            .map_err(|e| format!("invalid --{}: {}", label, e)),
+                    }
+                };
+                let parse_size = |label: &str, raw: &Option<String>| -> Result<Option<u64>, String> {
+                    match raw {
+                        None => Ok(None),
+                        Some(s) => parse_size_filter(s)
+                            .map(Some)
+                            .map_err(|e| format!("invalid --{}: {}", label, e)),
+                    }
+                };
+                Ok(MountKnobs {
+                    cache_poll_interval: parse_dur("cache-poll-interval", cache_poll_interval)?,
+                    attr_timeout: parse_dur("attr-timeout", attr_timeout)?,
+                    dir_cache_time: parse_dur("dir-cache-time", dir_cache_time)?,
+                    read_chunk_size: parse_size("read-chunk-size", read_chunk_size)?,
+                    read_chunk_size_limit: parse_size(
+                        "read-chunk-size-limit",
+                        read_chunk_size_limit,
+                    )?,
+                })
+            })();
+            let mount_knobs = match mount_knobs_result {
+                Ok(k) => k,
+                Err(msg) => {
+                    print_error(format, &msg, 5);
+                    std::process::exit(5);
+                }
             };
             #[cfg(target_os = "linux")]
             {
@@ -38069,6 +38220,7 @@ async fn main() {
                     *cache_ttl,
                     *allow_other,
                     *read_only,
+                    mount_knobs,
                     &cli,
                     format,
                 )
@@ -38076,10 +38228,12 @@ async fn main() {
             }
             #[cfg(windows)]
             {
+                let _ = mount_knobs; // accepted but inert on Windows for now
                 cmd_mount_windows(u, mountpoint, p, *read_only, &cli, format).await
             }
             #[cfg(not(any(target_os = "linux", windows)))]
             {
+                let _ = mount_knobs;
                 print_error(format, "Mount is not supported on this platform", 7);
                 7
             }
@@ -40373,6 +40527,48 @@ mod tests {
             result.is_none(),
             "missing default-path file must produce no overrides"
         );
+    }
+
+    // KE-C2: the 5 FUSE mount knobs parse via `parse_duration_strict`
+    // and `parse_size_filter`. These tests lock the units and the error
+    // path so the dispatcher's Result-based bailout can rely on them.
+
+    #[test]
+    fn test_mount_knob_durations_accept_rclone_style_units() {
+        assert_eq!(parse_duration_strict("30s").unwrap(), Duration::from_secs(30));
+        assert_eq!(parse_duration_strict("5m").unwrap(), Duration::from_secs(300));
+        assert_eq!(parse_duration_strict("1h").unwrap(), Duration::from_secs(3600));
+        assert_eq!(
+            parse_duration_strict("500ms").unwrap(),
+            Duration::from_millis(500)
+        );
+    }
+
+    #[test]
+    fn test_mount_knob_sizes_accept_rclone_style_units() {
+        assert_eq!(parse_size_filter("128k").unwrap(), 128 * 1024);
+        assert_eq!(parse_size_filter("4M").unwrap(), 4 * 1024 * 1024);
+        assert_eq!(parse_size_filter("1G").unwrap(), 1024 * 1024 * 1024);
+    }
+
+    #[test]
+    fn test_mount_knob_invalid_value_surfaces_message() {
+        assert!(parse_duration_strict("five-minutes").is_err());
+        assert!(parse_size_filter("").is_err());
+    }
+
+    #[test]
+    fn test_mount_knobs_default_is_all_none() {
+        // The defaulted `MountKnobs` has every field unset; `AeroFuseFs::new`
+        // then falls back to the `--cache-ttl` legacy values on Linux. This
+        // ties the type's "no knob set" invariant down so a future field
+        // addition does not silently flip the legacy behaviour.
+        let mk = MountKnobs::default();
+        assert!(mk.cache_poll_interval.is_none());
+        assert!(mk.attr_timeout.is_none());
+        assert!(mk.dir_cache_time.is_none());
+        assert!(mk.read_chunk_size.is_none());
+        assert!(mk.read_chunk_size_limit.is_none());
     }
 
     #[test]
