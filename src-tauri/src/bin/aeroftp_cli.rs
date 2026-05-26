@@ -541,6 +541,48 @@ struct Cli {
     #[arg(long, global = true, env = "AEROFTP_ONEDRIVE_LINK_SCOPE")]
     onedrive_link_scope: Option<String>,
 
+    /// KE-B4.1: Override the number of `Put Block` requests in flight
+    /// during Azure block uploads (rclone `--azureblob-upload-concurrency`).
+    /// Default `0` = serial (1 block at a time, historical behaviour).
+    /// Range 1-32. Memory usage scales with `concurrency * 4 MiB` per
+    /// upload; raising on small VMs can OOM. Silently ignored when the
+    /// remote is not Azure Blob.
+    #[arg(
+        long,
+        global = true,
+        default_value_t = 0,
+        env = "AEROFTP_AZURE_UPLOAD_CONCURRENCY"
+    )]
+    azure_upload_concurrency: usize,
+
+    /// KE-B4.2: Reserved for future Content-MD5 metadata gating on Azure
+    /// uploads (rclone `--azureblob-disable-checksum`). AeroFTP does not
+    /// currently send `x-ms-blob-content-md5` on uploads, so this flag is
+    /// structurally wired but has no observable effect today. It will
+    /// gate the future MD5-on-upload code path once that lands. Silently
+    /// ignored when the remote is not Azure Blob.
+    #[arg(long, global = true, env = "AEROFTP_AZURE_DISABLE_CHECKSUM")]
+    azure_disable_checksum: bool,
+
+    /// KE-B4.3: Apply this Azure access tier to every successful upload
+    /// as a post-PUT `Set Blob Tier` call (rclone
+    /// `--azureblob-access-tier`). Values: `Hot`, `Cool`, `Cold`,
+    /// `Archive`. Tier failures are logged at WARN but do not invalidate
+    /// the upload itself. Vendor / future tiers pass through; Azure
+    /// rejects unknown values at the API level. Silently ignored when
+    /// the remote is not Azure Blob.
+    #[arg(long, global = true, env = "AEROFTP_AZURE_ACCESS_TIER")]
+    azure_access_tier: Option<String>,
+
+    /// KE-B4.4: Before overwriting an existing blob, check if it is in
+    /// Archive access tier; if so, DELETE the blob before the new PUT
+    /// (rclone `--azureblob-archive-tier-delete`). Without this flag,
+    /// PUT against an Archive blob fails with `BlobArchived`. Adds one
+    /// pre-upload HEAD round trip per file. Silently ignored when the
+    /// remote is not Azure Blob.
+    #[arg(long, global = true, env = "AEROFTP_AZURE_ARCHIVE_TIER_DELETE")]
+    azure_archive_tier_delete: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -4626,6 +4668,42 @@ fn apply_onedrive_runtime_knobs(provider: &mut Box<dyn StorageProvider>, cli: &C
     }
     if cli.verbose > 0 && !applied.is_empty() && !JSON_MODE.load(Ordering::Relaxed) {
         eprintln!("OneDrive knobs: {}", applied.join(", "));
+    }
+}
+
+/// KE-B4: Apply the per-backend `--azure-*` knobs to a freshly built
+/// provider, silently no-op-ing when the backend isn't Azure Blob. Same
+/// pre-connect insertion site as `apply_s3_runtime_knobs` so the knobs
+/// are already in effect by the time the first request fires.
+fn apply_azure_runtime_knobs(provider: &mut Box<dyn StorageProvider>, cli: &Cli) {
+    let Some(az) = provider
+        .as_any_mut()
+        .downcast_mut::<ftp_client_gui_lib::providers::azure::AzureProvider>()
+    else {
+        return;
+    };
+    let mut applied: Vec<String> = Vec::new();
+    if cli.azure_upload_concurrency > 0 {
+        az.set_upload_concurrency(cli.azure_upload_concurrency);
+        applied.push(format!(
+            "--azure-upload-concurrency={}",
+            cli.azure_upload_concurrency
+        ));
+    }
+    if cli.azure_disable_checksum {
+        az.set_disable_checksum(true);
+        applied.push("--azure-disable-checksum".to_string());
+    }
+    if let Some(ref tier) = cli.azure_access_tier {
+        az.set_access_tier(Some(tier.clone()));
+        applied.push(format!("--azure-access-tier={}", tier));
+    }
+    if cli.azure_archive_tier_delete {
+        az.set_archive_tier_delete(true);
+        applied.push("--azure-archive-tier-delete".to_string());
+    }
+    if cli.verbose > 0 && !applied.is_empty() && !JSON_MODE.load(Ordering::Relaxed) {
+        eprintln!("Azure knobs: {}", applied.join(", "));
     }
 }
 
@@ -12343,6 +12421,8 @@ async fn create_and_connect(
     // returns earlier and applies them there too; this site catches the
     // rare case where OneDrive arrives via direct ProviderFactory::create.
     apply_onedrive_runtime_knobs(&mut provider, cli);
+    // KE-B4: Azure Blob knobs (no-op for non-Azure).
+    apply_azure_runtime_knobs(&mut provider, cli);
 
     if let Err(e) = provider.connect().await {
         let code = provider_error_to_exit_code(&e);
@@ -31466,11 +31546,13 @@ async fn cmd_transfer_doctor(
         }
     };
 
-    // KE-B1 / KE-B3: per-backend knobs apply symmetrically to source and dest.
+    // KE-B1 / KE-B3 / KE-B4: per-backend knobs apply symmetrically to source and dest.
     apply_s3_runtime_knobs(&mut source, cli);
     apply_s3_runtime_knobs(&mut dest, cli);
     apply_onedrive_runtime_knobs(&mut source, cli);
     apply_onedrive_runtime_knobs(&mut dest, cli);
+    apply_azure_runtime_knobs(&mut source, cli);
+    apply_azure_runtime_knobs(&mut dest, cli);
 
     if let Err(e) = source.connect().await {
         print_error(
@@ -31667,11 +31749,13 @@ async fn cmd_transfer_profiles(
         }
     };
 
-    // KE-B1 / KE-B3: per-backend knobs apply symmetrically to source and dest.
+    // KE-B1 / KE-B3 / KE-B4: per-backend knobs apply symmetrically to source and dest.
     apply_s3_runtime_knobs(&mut source, cli);
     apply_s3_runtime_knobs(&mut dest, cli);
     apply_onedrive_runtime_knobs(&mut source, cli);
     apply_onedrive_runtime_knobs(&mut dest, cli);
+    apply_azure_runtime_knobs(&mut source, cli);
+    apply_azure_runtime_knobs(&mut dest, cli);
 
     // Connect source
     if !quiet {
@@ -32031,9 +32115,10 @@ async fn batch_connect_profile(
         );
         provider_error_to_exit_code(&e)
     })?;
-    // KE-B1 / KE-B3: apply per-backend knobs before connect.
+    // KE-B1 / KE-B3 / KE-B4: apply per-backend knobs before connect.
     apply_s3_runtime_knobs(&mut provider, cli);
     apply_onedrive_runtime_knobs(&mut provider, cli);
+    apply_azure_runtime_knobs(&mut provider, cli);
     provider.connect().await.map_err(|e| {
         print_error(
             format,
@@ -32305,9 +32390,10 @@ async fn audit_connect_profile(
         .map_err(|_code| "profile resolution failed".to_string())?;
     let mut provider =
         ProviderFactory::create(&cfg).map_err(|e| format!("provider creation failed: {}", e))?;
-    // KE-B1 / KE-B3: apply per-backend knobs before connect.
+    // KE-B1 / KE-B3 / KE-B4: apply per-backend knobs before connect.
     apply_s3_runtime_knobs(&mut provider, cli);
     apply_onedrive_runtime_knobs(&mut provider, cli);
+    apply_azure_runtime_knobs(&mut provider, cli);
     provider
         .connect()
         .await
@@ -39265,6 +39351,10 @@ mod tests {
             onedrive_no_versions: false,
             onedrive_list_chunk: 0,
             onedrive_link_scope: None,
+            azure_upload_concurrency: 0,
+            azure_disable_checksum: false,
+            azure_access_tier: None,
+            azure_archive_tier_delete: false,
             transfer_engine: "auto".to_string(),
             files_from: None,
             files_from_raw: None,

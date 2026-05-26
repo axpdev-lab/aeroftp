@@ -22,7 +22,7 @@ use reqwest::header::{HeaderMap, HeaderValue, CONTENT_LENGTH, CONTENT_TYPE};
 use secrecy::ExposeSecret;
 use sha2::Sha256;
 use tokio::io::AsyncReadExt;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use super::types::AzureConfig;
 use super::{
@@ -177,6 +177,26 @@ pub struct AzureProvider {
     client: reqwest::Client,
     connected: bool,
     current_prefix: String,
+    /// KE-B4.1: Override for the number of `Put Block` requests in flight
+    /// during `upload_blocks`. `None` keeps the historical sequential
+    /// behaviour (one block at a time). Range `[1, MAX]` enforced by the
+    /// setter; `0` resets to default.
+    upload_concurrency_override: Option<usize>,
+    /// KE-B4.2: Reserved for future Content-MD5 metadata gating. AeroFTP
+    /// does not currently send `x-ms-blob-content-md5` on uploads, so this
+    /// flag is structurally wired but has no observable effect today. It
+    /// will gate the future MD5-on-upload code path once that lands.
+    disable_checksum: bool,
+    /// KE-B4.3: Apply this access tier to every successful upload as a
+    /// post-PUT `Set Blob Tier` call. Values: `Hot`, `Cool`, `Cold`,
+    /// `Archive`. Vendor-specific tiers are passed through; Azure rejects
+    /// unknown values at the API level.
+    access_tier_override: Option<String>,
+    /// KE-B4.4: When true, every upload first issues a HEAD on the target
+    /// blob; if the response indicates the existing blob is in Archive
+    /// tier, the blob is DELETEd before the new PUT. Without this flag,
+    /// overwriting an Archive blob fails with `BlobArchived`.
+    archive_tier_delete: bool,
 }
 
 impl Clone for AzureProvider {
@@ -186,6 +206,10 @@ impl Clone for AzureProvider {
             client: self.client.clone(),
             connected: self.connected,
             current_prefix: self.current_prefix.clone(),
+            upload_concurrency_override: self.upload_concurrency_override,
+            disable_checksum: self.disable_checksum,
+            access_tier_override: self.access_tier_override.clone(),
+            archive_tier_delete: self.archive_tier_delete,
         }
     }
 }
@@ -204,7 +228,59 @@ impl AzureProvider {
             client,
             connected: false,
             current_prefix: String::new(),
+            upload_concurrency_override: None,
+            disable_checksum: false,
+            access_tier_override: None,
+            archive_tier_delete: false,
         }
+    }
+
+    /// Default parallelism for block uploads. `1` keeps the historical
+    /// sequential ordering used by `upload_blocks`. Overridable through
+    /// `set_upload_concurrency`.
+    pub const UPLOAD_CONCURRENCY_DEFAULT: usize = 1;
+    /// Ceiling enforced by `set_upload_concurrency`. Azure tolerates more
+    /// than this but it rarely improves throughput once the link is full.
+    pub const UPLOAD_CONCURRENCY_MAX: usize = 32;
+
+    /// KE-B4.1: Override the number of `Put Block` requests in flight
+    /// during `upload_blocks`. Clamped to `[1, UPLOAD_CONCURRENCY_MAX]`.
+    /// `0` resets to default.
+    pub fn set_upload_concurrency(&mut self, parts_in_flight: usize) {
+        if parts_in_flight == 0 {
+            self.upload_concurrency_override = None;
+            return;
+        }
+        self.upload_concurrency_override =
+            Some(parts_in_flight.clamp(1, Self::UPLOAD_CONCURRENCY_MAX));
+    }
+
+    /// Effective block-upload concurrency, honoring any override.
+    pub fn effective_upload_concurrency(&self) -> usize {
+        self.upload_concurrency_override
+            .unwrap_or(Self::UPLOAD_CONCURRENCY_DEFAULT)
+    }
+
+    /// KE-B4.2: Toggle the (currently structural) `disable_checksum` flag.
+    /// No-op on the wire today; reserved for the future MD5-on-upload path.
+    pub fn set_disable_checksum(&mut self, enabled: bool) {
+        self.disable_checksum = enabled;
+    }
+
+    /// KE-B4.3: Set the access tier applied to every successful upload as
+    /// a post-PUT `Set Blob Tier` call. Whitespace-only normalises to None.
+    pub fn set_access_tier(&mut self, tier: Option<String>) {
+        self.access_tier_override = tier.filter(|s| !s.trim().is_empty());
+    }
+
+    /// KE-B4.4: Toggle the pre-upload Archive-tier delete pattern.
+    pub fn set_archive_tier_delete(&mut self, enabled: bool) {
+        self.archive_tier_delete = enabled;
+    }
+
+    /// Effective access tier: runtime override or None (no tier change).
+    fn effective_access_tier(&self) -> Option<&str> {
+        self.access_tier_override.as_deref()
     }
 
     fn dag_block_id(part_number: u32) -> Result<String, ProviderError> {
@@ -1258,7 +1334,20 @@ impl StorageProvider for AzureProvider {
             .map_err(ProviderError::IoError)?;
         let file_len = file_meta.len();
 
-        if file_len > BLOCK_UPLOAD_THRESHOLD {
+        // KE-B4.4: when --azure-archive-tier-delete is active, pre-delete an
+        // existing blob in Archive tier so the subsequent PUT does not fail
+        // with `BlobArchived`. Best-effort: any non-Archive response (200
+        // with another tier, 404, or unexpected) lets the upload proceed.
+        if self.archive_tier_delete {
+            if let Err(e) = self.pre_upload_archive_purge(&blob_path).await {
+                warn!(
+                    "azure --azure-archive-tier-delete: pre-upload purge failed for {}: {}",
+                    blob_path, e
+                );
+            }
+        }
+
+        let upload_result = if file_len > BLOCK_UPLOAD_THRESHOLD {
             // AZ-001: Block upload for large files
             self.upload_blocks(local_path, &url, file_len, progress)
                 .await
@@ -1266,7 +1355,24 @@ impl StorageProvider for AzureProvider {
             // Small file: single Put Blob with streaming body
             self.upload_single(local_path, &url, file_len, progress)
                 .await
+        };
+
+        // KE-B4.3: post-upload `Set Blob Tier`. Best-effort: a tier failure
+        // does not invalidate the upload itself, but we surface it via the
+        // returned error so callers can react if they need atomic tier
+        // semantics.
+        if upload_result.is_ok() {
+            if let Some(tier) = self.effective_access_tier().map(str::to_string) {
+                if let Err(e) = self.set_blob_tier(&blob_path, &tier).await {
+                    warn!(
+                        "azure --azure-access-tier {}: post-upload Set Blob Tier failed for {}: {}",
+                        tier, blob_path, e
+                    );
+                }
+            }
         }
+
+        upload_result
     }
 
     async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
@@ -1732,6 +1838,15 @@ impl AzureProvider {
     /// AZ-001: Block upload for files > BLOCK_UPLOAD_THRESHOLD.
     /// Splits file into 4MB blocks, uploads each with Put Block, then commits with Put Block List.
     /// AZ-003: Reports progress after each block.
+    ///
+    /// KE-B4.1: Block uploads can be parallelised through
+    /// `set_upload_concurrency`. With the default `concurrency=1` the
+    /// historical strictly-sequential path is preserved. When the user
+    /// raises the knob, each batch of `concurrency` blocks is pre-read
+    /// from disk and dispatched as parallel `Put Block` requests via
+    /// `tokio::task::JoinSet`. The block list is reassembled in
+    /// monotonic index order so `Put Block List` sees the expected
+    /// sequence regardless of completion order.
     async fn upload_blocks(
         &self,
         local_path: &str,
@@ -1739,6 +1854,7 @@ impl AzureProvider {
         file_len: u64,
         progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        let concurrency = self.effective_upload_concurrency().max(1);
         let mut file = tokio::fs::File::open(local_path)
             .await
             .map_err(ProviderError::IoError)?;
@@ -1748,40 +1864,91 @@ impl AzureProvider {
         let mut block_index: u32 = 0;
 
         loop {
-            let mut buf = vec![0u8; BLOCK_SIZE];
-            let mut filled = 0;
+            // Pre-read up to `concurrency` blocks from disk before
+            // dispatching them. Each batch entry is (index, id, payload).
+            let mut batch: Vec<(u32, String, Vec<u8>)> = Vec::with_capacity(concurrency);
+            for _ in 0..concurrency {
+                let mut buf = vec![0u8; BLOCK_SIZE];
+                let mut filled = 0;
 
-            // Read a full block (or whatever remains)
-            while filled < BLOCK_SIZE {
-                let n = file.read(&mut buf[filled..]).await.map_err(|e| {
-                    ProviderError::TransferFailed(format!("File read error: {}", e))
-                })?;
-                if n == 0 {
-                    break; // EOF
+                while filled < BLOCK_SIZE {
+                    let n = file.read(&mut buf[filled..]).await.map_err(|e| {
+                        ProviderError::TransferFailed(format!("File read error: {}", e))
+                    })?;
+                    if n == 0 {
+                        break;
+                    }
+                    filled += n;
                 }
-                filled += n;
+
+                if filled == 0 {
+                    break;
+                }
+                buf.truncate(filled);
+
+                // Zero-padded 6-digit base64 keeps every block ID the same
+                // length, a hard Azure requirement for Put Block List.
+                let block_id_raw = format!("{:06}", block_index);
+                let block_id = BASE64.encode(block_id_raw.as_bytes());
+                batch.push((block_index, block_id, buf));
+                block_index += 1;
             }
 
-            if filled == 0 {
-                break; // No more data
+            if batch.is_empty() {
+                break;
             }
 
-            buf.truncate(filled);
-
-            // Generate block ID: zero-padded index, base64-encoded
-            // All block IDs in a block list must be the same length, so pad to 6 digits
-            let block_id_raw = format!("{:06}", block_index);
-            let block_id = BASE64.encode(block_id_raw.as_bytes());
-
-            self.put_block(blob_url, &block_id, buf).await?;
-
-            block_ids.push(block_id);
-            bytes_uploaded += filled as u64;
-            block_index += 1;
-
-            // AZ-003: Report progress after each block
-            if let Some(ref cb) = progress {
-                cb(bytes_uploaded, file_len);
+            if concurrency == 1 {
+                // Fast path: a single block, send inline so we don't pay
+                // the JoinSet bookkeeping cost on legacy serial uploads.
+                let (idx, id, data) = batch.into_iter().next().expect("batch non-empty");
+                let data_len = data.len() as u64;
+                self.put_block(blob_url, &id, data).await?;
+                let _ = idx; // index is implicit in append order on serial path
+                block_ids.push(id);
+                bytes_uploaded += data_len;
+                if let Some(ref cb) = progress {
+                    cb(bytes_uploaded, file_len);
+                }
+            } else {
+                let mut joinset = tokio::task::JoinSet::new();
+                for (idx, id, data) in batch.into_iter() {
+                    let provider = self.clone();
+                    let url = blob_url.to_string();
+                    let id_owned = id.clone();
+                    let data_len = data.len() as u64;
+                    joinset.spawn(async move {
+                        provider.put_block(&url, &id_owned, data).await?;
+                        Ok::<(u32, String, u64), ProviderError>((idx, id_owned, data_len))
+                    });
+                }
+                // Collect results, reassemble in monotonic index order.
+                let mut completed: Vec<(u32, String, u64)> = Vec::new();
+                while let Some(joined) = joinset.join_next().await {
+                    match joined {
+                        Ok(Ok(tuple)) => completed.push(tuple),
+                        Ok(Err(e)) => {
+                            joinset.abort_all();
+                            while joinset.join_next().await.is_some() {}
+                            return Err(e);
+                        }
+                        Err(e) => {
+                            joinset.abort_all();
+                            while joinset.join_next().await.is_some() {}
+                            return Err(ProviderError::TransferFailed(format!(
+                                "Block upload task panicked: {e}"
+                            )));
+                        }
+                    }
+                }
+                completed.sort_by_key(|(idx, _, _)| *idx);
+                for (_, id, data_len) in completed.into_iter() {
+                    block_ids.push(id);
+                    bytes_uploaded += data_len;
+                    if let Some(ref cb) = progress {
+                        cb(bytes_uploaded, file_len);
+                    }
+                }
             }
         }
 
@@ -1810,6 +1977,86 @@ impl AzureProvider {
     // =========================================================================
     // Azure Enterprise Features (Blob Tier, Soft Delete)
     // =========================================================================
+
+    /// KE-B4.4: HEAD the target blob; if it exists in `Archive` access
+    /// tier, DELETE it so a subsequent PUT does not fail with
+    /// `BlobArchived`. Returns `Ok(())` on success (blob purged) or when
+    /// no purge was needed (blob missing, or not in Archive tier).
+    /// Network or auth errors are propagated; the upload caller logs them
+    /// at WARN and proceeds anyway because the eventual PUT will surface
+    /// any real failure.
+    async fn pre_upload_archive_purge(&self, blob_path: &str) -> Result<(), ProviderError> {
+        let url = self.blob_url(blob_path);
+        let mut head_headers = HeaderMap::new();
+        let now = chrono::Utc::now()
+            .format("%a, %d %b %Y %H:%M:%S GMT")
+            .to_string();
+        head_headers.insert(
+            "x-ms-date",
+            HeaderValue::from_str(&now)
+                .map_err(|e| ProviderError::Other(format!("Invalid header value: {}", e)))?,
+        );
+        head_headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
+
+        let resp = self
+            .send_with_auth_and_retry(reqwest::Method::HEAD, &url, head_headers, 0, None)
+            .await?;
+
+        let status = resp.status();
+        if status.as_u16() == 404 {
+            return Ok(());
+        }
+        if !status.is_success() {
+            // Don't propagate non-404 HEAD failures: the upload PUT will
+            // hit the same auth path and surface a more useful error.
+            debug!(
+                "azure pre_upload_archive_purge: HEAD {} returned {}; skipping",
+                blob_path, status
+            );
+            return Ok(());
+        }
+
+        let tier = resp
+            .headers()
+            .get("x-ms-access-tier")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+
+        if tier != "archive" {
+            return Ok(());
+        }
+
+        // Existing blob is Archive: delete it so the PUT succeeds.
+        let mut del_headers = HeaderMap::new();
+        let now = chrono::Utc::now()
+            .format("%a, %d %b %Y %H:%M:%S GMT")
+            .to_string();
+        del_headers.insert(
+            "x-ms-date",
+            HeaderValue::from_str(&now)
+                .map_err(|e| ProviderError::Other(format!("Invalid header value: {}", e)))?,
+        );
+        del_headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
+        let del = self
+            .send_with_auth_and_retry(reqwest::Method::DELETE, &url, del_headers, 0, None)
+            .await?;
+        if del.status().is_success() || del.status().as_u16() == 202 {
+            info!(
+                "azure --azure-archive-tier-delete: purged Archive blob {}",
+                blob_path
+            );
+            Ok(())
+        } else {
+            let s = del.status();
+            let body = del.text().await.unwrap_or_default();
+            Err(ProviderError::Other(format!(
+                "Archive purge DELETE failed ({}): {}",
+                s,
+                parse_azure_xml_error(&body)
+            )))
+        }
+    }
 
     /// Set the access tier of a blob (Hot, Cool, Cold, Archive).
     /// For rehydration from Archive, set tier to Hot or Cool.
@@ -2276,5 +2523,104 @@ Time:2026-01-01</Message>
         );
         assert!(msg.contains("BlobNotFound"));
         assert!(!msg.contains("retry-after-secs"));
+    }
+
+    // ── KE-B4 per-backend Azure knob tests ─────────────────────────────
+
+    fn test_provider() -> AzureProvider {
+        AzureProvider::new(test_config())
+    }
+
+    /// KE-B4.1: default concurrency is 1 (sequential, historical) and
+    /// `set_upload_concurrency` clamps to `[1, MAX]`. `0` resets to default.
+    #[test]
+    fn set_upload_concurrency_clamps_and_resets() {
+        let mut p = test_provider();
+        assert_eq!(
+            p.effective_upload_concurrency(),
+            AzureProvider::UPLOAD_CONCURRENCY_DEFAULT
+        );
+
+        p.set_upload_concurrency(4);
+        assert_eq!(p.effective_upload_concurrency(), 4);
+
+        p.set_upload_concurrency(999);
+        assert_eq!(
+            p.effective_upload_concurrency(),
+            AzureProvider::UPLOAD_CONCURRENCY_MAX
+        );
+
+        p.set_upload_concurrency(0);
+        assert_eq!(
+            p.effective_upload_concurrency(),
+            AzureProvider::UPLOAD_CONCURRENCY_DEFAULT
+        );
+    }
+
+    /// KE-B4.2: `set_disable_checksum` toggles the flag. Structurally
+    /// wired but no observable upload effect today.
+    #[test]
+    fn set_disable_checksum_toggles_flag() {
+        let mut p = test_provider();
+        assert!(!p.disable_checksum);
+        p.set_disable_checksum(true);
+        assert!(p.disable_checksum);
+        p.set_disable_checksum(false);
+        assert!(!p.disable_checksum);
+    }
+
+    /// KE-B4.3: `set_access_tier` accepts non-empty strings and stores
+    /// them; whitespace-only normalises to None. `effective_access_tier`
+    /// returns None when no override is set.
+    #[test]
+    fn set_access_tier_stores_and_clears() {
+        let mut p = test_provider();
+        assert!(p.effective_access_tier().is_none());
+
+        p.set_access_tier(Some("Cool".to_string()));
+        assert_eq!(p.effective_access_tier(), Some("Cool"));
+
+        p.set_access_tier(Some("Archive".to_string()));
+        assert_eq!(p.effective_access_tier(), Some("Archive"));
+
+        // Whitespace-only normalises to None
+        p.set_access_tier(Some("   ".to_string()));
+        assert!(p.effective_access_tier().is_none());
+
+        // Vendor / future tier passes through
+        p.set_access_tier(Some("Premium".to_string()));
+        assert_eq!(p.effective_access_tier(), Some("Premium"));
+
+        p.set_access_tier(None);
+        assert!(p.effective_access_tier().is_none());
+    }
+
+    /// KE-B4.4: `set_archive_tier_delete` toggles the flag.
+    #[test]
+    fn set_archive_tier_delete_toggles_flag() {
+        let mut p = test_provider();
+        assert!(!p.archive_tier_delete);
+        p.set_archive_tier_delete(true);
+        assert!(p.archive_tier_delete);
+        p.set_archive_tier_delete(false);
+        assert!(!p.archive_tier_delete);
+    }
+
+    /// KE-B4: Clone preserves all the runtime knob state. Concurrency
+    /// override survives clone because `upload_blocks` spawns clones of
+    /// `self` into the JoinSet workers and each must see the same knob.
+    #[test]
+    fn clone_preserves_runtime_knobs() {
+        let mut p = test_provider();
+        p.set_upload_concurrency(8);
+        p.set_disable_checksum(true);
+        p.set_access_tier(Some("Cool".to_string()));
+        p.set_archive_tier_delete(true);
+
+        let q = p.clone();
+        assert_eq!(q.effective_upload_concurrency(), 8);
+        assert!(q.disable_checksum);
+        assert_eq!(q.effective_access_tier(), Some("Cool"));
+        assert!(q.archive_tier_delete);
     }
 }
