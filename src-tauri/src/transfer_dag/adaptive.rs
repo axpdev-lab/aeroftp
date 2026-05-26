@@ -30,7 +30,7 @@
 
 use std::cmp::Ordering as CmpOrdering;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
@@ -270,11 +270,19 @@ impl DynamicSemaphore {
 /// honest ceiling. A zero `recovery_window` disables the guard band (the cap
 /// relaxes on the first healthy note), which is the pre-F3-T09 behaviour and
 /// is what unit tests of the bare additive mechanism opt into.
+///
+/// `disabled` is the KE-D1 kill switch. When `true`, `on_congestion`,
+/// `on_congestion_with_hint` and `note_healthy` are full no-ops: the
+/// controller is built at the honest ceiling for every class and never
+/// shrinks or regrows. Designed for dedicated/lab links where the operator
+/// has out-of-band guarantees that the backend will not throttle and the
+/// AIMD machinery would only mask a true throughput cap diagnostic.
 #[derive(Debug, Clone, Copy)]
 pub struct AimdConfig {
     pub cooldown: Duration,
     pub healthy_window: Duration,
     pub recovery_window: Duration,
+    pub disabled: bool,
 }
 
 impl Default for AimdConfig {
@@ -285,7 +293,29 @@ impl Default for AimdConfig {
             // Long enough that a provider's rate-limit window has demonstrably
             // cleared before AIMD risks the level that congested it again.
             recovery_window: Duration::from_secs(30),
+            disabled: false,
         }
+    }
+}
+
+static RUNTIME_CONFIG: OnceLock<AimdConfig> = OnceLock::new();
+
+impl AimdConfig {
+    /// Install the process-wide AIMD config snapshot built from CLI flags
+    /// (`--aimd-disable`, etc.). Subsequent calls are ignored so every
+    /// downstream transfer surface observes a stable view for the entire
+    /// process lifetime, matching [`aimd_hints::init`]. Idempotent.
+    pub fn install_runtime(cfg: AimdConfig) {
+        let _ = RUNTIME_CONFIG.set(cfg);
+    }
+
+    /// Read the installed runtime AIMD config, or fall back to
+    /// [`AimdConfig::default`] when nothing has been installed (the GUI
+    /// path that never calls [`install_runtime`]). Production transfer
+    /// surfaces should call this instead of [`Default::default`] so CLI
+    /// runtime knobs propagate without an explicit plumbing argument.
+    pub fn runtime() -> AimdConfig {
+        RUNTIME_CONFIG.get().copied().unwrap_or_default()
     }
 }
 
@@ -513,6 +543,14 @@ impl AimdController {
         class: AdaptiveClass,
         cooldown_hint: Option<Duration>,
     ) {
+        // KE-D1: when the operator has explicitly disabled AIMD the
+        // controller must not halve or arm a cooldown. The window stays at
+        // the honest ceiling for the full run and congestion feedback is
+        // dropped on the floor. This keeps the diagnostic value of
+        // "throughput is capped — is it AIMD?" intact for dedicated links.
+        if self.config.disabled {
+            return;
+        }
         let now = Instant::now();
         let effective_cooldown = match self.effective_cooldown_hint(cooldown_hint) {
             None => self.config.cooldown,
@@ -544,6 +582,12 @@ impl AimdController {
     /// above the ceiling, and never above the [`AimdConfig::recovery_window`]
     /// guard band until the band has relaxed).
     pub fn note_healthy(&self, class: AdaptiveClass) {
+        // KE-D1: the kill switch silences additive growth too. The window is
+        // already pinned at the honest ceiling (built that way at `new`); a
+        // healthy note must not change anything.
+        if self.config.disabled {
+            return;
+        }
         let now = Instant::now();
         let mut st = self.state(class).lock().expect("aimd mutex poisoned");
         // Guard band relaxation: a full recovery window of quiet since the
@@ -766,6 +810,7 @@ mod tests {
             cooldown: Duration::from_secs(3600),
             healthy_window: Duration::from_secs(0),
             recovery_window: Duration::from_secs(0),
+            disabled: false,
         };
         let ctrl = AimdController::new(8, 1, 1, 1, cfg);
         ctrl.on_congestion(AdaptiveClass::File);
@@ -788,6 +833,7 @@ mod tests {
             cooldown: Duration::from_secs(0),
             healthy_window: Duration::from_secs(0),
             recovery_window: Duration::from_secs(0),
+            disabled: false,
         };
         let ctrl = AimdController::new(3, 1, 1, 1, cfg);
         ctrl.on_congestion(AdaptiveClass::File); // 3 -> 1 (floor)
@@ -826,6 +872,7 @@ mod tests {
             cooldown: Duration::from_secs(0),
             healthy_window: Duration::from_secs(0),
             recovery_window: Duration::from_secs(3600),
+            disabled: false,
         };
         let ctrl = AimdController::new(8, 1, 1, 1, cfg);
         ctrl.on_congestion(AdaptiveClass::File); // 8 -> 4, regrowth cap -> 7
@@ -848,6 +895,7 @@ mod tests {
             cooldown: Duration::from_secs(0),
             healthy_window: Duration::from_secs(0),
             recovery_window: Duration::from_secs(0),
+            disabled: false,
         };
         let ctrl = AimdController::new(8, 1, 1, 1, cfg);
         ctrl.on_congestion(AdaptiveClass::File); // 8 -> 4
@@ -867,6 +915,7 @@ mod tests {
             cooldown: Duration::from_secs(0),
             healthy_window: Duration::from_secs(0),
             recovery_window: Duration::from_secs(3600),
+            disabled: false,
         };
         let ctrl = AimdController::new(16, 1, 1, 1, cfg);
         ctrl.on_congestion(AdaptiveClass::File); // 16 -> 8, cap -> 15
@@ -913,6 +962,7 @@ mod tests {
             cooldown: Duration::from_secs(5),
             healthy_window: Duration::from_secs(5),
             recovery_window: Duration::from_secs(30),
+            disabled: false,
         };
         let ctrl = AimdController::new(8, 1, 1, 1, cfg);
         let before = Instant::now();
@@ -941,6 +991,7 @@ mod tests {
             cooldown: Duration::from_secs(5),
             healthy_window: Duration::from_secs(5),
             recovery_window: Duration::from_secs(30),
+            disabled: false,
         };
 
         // Lower clamp: a 200 ms hint must be raised to MIN_HINT_COOLDOWN
@@ -991,6 +1042,7 @@ mod tests {
             cooldown: Duration::from_secs(5),
             healthy_window: Duration::from_secs(5),
             recovery_window: Duration::from_secs(30),
+            disabled: false,
         };
         let ctrl = AimdController::new_for_provider(
             8,
@@ -1082,5 +1134,59 @@ mod tests {
             parse_embedded_retry_after(&msg),
             Some(Duration::from_secs(30))
         );
+    }
+
+    // KE-D1: `--aimd-disable` kill switch. When the operator installs
+    // `AimdConfig { disabled: true, .. }` the controller must remain pinned
+    // at the honest ceiling for the whole run: congestion feedback is a
+    // no-op (no halving, no cooldown armed) and healthy notes do not grow
+    // the window further. Use case: dedicated/lab links where AIMD masks a
+    // genuine throughput cap diagnostic.
+
+    #[tokio::test]
+    async fn aimd_disable_skips_congestion_reset() {
+        let cfg = AimdConfig {
+            cooldown: Duration::from_secs(5),
+            healthy_window: Duration::from_secs(5),
+            recovery_window: Duration::from_secs(30),
+            disabled: true,
+        };
+        let ctrl = AimdController::new(8, 1, 1, 1, cfg);
+        // Even after a congestion event the target must not halve and no
+        // cooldown must be armed.
+        ctrl.on_congestion(AdaptiveClass::File);
+        assert_eq!(
+            ctrl.target(AdaptiveClass::File),
+            8,
+            "disabled controller must not halve on congestion"
+        );
+        assert!(
+            ctrl.cooldown_until(AdaptiveClass::File).is_none(),
+            "disabled controller must not arm a cooldown"
+        );
+        // Repeated congestion is still a no-op (no ratchet).
+        ctrl.on_congestion(AdaptiveClass::File);
+        ctrl.on_congestion(AdaptiveClass::File);
+        assert_eq!(ctrl.target(AdaptiveClass::File), 8);
+        // Healthy notes are also no-ops (window already at ceiling).
+        ctrl.note_healthy(AdaptiveClass::File);
+        ctrl.note_healthy(AdaptiveClass::File);
+        assert_eq!(ctrl.target(AdaptiveClass::File), 8);
+    }
+
+    #[tokio::test]
+    async fn aimd_disable_ignores_retry_after_hint() {
+        let cfg = AimdConfig {
+            cooldown: Duration::from_secs(5),
+            healthy_window: Duration::from_secs(5),
+            recovery_window: Duration::from_secs(30),
+            disabled: true,
+        };
+        let ctrl = AimdController::new(8, 1, 1, 1, cfg);
+        // A server-provided Retry-After hint is dropped on the floor when
+        // disabled — same as a hint-less congestion event.
+        ctrl.on_congestion_with_hint(AdaptiveClass::File, Some(Duration::from_secs(60)));
+        assert_eq!(ctrl.target(AdaptiveClass::File), 8);
+        assert!(ctrl.cooldown_until(AdaptiveClass::File).is_none());
     }
 }

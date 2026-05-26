@@ -629,6 +629,16 @@ struct Cli {
     )]
     aimd_hint: Vec<String>,
 
+    /// KE-D1: Disable the AIMD backpressure controller for the whole run.
+    /// When set, dispatch concurrency stays pinned at the honest per-class
+    /// ceiling: a 429 / 503 / timeout response no longer halves the window
+    /// and a healthy completion no longer regrows it. Intended for
+    /// dedicated/lab links where the operator has out-of-band guarantees
+    /// the backend will not throttle and AIMD would only mask a genuine
+    /// throughput cap diagnostic.
+    #[arg(long, global = true, env = "AEROFTP_AIMD_DISABLE")]
+    aimd_disable: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -5304,6 +5314,22 @@ fn build_aimd_hints(
 fn init_aimd_runtime_hints(cli: &Cli) -> Result<(), String> {
     ftp_client_gui_lib::transfer_dag::aimd_hints::init(build_aimd_hints(cli)?);
     Ok(())
+}
+
+/// KE-D1: Snapshot the CLI knobs that tune the AIMD controller itself
+/// (currently only `--aimd-disable`) into the process-wide
+/// [`AimdConfig`] runtime so every downstream transfer surface picks
+/// them up without an explicit plumbing argument.
+fn build_aimd_runtime_config(cli: &Cli) -> ftp_client_gui_lib::transfer_dag::AimdConfig {
+    let mut cfg = ftp_client_gui_lib::transfer_dag::AimdConfig::default();
+    if cli.aimd_disable {
+        cfg.disabled = true;
+    }
+    cfg
+}
+
+fn init_aimd_runtime_config(cli: &Cli) {
+    ftp_client_gui_lib::transfer_dag::AimdConfig::install_runtime(build_aimd_runtime_config(cli));
 }
 
 // ── Dump helper (--dump headers,bodies,auth) ──────────────────────
@@ -37144,6 +37170,7 @@ async fn main() {
         eprintln!("Error: {}", error);
         std::process::exit(5);
     }
+    init_aimd_runtime_config(&cli);
 
     // KE-A3: install the global tpslimit token bucket. `0.0` means
     // unlimited (default); any positive value installs the limiter.
@@ -39528,6 +39555,7 @@ mod tests {
             drive_pacer_min_sleep: None,
             drive_acknowledge_abuse: false,
             aimd_hint: Vec::new(),
+            aimd_disable: false,
             transfer_engine: "auto".to_string(),
             files_from: None,
             files_from_raw: None,
@@ -40028,6 +40056,40 @@ mod tests {
             ..test_cli()
         };
         assert!(build_aimd_hints(&cli).is_err());
+    }
+
+    // KE-D1: snapshot of the CLI flags that tune the AIMD controller
+    // itself (not the per-provider overlay). For now only `--aimd-disable`
+    // lives here; `build_aimd_runtime_config` returns an `AimdConfig` ready
+    // to install via `install_runtime`.
+
+    #[test]
+    fn test_build_aimd_runtime_config_default_preserves_legacy_behaviour() {
+        let cli = test_cli();
+        let cfg = build_aimd_runtime_config(&cli);
+        assert!(
+            !cfg.disabled,
+            "default CLI must not disable the AIMD controller"
+        );
+        // Other tunings remain the prudent defaults (cooldown, healthy
+        // window, recovery window): KE-D2 will add overrides for these.
+        let baseline = ftp_client_gui_lib::transfer_dag::AimdConfig::default();
+        assert_eq!(cfg.cooldown, baseline.cooldown);
+        assert_eq!(cfg.healthy_window, baseline.healthy_window);
+        assert_eq!(cfg.recovery_window, baseline.recovery_window);
+    }
+
+    #[test]
+    fn test_build_aimd_runtime_config_disable_flag_propagates() {
+        let cli = Cli {
+            aimd_disable: true,
+            ..test_cli()
+        };
+        let cfg = build_aimd_runtime_config(&cli);
+        assert!(
+            cfg.disabled,
+            "--aimd-disable must flip AimdConfig::disabled"
+        );
     }
 
     // ── sanitize_filename tests ───────────────────────────────────────

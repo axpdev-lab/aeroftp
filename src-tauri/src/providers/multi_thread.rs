@@ -482,7 +482,7 @@ where
     let aimd = Arc::new(AimdController::from_budget_for_provider(
         &manager.budget(),
         Some(provider_type),
-        AimdConfig::default(),
+        AimdConfig::runtime(),
     ));
 
     let ranges: Arc<Vec<(u64, u64)>> = Arc::new(ranges.to_vec());

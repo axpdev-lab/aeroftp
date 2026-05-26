@@ -566,7 +566,7 @@ pub async fn execute_sync_dag(
         let aimd = Arc::new(AimdController::from_budget_for_provider(
             &manager.budget(),
             Some(provider_type),
-            AimdConfig::default(),
+            AimdConfig::runtime(),
         ));
 
         // The graph scheduling (spawned) and the real I/O driver (borrowing

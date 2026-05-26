@@ -441,7 +441,7 @@ pub async fn execute_single_file_dag(
         Arc::new(AimdController::from_budget_for_provider(
             &manager.budget(),
             aimd_provider_type,
-            AimdConfig::default(),
+            AimdConfig::runtime(),
         ))
     });
 

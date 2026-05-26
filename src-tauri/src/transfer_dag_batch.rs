@@ -149,7 +149,7 @@ where
     let aimd = Arc::new(AimdController::from_budget_for_provider(
         &resource_manager.budget(),
         provider_type,
-        AimdConfig::default(),
+        AimdConfig::runtime(),
     ));
 
     let runner: Arc<dyn DagNodeRunner> = {
