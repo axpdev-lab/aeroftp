@@ -62,6 +62,18 @@ pub fn insert_profile_option(
 
 /// Copy the entire `options` object from a saved profile into `extra`.
 pub fn apply_profile_options(extra: &mut HashMap<String, String>, profile: &serde_json::Value) {
+    if let Some(provider_id) = profile
+        .get("providerId")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        extra.insert(
+            crate::providers::mega_df::PROVIDER_ID_META_KEY.to_string(),
+            provider_id.to_string(),
+        );
+    }
+
     if let Some(opts) = profile.get("options").and_then(|v| v.as_object()) {
         for (k, v) in opts {
             insert_profile_option(extra, k, v);

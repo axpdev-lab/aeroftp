@@ -272,7 +272,8 @@
             "profileConverted": "Profil umgewandelt",
             "profileDuplicated": "Profil dupliziert",
             "convertUndone": "Profil wiederhergestellt",
-            "undo": "Rückgängig"
+            "undo": "Rückgängig",
+            "megacmdDfHint": "MEGAcmd verwendet mega-df direkt, um den belegten und den gesamten Speicher abzufragen. Die manuelle Gesamtüberschreibung ist nicht erforderlich."
         },
         "browser": {
             "remote": "Remote",

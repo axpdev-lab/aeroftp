@@ -44,10 +44,10 @@ interface MyServersTableProps {
     canDrag: boolean;
     dragIdx: number | null;
     overIdx: number | null;
-    onDragStart: (idx: number) => (e: React.DragEvent) => void;
-    onDragEnter: (idx: number) => (e: React.DragEvent) => void;
-    onDragOver: (idx: number) => (e: React.DragEvent) => void;
-    onDrop: (idx: number) => (e: React.DragEvent) => void;
+    onDragStart: (idx: number, e: React.DragEvent) => void;
+    onDragEnter: (idx: number, e: React.DragEvent) => void;
+    onDragOver: (idx: number, e: React.DragEvent) => void;
+    onDrop: (idx: number, e: React.DragEvent) => void;
     onDragEnd: () => void;
     crossProfileSelection: string[];
     onSelect: (server: ServerProfile) => void;
@@ -292,10 +292,11 @@ export function MyServersTable({
                                 isDraggable={canDrag}
                                 isDragging={dragIdx === realIdx}
                                 isDragTarget={overIdx === realIdx && dragIdx !== null && dragIdx !== realIdx}
-                                onDragStart={canDrag ? onDragStart(realIdx) : undefined}
-                                onDragEnter={canDrag ? onDragEnter(realIdx) : undefined}
-                                onDragOver={canDrag ? onDragOver(realIdx) : undefined}
-                                onDrop={canDrag ? onDrop(realIdx) : undefined}
+                                dragIndex={realIdx}
+                                onDragStart={canDrag ? onDragStart : undefined}
+                                onDragEnter={canDrag ? onDragEnter : undefined}
+                                onDragOver={canDrag ? onDragOver : undefined}
+                                onDrop={canDrag ? onDrop : undefined}
                                 onDragEnd={canDrag ? onDragEnd : undefined}
                                 dragDisabledTitle={dragDisabledTitle}
                                 selectionRole={selectionRole}

@@ -272,7 +272,8 @@
             "profileConverted": "프로필이 변환되었습니다",
             "profileDuplicated": "프로필이 복제되었습니다",
             "convertUndone": "프로필이 복원되었습니다",
-            "undo": "실행 취소"
+            "undo": "실행 취소",
+            "megacmdDfHint": "MEGAcmd는 mega-df를 직접 사용하여 사용된 저장 공간과 총 저장 공간을 조회합니다. 수동 총량 재정의는 필요하지 않습니다."
         },
         "browser": {
             "remote": "원격",

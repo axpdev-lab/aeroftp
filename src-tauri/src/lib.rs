@@ -14625,10 +14625,29 @@ pub fn run() {
             // localStorage, IndexedDB or cookies through the identifier-scoped
             // default. Installed builds (None branch) keep Tauri's default
             // identifier-scoped folder for zero-migration parity.
+            // Clamp the initial inner size to the primary monitor so that on a
+            // 13.3" Retina default-scaled at 1280x800 the window does not open
+            // off-screen and the user is not forced to double-click the
+            // titlebar to fit. Falls back to the historical 1540x1050 if the
+            // monitor cannot be probed (very early startup, headless run).
+            // Margins reserve space for the menu bar / dock. Issue #241.
+            let (initial_w, initial_h) = app
+                .primary_monitor()
+                .ok()
+                .flatten()
+                .map(|m| {
+                    let size = m.size().to_logical::<f64>(m.scale_factor());
+                    let target_w = 1540.0_f64.min((size.width - 60.0_f64).max(1024.0_f64));
+                    let target_h = 1050.0_f64.min((size.height - 100.0_f64).max(600.0_f64));
+                    (target_w, target_h)
+                })
+                .unwrap_or((1540.0, 1050.0));
+
             let main_builder = WebviewWindowBuilder::new(app, "main", main_url)
                 .title("AeroFTP")
-                .inner_size(1540.0, 1050.0)
+                .inner_size(initial_w, initial_h)
                 .min_inner_size(1024.0, 600.0)
+                .center()
                 .resizable(true)
                 .maximizable(true)
                 .minimizable(true)
@@ -15586,6 +15605,7 @@ pub fn run() {
             provider_commands::provider_import_link,
             provider_commands::provider_compare_directories,
             provider_commands::provider_storage_info,
+            provider_commands::mega_df_query,
             provider_commands::provider_disk_usage,
             provider_commands::provider_calculate_folder_size,
             provider_commands::provider_cancel_folder_size,
