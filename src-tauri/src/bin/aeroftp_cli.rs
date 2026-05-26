@@ -823,6 +823,71 @@ enum RcloneFilenameEncryption {
     Off,
 }
 
+/// KE-C1: FUSE caching policy preset. Maps directly onto the
+/// (`attr_timeout`, `dir_cache_time`, `cache_ttl`) trio at
+/// `AeroFuseFs` construction time. Granular per-knob overrides
+/// (`--attr-timeout`, `--dir-cache-time`) take precedence over the
+/// values derived from the mode.
+#[derive(Copy, Clone, Debug, ValueEnum, PartialEq, Eq, Default)]
+enum CacheMode {
+    /// No in-memory metadata cache, every FUSE callback hits the
+    /// remote with `TTL=0`. The Linux VFS dentry cache may still
+    /// serve briefly within an RCU window, so this is best-effort
+    /// no-cache rather than rigorous bypass.
+    Off,
+    /// `attr_timeout=1s`, no directory-listing cache. Tight enough
+    /// for rapidly-changing remotes while keeping single-stat
+    /// hammering bounded.
+    Minimal,
+    /// `attr_timeout=dir_cache_time=cache_ttl=30s`. Suited to mounts
+    /// that mutate via this process: the existing post-mutation
+    /// `invalidate_dir` calls clear stale entries on `create`,
+    /// `unlink`, `rmdir`, `rename`, `mkdir`.
+    Writes,
+    /// `attr_timeout=dir_cache_time=cache_ttl=--cache-ttl`. The
+    /// historical AeroFTP default; keeps byte-for-byte compatibility
+    /// with mounts built before KE-C1 landed.
+    #[default]
+    Full,
+}
+
+impl CacheMode {
+    /// Returns the `(attr_timeout, dir_cache_time, cache_ttl)` triple
+    /// for this mode. `fallback` is the value derived from the legacy
+    /// `--cache-ttl` flag and is only consumed by `Full`.
+    fn ttls(self, fallback: Duration) -> (Duration, Duration, Duration) {
+        match self {
+            CacheMode::Off => (Duration::ZERO, Duration::ZERO, Duration::ZERO),
+            CacheMode::Minimal => (
+                Duration::from_secs(1),
+                Duration::ZERO,
+                Duration::from_secs(1),
+            ),
+            CacheMode::Writes => (
+                Duration::from_secs(30),
+                Duration::from_secs(30),
+                Duration::from_secs(30),
+            ),
+            CacheMode::Full => (fallback, fallback, fallback),
+        }
+    }
+
+    /// `true` when the in-memory `cache: HashMap` for `readdir`
+    /// children listings should be consulted before refetching from
+    /// the remote. `Off` and `Minimal` always force a refetch.
+    fn dir_cache_enabled(self) -> bool {
+        matches!(self, CacheMode::Writes | CacheMode::Full)
+    }
+
+    /// `true` when `set_cached` should insert into the in-memory
+    /// HashMap. With `Off` the HashMap stays empty so memory does
+    /// not grow unbounded on a busy mount; everything else fills it
+    /// normally.
+    fn populate_cache(self) -> bool {
+        !matches!(self, CacheMode::Off)
+    }
+}
+
 #[derive(Subcommand)]
 enum Commands {
     /// Test connection to a remote server
@@ -1705,6 +1770,25 @@ enum Commands {
         /// >= 3.15). Default: off.
         #[arg(long, env = "AEROFTP_MOUNT_WRITEBACK_CACHE")]
         write_back_cache: bool,
+
+        /// KE-C1: Caching policy preset. Selects `attr_timeout`,
+        /// `dir_cache_time`, and the in-memory `cache_ttl` in one
+        /// switch. `off`: no cache anywhere, TTL=0 on every reply
+        /// (best-effort: the kernel dentry cache may still serve
+        /// briefly within an RCU window). `minimal`: 1s attr TTL, no
+        /// dir listing cache. `writes`: 30s TTL with the existing
+        /// post-mutation invalidation on `create`/`unlink`/`rename`/
+        /// `mkdir`/`rmdir`. `full`: 300s TTL (or whatever `--cache-ttl`
+        /// dictates), historical AeroFTP default. Granular overrides
+        /// (`--attr-timeout`, `--dir-cache-time`) win over the mode.
+        /// Default: `full`.
+        #[arg(
+            long,
+            value_enum,
+            default_value_t = CacheMode::Full,
+            env = "AEROFTP_MOUNT_CACHE_MODE",
+        )]
+        cache_mode: CacheMode,
     },
     /// Transfer files between two saved profiles (cross-profile copy)
     Transfer {
@@ -5345,6 +5429,11 @@ struct MountKnobs {
     /// `FUSE_WRITEBACK_CACHE` capability from the kernel so that
     /// writes are buffered in the kernel page cache.
     writeback_cache: bool,
+    /// KE-C1: Selected caching policy preset. Drives the
+    /// (`attr_timeout`, `dir_cache_time`, `cache_ttl`) trio inside
+    /// `AeroFuseFs::new`; the per-knob options above (`attr_timeout`,
+    /// `dir_cache_time`) win when set explicitly.
+    cache_mode: CacheMode,
 }
 
 fn parse_duration_strict(s: &str) -> Result<std::time::Duration, String> {
@@ -27416,6 +27505,15 @@ mod fuse_mount {
         /// `FUSE_WRITEBACK_CACHE` capability with the kernel. Read in
         /// `impl Filesystem::init`.
         writeback_cache: bool,
+        /// KE-C1: Resolved caching policy. The TTL trio above
+        /// (`cache_ttl`, `attr_timeout`, `dir_cache_time`) is already
+        /// derived from this mode (with per-knob CLI overrides taking
+        /// precedence), so `cache_mode` is consulted only at the two
+        /// gates that no TTL can express: skipping the in-memory
+        /// HashMap insert in `set_cached` (mode `Off`) and skipping
+        /// the dir-listing cache lookup in `readdir` (mode `Off` /
+        /// `Minimal`).
+        cache_mode: CacheMode,
         read_only: bool,
         /// Write buffers: inode → tempfile path
         write_buffers: Mutex<HashMap<u64, PathBuf>>,
@@ -27466,12 +27564,19 @@ mod fuse_mount {
                 },
             );
 
-            // KE-C2 defaults: missing knobs fall back to the existing
-            // `cache_ttl_secs` for backward compatibility. The chunk
-            // size default matches the historical `READ_CHUNK = 4 MiB`.
-            let cache_ttl = Duration::from_secs(cache_ttl_secs);
-            let attr_timeout = knobs.attr_timeout.unwrap_or(cache_ttl);
-            let dir_cache_time = knobs.dir_cache_time.unwrap_or(cache_ttl);
+            // KE-C1: derive the TTL trio from the selected mode, then
+            // let per-knob overrides win. `Full` keeps the historical
+            // `cache_ttl_secs` value byte-for-byte; the other modes
+            // pin attr/dir/cache TTL to their preset (see
+            // `CacheMode::ttls`). KE-C2 per-knob overrides
+            // (`--attr-timeout`, `--dir-cache-time`) still take final
+            // precedence so an operator can mix `--cache-mode=off`
+            // with a deliberate `--dir-cache-time=10s` if needed.
+            let legacy_ttl = Duration::from_secs(cache_ttl_secs);
+            let (preset_attr, preset_dir, preset_cache) = knobs.cache_mode.ttls(legacy_ttl);
+            let cache_ttl = preset_cache;
+            let attr_timeout = knobs.attr_timeout.unwrap_or(preset_attr);
+            let dir_cache_time = knobs.dir_cache_time.unwrap_or(preset_dir);
             let read_chunk_size = knobs.read_chunk_size.unwrap_or(READ_CHUNK).max(1);
             let cache_poll_interval =
                 knobs.cache_poll_interval.unwrap_or(Duration::from_secs(60));
@@ -27487,6 +27592,7 @@ mod fuse_mount {
                 read_chunk_size_limit: knobs.read_chunk_size_limit,
                 cache_poll_interval,
                 writeback_cache: knobs.writeback_cache,
+                cache_mode: knobs.cache_mode,
                 read_only,
                 write_buffers: Mutex::new(HashMap::new()),
                 flush_ok: Mutex::new(std::collections::HashSet::new()),
@@ -27546,6 +27652,14 @@ mod fuse_mount {
         }
 
         fn set_cached(&self, ino: u64, entry: CachedEntry) {
+            // KE-C1: `Off` mode skips the in-memory cache entirely.
+            // Without this gate the HashMap would still fill on every
+            // miss-then-fetch (because TTL=0 in `get_cached` always
+            // returns `None`), turning "no cache" into "leak forever
+            // on a busy mount".
+            if !self.cache_mode.populate_cache() {
+                return;
+            }
             self.cache.lock().unwrap().insert(ino, entry);
         }
 
@@ -27789,11 +27903,18 @@ mod fuse_mount {
                 return;
             };
 
-            // Fetch or use cached directory listing
-            let cached = self
-                .get_cached(ino)
-                .filter(|c| c.children.is_some())
-                .or_else(|| self.fetch_dir(ino, &path));
+            // Fetch or use cached directory listing.
+            // KE-C1: `Off` and `Minimal` skip the in-memory listing
+            // cache entirely so every `readdir` round-trips to the
+            // remote. `Writes` and `Full` consult the HashMap first;
+            // post-mutation invalidation already keeps it honest.
+            let cached = if self.cache_mode.dir_cache_enabled() {
+                self.get_cached(ino)
+                    .filter(|c| c.children.is_some())
+                    .or_else(|| self.fetch_dir(ino, &path))
+            } else {
+                self.fetch_dir(ino, &path)
+            };
 
             let Some(cached) = cached else {
                 reply.error(libc::EIO);
@@ -38206,6 +38327,7 @@ async fn main() {
             read_chunk_size,
             read_chunk_size_limit,
             write_back_cache,
+            cache_mode,
         } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str())
@@ -38244,6 +38366,7 @@ async fn main() {
                         read_chunk_size_limit,
                     )?,
                     writeback_cache: *write_back_cache,
+                    cache_mode: *cache_mode,
                 })
             })();
             let mount_knobs = match mount_knobs_result {
@@ -40615,6 +40738,9 @@ mod tests {
         // page-cache buffering trades crash-durability for throughput,
         // so it has to be an explicit opt-in.
         assert!(!mk.writeback_cache);
+        // KE-C1: caching policy defaults to `Full` to keep byte-for-
+        // byte compatibility with pre-knob mounts.
+        assert_eq!(mk.cache_mode, CacheMode::Full);
     }
 
     #[test]
@@ -40629,6 +40755,68 @@ mod tests {
             ..MountKnobs::default()
         };
         assert!(mk.writeback_cache);
+    }
+
+    #[test]
+    fn test_cache_mode_default_is_full() {
+        // KE-C1: `Full` preserves the historical AeroFTP behaviour
+        // (TTLs derived from `--cache-ttl`). Default must stay `Full`
+        // so existing scripts and saved profiles do not flip semantics
+        // when this knob is introduced.
+        assert_eq!(CacheMode::default(), CacheMode::Full);
+        assert_eq!(MountKnobs::default().cache_mode, CacheMode::Full);
+    }
+
+    #[test]
+    fn test_cache_mode_ttls_off_is_zero_everywhere() {
+        // KE-C1: `Off` is best-effort no-cache. Every TTL must be
+        // `Duration::ZERO` so the kernel never holds an attribute or
+        // directory entry past the very next syscall.
+        let (a, d, c) = CacheMode::Off.ttls(Duration::from_secs(300));
+        assert_eq!(a, Duration::ZERO);
+        assert_eq!(d, Duration::ZERO);
+        assert_eq!(c, Duration::ZERO);
+        assert!(!CacheMode::Off.populate_cache());
+        assert!(!CacheMode::Off.dir_cache_enabled());
+    }
+
+    #[test]
+    fn test_cache_mode_ttls_minimal_is_short_attr_no_dir() {
+        // KE-C1: `Minimal` keeps a 1s attr cache for stat hammering
+        // but never trusts a cached directory listing.
+        let (a, d, c) = CacheMode::Minimal.ttls(Duration::from_secs(300));
+        assert_eq!(a, Duration::from_secs(1));
+        assert_eq!(d, Duration::ZERO);
+        assert_eq!(c, Duration::from_secs(1));
+        assert!(CacheMode::Minimal.populate_cache());
+        assert!(!CacheMode::Minimal.dir_cache_enabled());
+    }
+
+    #[test]
+    fn test_cache_mode_ttls_writes_is_thirty_seconds_with_dir_cache() {
+        // KE-C1: `Writes` trusts the cache for 30s, relies on the
+        // existing post-mutation `invalidate_dir` calls to keep dir
+        // listings honest when this process is the one mutating.
+        let (a, d, c) = CacheMode::Writes.ttls(Duration::from_secs(300));
+        assert_eq!(a, Duration::from_secs(30));
+        assert_eq!(d, Duration::from_secs(30));
+        assert_eq!(c, Duration::from_secs(30));
+        assert!(CacheMode::Writes.populate_cache());
+        assert!(CacheMode::Writes.dir_cache_enabled());
+    }
+
+    #[test]
+    fn test_cache_mode_ttls_full_honours_legacy_cache_ttl() {
+        // KE-C1: `Full` is the back-compat path. The TTL trio must
+        // mirror the `--cache-ttl` fallback verbatim so mounts built
+        // before KE-C1 see no behaviour change.
+        let fallback = Duration::from_secs(123);
+        let (a, d, c) = CacheMode::Full.ttls(fallback);
+        assert_eq!(a, fallback);
+        assert_eq!(d, fallback);
+        assert_eq!(c, fallback);
+        assert!(CacheMode::Full.populate_cache());
+        assert!(CacheMode::Full.dir_cache_enabled());
     }
 
     #[test]
