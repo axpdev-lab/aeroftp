@@ -1637,6 +1637,12 @@ impl StorageProvider for WebDavProvider {
     }
 
     async fn connect(&mut self) -> Result<(), ProviderError> {
+        if super::mega_df::is_megacmd_webdav_provider_id(self.config.provider_id.as_deref()) {
+            // SAFETY: mega-df warms up the MEGAcmd Server when it has been quit/
+            // exited. See issue #253.
+            let _ = super::mega_df::mega_df_query().await;
+        }
+
         // A3-03: Warn when using unencrypted HTTP: credentials and data sent in plaintext
         if self.config.url.starts_with("http://") {
             tracing::warn!(
@@ -2592,6 +2598,15 @@ impl StorageProvider for WebDavProvider {
             return Err(ProviderError::NotConnected);
         }
 
+        if super::mega_df::is_megacmd_webdav_provider_id(self.config.provider_id.as_deref()) {
+            let (used, total) = super::mega_df::mega_df_query().await?;
+            return Ok(super::StorageInfo {
+                used,
+                total,
+                free: total.saturating_sub(used),
+            });
+        }
+
         // Koofr WebDAV does not expose RFC 4331 quota properties via PROPFIND
         // (returns 0 / 0). Use the native Koofr REST API instead: it accepts
         // basic auth with the same email + app password used for WebDAV.
@@ -3043,6 +3058,7 @@ mod tests {
             username: "user".to_string(),
             password: secrecy::SecretString::from("pass".to_string()),
             initial_path: None,
+            provider_id: None,
             verify_cert: true,
             anonymous: false,
         }

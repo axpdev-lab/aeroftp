@@ -15603,6 +15603,7 @@ pub fn run() {
             provider_commands::provider_import_link,
             provider_commands::provider_compare_directories,
             provider_commands::provider_storage_info,
+            provider_commands::mega_df_query,
             provider_commands::provider_disk_usage,
             provider_commands::provider_calculate_folder_size,
             provider_commands::provider_cancel_folder_size,

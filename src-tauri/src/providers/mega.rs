@@ -52,37 +52,7 @@ impl MegaCmdProvider {
 
     /// Resolve MEGAcmd executable path (checks PATH and common install locations)
     fn resolve_mega_cmd(cmd: &str) -> String {
-        #[cfg(windows)]
-        {
-            let program_files =
-                std::env::var("ProgramFiles").unwrap_or_else(|_| r"C:\Program Files".to_string());
-            let local_appdata = std::env::var("LOCALAPPDATA").unwrap_or_default();
-            let candidates = [
-                format!(r"{}\MEGAcmd\{}.bat", program_files, cmd),
-                format!(r"{}\MEGAcmd\{}.exe", program_files, cmd),
-                format!(r"{}\MEGAcmd\{}.bat", local_appdata, cmd),
-            ];
-            for candidate in &candidates {
-                if std::path::Path::new(candidate).exists() {
-                    return candidate.clone();
-                }
-            }
-        }
-        #[cfg(target_os = "macos")]
-        {
-            // ARCH-05: Check macOS install locations
-            let candidates = [
-                format!("/Applications/MEGAcmd.app/Contents/MacOS/{}", cmd),
-                format!("/usr/local/bin/{}", cmd),
-                format!("/opt/homebrew/bin/{}", cmd),
-            ];
-            for candidate in &candidates {
-                if std::path::Path::new(candidate).exists() {
-                    return candidate.clone();
-                }
-            }
-        }
-        cmd.to_string()
+        super::mega_df::resolve_mega_cmd(cmd)
     }
 
     /// Classify MEGAcmd stderr into typed ProviderError (ERR-01).
@@ -462,6 +432,10 @@ impl StorageProvider for MegaCmdProvider {
     }
 
     async fn connect(&mut self) -> Result<(), ProviderError> {
+        // SAFETY: mega-df warms up the MEGAcmd Server when it has been quit/
+        // exited. See issue #253.
+        let _ = super::mega_df::mega_df_query().await;
+
         self.current_path = "/".to_string();
 
         // ARCH-01: Check MEGAcmd installation and ARCH-02: ensure daemon is running
@@ -965,36 +939,7 @@ impl StorageProvider for MegaCmdProvider {
     }
 
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
-        let output = self.run_mega_cmd_with_reauth("mega-df", &[]).await?;
-
-        // CQ-05: Only parse the "Total" or "Cloud drive" line for storage info
-        let mut used: u64 = 0;
-        let mut total: u64 = 0;
-
-        for line in output.lines() {
-            let line = line.trim();
-            // Look for lines with "of" pattern containing byte counts
-            if let Some(colon_pos) = line.find(':') {
-                let label = line[..colon_pos].trim().to_lowercase();
-                let rest = line[colon_pos + 1..].trim();
-                let parts: Vec<&str> = rest.split_whitespace().collect();
-                // Format: "<used> of <total> ..."
-                if parts.len() >= 3 && parts[1] == "of" {
-                    if let (Ok(u), Ok(t)) = (parts[0].parse::<u64>(), parts[2].parse::<u64>()) {
-                        // Prefer "Total" line; fall back to "Cloud drive"
-                        if label.contains("total") {
-                            used = u;
-                            total = t;
-                            break;
-                        } else if label.contains("cloud drive") {
-                            used = u;
-                            total = t;
-                            // Don't break: a "Total" line may follow
-                        }
-                    }
-                }
-            }
-        }
+        let (used, total) = super::mega_df::mega_df_query().await?;
 
         Ok(StorageInfo {
             used,

@@ -272,7 +272,8 @@
             "profileConverted": "Профил претворен",
             "profileDuplicated": "Профил дуплиран",
             "convertUndone": "Профил враћен",
-            "undo": "Опозови"
+            "undo": "Опозови",
+            "megacmdDfHint": "MEGAcmd директно користи mega-df за упит о искоришћеном и укупном простору. Ручно преписивање укупног није потребно."
         },
         "browser": {
             "remote": "Удаљено",

@@ -348,6 +348,8 @@ pub struct WebDavConfig {
     pub username: String,
     pub password: secrecy::SecretString,
     pub initial_path: Option<String>,
+    /// Registry preset id, when the profile came from a named WebDAV preset.
+    pub provider_id: Option<String>,
     /// Whether to verify TLS certificates (default: true). Set to false for self-signed certs.
     pub verify_cert: bool,
     /// Whether requests should omit Authorization headers.
@@ -429,6 +431,10 @@ impl WebDavConfig {
             username,
             password: secrecy::SecretString::from(config.password.clone().unwrap_or_default()),
             initial_path,
+            provider_id: config
+                .extra
+                .get(super::mega_df::PROVIDER_ID_META_KEY)
+                .cloned(),
             verify_cert,
             anonymous,
         })
