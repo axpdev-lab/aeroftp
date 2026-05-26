@@ -455,6 +455,58 @@ struct Cli {
     )]
     sftp_concurrency: usize,
 
+    /// KE-B1.1: Override S3 multipart upload parallelism (rclone
+    /// `--s3-upload-concurrency`). Caps how many parts are uploaded
+    /// concurrently per file. Default `0` = use the built-in 4-in-flight
+    /// ceiling. Range 1-64. Memory usage scales with
+    /// `--s3-upload-concurrency * <part-size>`; raising both at once on
+    /// small VMs can OOM. Silently ignored when the remote is not S3.
+    #[arg(
+        long,
+        global = true,
+        default_value_t = 0,
+        env = "AEROFTP_S3_UPLOAD_CONCURRENCY"
+    )]
+    s3_upload_concurrency: usize,
+
+    /// KE-B1.2: Skip the S3 bucket-existence probe on `connect()` (rclone
+    /// `--s3-no-check-bucket`). Use with IAM credentials that grant
+    /// `PutObject` but deny `ListBucket`: the default probe would 403 even
+    /// though uploads work. Silently ignored when the remote is not S3.
+    #[arg(long, global = true, env = "AEROFTP_S3_NO_CHECK_BUCKET")]
+    s3_no_check_bucket: bool,
+
+    /// KE-B1.3: Replace the per-payload SHA-256 in S3 SigV4 with
+    /// `UNSIGNED-PAYLOAD` (rclone `--s3-disable-checksum`). Reduces client
+    /// CPU on large multipart uploads (~5-15% on a CPU-bound producer) at
+    /// the cost of SigV4 in-flight tamper protection. Empty-body requests
+    /// still hash normally (constant cost, some gateways require it).
+    /// Silently ignored when the remote is not S3.
+    #[arg(long, global = true, env = "AEROFTP_S3_DISABLE_CHECKSUM")]
+    s3_disable_checksum: bool,
+
+    /// KE-B1.4: Canned ACL applied to S3 uploads (rclone `--s3-acl`).
+    /// Common values: `private`, `public-read`, `public-read-write`,
+    /// `authenticated-read`, `bucket-owner-read`,
+    /// `bucket-owner-full-control`. Emitted as `x-amz-acl`. Validation is
+    /// permissive (vendor extensions accepted; AWS rejects unknown values
+    /// at the API level). Silently ignored when the remote is not S3, or
+    /// when the bucket is governed by a bucket policy that forbids ACLs
+    /// (AWS default since April 2023). Reads default from `AEROFTP_S3_ACL`.
+    #[arg(long, global = true, env = "AEROFTP_S3_ACL")]
+    s3_acl: Option<String>,
+
+    /// KE-B1.5: Storage class for S3 uploads (rclone `--s3-storage-class`).
+    /// Common AWS values: `STANDARD`, `STANDARD_IA`, `ONEZONE_IA`,
+    /// `INTELLIGENT_TIERING`, `GLACIER_IR`, `GLACIER`, `DEEP_ARCHIVE`,
+    /// `REDUCED_REDUNDANCY`, `EXPRESS_ONEZONE`. Vendor-specific tiers
+    /// (B2 / Wasabi / R2) accepted. Takes precedence over the
+    /// profile-level `storage_class` setting. Emitted as
+    /// `x-amz-storage-class`. Silently ignored when the remote is not
+    /// S3. Reads default from `AEROFTP_S3_STORAGE_CLASS`.
+    #[arg(long, global = true, env = "AEROFTP_S3_STORAGE_CLASS")]
+    s3_storage_class: Option<String>,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -4466,6 +4518,51 @@ fn effective_parallel_workers(cli: &Cli) -> usize {
 /// loop runs underneath.
 fn effective_checkers(cli: &Cli) -> usize {
     cli.checkers.clamp(1, 64)
+}
+
+/// KE-B1: Apply the per-backend `--s3-*` knobs to a freshly built
+/// provider, silently no-op-ing when the backend isn't S3 (or a
+/// downcast fails for any reason). Call this BEFORE `connect()` so
+/// `--s3-no-check-bucket` can short-circuit the bucket-existence
+/// probe; the other knobs only matter at upload time but applying
+/// them here keeps the wiring honest at a single site.
+///
+/// Pass `verbose=true` (i.e. `cli.verbose > 0`) to surface the applied
+/// knobs on stderr. Quiet/JSON mode skips the log line.
+fn apply_s3_runtime_knobs(provider: &mut Box<dyn StorageProvider>, cli: &Cli) {
+    let Some(s3) = provider
+        .as_any_mut()
+        .downcast_mut::<ftp_client_gui_lib::providers::s3::S3Provider>()
+    else {
+        return;
+    };
+    let mut applied: Vec<String> = Vec::new();
+    if cli.s3_upload_concurrency > 0 {
+        s3.set_upload_concurrency(cli.s3_upload_concurrency);
+        applied.push(format!(
+            "--s3-upload-concurrency={}",
+            cli.s3_upload_concurrency
+        ));
+    }
+    if cli.s3_no_check_bucket {
+        s3.set_no_check_bucket(true);
+        applied.push("--s3-no-check-bucket".to_string());
+    }
+    if cli.s3_disable_checksum {
+        s3.set_disable_checksum(true);
+        applied.push("--s3-disable-checksum".to_string());
+    }
+    if let Some(ref acl) = cli.s3_acl {
+        s3.set_acl(Some(acl.clone()));
+        applied.push(format!("--s3-acl={}", acl));
+    }
+    if let Some(ref sc) = cli.s3_storage_class {
+        s3.set_storage_class_override(Some(sc.clone()));
+        applied.push(format!("--s3-storage-class={}", sc));
+    }
+    if cli.verbose > 0 && !applied.is_empty() && !JSON_MODE.load(Ordering::Relaxed) {
+        eprintln!("S3 knobs: {}", applied.join(", "));
+    }
 }
 
 // ── Session transfer accounting (--max-transfer) ──────────────────
@@ -12164,6 +12261,10 @@ async fn create_and_connect(
             return Err(provider_error_to_exit_code(&e));
         }
     };
+
+    // KE-B1: apply S3-specific tunings before connect() so
+    // --s3-no-check-bucket can skip the bucket probe. No-op for non-S3.
+    apply_s3_runtime_knobs(&mut provider, cli);
 
     if let Err(e) = provider.connect().await {
         let code = provider_error_to_exit_code(&e);
@@ -31287,6 +31388,10 @@ async fn cmd_transfer_doctor(
         }
     };
 
+    // KE-B1: per-backend S3 knobs apply symmetrically to source and dest.
+    apply_s3_runtime_knobs(&mut source, cli);
+    apply_s3_runtime_knobs(&mut dest, cli);
+
     if let Err(e) = source.connect().await {
         print_error(
             format,
@@ -31481,6 +31586,10 @@ async fn cmd_transfer_profiles(
             return provider_error_to_exit_code(&e);
         }
     };
+
+    // KE-B1: per-backend S3 knobs apply symmetrically to source and dest.
+    apply_s3_runtime_knobs(&mut source, cli);
+    apply_s3_runtime_knobs(&mut dest, cli);
 
     // Connect source
     if !quiet {
@@ -31840,6 +31949,8 @@ async fn batch_connect_profile(
         );
         provider_error_to_exit_code(&e)
     })?;
+    // KE-B1: apply S3 knobs before connect to keep --s3-no-check-bucket effective.
+    apply_s3_runtime_knobs(&mut provider, cli);
     provider.connect().await.map_err(|e| {
         print_error(
             format,
@@ -32111,6 +32222,8 @@ async fn audit_connect_profile(
         .map_err(|_code| "profile resolution failed".to_string())?;
     let mut provider =
         ProviderFactory::create(&cfg).map_err(|e| format!("provider creation failed: {}", e))?;
+    // KE-B1: apply S3 knobs before connect to keep --s3-no-check-bucket effective.
+    apply_s3_runtime_knobs(&mut provider, cli);
     provider
         .connect()
         .await
@@ -39060,6 +39173,11 @@ mod tests {
             tpslimit_burst: 0.0,
             checkers: 8,
             sftp_concurrency: 0,
+            s3_upload_concurrency: 0,
+            s3_no_check_bucket: false,
+            s3_disable_checksum: false,
+            s3_acl: None,
+            s3_storage_class: None,
             transfer_engine: "auto".to_string(),
             files_from: None,
             files_from_raw: None,

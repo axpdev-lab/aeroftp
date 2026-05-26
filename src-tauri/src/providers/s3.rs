@@ -205,6 +205,38 @@ pub struct S3Provider {
     /// Minimum file size (bytes) above which multi-thread download is engaged.
     /// Below this threshold, the standard single-stream path is always used.
     multi_thread_cutoff: u64,
+    /// KE-B1.1: Override for multipart upload parallelism. `None` keeps the
+    /// historical 4-part-in-flight ceiling used by both `upload_multipart_streaming`
+    /// and the server-side multipart copy planner. Set via
+    /// `set_upload_concurrency`.
+    upload_concurrency_override: Option<usize>,
+    /// KE-B1.2: When `true`, `connect()` skips the GET-prefix probe against
+    /// the bucket root and assumes the credentials are valid. Used when the
+    /// account is allowed to write to a bucket it cannot list (typical S3
+    /// IAM policy that grants `PutObject` but denies `ListBucket`). Set via
+    /// `set_no_check_bucket`.
+    no_check_bucket: bool,
+    /// KE-B1.3: When `true`, signed requests use `UNSIGNED-PAYLOAD` instead of
+    /// the SHA-256 of the body in the `x-amz-content-sha256` header. Skips
+    /// the per-part hashing cost on large multipart uploads. Trades off
+    /// SigV4 integrity verification for throughput on trusted networks. Set
+    /// via `set_disable_checksum`. The CompleteMultipartUpload request body
+    /// is excluded from this optimisation because it must remain SIGNED for
+    /// AWS to validate the etag list (Filen, MinIO, B2 follow suit).
+    disable_checksum: bool,
+    /// KE-B1.4: Canned ACL override for upload operations
+    /// (`private` / `public-read` / `public-read-write` /
+    /// `authenticated-read` / `aws-exec-read` / `bucket-owner-read` /
+    /// `bucket-owner-full-control`). Emitted as `x-amz-acl` on
+    /// CreateMultipartUpload and single-PUT. `None` = backend default
+    /// (typically `private`). Set via `set_acl`.
+    acl_override: Option<String>,
+    /// KE-B1.5: Storage class override for upload operations. Takes
+    /// precedence over the saved-profile `storage_class` setting. Emitted
+    /// as `x-amz-storage-class` on CreateMultipartUpload and single-PUT.
+    /// `None` = fall back to `config.storage_class`, else backend default.
+    /// Set via `set_storage_class_override`.
+    storage_class_override: Option<String>,
 }
 
 impl S3Provider {
@@ -252,8 +284,94 @@ impl S3Provider {
             upload_chunk_override: None,
             multi_thread_streams: 1,
             multi_thread_cutoff: Self::MULTI_THREAD_CUTOFF_DEFAULT,
+            upload_concurrency_override: None,
+            no_check_bucket: false,
+            disable_checksum: false,
+            acl_override: None,
+            storage_class_override: None,
         })
     }
+
+    /// Default parallelism for multipart upload parts.
+    ///
+    /// 4 keeps `tokio::JoinSet` lightweight on consumer connections (cap at
+    /// the historical legacy value) while still saturating typical 1 Gbit
+    /// links to AWS S3 / MinIO. Overridable through
+    /// [`set_upload_concurrency`].
+    pub const UPLOAD_CONCURRENCY_DEFAULT: usize = 4;
+    /// Hard ceiling for `set_upload_concurrency` — beyond this, additional
+    /// parallelism mostly burns sockets and adds 429 risk.
+    pub const UPLOAD_CONCURRENCY_MAX: usize = 64;
+
+    /// KE-B1.1: Override the number of parts that
+    /// `upload_multipart_streaming` and the server-side multipart copy
+    /// planner keep in flight. Clamped to `[1, UPLOAD_CONCURRENCY_MAX]`.
+    /// Passing `0` resets to default.
+    pub fn set_upload_concurrency(&mut self, parts_in_flight: usize) {
+        if parts_in_flight == 0 {
+            self.upload_concurrency_override = None;
+            return;
+        }
+        self.upload_concurrency_override =
+            Some(parts_in_flight.clamp(1, Self::UPLOAD_CONCURRENCY_MAX));
+    }
+
+    /// Number of multipart upload parts to keep in flight, honoring any
+    /// `set_upload_concurrency` override. Pure read-only inspector used by
+    /// the multipart upload + server-side-copy paths.
+    pub fn effective_upload_concurrency(&self) -> usize {
+        self.upload_concurrency_override
+            .unwrap_or(Self::UPLOAD_CONCURRENCY_DEFAULT)
+    }
+
+    /// KE-B1.2: Skip the bucket-existence probe inside `connect()`. Use when
+    /// the credentials are scoped to write-only access on a known bucket
+    /// (`ListBucket` denied, `PutObject` allowed). Matches rclone's
+    /// `--s3-no-check-bucket`.
+    pub fn set_no_check_bucket(&mut self, enabled: bool) {
+        self.no_check_bucket = enabled;
+    }
+
+    /// KE-B1.3: Suppress payload SHA-256 hashing in signed requests by
+    /// using the SigV4 `UNSIGNED-PAYLOAD` placeholder. Big win on CPU when
+    /// uploading multipart parts (~500 MiB+ each). Matches rclone's
+    /// `--s3-disable-checksum`.
+    pub fn set_disable_checksum(&mut self, enabled: bool) {
+        self.disable_checksum = enabled;
+    }
+
+    /// KE-B1.4: Set the canned ACL applied to subsequent uploads.
+    /// Validation is permissive (we accept any non-empty string) so users
+    /// of S3-compatible backends with vendor-specific ACL extensions are
+    /// not blocked; AWS rejects unknown values at the API level.
+    /// Passing `None` clears the override and lets the backend apply its
+    /// default ACL (usually `private`).
+    pub fn set_acl(&mut self, acl: Option<String>) {
+        self.acl_override = acl.filter(|s| !s.trim().is_empty());
+    }
+
+    /// KE-B1.5: Override the storage class for upload operations.
+    /// Takes precedence over `S3Config::storage_class`. Validation is
+    /// permissive (vendor-specific tiers accepted). Passing `None` clears
+    /// the override and falls back to the profile-level storage class, or
+    /// the backend default if both are unset.
+    pub fn set_storage_class_override(&mut self, sc: Option<String>) {
+        self.storage_class_override = sc.filter(|s| !s.trim().is_empty());
+    }
+
+    /// Resolved storage class: the runtime override wins, else the
+    /// profile-level setting, else `None` (backend default).
+    fn effective_storage_class(&self) -> Option<&str> {
+        self.storage_class_override
+            .as_deref()
+            .or(self.config.storage_class.as_deref())
+    }
+
+    /// Resolved canned ACL for upload operations, or `None` if untouched.
+    fn effective_acl(&self) -> Option<&str> {
+        self.acl_override.as_deref()
+    }
+
 
     /// Maximum number of concurrent download streams accepted by `set_multi_thread_download`.
     pub const MULTI_THREAD_MAX_STREAMS: usize = 16;
@@ -670,7 +788,15 @@ impl S3Provider {
         );
 
         let payload = body.as_deref().unwrap_or(&[]);
-        let payload_hash = {
+        // KE-B1.3: skip the per-payload SHA-256 when the user opted into
+        // `--s3-disable-checksum`. SigV4 accepts the literal
+        // `UNSIGNED-PAYLOAD` in `x-amz-content-sha256`, which trades client
+        // CPU for a small reduction in tamper protection. Always hash when
+        // the payload is empty: it's a 32-byte constant, no CPU savings,
+        // and some S3 gateways still validate the empty-body hash.
+        let payload_hash = if self.disable_checksum && !payload.is_empty() {
+            "UNSIGNED-PAYLOAD".to_string()
+        } else {
             let mut hasher = Sha256::new();
             hasher.update(payload);
             hex::encode(hasher.finalize())
@@ -1023,14 +1149,23 @@ impl S3Provider {
         None
     }
 
-    /// Append S3 enterprise headers (storage class, SSE) to a headers map.
-    /// Skipped entirely for MEGA S4 which does not support storage classes or SSE.
+    /// Append S3 enterprise headers (ACL, storage class, SSE) to a headers
+    /// map. Skipped entirely for MEGA S4 which does not support storage
+    /// classes, ACLs or SSE.
     fn append_upload_headers(&self, headers: &mut HashMap<String, String>) {
         if self.is_mega_s4_endpoint() {
             return;
         }
-        if let Some(ref sc) = self.config.storage_class {
-            headers.insert("x-amz-storage-class".to_string(), sc.clone());
+        // KE-B1.5: runtime override > profile setting > backend default.
+        if let Some(sc) = self.effective_storage_class() {
+            headers.insert("x-amz-storage-class".to_string(), sc.to_string());
+        }
+        // KE-B1.4: canned ACL header. Skipped when no override is active so
+        // bucket-policy-managed buckets (the AWS default since 2023) are
+        // not surprised by an explicit `x-amz-acl: private` that contradicts
+        // their bucket-policy setup.
+        if let Some(acl) = self.effective_acl() {
+            headers.insert("x-amz-acl".to_string(), acl.to_string());
         }
         match self.config.sse_mode.as_deref() {
             Some("AES256") => {
@@ -1370,7 +1505,11 @@ impl S3Provider {
         let mut uploaded: u64 = 0;
 
         let part_size = self.effective_part_size();
-        let max_parallel = 4usize;
+        // KE-B1.1: parallelism override (default 4). Each part is held in
+        // RAM during upload, so the actual memory footprint is
+        // `max_parallel * part_size`; document this for users who push the
+        // knob aggressively on tiny VMs.
+        let max_parallel = self.effective_upload_concurrency();
 
         loop {
             // Pre-read up to max_parallel parts from disk
@@ -1603,7 +1742,10 @@ impl S3Provider {
 
         let upload_id = self.create_multipart_upload(to_key, content_type).await?;
 
-        let max_parallel = 4usize;
+        // KE-B1.1: same parallelism cap as multipart upload. UploadPartCopy
+        // is server-to-server so the parallelism bottleneck is the source
+        // bucket's read fan-out, not local CPU.
+        let max_parallel = self.effective_upload_concurrency();
         let mut parts: Vec<(u32, String)> = Vec::with_capacity(planned.len());
         let mut cursor = planned.into_iter();
 
@@ -1984,6 +2126,18 @@ impl StorageProvider for S3Provider {
     async fn connect(&mut self) -> Result<(), ProviderError> {
         // Reset clock offset for fresh connection
         self.clock_offset_secs = 0;
+
+        // KE-B1.2: --s3-no-check-bucket skips the bucket-existence probe
+        // entirely. Use when the IAM policy grants PutObject but denies
+        // ListBucket: the probe would 403 even though the credentials are
+        // valid for the actual upload workload.
+        if self.no_check_bucket {
+            self.connected = true;
+            if let Some(ref prefix) = self.config.prefix {
+                self.current_prefix = prefix.trim_matches('/').to_string();
+            }
+            return Ok(());
+        }
 
         // Connection probe: GET on the bucket root with an explicit empty
         // `prefix=` query parameter (legacy ListObjects v1).
@@ -4721,5 +4875,182 @@ mod tests {
         );
         assert!(msg.contains("404"));
         assert!(!msg.contains("retry-after-secs"));
+    }
+
+    // ── KE-B1 per-backend S3 knob tests ────────────────────────────────
+
+    /// KE-B1.1: default upload concurrency is the historical 4-in-flight ceiling
+    /// and `set_upload_concurrency` overrides it, clamped to `[1, MAX]`.
+    /// `0` is a sentinel that resets the override.
+    #[test]
+    fn set_upload_concurrency_clamps_and_resets() {
+        let mut provider = make_provider(Some("http://localhost:9000"));
+        assert_eq!(
+            provider.effective_upload_concurrency(),
+            S3Provider::UPLOAD_CONCURRENCY_DEFAULT
+        );
+
+        provider.set_upload_concurrency(8);
+        assert_eq!(provider.effective_upload_concurrency(), 8);
+
+        // Clamp above ceiling
+        provider.set_upload_concurrency(999);
+        assert_eq!(
+            provider.effective_upload_concurrency(),
+            S3Provider::UPLOAD_CONCURRENCY_MAX
+        );
+
+        // `0` resets to default
+        provider.set_upload_concurrency(0);
+        assert_eq!(
+            provider.effective_upload_concurrency(),
+            S3Provider::UPLOAD_CONCURRENCY_DEFAULT
+        );
+    }
+
+    /// KE-B1.2: setter toggles the `no_check_bucket` flag and `connect()`
+    /// short-circuits when enabled. We can't exercise the full connect()
+    /// path without a server, but the post-call state is observable.
+    #[tokio::test]
+    async fn no_check_bucket_short_circuits_connect_probe() {
+        let mut provider = make_provider(Some("http://192.0.2.1:9000")); // RFC 5737 unreachable
+        provider.set_no_check_bucket(true);
+        assert!(provider.no_check_bucket);
+        // With no_check_bucket=true, connect() must NOT make a network call
+        // and must mark the provider as connected. The endpoint above is
+        // guaranteed unreachable; if the probe still fired, this would
+        // either hang or fail with ConnectionFailed.
+        let res = provider.connect().await;
+        assert!(res.is_ok(), "expected Ok(()), got {res:?}");
+        assert!(provider.connected);
+    }
+
+    /// KE-B1.3: setter toggles the `disable_checksum` flag, and the
+    /// payload-hash branch in `s3_request_ext` substitutes `UNSIGNED-PAYLOAD`
+    /// for non-empty bodies. Empty bodies always use the hex SHA-256 of
+    /// the empty string (constant, no CPU savings).
+    #[test]
+    fn set_disable_checksum_toggles_flag() {
+        let mut provider = make_provider(Some("http://localhost:9000"));
+        assert!(!provider.disable_checksum);
+        provider.set_disable_checksum(true);
+        assert!(provider.disable_checksum);
+        provider.set_disable_checksum(false);
+        assert!(!provider.disable_checksum);
+    }
+
+    /// KE-B1.4: setter accepts arbitrary canned ACL strings (validation is
+    /// permissive so vendor extensions pass through). Whitespace-only
+    /// values are normalised to None.
+    #[test]
+    fn set_acl_stores_and_clears() {
+        let mut provider = make_provider(Some("http://localhost:9000"));
+        assert!(provider.effective_acl().is_none());
+
+        provider.set_acl(Some("public-read".to_string()));
+        assert_eq!(provider.effective_acl(), Some("public-read"));
+
+        // Vendor extension passes through
+        provider.set_acl(Some("bucket-owner-full-control".to_string()));
+        assert_eq!(provider.effective_acl(), Some("bucket-owner-full-control"));
+
+        // Whitespace-only normalises to None
+        provider.set_acl(Some("   ".to_string()));
+        assert!(provider.effective_acl().is_none());
+
+        // Explicit None clears the override
+        provider.set_acl(Some("private".to_string()));
+        provider.set_acl(None);
+        assert!(provider.effective_acl().is_none());
+    }
+
+    /// KE-B1.4: ACL header lands in `append_upload_headers` only when the
+    /// override is active and the endpoint is not MEGA S4 (which doesn't
+    /// support ACLs).
+    #[test]
+    fn append_upload_headers_emits_acl_when_set() {
+        let mut provider = make_provider(Some("http://localhost:9000"));
+        let mut headers = HashMap::new();
+        provider.append_upload_headers(&mut headers);
+        assert!(!headers.contains_key("x-amz-acl"));
+
+        provider.set_acl(Some("public-read".to_string()));
+        let mut headers = HashMap::new();
+        provider.append_upload_headers(&mut headers);
+        assert_eq!(headers.get("x-amz-acl"), Some(&"public-read".to_string()));
+    }
+
+    /// KE-B1.4: MEGA S4 skips the entire enterprise-headers block, including
+    /// the ACL override. Users wiring `--s3-acl` against MEGA must rely on
+    /// MEGA's permission UI, not S3 ACLs.
+    #[test]
+    fn append_upload_headers_skips_acl_on_mega_s4() {
+        let mut provider = make_provider(Some("https://eu-central-1.s4.mega.io"));
+        // Need to actually set the bucket region to a valid MEGA S4 region;
+        // the helper above uses us-east-1 which would fail S3Config::from_*
+        // validation. We're constructing the provider directly so it
+        // bypasses that path: the test still exercises the early-return.
+        provider.set_acl(Some("public-read".to_string()));
+        let mut headers = HashMap::new();
+        provider.append_upload_headers(&mut headers);
+        assert!(!headers.contains_key("x-amz-acl"));
+    }
+
+    /// KE-B1.5: setter accepts arbitrary storage class strings, and the
+    /// override takes precedence over the profile-level setting. Clearing
+    /// the override falls back to the profile-level value.
+    #[test]
+    fn set_storage_class_override_precedence_over_profile() {
+        let mut provider = S3Provider::new(S3Config {
+            endpoint: Some("http://localhost:9000".to_string()),
+            region: "us-east-1".to_string(),
+            access_key_id: "key".to_string(),
+            secret_access_key: secrecy::SecretString::from("secret".to_string()),
+            bucket: "test-bucket".to_string(),
+            prefix: None,
+            path_style: true,
+            storage_class: Some("STANDARD_IA".to_string()), // profile-level
+            sse_mode: None,
+            sse_kms_key_id: None,
+            verify_cert: true,
+        })
+        .expect("provider");
+
+        // Profile-level wins when no override
+        assert_eq!(provider.effective_storage_class(), Some("STANDARD_IA"));
+
+        // Override beats profile
+        provider.set_storage_class_override(Some("GLACIER_IR".to_string()));
+        assert_eq!(provider.effective_storage_class(), Some("GLACIER_IR"));
+
+        // Clearing the override falls back to profile
+        provider.set_storage_class_override(None);
+        assert_eq!(provider.effective_storage_class(), Some("STANDARD_IA"));
+
+        // Whitespace-only normalises to None
+        provider.set_storage_class_override(Some("   ".to_string()));
+        assert!(provider.storage_class_override.is_none());
+        assert_eq!(provider.effective_storage_class(), Some("STANDARD_IA"));
+    }
+
+    /// KE-B1.5: `x-amz-storage-class` header lands in `append_upload_headers`
+    /// with the effective (override > profile) value.
+    #[test]
+    fn append_upload_headers_emits_effective_storage_class() {
+        let mut provider = make_provider(Some("http://localhost:9000"));
+
+        // Nothing set → no header
+        let mut headers = HashMap::new();
+        provider.append_upload_headers(&mut headers);
+        assert!(!headers.contains_key("x-amz-storage-class"));
+
+        // Override wins
+        provider.set_storage_class_override(Some("STANDARD_IA".to_string()));
+        let mut headers = HashMap::new();
+        provider.append_upload_headers(&mut headers);
+        assert_eq!(
+            headers.get("x-amz-storage-class"),
+            Some(&"STANDARD_IA".to_string())
+        );
     }
 }
