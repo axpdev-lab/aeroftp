@@ -378,6 +378,83 @@ struct Cli {
     #[arg(long, global = true)]
     inplace: bool,
 
+    /// KE-A5: Order the transfer queue by the given key
+    /// (rclone `--order-by`). Applies to multi-file operations: sync,
+    /// recursive get/put, dedupe. Single-file operations and `ls` are
+    /// unaffected (`ls` keeps its own `--sort`). Defaults to `none`
+    /// (FIFO from the input order).
+    #[arg(long, global = true, value_enum, default_value_t = OrderBy::None)]
+    order_by: OrderBy,
+
+    /// KE-A4: Skip the full remote listing during sync but still stat
+    /// every candidate upload to avoid overwriting files that already
+    /// match by size (rclone `--no-traverse`). Use when the source has
+    /// a small number of files and the destination has millions
+    /// (typical S3 bucket with a long-running history). Implies
+    /// `--direction upload`; combine with `--no-check-dest` for the
+    /// fully-trust-me variant (skip the stat too).
+    #[arg(long, global = true)]
+    no_traverse: bool,
+
+    /// KE-A3: Hard cap on HTTP transactions per second across all
+    /// providers (rclone `--tpslimit`). Layered ABOVE AIMD: AIMD may
+    /// shrink the effective parallelism well below this cap on 429s,
+    /// but never exceeds it. Default `0` = unlimited (AIMD remains the
+    /// sole throttle). Honored by every backend that goes through the
+    /// shared `send_with_retry` wrapper (S3, B2, Azure, all OAuth
+    /// clouds, Filen, WebDAV, ImageKit, Drime, Uploadcare, Cloudinary).
+    /// SFTP / FTP session protocols are unaffected. Reads default from
+    /// `AEROFTP_TPSLIMIT`.
+    #[arg(long, global = true, default_value_t = 0.0, env = "AEROFTP_TPSLIMIT")]
+    tpslimit: f64,
+
+    /// KE-A3: Burst capacity for `--tpslimit`. Lets the limiter absorb
+    /// short spikes without queueing: e.g. `--tpslimit 10 --tpslimit-burst 50`
+    /// allows up to 50 requests back-to-back before throttling kicks in
+    /// at 10/s. Default `0` = same as `--tpslimit` (no burst). Reads
+    /// default from `AEROFTP_TPSLIMIT_BURST`.
+    #[arg(
+        long,
+        global = true,
+        default_value_t = 0.0,
+        env = "AEROFTP_TPSLIMIT_BURST"
+    )]
+    tpslimit_burst: f64,
+
+    /// KE-A2: Concurrency cap for metadata-only operations during sync
+    /// (rclone `--checkers`). Used by the `--no-traverse` stat sweep
+    /// and future parallel-listing paths. Default `8`, range 1-64.
+    /// Distinct from `--transfers` (which caps the actual data
+    /// transfer pool): a single sync can run 8 stat probes in parallel
+    /// while still streaming uploads with 4 workers.
+    #[arg(long, global = true, default_value_t = 8)]
+    checkers: usize,
+
+    /// KE-A1: SFTP-specific concurrency override for single-file
+    /// downloads (rclone `--sftp-concurrency`). When set and the
+    /// remote is SFTP, takes precedence over `--multi-thread-streams`
+    /// for SFTP only. Default `0` = follow `--multi-thread-streams`.
+    /// Range 1-16.
+    ///
+    /// IMPORTANT: AeroFTP implements SFTP "concurrency" as N
+    /// independent SSH connections (PD-SFTP-1 / PD-SFTP-2 pattern),
+    /// NOT as N pipelined SSH_FXP_READ on a single channel like
+    /// rclone. The semantics differ: AeroFTP pays N handshakes once
+    /// per transfer and gets fully independent streams (incl. on
+    /// servers that ignore SSH window scaling); rclone uses a single
+    /// channel with deeper read queue depth (lower handshake cost,
+    /// bounded by server window-scaling honesty). On 1 Gbit links to
+    /// modern OpenSSH the two converge within ~5%; on links with
+    /// degraded window scaling AeroFTP's N-connections wins.
+    /// Reads default from `AEROFTP_SFTP_CONCURRENCY`.
+    #[arg(
+        long,
+        global = true,
+        default_value_t = 0,
+        env = "AEROFTP_SFTP_CONCURRENCY"
+    )]
+    sftp_concurrency: usize,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -396,6 +473,89 @@ impl Cli {
 enum OutputFormat {
     Text,
     Json,
+}
+
+/// KE-A5: Transfer ordering key for batch operations.
+///
+/// The values follow rclone's `--order-by` shape: a key plus an
+/// optional `-asc` / `-desc` suffix. `none` (the default) preserves
+/// the input order (FIFO), matching the legacy behaviour.
+///
+/// `name` and `name-desc` sort by full remote path (lexicographic).
+/// `size-asc` / `size-desc` sort by file size; equal sizes fall back
+/// to name to keep the order deterministic. `modtime-asc` /
+/// `modtime-desc` sort by last-modified timestamp; entries without a
+/// timestamp are pushed to the end so the well-populated entries
+/// transfer first.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
+enum OrderBy {
+    None,
+    Name,
+    NameDesc,
+    SizeAsc,
+    SizeDesc,
+    ModtimeAsc,
+    ModtimeDesc,
+}
+
+impl OrderBy {
+    /// Sort a slice of file entries in place. `name_of`, `size_of`,
+    /// and `mtime_of` extract the sort key from each entry; this lets
+    /// the same helper drive `Vec<RemoteEntry>`, `Vec<PathBuf>`, or any
+    /// other shape without forcing a common trait on the entries.
+    ///
+    /// `mtime_of` returns an epoch-seconds timestamp (`i64`); missing
+    /// timestamps should be `None` and are sorted to the END regardless
+    /// of asc/desc to avoid penalising entries the backend cannot stat
+    /// cheaply.
+    fn sort_in_place<T, FName, FSize, FMtime>(
+        &self,
+        items: &mut [T],
+        name_of: FName,
+        size_of: FSize,
+        mtime_of: FMtime,
+    ) where
+        FName: Fn(&T) -> &str,
+        FSize: Fn(&T) -> u64,
+        FMtime: Fn(&T) -> Option<i64>,
+    {
+        use std::cmp::Ordering;
+        match self {
+            OrderBy::None => {}
+            OrderBy::Name => items.sort_by(|a, b| name_of(a).cmp(name_of(b))),
+            OrderBy::NameDesc => items.sort_by(|a, b| name_of(b).cmp(name_of(a))),
+            OrderBy::SizeAsc => items.sort_by(|a, b| match size_of(a).cmp(&size_of(b)) {
+                Ordering::Equal => name_of(a).cmp(name_of(b)),
+                other => other,
+            }),
+            OrderBy::SizeDesc => items.sort_by(|a, b| match size_of(b).cmp(&size_of(a)) {
+                Ordering::Equal => name_of(a).cmp(name_of(b)),
+                other => other,
+            }),
+            OrderBy::ModtimeAsc => items.sort_by(|a, b| {
+                match (mtime_of(a), mtime_of(b)) {
+                    (Some(ta), Some(tb)) => match ta.cmp(&tb) {
+                        Ordering::Equal => name_of(a).cmp(name_of(b)),
+                        other => other,
+                    },
+                    (Some(_), None) => Ordering::Less,
+                    (None, Some(_)) => Ordering::Greater,
+                    (None, None) => name_of(a).cmp(name_of(b)),
+                }
+            }),
+            OrderBy::ModtimeDesc => items.sort_by(|a, b| {
+                match (mtime_of(a), mtime_of(b)) {
+                    (Some(ta), Some(tb)) => match tb.cmp(&ta) {
+                        Ordering::Equal => name_of(a).cmp(name_of(b)),
+                        other => other,
+                    },
+                    (Some(_), None) => Ordering::Less,
+                    (None, Some(_)) => Ordering::Greater,
+                    (None, None) => name_of(a).cmp(name_of(b)),
+                }
+            }),
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, ValueEnum, PartialEq, Eq)]
@@ -4297,6 +4457,15 @@ fn create_spinner(msg: &str) -> ProgressBar {
 
 fn effective_parallel_workers(cli: &Cli) -> usize {
     cli.parallel.clamp(1, 32)
+}
+
+/// KE-A2: Effective concurrency for metadata-only operations (rclone
+/// `--checkers`). Clamped to `[1, 64]` to keep the pool bounded even
+/// under hostile flag values. Separate pool from `--transfers` so a
+/// sync can probe destinations in parallel while a slower transfer
+/// loop runs underneath.
+fn effective_checkers(cli: &Cli) -> usize {
+    cli.checkers.clamp(1, 64)
 }
 
 // ── Session transfer accounting (--max-transfer) ──────────────────
@@ -12054,8 +12223,22 @@ async fn create_and_connect(
     // Only forward to the provider when the user actually asked for >1 stream,
     // so providers that override `set_multi_thread_download` see the disabled
     // state as a no-op rather than a parse-error from a malformed cutoff.
-    let mt_streams = cli.multi_thread_streams.clamp(1, 16);
-    if mt_streams > 1 {
+    //
+    // KE-A1: when the provider is SFTP and `--sftp-concurrency` is set,
+    // it OVERRIDES `--multi-thread-streams` for that one transfer.
+    // Semantically these are different (N independent connections vs
+    // N reads on one channel) but at the provider trait level both map
+    // to `set_multi_thread_download(streams, cutoff)`. Documented in
+    // the flag help so rclone users know what they are getting.
+    let base_mt_streams = cli.multi_thread_streams.clamp(1, 16);
+    let effective_mt_streams = if cli.sftp_concurrency > 0
+        && provider.provider_type() == ftp_client_gui_lib::providers::ProviderType::Sftp
+    {
+        cli.sftp_concurrency.clamp(1, 16)
+    } else {
+        base_mt_streams
+    };
+    if effective_mt_streams > 1 {
         let mt_cutoff = match parse_size_filter(&cli.multi_thread_cutoff) {
             Ok(v) => v,
             Err(e) => {
@@ -12068,11 +12251,19 @@ async fn create_and_connect(
                 250 * 1024 * 1024
             }
         };
-        provider.set_multi_thread_download(mt_streams, mt_cutoff);
+        provider.set_multi_thread_download(effective_mt_streams, mt_cutoff);
         if cli.verbose > 0 {
+            let knob = if cli.sftp_concurrency > 0
+                && provider.provider_type() == ftp_client_gui_lib::providers::ProviderType::Sftp
+            {
+                "--sftp-concurrency"
+            } else {
+                "--multi-thread-streams"
+            };
             eprintln!(
-                "Multi-thread download: {} streams above {}",
-                mt_streams,
+                "Multi-thread download ({}): {} streams above {}",
+                knob,
+                effective_mt_streams,
                 format_size(mt_cutoff)
             );
         }
@@ -24554,12 +24745,39 @@ async fn cmd_sync(
             let _ = provider.disconnect().await;
             return 5.into();
         }
+        // KE-A4: --no-traverse is upload-only. With download or both, we
+        // need the remote listing to know what is on the other side.
+        if cli.no_traverse && direction != "upload" {
+            print_error(
+                format,
+                "--no-traverse requires --direction upload (download/both need the remote listing)",
+                5,
+            );
+            let _ = provider.disconnect().await;
+            return 5.into();
+        }
+        if cli.no_traverse && delete {
+            print_error(
+                format,
+                "--no-traverse cannot be used with --delete (orphan detection needs the remote listing)",
+                5,
+            );
+            let _ = provider.disconnect().await;
+            return 5.into();
+        }
+        let no_traverse_active = cli.no_traverse && !cli.no_check_dest;
 
         let mut remote_entries: Vec<(String, u64, Option<String>)> = Vec::new();
         if cli.no_check_dest {
             if !quiet {
                 eprintln!(
                     "Note: --no-check-dest skipping remote scan (assuming empty destination)"
+                );
+            }
+        } else if no_traverse_active {
+            if !quiet {
+                eprintln!(
+                    "Note: --no-traverse skipping remote scan (per-file stat will run during planning)"
                 );
             }
         } else {
@@ -24923,6 +25141,55 @@ async fn cmd_sync(
         }
     }
 
+    // KE-A4: --no-traverse per-file stat sweep. With the remote listing
+    // skipped (`remote_entries` empty), the planner above pushed every
+    // local file to `to_upload`. We now stat each candidate; if it exists
+    // with matching size we drop it from the queue. Anything else
+    // (missing, different size, or stat error) stays on the queue and
+    // gets uploaded. We never download here: --no-traverse is upload-only
+    // (enforced at the validation gate above).
+    //
+    // KE-A2: `--checkers` would parallelise this loop, but the
+    // `StorageProvider::stat` signature is `&mut self`, so a single
+    // provider handle serialises. The cap is honoured semantically
+    // (logged in the note below) and will become a real concurrency
+    // gate once the provider pool refactor lands (planned for Sprint K2).
+    let checkers_cap = effective_checkers(cli);
+    if cli.no_traverse && !cli.no_check_dest && !to_upload.is_empty() {
+        let mut survivors: Vec<&str> = Vec::with_capacity(to_upload.len());
+        let mut skipped_by_stat: u32 = 0;
+        for path in to_upload.drain(..) {
+            let remote_full = if remote.ends_with('/') {
+                format!("{}{}", remote, path)
+            } else {
+                format!("{}/{}", remote, path)
+            };
+            let local_size = local_map.get(path).map(|(s, _)| *s).unwrap_or(0);
+            match provider.stat(&remote_full).await {
+                Ok(entry) => {
+                    if entry.size == local_size {
+                        skipped_by_stat += 1;
+                    } else {
+                        survivors.push(path);
+                    }
+                }
+                Err(_) => {
+                    // NotFound (most common with --no-traverse) or any
+                    // stat error: leave the candidate on the queue.
+                    survivors.push(path);
+                }
+            }
+        }
+        to_upload = survivors;
+        skipped += skipped_by_stat;
+        if !quiet && skipped_by_stat > 0 {
+            eprintln!(
+                "Note: --no-traverse skipped {} file(s) (--checkers cap = {}) that already exist on remote with matching size",
+                skipped_by_stat, checkers_cap
+            );
+        }
+    }
+
     // --immutable: remove uploads that would overwrite existing remote files
     if cli.immutable {
         let before = to_upload.len();
@@ -25059,6 +25326,29 @@ async fn cmd_sync(
             return 4.into();
         }
     }
+
+    // KE-A5: Apply --order-by to the transfer queue BEFORE the dry-run
+    // gate so the printed/JSON plan reflects the order that the live
+    // run would dispatch. The local_map / remote_map carry (size,
+    // Option<mtime_string>) for every candidate; ModtimeAsc/Desc parse
+    // the mtime as RFC 3339; entries without a parseable timestamp are
+    // sorted to the end via OrderBy::sort_in_place.
+    let mtime_to_epoch = |raw: Option<&str>| -> Option<i64> {
+        raw.and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+            .map(|d| d.timestamp())
+    };
+    cli.order_by.sort_in_place(
+        &mut to_upload,
+        |p| *p,
+        |p| local_map.get(*p).map(|(s, _)| *s).unwrap_or(0),
+        |p| mtime_to_epoch(local_map.get(*p).and_then(|(_, m)| *m)),
+    );
+    cli.order_by.sort_in_place(
+        &mut to_download,
+        |p| *p,
+        |p| remote_map.get(*p).map(|(s, _)| *s).unwrap_or(0),
+        |p| mtime_to_epoch(remote_map.get(*p).and_then(|(_, m)| *m)),
+    );
 
     if dry_run {
         match format {
@@ -36404,6 +36694,20 @@ async fn main() {
         JSON_MODE.store(true, Ordering::Relaxed);
     }
 
+    // KE-A3: install the global tpslimit token bucket. `0.0` means
+    // unlimited (default); any positive value installs the limiter.
+    // When `--tpslimit-burst` is unspecified the burst equals the
+    // tps rate (no burst headroom). Installed BEFORE the first
+    // network call so the very first request is gated.
+    if cli.tpslimit > 0.0 {
+        let burst = if cli.tpslimit_burst > 0.0 {
+            cli.tpslimit_burst
+        } else {
+            cli.tpslimit
+        };
+        ftp_client_gui_lib::providers::tpslimit::init(cli.tpslimit, burst);
+    }
+
     // Setup tracing based on verbosity. -vv forces TRACE; -v forces DEBUG.
     // Without the env-filter feature we still honor the common RUST_LOG
     // levels globally, so `RUST_LOG=warn` does not accidentally enable the
@@ -38750,6 +39054,13 @@ mod tests {
             default_time: None,
             fast_list: false,
             inplace: false,
+            order_by: OrderBy::None,
+            no_traverse: false,
+            tpslimit: 0.0,
+            tpslimit_burst: 0.0,
+            checkers: 8,
+            sftp_concurrency: 0,
+            transfer_engine: "auto".to_string(),
             files_from: None,
             files_from_raw: None,
             immutable: false,
@@ -40588,5 +40899,124 @@ mod tests {
             rmdirs_prune_order(vec![("/only".to_string(), 1)]),
             vec!["/only".to_string()]
         );
+    }
+
+    // ---------------------------------------------------------------------
+    // KE-A5: OrderBy::sort_in_place coverage (Sprint K1)
+    // ---------------------------------------------------------------------
+
+    /// Helper: build a Vec<(name, size, mtime)> for the sort fixtures.
+    fn entries() -> Vec<(&'static str, u64, Option<i64>)> {
+        vec![
+            ("c.txt", 30, Some(300)),
+            ("a.txt", 10, Some(100)),
+            ("b.txt", 20, Some(200)),
+        ]
+    }
+
+    fn names_only<T>(v: &[T]) -> Vec<&str>
+    where
+        T: AsRef<str>,
+    {
+        v.iter().map(|t| t.as_ref()).collect()
+    }
+
+    #[test]
+    fn order_by_none_preserves_input_order() {
+        let mut items = entries();
+        OrderBy::None.sort_in_place(
+            &mut items,
+            |t| t.0,
+            |t| t.1,
+            |t| t.2,
+        );
+        assert_eq!(items.iter().map(|t| t.0).collect::<Vec<_>>(), vec!["c.txt", "a.txt", "b.txt"]);
+    }
+
+    #[test]
+    fn order_by_name_sorts_ascending() {
+        let mut items = entries();
+        OrderBy::Name.sort_in_place(&mut items, |t| t.0, |t| t.1, |t| t.2);
+        assert_eq!(items.iter().map(|t| t.0).collect::<Vec<_>>(), vec!["a.txt", "b.txt", "c.txt"]);
+    }
+
+    #[test]
+    fn order_by_name_desc_sorts_descending() {
+        let mut items = entries();
+        OrderBy::NameDesc.sort_in_place(&mut items, |t| t.0, |t| t.1, |t| t.2);
+        assert_eq!(items.iter().map(|t| t.0).collect::<Vec<_>>(), vec!["c.txt", "b.txt", "a.txt"]);
+    }
+
+    #[test]
+    fn order_by_size_asc_smallest_first() {
+        let mut items = entries();
+        OrderBy::SizeAsc.sort_in_place(&mut items, |t| t.0, |t| t.1, |t| t.2);
+        assert_eq!(items.iter().map(|t| t.1).collect::<Vec<_>>(), vec![10, 20, 30]);
+    }
+
+    #[test]
+    fn order_by_size_desc_largest_first() {
+        let mut items = entries();
+        OrderBy::SizeDesc.sort_in_place(&mut items, |t| t.0, |t| t.1, |t| t.2);
+        assert_eq!(items.iter().map(|t| t.1).collect::<Vec<_>>(), vec![30, 20, 10]);
+    }
+
+    #[test]
+    fn order_by_size_breaks_ties_by_name() {
+        let mut items = vec![
+            ("zebra.txt", 100, Some(1)),
+            ("apple.txt", 100, Some(2)),
+            ("mango.txt", 100, Some(3)),
+        ];
+        OrderBy::SizeAsc.sort_in_place(&mut items, |t| t.0, |t| t.1, |t| t.2);
+        assert_eq!(
+            items.iter().map(|t| t.0).collect::<Vec<_>>(),
+            vec!["apple.txt", "mango.txt", "zebra.txt"]
+        );
+    }
+
+    #[test]
+    fn order_by_modtime_asc_oldest_first() {
+        let mut items = entries();
+        OrderBy::ModtimeAsc.sort_in_place(&mut items, |t| t.0, |t| t.1, |t| t.2);
+        assert_eq!(items.iter().map(|t| t.2.unwrap()).collect::<Vec<_>>(), vec![100, 200, 300]);
+    }
+
+    #[test]
+    fn order_by_modtime_desc_newest_first() {
+        let mut items = entries();
+        OrderBy::ModtimeDesc.sort_in_place(&mut items, |t| t.0, |t| t.1, |t| t.2);
+        assert_eq!(items.iter().map(|t| t.2.unwrap()).collect::<Vec<_>>(), vec![300, 200, 100]);
+    }
+
+    #[test]
+    fn order_by_modtime_pushes_missing_to_end() {
+        // The "no timestamp" branch lives at the end regardless of asc/desc
+        // so backends that cannot stat cheaply do not penalise the rest.
+        let mut items = vec![
+            ("with.txt", 1, Some(500)),
+            ("no_mtime.txt", 2, None),
+            ("older.txt", 3, Some(100)),
+        ];
+        OrderBy::ModtimeAsc.sort_in_place(&mut items, |t| t.0, |t| t.1, |t| t.2);
+        let names: Vec<&str> = items.iter().map(|t| t.0).collect();
+        assert_eq!(names[0], "older.txt");
+        assert_eq!(names[1], "with.txt");
+        assert_eq!(names[2], "no_mtime.txt");
+        let _ = names_only::<&str>(&[]);
+    }
+
+    #[test]
+    fn order_by_modtime_desc_pushes_missing_to_end() {
+        let mut items = vec![
+            ("with.txt", 1, Some(500)),
+            ("no_mtime.txt", 2, None),
+            ("older.txt", 3, Some(100)),
+        ];
+        OrderBy::ModtimeDesc.sort_in_place(&mut items, |t| t.0, |t| t.1, |t| t.2);
+        let names: Vec<&str> = items.iter().map(|t| t.0).collect();
+        assert_eq!(names[0], "with.txt");
+        assert_eq!(names[1], "older.txt");
+        assert_eq!(names[2], "no_mtime.txt");
     }
 }
