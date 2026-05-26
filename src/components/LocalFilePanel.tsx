@@ -414,7 +414,7 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
         </div>
       )}
       {/* Header: BreadcrumbBar (AeroFile) or Address Bar (Connected) */}
-      <div className="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 text-sm font-medium flex items-center gap-2">
+      <div className="flex-shrink-0 px-3 py-1.5 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 text-sm font-medium flex items-center gap-2">
         {/* Dual-panel L/R marker. Shown only in dual mode, sits before the
             path bar so the user always sees which panel they are pointing
             at without leaving the toolbar area. Mirrors the StatusBar and

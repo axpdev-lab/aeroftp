@@ -12734,7 +12734,7 @@ interface UpdateVerificationInfo {
                 onLocalReorder2={(!isConnected || !showRemotePanel) && showDualLocalPanel ? setLocalTabs2 : undefined}
               />
               {/* Toolbar */}
-              <div role="toolbar" aria-label="File operations" className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
+              <div role="toolbar" aria-label="File operations" className="flex-shrink-0 flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
                 <div className="flex gap-2">
                   {/* Up button is rendered per-panel inside each path bar (see remote
                       path bar above and LocalFilePanel) so the affordance is bound to
@@ -12997,7 +12997,7 @@ interface UpdateVerificationInfo {
                       <Loader2 size={20} className="animate-spin text-blue-500/80" />
                     </div>
                   )}
-                  <div className="px-3 py-1.5 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 text-sm font-medium flex items-center gap-2">
+                  <div className="flex-shrink-0 px-3 py-1.5 bg-gray-100 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600 text-sm font-medium flex items-center gap-2">
                     <div className={`flex-1 flex items-center bg-white dark:bg-gray-800 rounded-md border ${isSyncPathMismatch ? 'border-amber-400 dark:border-amber-500' : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500'} focus-within:border-blue-500 dark:focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all overflow-hidden`}>
                       {/* Protocol icon inside address bar (like Chrome favicon) */}
                       <div className="flex-shrink-0 pl-2.5 pr-1 flex items-center" title={(() => {
