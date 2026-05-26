@@ -428,14 +428,19 @@ pub async fn execute_single_file_dag(
     };
 
     let manager = TransferResourceManager::new(single_file_budget(built));
+    let aimd_provider_type = {
+        let guard = provider.lock().await;
+        guard.as_ref().map(|provider| provider.provider_type())
+    };
 
     // AIMD backpressure only helps when a shaped graph has real chunk/http/api
     // concurrency to tune. Plain single-stream providers such as SFTP request
     // only the one file slot, whose ceiling cannot shrink usefully, so keep
     // their dispatch path free of no-op adaptive bookkeeping.
     let aimd = single_file_needs_aimd(built).then(|| {
-        Arc::new(AimdController::from_budget(
+        Arc::new(AimdController::from_budget_for_provider(
             &manager.budget(),
+            aimd_provider_type,
             AimdConfig::default(),
         ))
     });

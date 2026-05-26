@@ -28,13 +28,17 @@
 //! waiting for a dispatch permit has not begun its transfer yet, so shrinking
 //! is always safe.
 
+use std::cmp::Ordering as CmpOrdering;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+use tokio::time::sleep;
 
+use super::aimd_hints;
 use super::resources::{ResourceRequest, TransferBudget};
+use crate::providers::ProviderType;
 
 /// Resource classes the controller manages in v1 (decision D1). Checker,
 /// disk, and hash slots stay static and are intentionally absent.
@@ -299,6 +303,44 @@ struct ClassState {
     last_congestion: Option<Instant>,
 }
 
+#[derive(Debug, Default)]
+struct ApiPacerState {
+    window_started_at: Option<Instant>,
+    grants_in_window: usize,
+}
+
+impl ApiPacerState {
+    fn reserve_delay(&mut self, now: Instant, burst: usize, min_sleep: Duration) -> Duration {
+        let burst = burst.max(1);
+        match self.window_started_at {
+            None => {
+                self.window_started_at = Some(now);
+                self.grants_in_window = 1;
+                Duration::ZERO
+            }
+            Some(start) => {
+                let window_end = start + min_sleep;
+                match now.cmp(&window_end) {
+                    CmpOrdering::Greater | CmpOrdering::Equal => {
+                        self.window_started_at = Some(now);
+                        self.grants_in_window = 1;
+                        Duration::ZERO
+                    }
+                    CmpOrdering::Less if self.grants_in_window < burst => {
+                        self.grants_in_window += 1;
+                        Duration::ZERO
+                    }
+                    CmpOrdering::Less => {
+                        self.window_started_at = Some(window_end);
+                        self.grants_in_window = 1;
+                        window_end.duration_since(now)
+                    }
+                }
+            }
+        }
+    }
+}
+
 impl ClassState {
     fn new(ceiling: usize) -> Self {
         let ceiling = ceiling.max(1);
@@ -321,10 +363,12 @@ impl ClassState {
 /// grows back by one after a quiet window.
 pub struct AimdController {
     config: AimdConfig,
+    current_provider: Option<ProviderType>,
     file: Mutex<ClassState>,
     chunk: Mutex<ClassState>,
     http: Mutex<ClassState>,
     api: Mutex<ClassState>,
+    api_pacer: Mutex<ApiPacerState>,
 }
 
 impl AimdController {
@@ -337,12 +381,34 @@ impl AimdController {
         api_ceiling: usize,
         config: AimdConfig,
     ) -> Self {
+        Self::new_for_provider(
+            file_ceiling,
+            chunk_ceiling,
+            http_ceiling,
+            api_ceiling,
+            None,
+            config,
+        )
+    }
+
+    /// Build a controller bound to a specific provider so per-provider AIMD
+    /// overlays can tune cooldown and API pacing.
+    pub fn new_for_provider(
+        file_ceiling: usize,
+        chunk_ceiling: usize,
+        http_ceiling: usize,
+        api_ceiling: usize,
+        current_provider: Option<ProviderType>,
+        config: AimdConfig,
+    ) -> Self {
         Self {
             config,
+            current_provider,
             file: Mutex::new(ClassState::new(file_ceiling)),
             chunk: Mutex::new(ClassState::new(chunk_ceiling)),
             http: Mutex::new(ClassState::new(http_ceiling)),
             api: Mutex::new(ClassState::new(api_ceiling)),
+            api_pacer: Mutex::new(ApiPacerState::default()),
         }
     }
 
@@ -351,13 +417,44 @@ impl AimdController {
     /// decrease-biased — so a run with no congestion dispatches exactly as if
     /// no controller were wired.
     pub fn from_budget(budget: &TransferBudget, config: AimdConfig) -> Self {
-        Self::new(
+        Self::from_budget_for_provider(budget, None, config)
+    }
+
+    /// Build a controller from the effective budget plus an optional provider
+    /// type so per-provider overlays can tune cooldown and pacing.
+    pub fn from_budget_for_provider(
+        budget: &TransferBudget,
+        current_provider: Option<ProviderType>,
+        config: AimdConfig,
+    ) -> Self {
+        Self::new_for_provider(
             budget.file_slots.max(1) as usize,
             budget.chunk_slots.max(1) as usize,
             budget.http_slots.max(1) as usize,
             budget.api_slots.max(1) as usize,
+            current_provider,
             config,
         )
+    }
+
+    fn provider_hint(&self) -> Option<aimd_hints::AimdHint> {
+        self.current_provider.map(aimd_hints::for_provider)
+    }
+
+    fn effective_cooldown_hint(&self, cooldown_hint: Option<Duration>) -> Option<Duration> {
+        cooldown_hint.or_else(|| {
+            self.provider_hint()
+                .and_then(|hint| hint.retry_after_secs)
+                .map(Duration::from_secs)
+        })
+    }
+
+    fn api_pacing_delay_at(&self, now: Instant) -> Option<Duration> {
+        let hint = self.provider_hint()?;
+        let min_sleep = hint.min_sleep?;
+        let burst = hint.burst.unwrap_or(1);
+        let mut pacer = self.api_pacer.lock().expect("aimd api pacer mutex poisoned");
+        Some(pacer.reserve_delay(now, burst, min_sleep))
     }
 
     fn state(&self, class: AdaptiveClass) -> &Mutex<ClassState> {
@@ -417,7 +514,7 @@ impl AimdController {
         cooldown_hint: Option<Duration>,
     ) {
         let now = Instant::now();
-        let effective_cooldown = match cooldown_hint {
+        let effective_cooldown = match self.effective_cooldown_hint(cooldown_hint) {
             None => self.config.cooldown,
             Some(hint) => {
                 let upper = self
@@ -493,6 +590,13 @@ impl AimdController {
             if wants == 0 {
                 continue;
             }
+            if class == AdaptiveClass::Api {
+                if let Some(delay) = self.api_pacing_delay_at(Instant::now()) {
+                    if !delay.is_zero() {
+                        sleep(delay).await;
+                    }
+                }
+            }
             let sem = {
                 let st = self.state(class).lock().expect("aimd mutex poisoned");
                 st.sem.clone()
@@ -536,11 +640,27 @@ impl AimdController {
     pub fn cooldown_until(&self, class: AdaptiveClass) -> Option<Instant> {
         self.state(class).lock().unwrap().cooldown_until
     }
+
+    #[cfg(test)]
+    pub fn api_pacing_delay_for_test(&self, now: Instant) -> Option<Duration> {
+        self.api_pacing_delay_at(now)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn install_google_drive_test_hint() {
+        aimd_hints::init(std::collections::HashMap::from([(
+            ProviderType::GoogleDrive,
+            aimd_hints::AimdHint {
+                burst: Some(2),
+                min_sleep: Some(Duration::from_millis(500)),
+                retry_after_secs: Some(30),
+            },
+        )]));
+    }
 
     #[test]
     fn congestion_mapping_covers_the_trigger_set_only() {
@@ -860,6 +980,57 @@ mod tests {
             elapsed_d >= Duration::from_secs(4) && elapsed_d <= Duration::from_secs(6),
             "expected ~5s (default cooldown), got {:?}",
             elapsed_d
+        );
+    }
+
+    #[test]
+    fn provider_retry_after_hint_applies_when_server_hint_is_missing() {
+        install_google_drive_test_hint();
+
+        let cfg = AimdConfig {
+            cooldown: Duration::from_secs(5),
+            healthy_window: Duration::from_secs(5),
+            recovery_window: Duration::from_secs(30),
+        };
+        let ctrl = AimdController::new_for_provider(
+            8,
+            1,
+            1,
+            1,
+            Some(ProviderType::GoogleDrive),
+            cfg,
+        );
+        let before = Instant::now();
+        ctrl.on_congestion_with_hint(AdaptiveClass::Api, None);
+        let until = ctrl
+            .cooldown_until(AdaptiveClass::Api)
+            .expect("provider retry-after hint must arm cooldown_until");
+        let elapsed = until.saturating_duration_since(before);
+        assert!(elapsed >= Duration::from_secs(29) && elapsed <= Duration::from_secs(31));
+    }
+
+    #[test]
+    fn provider_api_pacer_delays_after_burst() {
+        install_google_drive_test_hint();
+
+        let ctrl = AimdController::new_for_provider(
+            1,
+            1,
+            1,
+            1,
+            Some(ProviderType::GoogleDrive),
+            AimdConfig::default(),
+        );
+        let t0 = Instant::now();
+        assert_eq!(ctrl.api_pacing_delay_for_test(t0), Some(Duration::ZERO));
+        assert_eq!(ctrl.api_pacing_delay_for_test(t0), Some(Duration::ZERO));
+        assert_eq!(
+            ctrl.api_pacing_delay_for_test(t0),
+            Some(Duration::from_millis(500))
+        );
+        assert_eq!(
+            ctrl.api_pacing_delay_for_test(t0 + Duration::from_millis(500)),
+            Some(Duration::ZERO)
         );
     }
 

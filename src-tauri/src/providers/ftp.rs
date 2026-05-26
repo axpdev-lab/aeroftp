@@ -155,6 +155,7 @@ impl FtpProvider {
 
         let cfg = ConcurrentRangeConfig {
             final_path: PathBuf::from(local_path),
+            provider_type: ProviderType::Ftp,
             total_size,
             streams,
             max_streams: FTP_MULTI_THREAD_MAX_STREAMS,

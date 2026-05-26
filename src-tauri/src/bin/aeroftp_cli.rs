@@ -593,6 +593,19 @@ struct Cli {
     #[arg(long, global = true, env = "AEROFTP_DRIVE_CROSS_ACCOUNT_COPY")]
     drive_cross_account_copy: bool,
 
+    /// KE-B2.1: Allow this many Google Drive API dispatches inside one
+    /// AIMD pacing window before `--drive-pacer-min-sleep` is applied.
+    /// `0` preserves the controller default. Ignored for non-Drive
+    /// providers.
+    #[arg(long, global = true, env = "AEROFTP_DRIVE_PACER_BURST", default_value_t = 0)]
+    drive_pacer_burst: usize,
+
+    /// KE-B2.2: Minimum delay between Google Drive AIMD API pacing
+    /// windows. Accepts `500ms`, `2s`, `1m`, `1h`, or `0` to disable the
+    /// overlay and preserve the controller default.
+    #[arg(long, global = true, env = "AEROFTP_DRIVE_PACER_MIN_SLEEP")]
+    drive_pacer_min_sleep: Option<String>,
+
     /// KE-B2.4: Append `acknowledgeAbuse=true` to Google Drive binary
     /// download URLs (`alt=media`) so files flagged by Google as
     /// abusive still download instead of failing with
@@ -603,6 +616,18 @@ struct Cli {
     /// remote is not Google Drive.
     #[arg(long, global = true, env = "AEROFTP_DRIVE_ACKNOWLEDGE_ABUSE")]
     drive_acknowledge_abuse: bool,
+
+    /// KE-D3: Static Retry-After fallback overlay for the AIMD controller.
+    /// Repeat as `--aimd-hint=provider:secs`, for example
+    /// `--aimd-hint=drive:30 --aimd-hint=s3:5`.
+    #[arg(
+        long,
+        global = true,
+        env = "AEROFTP_AIMD_HINT",
+        value_delimiter = ',',
+        action = clap::ArgAction::Append
+    )]
+    aimd_hint: Vec<String>,
 
     #[command(subcommand)]
     command: Commands,
@@ -5205,6 +5230,80 @@ fn parse_retry_sleep(s: &str) -> std::time::Duration {
     }
     // Default fallback: 1 second
     std::time::Duration::from_secs(1)
+}
+
+fn parse_duration_strict(s: &str) -> Result<std::time::Duration, String> {
+    let s = s.trim().to_lowercase();
+    if s == "0" || s.is_empty() {
+        return Ok(std::time::Duration::ZERO);
+    }
+    if let Some(n) = s.strip_suffix("ms") {
+        return n
+            .parse::<u64>()
+            .map(std::time::Duration::from_millis)
+            .map_err(|_| format!("invalid duration '{}'", s));
+    }
+    if let Some(n) = s.strip_suffix('s') {
+        return n
+            .parse::<u64>()
+            .map(std::time::Duration::from_secs)
+            .map_err(|_| format!("invalid duration '{}'", s));
+    }
+    if let Some(n) = s.strip_suffix('m') {
+        return n
+            .parse::<u64>()
+            .map(|v| std::time::Duration::from_secs(v * 60))
+            .map_err(|_| format!("invalid duration '{}'", s));
+    }
+    if let Some(n) = s.strip_suffix('h') {
+        return n
+            .parse::<u64>()
+            .map(|v| std::time::Duration::from_secs(v * 3600))
+            .map_err(|_| format!("invalid duration '{}'", s));
+    }
+    Err(format!("invalid duration '{}'", s))
+}
+
+fn build_aimd_hints(
+    cli: &Cli,
+) -> Result<HashMap<ftp_client_gui_lib::providers::ProviderType, ftp_client_gui_lib::transfer_dag::AimdHint>, String> {
+    use ftp_client_gui_lib::providers::ProviderType;
+    use ftp_client_gui_lib::transfer_dag::AimdHint;
+
+    let mut hints: HashMap<ProviderType, AimdHint> = HashMap::new();
+
+    if cli.drive_pacer_burst > 0 || cli.drive_pacer_min_sleep.is_some() {
+        let hint = hints.entry(ProviderType::GoogleDrive).or_default();
+        if cli.drive_pacer_burst > 0 {
+            hint.burst = Some(cli.drive_pacer_burst);
+        }
+        if let Some(raw) = &cli.drive_pacer_min_sleep {
+            let min_sleep = parse_duration_strict(raw)?;
+            if !min_sleep.is_zero() {
+                hint.min_sleep = Some(min_sleep);
+            }
+        }
+    }
+
+    for raw in &cli.aimd_hint {
+        let (provider_raw, secs_raw) = raw
+            .split_once(':')
+            .ok_or_else(|| format!("invalid --aimd-hint '{}': expected provider:secs", raw))?;
+        let provider = ProviderType::from_lowercase(provider_raw)
+            .ok_or_else(|| format!("invalid --aimd-hint '{}': unknown provider", raw))?;
+        let secs = secs_raw
+            .trim()
+            .parse::<u64>()
+            .map_err(|_| format!("invalid --aimd-hint '{}': secs must be an integer", raw))?;
+        hints.entry(provider).or_default().retry_after_secs = Some(secs);
+    }
+
+    Ok(hints)
+}
+
+fn init_aimd_runtime_hints(cli: &Cli) -> Result<(), String> {
+    ftp_client_gui_lib::transfer_dag::aimd_hints::init(build_aimd_hints(cli)?);
+    Ok(())
 }
 
 // ── Dump helper (--dump headers,bodies,auth) ──────────────────────
@@ -15905,10 +16004,15 @@ async fn pget_segmented_download(
     let pool = Arc::new(tokio::sync::Mutex::new(std::collections::VecDeque::from(
         conns,
     )));
+    let provider_type = {
+        let guard = pool.lock().await;
+        guard.front().map(|provider| provider.provider_type())
+    };
     let remote_owned = remote_path.to_string();
 
     let cfg = ConcurrentRangeConfig {
         final_path: PathBuf::from(local_path),
+        provider_type: provider_type.unwrap_or(ProviderType::Sftp),
         total_size: file_size,
         streams: actual_segments,
         max_streams: actual_segments,
@@ -37036,6 +37140,11 @@ async fn main() {
         JSON_MODE.store(true, Ordering::Relaxed);
     }
 
+    if let Err(error) = init_aimd_runtime_hints(&cli) {
+        eprintln!("Error: {}", error);
+        std::process::exit(5);
+    }
+
     // KE-A3: install the global tpslimit token bucket. `0.0` means
     // unlimited (default); any positive value installs the limiter.
     // When `--tpslimit-burst` is unspecified the burst equals the
@@ -39415,7 +39524,10 @@ mod tests {
             azure_access_tier: None,
             azure_archive_tier_delete: false,
             drive_cross_account_copy: false,
+            drive_pacer_burst: 0,
+            drive_pacer_min_sleep: None,
             drive_acknowledge_abuse: false,
+            aimd_hint: Vec::new(),
             transfer_engine: "auto".to_string(),
             files_from: None,
             files_from_raw: None,
@@ -39881,6 +39993,41 @@ mod tests {
     fn test_parse_speed_limit_case_insensitive() {
         assert_eq!(parse_speed_limit("1m").unwrap(), 1024 * 1024);
         assert_eq!(parse_speed_limit("500k").unwrap(), 500 * 1024);
+    }
+
+    #[test]
+    fn test_build_aimd_hints_parses_drive_and_generic_overlays() {
+        let cli = Cli {
+            drive_pacer_burst: 4,
+            drive_pacer_min_sleep: Some("500ms".to_string()),
+            aimd_hint: vec!["drive:30".to_string(), "s3:5".to_string()],
+            ..test_cli()
+        };
+
+        let hints = build_aimd_hints(&cli).unwrap();
+        let drive = hints.get(&ProviderType::GoogleDrive).unwrap();
+        assert_eq!(drive.burst, Some(4));
+        assert_eq!(drive.min_sleep, Some(std::time::Duration::from_millis(500)));
+        assert_eq!(drive.retry_after_secs, Some(30));
+        assert_eq!(
+            hints.get(&ProviderType::S3).unwrap().retry_after_secs,
+            Some(5)
+        );
+    }
+
+    #[test]
+    fn test_build_aimd_hints_rejects_invalid_entries() {
+        let cli = Cli {
+            aimd_hint: vec!["drive".to_string()],
+            ..test_cli()
+        };
+        assert!(build_aimd_hints(&cli).is_err());
+
+        let cli = Cli {
+            drive_pacer_min_sleep: Some("soon".to_string()),
+            ..test_cli()
+        };
+        assert!(build_aimd_hints(&cli).is_err());
     }
 
     // ── sanitize_filename tests ───────────────────────────────────────

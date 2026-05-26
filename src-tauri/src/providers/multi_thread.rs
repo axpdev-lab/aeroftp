@@ -174,6 +174,7 @@ pub enum ConcurrentRangeOutcome {
 pub struct ConcurrentRangeConfig {
     /// Final destination path (used only to derive the `.aerotmp` sibling).
     pub final_path: PathBuf,
+    pub provider_type: super::ProviderType,
     pub total_size: u64,
     pub streams: usize,
     pub max_streams: usize,
@@ -241,7 +242,7 @@ pub fn aerotmp_path_for(final_path: &Path) -> PathBuf {
 ///   `Content-Range`; SFTP = exactly `end - start + 1` bytes, no silent
 ///   short read).
 pub async fn run_concurrent_range_download<W, WFut>(
-    cfg: ConcurrentRangeConfig,
+    config: ConcurrentRangeConfig,
     write_one_range: W,
     cancel: CancellationToken,
     on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
@@ -252,15 +253,15 @@ where
         + Send
         + 'static,
 {
-    let ranges = plan_multi_thread_ranges(cfg.total_size, cfg.streams, cfg.max_streams);
+    let ranges = plan_multi_thread_ranges(config.total_size, config.streams, config.max_streams);
     if ranges.is_empty() {
         return Err(ProviderError::TransferFailed(
             "Concurrent range download: empty range plan".to_string(),
         ));
     }
 
-    let temp_path = aerotmp_path_for(&cfg.final_path);
-    if let Some(parent) = cfg.final_path.parent() {
+    let temp_path = aerotmp_path_for(&config.final_path);
+    if let Some(parent) = config.final_path.parent() {
         if !parent.as_os_str().is_empty() {
             tokio::fs::create_dir_all(parent)
                 .await
@@ -277,14 +278,14 @@ where
             .open(&temp_path)
             .await
             .map_err(ProviderError::IoError)?;
-        f.set_len(cfg.total_size)
+        f.set_len(config.total_size)
             .await
             .map_err(ProviderError::IoError)?;
     }
     let mut guard = TempFileGuard::new(temp_path.clone());
 
     let write_one_range = Arc::new(write_one_range);
-    let total_size = cfg.total_size;
+    let total_size = config.total_size;
 
     // PD-ADAPT-1d: opt-in migration of this converged path onto the transfer
     // node-graph executor. Unset (the default) keeps the exact JoinSet path
@@ -299,7 +300,8 @@ where
             &ranges,
             &temp_path,
             total_size,
-            cfg.max_parallel,
+            config.max_parallel,
+            config.provider_type,
             write_one_range,
             cancel,
             on_progress,
@@ -310,7 +312,7 @@ where
             &ranges,
             &temp_path,
             total_size,
-            cfg.max_parallel,
+            config.max_parallel,
             write_one_range,
             cancel,
             on_progress,
@@ -425,11 +427,13 @@ where
 /// Outcome, error variant and cancel semantics are identical to
 /// [`run_ranges_via_joinset`]; only the scheduling differs (which diff-0
 /// explicitly does not constrain).
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn run_ranges_via_graph<W, WFut>(
     ranges: &[(u64, u64)],
     temp_path: &Path,
     total_size: u64,
     max_parallel: usize,
+    provider_type: super::ProviderType,
     write_one_range: Arc<W>,
     cancel: CancellationToken,
     on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
@@ -475,8 +479,9 @@ where
     // `None`. It only ever shrinks the Chunk/Http dispatch target when a range
     // fails with a genuine congestion signal (429/503/timeout/reset), where a
     // smaller in-flight set is the safer, faster choice.
-    let aimd = Arc::new(AimdController::from_budget(
+    let aimd = Arc::new(AimdController::from_budget_for_provider(
         &manager.budget(),
+        Some(provider_type),
         AimdConfig::default(),
     ));
 
@@ -900,6 +905,7 @@ pub(crate) struct HttpRangeRequest {
     pub url: String,
     pub headers: Vec<(HeaderName, HeaderValue)>,
     pub local_path: String,
+    pub provider_type: super::ProviderType,
     pub streams: usize,
     pub max_streams: usize,
     pub cutoff: u64,
@@ -1000,6 +1006,7 @@ pub(crate) async fn try_http_concurrent_range_download(
     let parallel = req.streams.clamp(1, req.max_streams);
     let cfg = ConcurrentRangeConfig {
         final_path: PathBuf::from(&req.local_path),
+        provider_type: req.provider_type,
         total_size: total,
         streams: req.streams,
         max_streams: req.max_streams,
@@ -1319,6 +1326,7 @@ mod tests {
             &temp_b,
             total,
             4,
+            super::super::ProviderType::S3,
             w.clone(),
             CancellationToken::new(),
             None,
@@ -1388,6 +1396,7 @@ mod tests {
             &temp_b,
             total,
             4,
+            super::super::ProviderType::S3,
             w.clone(),
             CancellationToken::new(),
             None,
@@ -1448,6 +1457,7 @@ mod tests {
             &temp_b,
             total,
             4,
+            super::super::ProviderType::S3,
             w.clone(),
             CancellationToken::new(),
             None,

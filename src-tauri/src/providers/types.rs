@@ -11,7 +11,7 @@ use std::fmt;
 use thiserror::Error;
 
 /// Supported storage provider types
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ProviderType {
     /// Standard FTP (File Transfer Protocol)
@@ -125,6 +125,52 @@ impl fmt::Display for ProviderType {
 }
 
 impl ProviderType {
+    /// Parse a provider token from a CLI-facing lowercase-ish string.
+    pub fn from_lowercase(raw: &str) -> Option<Self> {
+        let normalized: String = raw
+            .trim()
+            .chars()
+            .filter(|ch| !matches!(ch, ' ' | '-' | '_'))
+            .flat_map(|ch| ch.to_lowercase())
+            .collect();
+        match normalized.as_str() {
+            "ftp" => Some(Self::Ftp),
+            "ftps" => Some(Self::Ftps),
+            "sftp" => Some(Self::Sftp),
+            "webdav" | "webdavs" => Some(Self::WebDav),
+            "s3" => Some(Self::S3),
+            "aerocloud" => Some(Self::AeroCloud),
+            "drive" | "googledrive" => Some(Self::GoogleDrive),
+            "dropbox" => Some(Self::Dropbox),
+            "onedrive" => Some(Self::OneDrive),
+            "mega" => Some(Self::Mega),
+            "box" => Some(Self::Box),
+            "pcloud" => Some(Self::PCloud),
+            "azure" | "azureblob" => Some(Self::Azure),
+            "filen" => Some(Self::Filen),
+            "4shared" | "fourshared" => Some(Self::FourShared),
+            "zohoworkdrive" => Some(Self::ZohoWorkdrive),
+            "internxt" => Some(Self::Internxt),
+            "kdrive" => Some(Self::KDrive),
+            "jottacloud" => Some(Self::Jottacloud),
+            "drime" | "drimecloud" => Some(Self::DrimeCloud),
+            "filelu" => Some(Self::FileLu),
+            "koofr" => Some(Self::Koofr),
+            "opendrive" => Some(Self::OpenDrive),
+            "yandex" | "yandexdisk" => Some(Self::YandexDisk),
+            "github" => Some(Self::GitHub),
+            "gitlab" => Some(Self::GitLab),
+            "swift" => Some(Self::Swift),
+            "photos" | "googlephotos" => Some(Self::GooglePhotos),
+            "immich" => Some(Self::Immich),
+            "imagekit" => Some(Self::ImageKit),
+            "uploadcare" => Some(Self::Uploadcare),
+            "b2" | "backblaze" | "backblazeb2" => Some(Self::Backblaze),
+            "cloudinary" => Some(Self::Cloudinary),
+            _ => None,
+        }
+    }
+
     /// Get default port for this provider type
     pub fn default_port(&self) -> u16 {
         match self {

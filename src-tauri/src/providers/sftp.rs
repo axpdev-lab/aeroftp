@@ -433,6 +433,7 @@ impl SftpProvider {
 
         let cfg = ConcurrentRangeConfig {
             final_path: PathBuf::from(local_path),
+            provider_type: ProviderType::Sftp,
             total_size,
             streams,
             max_streams: SFTP_MULTI_THREAD_MAX_STREAMS,
