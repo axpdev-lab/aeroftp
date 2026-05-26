@@ -293,6 +293,7 @@
             "manualTotalStorageHint": "Facoltativo. Limite del piano o dell'account per i backend senza API di quota (FTP, S3, WebDAV) o che riportano solo lo spazio usato (Backblaze B2). Il totale fornito dal provider ha sempre la precedenza.",
             "autoScanUsedOnConnect": "Calcola lo spazio usato alla connessione",
             "autoScanUsedOnConnectHint": "Solo per i backend senza API per lo spazio usato (FTP, S3, WebDAV). Disattivato per impostazione predefinita: un albero di grandi dimensioni (es. un progetto web) viene percorso ricorsivamente, operazione che può essere lenta. In alternativa usa l'azione nella StatusBar quando serve.",
+            "megacmdDfHint": "MEGAcmd usa direttamente mega-df per leggere spazio usato e totale. L'override manuale del totale non serve.",
             "saveAsNewProfile": "Salva come nuovo profilo",
             "saveAsNewProfileTitle": "Salva il modulo corrente come nuovo profilo in questa modalità. Il profilo originale viene mantenuto.",
             "convertToMode": "Converti in {{mode}}",
