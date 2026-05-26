@@ -119,6 +119,7 @@ const PROTOCOL_CATEGORIES = [
         protocols: [
             { id: 's3', label: 'S3' },
             { id: 'azure', label: 'Azure Blob' },
+            { id: 'backblaze', label: 'Backblaze B2' },
             { id: 'mega', label: 'MEGA' },
             { id: 'filen', label: 'Filen' },
             { id: 'internxt', label: 'Internxt' },
@@ -128,6 +129,9 @@ const PROTOCOL_CATEGORIES = [
             { id: 'opendrive', label: 'OpenDrive' },
             { id: 'yandexdisk', label: 'Yandex Disk' },
             { id: 'filelu', label: 'FileLu' },
+            { id: 'imagekit', label: 'ImageKit' },
+            { id: 'uploadcare', label: 'Uploadcare' },
+            { id: 'cloudinary', label: 'Cloudinary' },
         ],
     },
     {
@@ -153,11 +157,13 @@ const PROTOCOL_MATURITY: Record<string, 'stable' | 'beta' | 'alpha'> = {
     sftp: 'stable', s3: 'stable', azure: 'stable', webdav: 'stable',
     googledrive: 'stable', dropbox: 'stable', onedrive: 'stable',
     jottacloud: 'stable', kdrive: 'stable', koofr: 'stable',
-    opendrive: 'stable',
+    opendrive: 'stable', backblaze: 'stable',
     ftp: 'beta', ftps: 'beta', box: 'beta', pcloud: 'beta',
     zohoworkdrive: 'beta', yandexdisk: 'beta', mega: 'beta',
     filen: 'beta', internxt: 'beta',
-    filelu: 'beta', fourshared: 'alpha',
+    filelu: 'beta',
+    imagekit: 'beta', uploadcare: 'beta', cloudinary: 'beta',
+    fourshared: 'alpha',
 };
 
 /** One-line sync limitation shown on hover */
@@ -172,6 +178,10 @@ const PROTOCOL_SYNC_CAVEAT: Record<string, string> = {
     filen: 'E2E encryption overhead: sync is slower',
     internxt: 'E2E encryption overhead: sync is slower',
     filelu: 'US-based servers: latency may vary by region. Uses hash comparison for sync',
+    backblaze: 'Native B2 v4 API: bucket-scoped, large-file workflow, server-side copy',
+    imagekit: 'Media-focused CDN: best for image and video assets',
+    uploadcare: 'EU media management: best for image and video assets',
+    cloudinary: 'Free tier limited to 25 credits/month',
     fourshared: 'Manual re-authorization required if token revoked',
 };
 
@@ -305,6 +315,15 @@ const SetupWizard: React.FC<{
                 if (isServerProtocol) return !!serverProfile || (!!connHost && !!connUsername);
                 if (isOpenDrive) return !!connUsername && !!connPassword;
                 if (isEmailAuth) return !!connUsername && !!connPassword;
+                if (selectedProtocol === 'imagekit' || selectedProtocol === 'uploadcare') {
+                    return !!connUsername && !!connPassword;
+                }
+                if (selectedProtocol === 'cloudinary') {
+                    return !!connUsername && !!connPassword && !!connExtra.cloud_name;
+                }
+                if (selectedProtocol === 'backblaze') {
+                    return !!connUsername && !!connPassword && !!connExtra.bucket;
+                }
                 // S3, Azure, kDrive, Jottacloud: need at least some params
                 return true;
             default: return true;
@@ -678,6 +697,120 @@ const SetupWizard: React.FC<{
                                 placeholder="/" className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
                         </div>
                         <p className="text-xs opacity-50">{t('connection.yandexdiskHelp')}</p>
+                    </div>
+                </div>
+            );
+        }
+
+        // Backblaze B2 (native)
+        if (selectedProtocol === 'backblaze') {
+            return (
+                <div className="wizard-step">
+                    <h3><Cloud size={20} /> Backblaze B2 {t('cloud.connectionSettings')}</h3>
+                    <div className="space-y-3">
+                        <div className="folder-input">
+                            <label className="block text-sm font-medium mb-1">Application Key ID</label>
+                            <input type="text" value={connUsername} onChange={(e) => setConnUsername(e.target.value)}
+                                placeholder="003d90ca9d33900000000001" className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
+                        </div>
+                        <div className="folder-input">
+                            <label className="block text-sm font-medium mb-1">Application Key</label>
+                            <input type="password" value={connPassword} onChange={(e) => setConnPassword(e.target.value)}
+                                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
+                        </div>
+                        <div className="folder-input">
+                            <label className="block text-sm font-medium mb-1">Bucket</label>
+                            <input type="text" value={connExtra.bucket || ''} onChange={(e) => setConnExtra(p => ({ ...p, bucket: e.target.value }))}
+                                placeholder="my-b2-bucket" className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
+                        </div>
+                        <div className="folder-input">
+                            <label className="block text-sm font-medium mb-1">{t('cloud.remoteFolder')}</label>
+                            <input type="text" value={remoteFolder} onChange={(e) => setRemoteFolder(e.target.value)}
+                                placeholder="/" className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // ImageKit
+        if (selectedProtocol === 'imagekit') {
+            return (
+                <div className="wizard-step">
+                    <h3><Cloud size={20} /> ImageKit {t('cloud.connectionSettings')}</h3>
+                    <div className="space-y-3">
+                        <div className="folder-input">
+                            <label className="block text-sm font-medium mb-1">URL Endpoint ID</label>
+                            <input type="text" value={connUsername} onChange={(e) => setConnUsername(e.target.value)}
+                                placeholder="your_imagekit_id" className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
+                        </div>
+                        <div className="folder-input">
+                            <label className="block text-sm font-medium mb-1">Private API Key</label>
+                            <input type="password" value={connPassword} onChange={(e) => setConnPassword(e.target.value)}
+                                placeholder="private_..." className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
+                        </div>
+                        <div className="folder-input">
+                            <label className="block text-sm font-medium mb-1">{t('cloud.remoteFolder')}</label>
+                            <input type="text" value={remoteFolder} onChange={(e) => setRemoteFolder(e.target.value)}
+                                placeholder="/" className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Uploadcare
+        if (selectedProtocol === 'uploadcare') {
+            return (
+                <div className="wizard-step">
+                    <h3><Cloud size={20} /> Uploadcare {t('cloud.connectionSettings')}</h3>
+                    <div className="space-y-3">
+                        <div className="folder-input">
+                            <label className="block text-sm font-medium mb-1">Public API Key</label>
+                            <input type="text" value={connUsername} onChange={(e) => setConnUsername(e.target.value)}
+                                placeholder="demopublickey..." className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
+                        </div>
+                        <div className="folder-input">
+                            <label className="block text-sm font-medium mb-1">Secret API Key</label>
+                            <input type="password" value={connPassword} onChange={(e) => setConnPassword(e.target.value)}
+                                placeholder="secret_..." className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
+                        </div>
+                        <div className="folder-input">
+                            <label className="block text-sm font-medium mb-1">{t('cloud.remoteFolder')}</label>
+                            <input type="text" value={remoteFolder} onChange={(e) => setRemoteFolder(e.target.value)}
+                                placeholder="/" className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Cloudinary
+        if (selectedProtocol === 'cloudinary') {
+            return (
+                <div className="wizard-step">
+                    <h3><Cloud size={20} /> Cloudinary {t('cloud.connectionSettings')}</h3>
+                    <div className="space-y-3">
+                        <div className="folder-input">
+                            <label className="block text-sm font-medium mb-1">Cloud Name</label>
+                            <input type="text" value={connExtra.cloud_name || ''} onChange={(e) => setConnExtra(p => ({ ...p, cloud_name: e.target.value }))}
+                                placeholder="dxz9abc12" className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
+                        </div>
+                        <div className="folder-input">
+                            <label className="block text-sm font-medium mb-1">API Key</label>
+                            <input type="text" value={connUsername} onChange={(e) => setConnUsername(e.target.value)}
+                                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
+                        </div>
+                        <div className="folder-input">
+                            <label className="block text-sm font-medium mb-1">API Secret</label>
+                            <input type="password" value={connPassword} onChange={(e) => setConnPassword(e.target.value)}
+                                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
+                        </div>
+                        <div className="folder-input">
+                            <label className="block text-sm font-medium mb-1">{t('cloud.remoteFolder')}</label>
+                            <input type="text" value={remoteFolder} onChange={(e) => setRemoteFolder(e.target.value)}
+                                placeholder="/" className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 focus:outline-none" />
+                        </div>
                     </div>
                 </div>
             );
