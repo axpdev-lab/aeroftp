@@ -1882,6 +1882,38 @@ impl StorageProvider for GitHubProvider {
 
         Ok(entries)
     }
+
+    fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
+        // Shaped-graph multipart trait (S3-T09): intentionally NotSupported
+        // by design on GitHub.
+        //
+        // The GitHub provider operates in three modes, none of which
+        // expose a native chunked upload primitive:
+        //
+        //   - **Repo / Contents mode**: writes go through
+        //     `PUT /repos/{owner}/{repo}/contents/{path}` which takes the
+        //     entire file Base64-encoded inside the JSON request body.
+        //     There is no documented chunked variant and the endpoint
+        //     hard-caps payloads at 100 MiB. The contents API trades
+        //     parallelism for atomic commit semantics by design.
+        //   - **Release Assets mode**: writes go through
+        //     `POST https://uploads.github.com/repos/{owner}/{repo}/releases/{id}/assets`
+        //     as a single-shot binary POST against `uploads.github.com`.
+        //     The asset upload endpoint requires `Content-Type: application/octet-stream`
+        //     and a precomputed `Content-Length`; no resumable session
+        //     URL is exposed.
+        //   - **GitHub Pages mode**: a virtual path layer over Repo
+        //     mode, inheriting the same contents-API constraints.
+        //
+        // A fake-multipart wrapper would either buffer the whole
+        // Base64-encoded blob (defeats streaming, doubles RAM via
+        // Base64 overhead) or serialise per-chunk PUTs against the
+        // same JSON body (impossible: contents API is non-resumable).
+        // We leave `supports_multipart=false` and let the runner pick
+        // the legacy single-stream path with provider-side commit
+        // semantics intact.
+        super::TransferOptimizationHints::default()
+    }
 }
 
 #[cfg(test)]

@@ -1416,6 +1416,31 @@ impl StorageProvider for ImmichProvider {
         }
         Ok(result)
     }
+
+    fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
+        // Shaped-graph multipart trait (S3-T09): intentionally NotSupported
+        // by design on Immich.
+        //
+        // The Immich asset upload endpoint
+        // (`POST /api/assets`, content type `multipart/form-data` with
+        // `assetData` part + sidecar metadata) is a single-shot upload
+        // that accepts the complete asset body in one request. The
+        // server validates the asset bytes against the
+        // `x-immich-checksum` header (SHA-1) on receipt and registers
+        // the asset atomically: there is no documented chunked append/
+        // commit endpoint, no resumable session URL, and no per-chunk
+        // offset write. Additionally Immich rejects non-media payloads
+        // (text/archive) with `400 Bad Request` and a literal `{` body
+        // - see `providers::immich::upload` for the explicit
+        // `NotSupported("Immich accepts only media files...")` mapping.
+        //
+        // The legacy upload() path already builds the multipart form
+        // body with `reqwest::multipart::Form` against the file handle,
+        // so large media files do not pin RAM. We leave
+        // `supports_multipart=false` and let the runner pick the legacy
+        // single-stream path.
+        super::TransferOptimizationHints::default()
+    }
 }
 
 #[cfg(test)]

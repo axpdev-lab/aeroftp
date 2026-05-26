@@ -1123,6 +1123,37 @@ impl StorageProvider for GitLabProvider {
     fn supports_symlinks(&self) -> bool {
         false
     }
+
+    fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
+        // Shaped-graph multipart trait (S3-T09): intentionally NotSupported
+        // by design on GitLab.
+        //
+        // The GitLab Repository Files API
+        // (`POST/PUT /projects/{id}/repository/files/{path}?ref=…`)
+        // takes the file payload as a Base64-encoded string field
+        // inside the JSON request body alongside the commit metadata
+        // (commit_message, author_email, branch). There is no
+        // documented chunked append/commit endpoint, no resumable
+        // session URL, and no per-chunk offset write primitive: the
+        // contract is a single atomic commit per request.
+        //
+        // The Release Links endpoint
+        // (`POST /projects/{id}/releases/{tag}/assets/links`) does not
+        // upload the asset bytes itself - it only registers an
+        // arbitrary external URL as a release asset. Actual binary
+        // hosting happens via Generic Packages
+        // (`PUT /projects/{id}/packages/generic/{pkg}/{ver}/{file}`),
+        // which is also single-shot streaming PUT without per-part
+        // semantics.
+        //
+        // A fake-multipart wrapper would either buffer the whole
+        // Base64-encoded blob (defeats streaming, doubles RAM) or
+        // serialise per-chunk PUTs against the same JSON body
+        // (impossible: contents API is non-resumable). We leave
+        // `supports_multipart=false` and let the runner pick the legacy
+        // single-stream path.
+        super::TransferOptimizationHints::default()
+    }
 }
 
 #[cfg(test)]

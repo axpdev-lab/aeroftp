@@ -3386,6 +3386,25 @@ impl StorageProvider for ZohoWorkdriveProvider {
     }
 
     fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
+        // Shaped-graph multipart trait (S3-T09): intentionally NotSupported
+        // by design on Zoho WorkDrive.
+        //
+        // The documented Zoho WorkDrive upload endpoint
+        // (`POST /api/v1/upload?filename=…&parent_id=…`) is a single-shot
+        // multipart-form POST that accepts the complete file body in one
+        // request. The API does not document a chunked append/commit
+        // endpoint, a resumable session URL, or per-chunk offset writes,
+        // so there is no native primitive a per-part trait could map
+        // onto. The legacy upload() path already streams the body via
+        // `tokio_util::io::ReaderStream` so large files do not pin RAM
+        // - what is missing is per-chunk retry, and a fake-multipart
+        // wrapper that buffered chunks in memory would defeat the
+        // streaming property without adding real resumability.
+        //
+        // If Zoho exposes a chunked upload endpoint in a future API
+        // revision this is the place to re-evaluate. Until then we leave
+        // `supports_multipart=false` and let the runner pick the legacy
+        // single-stream path.
         super::TransferOptimizationHints {
             supports_resume_download: true,
             ..Default::default()
