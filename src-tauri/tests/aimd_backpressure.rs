@@ -120,6 +120,8 @@ async fn aimd_shrink_from_a_congested_run_throttles_the_next_run() {
         cooldown: Duration::from_secs(3600),
         healthy_window: Duration::from_secs(3600),
         recovery_window: Duration::from_secs(3600),
+        disabled: false,
+        class_overrides: Default::default(),
     };
     let budget = TransferBudget::from_file_slots(8);
     let controller = Arc::new(AimdController::from_budget(&budget, cfg));
