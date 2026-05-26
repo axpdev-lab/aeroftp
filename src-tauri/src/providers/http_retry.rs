@@ -90,6 +90,12 @@ pub async fn send_with_retry(
         .and_then(|b| b.as_bytes())
         .map(|b| b.to_vec());
 
+    // KE-A3: proactive tpslimit gate. No-op when the CLI did not install
+    // a limiter (GUI path, default). Sits BEFORE the first execute so
+    // retries also pay the rate-limit toll: an HTTP 429 followed by an
+    // immediate retry would otherwise leak past the cap.
+    super::tpslimit::maybe_acquire().await;
+
     let mut last_response = client.execute(request).await?;
 
     for attempt in 0..config.max_retries {
@@ -122,6 +128,11 @@ pub async fn send_with_retry(
             retry_req = retry_req.body(body.clone());
         }
 
+        // KE-A3: each retry pays the same tpslimit toll as the original
+        // request. Without this, a 429 would let a retry bypass the
+        // proactive cap and saturate the backend the very instant the
+        // cooldown ended.
+        super::tpslimit::maybe_acquire().await;
         last_response = retry_req.send().await?;
     }
 

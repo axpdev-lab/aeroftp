@@ -832,6 +832,7 @@ impl StorageProvider for KoofrProvider {
                 url: url.clone(),
                 headers: vec![(AUTHORIZATION, self.auth_header()?)],
                 local_path: local_path.to_string(),
+                provider_type: ProviderType::Koofr,
                 streams: self.multi_thread_streams,
                 max_streams: KOOFR_MULTI_THREAD_MAX_STREAMS,
                 cutoff: self.multi_thread_cutoff,

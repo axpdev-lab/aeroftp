@@ -558,13 +558,15 @@ pub async fn execute_sync_dag(
         // session and the legacy core.
         let manager = TransferResourceManager::new(TransferBudget::from_file_slots(1));
         let observer: Arc<dyn DagObserver> = Arc::new(NoopDagObserver);
+        let provider_type = provider.provider_type();
         // AIMD backpressure (F3-T05). file_slots = 1 means the File class
         // cannot shrink, so this is structurally inert today; it is wired for
         // uniformity with the batch and single-file surfaces and so the Api
         // class becomes live once a sync connection pool lands (Fase 3).
-        let aimd = Arc::new(AimdController::from_budget(
+        let aimd = Arc::new(AimdController::from_budget_for_provider(
             &manager.budget(),
-            AimdConfig::default(),
+            Some(provider_type),
+            AimdConfig::runtime(),
         ));
 
         // The graph scheduling (spawned) and the real I/O driver (borrowing

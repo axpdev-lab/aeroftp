@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
+use crate::providers::ProviderType;
 use crate::transfer_dag::{TransferSessionLease, TransferSessionPoolHandle};
 use crate::transfer_domain::{
     BatchProgressSnapshot, TransferBatchConfig, TransferBatchResult, TransferDirection,
@@ -32,6 +33,10 @@ pub struct TransferBatch {
 #[async_trait]
 pub trait TransferExecutor {
     async fn execute(&self, entry: TransferEntry) -> TransferOutcome;
+
+    fn provider_type(&self) -> Option<ProviderType> {
+        None
+    }
 
     fn session_pool(&self, _max_concurrent: usize) -> TransferSessionPoolHandle {
         TransferSessionPoolHandle::legacy_single("legacy-provider")

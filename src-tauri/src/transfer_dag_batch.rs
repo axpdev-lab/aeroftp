@@ -139,15 +139,17 @@ where
     let max_concurrent = config.max_concurrent.max(1) as usize;
     let session_pool = Arc::new(executor.session_pool(max_concurrent));
     let resource_manager = TransferResourceManager::new(config.transfer_budget());
+    let provider_type = executor.provider_type();
 
     // AIMD backpressure (F3-T05). The controller's File ceiling is the batch
     // `file_slots` budget and starts there, so a congestion-free batch
     // dispatches every file exactly as before; when a file fails with a
     // genuine congestion signal the File dispatch target halves, throttling
     // the remaining files instead of hammering an overloaded server.
-    let aimd = Arc::new(AimdController::from_budget(
+    let aimd = Arc::new(AimdController::from_budget_for_provider(
         &resource_manager.budget(),
-        AimdConfig::default(),
+        provider_type,
+        AimdConfig::runtime(),
     ));
 
     let runner: Arc<dyn DagNodeRunner> = {
