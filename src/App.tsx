@@ -12368,7 +12368,7 @@ interface UpdateVerificationInfo {
         )}
 
 
-        <main className={`flex-1 min-h-0 p-6 overflow-auto flex flex-col ${devToolsMaximized && devToolsOpen ? 'hidden' : ''}`}>
+        <main className={`flex-1 min-h-0 p-6 overflow-hidden flex flex-col ${devToolsMaximized && devToolsOpen ? 'hidden' : ''}`}>
           {/* IntroHub stays mounted across connect/disconnect so the saved
               servers list is already rendered when the user comes back via
               the Home button or '+' tab. Hidden via CSS when a session is in
@@ -12982,7 +12982,7 @@ interface UpdateVerificationInfo {
                 {isConnected && showRemotePanel && <div
                   role="region"
                   aria-label="Remote files"
-                  className={`relative w-1/2 ${swapPanels ? 'border-l order-2' : 'border-r order-1'} border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-150 ${crossPanelTarget === 'remote' ? 'ring-2 ring-inset ring-blue-400 bg-blue-50/30 dark:bg-blue-900/10' : ''}`}
+                  className={`relative w-1/2 min-h-0 ${swapPanels ? 'border-l order-2' : 'border-r order-1'} border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-150 ${crossPanelTarget === 'remote' ? 'ring-2 ring-inset ring-blue-400 bg-blue-50/30 dark:bg-blue-900/10' : ''}`}
                   onDragOver={(e) => handlePanelDragOver(e, 'remote')}
                   onDrop={(e) => handlePanelDrop(e, 'remote')}
                   onDragLeave={handlePanelDragLeave}

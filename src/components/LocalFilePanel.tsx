@@ -395,7 +395,7 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
     <div
       role="region"
       aria-label={panelKey === 'local2' ? 'Local files (right panel)' : 'Local files'}
-      className={`relative ${isDualMode ? 'min-w-0' : isAeroFileMode ? 'flex-1 min-w-0' : 'w-1/2'} flex flex-col ${crossPanelRingClass}${extraClassName ? ` ${extraClassName}` : ''}`}
+      className={`relative ${isDualMode ? 'min-w-0' : isAeroFileMode ? 'flex-1 min-w-0' : 'w-1/2'} min-h-0 flex flex-col ${crossPanelRingClass}${extraClassName ? ` ${extraClassName}` : ''}`}
       style={style}
       onDragOver={(e) => onPanelDragOver(e, panelKey)}
       onDrop={(e) => onPanelDrop(e, panelKey)}
