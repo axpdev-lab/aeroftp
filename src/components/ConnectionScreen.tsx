@@ -527,6 +527,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const selectedProvider = selectedProviderId ? getProviderById(selectedProviderId) : null;
     const megaMode = getMegaConnectionMode(connectionParams.options);
     const isMegaCmdMode = megaMode === 'megacmd';
+    const activeProviderId = connectionParams.providerId || selectedProviderId || undefined;
+    const isMegaCmdStorage =
+        (protocol === 'mega' && isMegaCmdMode) ||
+        (protocol === 'webdav' && (activeProviderId === 'megacmd' || activeProviderId === 'megacmd-webdav'));
 
     // Protocol selector open state (to hide form when selector is open)
     const [isProtocolSelectorOpen, setIsProtocolSelectorOpen] = useState(false);
@@ -1927,7 +1931,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     noise there. */}
                 {!providerServesQuota(
                     connectionParams.protocol,
-                    connectionParams.providerId,
+                    activeProviderId,
                     connectionParams.server,
                 ) && (
                 <div>
@@ -1959,11 +1963,14 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
                         {t('connection.manualTotalStorageHint')}
                     </p>
-                    {/* Item 4b opt-in: auto-run the recursive used-storage
-                        scan on connect for no-quota backends. Default OFF so
-                        a huge tree (web project on FTP) is not walked on
-                        every connect unless the user asked for it. */}
-                    <div className="mt-2.5">
+                </div>
+                )}
+                {(!providerServesQuota(
+                    connectionParams.protocol,
+                    activeProviderId,
+                    connectionParams.server,
+                ) || isMegaCmdStorage) && (
+                    <div>
                         <Checkbox
                             checked={!!connectionParams.options?.autoScanUsedOnConnect}
                             onChange={(checked) => {
@@ -1979,10 +1986,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                             labelClassName="text-sm"
                         />
                         <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                            {t('connection.autoScanUsedOnConnectHint')}
+                            {isMegaCmdStorage
+                                ? t('connection.megacmdDfHint')
+                                : t('connection.autoScanUsedOnConnectHint')}
                         </p>
                     </div>
-                </div>
                 )}
                 {/* Action Buttons. Issue #215: mode switch in edit takes
                     over the footer with Save-as-new + Convert when the

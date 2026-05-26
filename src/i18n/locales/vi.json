@@ -272,7 +272,8 @@
             "profileConverted": "Đã chuyển đổi hồ sơ",
             "profileDuplicated": "Đã nhân bản hồ sơ",
             "convertUndone": "Đã khôi phục hồ sơ",
-            "undo": "Hoàn tác"
+            "undo": "Hoàn tác",
+            "megacmdDfHint": "MEGAcmd sử dụng trực tiếp mega-df để truy vấn dung lượng đã dùng và tổng dung lượng. Không cần ghi đè tổng dung lượng theo cách thủ công."
         },
         "browser": {
             "remote": "Từ xa",

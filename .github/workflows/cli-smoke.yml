@@ -173,11 +173,11 @@ jobs:
         env:
           CLI_BIN: ${{ matrix.cli_bin }}
         run: |
-          cat > smoke-test.aeroftp <<'EOF'
+          cat > smoke-test.aeroftp-script <<'EOF'
           SET host = example.com
           ECHO Host is $host
           EOF
-          "$CLI_BIN" batch smoke-test.aeroftp > /dev/null
+          "$CLI_BIN" batch smoke-test.aeroftp-script > /dev/null
 
       - name: Share link verify flag smoke
         working-directory: src-tauri

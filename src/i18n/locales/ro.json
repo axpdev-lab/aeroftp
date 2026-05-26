@@ -272,7 +272,8 @@
             "profileConverted": "Profil convertit",
             "profileDuplicated": "Profil duplicat",
             "convertUndone": "Profil restaurat",
-            "undo": "Anulează"
+            "undo": "Anulează",
+            "megacmdDfHint": "MEGAcmd folosește mega-df direct pentru a interoga spațiul utilizat și totalul. Suprascrierea manuală a totalului nu este necesară."
         },
         "browser": {
             "remote": "La distanță",

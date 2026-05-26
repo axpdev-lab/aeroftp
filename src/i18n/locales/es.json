@@ -272,7 +272,8 @@
             "profileConverted": "Perfil convertido",
             "profileDuplicated": "Perfil duplicado",
             "convertUndone": "Perfil restaurado",
-            "undo": "Deshacer"
+            "undo": "Deshacer",
+            "megacmdDfHint": "MEGAcmd utiliza mega-df directamente para consultar el almacenamiento usado y el total. No es necesaria la anulación manual del total."
         },
         "browser": {
             "remote": "Remoto",

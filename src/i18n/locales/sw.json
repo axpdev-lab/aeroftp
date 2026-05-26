@@ -272,7 +272,8 @@
             "profileConverted": "Wasifu umebadilishwa",
             "profileDuplicated": "Wasifu umenakiliwa",
             "convertUndone": "Wasifu umerejeshwa",
-            "undo": "Tendua"
+            "undo": "Tendua",
+            "megacmdDfHint": "MEGAcmd inatumia mega-df moja kwa moja kuuliza hifadhi iliyotumika na jumla. Kubadilisha jumla kwa mkono hakuhitajiki."
         },
         "browser": {
             "remote": "Mbali",

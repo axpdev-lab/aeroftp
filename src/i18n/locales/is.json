@@ -272,7 +272,8 @@
             "profileConverted": "Vistun umbreytt",
             "profileDuplicated": "Vistun afrituð",
             "convertUndone": "Vistun endurheimt",
-            "undo": "Afturkalla"
+            "undo": "Afturkalla",
+            "megacmdDfHint": "MEGAcmd notar mega-df beint til að fyrirspyrja notaða og heildargeymslu. Ekki er þörf á handvirkri yfirfærslu á heildinni."
         },
         "browser": {
             "remote": "Fjartengdur",

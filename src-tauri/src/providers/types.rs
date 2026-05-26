@@ -394,7 +394,7 @@ pub struct WebDavConfig {
     pub username: String,
     pub password: secrecy::SecretString,
     pub initial_path: Option<String>,
-    /// Optional saved-profile preset id (`nextcloud`, `koofr`, ...).
+    /// Optional saved-profile preset id (`nextcloud`, `koofr`, `megacmd`, ...).
     ///
     /// This is more reliable than URL inspection for self-hosted profiles
     /// whose URL is a bare cloud hostname and whose DAV root is carried in
@@ -468,6 +468,7 @@ impl WebDavConfig {
             .extra
             .get("provider_id")
             .or_else(|| config.extra.get("providerId"))
+            .or_else(|| config.extra.get(super::mega_df::PROVIDER_ID_META_KEY))
             .map(|p| p.trim().to_string())
             .filter(|p| !p.is_empty());
 

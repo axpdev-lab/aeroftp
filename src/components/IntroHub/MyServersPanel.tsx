@@ -35,6 +35,23 @@ const HEALTH_SCAN_CHUNK_DELAY_MS = 180;
 const DRAG_SENTINEL_TOP = -1;
 const DRAG_SENTINEL_BOTTOM = -2;
 
+// Pre-allocated lucide-react icon elements for the right-click context menu.
+// Without these constants the menu allocates a fresh JSX element per item per
+// right-click. Not a hot path on its own but it stacks with the other
+// per-render allocations on the My Servers screen (issue #221).
+const MENU_ICON_CONNECT      = <Play size={14} />;
+const MENU_ICON_DISCONNECT   = <LogOut size={14} className="text-amber-500" />;
+const MENU_ICON_EDIT         = <Edit2 size={14} />;
+const MENU_ICON_RENAME       = <PencilLine size={14} />;
+const MENU_ICON_COPY         = <Copy size={14} />;
+const MENU_ICON_FAVORITE     = <Star size={14} />;
+const MENU_ICON_CROSS_SRC    = <ArrowUpRight size={14} className="text-indigo-500" />;
+const MENU_ICON_CROSS_DEST   = <ArrowDownLeft size={14} className="text-emerald-500" />;
+const MENU_ICON_HEALTH       = <Activity size={14} />;
+const MENU_ICON_SPEED        = <Gauge size={14} />;
+const MENU_ICON_MOUNT        = <HardDrive size={14} />;
+const MENU_ICON_DELETE       = <Trash2 size={14} />;
+
 /** Load credential from vault with retry if store not ready */
 const getCredentialWithRetry = async (account: string, maxRetries = 3): Promise<string> => {
     for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -559,20 +576,26 @@ export function MyServersPanel({
         }
     }, [dragIdx]);
 
-    const handleDragStart = useCallback((idx: number) => (e: React.DragEvent) => {
+    // Drag handlers used to be higher-order functions (`(idx) => (e) => ...`),
+    // which produced a fresh closure per card per render and silently
+    // defeated the `React.memo()` on `ServerCard` and `MyServersTableRow`.
+    // They now take `(idx, e)` as a single signature, so the parent passes
+    // a stable reference and the children rebind to their own row index
+    // internally via `useCallback`. See issue #221.
+    const handleDragStart = useCallback((idx: number, e: React.DragEvent) => {
         setDragIdx(idx);
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/plain', idx.toString());
     }, []);
 
-    const handleDragEnter = useCallback((idx: number) => (e: React.DragEvent) => {
+    const handleDragEnter = useCallback((idx: number, e: React.DragEvent) => {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
         maybeAutoScrollWhileDrag(e.clientY);
         setOverIdx(idx);
     }, [maybeAutoScrollWhileDrag]);
 
-    const handleDragOver = useCallback((idx: number) => (e: React.DragEvent) => {
+    const handleDragOver = useCallback((idx: number, e: React.DragEvent) => {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
         maybeAutoScrollWhileDrag(e.clientY);
@@ -585,7 +608,7 @@ export function MyServersPanel({
     // complains about temporal dead zone access.
     const insertEdgesRef = useRef({ insertStartIdx: 0, insertEndIdx: 0 });
 
-    const handleDrop = useCallback((idx: number) => (e: React.DragEvent) => {
+    const handleDrop = useCallback((idx: number, e: React.DragEvent) => {
         e.preventDefault();
         if (dragIdx === null) { setDragIdx(null); setOverIdx(null); return; }
         const { insertStartIdx: insStart, insertEndIdx: insEnd } = insertEdgesRef.current;
@@ -627,11 +650,38 @@ export function MyServersPanel({
         return () => window.removeEventListener('keydown', onKeyDown);
     }, [dragIdx]);
 
+    // Pre-compute lowercased search blobs keyed by server id. Without this
+    // cache `getServerSearchText` (which builds a string from 5 server
+    // fields) ran on every server on every keystroke, multiplying string
+    // allocations and LowerCase work needlessly. Issue #221.
+    const serverSearchTexts = useMemo(
+        () => new Map(servers.map(s => [s.id, getServerSearchText(s)])),
+        [servers],
+    );
+
+    // O(1) lookup for "where does this server sit in the full `servers`
+    // array". Replaces O(N) `findIndex` calls inside per-card render,
+    // which compounded to O(N^2) on every parent re-render. Issue #221.
+    const serverIndexMap = useMemo(
+        () => new Map(servers.map((s, i) => [s.id, i])),
+        [servers],
+    );
+
+    // O(1) lookup for the cross-profile selection role of a given server.
+    // Replaces a per-card `Array.indexOf` over `crossProfileSelection`.
+    // Issue #221.
+    const crossProfileRoleMap = useMemo((): Map<string, 'source' | 'destination'> => {
+        const m = new Map<string, 'source' | 'destination'>();
+        if (crossProfileSelection[0]) m.set(crossProfileSelection[0], 'source');
+        if (crossProfileSelection[1]) m.set(crossProfileSelection[1], 'destination');
+        return m;
+    }, [crossProfileSelection]);
+
     const filteredServers = useMemo(() => {
         let result = servers;
         if (searchQuery.trim()) {
             const q = searchQuery.toLowerCase();
-            result = result.filter((server) => getServerSearchText(server).includes(q));
+            result = result.filter((server) => (serverSearchTexts.get(server.id) ?? '').includes(q));
         }
         if (activeFilter === 'favorites') {
             result = result.filter(s => favorites.has(s.id));
@@ -642,18 +692,17 @@ export function MyServersPanel({
             }
         }
         return result;
-    }, [servers, searchQuery, activeFilter, favorites]);
+    }, [servers, searchQuery, activeFilter, favorites, serverSearchTexts]);
 
     const { insertStartIdx, insertEndIdx } = useMemo(() => {
         if (filteredServers.length === 0) {
             return { insertStartIdx: 0, insertEndIdx: servers.length };
         }
-        const firstVisible = servers.findIndex((s) => s.id === filteredServers[0].id);
-        const lastVisible = servers.findIndex((s) => s.id === filteredServers[filteredServers.length - 1].id);
-        const safeFirst = firstVisible >= 0 ? firstVisible : 0;
-        const safeLast = lastVisible >= 0 ? lastVisible : Math.max(servers.length - 1, 0);
-        return { insertStartIdx: safeFirst, insertEndIdx: safeLast + 1 };
-    }, [filteredServers, servers]);
+        const firstVisible = serverIndexMap.get(filteredServers[0].id) ?? 0;
+        const lastVisible = serverIndexMap.get(filteredServers[filteredServers.length - 1].id)
+            ?? Math.max(servers.length - 1, 0);
+        return { insertStartIdx: firstVisible, insertEndIdx: lastVisible + 1 };
+    }, [filteredServers, servers, serverIndexMap]);
 
     // Keep the drop-handler ref in sync with the memoized edges.
     useEffect(() => {
@@ -1064,7 +1113,7 @@ export function MyServersPanel({
         const isFav = favorites.has(server.id);
         const hasActiveSession = activeProfileIds?.has(server.id) ?? false;
         const items: ContextMenuItem[] = [
-            { label: t('common.connect'), icon: <Play size={14} />, action: () => handleConnect(server) },
+            { label: t('common.connect'), icon: MENU_ICON_CONNECT, action: () => handleConnect(server) },
         ];
         if (hasActiveSession && onDisconnectProfile) {
             // Issue #222: Disconnect entry surfaces only when at least one
@@ -1072,39 +1121,39 @@ export function MyServersPanel({
             // the actual connection state instead of showing a no-op entry.
             items.push({
                 label: t('common.disconnect'),
-                icon: <LogOut size={14} className="text-amber-500" />,
+                icon: MENU_ICON_DISCONNECT,
                 action: () => { void onDisconnectProfile(server.id); },
             });
         }
         items.push(
-            { label: t('common.edit'), icon: <Edit2 size={14} />, action: () => onEdit(server) },
-            { label: t('introHub.renameWithHotkey'), icon: <PencilLine size={14} />, action: () => handleRenameStart(server) },
-            { label: t('common.copy'), icon: <Copy size={14} />, action: () => handleDuplicate(server) },
-            { label: isFav ? t('introHub.removeFavorite') : t('introHub.addFavorite'), icon: <Star size={14} />, action: () => toggleFavorite(server.id) },
+            { label: t('common.edit'), icon: MENU_ICON_EDIT, action: () => onEdit(server) },
+            { label: t('introHub.renameWithHotkey'), icon: MENU_ICON_RENAME, action: () => handleRenameStart(server) },
+            { label: t('common.copy'), icon: MENU_ICON_COPY, action: () => handleDuplicate(server) },
+            { label: isFav ? t('introHub.removeFavorite') : t('introHub.addFavorite'), icon: MENU_ICON_FAVORITE, action: () => toggleFavorite(server.id) },
         );
         if (onOpenCrossProfile && servers.length > 1) {
             items.push({
                 label: t('introHub.setAsCrossProfileSource'),
-                icon: <ArrowUpRight size={14} className="text-indigo-500" />,
+                icon: MENU_ICON_CROSS_SRC,
                 action: () => setAsCrossProfileSource(server.id),
                 divider: true,
             });
             items.push({
                 label: t('introHub.setAsCrossProfileDestination'),
-                icon: <ArrowDownLeft size={14} className="text-emerald-500" />,
+                icon: MENU_ICON_CROSS_DEST,
                 action: () => setAsCrossProfileDestination(server.id),
             });
         }
         items.push(
-            { label: t('healthCheck.title'), icon: <Activity size={14} />, action: () => setHealthCheckTarget(server.id), divider: true },
+            { label: t('healthCheck.title'), icon: MENU_ICON_HEALTH, action: () => setHealthCheckTarget(server.id), divider: true },
             {
                 label: t('speedTest.title'),
-                icon: <Gauge size={14} />,
+                icon: MENU_ICON_SPEED,
                 action: () => setSpeedTestTarget(server.id),
                 disabled: !supportsSpeedTest(server),
             },
-            { label: t('mountManager.openMountAction'), icon: <HardDrive size={14} />, action: () => handleOpenMount(server) },
-            { label: t('common.delete'), icon: <Trash2 size={14} />, action: () => handleDelete(server), danger: true },
+            { label: t('mountManager.openMountAction'), icon: MENU_ICON_MOUNT, action: () => handleOpenMount(server) },
+            { label: t('common.delete'), icon: MENU_ICON_DELETE, action: () => handleDelete(server), danger: true },
         );
         showContextMenu(e, items);
     }, [t, handleConnect, onEdit, handleDuplicate, handleDelete, handleRenameStart, toggleFavorite, favorites, showContextMenu, onOpenCrossProfile, setAsCrossProfileSource, setAsCrossProfileDestination, servers.length, handleOpenMount, activeProfileIds, onDisconnectProfile]);
@@ -1210,18 +1259,17 @@ export function MyServersPanel({
                         {canDrag && dragIdx !== null && (
                             <div
                                 className={`col-span-full h-6 rounded-md border-2 border-dashed transition-colors ${overIdx === DRAG_SENTINEL_TOP ? 'border-blue-500 bg-blue-100/60 dark:bg-blue-900/30' : 'border-transparent'}`}
-                                onDragEnter={handleDragEnter(DRAG_SENTINEL_TOP)}
-                                onDragOver={handleDragOver(DRAG_SENTINEL_TOP)}
-                                onDrop={handleDrop(DRAG_SENTINEL_TOP)}
+                                onDragEnter={(e) => handleDragEnter(DRAG_SENTINEL_TOP, e)}
+                                onDragOver={(e) => handleDragOver(DRAG_SENTINEL_TOP, e)}
+                                onDrop={(e) => handleDrop(DRAG_SENTINEL_TOP, e)}
                             />
                         )}
                         {filteredServers.map((server) => {
                             // Resolve the real index in the full `servers` array so drag-reorder
-                            // works correctly even with a filter or search applied.
-                            const realIdx = servers.findIndex(s => s.id === server.id);
-                            const selectionIndex = crossProfileSelection.indexOf(server.id);
-                            const selectionRole: 'source' | 'destination' | null =
-                                selectionIndex === 0 ? 'source' : selectionIndex === 1 ? 'destination' : null;
+                            // works correctly even with a filter or search applied. O(1) via the
+                            // pre-computed maps (issue #221) instead of per-card linear scans.
+                            const realIdx = serverIndexMap.get(server.id) ?? -1;
+                            const selectionRole = crossProfileRoleMap.get(server.id) ?? null;
                             // Always read the cached status: in detailed layout it
                             // drives the 16px radial; in compact it powers the small
                             // overlay dot on the icon (T-HEALTH-CIRCLES).
@@ -1248,10 +1296,11 @@ export function MyServersPanel({
                                     isDraggable={canDrag}
                                     isDragging={dragIdx === realIdx}
                                     isDragTarget={overIdx === realIdx && dragIdx !== null && dragIdx !== realIdx}
-                                    onDragStart={canDrag ? handleDragStart(realIdx) : undefined}
-                                    onDragEnter={canDrag ? handleDragEnter(realIdx) : undefined}
-                                    onDragOver={canDrag ? handleDragOver(realIdx) : undefined}
-                                    onDrop={canDrag ? handleDrop(realIdx) : undefined}
+                                    dragIndex={realIdx}
+                                    onDragStart={canDrag ? handleDragStart : undefined}
+                                    onDragEnter={canDrag ? handleDragEnter : undefined}
+                                    onDragOver={canDrag ? handleDragOver : undefined}
+                                    onDrop={canDrag ? handleDrop : undefined}
                                     onDragEnd={canDrag ? handleDragEnd : undefined}
                                     selectionRole={selectionRole}
                                     onSelect={servers.length > 1 ? handleSelectServer : undefined}
@@ -1266,9 +1315,9 @@ export function MyServersPanel({
                         {canDrag && dragIdx !== null && (
                             <div
                                 className={`col-span-full h-6 rounded-md border-2 border-dashed transition-colors ${overIdx === DRAG_SENTINEL_BOTTOM ? 'border-blue-500 bg-blue-100/60 dark:bg-blue-900/30' : 'border-transparent'}`}
-                                onDragEnter={handleDragEnter(DRAG_SENTINEL_BOTTOM)}
-                                onDragOver={handleDragOver(DRAG_SENTINEL_BOTTOM)}
-                                onDrop={handleDrop(DRAG_SENTINEL_BOTTOM)}
+                                onDragEnter={(e) => handleDragEnter(DRAG_SENTINEL_BOTTOM, e)}
+                                onDragOver={(e) => handleDragOver(DRAG_SENTINEL_BOTTOM, e)}
+                                onDrop={(e) => handleDrop(DRAG_SENTINEL_BOTTOM, e)}
                             />
                         )}
                     </div>
@@ -1289,9 +1338,9 @@ export function MyServersPanel({
                     {canDrag && dragIdx !== null && (
                         <div
                             className={`mx-2 mt-2 h-5 rounded-md border-2 border-dashed transition-colors ${overIdx === DRAG_SENTINEL_TOP ? 'border-blue-500 bg-blue-100/60 dark:bg-blue-900/30' : 'border-transparent'}`}
-                            onDragEnter={handleDragEnter(DRAG_SENTINEL_TOP)}
-                            onDragOver={handleDragOver(DRAG_SENTINEL_TOP)}
-                            onDrop={handleDrop(DRAG_SENTINEL_TOP)}
+                            onDragEnter={(e) => handleDragEnter(DRAG_SENTINEL_TOP, e)}
+                            onDragOver={(e) => handleDragOver(DRAG_SENTINEL_TOP, e)}
+                            onDrop={(e) => handleDrop(DRAG_SENTINEL_TOP, e)}
                         />
                     )}
                     <MyServersTable
@@ -1334,9 +1383,9 @@ export function MyServersPanel({
                     {canDrag && dragIdx !== null && (
                         <div
                             className={`mx-2 mb-2 h-5 rounded-md border-2 border-dashed transition-colors ${overIdx === DRAG_SENTINEL_BOTTOM ? 'border-blue-500 bg-blue-100/60 dark:bg-blue-900/30' : 'border-transparent'}`}
-                            onDragEnter={handleDragEnter(DRAG_SENTINEL_BOTTOM)}
-                            onDragOver={handleDragOver(DRAG_SENTINEL_BOTTOM)}
-                            onDrop={handleDrop(DRAG_SENTINEL_BOTTOM)}
+                            onDragEnter={(e) => handleDragEnter(DRAG_SENTINEL_BOTTOM, e)}
+                            onDragOver={(e) => handleDragOver(DRAG_SENTINEL_BOTTOM, e)}
+                            onDrop={(e) => handleDrop(DRAG_SENTINEL_BOTTOM, e)}
                         />
                     )}
                     </div>

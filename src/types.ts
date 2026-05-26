@@ -182,6 +182,7 @@ export const providerServesQuota = (
   if (isNativeApiProtocol(protocol)) return true;
   if (protocol === "webdav") {
     const host = (server || "").toLowerCase();
+    if (providerId === "megacmd" || providerId === "megacmd-webdav") return true;
     if (providerId === "koofr" || host.includes("koofr")) return true;
     if (
       providerId === "opendrive-webdav" ||

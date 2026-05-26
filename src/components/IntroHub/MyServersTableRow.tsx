@@ -44,10 +44,14 @@ interface MyServersTableRowProps {
     isDraggable?: boolean;
     isDragging?: boolean;
     isDragTarget?: boolean;
-    onDragStart?: (e: React.DragEvent) => void;
-    onDragEnter?: (e: React.DragEvent) => void;
-    onDragOver?: (e: React.DragEvent) => void;
-    onDrop?: (e: React.DragEvent) => void;
+    /** Position of this row in the parent's `servers` array. Lets the row
+     *  bind the four parent drag callbacks to its own index without
+     *  forcing the parent to re-curry on every render (issue #221). */
+    dragIndex?: number;
+    onDragStart?: (idx: number, e: React.DragEvent) => void;
+    onDragEnter?: (idx: number, e: React.DragEvent) => void;
+    onDragOver?: (idx: number, e: React.DragEvent) => void;
+    onDrop?: (idx: number, e: React.DragEvent) => void;
     onDragEnd?: () => void;
     dragDisabledTitle?: string;
     selectionRole?: 'source' | 'destination' | null;
@@ -85,6 +89,7 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
     isDraggable,
     isDragging,
     isDragTarget,
+    dragIndex,
     onDragStart,
     onDragEnter,
     onDragOver,
@@ -115,6 +120,27 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
     const handleMouseEnter = onHoverChange ? () => onHoverChange(server) : undefined;
     const handleMouseLeave = onHoverChange ? () => onHoverChange(null) : undefined;
     const handleRetry = onRetryHealth ? () => onRetryHealth(server) : undefined;
+
+    // Bind the parent's stable `(idx, e) => void` drag callbacks to this
+    // row's `dragIndex` so the bound references survive parent re-renders.
+    // This is what restores the `React.memo()` skip on rows whose own data
+    // did not change (issue #221).
+    const handleRowDragStart = React.useCallback(
+        (e: React.DragEvent) => { if (typeof dragIndex === 'number') onDragStart?.(dragIndex, e); },
+        [onDragStart, dragIndex],
+    );
+    const handleRowDragEnter = React.useCallback(
+        (e: React.DragEvent) => { if (typeof dragIndex === 'number') onDragEnter?.(dragIndex, e); },
+        [onDragEnter, dragIndex],
+    );
+    const handleRowDragOver = React.useCallback(
+        (e: React.DragEvent) => { if (typeof dragIndex === 'number') onDragOver?.(dragIndex, e); },
+        [onDragOver, dragIndex],
+    );
+    const handleRowDrop = React.useCallback(
+        (e: React.DragEvent) => { if (typeof dragIndex === 'number') onDrop?.(dragIndex, e); },
+        [onDrop, dragIndex],
+    );
     const radialTitle = healthStatus
         ? t(`introHub.health.${healthStatus}`)
             + (healthLatencyMs && healthStatus !== 'pending' && healthStatus !== 'down' ? ` · ${healthLatencyMs}ms` : '')
@@ -241,7 +267,7 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
                         // area generous (whole index column) without nesting a
                         // tiny div inside. The tr keeps drop-side handlers.
                         draggable={isDraggable}
-                        onDragStart={isDraggable ? onDragStart : undefined}
+                        onDragStart={isDraggable && onDragStart ? handleRowDragStart : undefined}
                         onDragEnd={isDraggable ? onDragEnd : undefined}
                         className={`${cellClass} text-right text-[11px] tabular-nums text-gray-400 dark:text-gray-500 ${isDraggable ? 'cursor-grab active:cursor-grabbing' : ''}`}
                         title={dragDisabledTitle || (isDraggable ? t('introHub.table.dragToReorder') : undefined)}
@@ -422,9 +448,9 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
             // in the index cell (WebKitGTK doesn't reliably fire dragstart on
             // <tr>). The row keeps the drop-side handlers so users can drop
             // anywhere along the row.
-            onDragEnter={onDragEnter}
-            onDragOver={onDragOver}
-            onDrop={onDrop}
+            onDragEnter={onDragEnter ? handleRowDragEnter : undefined}
+            onDragOver={onDragOver ? handleRowDragOver : undefined}
+            onDrop={onDrop ? handleRowDrop : undefined}
             onClick={handleRowClick}
             onContextMenu={(e) => onContextMenu?.(e, server)}
             onMouseEnter={handleMouseEnter}
