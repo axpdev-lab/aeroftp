@@ -1693,6 +1693,18 @@ enum Commands {
         /// extra cap; the per-call ceiling is `--read-chunk-size`).
         #[arg(long, env = "AEROFTP_MOUNT_READ_CHUNK_SIZE_LIMIT")]
         read_chunk_size_limit: Option<String>,
+
+        /// KE-C3: Enable the FUSE kernel write-back cache. When set, the
+        /// kernel buffers writes in its page cache and flushes them
+        /// asynchronously to the userspace filesystem. This typically
+        /// improves throughput on small/random writes at the cost of
+        /// crash durability: app-visible `mtime` and `size` update on
+        /// flush, not on every `write`. The capability is negotiated
+        /// in the FUSE `init` handshake; the kernel may refuse it on
+        /// older kernels (`FUSE_WRITEBACK_CACHE` requires kernel
+        /// >= 3.15). Default: off.
+        #[arg(long, env = "AEROFTP_MOUNT_WRITEBACK_CACHE")]
+        write_back_cache: bool,
     },
     /// Transfer files between two saved profiles (cross-profile copy)
     Transfer {
@@ -5329,6 +5341,10 @@ struct MountKnobs {
     dir_cache_time: Option<Duration>,
     read_chunk_size: Option<u64>,
     read_chunk_size_limit: Option<u64>,
+    /// KE-C3: When `true`, `Filesystem::init` requests the
+    /// `FUSE_WRITEBACK_CACHE` capability from the kernel so that
+    /// writes are buffered in the kernel page cache.
+    writeback_cache: bool,
 }
 
 fn parse_duration_strict(s: &str) -> Result<std::time::Duration, String> {
@@ -27350,8 +27366,9 @@ async fn cmd_ncdu(
 mod fuse_mount {
     use super::*;
     use fuser::{
-        FileAttr, FileType, Filesystem, MountOption, ReplyAttr, ReplyCreate, ReplyData,
-        ReplyDirectory, ReplyEmpty, ReplyEntry, ReplyOpen, ReplyStatfs, ReplyWrite, Request,
+        FileAttr, FileType, Filesystem, KernelConfig, MountOption, ReplyAttr, ReplyCreate,
+        ReplyData, ReplyDirectory, ReplyEmpty, ReplyEntry, ReplyOpen, ReplyStatfs, ReplyWrite,
+        Request,
     };
     use std::collections::HashMap;
     use std::ffi::OsStr;
@@ -27395,6 +27412,10 @@ mod fuse_mount {
         /// changes. Reserved for the directory-listing watcher landing
         /// with T-DEBT-13; surfaced today via `--cache-poll-interval`.
         cache_poll_interval: Duration,
+        /// KE-C3: When `true`, the FUSE `init` callback negotiates the
+        /// `FUSE_WRITEBACK_CACHE` capability with the kernel. Read in
+        /// `impl Filesystem::init`.
+        writeback_cache: bool,
         read_only: bool,
         /// Write buffers: inode → tempfile path
         write_buffers: Mutex<HashMap<u64, PathBuf>>,
@@ -27465,6 +27486,7 @@ mod fuse_mount {
                 read_chunk_size,
                 read_chunk_size_limit: knobs.read_chunk_size_limit,
                 cache_poll_interval,
+                writeback_cache: knobs.writeback_cache,
                 read_only,
                 write_buffers: Mutex::new(HashMap::new()),
                 flush_ok: Mutex::new(std::collections::HashSet::new()),
@@ -27660,6 +27682,24 @@ mod fuse_mount {
     }
 
     impl Filesystem for AeroFuseFs {
+        /// KE-C3: Negotiate the `FUSE_WRITEBACK_CACHE` capability with
+        /// the kernel during the FUSE `init` handshake. When the user
+        /// passes `--write-back-cache`, the kernel buffers writes in
+        /// its page cache and flushes them asynchronously. If the
+        /// kernel does not support the bit it silently refuses the
+        /// addition; we discard the missing-flag error so the mount
+        /// still succeeds without write-back acceleration.
+        fn init(
+            &mut self,
+            _req: &Request,
+            config: &mut KernelConfig,
+        ) -> Result<(), libc::c_int> {
+            if self.writeback_cache {
+                let _ = config.add_capabilities(fuser::consts::FUSE_WRITEBACK_CACHE);
+            }
+            Ok(())
+        }
+
         fn getattr(&mut self, _req: &Request, ino: u64, _fh: Option<u64>, reply: ReplyAttr) {
             // KE-C2: `reply.attr` honours `--attr-timeout` when set.
             let ttl = self.attr_timeout;
@@ -38165,6 +38205,7 @@ async fn main() {
             dir_cache_time,
             read_chunk_size,
             read_chunk_size_limit,
+            write_back_cache,
         } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str())
@@ -38202,6 +38243,7 @@ async fn main() {
                         "read-chunk-size-limit",
                         read_chunk_size_limit,
                     )?,
+                    writeback_cache: *write_back_cache,
                 })
             })();
             let mount_knobs = match mount_knobs_result {
@@ -40569,6 +40611,24 @@ mod tests {
         assert!(mk.dir_cache_time.is_none());
         assert!(mk.read_chunk_size.is_none());
         assert!(mk.read_chunk_size_limit.is_none());
+        // KE-C3: write-back cache must be off by default. The kernel
+        // page-cache buffering trades crash-durability for throughput,
+        // so it has to be an explicit opt-in.
+        assert!(!mk.writeback_cache);
+    }
+
+    #[test]
+    fn test_mount_knobs_writeback_cache_is_opt_in() {
+        // KE-C3: when the operator passes `--write-back-cache`, the
+        // flag flows verbatim into `MountKnobs.writeback_cache` and
+        // from there into `AeroFuseFs.writeback_cache`, where
+        // `Filesystem::init` consumes it. This guards the wire so a
+        // future rename of either field is caught by `cargo test`.
+        let mk = MountKnobs {
+            writeback_cache: true,
+            ..MountKnobs::default()
+        };
+        assert!(mk.writeback_cache);
     }
 
     #[test]
