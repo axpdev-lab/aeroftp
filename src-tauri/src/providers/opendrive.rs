@@ -1134,6 +1134,7 @@ impl OpenDriveProvider {
                         ("session_id", this.session_id.clone()),
                         ("folder_id", folder_id),
                         ("folder_is_public", folder_is_public),
+                        ("with_child_files", "true".to_string()),
                     ],
                 )
                 .await
