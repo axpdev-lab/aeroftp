@@ -15,17 +15,30 @@
 use async_trait::async_trait;
 use reqwest::header::{HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE};
 use secrecy::ExposeSecret;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tracing::{info, warn};
 
 use super::{
-    sanitize_api_error, DrimeCloudConfig, FileVersion, ProviderError, ProviderType, RemoteEntry,
-    ShareLinkCapabilities, ShareLinkInfo, ShareLinkOptions, ShareLinkResult, StorageInfo,
-    StorageProvider,
+    sanitize_api_error, DrimeCloudConfig, FileVersion, MultipartHandle, ProviderError, ProviderType,
+    RemoteEntry, ShareLinkCapabilities, ShareLinkInfo, ShareLinkOptions, ShareLinkResult,
+    StorageInfo, StorageProvider, UploadedPart,
 };
 
 const API_BASE: &str = "https://app.drime.cloud/api/v1";
+
+/// Drime chunked-upload size threshold (S3-T12).
+///
+/// Matches the legacy `MULTIPART_THRESHOLD` in `upload()`: 5 MiB is the
+/// per-S3-part minimum the upstream protocol expects.
+const DRIME_MULTIPART_THRESHOLD: u64 = 5 * 1024 * 1024;
+
+/// Drime chunked-upload preferred part size (S3-T12).
+///
+/// Matches the `CHUNK_SIZE` used by `upload_multipart`. 5 MiB is the
+/// minimum part size Drime's S3-compatible backend accepts (per AWS S3
+/// rules; only the final part may be smaller).
+const DRIME_MULTIPART_PART_SIZE: u64 = 5 * 1024 * 1024;
 
 fn drime_log(msg: &str) {
     info!("[DRIME] {}", msg);
@@ -107,6 +120,55 @@ struct DrimeSignedUrl {
 #[derive(Debug, Deserialize)]
 struct DrimeSignPartUrlsResponse {
     urls: Option<Vec<DrimeSignedUrl>>,
+}
+
+/// Side-band metadata embedded in `MultipartHandle.upload_id` for the
+/// Drime Cloud S3-multipart trait wiring (S3-T12). The signed PUT URLs
+/// are all pre-fetched in `begin_multipart_upload` so the upload_part
+/// fan-out doesn't need to round-trip through the Drime API per chunk.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct DrimeMultipartMeta {
+    key: String,
+    upload_id: String,
+    parent_id: String,
+    filename: String,
+    mime: String,
+    extension: String,
+    total: u64,
+    part: u64,
+    total_parts: u32,
+    /// Pre-signed PUT URLs by 1-based part number.
+    signed_urls: Vec<(u32, String)>,
+}
+
+impl DrimeMultipartMeta {
+    fn encode(&self) -> String {
+        serde_json::to_string(self).unwrap_or_default()
+    }
+
+    fn decode(raw: &str) -> Result<Self, ProviderError> {
+        serde_json::from_str(raw).map_err(|e| {
+            ProviderError::Other(format!("Drime multipart handle decode failed: {}", e))
+        })
+    }
+
+    fn url_for(&self, part_number: u32) -> Option<&str> {
+        self.signed_urls
+            .iter()
+            .find(|(n, _)| *n == part_number)
+            .map(|(_, u)| u.as_str())
+    }
+}
+
+/// Compute the per-chunk size the runner should slice `total` bytes into.
+fn drime_runner_part_size(total: u64) -> u64 {
+    DRIME_MULTIPART_PART_SIZE.min(total.max(1))
+}
+
+/// Total chunks formula matching the S3 multipart contract.
+fn drime_total_parts(total: u64, part: u64) -> u32 {
+    let raw = total.div_ceil(part.max(1)).max(1);
+    raw.min(u32::MAX as u64) as u32
 }
 
 // ─── Share Link Response ─────────────────────────────────────────────────
@@ -2018,6 +2080,370 @@ impl StorageProvider for DrimeCloudProvider {
 
         Ok(versions)
     }
+
+    fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
+        super::TransferOptimizationHints {
+            supports_multipart: true,
+            multipart_threshold: DRIME_MULTIPART_THRESHOLD,
+            multipart_part_size: DRIME_MULTIPART_PART_SIZE,
+            // Drime's S3-compatible backend takes independent PUT
+            // requests against the per-part signed URLs in parallel.
+            // 4 matches the AIMD default budget the runner ships with.
+            multipart_max_parallel: 4,
+            supports_resume_download: true,
+            supports_resume_upload: true,
+            supports_server_checksum: true,
+            preferred_checksum_algo: Some("etag".to_string()),
+            ..Default::default()
+        }
+    }
+
+    // Shaped-graph multipart trait wiring (S3-T12).
+    //
+    // Drime's S3 multipart protocol maps onto the trait as:
+    //   1. `begin_multipart_upload` → POST `/s3/multipart/create` returns
+    //      `key` + `uploadId`. We then POST `/s3/multipart/batch-sign-part-urls`
+    //      for every chunk number so the trait handle can carry pre-signed
+    //      PUT URLs and `upload_part` doesn't need to round-trip the Drime
+    //      API per chunk.
+    //   2. `upload_part` → PUT the matching signed URL with the chunk body;
+    //      Drime echoes the S3 ETag in the response header.
+    //   3. `complete_multipart_upload` → POST `/s3/multipart/complete` with
+    //      `[{PartNumber, ETag}]` then POST `/s3/entries` to register the
+    //      file inside Drime's tree. Both calls are required; without the
+    //      second the bytes land on S3 but never appear in the UI.
+    //   4. `abort_multipart_upload` → POST `/s3/multipart/abort` best-effort.
+    //
+    // Drime is `dev-only, disabled in release` (see CLAUDE.md "Completato
+    // in v2.6.0"), but the trait wiring is built unconditionally so the
+    // runner has the right shape once the gate flips.
+    async fn begin_multipart_upload(
+        &mut self,
+        remote_path: &str,
+        total_size: u64,
+        _content_type: Option<&str>,
+        _local_source_path: Option<&str>,
+    ) -> Result<MultipartHandle, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        if total_size == 0 {
+            return Err(ProviderError::Other(
+                "Drime multipart upload requires non-zero total_size".to_string(),
+            ));
+        }
+
+        let resolved = self.resolve_path(remote_path);
+        let (parent_path, filename) = Self::split_path(&resolved);
+        if filename.is_empty() {
+            return Err(ProviderError::InvalidPath("Missing file name".into()));
+        }
+        let parent_id = self.resolve_folder_id(parent_path).await?;
+        let part = drime_runner_part_size(total_size);
+        let total_parts = drime_total_parts(total_size, part);
+
+        let extension = filename.rsplit('.').next().unwrap_or("bin").to_string();
+        let mime = mime_guess::from_ext(&extension)
+            .first_or_octet_stream()
+            .to_string();
+
+        // Step 1: create multipart session.
+        let mut create_json = serde_json::json!({
+            "filename": filename,
+            "mime": mime,
+            "size": total_size,
+            "extension": extension,
+            "workspaceId": 0,
+        });
+        if !parent_id.is_empty() {
+            create_json["parentId"] =
+                serde_json::json!(parent_id.parse::<i64>().unwrap_or(0));
+        }
+
+        let resp = self
+            .client
+            .post(Self::api_url("/s3/multipart/create"))
+            .header(AUTHORIZATION, self.auth_header()?)
+            .header(CONTENT_TYPE, "application/json")
+            .body(create_json.to_string())
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(format!("Multipart create failed: {}", e)))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::ServerError(format!(
+                "Drime multipart create failed ({}): {}",
+                status,
+                sanitize_api_error(&body)
+            )));
+        }
+
+        let create_resp: DrimeMultipartCreateResponse = resp.json().await.map_err(|e| {
+            ProviderError::ParseError(format!("Parse multipart create: {}", e))
+        })?;
+        let key = create_resp
+            .key
+            .ok_or_else(|| ProviderError::ServerError("Drime: missing key".into()))?;
+        let upload_id = create_resp
+            .upload_id
+            .ok_or_else(|| ProviderError::ServerError("Drime: missing uploadId".into()))?;
+
+        // Step 2: batch-sign every part URL up front so upload_part
+        // doesn't have to round-trip per chunk.
+        let part_numbers: Vec<u32> = (1..=total_parts).collect();
+        let sign_body = serde_json::json!({
+            "key": key,
+            "uploadId": upload_id,
+            "partNumbers": part_numbers,
+        });
+        let resp = self
+            .client
+            .post(Self::api_url("/s3/multipart/batch-sign-part-urls"))
+            .header(AUTHORIZATION, self.auth_header()?)
+            .header(CONTENT_TYPE, "application/json")
+            .body(sign_body.to_string())
+            .send()
+            .await
+            .map_err(|e| {
+                ProviderError::ConnectionFailed(format!("Drime sign part URLs failed: {}", e))
+            })?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::ServerError(format!(
+                "Drime sign part URLs failed ({}): {}",
+                status,
+                sanitize_api_error(&body)
+            )));
+        }
+        let sign_resp: DrimeSignPartUrlsResponse = resp.json().await.map_err(|e| {
+            ProviderError::ParseError(format!("Parse sign URLs: {}", e))
+        })?;
+        let urls = sign_resp.urls.unwrap_or_default();
+        if (urls.len() as u32) != total_parts {
+            return Err(ProviderError::ServerError(format!(
+                "Drime returned {} signed URLs but {} parts were requested",
+                urls.len(),
+                total_parts
+            )));
+        }
+        let signed_urls: Vec<(u32, String)> =
+            urls.into_iter().map(|u| (u.part_number, u.url)).collect();
+
+        let meta = DrimeMultipartMeta {
+            key,
+            upload_id,
+            parent_id,
+            filename: filename.to_string(),
+            mime,
+            extension,
+            total: total_size,
+            part,
+            total_parts,
+            signed_urls,
+        };
+        Ok(MultipartHandle {
+            upload_id: meta.encode(),
+            remote_path: remote_path.to_string(),
+        })
+    }
+
+    async fn upload_part(
+        &mut self,
+        handle: &MultipartHandle,
+        part_number: u32,
+        data: Vec<u8>,
+    ) -> Result<UploadedPart, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        if part_number == 0 {
+            return Err(ProviderError::Other(
+                "Drime upload_part requires 1-based part_number".to_string(),
+            ));
+        }
+        if data.is_empty() {
+            return Err(ProviderError::Other(
+                "Drime upload_part received empty data".to_string(),
+            ));
+        }
+        let meta = DrimeMultipartMeta::decode(&handle.upload_id)?;
+        if part_number > meta.total_parts {
+            return Err(ProviderError::Other(format!(
+                "Drime part {} exceeds declared total_parts {}",
+                part_number, meta.total_parts
+            )));
+        }
+        let url = meta
+            .url_for(part_number)
+            .ok_or_else(|| {
+                ProviderError::Other(format!(
+                    "Drime upload_part: no signed URL for part {}",
+                    part_number
+                ))
+            })?
+            .to_string();
+
+        let resp = self
+            .client
+            .put(&url)
+            .body(data)
+            .send()
+            .await
+            .map_err(|e| {
+                ProviderError::ConnectionFailed(format!(
+                    "Drime upload part {} failed: {}",
+                    part_number, e
+                ))
+            })?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::TransferFailed(format!(
+                "Drime upload part {} failed ({}): {}",
+                part_number,
+                status,
+                sanitize_api_error(&body)
+            )));
+        }
+
+        // S3-compatible backend echoes the part ETag in the header; we
+        // pass it through verbatim so complete_multipart_upload can fill
+        // the `{PartNumber, ETag}` array.
+        let etag = resp
+            .headers()
+            .get("etag")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string())
+            .unwrap_or_default();
+        Ok(UploadedPart { part_number, etag })
+    }
+
+    async fn complete_multipart_upload(
+        &mut self,
+        handle: MultipartHandle,
+        parts: Vec<UploadedPart>,
+    ) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        let meta = DrimeMultipartMeta::decode(&handle.upload_id)?;
+        if parts.len() != meta.total_parts as usize {
+            return Err(ProviderError::TransferFailed(format!(
+                "Drime complete: expected {} parts, runner committed {}",
+                meta.total_parts,
+                parts.len()
+            )));
+        }
+
+        // S3 multipart complete contract: parts sorted by part_number with
+        // their ETag.
+        let mut sorted = parts;
+        sorted.sort_by_key(|p| p.part_number);
+        let parts_json: Vec<_> = sorted
+            .iter()
+            .map(|p| serde_json::json!({"PartNumber": p.part_number, "ETag": p.etag}))
+            .collect();
+        let complete_body = serde_json::json!({
+            "key": meta.key,
+            "uploadId": meta.upload_id,
+            "parts": parts_json,
+        });
+
+        let resp = self
+            .client
+            .post(Self::api_url("/s3/multipart/complete"))
+            .header(AUTHORIZATION, self.auth_header()?)
+            .header(CONTENT_TYPE, "application/json")
+            .body(complete_body.to_string())
+            .send()
+            .await
+            .map_err(|e| {
+                ProviderError::ConnectionFailed(format!("Drime multipart complete failed: {}", e))
+            })?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::ServerError(format!(
+                "Drime multipart complete failed ({}): {}",
+                status,
+                sanitize_api_error(&body)
+            )));
+        }
+
+        // Step 5: register the file inside Drime's directory tree.
+        // Without this the bytes sit on the S3 backend but never appear
+        // in the UI.
+        let s3_filename = meta
+            .key
+            .rsplit('/')
+            .next()
+            .unwrap_or(meta.key.as_str())
+            .to_string();
+        let mut entry_body = serde_json::json!({
+            "filename": s3_filename,
+            "size": meta.total,
+            "clientName": meta.filename,
+            "clientMime": meta.mime,
+            "clientExtension": meta.extension,
+            "workspaceId": 0,
+        });
+        if !meta.parent_id.is_empty() {
+            entry_body["parentId"] =
+                serde_json::json!(meta.parent_id.parse::<i64>().unwrap_or(0));
+        }
+        let resp = self
+            .client
+            .post(Self::api_url("/s3/entries"))
+            .header(AUTHORIZATION, self.auth_header()?)
+            .header(CONTENT_TYPE, "application/json")
+            .body(entry_body.to_string())
+            .send()
+            .await
+            .map_err(|e| {
+                ProviderError::ConnectionFailed(format!("Drime entry registration failed: {}", e))
+            })?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::ServerError(format!(
+                "Drime entry registration failed ({}): {}",
+                status,
+                sanitize_api_error(&body)
+            )));
+        }
+        Ok(())
+    }
+
+    async fn abort_multipart_upload(
+        &mut self,
+        handle: MultipartHandle,
+    ) -> Result<(), ProviderError> {
+        // Best-effort: Drime's S3 backend GCs orphaned multipart uploads
+        // after their TTL; the abort endpoint is a courtesy hint.
+        if let Ok(meta) = DrimeMultipartMeta::decode(&handle.upload_id) {
+            let body = serde_json::json!({
+                "key": meta.key,
+                "uploadId": meta.upload_id,
+            })
+            .to_string();
+            if let Ok(auth) = self.auth_header() {
+                let _ = self
+                    .client
+                    .post(Self::api_url("/s3/multipart/abort"))
+                    .header(AUTHORIZATION, auth)
+                    .header(CONTENT_TYPE, "application/json")
+                    .body(body)
+                    .send()
+                    .await;
+            }
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -2090,5 +2516,76 @@ mod tests {
         let fallback = DrimeCloudProvider::parse_date("2025-01-15 10:30:00 server time").unwrap();
         assert_eq!(fallback.len(), 19);
         assert_eq!(DrimeCloudProvider::parse_date("short"), None);
+    }
+
+    // ---- S3-T12 multipart trait wiring ----
+
+    #[test]
+    fn drime_multipart_meta_roundtrip_preserves_fields() {
+        let meta = DrimeMultipartMeta {
+            key: "users/123/abc.bin".to_string(),
+            upload_id: "drime-upload-id-xyz".to_string(),
+            parent_id: "555".to_string(),
+            filename: "weird name (1).bin".to_string(),
+            mime: "application/octet-stream".to_string(),
+            extension: "bin".to_string(),
+            total: 1_073_741_824,
+            part: 5 * 1024 * 1024,
+            total_parts: 205,
+            signed_urls: vec![
+                (1, "https://drime-s3/u/1".to_string()),
+                (2, "https://drime-s3/u/2".to_string()),
+            ],
+        };
+        let encoded = meta.encode();
+        let decoded = DrimeMultipartMeta::decode(&encoded).expect("decode roundtrip");
+        assert_eq!(meta, decoded);
+        assert_eq!(decoded.url_for(2), Some("https://drime-s3/u/2"));
+        assert_eq!(decoded.url_for(99), None);
+    }
+
+    #[test]
+    fn drime_multipart_meta_decode_rejects_garbage() {
+        let err = DrimeMultipartMeta::decode("not-json").unwrap_err();
+        assert!(matches!(err, ProviderError::Other(_)));
+    }
+
+    #[test]
+    fn drime_runner_part_size_clamps_and_never_returns_zero() {
+        assert_eq!(drime_runner_part_size(1024), 1024);
+        assert_eq!(
+            drime_runner_part_size(DRIME_MULTIPART_PART_SIZE),
+            DRIME_MULTIPART_PART_SIZE
+        );
+        assert_eq!(
+            drime_runner_part_size(50 * 1024 * 1024 * 1024),
+            DRIME_MULTIPART_PART_SIZE
+        );
+        assert_eq!(drime_runner_part_size(0), 1);
+    }
+
+    #[test]
+    fn drime_total_parts_matches_runner_formula() {
+        let p = DRIME_MULTIPART_PART_SIZE;
+        assert_eq!(drime_total_parts(0, p), 1);
+        assert_eq!(drime_total_parts(p, p), 1);
+        assert_eq!(drime_total_parts(4 * p, p), 4);
+        assert_eq!(drime_total_parts(p + 1, p), 2);
+        // part=0 guard treats it as 1 to avoid divide-by-zero
+        assert_eq!(drime_total_parts(7, 0), 7);
+    }
+
+    #[test]
+    fn drime_transfer_hints_advertise_multipart_with_etag() {
+        let p = test_provider();
+        let hints = p.transfer_optimization_hints();
+        assert!(hints.supports_multipart);
+        assert_eq!(hints.multipart_threshold, DRIME_MULTIPART_THRESHOLD);
+        assert_eq!(hints.multipart_part_size, DRIME_MULTIPART_PART_SIZE);
+        assert_eq!(hints.multipart_max_parallel, 4);
+        assert!(hints.supports_resume_download);
+        assert!(hints.supports_resume_upload);
+        assert!(hints.supports_server_checksum);
+        assert_eq!(hints.preferred_checksum_algo.as_deref(), Some("etag"));
     }
 }

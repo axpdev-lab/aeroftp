@@ -78,7 +78,9 @@ use std::sync::{Arc, Mutex as StdMutex};
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 use tokio::sync::Mutex;
 
-use crate::providers::{MultipartHandle, ProviderError, StorageProvider, UploadedPart};
+use crate::providers::{
+    B2Provider, MultipartHandle, ProviderError, S3Provider, StorageProvider, UploadedPart,
+};
 use crate::transfer_dag::executor::{execute_dag, DagNodeRunner, NodeFuture, NodeOutcome};
 use crate::transfer_dag::graph::{TransferNode, TransferNodeKind};
 use crate::transfer_dag::{
@@ -170,11 +172,18 @@ pub async fn execute_single_file_dag(
         && file_size > 0
     {
         let total_parts = built.profile.upload_parts as u64;
-        // ceil(file_size / total_parts) keeps every part the same size as
-        // the builder's preferred chunk modulo the last (slightly smaller)
-        // tail: the builder picked total_parts = ceil(file_size / chunk)
-        // exactly to honour that invariant.
-        let part_size = file_size.div_ceil(total_parts);
+        // Prefer the provider's exact advertised chunk size when supplied
+        // so chunks honour per-provider alignment contracts (Drive: 256 KiB
+        // multiple; OneDrive: 320 KiB multiple; B2 / S3: any size ≥ 5 MiB).
+        // The last part takes whatever remains; the `ctx.part_size.min(...)`
+        // slice below handles that automatically. When `preferred_chunk_size`
+        // is `0` (no provider hint) fall back to the legacy `div_ceil`
+        // equalisation that keeps every part the same size.
+        let part_size = if built.profile.preferred_chunk_size > 0 {
+            built.profile.preferred_chunk_size
+        } else {
+            file_size.div_ceil(total_parts)
+        };
         let node_to_part: HashMap<usize, u32> = built
             .transfer
             .iter()
@@ -285,6 +294,7 @@ pub async fn execute_single_file_dag(
                                         &remote,
                                         ctx.total_size,
                                         Some(&ctx.content_type),
+                                        Some(&local),
                                     )
                                     .await
                                 {
@@ -315,11 +325,23 @@ pub async fn execute_single_file_dag(
                                 .cloned()
                                 .expect("multipart handle initialized in step 1")
                         };
-                        let mut guard = provider.lock().await;
-                        let Some(p) = guard.as_mut() else {
-                            return record_failure(&first_error, ProviderError::NotConnected);
+                        let cloned_worker = {
+                            let mut guard = provider.lock().await;
+                            let Some(p) = guard.as_mut() else {
+                                return record_failure(&first_error, ProviderError::NotConnected);
+                            };
+                            clone_multipart_worker(p.as_mut())
                         };
-                        match p.upload_part(&handle, part_number, data).await {
+                        let upload_result = if let Some(mut worker) = cloned_worker {
+                            worker.upload_part(&handle, part_number, data).await
+                        } else {
+                            let mut guard = provider.lock().await;
+                            let Some(p) = guard.as_mut() else {
+                                return record_failure(&first_error, ProviderError::NotConnected);
+                            };
+                            p.upload_part(&handle, part_number, data).await
+                        };
+                        match upload_result {
                             Ok(receipt) => {
                                 ctx.parts.lock().await.push(receipt);
                                 NodeOutcome::Completed
@@ -331,12 +353,26 @@ pub async fn execute_single_file_dag(
                         // Forward-compat: the shaped-copy graph emits this
                         // kind, the shaped-file graph does not. Wired for
                         // SG-T12 when shaped-copy lands in the sync runner.
+                        //
+                        // Goes through `server_side_copy_with_fallback` so
+                        // providers that advertise the capability but reject
+                        // a specific operation (S3 cross-bucket without IAM,
+                        // WebDAV 501, Nextcloud cross-share MOVE) degrade to
+                        // streaming download → upload instead of failing the
+                        // node outright. Hard errors (auth, missing source)
+                        // still propagate via `record_failure`.
                         let mut guard = provider.lock().await;
                         let Some(p) = guard.as_mut() else {
                             return record_failure(&first_error, ProviderError::NotConnected);
                         };
-                        match p.server_side_copy(&remote, &local).await {
-                            Ok(()) => NodeOutcome::Completed,
+                        match crate::copy_fallback::server_side_copy_with_fallback(
+                            p.as_mut(),
+                            &remote,
+                            &local,
+                        )
+                        .await
+                        {
+                            Ok(_outcome) => NodeOutcome::Completed,
                             Err(e) => record_failure(&first_error, e),
                         }
                     }
@@ -391,25 +427,20 @@ pub async fn execute_single_file_dag(
         })
     };
 
-    // A single-file transfer needs exactly one file slot; the other six nodes
-    // request nothing, so the graph cannot deadlock against its own budget.
-    // The multipart fan-out runs through the same file slot: chunk-level
-    // parallelism (when wired) flows through the chunk budget governed by
-    // the executor and the `part_request` allocation in the builder.
-    let manager = TransferResourceManager::new(TransferBudget::from_file_slots(1));
+    let manager = TransferResourceManager::new(single_file_budget(built));
 
-    // AIMD backpressure (F3-T05), wired on every DAG transfer surface for
-    // uniformity. The controller starts each class at its ceiling, so a
-    // congestion-free single-file transfer dispatches exactly as before; the
-    // File ceiling of 1 cannot shrink, so today this is structurally inert,
-    // but the Api class becomes live once a capability-shaped graph reserves
-    // an api slot on a rate-limited provider.
-    let aimd = Arc::new(AimdController::from_budget(
-        &manager.budget(),
-        AimdConfig::default(),
-    ));
+    // AIMD backpressure only helps when a shaped graph has real chunk/http/api
+    // concurrency to tune. Plain single-stream providers such as SFTP request
+    // only the one file slot, whose ceiling cannot shrink usefully, so keep
+    // their dispatch path free of no-op adaptive bookkeeping.
+    let aimd = single_file_needs_aimd(built).then(|| {
+        Arc::new(AimdController::from_budget(
+            &manager.budget(),
+            AimdConfig::default(),
+        ))
+    });
 
-    let outcome = execute_dag(&built.dag, &manager, runner, observer, Some(aimd)).await;
+    let outcome = execute_dag(&built.dag, &manager, runner, observer, aimd).await;
 
     // On failure, best-effort abort an in-flight multipart session so the
     // provider does not accumulate orphan upload IDs. Idempotent because the
@@ -462,6 +493,38 @@ fn record_failure(
     NodeOutcome::Failed(message)
 }
 
+fn single_file_needs_aimd(built: &ShapedFileDag) -> bool {
+    built.dag.nodes().iter().any(|node| {
+        node.resources.chunk_slots > 0
+            || node.resources.http_slots > 0
+            || node.resources.api_slots > 0
+    })
+}
+
+fn single_file_budget(built: &ShapedFileDag) -> TransferBudget {
+    let mut budget = TransferBudget::from_file_slots(1);
+    if built.direction == TransferDirection::Upload && built.profile.upload_parts > 1 {
+        let chunk_slots = built
+            .profile
+            .max_chunk_slots
+            .max(1)
+            .min(built.profile.upload_parts as u16);
+        budget.chunk_slots = chunk_slots;
+        budget.disk_read_slots = budget.disk_read_slots.max(chunk_slots);
+    }
+    budget
+}
+
+fn clone_multipart_worker(provider: &mut dyn StorageProvider) -> Option<Box<dyn StorageProvider>> {
+    if let Some(s3) = provider.as_any_mut().downcast_mut::<S3Provider>() {
+        return Some(Box::new(s3.clone()));
+    }
+    if let Some(b2) = provider.as_any_mut().downcast_mut::<B2Provider>() {
+        return Some(Box::new(b2.clone()));
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -505,6 +568,64 @@ mod tests {
         let mut parts: Vec<u32> = node_to_part.values().copied().collect();
         parts.sort_unstable();
         assert_eq!(parts, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn single_stream_shape_skips_noop_aimd() {
+        let caps = TransferCapabilities::default();
+        let built =
+            TransferDagBuilder::shaped_file(TransferDirection::Upload, &caps, 100 * 1024 * 1024);
+
+        assert!(
+            !single_file_needs_aimd(&built),
+            "plain SFTP-like single-stream graphs should not acquire AIMD permits"
+        );
+    }
+
+    #[test]
+    fn multipart_shape_keeps_aimd() {
+        let caps = TransferCapabilities {
+            multipart_upload: Capability::Supported,
+            preferred_chunk_size: Some(8 * 1024 * 1024),
+            max_chunk_slots: Some(4),
+            ..TransferCapabilities::default()
+        };
+        let built =
+            TransferDagBuilder::shaped_file(TransferDirection::Upload, &caps, 24 * 1024 * 1024);
+
+        assert!(
+            single_file_needs_aimd(&built),
+            "multipart upload graphs still need adaptive chunk dispatch"
+        );
+    }
+
+    #[test]
+    fn multipart_shape_gets_chunk_parallel_budget() {
+        let caps = TransferCapabilities {
+            multipart_upload: Capability::Supported,
+            preferred_chunk_size: Some(8 * 1024 * 1024),
+            max_chunk_slots: Some(4),
+            ..TransferCapabilities::default()
+        };
+        let built =
+            TransferDagBuilder::shaped_file(TransferDirection::Upload, &caps, 40 * 1024 * 1024);
+
+        let budget = single_file_budget(&built);
+        assert_eq!(budget.file_slots, 1);
+        assert_eq!(budget.chunk_slots, 4);
+        assert_eq!(budget.disk_read_slots, 4);
+    }
+
+    #[test]
+    fn single_stream_shape_keeps_one_chunk_slot() {
+        let caps = TransferCapabilities::default();
+        let built =
+            TransferDagBuilder::shaped_file(TransferDirection::Upload, &caps, 40 * 1024 * 1024);
+
+        let budget = single_file_budget(&built);
+        assert_eq!(budget.file_slots, 1);
+        assert_eq!(budget.chunk_slots, 1);
+        assert_eq!(budget.disk_read_slots, 1);
     }
 
     #[test]

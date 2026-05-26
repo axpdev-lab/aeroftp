@@ -14,14 +14,99 @@ use tracing::info;
 
 use super::{
     oauth2::{OAuth2Manager, OAuthConfig, OAuthProvider},
-    sanitize_api_error, LockInfo, ProviderConfig, ProviderError, ProviderType, RemoteEntry,
-    ShareLinkCapabilities, ShareLinkInfo, ShareLinkOptions, ShareLinkResult, StorageInfo,
-    StorageProvider,
+    sanitize_api_error, LockInfo, MultipartHandle, ProviderConfig, ProviderError, ProviderType,
+    RemoteEntry, ShareLinkCapabilities, ShareLinkInfo, ShareLinkOptions, ShareLinkResult,
+    StorageInfo, StorageProvider, UploadedPart,
 };
 
 /// Dropbox API endpoints
 const API_BASE: &str = "https://api.dropboxapi.com/2";
 const CONTENT_BASE: &str = "https://content.dropboxapi.com/2";
+
+/// Threshold above which legacy `upload()` switches to the upload session
+/// path. The trait runner's multipart graph is gated on the same boundary
+/// via `multipart_threshold` so single small files keep the legacy single-PUT
+/// path and only large files fan out into `UploadPart` nodes.
+const DROPBOX_SESSION_THRESHOLD: u64 = 150 * 1024 * 1024;
+
+/// Trait-side chunk size. Aligns with the legacy 128 MiB but smaller so the
+/// runner emits a larger number of `UploadPart` nodes the AIMD controller can
+/// actually schedule in parallel. 8 MiB stays well under Dropbox's 150 MiB
+/// per-chunk cap.
+const DROPBOX_MULTIPART_PART_SIZE: u64 = 8 * 1024 * 1024;
+
+/// Opaque metadata threaded through `MultipartHandle.upload_id` for the
+/// Dropbox concurrent-session multipart trait. Carries the session id plus
+/// `total_size` / `part_size` (so `upload_part` rebuilds the byte offset
+/// from `part_number` alone) and the normalised destination path needed by
+/// the `upload_session/finish` commit body.
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
+struct DropboxMultipartMeta {
+    session_id: String,
+    total: u64,
+    part: u64,
+    path: String,
+}
+
+impl DropboxMultipartMeta {
+    fn encode(&self) -> String {
+        serde_json::to_string(self).expect("DropboxMultipartMeta is always serializable")
+    }
+
+    fn decode(s: &str) -> Result<Self, ProviderError> {
+        serde_json::from_str(s)
+            .map_err(|e| ProviderError::Other(format!("Invalid Dropbox multipart handle: {}", e)))
+    }
+}
+
+/// The runner uses `preferred_chunk_size` verbatim as the per-part byte
+/// length, so the handle simply mirrors the advertised value. Dropbox's
+/// concurrent session accepts any chunk size from 1 byte up to 150 MiB,
+/// so the 8 MiB hint is the only contract we need to enforce here.
+fn dropbox_runner_part_size(total_size: u64) -> u64 {
+    if total_size == 0 {
+        return 0;
+    }
+    DROPBOX_MULTIPART_PART_SIZE
+}
+
+/// T-DEBT-05 S1-T02c: Dropbox throttles by returning 429 with the hint in
+/// the JSON body's `retry_after` field (float seconds). The `Retry-After`
+/// header is sometimes present too; we prefer the body field as the
+/// authoritative source per Dropbox API docs and fall back to the header
+/// when the body cannot be parsed.
+fn dropbox_is_rate_limited(status: u16, body: &str) -> bool {
+    if status == 429 {
+        return true;
+    }
+    // Dropbox occasionally surfaces throttles as 409 with an explicit error
+    // tag. The tag is the authoritative marker.
+    body.contains("too_many_requests") || body.contains("too_many_write_operations")
+}
+
+/// Compute the marker substring for a Dropbox rate-limit response. Prefers
+/// the JSON body's top-level `retry_after` field; falls back to the
+/// `Retry-After` header.
+fn dropbox_retry_marker_tail(
+    status: u16,
+    body: &str,
+    retry_header: Option<&str>,
+) -> Option<String> {
+    if !dropbox_is_rate_limited(status, body) {
+        return None;
+    }
+    let hint = serde_json::from_str::<serde_json::Value>(body)
+        .ok()
+        .and_then(|json| super::retry_after::parse_retry_after_dropbox_value(&json))
+        .or_else(|| {
+            retry_header
+                .and_then(super::retry_after::parse_retry_after_seconds)
+        })?;
+    Some(crate::transfer_dag::adaptive::embed_retry_after_marker(
+        hint.as_secs(),
+    ))
+}
+
 
 /// Dropbox file metadata
 #[derive(Debug, Deserialize)]
@@ -229,6 +314,11 @@ impl DropboxProvider {
 
         if !response.status().is_success() {
             let status = response.status();
+            let retry_header = response
+                .headers()
+                .get(reqwest::header::RETRY_AFTER)
+                .and_then(|v| v.to_str().ok())
+                .map(String::from);
             let text = response.text().await.unwrap_or_default();
 
             // Check for path not found error
@@ -236,11 +326,13 @@ impl DropboxProvider {
                 return Err(ProviderError::NotFound(sanitize_api_error(&text)));
             }
 
-            return Err(ProviderError::Other(format!(
-                "API error {}: {}",
-                status,
-                sanitize_api_error(&text)
-            )));
+            let mut msg = format!("API error {}: {}", status, sanitize_api_error(&text));
+            if let Some(tail) =
+                dropbox_retry_marker_tail(status.as_u16(), &text, retry_header.as_deref())
+            {
+                msg.push_str(&tail);
+            }
+            return Err(ProviderError::Other(msg));
         }
 
         response
@@ -356,6 +448,11 @@ impl DropboxProvider {
 
         if !response.status().is_success() {
             let status = response.status();
+            let retry_header = response
+                .headers()
+                .get(reqwest::header::RETRY_AFTER)
+                .and_then(|v| v.to_str().ok())
+                .map(String::from);
             let text = response.text().await.unwrap_or_default();
             let sanitized = sanitize_api_error(&text);
             // Surface the missing-scope case explicitly: tokens issued before
@@ -370,10 +467,13 @@ impl DropboxProvider {
                         .to_string(),
                 ));
             }
-            return Err(ProviderError::Other(format!(
-                "Permanent delete failed {}: {}",
-                status, sanitized
-            )));
+            let mut msg = format!("Permanent delete failed {}: {}", status, sanitized);
+            if let Some(tail) =
+                dropbox_retry_marker_tail(status.as_u16(), &text, retry_header.as_deref())
+            {
+                msg.push_str(&tail);
+            }
+            return Err(ProviderError::Other(msg));
         }
 
         info!("Permanently deleted: {}", path);
@@ -1913,9 +2013,322 @@ impl StorageProvider for DropboxProvider {
 
     fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
         super::TransferOptimizationHints {
+            supports_multipart: true,
+            multipart_threshold: DROPBOX_SESSION_THRESHOLD,
+            multipart_part_size: DROPBOX_MULTIPART_PART_SIZE,
+            // Concurrent upload sessions allow parallel `append_v2` calls at
+            // distinct byte offsets. Aligned with the 4-slot budget the AIMD
+            // controller defaults to so the chunk fan-out actually parallelises.
+            multipart_max_parallel: 4,
             supports_resume_download: true,
+            supports_resume_upload: true,
             ..Default::default()
         }
+    }
+
+    // Shaped-graph multipart trait wiring (S2-T02).
+    //
+    // Dropbox's "concurrent" upload session (per the v2 HTTP API) is the
+    // natural fit for the trait's `upload_part` semantics:
+    //   1. `upload_session/start` with body=empty + `session_type=concurrent`
+    //      and `close: false` returns a durable `session_id`. The trait
+    //      handle stores it together with `total_size` / `part_size` so
+    //      `upload_part` can derive the per-call byte offset.
+    //   2. `upload_session/append_v2` accepts parts in any order as long
+    //      as `cursor.offset` aligns with the actual byte position.
+    //   3. `upload_session/finish` with body=empty + `cursor.offset =
+    //      total_size` + a `commit` block finalises the file at the
+    //      destination path.
+    //   4. Dropbox has no explicit abort. Sessions GC after 48h, so the
+    //      abort method is a no-op (best-effort `Ok(())`).
+    //
+    // Concurrent mode requires the start + finish calls to have empty
+    // bodies, which is why every chunk goes through `append_v2` instead
+    // of being attached to the boundary calls.
+
+    async fn begin_multipart_upload(
+        &mut self,
+        remote_path: &str,
+        total_size: u64,
+        _content_type: Option<&str>,
+        _local_source_path: Option<&str>,
+    ) -> Result<MultipartHandle, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        if total_size == 0 {
+            return Err(ProviderError::Other(
+                "Dropbox multipart upload requires non-zero total_size".to_string(),
+            ));
+        }
+
+        let normalised = self.normalize_path(remote_path);
+        let start_url = format!("{}/files/upload_session/start", CONTENT_BASE);
+        let start_arg = serde_json::json!({
+            "session_type": { ".tag": "concurrent" },
+            "close": false
+        });
+
+        let auth = self.auth_header().await?;
+        let response = self
+            .client
+            .post(&start_url)
+            .header(AUTHORIZATION, auth)
+            .header(CONTENT_TYPE, "application/octet-stream")
+            .header("Dropbox-API-Arg", start_arg.to_string())
+            // Concurrent session start MUST have an empty body per the
+            // Dropbox API contract.
+            .body(Vec::<u8>::new())
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let retry_header = response
+                .headers()
+                .get(reqwest::header::RETRY_AFTER)
+                .and_then(|v| v.to_str().ok())
+                .map(String::from);
+            let text = response.text().await.unwrap_or_default();
+            let mut msg = format!(
+                "Dropbox upload_session/start failed (HTTP {}): {}",
+                status,
+                sanitize_api_error(&text)
+            );
+            if let Some(tail) =
+                dropbox_retry_marker_tail(status.as_u16(), &text, retry_header.as_deref())
+            {
+                msg.push_str(&tail);
+            }
+            return Err(ProviderError::Other(msg));
+        }
+
+        #[derive(Deserialize)]
+        struct SessionStart {
+            session_id: String,
+        }
+        let session: SessionStart = response
+            .json()
+            .await
+            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+
+        let meta = DropboxMultipartMeta {
+            session_id: session.session_id,
+            total: total_size,
+            part: dropbox_runner_part_size(total_size),
+            path: normalised,
+        };
+        Ok(MultipartHandle {
+            upload_id: meta.encode(),
+            remote_path: remote_path.to_string(),
+        })
+    }
+
+    async fn upload_part(
+        &mut self,
+        handle: &MultipartHandle,
+        part_number: u32,
+        data: Vec<u8>,
+    ) -> Result<UploadedPart, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        if part_number == 0 {
+            return Err(ProviderError::Other(
+                "Dropbox upload_part requires 1-based part_number".to_string(),
+            ));
+        }
+        if data.is_empty() {
+            return Err(ProviderError::Other(
+                "Dropbox upload_part received empty data".to_string(),
+            ));
+        }
+        let meta = DropboxMultipartMeta::decode(&handle.upload_id)?;
+        let offset = (part_number as u64 - 1) * meta.part;
+        let end = offset
+            .checked_add(data.len() as u64)
+            .ok_or_else(|| ProviderError::Other("Dropbox part offset overflow".to_string()))?;
+        if end > meta.total {
+            return Err(ProviderError::Other(format!(
+                "Dropbox part {} exceeds declared total: offset {} + len {} > total {}",
+                part_number,
+                offset,
+                data.len(),
+                meta.total
+            )));
+        }
+
+        let append_url = format!("{}/files/upload_session/append_v2", CONTENT_BASE);
+        let append_arg = serde_json::json!({
+            "cursor": {
+                "session_id": meta.session_id,
+                "offset": offset
+            },
+            "close": false
+        });
+
+        let auth = self.auth_header().await?;
+        let response = self
+            .client
+            .post(&append_url)
+            .header(AUTHORIZATION, auth)
+            .header(CONTENT_TYPE, "application/octet-stream")
+            .header("Dropbox-API-Arg", append_arg.to_string())
+            .body(data)
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let retry_header = response
+                .headers()
+                .get(reqwest::header::RETRY_AFTER)
+                .and_then(|v| v.to_str().ok())
+                .map(String::from);
+            let text = response.text().await.unwrap_or_default();
+            let mut msg = format!(
+                "Dropbox upload_part {} failed (HTTP {}): {}",
+                part_number,
+                status,
+                sanitize_api_error(&text)
+            );
+            if let Some(tail) =
+                dropbox_retry_marker_tail(status.as_u16(), &text, retry_header.as_deref())
+            {
+                msg.push_str(&tail);
+            }
+            return Err(ProviderError::Other(msg));
+        }
+
+        Ok(UploadedPart {
+            part_number,
+            etag: String::new(),
+        })
+    }
+
+    async fn complete_multipart_upload(
+        &mut self,
+        handle: MultipartHandle,
+        parts: Vec<UploadedPart>,
+    ) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        let meta = DropboxMultipartMeta::decode(&handle.upload_id)?;
+        let expected = meta.total.div_ceil(meta.part).max(1) as usize;
+        if parts.len() != expected {
+            return Err(ProviderError::TransferFailed(format!(
+                "Dropbox complete: expected {} parts, runner committed {}",
+                expected,
+                parts.len()
+            )));
+        }
+
+        // Concurrent upload sessions MUST be closed explicitly before
+        // `finish` is invoked. The protocol path: send a no-op
+        // `append_v2` with `close: true` and an empty body at the
+        // closing offset; then call `finish`. Without this Dropbox
+        // returns 409 `concurrent_session_not_closed/`.
+        let close_url = format!("{}/files/upload_session/append_v2", CONTENT_BASE);
+        let close_arg = serde_json::json!({
+            "cursor": {
+                "session_id": meta.session_id,
+                "offset": meta.total
+            },
+            "close": true
+        });
+        let auth_close = self.auth_header().await?;
+        let close_response = self
+            .client
+            .post(&close_url)
+            .header(AUTHORIZATION, auth_close)
+            .header(CONTENT_TYPE, "application/octet-stream")
+            .header("Dropbox-API-Arg", close_arg.to_string())
+            .body(Vec::<u8>::new())
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+        if !close_response.status().is_success() {
+            let status = close_response.status();
+            let retry_header = close_response
+                .headers()
+                .get(reqwest::header::RETRY_AFTER)
+                .and_then(|v| v.to_str().ok())
+                .map(String::from);
+            let text = close_response.text().await.unwrap_or_default();
+            let mut msg = format!(
+                "Dropbox upload_session/append_v2 close=true failed (HTTP {}): {}",
+                status,
+                sanitize_api_error(&text)
+            );
+            if let Some(tail) =
+                dropbox_retry_marker_tail(status.as_u16(), &text, retry_header.as_deref())
+            {
+                msg.push_str(&tail);
+            }
+            return Err(ProviderError::Other(msg));
+        }
+
+        let finish_url = format!("{}/files/upload_session/finish", CONTENT_BASE);
+        let finish_arg = serde_json::json!({
+            "cursor": {
+                "session_id": meta.session_id,
+                "offset": meta.total
+            },
+            "commit": {
+                "path": meta.path,
+                "mode": "overwrite",
+                "autorename": false,
+                "mute": false
+            }
+        });
+
+        let auth = self.auth_header().await?;
+        let response = self
+            .client
+            .post(&finish_url)
+            .header(AUTHORIZATION, auth)
+            .header(CONTENT_TYPE, "application/octet-stream")
+            .header("Dropbox-API-Arg", finish_arg.to_string())
+            .body(Vec::<u8>::new())
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let retry_header = response
+                .headers()
+                .get(reqwest::header::RETRY_AFTER)
+                .and_then(|v| v.to_str().ok())
+                .map(String::from);
+            let text = response.text().await.unwrap_or_default();
+            let mut msg = format!(
+                "Dropbox upload_session/finish failed (HTTP {}): {}",
+                status,
+                sanitize_api_error(&text)
+            );
+            if let Some(tail) =
+                dropbox_retry_marker_tail(status.as_u16(), &text, retry_header.as_deref())
+            {
+                msg.push_str(&tail);
+            }
+            return Err(ProviderError::Other(msg));
+        }
+        Ok(())
+    }
+
+    async fn abort_multipart_upload(
+        &mut self,
+        _handle: MultipartHandle,
+    ) -> Result<(), ProviderError> {
+        // Dropbox has no explicit abort endpoint. Concurrent upload
+        // sessions GC after 48h on the server side. Treat the call as a
+        // best-effort no-op so the runner's failure-path abort cannot
+        // mask the original transfer error.
+        Ok(())
     }
 }
 
@@ -1990,5 +2403,122 @@ mod tests {
         let out = DropboxConfig::from_provider_config(&cfg).unwrap();
         assert_eq!(out.app_key, "fallback");
         assert_eq!(out.app_secret, "s");
+    }
+
+    // T-DEBT-05 S1-T02c: Dropbox rate-limit detection + marker emission.
+
+    #[test]
+    fn dropbox_is_rate_limited_recognises_429() {
+        assert!(dropbox_is_rate_limited(429, ""));
+        assert!(dropbox_is_rate_limited(429, "anything"));
+    }
+
+    #[test]
+    fn dropbox_is_rate_limited_recognises_409_with_too_many_requests_tag() {
+        let body = r#"{"error":{".tag":"too_many_requests"},"retry_after":30}"#;
+        assert!(dropbox_is_rate_limited(409, body));
+        let body_w = r#"{"error":{".tag":"too_many_write_operations"},"retry_after":15}"#;
+        assert!(dropbox_is_rate_limited(409, body_w));
+    }
+
+    #[test]
+    fn dropbox_is_rate_limited_rejects_non_throttle() {
+        assert!(!dropbox_is_rate_limited(500, ""));
+        assert!(!dropbox_is_rate_limited(409, r#"{"error":{".tag":"path/conflict"}}"#));
+        assert!(!dropbox_is_rate_limited(200, "any"));
+    }
+
+    #[test]
+    fn dropbox_retry_marker_tail_prefers_body_field() {
+        // Body wins over header when both are present.
+        let body = r#"{"error":{".tag":"too_many_requests"},"retry_after":45}"#;
+        let tail = dropbox_retry_marker_tail(429, body, Some("10")).expect("body field wins");
+        assert!(tail.contains("retry-after-secs=45"));
+    }
+
+    #[test]
+    fn dropbox_retry_marker_tail_falls_back_to_header_when_body_unparseable() {
+        let body = "not even JSON";
+        let tail = dropbox_retry_marker_tail(429, body, Some("12")).expect("header fallback");
+        assert!(tail.contains("retry-after-secs=12"));
+    }
+
+    #[test]
+    fn dropbox_retry_marker_tail_returns_none_when_not_rate_limited() {
+        // 500 with both signals: not a throttle.
+        let body = r#"{"retry_after":30}"#;
+        assert_eq!(dropbox_retry_marker_tail(500, body, Some("30")), None);
+    }
+
+    #[test]
+    fn dropbox_retry_marker_tail_returns_none_when_no_hint_anywhere() {
+        // 429 but the body field is missing and the header is absent: marker
+        // absent → executor falls back to default cooldown.
+        assert_eq!(
+            dropbox_retry_marker_tail(429, r#"{"error":{}}"#, None),
+            None
+        );
+    }
+
+    // ---------------------------------------------------------------------
+    // S2-T02 multipart trait wiring
+    // ---------------------------------------------------------------------
+
+    #[test]
+    fn dropbox_meta_roundtrip_preserves_session_total_part_path() {
+        let meta = DropboxMultipartMeta {
+            session_id: "AAAAAAAAAAdwxe5XXXXXX".to_string(),
+            total: 524_288_000,
+            part: 8_323_073,
+            path: "/aeroftp-test/sample.bin".to_string(),
+        };
+        let encoded = meta.encode();
+        let decoded = DropboxMultipartMeta::decode(&encoded).expect("decode");
+        assert_eq!(decoded, meta);
+    }
+
+    #[test]
+    fn dropbox_meta_decode_rejects_garbage() {
+        let err = DropboxMultipartMeta::decode("not json").unwrap_err();
+        assert!(matches!(err, ProviderError::Other(_)));
+    }
+
+    #[test]
+    fn dropbox_runner_part_size_returns_constant_chunk_size_for_nonzero_total() {
+        // The runner uses `preferred_chunk_size` verbatim, so the helper
+        // mirrors `DROPBOX_MULTIPART_PART_SIZE` for any non-zero total.
+        // Zero is the sentinel for an empty file (rejected at the trait
+        // boundary before the runner ever sees it).
+        assert_eq!(dropbox_runner_part_size(0), 0);
+        for &total in &[
+            1u64,
+            DROPBOX_MULTIPART_PART_SIZE - 1,
+            DROPBOX_MULTIPART_PART_SIZE,
+            DROPBOX_MULTIPART_PART_SIZE + 1,
+            DROPBOX_SESSION_THRESHOLD,
+            500 * 1024 * 1024,
+            10 * 1024 * 1024 * 1024,
+        ] {
+            assert_eq!(dropbox_runner_part_size(total), DROPBOX_MULTIPART_PART_SIZE);
+        }
+    }
+
+    #[test]
+    fn dropbox_offset_math_covers_500_mib_with_8mib_chunks() {
+        // With the runner forwarding `preferred_chunk_size = 8 MiB`,
+        // 500 MiB fans into 63 parts: 62 full 8 MiB chunks + a 4 MiB tail.
+        let total: u64 = 500 * 1024 * 1024;
+        let part = DROPBOX_MULTIPART_PART_SIZE;
+        let parts = total.div_ceil(part);
+        assert_eq!(parts, 63);
+        let mut seen_end: i128 = -1;
+        for pn in 1..=parts {
+            let offset = (pn - 1) * part;
+            let len = part.min(total - offset);
+            let end = offset + len - 1;
+            assert!(offset as i128 > seen_end);
+            seen_end = end as i128;
+        }
+        assert_eq!(seen_end as u64, total - 1);
     }
 }

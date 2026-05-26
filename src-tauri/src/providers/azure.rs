@@ -26,9 +26,9 @@ use tracing::{debug, info};
 
 use super::types::AzureConfig;
 use super::{
-    sanitize_api_error, send_with_retry, HttpRetryConfig, ProviderError,
+    sanitize_api_error, send_with_retry, HttpRetryConfig, MultipartHandle, ProviderError,
     ProviderTransferExecutorKind, ProviderType, RemoteEntry, ShareLinkCapabilities,
-    ShareLinkOptions, ShareLinkResult, StorageProvider,
+    ShareLinkOptions, ShareLinkResult, StorageProvider, UploadedPart,
 };
 
 type HmacSha256 = Hmac<Sha256>;
@@ -41,6 +41,11 @@ const BLOCK_UPLOAD_THRESHOLD: u64 = 100 * 1024 * 1024;
 
 /// AZ-001: Block size for Put Block requests (4 MB)
 const BLOCK_SIZE: usize = 4 * 1024 * 1024;
+
+/// DAG multipart uses a larger chunk than the legacy sequential helper so the
+/// graph has enough fan-out without creating excessive Azure Put Block calls.
+const DAG_MULTIPART_BLOCK_SIZE: u64 = 8 * 1024 * 1024;
+const DAG_MULTIPART_MAX_PARALLEL: u8 = 4;
 
 /// AZ-016: Maximum time to wait for async copy completion (5 minutes)
 const COPY_POLL_TIMEOUT_SECS: u64 = 300;
@@ -145,6 +150,20 @@ impl AzureProvider {
             connected: false,
             current_prefix: String::new(),
         }
+    }
+
+    fn dag_block_id(part_number: u32) -> Result<String, ProviderError> {
+        if part_number == 0 {
+            return Err(ProviderError::InvalidConfig(
+                "Azure multipart part numbers are 1-based".to_string(),
+            ));
+        }
+
+        // Azure requires every block ID for a blob to have the same length
+        // before Base64 encoding. Twenty digits leaves ample room while
+        // keeping the final encoded token compact and XML-safe.
+        let raw = format!("{:020}", part_number);
+        Ok(BASE64.encode(raw.as_bytes()))
     }
 
     /// Build the full blob URL
@@ -947,8 +966,78 @@ impl StorageProvider for AzureProvider {
         true
     }
 
+    async fn begin_multipart_upload(
+        &mut self,
+        remote_path: &str,
+        _total_size: u64,
+        _content_type: Option<&str>,
+        _local_source_path: Option<&str>,
+    ) -> Result<MultipartHandle, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+
+        let blob_path = self.resolve_blob_path(remote_path);
+        Ok(MultipartHandle {
+            upload_id: uuid::Uuid::new_v4().to_string(),
+            remote_path: blob_path,
+        })
+    }
+
+    async fn upload_part(
+        &mut self,
+        handle: &MultipartHandle,
+        part_number: u32,
+        data: Vec<u8>,
+    ) -> Result<UploadedPart, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+
+        let block_id = Self::dag_block_id(part_number)?;
+        let blob_url = self.blob_url(&handle.remote_path);
+        self.put_block(&blob_url, &block_id, data).await?;
+        Ok(UploadedPart {
+            part_number,
+            etag: block_id,
+        })
+    }
+
+    async fn complete_multipart_upload(
+        &mut self,
+        handle: MultipartHandle,
+        parts: Vec<UploadedPart>,
+    ) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+
+        let mut sorted = parts;
+        sorted.sort_by_key(|part| part.part_number);
+        let block_ids: Vec<String> = sorted.into_iter().map(|part| part.etag).collect();
+        let blob_url = self.blob_url(&handle.remote_path);
+        self.put_block_list(&blob_url, &block_ids).await
+    }
+
+    async fn abort_multipart_upload(
+        &mut self,
+        _handle: MultipartHandle,
+    ) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+
+        // Azure uncommitted blocks expire automatically. There is no explicit
+        // abort request for Put Block sessions.
+        Ok(())
+    }
+
     fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
         super::TransferOptimizationHints {
+            supports_multipart: true,
+            multipart_threshold: DAG_MULTIPART_BLOCK_SIZE,
+            multipart_part_size: DAG_MULTIPART_BLOCK_SIZE,
+            multipart_max_parallel: DAG_MULTIPART_MAX_PARALLEL,
             supports_range_download: true,
             supports_resume_download: true,
             ..Default::default()
@@ -1976,5 +2065,48 @@ Time:2026-01-01</Message>
         // empty current_prefix
         let p2 = AzureProvider::new(test_config());
         assert_eq!(p2.resolve_blob_path("child"), "child");
+    }
+
+    #[test]
+    fn dag_block_id_is_fixed_width_and_rejects_zero() {
+        let first = AzureProvider::dag_block_id(1).unwrap();
+        let later = AzureProvider::dag_block_id(42).unwrap();
+
+        assert_eq!(first.len(), later.len());
+        assert_eq!(
+            String::from_utf8(BASE64.decode(first.as_bytes()).unwrap()).unwrap(),
+            "00000000000000000001"
+        );
+        assert!(matches!(
+            AzureProvider::dag_block_id(0),
+            Err(ProviderError::InvalidConfig(_))
+        ));
+    }
+
+    #[test]
+    fn transfer_hints_advertise_dag_multipart_for_azure() {
+        let p = AzureProvider::new(test_config());
+        let hints = p.transfer_optimization_hints();
+
+        assert!(hints.supports_multipart);
+        assert_eq!(hints.multipart_threshold, DAG_MULTIPART_BLOCK_SIZE);
+        assert_eq!(hints.multipart_part_size, DAG_MULTIPART_BLOCK_SIZE);
+        assert_eq!(hints.multipart_max_parallel, DAG_MULTIPART_MAX_PARALLEL);
+        assert!(hints.supports_range_download);
+        assert!(hints.supports_resume_download);
+    }
+
+    #[tokio::test]
+    async fn begin_multipart_upload_resolves_path_for_handle() {
+        let mut p = AzureProvider::new(test_config());
+        p.connected = true;
+        p.current_prefix = "project/".to_string();
+
+        let handle = StorageProvider::begin_multipart_upload(&mut p, "asset.bin", 10, None, None)
+            .await
+            .unwrap();
+
+        assert_eq!(handle.remote_path, "project/asset.bin");
+        assert!(!handle.upload_id.is_empty());
     }
 }

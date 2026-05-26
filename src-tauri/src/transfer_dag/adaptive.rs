@@ -109,6 +109,35 @@ pub fn congestion_from_error(raw: &str) -> Option<CongestionEvent> {
     }
 }
 
+/// Marker prefix for embedding a `Retry-After` hint inside a `ProviderError`
+/// message string. The call chain provider → executor doesn't carry typed
+/// metadata, so per-provider helpers (`parse_retry_after_drive` /
+/// `_dropbox` / `_onedrive` / `_box`) append the marker when they emit the
+/// error, and [`parse_embedded_retry_after`] consumes it in the executor.
+///
+/// Format: ` [retry-after-secs=NN]` appended to the error text, where `NN`
+/// is a non-negative integer of seconds. Sub-second hints round up at the
+/// provider site to avoid defeating the AIMD throttle, matching
+/// [`AimdController::MIN_HINT_COOLDOWN`]. T-DEBT-05.
+const RETRY_HINT_MARKER: &str = " [retry-after-secs=";
+
+/// Build the marker substring to append to a `ProviderError` message after a
+/// rate-limit response. Pair with [`parse_embedded_retry_after`] in the
+/// executor to recover the value without changing `ProviderError`'s shape.
+pub fn embed_retry_after_marker(seconds: u64) -> String {
+    format!("{RETRY_HINT_MARKER}{seconds}]")
+}
+
+/// Extract a `Retry-After` hint that a provider embedded in the error
+/// message via [`embed_retry_after_marker`]. Returns `None` when the marker
+/// is absent, malformed, or carries a value that does not parse as a u64.
+pub fn parse_embedded_retry_after(message: &str) -> Option<Duration> {
+    let start = message.find(RETRY_HINT_MARKER)?;
+    let rest = &message[start + RETRY_HINT_MARKER.len()..];
+    let end = rest.find(']')?;
+    rest[..end].parse::<u64>().ok().map(Duration::from_secs)
+}
+
 /// RAII permit from a [`DynamicSemaphore`]. On drop the underlying permit is
 /// returned, then if the semaphore still owes a shrink the freed slot is
 /// absorbed instead of being handed to the next waiter.
@@ -346,13 +375,63 @@ impl AimdController {
     /// The guard band (F3-T09) also records the concurrency level that
     /// congested and drops `regrowth_cap` one slot below it, so additive
     /// increase cannot immediately climb back into the same congestion.
+    ///
+    /// Equivalent to `on_congestion_with_hint(class, None)`. Callers that
+    /// have parsed a server-side `Retry-After` header (or equivalent
+    /// cooldown hint from the provider's rate-limit response body) should
+    /// use [`Self::on_congestion_with_hint`] so AIMD honors the hint
+    /// instead of pacing against its own fixed default.
     pub fn on_congestion(&self, class: AdaptiveClass) {
+        self.on_congestion_with_hint(class, None);
+    }
+
+    /// Lower bound for a server-provided cooldown hint. A `Retry-After: 0`
+    /// or sub-second value from a misconfigured provider must not collapse
+    /// the cooldown into immediate retry: there's no point in armoring the
+    /// AIMD decrease if the cooldown window is effectively zero. T-DEBT-05.
+    const MIN_HINT_COOLDOWN: Duration = Duration::from_secs(1);
+    /// Upper bound multiplier vs. the configured default cooldown. A
+    /// pathological `Retry-After: 3600` from a 1-second-default provider
+    /// would otherwise stall the entire transfer for an hour on a single
+    /// transient rate limit. Cap at 10× the default and let the operator
+    /// see the throttling in `RUST_LOG=transfer_dag::adaptive=debug`.
+    const MAX_HINT_MULTIPLIER: u32 = 10;
+
+    /// Multiplicative decrease with an explicit cooldown hint. Identical
+    /// to [`Self::on_congestion`] except the arming cooldown is the hint
+    /// (clamped to a safe band) instead of `AimdConfig::cooldown`.
+    ///
+    /// Hint semantics (T-DEBT-05):
+    /// - `None`: use `self.config.cooldown` verbatim (legacy behavior).
+    /// - `Some(d)`: use `d` clamped to `[MIN_HINT_COOLDOWN, MAX_HINT_MULTIPLIER × config.cooldown]`.
+    ///
+    /// The clamp protects against both a misconfigured provider returning
+    /// near-zero `Retry-After` (which would defeat the throttle) and a
+    /// pathological provider returning an hours-long hint (which would
+    /// stall the whole transfer). Operators see clamped values in debug
+    /// logs; the underlying call site (Google Drive / Dropbox / OneDrive
+    /// / Box parse helpers) should still log the raw hint when it diverges.
+    pub fn on_congestion_with_hint(
+        &self,
+        class: AdaptiveClass,
+        cooldown_hint: Option<Duration>,
+    ) {
         let now = Instant::now();
+        let effective_cooldown = match cooldown_hint {
+            None => self.config.cooldown,
+            Some(hint) => {
+                let upper = self
+                    .config
+                    .cooldown
+                    .saturating_mul(Self::MAX_HINT_MULTIPLIER);
+                hint.clamp(Self::MIN_HINT_COOLDOWN, upper)
+            }
+        };
         let mut st = self.state(class).lock().expect("aimd mutex poisoned");
         let level_at_congestion = st.target;
         st.target = (st.target / 2).max(1);
         st.sem.set_live(st.target);
-        st.cooldown_until = Some(now + self.config.cooldown);
+        st.cooldown_until = Some(now + effective_cooldown);
         st.healthy_since = None;
         // Ratchet the regrowth cap down: never above one slot below the level
         // that just congested, and a repeated congestion only tightens it.
@@ -451,6 +530,11 @@ impl AimdController {
     #[cfg(test)]
     pub fn live(&self, class: AdaptiveClass) -> usize {
         self.state(class).lock().unwrap().sem.live()
+    }
+
+    #[cfg(test)]
+    pub fn cooldown_until(&self, class: AdaptiveClass) -> Option<Instant> {
+        self.state(class).lock().unwrap().cooldown_until
     }
 }
 
@@ -697,5 +781,135 @@ mod tests {
         assert_eq!(ctrl.target(AdaptiveClass::Chunk), 3);
         assert_eq!(ctrl.target(AdaptiveClass::Http), 9);
         assert_eq!(ctrl.target(AdaptiveClass::Api), 2);
+    }
+
+    /// T-DEBT-05: `on_congestion_with_hint(class, Some(d))` must arm the
+    /// cooldown for `d` instead of the configured default, so the AIMD
+    /// throttle honors a server-provided `Retry-After` instead of pacing
+    /// against its own fixed timer.
+    #[tokio::test]
+    async fn aimd_respects_cooldown_hint_when_provided() {
+        let cfg = AimdConfig {
+            cooldown: Duration::from_secs(5),
+            healthy_window: Duration::from_secs(5),
+            recovery_window: Duration::from_secs(30),
+        };
+        let ctrl = AimdController::new(8, 1, 1, 1, cfg);
+        let before = Instant::now();
+        ctrl.on_congestion_with_hint(AdaptiveClass::File, Some(Duration::from_secs(45)));
+        let until = ctrl
+            .cooldown_until(AdaptiveClass::File)
+            .expect("on_congestion_with_hint must arm cooldown_until");
+        let elapsed = until.saturating_duration_since(before);
+        // 45 s honored, ±1 s slack for the Instant::now() calls bracketing
+        // the operation.
+        assert!(
+            elapsed >= Duration::from_secs(44) && elapsed <= Duration::from_secs(46),
+            "expected ~45s cooldown, got {:?}",
+            elapsed
+        );
+        // Multiplicative decrease still happens (8 -> 4) regardless of hint.
+        assert_eq!(ctrl.target(AdaptiveClass::File), 4);
+    }
+
+    /// T-DEBT-05: hint clamping protects against both pathological
+    /// near-zero hints (would defeat the throttle) and pathological
+    /// hours-long hints (would stall the whole transfer).
+    #[tokio::test]
+    async fn aimd_clamps_outlier_cooldown_hints() {
+        let cfg = AimdConfig {
+            cooldown: Duration::from_secs(5),
+            healthy_window: Duration::from_secs(5),
+            recovery_window: Duration::from_secs(30),
+        };
+
+        // Lower clamp: a 200 ms hint must be raised to MIN_HINT_COOLDOWN
+        // (1 s) so the throttle window is not effectively zero.
+        let ctrl_lo = AimdController::new(8, 1, 1, 1, cfg);
+        let before_lo = Instant::now();
+        ctrl_lo.on_congestion_with_hint(AdaptiveClass::File, Some(Duration::from_millis(200)));
+        let until_lo = ctrl_lo.cooldown_until(AdaptiveClass::File).unwrap();
+        let elapsed_lo = until_lo.saturating_duration_since(before_lo);
+        assert!(
+            elapsed_lo >= Duration::from_millis(900)
+                && elapsed_lo <= Duration::from_millis(1100),
+            "expected ~1s (lower clamp), got {:?}",
+            elapsed_lo
+        );
+
+        // Upper clamp: a 3600 s hint against a 5 s default cooldown must
+        // be clamped to MAX_HINT_MULTIPLIER × default = 50 s.
+        let ctrl_hi = AimdController::new(8, 1, 1, 1, cfg);
+        let before_hi = Instant::now();
+        ctrl_hi.on_congestion_with_hint(AdaptiveClass::File, Some(Duration::from_secs(3600)));
+        let until_hi = ctrl_hi.cooldown_until(AdaptiveClass::File).unwrap();
+        let elapsed_hi = until_hi.saturating_duration_since(before_hi);
+        assert!(
+            elapsed_hi >= Duration::from_secs(49) && elapsed_hi <= Duration::from_secs(51),
+            "expected ~50s (upper clamp), got {:?}",
+            elapsed_hi
+        );
+
+        // None hint: behavior unchanged, cooldown matches the default.
+        let ctrl_default = AimdController::new(8, 1, 1, 1, cfg);
+        let before_d = Instant::now();
+        ctrl_default.on_congestion_with_hint(AdaptiveClass::File, None);
+        let until_d = ctrl_default.cooldown_until(AdaptiveClass::File).unwrap();
+        let elapsed_d = until_d.saturating_duration_since(before_d);
+        assert!(
+            elapsed_d >= Duration::from_secs(4) && elapsed_d <= Duration::from_secs(6),
+            "expected ~5s (default cooldown), got {:?}",
+            elapsed_d
+        );
+    }
+
+    // T-DEBT-05 S1-T02f: marker convention helpers. The marker carries the
+    // server-provided Retry-After across the provider→executor boundary
+    // without requiring a typed field on ProviderError.
+
+    #[test]
+    fn marker_roundtrips_seconds_value() {
+        let msg = format!("HTTP 429 Too Many Requests{}", embed_retry_after_marker(45));
+        assert_eq!(
+            parse_embedded_retry_after(&msg),
+            Some(Duration::from_secs(45))
+        );
+    }
+
+    #[test]
+    fn marker_returns_none_when_absent() {
+        let msg = "HTTP 429 Too Many Requests";
+        assert_eq!(parse_embedded_retry_after(msg), None);
+    }
+
+    #[test]
+    fn marker_returns_none_on_malformed_value() {
+        // Negative is not a valid u64.
+        assert_eq!(
+            parse_embedded_retry_after("err [retry-after-secs=-5]"),
+            None
+        );
+        // Non-numeric.
+        assert_eq!(
+            parse_embedded_retry_after("err [retry-after-secs=abc]"),
+            None
+        );
+        // Missing closing bracket.
+        assert_eq!(parse_embedded_retry_after("err [retry-after-secs=30"), None);
+    }
+
+    #[test]
+    fn marker_extracts_first_occurrence_only() {
+        // If a provider double-appends (defensive: should not happen), the
+        // first valid value wins. This keeps the helper deterministic.
+        let msg = format!(
+            "err{}{}",
+            embed_retry_after_marker(30),
+            embed_retry_after_marker(60)
+        );
+        assert_eq!(
+            parse_embedded_retry_after(&msg),
+            Some(Duration::from_secs(30))
+        );
     }
 }

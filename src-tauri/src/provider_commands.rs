@@ -248,7 +248,8 @@ async fn try_silent_reconnect(
 pub struct ProviderConnectionParams {
     /// Protocol type: "ftp", "ftps", "sftp", "webdav", "s3", "mega", "opendrive"
     pub protocol: String,
-    /// Registry preset id, when connected through a named preset.
+    /// Optional saved-provider preset id (`nextcloud`, `koofr`, `custom-webdav`, `megacmd`, ...).
+    #[serde(default, alias = "providerId")]
     pub provider_id: Option<String>,
     /// Host/URL (FTP server, WebDAV URL, or S3 endpoint)
     pub server: String,
@@ -352,6 +353,14 @@ impl ProviderConnectionParams {
         };
 
         let mut extra = std::collections::HashMap::new();
+        if let Some(provider_id) = self
+            .provider_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            extra.insert("provider_id".to_string(), provider_id.to_string());
+        }
 
         if let Some(ref provider_id) = self.provider_id {
             if !provider_id.trim().is_empty() {
@@ -1037,13 +1046,62 @@ async fn run_dag_download_leaf(
     // core vs multipart fan-out). For downloads the shape collapses to one
     // transfer node regardless, but we still resolve caps here so the
     // builder picks up `rate_limited_api` / `resume_download` correctly.
-    let caps = {
+    let (caps, route_hint) = {
         let guard = provider.lock().await;
-        guard
+        let caps = guard
             .as_ref()
             .map(|p| p.transfer_capabilities())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        let hint = guard
+            .as_ref()
+            .map(|p| p.router_hint())
+            .unwrap_or(crate::transfer_router::ProviderHint::OAuthCloud);
+        (caps, hint)
     };
+
+    // Phase B routing decision: only env override is honoured in GUI
+    // commands (no flag surface). Default keeps the shaped DAG path
+    // exactly as it was before the router was wired in.
+    let route_ctx = crate::transfer_router::RouteContext::new(
+        route_hint,
+        crate::transfer_router::Operation::Download,
+        file_size,
+    )
+    .with_override(crate::transfer_router::Override::from_env());
+    let decision = crate::transfer_router::Router::new().pick(route_ctx);
+
+    if decision.engine == crate::transfer_router::Engine::Legacy {
+        info!(
+            "Download routed to Legacy engine: {} ({})",
+            filename, decision.reason
+        );
+        let mut guard = provider.lock().await;
+        let result = match guard.as_mut() {
+            Some(p) => p.download(&remote_path, &local_path, progress_cb).await,
+            None => Err(ProviderError::NotConnected),
+        };
+        return match result {
+            Ok(()) => Ok(format!("Downloaded: {}", filename)),
+            Err(e) => {
+                let _ = app.emit(
+                    "transfer_event",
+                    crate::TransferEvent {
+                        event_type: "error".to_string(),
+                        transfer_id,
+                        filename: filename.clone(),
+                        direction: "download".to_string(),
+                        message: Some(format!("Download failed: {}", e)),
+                        progress: None,
+                        path: None,
+                        delta_stats: None,
+                        fallback_reason: None,
+                    },
+                );
+                Err(format!("Download failed: {}", e))
+            }
+        };
+    }
+
     let built = TransferDagBuilder::shaped_file(
         crate::transfer_dag::TransferDirection::Download,
         &caps,
@@ -1122,13 +1180,61 @@ async fn run_dag_upload_leaf(
     // is the gate between the legacy single-`UploadFile` core and a native
     // multipart fan-out (`UploadPart` x N) when the provider advertises
     // `multipart_upload`.
-    let caps = {
+    let (caps, route_hint) = {
         let guard = provider.lock().await;
-        guard
+        let caps = guard
             .as_ref()
             .map(|p| p.transfer_capabilities())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        let hint = guard
+            .as_ref()
+            .map(|p| p.router_hint())
+            .unwrap_or(crate::transfer_router::ProviderHint::OAuthCloud);
+        (caps, hint)
     };
+
+    // Phase B routing decision: same pattern as the download leaf, env
+    // override only. Default path stays on the shaped DAG.
+    let route_ctx = crate::transfer_router::RouteContext::new(
+        route_hint,
+        crate::transfer_router::Operation::Upload,
+        file_size,
+    )
+    .with_override(crate::transfer_router::Override::from_env());
+    let decision = crate::transfer_router::Router::new().pick(route_ctx);
+
+    if decision.engine == crate::transfer_router::Engine::Legacy {
+        info!(
+            "Upload routed to Legacy engine: {} ({})",
+            filename, decision.reason
+        );
+        let mut guard = provider.lock().await;
+        let result = match guard.as_mut() {
+            Some(p) => p.upload(&local_path, &remote_path, progress_cb).await,
+            None => Err(ProviderError::NotConnected),
+        };
+        return match result {
+            Ok(()) => Ok(format!("Uploaded: {}", filename)),
+            Err(e) => {
+                let _ = app.emit(
+                    "transfer_event",
+                    crate::TransferEvent {
+                        event_type: "error".to_string(),
+                        transfer_id,
+                        filename: filename.clone(),
+                        direction: "upload".to_string(),
+                        message: Some(format!("Upload failed: {}", e)),
+                        progress: None,
+                        path: None,
+                        delta_stats: None,
+                        fallback_reason: None,
+                    },
+                );
+                Err(format!("Upload failed: {}", e))
+            }
+        };
+    }
+
     let built = TransferDagBuilder::shaped_file(
         crate::transfer_dag::TransferDirection::Upload,
         &caps,
@@ -2945,7 +3051,14 @@ pub async fn provider_rename(
     Ok(())
 }
 
-/// Server-side copy (if supported by provider)
+/// Server-side copy with automatic download → upload fallback.
+///
+/// Tries the provider's native `server_copy` first; if the provider does
+/// not advertise the capability OR advertises it but rejects this specific
+/// operation with a recoverable error (S3 cross-bucket without IAM, WebDAV
+/// 501 / Method Not Allowed, Nextcloud cross-share), degrades to a
+/// streaming download-then-upload so the user-visible operation succeeds.
+/// Hard errors (auth, source not found, quota) propagate unchanged.
 #[tauri::command]
 pub async fn provider_server_copy(
     state: State<'_, ProviderState>,
@@ -2958,18 +3071,17 @@ pub async fn provider_server_copy(
         .as_mut()
         .ok_or("Not connected to any provider")?;
 
-    if !provider.supports_server_copy() {
-        return Err("Server-side copy not supported by this provider".to_string());
-    }
-
     info!("Server copy: {} -> {}", from, to);
 
-    provider
-        .server_copy(&from, &to)
-        .await
-        .map_err(|e| format!("Failed to copy: {}", e))?;
-
-    Ok(())
+    match crate::copy_fallback::server_side_copy_with_fallback(provider.as_mut(), &from, &to).await
+    {
+        Ok(crate::copy_fallback::CopyOutcome::ServerSide) => Ok(()),
+        Ok(crate::copy_fallback::CopyOutcome::Fallback { note }) => {
+            info!("Server copy fell back to download→upload: {}", note);
+            Ok(())
+        }
+        Err(e) => Err(format!("Failed to copy: {}", e)),
+    }
 }
 
 /// Check if provider supports server-side copy
@@ -9791,6 +9903,19 @@ mod tests {
         assert_eq!(
             config.extra.get("anonymous").map(String::as_str),
             Some("true")
+        );
+    }
+
+    #[test]
+    fn test_provider_params_forward_provider_id() {
+        let mut params = s3_params(None);
+        params.protocol = "webdav".to_string();
+        params.bucket = None;
+        params.provider_id = Some("nextcloud".to_string());
+        let config = params.to_provider_config().unwrap();
+        assert_eq!(
+            config.extra.get("provider_id").map(String::as_str),
+            Some("nextcloud")
         );
     }
 

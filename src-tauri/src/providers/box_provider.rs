@@ -16,13 +16,107 @@ use tracing::info;
 use super::types::BoxConfig;
 use super::{
     oauth2::{OAuth2Manager, OAuthConfig},
-    sanitize_api_error, FileVersion, ProviderError, ProviderType, RemoteEntry,
+    sanitize_api_error, FileVersion, MultipartHandle, ProviderError, ProviderType, RemoteEntry,
     ShareLinkCapabilities, ShareLinkInfo, ShareLinkOptions, ShareLinkResult, StorageInfo,
-    StorageProvider,
+    StorageProvider, UploadedPart,
 };
 
 /// Box API endpoints
 const API_BASE: &str = "https://api.box.com/2.0";
+
+/// Box requires multipart upload sessions for files >= 20 MiB. Below this the
+/// simple `/files/content` POST is faster. The trait runner uses the same
+/// threshold so single-PUT files keep the legacy path.
+const BOX_SESSION_THRESHOLD: u64 = 20 * 1024 * 1024;
+
+/// Opaque metadata threaded through `MultipartHandle.upload_id` for the Box
+/// chunked-upload-v2 trait. Box is unusual in two ways:
+///
+/// - The server picks the `part_size` (returned by
+///   `POST /files/upload_sessions`), so we cannot derive it from the
+///   advertised hint — we MUST round-trip the server value.
+/// - The `commit` call needs every part's `{part_id, offset, size, sha1}`
+///   receipt plus a whole-file SHA-1 `Digest` header.
+///
+/// Storing the per-part receipts on the handle would balloon it, so the
+/// trait method shape pushes them through `UploadedPart.etag` (encoded as
+/// JSON, since Box's receipt is more than just an ETag) and rebuilds the
+/// commit list at `complete_multipart_upload` time. The whole-file SHA-1
+/// is recomputed from disk to keep `upload_part` stateless.
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
+struct BoxMultipartMeta {
+    session_id: String,
+    upload_part_url: String,
+    commit_url: String,
+    total: u64,
+    part: u64,
+    local_path: String,
+}
+
+impl BoxMultipartMeta {
+    fn encode(&self) -> String {
+        serde_json::to_string(self).expect("BoxMultipartMeta is always serializable")
+    }
+
+    fn decode(s: &str) -> Result<Self, ProviderError> {
+        serde_json::from_str(s)
+            .map_err(|e| ProviderError::Other(format!("Invalid Box multipart handle: {}", e)))
+    }
+}
+
+/// Per-part receipt embedded inside `UploadedPart.etag` so
+/// `complete_multipart_upload` can reconstruct the Box commit body. Box's
+/// `part` JSON object has the shape `{part_id, offset, size, sha1}`.
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
+struct BoxPartReceipt {
+    part_id: String,
+    offset: u64,
+    size: u64,
+    sha1: String,
+}
+
+/// T-DEBT-05 S1-T02e: Box returns 429 with a standard `Retry-After` header
+/// (seconds form). Box does not use a JSON body field for the hint; the
+/// header is the authoritative source. Box may also return 503 in
+/// maintenance windows, which is congestion the same way OneDrive's 503
+/// is.
+fn box_is_rate_limited(status: u16) -> bool {
+    status == 429 || status == 503
+}
+
+/// Compute the marker substring for a Box rate-limit response. Pure-fn
+/// so the test exercises the header-parsing branches without any HTTP
+/// scaffolding.
+fn box_retry_marker_tail(status: u16, retry_header: Option<&str>) -> Option<String> {
+    if !box_is_rate_limited(status) {
+        return None;
+    }
+    let hint = super::retry_after::parse_retry_after_seconds(retry_header.unwrap_or(""))?;
+    Some(crate::transfer_dag::adaptive::embed_retry_after_marker(
+        hint.as_secs(),
+    ))
+}
+
+/// Build a `ProviderError::Other` from a failed Box HTTP response,
+/// appending the Retry-After marker when the response is a throttle
+/// signal. The `context_prefix` is prepended verbatim.
+async fn box_error_from_response(
+    response: reqwest::Response,
+    context_prefix: &str,
+) -> ProviderError {
+    let status = response.status();
+    let retry_header = response
+        .headers()
+        .get(reqwest::header::RETRY_AFTER)
+        .and_then(|v| v.to_str().ok())
+        .map(String::from);
+    let text = response.text().await.unwrap_or_default();
+    let mut msg = format!("{} {}: {}", context_prefix, status, sanitize_api_error(&text));
+    if let Some(tail) = box_retry_marker_tail(status.as_u16(), retry_header.as_deref()) {
+        msg.push_str(&tail);
+    }
+    ProviderError::Other(msg)
+}
 const UPLOAD_BASE: &str = "https://upload.box.com/api/2.0";
 
 /// Box watermark info (returned by fields=watermark_info)
@@ -455,11 +549,7 @@ impl BoxProvider {
                 .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
             if !resp.status().is_success() {
-                let body = resp.text().await.unwrap_or_default();
-                return Err(ProviderError::Other(format!(
-                    "List trash failed: {}",
-                    sanitize_api_error(&body)
-                )));
+                return Err(box_error_from_response(resp, "List trash failed:").await);
             }
 
             let page: BoxTrashCollection = resp
@@ -527,11 +617,7 @@ impl BoxProvider {
                 .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
             if !resp.status().is_success() {
-                let body = resp.text().await.unwrap_or_default();
-                return Err(ProviderError::Other(format!(
-                    "Trash failed: {}",
-                    sanitize_api_error(&body)
-                )));
+                return Err(box_error_from_response(resp, "Trash failed:").await);
             }
             info!("Box: trashed {} {}", item_type, path);
         }
@@ -567,11 +653,7 @@ impl BoxProvider {
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
-            let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!(
-                "Restore failed: {}",
-                sanitize_api_error(&body)
-            )));
+            return Err(box_error_from_response(resp, "Restore failed:").await);
         }
         info!("Box: restored {} {} from trash", item_type, item_id);
         Ok(())
@@ -604,11 +686,7 @@ impl BoxProvider {
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
-            let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!(
-                "Permanent delete failed: {}",
-                sanitize_api_error(&body)
-            )));
+            return Err(box_error_from_response(resp, "Permanent delete failed:").await);
         }
         info!(
             "Box: permanently deleted {} {} from trash",
@@ -649,11 +727,7 @@ impl BoxProvider {
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
-            let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!(
-                "Move failed: {}",
-                sanitize_api_error(&body)
-            )));
+            return Err(box_error_from_response(resp, "Move failed:").await);
         }
         info!("Box: moved {} {} -> {}", item_type, from_path, to_folder);
         Ok(())
@@ -681,11 +755,7 @@ impl BoxProvider {
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
-            let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!(
-                "List comments failed: {}",
-                sanitize_api_error(&body)
-            )));
+            return Err(box_error_from_response(resp, "List comments failed:").await);
         }
 
         let result: BoxCommentCollection = resp
@@ -1074,6 +1144,121 @@ impl BoxProvider {
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         Ok(result.entries)
+    }
+
+    /// Open a Box chunked upload session for `remote_path` of `total_size`
+    /// bytes and return the parsed session metadata. Handles the new-file
+    /// vs new-version branch (Box returns `item_name_in_use` and we retry
+    /// against `/files/<id>/upload_sessions`). Shared by the legacy
+    /// `chunked_upload_session` orchestrator and the shaped-graph trait
+    /// path so both agree on session lifecycle.
+    async fn open_chunked_upload_session(
+        &mut self,
+        remote_path: &str,
+        total_size: u64,
+    ) -> Result<BoxMultipartMeta, ProviderError> {
+        #[derive(Deserialize)]
+        struct UploadSessionResponse {
+            id: String,
+            part_size: u64,
+            session_endpoints: Option<SessionEndpoints>,
+        }
+        #[derive(Deserialize)]
+        struct SessionEndpoints {
+            upload_part: Option<String>,
+            commit: Option<String>,
+        }
+
+        let normalized = Self::normalize_path(remote_path);
+        let (parent_path, file_name) = match normalized.rfind('/') {
+            Some(pos) if pos > 0 => (&normalized[..pos], &normalized[pos + 1..]),
+            _ => ("/", normalized.trim_start_matches('/')),
+        };
+        let parent_id = self.resolve_folder_id(parent_path).await?;
+
+        let session_body = serde_json::json!({
+            "file_name": file_name,
+            "folder_id": parent_id,
+            "file_size": total_size,
+        });
+        let session_url = format!("{}/files/upload_sessions", UPLOAD_BASE);
+
+        let token = self.get_token().await?;
+        let response = self
+            .client
+            .post(&session_url)
+            .header(AUTHORIZATION, Self::bearer_header(&token)?)
+            .header(CONTENT_TYPE, "application/json")
+            .body(session_body.to_string())
+            .send()
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        let session_resp = if response.status().is_success() {
+            response
+        } else {
+            // Box returns `item_name_in_use` when the file already exists:
+            // open a new-version session against the existing file id.
+            let text = response.text().await.unwrap_or_default();
+            if text.contains("item_name_in_use") {
+                let file_id = self.resolve_file_id(remote_path).await?;
+                let ver_body = serde_json::json!({ "file_size": total_size });
+                let ver_url = format!("{}/files/{}/upload_sessions", UPLOAD_BASE, file_id);
+                let token2 = self.get_token().await?;
+                let ver_resp = self
+                    .client
+                    .post(&ver_url)
+                    .header(AUTHORIZATION, Self::bearer_header(&token2)?)
+                    .header(CONTENT_TYPE, "application/json")
+                    .body(ver_body.to_string())
+                    .send()
+                    .await
+                    .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+                if !ver_resp.status().is_success() {
+                    let t = ver_resp.text().await.unwrap_or_default();
+                    return Err(ProviderError::TransferFailed(format!(
+                        "Box upload_sessions (version) failed: {}",
+                        sanitize_api_error(&t)
+                    )));
+                }
+                ver_resp
+            } else {
+                return Err(ProviderError::TransferFailed(format!(
+                    "Box upload_sessions failed: {}",
+                    sanitize_api_error(&text)
+                )));
+            }
+        };
+
+        let parsed: UploadSessionResponse = session_resp
+            .json()
+            .await
+            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+
+        let upload_part_url = parsed
+            .session_endpoints
+            .as_ref()
+            .and_then(|e| e.upload_part.clone())
+            .unwrap_or_else(|| format!("{}/files/upload_sessions/{}", UPLOAD_BASE, parsed.id));
+        let commit_url = parsed
+            .session_endpoints
+            .as_ref()
+            .and_then(|e| e.commit.clone())
+            .unwrap_or_else(|| {
+                format!(
+                    "{}/files/upload_sessions/{}/commit",
+                    UPLOAD_BASE, parsed.id
+                )
+            });
+
+        Ok(BoxMultipartMeta {
+            session_id: parsed.id,
+            upload_part_url,
+            commit_url,
+            total: total_size,
+            part: parsed.part_size,
+            local_path: String::new(),
+        })
     }
 
     /// Upload data in chunks via a Box upload session, then commit
@@ -2410,9 +2595,313 @@ impl StorageProvider for BoxProvider {
 
     fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
         super::TransferOptimizationHints {
+            supports_multipart: true,
+            multipart_threshold: BOX_SESSION_THRESHOLD,
+            // Box's session response carries the authoritative `part_size`;
+            // the runner uses our hint as a planning estimate. 8 MiB
+            // matches what most Box sessions return.
+            multipart_part_size: 8 * 1024 * 1024,
+            multipart_max_parallel: 4,
             supports_resume_download: true,
+            supports_resume_upload: true,
+            supports_server_checksum: true,
+            preferred_checksum_algo: Some("sha1".to_string()),
             ..Default::default()
         }
+    }
+
+    // Shaped-graph multipart trait wiring (S2-T04).
+    //
+    // Box's chunked-upload-v2 is the most complex of the four S2 cloud
+    // backends because:
+    //   - The server returns the authoritative `part_size` in the session
+    //     response. Our advertised hint is only a planning estimate; the
+    //     runner uses it via `multipart_part_size` to size the graph, but
+    //     `upload_part` MUST respect the server value for `Content-Range`
+    //     math. We round-trip the server `part_size` through the handle.
+    //   - Every chunk PUT requires a `Digest: sha=<base64-sha1-chunk>`
+    //     header; the final `commit` POST requires the whole-file SHA-1
+    //     in the same header plus a JSON body listing each part's
+    //     `{part_id, offset, size, sha1}` receipt.
+    //   - Box accepts parallel chunk PUTs as long as the byte ranges do
+    //     not overlap, so `multipart_max_parallel = 4` is honest.
+    //
+    // Handle encoding stores `(session_id, upload_part_url, commit_url,
+    // total, part, local_path)` so `complete_multipart_upload` can stream
+    // the file from disk once to compute the whole-file SHA-1. Per-part
+    // receipts are pushed through `UploadedPart.etag` as JSON, then
+    // decoded and emitted in part-number order at commit time.
+
+    async fn begin_multipart_upload(
+        &mut self,
+        remote_path: &str,
+        total_size: u64,
+        _content_type: Option<&str>,
+        local_source_path: Option<&str>,
+    ) -> Result<MultipartHandle, ProviderError> {
+        if total_size == 0 {
+            return Err(ProviderError::Other(
+                "Box multipart upload requires non-zero total_size".to_string(),
+            ));
+        }
+        // Box's commit body requires the whole-file SHA-1 in a `Digest`
+        // header. We stream the file once at commit time, so the runner
+        // MUST pin the local source path here.
+        let local_source = local_source_path.ok_or_else(|| {
+            ProviderError::Other(
+                "Box multipart upload requires the local source path (runner did not supply one)"
+                    .to_string(),
+            )
+        })?;
+        let mut meta = self
+            .open_chunked_upload_session(remote_path, total_size)
+            .await?;
+        meta.local_path = local_source.to_string();
+        // The runner uses the advertised `multipart_part_size` (8 MiB) as
+        // the per-part length; the Box session returns its own server-
+        // decided `part_size`. They MUST match or upload_part calls will
+        // overlap byte ranges. For files < 5 GiB Box returns 8 MiB so
+        // this almost always matches; surface a typed error otherwise so
+        // the runner aborts cleanly instead of producing corrupt commits.
+        const BOX_ADVERTISED_PART_SIZE: u64 = 8 * 1024 * 1024;
+        if meta.part != BOX_ADVERTISED_PART_SIZE {
+            return Err(ProviderError::TransferFailed(format!(
+                "Box server returned part_size {} but the runner expects {}; \
+                 cannot proceed without runner re-shaping (out-of-scope for S2)",
+                meta.part, BOX_ADVERTISED_PART_SIZE
+            )));
+        }
+        Ok(MultipartHandle {
+            upload_id: meta.encode(),
+            remote_path: remote_path.to_string(),
+        })
+    }
+
+    async fn upload_part(
+        &mut self,
+        handle: &MultipartHandle,
+        part_number: u32,
+        data: Vec<u8>,
+    ) -> Result<UploadedPart, ProviderError> {
+        use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+        use sha1::{Digest, Sha1};
+
+        if part_number == 0 {
+            return Err(ProviderError::Other(
+                "Box upload_part requires 1-based part_number".to_string(),
+            ));
+        }
+        if data.is_empty() {
+            return Err(ProviderError::Other(
+                "Box upload_part received empty data".to_string(),
+            ));
+        }
+        let meta = BoxMultipartMeta::decode(&handle.upload_id)?;
+        let offset = (part_number as u64 - 1) * meta.part;
+        let end = offset
+            .checked_add(data.len() as u64)
+            .ok_or_else(|| ProviderError::Other("Box part offset overflow".to_string()))?;
+        if end > meta.total {
+            return Err(ProviderError::Other(format!(
+                "Box part {} exceeds declared total: offset {} + len {} > total {}",
+                part_number,
+                offset,
+                data.len(),
+                meta.total
+            )));
+        }
+
+        let chunk_sha1 = {
+            let mut h = Sha1::new();
+            h.update(&data);
+            BASE64.encode(h.finalize())
+        };
+        let content_range = format!("bytes {}-{}/{}", offset, end - 1, meta.total);
+
+        let token = self.get_token().await?;
+        let resp = self
+            .client
+            .put(&meta.upload_part_url)
+            .header(AUTHORIZATION, Self::bearer_header(&token)?)
+            .header(CONTENT_TYPE, "application/octet-stream")
+            .header("Content-Range", &content_range)
+            .header("Digest", format!("sha={}", chunk_sha1))
+            .body(data)
+            .send()
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let retry_header = resp
+                .headers()
+                .get(reqwest::header::RETRY_AFTER)
+                .and_then(|v| v.to_str().ok())
+                .map(String::from);
+            let text = resp.text().await.unwrap_or_default();
+            let mut msg = format!(
+                "Box upload_part {} failed (HTTP {}): {}",
+                part_number,
+                status,
+                sanitize_api_error(&text)
+            );
+            if let Some(tail) = box_retry_marker_tail(status.as_u16(), retry_header.as_deref()) {
+                msg.push_str(&tail);
+            }
+            return Err(ProviderError::TransferFailed(msg));
+        }
+
+        let part_resp: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+        let part_field = part_resp.get("part").ok_or_else(|| {
+            ProviderError::ParseError(
+                "Box upload_part response missing `part` field".to_string(),
+            )
+        })?;
+        let part_id = part_field
+            .get("part_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| {
+                ProviderError::ParseError("Box upload_part response missing part.part_id".into())
+            })?
+            .to_string();
+        let receipt = BoxPartReceipt {
+            part_id,
+            offset,
+            size: end - offset,
+            sha1: chunk_sha1,
+        };
+        Ok(UploadedPart {
+            part_number,
+            etag: serde_json::to_string(&receipt)
+                .expect("BoxPartReceipt always serialises"),
+        })
+    }
+
+    async fn complete_multipart_upload(
+        &mut self,
+        handle: MultipartHandle,
+        parts: Vec<UploadedPart>,
+    ) -> Result<(), ProviderError> {
+        use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+        use sha1::{Digest, Sha1};
+        use tokio::io::AsyncReadExt;
+
+        let meta = BoxMultipartMeta::decode(&handle.upload_id)?;
+        if meta.local_path.is_empty() {
+            return Err(ProviderError::TransferFailed(
+                "Box complete: local_path missing from multipart handle (was begin called via the trait?)"
+                    .to_string(),
+            ));
+        }
+        let expected = meta.total.div_ceil(meta.part).max(1) as usize;
+        if parts.len() != expected {
+            return Err(ProviderError::TransferFailed(format!(
+                "Box complete: expected {} parts, runner committed {}",
+                expected,
+                parts.len()
+            )));
+        }
+
+        // Sort by part_number (the runner already does this but the trait
+        // spec demands sorted parts, so defensive) and rebuild the Box
+        // commit body shape `{parts: [{part_id, offset, size, sha1}, ...]}`.
+        let mut sorted = parts;
+        sorted.sort_by_key(|p| p.part_number);
+        let mut commit_parts: Vec<serde_json::Value> = Vec::with_capacity(sorted.len());
+        for part in &sorted {
+            let receipt: BoxPartReceipt = serde_json::from_str(&part.etag).map_err(|e| {
+                ProviderError::ParseError(format!(
+                    "Box commit: cannot decode part {} receipt: {}",
+                    part.part_number, e
+                ))
+            })?;
+            commit_parts.push(serde_json::json!({
+                "part_id": receipt.part_id,
+                "offset": receipt.offset,
+                "size": receipt.size,
+                "sha1": receipt.sha1,
+            }));
+        }
+
+        // Whole-file SHA-1: stream the local file once. The handle pinned
+        // `local_path` at begin time; the file should not have changed
+        // (the runner holds the transfer-core for the whole DAG).
+        let mut file = tokio::fs::File::open(&meta.local_path)
+            .await
+            .map_err(ProviderError::IoError)?;
+        let mut hasher = Sha1::new();
+        let mut buf = vec![0u8; 1024 * 1024];
+        loop {
+            let n = file.read(&mut buf).await.map_err(ProviderError::IoError)?;
+            if n == 0 {
+                break;
+            }
+            hasher.update(&buf[..n]);
+        }
+        let file_sha1 = BASE64.encode(hasher.finalize());
+
+        let commit_body = serde_json::json!({ "parts": commit_parts });
+        let token = self.get_token().await?;
+        let resp = self
+            .client
+            .post(&meta.commit_url)
+            .header(AUTHORIZATION, Self::bearer_header(&token)?)
+            .header(CONTENT_TYPE, "application/json")
+            .header("Digest", format!("sha={}", file_sha1))
+            .json(&commit_body)
+            .send()
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        let status = resp.status();
+        // Box returns 201 Created or 202 Accepted (async commit) on success.
+        if !status.is_success() && status.as_u16() != 201 && status.as_u16() != 202 {
+            let retry_header = resp
+                .headers()
+                .get(reqwest::header::RETRY_AFTER)
+                .and_then(|v| v.to_str().ok())
+                .map(String::from);
+            let text = resp.text().await.unwrap_or_default();
+            let mut msg = format!(
+                "Box commit failed (HTTP {}): {}",
+                status,
+                sanitize_api_error(&text)
+            );
+            if let Some(tail) = box_retry_marker_tail(status.as_u16(), retry_header.as_deref()) {
+                msg.push_str(&tail);
+            }
+            return Err(ProviderError::TransferFailed(msg));
+        }
+        Ok(())
+    }
+
+    async fn abort_multipart_upload(
+        &mut self,
+        handle: MultipartHandle,
+    ) -> Result<(), ProviderError> {
+        let meta = BoxMultipartMeta::decode(&handle.upload_id)?;
+        // Box's abort endpoint is the session URL with DELETE. Best-effort:
+        // ignore errors so the abort cannot mask the original transfer
+        // error. Sessions expire server-side after a few days if abort
+        // ever silently fails.
+        if let Ok(token) = self.get_token().await {
+            if let Ok(header) = Self::bearer_header(&token) {
+                let abort_url = format!(
+                    "{}/files/upload_sessions/{}",
+                    UPLOAD_BASE, meta.session_id
+                );
+                let _ = self
+                    .client
+                    .delete(&abort_url)
+                    .header(AUTHORIZATION, header)
+                    .send()
+                    .await;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -2452,5 +2941,106 @@ mod tests {
     fn bearer_header_rejects_control_chars_in_token() {
         let bad_token = SecretString::from("bad\ntoken".to_string());
         assert!(BoxProvider::bearer_header(&bad_token).is_err());
+    }
+
+    // T-DEBT-05 S1-T02e: Box rate-limit detection + marker emission.
+
+    #[test]
+    fn box_is_rate_limited_recognises_429_and_503() {
+        assert!(box_is_rate_limited(429));
+        assert!(box_is_rate_limited(503));
+        assert!(!box_is_rate_limited(500));
+        assert!(!box_is_rate_limited(404));
+        assert!(!box_is_rate_limited(200));
+    }
+
+    #[test]
+    fn box_retry_marker_tail_emits_marker_on_429_with_header() {
+        let tail = box_retry_marker_tail(429, Some("30")).expect("rate-limited + valid hint");
+        assert!(tail.contains("retry-after-secs=30"));
+    }
+
+    #[test]
+    fn box_retry_marker_tail_emits_marker_on_503_with_header() {
+        let tail = box_retry_marker_tail(503, Some("120")).expect("503 maintenance");
+        assert!(tail.contains("retry-after-secs=120"));
+    }
+
+    #[test]
+    fn box_retry_marker_tail_returns_none_when_not_rate_limited() {
+        assert_eq!(box_retry_marker_tail(500, Some("30")), None);
+        assert_eq!(box_retry_marker_tail(404, Some("30")), None);
+    }
+
+    #[test]
+    fn box_retry_marker_tail_returns_none_without_header() {
+        assert_eq!(box_retry_marker_tail(429, None), None);
+        assert_eq!(box_retry_marker_tail(429, Some("")), None);
+        assert_eq!(box_retry_marker_tail(429, Some("abc")), None);
+    }
+
+    // ---------------------------------------------------------------------
+    // S2-T04 multipart trait wiring
+    // ---------------------------------------------------------------------
+
+    #[test]
+    fn box_meta_roundtrip_preserves_session_urls_and_local_path() {
+        let meta = BoxMultipartMeta {
+            session_id: "F971964745A5CD0C001BB7CE".to_string(),
+            upload_part_url:
+                "https://upload.box.com/api/2.0/files/upload_sessions/F971964745A5CD0C001BB7CE"
+                    .to_string(),
+            commit_url:
+                "https://upload.box.com/api/2.0/files/upload_sessions/F971964745A5CD0C001BB7CE/commit"
+                    .to_string(),
+            total: 104_857_600,
+            part: 8_388_608,
+            local_path: "/tmp/box-test.bin".to_string(),
+        };
+        let encoded = meta.encode();
+        let decoded = BoxMultipartMeta::decode(&encoded).expect("decode");
+        assert_eq!(decoded, meta);
+    }
+
+    #[test]
+    fn box_meta_decode_rejects_garbage() {
+        assert!(matches!(
+            BoxMultipartMeta::decode("not json").unwrap_err(),
+            ProviderError::Other(_)
+        ));
+    }
+
+    #[test]
+    fn box_part_receipt_roundtrip_into_uploaded_part_etag() {
+        let receipt = BoxPartReceipt {
+            part_id: "8F0966B1".to_string(),
+            offset: 16_777_216,
+            size: 8_388_608,
+            sha1: "abcdef==".to_string(),
+        };
+        let encoded = serde_json::to_string(&receipt).expect("serialise");
+        let decoded: BoxPartReceipt = serde_json::from_str(&encoded).expect("deserialise");
+        assert_eq!(decoded, receipt);
+    }
+
+    #[test]
+    fn box_offset_math_walks_part_sequence_to_total_minus_one() {
+        // Box's session-decided `part_size` is whatever the server returns
+        // (typically 8 MiB for files in the 20 MiB–5 GiB range). Sanity:
+        // every part_number from 1..=ceil(total/part) produces a valid
+        // offset inside [0, total) and the last byte equals total-1.
+        let total: u64 = 100 * 1024 * 1024;
+        let part: u64 = 8 * 1024 * 1024;
+        let parts = total.div_ceil(part);
+        let mut last_end: i128 = -1;
+        for pn in 1..=parts {
+            let offset = (pn - 1) * part;
+            assert!(offset < total);
+            let len = part.min(total - offset);
+            let end = offset + len - 1;
+            assert!(offset as i128 > last_end);
+            last_end = end as i128;
+        }
+        assert_eq!(last_end as u64, total - 1);
     }
 }
