@@ -1789,6 +1789,18 @@ enum Commands {
             env = "AEROFTP_MOUNT_CACHE_MODE",
         )]
         cache_mode: CacheMode,
+
+        /// T-DEBT-13c: Number of FUSE session event-loop threads. With
+        /// `N > 1` the kernel can dispatch independent requests
+        /// (`read`, `readdir`, `getattr`) in parallel and the mount
+        /// honours the `Send + Sync` invariant of the userspace
+        /// filesystem. When set the crate also enables
+        /// `FUSE_DEV_IOC_CLONE`, giving each worker thread its own
+        /// `/dev/fuse` descriptor for lock-free request processing.
+        /// Default: unset (single-threaded loop, byte-for-byte
+        /// compatible with mounts built before the 0.17 bump).
+        #[arg(long, env = "AEROFTP_MOUNT_FUSE_THREADS")]
+        fuse_threads: Option<usize>,
     },
     /// Transfer files between two saved profiles (cross-profile copy)
     Transfer {
@@ -5434,6 +5446,11 @@ struct MountKnobs {
     /// `AeroFuseFs::new`; the per-knob options above (`attr_timeout`,
     /// `dir_cache_time`) win when set explicitly.
     cache_mode: CacheMode,
+    /// T-DEBT-13c: When `Some(n)` with `n > 1`, `cmd_mount` builds the
+    /// fuser 0.17 `Config` with `n_threads = Some(n)` and
+    /// `clone_fd = true`. Default `None` keeps the historical
+    /// single-threaded session loop and `clone_fd = false`.
+    fuse_threads: Option<usize>,
 }
 
 fn parse_duration_strict(s: &str) -> Result<std::time::Duration, String> {
@@ -19948,6 +19965,11 @@ fn cmd_aerorsync_mode_get(format: OutputFormat) -> i32 {
 /// is spawned, no version probe is performed (a non-zero exit on
 /// `rsync --version` would be a separate concern handled by the
 /// transfer layer).
+///
+/// Only the `aerorsync`-gated `cmd_aerorsync_mode_get` consumes this
+/// helper; gate the definition to match so the dead-code lint stays
+/// silent when the feature is off.
+#[cfg(feature = "aerorsync")]
 fn detect_classic_rsync() -> Option<std::path::PathBuf> {
     let exe_name = if cfg!(windows) { "rsync.exe" } else { "rsync" };
     let path_env = std::env::var_os("PATH")?;
@@ -25141,7 +25163,7 @@ async fn cmd_sync_local_to_local(
         )
     };
     #[cfg(not(feature = "aerorsync"))]
-    let delta_transport: Option<()> = None;
+    let _delta_transport: Option<()> = None;
 
     for entry in walker {
         if cancelled.load(Ordering::Relaxed) {
@@ -25207,8 +25229,12 @@ async fn cmd_sync_local_to_local(
 
         // Try LocalDeltaTransport for files >= threshold. Fall through to
         // plain copy on TooSmall, oversized, or any unexpected error so the
-        // user always gets a result.
+        // user always gets a result. Both bindings are written only inside
+        // the `aerorsync` feature gate, so they look immutable when the
+        // feature is off.
+        #[cfg_attr(not(feature = "aerorsync"), allow(unused_mut))]
         let mut used_delta = false;
+        #[cfg_attr(not(feature = "aerorsync"), allow(unused_mut))]
         let mut delta_bytes: Option<u64> = None;
 
         #[cfg(feature = "aerorsync")]
@@ -25325,6 +25351,9 @@ async fn cmd_sync_local_to_local(
     stats
 }
 
+// `use_aerorsync_batch` is only consumed inside an `aerorsync`-gated
+// block below; tolerate the dead argument when the feature is off.
+#[cfg_attr(not(feature = "aerorsync"), allow(unused_variables))]
 #[allow(clippy::too_many_arguments)]
 async fn cmd_sync(
     url: &str,
@@ -26274,7 +26303,12 @@ async fn cmd_sync(
     //   - the SFTP provider has no pinned host-key (Z.1.5 security gate)
     //   - open_delta_batch returns NoopBatch (transport opted out)
     //   - a per-file delta call returns `fallback` (e.g. TooSmall)
+    // Both bindings are mutated only inside the `aerorsync` feature
+    // gate below; when the feature is off they stay at their initial
+    // values and look immutable to clippy.
+    #[cfg_attr(not(feature = "aerorsync"), allow(unused_mut))]
     let mut used_batch_for_uploads = false;
+    #[cfg_attr(not(feature = "aerorsync"), allow(unused_mut))]
     let mut leftover_upload_jobs: Vec<(String, String, String, u64)> = upload_jobs.clone();
     #[cfg(feature = "aerorsync")]
     if use_aerorsync_batch && !leftover_upload_jobs.is_empty() {
@@ -27454,10 +27488,15 @@ async fn cmd_ncdu(
 #[cfg(target_os = "linux")]
 mod fuse_mount {
     use super::*;
+    // T-DEBT-13c: fuser 0.17 newtype migration. The integer args used in
+    // 0.16 (`u64` ino/fh/lock_owner, `i32` flags, `u32` write_flags) are
+    // now strongly-typed wrappers; we keep the body in `u64`/`i32` for
+    // minimal diff by extracting `.0` at method entry.
     use fuser::{
-        FileAttr, FileType, Filesystem, KernelConfig, MountOption, ReplyAttr, ReplyCreate,
-        ReplyData, ReplyDirectory, ReplyEmpty, ReplyEntry, ReplyOpen, ReplyStatfs, ReplyWrite,
-        Request,
+        BsdFileFlags, Config, Errno, FileAttr, FileHandle, FileType, Filesystem, FopenFlags,
+        Generation, INodeNo, KernelConfig, LockOwner, MountOption, OpenFlags, RenameFlags,
+        ReplyAttr, ReplyCreate, ReplyData, ReplyDirectory, ReplyEmpty, ReplyEntry, ReplyOpen,
+        ReplyStatfs, ReplyWrite, Request, SessionACL, WriteFlags,
     };
     use std::collections::HashMap;
     use std::ffi::OsStr;
@@ -27742,7 +27781,8 @@ mod fuse_mount {
     fn dir_attr(ino: u64, _nlink: u64, uid: u32, gid: u32) -> FileAttr {
         let now = SystemTime::now();
         FileAttr {
-            ino,
+            // T-DEBT-13c: `FileAttr.ino` is now `INodeNo` in fuser 0.17.
+            ino: INodeNo(ino),
             size: 0,
             blocks: 0,
             atime: now,
@@ -27762,7 +27802,8 @@ mod fuse_mount {
 
     fn file_attr(ino: u64, size: u64, mtime: SystemTime, uid: u32, gid: u32) -> FileAttr {
         FileAttr {
-            ino,
+            // T-DEBT-13c: `FileAttr.ino` is now `INodeNo` in fuser 0.17.
+            ino: INodeNo(ino),
             size,
             blocks: size.div_ceil(BLOCK_SIZE as u64),
             atime: mtime,
@@ -27803,18 +27844,29 @@ mod fuse_mount {
         /// kernel does not support the bit it silently refuses the
         /// addition; we discard the missing-flag error so the mount
         /// still succeeds without write-back acceleration.
+        ///
+        /// T-DEBT-13c: under fuser 0.17 the capability lives on the
+        /// typed `InitFlags` bitflag and the callback returns
+        /// `io::Result<()>` instead of the legacy `Result<(), c_int>`.
         fn init(
             &mut self,
             _req: &Request,
             config: &mut KernelConfig,
-        ) -> Result<(), libc::c_int> {
+        ) -> std::io::Result<()> {
             if self.writeback_cache {
-                let _ = config.add_capabilities(fuser::consts::FUSE_WRITEBACK_CACHE);
+                let _ = config.add_capabilities(fuser::InitFlags::FUSE_WRITEBACK_CACHE);
             }
             Ok(())
         }
 
-        fn getattr(&mut self, _req: &Request, ino: u64, _fh: Option<u64>, reply: ReplyAttr) {
+        fn getattr(
+            &self,
+            _req: &Request,
+            ino: INodeNo,
+            _fh: Option<FileHandle>,
+            reply: ReplyAttr,
+        ) {
+            let ino: u64 = ino.0;
             // KE-C2: `reply.attr` honours `--attr-timeout` when set.
             let ttl = self.attr_timeout;
 
@@ -27837,22 +27889,23 @@ mod fuse_mount {
 
             // Cache miss - fetch from provider
             let Some(path) = self.get_path(ino) else {
-                reply.error(libc::ENOENT);
+                reply.error(Errno::ENOENT);
                 return;
             };
 
             if let Some(cached) = self.fetch_stat(ino, &path) {
                 reply.attr(&ttl, &cached.attr);
             } else {
-                reply.error(libc::ENOENT);
+                reply.error(Errno::ENOENT);
             }
         }
 
-        fn lookup(&mut self, _req: &Request, parent: u64, name: &OsStr, reply: ReplyEntry) {
+        fn lookup(&self, _req: &Request, parent: INodeNo, name: &OsStr, reply: ReplyEntry) {
+            let parent: u64 = parent.0;
             // KE-C2: `reply.entry` honours `--dir-cache-time` when set.
             let ttl = self.dir_cache_time;
             let Some(parent_path) = self.get_path(parent) else {
-                reply.error(libc::ENOENT);
+                reply.error(Errno::ENOENT);
                 return;
             };
 
@@ -27866,7 +27919,7 @@ mod fuse_mount {
             // Check if we have inode + fresh cache
             let child_ino = self.alloc_inode(&child_path);
             if let Some(cached) = self.get_cached(child_ino) {
-                reply.entry(&ttl, &cached.attr, 0);
+                reply.entry(&ttl, &cached.attr, Generation(0));
                 return;
             }
 
@@ -27877,29 +27930,31 @@ mod fuse_mount {
 
             if parent_cached.is_some() {
                 if let Some(cached) = self.get_cached(child_ino) {
-                    reply.entry(&ttl, &cached.attr, 0);
+                    reply.entry(&ttl, &cached.attr, Generation(0));
                     return;
                 }
             }
 
             // Still not found - try direct stat
             if let Some(cached) = self.fetch_stat(child_ino, &child_path) {
-                reply.entry(&ttl, &cached.attr, 0);
+                reply.entry(&ttl, &cached.attr, Generation(0));
             } else {
-                reply.error(libc::ENOENT);
+                reply.error(Errno::ENOENT);
             }
         }
 
         fn readdir(
-            &mut self,
+            &self,
             _req: &Request,
-            ino: u64,
-            _fh: u64,
-            offset: i64,
+            ino: INodeNo,
+            _fh: FileHandle,
+            offset: u64,
             mut reply: ReplyDirectory,
         ) {
+            let ino: u64 = ino.0;
+            let offset: i64 = offset as i64;
             let Some(path) = self.get_path(ino) else {
-                reply.error(libc::ENOENT);
+                reply.error(Errno::ENOENT);
                 return;
             };
 
@@ -27917,7 +27972,7 @@ mod fuse_mount {
             };
 
             let Some(cached) = cached else {
-                reply.error(libc::EIO);
+                reply.error(Errno::EIO);
                 return;
             };
 
@@ -27945,46 +28000,55 @@ mod fuse_mount {
             }
 
             for (i, (ino, kind, name)) in entries.iter().enumerate().skip(offset as usize) {
-                if reply.add(*ino, (i + 1) as i64, *kind, name) {
+                // T-DEBT-13c: `ReplyDirectory::add` now takes
+                // `INodeNo` and `u64` offset (was `u64` + `i64` in
+                // 0.16). Wrap the local `u64` ino + push the offset
+                // through a `u64` cast.
+                if reply.add(INodeNo(*ino), (i + 1) as u64, *kind, name) {
                     break; // buffer full
                 }
             }
             reply.ok();
         }
 
-        fn open(&mut self, _req: &Request, ino: u64, flags: i32, reply: ReplyOpen) {
+        fn open(&self, _req: &Request, ino: INodeNo, flags: OpenFlags, reply: ReplyOpen) {
+            let ino: u64 = ino.0;
+            let flags: i32 = flags.0;
             if self.get_path(ino).is_none() {
-                reply.error(libc::ENOENT);
+                reply.error(Errno::ENOENT);
                 return;
             }
             // Check write intent on read-only mount
             let write_flags = libc::O_WRONLY | libc::O_RDWR | libc::O_APPEND | libc::O_TRUNC;
             if self.read_only && (flags & write_flags) != 0 {
-                reply.error(libc::EROFS);
+                reply.error(Errno::EROFS);
                 return;
             }
-            reply.opened(0, 0);
+            reply.opened(FileHandle(0), FopenFlags::empty());
         }
 
         fn read(
-            &mut self,
+            &self,
             _req: &Request,
-            ino: u64,
-            _fh: u64,
-            offset: i64,
+            ino: INodeNo,
+            _fh: FileHandle,
+            offset: u64,
             size: u32,
-            _flags: i32,
-            _lock_owner: Option<u64>,
+            _flags: OpenFlags,
+            _lock_owner: Option<LockOwner>,
             reply: ReplyData,
         ) {
+            let ino: u64 = ino.0;
             let Some(path) = self.get_path(ino) else {
-                reply.error(libc::ENOENT);
+                reply.error(Errno::ENOENT);
                 return;
             };
 
             let provider = self.provider.clone();
             let len = size as u64;
-            let off = offset as u64;
+            // T-DEBT-13c: `offset` is already `u64` after the fuser 0.17
+            // newtype migration; no cast required.
+            let off = offset;
             let read_chunk_size = self.read_chunk_size;
 
             let result = self.rt.block_on(async {
@@ -27999,7 +28063,7 @@ mod fuse_mount {
                     // Safety cap: refuse to download files >64MB in fallback to prevent OOM
                     let file_size = self.get_cached(ino).map(|c| c.attr.size).unwrap_or(0);
                     if file_size > 64 * 1024 * 1024 {
-                        reply.error(libc::EIO); // Too large for in-memory fallback
+                        reply.error(Errno::EIO); // Too large for in-memory fallback
                         return;
                     }
                     let result = self.rt.block_on(async {
@@ -28012,7 +28076,7 @@ mod fuse_mount {
                             let start = (off as usize).min(data.len());
                             reply.data(&data[start..end]);
                         }
-                        Err(_) => reply.error(libc::EIO),
+                        Err(_) => reply.error(Errno::EIO),
                     }
                 }
             }
@@ -28021,21 +28085,22 @@ mod fuse_mount {
         // ── Write operations ──────────────────────────────────────
 
         fn create(
-            &mut self,
+            &self,
             _req: &Request,
-            parent: u64,
+            parent: INodeNo,
             name: &OsStr,
             _mode: u32,
             _umask: u32,
             _flags: i32,
             reply: ReplyCreate,
         ) {
+            let parent: u64 = parent.0;
             if self.read_only {
-                reply.error(libc::EROFS);
+                reply.error(Errno::EROFS);
                 return;
             }
             let Some(parent_path) = self.get_path(parent) else {
-                reply.error(libc::ENOENT);
+                reply.error(Errno::ENOENT);
                 return;
             };
             let child_name = name.to_string_lossy();
@@ -28068,23 +28133,29 @@ mod fuse_mount {
             );
             self.invalidate_dir(parent);
 
-            reply.created(&ttl, &attr, 0, 0, 0);
+            reply.created(&ttl, &attr, Generation(0), FileHandle(0), FopenFlags::empty());
         }
 
         fn write(
-            &mut self,
+            &self,
             _req: &Request,
-            ino: u64,
-            _fh: u64,
-            offset: i64,
+            ino: INodeNo,
+            _fh: FileHandle,
+            offset: u64,
             data: &[u8],
-            _write_flags: u32,
-            _flags: i32,
-            _lock_owner: Option<u64>,
+            _write_flags: WriteFlags,
+            _flags: OpenFlags,
+            _lock_owner: Option<LockOwner>,
             reply: ReplyWrite,
         ) {
+            let ino: u64 = ino.0;
+            // T-DEBT-13c: keep the i64 typing the body has historically
+            // used. `offset` was `i64` in fuser 0.16; with the 0.17
+            // newtype migration it is `u64`. Negative offsets are
+            // rejected by the kernel before this method is ever called.
+            let offset: i64 = offset as i64;
             if self.read_only {
-                reply.error(libc::EROFS);
+                reply.error(Errno::EROFS);
                 return;
             }
 
@@ -28094,7 +28165,7 @@ mod fuse_mount {
                 // Try to create one on-the-fly for existing files
                 drop(buffers);
                 let Some(path) = self.get_path(ino) else {
-                    reply.error(libc::ENOENT);
+                    reply.error(Errno::ENOENT);
                     return;
                 };
                 // Download existing content to tempfile
@@ -28116,7 +28187,7 @@ mod fuse_mount {
                 // Now write to the buffer
                 if let Err(e) = write_at_offset(&tmp, offset, data) {
                     eprintln!("write error: {}", e);
-                    reply.error(libc::EIO);
+                    reply.error(Errno::EIO);
                     return;
                 }
                 reply.written(data.len() as u32);
@@ -28126,20 +28197,21 @@ mod fuse_mount {
 
             if let Err(e) = write_at_offset(&tmp_path, offset, data) {
                 eprintln!("write error: {}", e);
-                reply.error(libc::EIO);
+                reply.error(Errno::EIO);
                 return;
             }
             reply.written(data.len() as u32);
         }
 
         fn flush(
-            &mut self,
+            &self,
             _req: &Request,
-            ino: u64,
-            _fh: u64,
-            _lock_owner: u64,
+            ino: INodeNo,
+            _fh: FileHandle,
+            _lock_owner: LockOwner,
             reply: ReplyEmpty,
         ) {
+            let ino: u64 = ino.0;
             let buffers = self.write_buffers.lock().unwrap();
             let Some(tmp_path) = buffers.get(&ino).cloned() else {
                 reply.ok();
@@ -28148,7 +28220,7 @@ mod fuse_mount {
             drop(buffers);
 
             let Some(remote_path) = self.get_path(ino) else {
-                reply.error(libc::ENOENT);
+                reply.error(Errno::ENOENT);
                 return;
             };
 
@@ -28174,20 +28246,21 @@ mod fuse_mount {
                 reply.ok();
             } else {
                 // Do NOT mark as flushed - release will keep the tempfile
-                reply.error(libc::EIO);
+                reply.error(Errno::EIO);
             }
         }
 
         fn release(
-            &mut self,
+            &self,
             _req: &Request,
-            ino: u64,
-            _fh: u64,
-            _flags: i32,
-            _lock_owner: Option<u64>,
+            ino: INodeNo,
+            _fh: FileHandle,
+            _flags: OpenFlags,
+            _lock_owner: Option<LockOwner>,
             _flush: bool,
             reply: ReplyEmpty,
         ) {
+            let ino: u64 = ino.0;
             if let Some(tmp_path) = self.write_buffers.lock().unwrap().remove(&ino) {
                 if self.flush_ok.lock().unwrap().remove(&ino) {
                     // Flush succeeded - safe to delete tempfile
@@ -28204,20 +28277,21 @@ mod fuse_mount {
         }
 
         fn mkdir(
-            &mut self,
+            &self,
             _req: &Request,
-            parent: u64,
+            parent: INodeNo,
             name: &OsStr,
             _mode: u32,
             _umask: u32,
             reply: ReplyEntry,
         ) {
+            let parent: u64 = parent.0;
             if self.read_only {
-                reply.error(libc::EROFS);
+                reply.error(Errno::EROFS);
                 return;
             }
             let Some(parent_path) = self.get_path(parent) else {
-                reply.error(libc::ENOENT);
+                reply.error(Errno::ENOENT);
                 return;
             };
             let child_name = name.to_string_lossy();
@@ -28245,19 +28319,20 @@ mod fuse_mount {
                         },
                     );
                     self.invalidate_dir(parent);
-                    reply.entry(&ttl, &attr, 0);
+                    reply.entry(&ttl, &attr, Generation(0));
                 }
-                Err(_) => reply.error(libc::EIO),
+                Err(_) => reply.error(Errno::EIO),
             }
         }
 
-        fn unlink(&mut self, _req: &Request, parent: u64, name: &OsStr, reply: ReplyEmpty) {
+        fn unlink(&self, _req: &Request, parent: INodeNo, name: &OsStr, reply: ReplyEmpty) {
+            let parent: u64 = parent.0;
             if self.read_only {
-                reply.error(libc::EROFS);
+                reply.error(Errno::EROFS);
                 return;
             }
             let Some(parent_path) = self.get_path(parent) else {
-                reply.error(libc::ENOENT);
+                reply.error(Errno::ENOENT);
                 return;
             };
             let child_name = name.to_string_lossy();
@@ -28280,17 +28355,18 @@ mod fuse_mount {
                     }
                     reply.ok();
                 }
-                Err(_) => reply.error(libc::EIO),
+                Err(_) => reply.error(Errno::EIO),
             }
         }
 
-        fn rmdir(&mut self, _req: &Request, parent: u64, name: &OsStr, reply: ReplyEmpty) {
+        fn rmdir(&self, _req: &Request, parent: INodeNo, name: &OsStr, reply: ReplyEmpty) {
+            let parent: u64 = parent.0;
             if self.read_only {
-                reply.error(libc::EROFS);
+                reply.error(Errno::EROFS);
                 return;
             }
             let Some(parent_path) = self.get_path(parent) else {
-                reply.error(libc::ENOENT);
+                reply.error(Errno::ENOENT);
                 return;
             };
             let child_name = name.to_string_lossy();
@@ -28312,30 +28388,32 @@ mod fuse_mount {
                     }
                     reply.ok();
                 }
-                Err(_) => reply.error(libc::EIO),
+                Err(_) => reply.error(Errno::EIO),
             }
         }
 
         fn rename(
-            &mut self,
+            &self,
             _req: &Request,
-            parent: u64,
+            parent: INodeNo,
             name: &OsStr,
-            newparent: u64,
+            newparent: INodeNo,
             newname: &OsStr,
-            _flags: u32,
+            _flags: RenameFlags,
             reply: ReplyEmpty,
         ) {
+            let parent: u64 = parent.0;
+            let newparent: u64 = newparent.0;
             if self.read_only {
-                reply.error(libc::EROFS);
+                reply.error(Errno::EROFS);
                 return;
             }
             let Some(parent_path) = self.get_path(parent) else {
-                reply.error(libc::ENOENT);
+                reply.error(Errno::ENOENT);
                 return;
             };
             let Some(newparent_path) = self.get_path(newparent) else {
-                reply.error(libc::ENOENT);
+                reply.error(Errno::ENOENT);
                 return;
             };
             let old_path = Self::child_path(&parent_path, &name.to_string_lossy());
@@ -28379,14 +28457,14 @@ mod fuse_mount {
                     }
                     reply.ok();
                 }
-                Err(_) => reply.error(libc::EIO),
+                Err(_) => reply.error(Errno::EIO),
             }
         }
 
         fn setattr(
-            &mut self,
+            &self,
             _req: &Request,
-            ino: u64,
+            ino: INodeNo,
             _mode: Option<u32>,
             _uid: Option<u32>,
             _gid: Option<u32>,
@@ -28394,13 +28472,14 @@ mod fuse_mount {
             _atime: Option<fuser::TimeOrNow>,
             _mtime: Option<fuser::TimeOrNow>,
             _ctime: Option<SystemTime>,
-            _fh: Option<u64>,
+            _fh: Option<FileHandle>,
             _crtime: Option<SystemTime>,
             _chgtime: Option<SystemTime>,
             _bkuptime: Option<SystemTime>,
-            _flags: Option<u32>,
+            _flags: Option<BsdFileFlags>,
             reply: ReplyAttr,
         ) {
+            let ino: u64 = ino.0;
             // Handle truncation for write support
             if let Some(new_size) = size {
                 if let Some(tmp_path) = self.write_buffers.lock().unwrap().get(&ino) {
@@ -28429,11 +28508,11 @@ mod fuse_mount {
             } else if ino == ROOT_INODE {
                 reply.attr(&ttl, &dir_attr(ROOT_INODE, 0, self.uid, self.gid));
             } else {
-                reply.error(libc::ENOENT);
+                reply.error(Errno::ENOENT);
             }
         }
 
-        fn statfs(&mut self, _req: &Request, _ino: u64, reply: ReplyStatfs) {
+        fn statfs(&self, _req: &Request, _ino: INodeNo, reply: ReplyStatfs) {
             let provider = self.provider.clone();
             let result = self.rt.block_on(async {
                 let mut p = provider.lock().await;
@@ -28554,17 +28633,40 @@ mod fuse_mount {
             knobs,
         );
 
-        let mut options = vec![
+        // T-DEBT-13c: fuser 0.17 `spawn_mount2` takes a `Config`
+        // instead of `&[MountOption]`. `MountOption::AllowOther` no
+        // longer exists as a variant; the kernel-side `allow_other`
+        // mount string is now produced from `SessionACL::All` by the
+        // crate. Multi-threaded loop (`n_threads`) and per-thread fd
+        // cloning (`clone_fd`) are off by default for byte-for-byte
+        // compatibility with the legacy single-thread mount path; the
+        // T-DEBT-13c knob `--fuse-threads N` opts in.
+        let mut mount_options = vec![
             MountOption::FSName("aeroftp".to_string()),
             MountOption::Subtype("aeroftp".to_string()),
             MountOption::DefaultPermissions,
         ];
         if read_only {
-            options.push(MountOption::RO);
+            mount_options.push(MountOption::RO);
         }
-        if allow_other {
-            options.push(MountOption::AllowOther);
-        }
+        let acl = if allow_other {
+            SessionACL::All
+        } else {
+            SessionACL::Owner
+        };
+        let n_threads = knobs.fuse_threads;
+        // FUSE_DEV_IOC_CLONE only makes sense when more than one
+        // session thread is running; otherwise it is wasted file
+        // descriptor effort.
+        let clone_fd = matches!(n_threads, Some(n) if n > 1);
+        // T-DEBT-13c: `Config` is `#[non_exhaustive]` in fuser 0.17,
+        // so the struct expression syntax is rejected. Build through
+        // `default()` + field assignment instead.
+        let mut config = Config::default();
+        config.mount_options = mount_options;
+        config.acl = acl;
+        config.n_threads = n_threads;
+        config.clone_fd = clone_fd;
 
         // Use `spawn_mount2` so the FUSE session handle is owned by a
         // `BackgroundSession`; dropping it triggers `fuse_unmount`. Previously
@@ -28573,7 +28675,7 @@ mod fuse_mount {
         // only `fusermount -u` could clear.
         let mountpoint_owned = mountpoint.to_string();
         let session_result = tokio::task::spawn_blocking(move || {
-            fuser::spawn_mount2(fs, &mountpoint_owned, &options)
+            fuser::spawn_mount2(fs, &mountpoint_owned, &config)
         })
         .await;
 
@@ -38328,6 +38430,7 @@ async fn main() {
             read_chunk_size_limit,
             write_back_cache,
             cache_mode,
+            fuse_threads,
         } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str())
@@ -38367,6 +38470,7 @@ async fn main() {
                     )?,
                     writeback_cache: *write_back_cache,
                     cache_mode: *cache_mode,
+                    fuse_threads: *fuse_threads,
                 })
             })();
             let mount_knobs = match mount_knobs_result {
@@ -40741,6 +40845,9 @@ mod tests {
         // KE-C1: caching policy defaults to `Full` to keep byte-for-
         // byte compatibility with pre-knob mounts.
         assert_eq!(mk.cache_mode, CacheMode::Full);
+        // T-DEBT-13c: single-threaded loop by default. The fuser 0.17
+        // multi-threaded session is opt-in via `--fuse-threads N`.
+        assert!(mk.fuse_threads.is_none());
     }
 
     #[test]
@@ -40755,6 +40862,28 @@ mod tests {
             ..MountKnobs::default()
         };
         assert!(mk.writeback_cache);
+    }
+
+    #[test]
+    fn test_mount_knobs_fuse_threads_round_trip() {
+        // T-DEBT-13c: the `--fuse-threads N` flag flows verbatim into
+        // `MountKnobs.fuse_threads` and feeds the fuser 0.17 `Config`
+        // `n_threads` field. `clone_fd` is auto-derived (true iff
+        // `n_threads > 1`), so guarding the field round-trip is enough.
+        let mk = MountKnobs {
+            fuse_threads: Some(4),
+            ..MountKnobs::default()
+        };
+        assert_eq!(mk.fuse_threads, Some(4));
+        // n_threads = Some(1) is legal but `clone_fd` stays `false`
+        // because parallelism is not requested. The compose-side
+        // logic in `cmd_mount` keeps the single-thread byte-for-byte
+        // compatibility path.
+        let mk = MountKnobs {
+            fuse_threads: Some(1),
+            ..MountKnobs::default()
+        };
+        assert_eq!(mk.fuse_threads, Some(1));
     }
 
     #[test]

@@ -241,14 +241,17 @@ winreg = "0.56"
 # - fuser: FUSE virtual filesystem mount (macOS requires macFUSE installed by user)
 [target.'cfg(target_os = "linux")'.dependencies]
 tauri-plugin-localhost = "2"
-# KE-C3: `abi-7-31` enables the `FUSE_WRITEBACK_CACHE` capability (added
-# in ABI 7-23, Linux kernel 4.5+) along with the other modern init flags
-# (`FUSE_AUTO_INVAL_DATA`, `FUSE_CACHE_SYMLINKS`, `FUSE_PARALLEL_DIROPS`,
-# `FUSE_ABORT_ERROR`). The flags themselves are negotiated at mount time
-# and silently ignored on older kernels, so enabling the feature is
-# backwards-compatible. fuser 0.17 ignores `abi-7-*` features in favour
-# of runtime probes, so this opt-in survives the planned bump.
-fuser = { version = "0.16", features = ["abi-7-31"] }
+# T-DEBT-13c: bumped from 0.16 to 0.17. Breaking changes consumed in
+# `mod fuse_mount` (cli.rs): all `Filesystem` trait methods migrated
+# from `&mut self` to `&self`, integer args switched to newtypes
+# (`INodeNo`, `FileHandle`, `OpenFlags`, `WriteFlags`, `RenameFlags`,
+# `BsdFileFlags`, `LockOwner`), `spawn_mount2` now takes a `Config`
+# instead of `&[MountOption]`. The `abi-7-*` cargo features are
+# ignored by 0.17 in favour of runtime kernel-capability probes, so
+# the previous `abi-7-31` opt-in is dropped; `FUSE_WRITEBACK_CACHE`
+# now lives in `InitFlags::FUSE_WRITEBACK_CACHE` and is always
+# compiled in.
+fuser = "0.17"
 
 [dev-dependencies]
 
