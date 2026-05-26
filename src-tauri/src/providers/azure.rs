@@ -107,6 +107,61 @@ fn parse_azure_xml_error(body: &str) -> String {
     }
 }
 
+/// KE-E2: Azure Blob rate-limit detection.
+///
+/// Azure Storage signals throttling primarily through **503 ServerBusy**
+/// (`<Code>ServerBusy</Code>` in the XML body), occasionally accompanied
+/// by **429 TooManyRequests** on the newer DFS / hot-path endpoints. The
+/// `Retry-After` header is always present on a real throttle response
+/// (Azure spec). Other 503 reasons (`InternalError`, `OperationTimedOut`)
+/// are surfaced as retryable transients by `send_with_retry` but are NOT
+/// rate-limit signals; only the explicit `ServerBusy` body counts.
+fn azure_is_rate_limited(status: u16, body: &str) -> bool {
+    if status == 429 {
+        return true;
+    }
+    if status == 503 {
+        return body.contains("<Code>ServerBusy</Code>");
+    }
+    false
+}
+
+/// KE-E2: Compute the marker tail to append to an Azure `ProviderError`
+/// when the response was rate-limited and a usable `Retry-After` header
+/// was present. Returns `None` when not a throttle signal or the hint is
+/// missing/unparseable. Pure-fn for test coverage.
+fn azure_retry_marker_tail(
+    status: u16,
+    body: &str,
+    retry_header: Option<&str>,
+) -> Option<String> {
+    if !azure_is_rate_limited(status, body) {
+        return None;
+    }
+    let hint = super::retry_after::parse_retry_after_seconds(retry_header.unwrap_or(""))?;
+    Some(crate::transfer_dag::adaptive::embed_retry_after_marker(
+        hint.as_secs(),
+    ))
+}
+
+/// KE-E2: Build the error message tail for an Azure HTTP failure,
+/// appending the Retry-After marker if the response is a throttle
+/// signal. Use this at every error site that returns
+/// `ProviderError::TransferFailed(...)` or `Other(...)` from an Azure
+/// HTTP response.
+fn format_azure_error(
+    prefix: &str,
+    status: reqwest::StatusCode,
+    body: &str,
+    retry_header: Option<&str>,
+) -> String {
+    let mut msg = format!("{}: {} ({})", prefix, parse_azure_xml_error(body), status);
+    if let Some(tail) = azure_retry_marker_tail(status.as_u16(), body, retry_header) {
+        msg.push_str(&tail);
+    }
+    msg
+}
+
 /// Azure list blobs XML item
 #[derive(Debug)]
 struct BlobItem {
@@ -580,10 +635,18 @@ impl AzureProvider {
             .await?;
 
         if !resp.status().is_success() {
+            let status = resp.status();
+            let retry_header = resp
+                .headers()
+                .get(reqwest::header::RETRY_AFTER)
+                .and_then(|v| v.to_str().ok())
+                .map(String::from);
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::TransferFailed(format!(
-                "Put Block failed: {}",
-                parse_azure_xml_error(&body)
+            return Err(ProviderError::TransferFailed(format_azure_error(
+                "Put Block failed",
+                status,
+                &body,
+                retry_header.as_deref(),
             )));
         }
 
@@ -633,10 +696,18 @@ impl AzureProvider {
             .await?;
 
         if !resp.status().is_success() {
+            let status = resp.status();
+            let retry_header = resp
+                .headers()
+                .get(reqwest::header::RETRY_AFTER)
+                .and_then(|v| v.to_str().ok())
+                .map(String::from);
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::TransferFailed(format!(
-                "Put Block List failed: {}",
-                parse_azure_xml_error(&body)
+            return Err(ProviderError::TransferFailed(format_azure_error(
+                "Put Block List failed",
+                status,
+                &body,
+                retry_header.as_deref(),
             )));
         }
 
@@ -1635,10 +1706,18 @@ impl AzureProvider {
         .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
+            let status = resp.status();
+            let retry_header = resp
+                .headers()
+                .get(reqwest::header::RETRY_AFTER)
+                .and_then(|v| v.to_str().ok())
+                .map(String::from);
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::TransferFailed(format!(
-                "Upload failed: {}",
-                parse_azure_xml_error(&body)
+            return Err(ProviderError::TransferFailed(format_azure_error(
+                "Upload failed",
+                status,
+                &body,
+                retry_header.as_deref(),
             )));
         }
 
@@ -2108,5 +2187,94 @@ Time:2026-01-01</Message>
 
         assert_eq!(handle.remote_path, "project/asset.bin");
         assert!(!handle.upload_id.is_empty());
+    }
+
+    // ---------------------------------------------------------------------
+    // KE-E2: Azure Retry-After detection (Sprint K1)
+    // ---------------------------------------------------------------------
+
+    #[test]
+    fn azure_is_rate_limited_recognises_429() {
+        assert!(azure_is_rate_limited(429, ""));
+        assert!(azure_is_rate_limited(429, "any body"));
+    }
+
+    #[test]
+    fn azure_is_rate_limited_recognises_503_server_busy() {
+        let body = r#"<?xml version="1.0" encoding="utf-8"?><Error><Code>ServerBusy</Code><Message>The server is busy.</Message></Error>"#;
+        assert!(azure_is_rate_limited(503, body));
+    }
+
+    #[test]
+    fn azure_is_rate_limited_rejects_503_other_codes() {
+        // InternalError / OperationTimedOut are transient, not throttle signals.
+        let internal = r#"<Error><Code>InternalError</Code></Error>"#;
+        let timeout = r#"<Error><Code>OperationTimedOut</Code></Error>"#;
+        assert!(!azure_is_rate_limited(503, internal));
+        assert!(!azure_is_rate_limited(503, timeout));
+        assert!(!azure_is_rate_limited(503, ""));
+    }
+
+    #[test]
+    fn azure_is_rate_limited_rejects_non_throttle_status() {
+        assert!(!azure_is_rate_limited(500, "<Code>ServerBusy</Code>"));
+        assert!(!azure_is_rate_limited(404, ""));
+        assert!(!azure_is_rate_limited(200, "<Code>ServerBusy</Code>"));
+    }
+
+    #[test]
+    fn azure_retry_marker_tail_emits_marker_on_429_with_header() {
+        let tail = azure_retry_marker_tail(429, "", Some("8")).expect("rate-limited + hint");
+        assert!(tail.contains("retry-after-secs=8"));
+    }
+
+    #[test]
+    fn azure_retry_marker_tail_emits_marker_on_503_server_busy_with_header() {
+        let body = r#"<Error><Code>ServerBusy</Code></Error>"#;
+        let tail = azure_retry_marker_tail(503, body, Some("20")).expect("ServerBusy + hint");
+        assert!(tail.contains("retry-after-secs=20"));
+    }
+
+    #[test]
+    fn azure_retry_marker_tail_returns_none_without_header() {
+        assert_eq!(azure_retry_marker_tail(429, "", None), None);
+        assert_eq!(azure_retry_marker_tail(429, "", Some("")), None);
+        assert_eq!(azure_retry_marker_tail(429, "", Some("abc")), None);
+    }
+
+    #[test]
+    fn azure_retry_marker_tail_returns_none_when_not_rate_limited() {
+        assert_eq!(azure_retry_marker_tail(500, "boom", Some("30")), None);
+        assert_eq!(
+            azure_retry_marker_tail(503, r#"<Code>InternalError</Code>"#, Some("30")),
+            None
+        );
+    }
+
+    #[test]
+    fn format_azure_error_appends_marker_on_throttle() {
+        let body = r#"<Error><Code>ServerBusy</Code><Message>Slow down</Message></Error>"#;
+        let msg = format_azure_error(
+            "Put Block failed",
+            reqwest::StatusCode::SERVICE_UNAVAILABLE,
+            body,
+            Some("12"),
+        );
+        assert!(msg.contains("Put Block failed"));
+        assert!(msg.contains("ServerBusy"));
+        assert!(msg.contains("retry-after-secs=12"));
+    }
+
+    #[test]
+    fn format_azure_error_omits_marker_on_non_throttle() {
+        let body = r#"<Error><Code>BlobNotFound</Code></Error>"#;
+        let msg = format_azure_error(
+            "Get Blob failed",
+            reqwest::StatusCode::NOT_FOUND,
+            body,
+            Some("12"),
+        );
+        assert!(msg.contains("BlobNotFound"));
+        assert!(!msg.contains("retry-after-secs"));
     }
 }
