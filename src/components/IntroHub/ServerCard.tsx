@@ -259,10 +259,16 @@ interface ServerCardProps {
     isDraggable?: boolean;
     isDragging?: boolean;
     isDragTarget?: boolean;
-    onDragStart?: (e: React.DragEvent) => void;
-    onDragEnter?: (e: React.DragEvent) => void;
-    onDragOver?: (e: React.DragEvent) => void;
-    onDrop?: (e: React.DragEvent) => void;
+    /** Position of this card in the parent's `servers` array. Passed as a
+     *  separate prop, instead of being curried into each drag handler at
+     *  the call site, so the four handler references stay stable across
+     *  parent re-renders and `React.memo()` actually skips re-rendering
+     *  cards whose own data did not change (issue #221). */
+    dragIndex?: number;
+    onDragStart?: (idx: number, e: React.DragEvent) => void;
+    onDragEnter?: (idx: number, e: React.DragEvent) => void;
+    onDragOver?: (idx: number, e: React.DragEvent) => void;
+    onDrop?: (idx: number, e: React.DragEvent) => void;
     onDragEnd?: () => void;
     /** Cross-Profile Transfer selection role for this card. */
     selectionRole?: 'source' | 'destination' | null;
@@ -398,6 +404,7 @@ export const ServerCard = React.memo(function ServerCard({
     isDraggable,
     isDragging,
     isDragTarget,
+    dragIndex,
     onDragStart,
     onDragEnter,
     onDragOver,
@@ -474,15 +481,36 @@ export const ServerCard = React.memo(function ServerCard({
         });
     }, [server, credentialsMasked, hideUsername]);
 
+    // Bind the parent's stable `(idx, e) => void` drag handlers to this
+    // card's `dragIndex` once per (handler, index) change instead of on
+    // every parent render. This is what makes `React.memo` actually skip
+    // re-rendering unchanged cards (issue #221).
+    const handleCardDragStart = React.useCallback(
+        (e: React.DragEvent) => { if (typeof dragIndex === 'number') onDragStart?.(dragIndex, e); },
+        [onDragStart, dragIndex],
+    );
+    const handleCardDragEnter = React.useCallback(
+        (e: React.DragEvent) => { if (typeof dragIndex === 'number') onDragEnter?.(dragIndex, e); },
+        [onDragEnter, dragIndex],
+    );
+    const handleCardDragOver = React.useCallback(
+        (e: React.DragEvent) => { if (typeof dragIndex === 'number') onDragOver?.(dragIndex, e); },
+        [onDragOver, dragIndex],
+    );
+    const handleCardDrop = React.useCallback(
+        (e: React.DragEvent) => { if (typeof dragIndex === 'number') onDrop?.(dragIndex, e); },
+        [onDrop, dragIndex],
+    );
+
     // ===== GRID VIEW =====
     return (
         <div
             data-my-server-card
             draggable={isDraggable}
-            onDragStart={onDragStart}
-            onDragEnter={onDragEnter}
-            onDragOver={onDragOver}
-            onDrop={onDrop}
+            onDragStart={onDragStart ? handleCardDragStart : undefined}
+            onDragEnter={onDragEnter ? handleCardDragEnter : undefined}
+            onDragOver={onDragOver ? handleCardDragOver : undefined}
+            onDrop={onDrop ? handleCardDrop : undefined}
             onDragEnd={onDragEnd}
             onClick={handleCardClick}
             className={`group relative bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750 border rounded-lg p-3.5 transition-colors shadow-sm dark:shadow-md ${isDraggable ? 'cursor-grab active:cursor-grabbing' : ''} ${onSelect ? 'cursor-pointer' : ''} ${isDragging ? 'opacity-40 scale-[0.97] shadow-lg ring-2 ring-blue-400/50 border-blue-400' : 'border-gray-100 dark:border-gray-700/50 hover:border-blue-200 dark:hover:border-blue-500/30'} ${isDragTarget ? '!border-blue-500 !border-2 bg-blue-50 dark:bg-blue-900/30 shadow-inner' : ''} ${selectionRingClass}`}
