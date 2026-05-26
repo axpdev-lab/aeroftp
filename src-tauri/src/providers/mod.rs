@@ -54,6 +54,7 @@ pub mod oauth2;
 pub mod onedrive;
 pub mod opendrive;
 pub mod pcloud;
+pub mod retry_after;
 pub mod s3;
 pub mod sftp;
 pub mod swift;
@@ -588,14 +589,21 @@ pub trait StorageProvider: Send + Sync {
     /// `total_size` and `content_type` are passed in so backends that need
     /// to declare them upfront (S3 sets Content-Type on initiation; B2
     /// validates the file_info hash later) can do so without a second
-    /// round trip. Returns an opaque `MultipartHandle` that callers must
-    /// thread through subsequent `upload_part` / `complete_multipart_upload`
-    /// / `abort_multipart_upload` calls.
+    /// round trip. `local_source_path` is the on-disk source file the
+    /// runner is uploading, threaded through for backends whose commit
+    /// step requires a whole-file checksum (Box's `Digest: sha=...` on
+    /// `/upload_sessions/<id>/commit`) so the provider can stream the
+    /// file once at commit time. Backends that do not need it ignore it.
+    ///
+    /// Returns an opaque `MultipartHandle` that callers must thread
+    /// through subsequent `upload_part` / `complete_multipart_upload` /
+    /// `abort_multipart_upload` calls.
     async fn begin_multipart_upload(
         &mut self,
         _remote_path: &str,
         _total_size: u64,
         _content_type: Option<&str>,
+        _local_source_path: Option<&str>,
     ) -> Result<MultipartHandle, ProviderError> {
         Err(ProviderError::NotSupported(
             "begin_multipart_upload".to_string(),
@@ -930,6 +938,16 @@ pub trait StorageProvider: Send + Sync {
     /// Create an independent list/checker worker for clone-backed scan.
     fn clone_for_list(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
         Err(ProviderError::NotSupported("clone_for_list".to_string()))
+    }
+
+    /// Routing hint for the [`crate::transfer_router`] data-driven engine
+    /// selector. Default implementation maps the [`ProviderType`] to a
+    /// [`crate::transfer_router::ProviderHint`] without inspecting any
+    /// server URL, which is the right answer for every provider except
+    /// WebDAV (Nextcloud vs gateway vs vanilla discrimination needs the
+    /// URL). The WebDAV provider overrides this method.
+    fn router_hint(&self) -> crate::transfer_router::ProviderHint {
+        crate::transfer_router::hints::from_provider_type(self.provider_type(), None, None)
     }
 
     /// Get scheduler-facing transfer capabilities for the Core DAG engine.

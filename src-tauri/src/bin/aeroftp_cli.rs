@@ -354,6 +354,22 @@ struct Cli {
     #[arg(long, global = true)]
     default_time: Option<String>,
 
+    /// Single-file transfer engine selection. `auto` consults the data-driven
+    /// router (default), `dag` forces every transfer through the shaped-graph
+    /// DAG engine, `legacy` forces the provider-direct path. The router is
+    /// populated from Phase A benchmark measurements (see
+    /// `docs/dev/benchmarks/2026-05-2{4,5}_phaseA-*/`) and revalidated by
+    /// T-DEBT-RTR-04. The default is DAG everywhere; `legacy` remains an
+    /// operator override. Reads default from `AEROFTP_TRANSFER_ENGINE`.
+    #[arg(
+        long,
+        global = true,
+        default_value = "auto",
+        env = "AEROFTP_TRANSFER_ENGINE",
+        value_parser = ["auto", "dag", "legacy"]
+    )]
+    transfer_engine: String,
+
     /// Use recursive listing in a single API call (S3 only, faster for large datasets)
     #[arg(long, global = true)]
     fast_list: bool,
@@ -3408,6 +3424,50 @@ fn verbose_present(args: &[String]) -> bool {
     })
 }
 
+fn tracing_level_from_rust_log(value: &str) -> Option<tracing::Level> {
+    let mut selected: Option<tracing::Level> = None;
+
+    for directive in value.split(',').map(str::trim).filter(|v| !v.is_empty()) {
+        let token = directive
+            .rsplit('=')
+            .next()
+            .unwrap_or(directive)
+            .trim()
+            .to_ascii_lowercase();
+
+        let Some(level) = (match token.as_str() {
+            "trace" => Some(tracing::Level::TRACE),
+            "debug" => Some(tracing::Level::DEBUG),
+            "info" => Some(tracing::Level::INFO),
+            "warn" | "warning" => Some(tracing::Level::WARN),
+            "error" => Some(tracing::Level::ERROR),
+            "off" => None,
+            _ => Some(tracing::Level::DEBUG),
+        }) else {
+            continue;
+        };
+
+        selected = match selected {
+            Some(current) if tracing_level_rank(current) >= tracing_level_rank(level) => {
+                Some(current)
+            }
+            _ => Some(level),
+        };
+    }
+
+    selected
+}
+
+fn tracing_level_rank(level: tracing::Level) -> u8 {
+    match level {
+        tracing::Level::ERROR => 1,
+        tracing::Level::WARN => 2,
+        tracing::Level::INFO => 3,
+        tracing::Level::DEBUG => 4,
+        tracing::Level::TRACE => 5,
+    }
+}
+
 fn apply_config_defaults(args: &[String], config: &CliConfigFile) -> Vec<String> {
     let mut merged = vec![args[0].clone()];
 
@@ -4823,7 +4883,9 @@ async fn upload_with_resume(
     provider.upload(local_path, remote_path, progress_cb).await
 }
 
-/// Run a plain single-file CLI transfer through the graph engine.
+/// Run a plain single-file CLI transfer through the engine chosen by the
+/// data-driven router (or by the user override, when `--transfer-engine`
+/// is not `auto`).
 ///
 /// Reached for the plain leaf (`!cli.partial`, so neither
 /// `download_with_resume` nor `upload_with_resume` would take a resume
@@ -4839,6 +4901,8 @@ async fn cli_run_single_file_dag(
     remote: &str,
     local: &str,
     progress_cb: Option<Box<dyn Fn(u64, u64) + Send>>,
+    cli: &Cli,
+    server_url: Option<&str>,
 ) -> (Box<dyn StorageProvider>, Result<(), ProviderError>) {
     // Resolve capabilities and the local file size before wrapping the
     // provider in the shared Arc: the shaped-graph builder needs both to
@@ -4847,12 +4911,85 @@ async fn cli_run_single_file_dag(
     // `rate_limited_api` and `resume_download` flags reach the builder; the
     // file size on the download direction has no shaping effect today.
     let caps = provider.transfer_capabilities();
+    let local_size: u64 = std::fs::metadata(local).map(|m| m.len()).unwrap_or(0);
     let file_size: u64 = match direction {
-        ftp_client_gui_lib::transfer_dag::TransferDirection::Upload => {
-            std::fs::metadata(local).map(|m| m.len()).unwrap_or(0)
-        }
+        ftp_client_gui_lib::transfer_dag::TransferDirection::Upload => local_size,
         ftp_client_gui_lib::transfer_dag::TransferDirection::Download => 0,
     };
+
+    // Data-driven routing decision (Phase B). The hint is taken from the
+    // provider's own `router_hint()` (which inspects its config URL via
+    // the WebDavProvider trait override) so a `--profile` invocation
+    // gets the right classification even when `server_url` (the CLI
+    // argument) is empty. The optional `server_url` parameter survives
+    // as a fallback for callers that constructed the provider without
+    // a URL in its config.
+    let hint = {
+        let provider_hint = provider.router_hint();
+        // If the provider trait returned vanilla but the caller has a
+        // URL with extra signal (e.g. `--profile` lookup populated
+        // `cli.url`), re-evaluate so the URL-allowlist branches catch
+        // Tab.digital / Koofr / FeliCloud.
+        if matches!(
+            provider_hint,
+            ftp_client_gui_lib::transfer_router::ProviderHint::WebDavVanilla
+        ) {
+            ftp_client_gui_lib::transfer_router::hints::from_provider_type(
+                provider.provider_type(),
+                server_url,
+                None,
+            )
+        } else {
+            provider_hint
+        }
+    };
+    // For Upload the local size is exact. For Download the current hint
+    // table has no size-conditional rule, so the placeholder cannot affect
+    // the decision and avoids an extra remote stat round-trip.
+    let route_size: u64 = match direction {
+        ftp_client_gui_lib::transfer_dag::TransferDirection::Upload => local_size,
+        ftp_client_gui_lib::transfer_dag::TransferDirection::Download => u64::MAX,
+    };
+    let op = match direction {
+        ftp_client_gui_lib::transfer_dag::TransferDirection::Upload => {
+            ftp_client_gui_lib::transfer_router::Operation::Upload
+        }
+        ftp_client_gui_lib::transfer_dag::TransferDirection::Download => {
+            ftp_client_gui_lib::transfer_router::Operation::Download
+        }
+    };
+    let user_override = match cli.transfer_engine.as_str() {
+        "dag" => ftp_client_gui_lib::transfer_router::Override::ForceDag,
+        "legacy" => ftp_client_gui_lib::transfer_router::Override::ForceLegacy,
+        _ => ftp_client_gui_lib::transfer_router::Override::None,
+    };
+    let ctx = ftp_client_gui_lib::transfer_router::RouteContext::new(hint, op, route_size)
+        .with_override(user_override);
+    let decision = ftp_client_gui_lib::transfer_router::Router::new().pick(ctx);
+
+    if cli.verbose > 0 {
+        eprintln!(
+            "Transfer engine: {} (reason: {})",
+            decision.engine, decision.reason
+        );
+    }
+
+    // Legacy branch: call the provider directly without wrapping in the
+    // DAG node graph. Restores the pre-DAG behaviour for cases the router
+    // flagged as regressing under the shaped engine.
+    if decision.engine == ftp_client_gui_lib::transfer_router::Engine::Legacy {
+        let mut provider = provider;
+        let result = match direction {
+            ftp_client_gui_lib::transfer_dag::TransferDirection::Upload => {
+                provider.upload(local, remote, progress_cb).await
+            }
+            ftp_client_gui_lib::transfer_dag::TransferDirection::Download => {
+                provider.download(remote, local, progress_cb).await
+            }
+        };
+        return (provider, result);
+    }
+
     let arc = Arc::new(tokio::sync::Mutex::new(Some(provider)));
     let built = ftp_client_gui_lib::transfer_dag::TransferDagBuilder::shaped_file(
         direction, &caps, file_size,
@@ -11066,6 +11203,14 @@ fn profile_to_provider_config(
 
     // Load provider-specific options from profile
     apply_profile_options(&mut extra, profile);
+    if let Some(provider_id) = profile
+        .get("providerId")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        extra.insert("provider_id".to_string(), provider_id.to_string());
+    }
 
     // CLI overrides take precedence
     if let Some(ref key) = cli.key {
@@ -13171,55 +13316,24 @@ async fn webdav_dispatch(
             };
             let dest_remote = build_served_remote_path(&state.base_path, &dest_relative);
             let mut provider = state.provider.lock().await;
-            if provider.supports_server_copy() {
-                match provider.server_copy(&remote_path, &dest_remote).await {
-                    Ok(()) => {
-                        let mut response = Response::new(Body::empty());
-                        *response.status_mut() = StatusCode::CREATED;
-                        response
-                    }
-                    Err(e) => {
-                        serve_error_response(provider_error_to_status_code(&e), &e.to_string())
-                    }
+            // Shared fallback policy: tries server_copy first, then streams
+            // through a local temp file on capability-boundary failures
+            // (S3 cross-bucket, WebDAV 501, Nextcloud cross-share) so the
+            // bridged COPY always returns 201 when the bytes did move,
+            // regardless of which path got us there.
+            match ftp_client_gui_lib::copy_fallback::server_side_copy_with_fallback(
+                provider.as_mut(),
+                &remote_path,
+                &dest_remote,
+            )
+            .await
+            {
+                Ok(_outcome) => {
+                    let mut response = Response::new(Body::empty());
+                    *response.status_mut() = StatusCode::CREATED;
+                    response
                 }
-            } else {
-                // Fallback: download then upload
-                match provider.download_to_bytes(&remote_path).await {
-                    Ok(data) => {
-                        let temp = match NamedTempFile::new() {
-                            Ok(t) => t,
-                            Err(e) => {
-                                return serve_error_response(
-                                    StatusCode::INTERNAL_SERVER_ERROR,
-                                    &format!("Temp file error: {}", e),
-                                )
-                            }
-                        };
-                        if let Err(e) = std::fs::write(temp.path(), &data) {
-                            return serve_error_response(
-                                StatusCode::INTERNAL_SERVER_ERROR,
-                                &format!("Write error: {}", e),
-                            );
-                        }
-                        match provider
-                            .upload(&temp.path().to_string_lossy(), &dest_remote, None)
-                            .await
-                        {
-                            Ok(()) => {
-                                let mut response = Response::new(Body::empty());
-                                *response.status_mut() = StatusCode::CREATED;
-                                response
-                            }
-                            Err(e) => serve_error_response(
-                                provider_error_to_status_code(&e),
-                                &e.to_string(),
-                            ),
-                        }
-                    }
-                    Err(e) => {
-                        serve_error_response(provider_error_to_status_code(&e), &e.to_string())
-                    }
-                }
+                Err(e) => serve_error_response(provider_error_to_status_code(&e), &e.to_string()),
             }
         }
 
@@ -15072,6 +15186,8 @@ async fn cmd_get(
             remote,
             local_path,
             progress_cb,
+            cli,
+            Some(url),
         )
         .await;
         provider = returned;
@@ -16276,6 +16392,8 @@ async fn cmd_put(
             remote_path,
             local,
             progress_cb,
+            cli,
+            Some(url),
         )
         .await;
         provider = returned;
@@ -16883,27 +17001,35 @@ async fn cmd_cp(url: &str, from: &str, to: &str, cli: &Cli, format: OutputFormat
 
     let from = &resolve_cli_remote_path(&initial_path, from);
     let to = &resolve_cli_remote_path(&initial_path, to);
-    if !provider.supports_server_copy() {
-        print_error(
-            format,
-            "Server-side copy is not supported by this provider",
-            7,
-        );
-        let _ = provider.disconnect().await;
-        return 7;
-    }
 
-    match provider.server_copy(from, to).await {
-        Ok(()) => {
+    // Goes through `server_side_copy_with_fallback` so the CLI exits 0
+    // even when the provider does not advertise server-side copy or
+    // rejects this specific operation (S3 cross-bucket without IAM,
+    // WebDAV 501, Nextcloud cross-share). Hard errors (auth, source not
+    // found, quota) still surface with their original exit code.
+    match ftp_client_gui_lib::copy_fallback::server_side_copy_with_fallback(
+        provider.as_mut(),
+        from,
+        to,
+    )
+    .await
+    {
+        Ok(outcome) => {
+            let suffix = match outcome {
+                ftp_client_gui_lib::copy_fallback::CopyOutcome::ServerSide => "",
+                ftp_client_gui_lib::copy_fallback::CopyOutcome::Fallback { .. } => {
+                    " (fallback: download→upload)"
+                }
+            };
             match format {
                 OutputFormat::Text => {
                     if !cli.quiet {
-                        eprintln!("{} ⇒ {}", from, to);
+                        eprintln!("{} ⇒ {}{}", from, to, suffix);
                     }
                 }
                 OutputFormat::Json => print_json(&CliOk {
                     status: "ok",
-                    message: format!("{} ⇒ {}", from, to),
+                    message: format!("{} ⇒ {}{}", from, to, suffix),
                 }),
             }
             let _ = provider.disconnect().await;
@@ -22643,13 +22769,25 @@ async fn cmd_benchmark(
                 }
 
                 let start = Instant::now();
-                let upload_result = provider
-                    .upload(
-                        local_payload.path().to_string_lossy().as_ref(),
+                let local_payload_path = local_payload.path().to_string_lossy().to_string();
+                let upload_result = if !cli.partial {
+                    let (returned, result) = cli_run_single_file_dag(
+                        provider,
+                        ftp_client_gui_lib::transfer_dag::TransferDirection::Upload,
                         &remote_path,
+                        &local_payload_path,
+                        None,
+                        cli,
                         None,
                     )
                     .await;
+                    provider = returned;
+                    result
+                } else {
+                    provider
+                        .upload(&local_payload_path, &remote_path, None)
+                        .await
+                };
                 let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
                 match upload_result {
                     Ok(()) => {
@@ -22703,13 +22841,25 @@ async fn cmd_benchmark(
 
             if needs_download {
                 let start = Instant::now();
-                let dl_result = provider
-                    .download(
+                let local_download_path = local_download.path().to_string_lossy().to_string();
+                let dl_result = if !cli.partial {
+                    let (returned, result) = cli_run_single_file_dag(
+                        provider,
+                        ftp_client_gui_lib::transfer_dag::TransferDirection::Download,
                         &remote_path,
-                        local_download.path().to_string_lossy().as_ref(),
+                        &local_download_path,
+                        None,
+                        cli,
                         None,
                     )
                     .await;
+                    provider = returned;
+                    result
+                } else {
+                    provider
+                        .download(&remote_path, &local_download_path, None)
+                        .await
+                };
                 let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
                 match dl_result {
                     Ok(()) => {
@@ -36254,19 +36404,18 @@ async fn main() {
         JSON_MODE.store(true, Ordering::Relaxed);
     }
 
-    // Setup tracing based on verbosity. -vv forces TRACE; -v OR a non-empty
-    // RUST_LOG forces DEBUG. The env-filter feature is not enabled, so the
-    // RUST_LOG *value* is ignored — its mere presence flips the subscriber
-    // on so live diagnostic captures work without --verbose.
-    let rust_log_present = std::env::var("RUST_LOG")
-        .ok()
-        .is_some_and(|v| !v.is_empty());
+    // Setup tracing based on verbosity. -vv forces TRACE; -v forces DEBUG.
+    // Without the env-filter feature we still honor the common RUST_LOG
+    // levels globally, so `RUST_LOG=warn` does not accidentally enable the
+    // very chatty russh DEBUG stream during transfer benchmarks.
     let level = if cli.verbose >= 2 {
         Some(tracing::Level::TRACE)
-    } else if cli.verbose == 1 || rust_log_present {
+    } else if cli.verbose == 1 {
         Some(tracing::Level::DEBUG)
     } else {
-        None
+        std::env::var("RUST_LOG")
+            .ok()
+            .and_then(|value| tracing_level_from_rust_log(&value))
     };
     if let Some(level) = level {
         tracing_subscriber::fmt()
@@ -38374,6 +38523,27 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn rust_log_warn_does_not_enable_debug_tracing() {
+        assert_eq!(
+            tracing_level_from_rust_log("warn"),
+            Some(tracing::Level::WARN)
+        );
+        assert_eq!(
+            tracing_level_from_rust_log("ftp_client_gui_lib=warn,russh=error"),
+            Some(tracing::Level::WARN)
+        );
+    }
+
+    #[test]
+    fn rust_log_chooses_most_verbose_directive() {
+        assert_eq!(
+            tracing_level_from_rust_log("warn,russh=debug"),
+            Some(tracing::Level::DEBUG)
+        );
+        assert_eq!(tracing_level_from_rust_log("off"), None);
+    }
+
+    #[test]
     fn parse_manual_total_size_matches_frontend() {
         assert_eq!(parse_manual_total_size("1073741824"), Ok(1_073_741_824));
         assert_eq!(
@@ -38585,6 +38755,7 @@ mod tests {
             immutable: false,
             no_check_dest: false,
             max_depth: None,
+            transfer_engine: "auto".to_string(),
             command: Commands::Profiles {
                 _ignored: Vec::new(),
                 sort: None,

@@ -14,12 +14,129 @@ use tracing::info;
 
 use super::{
     oauth2::{OAuth2Manager, OAuthConfig, OAuthProvider},
-    sanitize_api_error, ProviderConfig, ProviderError, ProviderType, RemoteEntry,
+    sanitize_api_error, MultipartHandle, ProviderConfig, ProviderError, ProviderType, RemoteEntry,
     ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult, StorageInfo, StorageProvider,
+    UploadedPart,
 };
 
 /// Microsoft Graph API base URL
 const GRAPH_API_BASE: &str = "https://graph.microsoft.com/v1.0";
+
+/// Threshold above which the legacy `upload()` switches to the resumable
+/// upload session path; below this the simple PUT covers the file. The
+/// shaped-graph runner uses the same threshold via `multipart_threshold`
+/// so single-PUT files keep the legacy path.
+const ONEDRIVE_SESSION_THRESHOLD: u64 = 4 * 1024 * 1024;
+
+/// Microsoft Graph requires each chunk (except the last) to be a multiple
+/// of 320 KiB. 10 MiB = 32 × 320 KiB stays the recommended size at a
+/// reasonable round-trip count for typical file sizes. The runner may emit
+/// a slightly smaller last part; Graph accepts that as long as the closing
+/// PUT covers the final byte.
+const ONEDRIVE_MULTIPART_PART_SIZE: u64 = 10 * 1024 * 1024;
+
+/// Opaque metadata threaded through `MultipartHandle.upload_id` for the
+/// OneDrive resumable session multipart trait. Carries the per-session URL
+/// plus `total_size` / `part_size` so `upload_part` rebuilds the
+/// `Content-Range` header from `part_number` alone.
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, PartialEq, Eq)]
+struct OneDriveMultipartMeta {
+    url: String,
+    total: u64,
+    part: u64,
+}
+
+impl OneDriveMultipartMeta {
+    fn encode(&self) -> String {
+        serde_json::to_string(self).expect("OneDriveMultipartMeta is always serializable")
+    }
+
+    fn decode(s: &str) -> Result<Self, ProviderError> {
+        serde_json::from_str(s)
+            .map_err(|e| ProviderError::Other(format!("Invalid OneDrive multipart handle: {}", e)))
+    }
+}
+
+/// The runner uses `preferred_chunk_size` verbatim as the per-part byte
+/// length, so the handle simply mirrors the advertised value.
+/// `ONEDRIVE_MULTIPART_PART_SIZE = 10 MiB = 32 × 320 KiB` satisfies
+/// the Graph API contract that every non-final chunk be a multiple of
+/// 320 KiB.
+fn onedrive_runner_part_size(total_size: u64) -> u64 {
+    if total_size == 0 {
+        return 0;
+    }
+    ONEDRIVE_MULTIPART_PART_SIZE
+}
+
+/// T-DEBT-05 S1-T02d: Microsoft Graph (OneDrive) returns 429 and 503 with a
+/// standard `Retry-After` header in seconds form. As a fallback when the
+/// header is absent, Graph occasionally exposes `X-RateLimit-Reset` (epoch
+/// UTC seconds) which we convert into a delta against the local clock.
+fn onedrive_is_rate_limited(status: u16) -> bool {
+    status == 429 || status == 503
+}
+
+/// Compute the marker substring for a OneDrive rate-limit response.
+/// Reads the standard `Retry-After` header first; falls back to
+/// `X-RateLimit-Reset` (epoch UTC seconds) if the primary header is
+/// missing. Pure-fn body: the call site does the I/O of capturing both
+/// header values from the live response.
+fn onedrive_retry_marker_tail(
+    status: u16,
+    retry_header: Option<&str>,
+    reset_header: Option<&str>,
+    now_epoch_secs: u64,
+) -> Option<String> {
+    if !onedrive_is_rate_limited(status) {
+        return None;
+    }
+    let hint = retry_header
+        .and_then(super::retry_after::parse_retry_after_seconds)
+        .or_else(|| {
+            reset_header.and_then(|raw| {
+                super::retry_after::parse_x_ratelimit_reset(raw, now_epoch_secs)
+            })
+        })?;
+    Some(crate::transfer_dag::adaptive::embed_retry_after_marker(
+        hint.as_secs(),
+    ))
+}
+
+/// Build a `ProviderError::Other` from a failed OneDrive HTTP response,
+/// appending the Retry-After marker when the response is a throttle
+/// signal. The `context_prefix` is prepended verbatim.
+async fn onedrive_error_from_response(
+    response: reqwest::Response,
+    context_prefix: &str,
+) -> ProviderError {
+    let status = response.status();
+    let retry_header = response
+        .headers()
+        .get(reqwest::header::RETRY_AFTER)
+        .and_then(|v| v.to_str().ok())
+        .map(String::from);
+    let reset_header = response
+        .headers()
+        .get("X-RateLimit-Reset")
+        .and_then(|v| v.to_str().ok())
+        .map(String::from);
+    let text = response.text().await.unwrap_or_default();
+    let mut msg = format!("{} {}: {}", context_prefix, status, sanitize_api_error(&text));
+    let now_epoch = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    if let Some(tail) = onedrive_retry_marker_tail(
+        status.as_u16(),
+        retry_header.as_deref(),
+        reset_header.as_deref(),
+        now_epoch,
+    ) {
+        msg.push_str(&tail);
+    }
+    ProviderError::Other(msg)
+}
 
 /// OneDrive item metadata (fields needed for API response deserialization)
 #[derive(Debug, Deserialize)]
@@ -292,11 +409,7 @@ impl OneDriveProvider {
         }
 
         if !response.status().is_success() {
-            let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!(
-                "API error: {}",
-                sanitize_api_error(&text)
-            )));
+            return Err(onedrive_error_from_response(response, "API error").await);
         }
 
         response
@@ -342,11 +455,7 @@ impl OneDriveProvider {
                 .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
             if !response.status().is_success() {
-                let text = response.text().await.unwrap_or_default();
-                return Err(ProviderError::Other(format!(
-                    "List error: {}",
-                    sanitize_api_error(&text)
-                )));
+                return Err(onedrive_error_from_response(response, "List error").await);
             }
 
             let result: ChildrenResponse = response
@@ -396,11 +505,7 @@ impl OneDriveProvider {
                 .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
             if !response.status().is_success() {
-                let text = response.text().await.unwrap_or_default();
-                return Err(ProviderError::Other(format!(
-                    "List trash failed: {}",
-                    sanitize_api_error(&text)
-                )));
+                return Err(onedrive_error_from_response(response, "List trash failed:").await);
             }
 
             let result: ChildrenResponse = response
@@ -436,11 +541,7 @@ impl OneDriveProvider {
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() && response.status().as_u16() != 204 {
-            let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!(
-                "Trash failed: {}",
-                sanitize_api_error(&text)
-            )));
+            return Err(onedrive_error_from_response(response, "Trash failed:").await);
         }
 
         info!("Trashed: {}", path);
@@ -462,11 +563,7 @@ impl OneDriveProvider {
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() && response.status().as_u16() != 204 {
-            let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!(
-                "Restore failed: {}",
-                sanitize_api_error(&text)
-            )));
+            return Err(onedrive_error_from_response(response, "Restore failed:").await);
         }
 
         info!("Restored from trash: {}", item_id);
@@ -579,6 +676,52 @@ impl OneDriveProvider {
         self.path_cache.insert(path.to_string(), item.id.clone());
 
         Ok(item.id)
+    }
+
+    /// Resolve `remote_path` against the current directory and POST
+    /// `/me/drive/root:/<encoded>:/createUploadSession`, returning the
+    /// per-session `uploadUrl`. Shared between the legacy `resume_upload`
+    /// loop (post-extraction in a follow-up) and the multipart trait so
+    /// both paths agree on session semantics.
+    async fn open_upload_session(&mut self, remote_path: &str) -> Result<String, ProviderError> {
+        let path = remote_path.trim_matches('/');
+        let encoded = Self::encode_path_segments(path);
+        let url = format!(
+            "{}/me/drive/root:/{}:/createUploadSession",
+            GRAPH_API_BASE, encoded
+        );
+
+        let body = serde_json::json!({
+            "item": {
+                "@microsoft.graph.conflictBehavior": "replace"
+            }
+        });
+
+        let auth = self.auth_header().await?;
+        let response = self
+            .client
+            .post(&url)
+            .header(AUTHORIZATION, auth)
+            .header(CONTENT_TYPE, "application/json")
+            .body(body.to_string())
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            return Err(onedrive_error_from_response(response, "Create upload session failed:").await);
+        }
+
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct UploadSession {
+            upload_url: String,
+        }
+        let session: UploadSession = response
+            .json()
+            .await
+            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+        Ok(session.upload_url)
     }
 }
 
@@ -925,11 +1068,7 @@ impl StorageProvider for OneDriveProvider {
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
-            let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!(
-                "Upload failed: {}",
-                sanitize_api_error(&text)
-            )));
+            return Err(onedrive_error_from_response(response, "Upload failed:").await);
         }
 
         info!("Uploaded {} to {}", local_path, remote_path);
@@ -1874,10 +2013,155 @@ impl StorageProvider for OneDriveProvider {
 
     fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
         super::TransferOptimizationHints {
+            supports_multipart: true,
+            multipart_threshold: ONEDRIVE_SESSION_THRESHOLD,
+            multipart_part_size: ONEDRIVE_MULTIPART_PART_SIZE,
+            // Graph requires `Content-Range` to be strictly monotonic on a
+            // single upload session, so parts cannot fan out in parallel.
+            multipart_max_parallel: 1,
             supports_resume_download: true,
             supports_resume_upload: true,
             ..Default::default()
         }
+    }
+
+    // Shaped-graph multipart trait wiring (S2-T03).
+    //
+    // OneDrive (Microsoft Graph) resumable session is a near-identical
+    // pattern to Google Drive:
+    //   1. `begin_multipart_upload` POSTs `createUploadSession`, reads the
+    //      `uploadUrl` response field, and embeds it together with
+    //      `total_size` / `part_size` inside `MultipartHandle.upload_id`
+    //      as JSON. The URL is the session identity for both subsequent
+    //      PUTs and the abort DELETE.
+    //   2. `upload_part` PUTs the chunk to the session URL with
+    //      `Content-Range: bytes A-B/T`. Graph returns 202 Accepted for
+    //      non-final chunks and 200/201 for the closing chunk.
+    //   3. `complete_multipart_upload` is a no-op: the last PUT finalises
+    //      the file. We still verify the runner committed the expected
+    //      part count to surface runner bugs as typed errors.
+    //   4. `abort_multipart_upload` DELETEs the session URL, best-effort.
+
+    async fn begin_multipart_upload(
+        &mut self,
+        remote_path: &str,
+        total_size: u64,
+        _content_type: Option<&str>,
+        _local_source_path: Option<&str>,
+    ) -> Result<MultipartHandle, ProviderError> {
+        if total_size == 0 {
+            return Err(ProviderError::Other(
+                "OneDrive multipart upload requires non-zero total_size".to_string(),
+            ));
+        }
+
+        // Mirror legacy upload() path resolution: relative paths anchor on
+        // `current_path` so the session targets the same item the
+        // single-PUT path would.
+        let resolved_path = if remote_path.starts_with('/') {
+            remote_path.to_string()
+        } else {
+            format!(
+                "{}/{}",
+                self.current_path.trim_end_matches('/'),
+                remote_path
+            )
+        };
+
+        let upload_url = self.open_upload_session(&resolved_path).await?;
+        let meta = OneDriveMultipartMeta {
+            url: upload_url,
+            total: total_size,
+            part: onedrive_runner_part_size(total_size),
+        };
+        Ok(MultipartHandle {
+            upload_id: meta.encode(),
+            remote_path: remote_path.to_string(),
+        })
+    }
+
+    async fn upload_part(
+        &mut self,
+        handle: &MultipartHandle,
+        part_number: u32,
+        data: Vec<u8>,
+    ) -> Result<UploadedPart, ProviderError> {
+        if part_number == 0 {
+            return Err(ProviderError::Other(
+                "OneDrive upload_part requires 1-based part_number".to_string(),
+            ));
+        }
+        if data.is_empty() {
+            return Err(ProviderError::Other(
+                "OneDrive upload_part received empty data".to_string(),
+            ));
+        }
+        let meta = OneDriveMultipartMeta::decode(&handle.upload_id)?;
+        let offset = (part_number as u64 - 1) * meta.part;
+        let end = offset
+            .checked_add(data.len() as u64)
+            .ok_or_else(|| ProviderError::Other("OneDrive part offset overflow".to_string()))?;
+        if end > meta.total {
+            return Err(ProviderError::Other(format!(
+                "OneDrive part {} exceeds declared total: offset {} + len {} > total {}",
+                part_number,
+                offset,
+                data.len(),
+                meta.total
+            )));
+        }
+        let len = data.len();
+        let content_range = format!("bytes {}-{}/{}", offset, end - 1, meta.total);
+
+        let resp = self
+            .client
+            .put(&meta.url)
+            .header("Content-Range", &content_range)
+            .header("Content-Length", len.to_string())
+            .body(data)
+            .send()
+            .await
+            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+
+        let status = resp.status().as_u16();
+        // 200/201 = session finalised; 202 = Accepted (non-final chunk).
+        if status != 200 && status != 201 && status != 202 {
+            return Err(onedrive_error_from_response(resp, "Upload chunk failed:").await);
+        }
+
+        Ok(UploadedPart {
+            part_number,
+            etag: String::new(),
+        })
+    }
+
+    async fn complete_multipart_upload(
+        &mut self,
+        handle: MultipartHandle,
+        parts: Vec<UploadedPart>,
+    ) -> Result<(), ProviderError> {
+        let meta = OneDriveMultipartMeta::decode(&handle.upload_id)?;
+        let expected = meta.total.div_ceil(meta.part).max(1) as usize;
+        if parts.len() != expected {
+            return Err(ProviderError::TransferFailed(format!(
+                "OneDrive complete: expected {} parts, runner committed {}",
+                expected,
+                parts.len()
+            )));
+        }
+        Ok(())
+    }
+
+    async fn abort_multipart_upload(
+        &mut self,
+        handle: MultipartHandle,
+    ) -> Result<(), ProviderError> {
+        let meta = OneDriveMultipartMeta::decode(&handle.upload_id)?;
+        // Best-effort cancellation: DELETE on a Graph upload session
+        // returns 204 on success. Any other status is ignored so the
+        // abort never masks the original transfer error.
+        let _ = self.client.delete(&meta.url).send().await;
+        Ok(())
     }
 }
 
@@ -1948,5 +2232,118 @@ mod tests {
             p.api_item("01ABC123"),
             format!("{}/me/drive/items/01ABC123", GRAPH_API_BASE)
         );
+    }
+
+    // T-DEBT-05 S1-T02d: OneDrive rate-limit detection + marker emission.
+
+    #[test]
+    fn onedrive_is_rate_limited_recognises_429_and_503() {
+        assert!(onedrive_is_rate_limited(429));
+        assert!(onedrive_is_rate_limited(503));
+        assert!(!onedrive_is_rate_limited(500));
+        assert!(!onedrive_is_rate_limited(404));
+        assert!(!onedrive_is_rate_limited(200));
+    }
+
+    #[test]
+    fn onedrive_retry_marker_tail_primary_header_wins() {
+        // Retry-After=15 must win over X-RateLimit-Reset; the test sets
+        // reset to a 60s future delta to ensure the primary path is taken.
+        let tail = onedrive_retry_marker_tail(429, Some("15"), Some("160"), 100)
+            .expect("primary header path");
+        assert!(tail.contains("retry-after-secs=15"));
+    }
+
+    #[test]
+    fn onedrive_retry_marker_tail_falls_back_to_x_ratelimit_reset() {
+        // No Retry-After header; X-RateLimit-Reset=160 with now=100 → 60s.
+        let tail = onedrive_retry_marker_tail(429, None, Some("160"), 100)
+            .expect("X-RateLimit-Reset fallback");
+        assert!(tail.contains("retry-after-secs=60"));
+    }
+
+    #[test]
+    fn onedrive_retry_marker_tail_returns_none_if_reset_in_past() {
+        // X-RateLimit-Reset = 90 but now = 100: stale signal, no marker.
+        assert_eq!(onedrive_retry_marker_tail(429, None, Some("90"), 100), None);
+    }
+
+    #[test]
+    fn onedrive_retry_marker_tail_returns_none_when_not_rate_limited() {
+        // 500 is not a throttle for OneDrive; ignore both headers.
+        assert_eq!(
+            onedrive_retry_marker_tail(500, Some("30"), Some("160"), 100),
+            None
+        );
+    }
+
+    #[test]
+    fn onedrive_retry_marker_tail_returns_none_when_both_headers_missing() {
+        assert_eq!(onedrive_retry_marker_tail(429, None, None, 100), None);
+    }
+
+    // ---------------------------------------------------------------------
+    // S2-T03 multipart trait wiring
+    // ---------------------------------------------------------------------
+
+    #[test]
+    fn onedrive_meta_roundtrip_preserves_url_total_part() {
+        let meta = OneDriveMultipartMeta {
+            url: "https://api.onedrive.com/rup?guid=XYZ".to_string(),
+            total: 524_288_000,
+            part: 10_485_760,
+        };
+        let encoded = meta.encode();
+        let decoded = OneDriveMultipartMeta::decode(&encoded).expect("decode");
+        assert_eq!(decoded, meta);
+    }
+
+    #[test]
+    fn onedrive_meta_decode_rejects_garbage() {
+        assert!(matches!(
+            OneDriveMultipartMeta::decode("not json").unwrap_err(),
+            ProviderError::Other(_)
+        ));
+    }
+
+    #[test]
+    fn onedrive_runner_part_size_returns_constant_chunk_size_for_nonzero_total() {
+        // The runner uses `preferred_chunk_size` verbatim, so the helper
+        // mirrors `ONEDRIVE_MULTIPART_PART_SIZE = 10 MiB = 32 × 320 KiB`
+        // for any non-zero total.
+        assert_eq!(onedrive_runner_part_size(0), 0);
+        for &total in &[
+            1u64,
+            ONEDRIVE_MULTIPART_PART_SIZE - 1,
+            ONEDRIVE_MULTIPART_PART_SIZE,
+            ONEDRIVE_MULTIPART_PART_SIZE + 1,
+            ONEDRIVE_SESSION_THRESHOLD,
+            500 * 1024 * 1024,
+            10 * 1024 * 1024 * 1024,
+        ] {
+            assert_eq!(onedrive_runner_part_size(total), ONEDRIVE_MULTIPART_PART_SIZE);
+        }
+    }
+
+    #[test]
+    fn onedrive_content_range_math_covers_500_mib_with_10mib_chunks() {
+        // 500 MiB / 10 MiB chunks = 50 full parts, no tail.
+        let total: u64 = 500 * 1024 * 1024;
+        let part = ONEDRIVE_MULTIPART_PART_SIZE;
+        let parts = total.div_ceil(part);
+        assert_eq!(parts, 50);
+        let mut last_end: i128 = -1;
+        for pn in 1..=parts {
+            let offset = (pn - 1) * part;
+            let len = part.min(total - offset);
+            let end = offset + len - 1;
+            // Non-final parts MUST be 320 KiB-aligned per the Graph API.
+            if pn < parts {
+                assert_eq!(len % (320 * 1024), 0, "part {pn} not 320 KiB-aligned");
+            }
+            assert!(offset as i128 > last_end);
+            last_end = end as i128;
+        }
+        assert_eq!(last_end as u64, total - 1);
     }
 }

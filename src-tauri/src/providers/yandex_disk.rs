@@ -18,13 +18,13 @@ use async_trait::async_trait;
 use futures_util::future::BoxFuture;
 use reqwest::header::{HeaderValue, AUTHORIZATION};
 use secrecy::{ExposeSecret, SecretString};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use super::{
-    response_bytes_with_limit, sanitize_api_error, ProviderError, ProviderType, RemoteEntry,
-    ShareLinkCapabilities, ShareLinkInfo, ShareLinkOptions, ShareLinkResult, StorageInfo,
-    StorageProvider, MAX_DOWNLOAD_TO_BYTES,
+    response_bytes_with_limit, sanitize_api_error, MultipartHandle, ProviderError, ProviderType,
+    RemoteEntry, ShareLinkCapabilities, ShareLinkInfo, ShareLinkOptions, ShareLinkResult,
+    StorageInfo, StorageProvider, UploadedPart, MAX_DOWNLOAD_TO_BYTES,
 };
 
 const API_BASE: &str = "https://cloud-api.yandex.net/v1/disk";
@@ -142,6 +142,39 @@ struct YdLink {
     href: String,
     #[allow(dead_code)]
     method: Option<String>,
+}
+
+/// Side-band metadata embedded in `MultipartHandle.upload_id` for the
+/// Yandex Disk chunked-upload path (S3-T05). `href` is the ephemeral
+/// upload-target signed URL returned by `/v1/disk/resources/upload`;
+/// `encoded_path` is the URL-encoded disk path the runner can re-use
+/// to re-acquire a fresh target if the original expires (410 Gone).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct YandexMultipartMeta {
+    href: String,
+    encoded_path: String,
+    total: u64,
+    part: u64,
+}
+
+impl YandexMultipartMeta {
+    fn encode(&self) -> String {
+        serde_json::to_string(self).unwrap_or_default()
+    }
+
+    fn decode(raw: &str) -> Result<Self, ProviderError> {
+        serde_json::from_str(raw).map_err(|e| {
+            ProviderError::Other(format!("Yandex Disk multipart handle decode failed: {}", e))
+        })
+    }
+}
+
+/// Compute the per-chunk size the runner should slice `total` bytes into.
+///
+/// Matches the legacy `YANDEX_UPLOAD_CHUNK_SIZE_BYTES` (8 MiB) so the
+/// trait wiring and the legacy single-shot path agree on chunk geometry.
+fn yandex_runner_part_size(total: u64) -> u64 {
+    YANDEX_UPLOAD_CHUNK_SIZE_BYTES.min(total.max(1))
 }
 
 /// Validate that a Yandex API-returned URL is safe to follow (SSRF prevention).
@@ -1661,9 +1694,173 @@ impl StorageProvider for YandexDiskProvider {
 
     fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
         super::TransferOptimizationHints {
+            supports_multipart: true,
+            multipart_threshold: YANDEX_UPLOAD_CHUNKED_THRESHOLD_BYTES,
+            multipart_part_size: YANDEX_UPLOAD_CHUNK_SIZE_BYTES,
+            // Yandex upload-target accepts `Content-Range` only in
+            // monotonically increasing order: parallel chunks at random
+            // offsets fail with 400. Strict sequential dispatch.
+            multipart_max_parallel: 1,
             supports_resume_download: true,
+            supports_resume_upload: true,
             ..Default::default()
         }
+    }
+
+    // Shaped-graph multipart trait wiring (S3-T05).
+    //
+    // Yandex Disk's chunked-upload protocol maps onto the multipart trait as:
+    //   1. `begin_multipart_upload` → GET `/resources/upload?path=X` to
+    //      acquire a short-lived signed upload-target URL. The trait
+    //      handle embeds the href alongside the URL-encoded disk path
+    //      so callers can re-acquire on 410 Gone without resolving the
+    //      destination tree again.
+    //   2. `upload_part` → PUT `<href>` with `Content-Range: bytes A-B/T`.
+    //      Yandex returns 201 on the final chunk, 202 on intermediate
+    //      ones; both are success. 410/404 means the upload-target
+    //      expired - we surface a typed error so the runner can decide
+    //      whether to rebuild the whole upload from scratch.
+    //   3. `complete_multipart_upload` → no-op: Yandex finalises when
+    //      the 201 lands on the closing chunk. We still validate part
+    //      count so a runner bug surfaces as a typed error.
+    //   4. `abort_multipart_upload` → no-op. Yandex GCs unused
+    //      upload-targets after their TTL expires.
+    async fn begin_multipart_upload(
+        &mut self,
+        remote_path: &str,
+        total_size: u64,
+        _content_type: Option<&str>,
+        _local_source_path: Option<&str>,
+    ) -> Result<MultipartHandle, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        if total_size == 0 {
+            return Err(ProviderError::Other(
+                "Yandex Disk multipart upload requires non-zero total_size".to_string(),
+            ));
+        }
+
+        let resolved = self.resolve_path(remote_path);
+        let encoded = encode_yd_path(&resolved);
+        let url_encoded = urlencoding::encode(&encoded).into_owned();
+        let link = self.acquire_upload_target(&url_encoded).await?;
+
+        let meta = YandexMultipartMeta {
+            href: link.href,
+            encoded_path: url_encoded,
+            total: total_size,
+            part: yandex_runner_part_size(total_size),
+        };
+        Ok(MultipartHandle {
+            upload_id: meta.encode(),
+            remote_path: remote_path.to_string(),
+        })
+    }
+
+    async fn upload_part(
+        &mut self,
+        handle: &MultipartHandle,
+        part_number: u32,
+        data: Vec<u8>,
+    ) -> Result<UploadedPart, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        if part_number == 0 {
+            return Err(ProviderError::Other(
+                "Yandex Disk upload_part requires 1-based part_number".to_string(),
+            ));
+        }
+        if data.is_empty() {
+            return Err(ProviderError::Other(
+                "Yandex Disk upload_part received empty data".to_string(),
+            ));
+        }
+        let meta = YandexMultipartMeta::decode(&handle.upload_id)?;
+        let offset = (part_number as u64 - 1) * meta.part;
+        let end = offset
+            .checked_add(data.len() as u64)
+            .ok_or_else(|| {
+                ProviderError::Other("Yandex Disk part offset overflow".to_string())
+            })?;
+        if end > meta.total {
+            return Err(ProviderError::Other(format!(
+                "Yandex Disk part {} exceeds declared total: offset {} + len {} > total {}",
+                part_number,
+                offset,
+                data.len(),
+                meta.total
+            )));
+        }
+        let content_range = format!("bytes {}-{}/{}", offset, end - 1, meta.total);
+
+        let resp = self
+            .client
+            .put(&meta.href)
+            .header("Content-Type", "application/octet-stream")
+            .header("Content-Range", content_range)
+            .body(data)
+            .send()
+            .await
+            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+
+        let status = resp.status();
+        let code = status.as_u16();
+        // 201 = full upload accepted (final chunk).
+        // 202 = partial accept (any intermediate chunk).
+        // 410/404 = upload-target expired; surface a typed error so the
+        // runner can decide whether to rebuild from scratch.
+        if code == 201 || code == 202 {
+            Ok(UploadedPart {
+                part_number,
+                etag: String::new(),
+            })
+        } else if code == 410 || code == 404 {
+            Err(ProviderError::TransferFailed(format!(
+                "Yandex Disk upload-target expired (HTTP {}): re-acquire required",
+                code
+            )))
+        } else {
+            let text = resp.text().await.unwrap_or_default();
+            Err(ProviderError::TransferFailed(format!(
+                "Yandex Disk chunk {} failed ({}): {}",
+                part_number,
+                status,
+                sanitize_api_error(&text)
+            )))
+        }
+    }
+
+    async fn complete_multipart_upload(
+        &mut self,
+        handle: MultipartHandle,
+        parts: Vec<UploadedPart>,
+    ) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        let meta = YandexMultipartMeta::decode(&handle.upload_id)?;
+        let expected = meta.total.div_ceil(meta.part).max(1) as usize;
+        if parts.len() != expected {
+            return Err(ProviderError::TransferFailed(format!(
+                "Yandex Disk complete: expected {} parts, runner committed {}",
+                expected,
+                parts.len()
+            )));
+        }
+        Ok(())
+    }
+
+    async fn abort_multipart_upload(
+        &mut self,
+        _handle: MultipartHandle,
+    ) -> Result<(), ProviderError> {
+        // Yandex Disk has no documented abort for upload-targets; the
+        // ephemeral signed URL is GCed automatically when its TTL
+        // expires. Returning Ok keeps abort from masking the original
+        // transfer error.
+        Ok(())
     }
 }
 
@@ -1841,5 +2038,79 @@ mod tests {
         assert_eq!(YANDEX_UPLOAD_BACKOFF_BASE_MS * (1u64 << 1), 1000);
         assert_eq!(YANDEX_UPLOAD_BACKOFF_BASE_MS * (1u64 << 2), 2000);
         assert_eq!(YANDEX_UPLOAD_MAX_ATTEMPTS, 3);
+    }
+
+    // ---- S3-T05 multipart trait wiring ----
+
+    #[test]
+    fn yandex_multipart_meta_roundtrip_preserves_fields() {
+        let meta = YandexMultipartMeta {
+            href:
+                "https://uploader321.disk.yandex.net/upload-target/foo?signature=xyz".to_string(),
+            encoded_path: "disk%3A%2Ffoo%2Fbar.bin".to_string(),
+            total: 1_073_741_824,
+            part: 8 * 1024 * 1024,
+        };
+        let encoded = meta.encode();
+        let decoded = YandexMultipartMeta::decode(&encoded).expect("decode roundtrip");
+        assert_eq!(meta, decoded);
+    }
+
+    #[test]
+    fn yandex_multipart_meta_decode_rejects_garbage() {
+        let err = YandexMultipartMeta::decode("not-json").unwrap_err();
+        assert!(matches!(err, ProviderError::Other(_)));
+    }
+
+    #[test]
+    fn yandex_runner_part_size_clamps_and_never_returns_zero() {
+        assert_eq!(yandex_runner_part_size(1024), 1024);
+        assert_eq!(
+            yandex_runner_part_size(YANDEX_UPLOAD_CHUNK_SIZE_BYTES),
+            YANDEX_UPLOAD_CHUNK_SIZE_BYTES
+        );
+        assert_eq!(
+            yandex_runner_part_size(50 * 1024 * 1024 * 1024),
+            YANDEX_UPLOAD_CHUNK_SIZE_BYTES
+        );
+        assert_eq!(yandex_runner_part_size(0), 1);
+    }
+
+    #[test]
+    fn yandex_content_range_math_is_inclusive_zero_based() {
+        let part = YANDEX_UPLOAD_CHUNK_SIZE_BYTES;
+        let total: u64 = 2 * part + 4096;
+        let range = |n: u32| -> String {
+            let offset = (n as u64 - 1) * part;
+            let len = ((total - offset).min(part)) as usize;
+            let end = offset + len as u64;
+            format!("bytes {}-{}/{}", offset, end - 1, total)
+        };
+        assert_eq!(range(1), format!("bytes 0-{}/{}", part - 1, total));
+        assert_eq!(
+            range(2),
+            format!("bytes {}-{}/{}", part, 2 * part - 1, total)
+        );
+        assert_eq!(
+            range(3),
+            format!("bytes {}-{}/{}", 2 * part, total - 1, total)
+        );
+    }
+
+    #[test]
+    fn yandex_transfer_hints_advertise_multipart_sequential() {
+        // Hints are computed from constants, not state.
+        let p = YandexDiskProvider::new("test-token".to_string(), None);
+        let hints = p.transfer_optimization_hints();
+        assert!(hints.supports_multipart);
+        assert_eq!(
+            hints.multipart_threshold,
+            YANDEX_UPLOAD_CHUNKED_THRESHOLD_BYTES
+        );
+        assert_eq!(hints.multipart_part_size, YANDEX_UPLOAD_CHUNK_SIZE_BYTES);
+        // Content-Range monotonic ⇒ strict sequential dispatch.
+        assert_eq!(hints.multipart_max_parallel, 1);
+        assert!(hints.supports_resume_download);
+        assert!(hints.supports_resume_upload);
     }
 }

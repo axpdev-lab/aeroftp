@@ -1065,6 +1065,38 @@ impl StorageProvider for MegaCmdProvider {
 
         Ok((upload, download))
     }
+
+    fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
+        // Shaped-graph multipart trait (S3-T09): intentionally NotSupported
+        // by design.
+        //
+        // This `MegaCmdProvider` delegates upload to the external
+        // `mega-put` CLI binary as a subprocess. mega-cmd already
+        // handles chunked AES-CTR encryption with a cumulative
+        // condensed MAC, parallel upload sessions, resume on transient
+        // failures, and rate limiting - all hidden behind a single
+        // `mega-put <local> <remote>` invocation.
+        //
+        // Mapping the shaped-graph multipart trait onto this surface
+        // would require either:
+        //   (a) bypassing mega-cmd and re-implementing MEGA's
+        //       client-side AES-CTR + cumulative MAC protocol natively,
+        //       which is a multi-week effort with non-trivial crypto
+        //       audit surface, or
+        //   (b) wrapping mega-cmd with a fake-multipart shim that
+        //       buffered chunks into a single tempfile per upload, then
+        //       invoking mega-put once at `complete_multipart_upload`,
+        //       which gives up the streaming property without producing
+        //       per-chunk retry (the whole point of the trait).
+        //
+        // Neither path improves on the legacy upload() that already
+        // runs mega-put through the streaming path. Comment recorded
+        // here so future reviewers don't re-litigate the decision.
+        super::TransferOptimizationHints {
+            supports_resume_download: true,
+            ..Default::default()
+        }
+    }
 }
 
 /// MEGA-specific methods (trash management, etc.)
