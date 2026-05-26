@@ -507,6 +507,40 @@ struct Cli {
     #[arg(long, global = true, env = "AEROFTP_S3_STORAGE_CLASS")]
     s3_storage_class: Option<String>,
 
+    /// KE-B3.1: After every successful OneDrive upload, sweep all previous
+    /// versions of the resulting drive item (rclone
+    /// `--onedrive-no-versions`). Mitigates the OneDrive Personal "quota
+    /// inflation from auto-versioning" issue where every modify spawns a
+    /// new version that counts against the user's storage quota. The
+    /// sweep is best-effort: failures are logged but never propagated, so
+    /// the upload itself still reports success. Silently ignored when the
+    /// remote is not OneDrive.
+    #[arg(long, global = true, env = "AEROFTP_ONEDRIVE_NO_VERSIONS")]
+    onedrive_no_versions: bool,
+
+    /// KE-B3.2: Override the Microsoft Graph `$top` paging size for
+    /// `/children` listings (rclone `--onedrive-list-chunk`). Server
+    /// default is ~200. Bigger pages reduce round trips on large folders;
+    /// smaller pages help under throttling. Clamped to `[1, 999]`.
+    /// `0` = leave server default. Silently ignored when the remote is
+    /// not OneDrive. Reads default from `AEROFTP_ONEDRIVE_LIST_CHUNK`.
+    #[arg(
+        long,
+        global = true,
+        default_value_t = 0,
+        env = "AEROFTP_ONEDRIVE_LIST_CHUNK"
+    )]
+    onedrive_list_chunk: u32,
+
+    /// KE-B3.3: Override the share-link `scope` on `createLink` calls
+    /// (rclone `--onedrive-link-scope`). Typical values: `anonymous`
+    /// (default), `organization`, `users`. Validation is permissive; the
+    /// Graph API rejects unknown scopes at request time. Silently ignored
+    /// when the remote is not OneDrive. Reads default from
+    /// `AEROFTP_ONEDRIVE_LINK_SCOPE`.
+    #[arg(long, global = true, env = "AEROFTP_ONEDRIVE_LINK_SCOPE")]
+    onedrive_link_scope: Option<String>,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -4562,6 +4596,36 @@ fn apply_s3_runtime_knobs(provider: &mut Box<dyn StorageProvider>, cli: &Cli) {
     }
     if cli.verbose > 0 && !applied.is_empty() && !JSON_MODE.load(Ordering::Relaxed) {
         eprintln!("S3 knobs: {}", applied.join(", "));
+    }
+}
+
+/// KE-B3: Apply the per-backend `--onedrive-*` knobs to a freshly built
+/// provider, silently no-op-ing when the backend isn't OneDrive. Call this
+/// BEFORE `connect()` so listing-time knobs are already in effect when the
+/// first request fires; the version-sweep flag only matters at upload time
+/// but applying everything here keeps the wiring honest at a single site.
+fn apply_onedrive_runtime_knobs(provider: &mut Box<dyn StorageProvider>, cli: &Cli) {
+    let Some(od) = provider
+        .as_any_mut()
+        .downcast_mut::<ftp_client_gui_lib::providers::onedrive::OneDriveProvider>()
+    else {
+        return;
+    };
+    let mut applied: Vec<String> = Vec::new();
+    if cli.onedrive_no_versions {
+        od.set_no_versions(true);
+        applied.push("--onedrive-no-versions".to_string());
+    }
+    if cli.onedrive_list_chunk > 0 {
+        od.set_list_chunk(Some(cli.onedrive_list_chunk));
+        applied.push(format!("--onedrive-list-chunk={}", cli.onedrive_list_chunk));
+    }
+    if let Some(ref scope) = cli.onedrive_link_scope {
+        od.set_link_scope(Some(scope.clone()));
+        applied.push(format!("--onedrive-link-scope={}", scope));
+    }
+    if cli.verbose > 0 && !applied.is_empty() && !JSON_MODE.load(Ordering::Relaxed) {
+        eprintln!("OneDrive knobs: {}", applied.join(", "));
     }
 }
 
@@ -12238,7 +12302,17 @@ async fn create_and_connect(
                         )
                         .await
                         {
-                            return result;
+                            // KE-B3: OAuth path returns an already-connected provider.
+                            // Apply OneDrive runtime knobs after the connect so the
+                            // setters take effect on subsequent upload / list / share
+                            // calls. (S3 knobs do not apply here because S3 is never
+                            // routed through the OAuth helper.)
+                            if let Ok((mut p, path)) = result {
+                                apply_onedrive_runtime_knobs(&mut p, cli);
+                                return Ok((p, path));
+                            } else {
+                                return result;
+                            }
                         }
                     }
                 }
@@ -12265,6 +12339,10 @@ async fn create_and_connect(
     // KE-B1: apply S3-specific tunings before connect() so
     // --s3-no-check-bucket can skip the bucket probe. No-op for non-S3.
     apply_s3_runtime_knobs(&mut provider, cli);
+    // KE-B3: OneDrive knobs (no-op for non-OneDrive). The OAuth-only path
+    // returns earlier and applies them there too; this site catches the
+    // rare case where OneDrive arrives via direct ProviderFactory::create.
+    apply_onedrive_runtime_knobs(&mut provider, cli);
 
     if let Err(e) = provider.connect().await {
         let code = provider_error_to_exit_code(&e);
@@ -31388,9 +31466,11 @@ async fn cmd_transfer_doctor(
         }
     };
 
-    // KE-B1: per-backend S3 knobs apply symmetrically to source and dest.
+    // KE-B1 / KE-B3: per-backend knobs apply symmetrically to source and dest.
     apply_s3_runtime_knobs(&mut source, cli);
     apply_s3_runtime_knobs(&mut dest, cli);
+    apply_onedrive_runtime_knobs(&mut source, cli);
+    apply_onedrive_runtime_knobs(&mut dest, cli);
 
     if let Err(e) = source.connect().await {
         print_error(
@@ -31587,9 +31667,11 @@ async fn cmd_transfer_profiles(
         }
     };
 
-    // KE-B1: per-backend S3 knobs apply symmetrically to source and dest.
+    // KE-B1 / KE-B3: per-backend knobs apply symmetrically to source and dest.
     apply_s3_runtime_knobs(&mut source, cli);
     apply_s3_runtime_knobs(&mut dest, cli);
+    apply_onedrive_runtime_knobs(&mut source, cli);
+    apply_onedrive_runtime_knobs(&mut dest, cli);
 
     // Connect source
     if !quiet {
@@ -31949,8 +32031,9 @@ async fn batch_connect_profile(
         );
         provider_error_to_exit_code(&e)
     })?;
-    // KE-B1: apply S3 knobs before connect to keep --s3-no-check-bucket effective.
+    // KE-B1 / KE-B3: apply per-backend knobs before connect.
     apply_s3_runtime_knobs(&mut provider, cli);
+    apply_onedrive_runtime_knobs(&mut provider, cli);
     provider.connect().await.map_err(|e| {
         print_error(
             format,
@@ -32222,8 +32305,9 @@ async fn audit_connect_profile(
         .map_err(|_code| "profile resolution failed".to_string())?;
     let mut provider =
         ProviderFactory::create(&cfg).map_err(|e| format!("provider creation failed: {}", e))?;
-    // KE-B1: apply S3 knobs before connect to keep --s3-no-check-bucket effective.
+    // KE-B1 / KE-B3: apply per-backend knobs before connect.
     apply_s3_runtime_knobs(&mut provider, cli);
+    apply_onedrive_runtime_knobs(&mut provider, cli);
     provider
         .connect()
         .await
@@ -39178,6 +39262,9 @@ mod tests {
             s3_disable_checksum: false,
             s3_acl: None,
             s3_storage_class: None,
+            onedrive_no_versions: false,
+            onedrive_list_chunk: 0,
+            onedrive_link_scope: None,
             transfer_engine: "auto".to_string(),
             files_from: None,
             files_from_raw: None,

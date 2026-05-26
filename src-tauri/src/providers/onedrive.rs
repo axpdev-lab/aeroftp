@@ -10,7 +10,7 @@ use async_trait::async_trait;
 use reqwest::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use serde::Deserialize;
 use std::collections::HashMap;
-use tracing::info;
+use tracing::{info, warn};
 
 use super::{
     oauth2::{OAuth2Manager, OAuthConfig, OAuthProvider},
@@ -250,6 +250,24 @@ pub struct OneDriveProvider {
     /// Server profile identifier owning these OAuth tokens. Empty when the
     /// caller has not bound a profile (legacy singleton key path). Issue #214.
     profile_id: String,
+    /// KE-B3.1: When true, every successful `upload` / `resume_upload`
+    /// triggers a best-effort sweep that DELETEs every previous version of
+    /// the resulting drive item. Mitigates the OneDrive Personal "quota
+    /// inflation from auto-versioning" issue where each modify spawns a
+    /// new version that counts against the user's storage quota. Errors
+    /// during the sweep are logged but never propagated to the caller so
+    /// the upload itself still reports success.
+    no_versions: bool,
+    /// KE-B3.2: Override for the Microsoft Graph `$top` query parameter on
+    /// `/children` listing endpoints (server default ~200). Bigger pages
+    /// reduce round trips on large folders; smaller pages help under
+    /// throttling. `None` = let the server pick.
+    list_chunk_override: Option<u32>,
+    /// KE-B3.3: Override the canned `scope` field on `createLink` for
+    /// share-link creation. Typical values: `anonymous` (default),
+    /// `organization`, `users`. Validation is permissive: Graph rejects
+    /// unknown scopes at the API level.
+    link_scope_override: Option<String>,
 }
 
 impl OneDriveProvider {
@@ -269,6 +287,9 @@ impl OneDriveProvider {
             path_cache: HashMap::new(),
             account_email: None,
             profile_id: String::new(),
+            no_versions: false,
+            list_chunk_override: None,
+            link_scope_override: None,
         }
     }
 
@@ -277,6 +298,165 @@ impl OneDriveProvider {
     pub fn with_profile_id(mut self, profile_id: impl Into<String>) -> Self {
         self.profile_id = profile_id.into();
         self
+    }
+
+    /// Maximum value accepted by Microsoft Graph for the `$top` query
+    /// parameter on `/children`. Values above this trigger HTTP 400.
+    pub const LIST_CHUNK_MAX: u32 = 999;
+    /// Minimum sensible `$top` value. Anything below this defeats the
+    /// purpose of paging and just inflates round-trip count.
+    pub const LIST_CHUNK_MIN: u32 = 1;
+
+    /// KE-B3.1: Toggle the post-upload version sweep. When enabled, after
+    /// every successful `upload` / `resume_upload` the provider lists the
+    /// drive item's versions and DELETEs every entry whose id is NOT
+    /// `current`. Errors are swallowed with a warning log so the upload
+    /// itself still reports success.
+    pub fn set_no_versions(&mut self, enabled: bool) {
+        self.no_versions = enabled;
+    }
+
+    /// KE-B3.2: Override the Graph `$top` paging size for `/children`.
+    /// Clamped to `[LIST_CHUNK_MIN, LIST_CHUNK_MAX]`. Passing `None`
+    /// removes the override (server picks default).
+    pub fn set_list_chunk(&mut self, chunk: Option<u32>) {
+        self.list_chunk_override = chunk.map(|c| c.clamp(Self::LIST_CHUNK_MIN, Self::LIST_CHUNK_MAX));
+    }
+
+    /// KE-B3.3: Set the share-link scope. Typical values: `anonymous`,
+    /// `organization`, `users`. Whitespace-only strings normalise to None.
+    pub fn set_link_scope(&mut self, scope: Option<String>) {
+        self.link_scope_override = scope.filter(|s| !s.trim().is_empty());
+    }
+
+    /// Resolved share-link scope: runtime override, else the legacy
+    /// hardcoded `anonymous` (preserves pre-K2 behaviour).
+    fn effective_link_scope(&self) -> &str {
+        self.link_scope_override
+            .as_deref()
+            .unwrap_or("anonymous")
+    }
+
+    /// Resolved `$top` query parameter for `/children`. Returns the
+    /// override when set, else `None` (server default).
+    fn effective_list_chunk(&self) -> Option<u32> {
+        self.list_chunk_override
+    }
+
+    /// KE-B3.1 sweep: list versions, DELETE all entries whose id is not
+    /// `current`. Best-effort: 4xx / 5xx are logged at WARN and swallowed
+    /// so the upload caller still sees success.
+    async fn purge_old_versions(&mut self, item_id: &str) {
+        let url = format!("{}/versions", self.api_item(item_id));
+        let response = match self
+            .client
+            .get(&url)
+            .header(AUTHORIZATION, match self.auth_header().await {
+                Ok(h) => h,
+                Err(e) => {
+                    warn!("onedrive purge_old_versions: auth header failed: {}", e);
+                    return;
+                }
+            })
+            .send()
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                warn!("onedrive purge_old_versions: list request failed: {}", e);
+                return;
+            }
+        };
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            warn!(
+                "onedrive purge_old_versions: list returned {} for item {}: {}",
+                status,
+                item_id,
+                sanitize_api_error(&body)
+            );
+            return;
+        }
+
+        #[derive(Deserialize)]
+        struct VersionRow {
+            id: String,
+        }
+        #[derive(Deserialize)]
+        struct VersionList {
+            value: Vec<VersionRow>,
+        }
+        let list: VersionList = match response.json().await {
+            Ok(l) => l,
+            Err(e) => {
+                warn!(
+                    "onedrive purge_old_versions: parse failed for item {}: {}",
+                    item_id, e
+                );
+                return;
+            }
+        };
+
+        let mut deleted = 0u32;
+        let mut failed = 0u32;
+        // Microsoft Graph returns versions sorted newest-first. The newest
+        // entry IS the current version (the just-uploaded content) and the
+        // server returns 400 "You cannot delete the current version." if we
+        // try to remove it. Skip index 0 explicitly to avoid the spurious
+        // round trip. The legacy literal id "current" guard stays as
+        // belt-and-braces in case a different Graph dialect surfaces it.
+        for (idx, v) in list.value.iter().enumerate() {
+            if idx == 0 || v.id == "current" {
+                continue;
+            }
+            let del_url = format!("{}/versions/{}", self.api_item(item_id), v.id);
+            let auth = match self.auth_header().await {
+                Ok(h) => h,
+                Err(e) => {
+                    warn!(
+                        "onedrive purge_old_versions: auth refresh failed mid-sweep: {}",
+                        e
+                    );
+                    return;
+                }
+            };
+            match self
+                .client
+                .delete(&del_url)
+                .header(AUTHORIZATION, auth)
+                .send()
+                .await
+            {
+                Ok(r) if r.status().is_success() || r.status().as_u16() == 204 => {
+                    deleted += 1;
+                }
+                Ok(r) => {
+                    failed += 1;
+                    let s = r.status();
+                    let b = r.text().await.unwrap_or_default();
+                    warn!(
+                        "onedrive purge_old_versions: DELETE version {} returned {}: {}",
+                        v.id,
+                        s,
+                        sanitize_api_error(&b)
+                    );
+                }
+                Err(e) => {
+                    failed += 1;
+                    warn!(
+                        "onedrive purge_old_versions: DELETE version {} failed: {}",
+                        v.id, e
+                    );
+                }
+            }
+        }
+        if deleted > 0 || failed > 0 {
+            info!(
+                "onedrive purge_old_versions on {}: deleted={}, failed={}",
+                item_id, deleted, failed
+            );
+        }
     }
 
     /// Get OAuth config
@@ -443,7 +623,15 @@ impl OneDriveProvider {
     /// List children with pagination
     async fn list_children(&self, item_id: &str) -> Result<Vec<DriveItem>, ProviderError> {
         let mut all_items = Vec::new();
-        let mut url = format!("{}/children", self.api_item(item_id));
+        // KE-B3.2: honor `--onedrive-list-chunk` by appending `$top=N` on the
+        // first request. Continuation links returned by Graph already encode
+        // the page size, so subsequent requests follow the server-issued URL
+        // verbatim and the chunk parameter is sticky for the rest of the
+        // sweep.
+        let mut url = match self.effective_list_chunk() {
+            Some(n) => format!("{}/children?$top={}", self.api_item(item_id), n),
+            None => format!("{}/children", self.api_item(item_id)),
+        };
 
         loop {
             let response = self
@@ -1072,6 +1260,24 @@ impl StorageProvider for OneDriveProvider {
         }
 
         info!("Uploaded {} to {}", local_path, remote_path);
+
+        // KE-B3.1: post-upload version sweep. Resolve path → item_id and
+        // delete all non-current versions. Failures are logged but the
+        // upload is still reported as success.
+        if self.no_versions {
+            // Path cache may have a stale entry from before this upload;
+            // dropping it forces a fresh resolve_path.
+            self.path_cache.remove(&path);
+            if let Ok(item_id) = self.resolve_path(&path).await {
+                self.purge_old_versions(&item_id).await;
+            } else {
+                warn!(
+                    "onedrive --onedrive-no-versions: post-upload resolve of {} failed; sweep skipped",
+                    path
+                );
+            }
+        }
+
         Ok(())
     }
 
@@ -1362,9 +1568,12 @@ impl StorageProvider for OneDriveProvider {
             Some("edit") => "edit",
             _ => "view",
         };
+        // KE-B3.3: override the scope when --onedrive-link-scope was set.
+        // Falls back to `anonymous` (the historical hardcoded value) so
+        // callers without the knob see no behaviour change.
         let mut body = serde_json::json!({
             "type": link_type,
-            "scope": "anonymous"
+            "scope": self.effective_link_scope(),
         });
         if let Some(secs) = options.expires_in_secs {
             let expires_at = chrono::Utc::now() + chrono::Duration::seconds(secs as i64);
@@ -2008,6 +2217,31 @@ impl StorageProvider for OneDriveProvider {
         }
 
         info!("Resumable upload completed: {}", remote_path);
+
+        // KE-B3.1: post-upload version sweep mirrors the small-file path.
+        // Anchor the path the same way the session was created (relative
+        // resolved against current_path; absolute kept verbatim).
+        if self.no_versions {
+            let resolved = if remote_path.starts_with('/') {
+                remote_path.to_string()
+            } else {
+                format!(
+                    "{}/{}",
+                    self.current_path.trim_end_matches('/'),
+                    remote_path
+                )
+            };
+            self.path_cache.remove(&resolved);
+            if let Ok(item_id) = self.resolve_path(&resolved).await {
+                self.purge_old_versions(&item_id).await;
+            } else {
+                warn!(
+                    "onedrive --onedrive-no-versions: post-resume_upload resolve of {} failed; sweep skipped",
+                    resolved
+                );
+            }
+        }
+
         Ok(())
     }
 
@@ -2345,5 +2579,74 @@ mod tests {
             last_end = end as i128;
         }
         assert_eq!(last_end as u64, total - 1);
+    }
+
+    // ── KE-B3 per-backend OneDrive knob tests ──────────────────────────
+
+    /// KE-B3.1: `set_no_versions` toggles the flag; default is false so
+    /// existing call sites see no behaviour change.
+    #[test]
+    fn set_no_versions_toggles_flag() {
+        let mut p = test_provider();
+        assert!(!p.no_versions);
+        p.set_no_versions(true);
+        assert!(p.no_versions);
+        p.set_no_versions(false);
+        assert!(!p.no_versions);
+    }
+
+    /// KE-B3.2: `set_list_chunk` clamps the input to `[MIN, MAX]` and
+    /// `None` clears the override. `effective_list_chunk` mirrors the
+    /// stored value.
+    #[test]
+    fn set_list_chunk_clamps_and_clears() {
+        let mut p = test_provider();
+        assert!(p.effective_list_chunk().is_none());
+
+        // Above max → clamped
+        p.set_list_chunk(Some(99_999));
+        assert_eq!(
+            p.effective_list_chunk(),
+            Some(OneDriveProvider::LIST_CHUNK_MAX)
+        );
+
+        // Below min → clamped
+        p.set_list_chunk(Some(0));
+        assert_eq!(
+            p.effective_list_chunk(),
+            Some(OneDriveProvider::LIST_CHUNK_MIN)
+        );
+
+        // Mid-range passes through
+        p.set_list_chunk(Some(500));
+        assert_eq!(p.effective_list_chunk(), Some(500));
+
+        // None clears
+        p.set_list_chunk(None);
+        assert!(p.effective_list_chunk().is_none());
+    }
+
+    /// KE-B3.3: `set_link_scope` accepts arbitrary non-empty strings and
+    /// normalises whitespace-only to None. `effective_link_scope` falls
+    /// back to the legacy hardcoded `anonymous`.
+    #[test]
+    fn set_link_scope_overrides_default_anonymous() {
+        let mut p = test_provider();
+        assert_eq!(p.effective_link_scope(), "anonymous");
+
+        p.set_link_scope(Some("organization".to_string()));
+        assert_eq!(p.effective_link_scope(), "organization");
+
+        // Whitespace-only normalises to None
+        p.set_link_scope(Some("   ".to_string()));
+        assert_eq!(p.effective_link_scope(), "anonymous");
+
+        // Vendor / future scope passes through (Graph rejects at request time)
+        p.set_link_scope(Some("users".to_string()));
+        assert_eq!(p.effective_link_scope(), "users");
+
+        // Explicit None clears
+        p.set_link_scope(None);
+        assert_eq!(p.effective_link_scope(), "anonymous");
     }
 }
