@@ -440,9 +440,66 @@ impl WebDavProvider {
     ) -> Result<reqwest::Response, ProviderError> {
         const MAX_ATTEMPTS: usize = 3;
 
+        // Compute a per-host `Referer` header (`https://host/`) once per call.
+        // FileLu's WebDAV frontend (`webdav.filelu.com`, behind Cloudflare)
+        // returns `500 Internal Server Error` to GET requests that arrive
+        // without a same-origin Referer; rclone v1.74 has shipped this header
+        // on every WebDAV request since its inception. Other servers tolerate
+        // it without complaint, so we set it universally as a defensive
+        // default rather than as a FileLu special case. The trailing `/` is
+        // required so the value parses as a "directory" origin.
+        let referer = {
+            let base = self.config.url.trim_end_matches('/').to_string();
+            if base.is_empty() {
+                None
+            } else {
+                Some(format!("{base}/"))
+            }
+        };
+
+        // Host-specific User-Agent workaround for FileLu WebDAV.
+        //
+        // FileLu's WebDAV frontend (`webdav.filelu.com`, fronted by
+        // Cloudflare) returns `500 Internal Server Error` on GET
+        // requests whose User-Agent does not match a small allow-list.
+        // Empirically (2026-05-26, FileLu PRO account, AeroFTP v4.0.0):
+        //
+        //   `AeroFTP/4`                                   → 500 ISE
+        //   `WebDAV-Client/4.0 (compatible; AeroFTP)`     → 500 ISE
+        //   `curl/8.0.0`                                  → 500 ISE
+        //   `rclone/v1.74.0`                              → 200 OK
+        //
+        // PROPFIND/PUT/DELETE/MKCOL accept every UA on that list; only
+        // GET enforces the filter, so the issue is invisible until the
+        // first download attempt against `webdav.filelu.com`. The
+        // discriminator is not a simple keyword block (`curl` also
+        // fails); the most plausible cause is a Cloudflare WAF rule
+        // whitelisting a small set of known WebDAV clients on that
+        // hostname. We send `rclone/v1.74.0` here as a per-host
+        // workaround so FileLu downloads work for our users today;
+        // FileLu engineering has been briefed and asked to whitelist
+        // the real `AeroFTP/<n>` UA on their WAF. The override is
+        // host-scoped (`filelu.com`) so the standard AeroFTP UA stays
+        // in place for every other WebDAV server — notably pCloud,
+        // which relies on the major-version-pinned UA for honest
+        // device tracking.
+        let host_lower = self.config.url.to_ascii_lowercase();
+        let user_agent_override: Option<&'static str> =
+            if host_lower.contains("filelu.com") {
+                Some("rclone/v1.74.0")
+            } else {
+                None
+            };
+
         for attempt in 1..=MAX_ATTEMPTS {
-            let response = self
-                .request(method.clone(), path)
+            let mut req = self.request(method.clone(), path);
+            if let Some(ref r) = referer {
+                req = req.header("Referer", r);
+            }
+            if let Some(ua) = user_agent_override {
+                req = req.header("User-Agent", ua);
+            }
+            let response = req
                 .send()
                 .await
                 .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
@@ -2441,10 +2498,36 @@ impl StorageProvider for WebDavProvider {
                 Ok(())
             }
             StatusCode::NOT_FOUND => Err(ProviderError::NotFound(remote_path.to_string())),
-            status => Err(ProviderError::TransferFailed(format!(
-                "Download failed with status: {}",
-                status
-            ))),
+            status => {
+                // S4-T01 partner diagnostic: surface response headers + body
+                // snippet so server-side errors (HTTP 5xx in particular) carry
+                // enough context to file a partner ticket. Keep at INFO so
+                // CI / production sees it without bumping log level.
+                let headers_dump: String = response
+                    .headers()
+                    .iter()
+                    .map(|(k, v)| format!("{}={}", k, v.to_str().unwrap_or("<binary>")))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let body_snippet = response
+                    .text()
+                    .await
+                    .unwrap_or_default()
+                    .chars()
+                    .take(512)
+                    .collect::<String>();
+                tracing::info!(
+                    "[WEBDAV] download non-success: status={} url={} headers=[{}] body=\"{}\"",
+                    status,
+                    self.build_url(remote_path),
+                    headers_dump,
+                    body_snippet
+                );
+                Err(ProviderError::TransferFailed(format!(
+                    "Download failed with status: {}",
+                    status
+                )))
+            }
         }
     }
 
