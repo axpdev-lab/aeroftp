@@ -24,7 +24,7 @@ import { SelectiveSyncTree } from './Sync/SelectiveSyncTree';
 import { VersionBrowser } from './Sync/VersionBrowser';
 import { useTranslation } from '../i18n';
 import { logger } from '../utils/logger';
-import { secureGetWithFallback } from '../utils/secureStorage';
+import { loadSavedServerProfiles } from '../utils/serverProfileStore';
 import './CloudPanel.css';
 
 // TypeScript interfaces matching Rust structs
@@ -1187,17 +1187,8 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose }) => {
         if (!isOpen) return;
         (async () => {
             try {
-                const servers = await secureGetWithFallback<{
-                    id?: string;
-                    name?: string;
-                    host: string;
-                    port?: number;
-                    username?: string;
-                    password?: string;
-                    initialPath?: string;
-                    protocol?: string;
-                }[]>('server_profiles', 'aeroftp-saved-servers');
-                if (servers && servers.length > 0) {
+                const servers = await loadSavedServerProfiles();
+                if (servers.length > 0) {
                     setSavedServers(servers.map(s => ({
                         id: s.id || '',
                         name: s.name || s.host,

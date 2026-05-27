@@ -9,6 +9,7 @@ import { open, save } from '@tauri-apps/plugin-dialog';
 import { Upload, Download, Shield, AlertCircle, CheckCircle2, X, Eye, EyeOff, Lock, Server, RefreshCw, FolderInput, AlertTriangle } from 'lucide-react';
 import { PasswordStrengthBar } from './vault/PasswordStrengthBar';
 import { ServerProfile } from '../types';
+import { loadSavedServerProfiles, storeSavedServerProfiles } from '../utils/serverProfileStore';
 import { useTranslation } from '../i18n';
 import { Checkbox } from './ui/Checkbox';
 import { BridgeSourcePanel } from './BridgeSourcePanel';
@@ -95,16 +96,14 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         [servers, selectedServerIds]
     );
 
-    // Pre-compute existing server keys for duplicate detection in import previews
-    const existingServerKeys = useMemo(() => {
-        let currentServers: ServerProfile[] = [];
-        try {
-            const stored = localStorage.getItem('aeroftp-saved-servers');
-            if (stored) currentServers = JSON.parse(stored);
-        } catch { /* fallback */ }
-        if (currentServers.length === 0) currentServers = servers;
-        return new Set(currentServers.map(s => `${s.host}:${s.port}:${s.username}`));
-    }, [servers]);
+    // Pre-compute existing server keys for duplicate detection in import previews.
+    // The parent (ConnectionScreen / SettingsPanel / IntroHub) feeds `servers`
+    // from the active user's partition via loadSavedServerProfiles, so a
+    // separate localStorage read is no longer needed.
+    const existingServerKeys = useMemo(
+        () => new Set(servers.map(s => `${s.host}:${s.port}:${s.username}`)),
+        [servers],
+    );
 
     // Auto-detect rclone config when entering rclone mode
     useEffect(() => {
@@ -215,13 +214,10 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
 
             const importedServers = result.servers;
 
-            // Read current servers directly from localStorage (ground truth)
-            // The `servers` prop may be stale or incomplete
-            let currentServers: ServerProfile[] = [];
-            try {
-                const stored = localStorage.getItem('aeroftp-saved-servers');
-                if (stored) currentServers = JSON.parse(stored);
-            } catch { /* fallback to prop */ }
+            // Read current servers directly from the active user's vault
+            // partition (ground truth). The `servers` prop may be stale or
+            // incomplete during an in-flight import.
+            let currentServers = await loadSavedServerProfiles();
             if (currentServers.length === 0) currentServers = servers;
 
             // Merge: skip duplicates by host+port+username OR by ID
@@ -302,7 +298,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         await handleRcloneScan(filePath);
     };
 
-    const handleRcloneConfirm = () => {
+    const handleRcloneConfirm = async () => {
         if (!rcloneResult) return;
 
         const selected: ServerProfile[] = rcloneResult.servers
@@ -324,26 +320,24 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         const added = selected.filter(s => !existingServerKeys.has(`${s.host}:${s.port}:${s.username}`));
         const updated = selected.filter(s => existingServerKeys.has(`${s.host}:${s.port}:${s.username}`));
 
-        // For updated servers: replace in localStorage so credentials and options are refreshed
-        // Save backup for rollback in case onImport fails
-        const backup = localStorage.getItem('aeroftp-saved-servers');
-        if (updated.length > 0) {
+        // For updated servers: replace the entry in the active user's vault
+        // partition so credentials and options are refreshed. Capture a
+        // snapshot so the partition can be rolled back if the caller's
+        // onImport throws.
+        const backup = await loadSavedServerProfiles().catch(() => null);
+        if (updated.length > 0 && backup && backup.length > 0) {
             try {
-                const stored = backup;
-                if (stored) {
-                    const current: ServerProfile[] = JSON.parse(stored);
-                    const updatedKeys = new Set(updated.map(s => `${s.host}:${s.port}:${s.username}`));
-                    const filtered = current.filter(s => !updatedKeys.has(`${s.host}:${s.port}:${s.username}`));
-                    localStorage.setItem('aeroftp-saved-servers', JSON.stringify(filtered));
-                }
-            } catch { /* fallback */ }
+                const updatedKeys = new Set(updated.map(s => `${s.host}:${s.port}:${s.username}`));
+                const filtered = backup.filter(s => !updatedKeys.has(`${s.host}:${s.port}:${s.username}`));
+                await storeSavedServerProfiles(filtered).catch(() => {});
+            } catch { /* best-effort: caller's onImport still receives the union */ }
         }
 
         try {
             onImport([...updated, ...added]);
         } catch {
-            // Rollback localStorage on failure
-            if (backup !== null) localStorage.setItem('aeroftp-saved-servers', backup);
+            // Rollback the partition snapshot on failure.
+            if (backup !== null) await storeSavedServerProfiles(backup).catch(() => {});
             setError('Import failed. No changes were made.');
             return;
         }
@@ -407,7 +401,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         await handleWinscpScan(filePath);
     };
 
-    const handleWinscpConfirm = () => {
+    const handleWinscpConfirm = async () => {
         if (!winscpResult) return;
 
         const selected: ServerProfile[] = winscpResult.servers
@@ -428,23 +422,19 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         const added = selected.filter(s => !existingServerKeys.has(`${s.host}:${s.port}:${s.username}`));
         const updated = selected.filter(s => existingServerKeys.has(`${s.host}:${s.port}:${s.username}`));
 
-        const backup = localStorage.getItem('aeroftp-saved-servers');
-        if (updated.length > 0) {
+        const backup = await loadSavedServerProfiles().catch(() => null);
+        if (updated.length > 0 && backup && backup.length > 0) {
             try {
-                const stored = backup;
-                if (stored) {
-                    const current: ServerProfile[] = JSON.parse(stored);
-                    const updatedKeys = new Set(updated.map(s => `${s.host}:${s.port}:${s.username}`));
-                    const filtered = current.filter(s => !updatedKeys.has(`${s.host}:${s.port}:${s.username}`));
-                    localStorage.setItem('aeroftp-saved-servers', JSON.stringify(filtered));
-                }
-            } catch { /* fallback */ }
+                const updatedKeys = new Set(updated.map(s => `${s.host}:${s.port}:${s.username}`));
+                const filtered = backup.filter(s => !updatedKeys.has(`${s.host}:${s.port}:${s.username}`));
+                await storeSavedServerProfiles(filtered).catch(() => {});
+            } catch { /* best-effort */ }
         }
 
         try {
             onImport([...updated, ...added]);
         } catch {
-            if (backup !== null) localStorage.setItem('aeroftp-saved-servers', backup);
+            if (backup !== null) await storeSavedServerProfiles(backup).catch(() => {});
             setError('Import failed. No changes were made.');
             return;
         }
@@ -507,7 +497,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         await handleFilezillaScan(filePath);
     };
 
-    const handleFilezillaConfirm = () => {
+    const handleFilezillaConfirm = async () => {
         if (!filezillaResult) return;
         const selected: ServerProfile[] = filezillaResult.servers
             .filter(s => filezillaSelectedIds.has(s.id))
@@ -521,22 +511,18 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
             }));
         const added = selected.filter(s => !existingServerKeys.has(`${s.host}:${s.port}:${s.username}`));
         const updated = selected.filter(s => existingServerKeys.has(`${s.host}:${s.port}:${s.username}`));
-        const backup = localStorage.getItem('aeroftp-saved-servers');
-        if (updated.length > 0) {
+        const backup = await loadSavedServerProfiles().catch(() => null);
+        if (updated.length > 0 && backup && backup.length > 0) {
             try {
-                const stored = backup;
-                if (stored) {
-                    const current: ServerProfile[] = JSON.parse(stored);
-                    const updatedKeys = new Set(updated.map(s => `${s.host}:${s.port}:${s.username}`));
-                    const filtered = current.filter(s => !updatedKeys.has(`${s.host}:${s.port}:${s.username}`));
-                    localStorage.setItem('aeroftp-saved-servers', JSON.stringify(filtered));
-                }
-            } catch { /* fallback */ }
+                const updatedKeys = new Set(updated.map(s => `${s.host}:${s.port}:${s.username}`));
+                const filtered = backup.filter(s => !updatedKeys.has(`${s.host}:${s.port}:${s.username}`));
+                await storeSavedServerProfiles(filtered).catch(() => {});
+            } catch { /* best-effort */ }
         }
         try {
             onImport([...updated, ...added]);
         } catch {
-            if (backup !== null) localStorage.setItem('aeroftp-saved-servers', backup);
+            if (backup !== null) await storeSavedServerProfiles(backup).catch(() => {});
             setError('Import failed. No changes were made.');
             return;
         }

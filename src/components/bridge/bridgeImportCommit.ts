@@ -2,6 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { ServerProfile } from '../../types';
+import { loadSavedServerProfiles, storeSavedServerProfiles } from '../../utils/serverProfileStore';
 
 export interface CommitOutcome {
     added: number;
@@ -10,38 +11,33 @@ export interface CommitOutcome {
 }
 
 /**
- * Merge imported profiles into the saved-server list with the same
- * add-vs-update split, localStorage rollback and ground-truth read used
- * by the legacy rclone/WinSCP/FileZilla confirm handlers. Single source
- * of truth so every bridge source behaves identically.
+ * Merge imported profiles into the active user's vault partition with
+ * the same add-vs-update split and rollback semantics used by the
+ * legacy rclone/WinSCP/FileZilla confirm handlers. Single source of
+ * truth so every bridge source behaves identically.
  */
-export function commitImportedServers(
+export async function commitImportedServers(
     selected: ServerProfile[],
     existingServerKeys: Set<string>,
     onImport: (servers: ServerProfile[]) => void,
-): CommitOutcome {
+): Promise<CommitOutcome> {
     const key = (s: ServerProfile) => `${s.host}:${s.port}:${s.username}`;
     const added = selected.filter(s => !existingServerKeys.has(key(s)));
     const updated = selected.filter(s => existingServerKeys.has(key(s)));
 
-    const backup = localStorage.getItem('aeroftp-saved-servers');
-    if (updated.length > 0) {
+    const backup = await loadSavedServerProfiles().catch(() => null);
+    if (updated.length > 0 && backup && backup.length > 0) {
         try {
-            if (backup) {
-                const current: ServerProfile[] = JSON.parse(backup);
-                const updatedKeys = new Set(updated.map(key));
-                localStorage.setItem(
-                    'aeroftp-saved-servers',
-                    JSON.stringify(current.filter(s => !updatedKeys.has(key(s)))),
-                );
-            }
+            const updatedKeys = new Set(updated.map(key));
+            const filtered = backup.filter(s => !updatedKeys.has(key(s)));
+            await storeSavedServerProfiles(filtered).catch(() => {});
         } catch { /* fall through: onImport rebuilds the list */ }
     }
 
     try {
         onImport([...updated, ...added]);
     } catch {
-        if (backup !== null) localStorage.setItem('aeroftp-saved-servers', backup);
+        if (backup !== null) await storeSavedServerProfiles(backup).catch(() => {});
         return { added: 0, updated: 0, error: 'Import failed. No changes were made.' };
     }
 
