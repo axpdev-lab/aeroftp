@@ -385,6 +385,43 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
 
     const permInfo = getPermissionsInfo();
 
+    // Privacy-token rendering for providers that surface a per-item
+    // visibility level instead of Unix mode bits (OpenDrive, 4shared,
+    // FileLu). The provider populates `permissions` with one of
+    // `public` | `private` | `hidden`; we render a labeled row with a
+    // human-readable description instead of mangling the token through
+    // the Unix permissions parser.
+    const getPrivacyInfo = (): { token: 'public' | 'private' | 'hidden'; label: string; description: string; icon: React.ReactNode } | null => {
+        const raw = (file.permissions || '').trim().toLowerCase();
+        if (raw === 'public') {
+            return {
+                token: 'public',
+                label: t('properties.privacyPublic') || 'Public',
+                description: t('properties.privacyPublicDesc') || 'Anyone with the link can access this item.',
+                icon: <Eye size={16} />,
+            };
+        }
+        if (raw === 'private') {
+            return {
+                token: 'private',
+                label: t('properties.privacyPrivate') || 'Private',
+                description: t('properties.privacyPrivateDesc') || 'Only the account owner can access this item.',
+                icon: <Lock size={16} />,
+            };
+        }
+        if (raw === 'hidden') {
+            return {
+                token: 'hidden',
+                label: t('properties.privacyHidden') || 'Hidden',
+                description: t('properties.privacyHiddenDesc') || 'Accessible by direct link only; not searchable.',
+                icon: <EyeOff size={16} />,
+            };
+        }
+        return null;
+    };
+
+    const privacyInfo = getPrivacyInfo();
+
     const PropertyRow: React.FC<{ icon: React.ReactNode; label: string; value: string; copyable?: boolean; mono?: boolean }> =
         ({ icon, label, value, copyable = false, mono = false }) => (
         <div className="flex items-start gap-3 py-2 border-b border-gray-100 dark:border-gray-700 last:border-0">
@@ -612,7 +649,20 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
                     {/* Permissions Tab */}
                     {activeTab === 'permissions' && (
                         <>
-                            {(file.permissions || file.permissions_mode != null) && (
+                            {privacyInfo && (
+                                <>
+                                    <PropertyRow
+                                        icon={privacyInfo.icon}
+                                        label={t('properties.visibility') || 'Visibility'}
+                                        value={privacyInfo.label}
+                                    />
+                                    <div className="text-xs text-gray-500 dark:text-gray-400 pl-7 pb-3">
+                                        {privacyInfo.description}
+                                    </div>
+                                </>
+                            )}
+
+                            {!privacyInfo && (file.permissions || file.permissions_mode != null) && (
                                 <>
                                     <PropertyRow
                                         icon={<Shield size={16} />}
@@ -682,7 +732,7 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
                             )}
 
                             {/* Show message when no permission data at all */}
-                            {!file.permissions && file.permissions_mode == null && !file.owner && !file.group && file.inode == null && file.hard_links == null && file.is_readonly == null && file.is_hidden == null && (
+                            {!privacyInfo && !file.permissions && file.permissions_mode == null && !file.owner && !file.group && file.inode == null && file.hard_links == null && file.is_readonly == null && file.is_hidden == null && (
                                 <div className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
                                     {t('properties.notAvailable')}
                                 </div>

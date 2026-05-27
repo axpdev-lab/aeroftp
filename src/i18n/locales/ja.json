@@ -2967,7 +2967,14 @@
             "oldestModified": "最古の更新",
             "selectedItems": "選択した項目",
             "sizesPartial": "(一部のサイズ不明)",
-            "totalSize": "合計サイズ"
+            "totalSize": "合計サイズ",
+            "privacyHidden": "[NEEDS TRANSLATION] Hidden",
+            "privacyHiddenDesc": "[NEEDS TRANSLATION] Accessible by direct link only; not searchable.",
+            "privacyPrivate": "[NEEDS TRANSLATION] Private",
+            "privacyPrivateDesc": "[NEEDS TRANSLATION] Only the account owner can access this item.",
+            "privacyPublic": "[NEEDS TRANSLATION] Public",
+            "privacyPublicDesc": "[NEEDS TRANSLATION] Anyone with the link can access this item.",
+            "visibility": "[NEEDS TRANSLATION] Visibility"
         },
         "duplicates": {
             "title": "重複を検索",
