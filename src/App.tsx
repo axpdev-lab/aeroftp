@@ -229,6 +229,14 @@ import { FolderOverwriteDialog, FolderMergeAction } from './components/FolderOve
 import { BatchRenameDialog, BatchRenameFile } from './components/BatchRenameDialog';
 import { CyberToolsModal } from './components/CyberToolsModal';
 import { LockScreen } from './components/LockScreen';
+import { AccountLockScreen } from './components/AccountLockScreen';
+import {
+    getUnlockStatus,
+    initUserPartitions,
+    listUsers,
+    readUsersListCache,
+    writeUsersListCache,
+} from './utils/userPartitions';
 import KeystoreMigrationWizard from './components/KeystoreMigrationWizard';
 import { Checkbox } from './components/ui/Checkbox';
 import { FileVersionsDialog } from './components/FileVersionsDialog';
@@ -518,6 +526,19 @@ const App: React.FC = () => {
   const [masterPasswordSet, setMasterPasswordSet] = useState(false);
   const [showMasterPasswordSetup, setShowMasterPasswordSetup] = useState(false);
   const [masterPasswordBootstrapMode, setMasterPasswordBootstrapMode] = useState(false);
+  const [vaultBootComplete, setVaultBootComplete] = useState(false);
+  // Initial state is hydrated from localStorage so the account picker can
+  // paint with zero flash when L1 (Master Password) is bypassed or absent.
+  // Cache write is gated on a successful IPC fetch, so we trust it.
+  const [accountLockState, setAccountLockState] = useState<'checking' | 'needed' | 'ready'>(() => {
+    try {
+      const cached = readUsersListCache();
+      if (cached && cached.length > 0 && (cached.length > 1 || cached.some(u => u.hasPassphrase))) {
+        return 'needed';
+      }
+    } catch { /* localStorage absent / quota: fall through */ }
+    return 'checking';
+  });
   const [showMigrationWizard, setShowMigrationWizard] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<'general' | 'connection' | 'servers' | 'filehandling' | 'transfers' | 'cloudproviders' | 'ui' | 'security' | 'privacy' | undefined>(undefined);
   // Path of a .aeroftp-keystore opened via OS file association: routes the
@@ -1323,11 +1344,43 @@ const App: React.FC = () => {
         // Force SavedServers to re-fetch from vault (now initialized)
         setServersRefreshKey(k => k + 1);
         vaultInitDone.current = true;
+        setVaultBootComplete(true);
         signalAppReady();
       }
     };
     initVault();
   }, [signalAppReady]);
+
+  // Multi-user lock screen (L2): runs once vault (L1) has settled and is not
+  // locked. We must wait for vaultBootComplete because user_partitions Tauri
+  // commands depend on CredentialStore::from_cache() being primed by
+  // init_credential_store. Cached list is read first for paint-without-flash;
+  // IPC refresh writes the authoritative snapshot. R1 = single passphrase-less
+  // user is the boot-fast path and never shows the picker.
+  useEffect(() => {
+    if (!vaultBootComplete || isAppLocked) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await initUserPartitions();
+        const [users, status] = await Promise.all([listUsers(), getUnlockStatus()]);
+        if (cancelled) return;
+        writeUsersListCache(users);
+        if (users.length === 0) { setAccountLockState('ready'); return; }
+        const singleUserNeedsUnlock = users.length === 1 && users[0].hasPassphrase && !status.isUnlocked;
+        const finalNeeded = users.length > 1 || singleUserNeedsUnlock;
+        setAccountLockState(finalNeeded ? 'needed' : 'ready');
+      } catch (err) {
+        // user_partitions unavailable (e.g. STORE_NOT_READY race): proceed
+        // without the picker so the app remains usable.
+        if (!cancelled) {
+          console.warn('[mu] account lock probe failed:', err);
+          setAccountLockState('ready');
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [vaultBootComplete, isAppLocked]);
 
   // Keystore Migration Wizard: auto-trigger if legacy localStorage data exists
   useEffect(() => {
@@ -11220,6 +11273,19 @@ interface UpdateVerificationInfo {
       {/* Lock Screen - shown when app is locked with master password */}
       {isAppLocked && masterPasswordSet && (
         <LockScreen onUnlock={() => { setIsAppLocked(false); setServersRefreshKey(k => k + 1); }} />
+      )}
+
+      {/* Account Lock Screen (L2 multi-user picker) - shown after vault is
+          unlocked when more than one user exists or the single user has an
+          account password set. R1 fast-path (single passphrase-less user)
+          renders nothing and lets the main app boot through. */}
+      {vaultBootComplete && !isAppLocked && accountLockState === 'needed' && (
+        <AccountLockScreen
+          onContinue={() => {
+            setAccountLockState('ready');
+            setServersRefreshKey(k => k + 1);
+          }}
+        />
       )}
 
       {/* Master Password Setup Dialog (standalone from header button) */}
