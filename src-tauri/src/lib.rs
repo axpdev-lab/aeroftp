@@ -15311,6 +15311,7 @@ pub fn run() {
             user_partitions::user_partitions_set_active_setting,
             user_partitions::user_partitions_delete_active_setting,
             user_partitions::user_partitions_list_active_setting_scopes,
+            user_partitions::user_partitions_find_cross_user_dedup,
             settings::native_rsync_feature_compiled,
             #[cfg(feature = "aerorsync")]
             settings::native_rsync_enabled_get,

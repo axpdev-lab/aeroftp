@@ -132,6 +132,21 @@ export const deleteActiveUserSetting = (scope: string): Promise<void> =>
 export const listActiveUserSettingScopes = (): Promise<string[]> =>
     invoke<string[]>('user_partitions_list_active_setting_scopes');
 
+// MU-7: cross-user dedup match metadata. The backend returns only public
+// fields about the OTHER user account that already saved the same profile.
+// The encrypted profile blob never leaves its owner's partition.
+export interface CrossUserDedupMatch {
+    userId: number;
+    userName: string;
+    userAvatarEmoji?: string | null;
+    userAvatarColor?: string | null;
+}
+
+export const findCrossUserDedup = (
+    profile: Record<string, unknown>,
+): Promise<CrossUserDedupMatch[]> =>
+    invoke<CrossUserDedupMatch[]>('user_partitions_find_cross_user_dedup', { profile });
+
 const USERS_LIST_CACHE_KEY = 'aeroftp-users-list-cache';
 const USERS_LIST_CACHE_VERSION = 1;
 
