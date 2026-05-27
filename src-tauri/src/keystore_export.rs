@@ -34,6 +34,7 @@ use std::path::{Component, Path, PathBuf};
 //         readable.
 const FILE_VERSION: u32 = 2;
 const FILE_VERSION_V1_LEGACY: u32 = 1;
+const KEYSTORE_MANIFEST_VERSION: u32 = 1;
 
 /// zstd level applied to the serialised payload at export time.
 /// Level 19 is the upper end of the "default" compression bracket
@@ -72,6 +73,7 @@ const SQLITE_DBS: &[&str] = &[
     "ai_chat.db",
     "agent_memory.db",
     "file_tags.db",
+    "user_partitions.db",
     "vault_history.db",
     "speedtest_history.db",
 ];
@@ -111,6 +113,23 @@ impl std::str::FromStr for ExportMode {
             ))),
         }
     }
+}
+
+/// Multi-user backup scope placeholder.
+///
+/// v4.0.0 still exports the existing full-device backup shape. Making
+/// the scope explicit in the manifest and export boundary now lets MU-5
+/// add a single-user backup without another envelope migration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum KeystoreScope {
+    #[default]
+    AllUsers,
+    SingleUser(i64),
+}
+
+fn default_manifest_version() -> u32 {
+    KEYSTORE_MANIFEST_VERSION
 }
 
 /// A2-01: fsync the parent directory of a freshly written file (Unix only).
@@ -342,6 +361,10 @@ struct KeystoreExportFile {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct KeystoreMetadata {
+    #[serde(default = "default_manifest_version")]
+    pub manifest_version: u32,
+    #[serde(default)]
+    pub scope: KeystoreScope,
     pub export_date: String,
     pub aeroftp_version: String,
     pub entries_count: u32,
@@ -726,6 +749,7 @@ pub fn export_keystore(
     password: &str,
     file_path: &Path,
     mode: ExportMode,
+    scope: KeystoreScope,
     config_dir: Option<&Path>,
     local_storage_in: Option<HashMap<String, String>>,
 ) -> Result<KeystoreMetadata, KeystoreExportError> {
@@ -816,6 +840,8 @@ pub fn export_keystore(
     categories.local_storage_keys = local_storage.len() as u32;
 
     let metadata = KeystoreMetadata {
+        manifest_version: KEYSTORE_MANIFEST_VERSION,
+        scope,
         export_date: chrono::Utc::now().to_rfc3339(),
         aeroftp_version: env!("CARGO_PKG_VERSION").to_string(),
         entries_count,
@@ -1443,6 +1469,8 @@ mod tests {
             nonce: vec![5, 6, 7, 8, 9, 10, 11, 12],
             encrypted_payload: EncryptedBlob(original.clone()),
             metadata: KeystoreMetadata {
+                manifest_version: KEYSTORE_MANIFEST_VERSION,
+                scope: KeystoreScope::AllUsers,
                 export_date: "2026-05-11T00:00:00Z".to_string(),
                 aeroftp_version: "3.7.8".to_string(),
                 entries_count: 0,
@@ -1481,6 +1509,8 @@ mod tests {
             nonce: vec![4, 5, 6],
             encrypted_payload: EncryptedBlob(vec![7; 16]),
             metadata: KeystoreMetadata {
+                manifest_version: KEYSTORE_MANIFEST_VERSION,
+                scope: KeystoreScope::AllUsers,
                 export_date: "2026-05-11T00:00:00Z".to_string(),
                 aeroftp_version: "3.7.8".to_string(),
                 entries_count: 0,
@@ -1503,6 +1533,8 @@ mod tests {
     #[test]
     fn authenticated_metadata_mismatch_is_rejected() {
         let envelope_meta = KeystoreMetadata {
+            manifest_version: KEYSTORE_MANIFEST_VERSION,
+            scope: KeystoreScope::AllUsers,
             export_date: "2026-05-11T00:00:00Z".to_string(),
             aeroftp_version: "3.7.8".to_string(),
             entries_count: 1,

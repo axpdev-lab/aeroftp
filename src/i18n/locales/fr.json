@@ -2854,7 +2854,7 @@
             "unlock": "Deverrouiller",
             "unlocking": "Deverrouillage...",
             "invalidPassword": "Mot de passe invalide. Veuillez reessayer.",
-            "securityNote": "Vos donnees sont protegees par le chiffrement AES-256-GCM",
+            "securityNote": "Vos donnees sont protegees par le chiffrement Argon2id + AES-256-GCM",
             "patternCross": "Croix",
             "patternDots": "Points",
             "patternCircuit": "Circuit",
@@ -4569,6 +4569,31 @@
                 "colAction": "Action"
             },
             "launcherScheduler": "Planificateur"
+        },
+        "accountLock": {
+            "title": "Choisissez un compte",
+            "signInAs": "Se connecter en tant que {name}",
+            "activeBadge": "Dernière utilisation",
+            "passphraseProtected": "Protégé par mot de passe",
+            "unlocked": "Session active",
+            "openAccount": "Ouvrir",
+            "newUser": "Nouvel utilisateur",
+            "newUserHint": "Créer un autre compte",
+            "manageUsers": "Gérer les utilisateurs",
+            "accountPasswordLabel": "Mot de passe du compte",
+            "backToList": "Retour aux comptes",
+            "unlockPlaceholder": "Saisissez le mot de passe du compte",
+            "unlock": "Déverrouiller",
+            "unlocking": "Déverrouillage...",
+            "wrongPassphrase": "Mot de passe incorrect. Veuillez réessayer.",
+            "lockedOut": "Trop de tentatives. Ce compte est temporairement verrouillé.",
+            "lockedOutCountdown": "Réessayez dans {seconds}s.",
+            "showPassword": "Afficher le mot de passe",
+            "hidePassword": "Masquer le mot de passe",
+            "lastUsedToday": "Utilisé aujourd'hui",
+            "lastUsedYesterday": "Utilisé hier",
+            "lastUsedDaysAgo": "Utilisé il y a {days} jours",
+            "securityNote": "Compte protégé par chiffrement Argon2id + AES-KW + AES-256-GCM"
         }
     }
 }

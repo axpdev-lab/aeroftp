@@ -186,7 +186,7 @@ export const BridgeSourcePanel: React.FC<Props> = ({
         await runScan(filePath);
     };
 
-    const confirmImport = () => {
+    const confirmImport = async () => {
         if (!result) return;
         const selected: ServerProfile[] = result.servers
             .filter(s => selectedIds.has(s.id))
@@ -200,7 +200,7 @@ export const BridgeSourcePanel: React.FC<Props> = ({
                 hasStoredCredential: s.hasStoredCredential || false,
             }));
         if (selected.length === 0) return;
-        const outcome = commitImportedServers(selected, existingServerKeys, onImport);
+        const outcome = await commitImportedServers(selected, existingServerKeys, onImport);
         if (outcome.error) { setError(outcome.error); return; }
         const parts: string[] = [];
         if (outcome.added > 0) parts.push(t('settings.importSuccess').replace('{count}', String(outcome.added)));

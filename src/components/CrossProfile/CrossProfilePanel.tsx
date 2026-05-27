@@ -8,7 +8,7 @@ import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { ArrowDownLeft, ArrowLeftRight, ArrowRight, ArrowRightLeft, ArrowUpRight, Play, RefreshCw, X } from 'lucide-react';
 import { ServerProfile, TransferEvent } from '../../types';
 import { useTranslation } from '../../i18n';
-import { secureGetWithFallback } from '../../utils/secureStorage';
+import { loadSavedServerProfiles } from '../../utils/serverProfileStore';
 import { formatBytes } from '../../utils/formatters';
 import { PROVIDER_LOGOS } from '../ProviderLogos';
 import { Checkbox } from '../ui/Checkbox';
@@ -243,8 +243,8 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
 
     useEffect(() => {
         (async () => {
-            const saved = await secureGetWithFallback<ServerProfile[]>('server_profiles', 'aeroftp-saved-servers');
-            if (saved) {
+            const saved = await loadSavedServerProfiles();
+            if (saved.length > 0) {
                 setProfiles(saved);
                 // Pre-select the profile matching the active connection so users
                 // who open the dialog while connected don't have to re-pick the

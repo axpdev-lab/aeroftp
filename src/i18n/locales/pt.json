@@ -2854,7 +2854,7 @@
             "unlock": "Desbloquear",
             "unlocking": "Desbloqueando...",
             "invalidPassword": "Senha inválida. Por favor, tente novamente.",
-            "securityNote": "Seus dados são protegidos com criptografia AES-256-GCM",
+            "securityNote": "Seus dados são protegidos com criptografia Argon2id + AES-256-GCM",
             "patternCross": "Cruz",
             "patternDots": "Pontos",
             "patternCircuit": "Circuito",
@@ -4569,6 +4569,31 @@
                 "colAction": "Ação"
             },
             "launcherScheduler": "Agendador"
+        },
+        "accountLock": {
+            "title": "Escolha uma conta",
+            "signInAs": "Entrar como {name}",
+            "activeBadge": "Última utilização",
+            "passphraseProtected": "Protegida por palavra-passe",
+            "unlocked": "Sessão ativa",
+            "openAccount": "Abrir",
+            "newUser": "Novo utilizador",
+            "newUserHint": "Criar outra conta",
+            "manageUsers": "Gerir utilizadores",
+            "accountPasswordLabel": "Palavra-passe da conta",
+            "backToList": "Voltar às contas",
+            "unlockPlaceholder": "Insira a palavra-passe da conta",
+            "unlock": "Desbloquear",
+            "unlocking": "A desbloquear...",
+            "wrongPassphrase": "Palavra-passe incorreta. Por favor, tente novamente.",
+            "lockedOut": "Demasiadas tentativas. Esta conta está temporariamente bloqueada.",
+            "lockedOutCountdown": "Tente novamente em {seconds}s.",
+            "showPassword": "Mostrar palavra-passe",
+            "hidePassword": "Ocultar palavra-passe",
+            "lastUsedToday": "Usada hoje",
+            "lastUsedYesterday": "Usada ontem",
+            "lastUsedDaysAgo": "Usada há {days} dias",
+            "securityNote": "Conta protegida com criptografia Argon2id + AES-KW + AES-256-GCM"
         }
     }
 }

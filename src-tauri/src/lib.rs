@@ -77,6 +77,8 @@ pub mod profile_loader;
 mod rsync_output;
 pub mod storage_dedup;
 pub mod used_scan;
+mod user_crypto;
+pub mod user_partitions;
 #[cfg(windows)]
 pub mod windows_update_helper;
 // `pub` transitively so integration tests can construct `RsyncStats`
@@ -13984,6 +13986,7 @@ async fn export_keystore(
             &password,
             std::path::Path::new(&file_path_owned),
             mode,
+            keystore_export::KeystoreScope::AllUsers,
             config_dir.as_deref(),
             local_storage,
         )
@@ -14475,6 +14478,13 @@ pub fn run() {
                     let _ = chat_history::init_db_schema(&conn);
                     app.manage(chat_history::ChatHistoryDb(std::sync::Mutex::new(conn)));
                 }
+            }
+
+            // Initialize the additive multi-user partition DB. Migration needs
+            // an unlocked credential vault, so startup only creates/validates
+            // schema; commands run the idempotent legacy import when possible.
+            if let Err(e) = user_partitions::init_empty_db(app.handle()) {
+                log::error!("User partitions DB init failed: {e}");
             }
 
             // Initialize File Tags SQLite database
@@ -15283,6 +15293,31 @@ pub fn run() {
             app_master_password_status,
             app_master_password_update_activity,
             app_master_password_check_timeout,
+            // Multi-user partition metadata
+            user_partitions::user_partitions_init,
+            user_partitions::user_partitions_list_users,
+            user_partitions::user_partitions_get_active_user,
+            user_partitions::user_partitions_load_active_server_profiles,
+            user_partitions::user_partitions_save_active_server_profiles,
+            user_partitions::user_partitions_add_user,
+            user_partitions::user_partitions_unlock_user,
+            user_partitions::user_partitions_lock_session,
+            user_partitions::user_partitions_unlock_status,
+            user_partitions::user_partitions_change_passphrase,
+            user_partitions::user_partitions_set_active_user,
+            user_partitions::user_partitions_rename_user,
+            user_partitions::user_partitions_set_user_avatar,
+            user_partitions::user_partitions_reorder_users,
+            user_partitions::user_partitions_delete_user,
+            user_partitions::user_partitions_set_admin,
+            user_partitions::user_partitions_admin_reset_passphrase,
+            user_partitions::user_partitions_storage_stats,
+            user_partitions::user_partitions_debug_state,
+            user_partitions::user_partitions_get_active_setting,
+            user_partitions::user_partitions_set_active_setting,
+            user_partitions::user_partitions_delete_active_setting,
+            user_partitions::user_partitions_list_active_setting_scopes,
+            user_partitions::user_partitions_find_cross_user_dedup,
             settings::native_rsync_feature_compiled,
             #[cfg(feature = "aerorsync")]
             settings::native_rsync_enabled_get,

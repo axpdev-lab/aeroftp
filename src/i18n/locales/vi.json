@@ -2854,7 +2854,7 @@
             "unlock": "Mở khóa",
             "unlocking": "Đang mở khóa...",
             "invalidPassword": "Mật khẩu không hợp lệ. Vui lòng thử lại.",
-            "securityNote": "Dữ liệu của bạn được bảo vệ bằng mã hóa AES-256-GCM",
+            "securityNote": "Dữ liệu của bạn được bảo vệ bằng mã hóa Argon2id + AES-256-GCM",
             "patternCross": "Chéo",
             "patternDots": "Chấm",
             "patternCircuit": "Mạch điện",
@@ -4569,6 +4569,31 @@
                 "colAction": "Hành động"
             },
             "launcherScheduler": "Bộ lập lịch"
+        },
+        "accountLock": {
+            "title": "[NEEDS TRANSLATION] Choose an account",
+            "signInAs": "[NEEDS TRANSLATION] Sign in as {name}",
+            "activeBadge": "[NEEDS TRANSLATION] Last used",
+            "passphraseProtected": "[NEEDS TRANSLATION] Password protected",
+            "unlocked": "[NEEDS TRANSLATION] Active session",
+            "openAccount": "[NEEDS TRANSLATION] Open",
+            "newUser": "[NEEDS TRANSLATION] New user",
+            "newUserHint": "[NEEDS TRANSLATION] Create another account",
+            "manageUsers": "[NEEDS TRANSLATION] Manage users",
+            "accountPasswordLabel": "[NEEDS TRANSLATION] Account password",
+            "backToList": "[NEEDS TRANSLATION] Back to accounts",
+            "unlockPlaceholder": "[NEEDS TRANSLATION] Enter account password",
+            "unlock": "[NEEDS TRANSLATION] Unlock",
+            "unlocking": "[NEEDS TRANSLATION] Unlocking...",
+            "wrongPassphrase": "[NEEDS TRANSLATION] Wrong account password. Please try again.",
+            "lockedOut": "[NEEDS TRANSLATION] Too many attempts. This account is temporarily locked.",
+            "lockedOutCountdown": "[NEEDS TRANSLATION] Try again in {seconds}s.",
+            "showPassword": "[NEEDS TRANSLATION] Show password",
+            "hidePassword": "[NEEDS TRANSLATION] Hide password",
+            "lastUsedToday": "[NEEDS TRANSLATION] Used today",
+            "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
+            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "securityNote": "Tài khoản được bảo vệ bằng mã hóa Argon2id + AES-KW + AES-256-GCM"
         }
     }
 }

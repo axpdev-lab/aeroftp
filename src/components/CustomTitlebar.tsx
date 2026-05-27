@@ -10,6 +10,7 @@ import { openUrl } from '../utils/openUrl';
 import { ThemeToggle } from '../hooks/useTheme';
 import type { Theme, EffectiveTheme } from '../hooks/useTheme';
 import { guardedUnlisten } from '../hooks/useTauriListener';
+import { UserDropdown } from './UserDropdown';
 
 const SourceForgeLogo = ({ size = 12 }: { size?: number }) => (
     <svg width={size} height={size} viewBox="0 0 117 103" fill="currentColor">
@@ -58,6 +59,7 @@ interface TitlebarProps {
     onShowDependencies: () => void;
     onShowProviders: () => void;
     onShowMountManager: () => void;
+    onUsersChanged?: () => void;
     masterPasswordSet: boolean;
     onLockApp: () => void;
     onSetupMasterPassword: () => void;
@@ -192,7 +194,7 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
         isConnected, onDisconnect, onShowConnectionScreen, showConnectionScreen,
         onOpenSettings, onShowExportImport, onShowSupport, onShowCyberTools, onShowVault,
         onShowAbout, onShowMcp, onShowShortcuts, onShowDependencies, onShowProviders,
-        onShowMountManager,
+        onShowMountManager, onUsersChanged,
         masterPasswordSet, onLockApp, onSetupMasterPassword,
         onRefresh, onNewFolder, onToggleDevTools, onToggleTheme,
         onToggleDebugMode, onRename, onDelete, onSelectAll,
@@ -462,7 +464,7 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
                     ) : null}
                 </div>
 
-                {/* Cluster 2: Utility (Cyber Toolkit if cyber theme, AeroVault, Lock, Settings) */}
+                {/* Cluster 2: Utility (Cyber Toolkit if cyber theme, AeroVault, Users, Lock, Settings) */}
                 <div className="flex items-center gap-0.5">
                     {appTheme === 'cyber' && (
                         <button
@@ -484,6 +486,7 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
                             <path d="M10.25 11V9.5a1.75 1.75 0 013.5 0V11" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
                     </button>
+                    <UserDropdown onUsersChanged={onUsersChanged} />
                     <button
                         onClick={masterPasswordSet ? onLockApp : onSetupMasterPassword}
                         className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[var(--color-bg-tertiary)] transition-colors cursor-pointer"

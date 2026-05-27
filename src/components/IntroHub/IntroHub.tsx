@@ -11,7 +11,7 @@ import { ExportImportDialog } from '../ExportImportDialog';
 import { getTotalServiceCount } from './discoverData';
 import { getProviderById } from '../../providers';
 import { useTranslation } from '../../i18n';
-import { secureStoreAndClean } from '../../utils/secureStorage';
+import { loadSavedServerProfiles, storeSavedServerProfiles } from '../../utils/serverProfileStore';
 import type { ProviderType } from '../../types';
 import type { CatalogCategoryId } from '../../types/catalog';
 
@@ -108,10 +108,12 @@ export function IntroHub(props: IntroHubProps) {
     // Saved servers for Command Palette
     const [paletteServers, setPaletteServers] = useState<ServerProfile[]>([]);
     useEffect(() => {
-        try {
-            const stored = localStorage.getItem('aeroftp-saved-servers');
-            if (stored) setPaletteServers(JSON.parse(stored));
-        } catch { /* ignore */ }
+        let cancelled = false;
+        (async () => {
+            const vaultServers = await loadSavedServerProfiles();
+            if (!cancelled) setPaletteServers(vaultServers);
+        })();
+        return () => { cancelled = true; };
     }, [serversRefreshKey]);
 
     // Export/Import dialog
@@ -341,7 +343,7 @@ export function IntroHub(props: IntroHubProps) {
     const activeFormTab = formTabs.find(ft => ft.id === activeTab);
 
     return (
-        <div className="w-full relative z-10 flex flex-col h-full bg-slate-50/50 dark:bg-gray-800/40 backdrop-blur-md rounded-xl border border-gray-200/50 dark:border-gray-700/50 shadow-2xl overflow-hidden">
+        <div className="w-full relative z-10 flex flex-col h-full bg-slate-50/50 dark:bg-gray-800/40 backdrop-blur-md rounded-lg border border-gray-200/50 dark:border-gray-700/50 shadow-2xl overflow-hidden">
             {/* Tab Header */}
             <IntroHubHeader
                 activeTab={activeTab}
@@ -383,11 +385,12 @@ export function IntroHub(props: IntroHubProps) {
                         lastUpdate={serversRefreshKey}
                         onOpenExportImport={() => setShowExportImport(true)}
                         onServersChange={() => {
-                            try {
-                                const stored = localStorage.getItem('aeroftp-saved-servers');
-                                if (stored) setPaletteServers(JSON.parse(stored));
-                                else setPaletteServers([]);
-                            } catch { setPaletteServers([]); }
+                            (async () => {
+                                try {
+                                    const vaultServers = await loadSavedServerProfiles();
+                                    setPaletteServers(vaultServers);
+                                } catch { setPaletteServers([]); }
+                            })();
                         }}
                         onOpenCrossProfile={onOpenCrossProfile}
                         onOpenMountManager={onOpenMountManager}
@@ -449,15 +452,11 @@ export function IntroHub(props: IntroHubProps) {
             {showExportImport && (
                 <ExportImportDialog
                     servers={paletteServers}
-                    onImport={(newServers) => {
-                        let currentServers: ServerProfile[] = [];
-                        try {
-                            const stored = localStorage.getItem('aeroftp-saved-servers');
-                            if (stored) currentServers = JSON.parse(stored);
-                        } catch { /* fallback */ }
+                    onImport={async (newServers) => {
+                        let currentServers = await loadSavedServerProfiles();
                         if (currentServers.length === 0) currentServers = paletteServers;
                         const updated = [...currentServers, ...newServers];
-                        secureStoreAndClean('server_profiles', 'aeroftp-saved-servers', updated).catch(() => {});
+                        await storeSavedServerProfiles(updated).catch(() => {});
                         setPaletteServers(updated);
                         setShowExportImport(false);
                         onServersChanged?.();
