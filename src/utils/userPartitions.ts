@@ -248,3 +248,17 @@ export const needsAccountLockScreen = (
     if (users.length === 1 && !users[0].hasPassphrase) return false;
     return true;
 };
+
+// Dispatched when the user explicitly asks to return to the AccountLockScreen
+// (e.g. from the titlebar UserDropdown "Lock" action). App.tsx listens for this
+// and re-arms `accountLockState='needed'` so the L2 picker re-appears with the
+// account cards. Behaves as a logout when at least one account has a passphrase.
+export const ACCOUNT_LOCK_SCREEN_REQUESTED_EVENT = 'aeroftp-account-lock-screen-requested';
+
+export const dispatchAccountLockScreenRequested = (): void => {
+    try {
+        window.dispatchEvent(new CustomEvent(ACCOUNT_LOCK_SCREEN_REQUESTED_EVENT));
+    } catch {
+        // Browserless tests: best effort.
+    }
+};
