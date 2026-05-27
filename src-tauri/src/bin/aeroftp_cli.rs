@@ -5934,7 +5934,178 @@ fn open_vault(cli: &Cli) -> Result<ftp_client_gui_lib::credential_store::Credent
         Err(e) => return Err(format!("Failed to open vault: {}", e)),
     }
 
-    CredentialStore::from_cache().ok_or_else(|| "Vault not available after init".to_string())
+    let store = CredentialStore::from_cache()
+        .ok_or_else(|| "Vault not available after init".to_string())?;
+
+    // MU-3: run partition migration eagerly so `cli.user` can be resolved
+    // by the per-command unlock helper. Resolve+unlock is intentionally
+    // deferred to `ensure_active_user_unlocked` so that subcommands like
+    // `users list` work even when the active user is locked.
+    ftp_client_gui_lib::user_partitions::init_or_migrate_cli(&store)?;
+    Ok(store)
+}
+
+/// Resolve which user partition the current CLI invocation should target,
+/// unlocking its DEK session if necessary. `--user` is a **per-invocation
+/// override**: it does NOT change the persistent `active_user_id` in
+/// `global_state` (mirrors `aws --profile X` / `kubectl --context X`).
+/// To persist the switch use `aeroftp-cli users switch <name>`.
+///
+/// Behaviour:
+/// 1. If `--user` is set, find that user by name. The persistent active
+///    user is left untouched.
+/// 2. Otherwise use whatever `active_user_id` the partition layer records.
+/// 3. If the resolved user has a passphrase, read it from
+///    `--user-passphrase` / `--passphrase-file` / env / TTY prompt and
+///    unlock the DEK session.
+/// 4. If the user has no passphrase, no unlock is needed: the
+///    device_root_key path takes over inside user_partitions automatically.
+///
+/// Returns the resolved user metadata (or `None` on the pre-migration edge
+/// case where no users exist at all — which should not happen after
+/// `init_or_migrate_cli`).
+fn ensure_active_user_unlocked(
+    cli: &Cli,
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+) -> Result<Option<ftp_client_gui_lib::user_partitions::UserMetadata>, String> {
+    use ftp_client_gui_lib::user_partitions;
+
+    // Explicit --user takes priority; otherwise use whatever active_user_id
+    // the partition layer already records. We do NOT call set_active_user
+    // here: --user is per-invocation, persistence is `users switch`.
+    let target = if let Some(ref name) = cli.user {
+        user_partitions::cli_find_user_by_name(store, name)?
+    } else {
+        match user_partitions::cli_get_active_user(store)? {
+            Some(u) => u,
+            None => return Ok(None),
+        }
+    };
+
+    if !target.has_passphrase {
+        return Ok(Some(target));
+    }
+
+    // Locked partition: read passphrase and unlock the DEK session.
+    let prompt = format!("Account password for user '{}': ", target.name);
+    let mut passphrase = match read_user_passphrase(cli, &target.name, &prompt, true, true)? {
+        Some(p) => p,
+        None => {
+            return Err(format!(
+                "Account '{}' is locked. Use --user-passphrase, --passphrase-file, or AEROFTP_USER_PASSPHRASE.",
+                target.name
+            ))
+        }
+    };
+    // Use transient unlock when --user was explicit so we don't silently
+    // change the persistent active_user_id (R3 + standard CLI convention).
+    let unlock_result = if cli.user.is_some() {
+        user_partitions::cli_unlock_user_transient(store, target.id, Some(&passphrase))
+    } else {
+        user_partitions::cli_unlock_user(store, target.id, Some(&passphrase))
+    };
+    passphrase.zeroize();
+    match unlock_result {
+        Ok(status) if status.is_unlocked => Ok(Some(target)),
+        Ok(_) => Err(format!(
+            "Failed to unlock account '{}': wrong passphrase",
+            target.name
+        )),
+        Err(e) => Err(format!(
+            "Failed to unlock account '{}': {}",
+            target.name, e
+        )),
+    }
+}
+
+/// Load the target user's server profiles. `--user` selects per-invocation,
+/// falling back to the persistent `active_user_id` when absent. Falls back
+/// to the legacy `config_server_profiles` blob only on partition errors
+/// (downgrade case). All CLI surfaces that previously read
+/// `config_server_profiles` directly must go through this helper so that
+/// `--user` actually scopes the data without persisting the switch.
+fn load_active_user_profiles(
+    cli: &Cli,
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+) -> Result<Vec<serde_json::Value>, String> {
+    use ftp_client_gui_lib::user_partitions;
+    let target = match ensure_active_user_unlocked(cli, store)? {
+        Some(t) => t,
+        None => return Err("NO_ACTIVE_USER".to_string()),
+    };
+    match user_partitions::cli_list_server_profiles_for_user(store, target.id) {
+        Ok(profiles) => Ok(profiles),
+        Err(e) if e == "USER_LOCKED" => Err(e),
+        Err(e) if e == "NO_ACTIVE_USER" => Err(e),
+        Err(_) => {
+            // Partition unavailable (downgrade or transient I/O): fall back to
+            // legacy blob so the user is not locked out of their CLI history.
+            // Note: legacy blob is single-user, so `--user` cannot be honoured
+            // on this path — log a clear stderr hint and serve the blob.
+            if cli.user.is_some() && cli.verbose > 0 {
+                eprintln!(
+                    "Warning: user partition unavailable, --user override ignored (falling back to legacy blob)."
+                );
+            }
+            let raw = store
+                .get("config_server_profiles")
+                .map_err(|e| format!("Failed to read server profiles: {}", e))?;
+            serde_json::from_str(&raw)
+                .map_err(|e| format!("Failed to parse server profiles: {}", e))
+        }
+    }
+}
+
+/// Overwrite the target user's server profiles (resolved by `--user` or by
+/// the persistent active user). The legacy `config_server_profiles` blob is
+/// mirrored ONLY when writing to the persistent active user, so downgrade
+/// to a single-user CLI does not silently surface someone else's profiles.
+fn save_active_user_profiles(
+    cli: &Cli,
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    profiles: &[serde_json::Value],
+) -> Result<(), String> {
+    use ftp_client_gui_lib::user_partitions;
+    let target = match ensure_active_user_unlocked(cli, store)? {
+        Some(t) => t,
+        None => return Err("NO_ACTIVE_USER".to_string()),
+    };
+    let active_id = user_partitions::cli_get_active_user(store)
+        .ok()
+        .flatten()
+        .map(|u| u.id);
+    let writing_to_active = active_id == Some(target.id);
+
+    match user_partitions::cli_replace_server_profiles_for_user(store, target.id, profiles) {
+        Ok(()) => {
+            // Only mirror to the legacy blob when the write targets the
+            // persistent active user. Mirroring a `--user other` write would
+            // leak `other`'s profile names into the legacy blob, which is
+            // exactly the cross-partition leak R3 forbids.
+            if writing_to_active {
+                if let Ok(serialized) = serde_json::to_string(profiles) {
+                    let _ = store.store("config_server_profiles", &serialized);
+                }
+            }
+            Ok(())
+        }
+        Err(e) if e == "USER_LOCKED" || e == "NO_ACTIVE_USER" => Err(e),
+        Err(_) => {
+            // Partition write failed (downgrade / unavailable): write the
+            // legacy blob only when this would have been the active user
+            // anyway. Same R3-safety reasoning as the success path.
+            if !writing_to_active {
+                return Err(
+                    "User partition unavailable; --user override cannot fall back to legacy blob".to_string(),
+                );
+            }
+            let serialized = serde_json::to_string(profiles)
+                .map_err(|e| format!("Failed to serialize profiles: {}", e))?;
+            store
+                .store("config_server_profiles", &serialized)
+                .map_err(|e| format!("Failed to save server profiles: {}", e))
+        }
+    }
 }
 
 fn user_env_suffix(name: &str) -> String {
@@ -7287,22 +7458,10 @@ fn list_vault_profiles(cli: &Cli, format: OutputFormat, overrides: ProfilesViewO
         }
     };
 
-    let profiles_json = match store.get("config_server_profiles") {
-        Ok(json) => json,
-        Err(_) => {
-            if matches!(format, OutputFormat::Json) {
-                println!("[]");
-            } else {
-                println!("No saved profiles found.");
-            }
-            return 0;
-        }
-    };
-
-    let profiles: Vec<serde_json::Value> = match serde_json::from_str(&profiles_json) {
+    let profiles = match load_active_user_profiles(cli, &store) {
         Ok(p) => p,
         Err(e) => {
-            print_error(format, &format!("Failed to parse profiles: {}", e), 5);
+            print_error(format, &format!("Failed to load profiles: {}", e), 5);
             return 5;
         }
     };
@@ -7427,7 +7586,7 @@ fn list_vault_profiles(cli: &Cli, format: OutputFormat, overrides: ProfilesViewO
             );
         }
     } else {
-        return render_profiles_text(&store, profiles, &overrides);
+        return render_profiles_text(cli, &store, profiles, &overrides);
     }
 
     0
@@ -7455,6 +7614,7 @@ fn build_profile_views(
 }
 
 fn render_profiles_text(
+    cli: &Cli,
     store: &CredentialStore,
     profiles: Vec<serde_json::Value>,
     overrides: &ProfilesViewOverrides,
@@ -7997,7 +8157,7 @@ fn render_profiles_text(
 
     if overrides.interactive && std::io::stdin().is_terminal() && std::io::stderr().is_terminal() {
         let ordered: Vec<serde_json::Value> = sorted.into_iter().map(|(_, v)| v).collect();
-        return interactive_profiles_loop(store, ordered);
+        return interactive_profiles_loop(cli, store, ordered);
     }
 
     0
@@ -8012,7 +8172,7 @@ fn render_profiles_text(
 /// the user can read the renumbered remainder before issuing the next
 /// command. `l`/`t` reuse the running binary so the listing/tree output
 /// stays bit-for-bit identical to the standalone command.
-fn interactive_profiles_loop(store: &CredentialStore, profiles: Vec<serde_json::Value>) -> i32 {
+fn interactive_profiles_loop(cli: &Cli, store: &CredentialStore, profiles: Vec<serde_json::Value>) -> i32 {
     use std::io::{self, BufRead, Write};
 
     let mut current = profiles;
@@ -8221,7 +8381,7 @@ fn interactive_profiles_loop(store: &CredentialStore, profiles: Vec<serde_json::
                         eprintln!("Profile '{}' has no id; skipping.", name);
                         continue;
                     }
-                    match delete_profile_in_vault(store, &id) {
+                    match delete_profile_in_vault(cli, store, &id) {
                         Ok(remaining) => {
                             current = remaining;
                             tombstones.push((zero, profile));
@@ -8292,7 +8452,7 @@ fn interactive_profiles_loop(store: &CredentialStore, profiles: Vec<serde_json::
                         eprintln!("Profile '{}' has no id; skipping.", name);
                         continue;
                     }
-                    match duplicate_profile_in_vault(store, &id, None) {
+                    match duplicate_profile_in_vault(cli, store, &id, None) {
                         Ok((new_id, new_name, updated)) => {
                             current = updated;
                             eprintln!(
@@ -8352,6 +8512,7 @@ fn interactive_profiles_loop(store: &CredentialStore, profiles: Vec<serde_json::
                     continue;
                 }
                 match update_profile_field_in_vault(
+                    cli,
                     store,
                     &id,
                     "name",
@@ -8469,7 +8630,7 @@ fn interactive_profiles_loop(store: &CredentialStore, profiles: Vec<serde_json::
                     eprintln!("No changes entered: edit skipped.");
                     continue;
                 }
-                match apply_profile_updates_in_vault(store, &id, &updates) {
+                match apply_profile_updates_in_vault(cli, store, &id, &updates) {
                     Ok(updated) => {
                         current = updated;
                         let changed: Vec<String> =
@@ -8550,6 +8711,7 @@ fn interactive_profiles_loop(store: &CredentialStore, profiles: Vec<serde_json::
                     }
                 }
                 match duplicate_or_convert_mode_in_vault(
+                    cli,
                     store,
                     &name,
                     &mode_input,
@@ -8559,14 +8721,11 @@ fn interactive_profiles_loop(store: &CredentialStore, profiles: Vec<serde_json::
                     replace,
                 ) {
                     Ok((_source_id, new_id, source_name, mode)) => {
-                        // Refresh in-memory snapshot from the vault so the
-                        // next iteration's render reflects the new layout.
-                        if let Ok(updated_raw) = store.get("config_server_profiles") {
-                            if let Ok(updated) =
-                                serde_json::from_str::<Vec<serde_json::Value>>(&updated_raw)
-                            {
-                                current = updated;
-                            }
+                        // Refresh in-memory snapshot from the active user's
+                        // partition (already unlocked by the caller). Mutex
+                        // is global, so this is a cheap reload.
+                        if let Ok(updated) = ftp_client_gui_lib::user_partitions::cli_list_active_server_profiles(store) {
+                            current = updated;
                         }
                         eprintln!(
                             "{}",
@@ -9006,11 +9165,14 @@ fn cmd_profile_add(
             return 5;
         }
     };
-    let mut profiles: Vec<serde_json::Value> = store
-        .get("config_server_profiles")
-        .ok()
-        .and_then(|raw| serde_json::from_str(&raw).ok())
-        .unwrap_or_default();
+    let mut profiles: Vec<serde_json::Value> = match load_active_user_profiles(cli, &store) {
+        Ok(p) => p,
+        Err(e) if e == "USER_LOCKED" || e == "NO_ACTIVE_USER" => {
+            print_error(format, &format!("Failed to read profiles: {}", e), 6);
+            return 6;
+        }
+        Err(_) => Vec::new(),
+    };
 
     let now_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;
     let rand_suffix: String = {
@@ -9074,14 +9236,7 @@ fn cmd_profile_add(
 
     profiles.insert(0, serde_json::Value::Object(entry));
 
-    let serialized = match serde_json::to_string(&profiles) {
-        Ok(s) => s,
-        Err(e) => {
-            print_error(format, &format!("Failed to serialize profiles: {}", e), 5);
-            return 5;
-        }
-    };
-    if let Err(e) = store.store("config_server_profiles", &serialized) {
+    if let Err(e) = save_active_user_profiles(cli, &store, &profiles) {
         print_error(format, &format!("Failed to write profiles: {}", e), 5);
         return 5;
     }
@@ -9141,17 +9296,10 @@ fn cmd_profile_duplicate(
         }
     };
 
-    let raw = match store.get("config_server_profiles") {
-        Ok(r) => r,
-        Err(e) => {
-            print_error(format, &format!("Failed to read profiles: {}", e), 5);
-            return 5;
-        }
-    };
-    let mut profiles: Vec<serde_json::Value> = match serde_json::from_str(&raw) {
+    let mut profiles: Vec<serde_json::Value> = match load_active_user_profiles(cli, &store) {
         Ok(p) => p,
         Err(e) => {
-            print_error(format, &format!("Failed to parse profiles: {}", e), 5);
+            print_error(format, &format!("Failed to read profiles: {}", e), 5);
             return 5;
         }
     };
@@ -9223,14 +9371,7 @@ fn cmd_profile_duplicate(
     // like the GUI's `handleDuplicate` (`[dup, ...servers]`).
     profiles.insert(0, copy);
 
-    let serialized = match serde_json::to_string(&profiles) {
-        Ok(s) => s,
-        Err(e) => {
-            print_error(format, &format!("Failed to serialize profiles: {}", e), 5);
-            return 5;
-        }
-    };
-    if let Err(e) = store.store("config_server_profiles", &serialized) {
+    if let Err(e) = save_active_user_profiles(cli, &store, &profiles) {
         print_error(format, &format!("Failed to write profiles: {}", e), 5);
         return 5;
     }
@@ -9424,7 +9565,9 @@ fn scrub_options_for_mode(opts: &mut serde_json::Map<String, serde_json::Value>)
 /// target_mode_label) on success. When `replace_in_slot` is true, the
 /// source is removed and the new profile takes its index; otherwise the
 /// new profile is inserted immediately after the source.
+#[allow(clippy::too_many_arguments)]
 fn duplicate_or_convert_mode_in_vault(
+    cli: &Cli,
     store: &CredentialStore,
     selector: &str,
     mode_label: &str,
@@ -9433,11 +9576,8 @@ fn duplicate_or_convert_mode_in_vault(
     password: Option<&str>,
     replace_in_slot: bool,
 ) -> Result<(String, String, String, String), (String, i32)> {
-    let raw = store
-        .get("config_server_profiles")
+    let mut profiles: Vec<serde_json::Value> = load_active_user_profiles(cli, store)
         .map_err(|e| (format!("Failed to read profiles: {}", e), 5))?;
-    let mut profiles: Vec<serde_json::Value> =
-        serde_json::from_str(&raw).map_err(|e| (format!("Failed to parse profiles: {}", e), 5))?;
     let source_idx = resolve_profile_selector(&profiles, selector)
         .map_err(|e| (format!("Profile lookup failed: {}", e), 2))?;
     let source = profiles[source_idx].clone();
@@ -9565,10 +9705,7 @@ fn duplicate_or_convert_mode_in_vault(
         profiles.insert(source_idx + 1, copy);
     }
 
-    let serialized = serde_json::to_string(&profiles)
-        .map_err(|e| (format!("Failed to serialize profiles: {}", e), 5))?;
-    store
-        .store("config_server_profiles", &serialized)
+    save_active_user_profiles(cli, store, &profiles)
         .map_err(|e| (format!("Failed to write profiles: {}", e), 5))?;
 
     // Credential handling: explicit override wins; otherwise clone the
@@ -9609,7 +9746,7 @@ fn cmd_profile_duplicate_mode(
         }
     };
     match duplicate_or_convert_mode_in_vault(
-        &store, selector, mode_label, new_name, username, password, false,
+        cli, &store, selector, mode_label, new_name, username, password, false,
     ) {
         Ok((source_id, new_id, source_name, mode)) => {
             match format {
@@ -9676,7 +9813,7 @@ fn cmd_profile_convert_mode(
         }
     };
     match duplicate_or_convert_mode_in_vault(
-        &store, selector, mode_label, new_name, username, password, true,
+        cli, &store, selector, mode_label, new_name, username, password, true,
     ) {
         Ok((source_id, new_id, source_name, mode)) => {
             match format {
@@ -9713,23 +9850,18 @@ fn cmd_profile_convert_mode(
 /// these companion deletes the GUI would see a stale credential ghost or a
 /// dangling favourite after the next vault → state reconcile (issue #194).
 fn delete_profile_in_vault(
+    cli: &Cli,
     store: &CredentialStore,
     profile_id: &str,
 ) -> Result<Vec<serde_json::Value>, String> {
-    let raw = store
-        .get("config_server_profiles")
+    let mut profiles: Vec<serde_json::Value> = load_active_user_profiles(cli, store)
         .map_err(|e| format!("Failed to read profiles: {}", e))?;
-    let mut profiles: Vec<serde_json::Value> =
-        serde_json::from_str(&raw).map_err(|e| format!("Failed to parse profiles: {}", e))?;
     let before = profiles.len();
     profiles.retain(|p| p.get("id").and_then(|v| v.as_str()) != Some(profile_id));
     if profiles.len() == before {
         return Err(format!("Profile id '{}' not found in vault", profile_id));
     }
-    let json = serde_json::to_string(&profiles)
-        .map_err(|e| format!("Failed to serialize profiles: {}", e))?;
-    store
-        .store("config_server_profiles", &json)
+    save_active_user_profiles(cli, store, &profiles)
         .map_err(|e| format!("Failed to write profiles: {}", e))?;
 
     // Orphan credential cleanup (matches MyServersPanel.tsx confirmDelete).
@@ -9767,17 +9899,10 @@ fn cmd_profile_delete(cli: &Cli, format: OutputFormat, selector: &str, skip_conf
         }
     };
 
-    let raw = match store.get("config_server_profiles") {
-        Ok(r) => r,
-        Err(e) => {
-            print_error(format, &format!("Failed to read profiles: {}", e), 5);
-            return 5;
-        }
-    };
-    let profiles: Vec<serde_json::Value> = match serde_json::from_str(&raw) {
+    let profiles: Vec<serde_json::Value> = match load_active_user_profiles(cli, &store) {
         Ok(p) => p,
         Err(e) => {
-            print_error(format, &format!("Failed to parse profiles: {}", e), 5);
+            print_error(format, &format!("Failed to read profiles: {}", e), 5);
             return 5;
         }
     };
@@ -9848,7 +9973,7 @@ fn cmd_profile_delete(cli: &Cli, format: OutputFormat, selector: &str, skip_conf
         }
     }
 
-    match delete_profile_in_vault(&store, &target_id) {
+    match delete_profile_in_vault(cli, &store, &target_id) {
         Ok(remaining) => match format {
             OutputFormat::Json => {
                 print_json(&serde_json::json!({
@@ -10001,17 +10126,10 @@ fn cmd_profile_set_password(
         }
     };
 
-    let raw = match store.get("config_server_profiles") {
-        Ok(r) => r,
-        Err(e) => {
-            print_error(format, &format!("Failed to read profiles: {}", e), 5);
-            return 5;
-        }
-    };
-    let profiles: Vec<serde_json::Value> = match serde_json::from_str(&raw) {
+    let profiles: Vec<serde_json::Value> = match load_active_user_profiles(cli, &store) {
         Ok(p) => p,
         Err(e) => {
-            print_error(format, &format!("Failed to parse profiles: {}", e), 5);
+            print_error(format, &format!("Failed to read profiles: {}", e), 5);
             return 5;
         }
     };
@@ -10082,15 +10200,13 @@ fn cmd_profile_set_password(
 /// scheme and credential clone logic. `new_name` overrides the default
 /// `"<original> (copy)"` when provided.
 fn duplicate_profile_in_vault(
+    cli: &Cli,
     store: &CredentialStore,
     source_id: &str,
     new_name: Option<&str>,
 ) -> Result<(String, String, Vec<serde_json::Value>), String> {
-    let raw = store
-        .get("config_server_profiles")
+    let mut profiles: Vec<serde_json::Value> = load_active_user_profiles(cli, store)
         .map_err(|e| format!("Failed to read profiles: {}", e))?;
-    let mut profiles: Vec<serde_json::Value> =
-        serde_json::from_str(&raw).map_err(|e| format!("Failed to parse profiles: {}", e))?;
     let source = profiles
         .iter()
         .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(source_id))
@@ -10130,10 +10246,7 @@ fn duplicate_profile_in_vault(
         map.remove("lastConnected");
     }
     profiles.insert(0, copy);
-    let serialized = serde_json::to_string(&profiles)
-        .map_err(|e| format!("Failed to serialize profiles: {}", e))?;
-    store
-        .store("config_server_profiles", &serialized)
+    save_active_user_profiles(cli, store, &profiles)
         .map_err(|e| format!("Failed to write profiles: {}", e))?;
     if let Ok(cred) = store.get(&format!("server_{}", source_id)) {
         let _ = store.store(&format!("server_{}", new_id), &cred);
@@ -10144,12 +10257,13 @@ fn duplicate_profile_in_vault(
 /// Convenience wrapper around `apply_profile_updates_in_vault` for the
 /// common single-field case (rename, host swap, etc.).
 fn update_profile_field_in_vault(
+    cli: &Cli,
     store: &CredentialStore,
     profile_id: &str,
     field: &str,
     value: serde_json::Value,
 ) -> Result<Vec<serde_json::Value>, String> {
-    apply_profile_updates_in_vault(store, profile_id, &[(field, value)])
+    apply_profile_updates_in_vault(cli, store, profile_id, &[(field, value)])
 }
 
 /// Apply a batch of field updates to a profile. `Value::Null` clears the
@@ -10158,15 +10272,13 @@ fn update_profile_field_in_vault(
 /// against per-protocol rules; we only enforce that a `name` update
 /// doesn't collapse to an empty string, mirroring GUI guardrails.
 fn apply_profile_updates_in_vault(
+    cli: &Cli,
     store: &CredentialStore,
     profile_id: &str,
     updates: &[(&str, serde_json::Value)],
 ) -> Result<Vec<serde_json::Value>, String> {
-    let raw = store
-        .get("config_server_profiles")
+    let mut profiles: Vec<serde_json::Value> = load_active_user_profiles(cli, store)
         .map_err(|e| format!("Failed to read profiles: {}", e))?;
-    let mut profiles: Vec<serde_json::Value> =
-        serde_json::from_str(&raw).map_err(|e| format!("Failed to parse profiles: {}", e))?;
     let target = profiles
         .iter_mut()
         .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(profile_id))
@@ -10190,10 +10302,7 @@ fn apply_profile_updates_in_vault(
             map.insert((*key).to_string(), value.clone());
         }
     }
-    let serialized = serde_json::to_string(&profiles)
-        .map_err(|e| format!("Failed to serialize profiles: {}", e))?;
-    store
-        .store("config_server_profiles", &serialized)
+    save_active_user_profiles(cli, store, &profiles)
         .map_err(|e| format!("Failed to write profiles: {}", e))?;
     Ok(profiles)
 }
@@ -10436,12 +10545,11 @@ fn truncate_str(s: &str, max: usize) -> String {
 
 fn safe_vault_profiles(cli: &Cli) -> Result<Vec<serde_json::Value>, String> {
     let store = open_vault(cli)?;
-    let profiles_json = match store.get("config_server_profiles") {
-        Ok(json) => json,
+    let profiles = match load_active_user_profiles(cli, &store) {
+        Ok(p) => p,
+        Err(e) if e == "USER_LOCKED" || e == "NO_ACTIVE_USER" => return Err(e),
         Err(_) => return Ok(vec![]),
     };
-    let profiles = serde_json::from_str::<Vec<serde_json::Value>>(&profiles_json)
-        .map_err(|e| format!("Failed to parse saved profiles: {}", e))?;
 
     // List vault keys ONCE; per-profile auth-state derivation then checks
     // existence in this set instead of issuing N decryptions.
@@ -10479,12 +10587,19 @@ fn safe_vault_profiles(cli: &Cli) -> Result<Vec<serde_json::Value>, String> {
 fn safe_vault_profiles_for_agent() -> Result<Vec<serde_json::Value>, String> {
     let store = ftp_client_gui_lib::credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "Vault not open. Cannot list server profiles.".to_string())?;
-    let profiles_json = match store.get("config_server_profiles") {
-        Ok(json) => json,
-        Err(_) => return Ok(vec![]),
-    };
-    let profiles: Vec<serde_json::Value> = serde_json::from_str(&profiles_json)
-        .map_err(|e| format!("Failed to parse profiles: {}", e))?;
+    let profiles =
+        match ftp_client_gui_lib::user_partitions::cli_list_active_server_profiles(&store) {
+            Ok(p) => p,
+            Err(e) if e == "USER_LOCKED" || e == "NO_ACTIVE_USER" => return Err(e),
+            Err(_) => {
+                // Partition layer unavailable: fall back to legacy blob.
+                match store.get("config_server_profiles") {
+                    Ok(json) => serde_json::from_str(&json)
+                        .map_err(|e| format!("Failed to parse profiles: {}", e))?,
+                    Err(_) => return Ok(vec![]),
+                }
+            }
+        };
 
     Ok(profiles
         .iter()
@@ -10516,11 +10631,20 @@ async fn create_and_connect_for_agent(
 > {
     let store = ftp_client_gui_lib::credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "Vault not open. Cannot connect to server.".to_string())?;
-    let profiles_json = store
-        .get("config_server_profiles")
-        .map_err(|e| format!("Failed to read profiles: {}", e))?;
-    let profiles: Vec<serde_json::Value> = serde_json::from_str(&profiles_json)
-        .map_err(|e| format!("Failed to parse profiles: {}", e))?;
+    let profiles =
+        match ftp_client_gui_lib::user_partitions::cli_list_active_server_profiles(&store) {
+            Ok(p) => p,
+            Err(e) if e == "USER_LOCKED" || e == "NO_ACTIVE_USER" => {
+                return Err(format!("Failed to read profiles: {}", e))
+            }
+            Err(_) => {
+                let profiles_json = store
+                    .get("config_server_profiles")
+                    .map_err(|e| format!("Failed to read profiles: {}", e))?;
+                serde_json::from_str(&profiles_json)
+                    .map_err(|e| format!("Failed to parse profiles: {}", e))?
+            }
+        };
 
     // Find matching profile (exact name or ID first; otherwise require a unique substring match)
     let query_lower = server_query.to_lowercase();
@@ -11443,9 +11567,9 @@ fn profile_to_provider_config(
         }
     };
 
-    let profiles_json = match store.get("config_server_profiles") {
-        Ok(json) => json,
-        Err(_) => {
+    let profiles: Vec<serde_json::Value> = match load_active_user_profiles(cli, &store) {
+        Ok(p) if !p.is_empty() => p,
+        Ok(_) => {
             print_error(
                 format,
                 "No saved profiles found in vault. Save a server in the AeroFTP GUI first, or use URL mode: aeroftp-cli ls ftp://user@host/path",
@@ -11453,12 +11577,11 @@ fn profile_to_provider_config(
             );
             return Err(5);
         }
+        Err(e) => {
+            print_error(format, &format!("Failed to read profiles: {}", e), 5);
+            return Err(5);
+        }
     };
-
-    let profiles: Vec<serde_json::Value> = serde_json::from_str(&profiles_json).map_err(|e| {
-        print_error(format, &format!("Failed to parse profiles: {}", e), 5);
-        5
-    })?;
 
     // Match by index, exact name, ID, or substring (with disambiguation)
     let profile_lower = profile_name.to_lowercase();
@@ -12354,8 +12477,7 @@ async fn create_and_connect(
     // Uses the same strict matching as profile_to_provider_config (exact → ID → disambiguated substring)
     if let Some(ref profile_name) = cli.profile {
         if let Ok(store) = open_vault(cli) {
-            if let Ok(profiles_json) = store.get("config_server_profiles") {
-                if let Ok(profiles) = serde_json::from_str::<Vec<serde_json::Value>>(&profiles_json)
+            if let Ok(profiles) = load_active_user_profiles(cli, &store) {
                 {
                     let profile_lower = profile_name.to_lowercase();
                     let matched = if let Ok(idx) = profile_name.parse::<usize>() {
@@ -18225,14 +18347,12 @@ async fn apply_rclone_import_to_vault(
         }
     }
 
-    // Append the imported profiles to the GUI-shared `config_server_profiles`
-    // list (a JSON array stored in the vault). Existing entries are
-    // preserved; new ids that already exist in the list are skipped to keep
-    // the operation idempotent on retry.
-    let mut profiles: Vec<serde_json::Value> = match store.get("config_server_profiles") {
-        Ok(json) => serde_json::from_str(&json).unwrap_or_default(),
-        Err(_) => Vec::new(),
-    };
+    // Append the imported profiles to the active user's partition. Existing
+    // entries are preserved; new ids that already exist in the list are
+    // skipped to keep the operation idempotent on retry. Falls back to the
+    // legacy blob when the partition layer is unavailable (downgrade).
+    let mut profiles: Vec<serde_json::Value> =
+        load_active_user_profiles(cli, &store).unwrap_or_default();
     let existing_ids: std::collections::HashSet<String> = profiles
         .iter()
         .filter_map(|p| p.get("id").and_then(|v| v.as_str()).map(String::from))
@@ -18257,11 +18377,8 @@ async fn apply_rclone_import_to_vault(
         }));
         profiles_appended += 1;
     }
-    let json =
-        serde_json::to_string(&profiles).map_err(|e| format!("serialize profiles list: {}", e))?;
-    store
-        .store("config_server_profiles", &json)
-        .map_err(|e| format!("vault write failed for config_server_profiles: {}", e))?;
+    save_active_user_profiles(cli, &store, &profiles)
+        .map_err(|e| format!("vault write failed for server profiles: {}", e))?;
 
     Ok(RcloneApplySummary {
         passwords_stored,
@@ -18671,7 +18788,7 @@ async fn cmd_export_rclone(
             return 5;
         }
     };
-    let servers_json = match read_vault_profiles(&store) {
+    let servers_json = match read_vault_profiles(cli, &store) {
         Ok(v) => v,
         Err(e) => {
             print_error(format, &format!("read profiles: {}", e), 4);
@@ -18766,7 +18883,7 @@ async fn cmd_export_winscp(
             return 5;
         }
     };
-    let servers_json = match read_vault_profiles(&store) {
+    let servers_json = match read_vault_profiles(cli, &store) {
         Ok(v) => v,
         Err(e) => {
             print_error(format, &format!("read profiles: {}", e), 4);
@@ -18840,7 +18957,7 @@ async fn cmd_export_filezilla(
             return 5;
         }
     };
-    let servers_json = match read_vault_profiles(&store) {
+    let servers_json = match read_vault_profiles(cli, &store) {
         Ok(v) => v,
         Err(e) => {
             print_error(format, &format!("read profiles: {}", e), 4);
@@ -18950,7 +19067,7 @@ async fn cmd_export_bridge(
             return 5;
         }
     };
-    let servers_json = match read_vault_profiles(&store) {
+    let servers_json = match read_vault_profiles(cli, &store) {
         Ok(v) => v,
         Err(e) => {
             print_error(format, &format!("read profiles: {}", e), 4);
@@ -19620,17 +19737,10 @@ async fn cmd_aerorsync_probe(
                 return 5;
             }
         };
-        let raw = match store.get("config_server_profiles") {
-            Ok(r) => r,
-            Err(e) => {
-                print_error(format, &format!("Failed to read profiles: {}", e), 5);
-                return 5;
-            }
-        };
-        let profiles: Vec<serde_json::Value> = match serde_json::from_str(&raw) {
+        let profiles: Vec<serde_json::Value> = match load_active_user_profiles(cli, &store) {
             Ok(p) => p,
             Err(e) => {
-                print_error(format, &format!("Failed to parse profiles: {}", e), 5);
+                print_error(format, &format!("Failed to read profiles: {}", e), 5);
                 return 5;
             }
         };
@@ -20004,16 +20114,16 @@ fn _scaffold_secret_is_used(p: &ProfileExportScaffold) -> &str {
     &p.secret
 }
 
-/// Read the GUI-managed server profile list from the unified vault under
-/// the `config_server_profiles` key (same source as
-/// `aeroftp-cli profiles list`). The vault MUST already be unlocked.
+/// Read the GUI-managed server profile list from the active user partition
+/// (same source as `aeroftp-cli profiles list`). The vault MUST already be
+/// unlocked. Falls back to the legacy `config_server_profiles` blob on
+/// partition unavailability so downgrades are not bricked.
 fn read_vault_profiles(
+    cli: &Cli,
     store: &ftp_client_gui_lib::credential_store::CredentialStore,
 ) -> Result<serde_json::Value, String> {
-    let raw = store
-        .get("config_server_profiles")
-        .map_err(|e| format!("vault key `config_server_profiles` not readable: {}", e))?;
-    serde_json::from_str(&raw).map_err(|e| format!("parse profiles JSON: {}", e))
+    let profiles = load_active_user_profiles(cli, store)?;
+    Ok(serde_json::Value::Array(profiles))
 }
 
 async fn cmd_import_winscp(path: Option<String>, json: bool) -> i32 {
@@ -20924,8 +21034,7 @@ async fn cmd_find(
 fn resolve_profile_manual_total(cli: &Cli) -> Option<u64> {
     let profile_name = cli.profile.as_ref()?;
     let store = open_vault(cli).ok()?;
-    let raw = store.get("config_server_profiles").ok()?;
-    let profiles: Vec<serde_json::Value> = serde_json::from_str(&raw).ok()?;
+    let profiles = load_active_user_profiles(cli, &store).ok()?;
     let idx = resolve_profile_selector(&profiles, profile_name).ok()?;
     profiles
         .get(idx)?
@@ -20944,10 +21053,7 @@ fn persist_scanned_quota_to_profile(cli: &Cli, used: u64, total: u64, total_sour
         return;
     };
     let Ok(store) = open_vault(cli) else { return };
-    let Ok(raw) = store.get("config_server_profiles") else {
-        return;
-    };
-    let Ok(mut profiles): Result<Vec<serde_json::Value>, _> = serde_json::from_str(&raw) else {
+    let Ok(mut profiles) = load_active_user_profiles(cli, &store) else {
         return;
     };
     let Ok(idx) = resolve_profile_selector(&profiles, profile_name) else {
@@ -20966,9 +21072,7 @@ fn persist_scanned_quota_to_profile(cli: &Cli, used: u64, total: u64, total_sour
         }
         p.insert("lastQuota".into(), serde_json::Value::Object(q));
     }
-    if let Ok(serialized) = serde_json::to_string(&profiles) {
-        let _ = store.store("config_server_profiles", &serialized);
-    }
+    let _ = save_active_user_profiles(cli, &store, &profiles);
 }
 
 /// Persist the aggregate compression telemetry of a vault op into the
@@ -20994,10 +21098,7 @@ fn persist_compression_to_profile(cli: &Cli, plaintext: u64, compressed: u64, ra
         return;
     };
     let Ok(store) = open_vault(cli) else { return };
-    let Ok(raw) = store.get("config_server_profiles") else {
-        return;
-    };
-    let Ok(mut profiles): Result<Vec<serde_json::Value>, _> = serde_json::from_str(&raw) else {
+    let Ok(mut profiles) = load_active_user_profiles(cli, &store) else {
         return;
     };
     let Ok(idx) = resolve_profile_selector(&profiles, profile_name) else {
@@ -21012,9 +21113,7 @@ fn persist_compression_to_profile(cli: &Cli, plaintext: u64, compressed: u64, ra
         c.insert("at".into(), serde_json::json!(now));
         p.insert("lastCompression".into(), serde_json::Value::Object(c));
     }
-    if let Ok(serialized) = serde_json::to_string(&profiles) {
-        let _ = store.store("config_server_profiles", &serialized);
-    }
+    let _ = save_active_user_profiles(cli, &store, &profiles);
 }
 
 async fn cmd_df(url: &str, scan: bool, full: bool, cli: &Cli, format: OutputFormat) -> i32 {
@@ -32095,14 +32194,14 @@ fn enumerate_audit_targets(
         print_error(format, &e, 5);
         5
     })?;
-    let profiles_json = match store.get("config_server_profiles") {
-        Ok(j) => j,
-        Err(_) => return Ok(Vec::new()),
+    let profiles = match load_active_user_profiles(cli, &store) {
+        Ok(p) => p,
+        Err(e) if e == "USER_LOCKED" || e == "NO_ACTIVE_USER" => {
+            print_error(format, &e, 6);
+            return Err(6);
+        }
+        Err(_) => Vec::new(),
     };
-    let profiles: Vec<serde_json::Value> = serde_json::from_str(&profiles_json).map_err(|e| {
-        print_error(format, &format!("Failed to parse profiles: {}", e), 5);
-        5
-    })?;
     match_servers_glob(&profiles, glob).map_err(|e| {
         print_error(format, &e, 3);
         3

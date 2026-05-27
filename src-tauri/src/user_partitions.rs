@@ -792,12 +792,15 @@ fn set_active_user_row(conn: &Connection, user_id: i64) -> Result<(), String> {
     Ok(())
 }
 
-fn with_active_user_dek<R>(
+/// Unlock the DEK for a specific user id without touching active_user_id.
+/// Used to scope an operation to a specific partition (e.g. CLI `--user`
+/// flag) without persisting the switch.
+fn with_user_dek<R>(
     conn: &Connection,
     root_key: &SecretKey,
+    user_id: i64,
     f: impl FnOnce(i64, &SecretKey) -> Result<R, String>,
 ) -> Result<R, String> {
-    let user_id = active_user_id(conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
     let row = read_user_key_row(conn, user_id)?;
     if row.has_passphrase {
         let session = USER_SESSION
@@ -819,34 +822,13 @@ fn with_active_user_dek<R>(
     f(user_id, &dek)
 }
 
+
 pub fn list_active_server_profiles(
     conn: &Connection,
     root_key: &[u8; 32],
 ) -> Result<Vec<Value>, String> {
-    let root_secret = user_crypto::secret_key_from_bytes(root_key);
-    with_active_user_dek(conn, &root_secret, |user_id, dek| {
-        let mut stmt = conn
-            .prepare(
-                "SELECT encrypted_blob, nonce
-                 FROM server_profiles
-                 WHERE user_id = ?1
-                 ORDER BY id ASC",
-            )
-            .map_err(|e| format!("Prepare active profile list: {e}"))?;
-        let rows = stmt
-            .query_map(params![user_id], |row| {
-                Ok((row.get::<_, Vec<u8>>(0)?, row.get::<_, Vec<u8>>(1)?))
-            })
-            .map_err(|e| format!("Query active profile list: {e}"))?;
-
-        let mut profiles = Vec::new();
-        for row in rows {
-            let (encrypted_blob, nonce) =
-                row.map_err(|e| format!("Read active profile row: {e}"))?;
-            profiles.push(decrypt_value(dek, &nonce, &encrypted_blob)?);
-        }
-        Ok(profiles)
-    })
+    let user_id = active_user_id(conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    list_server_profiles_for(conn, root_key, user_id)
 }
 
 pub fn replace_active_server_profiles(
@@ -854,16 +836,62 @@ pub fn replace_active_server_profiles(
     root_key: &[u8; 32],
     profiles: &[Value],
 ) -> Result<(), String> {
+    let user_id = active_user_id(conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    replace_server_profiles_for(conn, root_key, user_id, profiles)
+}
+
+/// Read server profiles for a specific user id without changing active_user_id.
+/// This is the back-end for CLI `--user` per-invocation scoping (MU-3): the
+/// caller resolves the target user id (via `cli_find_user_by_name`) and the
+/// active_user_id stored in `global_state` stays untouched.
+pub fn list_server_profiles_for(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+) -> Result<Vec<Value>, String> {
     let root_secret = user_crypto::secret_key_from_bytes(root_key);
-    with_active_user_dek(conn, &root_secret, |user_id, dek| {
+    with_user_dek(conn, &root_secret, user_id, |user_id, dek| {
+        let mut stmt = conn
+            .prepare(
+                "SELECT encrypted_blob, nonce
+                 FROM server_profiles
+                 WHERE user_id = ?1
+                 ORDER BY id ASC",
+            )
+            .map_err(|e| format!("Prepare profile list: {e}"))?;
+        let rows = stmt
+            .query_map(params![user_id], |row| {
+                Ok((row.get::<_, Vec<u8>>(0)?, row.get::<_, Vec<u8>>(1)?))
+            })
+            .map_err(|e| format!("Query profile list: {e}"))?;
+
+        let mut profiles = Vec::new();
+        for row in rows {
+            let (encrypted_blob, nonce) = row.map_err(|e| format!("Read profile row: {e}"))?;
+            profiles.push(decrypt_value(dek, &nonce, &encrypted_blob)?);
+        }
+        Ok(profiles)
+    })
+}
+
+/// Overwrite server profiles for a specific user id without changing
+/// active_user_id. Companion of [`list_server_profiles_for`] (MU-3).
+pub fn replace_server_profiles_for(
+    conn: &mut Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    profiles: &[Value],
+) -> Result<(), String> {
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    with_user_dek(conn, &root_secret, user_id, |user_id, dek| {
         let tx = conn
             .unchecked_transaction()
-            .map_err(|e| format!("Start replace active profiles: {e}"))?;
+            .map_err(|e| format!("Start replace profiles: {e}"))?;
         tx.execute(
             "DELETE FROM server_profiles WHERE user_id = ?1",
             params![user_id],
         )
-        .map_err(|e| format!("Delete previous active profiles: {e}"))?;
+        .map_err(|e| format!("Delete previous profiles: {e}"))?;
 
         let now = now_ms();
         let mut seen_uids = HashSet::new();
@@ -880,11 +908,11 @@ pub fn replace_active_server_profiles(
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'aes-256-gcm', ?7, ?7)",
                 params![user_id, uid, key, uid, encrypted_blob, nonce, now],
             )
-            .map_err(|e| format!("Insert active profile: {e}"))?;
+            .map_err(|e| format!("Insert profile: {e}"))?;
         }
 
         tx.commit()
-            .map_err(|e| format!("Commit replace active profiles: {e}"))?;
+            .map_err(|e| format!("Commit replace profiles: {e}"))?;
         Ok(())
     })
 }
@@ -983,6 +1011,29 @@ pub fn unlock_user(
     user_id: i64,
     passphrase: Option<&str>,
 ) -> Result<UserUnlockStatus, String> {
+    unlock_user_inner(conn, root_key, user_id, passphrase, /*promote_to_active=*/ true)
+}
+
+/// Transient unlock: validates the passphrase and primes the DEK session,
+/// but does NOT touch `active_user_id`. Used by the CLI `--user` flag so a
+/// per-invocation override never silently switches the persistent active
+/// user (mirrors `aws --profile X` / `kubectl --context X` semantics).
+pub fn unlock_user_transient(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    passphrase: Option<&str>,
+) -> Result<UserUnlockStatus, String> {
+    unlock_user_inner(conn, root_key, user_id, passphrase, /*promote_to_active=*/ false)
+}
+
+fn unlock_user_inner(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    passphrase: Option<&str>,
+    promote_to_active: bool,
+) -> Result<UserUnlockStatus, String> {
     let row = read_user_key_row(conn, user_id)?;
     let root_secret = user_crypto::secret_key_from_bytes(root_key);
 
@@ -1007,7 +1058,9 @@ pub fn unlock_user(
         unwrap_user_dek_with_key(&row, &root_secret)?
     };
 
-    set_active_user_row(conn, user_id)?;
+    if promote_to_active {
+        set_active_user_row(conn, user_id)?;
+    }
     if row.has_passphrase {
         set_user_session(user_id, dek)?;
     }
@@ -1322,6 +1375,21 @@ pub fn cli_unlock_user(
     result
 }
 
+/// Transient unlock for CLI `--user` flag: primes the DEK session without
+/// promoting the target user to active (`active_user_id` stays untouched).
+pub fn cli_unlock_user_transient(
+    store: &CredentialStore,
+    user_id: i64,
+    passphrase: Option<&str>,
+) -> Result<UserUnlockStatus, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let result = unlock_user_transient(&conn, &root_key, user_id, passphrase);
+    root_key.zeroize();
+    result
+}
+
 pub fn cli_verify_user_passphrase(
     store: &CredentialStore,
     user_id: i64,
@@ -1381,6 +1449,85 @@ pub fn cli_storage_stats(store: &CredentialStore) -> Result<Vec<UserStorageStats
 
 pub fn cli_lock_session() {
     clear_user_session();
+}
+
+/// Read the active user's server profiles from the per-user partition.
+///
+/// Returns `Err("USER_LOCKED")` if the active user has a passphrase and the
+/// session has not been unlocked yet. Returns `Err("NO_ACTIVE_USER")` if no
+/// user exists (uncommon — migration always creates `default`).
+pub fn cli_list_active_server_profiles(store: &CredentialStore) -> Result<Vec<Value>, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let result = list_active_server_profiles(&conn, &root_key);
+    root_key.zeroize();
+    result
+}
+
+/// Overwrite the active user's server profiles in the per-user partition.
+///
+/// Same locking semantics as [`cli_list_active_server_profiles`].
+pub fn cli_replace_active_server_profiles(
+    store: &CredentialStore,
+    profiles: &[Value],
+) -> Result<(), String> {
+    init_or_migrate_cli(store)?;
+    let mut conn = open_or_init_cli()?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let result = replace_active_server_profiles(&mut conn, &root_key, profiles);
+    root_key.zeroize();
+    result
+}
+
+/// Read server profiles for a specific user id without touching
+/// `active_user_id`. Used by the CLI when `--user <name>` scopes a single
+/// invocation to a partition without persisting the switch.
+pub fn cli_list_server_profiles_for_user(
+    store: &CredentialStore,
+    user_id: i64,
+) -> Result<Vec<Value>, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let result = list_server_profiles_for(&conn, &root_key, user_id);
+    root_key.zeroize();
+    result
+}
+
+/// Companion writer for [`cli_list_server_profiles_for_user`]. Replaces the
+/// target user's profile rows without changing `active_user_id`.
+pub fn cli_replace_server_profiles_for_user(
+    store: &CredentialStore,
+    user_id: i64,
+    profiles: &[Value],
+) -> Result<(), String> {
+    init_or_migrate_cli(store)?;
+    let mut conn = open_or_init_cli()?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let result = replace_server_profiles_for(&mut conn, &root_key, user_id, profiles);
+    root_key.zeroize();
+    result
+}
+
+/// Resolve a target user by name (CLI `--user` flag). Returns the user metadata
+/// or `Err("USER_NOT_FOUND: <name>")` if the canonical lookup fails.
+pub fn cli_find_user_by_name(
+    store: &CredentialStore,
+    name: &str,
+) -> Result<UserMetadata, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let (_, canonical) = normalize_name(name)?;
+    let users = list_users(&conn)?;
+    users
+        .into_iter()
+        .find(|u| {
+            normalize_name(&u.name)
+                .map(|(_, c)| c == canonical)
+                .unwrap_or(false)
+        })
+        .ok_or_else(|| format!("USER_NOT_FOUND: {}", name))
 }
 
 #[tauri::command]
@@ -1575,7 +1722,11 @@ mod tests {
     static USER_PARTITION_TEST_LOCK: TestMutex<()> = TestMutex::new(());
 
     fn test_lock() -> MutexGuard<'static, ()> {
-        USER_PARTITION_TEST_LOCK.lock().expect("test lock")
+        // Recover from poisoning so a single failing test does not cascade
+        // into the rest of the suite as PoisonError.
+        USER_PARTITION_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
     }
 
     fn test_root() -> [u8; 32] {
@@ -1808,6 +1959,67 @@ mod tests {
         clear_user_session();
         let locked = list_active_server_profiles(&conn, &root).expect_err("session locked");
         assert_eq!(locked, "USER_LOCKED");
+    }
+
+    #[test]
+    fn transient_unlock_does_not_promote_user_to_active() {
+        // MU-3 regression guard: CLI `--user <name>` must scope per-invocation
+        // without persisting the switch. unlock_user_transient mirrors the
+        // `aws --profile X` / `kubectl --context X` semantics.
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn)
+            .expect("active read")
+            .expect("default active");
+
+        let alice = create_user(
+            &mut conn,
+            &root,
+            "Alice",
+            Some("A"),
+            Some("#ec4899"),
+            Some("alicepass1"),
+        )
+        .expect("create alice");
+        // Creating alice did not switch active_user_id.
+        assert_eq!(
+            get_active_user(&conn).expect("active").map(|u| u.id),
+            Some(default.id),
+        );
+
+        // Transient unlock primes the DEK session AND leaves active_user_id
+        // alone. The `UserUnlockStatus` reporting reflects the active user
+        // (used by the GUI lock screen); the authoritative check for the
+        // per-invocation override is `active_user_id` + scoped reads below.
+        let _status = unlock_user_transient(&conn, &root, alice.id, Some("alicepass1"))
+            .expect("transient unlock");
+        assert_eq!(
+            active_user_id(&conn).expect("active id"),
+            Some(default.id),
+            "transient unlock must not change active_user_id"
+        );
+
+        // Per-user scoped writes target alice's partition even while
+        // active_user_id still points at default.
+        let profiles = vec![json!({"id":"alice-only","name":"Alice Only","protocol":"sftp"})];
+        replace_server_profiles_for(&mut conn, &root, alice.id, &profiles)
+            .expect("scoped write");
+        assert_eq!(
+            list_server_profiles_for(&conn, &root, alice.id).expect("scoped read"),
+            profiles
+        );
+        // Default's partition is untouched (no leak).
+        assert!(list_server_profiles_for(&conn, &root, default.id)
+            .expect("default read")
+            .iter()
+            .all(|p| p.get("id").and_then(|v| v.as_str()) != Some("alice-only")));
+
+        // And after a transient session, active_user_id still points at default.
+        assert_eq!(
+            get_active_user(&conn).expect("active").map(|u| u.id),
+            Some(default.id),
+        );
     }
 
     #[test]
