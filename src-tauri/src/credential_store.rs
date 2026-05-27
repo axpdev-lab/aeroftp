@@ -682,6 +682,22 @@ impl CredentialStore {
         info!("Credential vault opened and cached");
     }
 
+    /// Derive a domain-separated wrapping key for per-user partition metadata.
+    ///
+    /// This intentionally does not expose the raw vault key outside this
+    /// module. The returned KEK is only valid for `user_partitions.db` row-key
+    /// wrapping and is derived from the already-unlocked vault cache.
+    pub(crate) fn derive_user_partition_wrapping_key(&self) -> [u8; 32] {
+        use hkdf::Hkdf;
+        use sha2::Sha256;
+
+        let hk = Hkdf::<Sha256>::new(None, &self.vault_key);
+        let mut out = [0u8; 32];
+        hk.expand(b"aeroftp-user-partitions-v1", &mut out)
+            .expect("HKDF expand");
+        out
+    }
+
     /// Enable master password: encrypt vault.key passphrase with user password
     pub fn enable_master_password(password: &str) -> Result<(), CredentialError> {
         if password.len() < 8 {
