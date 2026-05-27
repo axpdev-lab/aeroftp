@@ -116,6 +116,22 @@ export const getUserStorageStats = (): Promise<UserStorageStats[]> =>
 export const getUserPartitionDebugState = (): Promise<UserPartitionDebugState> =>
     invoke<UserPartitionDebugState>('user_partitions_debug_state');
 
+// MU-4: per-user settings (encrypted with the active user's DEK). Scopes
+// starting with `__` are blocked at the Rust boundary to keep the legacy
+// backup payload unreachable from the public API.
+
+export const getActiveUserSetting = <T = unknown>(scope: string): Promise<T | null> =>
+    invoke<T | null>('user_partitions_get_active_setting', { scope });
+
+export const setActiveUserSetting = <T = unknown>(scope: string, value: T): Promise<void> =>
+    invoke<void>('user_partitions_set_active_setting', { scope, value });
+
+export const deleteActiveUserSetting = (scope: string): Promise<void> =>
+    invoke<void>('user_partitions_delete_active_setting', { scope });
+
+export const listActiveUserSettingScopes = (): Promise<string[]> =>
+    invoke<string[]>('user_partitions_list_active_setting_scopes');
+
 const USERS_LIST_CACHE_KEY = 'aeroftp-users-list-cache';
 const USERS_LIST_CACHE_VERSION = 1;
 

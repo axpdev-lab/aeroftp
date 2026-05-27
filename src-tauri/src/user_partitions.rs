@@ -917,6 +917,123 @@ pub fn replace_server_profiles_for(
     })
 }
 
+/// Read a single user_settings scope for the given user, decrypted as JSON.
+/// Returns `Ok(None)` when no row exists. Internal/encryption scope names that
+/// are reserved (start with `__`) are filtered out at the CLI/Tauri boundary,
+/// not here, so callers can still introspect legacy backups.
+pub fn get_user_setting_for(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    scope: &str,
+) -> Result<Option<Value>, String> {
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    with_user_dek(conn, &root_secret, user_id, |user_id, dek| {
+        let row: Option<(Vec<u8>, Vec<u8>)> = conn
+            .query_row(
+                "SELECT encrypted_blob, nonce FROM user_settings
+                 WHERE user_id = ?1 AND scope = ?2",
+                params![user_id, scope],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(|e| format!("Read user setting [{scope}]: {e}"))?;
+        match row {
+            None => Ok(None),
+            Some((blob, nonce)) => Ok(Some(decrypt_value(dek, &nonce, &blob)?)),
+        }
+    })
+}
+
+pub fn set_user_setting_for(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    scope: &str,
+    value: &Value,
+) -> Result<(), String> {
+    if scope.is_empty() {
+        return Err("USER_SETTING_SCOPE_REQUIRED".to_string());
+    }
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    with_user_dek(conn, &root_secret, user_id, |user_id, dek| {
+        let (encrypted_blob, nonce) = encrypt_value(dek, value)?;
+        conn.execute(
+            "INSERT INTO user_settings(
+                 user_id, scope, encrypted_blob, nonce, aead_alg, updated_at
+             )
+             VALUES (?1, ?2, ?3, ?4, 'aes-256-gcm', ?5)
+             ON CONFLICT(user_id, scope) DO UPDATE SET
+                 encrypted_blob = excluded.encrypted_blob,
+                 nonce          = excluded.nonce,
+                 aead_alg       = excluded.aead_alg,
+                 updated_at     = excluded.updated_at",
+            params![user_id, scope, encrypted_blob, nonce, now_ms()],
+        )
+        .map_err(|e| format!("Upsert user setting [{scope}]: {e}"))?;
+        Ok(())
+    })
+}
+
+pub fn delete_user_setting_for(
+    conn: &Connection,
+    user_id: i64,
+    scope: &str,
+) -> Result<(), String> {
+    conn.execute(
+        "DELETE FROM user_settings WHERE user_id = ?1 AND scope = ?2",
+        params![user_id, scope],
+    )
+    .map_err(|e| format!("Delete user setting [{scope}]: {e}"))?;
+    Ok(())
+}
+
+pub fn list_user_setting_scopes_for(
+    conn: &Connection,
+    user_id: i64,
+) -> Result<Vec<String>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT scope FROM user_settings
+             WHERE user_id = ?1 ORDER BY scope ASC",
+        )
+        .map_err(|e| format!("Prepare list user settings: {e}"))?;
+    let rows = stmt
+        .query_map(params![user_id], |row| row.get::<_, String>(0))
+        .map_err(|e| format!("Query list user settings: {e}"))?;
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(|e| format!("Read user setting scopes: {e}"))
+}
+
+pub fn get_active_user_setting(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    scope: &str,
+) -> Result<Option<Value>, String> {
+    let user_id = active_user_id(conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    get_user_setting_for(conn, root_key, user_id, scope)
+}
+
+pub fn set_active_user_setting(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    scope: &str,
+    value: &Value,
+) -> Result<(), String> {
+    let user_id = active_user_id(conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    set_user_setting_for(conn, root_key, user_id, scope, value)
+}
+
+pub fn delete_active_user_setting(conn: &Connection, scope: &str) -> Result<(), String> {
+    let user_id = active_user_id(conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    delete_user_setting_for(conn, user_id, scope)
+}
+
+pub fn list_active_user_setting_scopes(conn: &Connection) -> Result<Vec<String>, String> {
+    let user_id = active_user_id(conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    list_user_setting_scopes_for(conn, user_id)
+}
+
 pub fn create_user(
     conn: &mut Connection,
     root_key: &[u8; 32],
@@ -1578,6 +1695,69 @@ pub async fn user_partitions_save_active_server_profiles(
     result
 }
 
+/// Generic per-user setting access (MU-4 foundation). Settings are keyed by
+/// scope (e.g. `aerosync_schedule`, `aerosync_profiles`) and encrypted with
+/// the active user's DEK. Reserved scopes starting with `__` are blocked at
+/// this boundary so the legacy backup payload cannot be overwritten through
+/// the public API. Returns JSON null when no setting exists for that scope.
+#[tauri::command]
+pub async fn user_partitions_get_active_setting(
+    app: AppHandle,
+    scope: String,
+) -> Result<Option<Value>, String> {
+    if scope.starts_with("__") {
+        return Err("USER_SETTING_RESERVED_SCOPE".to_string());
+    }
+    init_or_migrate(&app)?;
+    let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let conn = open_or_init(&app)?;
+    let result = get_active_user_setting(&conn, &root_key, &scope);
+    root_key.zeroize();
+    result
+}
+
+#[tauri::command]
+pub async fn user_partitions_set_active_setting(
+    app: AppHandle,
+    scope: String,
+    value: Value,
+) -> Result<(), String> {
+    if scope.starts_with("__") {
+        return Err("USER_SETTING_RESERVED_SCOPE".to_string());
+    }
+    init_or_migrate(&app)?;
+    let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let conn = open_or_init(&app)?;
+    let result = set_active_user_setting(&conn, &root_key, &scope, &value);
+    root_key.zeroize();
+    result
+}
+
+#[tauri::command]
+pub async fn user_partitions_delete_active_setting(
+    app: AppHandle,
+    scope: String,
+) -> Result<(), String> {
+    if scope.starts_with("__") {
+        return Err("USER_SETTING_RESERVED_SCOPE".to_string());
+    }
+    init_or_migrate(&app)?;
+    let conn = open_or_init(&app)?;
+    delete_active_user_setting(&conn, &scope)
+}
+
+#[tauri::command]
+pub async fn user_partitions_list_active_setting_scopes(
+    app: AppHandle,
+) -> Result<Vec<String>, String> {
+    init_or_migrate(&app)?;
+    let conn = open_or_init(&app)?;
+    let scopes = list_active_user_setting_scopes(&conn)?;
+    Ok(scopes.into_iter().filter(|s| !s.starts_with("__")).collect())
+}
+
 #[tauri::command]
 pub async fn user_partitions_add_user(
     app: AppHandle,
@@ -2202,5 +2382,115 @@ mod tests {
         assert!(default_stats.encrypted_bytes > 0);
         assert_eq!(ops_stats.profile_count, 1);
         assert!(ops_stats.encrypted_bytes > 0);
+    }
+
+    // ============ MU-4 user_settings CRUD ============
+
+    #[test]
+    fn user_settings_round_trip_active_user() {
+        let _guard = test_lock();
+        let conn = migrated_conn(0);
+        let root = test_root();
+        let value = json!({ "enabled": true, "interval_secs": 3600 });
+        set_active_user_setting(&conn, &root, "aerosync_schedule", &value)
+            .expect("set scheduled");
+        let read = get_active_user_setting(&conn, &root, "aerosync_schedule")
+            .expect("get scheduled");
+        assert_eq!(read, Some(value));
+    }
+
+    #[test]
+    fn user_settings_missing_returns_none() {
+        let _guard = test_lock();
+        let conn = migrated_conn(0);
+        let root = test_root();
+        let read = get_active_user_setting(&conn, &root, "never_written")
+            .expect("get missing");
+        assert!(read.is_none());
+    }
+
+    #[test]
+    fn user_settings_upsert_overwrites_existing_scope() {
+        let _guard = test_lock();
+        let conn = migrated_conn(0);
+        let root = test_root();
+        set_active_user_setting(&conn, &root, "aerosync_schedule", &json!({"v": 1}))
+            .expect("set v1");
+        set_active_user_setting(&conn, &root, "aerosync_schedule", &json!({"v": 2}))
+            .expect("set v2");
+        let read = get_active_user_setting(&conn, &root, "aerosync_schedule")
+            .expect("read")
+            .expect("present");
+        assert_eq!(read, json!({"v": 2}));
+        let scopes = list_active_user_setting_scopes(&conn).expect("list");
+        assert_eq!(
+            scopes.iter().filter(|s| s == &"aerosync_schedule").count(),
+            1,
+            "duplicate scope rows must not accumulate",
+        );
+    }
+
+    #[test]
+    fn user_settings_delete_removes_row() {
+        let _guard = test_lock();
+        let conn = migrated_conn(0);
+        let root = test_root();
+        set_active_user_setting(&conn, &root, "aerosync_schedule", &json!(42))
+            .expect("set");
+        delete_active_user_setting(&conn, "aerosync_schedule").expect("delete");
+        let read = get_active_user_setting(&conn, &root, "aerosync_schedule")
+            .expect("get after delete");
+        assert!(read.is_none());
+    }
+
+    #[test]
+    fn user_settings_are_partitioned_per_user() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn)
+            .expect("active default")
+            .expect("default");
+        let alice =
+            create_passphrase_less_user(&mut conn, &root, "alice", Some("A"), Some("#3b82f6"))
+                .expect("create alice");
+
+        // Write on default.
+        set_active_user_setting(&conn, &root, "aerosync_schedule", &json!("default-value"))
+            .expect("set on default");
+
+        // Switch to alice, write own value, default value remains untouched.
+        set_active_user(&conn, alice.id).expect("switch alice");
+        set_active_user_setting(&conn, &root, "aerosync_schedule", &json!("alice-value"))
+            .expect("set on alice");
+        let alice_read = get_active_user_setting(&conn, &root, "aerosync_schedule")
+            .expect("alice read")
+            .expect("alice value");
+        assert_eq!(alice_read, json!("alice-value"));
+
+        // Switch back: default's value is intact (R3 partition integrity for
+        // settings, not just profiles).
+        set_active_user(&conn, default.id).expect("switch default");
+        let default_read = get_active_user_setting(&conn, &root, "aerosync_schedule")
+            .expect("default read")
+            .expect("default value");
+        assert_eq!(default_read, json!("default-value"));
+
+        // list_active_user_setting_scopes is also scoped: switching back to
+        // alice shows only her scopes plus any legacy backup row migrated
+        // for her (none, since alice is a fresh user).
+        set_active_user(&conn, alice.id).expect("switch alice 2");
+        let alice_scopes = list_active_user_setting_scopes(&conn).expect("alice scopes");
+        assert_eq!(alice_scopes, vec!["aerosync_schedule".to_string()]);
+    }
+
+    #[test]
+    fn user_settings_empty_scope_is_rejected() {
+        let _guard = test_lock();
+        let conn = migrated_conn(0);
+        let root = test_root();
+        let err = set_active_user_setting(&conn, &root, "", &json!(true))
+            .expect_err("empty scope");
+        assert_eq!(err, "USER_SETTING_SCOPE_REQUIRED");
     }
 }
