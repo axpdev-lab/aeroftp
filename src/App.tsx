@@ -11289,6 +11289,7 @@ interface UpdateVerificationInfo {
           onShowDependencies={() => setShowDependenciesPanel(true)}
           onShowProviders={() => setShowProvidersDialog(true)}
           onShowMountManager={() => setShowMountManager({})}
+          onUsersChanged={() => setServersRefreshKey(k => k + 1)}
           masterPasswordSet={masterPasswordSet}
           onLockApp={async () => { await invoke('lock_credential_store'); setIsAppLocked(true); }}
           onSetupMasterPassword={() => setShowMasterPasswordSetup(true)}

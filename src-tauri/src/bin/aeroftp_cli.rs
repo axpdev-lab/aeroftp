@@ -73,6 +73,7 @@ use ftp_client_gui_lib::providers::{
     ProviderConfig, ProviderError, ProviderFactory, ProviderType, RemoteEntry, ShareLinkOptions,
     StorageProvider, MAX_DOWNLOAD_TO_BYTES,
 };
+use ftp_client_gui_lib::user_partitions;
 use ftp_client_gui_lib::util::shutdown_signal;
 use futures_util::StreamExt;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
@@ -87,6 +88,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tempfile::NamedTempFile;
 use tokio::sync::Mutex as AsyncMutex;
+use zeroize::Zeroize;
 
 // ── CLI Argument Parsing ───────────────────────────────────────────
 
@@ -200,6 +202,23 @@ struct Cli {
     /// Use a saved server profile instead of URL (name or ID)
     #[arg(long, short = 'P', global = true)]
     profile: Option<String>,
+
+    /// Select an AeroFTP local user partition (or set AEROFTP_USER)
+    #[arg(long, global = true, env = "AEROFTP_USER")]
+    user: Option<String>,
+
+    /// Account passphrase for the selected AeroFTP user (prefer env/file over CLI args)
+    #[arg(
+        long,
+        global = true,
+        env = "AEROFTP_USER_PASSPHRASE",
+        hide_env_values = true
+    )]
+    user_passphrase: Option<String>,
+
+    /// Read the AeroFTP user passphrase from the first line of a file
+    #[arg(long, global = true)]
+    passphrase_file: Option<PathBuf>,
 
     /// Master password for encrypted vault (or set AEROFTP_MASTER_PASSWORD)
     #[arg(
@@ -1452,6 +1471,11 @@ enum Commands {
         #[arg(long, short = 'i')]
         interactive: bool,
     },
+    /// Manage local AeroFTP user partitions
+    Users {
+        #[command(subcommand)]
+        command: UsersCommands,
+    },
     /// Create a new server profile in the vault
     ///
     /// Scriptable alternative to the GUI's New Server flow and to the
@@ -1805,6 +1829,64 @@ mod cli_dispatch_tests {
             .join()
             .expect("allowlist sync test panicked");
     }
+}
+
+#[derive(Subcommand)]
+enum UsersCommands {
+    /// List local AeroFTP users
+    List,
+    /// Add a local AeroFTP user
+    Add {
+        /// Account name
+        name: String,
+        /// Prompt/read an account passphrase for the new user
+        #[arg(long)]
+        passphrase: bool,
+        /// Avatar text stored in the enumerable user metadata
+        #[arg(long)]
+        avatar: Option<String>,
+        /// Avatar color stored in the enumerable user metadata
+        #[arg(long)]
+        color: Option<String>,
+    },
+    /// Rename a local AeroFTP user
+    Rename {
+        /// Existing account name or numeric id
+        old: String,
+        /// New account name
+        new: String,
+    },
+    /// Delete a local AeroFTP user
+    Delete {
+        /// Account name or numeric id
+        name: String,
+        /// Confirm deletion without an interactive prompt
+        #[arg(long, short = 'y')]
+        yes: bool,
+    },
+    /// Switch the active local AeroFTP user
+    Switch {
+        /// Account name or numeric id
+        name: String,
+    },
+    /// Reorder users for the GUI dropdown and lock screen
+    Sort {
+        /// Names or ids in desired order. Accepts spaces or comma-separated values.
+        order: Vec<String>,
+    },
+    /// Set, change, or remove a user's account passphrase
+    SetPassphrase {
+        /// Account name or numeric id
+        name: String,
+        /// Remove the current passphrase and return to device-wrapped access
+        #[arg(long)]
+        remove: bool,
+        /// New passphrase for non-interactive runs (prefer env over shell history)
+        #[arg(long, env = "AEROFTP_USER_NEW_PASSPHRASE", hide_env_values = true)]
+        new_passphrase: Option<String>,
+    },
+    /// Lock the current in-memory user session
+    Lock,
 }
 
 #[derive(Subcommand)]
@@ -5814,7 +5896,6 @@ fn parse_github_target(url_obj: &url::Url) -> Result<(String, Option<String>), S
 
 fn open_vault(cli: &Cli) -> Result<ftp_client_gui_lib::credential_store::CredentialStore, String> {
     use ftp_client_gui_lib::credential_store::CredentialStore;
-    use zeroize::Zeroize;
 
     // Try to init vault (auto mode unlocks automatically)
     match CredentialStore::init() {
@@ -5854,6 +5935,524 @@ fn open_vault(cli: &Cli) -> Result<ftp_client_gui_lib::credential_store::Credent
     }
 
     CredentialStore::from_cache().ok_or_else(|| "Vault not available after init".to_string())
+}
+
+fn user_env_suffix(name: &str) -> String {
+    name.chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_uppercase()
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+fn read_passphrase_file(path: &Path) -> Result<String, String> {
+    let raw = std::fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read passphrase file {}: {}", path.display(), e))?;
+    Ok(raw.lines().next().unwrap_or("").to_string())
+}
+
+fn read_user_passphrase(
+    cli: &Cli,
+    user_name: &str,
+    prompt: &str,
+    required: bool,
+    allow_prompt: bool,
+) -> Result<Option<String>, String> {
+    let suffix = user_env_suffix(user_name);
+    if let Ok(value) = std::env::var(format!("AEROFTP_USER_PASSPHRASE_{suffix}")) {
+        return Ok(Some(value));
+    }
+    if let Some(value) = cli.user_passphrase.as_ref() {
+        return Ok(Some(value.clone()));
+    }
+    if let Some(path) = cli.passphrase_file.as_deref() {
+        return read_passphrase_file(path).map(Some);
+    }
+    if allow_prompt && std::io::stdin().is_terminal() {
+        return rpassword::prompt_password(prompt)
+            .map(Some)
+            .map_err(|e| format!("Failed to read account password: {}", e));
+    }
+    if required {
+        Err(format!(
+            "Account '{}' requires a passphrase. Use --user-passphrase, --passphrase-file, or AEROFTP_USER_PASSPHRASE.",
+            user_name
+        ))
+    } else {
+        Ok(None)
+    }
+}
+
+fn read_new_user_passphrase(
+    cli: &Cli,
+    user_name: &str,
+    provided: Option<&String>,
+) -> Result<String, String> {
+    let suffix = user_env_suffix(user_name);
+    if let Ok(value) = std::env::var(format!("AEROFTP_USER_NEW_PASSPHRASE_{suffix}")) {
+        return Ok(value);
+    }
+    if let Some(value) = provided {
+        return Ok(value.clone());
+    }
+    if let Ok(value) = std::env::var("AEROFTP_USER_NEW_PASSPHRASE") {
+        return Ok(value);
+    }
+    if let Some(value) = read_user_passphrase(
+        cli,
+        user_name,
+        &format!("New account password for user '{}': ", user_name),
+        false,
+        false,
+    )? {
+        return Ok(value);
+    }
+    if std::io::stdin().is_terminal() {
+        return rpassword::prompt_password(format!(
+            "New account password for user '{}': ",
+            user_name
+        ))
+        .map_err(|e| format!("Failed to read new account password: {}", e));
+    }
+    Err(format!(
+        "New passphrase required for '{}'. Use --new-passphrase or AEROFTP_USER_NEW_PASSPHRASE.",
+        user_name
+    ))
+}
+
+fn resolve_cli_user(
+    users: &[user_partitions::UserMetadata],
+    selector: &str,
+) -> Result<user_partitions::UserMetadata, String> {
+    if let Ok(id) = selector.parse::<i64>() {
+        if let Some(user) = users.iter().find(|user| user.id == id) {
+            return Ok(user.clone());
+        }
+    }
+    let exact: Vec<_> = users
+        .iter()
+        .filter(|user| user.name.eq_ignore_ascii_case(selector))
+        .cloned()
+        .collect();
+    match exact.len() {
+        1 => Ok(exact[0].clone()),
+        0 => Err(format!("User '{}' not found", selector)),
+        _ => Err(format!("User selector '{}' is ambiguous", selector)),
+    }
+}
+
+fn confirm_user_delete(user: &user_partitions::UserMetadata, yes: bool) -> Result<(), String> {
+    if yes {
+        return Ok(());
+    }
+    if !std::io::stdin().is_terminal() {
+        return Err("Refusing to delete user without --yes in non-interactive mode".to_string());
+    }
+    eprint!(
+        "Delete AeroFTP user '{}'? Type DELETE to confirm: ",
+        user.name
+    );
+    let _ = io::stderr().flush();
+    let mut line = String::new();
+    io::stdin()
+        .read_line(&mut line)
+        .map_err(|e| format!("Failed to read confirmation: {}", e))?;
+    if line.trim() == "DELETE" {
+        Ok(())
+    } else {
+        Err("Aborted by user".to_string())
+    }
+}
+
+fn cmd_users(cli: &Cli, command: &UsersCommands, format: OutputFormat) -> i32 {
+    let store = match open_vault(cli) {
+        Ok(store) => store,
+        Err(err) => {
+            print_error(format, &err, 5);
+            return 5;
+        }
+    };
+
+    match command {
+        UsersCommands::List => {
+            let users = match user_partitions::cli_list_users(&store) {
+                Ok(users) => users,
+                Err(err) => {
+                    print_error(format, &err, 5);
+                    return 5;
+                }
+            };
+            if matches!(format, OutputFormat::Json) {
+                let stats = user_partitions::cli_storage_stats(&store).unwrap_or_default();
+                print_json(&serde_json::json!({
+                    "users": users,
+                    "storageStats": stats,
+                }));
+            } else if users.is_empty() {
+                println!("No AeroFTP users found.");
+            } else {
+                println!(
+                    "{:<4} {:<24} {:<8} {:<8} Last unlocked",
+                    "ID", "Name", "Active", "Locked"
+                );
+                for user in users {
+                    println!(
+                        "{:<4} {:<24} {:<8} {:<8} {}",
+                        user.id,
+                        user.name,
+                        if user.is_active { "yes" } else { "-" },
+                        if user.has_passphrase { "yes" } else { "-" },
+                        user.last_unlocked_at
+                            .map(|ts| ts.to_string())
+                            .unwrap_or_else(|| "-".to_string())
+                    );
+                }
+            }
+            0
+        }
+        UsersCommands::Add {
+            name,
+            passphrase,
+            avatar,
+            color,
+        } => {
+            let mut passphrase_value = if *passphrase {
+                match read_new_user_passphrase(cli, name, None) {
+                    Ok(value) => Some(value),
+                    Err(err) => {
+                        print_error(format, &err, 5);
+                        return 5;
+                    }
+                }
+            } else {
+                None
+            };
+            let result = user_partitions::cli_create_user(
+                &store,
+                name,
+                avatar.as_deref(),
+                color.as_deref(),
+                passphrase_value.as_deref(),
+            );
+            if let Some(value) = passphrase_value.as_mut() {
+                value.zeroize();
+            }
+            match result {
+                Ok(user) => {
+                    if matches!(format, OutputFormat::Json) {
+                        print_json(&serde_json::json!({"status": "ok", "user": user}));
+                    } else {
+                        println!("Created user '{}'.", user.name);
+                    }
+                    0
+                }
+                Err(err) => {
+                    print_error(format, &err, 5);
+                    5
+                }
+            }
+        }
+        UsersCommands::Rename { old, new } => {
+            let users = match user_partitions::cli_list_users(&store) {
+                Ok(users) => users,
+                Err(err) => {
+                    print_error(format, &err, 5);
+                    return 5;
+                }
+            };
+            let user = match resolve_cli_user(&users, old) {
+                Ok(user) => user,
+                Err(err) => {
+                    print_error(format, &err, 2);
+                    return 2;
+                }
+            };
+            match user_partitions::cli_rename_user(&store, user.id, new) {
+                Ok(()) => {
+                    if matches!(format, OutputFormat::Json) {
+                        print_json(
+                            &serde_json::json!({"status": "ok", "renamed": {"from": user.name, "to": new}}),
+                        );
+                    } else {
+                        println!("Renamed user '{}' to '{}'.", user.name, new);
+                    }
+                    0
+                }
+                Err(err) => {
+                    print_error(format, &err, 5);
+                    5
+                }
+            }
+        }
+        UsersCommands::Delete { name, yes } => {
+            let users = match user_partitions::cli_list_users(&store) {
+                Ok(users) => users,
+                Err(err) => {
+                    print_error(format, &err, 5);
+                    return 5;
+                }
+            };
+            let user = match resolve_cli_user(&users, name) {
+                Ok(user) => user,
+                Err(err) => {
+                    print_error(format, &err, 2);
+                    return 2;
+                }
+            };
+            if users.len() <= 1 {
+                print_error(format, "Cannot delete the last AeroFTP user.", 5);
+                return 5;
+            }
+            if user.is_active {
+                print_error(
+                    format,
+                    "Refusing to delete the active AeroFTP user. Switch first.",
+                    5,
+                );
+                return 5;
+            }
+            if let Err(err) = confirm_user_delete(&user, *yes) {
+                print_error(format, &err, 5);
+                return 5;
+            }
+            if user.has_passphrase {
+                let mut passphrase = match read_user_passphrase(
+                    cli,
+                    &user.name,
+                    &format!("Account password for user '{}': ", user.name),
+                    true,
+                    true,
+                ) {
+                    Ok(Some(value)) => value,
+                    Ok(None) => String::new(),
+                    Err(err) => {
+                        print_error(format, &err, 6);
+                        return 6;
+                    }
+                };
+                let verified =
+                    user_partitions::cli_verify_user_passphrase(&store, user.id, Some(&passphrase));
+                passphrase.zeroize();
+                if let Err(err) = verified {
+                    print_error(format, &err, 6);
+                    return 6;
+                }
+            }
+            match user_partitions::cli_delete_user(&store, user.id) {
+                Ok(()) => {
+                    if matches!(format, OutputFormat::Json) {
+                        print_json(&serde_json::json!({"status": "ok", "deleted": user.name}));
+                    } else {
+                        println!("Deleted user '{}'.", user.name);
+                    }
+                    0
+                }
+                Err(err) => {
+                    print_error(format, &err, 5);
+                    5
+                }
+            }
+        }
+        UsersCommands::Switch { name } => {
+            let users = match user_partitions::cli_list_users(&store) {
+                Ok(users) => users,
+                Err(err) => {
+                    print_error(format, &err, 5);
+                    return 5;
+                }
+            };
+            let user = match resolve_cli_user(&users, name) {
+                Ok(user) => user,
+                Err(err) => {
+                    print_error(format, &err, 2);
+                    return 2;
+                }
+            };
+            let mut passphrase = if user.has_passphrase {
+                match read_user_passphrase(
+                    cli,
+                    &user.name,
+                    &format!("Account password for user '{}': ", user.name),
+                    true,
+                    true,
+                ) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        print_error(format, &err, 6);
+                        return 6;
+                    }
+                }
+            } else {
+                None
+            };
+            let result = user_partitions::cli_unlock_user(&store, user.id, passphrase.as_deref());
+            if let Some(value) = passphrase.as_mut() {
+                value.zeroize();
+            }
+            match result {
+                Ok(status) => {
+                    if matches!(format, OutputFormat::Json) {
+                        print_json(
+                            &serde_json::json!({"status": "ok", "unlock": status, "user": user.name}),
+                        );
+                    } else {
+                        println!("Switched to user '{}'.", user.name);
+                    }
+                    0
+                }
+                Err(err) => {
+                    print_error(format, &err, 6);
+                    6
+                }
+            }
+        }
+        UsersCommands::Sort { order } => {
+            let users = match user_partitions::cli_list_users(&store) {
+                Ok(users) => users,
+                Err(err) => {
+                    print_error(format, &err, 5);
+                    return 5;
+                }
+            };
+            let selectors: Vec<String> = order
+                .iter()
+                .flat_map(|item| item.split(','))
+                .map(str::trim)
+                .filter(|item| !item.is_empty())
+                .map(ToOwned::to_owned)
+                .collect();
+            if selectors.is_empty() {
+                print_error(format, "At least one user name or id is required.", 5);
+                return 5;
+            }
+            let mut ordered_ids = Vec::new();
+            for selector in &selectors {
+                let user = match resolve_cli_user(&users, selector) {
+                    Ok(user) => user,
+                    Err(err) => {
+                        print_error(format, &err, 2);
+                        return 2;
+                    }
+                };
+                if !ordered_ids.contains(&user.id) {
+                    ordered_ids.push(user.id);
+                }
+            }
+            for user in &users {
+                if !ordered_ids.contains(&user.id) {
+                    ordered_ids.push(user.id);
+                }
+            }
+            match user_partitions::cli_reorder_users(&store, &ordered_ids) {
+                Ok(()) => {
+                    if matches!(format, OutputFormat::Json) {
+                        print_json(&serde_json::json!({"status": "ok", "order": ordered_ids}));
+                    } else {
+                        println!("Updated user order.");
+                    }
+                    0
+                }
+                Err(err) => {
+                    print_error(format, &err, 5);
+                    5
+                }
+            }
+        }
+        UsersCommands::SetPassphrase {
+            name,
+            remove,
+            new_passphrase,
+        } => {
+            let users = match user_partitions::cli_list_users(&store) {
+                Ok(users) => users,
+                Err(err) => {
+                    print_error(format, &err, 5);
+                    return 5;
+                }
+            };
+            let user = match resolve_cli_user(&users, name) {
+                Ok(user) => user,
+                Err(err) => {
+                    print_error(format, &err, 2);
+                    return 2;
+                }
+            };
+            let mut old_passphrase = if user.has_passphrase {
+                match read_user_passphrase(
+                    cli,
+                    &user.name,
+                    &format!("Current account password for user '{}': ", user.name),
+                    true,
+                    true,
+                ) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        print_error(format, &err, 6);
+                        return 6;
+                    }
+                }
+            } else {
+                None
+            };
+            let mut next_passphrase = if *remove {
+                None
+            } else {
+                match read_new_user_passphrase(cli, &user.name, new_passphrase.as_ref()) {
+                    Ok(value) => Some(value),
+                    Err(err) => {
+                        if let Some(value) = old_passphrase.as_mut() {
+                            value.zeroize();
+                        }
+                        print_error(format, &err, 5);
+                        return 5;
+                    }
+                }
+            };
+            let result = user_partitions::cli_change_user_passphrase(
+                &store,
+                user.id,
+                old_passphrase.as_deref(),
+                next_passphrase.as_deref(),
+            );
+            if let Some(value) = old_passphrase.as_mut() {
+                value.zeroize();
+            }
+            if let Some(value) = next_passphrase.as_mut() {
+                value.zeroize();
+            }
+            match result {
+                Ok(()) => {
+                    if matches!(format, OutputFormat::Json) {
+                        print_json(
+                            &serde_json::json!({"status": "ok", "user": user.name, "hasPassphrase": !*remove}),
+                        );
+                    } else if *remove {
+                        println!("Removed passphrase for user '{}'.", user.name);
+                    } else {
+                        println!("Updated passphrase for user '{}'.", user.name);
+                    }
+                    0
+                }
+                Err(err) => {
+                    print_error(format, &err, 6);
+                    6
+                }
+            }
+        }
+        UsersCommands::Lock => {
+            user_partitions::cli_lock_session();
+            if matches!(format, OutputFormat::Json) {
+                print_json(&serde_json::json!({"status": "ok", "locked": true}));
+            } else {
+                println!("Locked AeroFTP user session.");
+            }
+            0
+        }
+    }
 }
 
 // ── My Servers Table view (CLI parity with src/components/IntroHub) ───────
@@ -37732,6 +38331,7 @@ async fn main() {
                 interactive: *interactive,
             },
         ),
+        Commands::Users { command } => cmd_users(&cli, command, format),
         Commands::ProfileAdd {
             name,
             protocol,
@@ -38553,6 +39153,9 @@ mod tests {
             trust_host_key: false,
             two_factor: None,
             profile: None,
+            user: None,
+            user_passphrase: None,
+            passphrase_file: None,
             master_password: None,
             verbose: 0,
             quiet: false,

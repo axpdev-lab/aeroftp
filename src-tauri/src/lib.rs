@@ -78,7 +78,7 @@ mod rsync_output;
 pub mod storage_dedup;
 pub mod used_scan;
 mod user_crypto;
-mod user_partitions;
+pub mod user_partitions;
 #[cfg(windows)]
 pub mod windows_update_helper;
 // `pub` transitively so integration tests can construct `RsyncStats`
@@ -15303,7 +15303,9 @@ pub fn run() {
             user_partitions::user_partitions_change_passphrase,
             user_partitions::user_partitions_set_active_user,
             user_partitions::user_partitions_rename_user,
+            user_partitions::user_partitions_reorder_users,
             user_partitions::user_partitions_delete_user,
+            user_partitions::user_partitions_storage_stats,
             user_partitions::user_partitions_debug_state,
             settings::native_rsync_feature_compiled,
             #[cfg(feature = "aerorsync")]

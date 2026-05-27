@@ -40,6 +40,13 @@ export interface UserUnlockStatus {
     isUnlocked: boolean;
 }
 
+export interface UserStorageStats {
+    userId: number;
+    profileCount: number;
+    settingsCount: number;
+    encryptedBytes: number;
+}
+
 export const initUserPartitions = (): Promise<UserPartitionMigrationReport> =>
     invoke<UserPartitionMigrationReport>('user_partitions_init');
 
@@ -97,8 +104,14 @@ export const setActiveUser = (userId: number): Promise<void> =>
 export const renameUser = (userId: number, name: string): Promise<void> =>
     invoke<void>('user_partitions_rename_user', { userId, name });
 
+export const reorderUsers = (userIds: number[]): Promise<void> =>
+    invoke<void>('user_partitions_reorder_users', { userIds });
+
 export const deleteUser = (userId: number): Promise<void> =>
     invoke<void>('user_partitions_delete_user', { userId });
+
+export const getUserStorageStats = (): Promise<UserStorageStats[]> =>
+    invoke<UserStorageStats[]>('user_partitions_storage_stats');
 
 export const getUserPartitionDebugState = (): Promise<UserPartitionDebugState> =>
     invoke<UserPartitionDebugState>('user_partitions_debug_state');
