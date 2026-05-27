@@ -13,10 +13,13 @@ import { getProtocolInfo, ProtocolBadge, ProtocolIcon } from './ProtocolSelector
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { getProviderById } from '../providers';
 import { logger } from '../utils/logger';
-import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStorage';
 import { getGitHubConnectionBadge, getMegaConnectionBadge } from '../utils/providerConnectionMeta';
 import { getFilenAuthVersion } from '../utils/filenAuthVersion';
-import { mergeSavedServerProfile } from '../utils/serverProfileStore';
+import {
+    loadSavedServerProfiles,
+    mergeSavedServerProfile,
+    storeSavedServerProfiles,
+} from '../utils/serverProfileStore';
 import { maskCredential } from '../utils/maskCredential';
 import { useContextMenu, ContextMenu, ContextMenuItem } from './ContextMenu';
 import { ServerHealthCheck } from './ServerHealthCheck';
@@ -63,7 +66,12 @@ interface SavedServersProps {
     onOpenExportImport?: () => void;
 }
 
-const STORAGE_KEY = 'aeroftp-saved-servers';
+// STORAGE_KEY removed: SavedServers no longer reads/writes the legacy
+// localStorage blob directly. All reads/writes go through
+// `loadSavedServerProfiles` / `storeSavedServerProfiles`, which route to
+// the active user's vault partition (multi-user partition wiring,
+// MU-FE-P0). The legacy localStorage key is migrated and cleared by
+// `serverProfileStore.ts` on first vault touch.
 
 // Generate a unique ID
 const generateId = () => `srv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -102,29 +110,11 @@ const deriveProviderId = (server: ServerProfile): string | undefined => {
     return undefined;
 };
 
-// Get saved servers from localStorage (auto-migrate missing providerId)
-const getSavedServers = (): ServerProfile[] => {
-    try {
-        const stored = localStorage.getItem(STORAGE_KEY);
-        if (!stored) return [];
-        const servers: ServerProfile[] = JSON.parse(stored);
-        let migrated = false;
-        for (const s of servers) {
-            if (!s.providerId) {
-                const derived = deriveProviderId(s);
-                if (derived) { s.providerId = derived; migrated = true; }
-            }
-        }
-        if (migrated) localStorage.setItem(STORAGE_KEY, JSON.stringify(servers));
-        return servers;
-    } catch {
-        return [];
-    }
-};
-
-// Save servers to localStorage (sync backup) and vault (async, encrypted)
+// Persist servers to the active user's vault partition. Fire-and-forget
+// to preserve existing call sites; the async helper handles localStorage
+// cleanup and dispatches PROFILES_CHANGED_EVENT so other panes refresh.
 const saveServers = (servers: ServerProfile[]) => {
-    secureStoreAndClean('server_profiles', STORAGE_KEY, servers).catch(() => {});
+    storeSavedServerProfiles(servers).catch(() => {});
 };
 
 export const SavedServers: React.FC<SavedServersProps> = ({
@@ -256,12 +246,15 @@ export const SavedServers: React.FC<SavedServersProps> = ({
     };
 
     useEffect(() => {
-        // Load from localStorage immediately (sync), then try vault
-        setServers(getSavedServers());
+        // Multi-user partition wiring (MU-FE-P0): read servers via the
+        // partition-aware helper. No synchronous localStorage paint: the
+        // helper is fast and a brief empty state is preferable to showing
+        // the previous user's data after a switch.
+        let cancelled = false;
         (async () => {
-            const vaultServers = await secureGetWithFallback<ServerProfile[]>('server_profiles', STORAGE_KEY);
-            if (vaultServers && vaultServers.length > 0) {
-                // Migrate providerId if needed
+            try {
+                const vaultServers = await loadSavedServerProfiles();
+                if (cancelled) return;
                 let migrated = false;
                 for (const s of vaultServers) {
                     if (!s.providerId) {
@@ -271,8 +264,11 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                 }
                 if (migrated) saveServers(vaultServers);
                 setServers(vaultServers);
+            } catch {
+                if (!cancelled) setServers([]);
             }
         })();
+        return () => { cancelled = true; };
     }, [lastUpdate]);
 
     const handleDelete = (server: ServerProfile) => {

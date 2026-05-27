@@ -13,6 +13,7 @@ import { Folder, FileText, Copy, X, HardDrive, Calendar, Shield, ShieldCheck, Ha
 import { formatBytes } from '../../utils/formatters';
 import { getMimeType, getFileExtension } from '../Preview/utils/fileTypes';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
+import { PROFILES_CHANGED_EVENT } from '../../utils/serverProfileStore';
 
 // ============ Alert Dialog ============
 interface AlertDialogProps {
@@ -1042,6 +1043,9 @@ export const MasterPasswordSetupDialog: React.FC<MasterPasswordSetupDialogProps>
                     timeoutSeconds: timeoutMinutes * 60,
                 });
             }
+            // Vault is now (re-)initialized; notify UserDropdown so the avatar
+            // appears even if it mounted before CredentialStore was ready.
+            try { window.dispatchEvent(new CustomEvent(PROFILES_CHANGED_EVENT)); } catch { /* best effort */ }
             onComplete();
         } catch (err) {
             setError(String(err));
