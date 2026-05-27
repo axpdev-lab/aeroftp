@@ -2854,7 +2854,7 @@
             "unlock": "Deverrouiller",
             "unlocking": "Deverrouillage...",
             "invalidPassword": "Mot de passe invalide. Veuillez reessayer.",
-            "securityNote": "Vos donnees sont protegees par le chiffrement AES-256-GCM",
+            "securityNote": "Vos donnees sont protegees par le chiffrement Argon2id + AES-256-GCM",
             "patternCross": "Croix",
             "patternDots": "Points",
             "patternCircuit": "Circuit",
@@ -4592,7 +4592,8 @@
             "hidePassword": "Masquer le mot de passe",
             "lastUsedToday": "Utilisé aujourd'hui",
             "lastUsedYesterday": "Utilisé hier",
-            "lastUsedDaysAgo": "Utilisé il y a {days} jours"
+            "lastUsedDaysAgo": "Utilisé il y a {days} jours",
+            "securityNote": "Compte protégé par chiffrement Argon2id + AES-KW + AES-256-GCM"
         }
     }
 }

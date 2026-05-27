@@ -2854,7 +2854,7 @@
             "unlock": "Desbloquejar",
             "unlocking": "Desbloquejant...",
             "invalidPassword": "Contrasenya no vàlida. Si us plau, torneu-ho a provar.",
-            "securityNote": "Les vostres dades estan protegides amb xifratge AES-256-GCM",
+            "securityNote": "Les vostres dades estan protegides amb xifratge Argon2id + AES-256-GCM",
             "patternCross": "Creu",
             "patternDots": "Punts",
             "patternCircuit": "Circuit",
@@ -4611,7 +4611,8 @@
             "hidePassword": "[NEEDS TRANSLATION] Hide password",
             "lastUsedToday": "[NEEDS TRANSLATION] Used today",
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago"
+            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "securityNote": "Compte protegit amb xifratge Argon2id + AES-KW + AES-256-GCM"
         }
     }
 }

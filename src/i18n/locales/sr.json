@@ -2854,7 +2854,7 @@
             "unlock": "Otključaj",
             "unlocking": "Otključavanje...",
             "invalidPassword": "Neispravna lozinka. Molimo pokušajte ponovo.",
-            "securityNote": "Vaši podaci su zaštićeni AES-256-GCM šifrovanjem",
+            "securityNote": "Vaši podaci su zaštićeni Argon2id + AES-256-GCM šifrovanjem",
             "patternCross": "Krst",
             "patternDots": "Tačke",
             "patternCircuit": "Kolo",
@@ -4592,7 +4592,8 @@
             "hidePassword": "[NEEDS TRANSLATION] Hide password",
             "lastUsedToday": "[NEEDS TRANSLATION] Used today",
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago"
+            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "securityNote": "Налог заштићен Argon2id + AES-KW + AES-256-GCM шифровањем"
         }
     }
 }

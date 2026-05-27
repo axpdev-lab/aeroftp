@@ -1861,7 +1861,8 @@
             "hidePassword": "Hide password",
             "lastUsedToday": "Used today",
             "lastUsedYesterday": "Used yesterday",
-            "lastUsedDaysAgo": "Used {days} days ago"
+            "lastUsedDaysAgo": "Used {days} days ago",
+            "securityNote": "Account protected with Argon2id + AES-KW + AES-256-GCM encryption"
         },
         "lockScreen": {
             "enterPassword": "Enter your master password",
@@ -1879,7 +1880,7 @@
             "patternNone": "None",
             "patternTopography": "Topography",
             "patternWaves": "Waves",
-            "securityNote": "Your data is protected with AES-256-GCM encryption",
+            "securityNote": "Your data is protected with Argon2id + AES-256-GCM encryption",
             "stepDecrypting": "Decrypting passphrase...",
             "stepDeriving": "Deriving key (Argon2id)...",
             "stepExpanding": "Expanding vault key (HKDF)...",

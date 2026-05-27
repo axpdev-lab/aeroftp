@@ -2854,7 +2854,7 @@
             "unlock": "Fungua",
             "unlocking": "Inafungua...",
             "invalidPassword": "Nenosiri lisilo sahihi. Tafadhali jaribu tena.",
-            "securityNote": "Data yako inalindwa na usimbaji wa AES-256-GCM",
+            "securityNote": "Data yako inalindwa na usimbaji wa Argon2id + AES-256-GCM",
             "patternCross": "Msalaba",
             "patternDots": "Vitone",
             "patternCircuit": "Saketi",
@@ -4592,7 +4592,8 @@
             "hidePassword": "[NEEDS TRANSLATION] Hide password",
             "lastUsedToday": "[NEEDS TRANSLATION] Used today",
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago"
+            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "securityNote": "Akaunti imelindwa kwa usimbaji wa Argon2id + AES-KW + AES-256-GCM"
         }
     }
 }

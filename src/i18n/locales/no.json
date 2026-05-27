@@ -2854,7 +2854,7 @@
             "unlock": "Lås opp",
             "unlocking": "Låser opp...",
             "invalidPassword": "Ugyldig passord. Vennligst prøv igjen.",
-            "securityNote": "Dataene dine er beskyttet med AES-256-GCM-kryptering",
+            "securityNote": "Dataene dine er beskyttet med Argon2id + AES-256-GCM-kryptering",
             "patternCross": "Kryss",
             "patternDots": "Prikker",
             "patternCircuit": "Kretskort",
@@ -4611,7 +4611,8 @@
             "hidePassword": "[NEEDS TRANSLATION] Hide password",
             "lastUsedToday": "[NEEDS TRANSLATION] Used today",
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago"
+            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "securityNote": "Konto beskyttet med Argon2id + AES-KW + AES-256-GCM-kryptering"
         }
     }
 }

@@ -2854,7 +2854,7 @@
             "unlock": "Deblochează",
             "unlocking": "Se deblochează...",
             "invalidPassword": "Parolă invalidă. Vă rugăm încercați din nou.",
-            "securityNote": "Datele dvs. sunt protejate cu criptare AES-256-GCM",
+            "securityNote": "Datele dvs. sunt protejate cu criptare Argon2id + AES-256-GCM",
             "patternCross": "Cruce",
             "patternDots": "Puncte",
             "patternCircuit": "Circuit",
@@ -4592,7 +4592,8 @@
             "hidePassword": "[NEEDS TRANSLATION] Hide password",
             "lastUsedToday": "[NEEDS TRANSLATION] Used today",
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago"
+            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "securityNote": "Cont protejat cu criptare Argon2id + AES-KW + AES-256-GCM"
         }
     }
 }

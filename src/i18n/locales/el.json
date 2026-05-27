@@ -2854,7 +2854,7 @@
             "unlock": "Ξεκλείδωμα",
             "unlocking": "Ξεκλείδωμα...",
             "invalidPassword": "Μη έγκυρος κωδικός. Παρακαλώ δοκιμάστε ξανά.",
-            "securityNote": "Τα δεδομένα σας προστατεύονται με κρυπτογράφηση AES-256-GCM",
+            "securityNote": "Τα δεδομένα σας προστατεύονται με κρυπτογράφηση Argon2id + AES-256-GCM",
             "patternCross": "Σταυρός",
             "patternDots": "Κουκκίδες",
             "patternCircuit": "Κύκλωμα",
@@ -4592,7 +4592,8 @@
             "hidePassword": "[NEEDS TRANSLATION] Hide password",
             "lastUsedToday": "[NEEDS TRANSLATION] Used today",
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago"
+            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "securityNote": "Ο λογαριασμός προστατεύεται με κρυπτογράφηση Argon2id + AES-KW + AES-256-GCM"
         }
     }
 }

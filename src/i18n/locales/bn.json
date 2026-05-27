@@ -2854,7 +2854,7 @@
             "unlock": "আনলক",
             "unlocking": "আনলক করা হচ্ছে...",
             "invalidPassword": "ভুল পাসওয়ার্ড। আবার চেষ্টা করুন।",
-            "securityNote": "আপনার ডেটা AES-256-GCM এনক্রিপশন দ্বারা সুরক্ষিত",
+            "securityNote": "আপনার ডেটা Argon2id + AES-256-GCM এনক্রিপশন দ্বারা সুরক্ষিত",
             "patternCross": "ক্রস",
             "patternDots": "ডটস",
             "patternCircuit": "সার্কিট",
@@ -4592,7 +4592,8 @@
             "hidePassword": "[NEEDS TRANSLATION] Hide password",
             "lastUsedToday": "[NEEDS TRANSLATION] Used today",
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago"
+            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "securityNote": "অ্যাকাউন্ট Argon2id + AES-KW + AES-256-GCM এনক্রিপশন দ্বারা সুরক্ষিত"
         }
     }
 }

@@ -2854,7 +2854,7 @@
             "unlock": "अनलॉक",
             "unlocking": "अनलॉक हो रहा है...",
             "invalidPassword": "अमान्य पासवर्ड। कृपया पुन: प्रयास करें।",
-            "securityNote": "आपका डेटा AES-256-GCM एन्क्रिप्शन के साथ सुरक्षित है",
+            "securityNote": "आपका डेटा Argon2id + AES-256-GCM एन्क्रिप्शन के साथ सुरक्षित है",
             "patternCross": "क्रॉस",
             "patternDots": "डॉट्स",
             "patternCircuit": "सर्किट",
@@ -4592,7 +4592,8 @@
             "hidePassword": "[NEEDS TRANSLATION] Hide password",
             "lastUsedToday": "[NEEDS TRANSLATION] Used today",
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago"
+            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "securityNote": "खाता Argon2id + AES-KW + AES-256-GCM एन्क्रिप्शन से सुरक्षित"
         }
     }
 }

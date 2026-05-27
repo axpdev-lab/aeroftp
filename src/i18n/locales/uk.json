@@ -2854,7 +2854,7 @@
             "unlock": "Розблокувати",
             "unlocking": "Розблокування...",
             "invalidPassword": "Невірний пароль. Спробуйте ще раз.",
-            "securityNote": "Ваші дані захищені шифруванням AES-256-GCM",
+            "securityNote": "Ваші дані захищені шифруванням Argon2id + AES-256-GCM",
             "patternCross": "Хрест",
             "patternDots": "Крапки",
             "patternCircuit": "Схема",
@@ -4592,7 +4592,8 @@
             "hidePassword": "[NEEDS TRANSLATION] Hide password",
             "lastUsedToday": "[NEEDS TRANSLATION] Used today",
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago"
+            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "securityNote": "Обліковий запис захищений шифруванням Argon2id + AES-KW + AES-256-GCM"
         }
     }
 }

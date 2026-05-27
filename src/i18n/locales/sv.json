@@ -2854,7 +2854,7 @@
             "unlock": "Lås upp",
             "unlocking": "Låser upp...",
             "invalidPassword": "Ogiltigt lösenord. Försök igen.",
-            "securityNote": "Dina data skyddas med AES-256-GCM-kryptering",
+            "securityNote": "Dina data skyddas med Argon2id + AES-256-GCM-kryptering",
             "patternCross": "Kors",
             "patternDots": "Prickar",
             "patternCircuit": "Kretskort",
@@ -4592,7 +4592,8 @@
             "hidePassword": "[NEEDS TRANSLATION] Hide password",
             "lastUsedToday": "[NEEDS TRANSLATION] Used today",
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago"
+            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "securityNote": "Konto skyddat med Argon2id + AES-KW + AES-256-GCM-kryptering"
         }
     }
 }

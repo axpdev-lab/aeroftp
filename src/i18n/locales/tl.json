@@ -2854,7 +2854,7 @@
             "unlock": "I-unlock",
             "unlocking": "Ina-unlock...",
             "invalidPassword": "Hindi wastong password. Pakisubukan ulit.",
-            "securityNote": "Ang iyong data ay protektado ng AES-256-GCM encryption",
+            "securityNote": "Ang iyong data ay protektado ng Argon2id + AES-256-GCM encryption",
             "patternCross": "Krus",
             "patternDots": "Mga Tuldok",
             "patternCircuit": "Circuit",
@@ -4611,7 +4611,8 @@
             "hidePassword": "[NEEDS TRANSLATION] Hide password",
             "lastUsedToday": "[NEEDS TRANSLATION] Used today",
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago"
+            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "securityNote": "Account protektado ng pag-encrypt na Argon2id + AES-KW + AES-256-GCM"
         }
     }
 }

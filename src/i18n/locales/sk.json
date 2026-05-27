@@ -2854,7 +2854,7 @@
             "unlock": "Odomknut",
             "unlocking": "Odomykanie...",
             "invalidPassword": "Neplatne heslo. Skuste to znova.",
-            "securityNote": "Vase data su chranene sifrovanim AES-256-GCM",
+            "securityNote": "Vase data su chranene sifrovanim Argon2id + AES-256-GCM",
             "patternCross": "Kriz",
             "patternDots": "Bodky",
             "patternCircuit": "Obvod",
@@ -4592,7 +4592,8 @@
             "hidePassword": "[NEEDS TRANSLATION] Hide password",
             "lastUsedToday": "[NEEDS TRANSLATION] Used today",
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago"
+            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "securityNote": "Účet chránený šifrovaním Argon2id + AES-KW + AES-256-GCM"
         }
     }
 }

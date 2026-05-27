@@ -2854,7 +2854,7 @@
             "unlock": "Atbloķēt",
             "unlocking": "Atbloķē...",
             "invalidPassword": "Nepareiza parole. Lūdzu mēģiniet vēlreiz.",
-            "securityNote": "Jūsu dati ir aizsargāti ar AES-256-GCM šifrēšanu",
+            "securityNote": "Jūsu dati ir aizsargāti ar Argon2id + AES-256-GCM šifrēšanu",
             "patternCross": "Krusts",
             "patternDots": "Punkti",
             "patternCircuit": "Shēma",
@@ -4592,7 +4592,8 @@
             "hidePassword": "[NEEDS TRANSLATION] Hide password",
             "lastUsedToday": "[NEEDS TRANSLATION] Used today",
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago"
+            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "securityNote": "Konts ir aizsargāts ar Argon2id + AES-KW + AES-256-GCM šifrēšanu"
         }
     }
 }

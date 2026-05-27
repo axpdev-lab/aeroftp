@@ -2854,7 +2854,7 @@
             "unlock": "Разблокировать",
             "unlocking": "Разблокировка...",
             "invalidPassword": "Неверный пароль. Попробуйте ещё раз.",
-            "securityNote": "Ваши данные защищены шифрованием AES-256-GCM",
+            "securityNote": "Ваши данные защищены шифрованием Argon2id + AES-256-GCM",
             "patternCross": "Крест",
             "patternDots": "Точки",
             "patternCircuit": "Схема",
@@ -4592,7 +4592,8 @@
             "hidePassword": "[NEEDS TRANSLATION] Hide password",
             "lastUsedToday": "[NEEDS TRANSLATION] Used today",
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago"
+            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "securityNote": "Аккаунт защищён шифрованием Argon2id + AES-KW + AES-256-GCM"
         }
     }
 }

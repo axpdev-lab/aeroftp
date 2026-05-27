@@ -2854,7 +2854,7 @@
             "unlock": "განბლოკვა",
             "unlocking": "განბლოკვა...",
             "invalidPassword": "არასწორი პაროლი. სცადეთ თავიდან.",
-            "securityNote": "თქვენი მონაცემები დაცულია AES-256-GCM დაშიფვრით",
+            "securityNote": "თქვენი მონაცემები დაცულია Argon2id + AES-256-GCM დაშიფვრით",
             "patternCross": "ჯვარი",
             "patternDots": "წერტილები",
             "patternCircuit": "წრედი",
@@ -4592,7 +4592,8 @@
             "hidePassword": "[NEEDS TRANSLATION] Hide password",
             "lastUsedToday": "[NEEDS TRANSLATION] Used today",
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago"
+            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "securityNote": "ანგარიში დაცულია Argon2id + AES-KW + AES-256-GCM დაშიფვრით"
         }
     }
 }

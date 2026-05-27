@@ -2854,7 +2854,7 @@
             "unlock": "Odblokuj",
             "unlocking": "Odblokowywanie...",
             "invalidPassword": "Nieprawidłowe hasło. Spróbuj ponownie.",
-            "securityNote": "Twoje dane są chronione szyfrowaniem AES-256-GCM",
+            "securityNote": "Twoje dane są chronione szyfrowaniem Argon2id + AES-256-GCM",
             "patternCross": "Krzyż",
             "patternDots": "Kropki",
             "patternCircuit": "Obwód",
@@ -4592,7 +4592,8 @@
             "hidePassword": "[NEEDS TRANSLATION] Hide password",
             "lastUsedToday": "[NEEDS TRANSLATION] Used today",
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago"
+            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "securityNote": "Konto chronione szyfrowaniem Argon2id + AES-KW + AES-256-GCM"
         }
     }
 }

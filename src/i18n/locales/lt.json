@@ -2854,7 +2854,7 @@
             "unlock": "Atrakinti",
             "unlocking": "Atrakinamas...",
             "invalidPassword": "Neteisingas slaptažodis. Prašome bandyti dar kartą.",
-            "securityNote": "Jūsų duomenys apsaugoti AES-256-GCM šifravimu",
+            "securityNote": "Jūsų duomenys apsaugoti Argon2id + AES-256-GCM šifravimu",
             "patternCross": "Kryžius",
             "patternDots": "Taškai",
             "patternCircuit": "Grandinė",
@@ -4592,7 +4592,8 @@
             "hidePassword": "[NEEDS TRANSLATION] Hide password",
             "lastUsedToday": "[NEEDS TRANSLATION] Used today",
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago"
+            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "securityNote": "Paskyra apsaugota Argon2id + AES-KW + AES-256-GCM šifravimu"
         }
     }
 }

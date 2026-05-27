@@ -2854,7 +2854,7 @@
             "unlock": "Buka Kunci",
             "unlocking": "Membuka Kunci...",
             "invalidPassword": "Kata sandi tidak valid. Coba lagi.",
-            "securityNote": "Data Anda dilindungi oleh enkripsi AES-256-GCM",
+            "securityNote": "Data Anda dilindungi oleh enkripsi Argon2id + AES-256-GCM",
             "patternCross": "Salib",
             "patternDots": "Titik",
             "patternCircuit": "Sirkuit",
@@ -4592,7 +4592,8 @@
             "hidePassword": "[NEEDS TRANSLATION] Hide password",
             "lastUsedToday": "[NEEDS TRANSLATION] Used today",
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago"
+            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "securityNote": "Akun dilindungi dengan enkripsi Argon2id + AES-KW + AES-256-GCM"
         }
     }
 }
