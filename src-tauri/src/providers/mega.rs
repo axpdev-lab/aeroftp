@@ -55,6 +55,25 @@ impl MegaCmdProvider {
         super::mega_df::resolve_mega_cmd(cmd)
     }
 
+    /// Normalize a local filesystem path before passing it as an argument to
+    /// MEGAcmd's CLI. On Windows the frontend sends paths with `/` separators
+    /// (`get_local_files` normalizes for the UI); MEGAcmd internally resolves
+    /// the argument to a `\\?\`-prefixed verbatim path, and verbatim paths
+    /// reject `/` as a separator. The resulting "Unable to open local path:
+    /// \\?\C:/Users/...\file" error (issue #263) goes away as soon as the
+    /// separators are flipped to `\` before invoking `mega-put`/`mega-get`.
+    /// On POSIX the separator is already `/` natively, so this is a no-op.
+    fn normalize_local_path_for_cli(l: &str) -> String {
+        #[cfg(windows)]
+        {
+            l.replace('/', "\\")
+        }
+        #[cfg(not(windows))]
+        {
+            l.to_string()
+        }
+    }
+
     /// Classify MEGAcmd stderr into typed ProviderError (ERR-01).
     fn classify_mega_error(stderr: &str) -> ProviderError {
         let lower = stderr.to_lowercase();
@@ -602,8 +621,11 @@ impl StorageProvider for MegaCmdProvider {
         }
 
         // Download file (--resume removed: not supported by all MEGAcmd versions)
+        // Issue #263: normalize `/` → `\` on Windows so the verbatim-path
+        // resolution inside MEGAcmd does not produce `\\?\C:/...` (invalid).
+        let local_arg = Self::normalize_local_path_for_cli(l);
         match self
-            .run_mega_cmd_with_reauth("mega-get", &[&abs_remote, l])
+            .run_mega_cmd_with_reauth("mega-get", &[&abs_remote, &local_arg])
             .await
         {
             Ok(out) => {
@@ -695,7 +717,10 @@ impl StorageProvider for MegaCmdProvider {
             cb(0, 0);
         }
 
-        self.run_mega_cmd_with_reauth("mega-put", &[l, &abs_remote])
+        // Issue #263: normalize `/` → `\` on Windows so the verbatim-path
+        // resolution inside MEGAcmd does not produce `\\?\C:/...` (invalid).
+        let local_arg = Self::normalize_local_path_for_cli(l);
+        self.run_mega_cmd_with_reauth("mega-put", &[&local_arg, &abs_remote])
             .await
             .map_err(|e| ProviderError::TransferFailed(format!("Upload failed: {}", e)))?;
 
@@ -725,15 +750,19 @@ impl StorageProvider for MegaCmdProvider {
 
     async fn rmdir(&mut self, p: &str) -> Result<(), ProviderError> {
         let p = self.resolve_path(p);
-        // Soft delete: -r for recursive, moves to rubbish bin
-        self.run_mega_cmd_with_reauth("mega-rm", &["-r", &p])
+        // Issue #263: `-f` is mandatory in the one-shot wrapper path. Without
+        // it MEGAcmd's recursive `rm` prompts "Are you sure?" on stdin, the
+        // wrapper has no tty/stdin attached, and the call hangs until the
+        // 60s outer timeout in `run_mega_cmd` kills it.
+        self.run_mega_cmd_with_reauth("mega-rm", &["-r", "-f", &p])
             .await?;
         Ok(())
     }
 
     async fn rmdir_recursive(&mut self, p: &str) -> Result<(), ProviderError> {
         let p = self.resolve_path(p);
-        self.run_mega_cmd_with_reauth("mega-rm", &["-r", &p])
+        // Issue #263: see `rmdir` above for the rationale on `-f`.
+        self.run_mega_cmd_with_reauth("mega-rm", &["-r", "-f", &p])
             .await?;
         Ok(())
     }
