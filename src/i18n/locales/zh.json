@@ -67,7 +67,8 @@
             "check": "检查",
             "selectAll": "Select All",
             "required": "必填",
-            "duplicate": "复制"
+            "duplicate": "复制",
+            "current": "[NEEDS TRANSLATION] current"
         },
         "connection": {
             "title": "连接到服务器",
@@ -422,7 +423,8 @@
             "azureTrashTitle": "Azure Blob 回收站",
             "lockRcloneCrypt": "锁定 Rclone Crypt 覆盖层",
             "unlockRcloneCrypt": "解密为 Rclone Crypt 覆盖层…",
-            "openAsAeroVaultOverlay": "作为 AeroVault Overlay 打开"
+            "openAsAeroVaultOverlay": "作为 AeroVault Overlay 打开",
+            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
         },
         "transfer": {
             "transferring": "传输中...",
@@ -4601,6 +4603,10 @@
             "lastUsedYesterday": "昨天使用",
             "lastUsedDaysAgo": "{days} 天前使用",
             "securityNote": "账户受 Argon2id + AES-KW + AES-256-GCM 加密保护"
+        },
+        "opendrive": {
+            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
+            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
         }
     }
 }

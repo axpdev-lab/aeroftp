@@ -67,7 +67,8 @@
             "check": "Check",
             "selectAll": "Select All",
             "required": "privalomas",
-            "duplicate": "Dubliuoti"
+            "duplicate": "Dubliuoti",
+            "current": "[NEEDS TRANSLATION] current"
         },
         "connection": {
             "title": "Prisijungti prie serverio",
@@ -422,7 +423,8 @@
             "azureTrashTitle": "Azure Blob šiukšliadėžė",
             "lockRcloneCrypt": "Užrakinti Rclone Crypt sluoksnį",
             "unlockRcloneCrypt": "Iššifruoti kaip Rclone Crypt sluoksnį…",
-            "openAsAeroVaultOverlay": "Atidaryti kaip AeroVault Overlay"
+            "openAsAeroVaultOverlay": "Atidaryti kaip AeroVault Overlay",
+            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
         },
         "transfer": {
             "transferring": "Perduodama...",
@@ -4601,6 +4603,10 @@
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
             "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
             "securityNote": "Paskyra apsaugota Argon2id + AES-KW + AES-256-GCM šifravimu"
+        },
+        "opendrive": {
+            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
+            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
         }
     }
 }

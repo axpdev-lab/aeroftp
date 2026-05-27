@@ -67,7 +67,8 @@
             "check": "Check",
             "selectAll": "Select All",
             "required": "প্রয়োজনীয়",
-            "duplicate": "ডুপ্লিকেট"
+            "duplicate": "ডুপ্লিকেট",
+            "current": "[NEEDS TRANSLATION] current"
         },
         "connection": {
             "title": "সার্ভারে সংযোগ করুন",
@@ -422,7 +423,8 @@
             "azureTrashTitle": "Azure Blob ট্র্যাশ",
             "lockRcloneCrypt": "Rclone Crypt ওভারলে লক করুন",
             "unlockRcloneCrypt": "Rclone Crypt ওভারলে হিসাবে ডিক্রিপ্ট করুন…",
-            "openAsAeroVaultOverlay": "AeroVault Overlay হিসেবে খুলুন"
+            "openAsAeroVaultOverlay": "AeroVault Overlay হিসেবে খুলুন",
+            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
         },
         "transfer": {
             "transferring": "স্থানান্তর করা হচ্ছে...",
@@ -4601,6 +4603,10 @@
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
             "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
             "securityNote": "অ্যাকাউন্ট Argon2id + AES-KW + AES-256-GCM এনক্রিপশন দ্বারা সুরক্ষিত"
+        },
+        "opendrive": {
+            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
+            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
         }
     }
 }

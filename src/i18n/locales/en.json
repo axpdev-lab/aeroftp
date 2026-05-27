@@ -1006,6 +1006,7 @@
             "copied": "Copied",
             "copy": "Copy",
             "create": "Create",
+            "current": "current",
             "cut": "Cut",
             "dark": "Dark",
             "delete": "Delete",
@@ -1369,6 +1370,7 @@
             "pathCopied": "Path copied",
             "permissions": "Permissions",
             "preview": "Preview",
+            "privacyEllipsis": "Privacy...",
             "properties": "Properties",
             "refresh": "Refresh",
             "selectAll": "Select All",
@@ -2030,6 +2032,10 @@
             "read": "Read",
             "title": "Permissions",
             "write": "Write"
+        },
+        "opendrive": {
+            "privacyTitle": "OpenDrive Privacy",
+            "privacyUpdated": "OpenDrive privacy updated"
         },
         "preview": {
             "audio": {

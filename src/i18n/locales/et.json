@@ -67,7 +67,8 @@
             "check": "Check",
             "selectAll": "Select All",
             "required": "nõutav",
-            "duplicate": "Dubleeri"
+            "duplicate": "Dubleeri",
+            "current": "[NEEDS TRANSLATION] current"
         },
         "connection": {
             "title": "Ühenda serveriga",
@@ -422,7 +423,8 @@
             "azureTrashTitle": "Azure Blob prügikast",
             "lockRcloneCrypt": "Lukusta Rclone Crypt kate",
             "unlockRcloneCrypt": "Dekrüpteeri Rclone Crypt kattena…",
-            "openAsAeroVaultOverlay": "Ava AeroVault Overlay-na"
+            "openAsAeroVaultOverlay": "Ava AeroVault Overlay-na",
+            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
         },
         "transfer": {
             "transferring": "Ülekanne...",
@@ -4601,6 +4603,10 @@
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
             "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
             "securityNote": "Konto on kaitstud Argon2id + AES-KW + AES-256-GCM krüpteeringuga"
+        },
+        "opendrive": {
+            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
+            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
         }
     }
 }

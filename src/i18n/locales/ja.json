@@ -67,7 +67,8 @@
             "check": "確認",
             "selectAll": "Select All",
             "required": "必須",
-            "duplicate": "複製"
+            "duplicate": "複製",
+            "current": "[NEEDS TRANSLATION] current"
         },
         "connection": {
             "title": "サーバーに接続",
@@ -422,7 +423,8 @@
             "azureTrashTitle": "Azure Blob ゴミ箱",
             "lockRcloneCrypt": "Rclone Crypt オーバーレイをロック",
             "unlockRcloneCrypt": "Rclone Crypt オーバーレイとして復号…",
-            "openAsAeroVaultOverlay": "AeroVault Overlay として開く"
+            "openAsAeroVaultOverlay": "AeroVault Overlay として開く",
+            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
         },
         "transfer": {
             "transferring": "転送中...",
@@ -4601,6 +4603,10 @@
             "lastUsedYesterday": "昨日使用",
             "lastUsedDaysAgo": "{days}日前に使用",
             "securityNote": "アカウントは Argon2id + AES-KW + AES-256-GCM 暗号化で保護されています"
+        },
+        "opendrive": {
+            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
+            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
         }
     }
 }

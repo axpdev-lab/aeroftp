@@ -67,7 +67,8 @@
             "check": "Check",
             "selectAll": "Select All",
             "required": "bắt buộc",
-            "duplicate": "Nhân bản"
+            "duplicate": "Nhân bản",
+            "current": "[NEEDS TRANSLATION] current"
         },
         "connection": {
             "title": "Kết nối đến máy chủ",
@@ -422,7 +423,8 @@
             "azureTrashTitle": "Azure Blob Thùng rác",
             "lockRcloneCrypt": "Khóa lớp phủ Rclone Crypt",
             "unlockRcloneCrypt": "Giải mã làm lớp phủ Rclone Crypt…",
-            "openAsAeroVaultOverlay": "Mở dưới dạng AeroVault Overlay"
+            "openAsAeroVaultOverlay": "Mở dưới dạng AeroVault Overlay",
+            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
         },
         "transfer": {
             "transferring": "Đang truyền...",
@@ -4601,6 +4603,10 @@
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
             "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
             "securityNote": "Tài khoản được bảo vệ bằng mã hóa Argon2id + AES-KW + AES-256-GCM"
+        },
+        "opendrive": {
+            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
+            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
         }
     }
 }
