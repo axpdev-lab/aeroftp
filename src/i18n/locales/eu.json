@@ -2854,7 +2854,7 @@
             "unlock": "Desblokeatu",
             "unlocking": "Desblokeatzen...",
             "invalidPassword": "Pasahitz baliogabea. Saiatu berriro mesedez.",
-            "securityNote": "Zure datuak AES-256-GCM enkriptatzearekin babestuta daude",
+            "securityNote": "Zure datuak Argon2id + AES-256-GCM enkriptatzearekin babestuta daude",
             "patternCross": "Gurutzea",
             "patternDots": "Puntuak",
             "patternCircuit": "Zirkuitua",
@@ -4588,6 +4588,31 @@
                 "colAction": "Ekintza"
             },
             "launcherScheduler": "Antolatzailea"
+        },
+        "accountLock": {
+            "title": "[NEEDS TRANSLATION] Choose an account",
+            "signInAs": "[NEEDS TRANSLATION] Sign in as {name}",
+            "activeBadge": "[NEEDS TRANSLATION] Last used",
+            "passphraseProtected": "[NEEDS TRANSLATION] Password protected",
+            "unlocked": "[NEEDS TRANSLATION] Active session",
+            "openAccount": "[NEEDS TRANSLATION] Open",
+            "newUser": "[NEEDS TRANSLATION] New user",
+            "newUserHint": "[NEEDS TRANSLATION] Create another account",
+            "manageUsers": "[NEEDS TRANSLATION] Manage users",
+            "accountPasswordLabel": "[NEEDS TRANSLATION] Account password",
+            "backToList": "[NEEDS TRANSLATION] Back to accounts",
+            "unlockPlaceholder": "[NEEDS TRANSLATION] Enter account password",
+            "unlock": "[NEEDS TRANSLATION] Unlock",
+            "unlocking": "[NEEDS TRANSLATION] Unlocking...",
+            "wrongPassphrase": "[NEEDS TRANSLATION] Wrong account password. Please try again.",
+            "lockedOut": "[NEEDS TRANSLATION] Too many attempts. This account is temporarily locked.",
+            "lockedOutCountdown": "[NEEDS TRANSLATION] Try again in {seconds}s.",
+            "showPassword": "[NEEDS TRANSLATION] Show password",
+            "hidePassword": "[NEEDS TRANSLATION] Hide password",
+            "lastUsedToday": "[NEEDS TRANSLATION] Used today",
+            "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
+            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "securityNote": "Kontua Argon2id + AES-KW + AES-256-GCM enkriptaziorekin babestuta"
         }
     }
 }

@@ -2819,7 +2819,7 @@
             "unlock": "解除",
             "unlocking": "解除中...",
             "invalidPassword": "パスワードが無効です。もう一度お試しください。",
-            "securityNote": "データはAES-256-GCMで保護されています",
+            "securityNote": "データはArgon2id + AES-256-GCMで保護されています",
             "patternCross": "クロス",
             "patternDots": "ドット",
             "patternCircuit": "回路",
@@ -4569,6 +4569,31 @@
                 "colAction": "操作"
             },
             "launcherScheduler": "スケジューラ"
+        },
+        "accountLock": {
+            "title": "アカウントを選択",
+            "signInAs": "{name} としてサインイン",
+            "activeBadge": "最終使用",
+            "passphraseProtected": "パスワード保護あり",
+            "unlocked": "アクティブセッション",
+            "openAccount": "開く",
+            "newUser": "新しいユーザー",
+            "newUserHint": "別のアカウントを作成",
+            "manageUsers": "ユーザーを管理",
+            "accountPasswordLabel": "アカウントパスワード",
+            "backToList": "アカウント一覧に戻る",
+            "unlockPlaceholder": "アカウントパスワードを入力",
+            "unlock": "ロック解除",
+            "unlocking": "ロック解除中...",
+            "wrongPassphrase": "アカウントパスワードが正しくありません。再度お試しください。",
+            "lockedOut": "試行回数が多すぎます。このアカウントは一時的にロックされています。",
+            "lockedOutCountdown": "{seconds}秒後に再試行してください。",
+            "showPassword": "パスワードを表示",
+            "hidePassword": "パスワードを非表示",
+            "lastUsedToday": "今日使用",
+            "lastUsedYesterday": "昨日使用",
+            "lastUsedDaysAgo": "{days}日前に使用",
+            "securityNote": "アカウントは Argon2id + AES-KW + AES-256-GCM 暗号化で保護されています"
         }
     }
 }

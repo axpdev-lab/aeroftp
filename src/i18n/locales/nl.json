@@ -2854,7 +2854,7 @@
             "unlock": "Ontgrendelen",
             "unlocking": "Ontgrendelen...",
             "invalidPassword": "Ongeldig wachtwoord. Probeer het opnieuw.",
-            "securityNote": "Uw gegevens zijn beschermd met AES-256-GCM-versleuteling",
+            "securityNote": "Uw gegevens zijn beschermd met Argon2id + AES-256-GCM-versleuteling",
             "patternCross": "Kruis",
             "patternDots": "Punten",
             "patternCircuit": "Circuit",
@@ -4569,6 +4569,31 @@
                 "colAction": "Actie"
             },
             "launcherScheduler": "Planner"
+        },
+        "accountLock": {
+            "title": "Kies een account",
+            "signInAs": "Inloggen als {name}",
+            "activeBadge": "Laatst gebruikt",
+            "passphraseProtected": "Wachtwoord beveiligd",
+            "unlocked": "Actieve sessie",
+            "openAccount": "Openen",
+            "newUser": "Nieuwe gebruiker",
+            "newUserHint": "Nog een account aanmaken",
+            "manageUsers": "Gebruikers beheren",
+            "accountPasswordLabel": "Accountwachtwoord",
+            "backToList": "Terug naar de accounts",
+            "unlockPlaceholder": "Voer het accountwachtwoord in",
+            "unlock": "Ontgrendelen",
+            "unlocking": "Ontgrendelen...",
+            "wrongPassphrase": "Verkeerd accountwachtwoord. Probeer het opnieuw.",
+            "lockedOut": "Te veel pogingen. Dit account is tijdelijk vergrendeld.",
+            "lockedOutCountdown": "Probeer het opnieuw over {seconds}s.",
+            "showPassword": "Wachtwoord tonen",
+            "hidePassword": "Wachtwoord verbergen",
+            "lastUsedToday": "Vandaag gebruikt",
+            "lastUsedYesterday": "Gisteren gebruikt",
+            "lastUsedDaysAgo": "{days} dagen geleden gebruikt",
+            "securityNote": "Account beschermd met Argon2id + AES-KW + AES-256-GCM-versleuteling"
         }
     }
 }

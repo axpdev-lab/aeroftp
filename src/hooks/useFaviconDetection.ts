@@ -3,8 +3,8 @@
 
 import { useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import type { FtpSession, ServerProfile } from '../types';
-import { secureGetWithFallback } from '../utils/secureStorage';
+import type { FtpSession } from '../types';
+import { loadSavedServerProfiles } from '../utils/serverProfileStore';
 import { logger } from '../utils/logger';
 
 // FTP/FTPS use ftp_manager (suppaftp) → detect_server_favicon
@@ -63,14 +63,12 @@ export function useFaviconDetection(
         // Build search paths: initialPath (project root) → current path → /
         const searchPaths: string[] = [];
         try {
-          const servers = await secureGetWithFallback<ServerProfile[]>('server_profiles', 'aeroftp-saved-servers');
-          if (servers) {
-            const match = servers.find(s =>
-              s.id === session.serverId || s.name === session.serverId || s.host === session.serverId
-            );
-            if (match?.initialPath) {
-              searchPaths.push(match.initialPath);
-            }
+          const servers = await loadSavedServerProfiles();
+          const match = servers.find(s =>
+            s.id === session.serverId || s.name === session.serverId || s.host === session.serverId
+          );
+          if (match?.initialPath) {
+            searchPaths.push(match.initialPath);
           }
         } catch { /* ignore */ }
 

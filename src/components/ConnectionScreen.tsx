@@ -26,15 +26,12 @@ import { AlertDialog } from './Dialogs';
 import { IconPickerDialog } from './IconPickerDialog';
 import { getProviderById, resolveS3Endpoint, ProviderConfig } from '../providers';
 import { getMegaConnectionMode, normalizeMegaOptions } from '../utils/providerConnectionMeta';
-import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStorage';
+import { loadSavedServerProfiles, storeSavedServerProfiles } from '../utils/serverProfileStore';
 import { getStorageDedupKey } from '../utils/storageDedup';
 import { formatBytes, parseHumanSize } from '../utils/formatters';
 import { useActivityLog } from '../hooks/useActivityLog';
 import { logger } from '../utils/logger';
 import { Checkbox } from './ui/Checkbox';
-
-// Storage key for saved servers (same as SavedServers component)
-const SERVERS_STORAGE_KEY = 'aeroftp-saved-servers';
 
 // Protocols that can be switched between when editing a saved connection
 const SWITCHABLE_PROTOCOLS: ProviderType[] = ['ftp', 'ftps', 'sftp'];
@@ -572,24 +569,19 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
     // Load servers when opening export/import dialog
     useEffect(() => {
-        if (showExportImport) {
-            // Sync fallback first
-            try {
-                const stored = localStorage.getItem(SERVERS_STORAGE_KEY);
-                if (stored) setServers(JSON.parse(stored));
-            } catch { /* ignore */ }
-            // Then try vault
-            (async () => {
-                const vaultServers = await secureGetWithFallback<ServerProfile[]>('server_profiles', SERVERS_STORAGE_KEY);
-                if (vaultServers && vaultServers.length > 0) setServers(vaultServers);
-            })();
-        }
+        if (!showExportImport) return;
+        let cancelled = false;
+        (async () => {
+            const vaultServers = await loadSavedServerProfiles();
+            if (!cancelled) setServers(vaultServers);
+        })();
+        return () => { cancelled = true; };
     }, [showExportImport]);
 
     useEffect(() => {
         let cancelled = false;
         (async () => {
-            const loaded = await secureGetWithFallback<ServerProfile[]>('server_profiles', SERVERS_STORAGE_KEY) || [];
+            const loaded = await loadSavedServerProfiles();
             if (!cancelled) setSavedProfilesForNaming(loaded);
         })();
         return () => { cancelled = true; };
@@ -853,8 +845,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             delete optionsToSave.two_factor_code;
         }
 
-        // Try vault first, fallback to localStorage
-        const existingServers = await secureGetWithFallback<ServerProfile[]>('server_profiles', SERVERS_STORAGE_KEY) || [];
+        const existingServers = await loadSavedServerProfiles();
 
         if (editingProfileId) {
             const credentialStored = await tryStoreCredential(`server_${editingProfileId}`, connectionParams.password);
@@ -909,7 +900,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 return s;
             });
 
-            await secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, updatedServers).catch(() => { });
+            await storeSavedServerProfiles(updatedServers).catch(() => { });
             setSavedServersUpdate(Date.now());
             const savedServer = updatedServers.find((s) => s.id === editingProfileId);
             if (savedServer) {
@@ -970,7 +961,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             };
 
             const newServers = [...existingServers, newServer];
-            await secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, newServers).catch(() => { });
+            await storeSavedServerProfiles(newServers).catch(() => { });
             setSavedServersUpdate(Date.now());
             logActivity(
                 'PROFILE_SAVE',
@@ -1085,7 +1076,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const handleSaveAsNew = async () => {
         if (!protocol || !editingProfileId) return;
         // Validate name is different
-        const existingServers = await secureGetWithFallback<ServerProfile[]>('server_profiles', SERVERS_STORAGE_KEY) || [];
+        const existingServers = await loadSavedServerProfiles();
         const originalServer = existingServers.find((s: ServerProfile) => s.id === editingProfileId);
         const newName = connectionName || connectionParams.server || protocol;
         // When the operator switched mode in edit (issue #215), the new
@@ -1168,7 +1159,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         } else {
             newServers.push(newServer);
         }
-        await secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, newServers).catch(() => { });
+        await storeSavedServerProfiles(newServers).catch(() => { });
         setSavedServersUpdate(Date.now());
 
         // Reset form
@@ -1191,7 +1182,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const handleConvertMode = async () => {
         if (!protocol || !editingProfileId || !modeChanged) return;
 
-        const existingServers = await secureGetWithFallback<ServerProfile[]>('server_profiles', SERVERS_STORAGE_KEY) || [];
+        const existingServers = await loadSavedServerProfiles();
         const originalIdx = existingServers.findIndex(s => s.id === editingProfileId);
         const originalServer = originalIdx >= 0 ? existingServers[originalIdx] : null;
         if (!originalServer) return;
@@ -1254,7 +1245,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // Replace in slot: remove original, insert new at the same index
         const newServers = [...existingServers];
         newServers.splice(originalIdx, 1, newServer);
-        await secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, newServers).catch(() => { });
+        await storeSavedServerProfiles(newServers).catch(() => { });
         setSavedServersUpdate(Date.now());
 
         // 10s Undo toast (via window event so we don't need to plumb a
@@ -1269,7 +1260,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 action: {
                     label: t('connection.undo'),
                     onClick: async () => {
-                        await secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, snapshotServers).catch(() => { });
+                        await storeSavedServerProfiles(snapshotServers).catch(() => { });
                         setSavedServersUpdate(Date.now());
                         window.dispatchEvent(new CustomEvent('aeroftp-toast', {
                             detail: {
@@ -2330,7 +2321,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 onConnectionNameChange={setConnectionName}
                                 onConnected={async (displayName) => {
                                     if (saveConnection) {
-                                        const existingServers = await secureGetWithFallback<ServerProfile[]>('server_profiles', SERVERS_STORAGE_KEY) || [];
+                                        const existingServers = await loadSavedServerProfiles();
                                         const saveName = connectionName || displayName;
                                         const duplicate = existingServers.find(s => s.name === saveName && s.protocol === protocol);
                                         if (!duplicate) {
@@ -2346,7 +2337,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 localInitialPath: quickConnectDirs.localDir,
                                             };
                                             const newServers = [...existingServers, newServer];
-                                            await secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, newServers).catch(() => { });
+                                            await storeSavedServerProfiles(newServers).catch(() => { });
                                         }
                                     }
                                     onConnect();
@@ -2366,7 +2357,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 onConnected={async (displayName, extraOptions) => {
                                     // Save OAuth connection if requested
                                     if (saveConnection) {
-                                        const existingServers = await secureGetWithFallback<ServerProfile[]>('server_profiles', SERVERS_STORAGE_KEY) || [];
+                                        const existingServers = await loadSavedServerProfiles();
                                         const saveName = connectionName || displayName;
                                         // Prefer editingProfileId match to support rename (user changed the name in edit mode)
                                         const editTarget = editingProfileId ? existingServers.find(s => s.id === editingProfileId) : undefined;
@@ -2385,7 +2376,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 ...(extraOptions?.region && { options: { region: extraOptions.region } }),
                                             };
                                             const newServers = [...existingServers, newServer];
-                                            await secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, newServers).catch(() => { });
+                                            await storeSavedServerProfiles(newServers).catch(() => { });
                                         } else {
                                             const updated = existingServers.map(s =>
                                                 s.id === duplicate.id ? {
@@ -2396,7 +2387,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     ...(extraOptions?.region && { options: { ...s.options, region: extraOptions.region } }),
                                                 } : s
                                             );
-                                            await secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, updated).catch(() => { });
+                                            await storeSavedServerProfiles(updated).catch(() => { });
                                         }
                                     }
                                     onConnect();
@@ -4972,16 +4963,12 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 <ExportImportDialog
                     servers={servers}
                     onImport={async (newServers) => {
-                        // Read ground truth from localStorage to avoid stale state
-                        let currentServers: ServerProfile[] = [];
-                        try {
-                            const stored = localStorage.getItem(SERVERS_STORAGE_KEY);
-                            if (stored) currentServers = JSON.parse(stored);
-                        } catch { /* fallback */ }
+                        // Read ground truth from the partition-aware vault to avoid stale state
+                        let currentServers = await loadSavedServerProfiles();
                         if (currentServers.length === 0) currentServers = servers;
                         const updated = [...currentServers, ...newServers];
                         setServers(updated);
-                        await secureStoreAndClean('server_profiles', SERVERS_STORAGE_KEY, updated).catch(() => { });
+                        await storeSavedServerProfiles(updated).catch(() => { });
                         setShowExportImport(false);
                         setSavedServersUpdate(Date.now());
                     }}

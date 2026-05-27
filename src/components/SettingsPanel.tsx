@@ -30,6 +30,8 @@ import { CustomIconsManager } from './CustomIconsManager';
 import { useTranslation } from '../i18n';
 import { logger } from '../utils/logger';
 import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStorage';
+import { dispatchMasterPasswordChanged } from '../utils/masterPasswordEvents';
+import { loadSavedServerProfiles, storeSavedServerProfiles } from '../utils/serverProfileStore';
 import { getGitHubConnectionBadge, getMegaConnectionBadge, getMegaConnectionMode, normalizeMegaOptions } from '../utils/providerConnectionMeta';
 import { maskCredential } from '../utils/maskCredential';
 import {
@@ -172,7 +174,6 @@ const FONT_PRESETS = [
 const getSelectedFontPreset = (fontFamily: string) => {
     return FONT_PRESETS.find((preset) => preset.value === fontFamily);
 };
-const SERVERS_KEY = 'aeroftp-saved-servers';
 const OAUTH_SETTINGS_KEY = 'aeroftp_oauth_settings';
 
 interface OAuthSettings {
@@ -679,11 +680,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                         secureStoreAndClean(SETTINGS_VAULT_KEY, SETTINGS_KEY, normalizedSettings).catch(() => {});
                     }
 
-                    // Load servers: sync fallback first, then try vault
-                    const savedServers = localStorage.getItem(SERVERS_KEY);
-                    if (savedServers) setServers(JSON.parse(savedServers));
-                    const vaultServers = await secureGetWithFallback<ServerProfile[]>('server_profiles', SERVERS_KEY);
-                    if (vaultServers && vaultServers.length > 0) setServers(vaultServers);
+                    // Load servers from the active user's vault partition.
+                    const vaultServers = await loadSavedServerProfiles();
+                    setServers(vaultServers);
 
                     // Load OAuth settings from secure credential store (fallback: localStorage)
                     const loadOAuthFromStore = async () => {
@@ -814,7 +813,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
             settings.introHubIconSize = clampIntroHubIconSize(settings.introHubIconSize);
 
             await secureStoreAndClean(SETTINGS_VAULT_KEY, SETTINGS_KEY, settings);
-            secureStoreAndClean('server_profiles', SERVERS_KEY, servers).catch(() => {});
+            storeSavedServerProfiles(servers).catch(() => {});
             // Save OAuth secrets to secure credential store sequentially (avoid vault write races)
             const providers = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'zohoworkdrive', 'yandexdisk'] as const;
             for (const p of providers) {
@@ -2713,7 +2712,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                         };
                                                                         const updatedServers = [...servers, newServer];
                                                                         setServers(updatedServers);
-                                                                        secureStoreAndClean('server_profiles', SERVERS_KEY, updatedServers).catch(() => {});
+                                                                        storeSavedServerProfiles(updatedServers).catch(() => {});
                                                                         setEditingServer(null);
                                                                         setShowEditPassword(false);
                                                                         setHasChanges(true);
@@ -2762,7 +2761,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                     }
                                                                     setServers(updatedServers);
                                                                     // Persist immediately so changes aren't lost if user closes without Save Changes
-                                                                    secureStoreAndClean('server_profiles', SERVERS_KEY, updatedServers).catch(() => {});
+                                                                    storeSavedServerProfiles(updatedServers).catch(() => {});
                                                                     setEditingServer(null);
                                                                     setShowEditPassword(false);
                                                                     setHasChanges(true);
@@ -3956,6 +3955,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     </button>
                                                 </div>
                                                 <p className="mt-1 text-xs text-gray-500">{t('settings.passwordRequirements')}</p>
+                                                <div className="mt-2">
+                                                    <PasswordStrengthBar password={newMasterPassword} />
+                                                </div>
                                             </div>
 
                                             <div>
@@ -4050,6 +4052,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                 is_locked: status.is_locked,
                                                                 timeout_seconds: Number(status.timeout_seconds),
                                                             });
+                                                            dispatchMasterPasswordChanged({
+                                                                enabled: status.master_mode,
+                                                                isLocked: status.is_locked,
+                                                                timeoutSeconds: Number(status.timeout_seconds),
+                                                            });
                                                             // Clear form
                                                             setNewMasterPassword('');
                                                             setConfirmMasterPassword('');
@@ -4130,6 +4137,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                     is_set: status.master_mode,
                                                                     is_locked: status.is_locked,
                                                                     timeout_seconds: Number(status.timeout_seconds),
+                                                                });
+                                                                dispatchMasterPasswordChanged({
+                                                                    enabled: status.master_mode,
+                                                                    isLocked: status.is_locked,
+                                                                    timeoutSeconds: Number(status.timeout_seconds),
                                                                 });
                                                                 setCurrentMasterPassword('');
                                                                 setMasterPasswordSuccess(t('settings.passwordRemoved'));
@@ -4759,13 +4771,18 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                             /* non-critical */
                                                                         }
 
-                                                                        // Reload server profiles from vault into localStorage + state
+                                                                        // Reload server profiles from the imported keystore into the
+                                                                        // active user's vault partition + state. The keystore import
+                                                                        // restores the legacy `config_server_profiles` blob shared
+                                                                        // across users; storeSavedServerProfiles routes the same data
+                                                                        // through the partition layer so it lands under the active
+                                                                        // user id. P2 reworks the wizard end-to-end.
                                                                         try {
                                                                             const profilesJson = await invoke<string>('get_credential', { account: 'config_server_profiles' });
                                                                             if (profilesJson) {
                                                                                 const importedProfiles = JSON.parse(profilesJson) as ServerProfile[];
                                                                                 if (Array.isArray(importedProfiles) && importedProfiles.length > 0) {
-                                                                                    localStorage.setItem(SERVERS_KEY, JSON.stringify(importedProfiles));
+                                                                                    await storeSavedServerProfiles(importedProfiles).catch(() => {});
                                                                                     setServers(importedProfiles);
                                                                                     onServersChanged?.();
                                                                                 }
@@ -4933,19 +4950,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
             {showExportImport && (
                 <ExportImportDialog
                     servers={servers}
-                    onImport={(newServers) => {
-                        // Read ground truth from localStorage to avoid stale state
-                        let currentServers: ServerProfile[] = [];
-                        try {
-                            const stored = localStorage.getItem(SERVERS_KEY);
-                            if (stored) currentServers = JSON.parse(stored);
-                        } catch {
-                            /* fallback */
-                        }
+                    onImport={async (newServers) => {
+                        // Read ground truth from the partition-aware vault to avoid stale state.
+                        let currentServers = await loadSavedServerProfiles();
                         if (currentServers.length === 0) currentServers = servers;
                         const updated = [...currentServers, ...newServers];
                         setServers(updated);
-                        secureStoreAndClean('server_profiles', SERVERS_KEY, updated).catch(() => {});
+                        await storeSavedServerProfiles(updated).catch(() => {});
                         setShowExportImport(false);
                         onServersChanged?.();
                     }}

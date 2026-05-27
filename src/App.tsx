@@ -229,6 +229,15 @@ import { FolderOverwriteDialog, FolderMergeAction } from './components/FolderOve
 import { BatchRenameDialog, BatchRenameFile } from './components/BatchRenameDialog';
 import { CyberToolsModal } from './components/CyberToolsModal';
 import { LockScreen } from './components/LockScreen';
+import { AccountLockScreen } from './components/AccountLockScreen';
+import {
+    ACCOUNT_LOCK_SCREEN_REQUESTED_EVENT,
+    getUnlockStatus,
+    initUserPartitions,
+    listUsers,
+    readUsersListCache,
+    writeUsersListCache,
+} from './utils/userPartitions';
 import KeystoreMigrationWizard from './components/KeystoreMigrationWizard';
 import { Checkbox } from './components/ui/Checkbox';
 import { FileVersionsDialog } from './components/FileVersionsDialog';
@@ -360,7 +369,7 @@ import { useIconTheme, getDefaultIconTheme } from './hooks/useIconTheme';
 import { getIconThemeProvider } from './utils/iconThemes';
 import { logger } from './utils/logger';
 import { initCspReporter } from './utils/cspReporter';
-import { secureGet, secureGetWithFallback, secureStoreAndClean } from './utils/secureStorage';
+import { secureGetWithFallback, secureStoreAndClean } from './utils/secureStorage';
 import {
   loadSavedServerProfiles,
   mergeSavedServerProfile,
@@ -372,6 +381,11 @@ import {
 import { maskCredential } from './utils/maskCredential';
 import { getOpenWithDefaultRoute } from './utils/openWithDefault';
 import { createLocalEndpoint, createRemoteEndpoint } from './utils/panelEndpoints';
+import {
+  MASTER_PASSWORD_CHANGED_EVENT,
+  dispatchMasterPasswordChanged,
+  type MasterPasswordChangedDetail,
+} from './utils/masterPasswordEvents';
 import { createUnifiedTransferPlan, UnifiedTransferPlan } from './utils/unifiedTransferPlanner';
 import { buildCrossProfileEntries, runCrossProfileTransfer } from './utils/crossProfileExecution';
 import { compareEntries, type CompareInputEntry, type CompareResult, type CompareResultEntry } from './utils/compareEndpoints';
@@ -518,6 +532,19 @@ const App: React.FC = () => {
   const [masterPasswordSet, setMasterPasswordSet] = useState(false);
   const [showMasterPasswordSetup, setShowMasterPasswordSetup] = useState(false);
   const [masterPasswordBootstrapMode, setMasterPasswordBootstrapMode] = useState(false);
+  const [vaultBootComplete, setVaultBootComplete] = useState(false);
+  // Initial state is hydrated from localStorage so the account picker can
+  // paint with zero flash when L1 (Master Password) is bypassed or absent.
+  // Cache write is gated on a successful IPC fetch, so we trust it.
+  const [accountLockState, setAccountLockState] = useState<'checking' | 'needed' | 'ready'>(() => {
+    try {
+      const cached = readUsersListCache();
+      if (cached && cached.length > 0 && (cached.length > 1 || cached.some(u => u.hasPassphrase))) {
+        return 'needed';
+      }
+    } catch { /* localStorage absent / quota: fall through */ }
+    return 'checking';
+  });
   const [showMigrationWizard, setShowMigrationWizard] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<'general' | 'connection' | 'servers' | 'filehandling' | 'transfers' | 'cloudproviders' | 'ui' | 'security' | 'privacy' | undefined>(undefined);
   // Path of a .aeroftp-keystore opened via OS file association: routes the
@@ -786,7 +813,13 @@ const App: React.FC = () => {
   // waiting for an unrelated route refresh. Bump-refreshKey is idempotent and
   // cheap: the existing useEffect already de-bounces via React's batching.
   useEffect(() => {
-    const handler = () => setServersRefreshKey(k => k + 1);
+    const handler = () => {
+      // MU-FE-P0: also flush the legacy cross-user localStorage blob so any
+      // P1/P2 reader still tied to it cannot show the previous user's data
+      // after a switch. Safe to remove once P1/P2 components are migrated.
+      try { localStorage.removeItem('aeroftp-saved-servers'); } catch { /* best effort */ }
+      setServersRefreshKey(k => k + 1);
+    };
     window.addEventListener(PROFILES_CHANGED_EVENT, handler);
     return () => window.removeEventListener(PROFILES_CHANGED_EVENT, handler);
   }, []);
@@ -1303,31 +1336,54 @@ const App: React.FC = () => {
       } catch (err) {
         console.error('Failed to initialize credential vault:', err);
       } finally {
-        // Pre-warm vault: fetch server profiles so SavedServers can paint
-        // without a flash. The vault is the source of truth, so when the
-        // vault read succeeds we overwrite the localStorage backup
-        // unconditionally. This recovers from out-of-band edits made by
-        // `aeroftp-cli profiles -i` while the GUI was running, where the
-        // localStorage cache lags the vault. A null/error vault response
-        // (locked, file lock contention on Windows) leaves the localStorage
-        // backup untouched (issue #194).
-        try {
-          const vaultServers = await secureGet<unknown[]>('server_profiles');
-          if (Array.isArray(vaultServers)) {
-            const nextStored = JSON.stringify(vaultServers);
-            if (localStorage.getItem('aeroftp-saved-servers') !== nextStored) {
-              localStorage.setItem('aeroftp-saved-servers', nextStored);
-            }
-          }
-        } catch { /* non-critical */ }
+        // MU-FE-P0: no localStorage pre-warm. SavedServers reads via
+        // `loadSavedServerProfiles` (partition-aware) on every refresh
+        // and the legacy localStorage blob is cross-user, so seeding it
+        // would actively leak between users on switch. The active user's
+        // partition is the only source of truth.
         // Force SavedServers to re-fetch from vault (now initialized)
         setServersRefreshKey(k => k + 1);
         vaultInitDone.current = true;
+        setVaultBootComplete(true);
         signalAppReady();
       }
     };
     initVault();
   }, [signalAppReady]);
+
+  // Multi-user lock screen (L2): runs once vault (L1) has settled and is not
+  // locked. We must wait for vaultBootComplete because user_partitions Tauri
+  // commands depend on CredentialStore::from_cache() being primed by
+  // init_credential_store. Cached list is read first for paint-without-flash;
+  // IPC refresh writes the authoritative snapshot. R1 = single passphrase-less
+  // user is the boot-fast path and never shows the picker.
+  useEffect(() => {
+    if (!vaultBootComplete || isAppLocked) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await initUserPartitions();
+        const [users, status] = await Promise.all([listUsers(), getUnlockStatus()]);
+        if (cancelled) return;
+        writeUsersListCache(users);
+        // Notify UserDropdown (mounted before vault was ready) so it re-runs
+        // its refresh and renders the avatar now that MU IPC is available.
+        window.dispatchEvent(new CustomEvent(PROFILES_CHANGED_EVENT));
+        if (users.length === 0) { setAccountLockState('ready'); return; }
+        const singleUserNeedsUnlock = users.length === 1 && users[0].hasPassphrase && !status.isUnlocked;
+        const finalNeeded = users.length > 1 || singleUserNeedsUnlock;
+        setAccountLockState(finalNeeded ? 'needed' : 'ready');
+      } catch (err) {
+        // user_partitions unavailable (e.g. STORE_NOT_READY race): proceed
+        // without the picker so the app remains usable.
+        if (!cancelled) {
+          console.warn('[mu] account lock probe failed:', err);
+          setAccountLockState('ready');
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [vaultBootComplete, isAppLocked]);
 
   // Keystore Migration Wizard: auto-trigger if legacy localStorage data exists
   useEffect(() => {
@@ -1361,6 +1417,28 @@ const App: React.FC = () => {
   // is read through a ref so a lock/unlock tick does NOT reset the interval.
   const isAppLockedRef = useRef(isAppLocked);
   useEffect(() => { isAppLockedRef.current = isAppLocked; }, [isAppLocked]);
+  useEffect(() => {
+    const handleMasterPasswordChanged = (event: Event) => {
+      const detail = (event as CustomEvent<MasterPasswordChangedDetail>).detail;
+      if (!detail) return;
+      setMasterPasswordSet(detail.enabled);
+      if (!detail.enabled) {
+        setIsAppLocked(false);
+      } else if (typeof detail.isLocked === 'boolean') {
+        setIsAppLocked(detail.isLocked);
+      }
+    };
+    window.addEventListener(MASTER_PASSWORD_CHANGED_EVENT, handleMasterPasswordChanged);
+    return () => window.removeEventListener(MASTER_PASSWORD_CHANGED_EVENT, handleMasterPasswordChanged);
+  }, []);
+  useEffect(() => {
+    const handleAccountLockRequested = () => {
+      setAccountLockState('needed');
+      setServersRefreshKey(k => k + 1);
+    };
+    window.addEventListener(ACCOUNT_LOCK_SCREEN_REQUESTED_EVENT, handleAccountLockRequested);
+    return () => window.removeEventListener(ACCOUNT_LOCK_SCREEN_REQUESTED_EVENT, handleAccountLockRequested);
+  }, []);
   useEffect(() => {
     if (!masterPasswordSet) return;
 
@@ -4996,7 +5074,7 @@ interface UpdateVerificationInfo {
     let cachedPublicUrlBase: string | undefined;
     let cachedInitialPath: string | undefined;
     try {
-      const servers = await secureGetWithFallback<ServerProfile[]>('server_profiles', 'aeroftp-saved-servers');
+      const servers = await loadSavedServerProfiles();
       if (servers) {
         const match = servers.find(s => s.id === serverName || s.name === serverName || s.host === serverName);
         if (match?.faviconUrl) cachedFavicon = match.faviconUrl;
@@ -5043,12 +5121,12 @@ interface UpdateVerificationInfo {
     ));
     // Update saved servers in vault (localStorage may be empty after vault migration)
     try {
-      const servers = await secureGetWithFallback<ServerProfile[]>('server_profiles', 'aeroftp-saved-servers');
+      const servers = await loadSavedServerProfiles();
       if (servers) {
         const idx = servers.findIndex(s => s.id === serverId || s.name === serverId || s.host === serverId);
         if (idx !== -1) {
           servers[idx].faviconUrl = faviconUrl;
-          try { await secureStoreAndClean('server_profiles', 'aeroftp-saved-servers', servers); } catch { /* ignore */ }
+          try { await storeSavedServerProfiles(servers); } catch { /* ignore */ }
         }
       }
     } catch { /* ignore */ }
@@ -5239,7 +5317,7 @@ interface UpdateVerificationInfo {
         // Safety check: recover missing S3 options
         if (protocol === 's3' && (!connectParams.options || !connectParams.options.bucket)) {
           try {
-            const savedServers = await secureGetWithFallback<any[]>('server_profiles', 'aeroftp-saved-servers');
+            const savedServers = await loadSavedServerProfiles();
             if (savedServers) {
               const found = savedServers.find((s: any) =>
                 (s.name === targetSession.serverName) ||
@@ -5517,7 +5595,7 @@ interface UpdateVerificationInfo {
       }
 
       // Get saved servers from vault (with localStorage fallback)
-      const savedServers = await secureGetWithFallback<any[]>('server_profiles', 'aeroftp-saved-servers');
+      const savedServers = await loadSavedServerProfiles();
       if (!savedServers || savedServers.length === 0) {
         notify.error(t('toast.noSavedServers'), t('toast.saveServerFirst'));
         setShowCloudPanel(true);
@@ -7284,11 +7362,8 @@ interface UpdateVerificationInfo {
 
     void (async () => {
       try {
-        const stored = await secureGetWithFallback<ServerProfile[]>(
-          'server_profiles',
-          'aeroftp-saved-servers',
-        );
-        const profile = (stored || []).find((p) => p.id === opts.profileId);
+        const stored = await loadSavedServerProfiles();
+        const profile = stored.find((p) => p.id === opts.profileId);
         if (profile?.skipDeltaEligibilityPrompt) {
           launchRun();
           return;
@@ -11222,6 +11297,19 @@ interface UpdateVerificationInfo {
         <LockScreen onUnlock={() => { setIsAppLocked(false); setServersRefreshKey(k => k + 1); }} />
       )}
 
+      {/* Account Lock Screen (L2 multi-user picker) - shown after vault is
+          unlocked when more than one user exists or the single user has an
+          account password set. R1 fast-path (single passphrase-less user)
+          renders nothing and lets the main app boot through. */}
+      {vaultBootComplete && !isAppLocked && accountLockState === 'needed' && (
+        <AccountLockScreen
+          onContinue={() => {
+            setAccountLockState('ready');
+            setServersRefreshKey(k => k + 1);
+          }}
+        />
+      )}
+
       {/* Master Password Setup Dialog (standalone from header button) */}
       {showMasterPasswordSetup && (
         <MasterPasswordSetupDialog
@@ -11229,6 +11317,7 @@ interface UpdateVerificationInfo {
             setShowMasterPasswordSetup(false);
             setMasterPasswordBootstrapMode(false);
             setMasterPasswordSet(true);
+            dispatchMasterPasswordChanged({ enabled: true, isLocked: false });
           }}
           onClose={() => {
             setShowMasterPasswordSetup(false);
@@ -11289,6 +11378,7 @@ interface UpdateVerificationInfo {
           onShowDependencies={() => setShowDependenciesPanel(true)}
           onShowProviders={() => setShowProvidersDialog(true)}
           onShowMountManager={() => setShowMountManager({})}
+          onUsersChanged={() => setServersRefreshKey(k => k + 1)}
           masterPasswordSet={masterPasswordSet}
           onLockApp={async () => { await invoke('lock_credential_store'); setIsAppLocked(true); }}
           onSetupMasterPassword={() => setShowMasterPasswordSetup(true)}
@@ -11644,15 +11734,11 @@ interface UpdateVerificationInfo {
               // the queued plan from dispatching.
               (async () => {
                 try {
-                  const stored = await secureGetWithFallback<ServerProfile[]>(
-                    'server_profiles',
-                    'aeroftp-saved-servers',
-                  );
-                  const profiles = stored || [];
+                  const profiles = await loadSavedServerProfiles();
                   const idx = profiles.findIndex((p) => p.id === prompt.profileId);
                   if (idx >= 0) {
                     profiles[idx] = { ...profiles[idx], skipDeltaEligibilityPrompt: true };
-                    await secureStoreAndClean('server_profiles', 'aeroftp-saved-servers', profiles);
+                    await storeSavedServerProfiles(profiles);
                   }
                 } catch (err) {
                   if (debugMode) {
@@ -12425,7 +12511,7 @@ interface UpdateVerificationInfo {
         )}
 
 
-        <main className={`flex-1 min-h-0 p-6 overflow-hidden flex flex-col ${devToolsMaximized && devToolsOpen ? 'hidden' : ''}`}>
+        <main className={`flex-1 min-h-0 px-8 pt-6 pb-8 overflow-hidden flex flex-col ${devToolsMaximized && devToolsOpen ? 'hidden' : ''}`}>
           {/* IntroHub stays mounted across connect/disconnect so the saved
               servers list is already rendered when the user comes back via
               the Home button or '+' tab. Hidden via CSS when a session is in
@@ -12757,7 +12843,7 @@ interface UpdateVerificationInfo {
             />
           </div>
           {!showConnectionScreen && (
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl overflow-hidden relative z-10 flex-1 min-h-0 flex flex-col">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl overflow-hidden relative z-10 flex-1 min-h-0 flex flex-col">
               {/* Session Tabs + Local Path Tabs */}
               <SessionTabs
                 sessions={sessions}
