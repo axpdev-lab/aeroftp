@@ -153,7 +153,50 @@ pub fn init_empty_db(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+fn ensure_users_is_admin_column(conn: &Connection) -> Result<(), String> {
+    let mut stmt = match conn.prepare("PRAGMA table_info(users)") {
+        Ok(s) => s,
+        Err(_) => return Ok(()),
+    };
+    let mut rows = match stmt.query([]) {
+        Ok(r) => r,
+        Err(_) => return Ok(()),
+    };
+    let mut table_exists = false;
+    let mut has_is_admin = false;
+    while let Some(row) = rows
+        .next()
+        .map_err(|e| format!("ensure_users_is_admin_column row: {e}"))?
+    {
+        table_exists = true;
+        let name: String = row.get(1).map_err(|e| format!("read column name: {e}"))?;
+        if name == "is_admin" {
+            has_is_admin = true;
+            break;
+        }
+    }
+    if table_exists && !has_is_admin {
+        conn.execute(
+            "ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0",
+            [],
+        )
+        .map_err(|e| format!("ALTER TABLE users ADD is_admin: {e}"))?;
+        conn.execute(
+            "UPDATE users SET is_admin = 1
+             WHERE id = (SELECT id FROM users ORDER BY id ASC LIMIT 1)",
+            [],
+        )
+        .map_err(|e| format!("Seed first user as admin: {e}"))?;
+    }
+    Ok(())
+}
+
 pub fn init_db_schema(conn: &Connection) -> Result<(), String> {
+    // Idempotent schema migration: if a pre-v3 `users` table already exists
+    // without the is_admin column, add it before CREATE TABLE IF NOT EXISTS
+    // becomes a no-op. Safe to run on fresh installs (PRAGMA returns 0 rows
+    // until CREATE TABLE runs, so the check just skips).
+    ensure_users_is_admin_column(conn)?;
     conn.execute_batch(
         "PRAGMA journal_mode = WAL;
          PRAGMA synchronous = NORMAL;
@@ -700,7 +743,20 @@ pub fn init_or_migrate(app: &AppHandle) -> Result<MigrationReport, String> {
         });
     }
 
-    let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
+    // Multi-User is a first-class surface and does not require Master Password.
+    // If the credential store is not cached yet (the GUI usually primes it via
+    // `init_credential_store`, but the auto-keyring path may not have fired
+    // before the user dropdown asks for users), try a best-effort bootstrap
+    // here. A failure is non-fatal: STORE_NOT_READY is the legitimate response
+    // when the vault is locked behind a Master Password that the user has not
+    // unlocked yet.
+    let store = match CredentialStore::from_cache() {
+        Some(store) => store,
+        None => {
+            let _ = CredentialStore::init();
+            CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?
+        }
+    };
     let mut root_key = store.derive_user_partition_wrapping_key();
     let profiles_json = get_optional_store_entry(&store, "config_server_profiles")?;
     let settings_json = match get_optional_store_entry(&store, "config_app_settings")? {

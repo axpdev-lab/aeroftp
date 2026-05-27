@@ -109,10 +109,13 @@ export const UserDropdown: React.FC<UserDropdownProps> = ({ onUsersChanged }) =>
         };
     }, [isOpen]);
 
-    if (!isAvailable || users.length === 0) return null;
+    if (!isAvailable) return null;
 
-    const activeUser = users.find((user) => user.isActive) ?? users[0];
-    const activeLocked = activeUser.hasPassphrase && status?.isUnlocked === false;
+    const hasUsers = users.length > 0;
+    const activeUser = hasUsers
+        ? (users.find((user) => user.isActive) ?? users[0])
+        : ({ id: 0, name: 'Setup', avatarEmoji: null, avatarColor: null, hasPassphrase: false, isActive: false, sortOrder: 0, isAdmin: false } as unknown as UserMetadata);
+    const activeLocked = hasUsers && activeUser.hasPassphrase && status?.isUnlocked === false;
     const sortedUsers = [...users].sort((a, b) => {
         if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
         return a.sortOrder - b.sortOrder || a.name.localeCompare(b.name);
@@ -220,7 +223,7 @@ export const UserDropdown: React.FC<UserDropdownProps> = ({ onUsersChanged }) =>
                         </div>
 
                         <div className="max-h-[260px] overflow-y-auto py-1">
-                            {sortedUsers.map((user) => {
+                            {hasUsers ? sortedUsers.map((user) => {
                                 const isUserLocked = user.hasPassphrase && status?.unlockedUserId !== user.id;
                                 return (
                                     <button
@@ -249,19 +252,25 @@ export const UserDropdown: React.FC<UserDropdownProps> = ({ onUsersChanged }) =>
                                         )}
                                     </button>
                                 );
-                            })}
+                            }) : (
+                                <div className="px-3 py-3 text-center text-xs text-[var(--color-text-tertiary)]">
+                                    No users yet. Use "New User" below to add the first one.
+                                </div>
+                            )}
                         </div>
 
                         <div className="border-t border-[var(--color-border)] py-1">
-                            <button
-                                type="button"
-                                onClick={() => { void handleLock(); }}
-                                disabled={isLoading}
-                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-bg-tertiary)] disabled:opacity-50"
-                            >
-                                <Lock size={14} className="text-[var(--color-text-secondary)]" />
-                                Lock
-                            </button>
+                            {hasUsers && (
+                                <button
+                                    type="button"
+                                    onClick={() => { void handleLock(); }}
+                                    disabled={isLoading}
+                                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-bg-tertiary)] disabled:opacity-50"
+                                >
+                                    <Lock size={14} className="text-[var(--color-text-secondary)]" />
+                                    Lock
+                                </button>
+                            )}
                             <button
                                 type="button"
                                 onClick={() => {
