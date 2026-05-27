@@ -78,6 +78,15 @@ pub struct PartitionDebugState {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct UserStorageStats {
+    pub user_id: i64,
+    pub profile_count: i64,
+    pub settings_count: i64,
+    pub encrypted_bytes: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UserUnlockStatus {
     pub active_user_id: Option<i64>,
     pub unlocked_user_id: Option<i64>,
@@ -95,8 +104,7 @@ pub fn db_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(crate::portable::app_config_dir(app)?.join(DB_FILENAME))
 }
 
-pub fn open_or_init(app: &AppHandle) -> Result<Connection, String> {
-    let path = db_path(app)?;
+fn open_or_init_path(path: PathBuf) -> Result<Connection, String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .map_err(|e| format!("Failed to create user partitions dir: {e}"))?;
@@ -104,6 +112,20 @@ pub fn open_or_init(app: &AppHandle) -> Result<Connection, String> {
     let conn = Connection::open(&path).map_err(|e| format!("Open user partitions DB: {e}"))?;
     init_db_schema(&conn)?;
     Ok(conn)
+}
+
+pub fn open_or_init(app: &AppHandle) -> Result<Connection, String> {
+    open_or_init_path(db_path(app)?)
+}
+
+pub fn cli_db_path() -> Result<PathBuf, String> {
+    let base = crate::portable::cli_app_config_dir()
+        .ok_or_else(|| "Cannot resolve AeroFTP CLI config directory".to_string())?;
+    Ok(base.join(DB_FILENAME))
+}
+
+pub fn open_or_init_cli() -> Result<Connection, String> {
+    open_or_init_path(cli_db_path()?)
 }
 
 pub fn init_empty_db(app: &AppHandle) -> Result<(), String> {
@@ -992,6 +1014,34 @@ pub fn unlock_user(
     user_unlock_status(conn)
 }
 
+pub fn verify_user_passphrase(
+    conn: &Connection,
+    _root_key: &[u8; 32],
+    user_id: i64,
+    passphrase: Option<&str>,
+) -> Result<(), String> {
+    let row = read_user_key_row(conn, user_id)?;
+    if !row.has_passphrase {
+        if passphrase.is_some() {
+            return Err("PASSPHRASE_NOT_NEEDED".to_string());
+        }
+        return Ok(());
+    }
+
+    check_lockout(conn, user_id)?;
+    let passphrase = passphrase.ok_or_else(|| "PASSPHRASE_REQUIRED".to_string())?;
+    match unwrap_user_dek_with_passphrase(&row, passphrase) {
+        Ok(_) => {
+            reset_lockout(conn, user_id)?;
+            Ok(())
+        }
+        Err(_) => {
+            record_unlock_failure(conn, user_id)?;
+            Err("WRONG_PASSPHRASE".to_string())
+        }
+    }
+}
+
 pub fn change_user_passphrase(
     conn: &Connection,
     root_key: &[u8; 32],
@@ -1081,6 +1131,33 @@ pub fn rename_user(conn: &Connection, user_id: i64, name: &str) -> Result<(), St
     Ok(())
 }
 
+pub fn reorder_users(conn: &mut Connection, user_ids: &[i64]) -> Result<(), String> {
+    let tx = conn
+        .transaction()
+        .map_err(|e| format!("Start reorder users: {e}"))?;
+    let now = now_ms();
+    let mut seen = HashSet::new();
+    for (index, user_id) in user_ids.iter().enumerate() {
+        if !seen.insert(*user_id) {
+            return Err("DUPLICATE_USER_ID".to_string());
+        }
+        let changed = tx
+            .execute(
+                "UPDATE users
+                 SET sort_order = ?1, updated_at = ?2
+                 WHERE id = ?3",
+                params![index as i64, now, user_id],
+            )
+            .map_err(|e| format!("Reorder users: {e}"))?;
+        if changed == 0 {
+            return Err("USER_NOT_FOUND".to_string());
+        }
+    }
+    tx.commit()
+        .map_err(|e| format!("Commit reorder users: {e}"))?;
+    Ok(())
+}
+
 pub fn delete_user(conn: &mut Connection, user_id: i64) -> Result<(), String> {
     if active_user_id(conn)? == Some(user_id) {
         clear_user_session();
@@ -1120,6 +1197,41 @@ pub fn delete_user(conn: &mut Connection, user_id: i64) -> Result<(), String> {
     Ok(())
 }
 
+pub fn user_storage_stats(conn: &Connection) -> Result<Vec<UserStorageStats>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT u.id,
+                    (SELECT COUNT(*)
+                       FROM server_profiles sp
+                      WHERE sp.user_id = u.id) AS profile_count,
+                    (SELECT COUNT(*)
+                       FROM user_settings us
+                      WHERE us.user_id = u.id) AS settings_count,
+                    COALESCE((SELECT SUM(LENGTH(sp.encrypted_blob) + LENGTH(sp.nonce))
+                                FROM server_profiles sp
+                               WHERE sp.user_id = u.id), 0)
+                    +
+                    COALESCE((SELECT SUM(LENGTH(us.encrypted_blob) + LENGTH(us.nonce))
+                                FROM user_settings us
+                               WHERE us.user_id = u.id), 0) AS encrypted_bytes
+               FROM users u
+              ORDER BY u.sort_order ASC, u.name_canonical ASC",
+        )
+        .map_err(|e| format!("Prepare user storage stats: {e}"))?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(UserStorageStats {
+                user_id: row.get(0)?,
+                profile_count: row.get(1)?,
+                settings_count: row.get(2)?,
+                encrypted_bytes: row.get(3)?,
+            })
+        })
+        .map_err(|e| format!("Query user storage stats: {e}"))?;
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(|e| format!("Read user storage stats: {e}"))
+}
+
 pub fn debug_state(app: &AppHandle) -> Result<PartitionDebugState, String> {
     let path = db_path(app)?;
     let conn = open_or_init(app)?;
@@ -1143,6 +1255,132 @@ pub fn debug_state(app: &AppHandle) -> Result<PartitionDebugState, String> {
         profile_count,
         settings_count,
     })
+}
+
+pub fn init_or_migrate_cli(store: &CredentialStore) -> Result<MigrationReport, String> {
+    let mut conn = open_or_init_cli()?;
+    let profiles = store.get("config_server_profiles").ok();
+    let settings = store
+        .get("config_app_settings")
+        .ok()
+        .or_else(|| store.get("aeroftp_settings").ok());
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let result = migrate_legacy_payloads(
+        &mut conn,
+        profiles.as_deref(),
+        settings.as_deref(),
+        &root_key,
+    );
+    root_key.zeroize();
+    result
+}
+
+pub fn cli_list_users(store: &CredentialStore) -> Result<Vec<UserMetadata>, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    list_users(&conn)
+}
+
+pub fn cli_get_active_user(store: &CredentialStore) -> Result<Option<UserMetadata>, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    get_active_user(&conn)
+}
+
+pub fn cli_create_user(
+    store: &CredentialStore,
+    name: &str,
+    avatar_emoji: Option<&str>,
+    avatar_color: Option<&str>,
+    passphrase: Option<&str>,
+) -> Result<UserMetadata, String> {
+    init_or_migrate_cli(store)?;
+    let mut conn = open_or_init_cli()?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let result = create_user(
+        &mut conn,
+        &root_key,
+        name,
+        avatar_emoji,
+        avatar_color,
+        passphrase,
+    );
+    root_key.zeroize();
+    result
+}
+
+pub fn cli_unlock_user(
+    store: &CredentialStore,
+    user_id: i64,
+    passphrase: Option<&str>,
+) -> Result<UserUnlockStatus, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let result = unlock_user(&conn, &root_key, user_id, passphrase);
+    root_key.zeroize();
+    result
+}
+
+pub fn cli_verify_user_passphrase(
+    store: &CredentialStore,
+    user_id: i64,
+    passphrase: Option<&str>,
+) -> Result<(), String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let result = verify_user_passphrase(&conn, &root_key, user_id, passphrase);
+    root_key.zeroize();
+    result
+}
+
+pub fn cli_change_user_passphrase(
+    store: &CredentialStore,
+    user_id: i64,
+    old_passphrase: Option<&str>,
+    new_passphrase: Option<&str>,
+) -> Result<(), String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let result = change_user_passphrase(&conn, &root_key, user_id, old_passphrase, new_passphrase);
+    root_key.zeroize();
+    result
+}
+
+pub fn cli_set_active_user(store: &CredentialStore, user_id: i64) -> Result<(), String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    set_active_user(&conn, user_id)
+}
+
+pub fn cli_rename_user(store: &CredentialStore, user_id: i64, name: &str) -> Result<(), String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    rename_user(&conn, user_id, name)
+}
+
+pub fn cli_reorder_users(store: &CredentialStore, user_ids: &[i64]) -> Result<(), String> {
+    init_or_migrate_cli(store)?;
+    let mut conn = open_or_init_cli()?;
+    reorder_users(&mut conn, user_ids)
+}
+
+pub fn cli_delete_user(store: &CredentialStore, user_id: i64) -> Result<(), String> {
+    init_or_migrate_cli(store)?;
+    let mut conn = open_or_init_cli()?;
+    delete_user(&mut conn, user_id)
+}
+
+pub fn cli_storage_stats(store: &CredentialStore) -> Result<Vec<UserStorageStats>, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    user_storage_stats(&conn)
+}
+
+pub fn cli_lock_session() {
+    clear_user_session();
 }
 
 #[tauri::command]
@@ -1297,10 +1535,29 @@ pub async fn user_partitions_rename_user(
 }
 
 #[tauri::command]
+pub async fn user_partitions_reorder_users(
+    app: AppHandle,
+    user_ids: Vec<i64>,
+) -> Result<(), String> {
+    init_or_migrate(&app)?;
+    let mut conn = open_or_init(&app)?;
+    reorder_users(&mut conn, &user_ids)
+}
+
+#[tauri::command]
 pub async fn user_partitions_delete_user(app: AppHandle, user_id: i64) -> Result<(), String> {
     init_or_migrate(&app)?;
     let mut conn = open_or_init(&app)?;
     delete_user(&mut conn, user_id)
+}
+
+#[tauri::command]
+pub async fn user_partitions_storage_stats(
+    app: AppHandle,
+) -> Result<Vec<UserStorageStats>, String> {
+    init_or_migrate(&app)?;
+    let conn = open_or_init(&app)?;
+    user_storage_stats(&conn)
 }
 
 #[tauri::command]
@@ -1672,5 +1929,66 @@ mod tests {
             .expect("active after")
             .expect("active user after");
         assert_eq!(active_after.id, active_before.id);
+    }
+
+    #[test]
+    fn reorder_users_updates_dropdown_order_without_touching_active_user() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let ops = create_passphrase_less_user(&mut conn, &root, "Ops", Some("O"), Some("#22c55e"))
+            .expect("create ops");
+        let qa = create_passphrase_less_user(&mut conn, &root, "QA", Some("Q"), Some("#f59e0b"))
+            .expect("create qa");
+        let default = get_active_user(&conn)
+            .expect("active")
+            .expect("default active");
+
+        reorder_users(&mut conn, &[qa.id, default.id, ops.id]).expect("reorder");
+        let users = list_users(&conn).expect("users after reorder");
+        assert_eq!(
+            users.iter().map(|user| user.id).collect::<Vec<_>>(),
+            vec![qa.id, default.id, ops.id]
+        );
+        assert!(users
+            .iter()
+            .any(|user| user.id == default.id && user.is_active));
+
+        let duplicate = reorder_users(&mut conn, &[qa.id, qa.id]).expect_err("duplicate");
+        assert_eq!(duplicate, "DUPLICATE_USER_ID");
+    }
+
+    #[test]
+    fn user_storage_stats_count_encrypted_profiles_and_settings() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(2);
+        let root = test_root();
+        let default = get_active_user(&conn)
+            .expect("active")
+            .expect("default active");
+        let ops = create_passphrase_less_user(&mut conn, &root, "Ops", Some("O"), Some("#22c55e"))
+            .expect("create ops");
+        set_active_user(&conn, ops.id).expect("switch ops");
+        replace_active_server_profiles(
+            &mut conn,
+            &root,
+            &[json!({"id":"ops-profile","name":"Ops Profile","protocol":"s3"})],
+        )
+        .expect("save ops profile");
+
+        let stats = user_storage_stats(&conn).expect("stats");
+        let default_stats = stats
+            .iter()
+            .find(|item| item.user_id == default.id)
+            .expect("default stats");
+        let ops_stats = stats
+            .iter()
+            .find(|item| item.user_id == ops.id)
+            .expect("ops stats");
+        assert_eq!(default_stats.profile_count, 2);
+        assert_eq!(default_stats.settings_count, 1);
+        assert!(default_stats.encrypted_bytes > 0);
+        assert_eq!(ops_stats.profile_count, 1);
+        assert!(ops_stats.encrypted_bytes > 0);
     }
 }
