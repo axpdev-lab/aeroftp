@@ -68,7 +68,7 @@
             "selectAll": "Select All",
             "required": "задолжително",
             "duplicate": "Дуплирај",
-            "current": "[NEEDS TRANSLATION] current"
+            "current": "тековно"
         },
         "connection": {
             "title": "Поврзи се на сервер",
@@ -424,7 +424,7 @@
             "lockRcloneCrypt": "Заклучи преклоп Rclone Crypt",
             "unlockRcloneCrypt": "Дешифрирај како преклоп Rclone Crypt…",
             "openAsAeroVaultOverlay": "Отвори како AeroVault Overlay",
-            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
+            "privacyEllipsis": "Приватност..."
         },
         "transfer": {
             "transferring": "Се пренесува...",
@@ -3005,13 +3005,13 @@
             "selectedItems": "Избрани ставки",
             "sizesPartial": "(некои големини непознати)",
             "totalSize": "Вкупна големина",
-            "privacyHidden": "[NEEDS TRANSLATION] Hidden",
-            "privacyHiddenDesc": "[NEEDS TRANSLATION] Accessible by direct link only; not searchable.",
-            "privacyPrivate": "[NEEDS TRANSLATION] Private",
-            "privacyPrivateDesc": "[NEEDS TRANSLATION] Only the account owner can access this item.",
-            "privacyPublic": "[NEEDS TRANSLATION] Public",
-            "privacyPublicDesc": "[NEEDS TRANSLATION] Anyone with the link can access this item.",
-            "visibility": "[NEEDS TRANSLATION] Visibility"
+            "privacyHidden": "Скриено",
+            "privacyHiddenDesc": "Достапно само преку директна врска, не може да се пребарува.",
+            "privacyPrivate": "Приватно",
+            "privacyPrivateDesc": "До овој елемент може да пристапи само сопственикот на сметката.",
+            "privacyPublic": "Јавно",
+            "privacyPublicDesc": "До овој елемент може да пристапи секој што ја има врската.",
+            "visibility": "Видливост"
         },
         "duplicates": {
             "title": "Пронајди дупликати",
@@ -4599,33 +4599,33 @@
             "launcherScheduler": "Распоредувач"
         },
         "accountLock": {
-            "title": "[NEEDS TRANSLATION] Choose an account",
-            "signInAs": "[NEEDS TRANSLATION] Sign in as {name}",
-            "activeBadge": "[NEEDS TRANSLATION] Last used",
-            "passphraseProtected": "[NEEDS TRANSLATION] Password protected",
-            "unlocked": "[NEEDS TRANSLATION] Active session",
-            "openAccount": "[NEEDS TRANSLATION] Open",
-            "newUser": "[NEEDS TRANSLATION] New user",
-            "newUserHint": "[NEEDS TRANSLATION] Create another account",
-            "manageUsers": "[NEEDS TRANSLATION] Manage users",
-            "accountPasswordLabel": "[NEEDS TRANSLATION] Account password",
-            "backToList": "[NEEDS TRANSLATION] Back to accounts",
-            "unlockPlaceholder": "[NEEDS TRANSLATION] Enter account password",
-            "unlock": "[NEEDS TRANSLATION] Unlock",
-            "unlocking": "[NEEDS TRANSLATION] Unlocking...",
-            "wrongPassphrase": "[NEEDS TRANSLATION] Wrong account password. Please try again.",
-            "lockedOut": "[NEEDS TRANSLATION] Too many attempts. This account is temporarily locked.",
-            "lockedOutCountdown": "[NEEDS TRANSLATION] Try again in {seconds}s.",
-            "showPassword": "[NEEDS TRANSLATION] Show password",
-            "hidePassword": "[NEEDS TRANSLATION] Hide password",
-            "lastUsedToday": "[NEEDS TRANSLATION] Used today",
-            "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "title": "Изберете сметка",
+            "signInAs": "Најави се како {name}",
+            "activeBadge": "Последно користено",
+            "passphraseProtected": "Заштитено со лозинка",
+            "unlocked": "Активна сесија",
+            "openAccount": "Отвори",
+            "newUser": "Нов корисник",
+            "newUserHint": "Создај друга сметка",
+            "manageUsers": "Управувај со корисници",
+            "accountPasswordLabel": "Лозинка на сметката",
+            "backToList": "Назад кон сметките",
+            "unlockPlaceholder": "Внесете ја лозинката на сметката",
+            "unlock": "Отклучи",
+            "unlocking": "Отклучување...",
+            "wrongPassphrase": "Погрешна лозинка на сметката. Обидете се повторно.",
+            "lockedOut": "Премногу обиди. Оваа сметка е привремено заклучена.",
+            "lockedOutCountdown": "Обидете се повторно за {seconds} с.",
+            "showPassword": "Прикажи лозинка",
+            "hidePassword": "Скриј лозинка",
+            "lastUsedToday": "Користено денес",
+            "lastUsedYesterday": "Користено вчера",
+            "lastUsedDaysAgo": "Користено пред {days} дена",
             "securityNote": "Сметката е заштитена со Argon2id + AES-KW + AES-256-GCM криптирање"
         },
         "opendrive": {
-            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
-            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
+            "privacyTitle": "Приватност на OpenDrive",
+            "privacyUpdated": "Приватноста на OpenDrive е ажурирана"
         }
     }
 }

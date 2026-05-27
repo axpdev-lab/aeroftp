@@ -68,7 +68,7 @@
             "selectAll": "Select All",
             "required": "nõutav",
             "duplicate": "Dubleeri",
-            "current": "[NEEDS TRANSLATION] current"
+            "current": "praegune"
         },
         "connection": {
             "title": "Ühenda serveriga",
@@ -424,7 +424,7 @@
             "lockRcloneCrypt": "Lukusta Rclone Crypt kate",
             "unlockRcloneCrypt": "Dekrüpteeri Rclone Crypt kattena…",
             "openAsAeroVaultOverlay": "Ava AeroVault Overlay-na",
-            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
+            "privacyEllipsis": "Privaatsus..."
         },
         "transfer": {
             "transferring": "Ülekanne...",
@@ -3005,13 +3005,13 @@
             "selectedItems": "Valitud üksused",
             "sizesPartial": "(mõned suurused teadmata)",
             "totalSize": "Kogusuurus",
-            "privacyHidden": "[NEEDS TRANSLATION] Hidden",
-            "privacyHiddenDesc": "[NEEDS TRANSLATION] Accessible by direct link only; not searchable.",
-            "privacyPrivate": "[NEEDS TRANSLATION] Private",
-            "privacyPrivateDesc": "[NEEDS TRANSLATION] Only the account owner can access this item.",
-            "privacyPublic": "[NEEDS TRANSLATION] Public",
-            "privacyPublicDesc": "[NEEDS TRANSLATION] Anyone with the link can access this item.",
-            "visibility": "[NEEDS TRANSLATION] Visibility"
+            "privacyHidden": "Peidetud",
+            "privacyHiddenDesc": "Juurdepääsetav ainult otselingi kaudu, mitte otsitav.",
+            "privacyPrivate": "Privaatne",
+            "privacyPrivateDesc": "Sellele üksusele pääseb juurde ainult konto omanik.",
+            "privacyPublic": "Avalik",
+            "privacyPublicDesc": "Sellele üksusele pääseb juurde igaüks, kellel on link.",
+            "visibility": "Nähtavus"
         },
         "duplicates": {
             "title": "Leia duplikaadid",
@@ -4580,33 +4580,33 @@
             "launcherScheduler": "Ajastaja"
         },
         "accountLock": {
-            "title": "[NEEDS TRANSLATION] Choose an account",
-            "signInAs": "[NEEDS TRANSLATION] Sign in as {name}",
-            "activeBadge": "[NEEDS TRANSLATION] Last used",
-            "passphraseProtected": "[NEEDS TRANSLATION] Password protected",
-            "unlocked": "[NEEDS TRANSLATION] Active session",
-            "openAccount": "[NEEDS TRANSLATION] Open",
-            "newUser": "[NEEDS TRANSLATION] New user",
-            "newUserHint": "[NEEDS TRANSLATION] Create another account",
-            "manageUsers": "[NEEDS TRANSLATION] Manage users",
-            "accountPasswordLabel": "[NEEDS TRANSLATION] Account password",
-            "backToList": "[NEEDS TRANSLATION] Back to accounts",
-            "unlockPlaceholder": "[NEEDS TRANSLATION] Enter account password",
-            "unlock": "[NEEDS TRANSLATION] Unlock",
-            "unlocking": "[NEEDS TRANSLATION] Unlocking...",
-            "wrongPassphrase": "[NEEDS TRANSLATION] Wrong account password. Please try again.",
-            "lockedOut": "[NEEDS TRANSLATION] Too many attempts. This account is temporarily locked.",
-            "lockedOutCountdown": "[NEEDS TRANSLATION] Try again in {seconds}s.",
-            "showPassword": "[NEEDS TRANSLATION] Show password",
-            "hidePassword": "[NEEDS TRANSLATION] Hide password",
-            "lastUsedToday": "[NEEDS TRANSLATION] Used today",
-            "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "title": "Vali konto",
+            "signInAs": "Logi sisse kasutajana {name}",
+            "activeBadge": "Viimati kasutatud",
+            "passphraseProtected": "Parooliga kaitstud",
+            "unlocked": "Aktiivne seanss",
+            "openAccount": "Ava",
+            "newUser": "Uus kasutaja",
+            "newUserHint": "Loo veel üks konto",
+            "manageUsers": "Halda kasutajaid",
+            "accountPasswordLabel": "Konto parool",
+            "backToList": "Tagasi kontode juurde",
+            "unlockPlaceholder": "Sisesta konto parool",
+            "unlock": "Ava lukust",
+            "unlocking": "Avamine...",
+            "wrongPassphrase": "Vale konto parool. Proovi uuesti.",
+            "lockedOut": "Liiga palju katseid. See konto on ajutiselt lukus.",
+            "lockedOutCountdown": "Proovi uuesti {seconds} s pärast.",
+            "showPassword": "Näita parooli",
+            "hidePassword": "Peida parool",
+            "lastUsedToday": "Kasutatud täna",
+            "lastUsedYesterday": "Kasutatud eile",
+            "lastUsedDaysAgo": "Kasutatud {days} päeva tagasi",
             "securityNote": "Konto on kaitstud Argon2id + AES-KW + AES-256-GCM krüpteeringuga"
         },
         "opendrive": {
-            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
-            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
+            "privacyTitle": "OpenDrive'i privaatsus",
+            "privacyUpdated": "OpenDrive'i privaatsus uuendatud"
         }
     }
 }

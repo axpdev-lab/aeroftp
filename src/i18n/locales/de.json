@@ -68,7 +68,7 @@
             "selectAll": "Select All",
             "required": "erforderlich",
             "duplicate": "Duplizieren",
-            "current": "[NEEDS TRANSLATION] current"
+            "current": "aktuell"
         },
         "connection": {
             "title": "Mit Server verbinden",
@@ -424,7 +424,7 @@
             "lockRcloneCrypt": "Rclone-Crypt-Overlay sperren",
             "unlockRcloneCrypt": "Als Rclone-Crypt-Overlay entschlüsseln…",
             "openAsAeroVaultOverlay": "Als AeroVault Overlay öffnen",
-            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
+            "privacyEllipsis": "Datenschutz..."
         },
         "transfer": {
             "transferring": "Übertragung...",
@@ -3005,13 +3005,13 @@
             "selectedItems": "Ausgewählte Elemente",
             "sizesPartial": "(einige Größen unbekannt)",
             "totalSize": "Gesamtgröße",
-            "privacyHidden": "[NEEDS TRANSLATION] Hidden",
-            "privacyHiddenDesc": "[NEEDS TRANSLATION] Accessible by direct link only; not searchable.",
-            "privacyPrivate": "[NEEDS TRANSLATION] Private",
-            "privacyPrivateDesc": "[NEEDS TRANSLATION] Only the account owner can access this item.",
-            "privacyPublic": "[NEEDS TRANSLATION] Public",
-            "privacyPublicDesc": "[NEEDS TRANSLATION] Anyone with the link can access this item.",
-            "visibility": "[NEEDS TRANSLATION] Visibility"
+            "privacyHidden": "Versteckt",
+            "privacyHiddenDesc": "Nur über den direkten Link zugänglich; nicht durchsuchbar.",
+            "privacyPrivate": "Privat",
+            "privacyPrivateDesc": "Nur der Kontoinhaber kann auf dieses Element zugreifen.",
+            "privacyPublic": "Öffentlich",
+            "privacyPublicDesc": "Jeder mit dem Link kann auf dieses Element zugreifen.",
+            "visibility": "Sichtbarkeit"
         },
         "duplicates": {
             "title": "Duplikate finden",
@@ -4605,8 +4605,8 @@
             "securityNote": "Konto geschützt mit Argon2id + AES-KW + AES-256-GCM-Verschlüsselung"
         },
         "opendrive": {
-            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
-            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
+            "privacyTitle": "OpenDrive Datenschutz",
+            "privacyUpdated": "OpenDrive Datenschutz aktualisiert"
         }
     }
 }

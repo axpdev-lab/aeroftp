@@ -68,7 +68,7 @@
             "selectAll": "Select All",
             "required": "obligatorisk",
             "duplicate": "Duplicera",
-            "current": "[NEEDS TRANSLATION] current"
+            "current": "aktuell"
         },
         "connection": {
             "title": "Anslut till server",
@@ -424,7 +424,7 @@
             "lockRcloneCrypt": "Lås Rclone Crypt-överlägg",
             "unlockRcloneCrypt": "Dekryptera som Rclone Crypt-överlägg…",
             "openAsAeroVaultOverlay": "Öppna som AeroVault Overlay",
-            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
+            "privacyEllipsis": "Sekretess..."
         },
         "transfer": {
             "transferring": "Överför...",
@@ -3005,13 +3005,13 @@
             "selectedItems": "Valda objekt",
             "sizesPartial": "(vissa storlekar okända)",
             "totalSize": "Total storlek",
-            "privacyHidden": "[NEEDS TRANSLATION] Hidden",
-            "privacyHiddenDesc": "[NEEDS TRANSLATION] Accessible by direct link only; not searchable.",
-            "privacyPrivate": "[NEEDS TRANSLATION] Private",
-            "privacyPrivateDesc": "[NEEDS TRANSLATION] Only the account owner can access this item.",
-            "privacyPublic": "[NEEDS TRANSLATION] Public",
-            "privacyPublicDesc": "[NEEDS TRANSLATION] Anyone with the link can access this item.",
-            "visibility": "[NEEDS TRANSLATION] Visibility"
+            "privacyHidden": "Dold",
+            "privacyHiddenDesc": "Tillgänglig endast via direktlänk, inte sökbar.",
+            "privacyPrivate": "Privat",
+            "privacyPrivateDesc": "Endast kontoägaren kan komma åt detta objekt.",
+            "privacyPublic": "Offentlig",
+            "privacyPublicDesc": "Alla med länken kan komma åt detta objekt.",
+            "visibility": "Synlighet"
         },
         "duplicates": {
             "title": "Hitta dubbletter",
@@ -4580,33 +4580,33 @@
             "launcherScheduler": "Schemaläggare"
         },
         "accountLock": {
-            "title": "[NEEDS TRANSLATION] Choose an account",
-            "signInAs": "[NEEDS TRANSLATION] Sign in as {name}",
-            "activeBadge": "[NEEDS TRANSLATION] Last used",
-            "passphraseProtected": "[NEEDS TRANSLATION] Password protected",
-            "unlocked": "[NEEDS TRANSLATION] Active session",
-            "openAccount": "[NEEDS TRANSLATION] Open",
-            "newUser": "[NEEDS TRANSLATION] New user",
-            "newUserHint": "[NEEDS TRANSLATION] Create another account",
-            "manageUsers": "[NEEDS TRANSLATION] Manage users",
-            "accountPasswordLabel": "[NEEDS TRANSLATION] Account password",
-            "backToList": "[NEEDS TRANSLATION] Back to accounts",
-            "unlockPlaceholder": "[NEEDS TRANSLATION] Enter account password",
-            "unlock": "[NEEDS TRANSLATION] Unlock",
-            "unlocking": "[NEEDS TRANSLATION] Unlocking...",
-            "wrongPassphrase": "[NEEDS TRANSLATION] Wrong account password. Please try again.",
-            "lockedOut": "[NEEDS TRANSLATION] Too many attempts. This account is temporarily locked.",
-            "lockedOutCountdown": "[NEEDS TRANSLATION] Try again in {seconds}s.",
-            "showPassword": "[NEEDS TRANSLATION] Show password",
-            "hidePassword": "[NEEDS TRANSLATION] Hide password",
-            "lastUsedToday": "[NEEDS TRANSLATION] Used today",
-            "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "title": "Välj ett konto",
+            "signInAs": "Logga in som {name}",
+            "activeBadge": "Senast använt",
+            "passphraseProtected": "Lösenordsskyddat",
+            "unlocked": "Aktiv session",
+            "openAccount": "Öppna",
+            "newUser": "Ny användare",
+            "newUserHint": "Skapa ett annat konto",
+            "manageUsers": "Hantera användare",
+            "accountPasswordLabel": "Kontolösenord",
+            "backToList": "Tillbaka till konton",
+            "unlockPlaceholder": "Ange kontolösenord",
+            "unlock": "Lås upp",
+            "unlocking": "Låser upp...",
+            "wrongPassphrase": "Felaktigt kontolösenord. Försök igen.",
+            "lockedOut": "För många försök. Detta konto är tillfälligt låst.",
+            "lockedOutCountdown": "Försök igen om {seconds}s.",
+            "showPassword": "Visa lösenord",
+            "hidePassword": "Dölj lösenord",
+            "lastUsedToday": "Använt idag",
+            "lastUsedYesterday": "Använt igår",
+            "lastUsedDaysAgo": "Använt för {days} dagar sedan",
             "securityNote": "Konto skyddat med Argon2id + AES-KW + AES-256-GCM-kryptering"
         },
         "opendrive": {
-            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
-            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
+            "privacyTitle": "OpenDrive-sekretess",
+            "privacyUpdated": "OpenDrive-sekretess uppdaterad"
         }
     }
 }

@@ -68,7 +68,7 @@
             "selectAll": "Select All",
             "required": "gerekli",
             "duplicate": "Çoğalt",
-            "current": "[NEEDS TRANSLATION] current"
+            "current": "geçerli"
         },
         "connection": {
             "title": "Sunucuya Bağlan",
@@ -424,7 +424,7 @@
             "lockRcloneCrypt": "Rclone Crypt katmanını kilitle",
             "unlockRcloneCrypt": "Rclone Crypt katmanı olarak çöz…",
             "openAsAeroVaultOverlay": "AeroVault Overlay olarak aç",
-            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
+            "privacyEllipsis": "Gizlilik..."
         },
         "transfer": {
             "transferring": "Aktarılıyor...",
@@ -3005,13 +3005,13 @@
             "selectedItems": "Seçili öğeler",
             "sizesPartial": "(bazı boyutlar bilinmiyor)",
             "totalSize": "Toplam boyut",
-            "privacyHidden": "[NEEDS TRANSLATION] Hidden",
-            "privacyHiddenDesc": "[NEEDS TRANSLATION] Accessible by direct link only; not searchable.",
-            "privacyPrivate": "[NEEDS TRANSLATION] Private",
-            "privacyPrivateDesc": "[NEEDS TRANSLATION] Only the account owner can access this item.",
-            "privacyPublic": "[NEEDS TRANSLATION] Public",
-            "privacyPublicDesc": "[NEEDS TRANSLATION] Anyone with the link can access this item.",
-            "visibility": "[NEEDS TRANSLATION] Visibility"
+            "privacyHidden": "Gizli",
+            "privacyHiddenDesc": "Yalnızca doğrudan bağlantı ile erişilebilir, aramada görünmez.",
+            "privacyPrivate": "Özel",
+            "privacyPrivateDesc": "Bu öğeye yalnızca hesap sahibi erişebilir.",
+            "privacyPublic": "Herkese açık",
+            "privacyPublicDesc": "Bağlantıya sahip olan herkes bu öğeye erişebilir.",
+            "visibility": "Görünürlük"
         },
         "duplicates": {
             "title": "Yinelenenleri Bul",
@@ -4580,33 +4580,33 @@
             "launcherScheduler": "Zamanlayıcı"
         },
         "accountLock": {
-            "title": "[NEEDS TRANSLATION] Choose an account",
-            "signInAs": "[NEEDS TRANSLATION] Sign in as {name}",
-            "activeBadge": "[NEEDS TRANSLATION] Last used",
-            "passphraseProtected": "[NEEDS TRANSLATION] Password protected",
-            "unlocked": "[NEEDS TRANSLATION] Active session",
-            "openAccount": "[NEEDS TRANSLATION] Open",
-            "newUser": "[NEEDS TRANSLATION] New user",
-            "newUserHint": "[NEEDS TRANSLATION] Create another account",
-            "manageUsers": "[NEEDS TRANSLATION] Manage users",
-            "accountPasswordLabel": "[NEEDS TRANSLATION] Account password",
-            "backToList": "[NEEDS TRANSLATION] Back to accounts",
-            "unlockPlaceholder": "[NEEDS TRANSLATION] Enter account password",
-            "unlock": "[NEEDS TRANSLATION] Unlock",
-            "unlocking": "[NEEDS TRANSLATION] Unlocking...",
-            "wrongPassphrase": "[NEEDS TRANSLATION] Wrong account password. Please try again.",
-            "lockedOut": "[NEEDS TRANSLATION] Too many attempts. This account is temporarily locked.",
-            "lockedOutCountdown": "[NEEDS TRANSLATION] Try again in {seconds}s.",
-            "showPassword": "[NEEDS TRANSLATION] Show password",
-            "hidePassword": "[NEEDS TRANSLATION] Hide password",
-            "lastUsedToday": "[NEEDS TRANSLATION] Used today",
-            "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "title": "Bir hesap seçin",
+            "signInAs": "{name} olarak oturum aç",
+            "activeBadge": "Son kullanılan",
+            "passphraseProtected": "Parolayla korunuyor",
+            "unlocked": "Etkin oturum",
+            "openAccount": "Aç",
+            "newUser": "Yeni kullanıcı",
+            "newUserHint": "Başka bir hesap oluştur",
+            "manageUsers": "Kullanıcıları yönet",
+            "accountPasswordLabel": "Hesap parolası",
+            "backToList": "Hesaplara dön",
+            "unlockPlaceholder": "Hesap parolasını girin",
+            "unlock": "Kilidi aç",
+            "unlocking": "Kilit açılıyor...",
+            "wrongPassphrase": "Hesap parolası yanlış. Lütfen tekrar deneyin.",
+            "lockedOut": "Çok fazla deneme. Bu hesap geçici olarak kilitlendi.",
+            "lockedOutCountdown": "{seconds} sn sonra tekrar deneyin.",
+            "showPassword": "Parolayı göster",
+            "hidePassword": "Parolayı gizle",
+            "lastUsedToday": "Bugün kullanıldı",
+            "lastUsedYesterday": "Dün kullanıldı",
+            "lastUsedDaysAgo": "{days} gün önce kullanıldı",
             "securityNote": "Hesap Argon2id + AES-KW + AES-256-GCM şifrelemesi ile korunuyor"
         },
         "opendrive": {
-            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
-            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
+            "privacyTitle": "OpenDrive Gizliliği",
+            "privacyUpdated": "OpenDrive gizliliği güncellendi"
         }
     }
 }

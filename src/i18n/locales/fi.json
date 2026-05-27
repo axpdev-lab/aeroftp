@@ -68,7 +68,7 @@
             "selectAll": "Select All",
             "required": "vaadittu",
             "duplicate": "Kopioi",
-            "current": "[NEEDS TRANSLATION] current"
+            "current": "nykyinen"
         },
         "connection": {
             "title": "Yhdistä palvelimeen",
@@ -424,7 +424,7 @@
             "lockRcloneCrypt": "Lukitse Rclone Crypt -peittokerros",
             "unlockRcloneCrypt": "Pura salaus Rclone Crypt -peittokerroksena…",
             "openAsAeroVaultOverlay": "Avaa AeroVault Overlayna",
-            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
+            "privacyEllipsis": "Yksityisyys..."
         },
         "transfer": {
             "transferring": "Siirretään...",
@@ -3005,13 +3005,13 @@
             "selectedItems": "Valitut kohteet",
             "sizesPartial": "(jotkin koot tuntemattomia)",
             "totalSize": "Kokonaiskoko",
-            "privacyHidden": "[NEEDS TRANSLATION] Hidden",
-            "privacyHiddenDesc": "[NEEDS TRANSLATION] Accessible by direct link only; not searchable.",
-            "privacyPrivate": "[NEEDS TRANSLATION] Private",
-            "privacyPrivateDesc": "[NEEDS TRANSLATION] Only the account owner can access this item.",
-            "privacyPublic": "[NEEDS TRANSLATION] Public",
-            "privacyPublicDesc": "[NEEDS TRANSLATION] Anyone with the link can access this item.",
-            "visibility": "[NEEDS TRANSLATION] Visibility"
+            "privacyHidden": "Piilotettu",
+            "privacyHiddenDesc": "Käytettävissä vain suoran linkin kautta, ei haettavissa.",
+            "privacyPrivate": "Yksityinen",
+            "privacyPrivateDesc": "Vain tilin omistaja voi käyttää tätä kohdetta.",
+            "privacyPublic": "Julkinen",
+            "privacyPublicDesc": "Kuka tahansa linkin saanut voi käyttää tätä kohdetta.",
+            "visibility": "Näkyvyys"
         },
         "duplicates": {
             "title": "Etsi kaksoiskappaleet",
@@ -4580,33 +4580,33 @@
             "launcherScheduler": "Ajastin"
         },
         "accountLock": {
-            "title": "[NEEDS TRANSLATION] Choose an account",
-            "signInAs": "[NEEDS TRANSLATION] Sign in as {name}",
-            "activeBadge": "[NEEDS TRANSLATION] Last used",
-            "passphraseProtected": "[NEEDS TRANSLATION] Password protected",
-            "unlocked": "[NEEDS TRANSLATION] Active session",
-            "openAccount": "[NEEDS TRANSLATION] Open",
-            "newUser": "[NEEDS TRANSLATION] New user",
-            "newUserHint": "[NEEDS TRANSLATION] Create another account",
-            "manageUsers": "[NEEDS TRANSLATION] Manage users",
-            "accountPasswordLabel": "[NEEDS TRANSLATION] Account password",
-            "backToList": "[NEEDS TRANSLATION] Back to accounts",
-            "unlockPlaceholder": "[NEEDS TRANSLATION] Enter account password",
-            "unlock": "[NEEDS TRANSLATION] Unlock",
-            "unlocking": "[NEEDS TRANSLATION] Unlocking...",
-            "wrongPassphrase": "[NEEDS TRANSLATION] Wrong account password. Please try again.",
-            "lockedOut": "[NEEDS TRANSLATION] Too many attempts. This account is temporarily locked.",
-            "lockedOutCountdown": "[NEEDS TRANSLATION] Try again in {seconds}s.",
-            "showPassword": "[NEEDS TRANSLATION] Show password",
-            "hidePassword": "[NEEDS TRANSLATION] Hide password",
-            "lastUsedToday": "[NEEDS TRANSLATION] Used today",
-            "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "title": "Valitse tili",
+            "signInAs": "Kirjaudu sisään nimellä {name}",
+            "activeBadge": "Viimeksi käytetty",
+            "passphraseProtected": "Salasanasuojattu",
+            "unlocked": "Aktiivinen istunto",
+            "openAccount": "Avaa",
+            "newUser": "Uusi käyttäjä",
+            "newUserHint": "Luo toinen tili",
+            "manageUsers": "Hallitse käyttäjiä",
+            "accountPasswordLabel": "Tilin salasana",
+            "backToList": "Takaisin tileihin",
+            "unlockPlaceholder": "Syötä tilin salasana",
+            "unlock": "Avaa lukitus",
+            "unlocking": "Avataan lukitusta...",
+            "wrongPassphrase": "Virheellinen tilin salasana. Yritä uudelleen.",
+            "lockedOut": "Liian monta yritystä. Tämä tili on tilapäisesti lukittu.",
+            "lockedOutCountdown": "Yritä uudelleen {seconds} s kuluttua.",
+            "showPassword": "Näytä salasana",
+            "hidePassword": "Piilota salasana",
+            "lastUsedToday": "Käytetty tänään",
+            "lastUsedYesterday": "Käytetty eilen",
+            "lastUsedDaysAgo": "Käytetty {days} päivää sitten",
             "securityNote": "Tili suojattu Argon2id + AES-KW + AES-256-GCM -salauksella"
         },
         "opendrive": {
-            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
-            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
+            "privacyTitle": "OpenDrive-yksityisyys",
+            "privacyUpdated": "OpenDrive-yksityisyys päivitetty"
         }
     }
 }

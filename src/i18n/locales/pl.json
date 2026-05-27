@@ -68,7 +68,7 @@
             "selectAll": "Select All",
             "required": "wymagane",
             "duplicate": "Duplikuj",
-            "current": "[NEEDS TRANSLATION] current"
+            "current": "bieżący"
         },
         "connection": {
             "title": "Połącz z serwerem",
@@ -424,7 +424,7 @@
             "lockRcloneCrypt": "Zablokuj nakładkę Rclone Crypt",
             "unlockRcloneCrypt": "Odszyfruj jako nakładkę Rclone Crypt…",
             "openAsAeroVaultOverlay": "Otwórz jako AeroVault Overlay",
-            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
+            "privacyEllipsis": "Prywatność..."
         },
         "transfer": {
             "transferring": "Przesyłanie...",
@@ -3005,13 +3005,13 @@
             "selectedItems": "Zaznaczone elementy",
             "sizesPartial": "(niektóre rozmiary nieznane)",
             "totalSize": "Łączny rozmiar",
-            "privacyHidden": "[NEEDS TRANSLATION] Hidden",
-            "privacyHiddenDesc": "[NEEDS TRANSLATION] Accessible by direct link only; not searchable.",
-            "privacyPrivate": "[NEEDS TRANSLATION] Private",
-            "privacyPrivateDesc": "[NEEDS TRANSLATION] Only the account owner can access this item.",
-            "privacyPublic": "[NEEDS TRANSLATION] Public",
-            "privacyPublicDesc": "[NEEDS TRANSLATION] Anyone with the link can access this item.",
-            "visibility": "[NEEDS TRANSLATION] Visibility"
+            "privacyHidden": "Ukryte",
+            "privacyHiddenDesc": "Dostępne tylko przez bezpośredni link, nie do wyszukania.",
+            "privacyPrivate": "Prywatne",
+            "privacyPrivateDesc": "Dostęp do tego elementu ma tylko właściciel konta.",
+            "privacyPublic": "Publiczne",
+            "privacyPublicDesc": "Dostęp do tego elementu ma każdy, kto posiada link.",
+            "visibility": "Widoczność"
         },
         "duplicates": {
             "title": "Znajdź duplikaty",
@@ -4580,33 +4580,33 @@
             "launcherScheduler": "Harmonogram"
         },
         "accountLock": {
-            "title": "[NEEDS TRANSLATION] Choose an account",
-            "signInAs": "[NEEDS TRANSLATION] Sign in as {name}",
-            "activeBadge": "[NEEDS TRANSLATION] Last used",
-            "passphraseProtected": "[NEEDS TRANSLATION] Password protected",
-            "unlocked": "[NEEDS TRANSLATION] Active session",
-            "openAccount": "[NEEDS TRANSLATION] Open",
-            "newUser": "[NEEDS TRANSLATION] New user",
-            "newUserHint": "[NEEDS TRANSLATION] Create another account",
-            "manageUsers": "[NEEDS TRANSLATION] Manage users",
-            "accountPasswordLabel": "[NEEDS TRANSLATION] Account password",
-            "backToList": "[NEEDS TRANSLATION] Back to accounts",
-            "unlockPlaceholder": "[NEEDS TRANSLATION] Enter account password",
-            "unlock": "[NEEDS TRANSLATION] Unlock",
-            "unlocking": "[NEEDS TRANSLATION] Unlocking...",
-            "wrongPassphrase": "[NEEDS TRANSLATION] Wrong account password. Please try again.",
-            "lockedOut": "[NEEDS TRANSLATION] Too many attempts. This account is temporarily locked.",
-            "lockedOutCountdown": "[NEEDS TRANSLATION] Try again in {seconds}s.",
-            "showPassword": "[NEEDS TRANSLATION] Show password",
-            "hidePassword": "[NEEDS TRANSLATION] Hide password",
-            "lastUsedToday": "[NEEDS TRANSLATION] Used today",
-            "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "title": "Wybierz konto",
+            "signInAs": "Zaloguj się jako {name}",
+            "activeBadge": "Ostatnio używane",
+            "passphraseProtected": "Chronione hasłem",
+            "unlocked": "Aktywna sesja",
+            "openAccount": "Otwórz",
+            "newUser": "Nowy użytkownik",
+            "newUserHint": "Utwórz kolejne konto",
+            "manageUsers": "Zarządzaj użytkownikami",
+            "accountPasswordLabel": "Hasło konta",
+            "backToList": "Powrót do kont",
+            "unlockPlaceholder": "Wprowadź hasło konta",
+            "unlock": "Odblokuj",
+            "unlocking": "Odblokowywanie...",
+            "wrongPassphrase": "Nieprawidłowe hasło konta. Spróbuj ponownie.",
+            "lockedOut": "Zbyt wiele prób. To konto jest tymczasowo zablokowane.",
+            "lockedOutCountdown": "Spróbuj ponownie za {seconds} s.",
+            "showPassword": "Pokaż hasło",
+            "hidePassword": "Ukryj hasło",
+            "lastUsedToday": "Użyte dzisiaj",
+            "lastUsedYesterday": "Użyte wczoraj",
+            "lastUsedDaysAgo": "Użyte {days} dni temu",
             "securityNote": "Konto chronione szyfrowaniem Argon2id + AES-KW + AES-256-GCM"
         },
         "opendrive": {
-            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
-            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
+            "privacyTitle": "Prywatność OpenDrive",
+            "privacyUpdated": "Zaktualizowano prywatność OpenDrive"
         }
     }
 }

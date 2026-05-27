@@ -68,7 +68,7 @@
             "selectAll": "Select All",
             "required": "beharrezkoa",
             "duplicate": "Bikoiztu",
-            "current": "[NEEDS TRANSLATION] current"
+            "current": "uneko"
         },
         "connection": {
             "title": "Zerbitzarira Konektatu",
@@ -424,7 +424,7 @@
             "lockRcloneCrypt": "Blokeatu Rclone Crypt gainjartzea",
             "unlockRcloneCrypt": "Deszifratu Rclone Crypt gainjartze gisa…",
             "openAsAeroVaultOverlay": "Ireki AeroVault Overlay gisa",
-            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
+            "privacyEllipsis": "Pribatutasuna..."
         },
         "transfer": {
             "transferring": "Transferitzen...",
@@ -3005,13 +3005,13 @@
             "selectedItems": "Hautatutako elementuak",
             "sizesPartial": "(tamaina batzuk ezezagunak)",
             "totalSize": "Tamaina osoa",
-            "privacyHidden": "[NEEDS TRANSLATION] Hidden",
-            "privacyHiddenDesc": "[NEEDS TRANSLATION] Accessible by direct link only; not searchable.",
-            "privacyPrivate": "[NEEDS TRANSLATION] Private",
-            "privacyPrivateDesc": "[NEEDS TRANSLATION] Only the account owner can access this item.",
-            "privacyPublic": "[NEEDS TRANSLATION] Public",
-            "privacyPublicDesc": "[NEEDS TRANSLATION] Anyone with the link can access this item.",
-            "visibility": "[NEEDS TRANSLATION] Visibility"
+            "privacyHidden": "Ezkutatuta",
+            "privacyHiddenDesc": "Esteka zuzenaren bidez soilik eskuragarri; ez da bilaketetan agertzen.",
+            "privacyPrivate": "Pribatua",
+            "privacyPrivateDesc": "Kontuaren jabeak soilik atzi dezake elementu hau.",
+            "privacyPublic": "Publikoa",
+            "privacyPublicDesc": "Esteka duen edonork atzi dezake elementu hau.",
+            "visibility": "Ikusgaitasuna"
         },
         "duplicates": {
             "title": "Bilatu bikoiztuak",
@@ -4599,33 +4599,33 @@
             "launcherScheduler": "Antolatzailea"
         },
         "accountLock": {
-            "title": "[NEEDS TRANSLATION] Choose an account",
-            "signInAs": "[NEEDS TRANSLATION] Sign in as {name}",
-            "activeBadge": "[NEEDS TRANSLATION] Last used",
-            "passphraseProtected": "[NEEDS TRANSLATION] Password protected",
-            "unlocked": "[NEEDS TRANSLATION] Active session",
-            "openAccount": "[NEEDS TRANSLATION] Open",
-            "newUser": "[NEEDS TRANSLATION] New user",
-            "newUserHint": "[NEEDS TRANSLATION] Create another account",
-            "manageUsers": "[NEEDS TRANSLATION] Manage users",
-            "accountPasswordLabel": "[NEEDS TRANSLATION] Account password",
-            "backToList": "[NEEDS TRANSLATION] Back to accounts",
-            "unlockPlaceholder": "[NEEDS TRANSLATION] Enter account password",
-            "unlock": "[NEEDS TRANSLATION] Unlock",
-            "unlocking": "[NEEDS TRANSLATION] Unlocking...",
-            "wrongPassphrase": "[NEEDS TRANSLATION] Wrong account password. Please try again.",
-            "lockedOut": "[NEEDS TRANSLATION] Too many attempts. This account is temporarily locked.",
-            "lockedOutCountdown": "[NEEDS TRANSLATION] Try again in {seconds}s.",
-            "showPassword": "[NEEDS TRANSLATION] Show password",
-            "hidePassword": "[NEEDS TRANSLATION] Hide password",
-            "lastUsedToday": "[NEEDS TRANSLATION] Used today",
-            "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "title": "Aukeratu kontu bat",
+            "signInAs": "Hasi saioa {name} gisa",
+            "activeBadge": "Azkenekoz erabilia",
+            "passphraseProtected": "Pasahitzaz babestua",
+            "unlocked": "Saio aktiboa",
+            "openAccount": "Ireki",
+            "newUser": "Erabiltzaile berria",
+            "newUserHint": "Sortu beste kontu bat",
+            "manageUsers": "Kudeatu erabiltzaileak",
+            "accountPasswordLabel": "Kontuaren pasahitza",
+            "backToList": "Itzuli kontuetara",
+            "unlockPlaceholder": "Sartu kontuaren pasahitza",
+            "unlock": "Desblokeatu",
+            "unlocking": "Desblokeatzen...",
+            "wrongPassphrase": "Kontuaren pasahitza okerra. Saiatu berriro.",
+            "lockedOut": "Saiakera gehiegi. Kontu hau aldi baterako blokeatuta dago.",
+            "lockedOutCountdown": "Saiatu berriro {seconds} segundo barru.",
+            "showPassword": "Erakutsi pasahitza",
+            "hidePassword": "Ezkutatu pasahitza",
+            "lastUsedToday": "Gaur erabilia",
+            "lastUsedYesterday": "Atzo erabilia",
+            "lastUsedDaysAgo": "Duela {days} egun erabilia",
             "securityNote": "Kontua Argon2id + AES-KW + AES-256-GCM enkriptaziorekin babestuta"
         },
         "opendrive": {
-            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
-            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
+            "privacyTitle": "OpenDrive pribatutasuna",
+            "privacyUpdated": "OpenDrive pribatutasuna eguneratuta"
         }
     }
 }

@@ -68,7 +68,7 @@
             "selectAll": "Select All",
             "required": "nauðsynlegt",
             "duplicate": "Afrita",
-            "current": "[NEEDS TRANSLATION] current"
+            "current": "núverandi"
         },
         "connection": {
             "title": "Tengjast þjóni",
@@ -424,7 +424,7 @@
             "lockRcloneCrypt": "Læsa Rclone Crypt yfirlag",
             "unlockRcloneCrypt": "Afkóða sem Rclone Crypt yfirlag…",
             "openAsAeroVaultOverlay": "Opna sem AeroVault Overlay",
-            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
+            "privacyEllipsis": "Persónuvernd..."
         },
         "transfer": {
             "transferring": "Flytur...",
@@ -3005,13 +3005,13 @@
             "selectedItems": "Valin atriði",
             "sizesPartial": "(sumar stærðir óþekktar)",
             "totalSize": "Heildarstærð",
-            "privacyHidden": "[NEEDS TRANSLATION] Hidden",
-            "privacyHiddenDesc": "[NEEDS TRANSLATION] Accessible by direct link only; not searchable.",
-            "privacyPrivate": "[NEEDS TRANSLATION] Private",
-            "privacyPrivateDesc": "[NEEDS TRANSLATION] Only the account owner can access this item.",
-            "privacyPublic": "[NEEDS TRANSLATION] Public",
-            "privacyPublicDesc": "[NEEDS TRANSLATION] Anyone with the link can access this item.",
-            "visibility": "[NEEDS TRANSLATION] Visibility"
+            "privacyHidden": "Falið",
+            "privacyHiddenDesc": "Aðeins aðgengilegt með beinum tengli; ekki leitarhæft.",
+            "privacyPrivate": "Einkamál",
+            "privacyPrivateDesc": "Aðeins eigandi reikningsins getur opnað þetta atriði.",
+            "privacyPublic": "Opinbert",
+            "privacyPublicDesc": "Allir sem hafa tengilinn geta opnað þetta atriði.",
+            "visibility": "Sýnileiki"
         },
         "duplicates": {
             "title": "Finna Tvírit",
@@ -4599,33 +4599,33 @@
             "launcherScheduler": "Tímaáætlun"
         },
         "accountLock": {
-            "title": "[NEEDS TRANSLATION] Choose an account",
-            "signInAs": "[NEEDS TRANSLATION] Sign in as {name}",
-            "activeBadge": "[NEEDS TRANSLATION] Last used",
-            "passphraseProtected": "[NEEDS TRANSLATION] Password protected",
-            "unlocked": "[NEEDS TRANSLATION] Active session",
-            "openAccount": "[NEEDS TRANSLATION] Open",
-            "newUser": "[NEEDS TRANSLATION] New user",
-            "newUserHint": "[NEEDS TRANSLATION] Create another account",
-            "manageUsers": "[NEEDS TRANSLATION] Manage users",
-            "accountPasswordLabel": "[NEEDS TRANSLATION] Account password",
-            "backToList": "[NEEDS TRANSLATION] Back to accounts",
-            "unlockPlaceholder": "[NEEDS TRANSLATION] Enter account password",
-            "unlock": "[NEEDS TRANSLATION] Unlock",
-            "unlocking": "[NEEDS TRANSLATION] Unlocking...",
-            "wrongPassphrase": "[NEEDS TRANSLATION] Wrong account password. Please try again.",
-            "lockedOut": "[NEEDS TRANSLATION] Too many attempts. This account is temporarily locked.",
-            "lockedOutCountdown": "[NEEDS TRANSLATION] Try again in {seconds}s.",
-            "showPassword": "[NEEDS TRANSLATION] Show password",
-            "hidePassword": "[NEEDS TRANSLATION] Hide password",
-            "lastUsedToday": "[NEEDS TRANSLATION] Used today",
-            "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "title": "Veldu reikning",
+            "signInAs": "Skrá inn sem {name}",
+            "activeBadge": "Síðast notað",
+            "passphraseProtected": "Varið með lykilorði",
+            "unlocked": "Virk lota",
+            "openAccount": "Opna",
+            "newUser": "Nýr notandi",
+            "newUserHint": "Búa til annan reikning",
+            "manageUsers": "Stjórna notendum",
+            "accountPasswordLabel": "Lykilorð reiknings",
+            "backToList": "Til baka á reikninga",
+            "unlockPlaceholder": "Sláðu inn lykilorð reiknings",
+            "unlock": "Aflæsa",
+            "unlocking": "Aflæsi...",
+            "wrongPassphrase": "Rangt lykilorð reiknings. Reyndu aftur.",
+            "lockedOut": "Of margar tilraunir. Þessi reikningur er læstur tímabundið.",
+            "lockedOutCountdown": "Reyndu aftur eftir {seconds}s.",
+            "showPassword": "Sýna lykilorð",
+            "hidePassword": "Fela lykilorð",
+            "lastUsedToday": "Notað í dag",
+            "lastUsedYesterday": "Notað í gær",
+            "lastUsedDaysAgo": "Notað fyrir {days} dögum",
             "securityNote": "Reikningur varinn með Argon2id + AES-KW + AES-256-GCM dulkóðun"
         },
         "opendrive": {
-            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
-            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
+            "privacyTitle": "OpenDrive persónuvernd",
+            "privacyUpdated": "OpenDrive persónuvernd uppfærð"
         }
     }
 }

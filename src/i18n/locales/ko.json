@@ -68,7 +68,7 @@
             "selectAll": "Select All",
             "required": "필수",
             "duplicate": "복제",
-            "current": "[NEEDS TRANSLATION] current"
+            "current": "현재"
         },
         "connection": {
             "title": "서버에 연결",
@@ -424,7 +424,7 @@
             "lockRcloneCrypt": "Rclone Crypt 오버레이 잠금",
             "unlockRcloneCrypt": "Rclone Crypt 오버레이로 복호화…",
             "openAsAeroVaultOverlay": "AeroVault Overlay로 열기",
-            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
+            "privacyEllipsis": "개인정보..."
         },
         "transfer": {
             "transferring": "전송 중...",
@@ -3005,13 +3005,13 @@
             "selectedItems": "선택된 항목",
             "sizesPartial": "(일부 크기 알 수 없음)",
             "totalSize": "총 크기",
-            "privacyHidden": "[NEEDS TRANSLATION] Hidden",
-            "privacyHiddenDesc": "[NEEDS TRANSLATION] Accessible by direct link only; not searchable.",
-            "privacyPrivate": "[NEEDS TRANSLATION] Private",
-            "privacyPrivateDesc": "[NEEDS TRANSLATION] Only the account owner can access this item.",
-            "privacyPublic": "[NEEDS TRANSLATION] Public",
-            "privacyPublicDesc": "[NEEDS TRANSLATION] Anyone with the link can access this item.",
-            "visibility": "[NEEDS TRANSLATION] Visibility"
+            "privacyHidden": "숨김",
+            "privacyHiddenDesc": "직접 링크로만 접근 가능하며 검색되지 않습니다.",
+            "privacyPrivate": "비공개",
+            "privacyPrivateDesc": "계정 소유자만 이 항목에 접근할 수 있습니다.",
+            "privacyPublic": "공개",
+            "privacyPublicDesc": "링크가 있는 사람은 누구나 이 항목에 접근할 수 있습니다.",
+            "visibility": "공개 범위"
         },
         "duplicates": {
             "title": "중복 파일 찾기",
@@ -4580,33 +4580,33 @@
             "launcherScheduler": "스케줄러"
         },
         "accountLock": {
-            "title": "[NEEDS TRANSLATION] Choose an account",
-            "signInAs": "[NEEDS TRANSLATION] Sign in as {name}",
-            "activeBadge": "[NEEDS TRANSLATION] Last used",
-            "passphraseProtected": "[NEEDS TRANSLATION] Password protected",
-            "unlocked": "[NEEDS TRANSLATION] Active session",
-            "openAccount": "[NEEDS TRANSLATION] Open",
-            "newUser": "[NEEDS TRANSLATION] New user",
-            "newUserHint": "[NEEDS TRANSLATION] Create another account",
-            "manageUsers": "[NEEDS TRANSLATION] Manage users",
-            "accountPasswordLabel": "[NEEDS TRANSLATION] Account password",
-            "backToList": "[NEEDS TRANSLATION] Back to accounts",
-            "unlockPlaceholder": "[NEEDS TRANSLATION] Enter account password",
-            "unlock": "[NEEDS TRANSLATION] Unlock",
-            "unlocking": "[NEEDS TRANSLATION] Unlocking...",
-            "wrongPassphrase": "[NEEDS TRANSLATION] Wrong account password. Please try again.",
-            "lockedOut": "[NEEDS TRANSLATION] Too many attempts. This account is temporarily locked.",
-            "lockedOutCountdown": "[NEEDS TRANSLATION] Try again in {seconds}s.",
-            "showPassword": "[NEEDS TRANSLATION] Show password",
-            "hidePassword": "[NEEDS TRANSLATION] Hide password",
-            "lastUsedToday": "[NEEDS TRANSLATION] Used today",
-            "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "title": "계정 선택",
+            "signInAs": "{name}(으)로 로그인",
+            "activeBadge": "마지막 사용",
+            "passphraseProtected": "비밀번호로 보호됨",
+            "unlocked": "활성 세션",
+            "openAccount": "열기",
+            "newUser": "새 사용자",
+            "newUserHint": "다른 계정 만들기",
+            "manageUsers": "사용자 관리",
+            "accountPasswordLabel": "계정 비밀번호",
+            "backToList": "계정 목록으로 돌아가기",
+            "unlockPlaceholder": "계정 비밀번호 입력",
+            "unlock": "잠금 해제",
+            "unlocking": "잠금 해제 중...",
+            "wrongPassphrase": "계정 비밀번호가 잘못되었습니다. 다시 시도해 주세요.",
+            "lockedOut": "시도 횟수가 너무 많습니다. 이 계정은 일시적으로 잠겼습니다.",
+            "lockedOutCountdown": "{seconds}초 후에 다시 시도하세요.",
+            "showPassword": "비밀번호 표시",
+            "hidePassword": "비밀번호 숨기기",
+            "lastUsedToday": "오늘 사용함",
+            "lastUsedYesterday": "어제 사용함",
+            "lastUsedDaysAgo": "{days}일 전 사용함",
             "securityNote": "계정은 Argon2id + AES-KW + AES-256-GCM 암호화로 보호됩니다"
         },
         "opendrive": {
-            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
-            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
+            "privacyTitle": "OpenDrive 개인정보",
+            "privacyUpdated": "OpenDrive 개인정보가 업데이트되었습니다"
         }
     }
 }

@@ -68,7 +68,7 @@
             "selectAll": "Select All",
             "required": "必填",
             "duplicate": "复制",
-            "current": "[NEEDS TRANSLATION] current"
+            "current": "当前"
         },
         "connection": {
             "title": "连接到服务器",
@@ -424,7 +424,7 @@
             "lockRcloneCrypt": "锁定 Rclone Crypt 覆盖层",
             "unlockRcloneCrypt": "解密为 Rclone Crypt 覆盖层…",
             "openAsAeroVaultOverlay": "作为 AeroVault Overlay 打开",
-            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
+            "privacyEllipsis": "隐私…"
         },
         "transfer": {
             "transferring": "传输中...",
@@ -3005,13 +3005,13 @@
             "selectedItems": "已选项目",
             "sizesPartial": "(部分大小未知)",
             "totalSize": "总大小",
-            "privacyHidden": "[NEEDS TRANSLATION] Hidden",
-            "privacyHiddenDesc": "[NEEDS TRANSLATION] Accessible by direct link only; not searchable.",
-            "privacyPrivate": "[NEEDS TRANSLATION] Private",
-            "privacyPrivateDesc": "[NEEDS TRANSLATION] Only the account owner can access this item.",
-            "privacyPublic": "[NEEDS TRANSLATION] Public",
-            "privacyPublicDesc": "[NEEDS TRANSLATION] Anyone with the link can access this item.",
-            "visibility": "[NEEDS TRANSLATION] Visibility"
+            "privacyHidden": "隐藏",
+            "privacyHiddenDesc": "仅可通过直接链接访问，不可搜索。",
+            "privacyPrivate": "私有",
+            "privacyPrivateDesc": "仅账户所有者可以访问此项目。",
+            "privacyPublic": "公开",
+            "privacyPublicDesc": "任何拥有该链接的人都可以访问此项目。",
+            "visibility": "可见性"
         },
         "duplicates": {
             "title": "查找重复文件",
@@ -4605,8 +4605,8 @@
             "securityNote": "账户受 Argon2id + AES-KW + AES-256-GCM 加密保护"
         },
         "opendrive": {
-            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
-            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
+            "privacyTitle": "OpenDrive 隐私",
+            "privacyUpdated": "OpenDrive 隐私已更新"
         }
     }
 }

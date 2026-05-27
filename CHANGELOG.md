@@ -7,15 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [4.0.0] - 2026-05-27
 
-### DAG Transfer Engine Convergence and Multi-User Account Partition
+### Shaped Graph Transfer (DAG) and Multi-User Account Partition
 
-v4.0.0 ships two convergent architectural shifts. The first is the DAG transfer engine, which becomes the single production path for every transfer surface. The second is the Multi-User Account Partition, which makes AeroFTP a true single-installation multi-account application: saved servers, settings, OAuth tokens, sync state and lockout counters are now partitioned per user inside the same vault, with an OS-style account lock screen and an admin role for peer account management.
+v4.0.0 lands two architectural shifts in the same release.
 
-### DAG Transfer Engine Convergence
+The first is the promotion of the ready-frontier **DAG transfer engine** introduced in v3.8.4 to the **single production path** for every transfer surface. The three rollout flags that gated the engine during the v3.8.x cycle are gone, the hand-rolled `JoinSet` batch orchestrator has been deleted, and the shaped builders are now the single source of truth for every graph the executor schedules: single-file leaves, multi-file batches, sync sessions, intra-file segmented downloads, and cross-bucket copies. The release introduces a principled trait expansion on `StorageProvider` so the engine can dispatch the right shape per call from a provider's `TransferCapabilities`, ships the wiring + integration tests that prove the shapes work against live S3, B2, WebDAV, Azure, ImageKit, Google Drive, Dropbox, OneDrive, Box, MEGA, pCloud, kDrive, OpenDrive, Yandex Disk, Jottacloud, Drime, Uploadcare, Cloudinary, and Filen, and pairs the architectural shift with a power-user CLI surface that exposes 25+ runtime knobs over the same engine.
 
-v4.0.0 promotes the ready-frontier DAG engine introduced in v3.8.4 to the **single production path** for every transfer surface. The three rollout flags that gated the engine during the v3.8.x cycle are gone, the hand-rolled `JoinSet` batch orchestrator has been deleted, and the shaped builders are now the single source of truth for every graph the executor schedules: single-file leaves, multi-file batches, sync sessions, intra-file segmented downloads, and cross-bucket copies.
-
-The release introduces a small but principled trait expansion on `StorageProvider` so the engine can dispatch the right shape per call from a provider's `TransferCapabilities`, and ships the wiring + integration tests that prove the shapes work against live S3, B2, WebDAV and ImageKit backends.
+The second is the **Multi-User Account Partition**: the vault splits into per-user partitions while remaining fully backward-compatible with single-user installs. A boot-time Account Lock Screen presents the configured users, the vault is partition-aware end-to-end (server profiles, AeroSync settings, CLI `--user` flag), and an admin role with a self-or-admin gate plus an admin reset-passphrase backend rounds out the surface. Migration from a v3.8.x single-user keystore is automatic and idempotent, the admin role is opt-in with a last-admin guard, and the unlock prompts use honest crypto-stack labels (Argon2id key derivation, AES partition encryption). Sixteen commits cover the partition foundation, the boot picker, the CLI `--user` flag across profile and transfer commands, the cross-user dedup probe with HMAC keying, the migration of every existing keystore consumer (ConnectionScreen, SettingsPanel, IntroHub, ExportImport, KeystoreWizard, Cloud, SavedServers, App.tsx), the admin role, and the UX polish (logout, perceptible unlock spinner, refined L2 picker).
 
 ---
 
@@ -25,9 +23,9 @@ The release introduces a small but principled trait expansion on `StorageProvide
 
 The shaped graph builder picks the transfer-core shape per call from the provider's capability snapshot:
 
-- **Native multipart upload fan-out** on S3, Backblaze B2, Google Drive, Dropbox, OneDrive, and Box: an upload above one preferred chunk now produces N `UploadPart` graph nodes (one per chunk). The runner orchestrates the lifecycle end-to-end — `begin_multipart_upload` opens the session lazily under a per-context mutex, `upload_part` dispatches each chunk through the shared chunk budget so parts upload in parallel where the provider allows it (S3, B2, Dropbox concurrent sessions, Box chunked-v2: `max_chunk_slots = 4`; Drive and OneDrive enforce sequential Content-Range so the builder chains the part nodes serially), and the terminal `CommitTemp` node sorts receipts by part number and calls `complete_multipart_upload` to finalize atomically. On any failure the runner best-effort `abort_multipart_upload` so backends never accumulate orphan upload IDs. Mid-stream failure recovery is idempotent. Per-provider live validation: Drive 500 MiB in 34.6 s (63 parts × 8 MiB), Dropbox 500 MiB in 54.2 s (63 parts × 8 MiB concurrent), OneDrive 500 MiB in 63.8 s (50 parts × 10 MiB sequential), Box 100 MiB in 24.6 s (13 parts × 8 MiB, SHA-1 per chunk + whole-file SHA-1 commit).
-- **Server-side copy** on every backend that advertises the capability — S3 `x-amz-copy-source`, B2 `b2_copy_file`, WebDAV RFC 4918 `COPY`, ImageKit `copyFile`, plus 14 other native providers. The shaped-copy graph collapses to a single `ServerSideCopy` node that reserves only an `api_slot`: no file slot, no disk I/O, no local host bytes. The server moves the data. S3 sources above the 5 GiB `CopyObject` limit now fan out into parallel `UploadPartCopy` requests (T-DEBT-08): the helper composes the copy as a multipart upload, dispatches 4 parts in parallel via `JoinSet`, and best-effort aborts the multipart on any error so buckets never accumulate orphan upload IDs.
-- **Intra-file segmented downloads** through the shared `shaped_ranges` builder: when a provider proves it honours HTTP `Range` (a strict `206 Partial Content` with a coherent `Content-Range`), the segmented download fans out into N `DownloadRange` nodes with no inter-segment dependencies, governed by the shared chunk / HTTP / disk-write budget.
+- **Native multipart upload fan-out** on S3, Backblaze B2, Google Drive, Dropbox, OneDrive, and Box: an upload above one preferred chunk now produces N `UploadPart` graph nodes (one per chunk). The runner orchestrates the lifecycle end-to-end. Per-provider live validation: Drive 500 MiB in 34.6 s (63 parts x 8 MiB), Dropbox 500 MiB in 54.2 s (63 parts x 8 MiB concurrent), OneDrive 500 MiB in 63.8 s (50 parts x 10 MiB sequential), Box 100 MiB in 24.6 s (13 parts x 8 MiB, SHA-1 per chunk + whole-file SHA-1 commit).
+- **Server-side copy** on every backend that advertises the capability: S3 `x-amz-copy-source`, B2 `b2_copy_file`, WebDAV RFC 4918 `COPY`, ImageKit `copyFile`, plus 14 other native providers. The shaped-copy graph collapses to a single `ServerSideCopy` node that reserves only an `api_slot`: no file slot, no disk I/O, no local host bytes. The server moves the data. S3 sources above the 5 GiB `CopyObject` limit fan out into parallel `UploadPartCopy` requests (T-DEBT-08).
+- **Intra-file segmented downloads** through the shared `shaped_ranges` builder: when a provider proves it honours HTTP `Range`, the segmented download fans out into N `DownloadRange` nodes with no inter-segment dependencies, governed by the shared chunk / HTTP / disk-write budget.
 
 For users on backends that advertise none of these capabilities the engine degrades honestly to the same single-transfer-core path that shipped pre-v4.0.0, byte-identical with the legacy `provider.upload` / `provider.download`.
 
@@ -39,78 +37,114 @@ Five new methods extend `StorageProvider`:
 - `upload_part(handle, part_number, data)`
 - `complete_multipart_upload(handle, parts)`
 - `abort_multipart_upload(handle)`
-- `server_side_copy(from, to)` — alongside the existing `supports_server_side_copy()` capability gate.
+- `server_side_copy(from, to)` (alongside the existing `supports_server_side_copy()` capability gate).
 
-The default implementations return `NotSupported`, so a provider that never advertises a capability never reaches the new methods. Nine native backends already implement them: S3 (multipart via `CreateMultipartUpload` / `UploadPart` / `CompleteMultipartUpload` / `AbortMultipartUpload`, server-side copy via `x-amz-copy-source`), B2 (multipart via `b2_start_large_file` / `b2_upload_part` / `b2_finish_large_file`, server-side copy via `b2_copy_file` with the 5 GB protocol cap), Azure Blob (Put Block / Put Block List), WebDAV (Nextcloud chunked-v2 + RFC 4918 `COPY`), ImageKit (`copyFile` / `copyFolder`), Google Drive (resumable session with `Content-Range`), Dropbox (concurrent `upload_session/start` + `append_v2` + close + `finish`), OneDrive (Microsoft Graph `createUploadSession`), and Box (chunked-v2 with per-chunk SHA-1 `Digest` + whole-file SHA-1 commit). The `local_source_path` parameter is threaded through `begin_multipart_upload` for backends like Box whose commit step needs to stream the source file once for the whole-file checksum; backends that do not need it ignore the parameter.
+Default implementations return `NotSupported`, so a provider that never advertises a capability never reaches the new methods. Nineteen native backends already implement them: S3 (multipart + server-side copy), B2 (multipart + 5 GB-capped server-side copy), Azure Blob (Put Block / Put Block List), WebDAV (Nextcloud chunked v2 + RFC 4918 `COPY`), ImageKit (`copyFile` / `copyFolder`), Google Drive (resumable session), Dropbox (concurrent `upload_session` + explicit close), OneDrive (Microsoft Graph `createUploadSession`), Box (chunked v2 with per-chunk SHA-1 + whole-file SHA-1 commit), MEGA (gfs* canonical chunk ramp), pCloud (chunked upload session), kDrive (upload-session API), OpenDrive (chunked upload session), Yandex Disk (upload-target API), Jottacloud (allocate API), Drime (S3 multipart), Uploadcare (multipart API), Cloudinary (chunked upload), Filen v3 (chunked AES-GCM encrypted upload). ImageKit / Internxt / MEGA / 4shared / FileLu document the trait as NotSupported-by-design for cases where the protocol does not offer a real multipart surface.
+
+#### Power-user CLI knob expansion (PR #261)
+
+Twenty-five new flags expose the same DAG engine to scripted workflows and CI pipelines without touching code:
+
+- **Generic** (Sprint K1 Pacchetto A): `--sftp-concurrency`, `--checkers`, `--tpslimit` / `--tpslimit-burst`, `--no-traverse`, `--order-by`.
+- **S3 surface** (KE-B1): `--s3-upload-concurrency`, `--s3-no-check-bucket`, `--s3-disable-checksum`, `--s3-acl`, `--s3-storage-class`.
+- **Retry-After parsing extensions** (KE-E): S3, Azure and Filen now parse and honour server-issued `Retry-After` on 429 / 503 throttle responses (joining Google Drive, Dropbox, OneDrive and Box from T-DEBT-05).
+- **Drive non-AIMD knobs + AIMD config** (KE-B2): pacer / abuse acknowledgement / copy-related runtime settings for Google Drive.
+- **OneDrive** (KE-B3): `--onedrive-no-versions`, `--onedrive-list-chunk`, `--onedrive-link-scope`.
+- **Azure** (KE-B4): `--azure-upload-concurrency`, `--azure-disable-checksum`, `--azure-access-tier`, `--azure-archive-tier-delete`.
+- **AIMD adaptive concurrency** (KE-D): `--aimd-disable` kill switch, `--aimd-min` / `--aimd-max` / `--aimd-step-window` overrides + per-class TOML configuration, hint table propagation through the executor.
+- **FUSE mount surface** (Sprint K3 / T-DEBT-13): `--cache-mode={off|minimal|writes|full}` policy preset, polling / timeout knobs, `--write-back-cache` via `Filesystem::init` capability negotiation, `--fuse-threads` multi-threaded session loop. `fuser` bumped 0.16 to 0.17.
+
+#### AeroCloud catch-up (PR #262)
+
+- **Koofr background sync dispatch fix.** Koofr was already a stable provider in the AeroCloud wizard but `cloud_provider_factory.rs` did not route it to the background sync path, so a Koofr profile selected from the wizard would surface "provider not implemented" at first scheduled sync. One-line factory dispatch fix.
+- **Four providers exposed in the AeroCloud wizard:** ImageKit, Uploadcare, Cloudinary, Backblaze B2. They were already wired through the factory since v3.x but never appeared as selectable presets in the wizard UI, leaving them reachable only by hand-rolled config.
 
 #### Convergence cleanup
 
 - The three `AEROFTP_TRANSFER_ENGINE_DAG_*` environment-variable flags are removed.
 - The matching `dag_single_file_enabled()` / `dag_batch_enabled()` / `dag_sync_enabled()` functions are removed.
-- `should_route_sync_to_dag(dry_run)` collapses to `!dry_run`: the only exit from the shared engine is a dry-run sync.
-- The four engine-routing shims (`if dag_*_enabled() { ... }`) in `provider_commands`, the CLI, the batch orchestrator and the sync path drop their flag check.
+- `should_route_sync_to_dag(dry_run)` collapses to `!dry_run`.
+- The four engine-routing shims in `provider_commands`, the CLI, the batch orchestrator and the sync path drop their flag check.
 - The hand-rolled `JoinSet` sliding-window orchestrator in `transfer_orchestrator::execute_batch` (130+ lines including `spawn_transfer_task`) is removed: `execute_batch_dag` is the entire body.
 
-#### Fixed
+#### Multi-User Account Partition (PR #279)
 
-- **Per-provider chunk size honoured verbatim**: the shaped-graph runner previously redistributed the file into N parts of `file_size / total_parts` bytes, which produced non-256-KiB-aligned chunks on Google Drive and non-320-KiB-aligned chunks on OneDrive — both APIs reject misaligned chunks mid-stream with HTTP 503. The runner now consumes the provider's advertised `multipart_part_size` as the per-part length verbatim (the last part takes the remainder); the legacy `div_ceil` distribution stays as the fallback when the provider does not advertise a preference, preserving the pre-fix behaviour for backends that did not need the alignment guarantee.
-- **Serial chain for max_chunk_slots = 1 providers**: the DAG executor was free to dispatch any ready `UploadPart` node even when only one chunk slot was budgeted, which let chunk 7 land on Drive before chunk 2 and broke Drive's monotonic `Content-Range` contract. The builder now chains the `UploadPart` nodes serially (part N depends on part N-1) whenever `max_chunk_slots <= 1`; providers with parallel chunk fan-out (S3, B2, Dropbox concurrent, Box chunked-v2) keep the unconstrained shape so they still benefit from the chunk-slot budget.
-- **Dropbox concurrent session explicit close**: `upload_session/finish` on a concurrent session requires an explicit `upload_session/append_v2` with `close: true` first; without it Dropbox returns HTTP 409 `concurrent_session_not_closed/`. `complete_multipart_upload` now emits the no-op close call before the finish/commit POST so the session finalises cleanly.
-- **DAG single-file lock race** (closes #233): `provider_disconnect` and the `provider_connect` swap path now drain a per-transfer in-flight counter before mutating the provider slot. The DAG single-file leaf takes a `TransferOperationGuard` before releasing the command-level mutex, so an active download/upload cannot see the provider box yanked from under it. A disconnect issued mid-transfer waits up to 30 seconds for the in-flight transfer to complete; on timeout the disconnect proceeds and the transfer surfaces a clean `NotConnected` on its next provider mutex acquisition.
-- **DAG batch progress accounting** (closes #234): a transient `session_pool.acquire()` failure during a batch transfer now increments the `failed` counter on the `BatchProgressSnapshot` and emits a `batch_progress` event before the node completes. Previously the failure was logged but not surfaced, so the "X of Y completed" GUI counter silently drifted.
-- **AIMD honours server-provided Retry-After** (T-DEBT-05): the adaptive concurrency controller now arms its post-congestion cooldown to the value the server actually requested instead of pacing against its own fixed default. Google Drive (header on 429 + 403 with `rateLimitExceeded` / `userRateLimitExceeded` reason), Dropbox (`retry_after` field in the 429 JSON body, header fallback), OneDrive (header on 429 / 503, `X-RateLimit-Reset` epoch fallback) and Box (header on 429 / 503) each parse their flavour of the hint and propagate it across the provider→executor boundary through a marker convention embedded in the `ProviderError` message; the executor extracts it and forwards it to `AimdController::on_congestion_with_hint`, clamped to a `[1 s, 10 × default cooldown]` safety band so a misconfigured server cannot defeat the throttle or stall the transfer indefinitely. Behaviour is unchanged when the marker is absent (no provider parsed the header), preserving the pre-v4.0.0 default-cooldown path for the other 18 backends.
-- **Image preview clipped edges after zoom-in then zoom-out** (#239, reported by @EhudKirsh). Scrolling the wheel on a previewed image silently switched the viewer out of Fit-to-screen mode by flipping `object-fit` from `contain` to `none`. Scrolling back to 100% left the viewer in the natural-size mode, so any image whose natural dimensions exceeded the container (typical of multi-megabyte photos) had its edges cropped by the container. Wheel and toolbar zoom now act purely as a multiplier on top of the active Fit / Actual-size mode and no longer change that mode on their own. The pan offset is also reset when zoom returns to fit so a panned-then-zoomed-out image re-centres correctly.
+A second architectural pillar that splits the vault into per-user partitions while keeping single-user installs fully backward-compatible:
 
-#### Documentation
-
-- New canonical technical reference at [`docs/DAG-TRANSFER-ENGINE.md`](docs/DAG-TRANSFER-ENGINE.md) (in-repo).
-- New long-form architecture walk-through at [docs.aeroftp.app/architecture/dag-transfer-engine](https://docs.aeroftp.app/architecture/dag-transfer-engine).
-- `AGENTS.md` grows a Transfer Engine section spelling out the three shapes the engine picks per call.
-
-#### Compatibility
-
-The MCP tool surface is unchanged: same names, same arguments, same notifications. Progress events are now sourced from the engine's per-node lifecycle, but downstream consumers see the same JSON shape and the same event cadence. The CLI exit codes and the GUI `transfer_event` channel are likewise unchanged.
-
-### Why v4.0.0 (DAG)
-
-The version bump reflects the architectural shift on the transfer side: the production transfer path is now a single, provider-agnostic, capability-aware DAG scheduler, with five new trait methods on the public `StorageProvider` API. Three flags, four shims, and the legacy batch orchestrator are gone. The convergence is complete; the cleanup pass for `provider_transfer_executor.rs` is filed as accepted technical debt for the post-v4.0.0 window (see `docs/dev/roadmap/APPENDIX-DAG-ENGINE/STATUS_TODO.md`).
+- **Encrypted partition foundation** with per-user data isolation, Argon2id key derivation, and AES partition encryption.
+- **Boot-time Account Lock Screen** that presents the configured users and accepts a per-user passphrase, with honest crypto-stack labels in the unlock prompts.
+- **Partition-aware vault wiring** end-to-end: SavedServers, App.tsx, ConnectionScreen, SettingsPanel, IntroHub, ExportImport, KeystoreWizard, Cloud, favicon.
+- **Per-user AeroSync settings** CRUD on top of the partition layer.
+- **Admin role** with a self-or-admin gate and an admin reset-passphrase backend, last-admin guard so an installation cannot lock itself out.
+- **CLI `--user` flag** across profile and transfer commands; optional everywhere, defaults to the active profile.
+- **Cross-user dedup probe** with HMAC keying.
+- **UX polish**: logout flow, perceptible unlock spinner, refined L2 picker, account avatars with emoji/color customization.
+- **Migration** from a v3.8.x single-user keystore is automatic, idempotent, and preserves all existing data; the admin role is opt-in.
 
 ---
 
-### Multi-User Account Partition
+### Fixed
 
-AeroFTP becomes a single-installation, multi-account application. The vault schema migrates from a single keyspace to a relational layout with four logical tables (`users`, `server_profiles`, `user_settings`, `global_state`) and a partition routing layer (`user_partitions.rs`) that prefixes every read, write and listing with the active user id. The migration is idempotent and forward-only: existing single-user installs keep their data on the first boot under a synthesised `default` user.
+#### DAG engine
 
-#### What's new
+- **Per-provider chunk size honoured verbatim**: the runner consumes the provider's advertised `multipart_part_size` as the per-part length verbatim (last part takes the remainder); the legacy `div_ceil` distribution stays as the fallback. Fixes Google Drive 256-KiB alignment and OneDrive 320-KiB alignment that previously hit HTTP 503 mid-stream.
+- **Serial chain for `max_chunk_slots = 1` providers**: the builder chains `UploadPart` nodes serially whenever the cap is one, preserving Drive's monotonic `Content-Range` contract; providers with parallel chunk fan-out (S3, B2, Dropbox concurrent, Box chunked v2) keep the unconstrained shape.
+- **Dropbox concurrent session explicit close**: `complete_multipart_upload` now emits the no-op `upload_session/append_v2` with `close: true` before the finish call, so Dropbox no longer returns HTTP 409 `concurrent_session_not_closed`.
+- **DAG single-file lock race** (closes #233): `provider_disconnect` and `provider_connect` drain a per-transfer in-flight counter via `TransferOperationGuard` before mutating the provider slot.
+- **DAG batch progress accounting** (closes #234): a transient `session_pool.acquire()` failure during a batch transfer now increments the `failed` counter on the `BatchProgressSnapshot` and emits a `batch_progress` event before the node completes.
+- **AIMD honours server-provided Retry-After** (T-DEBT-05): Google Drive, Dropbox, OneDrive and Box now parse their flavour of the hint and propagate it across the provider/executor boundary through a marker convention. The executor extracts it and forwards it to `AimdController::on_congestion_with_hint`, clamped to a `[1 s, 10 x default cooldown]` safety band.
 
-- **Per-user accounts**: any number of named accounts can coexist in the same install. Each account has a display name, an optional avatar (image or color initial), an optional passphrase, an admin flag and a created-at timestamp. The first user is auto-created on first boot and inherits the existing data.
-- **OS-style Account Lock Screen** (`AccountLockScreen.tsx`): boot picker that lists the configured users with their avatar, prompts for the passphrase when the user has one, and routes the unlocked user through to the regular Master Password flow when Master Password is enabled. Per-user lockout state (`user_lockout_<id>`) persists across restarts.
-- **Admin role with peer management**: an admin can rename, delete, set the avatar of, and reset the passphrase of peer users. The current admin count is enforced by a server-side guard so the last admin cannot be demoted or deleted (returns `LAST_ADMIN_GUARD`). A non-admin can only edit, change passphrase, or delete their own account.
-- **Destructive admin passphrase reset**: a dedicated triple-confirm dialog (`DestructiveResetDialog.tsx`) makes the cost of an admin-driven passphrase reset explicit. The admin types the literal string `RESET`, sees the live byte count of the peer's partition data that is about to be re-encrypted under the new passphrase, and chooses the new passphrase with a strength bar.
-- **Partition-aware vault**: every saved server, OAuth token, sync state, custom setting, watcher state and cloud sync record is stored under a `user:<id>:` namespace inside the same encrypted vault. Switching user clears the in-memory `USER_SESSION` immediately so no stale state leaks across accounts.
-- **Partition-aware CLI**: the `aeroftp-cli` carries a `--user <id>` flag that routes every profile lookup, transfer, sync and AeroAgent invocation through the matching partition. Without `--user`, the CLI uses the default user.
-- **MASTER_PASSWORD_CHANGED event** (`masterPasswordEvents.ts`): the titlebar lock indicator now reacts immediately to Master Password enable, disable, and reset, without a window refresh.
+#### Community-reported fixes
 
-#### Backend hardening
+- **Image preview clipped edges after zoom-in then zoom-out** (#239, reported by @EhudKirsh). Scrolling the wheel on a previewed image silently switched the viewer out of Fit-to-screen mode. Wheel and toolbar zoom now act purely as a multiplier on top of the active Fit / Actual-size mode; the pan offset is reset when zoom returns to fit.
+- **Windows installer overwrote user PATH** (#240, reported by @miguelsotobaez). Critical regression affecting every Windows installer from v3.6.4 through v3.8.5. The post-install NSIS `ReadRegStr` + `WriteRegExpandStr` pattern silently truncated user PATH values larger than `NSIS_MAX_STRLEN` (8192 chars in the Tauri large-strings build), wiping every previously registered toolchain entry. Replaced with the EnVar NSIS plugin (zlib licence) which talks to the Win32 registry directly, preserves the original value type, and is idempotent.
+- **AeroFTP did not boot on macOS Intel** (#241, reported by @reset131). A lookbehind regex from `mdast-util-gfm-autolink-literal@2.0.1` shipped untranspiled in the production bundle threw `SyntaxError: Invalid regular expression: invalid group specifier name` on JavaScriptCore <= 16.4 (Big Sur Safari 15), leaving React unmounted. Patched via `patch-package` to substitute `\b` for the lookbehind; the `previous()` helper in the same file already gates on the previous character so the substitution preserves all match offsets. Also clamps the initial window size to the primary monitor, pins chrome rows and main / panel flex children for small-screen layouts, and rebuilds the macOS `icon.icns` from the rocket source so Finder stops showing the stale orbit-only mark.
+- **My Servers screen lagged on Windows** (#221, reported by @raelb). Five optimisations let `React.memo` skip re-rendering server cards whose own data did not change: stable drag callbacks (signature change to `(idx, e) => void`), `useMemo`'d id maps for `findIndex` and `crossProfileSelection`, search-text cache, pre-allocated context menu icons.
+- **OpenDrive folder privacy returned HTTP 400** (#252, reported by @EhudKirsh). `folder/setaccess.json` requires `with_child_files` alongside `session_id` / `folder_id` / `folder_is_public`; the matching `file/access.json` endpoint does not, which is why `setAsPrivate` / `setAsPublic` worked on files but failed on folders. Pass `with_child_files=true` so the requested privacy propagates to inner files.
+- **OpenDrive privacy state not surfaced in the GUI** (#252 pts 3 and 4, reported by @EhudKirsh, PR #280). OpenDrive was stashing the raw `Access` value under `metadata` but never populating `RemoteEntry.permissions`, so the context menu rendered both `Set as Private` and `Set as Public` with one disabled and the Properties Permissions tab showed the `Not available` empty state for files that actually carried visibility metadata. A new `access_to_permissions(raw)` helper maps the documented numeric levels (`0 = private`, `1 = public`, `2 = hidden`) to AeroFTP-canonical tokens, the raw integer stays under `metadata["opendrive_access"]` for diagnostics, and both `folder_to_entry` and `file_to_entry` now populate `entry.permissions`. The Properties Permissions tab gained a privacy-aware branch that renders a labeled Visibility row with a human description, and OpenDrive + 4shared context menus now render the applicable item conditionally instead of greying out the inapplicable one (matching the FileLu precedent from #161).
+- **OpenDrive `hidden` visibility level unreachable from the GUI** (#252 pt 2, reported by @EhudKirsh, PR #282). OpenDrive documents three visibility levels for both files and folders (`0 = private`, `1 = public`, `2 = hidden`) via the official API samples; the existing binary `Set as Private` / `Set as Public` toggle only flipped between two of them, leaving `hidden` unreachable. A new `Privacy...` entry in the OpenDrive context menu opens a three-option chooser dialog (radio list with per-level description, `current` badge on the active level, Save disabled until the user changes the selection). The new `OpenDriveAccessLevel` enum and `set_file_access` / `set_folder_access` methods drive the same `file/access.json` and `folder/setaccess.json` endpoints with the typed level; the existing binary `set_file_privacy` / `set_folder_privacy` become thin wrappers, so the wire shape of the toggle does not change. OpenDrive accepts the richer per-axis flags (`folder_public_upl`, `folder_public_display`, `folder_public_dnl`) only on `folder/create.json`, never on `folder/setaccess.json`, so modifying them after creation is intentionally not exposed.
+- **MEGAcmd non-WebDAV: recursive delete timed out and Windows uploads failed** (#263, reported by @EhudKirsh). Folder deletes hit a daemon timeout before completion, and uploads dispatched from a Windows local path (Ctrl+C / Paste workflow) never resolved the source. PR #265 unblocks both paths on the non-WebDAV MegaCmd flavor.
+- **MEGAcmd WebDAV bridge: image preview failed on single-file resources** (#264, reported by @EhudKirsh). The WebDAV client only knew how to PROPFIND a collection root and walk children, so the MEGAcmd WebDAV bridge, which serves a single file per URL, broke on every preview attempt. PR #269 adds a single-file-mode probe at `connect()`: a PROPFIND on the configured URL returns 207 with a non-collection `resourcetype`, the parsed entry is cached, and `list` / `stat` / `build_url` short-circuit to operate on the URL verbatim. Traditional WebDAV servers fall through to the existing PROPFIND `/` flow unchanged.
 
-- **Self-or-admin gate** (`ensure_user_can_modify`): centralises authorization for `rename_user`, `delete_user`, `set_user_avatar`, `change_passphrase`, `add_user` (post-seed), `reorder_users`. Returns typed errors (`NOT_AUTHORIZED`, `LAST_ADMIN_GUARD`, `ADMIN_RESET_NOT_FOR_SELF`, `STORE_NOT_READY`, `USER_NOT_FOUND`, `WRONG_PASSPHRASE`, `PASSPHRASE_REQUIRED`) rather than raw strings, in line with the CMS-grade error model the rest of the app follows.
-- **DEK lifetime preserved**: each user has a random data encryption key wrapped via AES-KW under either an Argon2id-derived passphrase key or the device root key (when no passphrase is set). `SecretBox` zeroizes the DEK on session clear.
-- **Cross-user dedup probe** (HMAC-keyed, MU-7 backend): allows the app to surface "this file is already present in another user's library" without exposing the raw filename across partitions.
-- **Keystore export foundations** (MU-FE-FOUND-BACKUP): the keystore export manifest gains a `manifestVersion` and a `KeystoreScope` placeholder so a future v4.0.x release can ship a per-user / all-users backup picker without a second migration. Today's export is unchanged.
+#### CLI hardening
 
-#### Fixed
+- **`aeroftp-cli` Windows stack overflow at launch** (PR #267). The ~80-variant clap-derived enum overflowed the 1 MB Windows default thread stack before `main()` could run. Adds `/STACK:8388608` link arg via `build.rs`, gated on `target_os = "windows"` and scoped to the `aeroftp-cli` binary only. Pre-existing latent bug, surfaced and patched during PR #265 validation by the Windows debug runner.
 
-- **Master Password removal leaves stale titlebar lock icon** (MU-FE-P5-BUG): disabling the Master Password used to leave the titlebar lock icon in the active state until the next window reload. The new `MASTER_PASSWORD_CHANGED` event clears the indicator synchronously.
+### Added
 
-#### Compatibility
+- **MEGAcmd storage quota via `mega-df`** (#253, reported by @EhudKirsh). A helper that surfaces storage quota for MEGA accounts through the official MEGAcmd daemon, with automatic daemon warm-up on first request. Replaces the WebDAV walk for MEGAcmd profiles (which missed Device Centre) and adds the same surface to the non-WebDAV MegaCmd flavor. Translated across all 47 locales.
 
-- **Forward migration is automatic and idempotent**. The first boot on v4.0.0 detects a pre-partition vault, creates a `default` user, and rewrites every keystore entry under the `user:default:` namespace. Subsequent boots are a no-op.
-- **Single-user installs see no behavioural change** beyond the new lock screen (which they can keep disabled): one user, no passphrase, no admin gating to navigate.
-- **CLI compatibility**: invocations without `--user` continue to target the `default` user, so existing scripts keep working.
+---
 
-### Why v4.0.0 (Multi-User)
+### Documentation
 
-Multi-User Account Partition is a schema-level change in the vault and an authorization-level change on the management API. Bumping to v4.0.0 makes both the migration and the surface change explicit. The destructive admin reset, the last-admin guard and the OS-style lock screen are the load-bearing pieces of the new account surface: every one of them was audited (`MU-SEC P1`) before landing.
+- New canonical technical reference at `docs/DAG-TRANSFER-ENGINE.md`.
+- New long-form architecture walk-through at `docs.aeroftp.app/architecture/dag-transfer-engine`.
+- `AGENTS.md` gains a Transfer Engine section spelling out the three shapes the engine picks per call.
+- New **Privacy and Visibility Controls** section in `docs/PROTOCOL-FEATURES.md` (#252 pts 6 and 7, reported by @EhudKirsh, PR #281). Documents the independent axes that contribute to privacy in a cloud-sync app (encryption at rest, default visibility on create, granular toggles, share-link semantics, IP controls, AeroVault overlay), per-provider behavior for OpenDrive / 4shared / FileLu / Filen / Internxt / MEGA / OAuth catch-all, an OpenDrive REST-API-vs-WebDAV reliability note covering the per-IP rate-limit and blacklist behavior on `session/login.json`, and the explicit disclosure that the extended OpenDrive flags (`folder_public_upl`, `folder_public_display`, `folder_public_dnl`) are accepted only on `folder/create.json`. The Advanced Operations matrix `Privacy Toggle` row, previously listing only FileLu, now also lists 4shared and OpenDrive.
+
+### Compatibility
+
+The MCP tool surface is unchanged: same names, same arguments, same notifications. Progress events are now sourced from the engine's per-node lifecycle, but downstream consumers see the same JSON shape and the same event cadence. The CLI exit codes and the GUI `transfer_event` channel are likewise unchanged. The Multi-User migration is forward-only and idempotent: existing single-user installs keep their data on the first boot under a synthesised `default` user; invocations of `aeroftp-cli` without `--user` continue to target that user, so existing scripts keep working.
+
+### Why v4.0.0
+
+The version bump reflects the architectural shift: the production transfer path is now a single, provider-agnostic, capability-aware DAG scheduler with five new trait methods on the public `StorageProvider` API, paired with a power-user CLI knob surface that exposes the same engine over 25+ runtime flags. Three flags, four shims, and the legacy batch orchestrator are gone. The Multi-User Account Partition is a schema-level change in the vault and an authorization-level change on the management API; bumping to v4.0.0 makes both the migration and the surface change explicit. The destructive admin reset, the last-admin guard and the OS-style lock screen are the load-bearing pieces of the new account surface, every one of them audited (`MU-SEC P1`) before landing. The convergence is complete; the cleanup pass for `provider_transfer_executor.rs` is filed as accepted technical debt for the post-v4.0.0 window (see `docs/dev/roadmap/APPENDIX-DAG-ENGINE/STATUS_TODO.md`).
+
+---
+
+### Dependency updates landed in this release
+
+- `serde_json` 1.0.149 to 1.0.150
+- `similar` 3.1.0 to 3.1.1
+- `rpassword` 7.5.2 to 7.5.3
+- `tar` 0.4.45 to 0.4.46
+- `postcss` 8.5.14 to 8.5.15
+- `vitest` 4.1.6 to 4.1.7
+- `dompurify` 3.4.2 to 3.4.5
+- `fuser` 0.16 to 0.17 (T-DEBT-13)
+
+Held back intentionally: `russh` 0.60.3 to 0.61.1 (pre-tag risk on the SFTP path, post-v4.0.0 candidate), `codecov/codecov-action` 6.0.0 to 6.0.1 (CI workflow check is failing on every PR, needs a separate investigation).
 
 ---
 

@@ -68,7 +68,7 @@
             "selectAll": "Select All",
             "required": "প্রয়োজনীয়",
             "duplicate": "ডুপ্লিকেট",
-            "current": "[NEEDS TRANSLATION] current"
+            "current": "বর্তমান"
         },
         "connection": {
             "title": "সার্ভারে সংযোগ করুন",
@@ -424,7 +424,7 @@
             "lockRcloneCrypt": "Rclone Crypt ওভারলে লক করুন",
             "unlockRcloneCrypt": "Rclone Crypt ওভারলে হিসাবে ডিক্রিপ্ট করুন…",
             "openAsAeroVaultOverlay": "AeroVault Overlay হিসেবে খুলুন",
-            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
+            "privacyEllipsis": "গোপনীয়তা..."
         },
         "transfer": {
             "transferring": "স্থানান্তর করা হচ্ছে...",
@@ -3005,13 +3005,13 @@
             "selectedItems": "নির্বাচিত আইটেম",
             "sizesPartial": "(কিছু আকার অজানা)",
             "totalSize": "মোট আকার",
-            "privacyHidden": "[NEEDS TRANSLATION] Hidden",
-            "privacyHiddenDesc": "[NEEDS TRANSLATION] Accessible by direct link only; not searchable.",
-            "privacyPrivate": "[NEEDS TRANSLATION] Private",
-            "privacyPrivateDesc": "[NEEDS TRANSLATION] Only the account owner can access this item.",
-            "privacyPublic": "[NEEDS TRANSLATION] Public",
-            "privacyPublicDesc": "[NEEDS TRANSLATION] Anyone with the link can access this item.",
-            "visibility": "[NEEDS TRANSLATION] Visibility"
+            "privacyHidden": "লুকানো",
+            "privacyHiddenDesc": "শুধুমাত্র সরাসরি লিঙ্কের মাধ্যমে অ্যাক্সেসযোগ্য, অনুসন্ধান করা যায় না।",
+            "privacyPrivate": "ব্যক্তিগত",
+            "privacyPrivateDesc": "শুধুমাত্র অ্যাকাউন্টের মালিক এই আইটেমটি অ্যাক্সেস করতে পারেন।",
+            "privacyPublic": "সর্বজনীন",
+            "privacyPublicDesc": "লিঙ্কটি থাকা যে কেউ এই আইটেমটি অ্যাক্সেস করতে পারেন।",
+            "visibility": "দৃশ্যমানতা"
         },
         "duplicates": {
             "title": "ডুপ্লিকেট খুঁজুন",
@@ -4580,33 +4580,33 @@
             "launcherScheduler": "শিডিউলার"
         },
         "accountLock": {
-            "title": "[NEEDS TRANSLATION] Choose an account",
-            "signInAs": "[NEEDS TRANSLATION] Sign in as {name}",
-            "activeBadge": "[NEEDS TRANSLATION] Last used",
-            "passphraseProtected": "[NEEDS TRANSLATION] Password protected",
-            "unlocked": "[NEEDS TRANSLATION] Active session",
-            "openAccount": "[NEEDS TRANSLATION] Open",
-            "newUser": "[NEEDS TRANSLATION] New user",
-            "newUserHint": "[NEEDS TRANSLATION] Create another account",
-            "manageUsers": "[NEEDS TRANSLATION] Manage users",
-            "accountPasswordLabel": "[NEEDS TRANSLATION] Account password",
-            "backToList": "[NEEDS TRANSLATION] Back to accounts",
-            "unlockPlaceholder": "[NEEDS TRANSLATION] Enter account password",
-            "unlock": "[NEEDS TRANSLATION] Unlock",
-            "unlocking": "[NEEDS TRANSLATION] Unlocking...",
-            "wrongPassphrase": "[NEEDS TRANSLATION] Wrong account password. Please try again.",
-            "lockedOut": "[NEEDS TRANSLATION] Too many attempts. This account is temporarily locked.",
-            "lockedOutCountdown": "[NEEDS TRANSLATION] Try again in {seconds}s.",
-            "showPassword": "[NEEDS TRANSLATION] Show password",
-            "hidePassword": "[NEEDS TRANSLATION] Hide password",
-            "lastUsedToday": "[NEEDS TRANSLATION] Used today",
-            "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "title": "একটি অ্যাকাউন্ট বেছে নিন",
+            "signInAs": "{name} হিসাবে সাইন ইন করুন",
+            "activeBadge": "সর্বশেষ ব্যবহৃত",
+            "passphraseProtected": "পাসওয়ার্ড দ্বারা সুরক্ষিত",
+            "unlocked": "সক্রিয় সেশন",
+            "openAccount": "খুলুন",
+            "newUser": "নতুন ব্যবহারকারী",
+            "newUserHint": "আরেকটি অ্যাকাউন্ট তৈরি করুন",
+            "manageUsers": "ব্যবহারকারী পরিচালনা করুন",
+            "accountPasswordLabel": "অ্যাকাউন্ট পাসওয়ার্ড",
+            "backToList": "অ্যাকাউন্টে ফিরে যান",
+            "unlockPlaceholder": "অ্যাকাউন্ট পাসওয়ার্ড লিখুন",
+            "unlock": "আনলক করুন",
+            "unlocking": "আনলক করা হচ্ছে...",
+            "wrongPassphrase": "ভুল অ্যাকাউন্ট পাসওয়ার্ড। অনুগ্রহ করে আবার চেষ্টা করুন।",
+            "lockedOut": "অনেক বেশি প্রচেষ্টা। এই অ্যাকাউন্টটি সাময়িকভাবে লক করা হয়েছে।",
+            "lockedOutCountdown": "{seconds} সেকেন্ড পরে আবার চেষ্টা করুন।",
+            "showPassword": "পাসওয়ার্ড দেখান",
+            "hidePassword": "পাসওয়ার্ড লুকান",
+            "lastUsedToday": "আজ ব্যবহৃত",
+            "lastUsedYesterday": "গতকাল ব্যবহৃত",
+            "lastUsedDaysAgo": "{days} দিন আগে ব্যবহৃত",
             "securityNote": "অ্যাকাউন্ট Argon2id + AES-KW + AES-256-GCM এনক্রিপশন দ্বারা সুরক্ষিত"
         },
         "opendrive": {
-            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
-            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
+            "privacyTitle": "OpenDrive গোপনীয়তা",
+            "privacyUpdated": "OpenDrive গোপনীয়তা আপডেট করা হয়েছে"
         }
     }
 }

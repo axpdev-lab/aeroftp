@@ -68,7 +68,7 @@
             "selectAll": "Select All",
             "required": "kötelező",
             "duplicate": "Másolat",
-            "current": "[NEEDS TRANSLATION] current"
+            "current": "jelenlegi"
         },
         "connection": {
             "title": "Csatlakozás szerverhez",
@@ -424,7 +424,7 @@
             "lockRcloneCrypt": "Rclone Crypt fedőréteg zárolása",
             "unlockRcloneCrypt": "Visszafejtés Rclone Crypt fedőrétegként…",
             "openAsAeroVaultOverlay": "Megnyitás AeroVault Overlay-ként",
-            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
+            "privacyEllipsis": "Adatvédelem..."
         },
         "transfer": {
             "transferring": "Átvitel...",
@@ -3005,13 +3005,13 @@
             "selectedItems": "Kiválasztott elemek",
             "sizesPartial": "(egyes méretek ismeretlenek)",
             "totalSize": "Teljes méret",
-            "privacyHidden": "[NEEDS TRANSLATION] Hidden",
-            "privacyHiddenDesc": "[NEEDS TRANSLATION] Accessible by direct link only; not searchable.",
-            "privacyPrivate": "[NEEDS TRANSLATION] Private",
-            "privacyPrivateDesc": "[NEEDS TRANSLATION] Only the account owner can access this item.",
-            "privacyPublic": "[NEEDS TRANSLATION] Public",
-            "privacyPublicDesc": "[NEEDS TRANSLATION] Anyone with the link can access this item.",
-            "visibility": "[NEEDS TRANSLATION] Visibility"
+            "privacyHidden": "Rejtett",
+            "privacyHiddenDesc": "Csak közvetlen hivatkozással érhető el, nem kereshető.",
+            "privacyPrivate": "Privát",
+            "privacyPrivateDesc": "Az elemhez csak a fiók tulajdonosa férhet hozzá.",
+            "privacyPublic": "Nyilvános",
+            "privacyPublicDesc": "Az elemhez bárki hozzáférhet, akinek megvan a hivatkozás.",
+            "visibility": "Láthatóság"
         },
         "duplicates": {
             "title": "Duplikátumok keresése",
@@ -4580,33 +4580,33 @@
             "launcherScheduler": "Ütemező"
         },
         "accountLock": {
-            "title": "[NEEDS TRANSLATION] Choose an account",
-            "signInAs": "[NEEDS TRANSLATION] Sign in as {name}",
-            "activeBadge": "[NEEDS TRANSLATION] Last used",
-            "passphraseProtected": "[NEEDS TRANSLATION] Password protected",
-            "unlocked": "[NEEDS TRANSLATION] Active session",
-            "openAccount": "[NEEDS TRANSLATION] Open",
-            "newUser": "[NEEDS TRANSLATION] New user",
-            "newUserHint": "[NEEDS TRANSLATION] Create another account",
-            "manageUsers": "[NEEDS TRANSLATION] Manage users",
-            "accountPasswordLabel": "[NEEDS TRANSLATION] Account password",
-            "backToList": "[NEEDS TRANSLATION] Back to accounts",
-            "unlockPlaceholder": "[NEEDS TRANSLATION] Enter account password",
-            "unlock": "[NEEDS TRANSLATION] Unlock",
-            "unlocking": "[NEEDS TRANSLATION] Unlocking...",
-            "wrongPassphrase": "[NEEDS TRANSLATION] Wrong account password. Please try again.",
-            "lockedOut": "[NEEDS TRANSLATION] Too many attempts. This account is temporarily locked.",
-            "lockedOutCountdown": "[NEEDS TRANSLATION] Try again in {seconds}s.",
-            "showPassword": "[NEEDS TRANSLATION] Show password",
-            "hidePassword": "[NEEDS TRANSLATION] Hide password",
-            "lastUsedToday": "[NEEDS TRANSLATION] Used today",
-            "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "title": "Válasszon fiókot",
+            "signInAs": "Bejelentkezés mint {name}",
+            "activeBadge": "Utoljára használt",
+            "passphraseProtected": "Jelszóval védett",
+            "unlocked": "Aktív munkamenet",
+            "openAccount": "Megnyitás",
+            "newUser": "Új felhasználó",
+            "newUserHint": "Hozzon létre egy másik fiókot",
+            "manageUsers": "Felhasználók kezelése",
+            "accountPasswordLabel": "Fiók jelszava",
+            "backToList": "Vissza a fiókokhoz",
+            "unlockPlaceholder": "Adja meg a fiók jelszavát",
+            "unlock": "Feloldás",
+            "unlocking": "Feloldás...",
+            "wrongPassphrase": "Helytelen fiókjelszó. Kérjük, próbálja újra.",
+            "lockedOut": "Túl sok próbálkozás. Ez a fiók ideiglenesen zárolva van.",
+            "lockedOutCountdown": "Próbálja újra {seconds} másodperc múlva.",
+            "showPassword": "Jelszó megjelenítése",
+            "hidePassword": "Jelszó elrejtése",
+            "lastUsedToday": "Ma használva",
+            "lastUsedYesterday": "Tegnap használva",
+            "lastUsedDaysAgo": "{days} napja használva",
             "securityNote": "A fiókot Argon2id + AES-KW + AES-256-GCM titkosítás védi"
         },
         "opendrive": {
-            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
-            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
+            "privacyTitle": "OpenDrive adatvédelem",
+            "privacyUpdated": "OpenDrive adatvédelem frissítve"
         }
     }
 }

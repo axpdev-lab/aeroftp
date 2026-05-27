@@ -68,7 +68,7 @@
             "selectAll": "Select All",
             "required": "必須",
             "duplicate": "複製",
-            "current": "[NEEDS TRANSLATION] current"
+            "current": "現在"
         },
         "connection": {
             "title": "サーバーに接続",
@@ -424,7 +424,7 @@
             "lockRcloneCrypt": "Rclone Crypt オーバーレイをロック",
             "unlockRcloneCrypt": "Rclone Crypt オーバーレイとして復号…",
             "openAsAeroVaultOverlay": "AeroVault Overlay として開く",
-            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
+            "privacyEllipsis": "プライバシー…"
         },
         "transfer": {
             "transferring": "転送中...",
@@ -2970,13 +2970,13 @@
             "selectedItems": "選択した項目",
             "sizesPartial": "(一部のサイズ不明)",
             "totalSize": "合計サイズ",
-            "privacyHidden": "[NEEDS TRANSLATION] Hidden",
-            "privacyHiddenDesc": "[NEEDS TRANSLATION] Accessible by direct link only; not searchable.",
-            "privacyPrivate": "[NEEDS TRANSLATION] Private",
-            "privacyPrivateDesc": "[NEEDS TRANSLATION] Only the account owner can access this item.",
-            "privacyPublic": "[NEEDS TRANSLATION] Public",
-            "privacyPublicDesc": "[NEEDS TRANSLATION] Anyone with the link can access this item.",
-            "visibility": "[NEEDS TRANSLATION] Visibility"
+            "privacyHidden": "非表示",
+            "privacyHiddenDesc": "直接リンクからのみアクセス可能で、検索できません。",
+            "privacyPrivate": "プライベート",
+            "privacyPrivateDesc": "アカウント所有者のみがこのアイテムにアクセスできます。",
+            "privacyPublic": "公開",
+            "privacyPublicDesc": "リンクを持つ全員がこのアイテムにアクセスできます。",
+            "visibility": "公開設定"
         },
         "duplicates": {
             "title": "重複を検索",
@@ -4605,8 +4605,8 @@
             "securityNote": "アカウントは Argon2id + AES-KW + AES-256-GCM 暗号化で保護されています"
         },
         "opendrive": {
-            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
-            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
+            "privacyTitle": "OpenDrive プライバシー",
+            "privacyUpdated": "OpenDrive のプライバシーを更新しました"
         }
     }
 }

@@ -68,7 +68,7 @@
             "selectAll": "Select All",
             "required": "आवश्यक",
             "duplicate": "डुप्लिकेट",
-            "current": "[NEEDS TRANSLATION] current"
+            "current": "वर्तमान"
         },
         "connection": {
             "title": "सर्वर से कनेक्ट करें",
@@ -424,7 +424,7 @@
             "lockRcloneCrypt": "Rclone Crypt ओवरले लॉक करें",
             "unlockRcloneCrypt": "Rclone Crypt ओवरले के रूप में डिक्रिप्ट करें…",
             "openAsAeroVaultOverlay": "AeroVault Overlay के रूप में खोलें",
-            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
+            "privacyEllipsis": "गोपनीयता..."
         },
         "transfer": {
             "transferring": "स्थानांतरित हो रहा है...",
@@ -3005,13 +3005,13 @@
             "selectedItems": "चयनित आइटम",
             "sizesPartial": "(कुछ आकार अज्ञात)",
             "totalSize": "कुल आकार",
-            "privacyHidden": "[NEEDS TRANSLATION] Hidden",
-            "privacyHiddenDesc": "[NEEDS TRANSLATION] Accessible by direct link only; not searchable.",
-            "privacyPrivate": "[NEEDS TRANSLATION] Private",
-            "privacyPrivateDesc": "[NEEDS TRANSLATION] Only the account owner can access this item.",
-            "privacyPublic": "[NEEDS TRANSLATION] Public",
-            "privacyPublicDesc": "[NEEDS TRANSLATION] Anyone with the link can access this item.",
-            "visibility": "[NEEDS TRANSLATION] Visibility"
+            "privacyHidden": "छिपा हुआ",
+            "privacyHiddenDesc": "केवल सीधे लिंक द्वारा पहुंच योग्य, खोजा नहीं जा सकता।",
+            "privacyPrivate": "निजी",
+            "privacyPrivateDesc": "केवल खाता स्वामी ही इस आइटम तक पहुंच सकता है।",
+            "privacyPublic": "सार्वजनिक",
+            "privacyPublicDesc": "लिंक रखने वाला कोई भी व्यक्ति इस आइटम तक पहुंच सकता है।",
+            "visibility": "दृश्यता"
         },
         "duplicates": {
             "title": "डुप्लिकेट खोजें",
@@ -4580,33 +4580,33 @@
             "launcherScheduler": "अनुसूचक"
         },
         "accountLock": {
-            "title": "[NEEDS TRANSLATION] Choose an account",
-            "signInAs": "[NEEDS TRANSLATION] Sign in as {name}",
-            "activeBadge": "[NEEDS TRANSLATION] Last used",
-            "passphraseProtected": "[NEEDS TRANSLATION] Password protected",
-            "unlocked": "[NEEDS TRANSLATION] Active session",
-            "openAccount": "[NEEDS TRANSLATION] Open",
-            "newUser": "[NEEDS TRANSLATION] New user",
-            "newUserHint": "[NEEDS TRANSLATION] Create another account",
-            "manageUsers": "[NEEDS TRANSLATION] Manage users",
-            "accountPasswordLabel": "[NEEDS TRANSLATION] Account password",
-            "backToList": "[NEEDS TRANSLATION] Back to accounts",
-            "unlockPlaceholder": "[NEEDS TRANSLATION] Enter account password",
-            "unlock": "[NEEDS TRANSLATION] Unlock",
-            "unlocking": "[NEEDS TRANSLATION] Unlocking...",
-            "wrongPassphrase": "[NEEDS TRANSLATION] Wrong account password. Please try again.",
-            "lockedOut": "[NEEDS TRANSLATION] Too many attempts. This account is temporarily locked.",
-            "lockedOutCountdown": "[NEEDS TRANSLATION] Try again in {seconds}s.",
-            "showPassword": "[NEEDS TRANSLATION] Show password",
-            "hidePassword": "[NEEDS TRANSLATION] Hide password",
-            "lastUsedToday": "[NEEDS TRANSLATION] Used today",
-            "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "title": "एक खाता चुनें",
+            "signInAs": "{name} के रूप में साइन इन करें",
+            "activeBadge": "अंतिम बार उपयोग किया गया",
+            "passphraseProtected": "पासवर्ड से सुरक्षित",
+            "unlocked": "सक्रिय सत्र",
+            "openAccount": "खोलें",
+            "newUser": "नया उपयोगकर्ता",
+            "newUserHint": "एक और खाता बनाएँ",
+            "manageUsers": "उपयोगकर्ता प्रबंधित करें",
+            "accountPasswordLabel": "खाता पासवर्ड",
+            "backToList": "खातों पर वापस जाएँ",
+            "unlockPlaceholder": "खाता पासवर्ड दर्ज करें",
+            "unlock": "अनलॉक करें",
+            "unlocking": "अनलॉक हो रहा है...",
+            "wrongPassphrase": "गलत खाता पासवर्ड। कृपया पुनः प्रयास करें।",
+            "lockedOut": "बहुत अधिक प्रयास। यह खाता अस्थायी रूप से लॉक है।",
+            "lockedOutCountdown": "{seconds} सेकंड में पुनः प्रयास करें।",
+            "showPassword": "पासवर्ड दिखाएँ",
+            "hidePassword": "पासवर्ड छिपाएँ",
+            "lastUsedToday": "आज उपयोग किया गया",
+            "lastUsedYesterday": "कल उपयोग किया गया",
+            "lastUsedDaysAgo": "{days} दिन पहले उपयोग किया गया",
             "securityNote": "खाता Argon2id + AES-KW + AES-256-GCM एन्क्रिप्शन से सुरक्षित"
         },
         "opendrive": {
-            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
-            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
+            "privacyTitle": "OpenDrive गोपनीयता",
+            "privacyUpdated": "OpenDrive गोपनीयता अपडेट की गई"
         }
     }
 }

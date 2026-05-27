@@ -68,7 +68,7 @@
             "selectAll": "Select All",
             "required": "diperlukan",
             "duplicate": "Gandakan",
-            "current": "[NEEDS TRANSLATION] current"
+            "current": "semasa"
         },
         "connection": {
             "title": "Sambung ke Pelayan",
@@ -424,7 +424,7 @@
             "lockRcloneCrypt": "Kunci tindihan Rclone Crypt",
             "unlockRcloneCrypt": "Nyahsulit sebagai tindihan Rclone Crypt…",
             "openAsAeroVaultOverlay": "Buka sebagai AeroVault Overlay",
-            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
+            "privacyEllipsis": "Privasi..."
         },
         "transfer": {
             "transferring": "Memindahkan...",
@@ -3005,13 +3005,13 @@
             "selectedItems": "Item yang dipilih",
             "sizesPartial": "(beberapa saiz tidak diketahui)",
             "totalSize": "Jumlah saiz",
-            "privacyHidden": "[NEEDS TRANSLATION] Hidden",
-            "privacyHiddenDesc": "[NEEDS TRANSLATION] Accessible by direct link only; not searchable.",
-            "privacyPrivate": "[NEEDS TRANSLATION] Private",
-            "privacyPrivateDesc": "[NEEDS TRANSLATION] Only the account owner can access this item.",
-            "privacyPublic": "[NEEDS TRANSLATION] Public",
-            "privacyPublicDesc": "[NEEDS TRANSLATION] Anyone with the link can access this item.",
-            "visibility": "[NEEDS TRANSLATION] Visibility"
+            "privacyHidden": "Tersembunyi",
+            "privacyHiddenDesc": "Boleh diakses hanya melalui pautan terus, tidak boleh dicari.",
+            "privacyPrivate": "Peribadi",
+            "privacyPrivateDesc": "Hanya pemilik akaun boleh mengakses item ini.",
+            "privacyPublic": "Awam",
+            "privacyPublicDesc": "Sesiapa sahaja yang mempunyai pautan boleh mengakses item ini.",
+            "visibility": "Keterlihatan"
         },
         "duplicates": {
             "title": "Cari Pendua",
@@ -4580,33 +4580,33 @@
             "launcherScheduler": "Penjadual"
         },
         "accountLock": {
-            "title": "[NEEDS TRANSLATION] Choose an account",
-            "signInAs": "[NEEDS TRANSLATION] Sign in as {name}",
-            "activeBadge": "[NEEDS TRANSLATION] Last used",
-            "passphraseProtected": "[NEEDS TRANSLATION] Password protected",
-            "unlocked": "[NEEDS TRANSLATION] Active session",
-            "openAccount": "[NEEDS TRANSLATION] Open",
-            "newUser": "[NEEDS TRANSLATION] New user",
-            "newUserHint": "[NEEDS TRANSLATION] Create another account",
-            "manageUsers": "[NEEDS TRANSLATION] Manage users",
-            "accountPasswordLabel": "[NEEDS TRANSLATION] Account password",
-            "backToList": "[NEEDS TRANSLATION] Back to accounts",
-            "unlockPlaceholder": "[NEEDS TRANSLATION] Enter account password",
-            "unlock": "[NEEDS TRANSLATION] Unlock",
-            "unlocking": "[NEEDS TRANSLATION] Unlocking...",
-            "wrongPassphrase": "[NEEDS TRANSLATION] Wrong account password. Please try again.",
-            "lockedOut": "[NEEDS TRANSLATION] Too many attempts. This account is temporarily locked.",
-            "lockedOutCountdown": "[NEEDS TRANSLATION] Try again in {seconds}s.",
-            "showPassword": "[NEEDS TRANSLATION] Show password",
-            "hidePassword": "[NEEDS TRANSLATION] Hide password",
-            "lastUsedToday": "[NEEDS TRANSLATION] Used today",
-            "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "title": "Pilih akaun",
+            "signInAs": "Log masuk sebagai {name}",
+            "activeBadge": "Terakhir digunakan",
+            "passphraseProtected": "Dilindungi kata laluan",
+            "unlocked": "Sesi aktif",
+            "openAccount": "Buka",
+            "newUser": "Pengguna baharu",
+            "newUserHint": "Cipta akaun lain",
+            "manageUsers": "Urus pengguna",
+            "accountPasswordLabel": "Kata laluan akaun",
+            "backToList": "Kembali ke akaun",
+            "unlockPlaceholder": "Masukkan kata laluan akaun",
+            "unlock": "Buka kunci",
+            "unlocking": "Membuka kunci...",
+            "wrongPassphrase": "Kata laluan akaun salah. Sila cuba lagi.",
+            "lockedOut": "Terlalu banyak percubaan. Akaun ini dikunci buat sementara.",
+            "lockedOutCountdown": "Cuba lagi dalam {seconds} saat.",
+            "showPassword": "Papar kata laluan",
+            "hidePassword": "Sembunyikan kata laluan",
+            "lastUsedToday": "Digunakan hari ini",
+            "lastUsedYesterday": "Digunakan semalam",
+            "lastUsedDaysAgo": "Digunakan {days} hari yang lalu",
             "securityNote": "Akaun dilindungi dengan penyulitan Argon2id + AES-KW + AES-256-GCM"
         },
         "opendrive": {
-            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
-            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
+            "privacyTitle": "Privasi OpenDrive",
+            "privacyUpdated": "Privasi OpenDrive dikemas kini"
         }
     }
 }
