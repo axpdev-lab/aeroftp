@@ -4569,6 +4569,30 @@
                 "colAction": "Aktion"
             },
             "launcherScheduler": "Planer"
+        },
+        "accountLock": {
+            "title": "Konto auswählen",
+            "signInAs": "Anmelden als {name}",
+            "activeBadge": "Zuletzt verwendet",
+            "passphraseProtected": "Passwortgeschützt",
+            "unlocked": "Aktive Sitzung",
+            "openAccount": "Öffnen",
+            "newUser": "Neuer Benutzer",
+            "newUserHint": "Weiteres Konto erstellen",
+            "manageUsers": "Benutzer verwalten",
+            "accountPasswordLabel": "Kontopasswort",
+            "backToList": "Zurück zu den Konten",
+            "unlockPlaceholder": "Kontopasswort eingeben",
+            "unlock": "Entsperren",
+            "unlocking": "Entsperren...",
+            "wrongPassphrase": "Falsches Kontopasswort. Bitte erneut versuchen.",
+            "lockedOut": "Zu viele Versuche. Dieses Konto ist vorübergehend gesperrt.",
+            "lockedOutCountdown": "Erneut versuchen in {seconds}s.",
+            "showPassword": "Passwort anzeigen",
+            "hidePassword": "Passwort verbergen",
+            "lastUsedToday": "Heute verwendet",
+            "lastUsedYesterday": "Gestern verwendet",
+            "lastUsedDaysAgo": "Vor {days} Tagen verwendet"
         }
     }
 }

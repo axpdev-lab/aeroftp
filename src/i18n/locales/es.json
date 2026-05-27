@@ -4569,6 +4569,30 @@
                 "colAction": "Acción"
             },
             "launcherScheduler": "Programador"
+        },
+        "accountLock": {
+            "title": "Elige una cuenta",
+            "signInAs": "Iniciar sesión como {name}",
+            "activeBadge": "Último uso",
+            "passphraseProtected": "Protegida con contraseña",
+            "unlocked": "Sesión activa",
+            "openAccount": "Abrir",
+            "newUser": "Nuevo usuario",
+            "newUserHint": "Crear otra cuenta",
+            "manageUsers": "Gestionar usuarios",
+            "accountPasswordLabel": "Contraseña de la cuenta",
+            "backToList": "Volver a las cuentas",
+            "unlockPlaceholder": "Introduce la contraseña de la cuenta",
+            "unlock": "Desbloquear",
+            "unlocking": "Desbloqueando...",
+            "wrongPassphrase": "Contraseña incorrecta. Inténtalo de nuevo.",
+            "lockedOut": "Demasiados intentos. Esta cuenta está bloqueada temporalmente.",
+            "lockedOutCountdown": "Vuelve a intentarlo en {seconds}s.",
+            "showPassword": "Mostrar contraseña",
+            "hidePassword": "Ocultar contraseña",
+            "lastUsedToday": "Usado hoy",
+            "lastUsedYesterday": "Usado ayer",
+            "lastUsedDaysAgo": "Usado hace {days} días"
         }
     }
 }
