@@ -3002,7 +3002,14 @@
             "oldestModified": "Najstarsza modyfikacja",
             "selectedItems": "Zaznaczone elementy",
             "sizesPartial": "(niektóre rozmiary nieznane)",
-            "totalSize": "Łączny rozmiar"
+            "totalSize": "Łączny rozmiar",
+            "privacyHidden": "[NEEDS TRANSLATION] Hidden",
+            "privacyHiddenDesc": "[NEEDS TRANSLATION] Accessible by direct link only; not searchable.",
+            "privacyPrivate": "[NEEDS TRANSLATION] Private",
+            "privacyPrivateDesc": "[NEEDS TRANSLATION] Only the account owner can access this item.",
+            "privacyPublic": "[NEEDS TRANSLATION] Public",
+            "privacyPublicDesc": "[NEEDS TRANSLATION] Anyone with the link can access this item.",
+            "visibility": "[NEEDS TRANSLATION] Visibility"
         },
         "duplicates": {
             "title": "Znajdź duplikaty",

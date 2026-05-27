@@ -2281,6 +2281,12 @@
             "permissions": "Permissions",
             "permissionsOctal": "Octal",
             "permissionsText": "Permissions",
+            "privacyHidden": "Hidden",
+            "privacyHiddenDesc": "Accessible by direct link only; not searchable.",
+            "privacyPrivate": "Private",
+            "privacyPrivateDesc": "Only the account owner can access this item.",
+            "privacyPublic": "Public",
+            "privacyPublicDesc": "Anyone with the link can access this item.",
             "readOnly": "Read-only",
             "remote": "Remote",
             "selectedItems": "Selected items",
@@ -2288,7 +2294,8 @@
             "sizesPartial": "(some sizes unknown)",
             "symlink": "Symlink Target",
             "totalSize": "Total size",
-            "type": "Type"
+            "type": "Type",
+            "visibility": "Visibility"
         },
         "protocol": {
             "acceptInvalidCerts": "Accept invalid or self-signed certificates",

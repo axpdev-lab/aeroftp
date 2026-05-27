@@ -9510,11 +9510,11 @@ interface UpdateVerificationInfo {
     const isFileLuPrivate = isFileLuContext && filePrivacy === 'private';
     const isFileLuPublic = isFileLuContext && filePrivacy === 'public';
     const isFourSharedContext = currentProtocol === 'fourshared' && count === 1;
-    const isFourSharedPrivate = isFourSharedContext && (filePrivacy.includes('private') || filePrivacy === 'true');
-    const isFourSharedPublic = isFourSharedContext && (filePrivacy.includes('public') || filePrivacy === 'false');
+    const isFourSharedPrivate = isFourSharedContext && filePrivacy === 'private';
+    const isFourSharedPublic = isFourSharedContext && filePrivacy === 'public';
     const isOpenDriveContext = currentProtocol === 'opendrive' && count === 1;
-    const isOpenDrivePrivate = isOpenDriveContext && (filePrivacy.includes('private') || filePrivacy === '0');
-    const isOpenDrivePublic = isOpenDriveContext && (filePrivacy.includes('public') || filePrivacy === '1');
+    const isOpenDrivePrivate = isOpenDriveContext && filePrivacy === 'private';
+    const isOpenDrivePublic = isOpenDriveContext && filePrivacy === 'public';
 
     const items: ContextMenuItem[] = [
       { label: downloadLabel, icon: <Download size={14} />, action: () => downloadMultipleFiles(filesToUse) },
@@ -9753,7 +9753,7 @@ interface UpdateVerificationInfo {
         }] : []),
       ] : []),
       ...(currentProtocol === 'opendrive' ? [
-        ...(isOpenDriveContext ? [
+        ...(isOpenDriveContext && !isOpenDrivePrivate ? [
           {
             label: t('contextMenu.setAsPrivate') || 'Set as Private',
             icon: <OpenDriveLogo size={14} />,
@@ -9774,8 +9774,9 @@ interface UpdateVerificationInfo {
                 humanLog.updateEntry(logId, { status: 'error', message: '[OpenDrive] Set private failed' });
               }
             },
-            disabled: isOpenDrivePrivate,
           },
+        ] : []),
+        ...(isOpenDriveContext && !isOpenDrivePublic ? [
           {
             label: t('contextMenu.setAsPublic') || 'Set as Public',
             icon: <OpenDriveLogo size={14} />,
@@ -9796,7 +9797,6 @@ interface UpdateVerificationInfo {
                 humanLog.updateEntry(logId, { status: 'error', message: '[OpenDrive] Set public failed' });
               }
             },
-            disabled: isOpenDrivePublic,
           },
         ] : []),
         ...(count > 1 ? [{
@@ -9831,7 +9831,7 @@ interface UpdateVerificationInfo {
         }] : []),
       ] : []),
       ...(currentProtocol === 'fourshared' ? [
-        ...(isFourSharedContext ? [
+        ...(isFourSharedContext && !isFourSharedPrivate ? [
           {
             label: t('contextMenu.setAsPrivate') || 'Set as Private',
             icon: <FourSharedLogo size={14} />,
@@ -9852,8 +9852,9 @@ interface UpdateVerificationInfo {
                 humanLog.updateEntry(logId, { status: 'error', message: '[4shared] Set private failed' });
               }
             },
-            disabled: isFourSharedPrivate,
           },
+        ] : []),
+        ...(isFourSharedContext && !isFourSharedPublic ? [
           {
             label: t('contextMenu.setAsPublic') || 'Set as Public',
             icon: <FourSharedLogo size={14} />,
@@ -9874,7 +9875,6 @@ interface UpdateVerificationInfo {
                 humanLog.updateEntry(logId, { status: 'error', message: '[4shared] Set public failed' });
               }
             },
-            disabled: isFourSharedPublic,
           },
         ] : []),
         ...(count > 1 ? [{

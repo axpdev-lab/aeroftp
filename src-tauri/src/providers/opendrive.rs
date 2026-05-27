@@ -369,6 +369,27 @@ fn parse_boolish(value: Option<&serde_json::Value>) -> bool {
     }
 }
 
+/// Maps the raw OpenDrive `Access` numeric value into an AeroFTP-canonical
+/// privacy token surfaced via `RemoteEntry.permissions`.
+///
+/// Mapping confirmed against the OpenDrive API samples (see
+/// `docs/dev/guides/opendrive/manual/api-samples/api-samples/test_set_folder_access.php`
+/// and `test_set_file_access.php`):
+/// - `0` -> `private` (owner only)
+/// - `1` -> `public` (anyone with the link can access; searchable)
+/// - `2` -> `hidden` (accessible by direct link only; not searchable)
+///
+/// The raw integer is still preserved under `metadata["opendrive_access"]`
+/// for callers that need the original value.
+fn access_to_permissions(access: u64) -> Option<&'static str> {
+    match access {
+        0 => Some("private"),
+        1 => Some("public"),
+        2 => Some("hidden"),
+        _ => None,
+    }
+}
+
 fn parse_timestamp_to_iso(value: Option<&serde_json::Value>) -> Option<String> {
     let raw = match value {
         Some(serde_json::Value::Number(n)) => n.as_i64(),
@@ -797,10 +818,13 @@ impl OpenDriveProvider {
                 .metadata
                 .insert("opendrive_encrypted".into(), encrypted);
         }
-        entry.metadata.insert(
-            "opendrive_access".into(),
-            parse_u64_value(folder.access.as_ref()).to_string(),
-        );
+        let access_raw = parse_u64_value(folder.access.as_ref());
+        entry
+            .metadata
+            .insert("opendrive_access".into(), access_raw.to_string());
+        if let Some(token) = access_to_permissions(access_raw) {
+            entry.permissions = Some(token.to_string());
+        }
         entry
     }
 
@@ -840,10 +864,13 @@ impl OpenDriveProvider {
                 .metadata
                 .insert("opendrive_file_hash".into(), file_hash);
         }
-        entry.metadata.insert(
-            "opendrive_access".into(),
-            parse_u64_value(file.access.as_ref()).to_string(),
-        );
+        let access_raw = parse_u64_value(file.access.as_ref());
+        entry
+            .metadata
+            .insert("opendrive_access".into(), access_raw.to_string());
+        if let Some(token) = access_to_permissions(access_raw) {
+            entry.permissions = Some(token.to_string());
+        }
         entry
     }
 
@@ -2312,6 +2339,18 @@ mod tests {
         assert_eq!(parse_u64_value(Some(&json!(false))), 0);
         assert_eq!(parse_u64_value(None), 0);
         assert_eq!(parse_u64_value(Some(&json!(null))), 0);
+    }
+
+    #[test]
+    fn access_to_permissions_maps_known_levels() {
+        // Mapping confirmed against `test_set_folder_access.php` and
+        // `test_set_file_access.php` shipped with the OpenDrive API guide:
+        // 0 = private, 1 = public, 2 = hidden.
+        assert_eq!(access_to_permissions(0), Some("private"));
+        assert_eq!(access_to_permissions(1), Some("public"));
+        assert_eq!(access_to_permissions(2), Some("hidden"));
+        assert_eq!(access_to_permissions(3), None);
+        assert_eq!(access_to_permissions(99), None);
     }
 
     #[test]
