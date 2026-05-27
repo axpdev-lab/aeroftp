@@ -5841,6 +5841,54 @@ pub async fn opendrive_set_path_privacy(
     }
 }
 
+/// Set OpenDrive three-level access for a file or folder. Accepts the
+/// AeroFTP-canonical tokens `private`, `public`, or `hidden`.
+#[tauri::command]
+pub async fn opendrive_set_path_access(
+    state: State<'_, ProviderState>,
+    path: String,
+    access_level: String,
+    is_dir: bool,
+) -> Result<(), String> {
+    let level = match access_level.to_ascii_lowercase().as_str() {
+        "private" => crate::providers::opendrive::OpenDriveAccessLevel::Private,
+        "public" => crate::providers::opendrive::OpenDriveAccessLevel::Public,
+        "hidden" => crate::providers::opendrive::OpenDriveAccessLevel::Hidden,
+        other => {
+            return Err(format!(
+                "Unknown OpenDrive access level: '{}' (expected private, public, or hidden)",
+                other
+            ));
+        }
+    };
+
+    let mut provider_guard = state.provider.lock().await;
+    let provider = provider_guard
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+
+    if provider.provider_type() != ProviderType::OpenDrive {
+        return Err("This operation is only available for OpenDrive".to_string());
+    }
+
+    let opendrive = provider
+        .as_any_mut()
+        .downcast_mut::<crate::providers::opendrive::OpenDriveProvider>()
+        .ok_or_else(|| "Failed to access OpenDrive provider".to_string())?;
+
+    if is_dir {
+        opendrive
+            .set_folder_access(&path, level)
+            .await
+            .map_err(|e| format!("Set folder access failed for {}: {}", path, e))
+    } else {
+        opendrive
+            .set_file_access(&path, level)
+            .await
+            .map_err(|e| format!("Set file access failed for {}: {}", path, e))
+    }
+}
+
 /// Set FourShared privacy for a file or folder.
 /// is_public=false => private, is_public=true => public.
 #[tauri::command]

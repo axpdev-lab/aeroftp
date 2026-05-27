@@ -67,7 +67,8 @@
             "check": "Check",
             "selectAll": "Select All",
             "required": "gofynnol",
-            "duplicate": "Dyblygu"
+            "duplicate": "Dyblygu",
+            "current": "[NEEDS TRANSLATION] current"
         },
         "connection": {
             "title": "Cysylltu a'r Gweinydd",
@@ -422,7 +423,8 @@
             "azureTrashTitle": "Sbwriel Azure Blob",
             "lockRcloneCrypt": "Cloi troshaen Rclone Crypt",
             "unlockRcloneCrypt": "Dadgryptio fel troshaen Rclone Crypt…",
-            "openAsAeroVaultOverlay": "Agor fel AeroVault Overlay"
+            "openAsAeroVaultOverlay": "Agor fel AeroVault Overlay",
+            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
         },
         "transfer": {
             "transferring": "Yn trosglwyddo...",
@@ -4620,6 +4622,10 @@
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
             "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
             "securityNote": "Cyfrif wedi'i ddiogelu â chryptiad Argon2id + AES-KW + AES-256-GCM"
+        },
+        "opendrive": {
+            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
+            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
         }
     }
 }

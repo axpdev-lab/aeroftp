@@ -37,6 +37,7 @@
             "browse": "Sfoglia",
             "select": "Seleziona",
             "copy": "Copia",
+            "current": "attuale",
             "paste": "Incolla",
             "cut": "Taglia",
             "rename": "Rinomina",
@@ -702,6 +703,7 @@
             "permanentDeleteSuccess": "{count} elemento/i eliminato/i definitivamente",
             "permissions": "Permessi",
             "preview": "Anteprima",
+            "privacyEllipsis": "Privacy...",
             "properties": "Proprietà",
             "refresh": "Aggiorna",
             "restoreFromTrash": "Ripristina",
@@ -3468,6 +3470,10 @@
             "public": "Pubblico",
             "octal": "Valore Numerico (Ottale)",
             "apply": "Applica"
+        },
+        "opendrive": {
+            "privacyTitle": "Privacy OpenDrive",
+            "privacyUpdated": "Privacy OpenDrive aggiornata"
         },
         "error": {
             "title": "Qualcosa è andato storto",

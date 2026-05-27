@@ -390,6 +390,30 @@ fn access_to_permissions(access: u64) -> Option<&'static str> {
     }
 }
 
+/// Typed OpenDrive access level for `file/access.json` and
+/// `folder/setaccess.json`.
+///
+/// Same numeric mapping as [`access_to_permissions`] (0=private,
+/// 1=public, 2=hidden); kept as a dedicated enum so callers don't
+/// have to reason about the magic integers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum OpenDriveAccessLevel {
+    Private,
+    Public,
+    Hidden,
+}
+
+impl OpenDriveAccessLevel {
+    fn to_api_value(self) -> &'static str {
+        match self {
+            OpenDriveAccessLevel::Private => "0",
+            OpenDriveAccessLevel::Public => "1",
+            OpenDriveAccessLevel::Hidden => "2",
+        }
+    }
+}
+
 fn parse_timestamp_to_iso(value: Option<&serde_json::Value>) -> Option<String> {
     let raw = match value {
         Some(serde_json::Value::Number(n)) => n.as_i64(),
@@ -1162,16 +1186,29 @@ impl OpenDriveProvider {
         path: &str,
         is_public: bool,
     ) -> Result<(), ProviderError> {
+        let level = if is_public {
+            OpenDriveAccessLevel::Public
+        } else {
+            OpenDriveAccessLevel::Private
+        };
+        self.set_file_access(path, level).await
+    }
+
+    pub async fn set_file_access(
+        &mut self,
+        path: &str,
+        level: OpenDriveAccessLevel,
+    ) -> Result<(), ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
 
         let resolved = self.resolve_path(path)?;
-        let file_ispublic = if is_public { "1" } else { "0" };
+        let level_value = level.to_api_value().to_string();
 
         self.with_reauth(|this| {
             let resolved = resolved.clone();
-            let file_ispublic = file_ispublic.to_string();
+            let level_value = level_value.clone();
             Box::pin(async move {
                 let file_id = this.resolve_file_id(&resolved).await?;
                 this.post_form_unit(
@@ -1179,7 +1216,7 @@ impl OpenDriveProvider {
                     &[
                         ("session_id", this.session_id.clone()),
                         ("file_id", file_id),
-                        ("file_ispublic", file_ispublic),
+                        ("file_ispublic", level_value),
                     ],
                 )
                 .await
@@ -1193,12 +1230,25 @@ impl OpenDriveProvider {
         path: &str,
         is_public: bool,
     ) -> Result<(), ProviderError> {
+        let level = if is_public {
+            OpenDriveAccessLevel::Public
+        } else {
+            OpenDriveAccessLevel::Private
+        };
+        self.set_folder_access(path, level).await
+    }
+
+    pub async fn set_folder_access(
+        &mut self,
+        path: &str,
+        level: OpenDriveAccessLevel,
+    ) -> Result<(), ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
 
         let resolved = self.resolve_path(path)?;
-        let folder_is_public = if is_public { "1" } else { "0" };
+        let folder_is_public = level.to_api_value().to_string();
 
         self.with_reauth(|this| {
             let resolved = resolved.clone();
@@ -2351,6 +2401,31 @@ mod tests {
         assert_eq!(access_to_permissions(2), Some("hidden"));
         assert_eq!(access_to_permissions(3), None);
         assert_eq!(access_to_permissions(99), None);
+    }
+
+    #[test]
+    fn opendrive_access_level_round_trips_via_api_value() {
+        // The api_value strings must keep the same mapping as the
+        // listing-side Access integer, otherwise a set_*_access call
+        // would write a value the next listing pass would misread.
+        assert_eq!(OpenDriveAccessLevel::Private.to_api_value(), "0");
+        assert_eq!(OpenDriveAccessLevel::Public.to_api_value(), "1");
+        assert_eq!(OpenDriveAccessLevel::Hidden.to_api_value(), "2");
+
+        for level in [
+            OpenDriveAccessLevel::Private,
+            OpenDriveAccessLevel::Public,
+            OpenDriveAccessLevel::Hidden,
+        ] {
+            let raw: u64 = level.to_api_value().parse().unwrap();
+            let token = access_to_permissions(raw).unwrap();
+            let expected = match level {
+                OpenDriveAccessLevel::Private => "private",
+                OpenDriveAccessLevel::Public => "public",
+                OpenDriveAccessLevel::Hidden => "hidden",
+            };
+            assert_eq!(token, expected, "level={:?}", level);
+        }
     }
 
     #[test]

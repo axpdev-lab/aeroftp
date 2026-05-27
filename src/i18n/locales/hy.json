@@ -67,7 +67,8 @@
             "check": "Check",
             "selectAll": "Select All",
             "required": "պարտադիր",
-            "duplicate": "Կրկնակ"
+            "duplicate": "Կրկնակ",
+            "current": "[NEEDS TRANSLATION] current"
         },
         "connection": {
             "title": "Կապվել սերվերուհն",
@@ -422,7 +423,8 @@
             "azureTrashTitle": "Azure Blob Աղբաման",
             "lockRcloneCrypt": "Կողպել Rclone Crypt ծածկույթը",
             "unlockRcloneCrypt": "Վերծանել որպես Rclone Crypt ծածկույթ…",
-            "openAsAeroVaultOverlay": "Բացել որպես AeroVault Overlay"
+            "openAsAeroVaultOverlay": "Բացել որպես AeroVault Overlay",
+            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
         },
         "transfer": {
             "transferring": "Փոխանցում...",
@@ -4601,6 +4603,10 @@
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
             "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
             "securityNote": "Հաշիվը պաշտպանված է Argon2id + AES-KW + AES-256-GCM կրիպտոգրաֆիայով"
+        },
+        "opendrive": {
+            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
+            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
         }
     }
 }

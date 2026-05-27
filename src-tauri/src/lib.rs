@@ -15596,6 +15596,7 @@ pub fn run() {
             provider_commands::opendrive_permanent_delete,
             provider_commands::opendrive_empty_trash,
             provider_commands::opendrive_set_path_privacy,
+            provider_commands::opendrive_set_path_access,
             provider_commands::fourshared_set_path_privacy,
             provider_commands::yandex_list_trash,
             provider_commands::yandex_restore_from_trash,

@@ -67,7 +67,8 @@
             "check": "Check",
             "selectAll": "Select All",
             "required": "inahitajika",
-            "duplicate": "Nakili"
+            "duplicate": "Nakili",
+            "current": "[NEEDS TRANSLATION] current"
         },
         "connection": {
             "title": "Unganisha na Seva",
@@ -422,7 +423,8 @@
             "azureTrashTitle": "Azure Blob Tupio",
             "lockRcloneCrypt": "Funga uwekeleaji wa Rclone Crypt",
             "unlockRcloneCrypt": "Simbua kama uwekeleaji wa Rclone Crypt…",
-            "openAsAeroVaultOverlay": "Fungua kama AeroVault Overlay"
+            "openAsAeroVaultOverlay": "Fungua kama AeroVault Overlay",
+            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
         },
         "transfer": {
             "transferring": "Inahamisha...",
@@ -4601,6 +4603,10 @@
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
             "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
             "securityNote": "Akaunti imelindwa kwa usimbaji wa Argon2id + AES-KW + AES-256-GCM"
+        },
+        "opendrive": {
+            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
+            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
         }
     }
 }

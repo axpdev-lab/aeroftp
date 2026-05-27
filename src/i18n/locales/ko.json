@@ -67,7 +67,8 @@
             "check": "확인",
             "selectAll": "Select All",
             "required": "필수",
-            "duplicate": "복제"
+            "duplicate": "복제",
+            "current": "[NEEDS TRANSLATION] current"
         },
         "connection": {
             "title": "서버에 연결",
@@ -422,7 +423,8 @@
             "azureTrashTitle": "Azure Blob 휴지통",
             "lockRcloneCrypt": "Rclone Crypt 오버레이 잠금",
             "unlockRcloneCrypt": "Rclone Crypt 오버레이로 복호화…",
-            "openAsAeroVaultOverlay": "AeroVault Overlay로 열기"
+            "openAsAeroVaultOverlay": "AeroVault Overlay로 열기",
+            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
         },
         "transfer": {
             "transferring": "전송 중...",
@@ -4601,6 +4603,10 @@
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
             "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
             "securityNote": "계정은 Argon2id + AES-KW + AES-256-GCM 암호화로 보호됩니다"
+        },
+        "opendrive": {
+            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
+            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
         }
     }
 }
