@@ -15305,6 +15305,8 @@ pub fn run() {
             user_partitions::user_partitions_rename_user,
             user_partitions::user_partitions_reorder_users,
             user_partitions::user_partitions_delete_user,
+            user_partitions::user_partitions_set_admin,
+            user_partitions::user_partitions_admin_reset_passphrase,
             user_partitions::user_partitions_storage_stats,
             user_partitions::user_partitions_debug_state,
             user_partitions::user_partitions_get_active_setting,

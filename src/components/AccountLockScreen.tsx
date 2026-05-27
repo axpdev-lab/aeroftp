@@ -42,6 +42,7 @@ const toDisplayUser = (user: UserMetadata): DisplayUser => ({
     hasPassphrase: user.hasPassphrase,
     sortOrder: user.sortOrder,
     isActive: user.isActive,
+    isAdmin: user.isAdmin,
     lastUnlockedAt: user.lastUnlockedAt,
 });
 

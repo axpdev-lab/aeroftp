@@ -15,6 +15,7 @@ export interface UserMetadata {
     updatedAt: number;
     lastUnlockedAt?: number | null;
     isActive: boolean;
+    isAdmin: boolean;
 }
 
 export interface UserPartitionMigrationReport {
@@ -110,6 +111,25 @@ export const reorderUsers = (userIds: number[]): Promise<void> =>
 export const deleteUser = (userId: number): Promise<void> =>
     invoke<void>('user_partitions_delete_user', { userId });
 
+export const setUserAdmin = (userId: number, isAdmin: boolean): Promise<void> =>
+    invoke<void>('user_partitions_set_admin', { userId, isAdmin });
+
+/**
+ * Destructive admin-only "lost password" recovery for another user.
+ * The target's encrypted server_profiles + user_settings are wiped
+ * because a fresh DEK cannot decrypt them. The frontend MUST present
+ * this with a triple confirmation (data-loss disclosure + new
+ * passphrase + re-confirm).
+ */
+export const adminResetUserPassphrase = (
+    userId: number,
+    newPassphrase?: string | null,
+): Promise<void> =>
+    invoke<void>('user_partitions_admin_reset_passphrase', {
+        userId,
+        newPassphrase,
+    });
+
 export const getUserStorageStats = (): Promise<UserStorageStats[]> =>
     invoke<UserStorageStats[]>('user_partitions_storage_stats');
 
@@ -158,6 +178,7 @@ export interface CachedUserListEntry {
     hasPassphrase: boolean;
     sortOrder: number;
     isActive: boolean;
+    isAdmin: boolean;
 }
 
 interface CachedUserListPayload {
@@ -174,6 +195,7 @@ const slimEntry = (user: UserMetadata): CachedUserListEntry => ({
     hasPassphrase: user.hasPassphrase,
     sortOrder: user.sortOrder,
     isActive: user.isActive,
+    isAdmin: user.isAdmin,
 });
 
 export const writeUsersListCache = (users: UserMetadata[]): void => {

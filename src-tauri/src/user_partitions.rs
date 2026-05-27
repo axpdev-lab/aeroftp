@@ -21,7 +21,7 @@ use std::sync::Mutex;
 use tauri::AppHandle;
 
 const DB_FILENAME: &str = "user_partitions.db";
-const SCHEMA_VERSION: &str = "2";
+const SCHEMA_VERSION: &str = "3";
 const LEGACY_PROFILES_KEY: &str = "__legacy_server_profiles";
 const LEGACY_SETTINGS_KEY: &str = "__legacy_settings";
 const ACTIVE_USER_KEY: &str = "active_user_id";
@@ -53,6 +53,12 @@ pub struct UserMetadata {
     pub updated_at: i64,
     pub last_unlocked_at: Option<i64>,
     pub is_active: bool,
+    /// Admin role: can edit/rename/reset-passphrase/delete OTHER users
+    /// from inside Manage Users. The first user created by the legacy
+    /// migration (lowest id) is seeded as admin so an existing single
+    /// install upgraded to MU keeps full control over the new account
+    /// surface. There must always be at least one admin in the table.
+    pub is_admin: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -168,6 +174,7 @@ pub fn init_db_schema(conn: &Connection) -> Result<(), String> {
              created_at        INTEGER NOT NULL,
              updated_at        INTEGER NOT NULL,
              last_unlocked_at  INTEGER,
+             is_admin          INTEGER NOT NULL DEFAULT 0 CHECK (is_admin IN (0, 1)),
              CHECK (
                  (has_passphrase = 0 AND kdf_salt IS NULL AND kdf_params IS NULL)
                  OR
@@ -523,9 +530,9 @@ fn insert_default_user(
         "INSERT INTO users(
              name, name_canonical, avatar_emoji, avatar_color, has_passphrase,
              kdf_salt, kdf_params, wrapped_dek, dek_verifier, sort_order,
-             created_at, updated_at, last_unlocked_at
+             created_at, updated_at, last_unlocked_at, is_admin
          )
-         VALUES (?1, ?2, ?3, ?4, 0, NULL, NULL, ?5, ?6, 0, ?7, ?7, ?7)",
+         VALUES (?1, ?2, ?3, ?4, 0, NULL, NULL, ?5, ?6, 0, ?7, ?7, ?7, 1)",
         params![
             name,
             canonical,
@@ -656,6 +663,23 @@ pub fn init_or_migrate(app: &AppHandle) -> Result<MigrationReport, String> {
         });
     }
 
+    // v2 -> v3: the schema CREATE TABLE already adds is_admin on fresh
+    // installs; existing v2 databases need a column add and a one-shot
+    // seed that promotes the lowest-id user (the legacy default) to
+    // admin so a returning operator keeps full control over the new
+    // account-management surface.
+    let stored_version = current_schema_version(&conn)?;
+    if stored_version.as_deref() == Some("2") {
+        upgrade_v2_to_v3(&mut conn)?;
+        return Ok(MigrationReport {
+            schema_version: SCHEMA_VERSION.to_string(),
+            created_default_user: false,
+            migrated_profiles: 0,
+            migrated_settings_scopes: 0,
+            already_migrated: true,
+        });
+    }
+
     let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
     let mut root_key = store.derive_user_partition_wrapping_key();
     let profiles_json = get_optional_store_entry(&store, "config_server_profiles")?;
@@ -673,12 +697,61 @@ pub fn init_or_migrate(app: &AppHandle) -> Result<MigrationReport, String> {
     result
 }
 
+fn upgrade_v2_to_v3(conn: &mut Connection) -> Result<(), String> {
+    // SQLite does not support `IF NOT EXISTS` on ADD COLUMN. Detect the
+    // column via pragma so the migration is idempotent across restarts
+    // and across the test suite running on already-v3 in-memory dbs.
+    let has_is_admin = {
+        let mut stmt = conn
+            .prepare("PRAGMA table_info(users)")
+            .map_err(|e| format!("Read users table info: {e}"))?;
+        let mut found = false;
+        let mut rows = stmt
+            .query([])
+            .map_err(|e| format!("Iterate users table info: {e}"))?;
+        while let Some(row) = rows
+            .next()
+            .map_err(|e| format!("Read users table info row: {e}"))?
+        {
+            let name: String = row
+                .get(1)
+                .map_err(|e| format!("Read column name: {e}"))?;
+            if name == "is_admin" {
+                found = true;
+                break;
+            }
+        }
+        found
+    };
+
+    let tx = conn
+        .transaction()
+        .map_err(|e| format!("Start v2->v3 upgrade: {e}"))?;
+    if !has_is_admin {
+        tx.execute(
+            "ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0",
+            [],
+        )
+        .map_err(|e| format!("ALTER TABLE users ADD is_admin: {e}"))?;
+    }
+    tx.execute(
+        "UPDATE users SET is_admin = 1
+         WHERE id = (SELECT id FROM users ORDER BY id ASC LIMIT 1)",
+        [],
+    )
+    .map_err(|e| format!("Seed first user as admin: {e}"))?;
+    upsert_global_state(&tx, SCHEMA_VERSION_KEY, SCHEMA_VERSION, now_ms())?;
+    tx.commit()
+        .map_err(|e| format!("Commit v2->v3 upgrade: {e}"))?;
+    Ok(())
+}
+
 pub fn list_users(conn: &Connection) -> Result<Vec<UserMetadata>, String> {
     let active = active_user_id(conn)?;
     let mut stmt = conn
         .prepare(
             "SELECT id, name, avatar_emoji, avatar_color, has_passphrase, sort_order,
-                    created_at, updated_at, last_unlocked_at
+                    created_at, updated_at, last_unlocked_at, is_admin
              FROM users
              ORDER BY sort_order ASC, name_canonical ASC",
         )
@@ -687,6 +760,7 @@ pub fn list_users(conn: &Connection) -> Result<Vec<UserMetadata>, String> {
         .query_map([], |row| {
             let id: i64 = row.get(0)?;
             let has_passphrase: i64 = row.get(4)?;
+            let is_admin: i64 = row.get(9)?;
             Ok(UserMetadata {
                 id,
                 name: row.get(1)?,
@@ -698,6 +772,7 @@ pub fn list_users(conn: &Connection) -> Result<Vec<UserMetadata>, String> {
                 updated_at: row.get(7)?,
                 last_unlocked_at: row.get(8)?,
                 is_active: active == Some(id),
+                is_admin: is_admin != 0,
             })
         })
         .map_err(|e| format!("Query list users: {e}"))?;
@@ -1160,6 +1235,10 @@ pub fn create_user(
         updated_at: now,
         last_unlocked_at: if has_passphrase { None } else { Some(now) },
         is_active: active == Some(id),
+        // New users created via Manage Users are NEVER admin by default.
+        // Promotion to admin is an explicit action via
+        // user_partitions_set_admin, gated on the caller being admin.
+        is_admin: false,
     })
 }
 
@@ -1336,6 +1415,181 @@ pub fn set_active_user(conn: &Connection, user_id: i64) -> Result<(), String> {
     set_active_user_row(conn, user_id)
 }
 
+pub fn is_admin_user(conn: &Connection, user_id: i64) -> Result<bool, String> {
+    let value: Option<i64> = conn
+        .query_row(
+            "SELECT is_admin FROM users WHERE id = ?1",
+            params![user_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| format!("Read user is_admin: {e}"))?;
+    Ok(value.unwrap_or(0) != 0)
+}
+
+pub fn count_admin_users(conn: &Connection) -> Result<i64, String> {
+    conn.query_row(
+        "SELECT COUNT(*) FROM users WHERE is_admin = 1",
+        [],
+        |row| row.get(0),
+    )
+    .map_err(|e| format!("Count admin users: {e}"))
+}
+
+/// Self-only-or-admin gate. CMS/CRM-grade rule: the only writer that
+/// may touch a user's mutable account fields (name, passphrase, avatar,
+/// destructive delete) is the user themselves OR an admin acting on
+/// their behalf. Anyone else (a peer with the vault unlocked AS a
+/// non-admin account) is rejected with NOT_AUTHORIZED.
+///
+/// Returns Ok(true) when the caller is the target itself, Ok(false)
+/// when the caller is an admin acting on a peer, and an Err otherwise.
+/// Callers that need to forbid admin-on-peer (e.g. self-only changes
+/// such as password rotation that require knowing the current
+/// passphrase) check the boolean and reject explicitly.
+pub fn ensure_user_can_modify(
+    conn: &Connection,
+    target_user_id: i64,
+) -> Result<bool, String> {
+    let status = user_unlock_status(conn)?;
+    let Some(actor_id) = status.unlocked_user_id else {
+        return Err("VAULT_LOCKED".to_string());
+    };
+    if actor_id == target_user_id {
+        return Ok(true);
+    }
+    if is_admin_user(conn, actor_id)? {
+        return Ok(false);
+    }
+    Err("NOT_AUTHORIZED".to_string())
+}
+
+/// Grant or revoke admin privileges. Only an admin may call. The
+/// system must always retain at least one admin: revoking the last
+/// admin returns CANNOT_DEMOTE_LAST_ADMIN.
+pub fn set_user_admin(
+    conn: &mut Connection,
+    target_user_id: i64,
+    is_admin: bool,
+) -> Result<(), String> {
+    let status = user_unlock_status(conn)?;
+    let actor_id = status
+        .unlocked_user_id
+        .ok_or_else(|| "VAULT_LOCKED".to_string())?;
+    if !is_admin_user(conn, actor_id)? {
+        return Err("NOT_AUTHORIZED".to_string());
+    }
+    let current = is_admin_user(conn, target_user_id)?;
+    if current == is_admin {
+        return Ok(());
+    }
+    if !is_admin && count_admin_users(conn)? <= 1 {
+        return Err("CANNOT_DEMOTE_LAST_ADMIN".to_string());
+    }
+    let changed = conn
+        .execute(
+            "UPDATE users SET is_admin = ?1, updated_at = ?2 WHERE id = ?3",
+            params![if is_admin { 1 } else { 0 }, now_ms(), target_user_id],
+        )
+        .map_err(|e| format!("Update user is_admin: {e}"))?;
+    if changed == 0 {
+        return Err("USER_NOT_FOUND".to_string());
+    }
+    Ok(())
+}
+
+/// Admin-only destructive password recovery. The crypto reality: a
+/// passphrase-protected user's DEK is wrapped with Argon2id(passphrase)
+/// and nothing else, so without the passphrase no one (not even admin)
+/// can decrypt that user's encrypted blobs. The only recovery path is
+/// to wipe the target's DEK + server_profiles + user_settings +
+/// lockout state and issue a brand-new DEK wrapped by the new
+/// passphrase. The frontend MUST present this as a destructive
+/// operation with a triple confirmation, listing the byte count that
+/// will be lost. Returns USER_NOT_FOUND if the target does not exist
+/// and NOT_AUTHORIZED if the caller is not an admin.
+pub fn admin_reset_user_passphrase(
+    conn: &mut Connection,
+    root_key: &[u8; 32],
+    target_user_id: i64,
+    new_passphrase: Option<&str>,
+) -> Result<(), String> {
+    let status = user_unlock_status(conn)?;
+    let actor_id = status
+        .unlocked_user_id
+        .ok_or_else(|| "VAULT_LOCKED".to_string())?;
+    if !is_admin_user(conn, actor_id)? {
+        return Err("NOT_AUTHORIZED".to_string());
+    }
+    if actor_id == target_user_id {
+        // Admin acting on self uses the regular change_user_passphrase
+        // flow, which preserves their data. Reject here to keep the
+        // destructive path from being used by mistake against self.
+        return Err("ADMIN_RESET_NOT_FOR_SELF".to_string());
+    }
+    // Generate the new DEK + wrapping key OUTSIDE the transaction so a
+    // KDF failure does not leave the partition half-wiped.
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    let new_dek = user_crypto::generate_dek();
+    let mut kdf_salt: Option<Vec<u8>> = None;
+    let mut kdf_params: Option<String> = None;
+    let wrapping_key = if let Some(new_passphrase) = new_passphrase {
+        let salt = user_crypto::random_salt();
+        let params = default_kdf_params();
+        kdf_salt = Some(salt.to_vec());
+        kdf_params = Some(user_crypto::params_to_json(&params)?);
+        user_crypto::derive_wrapping_key(new_passphrase, &salt, &params)?
+    } else {
+        root_secret
+    };
+    let has_passphrase = new_passphrase.is_some();
+    let wrapped_dek = user_crypto::wrap_dek(&wrapping_key, &new_dek)?;
+    let verifier = user_crypto::compute_dek_verifier(&new_dek)?.to_vec();
+    let tx = conn
+        .transaction()
+        .map_err(|e| format!("Start admin reset passphrase: {e}"))?;
+    // Wipe encrypted partition data (the new DEK cannot decrypt them).
+    tx.execute(
+        "DELETE FROM server_profiles WHERE user_id = ?1",
+        params![target_user_id],
+    )
+    .map_err(|e| format!("Wipe target server_profiles: {e}"))?;
+    tx.execute(
+        "DELETE FROM user_settings WHERE user_id = ?1",
+        params![target_user_id],
+    )
+    .map_err(|e| format!("Wipe target user_settings: {e}"))?;
+    tx.execute(
+        "DELETE FROM global_state WHERE key = ?1",
+        params![lockout_key(target_user_id)],
+    )
+    .map_err(|e| format!("Wipe target lockout: {e}"))?;
+    let changed = tx
+        .execute(
+            "UPDATE users
+             SET has_passphrase = ?1, kdf_salt = ?2, kdf_params = ?3,
+                 wrapped_dek = ?4, dek_verifier = ?5, last_unlocked_at = NULL,
+                 updated_at = ?6
+             WHERE id = ?7",
+            params![
+                if has_passphrase { 1 } else { 0 },
+                kdf_salt,
+                kdf_params,
+                wrapped_dek,
+                verifier,
+                now_ms(),
+                target_user_id
+            ],
+        )
+        .map_err(|e| format!("Admin reset passphrase: {e}"))?;
+    if changed == 0 {
+        return Err("USER_NOT_FOUND".to_string());
+    }
+    tx.commit()
+        .map_err(|e| format!("Commit admin reset passphrase: {e}"))?;
+    Ok(())
+}
+
 pub fn rename_user(conn: &Connection, user_id: i64, name: &str) -> Result<(), String> {
     let (display, canonical) = normalize_name(name)?;
     let changed = conn
@@ -1388,6 +1642,13 @@ pub fn delete_user(conn: &mut Connection, user_id: i64) -> Result<(), String> {
         .map_err(|e| format!("Count users: {e}"))?;
     if total_users <= 1 {
         return Err("CANNOT_DELETE_LAST_USER".to_string());
+    }
+    // Last-admin protection: even if more than one user exists, never
+    // leave the install without an admin. The frontend should disable
+    // the delete button on the last admin row, but the backend keeps
+    // the guard regardless.
+    if is_admin_user(conn, user_id)? && count_admin_users(conn)? <= 1 {
+        return Err("CANNOT_DELETE_LAST_ADMIN".to_string());
     }
     let active_before_delete = active_user_id(conn)?;
     let tx = conn
@@ -1896,6 +2157,22 @@ pub async fn user_partitions_change_passphrase(
     let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
     let mut root_key = store.derive_user_partition_wrapping_key();
     let conn = open_or_init(&app)?;
+    // Self-only: change_user_passphrase unwraps the DEK with the
+    // CURRENT passphrase. Admin acting on a peer cannot supply the
+    // current passphrase, so the only path admin has on a peer is the
+    // destructive admin_reset_user_passphrase. Reject any non-self call
+    // here, even from admin, to keep the foot-gun closed.
+    let status = user_unlock_status(&conn)?;
+    if status.unlocked_user_id != Some(user_id) {
+        root_key.zeroize();
+        if let Some(passphrase) = old_passphrase.as_mut() {
+            passphrase.zeroize();
+        }
+        if let Some(passphrase) = new_passphrase.as_mut() {
+            passphrase.zeroize();
+        }
+        return Err("NOT_ACTIVE_USER".to_string());
+    }
     let result = change_user_passphrase(
         &conn,
         &root_key,
@@ -1928,6 +2205,9 @@ pub async fn user_partitions_rename_user(
 ) -> Result<(), String> {
     init_or_migrate(&app)?;
     let conn = open_or_init(&app)?;
+    // Self-or-admin: admin can rename a peer (CMS-style account
+    // management); a non-admin peer cannot rename anyone but self.
+    ensure_user_can_modify(&conn, user_id)?;
     rename_user(&conn, user_id, &name)
 }
 
@@ -1945,7 +2225,45 @@ pub async fn user_partitions_reorder_users(
 pub async fn user_partitions_delete_user(app: AppHandle, user_id: i64) -> Result<(), String> {
     init_or_migrate(&app)?;
     let mut conn = open_or_init(&app)?;
+    // Self-or-admin: a non-admin peer cannot delete another account; an
+    // admin can. Last-admin and last-user guards live inside
+    // delete_user() so they apply regardless of caller path.
+    ensure_user_can_modify(&conn, user_id)?;
     delete_user(&mut conn, user_id)
+}
+
+#[tauri::command]
+pub async fn user_partitions_set_admin(
+    app: AppHandle,
+    user_id: i64,
+    is_admin: bool,
+) -> Result<(), String> {
+    init_or_migrate(&app)?;
+    let mut conn = open_or_init(&app)?;
+    set_user_admin(&mut conn, user_id, is_admin)
+}
+
+#[tauri::command]
+pub async fn user_partitions_admin_reset_passphrase(
+    app: AppHandle,
+    user_id: i64,
+    mut new_passphrase: Option<String>,
+) -> Result<(), String> {
+    init_or_migrate(&app)?;
+    let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let mut conn = open_or_init(&app)?;
+    let result = admin_reset_user_passphrase(
+        &mut conn,
+        &root_key,
+        user_id,
+        new_passphrase.as_deref(),
+    );
+    if let Some(passphrase) = new_passphrase.as_mut() {
+        passphrase.zeroize();
+    }
+    root_key.zeroize();
+    result
 }
 
 #[tauri::command]
@@ -2686,5 +3004,312 @@ mod tests {
         assert_eq!(matches.len(), 2);
         assert_eq!(matches[0].user_id, default.id);
         assert_eq!(matches[1].user_id, alice.id);
+    }
+
+    // ----- MU-FE-P4a: admin role + self-or-admin gate -----
+
+    #[test]
+    fn migration_seeds_default_user_as_admin() {
+        let _guard = test_lock();
+        let conn = migrated_conn(0);
+        let users = list_users(&conn).expect("list users");
+        assert_eq!(users.len(), 1);
+        assert!(
+            users[0].is_admin,
+            "the legacy default user must be promoted to admin so the install retains full control",
+        );
+    }
+
+    #[test]
+    fn newly_created_users_are_not_admin() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let alice =
+            create_passphrase_less_user(&mut conn, &root, "alice", Some("A"), Some("#10b981"))
+                .expect("alice");
+        assert!(!alice.is_admin, "Manage Users add flow must not auto-promote new accounts");
+    }
+
+    #[test]
+    fn ensure_user_can_modify_allows_self_and_admin_on_peer() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn).expect("active").expect("default");
+        let alice =
+            create_passphrase_less_user(&mut conn, &root, "alice", Some("A"), Some("#10b981"))
+                .expect("alice");
+
+        // default (admin) acting on self -> self-mode (true)
+        assert_eq!(ensure_user_can_modify(&conn, default.id), Ok(true));
+        // default (admin) acting on alice -> admin-mode (false)
+        assert_eq!(ensure_user_can_modify(&conn, alice.id), Ok(false));
+    }
+
+    #[test]
+    fn ensure_user_can_modify_blocks_non_admin_peer() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn).expect("active").expect("default");
+        let alice =
+            create_passphrase_less_user(&mut conn, &root, "alice", Some("A"), Some("#10b981"))
+                .expect("alice");
+        // Switch active user to alice (passphrase-less so unlock is implicit).
+        set_active_user(&conn, alice.id).expect("switch alice");
+
+        // alice -> alice: self OK
+        assert_eq!(ensure_user_can_modify(&conn, alice.id), Ok(true));
+        // alice -> default: NOT_AUTHORIZED (alice is not admin)
+        assert_eq!(
+            ensure_user_can_modify(&conn, default.id),
+            Err("NOT_AUTHORIZED".to_string())
+        );
+    }
+
+    #[test]
+    fn set_user_admin_promotes_and_demotes_with_guard() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn).expect("active").expect("default");
+        let alice =
+            create_passphrase_less_user(&mut conn, &root, "alice", Some("A"), Some("#10b981"))
+                .expect("alice");
+
+        // default (admin) promotes alice
+        set_user_admin(&mut conn, alice.id, true).expect("promote alice");
+        assert!(is_admin_user(&conn, alice.id).expect("alice is_admin"));
+
+        // default demotes alice back
+        set_user_admin(&mut conn, alice.id, false).expect("demote alice");
+        assert!(!is_admin_user(&conn, alice.id).expect("alice is_admin"));
+
+        // alice (non-admin) cannot promote herself
+        set_active_user(&conn, alice.id).expect("switch alice");
+        assert_eq!(
+            set_user_admin(&mut conn, alice.id, true),
+            Err("NOT_AUTHORIZED".to_string())
+        );
+
+        // default cannot revoke itself when it is the last admin
+        set_active_user(&conn, default.id).expect("switch back default");
+        assert_eq!(
+            set_user_admin(&mut conn, default.id, false),
+            Err("CANNOT_DEMOTE_LAST_ADMIN".to_string())
+        );
+    }
+
+    #[test]
+    fn delete_user_protects_last_admin() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn).expect("active").expect("default");
+        let _alice =
+            create_passphrase_less_user(&mut conn, &root, "alice", Some("A"), Some("#10b981"))
+                .expect("alice");
+        // alice is NOT admin; deleting the only admin (default) must
+        // be rejected even though two users exist.
+        assert_eq!(
+            delete_user(&mut conn, default.id),
+            Err("CANNOT_DELETE_LAST_ADMIN".to_string())
+        );
+    }
+
+    #[test]
+    fn admin_reset_wipes_target_partition_and_issues_new_dek() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        // Create alice with a passphrase + a saved profile so we can
+        // verify the destructive wipe.
+        let alice = create_user(
+            &mut conn,
+            &root,
+            "alice",
+            Some("A"),
+            Some("#10b981"),
+            Some("alice-pw"),
+        )
+        .expect("alice");
+        set_active_user(&conn, alice.id).expect("switch alice");
+        unlock_user(&conn, &root, alice.id, Some("alice-pw")).expect("unlock alice");
+        let profile = json!({
+            "id": "p1",
+            "name": "alice profile",
+            "protocol": "sftp",
+            "host": "s.example.com",
+            "username": "a",
+            "port": 22,
+        });
+        replace_active_server_profiles(&mut conn, &root, &[profile])
+            .expect("save alice profile");
+        let count_before: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM server_profiles WHERE user_id = ?1",
+                params![alice.id],
+                |row| row.get(0),
+            )
+            .expect("count before");
+        assert_eq!(count_before, 1);
+
+        // Switch active back to default (admin) and perform the reset.
+        set_active_user(&conn, get_active_user(&conn).unwrap().unwrap().id).expect("noop");
+        // The migrated default is implicitly the only admin; ensure
+        // it is the active user before invoking the admin path.
+        let default_id = list_users(&conn)
+            .expect("list")
+            .into_iter()
+            .find(|u| u.is_admin)
+            .expect("admin")
+            .id;
+        set_active_user(&conn, default_id).expect("switch default");
+
+        admin_reset_user_passphrase(&mut conn, &root, alice.id, Some("recovered"))
+            .expect("admin reset");
+
+        // alice's encrypted partition is wiped.
+        let count_after: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM server_profiles WHERE user_id = ?1",
+                params![alice.id],
+                |row| row.get(0),
+            )
+            .expect("count after");
+        assert_eq!(count_after, 0);
+
+        // The new passphrase unlocks the new DEK (old one is gone for good).
+        set_active_user(&conn, alice.id).expect("switch alice");
+        unlock_user(&conn, &root, alice.id, Some("recovered"))
+            .expect("unlock with new passphrase");
+        // And the OLD passphrase no longer works.
+        assert!(unlock_user(&conn, &root, alice.id, Some("alice-pw")).is_err());
+    }
+
+    #[test]
+    fn admin_reset_rejects_self_target() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let default_id = get_active_user(&conn).expect("active").expect("default").id;
+        assert_eq!(
+            admin_reset_user_passphrase(&mut conn, &root, default_id, Some("x")),
+            Err("ADMIN_RESET_NOT_FOR_SELF".to_string()),
+        );
+    }
+
+    #[test]
+    fn admin_reset_blocked_for_non_admin_caller() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let alice =
+            create_passphrase_less_user(&mut conn, &root, "alice", Some("A"), Some("#10b981"))
+                .expect("alice");
+        let bob =
+            create_passphrase_less_user(&mut conn, &root, "bob", Some("B"), Some("#3b82f6"))
+                .expect("bob");
+        // Switch active to alice (non-admin). alice tries to reset bob.
+        set_active_user(&conn, alice.id).expect("switch alice");
+        assert_eq!(
+            admin_reset_user_passphrase(&mut conn, &root, bob.id, Some("x")),
+            Err("NOT_AUTHORIZED".to_string())
+        );
+    }
+
+    #[test]
+    fn upgrade_v2_to_v3_promotes_lowest_id_user_to_admin() {
+        let _guard = test_lock();
+        // Build a v2-shaped database in-memory: schema without is_admin
+        // + schema_version=2 + two users seeded directly.
+        let mut conn = Connection::open_in_memory().expect("memory db");
+        conn.execute_batch(
+            "PRAGMA foreign_keys = ON;
+             CREATE TABLE users (
+                 id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                 name              TEXT NOT NULL,
+                 name_canonical    TEXT NOT NULL UNIQUE,
+                 avatar_emoji      TEXT,
+                 avatar_color      TEXT,
+                 has_passphrase    INTEGER NOT NULL DEFAULT 0,
+                 kdf_salt          BLOB,
+                 kdf_params        TEXT,
+                 wrapped_dek       BLOB NOT NULL,
+                 dek_verifier      BLOB NOT NULL,
+                 sort_order        INTEGER NOT NULL DEFAULT 0,
+                 created_at        INTEGER NOT NULL,
+                 updated_at        INTEGER NOT NULL,
+                 last_unlocked_at  INTEGER
+             );
+             CREATE TABLE server_profiles (
+                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                 user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                 profile_uid     TEXT NOT NULL,
+                 dedup_key       TEXT NOT NULL,
+                 name            TEXT NOT NULL,
+                 encrypted_blob  BLOB NOT NULL,
+                 nonce           BLOB NOT NULL,
+                 aead_alg        TEXT NOT NULL DEFAULT 'aes-256-gcm',
+                 created_at      INTEGER NOT NULL,
+                 updated_at      INTEGER NOT NULL,
+                 UNIQUE(user_id, profile_uid)
+             );
+             CREATE TABLE user_settings (
+                 user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                 scope           TEXT NOT NULL,
+                 encrypted_blob  BLOB NOT NULL,
+                 nonce           BLOB NOT NULL,
+                 aead_alg        TEXT NOT NULL DEFAULT 'aes-256-gcm',
+                 updated_at      INTEGER NOT NULL,
+                 PRIMARY KEY(user_id, scope)
+             );
+             CREATE TABLE global_state (
+                 key             TEXT PRIMARY KEY,
+                 value           TEXT NOT NULL,
+                 updated_at      INTEGER NOT NULL
+             );",
+        )
+        .expect("v2 schema");
+        // Two users; lowest id (1) is the legacy default.
+        let now = now_ms();
+        conn.execute(
+            "INSERT INTO users(name, name_canonical, wrapped_dek, dek_verifier, sort_order, created_at, updated_at)
+             VALUES ('default', 'default', X'00', X'00', 0, ?1, ?1)",
+            params![now],
+        )
+        .expect("seed default");
+        conn.execute(
+            "INSERT INTO users(name, name_canonical, wrapped_dek, dek_verifier, sort_order, created_at, updated_at)
+             VALUES ('alice', 'alice', X'00', X'00', 1, ?1, ?1)",
+            params![now],
+        )
+        .expect("seed alice");
+        conn.execute(
+            "INSERT INTO global_state(key, value, updated_at) VALUES (?1, '2', ?2)",
+            params![SCHEMA_VERSION_KEY, now],
+        )
+        .expect("seed schema v2");
+
+        upgrade_v2_to_v3(&mut conn).expect("upgrade");
+
+        let is_admin_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM users WHERE is_admin = 1", [], |row| row.get(0))
+            .expect("count admin");
+        assert_eq!(is_admin_count, 1);
+        let admin_id: i64 = conn
+            .query_row("SELECT id FROM users WHERE is_admin = 1", [], |row| row.get(0))
+            .expect("admin id");
+        assert_eq!(admin_id, 1);
+        let version = current_schema_version(&conn).expect("version");
+        assert_eq!(version.as_deref(), Some(SCHEMA_VERSION));
+
+        // Idempotent: rerun must not crash and must not flip admin off.
+        upgrade_v2_to_v3(&mut conn).expect("idempotent rerun");
+        let still_admin: i64 = conn
+            .query_row("SELECT is_admin FROM users WHERE id = 1", [], |row| row.get(0))
+            .expect("admin still");
+        assert_eq!(still_admin, 1);
     }
 }
