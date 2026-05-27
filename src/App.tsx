@@ -368,7 +368,7 @@ import { useIconTheme, getDefaultIconTheme } from './hooks/useIconTheme';
 import { getIconThemeProvider } from './utils/iconThemes';
 import { logger } from './utils/logger';
 import { initCspReporter } from './utils/cspReporter';
-import { secureGet, secureGetWithFallback, secureStoreAndClean } from './utils/secureStorage';
+import { secureGetWithFallback, secureStoreAndClean } from './utils/secureStorage';
 import {
   loadSavedServerProfiles,
   mergeSavedServerProfile,
@@ -807,7 +807,13 @@ const App: React.FC = () => {
   // waiting for an unrelated route refresh. Bump-refreshKey is idempotent and
   // cheap: the existing useEffect already de-bounces via React's batching.
   useEffect(() => {
-    const handler = () => setServersRefreshKey(k => k + 1);
+    const handler = () => {
+      // MU-FE-P0: also flush the legacy cross-user localStorage blob so any
+      // P1/P2 reader still tied to it cannot show the previous user's data
+      // after a switch. Safe to remove once P1/P2 components are migrated.
+      try { localStorage.removeItem('aeroftp-saved-servers'); } catch { /* best effort */ }
+      setServersRefreshKey(k => k + 1);
+    };
     window.addEventListener(PROFILES_CHANGED_EVENT, handler);
     return () => window.removeEventListener(PROFILES_CHANGED_EVENT, handler);
   }, []);
@@ -1324,23 +1330,11 @@ const App: React.FC = () => {
       } catch (err) {
         console.error('Failed to initialize credential vault:', err);
       } finally {
-        // Pre-warm vault: fetch server profiles so SavedServers can paint
-        // without a flash. The vault is the source of truth, so when the
-        // vault read succeeds we overwrite the localStorage backup
-        // unconditionally. This recovers from out-of-band edits made by
-        // `aeroftp-cli profiles -i` while the GUI was running, where the
-        // localStorage cache lags the vault. A null/error vault response
-        // (locked, file lock contention on Windows) leaves the localStorage
-        // backup untouched (issue #194).
-        try {
-          const vaultServers = await secureGet<unknown[]>('server_profiles');
-          if (Array.isArray(vaultServers)) {
-            const nextStored = JSON.stringify(vaultServers);
-            if (localStorage.getItem('aeroftp-saved-servers') !== nextStored) {
-              localStorage.setItem('aeroftp-saved-servers', nextStored);
-            }
-          }
-        } catch { /* non-critical */ }
+        // MU-FE-P0: no localStorage pre-warm. SavedServers reads via
+        // `loadSavedServerProfiles` (partition-aware) on every refresh
+        // and the legacy localStorage blob is cross-user, so seeding it
+        // would actively leak between users on switch. The active user's
+        // partition is the only source of truth.
         // Force SavedServers to re-fetch from vault (now initialized)
         setServersRefreshKey(k => k + 1);
         vaultInitDone.current = true;
@@ -1366,6 +1360,9 @@ const App: React.FC = () => {
         const [users, status] = await Promise.all([listUsers(), getUnlockStatus()]);
         if (cancelled) return;
         writeUsersListCache(users);
+        // Notify UserDropdown (mounted before vault was ready) so it re-runs
+        // its refresh and renders the avatar now that MU IPC is available.
+        window.dispatchEvent(new CustomEvent(PROFILES_CHANGED_EVENT));
         if (users.length === 0) { setAccountLockState('ready'); return; }
         const singleUserNeedsUnlock = users.length === 1 && users[0].hasPassphrase && !status.isUnlocked;
         const finalNeeded = users.length > 1 || singleUserNeedsUnlock;
@@ -5049,7 +5046,7 @@ interface UpdateVerificationInfo {
     let cachedPublicUrlBase: string | undefined;
     let cachedInitialPath: string | undefined;
     try {
-      const servers = await secureGetWithFallback<ServerProfile[]>('server_profiles', 'aeroftp-saved-servers');
+      const servers = await loadSavedServerProfiles();
       if (servers) {
         const match = servers.find(s => s.id === serverName || s.name === serverName || s.host === serverName);
         if (match?.faviconUrl) cachedFavicon = match.faviconUrl;
@@ -5096,12 +5093,12 @@ interface UpdateVerificationInfo {
     ));
     // Update saved servers in vault (localStorage may be empty after vault migration)
     try {
-      const servers = await secureGetWithFallback<ServerProfile[]>('server_profiles', 'aeroftp-saved-servers');
+      const servers = await loadSavedServerProfiles();
       if (servers) {
         const idx = servers.findIndex(s => s.id === serverId || s.name === serverId || s.host === serverId);
         if (idx !== -1) {
           servers[idx].faviconUrl = faviconUrl;
-          try { await secureStoreAndClean('server_profiles', 'aeroftp-saved-servers', servers); } catch { /* ignore */ }
+          try { await storeSavedServerProfiles(servers); } catch { /* ignore */ }
         }
       }
     } catch { /* ignore */ }
@@ -5292,7 +5289,7 @@ interface UpdateVerificationInfo {
         // Safety check: recover missing S3 options
         if (protocol === 's3' && (!connectParams.options || !connectParams.options.bucket)) {
           try {
-            const savedServers = await secureGetWithFallback<any[]>('server_profiles', 'aeroftp-saved-servers');
+            const savedServers = await loadSavedServerProfiles();
             if (savedServers) {
               const found = savedServers.find((s: any) =>
                 (s.name === targetSession.serverName) ||
@@ -5570,7 +5567,7 @@ interface UpdateVerificationInfo {
       }
 
       // Get saved servers from vault (with localStorage fallback)
-      const savedServers = await secureGetWithFallback<any[]>('server_profiles', 'aeroftp-saved-servers');
+      const savedServers = await loadSavedServerProfiles();
       if (!savedServers || savedServers.length === 0) {
         notify.error(t('toast.noSavedServers'), t('toast.saveServerFirst'));
         setShowCloudPanel(true);
@@ -7337,11 +7334,8 @@ interface UpdateVerificationInfo {
 
     void (async () => {
       try {
-        const stored = await secureGetWithFallback<ServerProfile[]>(
-          'server_profiles',
-          'aeroftp-saved-servers',
-        );
-        const profile = (stored || []).find((p) => p.id === opts.profileId);
+        const stored = await loadSavedServerProfiles();
+        const profile = stored.find((p) => p.id === opts.profileId);
         if (profile?.skipDeltaEligibilityPrompt) {
           launchRun();
           return;
@@ -11711,15 +11705,11 @@ interface UpdateVerificationInfo {
               // the queued plan from dispatching.
               (async () => {
                 try {
-                  const stored = await secureGetWithFallback<ServerProfile[]>(
-                    'server_profiles',
-                    'aeroftp-saved-servers',
-                  );
-                  const profiles = stored || [];
+                  const profiles = await loadSavedServerProfiles();
                   const idx = profiles.findIndex((p) => p.id === prompt.profileId);
                   if (idx >= 0) {
                     profiles[idx] = { ...profiles[idx], skipDeltaEligibilityPrompt: true };
-                    await secureStoreAndClean('server_profiles', 'aeroftp-saved-servers', profiles);
+                    await storeSavedServerProfiles(profiles);
                   }
                 } catch (err) {
                   if (debugMode) {
