@@ -1,7 +1,7 @@
 # AeroFTP Protocol Features Matrix
 
-> Last Updated: 15 May 2026
-> Version: v3.8.0
+> Last Updated: 27 May 2026
+> Version: v3.8.5
 >
 > **Note**: AeroFTP organizes integrations on three tiers:
 >
@@ -104,7 +104,7 @@
 | **Multipart Upload** | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - |
 | **Remote URL Fetch** | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | Yes | - | - |
 | **File Password** | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | Yes | - | - |
-| **Privacy Toggle** | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | Yes | - | - |
+| **Privacy Toggle** | - | - | - | - | - | - | - | - | - | - | - | - | Yes | - | - | - | - | Yes | - | Yes |
 | **Tags** | - | - | - | - | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - | - |
 | **Watermark** | - | - | - | - | - | - | - | - | - | Yes‡ | - | - | - | - | - | - | - | - | - | - |
 | **Comments** | - | - | - | - | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - | - |
@@ -142,6 +142,65 @@
 | **GitHub** | URL | - | - | - | Permanent blob/release URL |
 
 **CLI**: `aeroftp-cli link --profile "name" /path [--password pw] [--expires 7d] [--permissions edit]`
+
+---
+
+## Privacy and Visibility Controls
+
+This section explains what "privacy" means in practice for each provider that exposes per-item visibility controls, and what AeroFTP's `Set as Private` / `Set as Public` actions actually do at the API level. See also the **Privacy Toggle** row in the Advanced Operations matrix.
+
+### What contributes to privacy in a cloud-sync app
+
+When evaluating how private your data is on a given provider, the following independent aspects all matter:
+
+- **Encryption at rest**: whether the provider can read your files, or whether the encryption keys never leave your device (zero-knowledge / E2E). AeroFTP's MEGA, Filen, and Internxt integrations are end-to-end encrypted; all the others store cleartext server-side.
+- **Default visibility on create**: whether a newly-created file or folder is private by default, hidden, or world-accessible. Some providers (notably 4shared, designed around community sharing) default to public.
+- **Granular per-file / per-folder visibility control**: whether you can toggle individual items between visibility levels after creation, and how many levels are available (binary public/private vs three-level public/hidden/private).
+- **Share-link semantics**: whether shared links can be password-protected, time-limited, and scoped (view / download / edit). See the Share Link Support matrix above.
+- **IP-level access controls and audit logs**: whether the provider exposes IP allow/deny lists and access logs (mostly an enterprise feature on Box / Zoho WorkDrive).
+- **AeroVault overlay**: AeroFTP's built-in encrypted container format (AES-256-GCM-SIV + Argon2id, see "Client-Side Encryption" below). Storing an `.aerovault` file on any provider makes that provider's per-item privacy semantics irrelevant for the actual data, since the underlying provider only ever sees opaque ciphertext.
+
+### Provider-specific behavior
+
+#### OpenDrive
+
+OpenDrive's REST API exposes three documented visibility levels, surfaced as `RemoteEntry.permissions` in AeroFTP and visible in the file Properties dialog (Permissions tab) and the right-click context menu:
+
+| Level | Meaning | API value |
+|-------|---------|-----------|
+| `private` | Owner-only; no public link works. | `Access=0` |
+| `public` | Anyone with the link can access; item is searchable on OpenDrive. | `Access=1` |
+| `hidden` | Accessible by direct link only; not searchable. | `Access=2` |
+
+The context menu actions `Set as Private` and `Set as Public` call `file/access.json` and `folder/setaccess.json` (with `with_child_files=true` for folders, so children inherit the new state). The inapplicable action is hidden, not greyed out, so right-clicking a private item shows only `Set as Public` and vice versa. When the current state is `hidden`, both actions are shown.
+
+`Set as Private` and `Set as Public` are the simple binary toggles available directly from the context menu. A separate three-level chooser (Public / Private / Hidden) is reachable via the `Privacy...` entry on the same menu and via the Properties dialog. The richer multi-axis flags (`folder_public_upl`, `folder_public_display`, `folder_public_dnl`) accepted by `folder/create.json` are not exposed on `folder/setaccess.json` and therefore cannot be changed after creation; they only apply when a new folder is being created.
+
+Default visibility on create follows the OpenDrive account setting (typically `hidden`).
+
+**OpenDrive REST API vs WebDAV**: OpenDrive enforces per-IP rate limits on its REST API (`session/login.json` and related endpoints) that can lead to temporary IP blacklisting under heavy or repeated authentication attempts. The WebDAV endpoint (`https://webdav.opendrive.com`) is more permissive in this regard. If you see authentication failures that resolve only after waiting several minutes, switching to the WebDAV preset (also available in AeroFTP) is a workable fallback. The reverse trade-off applies for per-item privacy controls, which are only available on the REST API path.
+
+#### 4shared
+
+4shared is community-oriented and creates files and folders as **public** by default. The `Set as Private` / `Set as Public` actions toggle the `owner_only` flag on the REST API and surface in the right-click menu (only the inapplicable action is hidden). 4shared has no `hidden` level; visibility is binary.
+
+The Quick Connect "Default privacy" toggle for 4shared lets you flip the default to `private` so that uploads no longer land in 4shared's public catalog.
+
+#### FileLu
+
+FileLu exposes a binary `only_me` flag per file (private / public). Toggling this is the `Set as Private` / `Set as Public` action; the inapplicable action is hidden. Folders carry a separate Folder Settings dialog (FileDrop for anonymous uploads, Public Folder for shared catalog membership) and an optional per-file or per-folder password. See "FileLu Special Features" below for the full surface.
+
+#### Filen and Internxt
+
+Both providers are **zero-knowledge end-to-end encrypted**: visibility is implicitly private at all times since the provider cannot read the cleartext. Public sharing is opt-in, file-by-file, by generating a share link. Internxt additionally encrypts file names; Filen encrypts both content and file names.
+
+#### MEGA
+
+MEGA is end-to-end encrypted; the provider cannot read your data. Per-item privacy is binary: an item is private unless you mint a public link (which embeds the decryption key in the URL fragment). The MEGAcmd bridge has the same semantics; the AeroFTP MEGAcmd preset is a path-based wrapper that delegates to the native MEGA CLI.
+
+#### Box, Google Drive, Dropbox, OneDrive, pCloud, Zoho WorkDrive, kDrive
+
+These providers do not expose a per-item public/private toggle in the same shape; their privacy model is anchored to share links (Share Link Support matrix above) and, on Box and Zoho WorkDrive, to enterprise access policies (Box Enterprise: watermarks, folder locks, collaborations; Zoho: team labels). On Google Drive, the closest analog is the `starred` flag plus the granular share permissions (`view` / `comment` / `edit`) settable per-collaborator.
 
 ---
 
