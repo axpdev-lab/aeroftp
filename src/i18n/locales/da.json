@@ -67,7 +67,8 @@
             "check": "Check",
             "selectAll": "Select All",
             "required": "påkrævet",
-            "duplicate": "Dupliker"
+            "duplicate": "Dupliker",
+            "current": "[NEEDS TRANSLATION] current"
         },
         "connection": {
             "title": "Forbind til server",
@@ -422,7 +423,8 @@
             "azureTrashTitle": "Azure Blob papirkurv",
             "lockRcloneCrypt": "Lås Rclone Crypt-overlay",
             "unlockRcloneCrypt": "Dekrypter som Rclone Crypt-overlay…",
-            "openAsAeroVaultOverlay": "Åbn som AeroVault Overlay"
+            "openAsAeroVaultOverlay": "Åbn som AeroVault Overlay",
+            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
         },
         "transfer": {
             "transferring": "Overfører...",
@@ -4601,6 +4603,10 @@
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
             "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
             "securityNote": "Konto beskyttet med Argon2id + AES-KW + AES-256-GCM-kryptering"
+        },
+        "opendrive": {
+            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
+            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
         }
     }
 }

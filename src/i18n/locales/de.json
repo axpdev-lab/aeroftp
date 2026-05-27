@@ -67,7 +67,8 @@
             "check": "Prüfen",
             "selectAll": "Select All",
             "required": "erforderlich",
-            "duplicate": "Duplizieren"
+            "duplicate": "Duplizieren",
+            "current": "[NEEDS TRANSLATION] current"
         },
         "connection": {
             "title": "Mit Server verbinden",
@@ -422,7 +423,8 @@
             "azureTrashTitle": "Azure Blob Papierkorb",
             "lockRcloneCrypt": "Rclone-Crypt-Overlay sperren",
             "unlockRcloneCrypt": "Als Rclone-Crypt-Overlay entschlüsseln…",
-            "openAsAeroVaultOverlay": "Als AeroVault Overlay öffnen"
+            "openAsAeroVaultOverlay": "Als AeroVault Overlay öffnen",
+            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
         },
         "transfer": {
             "transferring": "Übertragung...",
@@ -4601,6 +4603,10 @@
             "lastUsedYesterday": "Gestern verwendet",
             "lastUsedDaysAgo": "Vor {days} Tagen verwendet",
             "securityNote": "Konto geschützt mit Argon2id + AES-KW + AES-256-GCM-Verschlüsselung"
+        },
+        "opendrive": {
+            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
+            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
         }
     }
 }

@@ -67,7 +67,8 @@
             "check": "Check",
             "selectAll": "Select All",
             "required": "beharrezkoa",
-            "duplicate": "Bikoiztu"
+            "duplicate": "Bikoiztu",
+            "current": "[NEEDS TRANSLATION] current"
         },
         "connection": {
             "title": "Zerbitzarira Konektatu",
@@ -422,7 +423,8 @@
             "azureTrashTitle": "Azure Blob zakarrontzia",
             "lockRcloneCrypt": "Blokeatu Rclone Crypt gainjartzea",
             "unlockRcloneCrypt": "Deszifratu Rclone Crypt gainjartze gisa…",
-            "openAsAeroVaultOverlay": "Ireki AeroVault Overlay gisa"
+            "openAsAeroVaultOverlay": "Ireki AeroVault Overlay gisa",
+            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
         },
         "transfer": {
             "transferring": "Transferitzen...",
@@ -4620,6 +4622,10 @@
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
             "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
             "securityNote": "Kontua Argon2id + AES-KW + AES-256-GCM enkriptaziorekin babestuta"
+        },
+        "opendrive": {
+            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
+            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
         }
     }
 }

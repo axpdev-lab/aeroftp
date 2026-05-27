@@ -67,7 +67,8 @@
             "check": "Check",
             "selectAll": "Select All",
             "required": "povinné",
-            "duplicate": "Duplikovať"
+            "duplicate": "Duplikovať",
+            "current": "[NEEDS TRANSLATION] current"
         },
         "connection": {
             "title": "Pripojenie k serveru",
@@ -422,7 +423,8 @@
             "azureTrashTitle": "Azure Blob Kôš",
             "lockRcloneCrypt": "Zamknúť prekrytie Rclone Crypt",
             "unlockRcloneCrypt": "Dešifrovať ako prekrytie Rclone Crypt…",
-            "openAsAeroVaultOverlay": "Otvoriť ako AeroVault Overlay"
+            "openAsAeroVaultOverlay": "Otvoriť ako AeroVault Overlay",
+            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
         },
         "transfer": {
             "transferring": "Prenáša sa...",
@@ -4601,6 +4603,10 @@
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
             "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
             "securityNote": "Účet chránený šifrovaním Argon2id + AES-KW + AES-256-GCM"
+        },
+        "opendrive": {
+            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
+            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
         }
     }
 }

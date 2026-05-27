@@ -67,7 +67,8 @@
             "check": "Check",
             "selectAll": "Select All",
             "required": "სავალდებულო",
-            "duplicate": "დუბლირება"
+            "duplicate": "დუბლირება",
+            "current": "[NEEDS TRANSLATION] current"
         },
         "connection": {
             "title": "სერვერთან დაკავშირება",
@@ -422,7 +423,8 @@
             "azureTrashTitle": "Azure Blob ნაგავი",
             "lockRcloneCrypt": "Rclone Crypt გადაფარვის დაბლოკვა",
             "unlockRcloneCrypt": "Rclone Crypt გადაფარვად გაშიფვრა…",
-            "openAsAeroVaultOverlay": "გახსნა როგორც AeroVault Overlay"
+            "openAsAeroVaultOverlay": "გახსნა როგორც AeroVault Overlay",
+            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
         },
         "transfer": {
             "transferring": "გადაცემა...",
@@ -4601,6 +4603,10 @@
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
             "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
             "securityNote": "ანგარიში დაცულია Argon2id + AES-KW + AES-256-GCM დაშიფვრით"
+        },
+        "opendrive": {
+            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
+            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
         }
     }
 }

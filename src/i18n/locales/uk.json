@@ -67,7 +67,8 @@
             "check": "Check",
             "selectAll": "Select All",
             "required": "обов'язково",
-            "duplicate": "Дублювати"
+            "duplicate": "Дублювати",
+            "current": "[NEEDS TRANSLATION] current"
         },
         "connection": {
             "title": "Підключення до сервера",
@@ -422,7 +423,8 @@
             "azureTrashTitle": "Azure Blob Кошик",
             "lockRcloneCrypt": "Заблокувати накладання Rclone Crypt",
             "unlockRcloneCrypt": "Розшифрувати як накладання Rclone Crypt…",
-            "openAsAeroVaultOverlay": "Відкрити як AeroVault Overlay"
+            "openAsAeroVaultOverlay": "Відкрити як AeroVault Overlay",
+            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
         },
         "transfer": {
             "transferring": "Передача...",
@@ -4601,6 +4603,10 @@
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
             "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
             "securityNote": "Обліковий запис захищений шифруванням Argon2id + AES-KW + AES-256-GCM"
+        },
+        "opendrive": {
+            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
+            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
         }
     }
 }

@@ -67,7 +67,8 @@
             "check": "Check",
             "selectAll": "Select All",
             "required": "задолжително",
-            "duplicate": "Дуплирај"
+            "duplicate": "Дуплирај",
+            "current": "[NEEDS TRANSLATION] current"
         },
         "connection": {
             "title": "Поврзи се на сервер",
@@ -422,7 +423,8 @@
             "azureTrashTitle": "Azure Blob корпа",
             "lockRcloneCrypt": "Заклучи преклоп Rclone Crypt",
             "unlockRcloneCrypt": "Дешифрирај како преклоп Rclone Crypt…",
-            "openAsAeroVaultOverlay": "Отвори како AeroVault Overlay"
+            "openAsAeroVaultOverlay": "Отвори како AeroVault Overlay",
+            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
         },
         "transfer": {
             "transferring": "Се пренесува...",
@@ -4620,6 +4622,10 @@
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
             "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
             "securityNote": "Сметката е заштитена со Argon2id + AES-KW + AES-256-GCM криптирање"
+        },
+        "opendrive": {
+            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
+            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
         }
     }
 }

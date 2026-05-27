@@ -67,7 +67,8 @@
             "check": "Check",
             "selectAll": "Select All",
             "required": "obavezno",
-            "duplicate": "Dupliciraj"
+            "duplicate": "Dupliciraj",
+            "current": "[NEEDS TRANSLATION] current"
         },
         "connection": {
             "title": "Poveži se na poslužitelj",
@@ -422,7 +423,8 @@
             "azureTrashTitle": "Azure Blob smece",
             "lockRcloneCrypt": "Zaključaj prekrivač Rclone Crypt",
             "unlockRcloneCrypt": "Dešifriraj kao prekrivač Rclone Crypt…",
-            "openAsAeroVaultOverlay": "Otvori kao AeroVault Overlay"
+            "openAsAeroVaultOverlay": "Otvori kao AeroVault Overlay",
+            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
         },
         "transfer": {
             "transferring": "Prijenos...",
@@ -4601,6 +4603,10 @@
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
             "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
             "securityNote": "Račun zaštićen Argon2id + AES-KW + AES-256-GCM enkripcijom"
+        },
+        "opendrive": {
+            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
+            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
         }
     }
 }

@@ -67,7 +67,8 @@
             "check": "Проверить",
             "selectAll": "Select All",
             "required": "обязательно",
-            "duplicate": "Дублировать"
+            "duplicate": "Дублировать",
+            "current": "[NEEDS TRANSLATION] current"
         },
         "connection": {
             "title": "Подключение к серверу",
@@ -422,7 +423,8 @@
             "azureTrashTitle": "Azure Blob Корзина",
             "lockRcloneCrypt": "Заблокировать наложение Rclone Crypt",
             "unlockRcloneCrypt": "Расшифровать как наложение Rclone Crypt…",
-            "openAsAeroVaultOverlay": "Открыть как AeroVault Overlay"
+            "openAsAeroVaultOverlay": "Открыть как AeroVault Overlay",
+            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
         },
         "transfer": {
             "transferring": "Передача...",
@@ -4601,6 +4603,10 @@
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
             "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
             "securityNote": "Аккаунт защищён шифрованием Argon2id + AES-KW + AES-256-GCM"
+        },
+        "opendrive": {
+            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
+            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
         }
     }
 }

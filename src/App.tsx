@@ -964,6 +964,9 @@ const App: React.FC = () => {
   const [fileLuFolderSettingsDialog, setFileLuFolderSettingsDialog] = useState<{
     path: string; name: string; filedrop: boolean; isPublic: boolean;
   } | null>(null);
+  const [openDrivePrivacyDialog, setOpenDrivePrivacyDialog] = useState<{
+    path: string; name: string; isDir: boolean; current: 'public' | 'private' | 'hidden'; selected: 'public' | 'private' | 'hidden';
+  } | null>(null);
   const [fileLuRemoteUploadDialog, setFileLuRemoteUploadDialog] = useState<{
     destPath: string;
   } | null>(null);
@@ -9799,6 +9802,25 @@ interface UpdateVerificationInfo {
             },
           },
         ] : []),
+        ...(isOpenDriveContext ? [
+          {
+            label: t('contextMenu.privacyEllipsis') || 'Privacy...',
+            icon: <Shield size={14} />,
+            action: () => {
+              const current: 'public' | 'private' | 'hidden' =
+                filePrivacy === 'public' ? 'public' :
+                filePrivacy === 'hidden' ? 'hidden' :
+                'private';
+              setOpenDrivePrivacyDialog({
+                path: file.path || `${currentRemotePath === '/' ? '' : currentRemotePath}/${file.name}`,
+                name: file.name,
+                isDir: !!file.is_dir,
+                current,
+                selected: current,
+              });
+            },
+          },
+        ] : []),
         ...(count > 1 ? [{
           label: t('contextMenu.makeAllPrivate') || 'Make all private',
           icon: <OpenDriveLogo size={14} />,
@@ -12421,6 +12443,95 @@ interface UpdateVerificationInfo {
                     setFileLuFolderSettingsDialog(null);
                   }}
                   className="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                >
+                  {t('common.save')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {/* OpenDrive: Privacy three-level chooser */}
+        {openDrivePrivacyDialog && (
+          <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/50 backdrop-blur-sm">
+            <div className="w-full max-w-md mx-4 rounded-xl shadow-2xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 animate-scale-in p-6">
+              <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-1 flex items-center gap-2">
+                <OpenDriveLogo size={18} />
+                {t('opendrive.privacyTitle') || 'OpenDrive Privacy'}
+              </h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-4 truncate">
+                <span className="font-medium text-gray-700 dark:text-gray-300">{openDrivePrivacyDialog.name}</span>
+              </p>
+              <div className="space-y-2 mb-5">
+                {(['private', 'public', 'hidden'] as const).map((level) => {
+                  const isSelected = openDrivePrivacyDialog.selected === level;
+                  const labelKey = level === 'private' ? 'properties.privacyPrivate'
+                    : level === 'public' ? 'properties.privacyPublic'
+                    : 'properties.privacyHidden';
+                  const descKey = level === 'private' ? 'properties.privacyPrivateDesc'
+                    : level === 'public' ? 'properties.privacyPublicDesc'
+                    : 'properties.privacyHiddenDesc';
+                  return (
+                    <button
+                      key={level}
+                      type="button"
+                      onClick={() => setOpenDrivePrivacyDialog(d => d ? { ...d, selected: level } : null)}
+                      className={`w-full text-left px-3 py-2 rounded-lg border transition-colors ${
+                        isSelected
+                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30'
+                          : 'border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                      }`}
+                    >
+                      <div className="flex items-start gap-2">
+                        <span className={`mt-0.5 inline-block w-3 h-3 rounded-full border ${
+                          isSelected
+                            ? 'border-blue-500 bg-blue-500'
+                            : 'border-gray-400 dark:border-gray-500'
+                        }`} />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                            {t(labelKey)}
+                            {level === openDrivePrivacyDialog.current && (
+                              <span className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                {t('common.current') || 'current'}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{t(descKey)}</div>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setOpenDrivePrivacyDialog(null)}
+                  className="px-4 py-2 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
+                >
+                  {t('common.cancel')}
+                </button>
+                <button
+                  disabled={openDrivePrivacyDialog.selected === openDrivePrivacyDialog.current}
+                  onClick={async () => {
+                    const d = openDrivePrivacyDialog;
+                    if (!d || d.selected === d.current) return;
+                    const logId = humanLog.logRaw('activity.opendrive_set_access', 'INFO', { provider: 'OpenDrive', filename: d.name }, 'running');
+                    try {
+                      await invoke('opendrive_set_path_access', {
+                        path: d.path,
+                        accessLevel: d.selected,
+                        isDir: d.isDir,
+                      });
+                      notify.success(t('opendrive.privacyUpdated') || 'OpenDrive privacy updated');
+                      humanLog.updateEntry(logId, { status: 'success', message: `[OpenDrive] Access set to ${d.selected}` });
+                      await loadRemoteFiles(undefined, true);
+                    } catch (err) {
+                      notify.error(String(err));
+                      humanLog.updateEntry(logId, { status: 'error', message: `[OpenDrive] Set access ${d.selected} failed` });
+                    }
+                    setOpenDrivePrivacyDialog(null);
+                  }}
+                  className="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {t('common.save')}
                 </button>

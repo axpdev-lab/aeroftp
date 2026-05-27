@@ -67,7 +67,8 @@
             "check": "Check",
             "selectAll": "Select All",
             "required": "obligāts",
-            "duplicate": "Dublēt"
+            "duplicate": "Dublēt",
+            "current": "[NEEDS TRANSLATION] current"
         },
         "connection": {
             "title": "Savienoties ar serveri",
@@ -422,7 +423,8 @@
             "azureTrashTitle": "Azure Blob atkritne",
             "lockRcloneCrypt": "Bloķēt Rclone Crypt pārklājumu",
             "unlockRcloneCrypt": "Atšifrēt kā Rclone Crypt pārklājumu…",
-            "openAsAeroVaultOverlay": "Atvērt kā AeroVault Overlay"
+            "openAsAeroVaultOverlay": "Atvērt kā AeroVault Overlay",
+            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
         },
         "transfer": {
             "transferring": "Pārsūta...",
@@ -4601,6 +4603,10 @@
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
             "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
             "securityNote": "Konts ir aizsargāts ar Argon2id + AES-KW + AES-256-GCM šifrēšanu"
+        },
+        "opendrive": {
+            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
+            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
         }
     }
 }

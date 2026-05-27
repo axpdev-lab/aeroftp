@@ -67,7 +67,8 @@
             "check": "Check",
             "selectAll": "Select All",
             "required": "nauðsynlegt",
-            "duplicate": "Afrita"
+            "duplicate": "Afrita",
+            "current": "[NEEDS TRANSLATION] current"
         },
         "connection": {
             "title": "Tengjast þjóni",
@@ -422,7 +423,8 @@
             "azureTrashTitle": "Azure Blob rusl",
             "lockRcloneCrypt": "Læsa Rclone Crypt yfirlag",
             "unlockRcloneCrypt": "Afkóða sem Rclone Crypt yfirlag…",
-            "openAsAeroVaultOverlay": "Opna sem AeroVault Overlay"
+            "openAsAeroVaultOverlay": "Opna sem AeroVault Overlay",
+            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
         },
         "transfer": {
             "transferring": "Flytur...",
@@ -4620,6 +4622,10 @@
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
             "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
             "securityNote": "Reikningur varinn með Argon2id + AES-KW + AES-256-GCM dulkóðun"
+        },
+        "opendrive": {
+            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
+            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
         }
     }
 }
