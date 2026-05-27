@@ -77,6 +77,14 @@ fn main() {
 
     println!("cargo:rerun-if-changed=Cargo.lock");
 
+    // Windows main thread default stack is 1 MB. The aeroftp-cli `Cli` enum
+    // produced by clap derive has ~80 subcommand variants and is constructed
+    // on the stack during `Cli::parse_from`, blowing the limit before main
+    // can even print --help. Bump the reserve to 8 MB (matches POSIX default)
+    // for this bin only; other bins are unaffected.
+    #[cfg(target_os = "windows")]
+    println!("cargo:rustc-link-arg-bin=aeroftp-cli=/STACK:8388608");
+
     // Detect Rust compiler version at build time: "rustc 1.84.0 (...)" → "1.84.0"
     if let Ok(output) = std::process::Command::new("rustc")
         .arg("--version")
