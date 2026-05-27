@@ -2854,7 +2854,7 @@
             "unlock": "Buka Kunci",
             "unlocking": "Membuka kunci...",
             "invalidPassword": "Kata laluan tidak sah. Sila cuba lagi.",
-            "securityNote": "Data anda dilindungi dengan penyulitan AES-256-GCM",
+            "securityNote": "Data anda dilindungi dengan penyulitan Argon2id + AES-256-GCM",
             "patternCross": "Silang",
             "patternDots": "Titik",
             "patternCircuit": "Litar",
@@ -4592,7 +4592,8 @@
             "hidePassword": "[NEEDS TRANSLATION] Hide password",
             "lastUsedToday": "[NEEDS TRANSLATION] Used today",
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago"
+            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "securityNote": "Akaun dilindungi dengan penyulitan Argon2id + AES-KW + AES-256-GCM"
         }
     }
 }

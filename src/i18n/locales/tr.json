@@ -2854,7 +2854,7 @@
             "unlock": "Kilidi Aç",
             "unlocking": "Kilit açılıyor...",
             "invalidPassword": "Geçersiz parola. Lütfen tekrar deneyin.",
-            "securityNote": "Verileriniz AES-256-GCM şifrelemesiyle korunmaktadır",
+            "securityNote": "Verileriniz Argon2id + AES-256-GCM şifrelemesiyle korunmaktadır",
             "patternCross": "Çarpı",
             "patternDots": "Noktalar",
             "patternCircuit": "Devre",
@@ -4592,7 +4592,8 @@
             "hidePassword": "[NEEDS TRANSLATION] Hide password",
             "lastUsedToday": "[NEEDS TRANSLATION] Used today",
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago"
+            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "securityNote": "Hesap Argon2id + AES-KW + AES-256-GCM şifrelemesi ile korunuyor"
         }
     }
 }

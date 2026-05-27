@@ -2854,7 +2854,7 @@
             "unlock": "Desblokeatu",
             "unlocking": "Desblokeatzen...",
             "invalidPassword": "Pasahitz baliogabea. Saiatu berriro mesedez.",
-            "securityNote": "Zure datuak AES-256-GCM enkriptatzearekin babestuta daude",
+            "securityNote": "Zure datuak Argon2id + AES-256-GCM enkriptatzearekin babestuta daude",
             "patternCross": "Gurutzea",
             "patternDots": "Puntuak",
             "patternCircuit": "Zirkuitua",
@@ -4611,7 +4611,8 @@
             "hidePassword": "[NEEDS TRANSLATION] Hide password",
             "lastUsedToday": "[NEEDS TRANSLATION] Used today",
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago"
+            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "securityNote": "Kontua Argon2id + AES-KW + AES-256-GCM enkriptaziorekin babestuta"
         }
     }
 }

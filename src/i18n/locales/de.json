@@ -2854,7 +2854,7 @@
             "unlock": "Entsperren",
             "unlocking": "Entsperre...",
             "invalidPassword": "Ungültiges Passwort. Bitte versuchen Sie es erneut.",
-            "securityNote": "Ihre Daten sind mit AES-256-GCM-Verschlüsselung geschützt",
+            "securityNote": "Ihre Daten sind mit Argon2id + AES-256-GCM-Verschlüsselung geschützt",
             "patternCross": "Kreuz",
             "patternDots": "Punkte",
             "patternCircuit": "Schaltkreis",
@@ -4592,7 +4592,8 @@
             "hidePassword": "Passwort verbergen",
             "lastUsedToday": "Heute verwendet",
             "lastUsedYesterday": "Gestern verwendet",
-            "lastUsedDaysAgo": "Vor {days} Tagen verwendet"
+            "lastUsedDaysAgo": "Vor {days} Tagen verwendet",
+            "securityNote": "Konto geschützt mit Argon2id + AES-KW + AES-256-GCM-Verschlüsselung"
         }
     }
 }

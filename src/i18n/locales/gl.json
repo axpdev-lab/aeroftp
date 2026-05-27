@@ -2854,7 +2854,7 @@
             "unlock": "Desbloquear",
             "unlocking": "Desbloqueando...",
             "invalidPassword": "Contrasinal incorrecto. Tenta de novo.",
-            "securityNote": "Os teus datos estan protexidos con cifrado AES-256-GCM",
+            "securityNote": "Os teus datos estan protexidos con cifrado Argon2id + AES-256-GCM",
             "patternCross": "Cruz",
             "patternDots": "Puntos",
             "patternCircuit": "Circuito",
@@ -4611,7 +4611,8 @@
             "hidePassword": "[NEEDS TRANSLATION] Hide password",
             "lastUsedToday": "[NEEDS TRANSLATION] Used today",
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago"
+            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "securityNote": "Conta protexida con cifrado Argon2id + AES-KW + AES-256-GCM"
         }
     }
 }

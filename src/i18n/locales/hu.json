@@ -2854,7 +2854,7 @@
             "unlock": "Feloldás",
             "unlocking": "Feloldás...",
             "invalidPassword": "Érvénytelen jelszó. Próbálja újra.",
-            "securityNote": "Az adatai AES-256-GCM titkosítással védve",
+            "securityNote": "Az adatai Argon2id + AES-256-GCM titkosítással védve",
             "patternCross": "Kereszt",
             "patternDots": "Pontok",
             "patternCircuit": "Áramkör",
@@ -4592,7 +4592,8 @@
             "hidePassword": "[NEEDS TRANSLATION] Hide password",
             "lastUsedToday": "[NEEDS TRANSLATION] Used today",
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago"
+            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "securityNote": "A fiókot Argon2id + AES-KW + AES-256-GCM titkosítás védi"
         }
     }
 }

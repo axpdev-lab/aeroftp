@@ -2854,7 +2854,7 @@
             "unlock": "Aflæsa",
             "unlocking": "Aflæsir...",
             "invalidPassword": "Ógilt lykilorð. Reyndu aftur.",
-            "securityNote": "Gögnin þín eru varin með AES-256-GCM dulkóðun",
+            "securityNote": "Gögnin þín eru varin með Argon2id + AES-256-GCM dulkóðun",
             "patternCross": "Kross",
             "patternDots": "Punktar",
             "patternCircuit": "Hringrás",
@@ -4611,7 +4611,8 @@
             "hidePassword": "[NEEDS TRANSLATION] Hide password",
             "lastUsedToday": "[NEEDS TRANSLATION] Used today",
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago"
+            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "securityNote": "Reikningur varinn með Argon2id + AES-KW + AES-256-GCM dulkóðun"
         }
     }
 }

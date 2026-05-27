@@ -2854,7 +2854,7 @@
             "unlock": "Ontgrendelen",
             "unlocking": "Ontgrendelen...",
             "invalidPassword": "Ongeldig wachtwoord. Probeer het opnieuw.",
-            "securityNote": "Uw gegevens zijn beschermd met AES-256-GCM-versleuteling",
+            "securityNote": "Uw gegevens zijn beschermd met Argon2id + AES-256-GCM-versleuteling",
             "patternCross": "Kruis",
             "patternDots": "Punten",
             "patternCircuit": "Circuit",
@@ -4592,7 +4592,8 @@
             "hidePassword": "Wachtwoord verbergen",
             "lastUsedToday": "Vandaag gebruikt",
             "lastUsedYesterday": "Gisteren gebruikt",
-            "lastUsedDaysAgo": "{days} dagen geleden gebruikt"
+            "lastUsedDaysAgo": "{days} dagen geleden gebruikt",
+            "securityNote": "Account beschermd met Argon2id + AES-KW + AES-256-GCM-versleuteling"
         }
     }
 }

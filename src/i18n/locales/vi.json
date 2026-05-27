@@ -2854,7 +2854,7 @@
             "unlock": "Mở khóa",
             "unlocking": "Đang mở khóa...",
             "invalidPassword": "Mật khẩu không hợp lệ. Vui lòng thử lại.",
-            "securityNote": "Dữ liệu của bạn được bảo vệ bằng mã hóa AES-256-GCM",
+            "securityNote": "Dữ liệu của bạn được bảo vệ bằng mã hóa Argon2id + AES-256-GCM",
             "patternCross": "Chéo",
             "patternDots": "Chấm",
             "patternCircuit": "Mạch điện",
@@ -4592,7 +4592,8 @@
             "hidePassword": "[NEEDS TRANSLATION] Hide password",
             "lastUsedToday": "[NEEDS TRANSLATION] Used today",
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago"
+            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "securityNote": "Tài khoản được bảo vệ bằng mã hóa Argon2id + AES-KW + AES-256-GCM"
         }
     }
 }

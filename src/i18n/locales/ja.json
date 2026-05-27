@@ -2819,7 +2819,7 @@
             "unlock": "解除",
             "unlocking": "解除中...",
             "invalidPassword": "パスワードが無効です。もう一度お試しください。",
-            "securityNote": "データはAES-256-GCMで保護されています",
+            "securityNote": "データはArgon2id + AES-256-GCMで保護されています",
             "patternCross": "クロス",
             "patternDots": "ドット",
             "patternCircuit": "回路",
@@ -4592,7 +4592,8 @@
             "hidePassword": "パスワードを非表示",
             "lastUsedToday": "今日使用",
             "lastUsedYesterday": "昨日使用",
-            "lastUsedDaysAgo": "{days}日前に使用"
+            "lastUsedDaysAgo": "{days}日前に使用",
+            "securityNote": "アカウントは Argon2id + AES-KW + AES-256-GCM 暗号化で保護されています"
         }
     }
 }

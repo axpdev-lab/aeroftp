@@ -2854,7 +2854,7 @@
             "unlock": "Desbloquear",
             "unlocking": "Desbloqueando...",
             "invalidPassword": "Senha inválida. Por favor, tente novamente.",
-            "securityNote": "Seus dados são protegidos com criptografia AES-256-GCM",
+            "securityNote": "Seus dados são protegidos com criptografia Argon2id + AES-256-GCM",
             "patternCross": "Cruz",
             "patternDots": "Pontos",
             "patternCircuit": "Circuito",
@@ -4592,7 +4592,8 @@
             "hidePassword": "Ocultar palavra-passe",
             "lastUsedToday": "Usada hoje",
             "lastUsedYesterday": "Usada ontem",
-            "lastUsedDaysAgo": "Usada há {days} dias"
+            "lastUsedDaysAgo": "Usada há {days} dias",
+            "securityNote": "Conta protegida com criptografia Argon2id + AES-KW + AES-256-GCM"
         }
     }
 }

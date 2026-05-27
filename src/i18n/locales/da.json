@@ -2854,7 +2854,7 @@
             "unlock": "Lås op",
             "unlocking": "Låser op...",
             "invalidPassword": "Ugyldig adgangskode. Prøv venligst igen.",
-            "securityNote": "Dine data er beskyttet med AES-256-GCM-kryptering",
+            "securityNote": "Dine data er beskyttet med Argon2id + AES-256-GCM-kryptering",
             "patternCross": "Kryds",
             "patternDots": "Prikker",
             "patternCircuit": "Kredsløb",
@@ -4592,7 +4592,8 @@
             "hidePassword": "[NEEDS TRANSLATION] Hide password",
             "lastUsedToday": "[NEEDS TRANSLATION] Used today",
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago"
+            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "securityNote": "Konto beskyttet med Argon2id + AES-KW + AES-256-GCM-kryptering"
         }
     }
 }

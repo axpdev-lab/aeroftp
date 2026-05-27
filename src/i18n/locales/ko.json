@@ -2854,7 +2854,7 @@
             "unlock": "잠금 해제",
             "unlocking": "잠금 해제 중...",
             "invalidPassword": "비밀번호가 올바르지 않습니다. 다시 시도하세요.",
-            "securityNote": "데이터는 AES-256-GCM 암호화로 보호됩니다",
+            "securityNote": "데이터는 Argon2id + AES-256-GCM 암호화로 보호됩니다",
             "patternCross": "십자",
             "patternDots": "점",
             "patternCircuit": "회로",
@@ -4592,7 +4592,8 @@
             "hidePassword": "[NEEDS TRANSLATION] Hide password",
             "lastUsedToday": "[NEEDS TRANSLATION] Used today",
             "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago"
+            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "securityNote": "계정은 Argon2id + AES-KW + AES-256-GCM 암호화로 보호됩니다"
         }
     }
 }
