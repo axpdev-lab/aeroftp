@@ -115,3 +115,72 @@ export const getUserStorageStats = (): Promise<UserStorageStats[]> =>
 
 export const getUserPartitionDebugState = (): Promise<UserPartitionDebugState> =>
     invoke<UserPartitionDebugState>('user_partitions_debug_state');
+
+const USERS_LIST_CACHE_KEY = 'aeroftp-users-list-cache';
+const USERS_LIST_CACHE_VERSION = 1;
+
+export interface CachedUserListEntry {
+    id: number;
+    name: string;
+    avatarEmoji?: string | null;
+    avatarColor?: string | null;
+    hasPassphrase: boolean;
+    sortOrder: number;
+    isActive: boolean;
+}
+
+interface CachedUserListPayload {
+    version: number;
+    savedAt: number;
+    users: CachedUserListEntry[];
+}
+
+const slimEntry = (user: UserMetadata): CachedUserListEntry => ({
+    id: user.id,
+    name: user.name,
+    avatarEmoji: user.avatarEmoji ?? null,
+    avatarColor: user.avatarColor ?? null,
+    hasPassphrase: user.hasPassphrase,
+    sortOrder: user.sortOrder,
+    isActive: user.isActive,
+});
+
+export const writeUsersListCache = (users: UserMetadata[]): void => {
+    try {
+        const payload: CachedUserListPayload = {
+            version: USERS_LIST_CACHE_VERSION,
+            savedAt: Date.now(),
+            users: users.map(slimEntry),
+        };
+        localStorage.setItem(USERS_LIST_CACHE_KEY, JSON.stringify(payload));
+    } catch {
+        // localStorage quota / private mode: not critical
+    }
+};
+
+export const readUsersListCache = (): CachedUserListEntry[] | null => {
+    try {
+        const raw = localStorage.getItem(USERS_LIST_CACHE_KEY);
+        if (!raw) return null;
+        const payload = JSON.parse(raw) as CachedUserListPayload;
+        if (!payload || payload.version !== USERS_LIST_CACHE_VERSION) return null;
+        if (!Array.isArray(payload.users)) return null;
+        return payload.users;
+    } catch {
+        return null;
+    }
+};
+
+export const clearUsersListCache = (): void => {
+    try { localStorage.removeItem(USERS_LIST_CACHE_KEY); } catch { /* best effort */ }
+};
+
+// True when the boot flow should display the AccountLockScreen.
+// Skip rule (R1): single user without passphrase = silent boot.
+export const needsAccountLockScreen = (
+    users: { hasPassphrase: boolean }[],
+): boolean => {
+    if (users.length === 0) return false;
+    if (users.length === 1 && !users[0].hasPassphrase) return false;
+    return true;
+};

@@ -3,6 +3,7 @@
 
 import * as React from 'react';
 import {
+    AlertTriangle,
     Check,
     Eye,
     EyeOff,
@@ -82,6 +83,12 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
         showNew: boolean;
     } | null>(null);
     const [draggingUserId, setDraggingUserId] = React.useState<number | null>(null);
+    // No-recovery acknowledgement gates submit when an account password is
+    // being set for the first time (add-user with passphrase, or set
+    // passphrase on an existing user). MU-LS gate decision: warn at setup,
+    // not on every prompt.
+    const [acknowledgeNoRecoveryNew, setAcknowledgeNoRecoveryNew] = React.useState(false);
+    const [acknowledgeNoRecoveryForm, setAcknowledgeNoRecoveryForm] = React.useState(false);
 
     const statsByUserId = React.useMemo(() => {
         const map = new Map<number, UserStorageStats>();
@@ -125,11 +132,16 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
     const handleAddUser = async (event: React.FormEvent) => {
         event.preventDefault();
         if (!newName.trim()) return;
+        if (newPassphrase && !acknowledgeNoRecoveryNew) {
+            setError('Please acknowledge that account passwords cannot be recovered.');
+            return;
+        }
         setError('');
         try {
             await addUser(newName.trim(), newAvatar, newColor, newPassphrase || null);
             setNewName('');
             setNewPassphrase('');
+            setAcknowledgeNoRecoveryNew(false);
             setNewAvatar(AVATAR_CHOICES[0]);
             setNewColor(COLOR_CHOICES[0]);
             await refresh();
@@ -202,6 +214,11 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
             const confirmed = window.confirm(`Remove the account password for "${user.name}"?`);
             if (!confirmed) return;
         }
+        // First-time setup requires explicit acknowledgement.
+        if (!user.hasPassphrase && passphraseForm.newPassphrase && !acknowledgeNoRecoveryForm) {
+            setError('Please acknowledge that account passwords cannot be recovered.');
+            return;
+        }
         setBusyUserId(user.id);
         setError('');
         try {
@@ -211,6 +228,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                 passphraseForm.newPassphrase || null,
             );
             setPassphraseForm(null);
+            setAcknowledgeNoRecoveryForm(false);
             await refresh();
             notifyProfilesChanged(onChanged);
         } catch (err) {
@@ -341,6 +359,26 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                 No recovery
                             </div>
                         </div>
+                        {newPassphrase && (
+                            <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+                                <div className="mb-1.5 flex items-start gap-2 font-medium">
+                                    <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
+                                    <span>Account password cannot be recovered.</span>
+                                </div>
+                                <p className="mb-2 leading-relaxed opacity-90">
+                                    If you forget this password, the account&apos;s saved servers, settings, and history are permanently inaccessible. Store the password somewhere safe before continuing.
+                                </p>
+                                <label className="flex items-start gap-2 cursor-pointer select-none">
+                                    <input
+                                        type="checkbox"
+                                        checked={acknowledgeNoRecoveryNew}
+                                        onChange={(event) => setAcknowledgeNoRecoveryNew(event.target.checked)}
+                                        className="mt-0.5 h-3.5 w-3.5"
+                                    />
+                                    <span>I understand and accept the responsibility for this password.</span>
+                                </label>
+                            </div>
+                        )}
                     </form>
 
                     <div className="space-y-2">
@@ -509,13 +547,33 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                                 </button>
                                                 <button
                                                     type="button"
-                                                    onClick={() => setPassphraseForm(null)}
+                                                    onClick={() => { setPassphraseForm(null); setAcknowledgeNoRecoveryForm(false); }}
                                                     className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-100 text-gray-600 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
                                                     aria-label="Cancel password edit"
                                                 >
                                                     <X size={15} />
                                                 </button>
                                             </div>
+                                            {!user.hasPassphrase && passphraseForm.newPassphrase && (
+                                                <div className="sm:col-span-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+                                                    <div className="mb-1.5 flex items-start gap-2 font-medium">
+                                                        <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
+                                                        <span>Account password cannot be recovered.</span>
+                                                    </div>
+                                                    <p className="mb-2 leading-relaxed opacity-90">
+                                                        If you forget this password, the account&apos;s saved servers, settings, and history are permanently inaccessible. Store the password somewhere safe before continuing.
+                                                    </p>
+                                                    <label className="flex items-start gap-2 cursor-pointer select-none">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={acknowledgeNoRecoveryForm}
+                                                            onChange={(event) => setAcknowledgeNoRecoveryForm(event.target.checked)}
+                                                            className="mt-0.5 h-3.5 w-3.5"
+                                                        />
+                                                        <span>I understand and accept the responsibility for this password.</span>
+                                                    </label>
+                                                </div>
+                                            )}
                                         </form>
                                     )}
                                 </div>
