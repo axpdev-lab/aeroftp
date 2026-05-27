@@ -72,6 +72,7 @@ const SQLITE_DBS: &[&str] = &[
     "ai_chat.db",
     "agent_memory.db",
     "file_tags.db",
+    "user_partitions.db",
     "vault_history.db",
     "speedtest_history.db",
 ];

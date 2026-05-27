@@ -3,6 +3,10 @@
 
 import type { ServerProfile } from '../types';
 import { secureGet, secureStore } from './secureStorage';
+import {
+    loadActiveServerProfiles,
+    saveActiveServerProfiles,
+} from './userPartitions';
 
 export const SAVED_SERVERS_ACCOUNT = 'server_profiles';
 export const SAVED_SERVERS_STORAGE_KEY = 'aeroftp-saved-servers';
@@ -15,6 +19,51 @@ const readLocalProfiles = (): ServerProfile[] => {
         return stored ? JSON.parse(stored) : [];
     } catch {
         return [];
+    }
+};
+
+const canUseLegacyProfileFallback = (error: unknown): boolean => {
+    const message = String(error ?? '');
+    return (
+        message.includes('STORE_NOT_READY') ||
+        message.includes('unknown command') ||
+        message.includes('not found') ||
+        message.includes('failed to invoke') ||
+        message.includes('window.__TAURI_INTERNALS__')
+    );
+};
+
+const loadLegacySavedServerProfiles = async (): Promise<ServerProfile[]> => {
+    const vaultProfiles = await secureGet<ServerProfile[]>(SAVED_SERVERS_ACCOUNT);
+    if (vaultProfiles !== null) return vaultProfiles;
+
+    const legacy = readLocalProfiles();
+    if (legacy.length > 0) {
+        try {
+            await secureStore(SAVED_SERVERS_ACCOUNT, legacy);
+            localStorage.removeItem(SAVED_SERVERS_STORAGE_KEY);
+        } catch {
+            // Vault write failure: keep legacy data in localStorage as a
+            // best-effort fallback so the user does not lose profiles.
+        }
+    }
+    return legacy;
+};
+
+const seedLegacyLocalProfilesForPartitionMigration = async (): Promise<void> => {
+    const legacy = readLocalProfiles();
+    if (legacy.length === 0) return;
+
+    const vaultProfiles = await secureGet<ServerProfile[]>(SAVED_SERVERS_ACCOUNT);
+    if (vaultProfiles !== null) return;
+
+    try {
+        await secureStore(SAVED_SERVERS_ACCOUNT, legacy);
+        localStorage.removeItem(SAVED_SERVERS_STORAGE_KEY);
+    } catch {
+        // If the vault is not ready yet, the partition command will also
+        // report STORE_NOT_READY and the normal legacy fallback below keeps
+        // the profiles visible for this boot.
     }
 };
 
@@ -35,20 +84,13 @@ const readLocalProfiles = (): ServerProfile[] => {
  * so it cannot be re-read by an older co-installed binary.
  */
 export const loadSavedServerProfiles = async (): Promise<ServerProfile[]> => {
-    const vaultProfiles = await secureGet<ServerProfile[]>(SAVED_SERVERS_ACCOUNT);
-    if (vaultProfiles !== null) return vaultProfiles;
-
-    const legacy = readLocalProfiles();
-    if (legacy.length > 0) {
-        try {
-            await secureStore(SAVED_SERVERS_ACCOUNT, legacy);
-            localStorage.removeItem(SAVED_SERVERS_STORAGE_KEY);
-        } catch {
-            // Vault write failure: keep legacy data in localStorage as a
-            // best-effort fallback so the user does not lose profiles.
-        }
+    try {
+        await seedLegacyLocalProfilesForPartitionMigration();
+        return await loadActiveServerProfiles();
+    } catch (error) {
+        if (!canUseLegacyProfileFallback(error)) throw error;
     }
-    return legacy;
+    return loadLegacySavedServerProfiles();
 };
 
 /**
@@ -64,7 +106,12 @@ export const loadSavedServerProfiles = async (): Promise<ServerProfile[]> => {
 export const PROFILES_CHANGED_EVENT = 'aeroftp-profiles-changed';
 
 export const storeSavedServerProfiles = async (profiles: ServerProfile[]): Promise<void> => {
-    await secureStore(SAVED_SERVERS_ACCOUNT, profiles);
+    try {
+        await saveActiveServerProfiles(profiles);
+    } catch (error) {
+        if (!canUseLegacyProfileFallback(error)) throw error;
+        await secureStore(SAVED_SERVERS_ACCOUNT, profiles);
+    }
     try {
         localStorage.removeItem(SAVED_SERVERS_STORAGE_KEY);
     } catch {
