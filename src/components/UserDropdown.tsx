@@ -8,6 +8,7 @@ import {
     Eye,
     EyeOff,
     KeyRound,
+    Loader2,
     Lock,
     LockOpen,
     Plus,
@@ -19,6 +20,7 @@ import {
 import { UserAvatar } from './UserAvatar';
 import { UsersManagePanel } from './UsersManagePanel';
 import {
+    dispatchAccountLockScreenRequested,
     getUnlockStatus,
     initUserPartitions,
     listUsers,
@@ -147,10 +149,9 @@ export const UserDropdown: React.FC<UserDropdownProps> = ({ onUsersChanged }) =>
             await refresh();
             notifyProfilesChanged(onUsersChanged);
             setIsOpen(false);
-            if (activeUser.hasPassphrase) {
-                setPendingUnlockUser(activeUser);
-                setUnlockPassphrase('');
-            }
+            setPendingUnlockUser(null);
+            setUnlockPassphrase('');
+            dispatchAccountLockScreenRequested();
         } catch (err) {
             setError(String(err));
         } finally {
@@ -164,7 +165,11 @@ export const UserDropdown: React.FC<UserDropdownProps> = ({ onUsersChanged }) =>
         setIsLoading(true);
         setError('');
         try {
-            await unlockUser(pendingUnlockUser.id, pendingUnlockUser.hasPassphrase ? unlockPassphrase : null);
+            const MIN_SPINNER_MS = 350;
+            await Promise.all([
+                unlockUser(pendingUnlockUser.id, pendingUnlockUser.hasPassphrase ? unlockPassphrase : null),
+                new Promise<void>((resolve) => setTimeout(resolve, MIN_SPINNER_MS)),
+            ]);
             setPendingUnlockUser(null);
             setUnlockPassphrase('');
             await refresh();
@@ -288,7 +293,7 @@ export const UserDropdown: React.FC<UserDropdownProps> = ({ onUsersChanged }) =>
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
                     <form
                         onSubmit={handleUnlockSubmit}
-                        className="w-full max-w-sm rounded-lg border border-gray-200 bg-white p-4 shadow-2xl dark:border-gray-700 dark:bg-gray-800"
+                        className="w-full max-w-md rounded-lg border border-gray-200 bg-white p-4 shadow-2xl dark:border-gray-700 dark:bg-gray-800"
                     >
                         <div className="mb-4 flex items-center justify-between">
                             <div className="flex min-w-0 items-center gap-2">
@@ -350,9 +355,21 @@ export const UserDropdown: React.FC<UserDropdownProps> = ({ onUsersChanged }) =>
                             disabled={isLoading || !unlockPassphrase}
                             className="mt-3 flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
                         >
-                            <Shield size={15} />
-                            Unlock
+                            {isLoading ? (
+                                <>
+                                    <Loader2 size={15} className="animate-spin" />
+                                    <span className="opacity-90">Unlocking...</span>
+                                </>
+                            ) : (
+                                <>
+                                    <Shield size={15} />
+                                    Unlock
+                                </>
+                            )}
                         </button>
+                        <p className="mt-3 text-center text-[11px] text-gray-500 dark:text-gray-400">
+                            Your account is protected with Argon2id + AES-KW + AES-256-GCM encryption
+                        </p>
                     </form>
                 </div>
             )}

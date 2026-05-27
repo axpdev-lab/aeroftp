@@ -231,6 +231,7 @@ import { CyberToolsModal } from './components/CyberToolsModal';
 import { LockScreen } from './components/LockScreen';
 import { AccountLockScreen } from './components/AccountLockScreen';
 import {
+    ACCOUNT_LOCK_SCREEN_REQUESTED_EVENT,
     getUnlockStatus,
     initUserPartitions,
     listUsers,
@@ -1429,6 +1430,14 @@ const App: React.FC = () => {
     };
     window.addEventListener(MASTER_PASSWORD_CHANGED_EVENT, handleMasterPasswordChanged);
     return () => window.removeEventListener(MASTER_PASSWORD_CHANGED_EVENT, handleMasterPasswordChanged);
+  }, []);
+  useEffect(() => {
+    const handleAccountLockRequested = () => {
+      setAccountLockState('needed');
+      setServersRefreshKey(k => k + 1);
+    };
+    window.addEventListener(ACCOUNT_LOCK_SCREEN_REQUESTED_EVENT, handleAccountLockRequested);
+    return () => window.removeEventListener(ACCOUNT_LOCK_SCREEN_REQUESTED_EVENT, handleAccountLockRequested);
   }, []);
   useEffect(() => {
     if (!masterPasswordSet) return;
@@ -12502,7 +12511,7 @@ interface UpdateVerificationInfo {
         )}
 
 
-        <main className={`flex-1 min-h-0 p-6 overflow-hidden flex flex-col ${devToolsMaximized && devToolsOpen ? 'hidden' : ''}`}>
+        <main className={`flex-1 min-h-0 px-8 pt-6 pb-8 overflow-hidden flex flex-col ${devToolsMaximized && devToolsOpen ? 'hidden' : ''}`}>
           {/* IntroHub stays mounted across connect/disconnect so the saved
               servers list is already rendered when the user comes back via
               the Home button or '+' tab. Hidden via CSS when a session is in
@@ -12834,7 +12843,7 @@ interface UpdateVerificationInfo {
             />
           </div>
           {!showConnectionScreen && (
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl overflow-hidden relative z-10 flex-1 min-h-0 flex flex-col">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl overflow-hidden relative z-10 flex-1 min-h-0 flex flex-col">
               {/* Session Tabs + Local Path Tabs */}
               <SessionTabs
                 sessions={sessions}

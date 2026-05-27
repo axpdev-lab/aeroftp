@@ -81,7 +81,7 @@ export function IntroHubHeader({
     }, [ctxMenu]);
 
     return (
-        <div className="flex items-center gap-1 px-4 py-2 bg-white/50 dark:bg-gray-800/80 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700 rounded-t-xl overflow-hidden">
+        <div className="flex items-center gap-1 p-2 bg-white/50 dark:bg-gray-800/80 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700 rounded-t-lg overflow-hidden">
             {/* Static tabs with counters */}
             {staticTabs.map((tab) => {
                 const count = tab.id === 'my-servers' ? serverCount : tab.id === 'discover' ? serviceCount : 0;

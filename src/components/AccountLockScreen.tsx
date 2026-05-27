@@ -132,7 +132,11 @@ export const AccountLockScreen: React.FC<AccountLockScreenProps> = ({ onContinue
         setError('');
         setIsLoading(true);
         try {
-            await unlockUser(user.id, providedPassphrase);
+            const MIN_SPINNER_MS = 350;
+            await Promise.all([
+                unlockUser(user.id, providedPassphrase),
+                new Promise<void>((resolve) => setTimeout(resolve, MIN_SPINNER_MS)),
+            ]);
             try { window.dispatchEvent(new CustomEvent(PROFILES_CHANGED_EVENT)); } catch { /* best effort */ }
             onContinue();
         } catch (err) {
@@ -265,7 +269,7 @@ export const AccountLockScreen: React.FC<AccountLockScreenProps> = ({ onContinue
                                         type="button"
                                         disabled={isLoading}
                                         onClick={() => handleCardClick(user)}
-                                        className={`group relative flex flex-col items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-5 text-center backdrop-blur transition-all hover:-translate-y-0.5 hover:bg-white/[0.08] hover:shadow-lg hover:shadow-emerald-500/10 focus:outline-none focus:ring-2 focus:ring-emerald-500/60 disabled:opacity-50 disabled:hover:translate-y-0 ${
+                                        className={`group relative flex flex-col items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-4 py-5 text-center backdrop-blur transition-all hover:-translate-y-0.5 hover:bg-white/[0.08] hover:shadow-lg hover:shadow-emerald-500/10 focus:outline-none focus:ring-2 focus:ring-emerald-500/60 disabled:opacity-50 disabled:hover:translate-y-0 ${
                                             user.isActive ? 'ring-1 ring-emerald-400/30' : ''
                                         }`}
                                         aria-label={user.name}
@@ -308,7 +312,7 @@ export const AccountLockScreen: React.FC<AccountLockScreenProps> = ({ onContinue
                             <button
                                 type="button"
                                 onClick={() => setShowManagePanel(true)}
-                                className="group flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-white/15 bg-white/[0.02] px-4 py-5 text-center transition-all hover:-translate-y-0.5 hover:bg-white/[0.05] focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
+                                className="group flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-white/15 bg-white/[0.02] px-4 py-5 text-center transition-all hover:-translate-y-0.5 hover:bg-white/[0.05] focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
                                 aria-label={t('accountLock.newUser')}
                             >
                                 <div className="flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-white/5">
@@ -335,7 +339,7 @@ export const AccountLockScreen: React.FC<AccountLockScreenProps> = ({ onContinue
 
                 {pendingUser && (
                     <div className="w-full max-w-md">
-                        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-6 backdrop-blur">
+                        <div className="rounded-lg border border-white/10 bg-white/[0.04] p-6 backdrop-blur">
                             <div className="mb-5 flex items-center gap-3">
                                 <UserAvatar
                                     name={pendingUser.name}
@@ -413,6 +417,9 @@ export const AccountLockScreen: React.FC<AccountLockScreenProps> = ({ onContinue
                                     <ArrowLeft size={12} />
                                     {t('accountLock.backToList')}
                                 </button>
+                                <p className="mt-2 text-center text-[11px] opacity-50">
+                                    {t('accountLock.securityNote')}
+                                </p>
                             </form>
                         </div>
                     </div>

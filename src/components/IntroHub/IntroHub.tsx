@@ -343,7 +343,7 @@ export function IntroHub(props: IntroHubProps) {
     const activeFormTab = formTabs.find(ft => ft.id === activeTab);
 
     return (
-        <div className="w-full relative z-10 flex flex-col h-full bg-slate-50/50 dark:bg-gray-800/40 backdrop-blur-md rounded-xl border border-gray-200/50 dark:border-gray-700/50 shadow-2xl overflow-hidden">
+        <div className="w-full relative z-10 flex flex-col h-full bg-slate-50/50 dark:bg-gray-800/40 backdrop-blur-md rounded-lg border border-gray-200/50 dark:border-gray-700/50 shadow-2xl overflow-hidden">
             {/* Tab Header */}
             <IntroHubHeader
                 activeTab={activeTab}
