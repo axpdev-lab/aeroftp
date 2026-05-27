@@ -243,6 +243,20 @@ pub struct WebDavProvider {
     /// Files at or above this size use the concurrent-Range path when
     /// `multi_thread_streams >= 2`.
     multi_thread_cutoff: u64,
+    /// Single-file resource mode (issue #264).
+    ///
+    /// Some WebDAV servers expose only one file at the configured URL rather
+    /// than a browseable collection — most commonly the MEGAcmd
+    /// `mega-webdav <file>` bridge, which responds to PROPFIND/GET on the
+    /// exact file path but returns 403/404 on the root and any parent path.
+    /// The standard PROPFIND-on-`/` discovery probe AeroFTP runs at connect
+    /// time would then fail with a confusing reqwest error.
+    ///
+    /// When `connect()` detects this shape (PROPFIND on the URL verbatim
+    /// returns 207 with a non-collection resource), the entry is cached
+    /// here and `list()` / `download()` / `build_url()` short-circuit to
+    /// operate on the verbatim URL.
+    single_file_mode: Option<RemoteEntry>,
 }
 
 /// Provider-specific hard cap on concurrent Range streams (mirrors S3's 16).
@@ -283,6 +297,7 @@ impl WebDavProvider {
             server_root: None,
             multi_thread_streams: 1,
             multi_thread_cutoff: 8 * 1024 * 1024,
+            single_file_mode: None,
         })
     }
 
@@ -348,6 +363,15 @@ impl WebDavProvider {
 
     /// Build full URL for a path
     fn build_url(&self, path: &str) -> String {
+        // Issue #264: in single-file mode every operation targets the
+        // verbatim configured URL (the bridge has no browseable structure
+        // beyond the one file). Ignore the path argument; callers in
+        // single-file mode that pass an unrelated path are an internal
+        // bug, but we'd rather surface that as a 404 against the real
+        // file URL than as a malformed-URL reqwest error.
+        if self.single_file_mode.is_some() {
+            return self.config.url.clone();
+        }
         let base = self.config.url.trim_end_matches('/');
         let rooted = self.resolve_root(path);
         let path = rooted.trim_start_matches('/');
@@ -359,6 +383,205 @@ impl WebDavProvider {
         } else {
             format!("{}/{}", base, Self::encode_path(path))
         }
+    }
+
+    /// Extract the path component of a URL (everything after `host[:port]`),
+    /// or `""` if the URL has no path beyond the authority.
+    /// Best-effort string parser: avoids pulling in `url` for one call.
+    fn url_path_component(url: &str) -> &str {
+        let after_scheme = match url.find("://") {
+            Some(i) => &url[i + 3..],
+            None => url,
+        };
+        match after_scheme.find('/') {
+            Some(i) => &after_scheme[i..],
+            None => "",
+        }
+    }
+
+    /// Issue #264 — try to detect a single-file WebDAV resource at connect time.
+    ///
+    /// Runs PROPFIND with `Depth: 0` against the configured URL **verbatim**
+    /// (no trailing slash appended). On a 207 response that does NOT contain
+    /// a `<collection/>` resourcetype, the URL is treated as a single-file
+    /// bridge (MEGAcmd `mega-webdav <file>` is the canonical case). The
+    /// extracted `RemoteEntry` is returned so `connect()` can cache it.
+    ///
+    /// Returns `None` (caller falls through to the standard PROPFIND `/`
+    /// flow) when:
+    /// - the URL has no path component (no file to point at);
+    /// - the server returns a non-207 status (401 Digest, 405 well-known,
+    ///   any error — the standard flow handles those);
+    /// - the response indicates a collection resource (traditional WebDAV
+    ///   server with a non-trailing-slash root URL).
+    async fn probe_single_file(&self) -> Option<RemoteEntry> {
+        let url_path = Self::url_path_component(&self.config.url);
+        if url_path.is_empty() || url_path == "/" {
+            return None;
+        }
+
+        let propfind_body = r#"<?xml version="1.0" encoding="utf-8"?>
+            <d:propfind xmlns:d="DAV:">
+                <d:prop>
+                    <d:resourcetype/>
+                    <d:getcontentlength/>
+                    <d:getlastmodified/>
+                    <d:getcontenttype/>
+                    <d:getetag/>
+                </d:prop>
+            </d:propfind>"#;
+
+        let mut builder = self
+            .client
+            .request(webdav_methods::propfind(), &self.config.url)
+            .header("Depth", "0")
+            .header("Content-Type", "application/xml")
+            .body(propfind_body);
+
+        if !self.config.anonymous {
+            builder = builder.basic_auth(
+                &self.config.username,
+                Some(self.config.password.expose_secret()),
+            );
+        }
+
+        let response = builder.send().await.ok()?;
+        let status = response.status();
+        if status != StatusCode::MULTI_STATUS && status != StatusCode::OK {
+            tracing::debug!(
+                "[WebDAV] single-file probe: status {}, falling through to PROPFIND /",
+                status
+            );
+            return None;
+        }
+
+        let xml = response.text().await.ok()?;
+        Self::extract_single_file_entry(&xml, url_path)
+    }
+
+    /// Parse the body of a `Depth: 0` PROPFIND against a single-file URL.
+    ///
+    /// Returns `None` when the resource is a collection (the caller should
+    /// fall through to the standard flow) or when no parseable response is
+    /// found.
+    fn extract_single_file_entry(xml: &str, url_path: &str) -> Option<RemoteEntry> {
+        use quick_xml::events::Event;
+        use quick_xml::reader::Reader;
+
+        let mut reader = Reader::from_str(xml);
+        reader.config_mut().trim_text(true);
+        let mut buf = Vec::new();
+
+        let mut in_response = false;
+        let mut in_resourcetype = false;
+        let mut current_tag: Option<String> = None;
+        let mut is_collection = false;
+        let mut got_response = false;
+        let mut size_text = String::new();
+        let mut modified_text = String::new();
+        let mut content_type_text = String::new();
+        let mut etag_text = String::new();
+
+        loop {
+            match reader.read_event_into(&mut buf) {
+                Err(_) | Ok(Event::Eof) => break,
+                Ok(Event::Start(ref e)) => {
+                    let local = local_name(e.name().as_ref());
+                    match local.as_str() {
+                        "response" => {
+                            in_response = true;
+                            got_response = true;
+                        }
+                        "resourcetype" if in_response => in_resourcetype = true,
+                        "collection" if in_response && in_resourcetype => is_collection = true,
+                        "getcontentlength"
+                        | "getlastmodified"
+                        | "getcontenttype"
+                        | "getetag"
+                            if in_response =>
+                        {
+                            current_tag = Some(local);
+                        }
+                        _ => {}
+                    }
+                }
+                Ok(Event::Empty(ref e)) => {
+                    let local = local_name(e.name().as_ref());
+                    if local == "collection" && in_response && in_resourcetype {
+                        is_collection = true;
+                    }
+                }
+                Ok(Event::End(ref e)) => {
+                    let local = local_name(e.name().as_ref());
+                    match local.as_str() {
+                        "resourcetype" => in_resourcetype = false,
+                        "response" => in_response = false,
+                        "getcontentlength" | "getlastmodified" | "getcontenttype" | "getetag" => {
+                            current_tag = None;
+                        }
+                        _ => {}
+                    }
+                }
+                Ok(Event::Text(ref t)) => {
+                    if let Some(tag) = current_tag.as_deref() {
+                        let text = String::from_utf8_lossy(t.as_ref()).to_string();
+                        if !text.is_empty() {
+                            match tag {
+                                "getcontentlength" => size_text.push_str(&text),
+                                "getlastmodified" => modified_text.push_str(&text),
+                                "getcontenttype" => content_type_text.push_str(&text),
+                                "getetag" => etag_text.push_str(&text),
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+            buf.clear();
+        }
+
+        if !got_response || is_collection {
+            return None;
+        }
+
+        let name = url_path
+            .rsplit('/')
+            .find(|seg| !seg.is_empty())
+            .map(|seg| {
+                urlencoding::decode(seg)
+                    .map(|c| c.into_owned())
+                    .unwrap_or_else(|_| seg.to_string())
+            })
+            .unwrap_or_else(|| "file".to_string());
+
+        let mut metadata = std::collections::HashMap::new();
+        if !etag_text.trim().is_empty() {
+            metadata.insert("etag".to_string(), etag_text.trim().to_string());
+        }
+
+        Some(RemoteEntry {
+            name: name.clone(),
+            path: format!("/{}", name),
+            is_dir: false,
+            size: size_text.trim().parse().unwrap_or(0),
+            modified: if modified_text.trim().is_empty() {
+                None
+            } else {
+                Some(modified_text.trim().to_string())
+            },
+            is_symlink: false,
+            link_target: None,
+            permissions: None,
+            owner: None,
+            group: None,
+            mime_type: if content_type_text.trim().is_empty() {
+                None
+            } else {
+                Some(content_type_text.trim().to_string())
+            },
+            metadata,
+        })
     }
 
     /// Percent-encode a remote path so reserved characters in file names
@@ -2007,6 +2230,24 @@ impl StorageProvider for WebDavProvider {
             );
         }
 
+        // Issue #264 — detect single-file WebDAV bridges (MEGAcmd `mega-webdav
+        // <file>` is the canonical case). PROPFIND on the URL verbatim; if the
+        // server answers 207 with a non-collection resource, switch to
+        // single-file mode and skip the root discovery below.
+        if let Some(entry) = self.probe_single_file().await {
+            tracing::info!(
+                "[WebDAV] Detected single-file resource at {} ({}, {} bytes); enabling single-file mode",
+                self.config.url,
+                entry.name,
+                entry.size
+            );
+            self.single_file_mode = Some(entry);
+            self.server_root = Some("/".to_string());
+            self.current_path = "/".to_string();
+            self.connected = true;
+            return Ok(());
+        }
+
         let propfind_body = r#"<?xml version="1.0" encoding="utf-8"?>
                 <d:propfind xmlns:d="DAV:">
                     <d:prop>
@@ -2211,6 +2452,7 @@ impl StorageProvider for WebDavProvider {
     async fn disconnect(&mut self) -> Result<(), ProviderError> {
         self.connected = false;
         self.server_root = None;
+        self.single_file_mode = None;
         Ok(())
     }
 
@@ -2221,6 +2463,14 @@ impl StorageProvider for WebDavProvider {
     async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
+        }
+
+        // Issue #264 — single-file resource mode: the configured URL points
+        // at one file; the "directory listing" is that single entry, served
+        // synthetically without a second PROPFIND. The bridge would 404 on
+        // any path other than the exact file URL anyway.
+        if let Some(ref entry) = self.single_file_mode {
+            return Ok(vec![entry.clone()]);
         }
 
         // Issue #175: Nextcloud / ownCloud serve `/` as 405 Method Not Allowed
@@ -2710,6 +2960,12 @@ impl StorageProvider for WebDavProvider {
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
+        }
+
+        // Issue #264 — single-file mode: return the cached entry. The bridge
+        // would 404 on any path other than the exact file URL.
+        if let Some(ref entry) = self.single_file_mode {
+            return Ok(entry.clone());
         }
 
         const PROPFIND_BODY: &str = r#"<?xml version="1.0" encoding="utf-8"?>
@@ -4368,5 +4624,144 @@ mod tests {
         };
         let r = p.abort_multipart_upload(bad_handle).await;
         assert!(r.is_ok());
+    }
+
+    /// Issue #264 — URL with only a host (no path) cannot be a single-file
+    /// bridge, the probe must opt out and let the standard PROPFIND `/` flow
+    /// handle it.
+    #[test]
+    fn url_path_component_returns_empty_when_no_path() {
+        assert_eq!(
+            WebDavProvider::url_path_component("http://127.0.0.1:4443"),
+            ""
+        );
+        assert_eq!(
+            WebDavProvider::url_path_component("https://example.com"),
+            ""
+        );
+    }
+
+    /// Issue #264 — URL with `/` path is the same as no path for the probe
+    /// (PROPFIND `/` is what the standard flow already does).
+    #[test]
+    fn url_path_component_returns_slash_only_when_root() {
+        assert_eq!(
+            WebDavProvider::url_path_component("http://127.0.0.1:4443/"),
+            "/"
+        );
+    }
+
+    /// Issue #264 — typical `mega-webdav <file>` bridge URL: the probe must
+    /// see the file path so it can target it verbatim.
+    #[test]
+    fn url_path_component_extracts_token_and_filename() {
+        assert_eq!(
+            WebDavProvider::url_path_component("http://127.0.0.1:4443/77YnXboS/sample.png"),
+            "/77YnXboS/sample.png"
+        );
+    }
+
+    /// Issue #264 — a 207 response describing a non-collection resource is
+    /// the trigger to enable single-file mode. The extracted entry must
+    /// carry size, mtime, and content-type from the props.
+    #[test]
+    fn extract_single_file_entry_returns_file_entry() {
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+            <d:multistatus xmlns:d="DAV:">
+                <d:response>
+                    <d:href>/77YnXboS/sample.png</d:href>
+                    <d:propstat>
+                        <d:prop>
+                            <d:resourcetype/>
+                            <d:getcontentlength>60630</d:getcontentlength>
+                            <d:getlastmodified>Mon, 27 May 2026 08:50:22 GMT</d:getlastmodified>
+                            <d:getcontenttype>image/png</d:getcontenttype>
+                        </d:prop>
+                        <d:status>HTTP/1.1 200 OK</d:status>
+                    </d:propstat>
+                </d:response>
+            </d:multistatus>"#;
+
+        let entry = WebDavProvider::extract_single_file_entry(xml, "/77YnXboS/sample.png")
+            .expect("non-collection resource should yield a single-file entry");
+        assert_eq!(entry.name, "sample.png");
+        assert_eq!(entry.path, "/sample.png");
+        assert!(!entry.is_dir);
+        assert_eq!(entry.size, 60630);
+        assert_eq!(entry.mime_type.as_deref(), Some("image/png"));
+        assert!(entry.modified.is_some());
+    }
+
+    /// Issue #264 — when the resource IS a collection, the probe must
+    /// return `None` so the standard PROPFIND `/` flow runs and the user
+    /// gets a normal browseable WebDAV experience.
+    #[test]
+    fn extract_single_file_entry_returns_none_for_collection() {
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+            <d:multistatus xmlns:d="DAV:">
+                <d:response>
+                    <d:href>/dav/folder/</d:href>
+                    <d:propstat>
+                        <d:prop>
+                            <d:resourcetype><d:collection/></d:resourcetype>
+                        </d:prop>
+                        <d:status>HTTP/1.1 200 OK</d:status>
+                    </d:propstat>
+                </d:response>
+            </d:multistatus>"#;
+
+        assert!(WebDavProvider::extract_single_file_entry(xml, "/dav/folder").is_none());
+    }
+
+    /// Issue #264 — percent-encoded filename in the URL path must round-trip
+    /// to a UTF-8 decoded name in the entry.
+    #[test]
+    fn extract_single_file_entry_decodes_percent_encoded_name() {
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+            <d:multistatus xmlns:d="DAV:">
+                <d:response>
+                    <d:href>/AbCd/my%20file.txt</d:href>
+                    <d:propstat>
+                        <d:prop>
+                            <d:resourcetype/>
+                            <d:getcontentlength>10</d:getcontentlength>
+                        </d:prop>
+                        <d:status>HTTP/1.1 200 OK</d:status>
+                    </d:propstat>
+                </d:response>
+            </d:multistatus>"#;
+
+        let entry =
+            WebDavProvider::extract_single_file_entry(xml, "/AbCd/my%20file.txt").unwrap();
+        assert_eq!(entry.name, "my file.txt");
+        assert_eq!(entry.path, "/my file.txt");
+    }
+
+    /// Issue #264 — when single-file mode is active, `build_url` must return
+    /// the configured URL verbatim regardless of the path argument the
+    /// caller supplies. The bridge has no browseable structure beyond the
+    /// one file, so any other URL we could build would 404.
+    #[test]
+    fn build_url_returns_verbatim_url_in_single_file_mode() {
+        let url = "http://127.0.0.1:4443/77YnXboS/sample.png";
+        let mut provider = WebDavProvider::new(test_config(url)).expect("provider");
+        provider.single_file_mode = Some(RemoteEntry {
+            name: "sample.png".to_string(),
+            path: "/sample.png".to_string(),
+            is_dir: false,
+            size: 60630,
+            modified: None,
+            is_symlink: false,
+            link_target: None,
+            permissions: None,
+            owner: None,
+            group: None,
+            mime_type: Some("image/png".to_string()),
+            metadata: Default::default(),
+        });
+
+        assert_eq!(provider.build_url("/"), url);
+        assert_eq!(provider.build_url("/sample.png"), url);
+        assert_eq!(provider.build_url("/anything-else"), url);
     }
 }
