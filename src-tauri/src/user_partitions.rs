@@ -2998,7 +2998,7 @@ mod tests {
         });
 
         // default writes the profile.
-        replace_active_server_profiles(&mut conn, &root, &[profile.clone()])
+        replace_active_server_profiles(&mut conn, &root, std::slice::from_ref(&profile))
             .expect("save on default");
 
         // Alice is active; she queries against default's dedup_key.
@@ -3025,7 +3025,7 @@ mod tests {
             "username": "self",
         });
 
-        replace_active_server_profiles(&mut conn, &root, &[profile.clone()])
+        replace_active_server_profiles(&mut conn, &root, std::slice::from_ref(&profile))
             .expect("save on default");
 
         // Querying as the same user must NOT include itself (otherwise R11
@@ -3074,10 +3074,10 @@ mod tests {
             "port": 443,
         });
 
-        replace_active_server_profiles(&mut conn, &root, &[profile.clone()])
+        replace_active_server_profiles(&mut conn, &root, std::slice::from_ref(&profile))
             .expect("save on default");
         set_active_user(&conn, alice.id).expect("switch alice");
-        replace_active_server_profiles(&mut conn, &root, &[profile.clone()])
+        replace_active_server_profiles(&mut conn, &root, std::slice::from_ref(&profile))
             .expect("save on alice");
         set_active_user(&conn, bob.id).expect("switch bob");
 
