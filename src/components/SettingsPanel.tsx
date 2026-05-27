@@ -30,6 +30,7 @@ import { CustomIconsManager } from './CustomIconsManager';
 import { useTranslation } from '../i18n';
 import { logger } from '../utils/logger';
 import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStorage';
+import { dispatchMasterPasswordChanged } from '../utils/masterPasswordEvents';
 import { loadSavedServerProfiles, storeSavedServerProfiles } from '../utils/serverProfileStore';
 import { getGitHubConnectionBadge, getMegaConnectionBadge, getMegaConnectionMode, normalizeMegaOptions } from '../utils/providerConnectionMeta';
 import { maskCredential } from '../utils/maskCredential';
@@ -3954,6 +3955,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     </button>
                                                 </div>
                                                 <p className="mt-1 text-xs text-gray-500">{t('settings.passwordRequirements')}</p>
+                                                <div className="mt-2">
+                                                    <PasswordStrengthBar password={newMasterPassword} />
+                                                </div>
                                             </div>
 
                                             <div>
@@ -4048,6 +4052,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                 is_locked: status.is_locked,
                                                                 timeout_seconds: Number(status.timeout_seconds),
                                                             });
+                                                            dispatchMasterPasswordChanged({
+                                                                enabled: status.master_mode,
+                                                                isLocked: status.is_locked,
+                                                                timeoutSeconds: Number(status.timeout_seconds),
+                                                            });
                                                             // Clear form
                                                             setNewMasterPassword('');
                                                             setConfirmMasterPassword('');
@@ -4128,6 +4137,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                     is_set: status.master_mode,
                                                                     is_locked: status.is_locked,
                                                                     timeout_seconds: Number(status.timeout_seconds),
+                                                                });
+                                                                dispatchMasterPasswordChanged({
+                                                                    enabled: status.master_mode,
+                                                                    isLocked: status.is_locked,
+                                                                    timeoutSeconds: Number(status.timeout_seconds),
                                                                 });
                                                                 setCurrentMasterPassword('');
                                                                 setMasterPasswordSuccess(t('settings.passwordRemoved'));

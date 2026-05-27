@@ -13984,6 +13984,7 @@ async fn export_keystore(
             &password,
             std::path::Path::new(&file_path_owned),
             mode,
+            keystore_export::KeystoreScope::AllUsers,
             config_dir.as_deref(),
             local_storage,
         )
@@ -15303,6 +15304,7 @@ pub fn run() {
             user_partitions::user_partitions_change_passphrase,
             user_partitions::user_partitions_set_active_user,
             user_partitions::user_partitions_rename_user,
+            user_partitions::user_partitions_set_user_avatar,
             user_partitions::user_partitions_reorder_users,
             user_partitions::user_partitions_delete_user,
             user_partitions::user_partitions_set_admin,

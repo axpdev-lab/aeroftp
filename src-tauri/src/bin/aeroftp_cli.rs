@@ -19297,6 +19297,7 @@ async fn cmd_keystore_export(
             &password_for_call,
             &output_path,
             inner_mode,
+            ftp_client_gui_lib::keystore_export::KeystoreScope::AllUsers,
             cfg_clone.as_deref(),
             None, // local_storage: CLI cannot populate WebView storage
         )

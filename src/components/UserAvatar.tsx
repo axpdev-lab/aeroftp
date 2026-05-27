@@ -27,20 +27,31 @@ const fallbackInitial = (name: string): string => {
     return (trimmed[0] || 'U').toUpperCase();
 };
 
+const isImageAvatar = (avatar?: string | null): boolean =>
+    !!avatar && /^data:image\/(png|jpe?g|gif|webp|svg\+xml);/i.test(avatar);
+
 export const UserAvatar: React.FC<UserAvatarProps> = ({
     name,
     avatarEmoji,
     avatarColor,
     size = 'md',
     className = '',
-}) => (
-    <span
-        className={`${SIZE_CLASS[size]} inline-flex shrink-0 items-center justify-center rounded-full font-semibold text-white shadow-sm ${className}`}
-        style={{ backgroundColor: safeAvatarColor(avatarColor) }}
-        aria-hidden="true"
-    >
-        {avatarEmoji || fallbackInitial(name)}
-    </span>
-);
+}) => {
+    const imageAvatar = isImageAvatar(avatarEmoji);
+
+    return (
+        <span
+            className={`${SIZE_CLASS[size]} inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full font-semibold text-white shadow-sm ${className}`}
+            style={{ backgroundColor: safeAvatarColor(avatarColor) }}
+            aria-hidden="true"
+        >
+            {imageAvatar ? (
+                <img src={avatarEmoji ?? undefined} alt="" className="h-full w-full object-cover" />
+            ) : (
+                avatarEmoji || fallbackInitial(name)
+            )}
+        </span>
+    );
+};
 
 export default UserAvatar;

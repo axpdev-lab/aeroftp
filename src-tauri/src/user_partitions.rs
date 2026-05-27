@@ -290,6 +290,26 @@ fn normalize_name(name: &str) -> Result<(String, String), String> {
     Ok((display.to_string(), display.to_lowercase()))
 }
 
+fn validate_avatar_fields(
+    avatar_emoji: Option<&str>,
+    avatar_color: Option<&str>,
+) -> Result<(), String> {
+    if let Some(avatar) = avatar_emoji {
+        if avatar.len() > 128 * 1024 {
+            return Err("AVATAR_TOO_LARGE".to_string());
+        }
+    }
+    if let Some(color) = avatar_color {
+        let valid = color.len() == 7
+            && color.starts_with('#')
+            && color.as_bytes()[1..].iter().all(u8::is_ascii_hexdigit);
+        if !valid {
+            return Err("INVALID_AVATAR_COLOR".to_string());
+        }
+    }
+    Ok(())
+}
+
 fn current_schema_version(conn: &Connection) -> Result<Option<String>, String> {
     conn.query_row(
         "SELECT value FROM global_state WHERE key = ?1",
@@ -713,9 +733,7 @@ fn upgrade_v2_to_v3(conn: &mut Connection) -> Result<(), String> {
             .next()
             .map_err(|e| format!("Read users table info row: {e}"))?
         {
-            let name: String = row
-                .get(1)
-                .map_err(|e| format!("Read column name: {e}"))?;
+            let name: String = row.get(1).map_err(|e| format!("Read column name: {e}"))?;
             if name == "is_admin" {
                 found = true;
                 break;
@@ -911,7 +929,6 @@ fn with_user_dek<R>(
     f(user_id, &dek)
 }
 
-
 pub fn list_active_server_profiles(
     conn: &Connection,
     root_key: &[u8; 32],
@@ -1064,11 +1081,7 @@ pub fn set_user_setting_for(
     })
 }
 
-pub fn delete_user_setting_for(
-    conn: &Connection,
-    user_id: i64,
-    scope: &str,
-) -> Result<(), String> {
+pub fn delete_user_setting_for(conn: &Connection, user_id: i64, scope: &str) -> Result<(), String> {
     conn.execute(
         "DELETE FROM user_settings WHERE user_id = ?1 AND scope = ?2",
         params![user_id, scope],
@@ -1169,6 +1182,7 @@ pub fn create_user(
     passphrase: Option<&str>,
 ) -> Result<UserMetadata, String> {
     let (display, canonical) = normalize_name(name)?;
+    validate_avatar_fields(avatar_emoji, avatar_color)?;
     let sort_order = conn
         .query_row(
             "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM users",
@@ -1258,7 +1272,9 @@ pub fn unlock_user(
     user_id: i64,
     passphrase: Option<&str>,
 ) -> Result<UserUnlockStatus, String> {
-    unlock_user_inner(conn, root_key, user_id, passphrase, /*promote_to_active=*/ true)
+    unlock_user_inner(
+        conn, root_key, user_id, passphrase, /*promote_to_active=*/ true,
+    )
 }
 
 /// Transient unlock: validates the passphrase and primes the DEK session,
@@ -1271,7 +1287,9 @@ pub fn unlock_user_transient(
     user_id: i64,
     passphrase: Option<&str>,
 ) -> Result<UserUnlockStatus, String> {
-    unlock_user_inner(conn, root_key, user_id, passphrase, /*promote_to_active=*/ false)
+    unlock_user_inner(
+        conn, root_key, user_id, passphrase, /*promote_to_active=*/ false,
+    )
 }
 
 fn unlock_user_inner(
@@ -1428,11 +1446,9 @@ pub fn is_admin_user(conn: &Connection, user_id: i64) -> Result<bool, String> {
 }
 
 pub fn count_admin_users(conn: &Connection) -> Result<i64, String> {
-    conn.query_row(
-        "SELECT COUNT(*) FROM users WHERE is_admin = 1",
-        [],
-        |row| row.get(0),
-    )
+    conn.query_row("SELECT COUNT(*) FROM users WHERE is_admin = 1", [], |row| {
+        row.get(0)
+    })
     .map_err(|e| format!("Count admin users: {e}"))
 }
 
@@ -1447,10 +1463,7 @@ pub fn count_admin_users(conn: &Connection) -> Result<i64, String> {
 /// Callers that need to forbid admin-on-peer (e.g. self-only changes
 /// such as password rotation that require knowing the current
 /// passphrase) check the boolean and reject explicitly.
-pub fn ensure_user_can_modify(
-    conn: &Connection,
-    target_user_id: i64,
-) -> Result<bool, String> {
+pub fn ensure_user_can_modify(conn: &Connection, target_user_id: i64) -> Result<bool, String> {
     let status = user_unlock_status(conn)?;
     let Some(actor_id) = status.unlocked_user_id else {
         return Err("VAULT_LOCKED".to_string());
@@ -1600,6 +1613,27 @@ pub fn rename_user(conn: &Connection, user_id: i64, name: &str) -> Result<(), St
             params![display, canonical, now_ms(), user_id],
         )
         .map_err(|e| format!("Rename user: {e}"))?;
+    if changed == 0 {
+        return Err("USER_NOT_FOUND".to_string());
+    }
+    Ok(())
+}
+
+pub fn set_user_avatar(
+    conn: &Connection,
+    user_id: i64,
+    avatar_emoji: Option<&str>,
+    avatar_color: Option<&str>,
+) -> Result<(), String> {
+    validate_avatar_fields(avatar_emoji, avatar_color)?;
+    let changed = conn
+        .execute(
+            "UPDATE users
+             SET avatar_emoji = ?1, avatar_color = ?2, updated_at = ?3
+             WHERE id = ?4",
+            params![avatar_emoji, avatar_color, now_ms(), user_id],
+        )
+        .map_err(|e| format!("Set user avatar: {e}"))?;
     if changed == 0 {
         return Err("USER_NOT_FOUND".to_string());
     }
@@ -1941,10 +1975,7 @@ pub fn cli_replace_server_profiles_for_user(
 
 /// Resolve a target user by name (CLI `--user` flag). Returns the user metadata
 /// or `Err("USER_NOT_FOUND: <name>")` if the canonical lookup fails.
-pub fn cli_find_user_by_name(
-    store: &CredentialStore,
-    name: &str,
-) -> Result<UserMetadata, String> {
+pub fn cli_find_user_by_name(store: &CredentialStore, name: &str) -> Result<UserMetadata, String> {
     init_or_migrate_cli(store)?;
     let conn = open_or_init_cli()?;
     let (_, canonical) = normalize_name(name)?;
@@ -2067,7 +2098,10 @@ pub async fn user_partitions_list_active_setting_scopes(
     init_or_migrate(&app)?;
     let conn = open_or_init(&app)?;
     let scopes = list_active_user_setting_scopes(&conn)?;
-    Ok(scopes.into_iter().filter(|s| !s.starts_with("__")).collect())
+    Ok(scopes
+        .into_iter()
+        .filter(|s| !s.starts_with("__"))
+        .collect())
 }
 
 /// MU-7: ask "is this profile already saved by another user account?". Used
@@ -2098,9 +2132,53 @@ pub async fn user_partitions_add_user(
     mut passphrase: Option<String>,
 ) -> Result<UserMetadata, String> {
     init_or_migrate(&app)?;
+    let mut conn = open_or_init(&app)?;
+    let existing_users = match list_users(&conn) {
+        Ok(users) => users,
+        Err(err) => {
+            if let Some(passphrase) = passphrase.as_mut() {
+                passphrase.zeroize();
+            }
+            return Err(err);
+        }
+    };
+    if !existing_users.is_empty() {
+        let status = match user_unlock_status(&conn) {
+            Ok(status) => status,
+            Err(err) => {
+                if let Some(passphrase) = passphrase.as_mut() {
+                    passphrase.zeroize();
+                }
+                return Err(err);
+            }
+        };
+        let actor_id = match status.unlocked_user_id {
+            Some(actor_id) => actor_id,
+            None => {
+                if let Some(passphrase) = passphrase.as_mut() {
+                    passphrase.zeroize();
+                }
+                return Err("VAULT_LOCKED".to_string());
+            }
+        };
+        let actor_is_admin = match is_admin_user(&conn, actor_id) {
+            Ok(value) => value,
+            Err(err) => {
+                if let Some(passphrase) = passphrase.as_mut() {
+                    passphrase.zeroize();
+                }
+                return Err(err);
+            }
+        };
+        if !actor_is_admin {
+            if let Some(passphrase) = passphrase.as_mut() {
+                passphrase.zeroize();
+            }
+            return Err("NOT_AUTHORIZED".to_string());
+        }
+    }
     let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
     let mut root_key = store.derive_user_partition_wrapping_key();
-    let mut conn = open_or_init(&app)?;
     let result = create_user(
         &mut conn,
         &root_key,
@@ -2212,12 +2290,37 @@ pub async fn user_partitions_rename_user(
 }
 
 #[tauri::command]
+pub async fn user_partitions_set_user_avatar(
+    app: AppHandle,
+    user_id: i64,
+    avatar_emoji: Option<String>,
+    avatar_color: Option<String>,
+) -> Result<(), String> {
+    init_or_migrate(&app)?;
+    let conn = open_or_init(&app)?;
+    ensure_user_can_modify(&conn, user_id)?;
+    set_user_avatar(
+        &conn,
+        user_id,
+        avatar_emoji.as_deref(),
+        avatar_color.as_deref(),
+    )
+}
+
+#[tauri::command]
 pub async fn user_partitions_reorder_users(
     app: AppHandle,
     user_ids: Vec<i64>,
 ) -> Result<(), String> {
     init_or_migrate(&app)?;
     let mut conn = open_or_init(&app)?;
+    let status = user_unlock_status(&conn)?;
+    let actor_id = status
+        .unlocked_user_id
+        .ok_or_else(|| "VAULT_LOCKED".to_string())?;
+    if !is_admin_user(&conn, actor_id)? {
+        return Err("NOT_AUTHORIZED".to_string());
+    }
     reorder_users(&mut conn, &user_ids)
 }
 
@@ -2253,12 +2356,8 @@ pub async fn user_partitions_admin_reset_passphrase(
     let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
     let mut root_key = store.derive_user_partition_wrapping_key();
     let mut conn = open_or_init(&app)?;
-    let result = admin_reset_user_passphrase(
-        &mut conn,
-        &root_key,
-        user_id,
-        new_passphrase.as_deref(),
-    );
+    let result =
+        admin_reset_user_passphrase(&mut conn, &root_key, user_id, new_passphrase.as_deref());
     if let Some(passphrase) = new_passphrase.as_mut() {
         passphrase.zeroize();
     }
@@ -2571,8 +2670,7 @@ mod tests {
         // Per-user scoped writes target alice's partition even while
         // active_user_id still points at default.
         let profiles = vec![json!({"id":"alice-only","name":"Alice Only","protocol":"sftp"})];
-        replace_server_profiles_for(&mut conn, &root, alice.id, &profiles)
-            .expect("scoped write");
+        replace_server_profiles_for(&mut conn, &root, alice.id, &profiles).expect("scoped write");
         assert_eq!(
             list_server_profiles_for(&conn, &root, alice.id).expect("scoped read"),
             profiles
@@ -2780,10 +2878,9 @@ mod tests {
         let conn = migrated_conn(0);
         let root = test_root();
         let value = json!({ "enabled": true, "interval_secs": 3600 });
-        set_active_user_setting(&conn, &root, "aerosync_schedule", &value)
-            .expect("set scheduled");
-        let read = get_active_user_setting(&conn, &root, "aerosync_schedule")
-            .expect("get scheduled");
+        set_active_user_setting(&conn, &root, "aerosync_schedule", &value).expect("set scheduled");
+        let read =
+            get_active_user_setting(&conn, &root, "aerosync_schedule").expect("get scheduled");
         assert_eq!(read, Some(value));
     }
 
@@ -2792,8 +2889,7 @@ mod tests {
         let _guard = test_lock();
         let conn = migrated_conn(0);
         let root = test_root();
-        let read = get_active_user_setting(&conn, &root, "never_written")
-            .expect("get missing");
+        let read = get_active_user_setting(&conn, &root, "never_written").expect("get missing");
         assert!(read.is_none());
     }
 
@@ -2823,11 +2919,10 @@ mod tests {
         let _guard = test_lock();
         let conn = migrated_conn(0);
         let root = test_root();
-        set_active_user_setting(&conn, &root, "aerosync_schedule", &json!(42))
-            .expect("set");
+        set_active_user_setting(&conn, &root, "aerosync_schedule", &json!(42)).expect("set");
         delete_active_user_setting(&conn, "aerosync_schedule").expect("delete");
-        let read = get_active_user_setting(&conn, &root, "aerosync_schedule")
-            .expect("get after delete");
+        let read =
+            get_active_user_setting(&conn, &root, "aerosync_schedule").expect("get after delete");
         assert!(read.is_none());
     }
 
@@ -2877,8 +2972,7 @@ mod tests {
         let _guard = test_lock();
         let conn = migrated_conn(0);
         let root = test_root();
-        let err = set_active_user_setting(&conn, &root, "", &json!(true))
-            .expect_err("empty scope");
+        let err = set_active_user_setting(&conn, &root, "", &json!(true)).expect_err("empty scope");
         assert_eq!(err, "USER_SETTING_SCOPE_REQUIRED");
     }
 
@@ -2889,9 +2983,7 @@ mod tests {
         let _guard = test_lock();
         let mut conn = migrated_conn(0);
         let root = test_root();
-        let default = get_active_user(&conn)
-            .expect("active")
-            .expect("default");
+        let default = get_active_user(&conn).expect("active").expect("default");
         let alice =
             create_passphrase_less_user(&mut conn, &root, "alice", Some("A"), Some("#3b82f6"))
                 .expect("alice");
@@ -2911,8 +3003,7 @@ mod tests {
 
         // Alice is active; she queries against default's dedup_key.
         set_active_user(&conn, alice.id).expect("switch alice");
-        let matches = cross_user_dedup_matches(&conn, &root, alice.id, &profile)
-            .expect("query");
+        let matches = cross_user_dedup_matches(&conn, &root, alice.id, &profile).expect("query");
         assert_eq!(matches.len(), 1);
         assert_eq!(matches[0].user_id, default.id);
         assert_eq!(matches[0].user_name, DEFAULT_USER_NAME);
@@ -2924,9 +3015,7 @@ mod tests {
         let conn = migrated_conn(0);
         let mut conn = conn;
         let root = test_root();
-        let default = get_active_user(&conn)
-            .expect("active")
-            .expect("default");
+        let default = get_active_user(&conn).expect("active").expect("default");
 
         let profile = json!({
             "id": "self-srv",
@@ -2941,8 +3030,7 @@ mod tests {
 
         // Querying as the same user must NOT include itself (otherwise R11
         // intra-user dedup would over-trigger a cross-user warning popup).
-        let matches = cross_user_dedup_matches(&conn, &root, default.id, &profile)
-            .expect("query");
+        let matches = cross_user_dedup_matches(&conn, &root, default.id, &profile).expect("query");
         assert!(matches.is_empty());
     }
 
@@ -2962,8 +3050,7 @@ mod tests {
             "username": "only",
         });
 
-        let matches = cross_user_dedup_matches(&conn, &root, alice.id, &unique)
-            .expect("query");
+        let matches = cross_user_dedup_matches(&conn, &root, alice.id, &unique).expect("query");
         assert!(matches.is_empty());
     }
 
@@ -2972,15 +3059,12 @@ mod tests {
         let _guard = test_lock();
         let mut conn = migrated_conn(0);
         let root = test_root();
-        let default = get_active_user(&conn)
-            .expect("active")
-            .expect("default");
+        let default = get_active_user(&conn).expect("active").expect("default");
         let alice =
             create_passphrase_less_user(&mut conn, &root, "alice", Some("A"), Some("#3b82f6"))
                 .expect("alice");
-        let bob =
-            create_passphrase_less_user(&mut conn, &root, "bob", Some("B"), Some("#22c55e"))
-                .expect("bob");
+        let bob = create_passphrase_less_user(&mut conn, &root, "bob", Some("B"), Some("#22c55e"))
+            .expect("bob");
 
         let profile = json!({
             "id": "shared",
@@ -2999,8 +3083,7 @@ mod tests {
 
         // From bob's perspective, both default and alice match. Order follows
         // sort_order (default=0, alice=1).
-        let matches = cross_user_dedup_matches(&conn, &root, bob.id, &profile)
-            .expect("query");
+        let matches = cross_user_dedup_matches(&conn, &root, bob.id, &profile).expect("query");
         assert_eq!(matches.len(), 2);
         assert_eq!(matches[0].user_id, default.id);
         assert_eq!(matches[1].user_id, alice.id);
@@ -3028,7 +3111,59 @@ mod tests {
         let alice =
             create_passphrase_less_user(&mut conn, &root, "alice", Some("A"), Some("#10b981"))
                 .expect("alice");
-        assert!(!alice.is_admin, "Manage Users add flow must not auto-promote new accounts");
+        assert!(
+            !alice.is_admin,
+            "Manage Users add flow must not auto-promote new accounts"
+        );
+    }
+
+    #[test]
+    fn set_user_avatar_updates_public_avatar_fields() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let alice =
+            create_passphrase_less_user(&mut conn, &root, "alice", Some("A"), Some("#10b981"))
+                .expect("alice");
+
+        set_user_avatar(
+            &conn,
+            alice.id,
+            Some("data:image/svg+xml;base64,PHN2Zy8+"),
+            Some("#ef4444"),
+        )
+        .expect("set avatar");
+
+        let updated = list_users(&conn)
+            .expect("list users")
+            .into_iter()
+            .find(|user| user.id == alice.id)
+            .expect("alice row");
+        assert_eq!(
+            updated.avatar_emoji.as_deref(),
+            Some("data:image/svg+xml;base64,PHN2Zy8+")
+        );
+        assert_eq!(updated.avatar_color.as_deref(), Some("#ef4444"));
+    }
+
+    #[test]
+    fn set_user_avatar_validates_color_and_size() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let alice =
+            create_passphrase_less_user(&mut conn, &root, "alice", Some("A"), Some("#10b981"))
+                .expect("alice");
+
+        assert_eq!(
+            set_user_avatar(&conn, alice.id, Some("A"), Some("red")),
+            Err("INVALID_AVATAR_COLOR".to_string())
+        );
+        let too_large = "x".repeat(128 * 1024 + 1);
+        assert_eq!(
+            set_user_avatar(&conn, alice.id, Some(&too_large), Some("#10b981")),
+            Err("AVATAR_TOO_LARGE".to_string())
+        );
     }
 
     #[test]
@@ -3144,8 +3279,7 @@ mod tests {
             "username": "a",
             "port": 22,
         });
-        replace_active_server_profiles(&mut conn, &root, &[profile])
-            .expect("save alice profile");
+        replace_active_server_profiles(&mut conn, &root, &[profile]).expect("save alice profile");
         let count_before: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM server_profiles WHERE user_id = ?1",
@@ -3182,8 +3316,7 @@ mod tests {
 
         // The new passphrase unlocks the new DEK (old one is gone for good).
         set_active_user(&conn, alice.id).expect("switch alice");
-        unlock_user(&conn, &root, alice.id, Some("recovered"))
-            .expect("unlock with new passphrase");
+        unlock_user(&conn, &root, alice.id, Some("recovered")).expect("unlock with new passphrase");
         // And the OLD passphrase no longer works.
         assert!(unlock_user(&conn, &root, alice.id, Some("alice-pw")).is_err());
     }
@@ -3208,9 +3341,8 @@ mod tests {
         let alice =
             create_passphrase_less_user(&mut conn, &root, "alice", Some("A"), Some("#10b981"))
                 .expect("alice");
-        let bob =
-            create_passphrase_less_user(&mut conn, &root, "bob", Some("B"), Some("#3b82f6"))
-                .expect("bob");
+        let bob = create_passphrase_less_user(&mut conn, &root, "bob", Some("B"), Some("#3b82f6"))
+            .expect("bob");
         // Switch active to alice (non-admin). alice tries to reset bob.
         set_active_user(&conn, alice.id).expect("switch alice");
         assert_eq!(
@@ -3295,11 +3427,15 @@ mod tests {
         upgrade_v2_to_v3(&mut conn).expect("upgrade");
 
         let is_admin_count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM users WHERE is_admin = 1", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM users WHERE is_admin = 1", [], |row| {
+                row.get(0)
+            })
             .expect("count admin");
         assert_eq!(is_admin_count, 1);
         let admin_id: i64 = conn
-            .query_row("SELECT id FROM users WHERE is_admin = 1", [], |row| row.get(0))
+            .query_row("SELECT id FROM users WHERE is_admin = 1", [], |row| {
+                row.get(0)
+            })
             .expect("admin id");
         assert_eq!(admin_id, 1);
         let version = current_schema_version(&conn).expect("version");
@@ -3308,7 +3444,9 @@ mod tests {
         // Idempotent: rerun must not crash and must not flip admin off.
         upgrade_v2_to_v3(&mut conn).expect("idempotent rerun");
         let still_admin: i64 = conn
-            .query_row("SELECT is_admin FROM users WHERE id = 1", [], |row| row.get(0))
+            .query_row("SELECT is_admin FROM users WHERE id = 1", [], |row| {
+                row.get(0)
+            })
             .expect("admin still");
         assert_eq!(still_admin, 1);
     }

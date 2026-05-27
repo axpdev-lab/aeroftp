@@ -114,6 +114,17 @@ export const deleteUser = (userId: number): Promise<void> =>
 export const setUserAdmin = (userId: number, isAdmin: boolean): Promise<void> =>
     invoke<void>('user_partitions_set_admin', { userId, isAdmin });
 
+export const setUserAvatar = (
+    userId: number,
+    avatarEmoji?: string | null,
+    avatarColor?: string | null,
+): Promise<void> =>
+    invoke<void>('user_partitions_set_user_avatar', {
+        userId,
+        avatarEmoji,
+        avatarColor,
+    });
+
 /**
  * Destructive admin-only "lost password" recovery for another user.
  * The target's encrypted server_profiles + user_settings are wiped

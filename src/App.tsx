@@ -380,6 +380,11 @@ import {
 import { maskCredential } from './utils/maskCredential';
 import { getOpenWithDefaultRoute } from './utils/openWithDefault';
 import { createLocalEndpoint, createRemoteEndpoint } from './utils/panelEndpoints';
+import {
+  MASTER_PASSWORD_CHANGED_EVENT,
+  dispatchMasterPasswordChanged,
+  type MasterPasswordChangedDetail,
+} from './utils/masterPasswordEvents';
 import { createUnifiedTransferPlan, UnifiedTransferPlan } from './utils/unifiedTransferPlanner';
 import { buildCrossProfileEntries, runCrossProfileTransfer } from './utils/crossProfileExecution';
 import { compareEntries, type CompareInputEntry, type CompareResult, type CompareResultEntry } from './utils/compareEndpoints';
@@ -1411,6 +1416,20 @@ const App: React.FC = () => {
   // is read through a ref so a lock/unlock tick does NOT reset the interval.
   const isAppLockedRef = useRef(isAppLocked);
   useEffect(() => { isAppLockedRef.current = isAppLocked; }, [isAppLocked]);
+  useEffect(() => {
+    const handleMasterPasswordChanged = (event: Event) => {
+      const detail = (event as CustomEvent<MasterPasswordChangedDetail>).detail;
+      if (!detail) return;
+      setMasterPasswordSet(detail.enabled);
+      if (!detail.enabled) {
+        setIsAppLocked(false);
+      } else if (typeof detail.isLocked === 'boolean') {
+        setIsAppLocked(detail.isLocked);
+      }
+    };
+    window.addEventListener(MASTER_PASSWORD_CHANGED_EVENT, handleMasterPasswordChanged);
+    return () => window.removeEventListener(MASTER_PASSWORD_CHANGED_EVENT, handleMasterPasswordChanged);
+  }, []);
   useEffect(() => {
     if (!masterPasswordSet) return;
 
@@ -11289,6 +11308,7 @@ interface UpdateVerificationInfo {
             setShowMasterPasswordSetup(false);
             setMasterPasswordBootstrapMode(false);
             setMasterPasswordSet(true);
+            dispatchMasterPasswordChanged({ enabled: true, isLocked: false });
           }}
           onClose={() => {
             setShowMasterPasswordSetup(false);
