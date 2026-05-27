@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet -- AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
-import { ArrowLeft, Eye, EyeOff, KeyRound, Lock, LockOpen, Plus, Shield, ShieldCheck, UserCog, X } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, KeyRound, Loader2, Lock, LockOpen, Plus, Shield, ShieldCheck, UserCog, X } from 'lucide-react';
 import { getVersion } from '@tauri-apps/api/app';
 import { useTranslation } from '../i18n';
 import { UserAvatar } from './UserAvatar';
@@ -392,7 +392,10 @@ export const AccountLockScreen: React.FC<AccountLockScreenProps> = ({ onContinue
                                     className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 text-sm font-medium text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-emerald-600/40"
                                 >
                                     {isLoading ? (
-                                        <span className="opacity-90">{t('accountLock.unlocking')}</span>
+                                        <>
+                                            <Loader2 size={16} className="animate-spin" />
+                                            <span className="opacity-90">{t('accountLock.unlocking')}</span>
+                                        </>
                                     ) : (
                                         <>
                                             <ShieldCheck size={16} />

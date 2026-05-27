@@ -14,6 +14,8 @@ import { formatBytes } from '../../utils/formatters';
 import { getMimeType, getFileExtension } from '../Preview/utils/fileTypes';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
 import { PROFILES_CHANGED_EVENT } from '../../utils/serverProfileStore';
+import { dispatchMasterPasswordChanged } from '../../utils/masterPasswordEvents';
+import { PasswordStrengthBar } from '../vault/PasswordStrengthBar';
 
 // ============ Alert Dialog ============
 interface AlertDialogProps {
@@ -1046,6 +1048,11 @@ export const MasterPasswordSetupDialog: React.FC<MasterPasswordSetupDialogProps>
             // Vault is now (re-)initialized; notify UserDropdown so the avatar
             // appears even if it mounted before CredentialStore was ready.
             try { window.dispatchEvent(new CustomEvent(PROFILES_CHANGED_EVENT)); } catch { /* best effort */ }
+            dispatchMasterPasswordChanged({
+                enabled: true,
+                isLocked: false,
+                timeoutSeconds: timeoutMinutes * 60,
+            });
             onComplete();
         } catch (err) {
             setError(String(err));
@@ -1117,6 +1124,9 @@ export const MasterPasswordSetupDialog: React.FC<MasterPasswordSetupDialogProps>
                             </button>
                         </div>
                         <p className="mt-1 text-xs text-gray-500">{t('masterPassword.minLength')}</p>
+                        <div className="mt-2">
+                            <PasswordStrengthBar password={password} />
+                        </div>
                     </div>
 
                     {/* Confirm Password */}
