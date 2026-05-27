@@ -11,7 +11,8 @@ import { MyServersTableFooter } from './MyServersTableFooter';
 import { useTranslation } from '../../i18n';
 import { ContextMenu, useContextMenu } from '../ContextMenu';
 import type { ContextMenuItem } from '../ContextMenu';
-import { secureGetAwaitReady, secureGetWithFallback, secureStoreAndClean } from '../../utils/secureStorage';
+import { secureGetWithFallback, secureStoreAndClean } from '../../utils/secureStorage';
+import { loadSavedServerProfiles, storeSavedServerProfiles } from '../../utils/serverProfileStore';
 import { getProviderById } from '../../providers';
 import { logger } from '../../utils/logger';
 import { ServerHealthCheck } from '../ServerHealthCheck';
@@ -26,7 +27,6 @@ import { useMyServersColumns } from '../../hooks/useMyServersColumns';
 import { PROVIDER_HEALTH_URLS } from './discoverData';
 import { mergeSavedServerProfile } from '../../utils/serverProfileStore';
 
-const STORAGE_KEY = 'aeroftp-saved-servers';
 const FAVORITES_STORAGE_KEY = 'aeroftp-favorite-servers';
 const FAVORITES_VAULT_KEY = 'favorite_servers';
 const VIEW_MODE_KEY = 'aeroftp-intro-view-mode';
@@ -222,25 +222,6 @@ function wait(ms: number) {
     return new Promise(resolve => window.setTimeout(resolve, ms));
 }
 
-function getSavedServers(): ServerProfile[] {
-    try {
-        const stored = localStorage.getItem(STORAGE_KEY);
-        if (!stored) return [];
-        const servers: ServerProfile[] = JSON.parse(stored);
-        let migrated = false;
-        for (const s of servers) {
-            if (!s.providerId) {
-                const derived = deriveProviderId(s);
-                if (derived) { s.providerId = derived; migrated = true; }
-            }
-        }
-        if (migrated) localStorage.setItem(STORAGE_KEY, JSON.stringify(servers));
-        return servers;
-    } catch {
-        return [];
-    }
-}
-
 interface MyServersPanelProps {
     onConnect: (params: ConnectionParams, initialPath?: string, localInitialPath?: string) => void | Promise<void>;
     onEdit: (profile: ServerProfile) => void;
@@ -285,12 +266,12 @@ export function MyServersPanel({
     onDisconnectProfile,
 }: MyServersPanelProps) {
     const t = useTranslation();
-    // Lazy init: read localStorage synchronously on first mount so the panel
-    // never flashes the empty "Get started" state when re-entering IntroHub
-    // (from AeroFile, from a connected session, or after a Discover->Servers
-    // tab switch). The useEffect below still re-runs on `lastUpdate` change
-    // for explicit refreshes triggered by the parent.
-    const [servers, setServers] = useState<ServerProfile[]>(() => getSavedServers());
+    // Start with an empty list: the partition-aware reconcile effect below
+    // populates `servers` from the active user's vault on mount and on every
+    // `lastUpdate` bump. We no longer seed from the shared localStorage
+    // cache because it would leak the previous user's profiles across an
+    // account switch.
+    const [servers, setServers] = useState<ServerProfile[]>([]);
     const [connectingId, setConnectingId] = useState<string | null>(null);
     const [oauthConnecting, setOauthConnecting] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
@@ -388,45 +369,26 @@ export function MyServersPanel({
     }, [viewMode]); // re-attach when container swaps between grid/list
 
     useEffect(() => {
-        // Fast first paint from localStorage ONLY when it has data. v3.8.0
-        // calls storeSavedServerProfiles (which localStorage.removeItem's
-        // the key) on every upload/scan via persistQuotaToProfile, then
-        // bumps lastUpdate re-running this effect; a blanket
-        // setServers(getSavedServers()) would read the just-removed key,
-        // return [], and flash the whole list empty for a frame before the
-        // async vault read repopulates it. Keeping the prior state when the
-        // cache is absent removes the flicker. The async reconcile below
-        // still propagates a genuine empty vault (CLI delete of the last
-        // profile, #194), so that behaviour is preserved.
-        const cached = getSavedServers();
-        if (cached.length > 0) setServers(cached);
-        // Reconcile with the vault, which is the source of truth. Uses
-        // `secureGetAwaitReady` (not `secureGetWithFallback`) so a
-        // vault-locked response stays distinguishable from "vault returned
-        // the empty list": the latter must propagate to the state and the
-        // localStorage backup so a CLI-driven delete of the last profile is
-        // honoured instead of being hidden by the stale localStorage cache
-        // (#194). The await-ready variant additionally retries while the
-        // store is still booting (`STORE_NOT_READY`), so when the per-origin
-        // localStorage cache is absent (wiped by an aggressive cache
-        // cleanup, or a fresh machine) the list is still rebuilt from the
-        // vault instead of staying empty until an external refresh.
+        // Reconcile with the active user's vault partition, which is the
+        // source of truth. loadSavedServerProfiles transparently falls
+        // back to the legacy `server_profiles` blob when the partition
+        // store is not ready (boot timing), so a CLI-driven delete of the
+        // last profile (#194) still propagates as an empty list. We no
+        // longer keep a sync localStorage cache because that blob is
+        // shared across users and would leak profiles across account
+        // switches.
         let cancelled = false;
         (async () => {
             try {
-                const vaultServers = await secureGetAwaitReady<ServerProfile[]>('server_profiles');
+                const vaultServers = await loadSavedServerProfiles();
                 if (cancelled || !Array.isArray(vaultServers)) return;
-                let migrated = false;
                 for (const s of vaultServers) {
                     if (!s.providerId) {
                         const derived = deriveProviderId(s);
-                        if (derived) { s.providerId = derived; migrated = true; }
+                        if (derived) s.providerId = derived;
                     }
                 }
                 const serialized = JSON.stringify(vaultServers);
-                if (migrated || localStorage.getItem(STORAGE_KEY) !== serialized) {
-                    try { localStorage.setItem(STORAGE_KEY, serialized); } catch { /* quota */ }
-                }
                 setServers(prev => {
                     // Same rows can still have fresh card data (lastQuota,
                     // auth badges, lastConnected). Compare the content, not
@@ -437,7 +399,7 @@ export function MyServersPanel({
                     } catch { /* fall through to replacing state */ }
                     return vaultServers;
                 });
-            } catch { /* vault not ready / locked, localStorage value stays */ }
+            } catch { /* vault not ready / locked, retry on next lastUpdate bump */ }
         })();
         return () => { cancelled = true; };
     }, [lastUpdate]);
@@ -624,7 +586,7 @@ export function MyServersPanel({
         const [moved] = updated.splice(dragIdx, 1);
         updated.splice(target, 0, moved);
         setServers(updated);
-        secureStoreAndClean('server_profiles', STORAGE_KEY, updated).catch(() => {});
+        storeSavedServerProfiles(updated).catch(() => {});
         setDragIdx(null);
         setOverIdx(null);
     }, [dragIdx, servers]);
@@ -996,7 +958,7 @@ export function MyServersPanel({
         };
         const updated = [dup, ...servers];
         setServers(updated);
-        secureStoreAndClean('server_profiles', STORAGE_KEY, updated).catch(() => {});
+        storeSavedServerProfiles(updated).catch(() => {});
     }, [servers]);
 
     const handleDelete = useCallback((server: ServerProfile) => {
@@ -1012,7 +974,7 @@ export function MyServersPanel({
         if (trimmed && trimmed !== server.name) {
             const updated = servers.map(s => s.id === server.id ? { ...s, name: trimmed } : s);
             setServers(updated);
-            secureStoreAndClean('server_profiles', STORAGE_KEY, updated).catch(() => {});
+            storeSavedServerProfiles(updated).catch(() => {});
         }
         setRenamingId(null);
     }, [servers]);
@@ -1072,7 +1034,7 @@ export function MyServersPanel({
         if (!deleteTarget) return;
         const updated = servers.filter(s => s.id !== deleteTarget.id);
         setServers(updated);
-        secureStoreAndClean('server_profiles', STORAGE_KEY, updated).catch(() => {});
+        storeSavedServerProfiles(updated).catch(() => {});
         // Clean up orphaned vault credential
         invoke('delete_credential', { account: `server_${deleteTarget.id}` }).catch(() => {});
         onServersChange?.(updated.length);
