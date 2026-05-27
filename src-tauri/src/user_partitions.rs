@@ -100,6 +100,20 @@ struct UserLockoutState {
     unlock_at_epoch_ms: Option<i64>,
 }
 
+/// MU-7 cross-user dedup match. Only metadata of the OTHER user is returned:
+/// the encrypted profile blob and the dedup_key itself remain in the database
+/// and are never echoed to the caller. Frontend uses this to surface a
+/// "this server is already saved in account X" warning without ever needing
+/// to decrypt the other partition.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CrossUserDedupMatch {
+    pub user_id: i64,
+    pub user_name: String,
+    pub user_avatar_emoji: Option<String>,
+    pub user_avatar_color: Option<String>,
+}
+
 pub fn db_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(crate::portable::app_config_dir(app)?.join(DB_FILENAME))
 }
@@ -1034,6 +1048,43 @@ pub fn list_active_user_setting_scopes(conn: &Connection) -> Result<Vec<String>,
     list_user_setting_scopes_for(conn, user_id)
 }
 
+/// MU-7: list other users that already store a profile with the SAME dedup
+/// signature (HMAC of canonical protocol/host/user/port keyed by the device
+/// partition root key). Used by the frontend to warn before adding a profile
+/// that another account already has. Excludes the requesting user. Returns
+/// only public user metadata, never any portion of the encrypted blob.
+pub fn cross_user_dedup_matches(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    requesting_user_id: i64,
+    profile: &Value,
+) -> Result<Vec<CrossUserDedupMatch>, String> {
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    let uid_seed = value_str(profile, &["id"]).unwrap_or("");
+    let dedup_tag = profile_dedup_key(&root_secret, profile, uid_seed)?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT u.id, u.name, u.avatar_emoji, u.avatar_color
+               FROM server_profiles sp
+               JOIN users u ON u.id = sp.user_id
+              WHERE sp.dedup_key = ?1 AND u.id != ?2
+              ORDER BY u.sort_order ASC, u.name_canonical ASC",
+        )
+        .map_err(|e| format!("Prepare cross-user dedup query: {e}"))?;
+    let rows = stmt
+        .query_map(params![dedup_tag, requesting_user_id], |row| {
+            Ok(CrossUserDedupMatch {
+                user_id: row.get(0)?,
+                user_name: row.get(1)?,
+                user_avatar_emoji: row.get(2)?,
+                user_avatar_color: row.get(3)?,
+            })
+        })
+        .map_err(|e| format!("Query cross-user dedup: {e}"))?;
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(|e| format!("Read cross-user dedup rows: {e}"))
+}
+
 pub fn create_user(
     conn: &mut Connection,
     root_key: &[u8; 32],
@@ -1756,6 +1807,25 @@ pub async fn user_partitions_list_active_setting_scopes(
     let conn = open_or_init(&app)?;
     let scopes = list_active_user_setting_scopes(&conn)?;
     Ok(scopes.into_iter().filter(|s| !s.starts_with("__")).collect())
+}
+
+/// MU-7: ask "is this profile already saved by another user account?". Used
+/// by the SavedServers add/edit flow to surface a soft warning. Returns the
+/// public metadata of every OTHER user with a matching dedup_key; intra-user
+/// duplicates remain blocked by the existing dedup check (R11).
+#[tauri::command]
+pub async fn user_partitions_find_cross_user_dedup(
+    app: AppHandle,
+    profile: Value,
+) -> Result<Vec<CrossUserDedupMatch>, String> {
+    init_or_migrate(&app)?;
+    let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let conn = open_or_init(&app)?;
+    let active = active_user_id(&conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    let result = cross_user_dedup_matches(&conn, &root_key, active, &profile);
+    root_key.zeroize();
+    result
 }
 
 #[tauri::command]
@@ -2492,5 +2562,129 @@ mod tests {
         let err = set_active_user_setting(&conn, &root, "", &json!(true))
             .expect_err("empty scope");
         assert_eq!(err, "USER_SETTING_SCOPE_REQUIRED");
+    }
+
+    // ============ MU-7 cross-user dedup ============
+
+    #[test]
+    fn cross_user_dedup_finds_same_profile_in_other_partition() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn)
+            .expect("active")
+            .expect("default");
+        let alice =
+            create_passphrase_less_user(&mut conn, &root, "alice", Some("A"), Some("#3b82f6"))
+                .expect("alice");
+
+        let profile = json!({
+            "id": "shared-srv",
+            "name": "Shared",
+            "protocol": "sftp",
+            "host": "host.example.com",
+            "port": 22,
+            "username": "shared",
+        });
+
+        // default writes the profile.
+        replace_active_server_profiles(&mut conn, &root, &[profile.clone()])
+            .expect("save on default");
+
+        // Alice is active; she queries against default's dedup_key.
+        set_active_user(&conn, alice.id).expect("switch alice");
+        let matches = cross_user_dedup_matches(&conn, &root, alice.id, &profile)
+            .expect("query");
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].user_id, default.id);
+        assert_eq!(matches[0].user_name, DEFAULT_USER_NAME);
+    }
+
+    #[test]
+    fn cross_user_dedup_excludes_requesting_user() {
+        let _guard = test_lock();
+        let conn = migrated_conn(0);
+        let mut conn = conn;
+        let root = test_root();
+        let default = get_active_user(&conn)
+            .expect("active")
+            .expect("default");
+
+        let profile = json!({
+            "id": "self-srv",
+            "protocol": "ftp",
+            "host": "self.example.com",
+            "port": 21,
+            "username": "self",
+        });
+
+        replace_active_server_profiles(&mut conn, &root, &[profile.clone()])
+            .expect("save on default");
+
+        // Querying as the same user must NOT include itself (otherwise R11
+        // intra-user dedup would over-trigger a cross-user warning popup).
+        let matches = cross_user_dedup_matches(&conn, &root, default.id, &profile)
+            .expect("query");
+        assert!(matches.is_empty());
+    }
+
+    #[test]
+    fn cross_user_dedup_returns_empty_when_no_match() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let alice =
+            create_passphrase_less_user(&mut conn, &root, "alice", Some("A"), Some("#3b82f6"))
+                .expect("alice");
+
+        let unique = json!({
+            "id": "unique-srv",
+            "protocol": "webdav",
+            "host": "nobody.example.com",
+            "username": "only",
+        });
+
+        let matches = cross_user_dedup_matches(&conn, &root, alice.id, &unique)
+            .expect("query");
+        assert!(matches.is_empty());
+    }
+
+    #[test]
+    fn cross_user_dedup_orders_matches_by_sort_order() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn)
+            .expect("active")
+            .expect("default");
+        let alice =
+            create_passphrase_less_user(&mut conn, &root, "alice", Some("A"), Some("#3b82f6"))
+                .expect("alice");
+        let bob =
+            create_passphrase_less_user(&mut conn, &root, "bob", Some("B"), Some("#22c55e"))
+                .expect("bob");
+
+        let profile = json!({
+            "id": "shared",
+            "protocol": "s3",
+            "host": "s3.example.com",
+            "username": "k",
+            "port": 443,
+        });
+
+        replace_active_server_profiles(&mut conn, &root, &[profile.clone()])
+            .expect("save on default");
+        set_active_user(&conn, alice.id).expect("switch alice");
+        replace_active_server_profiles(&mut conn, &root, &[profile.clone()])
+            .expect("save on alice");
+        set_active_user(&conn, bob.id).expect("switch bob");
+
+        // From bob's perspective, both default and alice match. Order follows
+        // sort_order (default=0, alice=1).
+        let matches = cross_user_dedup_matches(&conn, &root, bob.id, &profile)
+            .expect("query");
+        assert_eq!(matches.len(), 2);
+        assert_eq!(matches[0].user_id, default.id);
+        assert_eq!(matches[1].user_id, alice.id);
     }
 }
