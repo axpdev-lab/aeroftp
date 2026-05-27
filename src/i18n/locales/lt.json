@@ -68,7 +68,7 @@
             "selectAll": "Select All",
             "required": "privalomas",
             "duplicate": "Dubliuoti",
-            "current": "[NEEDS TRANSLATION] current"
+            "current": "dabartinis"
         },
         "connection": {
             "title": "Prisijungti prie serverio",
@@ -424,7 +424,7 @@
             "lockRcloneCrypt": "Užrakinti Rclone Crypt sluoksnį",
             "unlockRcloneCrypt": "Iššifruoti kaip Rclone Crypt sluoksnį…",
             "openAsAeroVaultOverlay": "Atidaryti kaip AeroVault Overlay",
-            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
+            "privacyEllipsis": "Privatumas..."
         },
         "transfer": {
             "transferring": "Perduodama...",
@@ -3005,13 +3005,13 @@
             "selectedItems": "Pasirinkti elementai",
             "sizesPartial": "(kai kurie dydžiai nežinomi)",
             "totalSize": "Bendras dydis",
-            "privacyHidden": "[NEEDS TRANSLATION] Hidden",
-            "privacyHiddenDesc": "[NEEDS TRANSLATION] Accessible by direct link only; not searchable.",
-            "privacyPrivate": "[NEEDS TRANSLATION] Private",
-            "privacyPrivateDesc": "[NEEDS TRANSLATION] Only the account owner can access this item.",
-            "privacyPublic": "[NEEDS TRANSLATION] Public",
-            "privacyPublicDesc": "[NEEDS TRANSLATION] Anyone with the link can access this item.",
-            "visibility": "[NEEDS TRANSLATION] Visibility"
+            "privacyHidden": "Paslėpta",
+            "privacyHiddenDesc": "Pasiekiama tik per tiesioginę nuorodą, neieškoma.",
+            "privacyPrivate": "Privatu",
+            "privacyPrivateDesc": "Šį elementą gali pasiekti tik paskyros savininkas.",
+            "privacyPublic": "Vieša",
+            "privacyPublicDesc": "Šį elementą gali pasiekti bet kas, turintis nuorodą.",
+            "visibility": "Matomumas"
         },
         "duplicates": {
             "title": "Rasti dublikatus",
@@ -4580,33 +4580,33 @@
             "launcherScheduler": "Tvarkaraštis"
         },
         "accountLock": {
-            "title": "[NEEDS TRANSLATION] Choose an account",
-            "signInAs": "[NEEDS TRANSLATION] Sign in as {name}",
-            "activeBadge": "[NEEDS TRANSLATION] Last used",
-            "passphraseProtected": "[NEEDS TRANSLATION] Password protected",
-            "unlocked": "[NEEDS TRANSLATION] Active session",
-            "openAccount": "[NEEDS TRANSLATION] Open",
-            "newUser": "[NEEDS TRANSLATION] New user",
-            "newUserHint": "[NEEDS TRANSLATION] Create another account",
-            "manageUsers": "[NEEDS TRANSLATION] Manage users",
-            "accountPasswordLabel": "[NEEDS TRANSLATION] Account password",
-            "backToList": "[NEEDS TRANSLATION] Back to accounts",
-            "unlockPlaceholder": "[NEEDS TRANSLATION] Enter account password",
-            "unlock": "[NEEDS TRANSLATION] Unlock",
-            "unlocking": "[NEEDS TRANSLATION] Unlocking...",
-            "wrongPassphrase": "[NEEDS TRANSLATION] Wrong account password. Please try again.",
-            "lockedOut": "[NEEDS TRANSLATION] Too many attempts. This account is temporarily locked.",
-            "lockedOutCountdown": "[NEEDS TRANSLATION] Try again in {seconds}s.",
-            "showPassword": "[NEEDS TRANSLATION] Show password",
-            "hidePassword": "[NEEDS TRANSLATION] Hide password",
-            "lastUsedToday": "[NEEDS TRANSLATION] Used today",
-            "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "title": "Pasirinkite paskyrą",
+            "signInAs": "Prisijungti kaip {name}",
+            "activeBadge": "Paskutinį kartą naudota",
+            "passphraseProtected": "Apsaugota slaptažodžiu",
+            "unlocked": "Aktyvi sesija",
+            "openAccount": "Atidaryti",
+            "newUser": "Naujas naudotojas",
+            "newUserHint": "Sukurti kitą paskyrą",
+            "manageUsers": "Tvarkyti naudotojus",
+            "accountPasswordLabel": "Paskyros slaptažodis",
+            "backToList": "Atgal į paskyras",
+            "unlockPlaceholder": "Įveskite paskyros slaptažodį",
+            "unlock": "Atrakinti",
+            "unlocking": "Atrakinama...",
+            "wrongPassphrase": "Neteisingas paskyros slaptažodis. Bandykite dar kartą.",
+            "lockedOut": "Per daug bandymų. Ši paskyra laikinai užrakinta.",
+            "lockedOutCountdown": "Bandykite dar kartą po {seconds} s.",
+            "showPassword": "Rodyti slaptažodį",
+            "hidePassword": "Slėpti slaptažodį",
+            "lastUsedToday": "Naudota šiandien",
+            "lastUsedYesterday": "Naudota vakar",
+            "lastUsedDaysAgo": "Naudota prieš {days} d.",
             "securityNote": "Paskyra apsaugota Argon2id + AES-KW + AES-256-GCM šifravimu"
         },
         "opendrive": {
-            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
-            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
+            "privacyTitle": "OpenDrive privatumas",
+            "privacyUpdated": "OpenDrive privatumas atnaujintas"
         }
     }
 }

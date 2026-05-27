@@ -68,7 +68,7 @@
             "selectAll": "Select All",
             "required": "სავალდებულო",
             "duplicate": "დუბლირება",
-            "current": "[NEEDS TRANSLATION] current"
+            "current": "მიმდინარე"
         },
         "connection": {
             "title": "სერვერთან დაკავშირება",
@@ -424,7 +424,7 @@
             "lockRcloneCrypt": "Rclone Crypt გადაფარვის დაბლოკვა",
             "unlockRcloneCrypt": "Rclone Crypt გადაფარვად გაშიფვრა…",
             "openAsAeroVaultOverlay": "გახსნა როგორც AeroVault Overlay",
-            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
+            "privacyEllipsis": "კონფიდენციალურობა..."
         },
         "transfer": {
             "transferring": "გადაცემა...",
@@ -3005,13 +3005,13 @@
             "selectedItems": "არჩეული ერთეულები",
             "sizesPartial": "(ზოგიერთი ზომა უცნობია)",
             "totalSize": "ჯამური ზომა",
-            "privacyHidden": "[NEEDS TRANSLATION] Hidden",
-            "privacyHiddenDesc": "[NEEDS TRANSLATION] Accessible by direct link only; not searchable.",
-            "privacyPrivate": "[NEEDS TRANSLATION] Private",
-            "privacyPrivateDesc": "[NEEDS TRANSLATION] Only the account owner can access this item.",
-            "privacyPublic": "[NEEDS TRANSLATION] Public",
-            "privacyPublicDesc": "[NEEDS TRANSLATION] Anyone with the link can access this item.",
-            "visibility": "[NEEDS TRANSLATION] Visibility"
+            "privacyHidden": "დამალული",
+            "privacyHiddenDesc": "ხელმისაწვდომია მხოლოდ პირდაპირი ბმულით, ძიებაში არ ჩანს.",
+            "privacyPrivate": "პირადი",
+            "privacyPrivateDesc": "მხოლოდ ანგარიშის მფლობელს შეუძლია ამ ელემენტზე წვდომა.",
+            "privacyPublic": "საჯარო",
+            "privacyPublicDesc": "ნებისმიერს, ვისაც აქვს ბმული, შეუძლია ამ ელემენტზე წვდომა.",
+            "visibility": "ხილვადობა"
         },
         "duplicates": {
             "title": "დუბლიკატების ძებნა",
@@ -4580,33 +4580,33 @@
             "launcherScheduler": "განრიგი"
         },
         "accountLock": {
-            "title": "[NEEDS TRANSLATION] Choose an account",
-            "signInAs": "[NEEDS TRANSLATION] Sign in as {name}",
-            "activeBadge": "[NEEDS TRANSLATION] Last used",
-            "passphraseProtected": "[NEEDS TRANSLATION] Password protected",
-            "unlocked": "[NEEDS TRANSLATION] Active session",
-            "openAccount": "[NEEDS TRANSLATION] Open",
-            "newUser": "[NEEDS TRANSLATION] New user",
-            "newUserHint": "[NEEDS TRANSLATION] Create another account",
-            "manageUsers": "[NEEDS TRANSLATION] Manage users",
-            "accountPasswordLabel": "[NEEDS TRANSLATION] Account password",
-            "backToList": "[NEEDS TRANSLATION] Back to accounts",
-            "unlockPlaceholder": "[NEEDS TRANSLATION] Enter account password",
-            "unlock": "[NEEDS TRANSLATION] Unlock",
-            "unlocking": "[NEEDS TRANSLATION] Unlocking...",
-            "wrongPassphrase": "[NEEDS TRANSLATION] Wrong account password. Please try again.",
-            "lockedOut": "[NEEDS TRANSLATION] Too many attempts. This account is temporarily locked.",
-            "lockedOutCountdown": "[NEEDS TRANSLATION] Try again in {seconds}s.",
-            "showPassword": "[NEEDS TRANSLATION] Show password",
-            "hidePassword": "[NEEDS TRANSLATION] Hide password",
-            "lastUsedToday": "[NEEDS TRANSLATION] Used today",
-            "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "title": "აირჩიეთ ანგარიში",
+            "signInAs": "შესვლა როგორც {name}",
+            "activeBadge": "ბოლოს გამოყენებული",
+            "passphraseProtected": "დაცულია პაროლით",
+            "unlocked": "აქტიური სესია",
+            "openAccount": "გახსნა",
+            "newUser": "ახალი მომხმარებელი",
+            "newUserHint": "შექმენით კიდევ ერთი ანგარიში",
+            "manageUsers": "მომხმარებლების მართვა",
+            "accountPasswordLabel": "ანგარიშის პაროლი",
+            "backToList": "ანგარიშებზე დაბრუნება",
+            "unlockPlaceholder": "შეიყვანეთ ანგარიშის პაროლი",
+            "unlock": "განბლოკვა",
+            "unlocking": "განბლოკვა...",
+            "wrongPassphrase": "ანგარიშის პაროლი არასწორია. სცადეთ ხელახლა.",
+            "lockedOut": "ძალიან ბევრი მცდელობა. ეს ანგარიში დროებით დაბლოკილია.",
+            "lockedOutCountdown": "სცადეთ ხელახლა {seconds} წმ-ში.",
+            "showPassword": "პაროლის ჩვენება",
+            "hidePassword": "პაროლის დამალვა",
+            "lastUsedToday": "გამოყენებულია დღეს",
+            "lastUsedYesterday": "გამოყენებულია გუშინ",
+            "lastUsedDaysAgo": "გამოყენებულია {days} დღის წინ",
             "securityNote": "ანგარიში დაცულია Argon2id + AES-KW + AES-256-GCM დაშიფვრით"
         },
         "opendrive": {
-            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
-            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
+            "privacyTitle": "OpenDrive კონფიდენციალურობა",
+            "privacyUpdated": "OpenDrive კონფიდენციალურობა განახლდა"
         }
     }
 }

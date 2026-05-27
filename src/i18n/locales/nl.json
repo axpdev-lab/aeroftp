@@ -68,7 +68,7 @@
             "selectAll": "Select All",
             "required": "vereist",
             "duplicate": "Dupliceren",
-            "current": "[NEEDS TRANSLATION] current"
+            "current": "huidig"
         },
         "connection": {
             "title": "Verbinden met Server",
@@ -424,7 +424,7 @@
             "lockRcloneCrypt": "Rclone Crypt-overlay vergrendelen",
             "unlockRcloneCrypt": "Ontsleutelen als Rclone Crypt-overlay…",
             "openAsAeroVaultOverlay": "Openen als AeroVault Overlay",
-            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
+            "privacyEllipsis": "Privacy..."
         },
         "transfer": {
             "transferring": "Overdragen...",
@@ -3005,13 +3005,13 @@
             "selectedItems": "Geselecteerde items",
             "sizesPartial": "(sommige groottes onbekend)",
             "totalSize": "Totale grootte",
-            "privacyHidden": "[NEEDS TRANSLATION] Hidden",
-            "privacyHiddenDesc": "[NEEDS TRANSLATION] Accessible by direct link only; not searchable.",
-            "privacyPrivate": "[NEEDS TRANSLATION] Private",
-            "privacyPrivateDesc": "[NEEDS TRANSLATION] Only the account owner can access this item.",
-            "privacyPublic": "[NEEDS TRANSLATION] Public",
-            "privacyPublicDesc": "[NEEDS TRANSLATION] Anyone with the link can access this item.",
-            "visibility": "[NEEDS TRANSLATION] Visibility"
+            "privacyHidden": "Verborgen",
+            "privacyHiddenDesc": "Alleen toegankelijk via directe link; niet doorzoekbaar.",
+            "privacyPrivate": "Privé",
+            "privacyPrivateDesc": "Alleen de accounteigenaar heeft toegang tot dit item.",
+            "privacyPublic": "Openbaar",
+            "privacyPublicDesc": "Iedereen met de link heeft toegang tot dit item.",
+            "visibility": "Zichtbaarheid"
         },
         "duplicates": {
             "title": "Duplicaten zoeken",
@@ -4605,8 +4605,8 @@
             "securityNote": "Account beschermd met Argon2id + AES-KW + AES-256-GCM-versleuteling"
         },
         "opendrive": {
-            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
-            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
+            "privacyTitle": "OpenDrive Privacy",
+            "privacyUpdated": "OpenDrive-privacy bijgewerkt"
         }
     }
 }

@@ -68,7 +68,7 @@
             "selectAll": "Select All",
             "required": "inahitajika",
             "duplicate": "Nakili",
-            "current": "[NEEDS TRANSLATION] current"
+            "current": "ya sasa"
         },
         "connection": {
             "title": "Unganisha na Seva",
@@ -424,7 +424,7 @@
             "lockRcloneCrypt": "Funga uwekeleaji wa Rclone Crypt",
             "unlockRcloneCrypt": "Simbua kama uwekeleaji wa Rclone Crypt…",
             "openAsAeroVaultOverlay": "Fungua kama AeroVault Overlay",
-            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
+            "privacyEllipsis": "Faragha..."
         },
         "transfer": {
             "transferring": "Inahamisha...",
@@ -3005,13 +3005,13 @@
             "selectedItems": "Vipengele vilivyochaguliwa",
             "sizesPartial": "(baadhi ya ukubwa hauwijulikani)",
             "totalSize": "Ukubwa wa jumla",
-            "privacyHidden": "[NEEDS TRANSLATION] Hidden",
-            "privacyHiddenDesc": "[NEEDS TRANSLATION] Accessible by direct link only; not searchable.",
-            "privacyPrivate": "[NEEDS TRANSLATION] Private",
-            "privacyPrivateDesc": "[NEEDS TRANSLATION] Only the account owner can access this item.",
-            "privacyPublic": "[NEEDS TRANSLATION] Public",
-            "privacyPublicDesc": "[NEEDS TRANSLATION] Anyone with the link can access this item.",
-            "visibility": "[NEEDS TRANSLATION] Visibility"
+            "privacyHidden": "Imefichwa",
+            "privacyHiddenDesc": "Inafikiwa kwa kiungo cha moja kwa moja tu, haitafutiki.",
+            "privacyPrivate": "Ya faragha",
+            "privacyPrivateDesc": "Mmiliki wa akaunti pekee ndiye anaweza kufikia kipengele hiki.",
+            "privacyPublic": "Ya umma",
+            "privacyPublicDesc": "Mtu yeyote mwenye kiungo anaweza kufikia kipengele hiki.",
+            "visibility": "Mwonekano"
         },
         "duplicates": {
             "title": "Tafuta Nakala",
@@ -4580,33 +4580,33 @@
             "launcherScheduler": "Mratibu wa Wakati"
         },
         "accountLock": {
-            "title": "[NEEDS TRANSLATION] Choose an account",
-            "signInAs": "[NEEDS TRANSLATION] Sign in as {name}",
-            "activeBadge": "[NEEDS TRANSLATION] Last used",
-            "passphraseProtected": "[NEEDS TRANSLATION] Password protected",
-            "unlocked": "[NEEDS TRANSLATION] Active session",
-            "openAccount": "[NEEDS TRANSLATION] Open",
-            "newUser": "[NEEDS TRANSLATION] New user",
-            "newUserHint": "[NEEDS TRANSLATION] Create another account",
-            "manageUsers": "[NEEDS TRANSLATION] Manage users",
-            "accountPasswordLabel": "[NEEDS TRANSLATION] Account password",
-            "backToList": "[NEEDS TRANSLATION] Back to accounts",
-            "unlockPlaceholder": "[NEEDS TRANSLATION] Enter account password",
-            "unlock": "[NEEDS TRANSLATION] Unlock",
-            "unlocking": "[NEEDS TRANSLATION] Unlocking...",
-            "wrongPassphrase": "[NEEDS TRANSLATION] Wrong account password. Please try again.",
-            "lockedOut": "[NEEDS TRANSLATION] Too many attempts. This account is temporarily locked.",
-            "lockedOutCountdown": "[NEEDS TRANSLATION] Try again in {seconds}s.",
-            "showPassword": "[NEEDS TRANSLATION] Show password",
-            "hidePassword": "[NEEDS TRANSLATION] Hide password",
-            "lastUsedToday": "[NEEDS TRANSLATION] Used today",
-            "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "title": "Chagua akaunti",
+            "signInAs": "Ingia kama {name}",
+            "activeBadge": "Iliyotumika mwisho",
+            "passphraseProtected": "Imelindwa kwa nenosiri",
+            "unlocked": "Kipindi kinachoendelea",
+            "openAccount": "Fungua",
+            "newUser": "Mtumiaji mpya",
+            "newUserHint": "Unda akaunti nyingine",
+            "manageUsers": "Simamia watumiaji",
+            "accountPasswordLabel": "Nenosiri la akaunti",
+            "backToList": "Rudi kwenye akaunti",
+            "unlockPlaceholder": "Weka nenosiri la akaunti",
+            "unlock": "Fungua",
+            "unlocking": "Inafungua...",
+            "wrongPassphrase": "Nenosiri la akaunti si sahihi. Tafadhali jaribu tena.",
+            "lockedOut": "Majaribio mengi sana. Akaunti hii imefungwa kwa muda.",
+            "lockedOutCountdown": "Jaribu tena baada ya sekunde {seconds}.",
+            "showPassword": "Onyesha nenosiri",
+            "hidePassword": "Ficha nenosiri",
+            "lastUsedToday": "Imetumika leo",
+            "lastUsedYesterday": "Imetumika jana",
+            "lastUsedDaysAgo": "Imetumika siku {days} zilizopita",
             "securityNote": "Akaunti imelindwa kwa usimbaji wa Argon2id + AES-KW + AES-256-GCM"
         },
         "opendrive": {
-            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
-            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
+            "privacyTitle": "Faragha ya OpenDrive",
+            "privacyUpdated": "Faragha ya OpenDrive imesasishwa"
         }
     }
 }

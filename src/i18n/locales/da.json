@@ -68,7 +68,7 @@
             "selectAll": "Select All",
             "required": "påkrævet",
             "duplicate": "Dupliker",
-            "current": "[NEEDS TRANSLATION] current"
+            "current": "aktuel"
         },
         "connection": {
             "title": "Forbind til server",
@@ -424,7 +424,7 @@
             "lockRcloneCrypt": "Lås Rclone Crypt-overlay",
             "unlockRcloneCrypt": "Dekrypter som Rclone Crypt-overlay…",
             "openAsAeroVaultOverlay": "Åbn som AeroVault Overlay",
-            "privacyEllipsis": "[NEEDS TRANSLATION] Privacy..."
+            "privacyEllipsis": "Privatliv..."
         },
         "transfer": {
             "transferring": "Overfører...",
@@ -3005,13 +3005,13 @@
             "selectedItems": "Valgte elementer",
             "sizesPartial": "(nogle størrelser ukendte)",
             "totalSize": "Samlet størrelse",
-            "privacyHidden": "[NEEDS TRANSLATION] Hidden",
-            "privacyHiddenDesc": "[NEEDS TRANSLATION] Accessible by direct link only; not searchable.",
-            "privacyPrivate": "[NEEDS TRANSLATION] Private",
-            "privacyPrivateDesc": "[NEEDS TRANSLATION] Only the account owner can access this item.",
-            "privacyPublic": "[NEEDS TRANSLATION] Public",
-            "privacyPublicDesc": "[NEEDS TRANSLATION] Anyone with the link can access this item.",
-            "visibility": "[NEEDS TRANSLATION] Visibility"
+            "privacyHidden": "Skjult",
+            "privacyHiddenDesc": "Tilgængelig kun via direkte link, ikke søgbar.",
+            "privacyPrivate": "Privat",
+            "privacyPrivateDesc": "Kun kontoejeren kan tilgå dette element.",
+            "privacyPublic": "Offentlig",
+            "privacyPublicDesc": "Alle med linket kan tilgå dette element.",
+            "visibility": "Synlighed"
         },
         "duplicates": {
             "title": "Find dubletter",
@@ -4580,33 +4580,33 @@
             "launcherScheduler": "Planlægger"
         },
         "accountLock": {
-            "title": "[NEEDS TRANSLATION] Choose an account",
-            "signInAs": "[NEEDS TRANSLATION] Sign in as {name}",
-            "activeBadge": "[NEEDS TRANSLATION] Last used",
-            "passphraseProtected": "[NEEDS TRANSLATION] Password protected",
-            "unlocked": "[NEEDS TRANSLATION] Active session",
-            "openAccount": "[NEEDS TRANSLATION] Open",
-            "newUser": "[NEEDS TRANSLATION] New user",
-            "newUserHint": "[NEEDS TRANSLATION] Create another account",
-            "manageUsers": "[NEEDS TRANSLATION] Manage users",
-            "accountPasswordLabel": "[NEEDS TRANSLATION] Account password",
-            "backToList": "[NEEDS TRANSLATION] Back to accounts",
-            "unlockPlaceholder": "[NEEDS TRANSLATION] Enter account password",
-            "unlock": "[NEEDS TRANSLATION] Unlock",
-            "unlocking": "[NEEDS TRANSLATION] Unlocking...",
-            "wrongPassphrase": "[NEEDS TRANSLATION] Wrong account password. Please try again.",
-            "lockedOut": "[NEEDS TRANSLATION] Too many attempts. This account is temporarily locked.",
-            "lockedOutCountdown": "[NEEDS TRANSLATION] Try again in {seconds}s.",
-            "showPassword": "[NEEDS TRANSLATION] Show password",
-            "hidePassword": "[NEEDS TRANSLATION] Hide password",
-            "lastUsedToday": "[NEEDS TRANSLATION] Used today",
-            "lastUsedYesterday": "[NEEDS TRANSLATION] Used yesterday",
-            "lastUsedDaysAgo": "[NEEDS TRANSLATION] Used {days} days ago",
+            "title": "Vælg en konto",
+            "signInAs": "Log ind som {name}",
+            "activeBadge": "Senest brugt",
+            "passphraseProtected": "Adgangskodebeskyttet",
+            "unlocked": "Aktiv session",
+            "openAccount": "Åbn",
+            "newUser": "Ny bruger",
+            "newUserHint": "Opret en anden konto",
+            "manageUsers": "Administrer brugere",
+            "accountPasswordLabel": "Kontoadgangskode",
+            "backToList": "Tilbage til konti",
+            "unlockPlaceholder": "Indtast kontoadgangskode",
+            "unlock": "Lås op",
+            "unlocking": "Låser op...",
+            "wrongPassphrase": "Forkert kontoadgangskode. Prøv igen.",
+            "lockedOut": "For mange forsøg. Denne konto er midlertidigt låst.",
+            "lockedOutCountdown": "Prøv igen om {seconds}s.",
+            "showPassword": "Vis adgangskode",
+            "hidePassword": "Skjul adgangskode",
+            "lastUsedToday": "Brugt i dag",
+            "lastUsedYesterday": "Brugt i går",
+            "lastUsedDaysAgo": "Brugt for {days} dage siden",
             "securityNote": "Konto beskyttet med Argon2id + AES-KW + AES-256-GCM-kryptering"
         },
         "opendrive": {
-            "privacyTitle": "[NEEDS TRANSLATION] OpenDrive Privacy",
-            "privacyUpdated": "[NEEDS TRANSLATION] OpenDrive privacy updated"
+            "privacyTitle": "OpenDrive-privatliv",
+            "privacyUpdated": "OpenDrive-privatliv opdateret"
         }
     }
 }
