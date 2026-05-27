@@ -65,7 +65,6 @@ pub async fn mega_df_query() -> Result<(u64, u64), ProviderError> {
     let mut cmd = Command::new(&resolved_cmd);
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt as _;
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
 
