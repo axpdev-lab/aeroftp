@@ -26,6 +26,7 @@ const makeUser = (overrides: Partial<UserMetadata> = {}): UserMetadata => ({
     updatedAt: 0,
     lastUnlockedAt: null,
     isActive: true,
+    isAdmin: true,
     ...overrides,
 });
 
@@ -98,6 +99,7 @@ describe('users list cache', () => {
             'hasPassphrase',
             'id',
             'isActive',
+            'isAdmin',
             'name',
             'sortOrder',
         ]);
