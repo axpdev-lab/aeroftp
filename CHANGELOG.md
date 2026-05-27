@@ -5,7 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [4.0.0] - 2026-05-24
+## [4.0.0] - 2026-05-27
+
+### DAG Transfer Engine Convergence and Multi-User Account Partition
+
+v4.0.0 ships two convergent architectural shifts. The first is the DAG transfer engine, which becomes the single production path for every transfer surface. The second is the Multi-User Account Partition, which makes AeroFTP a true single-installation multi-account application: saved servers, settings, OAuth tokens, sync state and lockout counters are now partitioned per user inside the same vault, with an OS-style account lock screen and an admin role for peer account management.
 
 ### DAG Transfer Engine Convergence
 
@@ -63,9 +67,46 @@ The default implementations return `NotSupported`, so a provider that never adve
 
 The MCP tool surface is unchanged: same names, same arguments, same notifications. Progress events are now sourced from the engine's per-node lifecycle, but downstream consumers see the same JSON shape and the same event cadence. The CLI exit codes and the GUI `transfer_event` channel are likewise unchanged.
 
-### Why v4.0.0
+### Why v4.0.0 (DAG)
 
-The version bump reflects the architectural shift: the production transfer path is now a single, provider-agnostic, capability-aware DAG scheduler, with five new trait methods on the public `StorageProvider` API. Three flags, four shims, and the legacy batch orchestrator are gone. The convergence is complete; the cleanup pass for `provider_transfer_executor.rs` is filed as accepted technical debt for the post-v4.0.0 window (see `docs/dev/roadmap/APPENDIX-DAG-ENGINE/STATUS_TODO.md`).
+The version bump reflects the architectural shift on the transfer side: the production transfer path is now a single, provider-agnostic, capability-aware DAG scheduler, with five new trait methods on the public `StorageProvider` API. Three flags, four shims, and the legacy batch orchestrator are gone. The convergence is complete; the cleanup pass for `provider_transfer_executor.rs` is filed as accepted technical debt for the post-v4.0.0 window (see `docs/dev/roadmap/APPENDIX-DAG-ENGINE/STATUS_TODO.md`).
+
+---
+
+### Multi-User Account Partition
+
+AeroFTP becomes a single-installation, multi-account application. The vault schema migrates from a single keyspace to a relational layout with four logical tables (`users`, `server_profiles`, `user_settings`, `global_state`) and a partition routing layer (`user_partitions.rs`) that prefixes every read, write and listing with the active user id. The migration is idempotent and forward-only: existing single-user installs keep their data on the first boot under a synthesised `default` user.
+
+#### What's new
+
+- **Per-user accounts**: any number of named accounts can coexist in the same install. Each account has a display name, an optional avatar (image or color initial), an optional passphrase, an admin flag and a created-at timestamp. The first user is auto-created on first boot and inherits the existing data.
+- **OS-style Account Lock Screen** (`AccountLockScreen.tsx`): boot picker that lists the configured users with their avatar, prompts for the passphrase when the user has one, and routes the unlocked user through to the regular Master Password flow when Master Password is enabled. Per-user lockout state (`user_lockout_<id>`) persists across restarts.
+- **Admin role with peer management**: an admin can rename, delete, set the avatar of, and reset the passphrase of peer users. The current admin count is enforced by a server-side guard so the last admin cannot be demoted or deleted (returns `LAST_ADMIN_GUARD`). A non-admin can only edit, change passphrase, or delete their own account.
+- **Destructive admin passphrase reset**: a dedicated triple-confirm dialog (`DestructiveResetDialog.tsx`) makes the cost of an admin-driven passphrase reset explicit. The admin types the literal string `RESET`, sees the live byte count of the peer's partition data that is about to be re-encrypted under the new passphrase, and chooses the new passphrase with a strength bar.
+- **Partition-aware vault**: every saved server, OAuth token, sync state, custom setting, watcher state and cloud sync record is stored under a `user:<id>:` namespace inside the same encrypted vault. Switching user clears the in-memory `USER_SESSION` immediately so no stale state leaks across accounts.
+- **Partition-aware CLI**: the `aeroftp-cli` carries a `--user <id>` flag that routes every profile lookup, transfer, sync and AeroAgent invocation through the matching partition. Without `--user`, the CLI uses the default user.
+- **MASTER_PASSWORD_CHANGED event** (`masterPasswordEvents.ts`): the titlebar lock indicator now reacts immediately to Master Password enable, disable, and reset, without a window refresh.
+
+#### Backend hardening
+
+- **Self-or-admin gate** (`ensure_user_can_modify`): centralises authorization for `rename_user`, `delete_user`, `set_user_avatar`, `change_passphrase`, `add_user` (post-seed), `reorder_users`. Returns typed errors (`NOT_AUTHORIZED`, `LAST_ADMIN_GUARD`, `ADMIN_RESET_NOT_FOR_SELF`, `STORE_NOT_READY`, `USER_NOT_FOUND`, `WRONG_PASSPHRASE`, `PASSPHRASE_REQUIRED`) rather than raw strings, in line with the CMS-grade error model the rest of the app follows.
+- **DEK lifetime preserved**: each user has a random data encryption key wrapped via AES-KW under either an Argon2id-derived passphrase key or the device root key (when no passphrase is set). `SecretBox` zeroizes the DEK on session clear.
+- **Cross-user dedup probe** (HMAC-keyed, MU-7 backend): allows the app to surface "this file is already present in another user's library" without exposing the raw filename across partitions.
+- **Keystore export foundations** (MU-FE-FOUND-BACKUP): the keystore export manifest gains a `manifestVersion` and a `KeystoreScope` placeholder so a future v4.0.x release can ship a per-user / all-users backup picker without a second migration. Today's export is unchanged.
+
+#### Fixed
+
+- **Master Password removal leaves stale titlebar lock icon** (MU-FE-P5-BUG): disabling the Master Password used to leave the titlebar lock icon in the active state until the next window reload. The new `MASTER_PASSWORD_CHANGED` event clears the indicator synchronously.
+
+#### Compatibility
+
+- **Forward migration is automatic and idempotent**. The first boot on v4.0.0 detects a pre-partition vault, creates a `default` user, and rewrites every keystore entry under the `user:default:` namespace. Subsequent boots are a no-op.
+- **Single-user installs see no behavioural change** beyond the new lock screen (which they can keep disabled): one user, no passphrase, no admin gating to navigate.
+- **CLI compatibility**: invocations without `--user` continue to target the `default` user, so existing scripts keep working.
+
+### Why v4.0.0 (Multi-User)
+
+Multi-User Account Partition is a schema-level change in the vault and an authorization-level change on the management API. Bumping to v4.0.0 makes both the migration and the surface change explicit. The destructive admin reset, the last-admin guard and the OS-style lock screen are the load-bearing pieces of the new account surface: every one of them was audited (`MU-SEC P1`) before landing.
 
 ---
 
