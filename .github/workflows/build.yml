@@ -27,25 +27,18 @@ jobs:
             target: linux
           - platform: windows-latest
             target: windows
-          # Pinned to macos-14 (Sonoma, arm64) instead of macos-latest:
-          # `macos-latest` now serves macOS 15 (Sequoia), and Tauri's
-          # `bundle_dmg.sh` consistently fails on Sequoia after a clean
-          # release build (the `.app` is created, then DMG bundling
-          # exits 1 with no actionable log). Sonoma keeps the bundler
-          # green. Revisit once upstream Tauri ships a Sequoia-compatible
-          # `bundle_dmg.sh` (or once we move to a custom DMG step).
+          # Single universal2 binary (x86_64 + arm64) built on macos-14
+          # (Sonoma): one DMG runs natively on both Intel and Apple Silicon.
+          # macos-14 is pinned instead of macos-latest because Tauri's
+          # `bundle_dmg.sh` fails on macOS 15 (Sequoia) after a clean release
+          # build (the `.app` is created, then DMG bundling exits 1 with no
+          # actionable log). The separate macos-13 (Intel) leg was removed:
+          # GitHub retired that runner image on 2025-12-08, so the job queued
+          # forever. The universal build replaces it and keeps Intel coverage
+          # (minimumSystemVersion in tauri.conf still gates the OS floor).
           - platform: macos-14
             target: macos
-            arch: aarch64
-          # macOS Intel (x86_64): restored in v4.0.0 now that the BigSur
-          # boot regression (#241) is fixed. macos-13 is the last Intel
-          # runner image (Ventura); native x86_64 build, no cross-compile,
-          # DMG bundler stable (the Sequoia breakage is macos-15 only).
-          # minimumSystemVersion 10.13 covers Big Sur 11. A single universal
-          # binary is deferred to a dedicated session on modern Mac hardware.
-          - platform: macos-13
-            target: macos
-            arch: x64
+            arch: universal
 
     runs-on: ${{ matrix.platform }}
     
@@ -81,6 +74,10 @@ jobs:
           # See "Drop stale whisper-rs-sys CMake artifacts" below for the
           # belt-and-suspenders runtime cleanup.
           prefix-key: 'v2-whisper-vs18'
+
+      - name: Add macOS universal targets
+        if: matrix.target == 'macos'
+        run: rustup target add x86_64-apple-darwin aarch64-apple-darwin
 
       # whisper-rs-sys vendors whisper.cpp and runs CMake at build time. The
       # generator picked by `cmake-rs` is whichever Visual Studio CMake finds
@@ -181,9 +178,30 @@ jobs:
         run: cargo test
 
       - name: Build Tauri app
+        if: matrix.target != 'macos'
         run: npm run tauri build
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Tauri app (macOS universal)
+        if: matrix.target == 'macos'
+        run: npm run tauri build -- --target universal-apple-darwin
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # The universal build emits its bundle under the target-triple dir.
+      # Stage the DMG at the conventional path so every downstream step
+      # (artifact upload, Sigstore signing, beta rename, release upload)
+      # keeps working unchanged.
+      - name: Stage universal DMG at conventional path
+        if: matrix.target == 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p src-tauri/target/release/bundle/dmg
+          cp src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg \
+            src-tauri/target/release/bundle/dmg/
+          ls -la src-tauri/target/release/bundle/dmg/
 
       - name: Patch Debian dispatcher layout
         if: matrix.target == 'linux'
