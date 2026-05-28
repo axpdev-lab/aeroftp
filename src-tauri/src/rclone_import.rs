@@ -1021,6 +1021,34 @@ fn sanitize_rclone_remote_name(name: &str) -> String {
     collapsed.trim_matches(|c| c == ' ' || c == '-').to_string()
 }
 
+/// Whether an endpoint URL points at the local loopback interface
+/// (127.0.0.0/8, ::1, or `localhost`). Self-signed local bridges such as the
+/// Filen Desktop S3 gateway present a certificate without IP SANs, which rclone
+/// rejects unless `no_check_certificate` is set; AeroFTP itself accepts invalid
+/// certs on loopback, so the export mirrors that.
+fn endpoint_is_loopback(endpoint: &str) -> bool {
+    let without_scheme = endpoint
+        .strip_prefix("https://")
+        .or_else(|| endpoint.strip_prefix("http://"))
+        .unwrap_or(endpoint);
+    let authority = without_scheme.split('/').next().unwrap_or(without_scheme);
+    // Drop any userinfo (`user:pass@host`).
+    let hostport = authority.rsplit('@').next().unwrap_or(authority);
+    // IPv6 literals are bracketed: `[::1]:1800`.
+    let host = if let Some(rest) = hostport.strip_prefix('[') {
+        rest.split(']').next().unwrap_or(rest)
+    } else {
+        hostport.split(':').next().unwrap_or(hostport)
+    };
+    let host = host.to_ascii_lowercase();
+    host == "localhost"
+        || host == "::1"
+        || host
+            .parse::<std::net::Ipv4Addr>()
+            .map(|ip| ip.is_loopback())
+            .unwrap_or(false)
+}
+
 /// Export server profiles to rclone.conf INI format.
 /// Passwords are obscured using rclone's AES-256-CTR scheme for compatibility.
 pub fn export_rclone(
@@ -1143,7 +1171,7 @@ pub fn export_rclone(
                     "cloudflare-r2" => "Cloudflare",
                     "digitalocean-spaces" => "DigitalOcean",
                     "wasabi" => "Wasabi",
-                    "backblaze-b2" => "Backblaze",
+                    "backblaze" | "backblaze-b2" => "Backblaze",
                     "linode-object-storage" => "Linode",
                     "scaleway" => "Scaleway",
                     "storj" => "Storj",
@@ -1167,29 +1195,69 @@ pub fn export_rclone(
                     // verbatim instead of reversing it first.
                     output.push_str(&format!("secret_access_key = {}\n", pw));
                 }
-                let mut emitted_endpoint = false;
                 let mut pinned_bucket: Option<String> = None;
+                let mut endpoint_from_opts: Option<String> = None;
+                let mut verify_cert_off = false;
                 if let Some(opts) = options {
                     if let Some(region) = opts.get("region").and_then(|v| v.as_str()) {
                         output.push_str(&format!("region = {}\n", region));
                     }
-                    if let Some(endpoint) = opts.get("endpoint").and_then(|v| v.as_str()) {
-                        output.push_str(&format!("endpoint = {}\n", endpoint));
-                        emitted_endpoint = true;
+                    if let Some(endpoint) = opts
+                        .get("endpoint")
+                        .and_then(|v| v.as_str())
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                    {
+                        endpoint_from_opts = Some(endpoint.to_string());
                     }
                     if let Some(b) = opts.get("bucket").and_then(|v| v.as_str()) {
                         if !b.trim().is_empty() {
                             pinned_bucket = Some(b.trim().to_string());
                         }
                     }
+                    // verify_cert is stored as a bool by the GUI but may arrive
+                    // as the string "false" through normalization; honour both.
+                    if let Some(vc) = opts.get("verify_cert").or_else(|| opts.get("verifyCert")) {
+                        verify_cert_off = vc.as_bool() == Some(false) || vc.as_str() == Some("false");
+                    }
                 }
-                // Fallback: some profiles (Storj S3 gateway, Cloudflare R2
-                // when configured via the legacy URL field, generic S3
-                // remotes) embed the endpoint URL directly in the host
-                // field instead of the options map. Reuse it so the
-                // rclone section is functional out of the box.
-                if !emitted_endpoint && !server.host.trim().is_empty() {
-                    let endpoint = server.host.trim_end_matches('/');
+
+                // Resolve the effective endpoint in precedence order:
+                //   1. explicit `options.endpoint`
+                //   2. the profile host field (Storj S3 gateway, Cloudflare R2
+                //      via the legacy URL field, generic S3 remotes embed the
+                //      endpoint URL directly in the host)
+                //   3. the provider-registry preset (Google Cloud Storage,
+                //      FileLu S5, ...). Without this last fallback, registry-
+                //      default presets exported with no endpoint at all and
+                //      rclone silently fell back to the AWS auto-region host
+                //      `<bucket>.s3.auto.amazonaws.com`, which is unreachable
+                //      (observed on Google S3-interop: `dial 127.0.0.1:443`).
+                //      Mirrors the connect path's apply_s3_profile_defaults.
+                let resolved_endpoint = endpoint_from_opts
+                    .or_else(|| {
+                        let h = server.host.trim();
+                        if h.is_empty() {
+                            None
+                        } else {
+                            Some(h.to_string())
+                        }
+                    })
+                    .or_else(|| {
+                        let mut probe: HashMap<String, String> = HashMap::new();
+                        if let Some(opts) = options.and_then(|v| v.as_object()) {
+                            for (k, v) in opts {
+                                crate::profile_loader::insert_profile_option(&mut probe, k, v);
+                            }
+                        }
+                        crate::profile_loader::apply_s3_profile_defaults(
+                            &mut probe,
+                            Some(provider_id),
+                        )
+                    });
+
+                if let Some(endpoint) = resolved_endpoint {
+                    let endpoint = endpoint.trim_end_matches('/');
                     let endpoint =
                         if endpoint.starts_with("http://") || endpoint.starts_with("https://") {
                             endpoint.to_string()
@@ -1197,6 +1265,15 @@ pub fn export_rclone(
                             format!("https://{}", endpoint)
                         };
                     output.push_str(&format!("endpoint = {}\n", endpoint));
+
+                    // Local self-signed bridges (Filen Desktop S3 at
+                    // https://127.0.0.1:1800) present a certificate without IP
+                    // SANs that rclone rejects by default; AeroFTP itself
+                    // accepts invalid certs on loopback. Honour an explicit
+                    // verify_cert=false from the profile too.
+                    if verify_cert_off || endpoint_is_loopback(&endpoint) {
+                        output.push_str("no_check_certificate = true\n");
+                    }
                 }
 
                 // Bucket reconciliation. The s3 backend has no `bucket` config
@@ -1801,5 +1878,126 @@ type = fichier
             r
         });
         assert_eq!(result.servers.len(), 1, "alias must not become a server");
+    }
+
+    #[test]
+    fn test_endpoint_is_loopback() {
+        assert!(endpoint_is_loopback("https://127.0.0.1:1800"));
+        assert!(endpoint_is_loopback("http://localhost:9000"));
+        assert!(endpoint_is_loopback("https://127.0.0.1"));
+        assert!(endpoint_is_loopback("https://[::1]:443"));
+        assert!(endpoint_is_loopback("https://127.5.6.7:8000/path"));
+        assert!(!endpoint_is_loopback("https://storage.googleapis.com"));
+        assert!(!endpoint_is_loopback("https://s3.eu-central-003.backblazeb2.com"));
+        // A bucket literally named "localhost" must not be misread: the host
+        // here is the real endpoint, not the path segment.
+        assert!(!endpoint_is_loopback("https://s3.example.com/localhost"));
+    }
+
+    #[test]
+    fn test_export_rclone_s3_registry_endpoint_fallback() {
+        // #3 regression: Google Cloud Storage S3-interop profiles store the
+        // bucket but not the endpoint (it comes from the provider registry).
+        // Before the fix the export emitted no endpoint and rclone fell back
+        // to the unreachable AWS auto-region host. The export must now resolve
+        // the preset endpoint just like the connect path.
+        let servers = vec![RcloneExportServer {
+            name: "gcs".to_string(),
+            host: String::new(),
+            port: 443,
+            username: "GOOGTESTKEY".to_string(),
+            protocol: Some("s3".to_string()),
+            options: Some(serde_json::json!({ "bucket": "gcsbucket" })),
+            provider_id: Some("google-cloud-storage".to_string()),
+        }];
+        let mut passwords = HashMap::new();
+        passwords.insert("gcs".to_string(), "gcssecret".to_string());
+
+        let tmp = std::env::temp_dir().join("aeroftp-test-export-s3-gcs.conf");
+        export_rclone(&servers, &passwords, &tmp).expect("should export");
+        let conf = std::fs::read_to_string(&tmp).expect("read conf");
+        std::fs::remove_file(&tmp).ok();
+
+        assert!(
+            conf.contains("endpoint = https://storage.googleapis.com"),
+            "must resolve the GCS preset endpoint:\n{conf}"
+        );
+        assert!(
+            !conf.contains("amazonaws.com"),
+            "must not leave rclone to fall back to the AWS auto-region:\n{conf}"
+        );
+        // Loopback guard must not trip for a public endpoint.
+        assert!(
+            !conf.contains("no_check_certificate"),
+            "public endpoint must keep cert verification:\n{conf}"
+        );
+    }
+
+    #[test]
+    fn test_export_rclone_s3_loopback_no_check_certificate() {
+        // #2 regression: the Filen Desktop S3 bridge runs on a self-signed
+        // loopback endpoint without IP SANs. rclone rejects it unless
+        // `no_check_certificate` is set, mirroring AeroFTP's accept-invalid-
+        // certs-on-loopback behaviour.
+        let servers = vec![RcloneExportServer {
+            name: "filen-s3".to_string(),
+            host: String::new(),
+            port: 1800,
+            username: "FILENKEY".to_string(),
+            protocol: Some("s3".to_string()),
+            options: Some(serde_json::json!({
+                "endpoint": "https://127.0.0.1:1800",
+                "bucket": "filen",
+                "verifyCert": false
+            })),
+            provider_id: Some("filen-desktop-s3".to_string()),
+        }];
+        let mut passwords = HashMap::new();
+        passwords.insert("filen-s3".to_string(), "filensecret".to_string());
+
+        let tmp = std::env::temp_dir().join("aeroftp-test-export-s3-filen.conf");
+        export_rclone(&servers, &passwords, &tmp).expect("should export");
+        let conf = std::fs::read_to_string(&tmp).expect("read conf");
+        std::fs::remove_file(&tmp).ok();
+
+        assert!(
+            conf.contains("endpoint = https://127.0.0.1:1800"),
+            "loopback endpoint must be preserved:\n{conf}"
+        );
+        assert!(
+            conf.contains("no_check_certificate = true"),
+            "loopback self-signed bridge must disable cert verification:\n{conf}"
+        );
+    }
+
+    #[test]
+    fn test_export_rclone_s3_public_endpoint_keeps_cert_check() {
+        // Regression guard: a normal public S3 endpoint must keep certificate
+        // verification and must not be rewritten.
+        let servers = vec![RcloneExportServer {
+            name: "aws".to_string(),
+            host: "s3.amazonaws.com".to_string(),
+            port: 443,
+            username: "AKIAEXAMPLE".to_string(),
+            protocol: Some("s3".to_string()),
+            options: Some(serde_json::json!({ "region": "eu-west-1", "bucket": "mybucket" })),
+            provider_id: Some("amazon-s3".to_string()),
+        }];
+        let mut passwords = HashMap::new();
+        passwords.insert("aws".to_string(), "s3secret".to_string());
+
+        let tmp = std::env::temp_dir().join("aeroftp-test-export-s3-aws-public.conf");
+        export_rclone(&servers, &passwords, &tmp).expect("should export");
+        let conf = std::fs::read_to_string(&tmp).expect("read conf");
+        std::fs::remove_file(&tmp).ok();
+
+        assert!(
+            conf.contains("endpoint = https://s3.amazonaws.com"),
+            "host endpoint must be preserved:\n{conf}"
+        );
+        assert!(
+            !conf.contains("no_check_certificate"),
+            "public endpoint must keep cert verification:\n{conf}"
+        );
     }
 }
