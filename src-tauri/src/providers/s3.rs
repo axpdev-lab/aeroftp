@@ -2124,6 +2124,35 @@ impl StorageProvider for S3Provider {
     }
 
     async fn connect(&mut self) -> Result<(), ProviderError> {
+        // Guard against the silent AWS auto-region fallback. With no endpoint
+        // configured, `endpoint()` builds `https://s3.{region}.amazonaws.com`,
+        // which is only correct for real AWS regions. Every other S3-compatible
+        // provider (Backblaze B2, R2, MinIO, Storj, ...) needs an explicit
+        // endpoint. A profile saved without the endpoint field and with a
+        // non-AWS placeholder region (`auto` or empty) would otherwise dial
+        // `s3.auto.amazonaws.com` and surface an opaque DNS/network error
+        // (observed on a Backblaze profile saved without the endpoint). Fail
+        // fast with an actionable message instead.
+        let endpoint_missing = self
+            .config
+            .endpoint
+            .as_deref()
+            .map(str::trim)
+            .unwrap_or("")
+            .is_empty();
+        if endpoint_missing {
+            let region = self.config.region.trim();
+            if region.is_empty() || region.eq_ignore_ascii_case("auto") {
+                return Err(ProviderError::InvalidConfig(
+                    "S3 endpoint required: this profile has no endpoint and the \
+                     region is 'auto'/empty (which has no AWS endpoint). Set the \
+                     Endpoint field, e.g. s3.<region>.backblazeb2.com for \
+                     Backblaze B2, or use the native provider preset."
+                        .to_string(),
+                ));
+            }
+        }
+
         // Reset clock offset for fresh connection
         self.clock_offset_secs = 0;
 
@@ -3520,9 +3549,23 @@ impl StorageProvider for S3Provider {
     }
 
     fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
+        // Filen Desktop's local S3 bridge returns 501 on CreateMultipartUpload
+        // by design. The DAG shaped-file path fans any file larger than the
+        // chunk size into UploadPart nodes whenever `supports_multipart` is
+        // true (it does NOT consult MULTIPART_THRESHOLD: that gate lives only
+        // in the legacy `upload()` path). Advertising multipart for filen-s3
+        // therefore made the lazy `begin_multipart_upload` fail the whole
+        // transfer for anything above the chunk size (observed: 100M/1G
+        // uploads returned code 7). Report single-shot only so the runner
+        // builds a whole-file UploadFile node instead.
+        let supports_multipart = !self.is_filen_s3_endpoint();
         super::TransferOptimizationHints {
-            supports_multipart: true,
-            multipart_threshold: Self::MULTIPART_THRESHOLD as u64,
+            supports_multipart,
+            multipart_threshold: if supports_multipart {
+                Self::MULTIPART_THRESHOLD as u64
+            } else {
+                u64::MAX
+            },
             multipart_part_size: self.effective_part_size() as u64,
             multipart_max_parallel: 4,
             supports_range_download: true,
@@ -4617,6 +4660,56 @@ mod tests {
             }
             other => panic!("expected NotSupported, got {other:?}"),
         }
+    }
+
+    /// The DAG shaped-file path fans uploads into UploadPart nodes whenever
+    /// `supports_multipart` is advertised (it ignores MULTIPART_THRESHOLD).
+    /// Filen Desktop's bridge rejects CreateMultipartUpload, so it must
+    /// advertise single-shot only or every >chunk-size upload fails. A
+    /// normal S3 endpoint keeps multipart on.
+    #[test]
+    fn s3_filen_bridge_disables_multipart_hint() {
+        let filen = make_provider(Some("https://local.s3.filen.io"));
+        let hints = filen.transfer_optimization_hints();
+        assert!(
+            !hints.supports_multipart,
+            "filen-s3 must advertise single-shot only"
+        );
+        assert_eq!(hints.multipart_threshold, u64::MAX);
+
+        let normal = make_provider(Some("http://localhost:9000"));
+        let hints = normal.transfer_optimization_hints();
+        assert!(
+            hints.supports_multipart,
+            "regular S3 must keep multipart enabled"
+        );
+    }
+
+    /// Connect must fail fast with a clear error when the profile has no
+    /// endpoint and a non-AWS placeholder region, instead of silently dialing
+    /// `s3.auto.amazonaws.com` (the old behaviour produced an opaque network
+    /// error on Backblaze profiles saved without the endpoint field).
+    #[tokio::test]
+    async fn s3_connect_rejects_missing_endpoint_with_auto_region() {
+        let mut provider = S3Provider::new(S3Config {
+            endpoint: None,
+            region: "auto".to_string(),
+            access_key_id: "k".to_string(),
+            secret_access_key: secrecy::SecretString::from("s".to_string()),
+            bucket: "b".to_string(),
+            prefix: None,
+            path_style: true,
+            storage_class: None,
+            sse_mode: None,
+            sse_kms_key_id: None,
+            verify_cert: true,
+        })
+        .expect("create provider");
+        let result = StorageProvider::connect(&mut provider).await;
+        assert!(
+            matches!(result, Err(ProviderError::InvalidConfig(_))),
+            "expected InvalidConfig, got {result:?}"
+        );
     }
 
     /// SG-T05 gate: S3 advertises the server_side_copy capability under
