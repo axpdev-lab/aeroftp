@@ -2704,12 +2704,14 @@ interface UpdateVerificationInfo {
         used: number; file_count: number; dir_count: number;
         truncated: boolean; method: string;
       }>('provider_scan_used', { path: scanRoot });
-      if (res.used === 0 && res.file_count === 0) {
-        // A 0-byte / 0-file result is almost always a scope or
-        // server-quirk artefact (e.g. WebDAV Depth:infinity not recursed
-        // on an old backend build), not a real empty account. Do NOT
-        // overwrite a previously good cached figure with 0: keep the
-        // cache and tell the user instead.
+      if (res.used === 0 && res.file_count === 0 && res.dir_count > 0) {
+        // Directories were listed but zero files were counted. On some old
+        // WebDAV backends Depth:infinity is silently treated as Depth:1, so a
+        // tree with nested files reports as empty. Treat this as a suspect
+        // scan: keep any previously cached figure and warn, rather than
+        // overwriting a good number with a false 0. A genuinely empty
+        // location (0 files AND 0 directories) falls through to the success
+        // branch below and is recorded as 0 bytes.
         notify.error(
           t('statusBar.usedScanFailed'),
           t('statusBar.usedScanEmpty', { path: scanRoot }),
