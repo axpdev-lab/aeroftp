@@ -27,18 +27,23 @@ jobs:
             target: linux
           - platform: windows-latest
             target: windows
-          # Single universal2 binary (x86_64 + arm64) built on macos-14
-          # (Sonoma): one DMG runs natively on both Intel and Apple Silicon.
-          # macos-14 is pinned instead of macos-latest because Tauri's
-          # `bundle_dmg.sh` fails on macOS 15 (Sequoia) after a clean release
-          # build (the `.app` is created, then DMG bundling exits 1 with no
-          # actionable log). The separate macos-13 (Intel) leg was removed:
-          # GitHub retired that runner image on 2025-12-08, so the job queued
-          # forever. The universal build replaces it and keeps Intel coverage
-          # (minimumSystemVersion in tauri.conf still gates the OS floor).
+          # Two per-arch macOS DMGs, both built on macos-14 (Sonoma). Pinned
+          # to macos-14 (not macos-latest) because Tauri's `bundle_dmg.sh`
+          # fails on macOS 15 (Sequoia). The Intel leg cross-compiles to
+          # x86_64-apple-darwin on the arm64 runner: a single `universal`
+          # leg is intentionally avoided because tauri's universal pseudo-
+          # target lipo's only the main GUI binary, leaving the extra package
+          # bins (aeroftp-cli, aeroftp-dispatch, aerorsync_serve, ...) absent
+          # from the universal dir and breaking `.app` bundling. A real target
+          # triple builds and bundles every bin natively in one pass. The old
+          # macos-13 (Intel) leg was removed: GitHub retired that runner image
+          # on 2025-12-08, leaving the job queued forever.
           - platform: macos-14
             target: macos
-            arch: universal
+            arch: aarch64
+          - platform: macos-14
+            target: macos
+            arch: x64
 
     runs-on: ${{ matrix.platform }}
     
@@ -75,9 +80,9 @@ jobs:
           # belt-and-suspenders runtime cleanup.
           prefix-key: 'v2-whisper-vs18'
 
-      - name: Add macOS universal targets
-        if: matrix.target == 'macos'
-        run: rustup target add x86_64-apple-darwin aarch64-apple-darwin
+      - name: Add macOS Intel cross target
+        if: matrix.target == 'macos' && matrix.arch == 'x64'
+        run: rustup target add x86_64-apple-darwin
 
       # whisper-rs-sys vendors whisper.cpp and runs CMake at build time. The
       # generator picked by `cmake-rs` is whichever Visual Studio CMake finds
@@ -177,29 +182,36 @@ jobs:
         working-directory: src-tauri
         run: cargo test
 
+      # Native build: linux, windows, and the macOS arm64 leg (host arch, no
+      # --target). A real/native target dir keeps every package bin in
+      # target/release so the bundler finds them all.
       - name: Build Tauri app
-        if: matrix.target != 'macos'
+        if: matrix.target != 'macos' || matrix.arch == 'aarch64'
         run: npm run tauri build
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build Tauri app (macOS universal)
-        if: matrix.target == 'macos'
-        run: npm run tauri build -- --target universal-apple-darwin
+      # macOS Intel: cross-compile to the real x86_64-apple-darwin triple on
+      # the arm64 runner. cargo builds AND tauri bundles every bin natively
+      # under target/x86_64-apple-darwin/release (no universal pseudo-target,
+      # no lipo, no missing-bin bundle failures).
+      - name: Build Tauri app (macOS Intel)
+        if: matrix.target == 'macos' && matrix.arch == 'x64'
+        run: npm run tauri build -- --target x86_64-apple-darwin
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # The universal build emits its bundle under the target-triple dir.
+      # The Intel cross build emits its bundle under the target-triple dir.
       # Stage the DMG at the conventional path so every downstream step
       # (artifact upload, Sigstore signing, beta rename, release upload)
-      # keeps working unchanged.
-      - name: Stage universal DMG at conventional path
-        if: matrix.target == 'macos'
+      # keeps working unchanged. The arm64 leg already builds there.
+      - name: Stage Intel DMG at conventional path
+        if: matrix.target == 'macos' && matrix.arch == 'x64'
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p src-tauri/target/release/bundle/dmg
-          cp src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg \
+          cp src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg \
             src-tauri/target/release/bundle/dmg/
           ls -la src-tauri/target/release/bundle/dmg/
 
