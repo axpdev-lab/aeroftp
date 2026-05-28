@@ -34,6 +34,16 @@ fn dispatch(argv: Vec<OsString>, route: DispatchRoute) -> Result<u8, String> {
 
     #[cfg(target_os = "linux")]
     if route == DispatchRoute::Gui {
+        use std::os::unix::process::CommandExt;
+        // GTK derives the X11 WM_CLASS (and the Wayland app_id fallback)
+        // from the basename of argv[0]. The real GUI payload lives at
+        // /usr/lib/aeroftp/aeroftp.bin, so without this the window would
+        // surface as WM_CLASS "aeroftp.bin", which does not match
+        // StartupWMClass=aeroftp in AeroFTP.desktop: GNOME then shows a
+        // generic icon and the "aeroftp.bin" process name in the dock
+        // instead of the AeroFTP icon and name. Forcing argv[0] to
+        // "aeroftp" binds the window back to the .desktop entry.
+        command.arg0("aeroftp");
         command.env("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }
 
