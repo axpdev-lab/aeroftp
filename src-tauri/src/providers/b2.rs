@@ -40,6 +40,19 @@ const DEFAULT_LIST_PAGE: u32 = 1000;
 const HEADER_BUDGET_STD: usize = 7000;
 const PLACEHOLDER_NAME: &str = ".bzEmpty";
 
+/// Upper bound on concurrent Range streams for multi-thread download
+/// (rclone `--multi-thread-streams`). B2's `b2_download_file_by_name`
+/// endpoint honours `Range` natively; more than 8 sockets rarely improves
+/// throughput and just wastes connections.
+const MULTI_THREAD_MAX_STREAMS: usize = 8;
+/// Default size floor below which multi-thread download stays single-stream.
+/// Mirrors rclone's 250 MiB practical default: the per-range round-trip and
+/// pre-allocation overhead only pays off on large objects.
+const MULTI_THREAD_CUTOFF_DEFAULT: u64 = 250 * 1024 * 1024;
+/// Per-call window read inside one range worker. Bounds transient RAM and
+/// keeps progress aggregation smooth without thrashing the allocator.
+const MULTI_THREAD_SUB_READ_SIZE: u64 = 8 * 1024 * 1024;
+
 #[cfg(debug_assertions)]
 fn b2_log(msg: &str) {
     eprintln!("[b2] {}", msg);
@@ -315,6 +328,13 @@ pub struct B2Provider {
 
     current_path: String,
     connected: bool,
+
+    /// Number of concurrent Range streams for multi-thread download
+    /// (`1` = disabled). Set via `set_multi_thread_download`.
+    multi_thread_streams: usize,
+    /// Files at/above this size use multi-thread download when
+    /// `multi_thread_streams >= 2`.
+    multi_thread_cutoff: u64,
 }
 
 impl B2Provider {
@@ -335,6 +355,8 @@ impl B2Provider {
             bucket_id: String::new(),
             current_path: "/".to_string(),
             connected: false,
+            multi_thread_streams: 1,
+            multi_thread_cutoff: MULTI_THREAD_CUTOFF_DEFAULT,
         }
     }
 
@@ -933,6 +955,153 @@ impl B2Provider {
             .await
             .map_err(|e| ProviderError::Other(format!("atomic rename: {}", e)))?;
         Ok(())
+    }
+
+    /// Multi-thread concurrent Range download for a single B2 object.
+    ///
+    /// Splits the object into N gap-free byte windows fetched in parallel by
+    /// independent cloned workers (each its own pooled `reqwest` connection +
+    /// the already-minted auth token) and reassembled in place by the shared
+    /// [`crate::providers::multi_thread::run_concurrent_range_download`]
+    /// orchestrator: pre-allocated `.aerotmp`, RAII cleanup, bounded
+    /// concurrency, progress aggregation, cooperative cancellation. Equivalent
+    /// to rclone `--multi-thread-streams N`.
+    ///
+    /// Returns `Err` on any hard failure (including the server ignoring
+    /// `Range`); the caller falls back to the single-stream `do_download`.
+    async fn download_multi_thread(
+        &self,
+        remote_path: &str,
+        local_path: &str,
+        total_size: u64,
+        streams: usize,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        use crate::providers::multi_thread::{
+            aerotmp_path_for, run_concurrent_range_download, ConcurrentRangeConfig,
+            ConcurrentRangeOutcome,
+        };
+        use std::collections::VecDeque;
+        use std::path::{Path, PathBuf};
+        use std::sync::Arc;
+
+        let streams = streams.clamp(2, MULTI_THREAD_MAX_STREAMS);
+
+        // Pre-acquire exactly `streams` independent workers. The range planner
+        // emits exactly `streams` windows (object is well above the cutoff), so
+        // each window pops one worker and the pool is never exhausted. Cloning
+        // is cheap: `reqwest::Client` is Arc-internal and the auth token is
+        // already authorized on `self`.
+        let mut workers: VecDeque<B2Provider> = VecDeque::with_capacity(streams);
+        for _ in 0..streams {
+            workers.push_back(self.clone());
+        }
+        let pool = Arc::new(tokio::sync::Mutex::new(workers));
+        let remote_owned = remote_path.to_string();
+
+        let cfg = ConcurrentRangeConfig {
+            final_path: PathBuf::from(local_path),
+            provider_type: super::ProviderType::Backblaze,
+            total_size,
+            streams,
+            max_streams: MULTI_THREAD_MAX_STREAMS,
+            max_parallel: streams,
+        };
+
+        let write_one_range = move |start_off: u64,
+                                    end_off: u64,
+                                    temp_path: PathBuf,
+                                    aggregate: Arc<std::sync::atomic::AtomicU64>,
+                                    cancel: tokio_util::sync::CancellationToken| {
+            let pool = pool.clone();
+            let remote = remote_owned.clone();
+            async move {
+                use std::sync::atomic::Ordering;
+                use tokio::io::{AsyncSeekExt, AsyncWriteExt};
+
+                let mut worker = {
+                    let mut guard = pool.lock().await;
+                    guard.pop_front().ok_or_else(|| {
+                        ProviderError::TransferFailed(
+                            "b2 multi-thread: worker pool exhausted (internal invariant)"
+                                .to_string(),
+                        )
+                    })?
+                };
+
+                let window_len = end_off - start_off + 1;
+                let mut file = tokio::fs::OpenOptions::new()
+                    .write(true)
+                    .open(&temp_path)
+                    .await
+                    .map_err(ProviderError::IoError)?;
+                file.seek(std::io::SeekFrom::Start(start_off))
+                    .await
+                    .map_err(ProviderError::IoError)?;
+
+                let mut written = 0u64;
+                while written < window_len {
+                    if cancel.is_cancelled() {
+                        return Err(ProviderError::TransferFailed(
+                            "Transfer cancelled by user".to_string(),
+                        ));
+                    }
+                    let sub_len = (window_len - written).min(MULTI_THREAD_SUB_READ_SIZE);
+                    let data = worker
+                        .read_range(&remote, start_off + written, sub_len)
+                        .await
+                        .map_err(|e| {
+                            ProviderError::TransferFailed(format!(
+                                "b2 multi-thread: read_range at offset {} failed: {}",
+                                start_off + written,
+                                e
+                            ))
+                        })?;
+                    if data.is_empty() {
+                        return Err(ProviderError::TransferFailed(format!(
+                            "b2 multi-thread: short read at offset {} ({} of {} bytes)",
+                            start_off + written,
+                            written,
+                            window_len
+                        )));
+                    }
+                    file.write_all(&data)
+                        .await
+                        .map_err(ProviderError::IoError)?;
+                    written += data.len() as u64;
+                    aggregate.fetch_add(data.len() as u64, Ordering::Relaxed);
+                }
+                file.flush().await.map_err(ProviderError::IoError)?;
+                if written != window_len {
+                    return Err(ProviderError::TransferFailed(format!(
+                        "b2 multi-thread: window [{}, {}] wrote {} bytes, expected {}",
+                        start_off, end_off, written, window_len
+                    )));
+                }
+                Ok(ConcurrentRangeOutcome::Completed)
+            }
+        };
+
+        let outcome = run_concurrent_range_download(
+            cfg,
+            write_one_range,
+            tokio_util::sync::CancellationToken::new(),
+            on_progress,
+        )
+        .await?;
+
+        match outcome {
+            ConcurrentRangeOutcome::Completed => {
+                let temp = aerotmp_path_for(Path::new(local_path));
+                tokio::fs::rename(&temp, local_path).await.map_err(|e| {
+                    ProviderError::Other(format!("b2 multi-thread finalize: {}", e))
+                })?;
+                Ok(())
+            }
+            ConcurrentRangeOutcome::ServerIgnoredRange => Err(ProviderError::NotSupported(
+                "b2 multi-thread: server returned 200 (ignored Range)".to_string(),
+            )),
+        }
     }
 
     /// In-memory download (range-capped). Same pattern as `do_download`.
@@ -1708,6 +1877,34 @@ impl StorageProvider for B2Provider {
         let abs = self.resolved_path(remote_path);
         let key = self.b2_key(&abs);
         let local_pb = std::path::PathBuf::from(local_path);
+
+        // Multi-thread chunk-parallel download (rclone `--multi-thread-streams`).
+        // Engaged only when the user opted in (`set_multi_thread_download`,
+        // streams >= 2), a cheap metadata `stat` reports a size at/above the
+        // cutoff, and B2's range-honouring endpoint is available. Mirrors the
+        // S3 path: a `stat` hiccup just falls through to single-stream so a
+        // one-off mismatch never fails an otherwise downloadable transfer.
+        // Once committed we return the result (any hard error surfaces to the
+        // caller's retry envelope); we do not silently re-stream here.
+        let progress = if self.multi_thread_streams >= 2 {
+            match self.size(remote_path).await {
+                Ok(size) if size >= self.multi_thread_cutoff => {
+                    return self
+                        .download_multi_thread(
+                            remote_path,
+                            local_path,
+                            size,
+                            self.multi_thread_streams,
+                            progress,
+                        )
+                        .await;
+                }
+                _ => progress,
+            }
+        } else {
+            progress
+        };
+
         // First attempt consumes `progress`; the rare reauth retry runs without
         // progress reporting (Box<dyn Fn + Send> isn't Sync: see do_download).
         match self.do_download(&key, &local_pb, progress).await {
@@ -2588,18 +2785,87 @@ impl StorageProvider for B2Provider {
     }
 
     /// Advertise the parallel large-file capability honestly now that
-    /// `upload_large_file` genuinely uploads parts concurrently (PD-UP-1).
-    /// Only the multipart fields are set: B2's download path stays
-    /// single-stream, so `supports_range_download` is left at its default
-    /// `false` (no overclaim of a range capability B2 does not honour here).
+    /// `upload_large_file` genuinely uploads parts concurrently (PD-UP-1) and
+    /// `download_multi_thread` splits large downloads into concurrent Range
+    /// streams. `supports_range_download` is set because B2's
+    /// `b2_download_file_by_name` endpoint honours `Range` natively (HTTP 206,
+    /// proven by the range-capped `do_download_to_bytes`).
     fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
         super::TransferOptimizationHints {
             supports_multipart: true,
             multipart_threshold: SINGLE_UPLOAD_RECOMMENDED_MAX,
             multipart_part_size: LARGE_FILE_PART_SIZE,
             multipart_max_parallel: LARGE_FILE_MAX_PARALLEL as u8,
+            supports_range_download: true,
             ..Default::default()
         }
+    }
+
+    fn transfer_executor_kind(&self) -> super::ProviderTransferExecutorKind {
+        // Clone-backed HTTP pool: each `clone_for_transfer` worker carries its
+        // own pooled `reqwest` client + the minted auth token, so the GUI
+        // segmented engine and the Core DAG scheduler can run N independent
+        // Range workers without serialising on a single locked session.
+        super::ProviderTransferExecutorKind::HttpClonePool
+    }
+
+    fn transfer_executor_max_sessions(&self) -> u16 {
+        MULTI_THREAD_MAX_STREAMS as u16
+    }
+
+    fn clone_for_transfer(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        Ok(Box::new(self.clone()))
+    }
+
+    fn set_multi_thread_download(&mut self, streams: usize, cutoff_bytes: u64) {
+        // `streams = 1` is the disabled state; values above the cap waste
+        // sockets without improving throughput. Floor the cutoff at 1 MiB so a
+        // `0` never engages multi-thread on every file (overhead on small ones).
+        self.multi_thread_streams = streams.clamp(1, MULTI_THREAD_MAX_STREAMS);
+        self.multi_thread_cutoff = cutoff_bytes.max(1024 * 1024);
+    }
+
+    async fn read_range(
+        &mut self,
+        path: &str,
+        offset: u64,
+        len: u64,
+    ) -> Result<Vec<u8>, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        let abs = self.resolved_path(path);
+        let key = self.b2_key(&abs);
+        let url = format!(
+            "{}/file/{}/{}",
+            self.download_url,
+            urlencoding::encode(&self.config.bucket),
+            encode_path_segments(&key),
+        );
+        let end = offset + len - 1; // HTTP Range is inclusive
+        let req = self
+            .client
+            .get(&url)
+            .header(AUTHORIZATION, self.auth_header()?)
+            .header(RANGE, format!("bytes={}-{}", offset, end))
+            .build()
+            .map_err(|e| ProviderError::ConnectionFailed(format!("read_range build: {}", e)))?;
+        let resp = send_with_retry(&self.client, req, &self.retry_config)
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(format!("read_range send: {}", e)))?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(map_b2_status(status, &body, "b2_download_file_by_name (range)"));
+        }
+        let bytes = resp
+            .bytes()
+            .await
+            .map_err(|e| ProviderError::Other(format!("read_range body: {}", e)))?;
+        Ok(bytes.to_vec())
     }
 }
 
@@ -3003,6 +3269,60 @@ mod tests {
         // so frontend "Versions" panels render.
         let p = empty_provider();
         assert!(p.supports_versions());
+    }
+
+    #[test]
+    fn set_multi_thread_download_clamps_streams_and_floors_cutoff() {
+        let mut p = empty_provider();
+        // Disabled by default.
+        assert_eq!(p.multi_thread_streams, 1);
+        assert_eq!(p.multi_thread_cutoff, MULTI_THREAD_CUTOFF_DEFAULT);
+
+        // Over-cap streams are clamped to the hard maximum.
+        p.set_multi_thread_download(999, 0);
+        assert_eq!(p.multi_thread_streams, MULTI_THREAD_MAX_STREAMS);
+        // A zero cutoff is floored to 1 MiB (never engage on tiny files).
+        assert_eq!(p.multi_thread_cutoff, 1024 * 1024);
+
+        // Zero streams collapse to the disabled state; cutoff is honoured.
+        p.set_multi_thread_download(0, 50 * 1024 * 1024);
+        assert_eq!(p.multi_thread_streams, 1);
+        assert_eq!(p.multi_thread_cutoff, 50 * 1024 * 1024);
+
+        // A normal value passes through unchanged.
+        p.set_multi_thread_download(4, 250 * 1024 * 1024);
+        assert_eq!(p.multi_thread_streams, 4);
+        assert_eq!(p.multi_thread_cutoff, 250 * 1024 * 1024);
+    }
+
+    #[test]
+    fn advertises_clone_backed_http_pool_and_range_hint() {
+        let p = empty_provider();
+        assert_eq!(
+            p.transfer_executor_kind(),
+            super::super::ProviderTransferExecutorKind::HttpClonePool
+        );
+        assert_eq!(
+            p.transfer_executor_max_sessions(),
+            MULTI_THREAD_MAX_STREAMS as u16
+        );
+        assert!(p.transfer_optimization_hints().supports_range_download);
+        // Concurrent range download surfaces as `Supported` (not probe-gated)
+        // through the capability layer.
+        assert_eq!(
+            p.transfer_capabilities().strict_concurrent_range_download,
+            crate::transfer_dag::Capability::Supported
+        );
+    }
+
+    #[tokio::test]
+    async fn clone_for_transfer_requires_connection() {
+        let p = empty_provider();
+        // Not connected: must refuse rather than hand out a dead worker.
+        assert!(matches!(
+            p.clone_for_transfer(),
+            Err(ProviderError::NotConnected)
+        ));
     }
 
     #[test]
