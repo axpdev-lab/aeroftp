@@ -36,6 +36,16 @@ jobs:
           # `bundle_dmg.sh` (or once we move to a custom DMG step).
           - platform: macos-14
             target: macos
+            arch: aarch64
+          # macOS Intel (x86_64): restored in v4.0.0 now that the BigSur
+          # boot regression (#241) is fixed. macos-13 is the last Intel
+          # runner image (Ventura); native x86_64 build, no cross-compile,
+          # DMG bundler stable (the Sequoia breakage is macos-15 only).
+          # minimumSystemVersion 10.13 covers Big Sur 11. A single universal
+          # binary is deferred to a dedicated session on modern Mac hardware.
+          - platform: macos-13
+            target: macos
+            arch: x64
 
     runs-on: ${{ matrix.platform }}
     
@@ -361,7 +371,7 @@ jobs:
         if: ${{ !startsWith(github.ref, 'refs/tags/') && matrix.target == 'macos' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: aeroftp-macos-${{ github.sha }}
+          name: aeroftp-macos-${{ matrix.arch }}-${{ github.sha }}
           path: src-tauri/target/release/bundle/dmg/*.dmg
           if-no-files-found: warn
           retention-days: 14
