@@ -2601,6 +2601,23 @@ impl StorageProvider for B2Provider {
             ..Default::default()
         }
     }
+
+    // B2 large-file parts are independent `b2_upload_part` calls keyed by the
+    // shared `fileId`, so they can run on independent cloned workers. This
+    // mirrors the S3/Azure clone contract and matches how the single-file
+    // multipart runner already cloned B2 (previously via a hardcoded downcast,
+    // now via the trait, audit CHUNK-01).
+    fn transfer_executor_kind(&self) -> super::ProviderTransferExecutorKind {
+        super::ProviderTransferExecutorKind::HttpClonePool
+    }
+
+    fn transfer_executor_max_sessions(&self) -> u16 {
+        LARGE_FILE_MAX_PARALLEL as u16
+    }
+
+    fn clone_for_transfer(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
+        Ok(Box::new(self.clone()))
+    }
 }
 
 // ─── Helpers ───

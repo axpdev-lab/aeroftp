@@ -155,11 +155,24 @@ impl Drop for DynamicPermit {
     fn drop(&mut self) {
         // Return the permit first (its own Drop calls add_permits(1)).
         drop(self.permit.take());
-        // If a shrink is still owed, reclaim one freed slot now.
+        // If a shrink is still owed, reclaim one freed slot now. Use a CAS so a
+        // concurrent grow-path pay-down cannot drive the deficit below zero,
+        // which on AtomicUsize wraps to usize::MAX and would permanently pin
+        // concurrency at the floor for the rest of the run (audit AIMD-02).
         if self.deficit.load(Ordering::SeqCst) > 0 {
             if let Ok(p) = self.sem.try_acquire() {
                 p.forget();
-                self.deficit.fetch_sub(1, Ordering::SeqCst);
+                let consumed = self
+                    .deficit
+                    .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |cur| {
+                        (cur > 0).then(|| cur - 1)
+                    })
+                    .is_ok();
+                if !consumed {
+                    // The deficit was cleared concurrently: hand the slot back
+                    // instead of dropping it, so live concurrency stays intact.
+                    self.sem.add_permits(1);
+                }
             }
         }
     }
@@ -212,13 +225,18 @@ impl DynamicSemaphore {
         let mut live = self.live.lock().expect("dynamic semaphore mutex poisoned");
         if target > *live {
             let mut need = target - *live;
-            // Pay down any owed shrink before adding real permits.
-            let owed = self.deficit.load(Ordering::SeqCst);
-            let pay = need.min(owed);
-            if pay > 0 {
-                self.deficit.fetch_sub(pay, Ordering::SeqCst);
-                need -= pay;
-            }
+            // Pay down any owed shrink before adding real permits. A CAS loop so
+            // a concurrent `DynamicPermit::drop` reclaiming a slot between our
+            // read and write cannot underflow the deficit (audit AIMD-02).
+            let mut paid = 0usize;
+            let _ = self
+                .deficit
+                .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |cur| {
+                    let pay = need.min(cur);
+                    paid = pay;
+                    Some(cur - pay)
+                });
+            need -= paid;
             if need > 0 {
                 self.sem.add_permits(need);
             }
@@ -912,6 +930,39 @@ mod tests {
         drop(a);
         assert_eq!(ds2.pending_shrink(), 0);
         assert_eq!(ds2.available(), 1);
+    }
+
+    #[tokio::test]
+    async fn deficit_paydown_then_release_never_wraps_and_loses_no_permits() {
+        // AIMD-02 invariant: when the grow path pays down the whole owed
+        // shrink and the in-flight permits are then released, the deficit must
+        // settle at exactly 0 (never wrap below zero, which on AtomicUsize is
+        // usize::MAX and would pin concurrency at the floor for the rest of the
+        // run) and no permit may be lost.
+        let ds = DynamicSemaphore::new(4, 4);
+        let p1 = ds.acquire().await.unwrap();
+        let p2 = ds.acquire().await.unwrap();
+        let p3 = ds.acquire().await.unwrap();
+        let p4 = ds.acquire().await.unwrap();
+        assert_eq!(ds.available(), 0);
+
+        // Shrink to 1 with everything checked out: 0 reclaimable now, owe 3.
+        ds.set_live(1);
+        assert_eq!(ds.pending_shrink(), 3);
+
+        // Grow back to the ceiling: the pay-down clears all 3 owed slots via a
+        // saturating CAS and never underflows.
+        ds.set_live(4);
+        assert_eq!(ds.pending_shrink(), 0);
+
+        // Releasing the in-flight permits now that nothing is owed must return
+        // them to the pool, not absorb them, and must keep the deficit at 0.
+        drop(p1);
+        drop(p2);
+        drop(p3);
+        drop(p4);
+        assert_eq!(ds.pending_shrink(), 0, "deficit must not wrap below zero");
+        assert_eq!(ds.available(), 4, "all permits restored, none lost");
     }
 
     #[tokio::test]

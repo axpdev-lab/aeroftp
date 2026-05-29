@@ -12,9 +12,10 @@
 //! - latency (list/stat) +-10% = ok
 //!
 //! The size thresholds use binary units (1 MiB = 1 << 20 bytes) because
-//! every Phase A report uses those units. The cutoffs (`SMALL_CUTOFF`,
-//! `MEDIUM_CUTOFF`) align with the benchmark sizes (1M / 100M / 1G) so
-//! a future report can be diffed against this table directly.
+//! every Phase A report uses those units. The single-vs-multipart fan-out
+//! decision is NOT made here: it lives in `transfer_dag::builder` and is gated
+//! on the provider's `multipart_threshold` capability. The router only selects
+//! the engine; it does not size parts.
 
 use super::{Decision, Engine, Operation, ProviderHint, RouteContext};
 use crate::providers::types::ProviderType;
@@ -135,9 +136,6 @@ fn webdav_variant(server_url: Option<&str>, preset_id: Option<&str>) -> Provider
     ProviderHint::WebDavVanilla
 }
 
-/// Large-file threshold used by providers with multipart fan-out decisions.
-const MEDIUM_CUTOFF: u64 = 250 * 1024 * 1024; // 250 MiB
-
 pub fn recommend(ctx: RouteContext) -> Decision {
     match ctx.provider {
         ProviderHint::WebDavVanilla => recommend_webdav_vanilla(ctx),
@@ -177,16 +175,14 @@ fn recommend_webdav_vanilla(ctx: RouteContext) -> Decision {
     default_dag(reason)
 }
 
-fn recommend_s3(ctx: RouteContext) -> Decision {
-    // Phase A finding (round 1 2026-05-24): S3 multipart upload WIN big
-    // after the chunk-parallel fix (`b8217fe1`), upload 1G +38.6%,
-    // download 1G +40.7%. Small files are no-op for multipart.
-    match (ctx.operation, ctx.size_bytes) {
-        (Operation::Upload, sz) if sz >= MEDIUM_CUTOFF => {
-            default_dag("S3 upload >=250M: Phase A WIN +38.6% (multipart fan-out parallel)")
-        }
-        _ => default_dag("S3: Phase A gate green"),
-    }
+fn recommend_s3(_ctx: RouteContext) -> Decision {
+    // Phase A finding (round 1 2026-05-24): S3 multipart upload WIN big after
+    // the chunk-parallel fix (`b8217fe1`), upload 1G +38.6%. The single-vs-
+    // multipart decision is size-gated in the builder via multipart_threshold
+    // (audit DISP-01); the router only selects the engine, so there is no
+    // size branch here (the previous MEDIUM_CUTOFF arm was dead: both arms
+    // returned DAG, audit DISP-04).
+    default_dag("S3: multipart fan-out for large uploads, single PUT below threshold (builder-gated)")
 }
 
 fn recommend_b2(_ctx: RouteContext) -> Decision {
