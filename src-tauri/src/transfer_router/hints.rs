@@ -139,9 +139,7 @@ fn webdav_variant(server_url: Option<&str>, preset_id: Option<&str>) -> Provider
 pub fn recommend(ctx: RouteContext) -> Decision {
     match ctx.provider {
         ProviderHint::WebDavVanilla => recommend_webdav_vanilla(ctx),
-        ProviderHint::WebDavNextcloud => default_dag(
-            "WebDAV Nextcloud: all sizes WIN on Phase A (download 100M +6.0%, 1G +16.8%)",
-        ),
+        ProviderHint::WebDavNextcloud => recommend_webdav_nextcloud(ctx),
         ProviderHint::WebDavGateway => {
             default_dag("WebDAV gateway (Koofr): WIN +132% upload 1G, +161% download 100M")
         }
@@ -161,18 +159,36 @@ pub fn recommend(ctx: RouteContext) -> Decision {
 }
 
 fn recommend_webdav_vanilla(ctx: RouteContext) -> Decision {
-    // Revalidation 2026-05-25 (T-DEBT-RTR-04): forced DAG vs forced Legacy
-    // on the same v4 binary showed no structural WebDAV-vanilla regression.
-    // `strace -c -e trace=network` was byte-shape identical (51 network
-    // syscalls in both paths); the earlier mod_dav decay is treated as lab
-    // load / paired-run noise, not a router-worthy engine distinction.
-    let reason = match ctx.operation {
+    // Downloads never fan out in the DAG (multipart is upload-only), so the
+    // shaped graph can only add wrapper cost on the download direction. The
+    // 2026-05-29 lab re-benchmark measured WebDAV download regressing under the
+    // DAG, so route downloads to the provider-direct Legacy path (the internal
+    // range/concurrent-download logic lives inside `download()` and is
+    // preserved either way). Uploads have no multipart on vanilla WebDAV so the
+    // DAG is also pure overhead, but uploads were within gate on Phase A; keep
+    // them on the default DAG for now and revisit if a re-benchmark regresses.
+    match ctx.operation {
         Operation::Download => {
-            "WebDAV vanilla download: revalidated DAG/Legacy parity; DAG default"
+            default_legacy("WebDAV vanilla download: DAG adds wrapper cost, no fan-out (audit PS2)")
         }
-        Operation::Upload => "WebDAV vanilla upload: Phase A within gate; DAG default",
-    };
-    default_dag(reason)
+        Operation::Upload => default_dag("WebDAV vanilla upload: Phase A within gate; DAG default"),
+    }
+}
+
+fn recommend_webdav_nextcloud(ctx: RouteContext) -> Decision {
+    // Upload stays on the DAG: Nextcloud chunked v2 now fans out into parallel
+    // `UploadPart` nodes (clone_for_transfer is wired for Nextcloud), which is
+    // the path that pays off on large uploads. Download routes to Legacy: it
+    // never fans out, so the DAG only adds the node-graph wrapper, which the
+    // 2026-05-29 lab re-benchmark showed regressing (audit PS2).
+    match ctx.operation {
+        Operation::Download => {
+            default_legacy("WebDAV Nextcloud download: DAG adds wrapper cost, no fan-out (audit PS2)")
+        }
+        Operation::Upload => {
+            default_dag("WebDAV Nextcloud upload: parallel chunked v2 fan-out via shaped graph")
+        }
+    }
 }
 
 fn recommend_s3(_ctx: RouteContext) -> Decision {
@@ -199,6 +215,13 @@ fn default_dag(reason: &'static str) -> Decision {
     }
 }
 
+fn default_legacy(reason: &'static str) -> Decision {
+    Decision {
+        engine: Engine::Legacy,
+        reason,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::Router;
@@ -211,35 +234,13 @@ mod tests {
     // ── WebDAV vanilla: revalidated DAG default ───────────────────────
 
     #[test]
-    fn webdav_vanilla_download_medium_stays_on_dag() {
-        let d = Router::new().pick(ctx(
-            ProviderHint::WebDavVanilla,
-            Operation::Download,
-            100 * 1024 * 1024,
-        ));
-        assert_eq!(d.engine, Engine::Dag);
-        assert!(d.reason.contains("revalidated"));
-    }
-
-    #[test]
-    fn webdav_vanilla_download_1g_stays_on_dag() {
-        let d = Router::new().pick(ctx(
-            ProviderHint::WebDavVanilla,
-            Operation::Download,
-            1 << 30,
-        ));
-        assert_eq!(d.engine, Engine::Dag);
-    }
-
-    #[test]
-    fn webdav_vanilla_download_small_stays_on_dag() {
-        // Small files: latency-bound, DAG default.
-        let d = Router::new().pick(ctx(
-            ProviderHint::WebDavVanilla,
-            Operation::Download,
-            1024 * 1024,
-        ));
-        assert_eq!(d.engine, Engine::Dag);
+    fn webdav_vanilla_download_routes_to_legacy() {
+        // Downloads never fan out, so the DAG only adds wrapper cost; the
+        // 2026-05-29 re-benchmark routed WebDAV download to Legacy (audit PS2).
+        for size in [1024 * 1024, 100 * 1024 * 1024, 1 << 30] {
+            let d = Router::new().pick(ctx(ProviderHint::WebDavVanilla, Operation::Download, size));
+            assert_eq!(d.engine, Engine::Legacy, "size {size} should be Legacy");
+        }
     }
 
     #[test]
@@ -265,15 +266,21 @@ mod tests {
     // ── WebDAV Nextcloud / gateway: always DAG ────────────────────────
 
     #[test]
-    fn webdav_nextcloud_download_medium_stays_on_dag() {
-        // The case ieri sera looked broken but the overnight matrix
-        // proved was an artefact: +6.0% on the clean re-run.
-        let d = Router::new().pick(ctx(
+    fn webdav_nextcloud_download_routes_to_legacy_upload_stays_dag() {
+        // Download has no fan-out so it goes Legacy (audit PS2); upload keeps
+        // the DAG because Nextcloud chunked v2 now fans out in parallel.
+        let down = Router::new().pick(ctx(
             ProviderHint::WebDavNextcloud,
             Operation::Download,
             100 * 1024 * 1024,
         ));
-        assert_eq!(d.engine, Engine::Dag);
+        assert_eq!(down.engine, Engine::Legacy);
+        let up = Router::new().pick(ctx(
+            ProviderHint::WebDavNextcloud,
+            Operation::Upload,
+            100 * 1024 * 1024,
+        ));
+        assert_eq!(up.engine, Engine::Dag);
     }
 
     #[test]

@@ -46,6 +46,7 @@ pub struct NextcloudTrashEntry {
 // ============ HTTP Digest Authentication (RFC 2617) ============
 
 /// State for HTTP Digest authentication
+#[derive(Clone)]
 struct DigestState {
     realm: String,
     nonce: String,
@@ -215,6 +216,7 @@ fn path_violates_root(path: &str, boundary: Option<&str>) -> bool {
 }
 
 /// WebDAV Storage Provider
+#[derive(Clone)]
 pub struct WebDavProvider {
     config: WebDavConfig,
     client: Client,
@@ -3839,6 +3841,29 @@ impl StorageProvider for WebDavProvider {
             supports_range_download: true,
             supports_resume_download: true,
             ..Default::default()
+        }
+    }
+
+    /// Mint an independent worker for concurrent Nextcloud chunked-upload parts.
+    ///
+    /// Nextcloud chunked v2 uploads each chunk as an independent `PUT` to a
+    /// distinct `/uploads/<user>/<uuid>/<n>` path under one shared session
+    /// folder, finalised by a single `MOVE`. Those PUTs carry no ordering
+    /// constraint, so a cloned worker (independent reqwest client, same
+    /// credentials and session uuid carried in the handle) can upload parts in
+    /// parallel safely. This is what turns the serial-chunk upload regression
+    /// into a fan-out win (audit CHUNK-01 follow-up). Vanilla WebDAV has no
+    /// chunked multipart, so it stays un-cloneable and single-stream. NOTE:
+    /// this intentionally does NOT override `transfer_executor_kind()`, so the
+    /// batch/folder executor selection is unchanged; only the single-file
+    /// multipart part path consults `clone_for_transfer()`.
+    fn clone_for_transfer(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
+        if self.is_nextcloud_for_dav() {
+            Ok(Box::new(self.clone()))
+        } else {
+            Err(ProviderError::NotSupported(
+                "clone_for_transfer (vanilla WebDAV has no parallel multipart)".to_string(),
+            ))
         }
     }
 
