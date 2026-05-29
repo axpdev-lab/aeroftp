@@ -1,6 +1,6 @@
 # AeroAgent - AI-Powered File Management
 
-AeroAgent is AeroFTP's integrated AI assistant with **39 tools** across 8 categories. It can create, read, edit, and manage files locally and on remote servers using natural language commands.
+AeroAgent is AeroFTP's integrated AI assistant with **68 tools** across 8 categories. It can create, read, edit, and manage files locally and on remote servers using natural language commands.
 
 > Full test results, prompt examples, and provider compatibility matrix available at [docs.aeroftp.app/aeroagent](https://docs.aeroftp.app/aeroagent)
 
@@ -37,22 +37,10 @@ AeroAgent works with **24 AI providers** - choose your preferred model:
 
 ## Tool Categories
 
-### Local File Operations (17 tools)
-Create, read, edit, move, copy, delete, search, and manage files on your local filesystem.
+The 68 tools span eight categories. Each tool carries a danger level (read-only / medium / high); every medium or high tool requires explicit user approval before it runs.
 
-```
-> Create three files in the project folder: index.html with a dark theme,
-  style.css with custom colors, and app.js with a console.log.
-```
-```
-AeroAgent: Created 3 files:
-  + index.html (496 bytes)
-  + style.css (286 bytes)
-  + app.js (22 bytes)
-```
-
-### Remote Server Operations (2 tools)
-Connect to any saved server and execute file operations without switching connections.
+### Remote operations (21 tools)
+List, read, stat, search, upload, download, create directories, rename, edit, delete, hash, head/tail, tree, and check quota on any saved server. These route through the `StorageProvider` trait, so they behave identically across all 7 transport protocols and 25+ native provider integrations.
 
 ```
 > Connect to my-server.com and list the contents of /var/www/html/
@@ -65,58 +53,19 @@ AeroAgent: Connected to my-server.com via FTP/TLS
   / favicon.ico    1.1 KB   2026-03-10
 ```
 
-### File Transfer (2 tools)
-Upload and download files between local and remote, including recursive directory upload.
+### Local file operations (21 tools)
+Create, read, write, edit, move, copy, rename, trash, and inspect files on the local filesystem, plus grep, head, tail, diff, tree, batch stat, disk usage, and duplicate detection.
 
 ```
-> Upload the entire build/ folder to the remote server
+> Create three files in the project folder: index.html with a dark theme,
+  style.css with custom colors, and app.js with a console.log.
 ```
 ```
-AeroAgent: Uploaded 12 file(s) to /www/build/
-  + build/index.html
-  + build/css/style.css
-  + build/js/app.js
-  ...
+AeroAgent: Created 3 files:
+  + index.html (496 bytes)
+  + style.css (286 bytes)
+  + app.js (22 bytes)
 ```
-
-### Code Editing (1 tool)
-Find and replace text in files with diff preview before applying changes.
-
-```
-> In index.html, replace "Welcome" with "Hello World"
-```
-```
-AeroAgent: Showing diff preview...
-  - <h1>Welcome</h1>
-  + <h1>Hello World</h1>
-  [Allow] [Reject]
-
-Replaced 1 occurrence(s) in index.html
-```
-
-### Shell Commands (1 tool)
-Execute system commands with captured stdout/stderr and exit codes.
-
-```
-> Run "uname -a" to check the system info
-```
-```
-AeroAgent: uname -a - exit code 0
-  Linux server 6.17.0-19-generic #19~24.04.2-Ubuntu SMP x86_64
-```
-
-### Archive Operations (2 tools)
-Compress and extract ZIP, 7z, TAR, GZ, XZ, BZ2 archives.
-
-```
-> Compress all files in the project/ folder into project.zip
-```
-```
-AeroAgent: Created /project/project.zip (357 bytes)
-```
-
-### Search & Analysis (8 tools)
-Grep, head, tail, diff, tree, file info, disk usage, find duplicates.
 
 ```
 > Search for "TODO" in all files, then show the directory tree
@@ -133,8 +82,46 @@ AeroAgent: 2 match(es) in 3 files for "TODO"
       └── main.css (890 B)
 ```
 
-### Context & Intelligence (2 tools)
-RAG indexing and semantic search across your workspace.
+### Cross-profile transfer (4 tools)
+Upload and download in bulk, and copy files directly between two saved profiles without staging them locally.
+
+```
+> Upload the entire build/ folder to the remote server
+```
+```
+AeroAgent: Uploaded 12 file(s) to /www/build/
+  + build/index.html
+  + build/css/style.css
+  + build/js/app.js
+  ...
+```
+
+### Sync & verification (7 tools)
+Preview and run directory syncs, preflight risk checks, reconcile and dedupe remote trees, clean up orphan temp files, control background sync, and benchmark throughput.
+
+### Archives (2 tools)
+Compress and extract ZIP, 7z, TAR, GZ, XZ, BZ2 archives.
+
+```
+> Compress all files in the project/ folder into project.zip
+```
+```
+AeroAgent: Created /project/project.zip (357 bytes)
+```
+
+### System & shell (4 tools)
+Execute system commands with captured stdout/stderr and exit codes, read/write the clipboard, and hash local files.
+
+```
+> Run "uname -a" to check the system info
+```
+```
+AeroAgent: uname -a - exit code 0
+  Linux server 6.17.0-19-generic #19~24.04.2-Ubuntu SMP x86_64
+```
+
+### Knowledge & memory (3 tools)
+RAG indexing, full-text search across your workspace, and persistent per-project memory notes.
 
 ```
 > Index the current project and search for authentication-related code
@@ -145,6 +132,9 @@ AeroAgent: Indexed 45 files. Found 3 matches for "authentication":
   - middleware.ts:8 - const authGuard = ...
   - config.ts:25 - AUTH_ENDPOINT: "https://..."
 ```
+
+### App & server control (6 tools)
+Inspect the app and vault state, switch theme, preview an edit before applying, list saved profiles, and run vault-backed operations on any saved server (`server_exec`) without exposing credentials to the model.
 
 ## Multi-Step Workflows
 
@@ -178,59 +168,96 @@ Validated with real-world file operations (create, read, edit, upload, server co
 
 > Full provider compatibility matrix and test results: [docs.aeroftp.app/aeroagent/providers](https://docs.aeroftp.app/aeroagent/providers)
 
-## Complete Tool List (39 tools)
+## Complete Tool List (68 tools)
 
 <details>
 <summary>Click to expand</summary>
 
-| # | Tool | Category | Danger |
-|---|------|----------|--------|
-| 1 | `local_list` | Files | Safe |
-| 2 | `local_read` | Files | Safe |
-| 3 | `local_write` | Files | Medium |
-| 4 | `local_edit` | Files | Medium |
-| 5 | `local_mkdir` | Files | Safe |
-| 6 | `local_delete` | Files | High |
-| 7 | `local_rename` | Files | Medium |
-| 8 | `local_move_files` | Files | Medium |
-| 9 | `local_copy_files` | Files | Safe |
-| 10 | `local_trash` | Files | Medium |
-| 11 | `local_file_info` | Files | Safe |
-| 12 | `local_disk_usage` | Files | Safe |
-| 13 | `local_find_duplicates` | Files | Safe |
-| 14 | `local_batch_rename` | Files | Medium |
-| 15 | `local_search` | Search | Safe |
-| 16 | `local_grep` | Search | Safe |
-| 17 | `local_head` | Search | Safe |
-| 18 | `local_tail` | Search | Safe |
-| 19 | `local_stat_batch` | Search | Safe |
-| 20 | `local_diff` | Search | Safe |
-| 21 | `local_tree` | Search | Safe |
-| 22 | `remote_list` | Remote | Safe |
-| 23 | `remote_read` | Remote | Safe |
-| 24 | `remote_info` | Remote | Safe |
-| 25 | `remote_edit` | Remote | Medium |
-| 26 | `upload_files` | Transfer | Medium |
-| 27 | `download_files` | Transfer | Safe |
-| 28 | `archive_compress` | Archives | Safe |
-| 29 | `archive_decompress` | Archives | Safe |
-| 30 | `shell_execute` | System | High |
-| 31 | `clipboard_read` | System | Safe |
-| 32 | `clipboard_write` | System | Safe |
-| 33 | `clipboard_read_image` | System | Safe |
-| 34 | `rag_index` | Context | Safe |
-| 35 | `rag_search` | Context | Safe |
-| 36 | `agent_memory_write` | Context | Safe |
-| 37 | `server_list_saved` | Server | Safe |
-| 38 | `server_exec` | Server | High |
-| 39 | `vault_v2_create` | Vault | Medium |
-| 40 | `vault_v2_open` | Vault | Safe |
-| 41 | `vault_v2_add_files` | Vault | Medium |
-| 42 | `vault_v2_extract` | Vault | Safe |
-| 43 | `vault_v2_list` | Vault | Safe |
-| 44 | `preview_edit` | Editor | Safe |
-| 45 | `context_detect_project` | Context | Safe |
-| 46 | `context_scan_imports` | Context | Safe |
-| 47 | `context_file_summary` | Context | Safe |
+Counts distinct capabilities. Many remote tools ship under both an `aeroftp_*` (MCP) and a `remote_*` (GUI / cross-profile) alias for the same capability; 42 of these capabilities are exposed over the MCP server.
+
+**Remote operations (21)**
+
+| Tool | Danger | Tool | Danger |
+|------|--------|------|--------|
+| `remote_list` | Read-only | `remote_upload` | Medium |
+| `remote_read` | Read-only | `upload_files` | Medium |
+| `remote_info` | Read-only | `upload_many` | Medium |
+| `remote_search` | Read-only | `remote_download` | Medium |
+| `remote_head` | Read-only | `download_files` | Safe |
+| `remote_tail` | Read-only | `remote_mkdir` | Medium |
+| `remote_tree` | Read-only | `remote_rename` | Medium |
+| `remote_storage_quota` | Read-only | `remote_edit` | Medium |
+| `remote_hashsum` | Read-only | `remote_touch` | Medium |
+| `list_servers` | Read-only | `remote_delete` | High |
+| | | `remote_delete_many` | High |
+
+**Local file operations (21)**
+
+| Tool | Danger | Tool | Danger |
+|------|--------|------|--------|
+| `local_list` | Read-only | `local_write` | Medium |
+| `local_read` | Read-only | `local_mkdir` | Medium |
+| `local_search` | Read-only | `local_rename` | Medium |
+| `local_file_info` | Read-only | `local_edit` | Medium |
+| `local_disk_usage` | Read-only | `local_move_files` | Medium |
+| `local_find_duplicates` | Read-only | `local_copy_files` | Medium |
+| `local_diff` | Read-only | `local_batch_rename` | Medium |
+| `local_tree` | Read-only | `local_trash` | Medium |
+| `local_grep` | Read-only | `local_delete` | High |
+| `local_head` | Read-only | `local_stat_batch` | Read-only |
+| `local_tail` | Read-only | | |
+
+**Cross-profile transfer (4)**
+
+| Tool | Danger |
+|------|--------|
+| `transfer` | Medium |
+| `transfer_tree` | Medium |
+| `cross_profile_transfer` | Medium |
+| `generate_transfer_plan` | Safe |
+
+**Sync & verification (7)**
+
+| Tool | Danger | Tool | Danger |
+|------|--------|------|--------|
+| `sync_doctor` | Read-only | `cleanup` | High |
+| `reconcile` | Read-only | `sync_control` | Safe |
+| `dedupe` | High | `sync_preview` | Safe |
+| `speed` | Medium | | |
+
+**Archives (2)**
+
+| Tool | Danger |
+|------|--------|
+| `archive_compress` | Medium |
+| `archive_decompress` | Medium |
+
+**System & shell (4)**
+
+| Tool | Danger |
+|------|--------|
+| `shell_execute` | High |
+| `clipboard_read` | Safe |
+| `clipboard_write` | Safe |
+| `hash_file` | Safe |
+
+**Knowledge & memory (3)**
+
+| Tool | Danger |
+|------|--------|
+| `rag_index` | Read-only |
+| `rag_search` | Read-only |
+| `agent_memory_write` | Medium |
+
+**App & server control (6)**
+
+| Tool | Danger |
+|------|--------|
+| `app_info` | Safe |
+| `set_theme` | Safe |
+| `vault_peek` | Safe |
+| `preview_edit` | Safe |
+| `agent_connect` | Read-only |
+| `server_exec` | High |
 
 </details>

@@ -358,8 +358,8 @@ aeroftp-cli agent-info --json 2>/dev/null
 ```
 
 Returns:
-- Available commands with syntax (49 subcommands)
-- Supported protocols and provider integrations (7 transport protocols + 20+ native provider integrations)
+- Available commands with syntax (74 top-level commands)
+- Supported protocols and provider integrations (7 transport protocols + 25+ native provider integrations)
 - Per-protocol `protocol_features` map (`share_links`, `resume`, `server_copy`, `versions`, `thumbnails`, `change_tracking`)
 - `agent_connect_supported_protocols` array for the live-connect allowlist
 - Exit code definitions
