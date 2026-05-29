@@ -533,39 +533,17 @@ All non-FTP providers receive periodic keep-alive pings to prevent connection ti
 
 ### AI Tool Support by Protocol
 
-All 43 tools work identically across the 7 transport protocols and 20+ native provider integrations via the `StorageProvider` trait:
+The remote-facing tools route through the `StorageProvider` trait, so they behave identically across the 7 transport protocols and 25+ native provider integrations. Local-only tools (file management, search, archives, clipboard, shell) act on the local filesystem.
 
-| Tool | Danger | Description |
-|------|--------|-------------|
-| `remote_list` | Safe | List directory contents |
-| `remote_read` | Safe | Read file content (5KB limit) |
-| `remote_info` | Safe | Get file metadata |
-| `remote_search` | Safe | Search files by pattern |
-| `local_list` | Safe | List local directory |
-| `local_read` | Safe | Read local file (5KB limit) |
-| `local_search` | Safe | Search local files by pattern |
-| `local_mkdir` | Medium | Create local directory |
-| `local_write` | Medium | Write local text file |
-| `local_rename` | Medium | Rename/move local file |
-| `local_edit` | Medium | Find & replace in local file |
-| `remote_edit` | Medium | Find & replace in remote file |
-| `remote_download` | Medium | Download file to local |
-| `remote_upload` | Medium | Upload file to remote |
-| `upload_files` | Medium | Upload multiple files |
-| `download_files` | Medium | Download multiple files |
-| `remote_mkdir` | Medium | Create remote directory |
-| `remote_rename` | Medium | Rename remote file |
-| `sync_preview` | Medium | Preview directory sync |
-| `archive_create` | Medium | Create archive |
-| `archive_extract` | Medium | Extract archive |
-| `rag_index` | Medium | Index directory for RAG search |
-| `rag_search` | Medium | Full-text search over indexed files |
-| `agent_memory_write` | Medium | Write to persistent agent memory |
-| `remote_delete` | High | Delete remote file |
-| `terminal_exec` | High | Execute terminal command |
-| `local_delete` | High | Delete local file/directory |
-| `server_list_saved` | Safe | List all saved server profiles |
-| `server_exec` | High | Execute operation on any saved server |
+**Remote tools (protocol-routed)**
+
+| Danger | Tools |
+|--------|-------|
+| Read-only | `remote_list`, `remote_read`, `remote_info`, `remote_search`, `remote_head`, `remote_tail`, `remote_tree`, `remote_storage_quota`, `remote_hashsum`, `remote_sync_doctor`, `remote_reconcile` |
+| Medium | `remote_upload`, `upload_files`, `upload_many`, `remote_download`, `download_files`, `remote_mkdir`, `remote_rename`, `remote_edit`, `remote_touch`, `remote_speed`, `transfer`, `transfer_tree`, `cross_profile_transfer` |
+| High | `remote_delete`, `remote_delete_many`, `remote_dedupe`, `remote_cleanup`, `server_exec` |
+
+See the full 68-tool breakdown in [AeroAgent Tool Categories](#aeroagent-tool-categories-68-tools) below.
 
 ### AI Features
 
@@ -630,21 +608,20 @@ All 43 tools work identically across the 7 transport protocols and 20+ native pr
 | GPU Monitoring | N/A | N/A | N/A | N/A | N/A | **Yes** | N/A | N/A | N/A | N/A |
 | Model Family Templates | N/A | N/A | N/A | N/A | N/A | **8 families** | N/A | N/A | N/A | N/A |
 
-### AeroAgent Tool Categories (43 tools)
+### AeroAgent Tool Categories (68 tools)
 
-| Category | Tools | Danger Level |
-|----------|-------|-------------|
-| Remote File Ops | remote_list, remote_read, remote_download, remote_upload, remote_delete, remote_rename, remote_mkdir, remote_edit, remote_info, remote_search | medium-high |
-| Local File Ops | local_list, local_read, local_write, local_delete, local_rename, local_mkdir, local_search, local_edit, local_move_files, local_copy_files, local_trash, local_file_info, local_disk_usage, local_find_duplicates, local_batch_rename | medium |
-| Batch Operations | upload_files, download_files | medium |
-| Archives | archive_compress, archive_decompress | medium |
-| Power Tools | local_grep, local_head, local_tail, local_stat_batch, local_diff, local_tree | safe-medium |
-| Clipboard | clipboard_read, clipboard_write, clipboard_read_image | safe |
-| Shell | shell_execute | high |
-| Sync & Compare | sync_preview | medium |
-| RAG | rag_index, rag_search | medium |
-| Memory | agent_memory_write | medium |
-| Server Exec | server_list_saved, server_exec | safe-high |
+| Category | Tools | Danger |
+|----------|-------|--------|
+| Remote operations (21) | `remote_list`, `remote_read`, `remote_info`, `remote_search`, `remote_head`, `remote_tail`, `remote_tree`, `remote_storage_quota`, `remote_hashsum`, `remote_upload`, `upload_files`, `upload_many`, `remote_download`, `download_files`, `remote_mkdir`, `remote_rename`, `remote_edit`, `remote_touch`, `remote_delete`, `remote_delete_many`, `list_servers` | read-only / medium / high |
+| Local file operations (21) | `local_list`, `local_read`, `local_write`, `local_mkdir`, `local_delete`, `local_rename`, `local_search`, `local_edit`, `local_move_files`, `local_batch_rename`, `local_copy_files`, `local_trash`, `local_file_info`, `local_disk_usage`, `local_find_duplicates`, `local_diff`, `local_stat_batch`, `local_tree`, `local_grep`, `local_head`, `local_tail` | read-only / medium / high |
+| Cross-profile transfer (4) | `transfer`, `transfer_tree`, `cross_profile_transfer`, `generate_transfer_plan` | safe / medium |
+| Sync & verification (7) | `sync_doctor`, `reconcile`, `dedupe`, `cleanup`, `sync_control`, `sync_preview`, `speed` | read-only / medium / high |
+| Archives (2) | `archive_compress`, `archive_decompress` | medium |
+| System & shell (4) | `shell_execute`, `clipboard_read`, `clipboard_write`, `hash_file` | safe / high |
+| Knowledge & memory (3) | `rag_index`, `rag_search`, `agent_memory_write` | read-only / medium |
+| App & server control (6) | `app_info`, `set_theme`, `vault_peek`, `preview_edit`, `agent_connect`, `server_exec` | safe / read-only / high |
+
+> Many remote tools ship under both an `aeroftp_*` (MCP) and a `remote_*` (GUI / cross-profile) alias for the same capability; the 68 figure counts distinct capabilities, not alias names. 42 of them are exposed over the MCP server.
 
 ---
 
@@ -658,8 +635,8 @@ Since v1.9.0, **all sensitive data** is stored in the Universal Vault (`vault.db
 |-----------|---------|-------|
 | **Server passwords** | vault.db (AES-256-GCM) | Per-entry encryption with random nonce |
 | **Server profiles** | vault.db (AES-256-GCM) | Host, port, username, protocol config (v1.9.0) |
-| **OAuth tokens** | vault.db (AES-256-GCM) | Access + refresh tokens for all 5 OAuth providers |
-| **AI API keys** | vault.db (AES-256-GCM) | All 7 AI provider keys |
+| **OAuth tokens** | vault.db (AES-256-GCM) | Access + refresh tokens for all OAuth providers |
+| **AI API keys** | vault.db (AES-256-GCM) | All AI provider keys |
 | **AI settings** | vault.db (AES-256-GCM) | Model selection, provider config (v1.9.0) |
 | **App config** | vault.db (AES-256-GCM) | Sensitive application settings (v1.9.0) |
 | **MEGA credentials** | secrecy crate (zero-on-drop) | In-memory only during session |

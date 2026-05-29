@@ -13,7 +13,7 @@
       AeroFTP is a cross-platform desktop client for FTP, FTPS, SFTP, WebDAV,
       S3-compatible storage, and cloud providers including Google Drive, Dropbox,
       OneDrive, MEGA, Box, pCloud, Azure Blob Storage, 4shared, Filen, Zoho WorkDrive,
-      Internxt Drive, kDrive, Koofr, FileLu, Yandex Disk, and OpenDrive. 25 protocols, 30+ presets, one app.
+      Internxt Drive, kDrive, Koofr, FileLu, Yandex Disk, and OpenDrive. 7 transport protocols, 25+ native providers, 45+ presets, one app.
     </p>
     <p>Security and Encryption:</p>
     <ul>
@@ -25,8 +25,8 @@
     </ul>
     <p>AI Assistant:</p>
     <ul>
-      <li>AeroAgent Pro: AI-powered assistant with 47 tools, shell command execution, server exec, RAG indexing, plugin system, streaming markdown, prompt templates, and cost budget tracking</li>
-      <li>19 AI providers: OpenAI, Anthropic, Google Gemini, xAI Grok, OpenRouter, Ollama, Kimi, Qwen, DeepSeek, Mistral, Groq, Perplexity, Cohere, Together AI, AI21 Labs, Cerebras, SambaNova, Fireworks AI, Custom</li>
+      <li>AeroAgent Pro: AI-powered assistant with 68 tools, shell command execution, server exec, RAG indexing, plugin system, streaming markdown, prompt templates, and cost budget tracking</li>
+      <li>24 AI providers: OpenAI, Anthropic, Google Gemini, xAI Grok, OpenRouter, Ollama, Kimi, Qwen, DeepSeek, Mistral, Groq, Perplexity, Cohere, Together AI, AI21 Labs, Cerebras, SambaNova, Fireworks AI, Nvidia NIM, Z.AI, Hyperbolic, Novita, Yi, Custom</li>
       <li>Vision/multimodal: Attach images for analysis with GPT-4o, Claude, Gemini</li>
       <li>Native function calling with streaming responses and cost tracking</li>
     </ul>
@@ -43,8 +43,8 @@
     </ul>
     <p>Command-Line Interface:</p>
     <ul>
-      <li>AeroFTP CLI: 14 commands across 12 protocols with JSON output, glob transfers, and batch scripting</li>
-      <li>Batch engine: .aeroftp script files with variables, error policies, and 16 commands</li>
+      <li>AeroFTP CLI: 74 commands across 7 transport protocols and 25+ native providers with JSON output, glob transfers, batch scripting, FUSE mount, and MCP server mode</li>
+      <li>Batch engine: .aeroftp script files with variables, error policies, and 17 commands</li>
       <li>Security hardened: path traversal prevention, ANSI sanitization, OOM protection, 45-finding audit</li>
     </ul>
     <p>

@@ -1234,7 +1234,7 @@ Runs a deterministic benchmark across upload, download, list, and stat operation
 
 ### import - Import Server Profiles
 
-`import` ingests server profiles from external tools and stores them in the AeroFTP encrypted vault. Three sources today: `rclone`, `winscp`, `filezilla`. Use `--json` on any subcommand for scripting; passwords are decoded from each tool's native obfuscation and re-wrapped in AES-256-GCM by the vault on commit (commit happens through the GUI import flow today).
+`import` ingests server profiles from external tools and stores them in the AeroFTP encrypted vault. **15 sources** are supported: `rclone`, `winscp`, `filezilla`, `aws`, `ssh`, `mc`, `cyberduck`, `s3cmd`, `lftp`, `putty`, `mobaxterm`, `dreamweaver`, `kopia`, `duplicacy`, `restic`. Use `--json` on any subcommand for scripting; secrets are decoded from each tool's native obfuscation and re-wrapped in AES-256-GCM by the vault on commit. The three original sources (rclone, winscp, filezilla) have dedicated examples below; the other twelve share the same `aeroftp import <tool> [path]` interface (see [import (other tools)](#import-other-tools)).
 
 #### import rclone
 
@@ -1281,6 +1281,32 @@ aeroftp-cli import filezilla --json
 
 Imports sites from FileZilla's `sitemanager.xml`. Supports FTP, SFTP, FTPS (implicit and explicit), and S3. Passwords are decoded from base64 and upgraded to AES-256-GCM on commit. See the [FileZilla Bridge guide](https://docs.aeroftp.app/features/filezilla).
 
+#### import (other tools)
+
+The remaining twelve sources use the same `aeroftp import <tool> [path]` interface and `--json` envelope. When no path is given, AeroFTP auto-detects each tool's conventional config location.
+
+```bash
+aeroftp-cli import kopia                       # auto-detect repository.config
+aeroftp-cli import s3cmd ~/.s3cfg --json       # explicit path + JSON
+```
+
+| Tool | Config / file | Protocols | Credentials |
+|---|---|---|---|
+| `aws` | `credentials` / `config` (INI) | S3 | Full |
+| `mc` | `config.json` (JSON) | S3 | Full |
+| `s3cmd` | `.s3cfg` (INI) | S3, SFTP, WebDAV | Full |
+| `ssh` | `ssh config` | SFTP | Metadata only (key / agent) |
+| `putty` | registry `.reg` export | SFTP | Metadata only |
+| `mobaxterm` | `MobaXterm.ini` | FTP, FTPS, SFTP, WebDAV, S3 | Limited (host-bound) |
+| `lftp` | `rc` / bookmarks | FTP, FTPS, SFTP, WebDAV | Limited |
+| `cyberduck` | `.duck` bookmark (plist/XML) | FTP, FTPS, SFTP, WebDAV, S3 | Metadata only (keychain) |
+| `dreamweaver` | `.ste` site export (XML) | FTP, FTPS, SFTP, WebDAV, S3 | Full |
+| `kopia` | `repository.config` (JSON) | S3, SFTP, WebDAV | Full |
+| `restic` | env script (`RESTIC_REPOSITORY` + AWS env) | S3, SFTP, WebDAV | Full |
+| `duplicacy` | `preferences` (JSON) | S3, SFTP, WebDAV | Limited |
+
+> **Credentials:** *Full* = the secret is recovered and upgraded into the vault; *Limited* = only part of the secret material (host-bound or optional); *Metadata only* = connection metadata is imported but the secret stays in the OS keychain / SSH agent / an interactive prompt.
+
 #### import rclone-filter
 
 ```bash
@@ -1308,7 +1334,7 @@ Exit codes: `0` ok, `2` input file not found, `9` output file exists without `--
 
 ### export - Export Server Profiles
 
-The reverse direction of `import`: takes the AeroFTP vault and emits a configuration file in the dialect of an external tool, so you can hand off a connection bundle to operators or migrate away. Three targets:
+The reverse direction of `import`: takes the AeroFTP vault and emits a configuration file in the dialect of an external tool, so you can hand off a connection bundle to operators or migrate away. All 15 bridge tools are valid export targets (`rclone`, `winscp`, `filezilla`, `aws`, `ssh`, `mc`, `cyberduck`, `s3cmd`, `lftp`, `putty`, `mobaxterm`, `dreamweaver`, `kopia`, `duplicacy`, `restic`):
 
 ```bash
 # rclone.conf format (S3, SFTP, FTP, WebDAV, MEGA)
@@ -1319,6 +1345,10 @@ aeroftp-cli export winscp --output ./WinSCP.ini
 
 # FileZilla sitemanager.xml format
 aeroftp-cli export filezilla --output ./sitemanager.xml
+
+# Any other bridge target, e.g. restic env script or s3cmd config
+aeroftp-cli export restic --output ./restic-env.sh
+aeroftp-cli export s3cmd  --output ./.s3cfg
 ```
 
 OAuth-based providers (pCloud, Dropbox, Google Drive, Box, OneDrive, Yandex, Zoho, Koofr, Internxt, kDrive) **cannot be exported to rclone** because rclone uses its own OAuth flow with provider-issued client IDs; those entries are emitted as `# manual setup required` comments instead. Passwords for non-OAuth profiles are re-encoded in the target tool's native obfuscation (rclone reversible obscure, WinSCP password mask, FileZilla base64). Use `--json` on any subcommand for a machine-readable summary of what was exported and what was skipped.

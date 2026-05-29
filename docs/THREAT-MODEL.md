@@ -59,7 +59,7 @@
 | OAuth access/refresh tokens | Critical | In-memory SecretString, vault.db |
 | SSH private keys | Critical | vault.db (encrypted PEM) |
 | Local files | High | User filesystem |
-| Remote files | High | 22 storage providers |
+| Remote files | High | 25+ storage providers |
 | Agent memory | Medium | SQLite (agent_memory.db) |
 | Chat history | Medium | SQLite (chat_history.db) |
 | TOTP secrets | Critical | vault.db |
