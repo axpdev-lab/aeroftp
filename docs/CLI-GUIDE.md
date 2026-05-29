@@ -1392,6 +1392,33 @@ aeroftp-cli completions zsh
 
 Generates completion scripts for `bash`, `zsh`, `fish`, `elvish`, and `powershell`.
 
+### users - Multi-User Accounts
+
+Since v4.0.0 the vault can be split into per-user encrypted partitions (Argon2id-derived keys, AES partition encryption). The feature is optional: single-user installs are unchanged and an older single-user keystore is migrated automatically. See [MULTI-USER.md](./MULTI-USER.md) for the full model.
+
+```bash
+# Manage local users
+aeroftp-cli users list
+aeroftp-cli users add alice
+aeroftp-cli users switch alice            # persists the active user
+aeroftp-cli users set-passphrase alice    # set/change; --remove returns to device-wrapped access
+aeroftp-cli users rename alice alicia
+aeroftp-cli users sort alice bob carol    # order for the GUI dropdown / lock screen
+aeroftp-cli users delete alice
+aeroftp-cli users lock                    # lock the in-memory session
+```
+
+Each user keeps an isolated set of server profiles and AeroSync settings inside its own partition. An opt-in admin role gates user management, with a last-admin guard so an installation cannot lock itself out.
+
+The global `--user <name>` flag runs a single command as a specific user **for that invocation only**, without changing the persistent active user:
+
+```bash
+aeroftp-cli --user alice ls --profile "Backup" /
+aeroftp-cli --user alice sync --profile "Backup" /local /remote
+```
+
+When the selected partition is passphrase-protected, supply it with `--user-passphrase`, `--passphrase-file`, or the `AEROFTP_USER_PASSPHRASE` environment variable; otherwise the CLI prompts on a TTY. `--user` is optional everywhere and defaults to the active user, so existing scripts keep working unchanged.
+
 ### profiles - List Saved Profiles
 
 ```bash

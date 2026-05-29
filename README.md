@@ -305,7 +305,23 @@ The delta path is wired into:
 - **Cross-Profile Transfer** SFTP to SFTP with key-based auth, so only the bytes that differ from the destination travel on the wire.
 - **AeroTools Code Editor** save against a remote SFTP file, so a one-line change to a 5 MB file ships only the diff.
 
-**Session-cached batch transport (v3.7.0)**: a single SSH session amortizes many consecutive delta transfers via the new `AerorsyncBatch` trait: open the session once, transfer N files, close once. `SyncReport` surfaces `delta_files` (per-file delta breakdown) and `bytes_on_wire` so the UI shows exactly which files used the optimized path and the cumulative wire savings. Current scope is SFTP destinations with key-based auth; other providers and the classic `rsync` binary path on Unix coexist on the same `DeltaTransport` trait surface. The Cargo feature `aerorsync` is compiled by default; the runtime toggle (Settings → Advanced) is OFF pending the host-key algorithm negotiation asymmetry fix. Soft fallbacks (file too small, no key on disk, missing remote helper) silently route back to the classic upload path.
+**Session-cached batch transport (v3.7.0)**: a single SSH session amortizes many consecutive delta transfers via the new `AerorsyncBatch` trait: open the session once, transfer N files, close once. `SyncReport` surfaces `delta_files` (per-file delta breakdown) and `bytes_on_wire` so the UI shows exactly which files used the optimized path and the cumulative wire savings. Current scope is SFTP destinations with key-based auth; other providers and the classic `rsync` binary path on Unix coexist on the same `DeltaTransport` trait surface. The Cargo feature `aerorsync` is compiled by default, and the runtime toggle (Settings → Advanced) is ON by default (Auto mode) since v3.8.0, after the cross-platform host-key negotiation asymmetry was resolved. Soft fallbacks (file too small, no key on disk, missing remote helper) silently route back to the classic upload path.
+
+---
+
+### Shaped Graph Transfer (DAG)
+
+> [Full documentation →](docs/DAG-TRANSFER-ENGINE.md)
+
+Since **v4.0.0**, every transfer (single file, batch, sync, cross-profile copy) runs through one shared, provider-agnostic DAG engine. Each transfer is scheduled as a directed acyclic graph of typed nodes (discover, acquire, move bytes, verify, commit, emit progress); concurrency comes from a small set of resource classes (file, chunk, http, disk, api) governed by an AIMD backpressure controller.
+
+The engine picks the right **shape per call** from each provider's capability snapshot:
+
+- **Native multipart fan-out** on S3, Backblaze B2, Google Drive, Dropbox, OneDrive, and Box: one graph node per chunk, orchestrated end-to-end.
+- **Server-side copy** on every backend that advertises it (S3 `x-amz-copy-source`, B2 `b2_copy_file`, WebDAV RFC 4918 `COPY`, ImageKit `copyFile`, and 14 more): the bytes never touch the local host. S3 sources above the 5 GiB `CopyObject` limit fan out into parallel `UploadPartCopy` requests.
+- **Intra-file segmented downloads** when a provider honours HTTP `Range`.
+
+Backends that advertise none of these degrade honestly to the classic single-stream path, byte-identical with pre-v4.0.0. The GUI, the CLI, and the MCP server schedule through the same runners, so wire-level behavior is identical across all three by construction. The CLI exposes 25+ runtime knobs (`--checkers`, `--s3-upload-concurrency`, `--aimd-min/--aimd-max`, and more) over the same engine.
 
 ---
 
@@ -425,6 +441,7 @@ AeroFTP incorporates privacy protections that go beyond what traditional file ma
 | Feature | Details |
 | ------- | ------- |
 | **Master Password** | Optional Argon2id vault encryption - all credentials locked behind a single password |
+| **Multi-User Account Partition** | Optional per-user vault partitions (Argon2id-derived keys, AES partition encryption) with a boot-time Account Lock Screen, per-user profiles and AeroSync settings, an opt-in admin role with a last-admin guard, and a CLI `--user` flag. Single-user installs are unchanged; migration from an older keystore is automatic and idempotent. New in v4.0.0 |
 | **Encrypted Vault** | All sensitive data in AES-256-GCM encrypted storage - zero plaintext on disk |
 | **Zero Telemetry** | No analytics, no phone-home, no network requests beyond user-initiated connections |
 | **Memory Zeroization** | Passwords and keys cleared from RAM immediately after use |

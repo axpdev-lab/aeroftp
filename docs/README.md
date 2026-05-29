@@ -11,7 +11,9 @@ Welcome to the AeroFTP documentation folder. This contains all technical documen
 | **[RELEASE.md](./RELEASE.md)** | Complete release process and CI/CD automation |
 | **[TRANSLATIONS.md](./TRANSLATIONS.md)** | Internationalization (i18n) guide for adding new languages |
 | **[PROTOCOL-FEATURES.md](./PROTOCOL-FEATURES.md)** | Protocol feature comparison matrix and protocol capability notes |
+| **[DAG-TRANSFER-ENGINE.md](./DAG-TRANSFER-ENGINE.md)** | Shaped Graph Transfer (DAG) engine - node graph, capability-aware shapes (multipart fan-out, server-side copy, segmented downloads), resource classes, AIMD backpressure (v4.0.0) |
 | **[UNIVERSAL-VAULT.md](./UNIVERSAL-VAULT.md)** | Universal Vault credential storage architecture, Unified Keystore, backup/restore |
+| **[MULTI-USER.md](./MULTI-USER.md)** | Multi-User Account Partition - per-user encrypted vault partitions, Account Lock Screen, admin role, CLI `--user` flag (v4.0.0) |
 | **[SECURITY-AUDIT-SUMMARY.md](./SECURITY-AUDIT-SUMMARY.md)** | Independent security and quality audit reports (v2.5.0 + v2.6.0 provider audit) |
 | **[AEROAGENT.md](./AEROAGENT.md)** | AeroAgent AI assistant - architecture, tool catalog, safety system, CLI/MCP modes |
 | **[AEROVAULT-V2-SPEC.md](./AEROVAULT-V2-SPEC.md)** | AeroVault v2.1 encrypted container format - cryptography, operations, security, application integration (Recent Vaults, folder encryption, OS integration, Tauri commands reference) |
@@ -97,10 +99,18 @@ Production command-line client with direct URL mode for core protocols plus vaul
 
 AeroAgent provides a broad built-in tool catalog across local files, remote operations, archives, search, sync control, clipboard, shell execution, and persistent memory, with support for 24 AI providers. It also includes a Command Palette, plugin registry, tool execution safety system, and CLI/MCP integration paths.
 
+## Transfer Engine (DAG)
+
+Since v4.0.0, every transfer (single file, batch, sync, cross-profile copy) runs through one shared, provider-agnostic DAG engine that picks the right shape per call from each provider's capability snapshot: native multipart fan-out, server-side copy, or intra-file segmented downloads, degrading honestly to a single stream when a backend advertises none of them. The GUI, CLI, and MCP server schedule through the same runners. See **[DAG-TRANSFER-ENGINE.md](./DAG-TRANSFER-ENGINE.md)**.
+
+## Multi-User Account Partition
+
+Since v4.0.0, the vault can be split into per-user encrypted partitions with a boot-time Account Lock Screen, per-user profiles and settings, an opt-in admin role, and a CLI `--user` flag. Single-user installs are unchanged and migration is automatic. See **[MULTI-USER.md](./MULTI-USER.md)**.
+
 ---
 
-- **Documentation Version**: 3.8.0
-- **Last Update**: 15 May 2026
+- **Documentation Version**: 4.0.0
+- **Last Update**: 27 May 2026
 
 ---
 
