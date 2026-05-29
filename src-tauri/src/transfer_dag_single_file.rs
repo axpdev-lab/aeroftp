@@ -78,9 +78,7 @@ use std::sync::{Arc, Mutex as StdMutex};
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 use tokio::sync::Mutex;
 
-use crate::providers::{
-    MultipartHandle, ProviderError, ProviderTransferExecutorKind, StorageProvider, UploadedPart,
-};
+use crate::providers::{MultipartHandle, ProviderError, StorageProvider, UploadedPart};
 use crate::transfer_dag::executor::{execute_dag, DagNodeRunner, NodeFuture, NodeOutcome};
 use crate::transfer_dag::graph::{TransferNode, TransferNodeKind};
 use crate::transfer_dag::{
@@ -537,20 +535,20 @@ fn single_file_budget(built: &ShapedFileDag) -> TransferBudget {
 /// Mint an independent worker for a concurrent part upload, or `None` when the
 /// provider must serialise its parts on the shared session mutex.
 ///
-/// Routed through the `transfer_executor_kind()` + `clone_for_transfer()` trait
-/// contract rather than a hardcoded `S3`/`B2` downcast, so every provider that
-/// advertises `HttpClonePool` (S3, B2, Azure, and any future clone-backed
-/// backend) actually fans its parts out in parallel instead of paying the
-/// per-part request cost while serialising on one mutex (audit CHUNK-01).
-/// Providers that report `LockedSingle` keep the mutex fallback at the call
-/// site, so this is a pure widening: no provider that was parallel before
-/// becomes serial.
+/// Gated on `clone_for_transfer()` (the actual capability the parallel part
+/// path needs: an independent HTTP/session worker) rather than a hardcoded
+/// `S3`/`B2` downcast or the `transfer_executor_kind()` flag. Gating on the
+/// clone itself lets a provider parallelise its multipart chunks WITHOUT also
+/// opting into clone-pool BATCH execution (which `transfer_executor_kind`
+/// drives), so the blast radius stays exactly the per-part path. S3, B2, Azure
+/// and Nextcloud WebDAV produce an independent worker here; providers that
+/// cannot clone (the trait default) return `None` and keep the session-mutex
+/// fallback at the call site (audit CHUNK-01). Ordering-sensitive providers
+/// (Drive/OneDrive) stay correct regardless: the builder serialises their part
+/// nodes when `max_chunk_slots <= 1`, so even a cloned worker runs them one at
+/// a time in part-number order.
 fn clone_multipart_worker(provider: &dyn StorageProvider) -> Option<Box<dyn StorageProvider>> {
-    if provider.transfer_executor_kind() == ProviderTransferExecutorKind::HttpClonePool {
-        provider.clone_for_transfer().ok()
-    } else {
-        None
-    }
+    provider.clone_for_transfer().ok()
 }
 
 #[cfg(test)]

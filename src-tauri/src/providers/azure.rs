@@ -46,6 +46,12 @@ const BLOCK_SIZE: usize = 4 * 1024 * 1024;
 /// graph has enough fan-out without creating excessive Azure Put Block calls.
 const DAG_MULTIPART_BLOCK_SIZE: u64 = 8 * 1024 * 1024;
 const DAG_MULTIPART_MAX_PARALLEL: u8 = 4;
+/// Size at or above which the shaped graph fans out into parallel Put Block
+/// uploads. Below it a single-shot upload is faster: the 2026-05-29 lab
+/// benchmark measured the parallel fan-out losing 17% at 100 MiB but winning
+/// 69% at 256 MiB, so the crossover is kept conservatively at 200 MiB (audit
+/// Patch Set 2). Distinct from the legacy `BLOCK_UPLOAD_THRESHOLD`.
+const DAG_MULTIPART_THRESHOLD: u64 = 200 * 1024 * 1024;
 
 /// AZ-016: Maximum time to wait for async copy completion (5 minutes)
 const COPY_POLL_TIMEOUT_SECS: u64 = 300;
@@ -1182,7 +1188,7 @@ impl StorageProvider for AzureProvider {
     fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
         super::TransferOptimizationHints {
             supports_multipart: true,
-            multipart_threshold: DAG_MULTIPART_BLOCK_SIZE,
+            multipart_threshold: DAG_MULTIPART_THRESHOLD,
             multipart_part_size: DAG_MULTIPART_BLOCK_SIZE,
             multipart_max_parallel: DAG_MULTIPART_MAX_PARALLEL,
             supports_range_download: true,
@@ -2415,7 +2421,9 @@ Time:2026-01-01</Message>
         let hints = p.transfer_optimization_hints();
 
         assert!(hints.supports_multipart);
-        assert_eq!(hints.multipart_threshold, DAG_MULTIPART_BLOCK_SIZE);
+        // Fan-out only kicks in at the DAG threshold (200 MiB); below it Azure
+        // stays single-shot (audit Patch Set 2).
+        assert_eq!(hints.multipart_threshold, DAG_MULTIPART_THRESHOLD);
         assert_eq!(hints.multipart_part_size, DAG_MULTIPART_BLOCK_SIZE);
         assert_eq!(hints.multipart_max_parallel, DAG_MULTIPART_MAX_PARALLEL);
         assert!(hints.supports_range_download);
