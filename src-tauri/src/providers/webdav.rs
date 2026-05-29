@@ -2049,6 +2049,18 @@ fn parse_oc_checksums(raw: &str) -> HashMap<String, String> {
 /// to disk.
 const NEXTCLOUD_DAG_CHUNK_SIZE: u64 = 10 * 1024 * 1024;
 
+/// Size at or above which a Nextcloud upload fans out into chunked v2 parts.
+///
+/// Below it a single `PUT` is used. The 2026-05-29 lab benchmark measured the
+/// chunked path (MKCOL + N `PUT` + `MOVE`) losing to a single `PUT` on a
+/// low-RTT LAN even with 4-way parallel chunks (-36% at 100 MiB), because the
+/// extra round-trips dominate when bandwidth is not the bottleneck. The
+/// threshold keeps medium uploads on the faster single `PUT` while still
+/// chunking large uploads, where a single multi-hundred-MiB `PUT` is fragile
+/// over WAN (one failure restarts the whole transfer) and resumable chunks pay
+/// off (audit Patch Set 2). 256 MiB is the agreed crossover.
+const NEXTCLOUD_DAG_THRESHOLD: u64 = 256 * 1024 * 1024;
+
 /// Cap on parallel `upload_part` nodes for Nextcloud, aligned with S3 / Azure.
 ///
 /// Most self-hosted Nextcloud deployments sit behind nginx / Apache with
@@ -3826,7 +3838,7 @@ impl StorageProvider for WebDavProvider {
             if self.is_nextcloud_for_dav() {
                 (
                     true,
-                    NEXTCLOUD_DAG_CHUNK_SIZE,
+                    NEXTCLOUD_DAG_THRESHOLD,
                     NEXTCLOUD_DAG_CHUNK_SIZE,
                     NEXTCLOUD_DAG_MAX_PARALLEL,
                 )
@@ -4518,7 +4530,9 @@ mod tests {
         let hints = p.transfer_optimization_hints();
         assert!(hints.supports_multipart);
         assert_eq!(hints.multipart_part_size, NEXTCLOUD_DAG_CHUNK_SIZE);
-        assert_eq!(hints.multipart_threshold, NEXTCLOUD_DAG_CHUNK_SIZE);
+        // Chunked v2 only engages at/above the threshold; medium uploads stay
+        // on a single PUT (faster on LAN), audit Patch Set 2.
+        assert_eq!(hints.multipart_threshold, NEXTCLOUD_DAG_THRESHOLD);
         assert_eq!(hints.multipart_max_parallel, NEXTCLOUD_DAG_MAX_PARALLEL);
     }
 
