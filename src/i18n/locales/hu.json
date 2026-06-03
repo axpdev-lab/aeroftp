@@ -2007,7 +2007,9 @@
             "aerosyncScriptFromWrapper": "(wrapperből)",
             "aerosyncScriptUnmappedFields": "Ismeretlen metadata mezők",
             "aerosyncScriptApplyButton": "Mentés presetként",
-            "aerosyncScriptAppliedToast": "Importált preset elmentve. Nyisd meg az AeroSync-et a használatához."
+            "aerosyncScriptAppliedToast": "Importált preset elmentve. Nyisd meg az AeroSync-et a használatához.",
+            "compressionHint": "Az adatokat átvitel közben tömöríti az átvitel felgyorsításához; a célhelyen nem tárol tömörített fájlokat. Az Auto kihagyja a már tömörített formátumokat (zip, jpg, mp4 és hasonlók).",
+            "canaryDryRun": "Semmilyen adat nem kerül átvitelre: ez előnézetet ad arról, mit tenne egy teljes szinkronizálás, a minta alapján kiszámítva (hasonlóan az rclone --dry-run működéséhez)."
         },
         "ui": {
             "syncing": "Szinkronizálás...",

@@ -2007,7 +2007,9 @@
             "aerosyncScriptFromWrapper": "(z wrapperu)",
             "aerosyncScriptUnmappedFields": "Nerozpoznana metadata pole",
             "aerosyncScriptApplyButton": "Ulozit jako preset",
-            "aerosyncScriptAppliedToast": "Importovany preset ulozen. Otevrete AeroSync pro jeho pouziti."
+            "aerosyncScriptAppliedToast": "Importovany preset ulozen. Otevrete AeroSync pro jeho pouziti.",
+            "compressionHint": "Komprimuje data během přenosu pro jeho zrychlení; v cíli neukládá komprimované soubory. Auto přeskakuje formáty, které jsou již komprimované (zip, jpg, mp4 a podobné).",
+            "canaryDryRun": "Nic se nepřenáší: toto zobrazí náhled toho, co by provedla úplná synchronizace, vypočtený ze vzorku (podobně jako rclone --dry-run)."
         },
         "ui": {
             "syncing": "Synchronizace...",

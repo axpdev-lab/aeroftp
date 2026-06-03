@@ -2007,7 +2007,9 @@
             "aerosyncScriptFromWrapper": "(no wrapper)",
             "aerosyncScriptUnmappedFields": "Neatpazinti metadata lauki",
             "aerosyncScriptApplyButton": "Saglabat ka preset",
-            "aerosyncScriptAppliedToast": "Importetais preset saglabats. Atveriet AeroSync, lai to izmantotu."
+            "aerosyncScriptAppliedToast": "Importetais preset saglabats. Atveriet AeroSync, lai to izmantotu.",
+            "compressionHint": "Saspiež datus pārsūtīšanas laikā, lai paātrinātu pārsūtīšanu; tā nesaglabā saspiestus failus galamērķī. Auto izlaiž formātus, kas jau ir saspiesti (zip, jpg, mp4 un līdzīgus).",
+            "canaryDryRun": "Nekas netiek pārsūtīts: tas parāda priekšskatījumu tam, ko veiktu pilna sinhronizācija, aprēķinot to pēc parauga (līdzīgi kā rclone --dry-run)."
         },
         "ui": {
             "syncing": "Sinhronizē...",

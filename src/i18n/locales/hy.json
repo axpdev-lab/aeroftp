@@ -2000,7 +2000,9 @@
             "aerosyncScriptFromWrapper": "(wrapper-ից)",
             "aerosyncScriptUnmappedFields": "Չճանաչված metadata դաշտեր",
             "aerosyncScriptApplyButton": "Պահպանել որպես preset",
-            "aerosyncScriptAppliedToast": "Ներմուծված preset-ը պահպանվեց։ Բացեք AeroSync-ը այն օգտագործելու համար։"
+            "aerosyncScriptAppliedToast": "Ներմուծված preset-ը պահպանվեց։ Բացեք AeroSync-ը այն օգտագործելու համար։",
+            "compressionHint": "Փոխանցման ընթացքում սեղմում է տվյալները փոխանցումն արագացնելու համար. այն նպատակակետում սեղմված ֆայլեր չի պահում: Auto-ն բաց է թողնում արդեն սեղմված ձևաչափերը (zip, jpg, mp4 և նմանատիպ):",
+            "canaryDryRun": "Ոչինչ չի փոխանցվում. սա նախադիտում է, թե ինչ կանի լրիվ համաժամացումը՝ հաշվարկված ընտրանքի հիման վրա (նման է rclone --dry-run-ին):"
         },
         "ui": {
             "syncing": "Սինքրոնացում...",

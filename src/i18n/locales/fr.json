@@ -2007,7 +2007,9 @@
             "aerosyncScriptFromWrapper": "(depuis le wrapper)",
             "aerosyncScriptUnmappedFields": "Champs metadata non reconnus",
             "aerosyncScriptApplyButton": "Enregistrer comme preset",
-            "aerosyncScriptAppliedToast": "Preset importé enregistré. Ouvre AeroSync pour l'utiliser."
+            "aerosyncScriptAppliedToast": "Preset importé enregistré. Ouvre AeroSync pour l'utiliser.",
+            "compressionHint": "Compresse les données pendant le transfert pour l'accélérer; elle ne stocke pas de fichiers compressés à destination. Auto ignore les formats déjà compressés (zip, jpg, mp4 et similaires).",
+            "canaryDryRun": "Rien n'est transféré : ceci affiche un aperçu de ce que ferait une synchronisation complète, calculé à partir de l'échantillon (similaire à rclone --dry-run)."
         },
         "ui": {
             "syncing": "Synchronisation...",

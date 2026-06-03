@@ -2007,7 +2007,9 @@
             "aerosyncScriptFromWrapper": "(z wrapper)",
             "aerosyncScriptUnmappedFields": "Nierozpoznane pola metadata",
             "aerosyncScriptApplyButton": "Zapisz jako preset",
-            "aerosyncScriptAppliedToast": "Zaimportowany preset zapisany. Otwórz AeroSync, aby go użyć."
+            "aerosyncScriptAppliedToast": "Zaimportowany preset zapisany. Otwórz AeroSync, aby go użyć.",
+            "compressionHint": "Kompresuje dane podczas przesyłania, aby przyspieszyć transfer; nie zapisuje skompresowanych plików w miejscu docelowym. Auto pomija formaty, które są już skompresowane (zip, jpg, mp4 i podobne).",
+            "canaryDryRun": "Nic nie jest przesyłane: pokazuje to podgląd tego, co zrobiłaby pełna synchronizacja, obliczony na podstawie próbki (podobnie jak rclone --dry-run)."
         },
         "ui": {
             "syncing": "Synchronizacja...",

@@ -2007,7 +2007,9 @@
             "aerosyncScriptFromWrapper": "(fran wrapper)",
             "aerosyncScriptUnmappedFields": "Okanda metadata-falt",
             "aerosyncScriptApplyButton": "Spara som preset",
-            "aerosyncScriptAppliedToast": "Importerad preset sparad. Oppna AeroSync for att anvanda den."
+            "aerosyncScriptAppliedToast": "Importerad preset sparad. Oppna AeroSync for att anvanda den.",
+            "compressionHint": "Komprimerar data under överföringen för att snabba upp den; den lagrar inga komprimerade filer på destinationen. Auto hoppar över format som redan är komprimerade (zip, jpg, mp4 och liknande).",
+            "canaryDryRun": "Inget överförs: detta förhandsvisar vad en fullständig synkronisering skulle göra, beräknat utifrån urvalet (liknande rclone --dry-run)."
         },
         "ui": {
             "syncing": "Synkroniserar...",

@@ -2007,7 +2007,9 @@
             "aerosyncScriptFromWrapper": "(daripada wrapper)",
             "aerosyncScriptUnmappedFields": "Medan metadata tidak dikenali",
             "aerosyncScriptApplyButton": "Simpan sebagai preset",
-            "aerosyncScriptAppliedToast": "Preset yang diimport telah disimpan. Buka AeroSync untuk menggunakannya."
+            "aerosyncScriptAppliedToast": "Preset yang diimport telah disimpan. Buka AeroSync untuk menggunakannya.",
+            "compressionHint": "Memampatkan data semasa penghantaran untuk mempercepatkan pemindahan; ia tidak menyimpan fail termampat di destinasi. Auto melangkau format yang sudah dimampatkan (zip, jpg, mp4 dan yang seumpamanya).",
+            "canaryDryRun": "Tiada apa-apa dipindahkan: ini memaparkan pratonton apa yang akan dilakukan oleh penyegerakan penuh, dikira daripada sampel (serupa dengan rclone --dry-run)."
         },
         "ui": {
             "syncing": "Menyegerak...",

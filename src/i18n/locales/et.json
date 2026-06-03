@@ -2007,7 +2007,9 @@
             "aerosyncScriptFromWrapper": "(wrapperist)",
             "aerosyncScriptUnmappedFields": "Tundmatud metadata väljad",
             "aerosyncScriptApplyButton": "Salvesta presetina",
-            "aerosyncScriptAppliedToast": "Imporditud preset salvestatud. Ava AeroSync selle kasutamiseks."
+            "aerosyncScriptAppliedToast": "Imporditud preset salvestatud. Ava AeroSync selle kasutamiseks.",
+            "compressionHint": "Tihendab andmeid edastamise ajal, et kiirendada ülekannet; sihtkohta ei salvestata tihendatud faile. Auto jätab vahele juba tihendatud vormingud (zip, jpg, mp4 ja sarnased).",
+            "canaryDryRun": "Midagi ei edastata: see näitab eelvaadet sellest, mida täielik sünkroonimine teeks, arvutatuna valimi põhjal (sarnaselt rclone --dry-run käsuga)."
         },
         "ui": {
             "syncing": "Sünkroniseerimine...",

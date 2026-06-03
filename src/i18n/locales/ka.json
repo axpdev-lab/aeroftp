@@ -2007,7 +2007,9 @@
             "aerosyncScriptFromWrapper": "(wrapper-იდან)",
             "aerosyncScriptUnmappedFields": "ამოუცნობი metadata ველები",
             "aerosyncScriptApplyButton": "შენახვა როგორც preset",
-            "aerosyncScriptAppliedToast": "იმპორტირებული preset შენახულია. გახსენით AeroSync მისი გამოსაყენებლად."
+            "aerosyncScriptAppliedToast": "იმპორტირებული preset შენახულია. გახსენით AeroSync მისი გამოსაყენებლად.",
+            "compressionHint": "გადაცემის დაჩქარებისთვის ახდენს მონაცემების შეკუმშვას გადაცემის დროს; დანიშნულების ადგილას შეკუმშულ ფაილებს არ ინახავს. Auto გამოტოვებს უკვე შეკუმშულ ფორმატებს (zip, jpg, mp4 და მსგავსი).",
+            "canaryDryRun": "არაფერი გადაიცემა: ეს გაჩვენებთ, რას გააკეთებდა სრული სინქრონიზაცია, ნიმუშის მიხედვით გამოთვლილს (rclone --dry-run-ის მსგავსად)."
         },
         "ui": {
             "syncing": "სინქრონიზაცია...",

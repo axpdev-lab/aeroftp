@@ -2007,7 +2007,9 @@
             "aerosyncScriptFromWrapper": "(จาก wrapper)",
             "aerosyncScriptUnmappedFields": "ฟิลด์ metadata ที่ไม่รู้จัก",
             "aerosyncScriptApplyButton": "บันทึกเป็น preset",
-            "aerosyncScriptAppliedToast": "บันทึก preset ที่นำเข้าแล้ว เปิด AeroSync เพื่อใช้งาน"
+            "aerosyncScriptAppliedToast": "บันทึก preset ที่นำเข้าแล้ว เปิด AeroSync เพื่อใช้งาน",
+            "compressionHint": "บีบอัดข้อมูลระหว่างการถ่ายโอนเพื่อเพิ่มความเร็ว โดยจะไม่จัดเก็บไฟล์ที่บีบอัดไว้ที่ปลายทาง โหมด Auto จะข้ามรูปแบบที่ถูกบีบอัดอยู่แล้ว (zip, jpg, mp4 และอื่นๆ ที่คล้ายกัน)",
+            "canaryDryRun": "ไม่มีการถ่ายโอนใดๆ นี่เป็นการแสดงตัวอย่างสิ่งที่การซิงค์เต็มรูปแบบจะทำ คำนวณจากตัวอย่างข้อมูล (คล้ายกับ rclone --dry-run)"
         },
         "ui": {
             "syncing": "กำลังซิงค์...",

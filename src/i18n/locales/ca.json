@@ -2007,7 +2007,9 @@
             "aerosyncScriptFromWrapper": "(des del wrapper)",
             "aerosyncScriptUnmappedFields": "Camps metadata no reconeguts",
             "aerosyncScriptApplyButton": "Desa com a preset",
-            "aerosyncScriptAppliedToast": "Preset importat desat. Obre AeroSync per utilitzar-lo."
+            "aerosyncScriptAppliedToast": "Preset importat desat. Obre AeroSync per utilitzar-lo.",
+            "compressionHint": "Comprimeix les dades durant el trànsit per accelerar la transferència; no desa fitxers comprimits a la destinació. Auto omet els formats que ja estan comprimits (zip, jpg, mp4 i similars).",
+            "canaryDryRun": "No es transfereix res: això mostra una previsualització del que faria una sincronització completa, calculada a partir de la mostra (similar a rclone --dry-run)."
         },
         "ui": {
             "syncing": "Sincronitzant...",

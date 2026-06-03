@@ -2007,7 +2007,9 @@
             "aerosyncScriptFromWrapper": "(tu wrapper)",
             "aerosyncScriptUnmappedFields": "Cac truong metadata khong nhan dien",
             "aerosyncScriptApplyButton": "Luu lam preset",
-            "aerosyncScriptAppliedToast": "Da luu preset duoc nhap. Mo AeroSync de su dung."
+            "aerosyncScriptAppliedToast": "Da luu preset duoc nhap. Mo AeroSync de su dung.",
+            "compressionHint": "Nén dữ liệu trong quá trình truyền để tăng tốc độ truyền; không lưu trữ các tệp đã nén tại đích. Auto bỏ qua các định dạng đã được nén sẵn (zip, jpg, mp4 và tương tự).",
+            "canaryDryRun": "Không có gì được truyền: thao tác này xem trước những gì một lần đồng bộ đầy đủ sẽ thực hiện, được tính từ mẫu (tương tự rclone --dry-run)."
         },
         "ui": {
             "syncing": "Đang đồng bộ...",

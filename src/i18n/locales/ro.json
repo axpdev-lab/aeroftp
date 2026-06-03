@@ -2007,7 +2007,9 @@
             "aerosyncScriptFromWrapper": "(din wrapper)",
             "aerosyncScriptUnmappedFields": "Campuri metadata nerecunoscute",
             "aerosyncScriptApplyButton": "Salveaza ca preset",
-            "aerosyncScriptAppliedToast": "Preset importat salvat. Deschide AeroSync pentru a-l folosi."
+            "aerosyncScriptAppliedToast": "Preset importat salvat. Deschide AeroSync pentru a-l folosi.",
+            "compressionHint": "Comprimă datele în timpul transferului pentru a-l accelera; nu stochează fișiere comprimate la destinație. Auto omite formatele deja comprimate (zip, jpg, mp4 și altele similare).",
+            "canaryDryRun": "Nu se transferă nimic: aceasta previzualizează ce ar face o sincronizare completă, calculat pe baza eșantionului (similar cu rclone --dry-run)."
         },
         "ui": {
             "syncing": "Se sincronizează...",

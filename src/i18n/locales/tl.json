@@ -2007,7 +2007,9 @@
             "aerosyncScriptFromWrapper": "(mula sa wrapper)",
             "aerosyncScriptUnmappedFields": "Hindi kilalang metadata fields",
             "aerosyncScriptApplyButton": "I-save bilang preset",
-            "aerosyncScriptAppliedToast": "Na-save ang na-import na preset. Buksan ang AeroSync upang gamitin ito."
+            "aerosyncScriptAppliedToast": "Na-save ang na-import na preset. Buksan ang AeroSync upang gamitin ito.",
+            "compressionHint": "Kino-compress ang data habang inililipat para mapabilis ang transfer; hindi ito nag-iimbak ng mga naka-compress na file sa destinasyon. Nilalaktawan ng Auto ang mga format na naka-compress na (zip, jpg, mp4, at iba pa).",
+            "canaryDryRun": "Walang inililipat: ipinapakita lang nito kung ano ang gagawin ng buong sync, batay sa sample (katulad ng rclone --dry-run)."
         },
         "ui": {
             "syncing": "Sinsi-sync...",

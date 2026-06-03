@@ -1972,7 +1972,9 @@
             "aerosyncScriptFromWrapper": "(wrapper から)",
             "aerosyncScriptUnmappedFields": "認識されていない metadata フィールド",
             "aerosyncScriptApplyButton": "preset として保存",
-            "aerosyncScriptAppliedToast": "インポートした preset を保存しました。AeroSync を開いて使用してください。"
+            "aerosyncScriptAppliedToast": "インポートした preset を保存しました。AeroSync を開いて使用してください。",
+            "compressionHint": "転送を高速化するため通信中にデータを圧縮します。圧縮ファイルが転送先に保存されることはありません。Auto はすでに圧縮された形式（zip、jpg、mp4 など）をスキップします。",
+            "canaryDryRun": "何も転送されません。これはサンプルに基づいて算出した、完全な同期で行われる内容のプレビューです（rclone --dry-run に似ています）。"
         },
         "ui": {
             "syncing": "同期中...",
