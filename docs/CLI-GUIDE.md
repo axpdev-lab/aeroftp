@@ -388,15 +388,25 @@ aeroftp-cli put sftp://user@host ./project/ /var/www/project/ -r
 
 # Delta-aware single-file upload (Z.4.5 R1, SFTP only today)
 aeroftp-cli put sftp://user@host ./report.pdf /uploads/report.pdf --delta
+
+# Set the uploaded file's privacy on OpenDrive (private | public | hidden)
+aeroftp-cli put opendrive://user@host ./secret.pdf /docs/ --access private
 ```
 
 > **`--delta`**: same semantics as on `get` (see above). On a successful delta upload the CLI prints `bytes_on_wire / total` and the rsync speedup ratio so you can confirm the saving.
+
+> **`--access <private|public|hidden>`** (issue #252): on providers that model a three-level access scheme (OpenDrive today), sets the uploaded file's privacy. When omitted on an OpenDrive target the upload defaults to **private** (max-privacy, opt out with `--access public`), mirroring rclone's `--opendrive-access`. Applies to single-file uploads; for recursive/glob uploads set the destination folder privacy with `mkdir --access`, which cascades to children. Ignored, with a note, on providers that do not model access.
 
 ### mkdir - Create Directory
 
 ```bash
 aeroftp-cli mkdir sftp://user@host /var/www/new-folder
+
+# Create a private OpenDrive folder (privacy cascades to its children)
+aeroftp-cli mkdir opendrive://user@host /private-docs --access private
 ```
+
+> **`--access <private|public|hidden>`** (issue #252): on OpenDrive, sets the created folder's privacy, which cascades to existing children server-side. Defaults to **private** when omitted on an OpenDrive target.
 
 ### rm - Delete File or Directory
 

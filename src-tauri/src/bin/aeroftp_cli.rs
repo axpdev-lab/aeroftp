@@ -842,6 +842,103 @@ enum RcloneFilenameEncryption {
     Off,
 }
 
+/// Issue #252: per-create privacy level for providers that expose a
+/// three-level access model (OpenDrive today). Mirrors rclone's
+/// `--opendrive-access`. Defaults to `private` (max-privacy, opt-out)
+/// when the flag is omitted on an OpenDrive target. Ignored, with a
+/// note, on providers that do not model access.
+#[derive(Copy, Clone, Debug, ValueEnum, PartialEq, Eq)]
+enum CliAccessLevel {
+    /// Not listed, not shared; reachable only by the owner.
+    Private,
+    /// Anyone with the link can access; searchable.
+    Public,
+    /// Accessible by direct link only; not searchable.
+    Hidden,
+}
+
+impl CliAccessLevel {
+    fn to_opendrive(self) -> ftp_client_gui_lib::providers::opendrive::OpenDriveAccessLevel {
+        use ftp_client_gui_lib::providers::opendrive::OpenDriveAccessLevel as L;
+        match self {
+            CliAccessLevel::Private => L::Private,
+            CliAccessLevel::Public => L::Public,
+            CliAccessLevel::Hidden => L::Hidden,
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            CliAccessLevel::Private => "private",
+            CliAccessLevel::Public => "public",
+            CliAccessLevel::Hidden => "hidden",
+        }
+    }
+}
+
+/// Issue #252: apply a privacy level to a freshly created remote path on
+/// providers that model access. Today only OpenDrive does; the call is a
+/// no-op (with a one-line note when `requested` is explicit) on every
+/// other backend. When `requested` is `None` and the target is OpenDrive,
+/// defaults to `private` so CLI uploads are max-privacy by default
+/// (opt out with `--access public`). Folder access cascades to children
+/// server-side (`with_child_files=true`). Non-fatal: a failure here warns
+/// but never changes the upload exit code.
+async fn apply_remote_access(
+    provider: &mut dyn ftp_client_gui_lib::providers::StorageProvider,
+    remote_path: &str,
+    is_dir: bool,
+    requested: Option<CliAccessLevel>,
+    cli: &Cli,
+) {
+    use ftp_client_gui_lib::providers::opendrive::OpenDriveProvider;
+
+    let opendrive = provider
+        .as_any_mut()
+        .downcast_mut::<OpenDriveProvider>();
+
+    let Some(od) = opendrive else {
+        // Not an access-modelling provider. Only speak up if the user
+        // explicitly asked for an access level, so the silence is honest.
+        if requested.is_some() && !cli.quiet {
+            eprintln!(
+                "Note: --access is only supported on OpenDrive in this release; ignored for this provider"
+            );
+        }
+        return;
+    };
+
+    let level = requested.unwrap_or(CliAccessLevel::Private);
+    let result = if is_dir {
+        od.set_folder_access(remote_path, level.to_opendrive()).await
+    } else {
+        od.set_file_access(remote_path, level.to_opendrive()).await
+    };
+
+    match result {
+        Ok(()) => {
+            if !cli.quiet {
+                let how = if requested.is_some() {
+                    ""
+                } else {
+                    " by default (use --access public to opt out)"
+                };
+                eprintln!("OpenDrive: set {} access on {}{}", level.label(), remote_path, how);
+            }
+        }
+        Err(e) => {
+            if !cli.quiet {
+                eprintln!(
+                    "Warning: could not set {} access on {}: {}",
+                    level.label(),
+                    remote_path,
+                    e
+                );
+            }
+        }
+    }
+}
+
 /// KE-C1: FUSE caching policy preset. Maps directly onto the
 /// (`attr_timeout`, `dir_cache_time`, `cache_ttl`) trio at
 /// `AeroFuseFs` construction time. Granular per-knob overrides
@@ -1010,6 +1107,13 @@ enum Commands {
         /// recursive / glob uploads.
         #[arg(long)]
         delta: bool,
+        /// Issue #252: privacy level to apply to the uploaded file on
+        /// providers that model access (OpenDrive). Defaults to `private`
+        /// when omitted on an OpenDrive target. Applies to single-file
+        /// uploads; for recursive/glob uploads set the destination folder
+        /// privacy with `mkdir --access` (it cascades to children).
+        #[arg(long, value_enum)]
+        access: Option<CliAccessLevel>,
     },
     /// Create a remote directory
     Mkdir {
@@ -1022,6 +1126,12 @@ enum Commands {
         /// Create parent directories as needed; no error if existing
         #[arg(short, long)]
         parents: bool,
+        /// Issue #252: privacy level for the created folder on providers
+        /// that model access (OpenDrive). Defaults to `private` when
+        /// omitted on an OpenDrive target. Cascades to existing children
+        /// server-side.
+        #[arg(long, value_enum)]
+        access: Option<CliAccessLevel>,
     },
     /// Delete a remote file or directory
     Rm {
@@ -17815,6 +17925,7 @@ async fn cmd_put(
     recursive: bool,
     no_clobber: bool,
     delta: bool,
+    access: Option<CliAccessLevel>,
     cli: &Cli,
     format: OutputFormat,
     cancelled: Arc<AtomicBool>,
@@ -17830,6 +17941,11 @@ async fn cmd_put(
                 "Note: --delta is a no-op for recursive uploads in this release; use `aeroftp sync --delta` for recursive delta sync"
             );
         }
+        if access.is_some() && !cli.quiet {
+            eprintln!(
+                "Note: --access is not applied per-file on recursive uploads in this release; set the destination folder privacy with `aeroftp mkdir --access` (it cascades to children)"
+            );
+        }
         return cmd_put_recursive(url, local, remote, cli, format, cancelled).await;
     }
 
@@ -17838,6 +17954,11 @@ async fn cmd_put(
         if delta && !cli.quiet {
             eprintln!(
                 "Note: --delta is a no-op for glob uploads in this release; use `aeroftp sync --delta` for glob delta sync"
+            );
+        }
+        if access.is_some() && !cli.quiet {
+            eprintln!(
+                "Note: --access is not applied per-file on glob uploads in this release; set the destination folder privacy with `aeroftp mkdir --access` (it cascades to children)"
             );
         }
         return cmd_put_glob(url, local, remote, cli, format, cancelled).await;
@@ -18038,6 +18159,7 @@ async fn cmd_put(
                         }));
                     }
                 }
+                apply_remote_access(provider.as_mut(), remote_path, false, access, cli).await;
                 let _ = provider.disconnect().await;
                 return 0;
             }
@@ -18075,6 +18197,7 @@ async fn cmd_put(
     match up_result {
         Ok(()) => {
             session_transfer_add(file_size);
+            apply_remote_access(provider.as_mut(), remote_path, false, access, cli).await;
             let elapsed = start.elapsed();
             let speed = if elapsed.as_secs_f64() > 0.0 {
                 (file_size as f64 / elapsed.as_secs_f64()) as u64
@@ -18398,7 +18521,14 @@ async fn cmd_put_recursive(
     }
 }
 
-async fn cmd_mkdir(url: &str, path: &str, parents: bool, cli: &Cli, format: OutputFormat) -> i32 {
+async fn cmd_mkdir(
+    url: &str,
+    path: &str,
+    parents: bool,
+    access: Option<CliAccessLevel>,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
     let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
         Err(code) => return code,
@@ -18486,6 +18616,12 @@ async fn cmd_mkdir(url: &str, path: &str, parents: bool, cli: &Cli, format: Outp
                 "already_existed": leaf_already_existed,
             })),
         }
+        // Apply privacy to the leaf folder. With an explicit --access, always
+        // honour it; with the default (private), skip a folder that already
+        // existed so we never silently flip an established folder's privacy.
+        if access.is_some() || !leaf_already_existed {
+            apply_remote_access(provider.as_mut(), path, true, access, cli).await;
+        }
         let _ = provider.disconnect().await;
         0
     } else {
@@ -18504,6 +18640,8 @@ async fn cmd_mkdir(url: &str, path: &str, parents: bool, cli: &Cli, format: Outp
                         "already_existed": false,
                     })),
                 }
+                // Freshly created (Ok == created; existing dirs land in Err).
+                apply_remote_access(provider.as_mut(), path, true, access, cli).await;
                 let _ = provider.disconnect().await;
                 0
             }
@@ -34650,6 +34788,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     false,
                     false,
                     false,
+                    None,
                     cli,
                     format,
                     cancelled.clone(),
@@ -34813,7 +34952,7 @@ async fn cmd_batch(file: &str, cli: &Cli, format: OutputFormat, cancelled: Arc<A
                     eprintln!("Line {}: MKDIR requires a path", line_num + 1);
                     return 5;
                 }
-                exit_code = cmd_mkdir(&url, parts[1], false, cli, format).await;
+                exit_code = cmd_mkdir(&url, parts[1], false, None, cli, format).await;
                 if let Some(code) = check_exit(
                     exit_code,
                     line_num,
@@ -38578,6 +38717,7 @@ async fn main() {
             recursive,
             no_clobber,
             delta,
+            access,
         } => {
             let (u, l, r) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str(), Some(local.as_str()))
@@ -38596,6 +38736,7 @@ async fn main() {
                     *recursive,
                     *no_clobber,
                     *delta,
+                    *access,
                     &cli,
                     format,
                     cancelled.clone(),
@@ -38619,13 +38760,18 @@ async fn main() {
             }
             last_code
         }
-        Commands::Mkdir { url, path, parents } => {
+        Commands::Mkdir {
+            url,
+            path,
+            parents,
+            access,
+        } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str())
             } else {
                 (url.as_str(), path.as_str())
             };
-            cmd_mkdir(u, p, *parents, &cli, format).await
+            cmd_mkdir(u, p, *parents, *access, &cli, format).await
         }
         Commands::Rm {
             url,
@@ -40569,6 +40715,35 @@ mod tests {
     use super::*;
     use ftp_client_gui_lib::profile_loader::insert_profile_option;
     use serde_json::json;
+
+    #[test]
+    fn cli_access_level_maps_to_opendrive_levels() {
+        use ftp_client_gui_lib::providers::opendrive::OpenDriveAccessLevel as L;
+        assert_eq!(CliAccessLevel::Private.to_opendrive(), L::Private);
+        assert_eq!(CliAccessLevel::Public.to_opendrive(), L::Public);
+        assert_eq!(CliAccessLevel::Hidden.to_opendrive(), L::Hidden);
+        assert_eq!(CliAccessLevel::Private.label(), "private");
+        assert_eq!(CliAccessLevel::Public.label(), "public");
+        assert_eq!(CliAccessLevel::Hidden.label(), "hidden");
+    }
+
+    #[test]
+    fn cli_access_level_parses_lowercase_tokens() {
+        use clap::ValueEnum;
+        assert_eq!(
+            CliAccessLevel::from_str("private", true),
+            Ok(CliAccessLevel::Private)
+        );
+        assert_eq!(
+            CliAccessLevel::from_str("public", true),
+            Ok(CliAccessLevel::Public)
+        );
+        assert_eq!(
+            CliAccessLevel::from_str("hidden", true),
+            Ok(CliAccessLevel::Hidden)
+        );
+        assert!(CliAccessLevel::from_str("bogus", true).is_err());
+    }
 
     #[test]
     fn rust_log_warn_does_not_enable_debug_tracing() {
