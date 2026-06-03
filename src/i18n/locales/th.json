@@ -228,6 +228,7 @@
             "koofrAppPasswordPlaceholder": "วางรหัสผ่านแอปพลิเคชัน Koofr ของคุณที่นี่",
             "koofrHelp": "สร้างรหัสผ่านแอปพลิเคชันที่ app.koofr.net → Preferences → Password → App Passwords",
             "duplicateServer": "ทำซ้ำเซิร์ฟเวอร์",
+            "duplicateCredentialMissing": "ไม่ได้คัดลอกข้อมูลรับรองไปยังรายการที่ทำซ้ำ ป้อนรหัสผ่านอีกครั้งก่อนเชื่อมต่อ",
             "saveAsNew": "บันทึกเป็นรายการใหม่",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",

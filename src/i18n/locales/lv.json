@@ -229,6 +229,7 @@
             "koofrAppPasswordPlaceholder": "Ielīmējiet savu Koofr lietojumprogrammas paroli šeit",
             "koofrHelp": "Izveidojiet lietojumprogrammas paroli lapā app.koofr.net → Preferences → Parole → Lietojumprogrammu paroles",
             "duplicateServer": "Dublēt serveri",
+            "duplicateCredentialMissing": "Akreditācijas dati netika nokopēti dublikātā. Pirms savienojuma ievadiet paroli vēlreiz.",
             "saveAsNew": "Saglabāt kā jaunu",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",

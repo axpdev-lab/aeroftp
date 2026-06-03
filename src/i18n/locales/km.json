@@ -229,6 +229,7 @@
             "koofrAppPasswordPlaceholder": "ដាក់ពាក្យសម្ងាត់កម្មវិធី Koofr របស់អ្នកនៅទីនេះ",
             "koofrHelp": "បង្កើតពាក្យសម្ងាត់កម្មវិធីនៅ app.koofr.net → ចម្លងលម្អិត → ពាក្យសម្ងាត់ → ពាក្យសម្ងាត់កម្មវិធី",
             "duplicateServer": "ចម្លងម៉ាស៊ីនមេ",
+            "duplicateCredentialMissing": "ព័ត៌មានសម្គាល់មិនបានចម្លងទៅច្បាប់ចម្លងទេ។ បញ្ចូលពាក្យសម្ងាត់ម្ដងទៀតមុនពេលតភ្ជាប់។",
             "saveAsNew": "រក្សាទុកជាថ្មី",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",

@@ -229,6 +229,7 @@
             "koofrAppPasswordPlaceholder": "Fügen Sie hier Ihr Koofr App-Passwort ein",
             "koofrHelp": "Erstellen Sie ein App-Passwort auf app.koofr.net → Einstellungen → Passwort → App-Passwörter",
             "duplicateServer": "Server duplizieren",
+            "duplicateCredentialMissing": "Anmeldedaten nicht in die Kopie übernommen. Geben Sie das Passwort vor dem Verbinden erneut ein.",
             "saveAsNew": "Als neu speichern",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",

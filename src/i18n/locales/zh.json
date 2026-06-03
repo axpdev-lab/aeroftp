@@ -228,6 +228,7 @@
             "koofrAppPasswordPlaceholder": "在此粘贴您的 Koofr 应用密码",
             "koofrHelp": "在 app.koofr.net → Preferences → Password → App Passwords 生成应用密码",
             "duplicateServer": "复制服务器",
+            "duplicateCredentialMissing": "凭证未复制到副本。连接前请重新输入密码。",
             "saveAsNew": "另存为新",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",

@@ -229,6 +229,7 @@
             "koofrAppPasswordPlaceholder": "Koofr 앱 비밀번호를 여기에 붙여넣으세요",
             "koofrHelp": "app.koofr.net → 설정 → 비밀번호 → 앱 비밀번호에서 앱 비밀번호를 생성하세요",
             "duplicateServer": "서버 복제",
+            "duplicateCredentialMissing": "자격 증명이 복제본에 복사되지 않았습니다. 연결하기 전에 비밀번호를 다시 입력하세요.",
             "saveAsNew": "새로 저장",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",

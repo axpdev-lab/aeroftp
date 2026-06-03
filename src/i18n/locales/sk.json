@@ -228,6 +228,7 @@
             "koofrAppPasswordPlaceholder": "Vložte vaše heslo aplikácie Koofr tu",
             "koofrHelp": "Vytvorte heslo aplikácie na app.koofr.net → Preferences → Password → App Passwords",
             "duplicateServer": "Duplikovať server",
+            "duplicateCredentialMissing": "Prihlasovacie údaje neboli skopírované do kópie. Pred pripojením znova zadajte heslo.",
             "saveAsNew": "Uložiť ako nový",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",

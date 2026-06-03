@@ -228,6 +228,7 @@
             "koofrAppPasswordPlaceholder": "Tandika nenosiri lako la programu ya Koofr hapa",
             "koofrHelp": "Tengeneza nenosiri la programu katika app.koofr.net → Preferences → Password → App Passwords",
             "duplicateServer": "Nakili seva",
+            "duplicateCredentialMissing": "Kitambulisho hakikunakiliwa kwenye nakala. Weka nenosiri tena kabla ya kuunganisha.",
             "saveAsNew": "Hifadhi kama mpya",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",

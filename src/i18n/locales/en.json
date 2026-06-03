@@ -1103,6 +1103,7 @@
             "deleteServer": "Delete Server",
             "disconnected": "Disconnected",
             "duplicateServer": "Duplicate Server",
+            "duplicateCredentialMissing": "Credential not copied to the duplicate. Re-enter the password before connecting.",
             "dismiss": "Dismiss",
             "createAccount": "Create Account",
             "generatePassword": "Generate password",

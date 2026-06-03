@@ -229,6 +229,7 @@
             "koofrAppPasswordPlaceholder": "Επικολλήστε τον κωδικό εφαρμογής Koofr εδώ",
             "koofrHelp": "Δημιουργήστε έναν κωδικό εφαρμογής στο app.koofr.net → Προτιμήσεις → Κωδικός → Κωδικοί εφαρμογών",
             "duplicateServer": "Αντιγραφή διακομιστή",
+            "duplicateCredentialMissing": "Το διαπιστευτήριο δεν αντιγράφηκε στο αντίγραφο. Εισαγάγετε ξανά τον κωδικό πρόσβασης πριν τη σύνδεση.",
             "saveAsNew": "Αποθήκευση ως νέο",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",

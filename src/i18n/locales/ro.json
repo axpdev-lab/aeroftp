@@ -228,6 +228,7 @@
             "koofrAppPasswordPlaceholder": "Lipiți parola aplicației Koofr aici",
             "koofrHelp": "Generați o parolă de aplicație la app.koofr.net → Preferences → Password → App Passwords",
             "duplicateServer": "Duplică serverul",
+            "duplicateCredentialMissing": "Credențialul nu a fost copiat în duplicat. Reintroduceți parola înainte de conectare.",
             "saveAsNew": "Salvează ca nou",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",

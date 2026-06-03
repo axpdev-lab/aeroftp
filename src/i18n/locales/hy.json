@@ -229,6 +229,7 @@
             "koofrAppPasswordPlaceholder": "Ւե֔ կափեք ո՚կազ Koofr թարի դո ուպյի սեթ",
             "koofrHelp": "Մոաբ թար շրդում app.koofr.net → Կշմենուցներ → Զծոճր → թարի թարի սոզպաղիս",
             "duplicateServer": "Սերվերի կրկնօրինակ",
+            "duplicateCredentialMissing": "Հավատարմագիրը չի պատճենվել կրկնօրինակում։ Կրկին մուտքագրեք գաղտնաբառը մինչ միանալը։",
             "saveAsNew": "Պահել որպես նոր",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",

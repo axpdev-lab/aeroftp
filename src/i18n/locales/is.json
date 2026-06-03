@@ -229,6 +229,7 @@
             "koofrAppPasswordPlaceholder": "Límdu Koofr forritaaðgangsorðið þitt hér",
             "koofrHelp": "Búðu til forritaaðgangsorð á app.koofr.net → Kjörstillingar → Aðgangsorð → Forritaaðgangsorð",
             "duplicateServer": "Afrita þjón",
+            "duplicateCredentialMissing": "Auðkennið var ekki afritað í afritið. Sláðu inn lykilorðið aftur áður en þú tengist.",
             "saveAsNew": "Vista sem nýtt",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",

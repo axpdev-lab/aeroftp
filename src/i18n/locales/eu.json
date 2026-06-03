@@ -229,6 +229,7 @@
             "koofrAppPasswordPlaceholder": "Itsatsi zure Koofr aplikazioaren pasahitza hemen",
             "koofrHelp": "Sortu aplikazioaren pasahitza app.koofr.net → Hobespenak → Pasahitza → Aplikazioaren pasahitzak",
             "duplicateServer": "Zerbitzaria bikoiztu",
+            "duplicateCredentialMissing": "Kredentziala ez da bikoiztura kopiatu. Sartu pasahitza berriro konektatu aurretik.",
             "saveAsNew": "Gorde berri gisa",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",

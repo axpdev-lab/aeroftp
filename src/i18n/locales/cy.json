@@ -229,6 +229,7 @@
             "koofrAppPasswordPlaceholder": "Gludiodd eich cyfrinair ap Koofr yma",
             "koofrHelp": "Cynhyrchu cyfrinair ap ar app.koofr.net → Dewisiadau → Cyfrinair → Cyfrineiriau Ap",
             "duplicateServer": "Dyblygu gweinydd",
+            "duplicateCredentialMissing": "Ni chopïwyd y manylion i'r dyblyg. Rhowch y cyfrinair eto cyn cysylltu.",
             "saveAsNew": "Cadw fel newydd",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",

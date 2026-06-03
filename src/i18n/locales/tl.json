@@ -228,6 +228,7 @@
             "koofrAppPasswordPlaceholder": "Idikit ang iyong Koofr app password dito",
             "koofrHelp": "Gumawa ng app password sa app.koofr.net → Preferences → Password → App Passwords",
             "duplicateServer": "I-duplicate ang server",
+            "duplicateCredentialMissing": "Hindi nakopya ang kredensyal sa duplicate. Muling ilagay ang password bago kumonekta.",
             "saveAsNew": "I-save bilang bago",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",

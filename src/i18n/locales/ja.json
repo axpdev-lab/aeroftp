@@ -229,6 +229,7 @@
             "koofrAppPasswordPlaceholder": "Koofr アプリパスワードをここに貼り付け",
             "koofrHelp": "app.koofr.net → 環境設定 → パスワード → アプリパスワード でアプリパスワードを生成してください",
             "duplicateServer": "サーバーを複製",
+            "duplicateCredentialMissing": "認証情報が複製にコピーされませんでした。接続する前にパスワードを再入力してください。",
             "saveAsNew": "新規として保存",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",

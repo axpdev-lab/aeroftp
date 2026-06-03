@@ -229,6 +229,7 @@
             "koofrAppPasswordPlaceholder": "Másolja ide a Koofr alkalmazáshesszót",
             "koofrHelp": "Alkalmazáshesszót generálhat az app.koofr.net → Beállítások → Jelszó → Alkalmazáshesszók helyen",
             "duplicateServer": "Szerver duplikálása",
+            "duplicateCredentialMissing": "A hitelesítő adat nem másolódott át a másolatba. Adja meg újra a jelszót a csatlakozás előtt.",
             "saveAsNew": "Mentés újként",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",

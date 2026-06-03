@@ -229,6 +229,7 @@
             "koofrAppPasswordPlaceholder": "Indsæt din Koofr app-adgangskode her",
             "koofrHelp": "Generer en app-adgangskode på app.koofr.net → Indstillinger → Adgangskode → App-adgangskoder",
             "duplicateServer": "Dupliker server",
+            "duplicateCredentialMissing": "Legitimationsoplysninger ikke kopieret til kopien. Indtast adgangskoden igen før tilslutning.",
             "saveAsNew": "Gem som ny",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",

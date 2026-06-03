@@ -228,6 +228,7 @@
             "koofrAppPasswordPlaceholder": "Wklej tutaj hasło aplikacji Koofr",
             "koofrHelp": "Wygeneruj hasło aplikacji w app.koofr.net → Preferences → Password → App Passwords",
             "duplicateServer": "Duplikuj serwer",
+            "duplicateCredentialMissing": "Poświadczenie nie zostało skopiowane do duplikatu. Wprowadź hasło ponownie przed połączeniem.",
             "saveAsNew": "Zapisz jako nowy",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",

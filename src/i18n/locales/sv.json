@@ -228,6 +228,7 @@
             "koofrAppPasswordPlaceholder": "Klistra in ditt Koofr-applösenord här",
             "koofrHelp": "Generera ett applösenord på app.koofr.net → Preferences → Password → App Passwords",
             "duplicateServer": "Duplicera server",
+            "duplicateCredentialMissing": "Autentiseringsuppgiften kopierades inte till dubbletten. Ange lösenordet igen innan du ansluter.",
             "saveAsNew": "Spara som ny",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",

@@ -228,6 +228,7 @@
             "koofrAppPasswordPlaceholder": "Koofr uygulama şifrenizi buraya yapıştırın",
             "koofrHelp": "app.koofr.net → Preferences → Password → App Passwords adresinde uygulama şifresi oluşturun",
             "duplicateServer": "Sunucuyu çoğalt",
+            "duplicateCredentialMissing": "Kimlik bilgisi kopyaya aktarılmadı. Bağlanmadan önce parolayı yeniden girin.",
             "saveAsNew": "Yeni olarak kaydet",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",
