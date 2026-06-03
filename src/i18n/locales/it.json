@@ -891,6 +891,9 @@
             "exportImport": "Esporta / Importa",
             "exportServers": "Esporta Server",
             "importServers": "Importa Server",
+            "importChooseFile": "Scegli file .aeroftp...",
+            "importChooseFileHint": "Seleziona un file .aeroftp cifrato da importare. La password ti verrà chiesta subito dopo.",
+            "importChangeFile": "Cambia",
             "importServersPrompt": "Inserisci la password usata per cifrare questo backup dei profili server.",
             "exportDescription": "Salva {count} server in un file crittografato",
             "importDescription": "Ripristina da file di backup .aeroftp",
@@ -3645,6 +3648,7 @@
             "common": {
                 "loading": "Caricamento...",
                 "download": "Scarica",
+                "edit": "Modifica",
                 "close": "Chiudi",
                 "noData": "Nessun dato audio disponibile",
                 "notAvailable": "Anteprima non disponibile",

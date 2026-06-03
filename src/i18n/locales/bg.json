@@ -1025,7 +1025,10 @@
             "importKeystorePrompt": "Въведете паролата, използвана за шифроване на това резервно копие на keystore.",
             "importServersPrompt": "Въведете паролата, използвана за шифроване на това резервно копие на server-profiles.",
             "exportFormatComparisonHint": "Файлът .aeroftp съдържа всичко необходимо за свързване на профил към друго устройство. За пълен резервен запис на трезора с AI ключове и глобални настройки използвайте експорта .aeroftp-keystore.",
-            "keystoreRestartRequired": "Рестартирайте AeroFTP, за да приложите възстановените бази данни и плъгини."
+            "keystoreRestartRequired": "Рестартирайте AeroFTP, за да приложите възстановените бази данни и плъгини.",
+            "importChooseFile": "Изберете .aeroftp файл...",
+            "importChooseFileHint": "Изберете шифрован .aeroftp файл за импортиране. След това ще бъдете попитани за паролата му.",
+            "importChangeFile": "Промяна"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3308,7 +3311,8 @@
                 "notAvailable": "Прегледът не е наличен",
                 "notSupported": "Този тип файл не се поддържа за преглед",
                 "previous": "Предишен (←)",
-                "remote": "Отдалечен"
+                "remote": "Отдалечен",
+                "edit": "Редактиране"
             },
             "image": {
                 "actualSize": "Действителен размер",

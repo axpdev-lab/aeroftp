@@ -1025,7 +1025,10 @@
             "importKeystorePrompt": "Voer het wachtwoord in dat is gebruikt om deze keystore-back-up te versleutelen.",
             "importServersPrompt": "Voer het wachtwoord in dat is gebruikt om deze server-profiles-back-up te versleutelen.",
             "exportFormatComparisonHint": "Het .aeroftp-bestand bevat alles wat een profiel nodig heeft om verbinding te maken op een ander apparaat. Gebruik in plaats daarvan de .aeroftp-keystore-export voor een volledige back-up van de kluis, inclusief sleutels van AI-providers en algemene instellingen.",
-            "keystoreRestartRequired": "Start AeroFTP opnieuw op om de herstelde databases en plugins toe te passen."
+            "keystoreRestartRequired": "Start AeroFTP opnieuw op om de herstelde databases en plugins toe te passen.",
+            "importChooseFile": "Kies .aeroftp-bestand...",
+            "importChooseFileHint": "Selecteer een versleuteld .aeroftp-bestand om te importeren. Het wachtwoord wordt daarna gevraagd.",
+            "importChangeFile": "Wijzigen"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3308,7 +3311,8 @@
                 "notAvailable": "Voorbeeld niet beschikbaar",
                 "notSupported": "Dit bestandstype wordt niet ondersteund voor voorbeeld",
                 "previous": "Vorige (←)",
-                "remote": "Extern"
+                "remote": "Extern",
+                "edit": "Bewerken"
             },
             "image": {
                 "actualSize": "Werkelijke grootte",

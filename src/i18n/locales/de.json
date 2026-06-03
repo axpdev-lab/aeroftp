@@ -1025,7 +1025,10 @@
             "importKeystorePrompt": "Gib das Passwort ein, mit dem dieses Keystore-Backup verschlusselt wurde.",
             "importServersPrompt": "Gib das Passwort ein, mit dem dieses server-profiles-Backup verschlusselt wurde.",
             "exportFormatComparisonHint": "Die .aeroftp-Datei enthält alles, was ein Profil benötigt, um sich auf einem anderen Gerät zu verbinden. Für eine vollständige Tresor-Sicherung einschließlich KI-Anbieterschlüssel und globaler Einstellungen verwenden Sie stattdessen den .aeroftp-keystore-Export.",
-            "keystoreRestartRequired": "AeroFTP neu starten, um wiederhergestellte Datenbanken und Plugins zu übernehmen."
+            "keystoreRestartRequired": "AeroFTP neu starten, um wiederhergestellte Datenbanken und Plugins zu übernehmen.",
+            "importChooseFile": ".aeroftp-Datei auswählen...",
+            "importChooseFileHint": "Wählen Sie eine verschlüsselte .aeroftp-Datei zum Importieren aus. Danach werden Sie nach dem Passwort gefragt.",
+            "importChangeFile": "Ändern"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3308,7 +3311,8 @@
                 "notAvailable": "Vorschau nicht verfügbar",
                 "notSupported": "Dieser Dateityp wird für die Vorschau nicht unterstützt",
                 "previous": "Vorherige (←)",
-                "remote": "Remote"
+                "remote": "Remote",
+                "edit": "Bearbeiten"
             },
             "image": {
                 "actualSize": "Tatsächliche Größe",

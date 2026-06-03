@@ -1025,7 +1025,10 @@
             "importKeystorePrompt": "Ange losenordet som anvandes for att kryptera denna keystore-sakerhetskopia.",
             "importServersPrompt": "Ange losenordet som anvandes for att kryptera denna server-profiles-sakerhetskopia.",
             "exportFormatComparisonHint": ".aeroftp-filen innehåller allt en profil behöver för att ansluta på en annan enhet. För en fullständig säkerhetskopia av valvet inklusive AI-leverantörsnycklar och globala inställningar, använd istället .aeroftp-keystore-exporten.",
-            "keystoreRestartRequired": "Starta om AeroFTP för att tillämpa de återställda databaserna och tilläggen."
+            "keystoreRestartRequired": "Starta om AeroFTP för att tillämpa de återställda databaserna och tilläggen.",
+            "importChooseFile": "Välj .aeroftp-fil...",
+            "importChooseFileHint": "Välj en krypterad .aeroftp-fil att importera. Du ombeds ange lösenordet i nästa steg.",
+            "importChangeFile": "Ändra"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3308,7 +3311,8 @@
                 "notAvailable": "Forhandsgranskning ej tillganglig",
                 "notSupported": "Denna filtyp stods inte for forhandsgranskning",
                 "previous": "Foregaende (←)",
-                "remote": "Fjarrserver"
+                "remote": "Fjarrserver",
+                "edit": "Redigera"
             },
             "image": {
                 "actualSize": "Verklig storlek",

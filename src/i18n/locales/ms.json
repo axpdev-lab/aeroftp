@@ -1025,7 +1025,10 @@
             "importKeystorePrompt": "Masukkan kata laluan yang digunakan untuk menyulitkan sandaran keystore ini.",
             "importServersPrompt": "Masukkan kata laluan yang digunakan untuk menyulitkan sandaran server-profiles ini.",
             "exportFormatComparisonHint": "Fail .aeroftp mengandungi semua yang diperlukan profil untuk menyambung pada peranti lain. Untuk sandaran peti besi yang lengkap termasuk kunci pembekal AI dan tetapan global, gunakan eksport .aeroftp-keystore sebagai gantinya.",
-            "keystoreRestartRequired": "Mulakan semula AeroFTP untuk menggunakan pangkalan data dan pemalam yang dipulihkan."
+            "keystoreRestartRequired": "Mulakan semula AeroFTP untuk menggunakan pangkalan data dan pemalam yang dipulihkan.",
+            "importChooseFile": "Pilih fail .aeroftp...",
+            "importChooseFileHint": "Pilih fail .aeroftp tersulit untuk diimport. Kata laluannya akan diminta seterusnya.",
+            "importChangeFile": "Tukar"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3308,7 +3311,8 @@
                 "notAvailable": "Pratonton tidak tersedia",
                 "notSupported": "Jenis fail ini tidak disokong untuk pratonton",
                 "previous": "Sebelumnya (←)",
-                "remote": "Jauh"
+                "remote": "Jauh",
+                "edit": "Sunting"
             },
             "image": {
                 "actualSize": "Saiz Sebenar",

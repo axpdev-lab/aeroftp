@@ -1025,7 +1025,10 @@
             "importKeystorePrompt": "Rhowch y cyfrinair a ddefnyddiwyd i amgryptio'r copi wrth gefn keystore hwn.",
             "importServersPrompt": "Rhowch y cyfrinair a ddefnyddiwyd i amgryptio'r copi wrth gefn server-profiles hwn.",
             "exportFormatComparisonHint": "Mae'r ffeil .aeroftp yn cynnwys popeth sydd ei angen ar broffil i gysylltu ar ddyfais arall. Ar gyfer copi wrth gefn llawn o'r gladdgell, gan gynnwys allweddi darparwyr AI a gosodiadau cyffredinol, defnyddiwch yr allforio .aeroftp-keystore yn lle hynny.",
-            "keystoreRestartRequired": "Ailgychwynnwch AeroFTP i osod y cronfeydd data a'r ategion sydd wedi'u hadfer."
+            "keystoreRestartRequired": "Ailgychwynnwch AeroFTP i osod y cronfeydd data a'r ategion sydd wedi'u hadfer.",
+            "importChooseFile": "Dewis ffeil .aeroftp...",
+            "importChooseFileHint": "Dewiswch ffeil .aeroftp wedi'i hamgryptio i'w mewnforio. Gofynnir am ei chyfrinair nesaf.",
+            "importChangeFile": "Newid"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3308,7 +3311,8 @@
                 "notAvailable": "Rhagolwg ddim ar gael",
                 "notSupported": "Nid yw'r math hwn o ffeil yn cael ei gefnogi ar gyfer rhagolwg",
                 "previous": "Blaenorol (←)",
-                "remote": "Pell"
+                "remote": "Pell",
+                "edit": "Golygu"
             },
             "image": {
                 "actualSize": "Maint gwirioneddol",

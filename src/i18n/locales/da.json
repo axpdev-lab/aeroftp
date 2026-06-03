@@ -1025,7 +1025,10 @@
             "importKeystorePrompt": "Indtast adgangskoden, der blev brugt til at kryptere denne keystore-sikkerhedskopi.",
             "importServersPrompt": "Indtast adgangskoden, der blev brugt til at kryptere denne server-profiles-sikkerhedskopi.",
             "exportFormatComparisonHint": ".aeroftp-filen indeholder alt, hvad en profil har brug for til at oprette forbindelse på en anden enhed. Til en fuld sikkerhedskopi af hvælvet, inklusive AI-udbydernøgler og globale indstillinger, brug i stedet eksporten .aeroftp-keystore.",
-            "keystoreRestartRequired": "Genstart AeroFTP for at anvende de gendannede databaser og plugins."
+            "keystoreRestartRequired": "Genstart AeroFTP for at anvende de gendannede databaser og plugins.",
+            "importChooseFile": "Vælg .aeroftp-fil...",
+            "importChooseFileHint": "Vælg en krypteret .aeroftp-fil, der skal importeres. Du bliver derefter bedt om dens adgangskode.",
+            "importChangeFile": "Skift"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3308,7 +3311,8 @@
                 "notAvailable": "Forhåndsvisning ikke tilgængelig",
                 "notSupported": "Denne filtype understøttes ikke til forhåndsvisning",
                 "previous": "Forrige (←)",
-                "remote": "Fjern"
+                "remote": "Fjern",
+                "edit": "Rediger"
             },
             "image": {
                 "actualSize": "Faktisk størrelse",

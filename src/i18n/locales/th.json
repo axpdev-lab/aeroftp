@@ -1025,7 +1025,10 @@
             "importKeystorePrompt": "ป้อนรหัสผ่านที่ใช้เข้ารหัสไฟล์สำรอง keystore นี้",
             "importServersPrompt": "ป้อนรหัสผ่านที่ใช้เข้ารหัสไฟล์สำรอง server-profiles นี้",
             "exportFormatComparisonHint": "ไฟล์ .aeroftp มีทุกอย่างที่โปรไฟล์ต้องการเพื่อเชื่อมต่อบนอุปกรณ์อื่น สำหรับการสำรองข้อมูล vault ทั้งหมด รวมถึงคีย์ผู้ให้บริการ AI และการตั้งค่าทั่วไป ให้ใช้การส่งออก .aeroftp-keystore แทน",
-            "keystoreRestartRequired": "รีสตาร์ท AeroFTP เพื่อใช้ฐานข้อมูลและปลั๊กอินที่กู้คืน"
+            "keystoreRestartRequired": "รีสตาร์ท AeroFTP เพื่อใช้ฐานข้อมูลและปลั๊กอินที่กู้คืน",
+            "importChooseFile": "เลือกไฟล์ .aeroftp...",
+            "importChooseFileHint": "เลือกไฟล์ .aeroftp ที่เข้ารหัสเพื่อนำเข้า ระบบจะขอรหัสผ่านในขั้นตอนถัดไป",
+            "importChangeFile": "เปลี่ยน"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3308,7 +3311,8 @@
                 "notAvailable": "ไม่มีตัวอย่าง",
                 "notSupported": "ไม่รองรับการดูตัวอย่างไฟล์ประเภทนี้",
                 "previous": "ก่อนหน้า (←)",
-                "remote": "ระยะไกล"
+                "remote": "ระยะไกล",
+                "edit": "แก้ไข"
             },
             "image": {
                 "actualSize": "ขนาดจริง",

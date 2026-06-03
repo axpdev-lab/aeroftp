@@ -1025,7 +1025,10 @@
             "importKeystorePrompt": "Insere a palavra-passe usada para cifrar esta cópia de segurança do keystore.",
             "importServersPrompt": "Insere a palavra-passe usada para cifrar esta cópia de segurança dos server-profiles.",
             "exportFormatComparisonHint": "O ficheiro .aeroftp contém tudo o que um perfil precisa para se ligar noutro dispositivo. Para uma cópia de segurança completa do cofre, incluindo chaves de fornecedores de IA e configurações globais, use antes a exportação .aeroftp-keystore.",
-            "keystoreRestartRequired": "Reinicie o AeroFTP para aplicar as bases de dados e plugins restaurados."
+            "keystoreRestartRequired": "Reinicie o AeroFTP para aplicar as bases de dados e plugins restaurados.",
+            "importChooseFile": "Escolher ficheiro .aeroftp...",
+            "importChooseFileHint": "Selecione um ficheiro .aeroftp encriptado para importar. A palavra-passe será pedida a seguir.",
+            "importChangeFile": "Alterar"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3308,7 +3311,8 @@
                 "notAvailable": "Pre-visualizacao indisponivel",
                 "notSupported": "Este tipo de arquivo nao e suportado para pre-visualizacao",
                 "previous": "Anterior (←)",
-                "remote": "Remoto"
+                "remote": "Remoto",
+                "edit": "Editar"
             },
             "image": {
                 "actualSize": "Tamanho real",

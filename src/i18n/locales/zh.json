@@ -1025,7 +1025,10 @@
             "importKeystorePrompt": "请输入用于加密此 keystore 备份的密码。",
             "importServersPrompt": "请输入用于加密此 server-profiles 备份的密码。",
             "exportFormatComparisonHint": ".aeroftp 文件包含配置文件在另一台设备上连接所需的所有内容。如需完整的保险库备份(包括 AI 提供商密钥和全局设置),请改用 .aeroftp-keystore 导出。",
-            "keystoreRestartRequired": "重启 AeroFTP 以应用已恢复的数据库和插件。"
+            "keystoreRestartRequired": "重启 AeroFTP 以应用已恢复的数据库和插件。",
+            "importChooseFile": "选择 .aeroftp 文件...",
+            "importChooseFileHint": "选择要导入的已加密 .aeroftp 文件。接下来会要求输入该文件的密码。",
+            "importChangeFile": "更改"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3308,7 +3311,8 @@
                 "notAvailable": "预览不可用",
                 "notSupported": "此文件类型不支持预览",
                 "previous": "上一个 (←)",
-                "remote": "远程"
+                "remote": "远程",
+                "edit": "编辑"
             },
             "image": {
                 "actualSize": "实际大小",

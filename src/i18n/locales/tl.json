@@ -1025,7 +1025,10 @@
             "importKeystorePrompt": "Ipasok ang password na ginamit upang i-encrypt ang keystore backup na ito.",
             "importServersPrompt": "Ipasok ang password na ginamit upang i-encrypt ang server-profiles backup na ito.",
             "exportFormatComparisonHint": "Ang .aeroftp file ay naglalaman ng lahat ng kailangan ng isang profile para kumonekta sa ibang device. Para sa kumpletong backup ng vault kasama ang mga AI provider key at pandaigdigang setting, gamitin ang .aeroftp-keystore export sa halip.",
-            "keystoreRestartRequired": "I-restart ang AeroFTP upang ilapat ang mga naibalik na database at plugin."
+            "keystoreRestartRequired": "I-restart ang AeroFTP upang ilapat ang mga naibalik na database at plugin.",
+            "importChooseFile": "Pumili ng .aeroftp file...",
+            "importChooseFileHint": "Pumili ng naka-encrypt na .aeroftp file na ii-import. Hihingin sa iyo ang password nito pagkatapos.",
+            "importChangeFile": "Palitan"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3308,7 +3311,8 @@
                 "notAvailable": "Hindi available ang preview",
                 "notSupported": "Hindi sinusuportahan ang ganitong uri ng file para sa preview",
                 "previous": "Nakaraan (←)",
-                "remote": "Remote"
+                "remote": "Remote",
+                "edit": "I-edit"
             },
             "image": {
                 "actualSize": "Totoong Laki",

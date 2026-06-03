@@ -1025,7 +1025,10 @@
             "importKeystorePrompt": "Sisesta parool, mida kasutati selle keystore varukoopia krüpteerimiseks.",
             "importServersPrompt": "Sisesta parool, mida kasutati selle server-profiles varukoopia krüpteerimiseks.",
             "exportFormatComparisonHint": ".aeroftp-fail sisaldab kõike, mida profiil teises seadmes ühenduse loomiseks vajab. Täisvarukoopia jaoks, mis sisaldab AI-pakkujate võtmeid ja üldisi seadeid, kasutage selle asemel ekspordi .aeroftp-keystore.",
-            "keystoreRestartRequired": "Taaskäivitage AeroFTP, et taastatud andmebaasid ja pluginad jõustuksid."
+            "keystoreRestartRequired": "Taaskäivitage AeroFTP, et taastatud andmebaasid ja pluginad jõustuksid.",
+            "importChooseFile": "Vali .aeroftp fail...",
+            "importChooseFileHint": "Vali importimiseks krüptitud .aeroftp fail. Järgmisena küsitakse selle parooli.",
+            "importChangeFile": "Muuda"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3308,7 +3311,8 @@
                 "notAvailable": "Eelvaade pole saadaval",
                 "notSupported": "See failitüüp pole eelvaate jaoks toetatud",
                 "previous": "Eelmine (←)",
-                "remote": "Kaug"
+                "remote": "Kaug",
+                "edit": "Muuda"
             },
             "image": {
                 "actualSize": "Tegelik suurus",

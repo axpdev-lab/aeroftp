@@ -1025,7 +1025,10 @@
             "importKeystorePrompt": "Bu keystore yedeklemesini sifrelemek icin kullanilan parolayi girin.",
             "importServersPrompt": "Bu server-profiles yedeklemesini sifrelemek icin kullanilan parolayi girin.",
             "exportFormatComparisonHint": ".aeroftp dosyası, bir profilin başka bir cihazda bağlanması için ihtiyacı olan her şeyi içerir. AI sağlayıcı anahtarları ve genel ayarlar dahil tam kasa yedeklemesi için bunun yerine .aeroftp-keystore dışa aktarımını kullanın.",
-            "keystoreRestartRequired": "Geri yüklenen veritabanlarını ve eklentileri uygulamak için AeroFTP'yi yeniden başlatın."
+            "keystoreRestartRequired": "Geri yüklenen veritabanlarını ve eklentileri uygulamak için AeroFTP'yi yeniden başlatın.",
+            "importChooseFile": ".aeroftp dosyasi sec...",
+            "importChooseFileHint": "Iceri aktarmak icin sifrelenmis bir .aeroftp dosyasi secin. Ardindan parolasi sorulacaktir.",
+            "importChangeFile": "Degistir"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3308,7 +3311,8 @@
                 "notAvailable": "Önizleme mevcut değil",
                 "notSupported": "Bu dosya türü önizleme için desteklenmiyor",
                 "previous": "Önceki (←)",
-                "remote": "Uzak"
+                "remote": "Uzak",
+                "edit": "Duzenle"
             },
             "image": {
                 "actualSize": "Gerçek Boyut",

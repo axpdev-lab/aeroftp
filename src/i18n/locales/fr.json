@@ -1025,7 +1025,10 @@
             "importKeystorePrompt": "Saisis le mot de passe utilisé pour chiffrer cette sauvegarde du keystore.",
             "importServersPrompt": "Saisis le mot de passe utilisé pour chiffrer cette sauvegarde des server-profiles.",
             "exportFormatComparisonHint": "Le fichier .aeroftp contient tout ce dont un profil a besoin pour se connecter sur un autre appareil. Pour une sauvegarde complète du coffre, y compris les clés des fournisseurs d'IA et les paramètres globaux, utilisez plutôt l'export .aeroftp-keystore.",
-            "keystoreRestartRequired": "Redémarrez AeroFTP pour appliquer les bases de données et plugins restaurés."
+            "keystoreRestartRequired": "Redémarrez AeroFTP pour appliquer les bases de données et plugins restaurés.",
+            "importChooseFile": "Choisir un fichier .aeroftp...",
+            "importChooseFileHint": "Sélectionnez un fichier .aeroftp chiffré à importer. Son mot de passe vous sera demandé ensuite.",
+            "importChangeFile": "Changer"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3308,7 +3311,8 @@
                 "notAvailable": "Aperçu non disponible",
                 "notSupported": "Ce type de fichier n'est pas pris en charge pour l'aperçu",
                 "previous": "Précédent (←)",
-                "remote": "Distant"
+                "remote": "Distant",
+                "edit": "Modifier"
             },
             "image": {
                 "actualSize": "Taille réelle",
