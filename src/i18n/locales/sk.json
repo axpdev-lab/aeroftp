@@ -1678,7 +1678,12 @@
             "s3RoleSessionName": "Názov relácie roly (voliteľné)",
             "s3RoleSessionNamePlaceholder": "aeroftp-session",
             "s3RoleDurationSeconds": "Trvanie relácie v sekundách (voliteľné)",
-            "s3RoleDurationSecondsPlaceholder": "3600"
+            "s3RoleDurationSecondsPlaceholder": "3600",
+            "s3RoleMfaSerial": "MFA Device Serial (optional)",
+            "s3RoleMfaSerialPlaceholder": "arn:aws:iam::123456789012:mfa/user",
+            "s3RoleMfaTokenCode": "MFA Token Code",
+            "s3RoleMfaTokenCodePlaceholder": "123456",
+            "s3RoleMfaTokenCodeHint": "One-time code from your MFA device, required only if the role enforces MFA. Used once at connect time and never saved."
         },
         "shortcuts": {
             "title": "Klávesové skratky",
