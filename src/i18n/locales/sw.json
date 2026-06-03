@@ -2007,7 +2007,9 @@
             "aerosyncScriptFromWrapper": "(kutoka wrapper)",
             "aerosyncScriptUnmappedFields": "Sehemu za metadata zisizotambulika",
             "aerosyncScriptApplyButton": "Hifadhi kama preset",
-            "aerosyncScriptAppliedToast": "Preset iliyoingizwa imehifadhiwa. Fungua AeroSync kuitumia."
+            "aerosyncScriptAppliedToast": "Preset iliyoingizwa imehifadhiwa. Fungua AeroSync kuitumia.",
+            "compressionHint": "Hubana data wakati wa uhamishaji ili kuuharakisha; haihifadhi faili zilizobanwa mahali pa kufikia. Auto huruka miundo ambayo tayari imebanwa (zip, jpg, mp4 na kadhalika).",
+            "canaryDryRun": "Hakuna kinachohamishwa: hii inaonyesha hakikisho la kile ambacho usawazishaji kamili ungefanya, kilichokokotolewa kutoka kwa sampuli (sawa na rclone --dry-run)."
         },
         "ui": {
             "syncing": "Inasawazisha...",

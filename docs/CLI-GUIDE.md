@@ -205,6 +205,16 @@ aeroftp-cli ls --profile 3 /
 aeroftp-cli profiles --json
 ```
 
+Each JSON record carries a `#` field: the 1-based index of the profile, the same number accepted by `--profile <n>` and by the interactive `profiles -i` commands. Because the JSON keys are sorted, `#` is the leading field of every record, so a script can map a chosen index straight back to a `--profile` call:
+
+```bash
+# Pick the index of the first SFTP profile, then use it
+idx=$(aeroftp-cli profiles --json | jq -r 'map(select(.protocol=="sftp")) | .[0]["#"]')
+aeroftp-cli ls --profile "$idx" /
+```
+
+Pass `--breakdown` to wrap the array in `{ profiles, summary, breakdown }`; the per-profile records keep the same shape (including `#`).
+
 ### Profile Matching
 
 The CLI matches profiles in this order:

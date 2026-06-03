@@ -2007,7 +2007,9 @@
             "aerosyncScriptFromWrapper": "(fra wrapper)",
             "aerosyncScriptUnmappedFields": "Ukendte metadata-felter",
             "aerosyncScriptApplyButton": "Gem som preset",
-            "aerosyncScriptAppliedToast": "Importeret preset gemt. Abn AeroSync for at bruge det."
+            "aerosyncScriptAppliedToast": "Importeret preset gemt. Abn AeroSync for at bruge det.",
+            "compressionHint": "Komprimerer data under overførslen for at gøre den hurtigere; den gemmer ikke komprimerede filer på destinationen. Auto springer formater over, der allerede er komprimerede (zip, jpg, mp4 og lignende).",
+            "canaryDryRun": "Intet overføres: dette viser en forhåndsvisning af, hvad en fuld synkronisering ville gøre, beregnet ud fra prøven (svarende til rclone --dry-run)."
         },
         "ui": {
             "syncing": "Synkroniserer...",

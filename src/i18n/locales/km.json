@@ -2007,7 +2007,9 @@
             "aerosyncScriptFromWrapper": "(ពី wrapper)",
             "aerosyncScriptUnmappedFields": "វាល metadata ដែលមិនស្គាល់",
             "aerosyncScriptApplyButton": "រក្សាទុកជា preset",
-            "aerosyncScriptAppliedToast": "preset ដែលនាំចូលត្រូវបានរក្សាទុក។ បើក AeroSync ដើម្បីប្រើវា។"
+            "aerosyncScriptAppliedToast": "preset ដែលនាំចូលត្រូវបានរក្សាទុក។ បើក AeroSync ដើម្បីប្រើវា។",
+            "compressionHint": "បង្ហាប់ទិន្នន័យនៅពេលបញ្ជូន ដើម្បីបង្កើនល្បឿនការផ្ទេរ ប៉ុន្តែវាមិនរក្សាទុកឯកសារដែលបានបង្ហាប់នៅទិសដៅទេ។ Auto រំលងទម្រង់ដែលបានបង្ហាប់រួចហើយ (zip, jpg, mp4 និងស្រដៀងគ្នា)។",
+            "canaryDryRun": "គ្មានអ្វីត្រូវបានផ្ទេរទេ៖ វាបង្ហាញជាមុននូវអ្វីដែលការធ្វើសមកាលកម្មពេញលេញនឹងធ្វើ ដោយគណនាពីគំរូ (ស្រដៀងនឹង rclone --dry-run)។"
         },
         "ui": {
             "syncing": "កំពុងធ្វើសមកាលកម្ម...",

@@ -2007,7 +2007,9 @@
             "aerosyncScriptFromWrapper": "(is wrapper)",
             "aerosyncScriptUnmappedFields": "Neatpazinti metadata laukai",
             "aerosyncScriptApplyButton": "Issaugoti kaip preset",
-            "aerosyncScriptAppliedToast": "Importuotas preset issaugotas. Atidarykite AeroSync, kad ji naudotumete."
+            "aerosyncScriptAppliedToast": "Importuotas preset issaugotas. Atidarykite AeroSync, kad ji naudotumete.",
+            "compressionHint": "Suspaudžia duomenis perdavimo metu, kad transferis būtų greitesnis; suspaustų failų paskirties vietoje nesaugo. Auto praleidžia jau suspaustus formatus (zip, jpg, mp4 ir panašius).",
+            "canaryDryRun": "Nieko neperduodama: tai parodo, ką atliktų visa sinchronizacija, apskaičiuota pagal pavyzdį (panašiai kaip rclone --dry-run)."
         },
         "ui": {
             "syncing": "Sinchronizuojama...",

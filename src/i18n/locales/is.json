@@ -2007,7 +2007,9 @@
             "aerosyncScriptFromWrapper": "(úr wrapper)",
             "aerosyncScriptUnmappedFields": "Óþekkt metadata svæði",
             "aerosyncScriptApplyButton": "Vista sem preset",
-            "aerosyncScriptAppliedToast": "Innfluttur preset vistaður. Opnaðu AeroSync til að nota hann."
+            "aerosyncScriptAppliedToast": "Innfluttur preset vistaður. Opnaðu AeroSync til að nota hann.",
+            "compressionHint": "Þjappar gögnum við flutning til að flýta fyrir flutningnum; geymir ekki þjappaðar skrár á áfangastað. Auto sleppir sniðum sem eru þegar þjöppuð (zip, jpg, mp4 og álíka).",
+            "canaryDryRun": "Engu er flutt: þetta sýnir forskoðun á því sem full samstilling myndi gera, reiknað út frá sýninu (svipað og rclone --dry-run)."
         },
         "ui": {
             "syncing": "Samstillir...",

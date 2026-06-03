@@ -2007,7 +2007,9 @@
             "aerosyncScriptFromWrapper": "(wrapper'dan)",
             "aerosyncScriptUnmappedFields": "Tanimlanmayan metadata alanlari",
             "aerosyncScriptApplyButton": "Preset olarak kaydet",
-            "aerosyncScriptAppliedToast": "Ice aktarilan preset kaydedildi. Kullanmak icin AeroSync'i acin."
+            "aerosyncScriptAppliedToast": "Ice aktarilan preset kaydedildi. Kullanmak icin AeroSync'i acin.",
+            "compressionHint": "Aktarımı hızlandırmak için verileri aktarım sırasında sıkıştırır; hedefte sıkıştırılmış dosyalar saklamaz. Auto, zaten sıkıştırılmış biçimleri atlar (zip, jpg, mp4 ve benzerleri).",
+            "canaryDryRun": "Hiçbir şey aktarılmaz: bu, örneğe dayanarak tam bir eşitlemenin ne yapacağını önizler (rclone --dry-run gibi)."
         },
         "ui": {
             "syncing": "Senkronize ediliyor...",

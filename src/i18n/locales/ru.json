@@ -2007,7 +2007,9 @@
             "aerosyncScriptFromWrapper": "(из wrapper)",
             "aerosyncScriptUnmappedFields": "Нераспознанные поля metadata",
             "aerosyncScriptApplyButton": "Сохранить как preset",
-            "aerosyncScriptAppliedToast": "Импортированный preset сохранён. Откройте AeroSync для использования."
+            "aerosyncScriptAppliedToast": "Импортированный preset сохранён. Откройте AeroSync для использования.",
+            "compressionHint": "Сжимает данные при передаче для ее ускорения; сжатые файлы в месте назначения не сохраняются. Режим Auto пропускает уже сжатые форматы (zip, jpg, mp4 и подобные).",
+            "canaryDryRun": "Ничего не передается: это предварительный просмотр того, что сделает полная синхронизация, рассчитанный на основе выборки (аналогично rclone --dry-run)."
         },
         "ui": {
             "syncing": "Синхронизация...",

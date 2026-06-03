@@ -2007,7 +2007,9 @@
             "aerosyncScriptFromWrapper": "(од wrapper)",
             "aerosyncScriptUnmappedFields": "Непрепознаени metadata полиња",
             "aerosyncScriptApplyButton": "Зачувај како preset",
-            "aerosyncScriptAppliedToast": "Увезениот preset е зачуван. Отвори го AeroSync за да го користиш."
+            "aerosyncScriptAppliedToast": "Увезениот preset е зачуван. Отвори го AeroSync за да го користиш.",
+            "compressionHint": "Ги компресира податоците при преносот за да го забрза трансферот; не зачувува компресирани датотеки на дестинацијата. Auto ги прескокнува форматите што се веќе компресирани (zip, jpg, mp4 и слични).",
+            "canaryDryRun": "Ништо не се пренесува: ова прикажува преглед на тоа што би го направила целосна синхронизација, пресметано од примерокот (слично на rclone --dry-run)."
         },
         "ui": {
             "syncing": "Синхронизирање...",

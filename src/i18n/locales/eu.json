@@ -2007,7 +2007,9 @@
             "aerosyncScriptFromWrapper": "(wrapper-etik)",
             "aerosyncScriptUnmappedFields": "Ezagutzen ez diren metadata eremuak",
             "aerosyncScriptApplyButton": "Gorde preset gisa",
-            "aerosyncScriptAppliedToast": "Inportatutako preset-a gordeta. Ireki AeroSync erabiltzeko."
+            "aerosyncScriptAppliedToast": "Inportatutako preset-a gordeta. Ireki AeroSync erabiltzeko.",
+            "compressionHint": "Datuak transferentzian zehar konprimitzen ditu, transferentzia bizkortzeko; ez ditu fitxategi konprimituak helmugan gordetzen. Auto aukerak dagoeneko konprimituta dauden formatuak saltatzen ditu (zip, jpg, mp4 eta antzekoak).",
+            "canaryDryRun": "Ez da ezer transferitzen: honek sinkronizazio osoak egingo lukeenaren aurrebista erakusten du, laginetik kalkulatuta (rclone --dry-run komandoaren antzekoa)."
         },
         "ui": {
             "syncing": "Sinkronizatzen...",

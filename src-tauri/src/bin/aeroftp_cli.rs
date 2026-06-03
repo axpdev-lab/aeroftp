@@ -8635,7 +8635,8 @@ fn list_vault_profiles(cli: &Cli, format: OutputFormat, overrides: ProfilesViewO
         let favorites = load_favorite_server_ids(&store);
         let safe: Vec<serde_json::Value> = profiles
             .iter()
-            .map(|p| {
+            .enumerate()
+            .map(|(idx, p)| {
                 let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
                 let proto = p.get("protocol").and_then(|v| v.as_str()).unwrap_or("");
                 let auth_state = ftp_client_gui_lib::profile_auth_state::derive_profile_auth_state(
@@ -8660,6 +8661,11 @@ fn list_vault_profiles(cli: &Cli, format: OutputFormat, overrides: ProfilesViewO
                 let used_source = profile_quota_marker(p, "usedSource");
                 let used_at = profile_quota_marker(p, "used_at");
                 serde_json::json!({
+                    // 1-based index matching the selector accepted by
+                    // --profile and the interactive `profiles -i` commands
+                    // (resolve_profile_selector). Serialized keys are sorted,
+                    // so "#" sorts first and appears as the leading field.
+                    "#": idx + 1,
                     "id": id,
                     "name": p.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed"),
                     "protocol": proto,

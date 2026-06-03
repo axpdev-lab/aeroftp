@@ -17,7 +17,13 @@ const AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'wma', 'opu
 const VIDEO_EXTENSIONS = ['mp4', 'webm', 'mkv', 'avi', 'mov', 'wmv', 'flv', 'm4v', 'ogv'];
 const PDF_EXTENSIONS = ['pdf'];
 const MARKDOWN_EXTENSIONS = ['md', 'markdown', 'mdown', 'mkd'];
-const TEXT_EXTENSIONS = ['txt', 'log', 'ini', 'cfg', 'conf', 'env'];
+const TEXT_EXTENSIONS = [
+    'txt', 'text', 'log', 'ini', 'cfg', 'conf', 'env',
+    // Tabular and other plain-text formats: previewed as plain text, no
+    // syntax highlighting (issue: open any plain-text file as .txt, e.g. .tsv).
+    'tsv', 'csv', 'tab', 'nfo', 'srt', 'vtt', 'asc', 'diff', 'patch',
+    'properties', 'rst', 'org', 'tex', 'bib', 'lst', 'list',
+];
 const CODE_EXTENSIONS = [
     'js', 'jsx', 'ts', 'tsx', 'html', 'htm', 'css', 'scss', 'sass', 'less',
     'json', 'xml', 'yaml', 'yml', 'toml', 'webmanifest', 'manifest',
@@ -117,6 +123,8 @@ export function getMimeType(filename: string): string {
         ppt: 'application/vnd.ms-powerpoint',
         pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
         rtf: 'application/rtf', csv: 'text/csv',
+        tsv: 'text/tab-separated-values', tab: 'text/tab-separated-values',
+        text: 'text/plain',
         // Text / Code
         txt: 'text/plain', md: 'text/markdown', html: 'text/html',
         css: 'text/css', js: 'application/javascript', ts: 'application/typescript',

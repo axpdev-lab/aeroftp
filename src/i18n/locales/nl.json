@@ -2007,7 +2007,9 @@
             "aerosyncScriptFromWrapper": "(uit wrapper)",
             "aerosyncScriptUnmappedFields": "Niet-herkende metadata-velden",
             "aerosyncScriptApplyButton": "Opslaan als preset",
-            "aerosyncScriptAppliedToast": "Geïmporteerde preset opgeslagen. Open AeroSync om het te gebruiken."
+            "aerosyncScriptAppliedToast": "Geïmporteerde preset opgeslagen. Open AeroSync om het te gebruiken.",
+            "compressionHint": "Comprimeert gegevens tijdens het verzenden om de overdracht te versnellen; het slaat geen gecomprimeerde bestanden op de bestemming op. Auto slaat formaten over die al gecomprimeerd zijn (zip, jpg, mp4 en dergelijke).",
+            "canaryDryRun": "Er wordt niets overgedragen: dit toont een voorbeeld van wat een volledige synchronisatie zou doen, berekend op basis van het voorbeeld (vergelijkbaar met rclone --dry-run)."
         },
         "ui": {
             "syncing": "Synchroniseren...",

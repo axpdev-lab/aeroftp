@@ -2007,7 +2007,9 @@
             "aerosyncScriptFromWrapper": "(o'r wrapper)",
             "aerosyncScriptUnmappedFields": "Meysydd metadata heb eu hadnabod",
             "aerosyncScriptApplyButton": "Cadw fel preset",
-            "aerosyncScriptAppliedToast": "Preset wedi'i fewnforio wedi'i gadw. Agorwch AeroSync i'w ddefnyddio."
+            "aerosyncScriptAppliedToast": "Preset wedi'i fewnforio wedi'i gadw. Agorwch AeroSync i'w ddefnyddio.",
+            "compressionHint": "Yn cywasgu data wrth ei drosglwyddo i gyflymu'r trosglwyddiad; nid yw'n storio ffeiliau wedi'u cywasgu yn y cyrchfan. Mae Auto yn hepgor fformatau sydd eisoes wedi'u cywasgu (zip, jpg, mp4 a rhai tebyg).",
+            "canaryDryRun": "Ni throsglwyddir dim: mae hyn yn rhagolwg o'r hyn y byddai cysoni llawn yn ei wneud, wedi'i gyfrifo o'r sampl (tebyg i rclone --dry-run)."
         },
         "ui": {
             "syncing": "Yn cysoni...",
