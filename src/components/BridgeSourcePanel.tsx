@@ -349,8 +349,22 @@ export const BridgeSourcePanel: React.FC<Props> = ({
                                         );
                                     })}
                                 </div>
-                                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                    {selectedIds.size} / {result.servers.length} {t('settings.selected')}
+                                <div className="flex items-center justify-between gap-2 mt-1">
+                                    <span className="text-xs text-gray-500 dark:text-gray-400 flex-shrink-0">
+                                        {selectedIds.size} / {result.servers.length} {t('settings.selected')}
+                                    </span>
+                                    {(result.sourcePath || detectedPath) && (
+                                        <span
+                                            className="text-[11px] font-mono text-gray-400 dark:text-gray-500 truncate flex items-center gap-1 min-w-0"
+                                            title={result.sourcePath || detectedPath || ''}
+                                        >
+                                            <FolderInput size={11} className="flex-shrink-0" />
+                                            {/* dir=rtl left-truncates to keep the filename visible;
+                                                the leading U+200E (LRM) stops bidi from relocating
+                                                the path's leading slash to the trailing edge. */}
+                                            <span className="truncate" dir="rtl">{'\u200e'}{result.sourcePath || detectedPath}</span>
+                                        </span>
+                                    )}
                                 </div>
                             </div>
                         )}
