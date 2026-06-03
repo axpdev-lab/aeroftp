@@ -16,9 +16,9 @@
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { X, Download, ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react';
+import { X, Download, ChevronLeft, ChevronRight, ExternalLink, Pencil } from 'lucide-react';
 import { UniversalPreviewProps, PreviewFileData } from './types';
-import { getPreviewCategory, formatFileSize, getCategoryIcon } from './utils/fileTypes';
+import { getPreviewCategory, formatFileSize, getCategoryIcon, isSourceViewable } from './utils/fileTypes';
 import { ImageViewer } from './viewers/ImageViewer';
 import { AudioPlayer } from './viewers/AudioPlayer';
 import { VideoPlayer } from './viewers/VideoPlayer';
@@ -31,6 +31,7 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
     file,
     onClose,
     onDownload,
+    onEdit,
     onNext,
     onPrevious,
     hasNext,
@@ -166,6 +167,18 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
 
                     {/* Actions */}
                     <div className="flex items-center gap-2">
+                        {/* Edit button: open plain-text/code files in the AeroTools editor */}
+                        {onEdit && file && isSourceViewable(file.name) && (
+                            <button
+                                onClick={onEdit}
+                                className="flex items-center gap-2 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-lg transition-colors"
+                                title={t('preview.common.edit') || 'Open in editor'}
+                            >
+                                <Pencil size={16} />
+                                {t('preview.common.edit') || 'Edit'}
+                            </button>
+                        )}
+
                         {/* Download button */}
                         {onDownload && (
                             <button
