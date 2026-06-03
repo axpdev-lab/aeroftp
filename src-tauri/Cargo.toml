@@ -163,7 +163,7 @@ data-encoding = "2"                                                    # Base32/
 jsonwebtoken = { version = "10.4", default-features = false, features = ["aws-lc-rs", "hmac", "use_pem"] } # JWT HS256 + GitHub App RS256 without RustCrypto rsa
 
 # AeroVault v2 - Military-Grade Encryption (v1.8.0)
-aerovault = "0.4.1"                                                    # AeroVault v2/v3 standalone crate (crates.io, CRYPTO-01 + dual-audit AV-001/006/011/012)
+aerovault = "0.4.2"                                                    # AeroVault v2/v3 standalone crate (crates.io, CRYPTO-01 + dual-audit AV-001/006/011/012)
 aes-gcm-siv = "0.11"                                                   # AeroVault v3 AEAD content encryption
 chacha20poly1305 = "0.10"                                              # ChaCha20-Poly1305 (used by CryptoLab in cyber_tools)
 hkdf = "0.12"                                                          # HKDF key derivation (used by crypto.rs keystore)
