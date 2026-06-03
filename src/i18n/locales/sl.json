@@ -228,6 +228,7 @@
             "koofrAppPasswordPlaceholder": "Prilepite vaše geslo aplikacije Koofr tukaj",
             "koofrHelp": "Ustvarite geslo aplikacije na app.koofr.net → Preferences → Password → App Passwords",
             "duplicateServer": "Podvoji strežnik",
+            "duplicateCredentialMissing": "Poverilnica ni bila kopirana v dvojnik. Pred povezavo znova vnesite geslo.",
             "saveAsNew": "Shrani kot novo",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",

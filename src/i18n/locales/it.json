@@ -294,6 +294,7 @@
             "yandexdiskTokenPlaceholder": "Incolla qui il tuo token OAuth di Yandex",
             "yandexdiskHelp": "Crea un'app su oauth.yandex.com → Autorizza → Copia il token OAuth (valido 1 anno)",
             "duplicateServer": "Duplica server",
+            "duplicateCredentialMissing": "Credenziale non copiata nel duplicato. Reinserisci la password prima di connetterti.",
             "saveAsNew": "Salva come nuovo",
             "immichServerUrl": "URL del server",
             "immichApiKeyPlaceholder": "Incolla la tua chiave API qui",

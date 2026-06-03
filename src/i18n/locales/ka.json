@@ -229,6 +229,7 @@
             "koofrAppPasswordPlaceholder": "იტოვეთ თქვენი Koofr აპლიკაციის პაროლი აქ",
             "koofrHelp": "შექმენით აპლიკაციის პაროლი app.koofr.net → პარამეტრები → პაროლი → აპლიკაციის პაროლი-ზე",
             "duplicateServer": "სერვერის დუბლირება",
+            "duplicateCredentialMissing": "სერთიფიკატი არ დაკოპირდა დუბლიკატში. ხელახლა შეიყვანეთ პაროლი დაკავშირებამდე.",
             "saveAsNew": "ახლად შენახვა",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",

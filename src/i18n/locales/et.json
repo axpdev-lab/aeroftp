@@ -229,6 +229,7 @@
             "koofrAppPasswordPlaceholder": "Kleepige siia oma Koofr rakenduse parool",
             "koofrHelp": "Looge rakenduse parool aadressil app.koofr.net → Eelistused → Parool → Rakenduse paroolid",
             "duplicateServer": "Dubleeri server",
+            "duplicateCredentialMissing": "Mandaati ei kopeeritud koopiasse. Sisesta parool uuesti enne ühendamist.",
             "saveAsNew": "Salvesta uuena",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",

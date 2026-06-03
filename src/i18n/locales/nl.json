@@ -229,6 +229,7 @@
             "koofrAppPasswordPlaceholder": "Plak hier uw Koofr app-wachtwoord",
             "koofrHelp": "Genereer een app-wachtwoord op app.koofr.net → Instellingen → Wachtwoord → App-wachtwoorden",
             "duplicateServer": "Server dupliceren",
+            "duplicateCredentialMissing": "Inloggegevens niet gekopieerd naar het duplicaat. Voer het wachtwoord opnieuw in voordat u verbindt.",
             "saveAsNew": "Opslaan als nieuw",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",

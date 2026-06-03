@@ -229,6 +229,7 @@
             "koofrAppPasswordPlaceholder": "Поставете тук паролата за приложение на Koofr",
             "koofrHelp": "Генерирайте парола за приложение на app.koofr.net → Предпочитания → Парола → Пароли за приложения",
             "duplicateServer": "Дублиране на сървър",
+            "duplicateCredentialMissing": "Идентификационните данни не са копирани в дубликата. Въведете отново паролата преди свързване.",
             "saveAsNew": "Запази като нов",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",

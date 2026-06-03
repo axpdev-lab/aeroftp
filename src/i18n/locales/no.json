@@ -228,6 +228,7 @@
             "koofrAppPasswordPlaceholder": "Lim inn ditt Koofr app-passord her",
             "koofrHelp": "Generer app-passord på app.koofr.net → Innstillinger → Passord → App-passord",
             "duplicateServer": "Dupliser server",
+            "duplicateCredentialMissing": "Legitimasjonen ble ikke kopiert til duplikatet. Skriv inn passordet på nytt før du kobler til.",
             "saveAsNew": "Lagre som ny",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",

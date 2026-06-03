@@ -229,6 +229,7 @@
             "koofrAppPasswordPlaceholder": "আপনার Koofr অ্যাপ পাসওয়ার্ড এখানে পেস্ট করুন",
             "koofrHelp": "app.koofr.net → পছন্দসমূহ → পাসওয়ার্ড → অ্যাপ পাসওয়ার্ড-এ একটি অ্যাপ পাসওয়ার্ড তৈরি করুন",
             "duplicateServer": "সার্ভার ডুপ্লিকেট করুন",
+            "duplicateCredentialMissing": "শংসাপত্রটি অনুলিপিতে কপি করা হয়নি। সংযোগ করার আগে পাসওয়ার্ডটি আবার লিখুন।",
             "saveAsNew": "নতুন হিসেবে সংরক্ষণ করুন",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",

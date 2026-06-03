@@ -229,6 +229,7 @@
             "koofrAppPasswordPlaceholder": "Liitä Koofr-sovelluksesi salasana tähän",
             "koofrHelp": "Luo sovelluksen salasana osoitteessa app.koofr.net → Asetukset → Salasana → Sovelluksen salasanat",
             "duplicateServer": "Kopioi palvelin",
+            "duplicateCredentialMissing": "Tunnistetietoa ei kopioitu kopioon. Anna salasana uudelleen ennen yhdistämistä.",
             "saveAsNew": "Tallenna uutena",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",

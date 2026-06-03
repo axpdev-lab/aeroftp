@@ -298,21 +298,42 @@ export const SavedServers: React.FC<SavedServersProps> = ({
             id: newId,
             name: `${server.name} (${t('common.copy')})`,
             lastConnected: undefined,
+            hasStoredCredential: false, // until proven copied below
         };
-        // Copy credential from vault if stored
-        if (server.hasStoredCredential) {
-            try {
-                const password = await getCredentialWithRetry(`server_${server.id}`);
-                if (password) {
-                    await invoke('store_credential', { account: `server_${newId}`, password });
-                    cloned.hasStoredCredential = true;
-                }
-            } catch { /* Password will need to be re-entered */ }
+        // Always probe the vault for the stored credential, never gate on the
+        // `hasStoredCredential` flag: the vault is the source of truth and the
+        // flag can be stale or absent on a profile synced from another machine
+        // (per-machine keyring). The S3 secret access key, like every other
+        // password, lives under `server_<id>`.
+        let credentialCopied = false;
+        try {
+            const password = await getCredentialWithRetry(`server_${server.id}`);
+            if (password) {
+                await invoke('store_credential', { account: `server_${newId}`, password });
+                cloned.hasStoredCredential = true;
+                credentialCopied = true;
+            }
+        } catch (e) {
+            console.error('Duplicate: failed to copy stored credential from vault', e);
         }
         const updated = [...servers, cloned];
         setServers(updated);
         saveServers(updated);
-        // Open in edit mode so user can change name/host
+        // Warn (instead of silently producing a half-broken copy) when the
+        // original was expected to carry a credential but none could be copied,
+        // e.g. the secret is only in another machine's keyring. The edit modal
+        // opens next so the user can re-enter it before connecting.
+        if (!credentialCopied && server.hasStoredCredential) {
+            window.dispatchEvent(new CustomEvent('aeroftp-toast', {
+                detail: {
+                    type: 'warning',
+                    title: t('connection.duplicateServer'),
+                    message: t('connection.duplicateCredentialMissing'),
+                    duration: 8000,
+                },
+            }));
+        }
+        // Open in edit mode so user can change name/host (and re-enter secret).
         onEdit(cloned);
     };
 

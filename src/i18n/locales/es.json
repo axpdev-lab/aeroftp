@@ -229,6 +229,7 @@
             "koofrAppPasswordPlaceholder": "Pegue su contraseña de aplicación Koofr aquí",
             "koofrHelp": "Genere una contraseña de aplicación en app.koofr.net → Preferencias → Contraseña → Contraseñas de aplicación",
             "duplicateServer": "Duplicar servidor",
+            "duplicateCredentialMissing": "Credencial no copiada al duplicado. Vuelve a introducir la contraseña antes de conectar.",
             "saveAsNew": "Guardar como nuevo",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",

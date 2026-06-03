@@ -229,6 +229,7 @@
             "koofrAppPasswordPlaceholder": "Tampal kata laluan aplikasi Koofr anda di sini",
             "koofrHelp": "Hasilkan kata laluan aplikasi di app.koofr.net → Pilihan → Kata Laluan → Kata Laluan Aplikasi",
             "duplicateServer": "Duplikat pelayan",
+            "duplicateCredentialMissing": "Kelayakan tidak disalin ke pendua. Masukkan semula kata laluan sebelum menyambung.",
             "saveAsNew": "Simpan sebagai baharu",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",

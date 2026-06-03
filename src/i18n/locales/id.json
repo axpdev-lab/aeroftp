@@ -229,6 +229,7 @@
             "koofrAppPasswordPlaceholder": "Tempel sandi aplikasi Koofr Anda di sini",
             "koofrHelp": "Buat sandi aplikasi di app.koofr.net → Preferensi → Sandi → Sandi Aplikasi",
             "duplicateServer": "Duplikat server",
+            "duplicateCredentialMissing": "Kredensial tidak disalin ke duplikat. Masukkan kembali kata sandi sebelum menghubungkan.",
             "saveAsNew": "Simpan sebagai baru",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",

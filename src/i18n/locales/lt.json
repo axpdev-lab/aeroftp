@@ -229,6 +229,7 @@
             "koofrAppPasswordPlaceholder": "Įklijuokite savo Koofr programos slaptažodį čia",
             "koofrHelp": "Sukurkite programos slaptažodį adresu app.koofr.net → Nustatymai → Slaptažodis → Programų slaptažodžiai",
             "duplicateServer": "Dubliuoti serverį",
+            "duplicateCredentialMissing": "Kredencialas nenukopijuotas į kopiją. Prieš prisijungdami iš naujo įveskite slaptažodį.",
             "saveAsNew": "Išsaugoti kaip naują",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",

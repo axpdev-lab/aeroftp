@@ -229,6 +229,7 @@
             "koofrAppPasswordPlaceholder": "अपना Koofr ऐप पासवर्ड यहां पेस्ट करें",
             "koofrHelp": "app.koofr.net → प्राथमिकताएं → पासवर्ड → ऐप पासवर्ड पर एक ऐप पासवर्ड बनाएं",
             "duplicateServer": "सर्वर डुप्लिकेट करें",
+            "duplicateCredentialMissing": "क्रेडेंशियल डुप्लिकेट में कॉपी नहीं हुआ। कनेक्ट करने से पहले पासवर्ड फिर से दर्ज करें।",
             "saveAsNew": "नए के रूप में सहेजें",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",

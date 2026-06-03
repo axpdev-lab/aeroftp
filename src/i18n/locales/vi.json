@@ -228,6 +228,7 @@
             "koofrAppPasswordPlaceholder": "Dán mật khẩu ứng dụng Koofr của bạn tại đây",
             "koofrHelp": "Tạo mật khẩu ứng dụng tại app.koofr.net → Preferences → Password → App Passwords",
             "duplicateServer": "Nhân bản máy chủ",
+            "duplicateCredentialMissing": "Thông tin xác thực chưa được sao chép sang bản sao. Nhập lại mật khẩu trước khi kết nối.",
             "saveAsNew": "Lưu như mới",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",

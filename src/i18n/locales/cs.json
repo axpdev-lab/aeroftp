@@ -229,6 +229,7 @@
             "koofrAppPasswordPlaceholder": "Vložte své heslo aplikace Koofr zde",
             "koofrHelp": "Vygenerujte heslo aplikace na app.koofr.net → Předvolby → Heslo → Hesla aplikací",
             "duplicateServer": "Duplikovat server",
+            "duplicateCredentialMissing": "Přihlašovací údaje nebyly zkopírovány do kopie. Před připojením znovu zadejte heslo.",
             "saveAsNew": "Uložit jako nový",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",

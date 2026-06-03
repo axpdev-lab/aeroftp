@@ -229,6 +229,7 @@
             "koofrAppPasswordPlaceholder": "Залепете ја вашата Koofr лозинка на апликација овде",
             "koofrHelp": "Генерирајте лозинка на апликација на app.koofr.net → Поставки → Лозинка → Лозинки на апликации",
             "duplicateServer": "Дуплирај сервер",
+            "duplicateCredentialMissing": "Акредитивот не е копиран во дупликатот. Внесете ја лозинката повторно пред поврзување.",
             "saveAsNew": "Зачувај како нов",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",
