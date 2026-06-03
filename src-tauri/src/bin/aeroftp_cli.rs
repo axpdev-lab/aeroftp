@@ -9343,7 +9343,7 @@ fn interactive_profiles_loop(cli: &Cli, store: &CredentialStore, profiles: Vec<s
         }
 
         eprintln!(
-            "\nInteractive: l/t/d/f/c/r/e <N|name> [N|name ...]  ·  legacy 1l/l1 still works  ·  0/q = quit"
+            "\nInteractive: l/t/d/f/c/r/e <N|name> [N|name ...]  ·  # <sel> <N> reorder  ·  legacy 1l/l1 still works  ·  0/q = quit"
         );
         eprint!("profiles> ");
         let _ = io::stderr().flush();
@@ -9380,12 +9380,98 @@ fn interactive_profiles_loop(cli: &Cli, store: &CredentialStore, profiles: Vec<s
             eprintln!("  e <selector>    edit name/host/port/username/initialPath inline (green rendering)");
             eprintln!("  s <selector>    save-as-new in a different mode of the same provider group (issue #215)");
             eprintln!("  v <selector>    convert profile to a different mode, REPLACES the original (issue #215)");
+            eprintln!("  # <sel> <N>     move a profile to index N (renumber, clamped to count, persisted)");
             eprintln!("  Nl  Nt  Nd      legacy single-target compact form (e.g. '1l', 'l1')");
             eprintln!("  0/q             quit");
             eprintln!();
             eprintln!("  Selectors are space-separated; use double quotes for names with spaces.");
             eprintln!("  Example: c \"My Cloud Drive\" 7 box     d 4 box 10 7 mega     f mybox");
             eprintln!("  Mode switch: s 3 (then prompts for mode label: api, webdav, s3, ftp)");
+            continue;
+        }
+
+        // Move-to-index: `# <selector> <target>` reorders the profile list
+        // and persists the new order to the vault. The target is the desired
+        // 1-based position (the same number shown in the `#` column),
+        // clamped to 1..=count. parse_interactive_action only accepts
+        // alphabetic actions, so `#` is handled here first.
+        if raw.starts_with('#') {
+            let tokens = tokenize_quoted(raw);
+            // Accept both `# <selector> <target>` (3 tokens) and the compact
+            // `#<selector> <target>` (2 tokens, e.g. `#3 1`).
+            let (selector, target_raw) = if tokens[0] == "#" {
+                if tokens.len() < 3 {
+                    eprintln!("Usage: # <selector> <target-index>  (e.g. '# 3 1' moves profile 3 to the top)");
+                    continue;
+                }
+                (tokens[1].clone(), tokens[2].clone())
+            } else {
+                // tokens[0] is like "#3"
+                let sel = tokens[0][1..].to_string();
+                if sel.is_empty() || tokens.len() < 2 {
+                    eprintln!("Usage: # <selector> <target-index>  (e.g. '# 3 1' moves profile 3 to the top)");
+                    continue;
+                }
+                (sel, tokens[1].clone())
+            };
+            let src = match resolve_profile_selector(&current, &selector) {
+                Ok(z) => z,
+                Err(e) => {
+                    eprintln!("Selector '{}' skipped: {}", selector, e);
+                    continue;
+                }
+            };
+            let target_1based = match target_raw.parse::<usize>() {
+                Ok(n) if n >= 1 => n,
+                _ => {
+                    eprintln!("Target index must be a positive number (1..={}).", current.len());
+                    continue;
+                }
+            };
+            // Reordering only makes sense against the saved (manual) order.
+            // When a sort is active the displayed order differs from the
+            // stored order, so persisting the displayed list would silently
+            // reorder every profile to match the sort. Refuse in that case
+            // and point the user at manual order, comparing ids positionally.
+            let stored_ids: Vec<String> = load_active_user_profiles(cli, store)
+                .unwrap_or_default()
+                .iter()
+                .map(|p| p.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string())
+                .collect();
+            let current_ids: Vec<String> = current
+                .iter()
+                .map(|p| p.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string())
+                .collect();
+            if stored_ids != current_ids {
+                eprintln!(
+                    "Reordering needs manual order: a sort is active, so the displayed order differs from the saved order. Re-run with `--sort manual` (or clear the sort) and try again."
+                );
+                continue;
+            }
+            // Clamp to the table size and translate to a 0-based final index.
+            let dst = (target_1based - 1).min(current.len().saturating_sub(1));
+            if dst == src {
+                eprintln!("Profile already at #{}.", src + 1);
+                continue;
+            }
+            let name = current[src]
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("?")
+                .to_string();
+            let snapshot = current.clone();
+            let profile = current.remove(src);
+            current.insert(dst, profile);
+            match save_active_user_profiles(cli, store, &current) {
+                Ok(()) => {
+                    eprintln!("Moved '{}' to #{}.", name, dst + 1);
+                    print_profiles_summary_with_tombstones(&current, &[]);
+                }
+                Err(e) => {
+                    current = snapshot;
+                    eprintln!("Move failed to persist: {}. Order unchanged.", e);
+                }
+            }
             continue;
         }
 
