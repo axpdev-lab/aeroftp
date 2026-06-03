@@ -51,6 +51,14 @@ pub struct TransferCapabilities {
     pub max_chunk_slots: Option<u16>,
     pub max_checker_slots: Option<u16>,
     pub preferred_chunk_size: Option<u64>,
+    /// Minimum file size (bytes) at or above which an upload should fan out
+    /// into multipart parts. Mirrors the per-provider `multipart_threshold`
+    /// hint that the legacy `upload()` path honours. `0` means "unset": the
+    /// shaping profile falls back to the chunk size, preserving the historical
+    /// "fan out any file larger than one part" behaviour for providers that
+    /// declare multipart without a threshold. Defaults to `u64::MAX` so a
+    /// capability built without hints never accidentally fans out a small file.
+    pub multipart_threshold: u64,
 }
 
 impl Default for TransferCapabilities {
@@ -74,6 +82,7 @@ impl Default for TransferCapabilities {
             max_chunk_slots: Some(1),
             max_checker_slots: Some(1),
             preferred_chunk_size: None,
+            multipart_threshold: u64::MAX,
         }
     }
 }
@@ -93,6 +102,11 @@ impl TransferCapabilities {
             preferred_chunk_size: (hints.multipart_part_size > 0)
                 .then_some(hints.multipart_part_size),
             max_chunk_slots: Some(hints.multipart_max_parallel.max(1) as u16),
+            // 0 = unset: the profile falls back to the chunk size (preserving
+            // pre-fix behaviour). A provider that advertises multipart with a
+            // very high threshold can opt out of fan-out without lying about
+            // `supports_multipart` (the filen-s3 CreateMultipartUpload hazard).
+            multipart_threshold: hints.multipart_threshold,
             ..Self::default()
         };
 

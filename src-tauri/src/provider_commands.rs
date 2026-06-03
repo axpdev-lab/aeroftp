@@ -1075,13 +1075,50 @@ async fn run_dag_download_leaf(
             "Download routed to Legacy engine: {} ({})",
             filename, decision.reason
         );
-        let mut guard = provider.lock().await;
-        let result = match guard.as_mut() {
-            Some(p) => p.download(&remote_path, &local_path, progress_cb).await,
-            None => Err(ProviderError::NotConnected),
+        let result = {
+            let mut guard = provider.lock().await;
+            match guard.as_mut() {
+                Some(p) => p.download(&remote_path, &local_path, progress_cb).await,
+                None => Err(ProviderError::NotConnected),
+            }
         };
         return match result {
-            Ok(()) => Ok(format!("Downloaded: {}", filename)),
+            Ok(()) => {
+                // Parity with the DAG `PreserveMetadata` node: restore the
+                // remote mtime and emit the GUI completion event. Without this
+                // the Legacy download route silently dropped the remote mtime
+                // (breaking overwrite-if-newer sync) and never finished the
+                // progress bar (audit W1.2, the prerequisite for any future
+                // download->Legacy routing carve-out).
+                crate::preserve_remote_mtime(&local_path, modified.as_deref());
+                let actual_size = tokio::fs::metadata(&local_path)
+                    .await
+                    .map(|m| m.len())
+                    .unwrap_or(file_size);
+                let _ = app.emit(
+                    "transfer_event",
+                    crate::TransferEvent {
+                        event_type: "complete".to_string(),
+                        transfer_id: transfer_id.clone(),
+                        filename: filename.clone(),
+                        direction: "download".to_string(),
+                        message: Some(format!(
+                            "({} in 0s)",
+                            if actual_size > 1_048_576 {
+                                format!("{:.1} MB", actual_size as f64 / 1_048_576.0)
+                            } else {
+                                format!("{:.1} KB", actual_size as f64 / 1024.0)
+                            }
+                        )),
+                        progress: None,
+                        path: None,
+                        delta_stats: None,
+                        fallback_reason: delta_fallback_reason,
+                    },
+                );
+                info!("Download completed: {}", filename);
+                Ok(format!("Downloaded: {}", filename))
+            }
             Err(e) => {
                 let _ = app.emit(
                     "transfer_event",

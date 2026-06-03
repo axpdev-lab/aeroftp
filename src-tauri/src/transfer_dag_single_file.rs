@@ -78,9 +78,7 @@ use std::sync::{Arc, Mutex as StdMutex};
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 use tokio::sync::Mutex;
 
-use crate::providers::{
-    B2Provider, MultipartHandle, ProviderError, S3Provider, StorageProvider, UploadedPart,
-};
+use crate::providers::{MultipartHandle, ProviderError, StorageProvider, UploadedPart};
 use crate::transfer_dag::executor::{execute_dag, DagNodeRunner, NodeFuture, NodeOutcome};
 use crate::transfer_dag::graph::{TransferNode, TransferNodeKind};
 use crate::transfer_dag::{
@@ -379,29 +377,42 @@ pub async fn execute_single_file_dag(
                     TransferNodeKind::CommitTemp => {
                         // For multipart uploads, finalize the session by
                         // submitting the accumulated parts in part-number
-                        // order. The handle is taken (the session is no
-                        // longer valid after `complete_multipart_upload`,
-                        // success or failure), so the failure-path abort
-                        // below knows to skip when commit already consumed
-                        // it. For the single-transfer-core shape this is a
-                        // no-op.
+                        // order. The handle is CLONED for the complete call
+                        // and the slot is cleared only on success; on a
+                        // commit-time failure the handle stays in place so the
+                        // post-execute abort guard reliably aborts the
+                        // orphaned session instead of leaking the upload id
+                        // (audit ERR-01). For the single-transfer-core shape
+                        // this is a no-op.
                         if let Some(ctx) = multipart_ctx.as_ref() {
                             let handle = {
-                                let mut handle_guard = ctx.handle.lock().await;
-                                handle_guard.take()
+                                let handle_guard = ctx.handle.lock().await;
+                                handle_guard.as_ref().cloned()
                             };
                             if let Some(handle) = handle {
                                 let mut parts = std::mem::take(&mut *ctx.parts.lock().await);
                                 parts.sort_by_key(|p| p.part_number);
-                                let mut guard = provider.lock().await;
-                                let Some(p) = guard.as_mut() else {
-                                    return record_failure(
-                                        &first_error,
-                                        ProviderError::NotConnected,
-                                    );
+                                // Scope the provider guard so it is released
+                                // before we touch the handle mutex, keeping the
+                                // lock order (handle then provider) consistent
+                                // with the lazy-begin path.
+                                let result = {
+                                    let mut guard = provider.lock().await;
+                                    let Some(p) = guard.as_mut() else {
+                                        return record_failure(
+                                            &first_error,
+                                            ProviderError::NotConnected,
+                                        );
+                                    };
+                                    p.complete_multipart_upload(handle, parts).await
                                 };
-                                match p.complete_multipart_upload(handle, parts).await {
-                                    Ok(()) => NodeOutcome::Completed,
+                                match result {
+                                    Ok(()) => {
+                                        // Session finalized: clear the handle so
+                                        // the abort guard becomes a no-op.
+                                        ctx.handle.lock().await.take();
+                                        NodeOutcome::Completed
+                                    }
                                     Err(e) => record_failure(&first_error, e),
                                 }
                             } else {
@@ -449,8 +460,9 @@ pub async fn execute_single_file_dag(
 
     // On failure, best-effort abort an in-flight multipart session so the
     // provider does not accumulate orphan upload IDs. Idempotent because the
-    // commit branch already `take()`s the handle on success, so this only
-    // runs when the failure happened before commit ran.
+    // commit branch clears the handle ONLY on success, so this runs for both a
+    // failure before commit AND a commit-time failure (audit ERR-01); a
+    // successful commit leaves no handle and this is a no-op.
     if outcome.is_err() {
         if let Some(ctx) = multipart_ctx.as_ref() {
             let leftover_handle = {
@@ -520,14 +532,23 @@ fn single_file_budget(built: &ShapedFileDag) -> TransferBudget {
     budget
 }
 
-fn clone_multipart_worker(provider: &mut dyn StorageProvider) -> Option<Box<dyn StorageProvider>> {
-    if let Some(s3) = provider.as_any_mut().downcast_mut::<S3Provider>() {
-        return Some(Box::new(s3.clone()));
-    }
-    if let Some(b2) = provider.as_any_mut().downcast_mut::<B2Provider>() {
-        return Some(Box::new(b2.clone()));
-    }
-    None
+/// Mint an independent worker for a concurrent part upload, or `None` when the
+/// provider must serialise its parts on the shared session mutex.
+///
+/// Gated on `clone_for_transfer()` (the actual capability the parallel part
+/// path needs: an independent HTTP/session worker) rather than a hardcoded
+/// `S3`/`B2` downcast or the `transfer_executor_kind()` flag. Gating on the
+/// clone itself lets a provider parallelise its multipart chunks WITHOUT also
+/// opting into clone-pool BATCH execution (which `transfer_executor_kind`
+/// drives), so the blast radius stays exactly the per-part path. S3, B2, Azure
+/// and Nextcloud WebDAV produce an independent worker here; providers that
+/// cannot clone (the trait default) return `None` and keep the session-mutex
+/// fallback at the call site (audit CHUNK-01). Ordering-sensitive providers
+/// (Drive/OneDrive) stay correct regardless: the builder serialises their part
+/// nodes when `max_chunk_slots <= 1`, so even a cloned worker runs them one at
+/// a time in part-number order.
+fn clone_multipart_worker(provider: &dyn StorageProvider) -> Option<Box<dyn StorageProvider>> {
+    provider.clone_for_transfer().ok()
 }
 
 #[cfg(test)]
@@ -554,6 +575,7 @@ mod tests {
         let caps = TransferCapabilities {
             multipart_upload: Capability::Supported,
             preferred_chunk_size: Some(8 * 1024 * 1024),
+            multipart_threshold: 0, // unset: fan out at chunk size
             ..TransferCapabilities::default()
         };
         let file_size: u64 = 24 * 1024 * 1024;
@@ -593,6 +615,7 @@ mod tests {
             multipart_upload: Capability::Supported,
             preferred_chunk_size: Some(8 * 1024 * 1024),
             max_chunk_slots: Some(4),
+            multipart_threshold: 0, // unset: fan out at chunk size
             ..TransferCapabilities::default()
         };
         let built =
@@ -610,6 +633,7 @@ mod tests {
             multipart_upload: Capability::Supported,
             preferred_chunk_size: Some(8 * 1024 * 1024),
             max_chunk_slots: Some(4),
+            multipart_threshold: 0, // unset: fan out at chunk size
             ..TransferCapabilities::default()
         };
         let built =
