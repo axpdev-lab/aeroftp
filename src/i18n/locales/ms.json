@@ -1433,7 +1433,6 @@
         },
         "protocol": {
             "selectProtocol": "Pilih protokol...",
-            "servers": "Pelayan",
             "cloudStorage": "Storan Awan",
             "ftpDesc": "Protokol Pemindahan Fail",
             "ftpsDesc": "FTP melalui TLS/SSL",

@@ -1433,7 +1433,6 @@
         },
         "protocol": {
             "selectProtocol": "প্রোটোকল নির্বাচন করুন...",
-            "servers": "সার্ভার",
             "cloudStorage": "ক্লাউড স্টোরেজ",
             "ftpDesc": "ফাইল ট্রান্সফার প্রোটোকল",
             "ftpsDesc": "TLS/SSL এর মাধ্যমে FTP",

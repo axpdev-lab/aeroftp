@@ -2417,7 +2417,6 @@
             "s3Tooltip": "S3-compatible storage - AWS S3, MEGA S4, Cloudflare R2, Backblaze B2",
             "selectProtocol": "Select protocol...",
             "selectRegion": "Select region...",
-            "servers": "Servers",
             "sftpDesc": "SSH File Transfer",
             "sftpTooltip": "SFTP over SSH - secure shell file transfer, supports key authentication",
             "swiftDesc": "OpenStack Swift Object Storage",

@@ -1433,7 +1433,6 @@
         },
         "protocol": {
             "selectProtocol": "Chọn giao thức...",
-            "servers": "Máy chủ",
             "cloudStorage": "Lưu trữ đám mây",
             "ftpDesc": "Giao thức truyền tệp",
             "ftpsDesc": "FTP qua TLS/SSL",

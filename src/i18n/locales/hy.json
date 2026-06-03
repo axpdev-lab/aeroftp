@@ -1426,7 +1426,6 @@
         },
         "protocol": {
             "selectProtocol": "Ընտրեք արձանագրություն...",
-            "servers": "Սերվերներ",
             "cloudStorage": "Ամպային պահեստ",
             "ftpDesc": "Ֆայլերի փոխանցման արձանագրություն",
             "ftpsDesc": "FTP TLS/SSL-ով",

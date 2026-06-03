@@ -1433,7 +1433,6 @@
         },
         "protocol": {
             "selectProtocol": "Seleccioneu protocol...",
-            "servers": "Servidors",
             "cloudStorage": "Emmagatzematge al Núvol",
             "ftpDesc": "Protocol de Transferència de Fitxers",
             "ftpsDesc": "FTP sobre TLS/SSL",

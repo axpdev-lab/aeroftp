@@ -1433,7 +1433,6 @@
         },
         "protocol": {
             "selectProtocol": "เลือกโปรโตคอล...",
-            "servers": "เซิร์ฟเวอร์",
             "cloudStorage": "ที่เก็บข้อมูลบนคลาวด์",
             "ftpDesc": "โปรโตคอลการถ่ายโอนไฟล์",
             "ftpsDesc": "FTP ผ่าน TLS/SSL",

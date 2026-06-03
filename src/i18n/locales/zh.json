@@ -1433,7 +1433,6 @@
         },
         "protocol": {
             "selectProtocol": "选择协议...",
-            "servers": "服务器",
             "cloudStorage": "云存储",
             "ftpDesc": "文件传输协议",
             "ftpsDesc": "基于TLS/SSL的FTP",

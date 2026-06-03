@@ -1433,7 +1433,6 @@
         },
         "protocol": {
             "selectProtocol": "Protokoll kiválasztása...",
-            "servers": "Szerverek",
             "cloudStorage": "Felhő tárhely",
             "ftpDesc": "Fájlátviteli protokoll",
             "ftpsDesc": "FTP TLS/SSL felett",

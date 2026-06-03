@@ -341,7 +341,6 @@
         },
         "protocol": {
             "selectProtocol": "Seleziona protocollo...",
-            "servers": "Server",
             "cloudStorage": "Cloud Storage",
             "ftpDesc": "File Transfer Protocol",
             "ftpsDesc": "FTP su TLS/SSL",

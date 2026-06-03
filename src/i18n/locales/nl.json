@@ -1433,7 +1433,6 @@
         },
         "protocol": {
             "selectProtocol": "Selecteer protocol...",
-            "servers": "Servers",
             "cloudStorage": "Cloudopslag",
             "ftpDesc": "Bestandsoverdrachtsprotocol",
             "ftpsDesc": "FTP over TLS/SSL",

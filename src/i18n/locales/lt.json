@@ -1433,7 +1433,6 @@
         },
         "protocol": {
             "selectProtocol": "Pasirinkti protokolą...",
-            "servers": "Serveriai",
             "cloudStorage": "Debesų saugykla",
             "ftpDesc": "Failų perdavimo protokolas",
             "ftpsDesc": "FTP per TLS/SSL",

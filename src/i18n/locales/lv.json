@@ -1433,7 +1433,6 @@
         },
         "protocol": {
             "selectProtocol": "Izvēlēties protokolu...",
-            "servers": "Serveri",
             "cloudStorage": "Mākoņkrātuve",
             "ftpDesc": "Failu pārsūtīšanas protokols",
             "ftpsDesc": "FTP caur TLS/SSL",

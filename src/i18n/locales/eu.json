@@ -1433,7 +1433,6 @@
         },
         "protocol": {
             "selectProtocol": "Aukeratu protokoloa...",
-            "servers": "Zerbitzariak",
             "cloudStorage": "Hodei Biltegiratzea",
             "ftpDesc": "Fitxategi-transferentzia protokoloa",
             "ftpsDesc": "FTP TLS/SSL bidez",

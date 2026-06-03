@@ -1433,7 +1433,6 @@
         },
         "protocol": {
             "selectProtocol": "Виберіть протокол...",
-            "servers": "Сервери",
             "cloudStorage": "Хмарне сховище",
             "ftpDesc": "Протокол передачі файлів",
             "ftpsDesc": "FTP через TLS/SSL",

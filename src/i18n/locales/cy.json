@@ -1433,7 +1433,6 @@
         },
         "protocol": {
             "selectProtocol": "Dewis protocol...",
-            "servers": "Gweinyddion",
             "cloudStorage": "Storio Cwmwl",
             "ftpDesc": "Protocol Trosglwyddo Ffeiliau",
             "ftpsDesc": "FTP dros TLS/SSL",
