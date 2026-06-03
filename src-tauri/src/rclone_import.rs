@@ -1352,6 +1352,27 @@ pub fn export_rclone(
                 // presets store verbatim in the URL or initial path
                 // (Tab.digital, FeliCloud).
                 let url = url.replace("{username}", &server.username);
+                // rclone's `nextcloud`/`owncloud` vendors do not auto-discover
+                // the DAV collection root the way AeroFTP does at connect time
+                // (PROPFIND probe -> `/remote.php/dav/files/<user>/`). They
+                // require the full collection URL up front, otherwise the
+                // exported remote cannot list or transfer. AeroFTP profiles
+                // usually persist a bare host (empty basePath), so synthesise
+                // the path here when it is missing. Generic WebDAV (vendor
+                // `other`: Koofr, SharePoint, Fastmail) has no such convention
+                // and is left untouched. Any explicit `/remote.php/` segment
+                // already present is honoured verbatim.
+                let url = if matches!(vendor, "nextcloud" | "owncloud")
+                    && !url.contains("/remote.php/")
+                {
+                    format!(
+                        "{}/remote.php/dav/files/{}/",
+                        url.trim_end_matches('/'),
+                        server.username
+                    )
+                } else {
+                    url
+                };
                 output.push_str(&format!("url = {}\n", url));
                 output.push_str(&format!("vendor = {}\n", vendor));
                 output.push_str(&format!("user = {}\n", server.username));
@@ -1928,6 +1949,136 @@ user = t
             r
         });
         assert_eq!(result.servers.len(), 1, "alias must not become a server");
+    }
+
+    #[test]
+    fn test_export_rclone_webdav_nextcloud_appends_dav_path() {
+        // Bug (2026-06-03): exporting a Nextcloud profile with a bare host
+        // wrote `url = https://host` without the `/remote.php/dav/files/<user>/`
+        // collection root rclone's nextcloud vendor requires, so the exported
+        // remote could not list or transfer.
+        let servers = vec![RcloneExportServer {
+            name: "ncloud".to_string(),
+            host: "https://cloud.lab.axpdev.it".to_string(),
+            port: 443,
+            username: "alice".to_string(),
+            protocol: Some("webdav".to_string()),
+            options: None,
+            provider_id: Some("nextcloud".to_string()),
+        }];
+        let mut passwords = HashMap::new();
+        passwords.insert("ncloud".to_string(), "ncsecret".to_string());
+
+        let tmp = std::env::temp_dir().join("aeroftp-test-export-webdav-nc.conf");
+        export_rclone(&servers, &passwords, &tmp).expect("should export");
+        let conf = std::fs::read_to_string(&tmp).expect("read conf");
+        std::fs::remove_file(&tmp).ok();
+
+        assert!(
+            conf.contains("vendor = nextcloud"),
+            "expected nextcloud vendor:\n{conf}"
+        );
+        assert!(
+            conf.contains("url = https://cloud.lab.axpdev.it/remote.php/dav/files/alice/"),
+            "must synthesise the DAV collection root:\n{conf}"
+        );
+    }
+
+    #[test]
+    fn test_export_rclone_webdav_owncloud_appends_dav_path() {
+        let servers = vec![RcloneExportServer {
+            name: "ocloud".to_string(),
+            host: "https://oc.example.com".to_string(),
+            port: 443,
+            username: "bob".to_string(),
+            protocol: Some("webdav".to_string()),
+            options: None,
+            provider_id: Some("owncloud".to_string()),
+        }];
+        let mut passwords = HashMap::new();
+        passwords.insert("ocloud".to_string(), "ocsecret".to_string());
+
+        let tmp = std::env::temp_dir().join("aeroftp-test-export-webdav-oc.conf");
+        export_rclone(&servers, &passwords, &tmp).expect("should export");
+        let conf = std::fs::read_to_string(&tmp).expect("read conf");
+        std::fs::remove_file(&tmp).ok();
+
+        assert!(
+            conf.contains("vendor = owncloud"),
+            "expected owncloud vendor:\n{conf}"
+        );
+        assert!(
+            conf.contains("url = https://oc.example.com/remote.php/dav/files/bob/"),
+            "must synthesise the DAV collection root:\n{conf}"
+        );
+    }
+
+    #[test]
+    fn test_export_rclone_webdav_nextcloud_existing_dav_path_not_duplicated() {
+        // A profile that already carries a `/remote.php/...` path (basePath or
+        // explicit URL) must be honoured verbatim, never double-appended.
+        let servers = vec![RcloneExportServer {
+            name: "ncloud".to_string(),
+            host: "https://cloud.lab.axpdev.it".to_string(),
+            port: 443,
+            username: "alice".to_string(),
+            protocol: Some("webdav".to_string()),
+            options: Some(serde_json::json!({
+                "basePath": "/remote.php/dav/files/alice/"
+            })),
+            provider_id: Some("nextcloud".to_string()),
+        }];
+        let mut passwords = HashMap::new();
+        passwords.insert("ncloud".to_string(), "ncsecret".to_string());
+
+        let tmp = std::env::temp_dir().join("aeroftp-test-export-webdav-nc-dup.conf");
+        export_rclone(&servers, &passwords, &tmp).expect("should export");
+        let conf = std::fs::read_to_string(&tmp).expect("read conf");
+        std::fs::remove_file(&tmp).ok();
+
+        assert!(
+            conf.contains("url = https://cloud.lab.axpdev.it/remote.php/dav/files/alice/"),
+            "existing DAV path must be kept as-is:\n{conf}"
+        );
+        assert!(
+            !conf.contains("dav/files/alice/remote.php"),
+            "must not double-append the DAV path:\n{conf}"
+        );
+    }
+
+    #[test]
+    fn test_export_rclone_webdav_generic_vendor_untouched() {
+        // Generic WebDAV (vendor `other`: Koofr, SharePoint, Fastmail) has no
+        // Nextcloud collection convention and must be left exactly as-is.
+        let servers = vec![RcloneExportServer {
+            name: "generic".to_string(),
+            host: "https://dav.example.com".to_string(),
+            port: 443,
+            username: "carol".to_string(),
+            protocol: Some("webdav".to_string()),
+            options: None,
+            provider_id: Some("webdav".to_string()),
+        }];
+        let mut passwords = HashMap::new();
+        passwords.insert("generic".to_string(), "gsecret".to_string());
+
+        let tmp = std::env::temp_dir().join("aeroftp-test-export-webdav-generic.conf");
+        export_rclone(&servers, &passwords, &tmp).expect("should export");
+        let conf = std::fs::read_to_string(&tmp).expect("read conf");
+        std::fs::remove_file(&tmp).ok();
+
+        assert!(
+            conf.contains("vendor = other"),
+            "expected generic vendor=other:\n{conf}"
+        );
+        assert!(
+            conf.contains("url = https://dav.example.com\n"),
+            "generic WebDAV url must be untouched:\n{conf}"
+        );
+        assert!(
+            !conf.contains("/remote.php/"),
+            "must not inject a Nextcloud DAV path on generic WebDAV:\n{conf}"
+        );
     }
 
     #[test]
