@@ -1017,6 +1017,19 @@ impl CredentialStore {
     }
 
     fn read_vault(path: &Path) -> Result<VaultFile, CredentialError> {
+        // KEYSTORE-04: cap the on-disk size before the unbounded serde_json
+        // parse. A legitimate vault is a few KiB even with hundreds of
+        // entries; this guards against a corrupted or hostile file forcing an
+        // arbitrarily large allocation during deserialization. 64 MiB is far
+        // above any real vault yet bounds the worst case.
+        const MAX_VAULT_BYTES: u64 = 64 * 1024 * 1024;
+        let len = std::fs::metadata(path)?.len();
+        if len > MAX_VAULT_BYTES {
+            return Err(CredentialError::Serialization(format!(
+                "vault file too large: {} bytes (max {} bytes)",
+                len, MAX_VAULT_BYTES
+            )));
+        }
         let data = std::fs::read(path)?;
         serde_json::from_slice(&data).map_err(|e| CredentialError::Serialization(e.to_string()))
     }

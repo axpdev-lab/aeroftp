@@ -14,7 +14,7 @@
 
 use secrecy::{ExposeSecret, SecretString};
 use std::sync::Mutex;
-use std::time::Instant;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::State;
 use totp_rs::{Algorithm, Secret, TOTP};
 
@@ -22,6 +22,18 @@ use totp_rs::{Algorithm, Secret, TOTP};
 const MAX_FAILED_ATTEMPTS: u32 = 5;
 /// Base lockout duration in seconds after exceeding MAX_FAILED_ATTEMPTS.
 const BASE_LOCKOUT_SECS: u64 = 30;
+/// TOTP step length in seconds (RFC 6238 period).
+const TOTP_PERIOD: u64 = 30;
+/// Vault key under which the rate-limit state is persisted (TOTP-02).
+const RATE_LIMIT_VAULT_KEY: &str = "totp_rate_limit";
+
+/// Current wall-clock time as seconds since the Unix epoch.
+fn now_unix() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
 
 /// Internal TOTP state: all fields protected by a single Mutex
 /// to guarantee atomic state transitions.
@@ -40,6 +52,10 @@ struct TotpInner {
     failed_attempts: u32,
     /// Lockout expiry time (None if not locked out)
     lockout_until: Option<Instant>,
+    /// TOTP-03: the last successfully consumed time-step. A valid code may not
+    /// be reused: any code whose step is <= this value is treated as a replay
+    /// and rejected, giving the one-time property RFC 6238 Sec 5.2 mandates.
+    last_used_step: Option<u64>,
 }
 
 /// Thread-safe TOTP state managed by Tauri.
@@ -57,6 +73,7 @@ impl Default for TotpState {
                 active_secret: None,
                 failed_attempts: 0,
                 lockout_until: None,
+                last_used_step: None,
             }),
         }
     }
@@ -93,14 +110,102 @@ fn record_failure(inner: &mut TotpInner) {
         let secs =
             BASE_LOCKOUT_SECS.saturating_mul(1u64.checked_shl(multiplier).unwrap_or(u64::MAX));
         let secs = secs.min(900); // Cap at 15 minutes
-        inner.lockout_until = Some(Instant::now() + std::time::Duration::from_secs(secs));
+        inner.lockout_until = Some(Instant::now() + Duration::from_secs(secs));
     }
+    // TOTP-02: persist so a process restart cannot reset the throttle.
+    persist_rate_limit(inner);
 }
 
 /// Reset rate limiting after successful verification.
 fn reset_rate_limit(inner: &mut TotpInner) {
+    let had_state = inner.failed_attempts != 0 || inner.lockout_until.is_some();
     inner.failed_attempts = 0;
     inner.lockout_until = None;
+    // Only touch the vault when there was throttle state to clear, so the
+    // common "first try succeeds" path does not write on every unlock.
+    if had_state {
+        persist_rate_limit(inner);
+    }
+}
+
+/// Remaining lockout in whole seconds, or `None` if not (or no longer) locked.
+fn lockout_remaining_secs(inner: &TotpInner) -> Option<u64> {
+    inner.lockout_until.and_then(|until| {
+        let now = Instant::now();
+        (until > now).then(|| until.duration_since(now).as_secs())
+    })
+}
+
+/// TOTP-02: persist the rate-limit state to the (already-unlocked) vault so it
+/// survives a process restart. Best-effort: a missing/locked vault is a no-op,
+/// which is also why this is harmless in unit tests (`from_cache()` is `None`).
+/// The lockout deadline is stored as an absolute Unix epoch so it can be
+/// reconstructed against the monotonic clock on the next launch.
+fn persist_rate_limit(inner: &TotpInner) {
+    let lockout_until_epoch = lockout_remaining_secs(inner).map(|rem| now_unix().saturating_add(rem));
+    let payload = serde_json::json!({
+        "failed_attempts": inner.failed_attempts,
+        "lockout_until_epoch": lockout_until_epoch,
+    });
+    if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
+        let _ = store.store_internal(RATE_LIMIT_VAULT_KEY, &payload.to_string());
+    }
+}
+
+/// TOTP-02: restore the persisted rate-limit state into freshly-initialised
+/// in-memory state. Called when the active secret is loaded after unlock. A
+/// future-dated lockout epoch is mapped back onto the monotonic `Instant`
+/// clock; an elapsed one is dropped.
+fn restore_rate_limit(inner: &mut TotpInner) {
+    let Some(store) = crate::credential_store::CredentialStore::from_cache() else {
+        return;
+    };
+    let Ok(raw) = store.get(RATE_LIMIT_VAULT_KEY) else {
+        return;
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return;
+    };
+    inner.failed_attempts = value
+        .get("failed_attempts")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0) as u32;
+    inner.lockout_until = value
+        .get("lockout_until_epoch")
+        .and_then(|v| v.as_u64())
+        .and_then(|epoch| {
+            let now = now_unix();
+            (epoch > now).then(|| Instant::now() + Duration::from_secs(epoch - now))
+        });
+}
+
+/// TOTP-03: identify which time-step a code matches within the accepted skew
+/// window (current step and its two neighbours, matching `check_current` with
+/// skew=1), or `None` if the code is invalid. Returning the step lets the
+/// caller enforce single-use replay protection.
+fn matched_step(totp: &TOTP, code: &str) -> Option<u64> {
+    let step = now_unix() / TOTP_PERIOD;
+    [step.wrapping_sub(1), step, step.saturating_add(1)]
+        .into_iter()
+        .find(|&candidate| totp.generate(candidate.saturating_mul(TOTP_PERIOD)) == code)
+}
+
+/// TOTP-03: verify `code` against the active `totp` with replay protection.
+/// A fresh valid code advances `last_used_step` and returns `true`. An invalid
+/// code, or a valid code whose step was already consumed (replay), returns
+/// `false` so the caller records it as a failed attempt.
+fn verify_with_replay_guard(inner: &mut TotpInner, totp: &TOTP, code: &str) -> bool {
+    match matched_step(totp, code) {
+        Some(step) => {
+            if inner.last_used_step.is_some_and(|last| step <= last) {
+                // Already-consumed code presented again within its window.
+                return false;
+            }
+            inner.last_used_step = Some(step);
+            true
+        }
+        None => false,
+    }
 }
 
 /// Build a TOTP instance from a base32-encoded secret.
@@ -234,9 +339,7 @@ pub fn totp_verify(state: State<'_, TotpState>, code: String) -> Result<bool, St
         .as_ref()
         .ok_or("No active TOTP secret")?;
     let totp = build_totp(secret.expose_secret())?;
-    let valid = totp
-        .check_current(&code)
-        .map_err(|e| format!("TOTP check error: {}", e))?;
+    let valid = verify_with_replay_guard(&mut inner, &totp, &code);
 
     if valid {
         reset_rate_limit(&mut inner);
@@ -299,9 +402,7 @@ pub fn totp_disable(state: State<'_, TotpState>, code: String) -> Result<bool, S
 
     let secret = inner.active_secret.as_ref().ok_or("TOTP not enabled")?;
     let totp = build_totp(secret.expose_secret())?;
-    let valid = totp
-        .check_current(&code)
-        .map_err(|e| format!("TOTP check error: {}", e))?;
+    let valid = verify_with_replay_guard(&mut inner, &totp, &code);
 
     if valid {
         inner.active_secret = None;
@@ -330,6 +431,9 @@ pub fn load_secret_internal(state: &TotpState, secret: &str) -> Result<(), Strin
     let mut inner = lock_state(state)?;
     inner.active_secret = Some(SecretString::from(secret.to_string()));
     inner.enabled = true;
+    // TOTP-02: re-arm any lockout that was in force when the process last
+    // exited, so a restart cannot be used to escape the brute-force throttle.
+    restore_rate_limit(&mut inner);
     Ok(())
 }
 
@@ -345,9 +449,7 @@ pub fn verify_internal(state: &TotpState, code: &str) -> Result<bool, String> {
         .as_ref()
         .ok_or("No active TOTP secret")?;
     let totp = build_totp(secret.expose_secret())?;
-    let valid = totp
-        .check_current(code)
-        .map_err(|e| format!("TOTP check error: {}", e))?;
+    let valid = verify_with_replay_guard(&mut inner, &totp, code);
 
     if valid {
         reset_rate_limit(&mut inner);
@@ -382,6 +484,7 @@ mod tests {
             active_secret: None,
             failed_attempts: 0,
             lockout_until: None,
+            last_used_step: None,
         }
     }
 
@@ -519,5 +622,64 @@ mod tests {
         assert!(inner.active_secret.is_none());
         assert!(inner.pending_secret.is_none());
         assert_eq!(inner.failed_attempts, 0);
+        assert!(inner.last_used_step.is_none());
+    }
+
+    #[test]
+    fn matched_step_identifies_current_code_and_rejects_garbage() {
+        let secret = generate_secret_base32();
+        let totp = build_totp(&secret).unwrap();
+        let current = totp.generate_current().unwrap();
+        let step = now_unix() / TOTP_PERIOD;
+        // The live code matches one of the three accepted steps.
+        let matched = matched_step(&totp, &current).expect("current code must match a step");
+        assert!(
+            (step.wrapping_sub(1)..=step.saturating_add(1)).contains(&matched),
+            "matched step {matched} must be within the skew window around {step}"
+        );
+        // A wrong code matches no step.
+        assert!(matched_step(&totp, "000000").is_none() || current == "000000");
+    }
+
+    #[test]
+    fn replay_guard_rejects_a_reused_valid_code() {
+        let secret = generate_secret_base32();
+        let totp = build_totp(&secret).unwrap();
+        let current = totp.generate_current().unwrap();
+        let mut inner = fresh_inner();
+
+        // First presentation of a fresh code: accepted, step recorded.
+        assert!(verify_with_replay_guard(&mut inner, &totp, &current));
+        assert!(inner.last_used_step.is_some());
+
+        // Same code presented again within its window: rejected as replay.
+        assert!(
+            !verify_with_replay_guard(&mut inner, &totp, &current),
+            "a consumed code must not verify a second time"
+        );
+    }
+
+    #[test]
+    fn replay_guard_rejects_invalid_code_without_advancing_step() {
+        let secret = generate_secret_base32();
+        let totp = build_totp(&secret).unwrap();
+        let mut inner = fresh_inner();
+        assert!(!verify_with_replay_guard(&mut inner, &totp, "000000")
+            || totp.generate_current().unwrap() == "000000");
+        // An invalid code never advances the consumed-step marker.
+        if totp.generate_current().unwrap() != "000000" {
+            assert!(inner.last_used_step.is_none());
+        }
+    }
+
+    #[test]
+    fn lockout_remaining_secs_reflects_future_and_past_deadlines() {
+        let mut inner = fresh_inner();
+        assert!(lockout_remaining_secs(&inner).is_none());
+        inner.lockout_until = Some(Instant::now() + Duration::from_secs(60));
+        let rem = lockout_remaining_secs(&inner).expect("future lockout has remaining time");
+        assert!((50..=60).contains(&rem), "remaining {rem} should be ~60s");
+        inner.lockout_until = Some(Instant::now() - Duration::from_secs(1));
+        assert!(lockout_remaining_secs(&inner).is_none());
     }
 }
