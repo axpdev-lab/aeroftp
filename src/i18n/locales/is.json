@@ -1667,7 +1667,10 @@
             "tabdigitalTooltip": "Tab.digital: óháð ESB skýjateymi síðan 2018, Nextcloud-as-a-service með 8GB ókeypis, GDPR-samhæft, svæðisbundin undirlén (fie.nl, fie.de, ...)",
             "discoverTabDigital": "Tab.digital (8 GB ókeypis, Nextcloud-byggt, EU/GDPR, svæðisbundin undirlén)",
             "webdavLocalScheme": "Samskiptaregla",
-            "webdavLocalSchemeHelp": "Samsvarið HTTP/HTTPS stillingu staðbundinnar WebDAV brúar (Filen Desktop, MEGAcmd). HTTPS notar sjálfundirritað skírteini, þannig að skírteinisstaðfesting er sjálfkrafa óvirk."
+            "webdavLocalSchemeHelp": "Samsvarið HTTP/HTTPS stillingu staðbundinnar WebDAV brúar (Filen Desktop, MEGAcmd). HTTPS notar sjálfundirritað skírteini, þannig að skírteinisstaðfesting er sjálfkrafa óvirk.",
+            "s3SessionToken": "Session Token (optional)",
+            "s3SessionTokenPlaceholder": "AWS STS session token",
+            "s3SessionTokenHint": "For temporary credentials from AWS STS AssumeRole or SSO. Leave empty for long-term IAM access keys."
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",

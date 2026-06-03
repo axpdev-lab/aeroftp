@@ -43,6 +43,9 @@ pub struct SessionConnectionParams {
     pub endpoint: Option<String>,
     /// Use path-style URLs for S3
     pub path_style: Option<bool>,
+    /// AWS STS session token for temporary credentials (AssumeRole / SSO).
+    /// AWS-only; ignored by S3-compatible backends without STS.
+    pub session_token: Option<String>,
     /// OAuth client ID (for OAuth providers)
     pub client_id: Option<String>,
     /// OAuth client secret (for OAuth providers)
@@ -129,6 +132,14 @@ pub async fn session_connect(
         }
         if params.path_style.unwrap_or(false) {
             extra.insert("path_style".to_string(), "true".to_string());
+        }
+        if let Some(token) = params
+            .session_token
+            .as_ref()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+        {
+            extra.insert("session_token".to_string(), token.to_string());
         }
     }
 

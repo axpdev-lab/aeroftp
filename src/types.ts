@@ -271,6 +271,7 @@ export interface ProviderOptions {
   storage_class?: string; // S3 default storage class for uploads
   sse_mode?: string; // S3 server-side encryption (AES256, aws:kms)
   sse_kms_key_id?: string; // S3 KMS key ARN for SSE-KMS
+  sessionToken?: string; // AWS STS session token for temporary credentials (AssumeRole / SSO), issue #301
 
   // WebDAV-specific
   anonymous?: boolean; // Skip auth headers for local WebDAV bridges

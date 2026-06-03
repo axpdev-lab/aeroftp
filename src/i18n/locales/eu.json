@@ -1667,7 +1667,10 @@
             "tabdigitalTooltip": "Tab.digital: 2018tik EBko hodei talde independentea, Nextcloud-as-a-service 8GB doanekin, GDPRrekin bateragarria, eskualdeko azpidomeinuak (fie.nl, fie.de, ...)",
             "discoverTabDigital": "Tab.digital (8 GB doan, Nextcloud-en oinarrituta, EU/GDPR, eskualdeko azpidomeinuak)",
             "webdavLocalScheme": "Protokoloa",
-            "webdavLocalSchemeHelp": "Bat etorri tokiko WebDAV zubiaren HTTP/HTTPS ezarpenarekin (Filen Desktop, MEGAcmd). HTTPSk auto-sinatutako ziurtagiri bat erabiltzen du, beraz ziurtagirien egiaztapena automatikoki desaktibatzen da."
+            "webdavLocalSchemeHelp": "Bat etorri tokiko WebDAV zubiaren HTTP/HTTPS ezarpenarekin (Filen Desktop, MEGAcmd). HTTPSk auto-sinatutako ziurtagiri bat erabiltzen du, beraz ziurtagirien egiaztapena automatikoki desaktibatzen da.",
+            "s3SessionToken": "Session Token (optional)",
+            "s3SessionTokenPlaceholder": "AWS STS session token",
+            "s3SessionTokenHint": "For temporary credentials from AWS STS AssumeRole or SSO. Leave empty for long-term IAM access keys."
         },
         "shortcuts": {
             "title": "Teklatu lasterbideak",

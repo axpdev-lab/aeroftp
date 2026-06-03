@@ -1667,7 +1667,10 @@
             "tabdigitalTooltip": "Tab.digital: ក្រុមពពកឯករាជ្យនៃសហភាពអឺរ៉ុបចាប់តាំងពីឆ្នាំ 2018, Nextcloud-as-a-service ដោយឥតគិតថ្លៃ 8GB, អនុលោមតាម GDPR, ដែនរងតាមតំបន់ (fie.nl, fie.de, ...)",
             "discoverTabDigital": "Tab.digital (ឥតគិតថ្លៃ 8 GB, ផ្អែកលើ Nextcloud, EU/GDPR, ដែនរងតាមតំបន់)",
             "webdavLocalScheme": "ពិធីការ",
-            "webdavLocalSchemeHelp": "ផ្គូផ្គងការកំណត់ HTTP/HTTPS របស់ស្ពាន WebDAV ក្នុងស្រុក (Filen Desktop, MEGAcmd)។ HTTPS ប្រើវិញ្ញាបនបត្រដែលចុះហត្ថលេខាដោយខ្លួនឯង ដូច្នេះការផ្ទៀងផ្ទាត់វិញ្ញាបនបត្រត្រូវបានបិទដោយស្វ័យប្រវត្តិ។"
+            "webdavLocalSchemeHelp": "ផ្គូផ្គងការកំណត់ HTTP/HTTPS របស់ស្ពាន WebDAV ក្នុងស្រុក (Filen Desktop, MEGAcmd)។ HTTPS ប្រើវិញ្ញាបនបត្រដែលចុះហត្ថលេខាដោយខ្លួនឯង ដូច្នេះការផ្ទៀងផ្ទាត់វិញ្ញាបនបត្រត្រូវបានបិទដោយស្វ័យប្រវត្តិ។",
+            "s3SessionToken": "Session Token (optional)",
+            "s3SessionTokenPlaceholder": "AWS STS session token",
+            "s3SessionTokenHint": "For temporary credentials from AWS STS AssumeRole or SSO. Leave empty for long-term IAM access keys."
         },
         "shortcuts": {
             "title": "ផ្លូវកាត់ក្តារចុច",

@@ -1667,7 +1667,10 @@
             "tabdigitalTooltip": "Tab.digital: დამოუკიდებელი ევროკავშირის ღრუბლის გუნდი 2018 წლიდან, Nextcloud-as-a-service 8GB უფასოდ, GDPR-თან თავსებადი, რეგიონული ქვედომენები (fie.nl, fie.de, ...)",
             "discoverTabDigital": "Tab.digital (8 GB უფასო, Nextcloud-ზე დაფუძნებული, EU/GDPR, რეგიონული ქვედომენები)",
             "webdavLocalScheme": "პროტოკოლი",
-            "webdavLocalSchemeHelp": "შეუსაბამეთ ლოკალური WebDAV ხიდის HTTP/HTTPS პარამეტრს (Filen Desktop, MEGAcmd). HTTPS იყენებს თვითხელმოწერილ სერტიფიკატს, ამიტომ სერტიფიკატის შემოწმება ავტომატურად გათიშულია."
+            "webdavLocalSchemeHelp": "შეუსაბამეთ ლოკალური WebDAV ხიდის HTTP/HTTPS პარამეტრს (Filen Desktop, MEGAcmd). HTTPS იყენებს თვითხელმოწერილ სერტიფიკატს, ამიტომ სერტიფიკატის შემოწმება ავტომატურად გათიშულია.",
+            "s3SessionToken": "Session Token (optional)",
+            "s3SessionTokenPlaceholder": "AWS STS session token",
+            "s3SessionTokenHint": "For temporary credentials from AWS STS AssumeRole or SSO. Leave empty for long-term IAM access keys."
         },
         "shortcuts": {
             "title": "კლავიატურის მალსახმობები",

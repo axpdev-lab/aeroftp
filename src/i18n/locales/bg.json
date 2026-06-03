@@ -1667,7 +1667,10 @@
             "tabdigitalTooltip": "Tab.digital: независим европейски облачен екип от 2018 г., Nextcloud-as-a-service с 8GB безплатно, съответства на GDPR, регионални поддомейни (fie.nl, fie.de, ...)",
             "discoverTabDigital": "Tab.digital (8 GB безплатно, базиран на Nextcloud, EU/GDPR, регионални поддомейни)",
             "webdavLocalScheme": "Протокол",
-            "webdavLocalSchemeHelp": "Съответства на настройката HTTP/HTTPS на локалния WebDAV мост (Filen Desktop, MEGAcmd). HTTPS използва самоподписан сертификат, така че проверката на сертификата е автоматично деактивирана."
+            "webdavLocalSchemeHelp": "Съответства на настройката HTTP/HTTPS на локалния WebDAV мост (Filen Desktop, MEGAcmd). HTTPS използва самоподписан сертификат, така че проверката на сертификата е автоматично деактивирана.",
+            "s3SessionToken": "Session Token (optional)",
+            "s3SessionTokenPlaceholder": "AWS STS session token",
+            "s3SessionTokenHint": "For temporary credentials from AWS STS AssumeRole or SSO. Leave empty for long-term IAM access keys."
         },
         "shortcuts": {
             "title": "Клавишни комбинации",

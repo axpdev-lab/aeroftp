@@ -628,6 +628,18 @@ impl S3Provider {
         headers.insert("x-amz-date".to_string(), amz_date.clone());
         headers.insert("x-amz-content-sha256".to_string(), payload_hash.to_string());
 
+        // Temporary credentials (STS AssumeRole / SSO): the session token must
+        // be carried in `x-amz-security-token` AND included in the canonical
+        // request so it is covered by the SigV4 signature. Inserting it into
+        // `headers` before the canonical headers are built achieves both, since
+        // `s3_request_ext` replays every entry of this map as a real header.
+        if let Some(token) = &self.config.session_token {
+            headers.insert(
+                "x-amz-security-token".to_string(),
+                token.expose_secret().to_string(),
+            );
+        }
+
         // Parse URL to get host and path
         let parsed =
             url::Url::parse(url).map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
@@ -3207,13 +3219,29 @@ impl StorageProvider for S3Provider {
             encoded_segments.join("/")
         };
 
-        // Build canonical query string
+        // Build canonical query string. SigV4 requires the query parameters to
+        // appear in alphabetical order in the canonical request; the same string
+        // is reused verbatim for the final presigned URL. With temporary
+        // credentials the session token is carried as `X-Amz-Security-Token`,
+        // which sorts between `X-Amz-Expires` and `X-Amz-SignedHeaders`.
         let signed_headers = "host";
+        let security_token_param = self
+            .config
+            .session_token
+            .as_ref()
+            .map(|t| {
+                format!(
+                    "X-Amz-Security-Token={}&",
+                    urlencoding::encode(t.expose_secret())
+                )
+            })
+            .unwrap_or_default();
         let query_params = format!(
-            "X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential={}&X-Amz-Date={}&X-Amz-Expires={}&X-Amz-SignedHeaders={}",
+            "X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential={}&X-Amz-Date={}&X-Amz-Expires={}&{}X-Amz-SignedHeaders={}",
             urlencoding::encode(&credential),
             amz_date,
             expires,
+            security_token_param,
             signed_headers
         );
 
@@ -4460,6 +4488,7 @@ mod tests {
             region: "us-east-1".to_string(),
             access_key_id: "minioadmin".to_string(),
             secret_access_key: secrecy::SecretString::from("minioadmin".to_string()),
+            session_token: None,
             bucket: "test-bucket".to_string(),
             prefix: None,
             path_style: true,
@@ -4483,6 +4512,7 @@ mod tests {
             region: "us-west-2".to_string(),
             access_key_id: "key".to_string(),
             secret_access_key: secrecy::SecretString::from("secret".to_string()),
+            session_token: None,
             bucket: "my-bucket".to_string(),
             prefix: None,
             path_style: false,
@@ -4534,6 +4564,7 @@ mod tests {
             region: "garage".to_string(),
             access_key_id: "key".to_string(),
             secret_access_key: secrecy::SecretString::from("secret".to_string()),
+            session_token: None,
             bucket: "test".to_string(),
             prefix: None,
             path_style: false,
@@ -4571,6 +4602,7 @@ mod tests {
             region: "us-east-1".to_string(),
             access_key_id: "x".to_string(),
             secret_access_key: secrecy::SecretString::from("y".to_string()),
+            session_token: None,
             bucket: "b".to_string(),
             prefix: None,
             path_style: true,
@@ -4607,6 +4639,7 @@ mod tests {
             region: "us-east-1".to_string(),
             access_key_id: "key".to_string(),
             secret_access_key: secrecy::SecretString::from("secret".to_string()),
+            session_token: None,
             bucket: "test-bucket".to_string(),
             prefix: None,
             path_style: true,
@@ -4616,6 +4649,72 @@ mod tests {
             verify_cert: true,
         })
         .expect("Failed to create S3Provider")
+    }
+
+    fn make_provider_with_token(session_token: Option<&str>) -> S3Provider {
+        S3Provider::new(S3Config {
+            endpoint: None,
+            region: "us-east-1".to_string(),
+            access_key_id: "AKIAEXAMPLE".to_string(),
+            secret_access_key: secrecy::SecretString::from("secret".to_string()),
+            session_token: session_token.map(|t| secrecy::SecretString::from(t.to_string())),
+            bucket: "test-bucket".to_string(),
+            prefix: None,
+            path_style: true,
+            storage_class: None,
+            sse_mode: None,
+            sse_kms_key_id: None,
+            verify_cert: true,
+        })
+        .expect("Failed to create S3Provider")
+    }
+
+    /// Issue #301 (Fase 1): temporary credentials carry the STS session token
+    /// in `x-amz-security-token`, and it MUST be part of the SigV4 signed
+    /// headers so the request is accepted by AWS. Verify both the emitted
+    /// header and its presence in the `SignedHeaders` list of the
+    /// Authorization value.
+    #[test]
+    fn sign_request_includes_session_token_when_present() {
+        let provider = make_provider_with_token(Some("FwoGZXIvYXdzEXAMPLEtoken=="));
+        let mut headers = std::collections::HashMap::new();
+        let auth = provider
+            .sign_request(
+                "GET",
+                "https://test-bucket.s3.amazonaws.com/object.txt",
+                &mut headers,
+                "UNSIGNED-PAYLOAD",
+            )
+            .expect("sign_request failed");
+
+        assert_eq!(
+            headers.get("x-amz-security-token").map(String::as_str),
+            Some("FwoGZXIvYXdzEXAMPLEtoken=="),
+            "session token must be emitted as x-amz-security-token"
+        );
+        assert!(
+            auth.contains("x-amz-security-token"),
+            "x-amz-security-token must appear in SignedHeaders; auth was: {auth}"
+        );
+    }
+
+    /// Long-term IAM credentials (no session token) must NOT emit the header,
+    /// keeping the canonical request and signature identical to legacy behavior.
+    #[test]
+    fn sign_request_omits_session_token_when_absent() {
+        let provider = make_provider_with_token(None);
+        let mut headers = std::collections::HashMap::new();
+        let auth = provider
+            .sign_request(
+                "GET",
+                "https://test-bucket.s3.amazonaws.com/object.txt",
+                &mut headers,
+                "UNSIGNED-PAYLOAD",
+            )
+            .expect("sign_request failed");
+
+        assert!(!headers.contains_key("x-amz-security-token"));
+        assert!(!auth.contains("x-amz-security-token"));
     }
 
     /// SG-T04 gate: the trait-level `begin_multipart_upload` is a different
@@ -4696,6 +4795,7 @@ mod tests {
             region: "auto".to_string(),
             access_key_id: "k".to_string(),
             secret_access_key: secrecy::SecretString::from("s".to_string()),
+            session_token: None,
             bucket: "b".to_string(),
             prefix: None,
             path_style: true,
@@ -4747,6 +4847,7 @@ mod tests {
             region: "filen".to_string(),
             access_key_id: "k".to_string(),
             secret_access_key: secrecy::SecretString::from("s".to_string()),
+            session_token: None,
             bucket: "b".to_string(),
             prefix: None,
             path_style: true,
@@ -4854,6 +4955,7 @@ mod tests {
             region: "us-east-1".to_string(),
             access_key_id: "k".to_string(),
             secret_access_key: secrecy::SecretString::from("s".to_string()),
+            session_token: None,
             bucket: "b".to_string(),
             prefix: None,
             path_style: false,
@@ -5099,6 +5201,7 @@ mod tests {
             region: "us-east-1".to_string(),
             access_key_id: "key".to_string(),
             secret_access_key: secrecy::SecretString::from("secret".to_string()),
+            session_token: None,
             bucket: "test-bucket".to_string(),
             prefix: None,
             path_style: true,

@@ -277,6 +277,9 @@ pub struct ProviderConnectionParams {
     pub sse_mode: Option<String>,
     /// S3: KMS key ID for SSE-KMS encryption
     pub sse_kms_key_id: Option<String>,
+    /// S3: AWS STS session token for temporary credentials (AssumeRole / SSO).
+    /// AWS-only; ignored by S3-compatible backends without STS.
+    pub session_token: Option<String>,
     /// Save session keys (MEGA)
     pub save_session: Option<bool>,
     /// Backend selection for MEGA: "native" or "megacmd"
@@ -404,6 +407,15 @@ impl ProviderConnectionParams {
                 if !kms.is_empty() {
                     extra.insert("sse_kms_key_id".to_string(), kms.clone());
                 }
+            }
+            // AWS STS temporary credentials (AssumeRole / SSO). AWS-only.
+            if let Some(token) = self
+                .session_token
+                .as_ref()
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+            {
+                extra.insert("session_token".to_string(), token.to_string());
             }
         }
 
@@ -9931,6 +9943,7 @@ mod tests {
             storage_class: None,
             sse_mode: None,
             sse_kms_key_id: None,
+            session_token: None,
             save_session: None,
             mega_mode: None,
             session_expires_at: None,
@@ -9965,6 +9978,31 @@ mod tests {
             config.extra.get("path_style").map(String::as_str),
             Some("false")
         );
+    }
+
+    #[test]
+    fn test_s3_provider_params_absent_session_token() {
+        let config = s3_params(None).to_provider_config().unwrap();
+        assert!(!config.extra.contains_key("session_token"));
+    }
+
+    #[test]
+    fn test_s3_provider_params_forward_session_token() {
+        let mut params = s3_params(None);
+        params.session_token = Some("FwoGZXIvYXdzEXAMPLEtoken==".to_string());
+        let config = params.to_provider_config().unwrap();
+        assert_eq!(
+            config.extra.get("session_token").map(String::as_str),
+            Some("FwoGZXIvYXdzEXAMPLEtoken==")
+        );
+    }
+
+    #[test]
+    fn test_s3_provider_params_trim_blank_session_token() {
+        let mut params = s3_params(None);
+        params.session_token = Some("   ".to_string());
+        let config = params.to_provider_config().unwrap();
+        assert!(!config.extra.contains_key("session_token"));
     }
 
     #[test]
