@@ -547,7 +547,7 @@ const App: React.FC = () => {
     return 'checking';
   });
   const [showMigrationWizard, setShowMigrationWizard] = useState(false);
-  const [settingsInitialTab, setSettingsInitialTab] = useState<'general' | 'connection' | 'servers' | 'filehandling' | 'transfers' | 'cloudproviders' | 'ui' | 'security' | 'privacy' | undefined>(undefined);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<'general' | 'connection' | 'filehandling' | 'transfers' | 'cloudproviders' | 'ui' | 'security' | 'privacy' | undefined>(undefined);
   // Path of a .aeroftp-keystore opened via OS file association: routes the
   // Settings panel to the Backup tab with the file preloaded (issue #214 pt.4a).
   const [settingsInitialKeystorePath, setSettingsInitialKeystorePath] = useState<string | undefined>(undefined);

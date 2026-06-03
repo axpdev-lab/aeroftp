@@ -7,17 +7,17 @@ import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { sendNotification } from '@tauri-apps/plugin-notification';
 import { readFile } from '@tauri-apps/plugin-fs';
-import { X, Settings, Server, Upload, Download, Palette, Trash2, Edit, Plus, FolderOpen, Wifi, FileCheck, Cloud, ExternalLink, Key, Clock, Shield, Lock, Eye, EyeOff, ShieldCheck, AlertCircle, CheckCircle2, MonitorCheck, Power, Sun, Moon, MoonStar, Leaf, Snowflake, Flame, Monitor, Image, Shapes, Info, Copy, Link2 } from 'lucide-react';
+import { X, Settings, Server, Upload, Download, Palette, FolderOpen, Wifi, FileCheck, Cloud, ExternalLink, Key, Clock, Shield, Lock, Eye, EyeOff, ShieldCheck, AlertCircle, CheckCircle2, MonitorCheck, Power, Sun, Moon, MoonStar, Leaf, Snowflake, Flame, Monitor, Image, Shapes, Info, Boxes } from 'lucide-react';
 import type { Theme } from '../hooks/useTheme';
 import { getEffectiveTheme } from '../hooks/useTheme';
 import { useIconTheme } from '../hooks/useIconTheme';
 import { getIconThemeProvider, type IconTheme } from '../utils/iconThemes';
 import { enable as enableAutostart, disable as disableAutostart, isEnabled as isAutostartEnabled } from '@tauri-apps/plugin-autostart';
-import { ServerProfile, isOAuthProvider, isFourSharedProvider, ProviderType } from '../types';
-import { getProviderById, resolveS3Endpoint } from '../providers';
+import { ServerProfile } from '../types';
 import { LanguageSelector } from './LanguageSelector';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { ExportImportDialog } from './ExportImportDialog';
+import { GENERIC_BRIDGE_SOURCES } from './bridge/bridgeSources';
 import { ConfirmDialog } from './Dialogs';
 import { ImportExportIcon } from './icons/ImportExportIcon';
 import { LOCK_SCREEN_PATTERNS } from './LockScreen';
@@ -32,8 +32,6 @@ import { logger } from '../utils/logger';
 import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStorage';
 import { dispatchMasterPasswordChanged } from '../utils/masterPasswordEvents';
 import { loadSavedServerProfiles, storeSavedServerProfiles } from '../utils/serverProfileStore';
-import { getGitHubConnectionBadge, getMegaConnectionBadge, getMegaConnectionMode, normalizeMegaOptions } from '../utils/providerConnectionMeta';
-import { maskCredential } from '../utils/maskCredential';
 import {
     DEFAULT_APP_FONT_FAMILY,
     DEFAULT_INTRO_HUB_ICON_SIZE,
@@ -49,71 +47,6 @@ import { useStorageThresholds, DEFAULT_THRESHOLDS } from '../hooks/useStorageThr
 import { useMyServersDensity } from '../hooks/useMyServersDensity';
 import { createTauriListener } from '../hooks/useTauriListener';
 import { useDraggableModal } from '../hooks/useDraggableModal';
-
-// Protocol colors for avatar (same as SavedServers)
-const PROTOCOL_COLORS: Record<string, string> = {
-    ftp: 'from-blue-500 to-cyan-400',
-    ftps: 'from-green-500 to-emerald-400',
-    sftp: 'from-purple-500 to-violet-400',
-    webdav: 'from-orange-500 to-amber-400',
-    s3: 'from-amber-500 to-yellow-400',
-    aerocloud: 'from-sky-400 to-blue-500',
-    googledrive: 'from-red-500 to-red-400',
-    dropbox: 'from-blue-600 to-blue-400',
-    onedrive: 'from-sky-500 to-sky-400',
-    mega: 'from-red-600 to-red-500',
-    box: 'from-blue-500 to-blue-600',
-    pcloud: 'from-green-500 to-teal-400',
-    azure: 'from-blue-600 to-indigo-500',
-    filen: 'from-emerald-500 to-green-400',
-    fourshared: 'from-blue-500 to-blue-400',
-};
-
-// Get display info for a server (matches SavedServers sidebar schema)
-const getServerDisplayInfo = (server: ServerProfile, masked = false) => {
-    const protocol = server.protocol || 'ftp';
-    const isOAuth = isOAuthProvider(protocol as ProviderType) || isFourSharedProvider(protocol as ProviderType);
-    const mu = (v: string) => (masked ? maskCredential(v) : v);
-
-    if (isOAuth) {
-        const providerNames: Record<string, string> = {
-            googledrive: 'Google Drive',
-            dropbox: 'Dropbox',
-            onedrive: 'OneDrive',
-            box: 'Box',
-            pcloud: 'pCloud',
-            fourshared: '4shared',
-            zohoworkdrive: 'Zoho WorkDrive',
-        };
-        return `OAuth - ${mu(server.username || providerNames[protocol] || protocol)}`;
-    }
-
-    if (protocol === 'filen') {
-        return `E2E AES-256 - ${mu(server.username || '')}`;
-    }
-
-    if (protocol === 'mega') {
-        return `E2E AES-128 - ${mu(server.username || '')}${server.options ? ` - ${getMegaConnectionBadge(server.options).longLabel}` : ''}`;
-    }
-
-    if (protocol === 'github') {
-        const badge = getGitHubConnectionBadge(server.options);
-        return `${server.host}${badge ? ` (${badge.label})` : ''}`;
-    }
-
-    if (protocol === 's3') {
-        const bucket = server.options?.bucket || 'S3';
-        const host = server.host?.replace(/^https?:\/\//, '') || '';
-        const provider = host.includes('cloudflarestorage') ? 'Cloudflare R2' : host.includes('backblazeb2') ? 'Backblaze B2' : host.includes('amazonaws') ? 'AWS S3' : host.includes('wasabisys') ? 'Wasabi' : host.includes('digitaloceanspaces') ? 'DigitalOcean' : host.split('.')[0];
-        return `${bucket} - ${provider}`;
-    }
-
-    if (protocol === 'webdav') {
-        return `${mu(server.username || '')}@${server.host?.replace(/^https?:\/\//, '')}`;
-    }
-
-    return `${mu(server.username || '')}@${server.host}:${server.port}`;
-};
 
 import type { UpdateInfo } from '../hooks/useAutoUpdate';
 import { useI18n, Language, AVAILABLE_LANGUAGES } from '../i18n';
@@ -287,7 +220,7 @@ const defaultSettings: AppSettings = {
     disableUpdateChecks: false,
 };
 
-type TabId = 'general' | 'connection' | 'servers' | 'aerocloud' | 'cloudproviders' | 'transfers' | 'filehandling' | 'ui' | 'security' | 'backup' | 'privacy';
+type TabId = 'general' | 'connection' | 'aerocloud' | 'cloudproviders' | 'transfers' | 'filehandling' | 'ui' | 'security' | 'backup' | 'privacy';
 type AppearanceSubTabId = 'interface' | 'theme' | 'icons' | 'backgrounds';
 
 // Check Update Button with loading animation and Activity Log support
@@ -380,23 +313,26 @@ const CheckUpdateButton: React.FC<CheckUpdateButtonProps> = ({ onActivityLog }) 
 };
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, onOpenCloudPanel, onActivityLog, initialTab, initialKeystoreImportPath, onServersChanged, theme: appThemeProp = 'auto', setTheme: setAppTheme }) => {
-    const [activeTab, setActiveTab] = useState<TabId>(initialTab || 'general');
+    const [activeTab, setActiveTab] = useState<TabId>((initialTab as string) === 'servers' ? 'backup' : initialTab || 'general');
     const [appearanceSubTab, setAppearanceSubTab] = useState<AppearanceSubTabId>('interface');
     const { iconTheme, setIconTheme } = useIconTheme();
 
     // Reset to initialTab when panel opens with a specific tab
     useEffect(() => {
         if (isOpen && initialTab) {
-            setActiveTab(initialTab);
+            setActiveTab((initialTab as string) === 'servers' ? 'backup' : initialTab);
         }
     }, [isOpen, initialTab]);
     const [settings, setSettings] = useState<AppSettings>(defaultSettings);
     const [oauthSettings, setOauthSettings] = useState<OAuthSettings>(defaultOAuthSettings);
     const [servers, setServers] = useState<ServerProfile[]>([]);
-    const [editingServer, setEditingServer] = useState<ServerProfile | null>(null);
-    const [showEditPassword, setShowEditPassword] = useState(false);
     const [showExportImport, setShowExportImport] = useState(false);
-    const [credentialsMasked, setCredentialsMasked] = useState(true);
+    // #270 Backup table: starting mode handed to ExportImportDialog so a table
+    // cell opens straight into the right action. Undefined = unified landing.
+    const [exportImportInitialMode, setExportImportInitialMode] = useState<'export' | 'import' | 'bridge-import' | 'bridge-export' | undefined>(undefined);
+    // #270 Backup table: reveal the inline Vault Backup (keystore) panel below
+    // the table when the user picks the Full Backup row. Null keeps it collapsed.
+    const [keystoreAction, setKeystoreAction] = useState<'export' | 'import' | null>(null);
     const [nativeRsyncCompiled, setNativeRsyncCompiled] = useState<boolean | null>(null);
     const [nativeRsyncMode, setNativeRsyncMode] = useState<'auto' | 'classic' | 'native'>('auto');
     // Z.4.5 R2: classic rsync binary availability. When false we
@@ -411,50 +347,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     const sidebarButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
     const appearanceSubTabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
-    // Resolve S3 endpoint from registry when editing a server that doesn't have it stored
-    // Resolve S3 endpoint and accountId when editing a server
-    useEffect(() => {
-        if (!editingServer) return;
-        if (editingServer.protocol !== 's3' || !editingServer.providerId) return;
-        const provider = getProviderById(editingServer.providerId);
-        if (!provider) return;
-        const template = provider.defaults?.endpointTemplate;
-        let updatedOptions = { ...editingServer.options };
-        let changed = false;
-
-        // Extract accountId from old-format endpoint (Cloudflare R2 migration)
-        if (template?.includes('{accountId}') && updatedOptions.endpoint && !updatedOptions.accountId) {
-            const templateRegex = template.replace('{accountId}', '(.+)').replace(/\./g, '\\.');
-            const match = updatedOptions.endpoint.match(new RegExp(templateRegex));
-            if (match?.[1]) {
-                updatedOptions = { ...updatedOptions, accountId: match[1] };
-                changed = true;
-            }
-        }
-
-        // Resolve endpoint if missing
-        if (!updatedOptions.endpoint) {
-            let effectiveRegion = updatedOptions.region || provider.defaults?.region;
-            if (!effectiveRegion && template && !template.includes('{accountId}')) {
-                const regionField = provider.fields?.find((f) => f.key === 'region');
-                if (regionField?.type === 'select' && regionField.options?.length) {
-                    effectiveRegion = regionField.options[0].value;
-                    updatedOptions = { ...updatedOptions, region: effectiveRegion };
-                }
-            }
-            const extraParams = updatedOptions.accountId ? { accountId: updatedOptions.accountId } : undefined;
-            const resolved = provider.defaults?.endpoint || resolveS3Endpoint(provider.id, effectiveRegion, extraParams) || undefined;
-            if (resolved) {
-                updatedOptions = { ...updatedOptions, endpoint: resolved };
-                changed = true;
-            }
-        }
-
-        if (changed) {
-            setEditingServer((prev) => (prev && prev.id === editingServer.id ? { ...prev, options: updatedOptions } : prev));
-        }
-    }, [editingServer?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
     useEffect(() => {
         invoke<boolean>('native_rsync_feature_compiled')
             .then(setNativeRsyncCompiled)
@@ -463,33 +355,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                 setNativeRsyncCompiled(false);
             });
     }, []);
-
-    // Load password from vault when editing an existing server
-    useEffect(() => {
-        if (!editingServer) return;
-        if (editingServer.password) return; // Already has password (user typed it)
-        // Probe the vault unconditionally, mirroring the connect path
-        // (MyServersPanel reads server_<id> with no flag gate). The legacy
-        // hasStoredCredential gate lived only in localStorage and is absent
-        // on profiles reconstructed from the vault (per-origin localStorage
-        // wipe / app update), which left the Edit password field blank even
-        // though the credential existed and connect worked. The call below
-        // is already try/catch + truthy-guarded, so a missing credential is
-        // a no-op.
-        const serverId = editingServer.id;
-        (async () => {
-            try {
-                const storedPassword = await invoke<string>('get_credential', {
-                    account: `server_${serverId}`,
-                });
-                if (storedPassword) {
-                    setEditingServer((prev) => (prev && prev.id === serverId ? { ...prev, password: storedPassword } : prev));
-                }
-            } catch {
-                // No credential stored or vault locked: leave password field empty
-            }
-        })();
-    }, [editingServer?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
         if (!isOpen || nativeRsyncCompiled !== true) {
@@ -651,6 +516,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
         ) {
             keystoreDeepLinkRef.current = initialKeystoreImportPath;
             setActiveTab('backup');
+            // Reveal the inline keystore panel: a double-clicked .aeroftp-keystore
+            // arrives for import, so the #270 reveal-inline gate must be open.
+            setKeystoreAction('import');
             void loadKeystoreFromPath(initialKeystoreImportPath);
         }
     }, [isOpen, initialKeystoreImportPath, loadKeystoreFromPath]);
@@ -869,13 +737,17 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
         setHasChanges(true);
     };
 
-    const deleteServer = (id: string) => {
-        setServers((prev) => prev.filter((s) => s.id !== id));
-        setHasChanges(true);
-        // Clean up orphaned vault credential
-        invoke('delete_credential', { account: `server_${id}` }).catch(() => {});
-        onServersChanged?.();
+    // #270 Backup table: open the unified Export/Import dialog in a given mode.
+    // Undefined opens the landing (Import Any), which detects every source.
+    const openExportImport = (mode?: 'export' | 'import' | 'bridge-import' | 'bridge-export') => {
+        setExportImportInitialMode(mode);
+        setShowExportImport(true);
     };
+    // Number of generic bridge sources shown collapsed under "Other Apps"
+    // (rclone is surfaced as its own row, so it is excluded from the count).
+    const otherBridgeAppsCount = GENERIC_BRIDGE_SOURCES.filter((s) => s.id !== 'rclone').length;
+    const backupCellBtn = 'inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 text-xs font-medium transition-colors whitespace-nowrap';
+    const backupFmtChip = 'px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700/60 text-xs font-mono text-gray-600 dark:text-gray-300';
 
     const tabs: { id: TabId; label: string; icon: React.ReactNode }[] = [
         {
@@ -888,7 +760,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
             label: t('settings.connection'),
             icon: <Wifi size={16} />,
         },
-        { id: 'servers', label: t('settings.servers'), icon: <Server size={16} /> },
         { id: 'aerocloud', label: 'AeroCloud', icon: <Cloud size={16} /> },
         {
             id: 'cloudproviders',
@@ -1335,1449 +1206,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                 </div>
                             )}
 
-                            {activeTab === 'servers' && (
-                                <div className="space-y-6">
-                                    <div className="flex items-center justify-between">
-                                        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">{t('settings.savedServers')}</h3>
-                                        <div className="flex items-center gap-2">
-                                            <button onClick={() => setCredentialsMasked((v) => !v)} className="p-1.5 border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-500 dark:text-gray-400 transition-colors" title={credentialsMasked ? t('savedServers.showCredentials') : t('savedServers.hideCredentials')}>
-                                                {credentialsMasked ? <EyeOff size={14} /> : <Eye size={14} />}
-                                            </button>
-                                            <button onClick={() => setShowExportImport(true)} className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-sm flex items-center gap-1.5" title={t('settings.exportImport')}>
-                                                <ImportExportIcon size={14} /> {t('settings.exportImport')}
-                                            </button>
-                                            <button
-                                                onClick={() =>
-                                                    setEditingServer({
-                                                        id: crypto.randomUUID(),
-                                                        name: '',
-                                                        host: '',
-                                                        port: 21,
-                                                        username: '',
-                                                        password: '',
-                                                    })
-                                                }
-                                                className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm flex items-center gap-1.5"
-                                            >
-                                                <Plus size={14} /> {t('settings.addServer')}
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    {servers.length === 0 ? (
-                                        <div className="text-center py-8 text-gray-500">
-                                            <Server size={48} className="mx-auto mb-3 opacity-30" />
-                                            <p>{t('settings.noSavedServers')}</p>
-                                            <p className="text-sm">{t('settings.noSavedServersDesc')}</p>
-                                        </div>
-                                    ) : (
-                                        <div className="space-y-2">
-                                            {servers.map((server) => {
-                                                const protocol = server.protocol || 'ftp';
-                                                const isOAuth = isOAuthProvider(protocol as ProviderType) || isFourSharedProvider(protocol as ProviderType);
-
-                                                return (
-                                                    <div key={server.id} className="flex items-center justify-between p-3 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors group">
-                                                        <div className="flex items-center gap-3">
-                                                            {/* Protocol-colored avatar with favicon/custom icon support */}
-                                                            {(() => {
-                                                                const logoKey = server.providerId || protocol;
-                                                                const LogoComponent = PROVIDER_LOGOS[logoKey];
-                                                                const hasLogo = !!LogoComponent;
-                                                                const hasCustomIcon = !!server.customIconUrl;
-                                                                const hasFavicon = !!server.faviconUrl;
-                                                                const hasIcon = hasCustomIcon || hasFavicon;
-                                                                return (
-                                                                    <div className={`w-10 h-10 shrink-0 rounded-lg flex items-center justify-center ${hasIcon || hasLogo ? 'bg-[#FFFFF0] dark:bg-gray-600 border border-gray-200 dark:border-gray-500' : `bg-gradient-to-br ${PROTOCOL_COLORS[protocol] || 'from-gray-500 to-gray-400'} text-white`}`}>
-                                                                        {hasCustomIcon ? (
-                                                                            <img
-                                                                                src={server.customIconUrl}
-                                                                                alt=""
-                                                                                className="w-6 h-6 rounded object-contain"
-                                                                                onError={(e) => {
-                                                                                    (e.target as HTMLImageElement).style.display = 'none';
-                                                                                }}
-                                                                            />
-                                                                        ) : hasFavicon ? (
-                                                                            <img
-                                                                                src={server.faviconUrl}
-                                                                                alt=""
-                                                                                className="w-6 h-6 rounded object-contain"
-                                                                                onError={(e) => {
-                                                                                    (e.target as HTMLImageElement).style.display = 'none';
-                                                                                }}
-                                                                            />
-                                                                        ) : hasLogo ? (
-                                                                            <LogoComponent size={20} />
-                                                                        ) : (
-                                                                            <span className="font-bold">{(server.name || server.host).charAt(0).toUpperCase()}</span>
-                                                                        )}
-                                                                    </div>
-                                                                );
-                                                            })()}
-                                                            <div>
-                                                                <div className="font-medium flex items-center gap-2">
-                                                                    {server.name || server.host}
-                                                                    {/* Protocol badge */}
-                                                                    <span className="text-xs px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 uppercase">{protocol}</span>
-                                                                    {/* GitHub auth mode badge */}
-                                                                    {protocol === 'github' &&
-                                                                        (() => {
-                                                                            const badge = getGitHubConnectionBadge(server.options);
-                                                                            if (!badge) return null;
-                                                                            return <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${badge.className}`}>{badge.label}</span>;
-                                                                        })()}
-                                                                    {protocol === 'mega' &&
-                                                                        (() => {
-                                                                            const badge = getMegaConnectionBadge(server.options);
-                                                                            return <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${badge.className}`}>{badge.label}</span>;
-                                                                        })()}
-                                                                </div>
-                                                                <div className="text-xs text-gray-500 dark:text-gray-400">{getServerDisplayInfo(server, credentialsMasked)}</div>
-                                                                {(server.initialPath || server.localInitialPath) && (
-                                                                    <p className="text-xs text-gray-400 mt-1">
-                                                                        {server.initialPath && <span>📁 {server.initialPath}</span>}
-                                                                        {server.initialPath && server.localInitialPath && ' • '}
-                                                                        {server.localInitialPath && <span>💻 {server.localInitialPath}</span>}
-                                                                    </p>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                            <button onClick={() => setEditingServer(server)} className="p-2 text-gray-500 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors" title={t('common.edit')}>
-                                                                <Edit size={14} />
-                                                            </button>
-                                                            <button
-                                                                onClick={() => {
-                                                                    const cloned = {
-                                                                        ...server,
-                                                                        id: crypto.randomUUID(),
-                                                                        name: `${server.name} (${t('common.copy')})`,
-                                                                        lastConnected: undefined,
-                                                                    };
-                                                                    const updated = [...servers, cloned];
-                                                                    setServers(updated);
-                                                                    setHasChanges(true);
-                                                                    onServersChanged?.();
-                                                                }}
-                                                                className="p-2 text-gray-500 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded-lg transition-colors"
-                                                                title={t('common.copy')}
-                                                            >
-                                                                <Copy size={14} />
-                                                            </button>
-                                                            <button onClick={() => deleteServer(server.id)} className="p-2 text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors" title={t('common.delete')}>
-                                                                <Trash2 size={14} />
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    )}
-
-                                    {/* Edit Server Modal */}
-                                    {editingServer &&
-                                        (() => {
-                                            const protocol = editingServer.protocol || 'ftp';
-                                            const isOAuth = isOAuthProvider(protocol as ProviderType) || isFourSharedProvider(protocol as ProviderType);
-                                            const isMega = protocol === 'mega';
-                                            const isFilen = protocol === 'filen';
-                                            const isS3 = protocol === 's3';
-                                            const isAzure = protocol === 'azure';
-                                            const isSftp = protocol === 'sftp';
-                                            const isInternxt = protocol === 'internxt';
-                                            const isKDrive = protocol === 'kdrive';
-                                            const isJottacloud = protocol === 'jottacloud';
-                                            const isDrime = protocol === 'drime';
-                                            const isKoofr = protocol === 'koofr';
-                                            const isOpenDrive = protocol === 'opendrive';
-                                            const isYandexDisk = protocol === 'yandexdisk';
-                                            const isGitHub = protocol === 'github';
-                                            const megaMode = getMegaConnectionMode(editingServer.options);
-                                            const githubAuthMode = editingServer.options?.githubAuthMode || 'authorize';
-                                            const needsHostPort = !isOAuth && !isMega && !isFilen && !isInternxt && !isKDrive && !isJottacloud && !isDrime && !isKoofr && !isOpenDrive && !isYandexDisk && !isGitHub;
-                                            const needsPassword = !isOAuth && !isGitHub;
-                                            const isNewServer = !servers.some((s) => s.id === editingServer.id);
-                                            const logoKey = editingServer.providerId || protocol;
-                                            const hasProviderLogo = !!PROVIDER_LOGOS[logoKey];
-
-                                            // Protocol options for new server
-                                            const protocolOptions = [
-                                                {
-                                                    value: 'ftp',
-                                                    label: t('settings.protocolFtp'),
-                                                    port: 21,
-                                                },
-                                                {
-                                                    value: 'ftps',
-                                                    label: t('settings.protocolFtps'),
-                                                    port: 990,
-                                                },
-                                                {
-                                                    value: 'sftp',
-                                                    label: t('settings.protocolSftp'),
-                                                    port: 22,
-                                                },
-                                                {
-                                                    value: 's3',
-                                                    label: t('settings.protocolS3'),
-                                                    port: 443,
-                                                },
-                                                {
-                                                    value: 'webdav',
-                                                    label: t('settings.protocolWebdav'),
-                                                    port: 443,
-                                                },
-                                                {
-                                                    value: 'mega',
-                                                    label: t('settings.protocolMega'),
-                                                    port: 443,
-                                                },
-                                                {
-                                                    value: 'filen',
-                                                    label: t('settings.protocolFilen'),
-                                                    port: 443,
-                                                },
-                                                {
-                                                    value: 'googledrive',
-                                                    label: t('settings.protocolGdrive'),
-                                                    port: 443,
-                                                },
-                                                {
-                                                    value: 'dropbox',
-                                                    label: t('settings.protocolDropbox'),
-                                                    port: 443,
-                                                },
-                                                {
-                                                    value: 'onedrive',
-                                                    label: t('settings.protocolOnedrive'),
-                                                    port: 443,
-                                                },
-                                                {
-                                                    value: 'box',
-                                                    label: t('settings.protocolBox'),
-                                                    port: 443,
-                                                },
-                                                {
-                                                    value: 'pcloud',
-                                                    label: t('settings.protocolPcloud'),
-                                                    port: 443,
-                                                },
-                                                {
-                                                    value: 'fourshared',
-                                                    label: t('settings.protocolFourshared'),
-                                                    port: 443,
-                                                },
-                                                {
-                                                    value: 'zohoworkdrive',
-                                                    label: t('settings.protocolZohoworkdrive'),
-                                                    port: 443,
-                                                },
-                                                {
-                                                    value: 'internxt',
-                                                    label: 'Internxt Drive',
-                                                    port: 443,
-                                                },
-                                                { value: 'kdrive', label: 'kDrive', port: 443 },
-                                                { value: 'jottacloud', label: 'Jottacloud', port: 443 },
-                                                { value: 'koofr', label: 'Koofr', port: 443 },
-                                                {
-                                                    value: 'opendrive',
-                                                    label: t('settings.protocolOpendrive'),
-                                                    port: 443,
-                                                },
-                                                {
-                                                    value: 'yandexdisk',
-                                                    label: 'Yandex Disk',
-                                                    port: 443,
-                                                },
-                                                { value: 'drime', label: 'Drime Cloud', port: 443 },
-                                                {
-                                                    value: 'azure',
-                                                    label: t('settings.protocolAzure'),
-                                                    port: 443,
-                                                },
-                                                { value: 'github', label: 'GitHub', port: 443 },
-                                                { value: 'gitlab', label: 'GitLab', port: 443 },
-                                            ];
-
-                                            const handleProtocolChange = (newProtocol: string) => {
-                                                const opt = protocolOptions.find((p) => p.value === newProtocol);
-                                                setEditingServer({
-                                                    ...editingServer,
-                                                    protocol: newProtocol as ProviderType,
-                                                    port: opt?.port || 21,
-                                                    // Clear fields that don't apply
-                                                    host: newProtocol === 'opendrive' ? 'dev.opendrive.com' : newProtocol === 'mega' ? 'mega.nz' : isOAuthProvider(newProtocol as ProviderType) || isFourSharedProvider(newProtocol as ProviderType) ? '' : editingServer.host,
-                                                    username: '',
-                                                    password: '',
-                                                    options: newProtocol === 'mega' ? normalizeMegaOptions() : {},
-                                                });
-                                            };
-
-                                            return (
-                                                <div className="fixed inset-0 z-60 flex items-center justify-center">
-                                                    <div className="absolute inset-0 bg-black/30" onClick={() => setEditingServer(null)} />
-                                                    <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-2xl p-6 w-full max-w-md space-y-4 max-h-[90vh] overflow-y-auto">
-                                                        <div className="flex items-center gap-3">
-                                                            {(() => {
-                                                                const logoKey = editingServer.providerId || protocol;
-                                                                const LogoComponent = PROVIDER_LOGOS[logoKey];
-                                                                const hasLogo = !!LogoComponent;
-                                                                return <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${hasLogo ? 'bg-[#FFFFF0] dark:bg-gray-600 border border-gray-200 dark:border-gray-500' : `bg-gradient-to-br ${PROTOCOL_COLORS[protocol] || 'from-gray-500 to-gray-400'} text-white`}`}>{hasLogo ? <LogoComponent size={20} /> : isOAuth ? <Cloud size={18} /> : <Server size={18} />}</div>;
-                                                            })()}
-                                                            <div>
-                                                                <h3 className="text-lg font-semibold">{isNewServer ? t('settings.addServer') : t('settings.editServerTitle')}</h3>
-                                                                <span className="text-xs px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 uppercase">{protocol}</span>
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="space-y-3">
-                                                            {/* Protocol Selector - only for new servers */}
-                                                            {isNewServer && (
-                                                                <div>
-                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.protocol')}</label>
-                                                                    <select value={protocol} onChange={(e) => handleProtocolChange(e.target.value)} className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm">
-                                                                        {protocolOptions.map((opt) => (
-                                                                            <option key={opt.value} value={opt.value}>
-                                                                                {opt.label}
-                                                                            </option>
-                                                                        ))}
-                                                                    </select>
-                                                                </div>
-                                                            )}
-
-                                                            {/* Server Name */}
-                                                            <div>
-                                                                <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.displayName')}</label>
-                                                                <input
-                                                                    type="text"
-                                                                    placeholder={t('settings.serverNamePlaceholder')}
-                                                                    value={editingServer.name}
-                                                                    onChange={(e) =>
-                                                                        setEditingServer({
-                                                                            ...editingServer,
-                                                                            name: e.target.value,
-                                                                        })
-                                                                    }
-                                                                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                />
-                                                            </div>
-
-                                                            {/* Custom Icon picker: only for servers without a dedicated provider logo */}
-                                                            {!hasProviderLogo && (
-                                                                <div>
-                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.serverIcon')}</label>
-                                                                    <div className="flex items-start gap-3">
-                                                                        <div className="flex items-center gap-3 flex-1">
-                                                                            <div className={`w-10 h-10 shrink-0 rounded-lg flex items-center justify-center ${editingServer.customIconUrl || editingServer.faviconUrl ? 'bg-white dark:bg-gray-600 border border-gray-200 dark:border-gray-500' : `bg-gradient-to-br ${PROTOCOL_COLORS[protocol] || PROTOCOL_COLORS.ftp} text-white`}`}>{editingServer.customIconUrl ? <img src={editingServer.customIconUrl} alt="" className="w-6 h-6 rounded object-contain" /> : editingServer.faviconUrl ? <img src={editingServer.faviconUrl} alt="" className="w-6 h-6 rounded object-contain" /> : <span className="font-bold text-sm">{(editingServer.name || editingServer.host || '?').charAt(0).toUpperCase()}</span>}</div>
-                                                                            <button
-                                                                                type="button"
-                                                                                onClick={async () => {
-                                                                                    try {
-                                                                                        const selected = await open({
-                                                                                            multiple: false,
-                                                                                            filters: [
-                                                                                                {
-                                                                                                    name: 'Images',
-                                                                                                    extensions: ['png', 'jpg', 'jpeg', 'ico', 'webp', 'gif'],
-                                                                                                },
-                                                                                            ],
-                                                                                        });
-                                                                                        if (!selected) return;
-                                                                                        const filePath = Array.isArray(selected) ? selected[0] : selected;
-                                                                                        const bytes = await readFile(filePath);
-                                                                                        const ext = filePath.split('.').pop()?.toLowerCase() || 'png';
-                                                                                        const mimeMap: Record<string, string> = {
-                                                                                            jpg: 'image/jpeg',
-                                                                                            jpeg: 'image/jpeg',
-                                                                                            png: 'image/png',
-                                                                                            gif: 'image/gif',
-                                                                                            webp: 'image/webp',
-                                                                                            ico: 'image/x-icon',
-                                                                                        };
-                                                                                        const mime = mimeMap[ext] || 'image/png';
-                                                                                        // Resize to 128x128 via canvas
-                                                                                        const blob = new Blob([bytes], {
-                                                                                            type: mime,
-                                                                                        });
-                                                                                        const url = URL.createObjectURL(blob);
-                                                                                        const img = new window.Image();
-                                                                                        const timeout = setTimeout(() => URL.revokeObjectURL(url), 10000);
-                                                                                        img.onload = () => {
-                                                                                            clearTimeout(timeout);
-                                                                                            const canvas = document.createElement('canvas');
-                                                                                            const size = 128;
-                                                                                            canvas.width = size;
-                                                                                            canvas.height = size;
-                                                                                            const ctx = canvas.getContext('2d');
-                                                                                            if (!ctx) {
-                                                                                                URL.revokeObjectURL(url);
-                                                                                                return;
-                                                                                            }
-                                                                                            const scale = Math.min(size / img.width, size / img.height);
-                                                                                            const w = img.width * scale;
-                                                                                            const h = img.height * scale;
-                                                                                            ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
-                                                                                            const dataUrl = canvas.toDataURL('image/png');
-                                                                                            URL.revokeObjectURL(url);
-                                                                                            setEditingServer((prev) =>
-                                                                                                prev
-                                                                                                    ? {
-                                                                                                          ...prev,
-                                                                                                          customIconUrl: dataUrl,
-                                                                                                      }
-                                                                                                    : prev
-                                                                                            );
-                                                                                        };
-                                                                                        img.onerror = () => {
-                                                                                            clearTimeout(timeout);
-                                                                                            URL.revokeObjectURL(url);
-                                                                                        };
-                                                                                        img.src = url;
-                                                                                    } catch {
-                                                                                        /* user cancelled or read error */
-                                                                                    }
-                                                                                }}
-                                                                                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 border border-gray-300 dark:border-gray-600 transition-colors flex items-center gap-1.5"
-                                                                            >
-                                                                                <Image size={12} />
-                                                                                {t('settings.chooseIcon')}
-                                                                            </button>
-                                                                            {editingServer.customIconUrl && (
-                                                                                <button
-                                                                                    type="button"
-                                                                                    onClick={() =>
-                                                                                        setEditingServer((prev) =>
-                                                                                            prev
-                                                                                                ? {
-                                                                                                      ...prev,
-                                                                                                      customIconUrl: undefined,
-                                                                                                  }
-                                                                                                : prev
-                                                                                        )
-                                                                                    }
-                                                                                    className="p-1.5 text-xs rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500 transition-colors"
-                                                                                    title={t('settings.removeIcon')}
-                                                                                >
-                                                                                    <X size={14} />
-                                                                                </button>
-                                                                            )}
-                                                                        </div>
-                                                                        <div className="flex items-start gap-1 text-gray-400 dark:text-gray-500 text-xs max-w-[180px] pt-1">
-                                                                            <Info size={12} className="shrink-0 mt-0.5" />
-                                                                            <span>{t('settings.iconAutoDetectHint')}</span>
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                            )}
-
-                                                            {/* OAuth providers - read-only info */}
-                                                            {isOAuth && (
-                                                                <div className="p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg border border-blue-200 dark:border-blue-700">
-                                                                    <p className="text-sm text-blue-700 dark:text-blue-300">
-                                                                        <strong>{t('settings.oauthConnection')}</strong>
-                                                                    </p>
-                                                                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">{t('settings.oauthConnectionDesc')}</p>
-                                                                </div>
-                                                            )}
-
-                                                            {/* MEGA - email, password, backend mode and session options */}
-                                                            {isMega && (
-                                                                <>
-                                                                    <div>
-                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.megaEmail')}</label>
-                                                                        <input
-                                                                            type="email"
-                                                                            placeholder={t('settings.megaEmailPlaceholder')}
-                                                                            value={editingServer.username}
-                                                                            onChange={(e) =>
-                                                                                setEditingServer({
-                                                                                    ...editingServer,
-                                                                                    username: e.target.value,
-                                                                                    host: 'mega.nz',
-                                                                                    port: 443,
-                                                                                })
-                                                                            }
-                                                                            className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                        />
-                                                                    </div>
-
-                                                                    <div>
-                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.password')}</label>
-                                                                        <div className="relative">
-                                                                            <input
-                                                                                type={showEditPassword ? 'text' : 'password'}
-                                                                                placeholder={t('connection.megaPasswordPlaceholder')}
-                                                                                value={editingServer.password || ''}
-                                                                                onChange={(e) =>
-                                                                                    setEditingServer({
-                                                                                        ...editingServer,
-                                                                                        password: e.target.value,
-                                                                                        host: 'mega.nz',
-                                                                                        port: 443,
-                                                                                    })
-                                                                                }
-                                                                                className="w-full px-3 py-2 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                            />
-                                                                            <button type="button" tabIndex={-1} onClick={() => setShowEditPassword(!showEditPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600">
-                                                                                {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                                                                            </button>
-                                                                        </div>
-                                                                    </div>
-
-                                                                    <div>
-                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.megaConnectionMode')}</label>
-                                                                        <div className="grid grid-cols-2 gap-2">
-                                                                            {(['native', 'megacmd'] as const).map((mode) => {
-                                                                                const isActive = megaMode === mode;
-                                                                                return (
-                                                                                    <button
-                                                                                        key={mode}
-                                                                                        type="button"
-                                                                                        onClick={() =>
-                                                                                            setEditingServer({
-                                                                                                ...editingServer,
-                                                                                                host: 'mega.nz',
-                                                                                                port: 443,
-                                                                                                options: {
-                                                                                                    ...editingServer.options,
-                                                                                                    mega_mode: mode,
-                                                                                                },
-                                                                                            })
-                                                                                        }
-                                                                                        className={`rounded-lg border px-3 py-2 text-left transition-colors ${isActive ? 'border-red-500 bg-red-500/10 text-red-700 dark:text-red-300' : 'border-gray-300 bg-white text-gray-700 hover:border-red-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-red-500/60'}`}
-                                                                                    >
-                                                                                        <div className="text-xs font-medium">{mode === 'native' ? t('connection.megaModeNative') : t('connection.megaModeCmd')}</div>
-                                                                                        <p className="mt-1 text-[11px] opacity-80 leading-snug">{mode === 'native' ? t('connection.megaModeNativeDesc') : t('connection.megaModeCmdDesc')}</p>
-                                                                                    </button>
-                                                                                );
-                                                                            })}
-                                                                        </div>
-                                                                    </div>
-
-                                                                    <div className="p-3 rounded-lg border border-red-100 dark:border-red-900/30 bg-red-50 dark:bg-red-900/10 space-y-3">
-                                                                        <Checkbox
-                                                                            checked={editingServer.options?.save_session !== false}
-                                                                            onChange={(v) =>
-                                                                                setEditingServer({
-                                                                                    ...editingServer,
-                                                                                    options: {
-                                                                                        ...editingServer.options,
-                                                                                        save_session: v,
-                                                                                    },
-                                                                                })
-                                                                            }
-                                                                            label={
-                                                                                <div>
-                                                                                    <span className="text-sm font-medium text-gray-900 dark:text-gray-200">{t('connection.rememberSession')}</span>
-                                                                                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{t('connection.sessionKeysStored')}</p>
-                                                                                </div>
-                                                                            }
-                                                                        />
-
-                                                                        {megaMode === 'megacmd' && (
-                                                                            <div className="pt-3 border-t border-red-200 dark:border-red-900/30">
-                                                                                <Checkbox
-                                                                                    checked={!!editingServer.options?.logout_on_disconnect}
-                                                                                    onChange={(v) =>
-                                                                                        setEditingServer({
-                                                                                            ...editingServer,
-                                                                                            options: {
-                                                                                                ...editingServer.options,
-                                                                                                logout_on_disconnect: v,
-                                                                                            },
-                                                                                        })
-                                                                                    }
-                                                                                    label={
-                                                                                        <div>
-                                                                                            <span className="text-sm font-medium text-gray-900 dark:text-gray-200">{t('connection.logoutOnDisconnect')}</span>
-                                                                                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{t('connection.logoutOnDisconnectDesc')}</p>
-                                                                                        </div>
-                                                                                    }
-                                                                                />
-                                                                            </div>
-                                                                        )}
-                                                                    </div>
-
-                                                                    <div className="p-3 rounded-lg border border-blue-100 dark:border-blue-900/30 bg-blue-50 dark:bg-blue-900/10 text-xs text-blue-800 dark:text-blue-200">
-                                                                        <p className="font-medium mb-1">{megaMode === 'megacmd' ? t('connection.megaRequirement') : t('connection.megaNativeNotice')}</p>
-                                                                        <p className="opacity-80 leading-relaxed">{megaMode === 'megacmd' ? t('connection.megaRequirementDesc') : t('connection.megaNativeNoticeDesc')}</p>
-                                                                    </div>
-                                                                </>
-                                                            )}
-
-                                                            {/* Filen - email + password, no host */}
-                                                            {isFilen && (
-                                                                <div>
-                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.filenEmail')}</label>
-                                                                    <input
-                                                                        type="email"
-                                                                        placeholder={t('settings.filenEmailPlaceholder')}
-                                                                        value={editingServer.username}
-                                                                        onChange={(e) =>
-                                                                            setEditingServer({
-                                                                                ...editingServer,
-                                                                                username: e.target.value,
-                                                                                host: 'filen.io',
-                                                                                port: 443,
-                                                                            })
-                                                                        }
-                                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                    />
-                                                                </div>
-                                                            )}
-
-                                                            {/* Internxt - email + password + optional 2FA */}
-                                                            {isInternxt && (
-                                                                <>
-                                                                    <div>
-                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.emailAccount')}</label>
-                                                                        <input
-                                                                            type="email"
-                                                                            placeholder={t('connection.internxtEmailPlaceholder')}
-                                                                            value={editingServer.username}
-                                                                            onChange={(e) =>
-                                                                                setEditingServer({
-                                                                                    ...editingServer,
-                                                                                    username: e.target.value,
-                                                                                    host: 'gateway.internxt.com',
-                                                                                    port: 443,
-                                                                                })
-                                                                            }
-                                                                            className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                        />
-                                                                    </div>
-                                                                    <div>
-                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.password')}</label>
-                                                                        <div className="relative">
-                                                                            <input
-                                                                                type={showEditPassword ? 'text' : 'password'}
-                                                                                placeholder={t('connection.internxtPasswordPlaceholder')}
-                                                                                value={editingServer.password || ''}
-                                                                                onChange={(e) =>
-                                                                                    setEditingServer({
-                                                                                        ...editingServer,
-                                                                                        password: e.target.value,
-                                                                                    })
-                                                                                }
-                                                                                className="w-full px-3 py-2 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                            />
-                                                                            <button type="button" tabIndex={-1} onClick={() => setShowEditPassword(!showEditPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600">
-                                                                                {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                                                                            </button>
-                                                                        </div>
-                                                                    </div>
-                                                                    <div>
-                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.twoFactorCode')}</label>
-                                                                        <input
-                                                                            type="text"
-                                                                            placeholder={t('connection.twoFactorOptional')}
-                                                                            value={editingServer.options?.two_factor_code || ''}
-                                                                            onChange={(e) =>
-                                                                                setEditingServer({
-                                                                                    ...editingServer,
-                                                                                    options: {
-                                                                                        ...editingServer.options,
-                                                                                        two_factor_code: e.target.value || undefined,
-                                                                                    },
-                                                                                })
-                                                                            }
-                                                                            className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                            maxLength={6}
-                                                                            inputMode="numeric"
-                                                                        />
-                                                                    </div>
-                                                                </>
-                                                            )}
-
-                                                            {/* kDrive - API Token + Drive ID */}
-                                                            {isKDrive && (
-                                                                <>
-                                                                    <div>
-                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.kdriveToken')}</label>
-                                                                        <div className="relative">
-                                                                            <input
-                                                                                type={showEditPassword ? 'text' : 'password'}
-                                                                                placeholder={t('connection.kdriveTokenPlaceholder')}
-                                                                                value={editingServer.password || ''}
-                                                                                onChange={(e) =>
-                                                                                    setEditingServer({
-                                                                                        ...editingServer,
-                                                                                        password: e.target.value,
-                                                                                        host: 'api.infomaniak.com',
-                                                                                        port: 443,
-                                                                                        username: 'api-token',
-                                                                                    })
-                                                                                }
-                                                                                className="w-full px-3 py-2 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                            />
-                                                                            <button type="button" tabIndex={-1} onClick={() => setShowEditPassword(!showEditPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600">
-                                                                                {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                                                                            </button>
-                                                                        </div>
-                                                                    </div>
-                                                                    <div>
-                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.kdriveDriveId')}</label>
-                                                                        <input
-                                                                            type="text"
-                                                                            placeholder={t('connection.kdriveDriveIdPlaceholder')}
-                                                                            value={editingServer.options?.drive_id || editingServer.options?.bucket || ''}
-                                                                            onChange={(e) =>
-                                                                                setEditingServer({
-                                                                                    ...editingServer,
-                                                                                    options: {
-                                                                                        ...editingServer.options,
-                                                                                        bucket: e.target.value,
-                                                                                        drive_id: e.target.value,
-                                                                                    },
-                                                                                })
-                                                                            }
-                                                                            className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                            inputMode="numeric"
-                                                                        />
-                                                                    </div>
-                                                                    <p className="text-xs text-gray-400 select-text">{t('connection.kdriveTokenHelp')}</p>
-                                                                </>
-                                                            )}
-
-                                                            {/* Jottacloud - Login Token only */}
-                                                            {isJottacloud && (
-                                                                <>
-                                                                    <div>
-                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.jottacloudToken')}</label>
-                                                                        <div className="relative">
-                                                                            <input
-                                                                                type={showEditPassword ? 'text' : 'password'}
-                                                                                placeholder={t('connection.jottacloudTokenPlaceholder')}
-                                                                                value={editingServer.password || ''}
-                                                                                onChange={(e) =>
-                                                                                    setEditingServer({
-                                                                                        ...editingServer,
-                                                                                        password: e.target.value,
-                                                                                        host: 'jfs.jottacloud.com',
-                                                                                        port: 443,
-                                                                                        username: 'token',
-                                                                                    })
-                                                                                }
-                                                                                className="w-full px-3 py-2 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                            />
-                                                                            <button type="button" tabIndex={-1} onClick={() => setShowEditPassword(!showEditPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600">
-                                                                                {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                                                                            </button>
-                                                                        </div>
-                                                                    </div>
-                                                                    <p className="text-xs text-gray-400">{t('connection.jottacloudTokenHelp')}</p>
-                                                                </>
-                                                            )}
-
-                                                            {/* Koofr - Email + App Password */}
-                                                            {isKoofr && (
-                                                                <>
-                                                                    <div>
-                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.koofrEmail')}</label>
-                                                                        <input
-                                                                            type="email"
-                                                                            placeholder={t('connection.koofrEmailPlaceholder')}
-                                                                            value={editingServer.username || ''}
-                                                                            onChange={(e) =>
-                                                                                setEditingServer({
-                                                                                    ...editingServer,
-                                                                                    username: e.target.value,
-                                                                                    host: 'app.koofr.net',
-                                                                                    port: 443,
-                                                                                })
-                                                                            }
-                                                                            className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                        />
-                                                                    </div>
-                                                                    <div>
-                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.koofrAppPassword')}</label>
-                                                                        <div className="relative">
-                                                                            <input
-                                                                                type={showEditPassword ? 'text' : 'password'}
-                                                                                placeholder={t('connection.koofrAppPasswordPlaceholder')}
-                                                                                value={editingServer.password || ''}
-                                                                                onChange={(e) =>
-                                                                                    setEditingServer({
-                                                                                        ...editingServer,
-                                                                                        password: e.target.value,
-                                                                                        host: 'app.koofr.net',
-                                                                                        port: 443,
-                                                                                    })
-                                                                                }
-                                                                                className="w-full px-3 py-2 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                            />
-                                                                            <button type="button" tabIndex={-1} onClick={() => setShowEditPassword(!showEditPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600">
-                                                                                {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                                                                            </button>
-                                                                        </div>
-                                                                    </div>
-                                                                    <p className="text-xs text-gray-400">{t('connection.koofrHelp')}</p>
-                                                                </>
-                                                            )}
-
-                                                            {/* OpenDrive - Username + Password */}
-                                                            {isOpenDrive && (
-                                                                <>
-                                                                    <div>
-                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.username')}</label>
-                                                                        <input
-                                                                            type="text"
-                                                                            placeholder={t('protocol.opendriveUsernamePlaceholder')}
-                                                                            value={editingServer.username}
-                                                                            onChange={(e) =>
-                                                                                setEditingServer({
-                                                                                    ...editingServer,
-                                                                                    username: e.target.value,
-                                                                                    host: 'dev.opendrive.com',
-                                                                                    port: 443,
-                                                                                })
-                                                                            }
-                                                                            className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                        />
-                                                                    </div>
-                                                                    <div>
-                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.password')}</label>
-                                                                        <div className="relative">
-                                                                            <input
-                                                                                type={showEditPassword ? 'text' : 'password'}
-                                                                                placeholder={t('settings.passwordPlaceholder')}
-                                                                                value={editingServer.password || ''}
-                                                                                onChange={(e) =>
-                                                                                    setEditingServer({
-                                                                                        ...editingServer,
-                                                                                        password: e.target.value,
-                                                                                        host: 'dev.opendrive.com',
-                                                                                        port: 443,
-                                                                                    })
-                                                                                }
-                                                                                className="w-full px-3 py-2 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                            />
-                                                                            <button type="button" tabIndex={-1} onClick={() => setShowEditPassword(!showEditPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600">
-                                                                                {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                                                                            </button>
-                                                                        </div>
-                                                                    </div>
-                                                                    <p className="text-xs text-gray-400">{t('protocol.opendriveAuthHelp')}</p>
-                                                                </>
-                                                            )}
-
-                                                            {/* Yandex Disk - OAuth Token */}
-                                                            {isYandexDisk && (
-                                                                <>
-                                                                    <div>
-                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.yandexdiskToken')}</label>
-                                                                        <div className="relative">
-                                                                            <input
-                                                                                type={showEditPassword ? 'text' : 'password'}
-                                                                                placeholder={t('connection.yandexdiskTokenPlaceholder')}
-                                                                                value={editingServer.password || ''}
-                                                                                onChange={(e) =>
-                                                                                    setEditingServer({
-                                                                                        ...editingServer,
-                                                                                        password: e.target.value,
-                                                                                        host: 'cloud-api.yandex.net',
-                                                                                        port: 443,
-                                                                                        username: e.target.value ? 'oauth-token' : '',
-                                                                                    })
-                                                                                }
-                                                                                className="w-full px-3 py-2 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                            />
-                                                                            <button type="button" tabIndex={-1} onClick={() => setShowEditPassword(!showEditPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600">
-                                                                                {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                                                                            </button>
-                                                                        </div>
-                                                                    </div>
-                                                                    <p className="text-xs text-gray-400">{t('connection.yandexdiskHelp')}</p>
-                                                                </>
-                                                            )}
-
-                                                            {/* Drime Cloud - API Token only */}
-                                                            {isDrime && (
-                                                                <>
-                                                                    <div>
-                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('connection.drimeToken')}</label>
-                                                                        <div className="relative">
-                                                                            <input
-                                                                                type={showEditPassword ? 'text' : 'password'}
-                                                                                placeholder={t('connection.drimeTokenPlaceholder')}
-                                                                                value={editingServer.password || ''}
-                                                                                onChange={(e) =>
-                                                                                    setEditingServer({
-                                                                                        ...editingServer,
-                                                                                        password: e.target.value,
-                                                                                        host: 'app.drime.cloud',
-                                                                                        port: 443,
-                                                                                        username: 'api-token',
-                                                                                    })
-                                                                                }
-                                                                                className="w-full px-3 py-2 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                            />
-                                                                            <button type="button" tabIndex={-1} onClick={() => setShowEditPassword(!showEditPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600">
-                                                                                {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                                                                            </button>
-                                                                        </div>
-                                                                    </div>
-                                                                    <p className="text-xs text-gray-400">{t('connection.drimeTokenHelp')}</p>
-                                                                </>
-                                                            )}
-
-                                                            {/* GitHub: Owner/Repo + 3 Auth Modes */}
-                                                            {isGitHub && (
-                                                                <>
-                                                                    <div>
-                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('github.ownerRepo') || 'Owner / Repository'}</label>
-                                                                        <input
-                                                                            type="text"
-                                                                            placeholder="owner/repository"
-                                                                            value={editingServer.host || ''}
-                                                                            onChange={(e) =>
-                                                                                setEditingServer({
-                                                                                    ...editingServer,
-                                                                                    host: e.target.value,
-                                                                                    port: 443,
-                                                                                })
-                                                                            }
-                                                                            className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                        />
-                                                                    </div>
-                                                                    {/* Auth Mode Selector */}
-                                                                    <div>
-                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('github.authMethod') || 'Authentication'}</label>
-                                                                        <div className="flex gap-1.5">
-                                                                            {(['authorize', 'pat', 'app'] as const).map((mode) => {
-                                                                                const isActive = githubAuthMode === mode;
-                                                                                return (
-                                                                                    <button
-                                                                                        key={mode}
-                                                                                        type="button"
-                                                                                        onClick={() =>
-                                                                                            setEditingServer({
-                                                                                                ...editingServer,
-                                                                                                password: '',
-                                                                                                options: {
-                                                                                                    ...editingServer.options,
-                                                                                                    githubAuthMode: mode,
-                                                                                                },
-                                                                                            })
-                                                                                        }
-                                                                                        className={`flex-1 px-2 py-1.5 text-xs font-medium rounded-lg border transition-colors ${isActive ? 'border-blue-500 bg-blue-500/10 text-blue-500' : 'border-gray-300 dark:border-gray-600 text-gray-500 hover:border-gray-400'}`}
-                                                                                    >
-                                                                                        {mode === 'authorize' && (t('github.modeAuthorize') || 'OAuth')}
-                                                                                        {mode === 'pat' && (t('github.modePat') || 'Access Token')}
-                                                                                        {mode === 'app' && (t('github.modeApp') || 'App (.pem)')}
-                                                                                    </button>
-                                                                                );
-                                                                            })}
-                                                                        </div>
-                                                                    </div>
-                                                                    {/* Mode: OAuth (Device Flow) */}
-                                                                    {githubAuthMode === 'authorize' && (
-                                                                        <div className="p-3 rounded-lg border border-blue-500/20 bg-blue-500/5 space-y-2">
-                                                                            <p className="text-xs text-gray-500">{t('github.oauthHint') || 'Use "Authorize with GitHub" on the connection screen to authenticate via Device Flow. The token is stored securely in the vault.'}</p>
-                                                                            {editingServer.password ? (
-                                                                                <p className="text-xs text-green-500 flex items-center gap-1">
-                                                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                                                                                        <polyline points="20 6 9 17 4 12" />
-                                                                                    </svg>
-                                                                                    {t('github.alreadyAuthorized') || 'Already authorized: ready to connect'}
-                                                                                </p>
-                                                                            ) : (
-                                                                                <p className="text-xs text-amber-500">{t('github.notAuthorized') || 'Not yet authorized. Connect first to authorize.'}</p>
-                                                                            )}
-                                                                        </div>
-                                                                    )}
-                                                                    {/* Mode: PAT */}
-                                                                    {githubAuthMode === 'pat' && (
-                                                                        <div>
-                                                                            <label className="block text-xs font-medium text-gray-500 mb-1">{t('github.accessToken') || 'Personal Access Token'}</label>
-                                                                            <div className="relative">
-                                                                                <input
-                                                                                    type={showEditPassword ? 'text' : 'password'}
-                                                                                    placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
-                                                                                    value={editingServer.password || ''}
-                                                                                    onChange={(e) =>
-                                                                                        setEditingServer({
-                                                                                            ...editingServer,
-                                                                                            password: e.target.value,
-                                                                                        })
-                                                                                    }
-                                                                                    className="w-full px-3 py-2 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                                />
-                                                                                <button type="button" tabIndex={-1} onClick={() => setShowEditPassword(!showEditPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600">
-                                                                                    {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                                                                                </button>
-                                                                            </div>
-                                                                            <p className="text-xs text-gray-400 mt-1">{t('github.patHint') || 'Fine-grained PAT with repository access'}</p>
-                                                                        </div>
-                                                                    )}
-                                                                    {/* Mode: App (.pem) */}
-                                                                    {githubAuthMode === 'app' && (
-                                                                        <div className="space-y-2">
-                                                                            <div className="grid grid-cols-2 gap-2">
-                                                                                <div>
-                                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('github.appId') || 'App ID'}</label>
-                                                                                    <input
-                                                                                        type="text"
-                                                                                        placeholder="123456"
-                                                                                        value={editingServer.options?.githubAppId || ''}
-                                                                                        onChange={(e) =>
-                                                                                            setEditingServer({
-                                                                                                ...editingServer,
-                                                                                                options: {
-                                                                                                    ...editingServer.options,
-                                                                                                    githubAppId: e.target.value,
-                                                                                                },
-                                                                                            })
-                                                                                        }
-                                                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                                    />
-                                                                                </div>
-                                                                                <div>
-                                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('github.installationId') || 'Installation ID'}</label>
-                                                                                    <input
-                                                                                        type="text"
-                                                                                        placeholder="12345678"
-                                                                                        value={editingServer.options?.githubInstallationId || ''}
-                                                                                        onChange={(e) =>
-                                                                                            setEditingServer({
-                                                                                                ...editingServer,
-                                                                                                options: {
-                                                                                                    ...editingServer.options,
-                                                                                                    githubInstallationId: e.target.value,
-                                                                                                },
-                                                                                            })
-                                                                                        }
-                                                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                                    />
-                                                                                </div>
-                                                                            </div>
-                                                                            <p className="text-xs text-gray-400">{t('github.appHint') || 'PEM key is imported and stored in the vault from the connection screen.'}</p>
-                                                                            {editingServer.options?.githubPemStored && (
-                                                                                <p className="text-xs text-green-500 flex items-center gap-1">
-                                                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                                                                                        <polyline points="20 6 9 17 4 12" />
-                                                                                    </svg>
-                                                                                    {t('github.pemStoredInVault') || 'PEM key stored in vault'}
-                                                                                </p>
-                                                                            )}
-                                                                        </div>
-                                                                    )}
-                                                                    {/* Optional branch override */}
-                                                                    <div>
-                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('github.branchOptional') || 'Branch (optional)'}</label>
-                                                                        <input
-                                                                            type="text"
-                                                                            placeholder="main"
-                                                                            value={editingServer.options?.githubBranch || ''}
-                                                                            onChange={(e) =>
-                                                                                setEditingServer({
-                                                                                    ...editingServer,
-                                                                                    options: {
-                                                                                        ...editingServer.options,
-                                                                                        githubBranch: e.target.value,
-                                                                                    },
-                                                                                })
-                                                                            }
-                                                                            className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                        />
-                                                                    </div>
-                                                                </>
-                                                            )}
-
-                                                            {/* Host and Port - for FTP/FTPS/SFTP/WebDAV/S3/Azure */}
-                                                            {needsHostPort && (
-                                                                <div className="flex gap-2">
-                                                                    <div className="flex-1">
-                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{isS3 ? t('settings.endpointUrl') : isAzure ? t('connection.azureEndpoint') : t('settings.host')}</label>
-                                                                        <input
-                                                                            type="text"
-                                                                            placeholder={isS3 ? 's3.amazonaws.com' : isAzure ? 'myaccount.blob.core.windows.net' : 'ftp.example.com'}
-                                                                            value={editingServer.host}
-                                                                            onChange={(e) =>
-                                                                                setEditingServer({
-                                                                                    ...editingServer,
-                                                                                    host: e.target.value,
-                                                                                })
-                                                                            }
-                                                                            className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                        />
-                                                                    </div>
-                                                                    <div className="w-24">
-                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.port')}</label>
-                                                                        <input
-                                                                            type="number"
-                                                                            placeholder={t('settings.portPlaceholder')}
-                                                                            value={editingServer.port}
-                                                                            onChange={(e) =>
-                                                                                setEditingServer({
-                                                                                    ...editingServer,
-                                                                                    port: parseInt(e.target.value) || 21,
-                                                                                })
-                                                                            }
-                                                                            className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                        />
-                                                                    </div>
-                                                                </div>
-                                                            )}
-
-                                                            {/* Username - for non-OAuth, non-MEGA */}
-                                                            {needsHostPort && (
-                                                                <div>
-                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{isS3 ? t('settings.accessKeyId') : isAzure ? t('connection.azureAccountName') : t('settings.username')}</label>
-                                                                    <input
-                                                                        type="text"
-                                                                        placeholder={isS3 ? 'AKIAIOSFODNN7EXAMPLE' : isAzure ? 'aeroftp2026' : 'username'}
-                                                                        value={editingServer.username}
-                                                                        onChange={(e) =>
-                                                                            setEditingServer({
-                                                                                ...editingServer,
-                                                                                username: e.target.value,
-                                                                            })
-                                                                        }
-                                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                    />
-                                                                </div>
-                                                            )}
-
-                                                            {/* Password - for non-OAuth */}
-                                                            {needsPassword && !isMega && !isInternxt && !isKDrive && !isDrime && !isOpenDrive && (
-                                                                <div>
-                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{isS3 ? t('settings.secretAccessKey') : isAzure ? t('connection.azureAccessKey') : t('settings.password')}</label>
-                                                                    <div className="relative">
-                                                                        <input
-                                                                            type={showEditPassword ? 'text' : 'password'}
-                                                                            placeholder={t('settings.passwordPlaceholder')}
-                                                                            value={editingServer.password || ''}
-                                                                            onChange={(e) =>
-                                                                                setEditingServer({
-                                                                                    ...editingServer,
-                                                                                    password: e.target.value,
-                                                                                })
-                                                                            }
-                                                                            className="w-full px-3 py-2 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                        />
-                                                                        <button type="button" tabIndex={-1} onClick={() => setShowEditPassword(!showEditPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600">
-                                                                            {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                                                                        </button>
-                                                                    </div>
-                                                                </div>
-                                                            )}
-
-                                                            {/* S3 Specific Fields */}
-                                                            {isS3 && (
-                                                                <>
-                                                                    <div className="grid grid-cols-2 gap-2">
-                                                                        <div>
-                                                                            <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.bucket')}</label>
-                                                                            <input
-                                                                                type="text"
-                                                                                placeholder={t('settings.s3BucketPlaceholder')}
-                                                                                value={editingServer.options?.bucket || ''}
-                                                                                onChange={(e) =>
-                                                                                    setEditingServer({
-                                                                                        ...editingServer,
-                                                                                        options: {
-                                                                                            ...editingServer.options,
-                                                                                            bucket: e.target.value,
-                                                                                        },
-                                                                                    })
-                                                                                }
-                                                                                className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                            />
-                                                                        </div>
-                                                                        <div>
-                                                                            <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.region')}</label>
-                                                                            <input
-                                                                                type="text"
-                                                                                placeholder={t('settings.s3RegionPlaceholder')}
-                                                                                value={editingServer.options?.region || ''}
-                                                                                onChange={(e) =>
-                                                                                    setEditingServer({
-                                                                                        ...editingServer,
-                                                                                        options: {
-                                                                                            ...editingServer.options,
-                                                                                            region: e.target.value,
-                                                                                        },
-                                                                                    })
-                                                                                }
-                                                                                className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                            />
-                                                                        </div>
-                                                                    </div>
-                                                                    <div>
-                                                                        <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.endpointUrl')}</label>
-                                                                        <input
-                                                                            type="text"
-                                                                            placeholder="s3.amazonaws.com"
-                                                                            value={editingServer.options?.endpoint || ''}
-                                                                            onChange={(e) =>
-                                                                                setEditingServer({
-                                                                                    ...editingServer,
-                                                                                    options: {
-                                                                                        ...editingServer.options,
-                                                                                        endpoint: e.target.value,
-                                                                                    },
-                                                                                })
-                                                                            }
-                                                                            className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                        />
-                                                                    </div>
-                                                                    {/* Path-Style URLs checkbox (parity with QuickConnect ProtocolSelector) */}
-                                                                    <div>
-                                                                        <label className="flex items-center gap-2 cursor-pointer text-sm">
-                                                                            <input
-                                                                                type="checkbox"
-                                                                                checked={!!editingServer.options?.pathStyle}
-                                                                                onChange={(e) =>
-                                                                                    setEditingServer({
-                                                                                        ...editingServer,
-                                                                                        options: {
-                                                                                            ...editingServer.options,
-                                                                                            pathStyle: e.target.checked,
-                                                                                        },
-                                                                                    })
-                                                                                }
-                                                                                className="w-4 h-4 rounded text-amber-500 focus:ring-amber-500"
-                                                                            />
-                                                                            <span className="text-gray-700 dark:text-gray-200">{t('protocol.pathStyle')}</span>
-                                                                        </label>
-                                                                    </div>
-                                                                </>
-                                                            )}
-
-                                                            {/* Azure Specific Fields */}
-                                                            {isAzure && (
-                                                                <div>
-                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('protocol.azureContainerName')}</label>
-                                                                    <input
-                                                                        type="text"
-                                                                        placeholder={t('protocol.azureContainerPlaceholder')}
-                                                                        value={editingServer.options?.bucket || ''}
-                                                                        onChange={(e) =>
-                                                                            setEditingServer({
-                                                                                ...editingServer,
-                                                                                options: {
-                                                                                    ...editingServer.options,
-                                                                                    bucket: e.target.value,
-                                                                                },
-                                                                            })
-                                                                        }
-                                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                    />
-                                                                </div>
-                                                            )}
-
-                                                            {/* Paths - common for all */}
-                                                            <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
-                                                                <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.remotePath')}</label>
-                                                                <input
-                                                                    type="text"
-                                                                    placeholder={t('settings.remotePathPlaceholder')}
-                                                                    value={editingServer.initialPath || ''}
-                                                                    onChange={(e) =>
-                                                                        setEditingServer({
-                                                                            ...editingServer,
-                                                                            initialPath: e.target.value,
-                                                                        })
-                                                                    }
-                                                                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                />
-                                                            </div>
-                                                            <div className="flex gap-2">
-                                                                <div className="flex-1">
-                                                                    <label className="block text-xs font-medium text-gray-500 mb-1">{t('settings.localPath')}</label>
-                                                                    <input
-                                                                        type="text"
-                                                                        placeholder={t('settings.localPathPlaceholder')}
-                                                                        value={editingServer.localInitialPath || ''}
-                                                                        onChange={(e) =>
-                                                                            setEditingServer({
-                                                                                ...editingServer,
-                                                                                localInitialPath: e.target.value,
-                                                                            })
-                                                                        }
-                                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                    />
-                                                                </div>
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={async () => {
-                                                                        try {
-                                                                            const selected = await open({
-                                                                                directory: true,
-                                                                                multiple: false,
-                                                                                title: t('settings.selectLocalFolder'),
-                                                                            });
-                                                                            if (selected && typeof selected === 'string') {
-                                                                                setEditingServer({
-                                                                                    ...editingServer,
-                                                                                    localInitialPath: selected,
-                                                                                });
-                                                                            }
-                                                                        } catch (e) {
-                                                                            console.error('Folder picker error:', e);
-                                                                        }
-                                                                    }}
-                                                                    className="mt-5 px-3 py-2 bg-gray-100 dark:bg-gray-600 hover:bg-gray-200 dark:hover:bg-gray-500 rounded-lg transition-colors"
-                                                                    title={t('common.browse')}
-                                                                >
-                                                                    <FolderOpen size={16} />
-                                                                </button>
-                                                            </div>
-                                                            {/* Public URL Base for share links: only meaningful for protocols
-                                                                that serve a file tree mappable to plain HTTP URLs
-                                                                (FTP/FTPS/SFTP/WebDAV). Hidden for S3, Azure, MEGA, Filen,
-                                                                GitHub and OAuth-based providers, which build their own
-                                                                share links via provider APIs. */}
-                                                            {(protocol === 'ftp' || protocol === 'sftp' || protocol === 'webdav') && (
-                                                                <div>
-                                                                    <label className="block text-xs font-medium text-gray-500 mb-1 flex items-center gap-1.5">
-                                                                        <Link2 size={12} />
-                                                                        {t('settings.publicUrlBase')}
-                                                                        <span className="text-gray-400 font-normal">({t('common.optional')})</span>
-                                                                    </label>
-                                                                    <input
-                                                                        type="text"
-                                                                        placeholder="https://www.example.com/"
-                                                                        value={editingServer.publicUrlBase || ''}
-                                                                        onChange={(e) =>
-                                                                            setEditingServer({
-                                                                                ...editingServer,
-                                                                                publicUrlBase: e.target.value || undefined,
-                                                                            })
-                                                                        }
-                                                                        className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg"
-                                                                    />
-                                                                    <p className="text-xs text-gray-400 mt-1">{t('settings.publicUrlBaseDesc')}</p>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                        <div className="flex gap-2 justify-end">
-                                                            <button
-                                                                onClick={() => {
-                                                                    setEditingServer(null);
-                                                                    setShowEditPassword(false);
-                                                                }}
-                                                                className="px-4 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg"
-                                                            >
-                                                                {t('common.cancel')}
-                                                            </button>
-                                                            {servers.some((s) => s.id === editingServer.id) && (
-                                                                <button
-                                                                    onClick={async () => {
-                                                                        const newId = `srv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-                                                                        // Auto-rename if name unchanged
-                                                                        const original = servers.find((s) => s.id === editingServer.id);
-                                                                        const finalName = original && editingServer.name === original.name ? `${editingServer.name} (${t('common.copy')})` : editingServer.name;
-
-                                                                        let hasStoredCredential = false;
-                                                                        if (editingServer.password) {
-                                                                            try {
-                                                                                await invoke('store_credential', {
-                                                                                    account: `server_${newId}`,
-                                                                                    password: editingServer.password,
-                                                                                });
-                                                                                hasStoredCredential = true;
-                                                                            } catch {
-                                                                                /* re-enter later */
-                                                                            }
-                                                                        } else if (original?.hasStoredCredential) {
-                                                                            // Copy credential from vault
-                                                                            try {
-                                                                                const pwd = await invoke<string>('get_credential', { account: `server_${original.id}` });
-                                                                                if (pwd) {
-                                                                                    await invoke('store_credential', {
-                                                                                        account: `server_${newId}`,
-                                                                                        password: pwd,
-                                                                                    });
-                                                                                    hasStoredCredential = true;
-                                                                                }
-                                                                            } catch {
-                                                                                /* re-enter later */
-                                                                            }
-                                                                        }
-
-                                                                        const newServer = {
-                                                                            ...editingServer,
-                                                                            host: editingServer.protocol === 'mega' ? editingServer.host || 'mega.nz' : editingServer.host,
-                                                                            port: editingServer.protocol === 'mega' ? editingServer.port || 443 : editingServer.port,
-                                                                            options: editingServer.protocol === 'mega' ? normalizeMegaOptions(editingServer.options) : editingServer.options,
-                                                                            id: newId,
-                                                                            name: finalName,
-                                                                            password: undefined,
-                                                                            hasStoredCredential,
-                                                                            lastConnected: undefined,
-                                                                        };
-                                                                        const updatedServers = [...servers, newServer];
-                                                                        setServers(updatedServers);
-                                                                        storeSavedServerProfiles(updatedServers).catch(() => {});
-                                                                        setEditingServer(null);
-                                                                        setShowEditPassword(false);
-                                                                        setHasChanges(true);
-                                                                        onServersChanged?.();
-                                                                    }}
-                                                                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg flex items-center gap-1.5"
-                                                                    title={t('connection.saveAsNew')}
-                                                                >
-                                                                    <Copy size={14} />
-                                                                    {t('connection.saveAsNew')}
-                                                                </button>
-                                                            )}
-                                                            <button
-                                                                onClick={async () => {
-                                                                    const exists = servers.some((s) => s.id === editingServer.id);
-                                                                    let updatedServers: ServerProfile[];
-
-                                                                    // Store password in credential vault if provided
-                                                                    let hasStoredCredential = editingServer.hasStoredCredential || false;
-                                                                    if (editingServer.password) {
-                                                                        try {
-                                                                            await invoke('store_credential', {
-                                                                                account: `server_${editingServer.id}`,
-                                                                                password: editingServer.password,
-                                                                            });
-                                                                            hasStoredCredential = true;
-                                                                        } catch (err) {
-                                                                            console.error('Failed to store credential:', err);
-                                                                        }
-                                                                    }
-
-                                                                    // Update server profile with hasStoredCredential flag, without storing password in localStorage
-                                                                    const serverToSave = {
-                                                                        ...editingServer,
-                                                                        host: editingServer.protocol === 'mega' ? editingServer.host || 'mega.nz' : editingServer.host,
-                                                                        port: editingServer.protocol === 'mega' ? editingServer.port || 443 : editingServer.port,
-                                                                        options: editingServer.protocol === 'mega' ? normalizeMegaOptions(editingServer.options) : editingServer.options,
-                                                                        password: undefined, // Don't store password in localStorage
-                                                                        hasStoredCredential,
-                                                                    };
-
-                                                                    if (exists) {
-                                                                        updatedServers = servers.map((s) => (s.id === editingServer.id ? serverToSave : s));
-                                                                    } else {
-                                                                        updatedServers = [...servers, serverToSave];
-                                                                    }
-                                                                    setServers(updatedServers);
-                                                                    // Persist immediately so changes aren't lost if user closes without Save Changes
-                                                                    storeSavedServerProfiles(updatedServers).catch(() => {});
-                                                                    setEditingServer(null);
-                                                                    setShowEditPassword(false);
-                                                                    setHasChanges(true);
-                                                                    onServersChanged?.();
-                                                                }}
-                                                                className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg"
-                                                            >
-                                                                {t('common.save')}
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })()}
-                                </div>
-                            )}
                             {activeTab === 'filehandling' && (
                                 <div className="space-y-6">
                                     <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">{t('settings.fileHandlingTitle')}</h3>
@@ -4351,7 +2779,96 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                 <div className="space-y-6">
                                     <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">{t('settings.backup')}</h3>
 
-                                    {/* Vault Backup */}
+                                    {/* #270 (Ehud wishlist): Interoperability & Backup table. Each row opens
+                                        the unified Export/Import dialog in the right mode; the Full Backup row
+                                        reveals the inline keystore panel below (reveal-inline, #214 untouched). */}
+                                    <div>
+                                        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('settings.backupTableTitle')}</div>
+                                        <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                                            <table className="w-full text-sm">
+                                                <thead>
+                                                    <tr className="bg-gray-50 dark:bg-gray-700/50 text-left text-[11px] uppercase tracking-wide text-gray-500">
+                                                        <th className="px-4 py-2 font-medium">{t('settings.backupColApp')}</th>
+                                                        <th className="px-4 py-2 font-medium">{t('settings.backupColFormat')}</th>
+                                                        <th className="px-4 py-2 font-medium text-center">{t('settings.backupColImport')}</th>
+                                                        <th className="px-4 py-2 font-medium text-center">{t('settings.backupColExport')}</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                                                    {/* AeroFTP Full Backup: reveal the inline keystore panel below */}
+                                                    <tr>
+                                                        <td className="px-4 py-3">
+                                                            <div className="flex items-center gap-2.5">
+                                                                <div className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0"><Key size={16} className="text-blue-600 dark:text-blue-400" /></div>
+                                                                <div>
+                                                                    <div className="font-medium text-gray-800 dark:text-gray-100">{t('settings.backupRowFullBackup')}</div>
+                                                                    <div className="text-xs text-gray-500 dark:text-gray-400">{t('settings.backupRowFullBackupDesc')}</div>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-4 py-3"><code className={backupFmtChip}>.aeroftp-keystore</code></td>
+                                                        <td className="px-4 py-3 text-center"><button onClick={() => setKeystoreAction('import')} className={backupCellBtn} title={t('settings.importKeystore')}><Upload size={14} /> {t('settings.backupColImport')}</button></td>
+                                                        <td className="px-4 py-3 text-center"><button onClick={() => setKeystoreAction('export')} className={backupCellBtn} title={t('settings.exportKeystore')}><Download size={14} /> {t('settings.backupColExport')}</button></td>
+                                                    </tr>
+                                                    {/* AeroFTP Servers Only: .aeroftp via the unified dialog */}
+                                                    <tr>
+                                                        <td className="px-4 py-3">
+                                                            <div className="flex items-center gap-2.5">
+                                                                <div className="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center shrink-0"><Server size={16} className="text-indigo-600 dark:text-indigo-400" /></div>
+                                                                <div>
+                                                                    <div className="font-medium text-gray-800 dark:text-gray-100">{t('settings.backupRowServersOnly')}</div>
+                                                                    <div className="text-xs text-gray-500 dark:text-gray-400">{t('settings.backupRowServersOnlyDesc')}</div>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-4 py-3"><code className={backupFmtChip}>.aeroftp</code></td>
+                                                        <td className="px-4 py-3 text-center"><button onClick={() => openExportImport('import')} className={backupCellBtn} title={t('settings.importServers')}><Upload size={14} /> {t('settings.backupColImport')}</button></td>
+                                                        <td className="px-4 py-3 text-center"><button onClick={() => openExportImport('export')} className={backupCellBtn} title={t('settings.exportServers')}><Download size={14} /> {t('settings.backupColExport')}</button></td>
+                                                    </tr>
+                                                    {/* Rclone: its own row, routed through the generic bridge */}
+                                                    <tr>
+                                                        <td className="px-4 py-3">
+                                                            <div className="flex items-center gap-2.5">
+                                                                <div className="w-8 h-8 rounded-lg bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center shrink-0"><span className="text-orange-600 dark:text-orange-400 font-bold text-xs">rc</span></div>
+                                                                <div className="font-medium text-gray-800 dark:text-gray-100">rclone</div>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-4 py-3"><code className={backupFmtChip}>(rclone).conf</code></td>
+                                                        <td className="px-4 py-3 text-center"><button onClick={() => openExportImport('bridge-import')} className={backupCellBtn} title={t('settings.bridgeImport')}><Upload size={14} /> {t('settings.backupColImport')}</button></td>
+                                                        <td className="px-4 py-3 text-center"><button onClick={() => openExportImport('bridge-export')} className={backupCellBtn} title={t('settings.bridgeExport')}><Download size={14} /> {t('settings.backupColExport')}</button></td>
+                                                    </tr>
+                                                    {/* Other Apps: the remaining generic bridge sources, collapsed */}
+                                                    <tr>
+                                                        <td className="px-4 py-3">
+                                                            <div className="flex items-center gap-2.5">
+                                                                <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center shrink-0"><Boxes size={16} className="text-gray-500 dark:text-gray-400" /></div>
+                                                                <div>
+                                                                    <div className="font-medium text-gray-800 dark:text-gray-100">{t('settings.backupRowOtherApps')}</div>
+                                                                    <div className="text-xs text-gray-500 dark:text-gray-400">{t('settings.backupOtherAppsCount', { count: otherBridgeAppsCount })}</div>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-4 py-3"><span className="text-xs text-gray-400 dark:text-gray-500">WinSCP, FileZilla, AWS CLI, ...</span></td>
+                                                        <td className="px-4 py-3 text-center"><button onClick={() => openExportImport('bridge-import')} className={backupCellBtn} title={t('settings.bridgeImport')}><Upload size={14} /> {t('settings.backupColImport')}</button></td>
+                                                        <td className="px-4 py-3 text-center"><button onClick={() => openExportImport('bridge-export')} className={backupCellBtn} title={t('settings.bridgeExport')}><Download size={14} /> {t('settings.backupColExport')}</button></td>
+                                                    </tr>
+                                                </tbody>
+                                                <tfoot>
+                                                    <tr className="bg-gray-50 dark:bg-gray-700/50 border-t-2 border-gray-200 dark:border-gray-600">
+                                                        <td className="px-4 py-3" colSpan={2}>
+                                                            <div className="font-medium text-gray-800 dark:text-gray-100">{t('settings.backupImportAny')}</div>
+                                                            <div className="text-xs text-gray-500 dark:text-gray-400">{t('settings.backupImportAnyDesc')}</div>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-center"><button onClick={() => openExportImport(undefined)} className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500 hover:bg-blue-600 text-white text-xs font-medium transition-colors whitespace-nowrap" title={t('settings.backupImportAny')}><Upload size={14} /> {t('settings.backupImportAny')}</button></td>
+                                                        <td className="px-4 py-3 text-center text-xs text-gray-400 dark:text-gray-500">N/A</td>
+                                                    </tr>
+                                                </tfoot>
+                                            </table>
+                                        </div>
+                                    </div>
+
+                                    {/* Vault Backup (reveal-inline from the Full Backup row) */}
+                                    {keystoreAction !== null && (
                                     <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
                                         <div className="bg-gray-50 dark:bg-gray-700/50 px-4 py-2 border-b border-gray-200 dark:border-gray-700">
                                             <div className="flex items-center justify-between">
@@ -4849,6 +3366,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             </div>
                                         </div>
                                     </div>
+                                    )}
                                 </div>
                             )}
 
@@ -4950,6 +3468,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
             {showExportImport && (
                 <ExportImportDialog
                     servers={servers}
+                    initialMode={exportImportInitialMode}
                     onImport={async (newServers) => {
                         // Read ground truth from the partition-aware vault to avoid stale state.
                         let currentServers = await loadSavedServerProfiles();
@@ -4958,9 +3477,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                         setServers(updated);
                         await storeSavedServerProfiles(updated).catch(() => {});
                         setShowExportImport(false);
+                        setExportImportInitialMode(undefined);
                         onServersChanged?.();
                     }}
-                    onClose={() => setShowExportImport(false)}
+                    onClose={() => { setShowExportImport(false); setExportImportInitialMode(undefined); }}
                 />
             )}
         </>
