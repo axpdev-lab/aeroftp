@@ -1668,9 +1668,9 @@
             "discoverTabDigital": "Tab.digital (8 GB bezmaksas, balstīts uz Nextcloud, EU/GDPR, reģionālie apakšdomēni)",
             "webdavLocalScheme": "Protokols",
             "webdavLocalSchemeHelp": "Saskaņojiet ar lokālā WebDAV tilta HTTP/HTTPS iestatījumu (Filen Desktop, MEGAcmd). HTTPS izmanto pašparakstītu sertifikātu, tāpēc sertifikāta pārbaude tiek automātiski atspējota.",
-            "s3SessionToken": "Session Token (optional)",
-            "s3SessionTokenPlaceholder": "AWS STS session token",
-            "s3SessionTokenHint": "For temporary credentials from AWS STS AssumeRole or SSO. Leave empty for long-term IAM access keys."
+            "s3SessionToken": "Sesijas pilnvara (neobligāti)",
+            "s3SessionTokenPlaceholder": "AWS STS sesijas pilnvara",
+            "s3SessionTokenHint": "Pagaidu akreditācijas datiem no AWS STS AssumeRole vai SSO. Atstājiet tukšu pastāvīgām IAM piekļuves atslēgām."
         },
         "shortcuts": {
             "title": "Tastatūras saīsnes",

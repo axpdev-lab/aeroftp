@@ -1668,9 +1668,9 @@
             "discoverTabDigital": "Tab.digital (8 GB miễn phí, dựa trên Nextcloud, EU/GDPR, tên miền phụ theo khu vực)",
             "webdavLocalScheme": "Giao thức",
             "webdavLocalSchemeHelp": "Khớp với cài đặt HTTP/HTTPS của cầu WebDAV cục bộ (Filen Desktop, MEGAcmd). HTTPS sử dụng chứng chỉ tự ký, vì vậy việc xác minh chứng chỉ bị tự động vô hiệu hóa.",
-            "s3SessionToken": "Session Token (optional)",
-            "s3SessionTokenPlaceholder": "AWS STS session token",
-            "s3SessionTokenHint": "For temporary credentials from AWS STS AssumeRole or SSO. Leave empty for long-term IAM access keys."
+            "s3SessionToken": "Mã thông báo phiên (tùy chọn)",
+            "s3SessionTokenPlaceholder": "Mã thông báo phiên AWS STS",
+            "s3SessionTokenHint": "Dành cho thông tin xác thực tạm thời từ AWS STS AssumeRole hoặc SSO. Để trống cho khóa truy cập IAM dài hạn."
         },
         "shortcuts": {
             "title": "Phím tắt",

@@ -1668,9 +1668,9 @@
             "discoverTabDigital": "Tab.digital (8 GB бесплатно, базирано на Nextcloud, EU/GDPR, регионални поддомени)",
             "webdavLocalScheme": "Протокол",
             "webdavLocalSchemeHelp": "Усогласете со HTTP/HTTPS поставката на локалниот WebDAV мост (Filen Desktop, MEGAcmd). HTTPS користи самопотпишан сертификат, така што верификацијата на сертификатот автоматски се исклучува.",
-            "s3SessionToken": "Session Token (optional)",
-            "s3SessionTokenPlaceholder": "AWS STS session token",
-            "s3SessionTokenHint": "For temporary credentials from AWS STS AssumeRole or SSO. Leave empty for long-term IAM access keys."
+            "s3SessionToken": "Токен на сесија (опционално)",
+            "s3SessionTokenPlaceholder": "Токен на сесија на AWS STS",
+            "s3SessionTokenHint": "За привремени акредитиви од AWS STS AssumeRole или SSO. Оставете празно за трајни IAM клучеви за пристап."
         },
         "shortcuts": {
             "title": "Кратенки на тастатура",

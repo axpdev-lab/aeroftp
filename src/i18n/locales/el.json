@@ -1668,9 +1668,9 @@
             "discoverTabDigital": "Tab.digital (8 GB δωρεάν, βασισμένο σε Nextcloud, EU/GDPR, περιφερειακά υποτομέα)",
             "webdavLocalScheme": "Πρωτόκολλο",
             "webdavLocalSchemeHelp": "Ταιριάξτε με τη ρύθμιση HTTP/HTTPS της τοπικής γέφυρας WebDAV (Filen Desktop, MEGAcmd). Το HTTPS χρησιμοποιεί αυτο-υπογεγραμμένο πιστοποιητικό, οπότε η επαλήθευση πιστοποιητικού απενεργοποιείται αυτόματα.",
-            "s3SessionToken": "Session Token (optional)",
-            "s3SessionTokenPlaceholder": "AWS STS session token",
-            "s3SessionTokenHint": "For temporary credentials from AWS STS AssumeRole or SSO. Leave empty for long-term IAM access keys."
+            "s3SessionToken": "Διακριτικό συνεδρίας (προαιρετικό)",
+            "s3SessionTokenPlaceholder": "Διακριτικό συνεδρίας AWS STS",
+            "s3SessionTokenHint": "Για προσωρινά διαπιστευτήρια από AWS STS AssumeRole ή SSO. Αφήστε το κενό για μόνιμα κλειδιά πρόσβασης IAM."
         },
         "shortcuts": {
             "title": "Συντομεύσεις πληκτρολογίου",

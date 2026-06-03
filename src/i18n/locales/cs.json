@@ -1668,9 +1668,9 @@
             "discoverTabDigital": "Tab.digital (8 GB zdarma, založeno na Nextcloud, EU/GDPR, regionální subdomény)",
             "webdavLocalScheme": "Protokol",
             "webdavLocalSchemeHelp": "Odpovídá nastavení HTTP/HTTPS lokálního WebDAV mostu (Filen Desktop, MEGAcmd). HTTPS používá samopodepsaný certifikát, takže ověřování certifikátu je automaticky vypnuto.",
-            "s3SessionToken": "Session Token (optional)",
-            "s3SessionTokenPlaceholder": "AWS STS session token",
-            "s3SessionTokenHint": "For temporary credentials from AWS STS AssumeRole or SSO. Leave empty for long-term IAM access keys."
+            "s3SessionToken": "Token relace (volitelné)",
+            "s3SessionTokenPlaceholder": "Token relace AWS STS",
+            "s3SessionTokenHint": "Pro dočasné přihlašovací údaje z AWS STS AssumeRole nebo SSO. Pro trvalé přístupové klíče IAM ponechte prázdné."
         },
         "shortcuts": {
             "title": "Klávesové zkratky",

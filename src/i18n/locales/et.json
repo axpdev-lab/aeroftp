@@ -1668,9 +1668,9 @@
             "discoverTabDigital": "Tab.digital (8 GB tasuta, Nextcloud-põhine, EU/GDPR, piirkondlikud alamdomeenid)",
             "webdavLocalScheme": "Protokoll",
             "webdavLocalSchemeHelp": "Sobita kohaliku WebDAV silla HTTP/HTTPS sättega (Filen Desktop, MEGAcmd). HTTPS kasutab iseallkirjastatud sertifikaati, seega on sertifikaadi kontroll automaatselt välja lülitatud.",
-            "s3SessionToken": "Session Token (optional)",
-            "s3SessionTokenPlaceholder": "AWS STS session token",
-            "s3SessionTokenHint": "For temporary credentials from AWS STS AssumeRole or SSO. Leave empty for long-term IAM access keys."
+            "s3SessionToken": "Seansiluba (valikuline)",
+            "s3SessionTokenPlaceholder": "AWS STS seansiluba",
+            "s3SessionTokenHint": "Ajutiste mandaatide jaoks AWS STS AssumeRole'ist või SSO-st. Püsivate IAM pääsuvõtmete puhul jätke tühjaks."
         },
         "shortcuts": {
             "title": "Kiirklahvid",

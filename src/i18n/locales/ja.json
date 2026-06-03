@@ -1668,9 +1668,9 @@
             "discoverTabDigital": "Tab.digital (8 GB 無料、Nextcloud ベース、EU/GDPR、地域別サブドメイン)",
             "webdavLocalScheme": "プロトコル",
             "webdavLocalSchemeHelp": "ローカル WebDAV ブリッジ (Filen Desktop, MEGAcmd) の HTTP/HTTPS 設定に合わせてください。HTTPS は自己署名証明書を使用するため、証明書の検証は自動的に無効化されます。",
-            "s3SessionToken": "Session Token (optional)",
-            "s3SessionTokenPlaceholder": "AWS STS session token",
-            "s3SessionTokenHint": "For temporary credentials from AWS STS AssumeRole or SSO. Leave empty for long-term IAM access keys."
+            "s3SessionToken": "セッショントークン（任意）",
+            "s3SessionTokenPlaceholder": "AWS STS セッショントークン",
+            "s3SessionTokenHint": "AWS STS AssumeRole または SSO による一時的な認証情報用です。永続的な IAM アクセスキーの場合は空欄のままにしてください。"
         },
         "shortcuts": {
             "title": "キーボードショートカット",

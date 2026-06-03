@@ -1668,9 +1668,9 @@
             "discoverTabDigital": "Tab.digital (8 GB am ddim, seiliedig ar Nextcloud, EU/GDPR, is-barthau rhanbarthol)",
             "webdavLocalScheme": "Protocol",
             "webdavLocalSchemeHelp": "Cyfateb i osodiad HTTP/HTTPS y bont WebDAV leol (Filen Desktop, MEGAcmd). Mae HTTPS yn defnyddio tystysgrif hunan-lofnodedig, felly mae gwirio tystysgrifau yn cael ei analluogi'n awtomatig.",
-            "s3SessionToken": "Session Token (optional)",
-            "s3SessionTokenPlaceholder": "AWS STS session token",
-            "s3SessionTokenHint": "For temporary credentials from AWS STS AssumeRole or SSO. Leave empty for long-term IAM access keys."
+            "s3SessionToken": "Tocyn sesiwn (dewisol)",
+            "s3SessionTokenPlaceholder": "Tocyn sesiwn AWS STS",
+            "s3SessionTokenHint": "Ar gyfer manylion dilysu dros dro o AWS STS AssumeRole neu SSO. Gadewch yn wag ar gyfer allweddi mynediad IAM hirdymor."
         },
         "shortcuts": {
             "title": "Llwybrau Byr Bysellfwrdd",

@@ -1668,9 +1668,9 @@
             "discoverTabDigital": "Tab.digital (8 GB ফ্রি, Nextcloud-ভিত্তিক, EU/GDPR, আঞ্চলিক সাবডোমেইন)",
             "webdavLocalScheme": "প্রোটোকল",
             "webdavLocalSchemeHelp": "লোকাল WebDAV ব্রিজের HTTP/HTTPS সেটিংয়ের সাথে মেলান (Filen Desktop, MEGAcmd)। HTTPS একটি স্ব-স্বাক্ষরিত সার্টিফিকেট ব্যবহার করে, তাই সার্টিফিকেট যাচাই স্বয়ংক্রিয়ভাবে নিষ্ক্রিয় থাকে।",
-            "s3SessionToken": "Session Token (optional)",
-            "s3SessionTokenPlaceholder": "AWS STS session token",
-            "s3SessionTokenHint": "For temporary credentials from AWS STS AssumeRole or SSO. Leave empty for long-term IAM access keys."
+            "s3SessionToken": "সেশন টোকেন (ঐচ্ছিক)",
+            "s3SessionTokenPlaceholder": "AWS STS সেশন টোকেন",
+            "s3SessionTokenHint": "AWS STS AssumeRole বা SSO থেকে অস্থায়ী শংসাপত্রের জন্য। দীর্ঘমেয়াদী IAM অ্যাক্সেস কী-এর জন্য খালি রাখুন।"
         },
         "shortcuts": {
             "title": "কীবোর্ড শর্টকাট",
