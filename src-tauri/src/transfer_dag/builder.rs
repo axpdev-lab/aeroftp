@@ -348,7 +348,18 @@ impl TransferGraphProfile {
         } else {
             1
         };
-        let preferred_chunk_size = if multipart_eligible { chunk_hint } else { 0 };
+        // `upload_parts` is clamped to `MAX_MULTIPART_PARTS`. When the file is
+        // larger than `MAX_MULTIPART_PARTS * chunk_hint` the clamp would leave
+        // `parts * chunk_hint < file_size`, and the runner (which reads exactly
+        // `part_size` bytes per part) would silently drop the tail. Grow the
+        // effective chunk so the parts always cover the whole file. This only
+        // changes anything in the clamped case: when unclamped,
+        // `div_ceil(file_size, upload_parts) <= chunk_hint`.
+        let preferred_chunk_size = if multipart_eligible {
+            chunk_hint.max(file_size.div_ceil(upload_parts as u64))
+        } else {
+            0
+        };
 
         Self {
             upload_parts,
@@ -1782,6 +1793,55 @@ mod tests {
         assert_eq!(nodes[built.verify].depends_on, built.transfer);
         // discover + acquire + 5 parts + verify + preserve + commit + emit.
         assert_eq!(nodes.len(), 11);
+    }
+
+    #[test]
+    fn shaped_upload_grows_chunk_when_parts_clamp_to_cover_the_tail() {
+        // A file larger than MAX_MULTIPART_PARTS * chunk_hint would otherwise
+        // clamp upload_parts and leave the tail unscheduled (the runner reads
+        // exactly preferred_chunk_size bytes per part). The shaping must grow
+        // the effective chunk so the parts always cover the whole file.
+        const MIB: u64 = 1024 * 1024;
+        let chunk = MIB;
+        let file_size = 20_000 * MIB; // > MAX_MULTIPART_PARTS (10_000) * 1 MiB
+        let built = TransferDagBuilder::shaped_file(
+            TransferDirection::Upload,
+            &caps_multipart(chunk),
+            file_size,
+        );
+
+        // Parts are clamped to the hard cap, but the chunk grew to compensate.
+        assert_eq!(built.profile.upload_parts, MAX_MULTIPART_PARTS);
+        assert!(
+            built.profile.preferred_chunk_size > chunk,
+            "chunk must grow past the hint when clamped"
+        );
+        // The invariant that prevents tail loss: parts * chunk >= file_size.
+        let covered =
+            built.profile.upload_parts as u64 * built.profile.preferred_chunk_size;
+        assert!(
+            covered >= file_size,
+            "parts ({}) * chunk ({}) = {} must cover file_size {}",
+            built.profile.upload_parts,
+            built.profile.preferred_chunk_size,
+            covered,
+            file_size
+        );
+    }
+
+    #[test]
+    fn shaped_upload_keeps_provider_chunk_when_not_clamped() {
+        // The clamp-compensation must be a no-op in the common case: when the
+        // part count fits under the cap, the provider's advertised chunk size
+        // is honoured verbatim (alignment contracts depend on it).
+        let chunk = 8 * 1024 * 1024;
+        let built = TransferDagBuilder::shaped_file(
+            TransferDirection::Upload,
+            &caps_multipart(chunk),
+            80 * 1024 * 1024, // 10 parts, well under the cap
+        );
+        assert_eq!(built.profile.upload_parts, 10);
+        assert_eq!(built.profile.preferred_chunk_size, chunk);
     }
 
     #[test]
