@@ -1433,7 +1433,6 @@
         },
         "protocol": {
             "selectProtocol": "Chagua itifaki...",
-            "servers": "Seva",
             "cloudStorage": "Hifadhi ya Wingu",
             "ftpDesc": "Itifaki ya Uhamisho wa Faili",
             "ftpsDesc": "FTP juu ya TLS/SSL",

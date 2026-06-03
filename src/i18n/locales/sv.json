@@ -1433,7 +1433,6 @@
         },
         "protocol": {
             "selectProtocol": "Välj protokoll...",
-            "servers": "Servrar",
             "cloudStorage": "Molnlagring",
             "ftpDesc": "Filöverföringsprotokoll",
             "ftpsDesc": "FTP över TLS/SSL",

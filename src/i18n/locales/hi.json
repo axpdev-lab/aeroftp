@@ -1433,7 +1433,6 @@
         },
         "protocol": {
             "selectProtocol": "प्रोटोकॉल चुनें...",
-            "servers": "सर्वर",
             "cloudStorage": "क्लाउड स्टोरेज",
             "ftpDesc": "फ़ाइल स्थानांतरण प्रोटोकॉल",
             "ftpsDesc": "TLS/SSL पर FTP",

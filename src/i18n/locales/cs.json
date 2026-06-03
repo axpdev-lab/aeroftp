@@ -1433,7 +1433,6 @@
         },
         "protocol": {
             "selectProtocol": "Vybrat protokol...",
-            "servers": "Servery",
             "cloudStorage": "Cloudové úložiště",
             "ftpDesc": "Protokol přenosu souborů",
             "ftpsDesc": "FTP přes TLS/SSL",

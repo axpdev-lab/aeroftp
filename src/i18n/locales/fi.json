@@ -1433,7 +1433,6 @@
         },
         "protocol": {
             "selectProtocol": "Valitse protokolla...",
-            "servers": "Palvelimet",
             "cloudStorage": "Pilvitallennus",
             "ftpDesc": "Tiedostonsiirtoprotokolla",
             "ftpsDesc": "FTP yli TLS/SSL",

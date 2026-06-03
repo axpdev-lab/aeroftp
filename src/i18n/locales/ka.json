@@ -1433,7 +1433,6 @@
         },
         "protocol": {
             "selectProtocol": "აირჩიეთ პროტოკოლი...",
-            "servers": "სერვერები",
             "cloudStorage": "ღრუბლოვანი საცავი",
             "ftpDesc": "ფაილების გადაცემის პროტოკოლი",
             "ftpsDesc": "FTP TLS/SSL-ით",

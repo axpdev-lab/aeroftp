@@ -1433,7 +1433,6 @@
         },
         "protocol": {
             "selectProtocol": "프로토콜 선택...",
-            "servers": "서버",
             "cloudStorage": "클라우드 스토리지",
             "ftpDesc": "파일 전송 프로토콜",
             "ftpsDesc": "FTP over TLS/SSL",

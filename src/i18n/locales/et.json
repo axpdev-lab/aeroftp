@@ -1433,7 +1433,6 @@
         },
         "protocol": {
             "selectProtocol": "Vali protokoll...",
-            "servers": "Serverid",
             "cloudStorage": "Pilveruum",
             "ftpDesc": "Failiedastusprotokoll",
             "ftpsDesc": "FTP üle TLS/SSL",

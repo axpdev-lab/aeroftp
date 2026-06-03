@@ -1433,7 +1433,6 @@
         },
         "protocol": {
             "selectProtocol": "Pilih protokol...",
-            "servers": "Server",
             "cloudStorage": "Penyimpanan Awan",
             "ftpDesc": "Protokol Transfer File",
             "ftpsDesc": "FTP lewat TLS/SSL",

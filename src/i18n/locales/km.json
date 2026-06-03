@@ -1433,7 +1433,6 @@
         },
         "protocol": {
             "selectProtocol": "ជ្រើសរើសពិធីការ...",
-            "servers": "ម៉ាស៊ីនបម្រើ",
             "cloudStorage": "ពពកផ្ទុកទិន្នន័យ",
             "ftpDesc": "ពិធីការផ្ទេរឯកសារ",
             "ftpsDesc": "FTP លើ TLS/SSL",

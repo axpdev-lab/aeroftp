@@ -1433,7 +1433,6 @@
         },
         "protocol": {
             "selectProtocol": "Protokol seç...",
-            "servers": "Sunucular",
             "cloudStorage": "Bulut Depolama",
             "ftpDesc": "Dosya Transfer Protokolü",
             "ftpsDesc": "TLS/SSL üzerinden FTP",

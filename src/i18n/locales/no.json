@@ -1433,7 +1433,6 @@
         },
         "protocol": {
             "selectProtocol": "Velg protokoll...",
-            "servers": "Servere",
             "cloudStorage": "Skylagring",
             "ftpDesc": "Filoverføringsprotokoll",
             "ftpsDesc": "FTP over TLS/SSL",

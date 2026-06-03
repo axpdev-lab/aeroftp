@@ -1433,7 +1433,6 @@
         },
         "protocol": {
             "selectProtocol": "Pumili ng protocol...",
-            "servers": "Mga Server",
             "cloudStorage": "Cloud Storage",
             "ftpDesc": "File Transfer Protocol",
             "ftpsDesc": "FTP over TLS/SSL",

@@ -1433,7 +1433,6 @@
         },
         "protocol": {
             "selectProtocol": "Выберите протокол...",
-            "servers": "Серверы",
             "cloudStorage": "Облачное хранилище",
             "ftpDesc": "Протокол передачи файлов",
             "ftpsDesc": "FTP через TLS/SSL",

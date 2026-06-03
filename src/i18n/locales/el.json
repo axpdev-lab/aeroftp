@@ -1433,7 +1433,6 @@
         },
         "protocol": {
             "selectProtocol": "Επιλογή πρωτοκόλλου...",
-            "servers": "Διακομιστές",
             "cloudStorage": "Cloud Storage",
             "ftpDesc": "Πρωτόκολλο μεταφοράς αρχείων",
             "ftpsDesc": "FTP μέσω TLS/SSL",

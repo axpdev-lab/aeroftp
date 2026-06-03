@@ -1433,7 +1433,6 @@
         },
         "protocol": {
             "selectProtocol": "Odaberi protokol...",
-            "servers": "Poslužitelji",
             "cloudStorage": "Pohrana u oblaku",
             "ftpDesc": "Protokol prijenosa datoteka",
             "ftpsDesc": "FTP preko TLS/SSL",
