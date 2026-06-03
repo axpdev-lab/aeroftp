@@ -103,6 +103,8 @@ aeroftp-cli --json alias-toggle aero
 
 Once `aero` is enabled, anything that works under `aeroftp` works under `aero`: `aero ls`, `aero sync`, `aero vault`, `aero mcp`, and so on.
 
+The shorter names (`aero`, `aftp`) were added at the community's request (discussion #273) for quicker, more comfortable typing than the full `aeroftp-cli`.
+
 ### Manual recipes (alternative)
 
 If you prefer to wire the alias yourself, the snippets below are equivalent to the toggle command above. They do not need root and they do not touch the package layout.
