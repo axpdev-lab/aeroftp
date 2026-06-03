@@ -1670,7 +1670,15 @@
             "webdavLocalSchemeHelp": "Съответства на настройката HTTP/HTTPS на локалния WebDAV мост (Filen Desktop, MEGAcmd). HTTPS използва самоподписан сертификат, така че проверката на сертификата е автоматично деактивирана.",
             "s3SessionToken": "Сесиен токен (по избор)",
             "s3SessionTokenPlaceholder": "Сесиен токен на AWS STS",
-            "s3SessionTokenHint": "За временни идентификационни данни от AWS STS AssumeRole или SSO. Оставете празно за постоянни IAM ключове за достъп."
+            "s3SessionTokenHint": "За временни идентификационни данни от AWS STS AssumeRole или SSO. Оставете празно за постоянни IAM ключове за достъп.",
+            "s3RoleArn": "ARN на ролята IAM (по избор)",
+            "s3RoleArnPlaceholder": "arn:aws:iam::123456789012:role/MyRole",
+            "s3RoleArnHint": "Поемете тази роля чрез AWS STS: горните ключове за достъп стават основни идентификационни данни за заявка на временни, ограничени до ролята данни. Оставете празно за директна употреба на ключовете.",
+            "s3RoleExternalId": "Външен идентификатор (по избор)",
+            "s3RoleSessionName": "Име на сесията на ролята (по избор)",
+            "s3RoleSessionNamePlaceholder": "aeroftp-session",
+            "s3RoleDurationSeconds": "Продължителност на сесията в секунди (по избор)",
+            "s3RoleDurationSecondsPlaceholder": "3600"
         },
         "shortcuts": {
             "title": "Клавишни комбинации",

@@ -57,6 +57,7 @@ pub mod pcloud;
 pub mod retry_after;
 pub mod s3;
 pub mod sftp;
+pub mod sts;
 pub mod swift;
 pub mod totp_helper;
 pub mod tpslimit;

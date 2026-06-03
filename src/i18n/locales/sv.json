@@ -1670,7 +1670,15 @@
             "webdavLocalSchemeHelp": "Matcha HTTP/HTTPS-inställningen för den lokala WebDAV-bryggan (Filen Desktop, MEGAcmd). HTTPS använder ett självsignerat certifikat, så certifikatverifiering inaktiveras automatiskt.",
             "s3SessionToken": "Sessionstoken (valfritt)",
             "s3SessionTokenPlaceholder": "AWS STS-sessionstoken",
-            "s3SessionTokenHint": "För tillfälliga autentiseringsuppgifter från AWS STS AssumeRole eller SSO. Lämna tomt för permanenta IAM-åtkomstnycklar."
+            "s3SessionTokenHint": "För tillfälliga autentiseringsuppgifter från AWS STS AssumeRole eller SSO. Lämna tomt för permanenta IAM-åtkomstnycklar.",
+            "s3RoleArn": "IAM-roll-ARN (valfritt)",
+            "s3RoleArnPlaceholder": "arn:aws:iam::123456789012:role/MyRole",
+            "s3RoleArnHint": "Anta den här rollen via AWS STS: åtkomstnycklarna ovan blir basuppgifter för att begära tillfälliga, rollbegränsade uppgifter. Lämna tomt för att använda nycklarna direkt.",
+            "s3RoleExternalId": "Externt ID (valfritt)",
+            "s3RoleSessionName": "Namn på rollsession (valfritt)",
+            "s3RoleSessionNamePlaceholder": "aeroftp-session",
+            "s3RoleDurationSeconds": "Sessionslängd i sekunder (valfritt)",
+            "s3RoleDurationSecondsPlaceholder": "3600"
         },
         "shortcuts": {
             "title": "Kortkommandon",

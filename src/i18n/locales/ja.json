@@ -1670,7 +1670,15 @@
             "webdavLocalSchemeHelp": "ローカル WebDAV ブリッジ (Filen Desktop, MEGAcmd) の HTTP/HTTPS 設定に合わせてください。HTTPS は自己署名証明書を使用するため、証明書の検証は自動的に無効化されます。",
             "s3SessionToken": "セッショントークン（任意）",
             "s3SessionTokenPlaceholder": "AWS STS セッショントークン",
-            "s3SessionTokenHint": "AWS STS AssumeRole または SSO による一時的な認証情報用です。永続的な IAM アクセスキーの場合は空欄のままにしてください。"
+            "s3SessionTokenHint": "AWS STS AssumeRole または SSO による一時的な認証情報用です。永続的な IAM アクセスキーの場合は空欄のままにしてください。",
+            "s3RoleArn": "IAM ロールの ARN（任意）",
+            "s3RoleArnPlaceholder": "arn:aws:iam::123456789012:role/MyRole",
+            "s3RoleArnHint": "このロールを AWS STS で引き受けます。上のアクセスキーが、ロールに限定された一時的な認証情報を要求するためのベース認証情報になります。キーを直接使用する場合は空欄のままにしてください。",
+            "s3RoleExternalId": "外部 ID（任意）",
+            "s3RoleSessionName": "ロールセッション名（任意）",
+            "s3RoleSessionNamePlaceholder": "aeroftp-session",
+            "s3RoleDurationSeconds": "セッションの有効期間（秒、任意）",
+            "s3RoleDurationSecondsPlaceholder": "3600"
         },
         "shortcuts": {
             "title": "キーボードショートカット",

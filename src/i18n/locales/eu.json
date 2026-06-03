@@ -1670,7 +1670,15 @@
             "webdavLocalSchemeHelp": "Bat etorri tokiko WebDAV zubiaren HTTP/HTTPS ezarpenarekin (Filen Desktop, MEGAcmd). HTTPSk auto-sinatutako ziurtagiri bat erabiltzen du, beraz ziurtagirien egiaztapena automatikoki desaktibatzen da.",
             "s3SessionToken": "Saioaren tokena (aukerakoa)",
             "s3SessionTokenPlaceholder": "AWS STS saioaren tokena",
-            "s3SessionTokenHint": "AWS STS AssumeRole edo SSO bidezko behin-behineko kredentzialetarako. Utzi hutsik betiko IAM sarbide-gakoentzat."
+            "s3SessionTokenHint": "AWS STS AssumeRole edo SSO bidezko behin-behineko kredentzialetarako. Utzi hutsik betiko IAM sarbide-gakoentzat.",
+            "s3RoleArn": "IAM rolaren ARN (aukerakoa)",
+            "s3RoleArnPlaceholder": "arn:aws:iam::123456789012:role/MyRole",
+            "s3RoleArnHint": "Hartu rol hau AWS STS bidez: goiko sarbide-gakoak oinarrizko kredentzial bihurtzen dira rolera mugatutako behin-behineko kredentzialak eskatzeko. Utzi hutsik gakoak zuzenean erabiltzeko.",
+            "s3RoleExternalId": "Kanpoko IDa (aukerakoa)",
+            "s3RoleSessionName": "Rolaren saioaren izena (aukerakoa)",
+            "s3RoleSessionNamePlaceholder": "aeroftp-session",
+            "s3RoleDurationSeconds": "Saioaren iraupena segundotan (aukerakoa)",
+            "s3RoleDurationSecondsPlaceholder": "3600"
         },
         "shortcuts": {
             "title": "Teklatu lasterbideak",

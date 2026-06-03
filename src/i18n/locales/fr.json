@@ -1670,7 +1670,15 @@
             "webdavLocalSchemeHelp": "Faites correspondre le paramètre HTTP/HTTPS du pont WebDAV local (Filen Desktop, MEGAcmd). HTTPS utilise un certificat auto-signé, donc la vérification du certificat est automatiquement désactivée.",
             "s3SessionToken": "Jeton de session (facultatif)",
             "s3SessionTokenPlaceholder": "Jeton de session AWS STS",
-            "s3SessionTokenHint": "Pour les identifiants temporaires d'AWS STS AssumeRole ou SSO. Laissez vide pour les clés d'accès IAM permanentes."
+            "s3SessionTokenHint": "Pour les identifiants temporaires d'AWS STS AssumeRole ou SSO. Laissez vide pour les clés d'accès IAM permanentes.",
+            "s3RoleArn": "ARN du rôle IAM (facultatif)",
+            "s3RoleArnPlaceholder": "arn:aws:iam::123456789012:role/MyRole",
+            "s3RoleArnHint": "Assumer ce rôle via AWS STS : les clés d'accès ci-dessus deviennent les identifiants de base pour obtenir des identifiants temporaires limités au rôle. Laissez vide pour utiliser les clés directement.",
+            "s3RoleExternalId": "ID externe (facultatif)",
+            "s3RoleSessionName": "Nom de session du rôle (facultatif)",
+            "s3RoleSessionNamePlaceholder": "aeroftp-session",
+            "s3RoleDurationSeconds": "Durée de session en secondes (facultatif)",
+            "s3RoleDurationSecondsPlaceholder": "3600"
         },
         "shortcuts": {
             "title": "Raccourcis clavier",

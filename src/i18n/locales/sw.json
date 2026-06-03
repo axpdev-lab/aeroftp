@@ -1670,7 +1670,15 @@
             "webdavLocalSchemeHelp": "Linganisha na mpangilio wa HTTP/HTTPS wa daraja la WebDAV la ndani (Filen Desktop, MEGAcmd). HTTPS hutumia cheti kilichotiwa saini na yenyewe, kwa hivyo uthibitishaji wa cheti unazimwa kiotomatiki.",
             "s3SessionToken": "Tokeni ya kipindi (hiari)",
             "s3SessionTokenPlaceholder": "Tokeni ya kipindi ya AWS STS",
-            "s3SessionTokenHint": "Kwa vitambulisho vya muda kutoka AWS STS AssumeRole au SSO. Acha tupu kwa funguo za ufikiaji za IAM za kudumu."
+            "s3SessionTokenHint": "Kwa vitambulisho vya muda kutoka AWS STS AssumeRole au SSO. Acha tupu kwa funguo za ufikiaji za IAM za kudumu.",
+            "s3RoleArn": "ARN ya jukumu la IAM (hiari)",
+            "s3RoleArnPlaceholder": "arn:aws:iam::123456789012:role/MyRole",
+            "s3RoleArnHint": "Chukua jukumu hili kupitia AWS STS: funguo za ufikiaji hapo juu zinakuwa vitambulisho vya msingi kuomba vitambulisho vya muda vilivyozuiliwa kwa jukumu. Acha tupu kutumia funguo moja kwa moja.",
+            "s3RoleExternalId": "Kitambulisho cha nje (hiari)",
+            "s3RoleSessionName": "Jina la kipindi cha jukumu (hiari)",
+            "s3RoleSessionNamePlaceholder": "aeroftp-session",
+            "s3RoleDurationSeconds": "Muda wa kipindi kwa sekunde (hiari)",
+            "s3RoleDurationSecondsPlaceholder": "3600"
         },
         "shortcuts": {
             "title": "Njia za Mkato",

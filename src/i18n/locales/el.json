@@ -1670,7 +1670,15 @@
             "webdavLocalSchemeHelp": "Ταιριάξτε με τη ρύθμιση HTTP/HTTPS της τοπικής γέφυρας WebDAV (Filen Desktop, MEGAcmd). Το HTTPS χρησιμοποιεί αυτο-υπογεγραμμένο πιστοποιητικό, οπότε η επαλήθευση πιστοποιητικού απενεργοποιείται αυτόματα.",
             "s3SessionToken": "Διακριτικό συνεδρίας (προαιρετικό)",
             "s3SessionTokenPlaceholder": "Διακριτικό συνεδρίας AWS STS",
-            "s3SessionTokenHint": "Για προσωρινά διαπιστευτήρια από AWS STS AssumeRole ή SSO. Αφήστε το κενό για μόνιμα κλειδιά πρόσβασης IAM."
+            "s3SessionTokenHint": "Για προσωρινά διαπιστευτήρια από AWS STS AssumeRole ή SSO. Αφήστε το κενό για μόνιμα κλειδιά πρόσβασης IAM.",
+            "s3RoleArn": "ARN ρόλου IAM (προαιρετικό)",
+            "s3RoleArnPlaceholder": "arn:aws:iam::123456789012:role/MyRole",
+            "s3RoleArnHint": "Αναλάβετε αυτόν τον ρόλο μέσω AWS STS: τα παραπάνω κλειδιά πρόσβασης γίνονται βασικά διαπιστευτήρια για την αίτηση προσωρινών διαπιστευτηρίων περιορισμένων στον ρόλο. Αφήστε το κενό για άμεση χρήση των κλειδιών.",
+            "s3RoleExternalId": "Εξωτερικό αναγνωριστικό (προαιρετικό)",
+            "s3RoleSessionName": "Όνομα συνεδρίας ρόλου (προαιρετικό)",
+            "s3RoleSessionNamePlaceholder": "aeroftp-session",
+            "s3RoleDurationSeconds": "Διάρκεια συνεδρίας σε δευτερόλεπτα (προαιρετικό)",
+            "s3RoleDurationSecondsPlaceholder": "3600"
         },
         "shortcuts": {
             "title": "Συντομεύσεις πληκτρολογίου",

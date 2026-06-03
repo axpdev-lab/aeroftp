@@ -1670,7 +1670,15 @@
             "webdavLocalSchemeHelp": "Saskaņojiet ar lokālā WebDAV tilta HTTP/HTTPS iestatījumu (Filen Desktop, MEGAcmd). HTTPS izmanto pašparakstītu sertifikātu, tāpēc sertifikāta pārbaude tiek automātiski atspējota.",
             "s3SessionToken": "Sesijas pilnvara (neobligāti)",
             "s3SessionTokenPlaceholder": "AWS STS sesijas pilnvara",
-            "s3SessionTokenHint": "Pagaidu akreditācijas datiem no AWS STS AssumeRole vai SSO. Atstājiet tukšu pastāvīgām IAM piekļuves atslēgām."
+            "s3SessionTokenHint": "Pagaidu akreditācijas datiem no AWS STS AssumeRole vai SSO. Atstājiet tukšu pastāvīgām IAM piekļuves atslēgām.",
+            "s3RoleArn": "IAM lomas ARN (neobligāti)",
+            "s3RoleArnPlaceholder": "arn:aws:iam::123456789012:role/MyRole",
+            "s3RoleArnHint": "Uzņemieties šo lomu, izmantojot AWS STS: iepriekš norādītās piekļuves atslēgas kļūst par pamata akreditācijas datiem, lai pieprasītu pagaidu, ar lomu ierobežotus akreditācijas datus. Atstājiet tukšu, lai izmantotu atslēgas tieši.",
+            "s3RoleExternalId": "Ārējais ID (neobligāti)",
+            "s3RoleSessionName": "Lomas sesijas nosaukums (neobligāti)",
+            "s3RoleSessionNamePlaceholder": "aeroftp-session",
+            "s3RoleDurationSeconds": "Sesijas ilgums sekundēs (neobligāti)",
+            "s3RoleDurationSecondsPlaceholder": "3600"
         },
         "shortcuts": {
             "title": "Tastatūras saīsnes",

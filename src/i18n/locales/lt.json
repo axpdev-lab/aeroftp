@@ -1670,7 +1670,15 @@
             "webdavLocalSchemeHelp": "Atitikite vietinio WebDAV tilto HTTP/HTTPS nustatymą (Filen Desktop, MEGAcmd). HTTPS naudoja savaime pasirašytą sertifikatą, todėl sertifikato patikrinimas automatiškai išjungiamas.",
             "s3SessionToken": "Seanso žetonas (nebūtina)",
             "s3SessionTokenPlaceholder": "AWS STS seanso žetonas",
-            "s3SessionTokenHint": "Laikiniems prisijungimo duomenims iš AWS STS AssumeRole arba SSO. Nuolatiniams IAM prieigos raktams palikite tuščią."
+            "s3SessionTokenHint": "Laikiniems prisijungimo duomenims iš AWS STS AssumeRole arba SSO. Nuolatiniams IAM prieigos raktams palikite tuščią.",
+            "s3RoleArn": "IAM vaidmens ARN (nebūtina)",
+            "s3RoleArnPlaceholder": "arn:aws:iam::123456789012:role/MyRole",
+            "s3RoleArnHint": "Prisiimkite šį vaidmenį per AWS STS: aukščiau esantys prieigos raktai tampa baziniais kredencialais laikiniems, vaidmeniu apribotiems kredencialams gauti. Palikite tuščią, kad raktai būtų naudojami tiesiogiai.",
+            "s3RoleExternalId": "Išorinis ID (nebūtina)",
+            "s3RoleSessionName": "Vaidmens seanso pavadinimas (nebūtina)",
+            "s3RoleSessionNamePlaceholder": "aeroftp-session",
+            "s3RoleDurationSeconds": "Seanso trukmė sekundėmis (nebūtina)",
+            "s3RoleDurationSecondsPlaceholder": "3600"
         },
         "shortcuts": {
             "title": "Klaviatūros trumpiniai",

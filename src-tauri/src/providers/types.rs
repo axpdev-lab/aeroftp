@@ -726,6 +726,21 @@ pub struct S3Config {
     /// long-term IAM user credentials. AWS-only: S3-compatible backends
     /// (MinIO, Wasabi, R2, B2, Filen, ...) have no STS.
     pub session_token: Option<secrecy::SecretString>,
+    /// ARN of an IAM role to assume via AWS STS `AssumeRole`. When present,
+    /// `connect()` exchanges the long-term access key / secret above for
+    /// temporary credentials scoped to this role (the data plane then signs
+    /// with those + the returned session token). `None` uses the base
+    /// credentials directly. AWS-only, like `session_token`.
+    pub role_arn: Option<String>,
+    /// `ExternalId` passed to `AssumeRole` for cross-account confused-deputy
+    /// protection. Only meaningful when `role_arn` is set.
+    pub role_external_id: Option<String>,
+    /// Caller-chosen `RoleSessionName` (audit label). Defaults to
+    /// `aeroftp-session` when absent. Only meaningful when `role_arn` is set.
+    pub role_session_name: Option<String>,
+    /// Requested credential lifetime in seconds (900..=43200). `None` lets AWS
+    /// apply the role's default. Only meaningful when `role_arn` is set.
+    pub role_duration_seconds: Option<u32>,
     /// Bucket name
     pub bucket: String,
     /// Path prefix within bucket
@@ -830,6 +845,21 @@ impl S3Config {
             .filter(|s| !s.is_empty())
             .map(|s| secrecy::SecretString::from(s.to_string()));
 
+        // STS AssumeRole (Fase 2): trimmed, blank-as-absent.
+        let trimmed_extra = |key: &str| {
+            config
+                .extra
+                .get(key)
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+        };
+        let role_arn = trimmed_extra("role_arn");
+        let role_external_id = trimmed_extra("role_external_id");
+        let role_session_name = trimmed_extra("role_session_name");
+        let role_duration_seconds = trimmed_extra("role_duration_seconds")
+            .and_then(|s| s.parse::<u32>().ok())
+            .filter(|d| (900..=43_200).contains(d));
+
         Ok(Self {
             endpoint,
             region,
@@ -838,6 +868,10 @@ impl S3Config {
                 config.password.clone().unwrap_or_default(),
             ),
             session_token,
+            role_arn,
+            role_external_id,
+            role_session_name,
+            role_duration_seconds,
             bucket,
             prefix: config.initial_path.clone(),
             path_style,
@@ -1932,5 +1966,92 @@ mod tests {
 
         let mega_config = MegaConfig::from_provider_config(&config).unwrap();
         assert_eq!(mega_config.connection_mode, MegaConnectionMode::Native);
+    }
+}
+
+#[cfg(test)]
+mod s3_config_assume_role_tests {
+    use super::*;
+    use secrecy::ExposeSecret;
+
+    fn s3_cfg(extra: std::collections::HashMap<String, String>) -> S3Config {
+        let config = ProviderConfig {
+            name: "test".to_string(),
+            provider_type: ProviderType::S3,
+            host: "s3.amazonaws.com".to_string(),
+            port: None,
+            username: Some("AKIA".to_string()),
+            password: Some("secret".to_string()),
+            initial_path: None,
+            extra,
+        };
+        S3Config::from_provider_config(&config).unwrap()
+    }
+
+    #[test]
+    fn assume_role_fields_absent_by_default() {
+        let mut extra = std::collections::HashMap::new();
+        extra.insert("bucket".to_string(), "data".to_string());
+        let cfg = s3_cfg(extra);
+        assert!(cfg.role_arn.is_none());
+        assert!(cfg.role_external_id.is_none());
+        assert!(cfg.role_session_name.is_none());
+        assert!(cfg.role_duration_seconds.is_none());
+    }
+
+    #[test]
+    fn assume_role_fields_parsed_from_extra() {
+        let mut extra = std::collections::HashMap::new();
+        extra.insert("bucket".to_string(), "data".to_string());
+        extra.insert(
+            "role_arn".to_string(),
+            "arn:aws:iam::123456789012:role/Demo".to_string(),
+        );
+        extra.insert("role_external_id".to_string(), "ext-42".to_string());
+        extra.insert("role_session_name".to_string(), "team-sync".to_string());
+        extra.insert("role_duration_seconds".to_string(), "7200".to_string());
+        let cfg = s3_cfg(extra);
+        assert_eq!(
+            cfg.role_arn.as_deref(),
+            Some("arn:aws:iam::123456789012:role/Demo")
+        );
+        assert_eq!(cfg.role_external_id.as_deref(), Some("ext-42"));
+        assert_eq!(cfg.role_session_name.as_deref(), Some("team-sync"));
+        assert_eq!(cfg.role_duration_seconds, Some(7200));
+        // Base credentials are preserved (the signer uses them until a role is
+        // assumed at connect time).
+        assert_eq!(cfg.access_key_id, "AKIA");
+        assert_eq!(cfg.secret_access_key.expose_secret(), "secret");
+    }
+
+    #[test]
+    fn out_of_range_duration_is_dropped() {
+        let mut extra = std::collections::HashMap::new();
+        extra.insert("bucket".to_string(), "data".to_string());
+        // Below the 900s STS floor and above the 43200s ceiling are rejected,
+        // as is a non-numeric value; AWS then applies the role default.
+        for bad in ["1", "60", "100000", "not-a-number"] {
+            extra.insert("role_duration_seconds".to_string(), bad.to_string());
+            let cfg = s3_cfg(extra.clone());
+            assert!(
+                cfg.role_duration_seconds.is_none(),
+                "duration {bad} should be rejected"
+            );
+        }
+        extra.insert("role_duration_seconds".to_string(), "900".to_string());
+        assert_eq!(s3_cfg(extra.clone()).role_duration_seconds, Some(900));
+        extra.insert("role_duration_seconds".to_string(), "43200".to_string());
+        assert_eq!(s3_cfg(extra).role_duration_seconds, Some(43200));
+    }
+
+    #[test]
+    fn blank_role_fields_are_treated_as_absent() {
+        let mut extra = std::collections::HashMap::new();
+        extra.insert("bucket".to_string(), "data".to_string());
+        extra.insert("role_arn".to_string(), "   ".to_string());
+        extra.insert("role_external_id".to_string(), "".to_string());
+        let cfg = s3_cfg(extra);
+        assert!(cfg.role_arn.is_none());
+        assert!(cfg.role_external_id.is_none());
     }
 }

@@ -272,6 +272,10 @@ export interface ProviderOptions {
   sse_mode?: string; // S3 server-side encryption (AES256, aws:kms)
   sse_kms_key_id?: string; // S3 KMS key ARN for SSE-KMS
   sessionToken?: string; // AWS STS session token for temporary credentials (AssumeRole / SSO), issue #301
+  roleArn?: string; // AWS STS AssumeRole: ARN of the role to assume, issue #301 Fase 2
+  roleExternalId?: string; // AWS STS AssumeRole: ExternalId for cross-account protection
+  roleSessionName?: string; // AWS STS AssumeRole: RoleSessionName audit label (default aeroftp-session)
+  roleDurationSeconds?: number; // AWS STS AssumeRole: requested credential lifetime in seconds (900-43200)
 
   // WebDAV-specific
   anonymous?: boolean; // Skip auth headers for local WebDAV bridges

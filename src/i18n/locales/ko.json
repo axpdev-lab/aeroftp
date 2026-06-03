@@ -1670,7 +1670,15 @@
             "webdavLocalSchemeHelp": "로컬 WebDAV 브리지(Filen Desktop, MEGAcmd)의 HTTP/HTTPS 설정과 일치시키세요. HTTPS는 자체 서명 인증서를 사용하므로 인증서 검증이 자동으로 비활성화됩니다.",
             "s3SessionToken": "세션 토큰 (선택 사항)",
             "s3SessionTokenPlaceholder": "AWS STS 세션 토큰",
-            "s3SessionTokenHint": "AWS STS AssumeRole 또는 SSO의 임시 자격 증명용입니다. 영구 IAM 액세스 키의 경우 비워 두세요."
+            "s3SessionTokenHint": "AWS STS AssumeRole 또는 SSO의 임시 자격 증명용입니다. 영구 IAM 액세스 키의 경우 비워 두세요.",
+            "s3RoleArn": "IAM 역할 ARN (선택 사항)",
+            "s3RoleArnPlaceholder": "arn:aws:iam::123456789012:role/MyRole",
+            "s3RoleArnHint": "AWS STS를 통해 이 역할을 맡습니다. 위의 액세스 키는 역할로 범위가 제한된 임시 자격 증명을 요청하기 위한 기본 자격 증명이 됩니다. 키를 직접 사용하려면 비워 두세요.",
+            "s3RoleExternalId": "외부 ID (선택 사항)",
+            "s3RoleSessionName": "역할 세션 이름 (선택 사항)",
+            "s3RoleSessionNamePlaceholder": "aeroftp-session",
+            "s3RoleDurationSeconds": "세션 기간(초, 선택 사항)",
+            "s3RoleDurationSecondsPlaceholder": "3600"
         },
         "shortcuts": {
             "title": "단축키",
