@@ -87,7 +87,21 @@ export const Checkbox: React.FC<CheckboxProps> = React.memo(({
     );
 
     if (!label) {
-        return <span onClick={handleClick}>{box}</span>;
+        // Stop the click from bubbling to an ancestor that also toggles the
+        // same state (e.g. a clickable selection row). Without this, clicking
+        // the box fires both this handler and the row's onClick, so the two
+        // toggles cancel out and the checkbox appears dead while the
+        // surrounding rectangle still works (rclone-import remote list).
+        return (
+            <span
+                onClick={(e) => {
+                    e.stopPropagation();
+                    handleClick();
+                }}
+            >
+                {box}
+            </span>
+        );
     }
 
     return (
