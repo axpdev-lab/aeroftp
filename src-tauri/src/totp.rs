@@ -103,6 +103,12 @@ fn check_rate_limit(inner: &TotpInner) -> Result<(), String> {
 
 /// Record a failed attempt. After MAX_FAILED_ATTEMPTS, impose exponential lockout.
 fn record_failure(inner: &mut TotpInner) {
+    record_failure_in_memory(inner);
+    // TOTP-02: persist so a process restart cannot reset the throttle.
+    persist_rate_limit(inner);
+}
+
+fn record_failure_in_memory(inner: &mut TotpInner) {
     inner.failed_attempts += 1;
     if inner.failed_attempts >= MAX_FAILED_ATTEMPTS {
         // Exponential backoff: 30s, 60s, 120s, 240s... capped at 15 min
@@ -112,20 +118,23 @@ fn record_failure(inner: &mut TotpInner) {
         let secs = secs.min(900); // Cap at 15 minutes
         inner.lockout_until = Some(Instant::now() + Duration::from_secs(secs));
     }
-    // TOTP-02: persist so a process restart cannot reset the throttle.
-    persist_rate_limit(inner);
 }
 
 /// Reset rate limiting after successful verification.
 fn reset_rate_limit(inner: &mut TotpInner) {
-    let had_state = inner.failed_attempts != 0 || inner.lockout_until.is_some();
-    inner.failed_attempts = 0;
-    inner.lockout_until = None;
+    let had_state = reset_rate_limit_in_memory(inner);
     // Only touch the vault when there was throttle state to clear, so the
     // common "first try succeeds" path does not write on every unlock.
     if had_state {
         persist_rate_limit(inner);
     }
+}
+
+fn reset_rate_limit_in_memory(inner: &mut TotpInner) -> bool {
+    let had_state = inner.failed_attempts != 0 || inner.lockout_until.is_some();
+    inner.failed_attempts = 0;
+    inner.lockout_until = None;
+    had_state
 }
 
 /// Remaining lockout in whole seconds, or `None` if not (or no longer) locked.
@@ -142,14 +151,25 @@ fn lockout_remaining_secs(inner: &TotpInner) -> Option<u64> {
 /// The lockout deadline is stored as an absolute Unix epoch so it can be
 /// reconstructed against the monotonic clock on the next launch.
 fn persist_rate_limit(inner: &TotpInner) {
-    let lockout_until_epoch = lockout_remaining_secs(inner).map(|rem| now_unix().saturating_add(rem));
+    if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
+        let _ = persist_rate_limit_to_store(inner, &store);
+    }
+}
+
+fn persist_rate_limit_to_store(
+    inner: &TotpInner,
+    store: &crate::credential_store::CredentialStore,
+) -> Result<(), String> {
+    let lockout_until_epoch =
+        lockout_remaining_secs(inner).map(|rem| now_unix().saturating_add(rem));
     let payload = serde_json::json!({
         "failed_attempts": inner.failed_attempts,
         "lockout_until_epoch": lockout_until_epoch,
+        "last_used_step": inner.last_used_step,
     });
-    if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-        let _ = store.store_internal(RATE_LIMIT_VAULT_KEY, &payload.to_string());
-    }
+    store
+        .store_internal(RATE_LIMIT_VAULT_KEY, &payload.to_string())
+        .map_err(|e| e.to_string())
 }
 
 /// TOTP-02: restore the persisted rate-limit state into freshly-initialised
@@ -160,7 +180,14 @@ fn restore_rate_limit(inner: &mut TotpInner) {
     let Some(store) = crate::credential_store::CredentialStore::from_cache() else {
         return;
     };
-    let Ok(raw) = store.get(RATE_LIMIT_VAULT_KEY) else {
+    restore_rate_limit_from_store(inner, &store);
+}
+
+fn restore_rate_limit_from_store(
+    inner: &mut TotpInner,
+    store: &crate::credential_store::CredentialStore,
+) {
+    let Ok(raw) = store.get_internal(RATE_LIMIT_VAULT_KEY) else {
         return;
     };
     let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) else {
@@ -177,6 +204,7 @@ fn restore_rate_limit(inner: &mut TotpInner) {
             let now = now_unix();
             (epoch > now).then(|| Instant::now() + Duration::from_secs(epoch - now))
         });
+    inner.last_used_step = value.get("last_used_step").and_then(|v| v.as_u64());
 }
 
 /// TOTP-03: identify which time-step a code matches within the accepted skew
@@ -426,6 +454,22 @@ pub fn totp_load_secret(state: State<'_, TotpState>, secret: String) -> Result<(
 /// Internal: Load a TOTP secret into state without requiring Tauri State wrapper.
 /// Used by unlock_credential_store for 2FA enforcement.
 pub fn load_secret_internal(state: &TotpState, secret: &str) -> Result<(), String> {
+    load_secret_internal_from_store(state, secret, None)
+}
+
+pub(crate) fn load_secret_internal_with_store(
+    state: &TotpState,
+    secret: &str,
+    store: &crate::credential_store::CredentialStore,
+) -> Result<(), String> {
+    load_secret_internal_from_store(state, secret, Some(store))
+}
+
+fn load_secret_internal_from_store(
+    state: &TotpState,
+    secret: &str,
+    store: Option<&crate::credential_store::CredentialStore>,
+) -> Result<(), String> {
     // Validate the secret is valid base32
     build_totp(secret)?;
     let mut inner = lock_state(state)?;
@@ -433,14 +477,35 @@ pub fn load_secret_internal(state: &TotpState, secret: &str) -> Result<(), Strin
     inner.enabled = true;
     // TOTP-02: re-arm any lockout that was in force when the process last
     // exited, so a restart cannot be used to escape the brute-force throttle.
-    restore_rate_limit(&mut inner);
+    if let Some(store) = store {
+        restore_rate_limit_from_store(&mut inner, store);
+    } else {
+        restore_rate_limit(&mut inner);
+    }
     Ok(())
 }
 
 /// Internal: Verify a TOTP code against the active secret without requiring Tauri State wrapper.
 /// Used by unlock_credential_store for 2FA enforcement.
 /// Returns Ok(true) if valid, Ok(false) if invalid, Err on rate limit or missing secret.
+#[allow(dead_code)]
 pub fn verify_internal(state: &TotpState, code: &str) -> Result<bool, String> {
+    verify_internal_with_optional_store(state, code, None)
+}
+
+pub(crate) fn verify_internal_with_store(
+    state: &TotpState,
+    code: &str,
+    store: &crate::credential_store::CredentialStore,
+) -> Result<bool, String> {
+    verify_internal_with_optional_store(state, code, Some(store))
+}
+
+fn verify_internal_with_optional_store(
+    state: &TotpState,
+    code: &str,
+    store: Option<&crate::credential_store::CredentialStore>,
+) -> Result<bool, String> {
     let mut inner = lock_state(state)?;
     check_rate_limit(&inner)?;
 
@@ -452,9 +517,21 @@ pub fn verify_internal(state: &TotpState, code: &str) -> Result<bool, String> {
     let valid = verify_with_replay_guard(&mut inner, &totp, code);
 
     if valid {
-        reset_rate_limit(&mut inner);
+        if let Some(store) = store {
+            let had_state = reset_rate_limit_in_memory(&mut inner);
+            if had_state || inner.last_used_step.is_some() {
+                persist_rate_limit_to_store(&inner, store)?;
+            }
+        } else {
+            reset_rate_limit(&mut inner);
+        }
     } else {
-        record_failure(&mut inner);
+        if let Some(store) = store {
+            record_failure_in_memory(&mut inner);
+            persist_rate_limit_to_store(&inner, store)?;
+        } else {
+            record_failure(&mut inner);
+        }
     }
     Ok(valid)
 }
@@ -466,10 +543,42 @@ pub fn verify_internal(state: &TotpState, code: &str) -> Result<bool, String> {
 /// one gate" remediation. Returns `Ok(true)`/`Ok(false)`; `Err` only on a
 /// malformed secret. Uses the same `check_current` (current 30s step, the
 /// `totp_rs` default skew) that the GUI gate relies on.
+#[allow(dead_code)]
 pub fn verify_code_against_secret(secret_base32: &str, code: &str) -> Result<bool, String> {
     build_totp(secret_base32)?
         .check_current(code)
         .map_err(|e| format!("TOTP check error: {}", e))
+}
+
+pub(crate) fn verify_code_against_secret_with_store(
+    store: &crate::credential_store::CredentialStore,
+    secret_base32: &str,
+    code: &str,
+) -> Result<bool, String> {
+    let totp = build_totp(secret_base32)?;
+    let mut inner = TotpInner {
+        pending_secret: None,
+        setup_verified: false,
+        enabled: true,
+        active_secret: Some(SecretString::from(secret_base32.to_string())),
+        failed_attempts: 0,
+        lockout_until: None,
+        last_used_step: None,
+    };
+    restore_rate_limit_from_store(&mut inner, store);
+    check_rate_limit(&inner)?;
+    let valid = verify_with_replay_guard(&mut inner, &totp, code);
+
+    if valid {
+        let had_state = reset_rate_limit_in_memory(&mut inner);
+        if had_state || inner.last_used_step.is_some() {
+            persist_rate_limit_to_store(&inner, store)?;
+        }
+    } else {
+        record_failure_in_memory(&mut inner);
+        persist_rate_limit_to_store(&inner, store)?;
+    }
+    Ok(valid)
 }
 
 #[cfg(test)]
@@ -664,8 +773,10 @@ mod tests {
         let secret = generate_secret_base32();
         let totp = build_totp(&secret).unwrap();
         let mut inner = fresh_inner();
-        assert!(!verify_with_replay_guard(&mut inner, &totp, "000000")
-            || totp.generate_current().unwrap() == "000000");
+        assert!(
+            !verify_with_replay_guard(&mut inner, &totp, "000000")
+                || totp.generate_current().unwrap() == "000000"
+        );
         // An invalid code never advances the consumed-step marker.
         if totp.generate_current().unwrap() != "000000" {
             assert!(inner.last_used_step.is_none());

@@ -13,7 +13,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use crate::provider_commands::ProviderState;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tauri::State;
 
 /// Validate a path has no null bytes (defense-in-depth for C FFI providers).
@@ -140,17 +140,18 @@ pub fn vault_v2_cleanup_temp(local_path: String) -> Result<(), String> {
         return Err("Can only clean up AeroFTP temporary vault files".into());
     }
 
-    // Reject symlinks before any further operations (RB-006, SEC-005)
-    match std::fs::symlink_metadata(&path) {
-        Ok(meta) => {
-            if meta.file_type().is_symlink() {
-                return Err("Cannot clean up symlinks".into());
-            }
-        }
-        Err(_) => return Ok(()), // File doesn't exist: already cleaned up
+    let mut file = match open_temp_file_no_follow(&path) {
+        Ok(file) => file,
+        Err(e) if e == "TEMP_NOT_FOUND" => return Ok(()),
+        Err(e) => return Err(e),
+    };
+    let metadata = file
+        .metadata()
+        .map_err(|e| format!("Temp file metadata failed: {}", e))?;
+    if !metadata.is_file() {
+        return Err("Can only clean up regular temp files".into());
     }
 
-    // Canonicalize and verify temp directory confinement
     let temp_dir = std::env::temp_dir();
     let canonical_path = path
         .canonicalize()
@@ -161,45 +162,81 @@ pub fn vault_v2_cleanup_temp(local_path: String) -> Result<(), String> {
     if !canonical_path.starts_with(&canonical_temp) {
         return Err("Can only clean up files in temp directory".into());
     }
+    ensure_same_file(&file, &path)?;
 
     // Zero-fill before delete for security (best-effort on modern storage)
-    if let Ok(metadata) = std::fs::symlink_metadata(&canonical_path) {
-        let size = metadata.len();
-        if size > 0 {
-            let chunk_size = std::cmp::min(size as usize, 1024 * 1024); // 1MB chunks
-            let zeros = vec![0u8; chunk_size];
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .write(true)
-                .open(&canonical_path)
-            {
-                use std::io::Write;
-                let mut remaining = size;
-                let mut write_failed = false;
-                while remaining > 0 {
-                    let chunk = std::cmp::min(remaining as usize, zeros.len());
-                    if file.write_all(&zeros[..chunk]).is_err() {
-                        write_failed = true;
-                        break;
-                    }
-                    remaining -= chunk as u64;
-                }
-                // Force flush to disk
-                let _ = file.sync_all();
-
-                if write_failed {
-                    // Still delete even if zero-fill failed
-                    let _ = std::fs::remove_file(&canonical_path);
-                    return Err(
-                        "Secure zero-fill incomplete; file deleted without full overwrite".into(),
-                    );
-                }
+    let size = metadata.len();
+    if size > 0 {
+        let chunk_size = std::cmp::min(size as usize, 1024 * 1024); // 1MB chunks
+        let zeros = vec![0u8; chunk_size];
+        use std::io::Write;
+        let mut remaining = size;
+        let mut write_failed = false;
+        while remaining > 0 {
+            let chunk = std::cmp::min(remaining as usize, zeros.len());
+            if file.write_all(&zeros[..chunk]).is_err() {
+                write_failed = true;
+                break;
             }
+            remaining -= chunk as u64;
+        }
+        let _ = file.sync_all();
+
+        if write_failed {
+            ensure_same_file(&file, &path)?;
+            let _ = std::fs::remove_file(&path);
+            return Err("Secure zero-fill incomplete; file deleted without full overwrite".into());
         }
     }
 
-    std::fs::remove_file(&canonical_path)
-        .map_err(|e| format!("Failed to remove temp file: {}", e))?;
+    ensure_same_file(&file, &path)?;
+    drop(file);
+    std::fs::remove_file(&path).map_err(|e| format!("Failed to remove temp file: {}", e))?;
 
+    Ok(())
+}
+
+fn open_temp_file_no_follow(path: &Path) -> Result<std::fs::File, String> {
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW);
+    }
+    match options.open(path) {
+        Ok(file) => Ok(file),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err("TEMP_NOT_FOUND".to_string()),
+        Err(e) => Err(format!("Open temp file failed: {}", e)),
+    }
+}
+
+#[cfg(unix)]
+fn ensure_same_file(file: &std::fs::File, path: &Path) -> Result<(), String> {
+    use std::os::unix::fs::MetadataExt;
+    let fd_meta = file
+        .metadata()
+        .map_err(|e| format!("Temp fd metadata failed: {}", e))?;
+    let path_meta =
+        std::fs::symlink_metadata(path).map_err(|e| format!("Temp path metadata failed: {}", e))?;
+    if path_meta.file_type().is_symlink()
+        || fd_meta.dev() != path_meta.dev()
+        || fd_meta.ino() != path_meta.ino()
+    {
+        return Err("Temp file changed during cleanup".to_string());
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn ensure_same_file(_file: &std::fs::File, path: &Path) -> Result<(), String> {
+    if std::fs::symlink_metadata(path)
+        .map_err(|e| format!("Temp path metadata failed: {}", e))?
+        .file_type()
+        .is_symlink()
+    {
+        return Err("Cannot clean up symlinks".into());
+    }
     Ok(())
 }
 

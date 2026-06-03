@@ -13010,11 +13010,14 @@ async fn unlock_auto_keyring_credential_store(
         return Err("2FA_NOT_ENABLED".to_string());
     }
 
-    if let Err(e) = totp::load_secret_internal(&totp_state, &totp_secret) {
+    let scoped_store =
+        credential_store::CredentialStore::from_verified_key(&vault_path, &vault_key);
+    if let Err(e) = totp::load_secret_internal_with_store(&totp_state, &totp_secret, &scoped_store)
+    {
         vault_key.zeroize();
         return Err(format!("Failed to load TOTP secret: {}", e));
     }
-    let valid = match totp::verify_internal(&totp_state, &totp_code) {
+    let valid = match totp::verify_internal_with_store(&totp_state, &totp_code, &scoped_store) {
         Ok(valid) => valid,
         Err(e) => {
             vault_key.zeroize();
@@ -13158,8 +13161,10 @@ async fn unlock_credential_store(
         };
 
     if let Some(secret) = totp_secret.as_ref().filter(|secret| !secret.is_empty()) {
+        let scoped_store =
+            credential_store::CredentialStore::from_verified_key(&vault_path, &vault_key);
         // TOTP is enabled: load secret into state and verify code
-        if let Err(e) = totp::load_secret_internal(&totp_state, secret) {
+        if let Err(e) = totp::load_secret_internal_with_store(&totp_state, secret, &scoped_store) {
             vault_key.zeroize();
             state.set_locked(true);
             return Err(format!("Failed to load TOTP secret: {}", e));
@@ -13167,7 +13172,8 @@ async fn unlock_credential_store(
 
         match totp_code {
             Some(ref code) if !code.is_empty() => {
-                let valid = match totp::verify_internal(&totp_state, code) {
+                let valid = match totp::verify_internal_with_store(&totp_state, code, &scoped_store)
+                {
                     Ok(valid) => valid,
                     Err(e) => {
                         vault_key.zeroize();

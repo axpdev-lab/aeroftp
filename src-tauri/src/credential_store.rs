@@ -545,6 +545,32 @@ impl CredentialStore {
         Ok((vault_path, vault_key))
     }
 
+    pub fn unlock_auto_keyring_with_totp(totp_code: Option<&str>) -> Result<(), CredentialError> {
+        let (vault_path, mut vault_key) = Self::verify_auto_keyring()?;
+        if let Some(secret) = Self::totp_secret_with_key(&vault_path, &vault_key)?
+            .as_deref()
+            .filter(|s| !s.is_empty())
+        {
+            let code = match totp_code.map(str::trim).filter(|c| !c.is_empty()) {
+                Some(c) => c,
+                None => {
+                    vault_key.zeroize();
+                    return Err(CredentialError::TotpRequired);
+                }
+            };
+            let scoped_store = Self::from_verified_key(&vault_path, &vault_key);
+            match crate::totp::verify_code_against_secret_with_store(&scoped_store, secret, code) {
+                Ok(true) => {}
+                _ => {
+                    vault_key.zeroize();
+                    return Err(CredentialError::TotpInvalid);
+                }
+            }
+        }
+
+        Self::open_and_cache(vault_path, vault_key)
+    }
+
     /// First run: generate random passphrase, store it in keyring, create vault.key + vault.db.
     fn first_run_init() -> Result<(), CredentialError> {
         // Ensure config directory exists with secure permissions
@@ -690,6 +716,13 @@ impl CredentialStore {
         })
     }
 
+    pub(crate) fn from_verified_key(vault_path: &Path, vault_key: &[u8; 32]) -> Self {
+        Self {
+            vault_path: vault_path.to_path_buf(),
+            vault_key: *vault_key,
+        }
+    }
+
     /// Clear the vault cache (on lock)
     pub fn clear_cache() {
         if let Ok(mut cache) = VAULT_CACHE.lock() {
@@ -737,7 +770,8 @@ impl CredentialStore {
                     return Err(CredentialError::TotpRequired);
                 }
             };
-            match crate::totp::verify_code_against_secret(secret, code) {
+            let scoped_store = Self::from_verified_key(&vault_path, &vault_key);
+            match crate::totp::verify_code_against_secret_with_store(&scoped_store, secret, code) {
                 Ok(true) => {}
                 _ => {
                     vault_key.zeroize();
@@ -923,17 +957,31 @@ impl CredentialStore {
 
     // ---- CRUD Operations ----
 
-    // A2-07: Reserved account names that must not be overwritten by external callers
-    const RESERVED_KEYS: &[&str] = &["totp_secret", "master_password_hash", "vault_key"];
+    // A2-07: Reserved account names that must not be accessed by external callers.
+    const RESERVED_KEYS: &[&str] = &[
+        "totp_secret",
+        "master_password_hash",
+        "vault_key",
+        "totp_rate_limit",
+    ];
+    const RESERVED_PREFIX: &str = "__sys_";
 
-    /// Store a credential
-    pub fn store(&self, account: &str, secret: &str) -> Result<(), CredentialError> {
-        // A2-07: Prevent overwriting system-reserved keys
-        if Self::RESERVED_KEYS.contains(&account) {
+    fn is_reserved_account(account: &str) -> bool {
+        Self::RESERVED_KEYS.contains(&account) || account.starts_with(Self::RESERVED_PREFIX)
+    }
+
+    fn reject_reserved_account(account: &str) -> Result<(), CredentialError> {
+        if Self::is_reserved_account(account) {
             return Err(CredentialError::Encryption(
                 "Reserved account name".to_string(),
             ));
         }
+        Ok(())
+    }
+
+    /// Store a credential
+    pub fn store(&self, account: &str, secret: &str) -> Result<(), CredentialError> {
+        Self::reject_reserved_account(account)?;
         self.store_entry(account, secret)
     }
 
@@ -966,12 +1014,26 @@ impl CredentialStore {
 
     /// Retrieve a credential
     pub fn get_secret(&self, account: &str) -> Result<Zeroizing<String>, CredentialError> {
+        Self::reject_reserved_account(account)?;
         Self::secret_with_key(&self.vault_path, &self.vault_key, account)?
             .ok_or_else(|| CredentialError::NotFound(account.to_string()))
     }
 
     pub fn get(&self, account: &str) -> Result<String, CredentialError> {
         self.get_secret(account).map(|secret| secret.to_string())
+    }
+
+    pub(crate) fn get_internal_secret(
+        &self,
+        account: &str,
+    ) -> Result<Zeroizing<String>, CredentialError> {
+        Self::secret_with_key(&self.vault_path, &self.vault_key, account)?
+            .ok_or_else(|| CredentialError::NotFound(account.to_string()))
+    }
+
+    pub(crate) fn get_internal(&self, account: &str) -> Result<String, CredentialError> {
+        self.get_internal_secret(account)
+            .map(|secret| secret.to_string())
     }
 
     fn secret_with_key(
@@ -993,6 +1055,7 @@ impl CredentialStore {
 
     /// Delete a credential
     pub fn delete(&self, account: &str) -> Result<(), CredentialError> {
+        Self::reject_reserved_account(account)?;
         let _lock = VAULT_WRITE_LOCK
             .lock()
             .map_err(|_| CredentialError::Encryption("vault write lock poisoned".to_string()))?;
@@ -1192,4 +1255,26 @@ pub fn secure_delete(path: &Path) -> Result<(), CredentialError> {
         info!("Securely deleted: {:?}", path);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CredentialStore;
+
+    #[test]
+    fn reserved_account_guard_covers_system_keys_and_prefix() {
+        for account in [
+            "totp_secret",
+            "master_password_hash",
+            "vault_key",
+            "totp_rate_limit",
+            "__sys_anything",
+        ] {
+            assert!(CredentialStore::is_reserved_account(account));
+            assert!(CredentialStore::reject_reserved_account(account).is_err());
+        }
+
+        assert!(!CredentialStore::is_reserved_account("server_profile_123"));
+        assert!(CredentialStore::reject_reserved_account("server_profile_123").is_ok());
+    }
 }

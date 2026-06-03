@@ -608,7 +608,8 @@ pub fn export_filezilla(
     xml.push_str("  </Servers>\n");
     xml.push_str("</FileZilla3>\n");
 
-    std::fs::write(output_path, xml).map_err(|e| format!("Write FileZilla config: {}", e))?;
+    crate::bridge_shared::atomic_write_600(output_path, xml.as_bytes())
+        .map_err(|e| format!("Write FileZilla config: {}", e))?;
 
     Ok(exported)
 }
