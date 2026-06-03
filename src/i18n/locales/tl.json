@@ -1670,7 +1670,15 @@
             "webdavLocalSchemeHelp": "Itugma sa HTTP/HTTPS na setting ng lokal na WebDAV bridge (Filen Desktop, MEGAcmd). Gumagamit ang HTTPS ng self-signed certificate, kaya awtomatikong hindi pinagana ang pag-verify ng certificate.",
             "s3SessionToken": "Token ng session (opsyonal)",
             "s3SessionTokenPlaceholder": "AWS STS session token",
-            "s3SessionTokenHint": "Para sa mga pansamantalang kredensyal mula sa AWS STS AssumeRole o SSO. Iwanang blangko para sa mga permanenteng IAM access key."
+            "s3SessionTokenHint": "Para sa mga pansamantalang kredensyal mula sa AWS STS AssumeRole o SSO. Iwanang blangko para sa mga permanenteng IAM access key.",
+            "s3RoleArn": "ARN ng IAM role (opsyonal)",
+            "s3RoleArnPlaceholder": "arn:aws:iam::123456789012:role/MyRole",
+            "s3RoleArnHint": "Mag-assume ng role na ito sa pamamagitan ng AWS STS: ang mga access key sa itaas ay nagiging base credentials para humiling ng pansamantala at role-scoped na credentials. Iwanang blangko para gamitin ang mga key nang direkta.",
+            "s3RoleExternalId": "External ID (opsyonal)",
+            "s3RoleSessionName": "Pangalan ng role session (opsyonal)",
+            "s3RoleSessionNamePlaceholder": "aeroftp-session",
+            "s3RoleDurationSeconds": "Tagal ng session sa segundo (opsyonal)",
+            "s3RoleDurationSecondsPlaceholder": "3600"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",

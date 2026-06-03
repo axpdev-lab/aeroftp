@@ -1670,7 +1670,15 @@
             "webdavLocalSchemeHelp": "Egyezzen meg a helyi WebDAV híd HTTP/HTTPS beállításával (Filen Desktop, MEGAcmd). A HTTPS önaláírt tanúsítványt használ, így a tanúsítvány-ellenőrzés automatikusan letiltásra kerül.",
             "s3SessionToken": "Munkamenet-token (opcionális)",
             "s3SessionTokenPlaceholder": "AWS STS munkamenet-token",
-            "s3SessionTokenHint": "Ideiglenes hitelesítő adatokhoz AWS STS AssumeRole vagy SSO révén. Állandó IAM hozzáférési kulcsokhoz hagyja üresen."
+            "s3SessionTokenHint": "Ideiglenes hitelesítő adatokhoz AWS STS AssumeRole vagy SSO révén. Állandó IAM hozzáférési kulcsokhoz hagyja üresen.",
+            "s3RoleArn": "IAM-szerepkör ARN (opcionális)",
+            "s3RoleArnPlaceholder": "arn:aws:iam::123456789012:role/MyRole",
+            "s3RoleArnHint": "Vegye fel ezt a szerepkört AWS STS-en keresztül: a fenti hozzáférési kulcsok alap hitelesítő adatokká válnak ideiglenes, szerepkörre korlátozott hitelesítő adatok kéréséhez. Hagyja üresen a kulcsok közvetlen használatához.",
+            "s3RoleExternalId": "Külső azonosító (opcionális)",
+            "s3RoleSessionName": "Szerepkör munkamenetének neve (opcionális)",
+            "s3RoleSessionNamePlaceholder": "aeroftp-session",
+            "s3RoleDurationSeconds": "Munkamenet időtartama másodpercben (opcionális)",
+            "s3RoleDurationSecondsPlaceholder": "3600"
         },
         "shortcuts": {
             "title": "Billentyűparancsok",

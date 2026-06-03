@@ -23,6 +23,7 @@ use std::sync::Arc;
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 use tracing::{debug, info, warn};
 
+use super::sts;
 use super::{
     sanitize_api_error, FileVersion, MultipartHandle, ProviderError, ProviderTransferExecutorKind,
     ProviderType, RemoteEntry, S3Config, ShareLinkCapabilities, ShareLinkOptions, ShareLinkResult,
@@ -237,6 +238,13 @@ pub struct S3Provider {
     /// `None` = fall back to `config.storage_class`, else backend default.
     /// Set via `set_storage_class_override`.
     storage_class_override: Option<String>,
+    /// Temporary credentials acquired through STS `AssumeRole` (issue #301,
+    /// Fase 2). Populated by `connect()` when `config.role_arn` is set; the
+    /// data-plane signers then use these instead of the long-term base
+    /// credentials in `config`. The base credentials in `config` are left
+    /// untouched so a reconnect (or Fase 3 refresh) can re-assume the role.
+    /// `None` means the base credentials are used directly.
+    temp_credentials: Option<sts::TempCredentials>,
 }
 
 impl S3Provider {
@@ -289,6 +297,7 @@ impl S3Provider {
             disable_checksum: false,
             acl_override: None,
             storage_class_override: None,
+            temp_credentials: None,
         })
     }
 
@@ -382,6 +391,73 @@ impl S3Provider {
     /// Returns the current UTC time adjusted for any detected clock skew.
     fn now_adjusted(&self) -> DateTime<Utc> {
         Utc::now() + chrono::Duration::seconds(self.clock_offset_secs)
+    }
+
+    /// Access key id the data-plane signers must use: the STS-issued temporary
+    /// key when a role has been assumed (issue #301), else the long-term base
+    /// key from `config`.
+    fn effective_access_key_id(&self) -> &str {
+        match &self.temp_credentials {
+            Some(tc) => &tc.access_key_id,
+            None => &self.config.access_key_id,
+        }
+    }
+
+    /// Secret access key matching [`effective_access_key_id`].
+    fn effective_secret(&self) -> &secrecy::SecretString {
+        match &self.temp_credentials {
+            Some(tc) => &tc.secret_access_key,
+            None => &self.config.secret_access_key,
+        }
+    }
+
+    /// Session token to carry on signed requests: the STS session token when a
+    /// role has been assumed, else any externally-supplied session token from
+    /// `config` (Fase 1 manual temp credentials).
+    fn effective_session_token(&self) -> Option<&secrecy::SecretString> {
+        match &self.temp_credentials {
+            Some(tc) => Some(&tc.session_token),
+            None => self.config.session_token.as_ref(),
+        }
+    }
+
+    /// Acquire temporary credentials via STS `AssumeRole` when `config.role_arn`
+    /// is set, storing them in `self.temp_credentials` for the data-plane
+    /// signers. No-op when no role is configured. Always signs the STS request
+    /// with the long-term base credentials from `config`, so it is safe to call
+    /// again on reconnect / refresh.
+    async fn acquire_temp_credentials(&mut self) -> Result<(), ProviderError> {
+        let Some(role_arn) = self.config.role_arn.as_deref() else {
+            return Ok(());
+        };
+        let session_name = self
+            .config
+            .role_session_name
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .unwrap_or("aeroftp-session");
+        let req = sts::AssumeRoleRequest {
+            region: &self.config.region,
+            access_key_id: &self.config.access_key_id,
+            secret_access_key: &self.config.secret_access_key,
+            role_arn,
+            role_session_name: session_name,
+            duration_seconds: self.config.role_duration_seconds,
+            external_id: self.config.role_external_id.as_deref(),
+            // MFA (serial + one-time token code) is a future follow-up: the
+            // token is interactive and never persisted, so it needs a
+            // connect-time prompt the config layer does not carry yet.
+            mfa_serial: None,
+            mfa_token_code: None,
+            base_session_token: self.config.session_token.as_ref(),
+        };
+        let creds = sts::assume_role(&self.client, &req).await?;
+        info!(
+            "[S3] STS AssumeRole succeeded for {} (expires {:?})",
+            role_arn, creds.expiration
+        );
+        self.temp_credentials = Some(creds);
+        Ok(())
     }
 
     /// Get the S3 endpoint URL
@@ -633,7 +709,7 @@ impl S3Provider {
         // request so it is covered by the SigV4 signature. Inserting it into
         // `headers` before the canonical headers are built achieves both, since
         // `s3_request_ext` replays every entry of this map as a real header.
-        if let Some(token) = &self.config.session_token {
+        if let Some(token) = self.effective_session_token() {
             headers.insert(
                 "x-amz-security-token".to_string(),
                 token.expose_secret().to_string(),
@@ -737,7 +813,7 @@ impl S3Provider {
         }
 
         let k_date = hmac_sha256(
-            format!("AWS4{}", self.config.secret_access_key.expose_secret()).as_bytes(),
+            format!("AWS4{}", self.effective_secret().expose_secret()).as_bytes(),
             date_stamp.as_bytes(),
         );
         let k_region = hmac_sha256(&k_date, self.config.region.as_bytes());
@@ -748,7 +824,7 @@ impl S3Provider {
         // Create authorization header
         let authorization = format!(
             "AWS4-HMAC-SHA256 Credential={}/{}, SignedHeaders={}, Signature={}",
-            self.config.access_key_id, credential_scope, signed_headers_str, signature
+            self.effective_access_key_id(), credential_scope, signed_headers_str, signature
         );
 
         Ok(authorization)
@@ -2136,6 +2212,13 @@ impl StorageProvider for S3Provider {
     }
 
     async fn connect(&mut self) -> Result<(), ProviderError> {
+        // STS AssumeRole (issue #301, Fase 2): when a role ARN is configured,
+        // exchange the long-term base credentials for temporary ones before any
+        // signed S3 request is made. Runs ahead of the bucket probe (and the
+        // no_check_bucket early return) because the assumed role, not the base
+        // key, is what is authorized for the data-plane workload.
+        self.acquire_temp_credentials().await?;
+
         // Guard against the silent AWS auto-region fallback. With no endpoint
         // configured, `endpoint()` builds `https://s3.{region}.amazonaws.com`,
         // which is only correct for real AWS regions. Every other S3-compatible
@@ -3193,7 +3276,7 @@ impl StorageProvider for S3Provider {
         let amz_date = now.format("%Y%m%dT%H%M%SZ").to_string();
 
         let credential_scope = format!("{}/{}/s3/aws4_request", date_stamp, self.config.region);
-        let credential = format!("{}/{}", self.config.access_key_id, credential_scope);
+        let credential = format!("{}/{}", self.effective_access_key_id(), credential_scope);
 
         let url = self.build_url(key);
         let parsed =
@@ -3226,9 +3309,7 @@ impl StorageProvider for S3Provider {
         // which sorts between `X-Amz-Expires` and `X-Amz-SignedHeaders`.
         let signed_headers = "host";
         let security_token_param = self
-            .config
-            .session_token
-            .as_ref()
+            .effective_session_token()
             .map(|t| {
                 format!(
                     "X-Amz-Security-Token={}&",
@@ -3271,7 +3352,7 @@ impl StorageProvider for S3Provider {
         }
 
         let k_date = hmac_sha256(
-            format!("AWS4{}", self.config.secret_access_key.expose_secret()).as_bytes(),
+            format!("AWS4{}", self.effective_secret().expose_secret()).as_bytes(),
             date_stamp.as_bytes(),
         );
         let k_region = hmac_sha256(&k_date, self.config.region.as_bytes());
@@ -4489,6 +4570,10 @@ mod tests {
             access_key_id: "minioadmin".to_string(),
             secret_access_key: secrecy::SecretString::from("minioadmin".to_string()),
             session_token: None,
+            role_arn: None,
+            role_external_id: None,
+            role_session_name: None,
+            role_duration_seconds: None,
             bucket: "test-bucket".to_string(),
             prefix: None,
             path_style: true,
@@ -4513,6 +4598,10 @@ mod tests {
             access_key_id: "key".to_string(),
             secret_access_key: secrecy::SecretString::from("secret".to_string()),
             session_token: None,
+            role_arn: None,
+            role_external_id: None,
+            role_session_name: None,
+            role_duration_seconds: None,
             bucket: "my-bucket".to_string(),
             prefix: None,
             path_style: false,
@@ -4565,6 +4654,10 @@ mod tests {
             access_key_id: "key".to_string(),
             secret_access_key: secrecy::SecretString::from("secret".to_string()),
             session_token: None,
+            role_arn: None,
+            role_external_id: None,
+            role_session_name: None,
+            role_duration_seconds: None,
             bucket: "test".to_string(),
             prefix: None,
             path_style: false,
@@ -4603,6 +4696,10 @@ mod tests {
             access_key_id: "x".to_string(),
             secret_access_key: secrecy::SecretString::from("y".to_string()),
             session_token: None,
+            role_arn: None,
+            role_external_id: None,
+            role_session_name: None,
+            role_duration_seconds: None,
             bucket: "b".to_string(),
             prefix: None,
             path_style: true,
@@ -4640,6 +4737,10 @@ mod tests {
             access_key_id: "key".to_string(),
             secret_access_key: secrecy::SecretString::from("secret".to_string()),
             session_token: None,
+            role_arn: None,
+            role_external_id: None,
+            role_session_name: None,
+            role_duration_seconds: None,
             bucket: "test-bucket".to_string(),
             prefix: None,
             path_style: true,
@@ -4658,6 +4759,10 @@ mod tests {
             access_key_id: "AKIAEXAMPLE".to_string(),
             secret_access_key: secrecy::SecretString::from("secret".to_string()),
             session_token: session_token.map(|t| secrecy::SecretString::from(t.to_string())),
+            role_arn: None,
+            role_external_id: None,
+            role_session_name: None,
+            role_duration_seconds: None,
             bucket: "test-bucket".to_string(),
             prefix: None,
             path_style: true,
@@ -4796,6 +4901,10 @@ mod tests {
             access_key_id: "k".to_string(),
             secret_access_key: secrecy::SecretString::from("s".to_string()),
             session_token: None,
+            role_arn: None,
+            role_external_id: None,
+            role_session_name: None,
+            role_duration_seconds: None,
             bucket: "b".to_string(),
             prefix: None,
             path_style: true,
@@ -4848,6 +4957,10 @@ mod tests {
             access_key_id: "k".to_string(),
             secret_access_key: secrecy::SecretString::from("s".to_string()),
             session_token: None,
+            role_arn: None,
+            role_external_id: None,
+            role_session_name: None,
+            role_duration_seconds: None,
             bucket: "b".to_string(),
             prefix: None,
             path_style: true,
@@ -4956,6 +5069,10 @@ mod tests {
             access_key_id: "k".to_string(),
             secret_access_key: secrecy::SecretString::from("s".to_string()),
             session_token: None,
+            role_arn: None,
+            role_external_id: None,
+            role_session_name: None,
+            role_duration_seconds: None,
             bucket: "b".to_string(),
             prefix: None,
             path_style: false,
@@ -5202,6 +5319,10 @@ mod tests {
             access_key_id: "key".to_string(),
             secret_access_key: secrecy::SecretString::from("secret".to_string()),
             session_token: None,
+            role_arn: None,
+            role_external_id: None,
+            role_session_name: None,
+            role_duration_seconds: None,
             bucket: "test-bucket".to_string(),
             prefix: None,
             path_style: true,

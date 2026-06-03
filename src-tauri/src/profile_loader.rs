@@ -34,6 +34,15 @@ pub fn normalize_profile_option_key(key: &str) -> &str {
         "accessKey" => "access_key",
         "sasToken" => "sas_token",
         "pcloudRegion" => "region",
+        // S3 STS temporary credentials / AssumeRole (issue #301). The GUI
+        // persists these in `options` as camelCase; CLI / MCP / schedulers load
+        // the same profile through here, so they must map to the snake_case
+        // keys that `S3Config::from_provider_config` reads from `extra`.
+        "sessionToken" => "session_token",
+        "roleArn" => "role_arn",
+        "roleExternalId" => "role_external_id",
+        "roleSessionName" => "role_session_name",
+        "roleDurationSeconds" => "role_duration_seconds",
         other => other,
     }
 }
@@ -337,6 +346,44 @@ mod tests {
         assert_eq!(
             extra.get(S3_ENDPOINT_SOURCE_META_KEY).map(String::as_str),
             Some("profile")
+        );
+    }
+
+    #[test]
+    fn s3_sts_assume_role_options_normalize_to_snake_case() {
+        // A GUI-saved AWS AssumeRole profile carries camelCase keys; CLI / MCP
+        // must see them as the snake_case keys S3Config reads (issue #301).
+        let profile = json!({
+            "providerId": "amazon-s3",
+            "options": {
+                "bucket": "data",
+                "region": "us-east-1",
+                "sessionToken": "FwoGZXIvYXdzEXAMPLE",
+                "roleArn": "arn:aws:iam::123456789012:role/Demo",
+                "roleExternalId": "ext-42",
+                "roleSessionName": "team-sync",
+                "roleDurationSeconds": 7200,
+            }
+        });
+        let mut extra = HashMap::new();
+        apply_profile_options(&mut extra, &profile);
+        assert_eq!(
+            extra.get("session_token").map(String::as_str),
+            Some("FwoGZXIvYXdzEXAMPLE")
+        );
+        assert_eq!(
+            extra.get("role_arn").map(String::as_str),
+            Some("arn:aws:iam::123456789012:role/Demo")
+        );
+        assert_eq!(extra.get("role_external_id").map(String::as_str), Some("ext-42"));
+        assert_eq!(
+            extra.get("role_session_name").map(String::as_str),
+            Some("team-sync")
+        );
+        // Numeric JSON value is serialized to a string for `extra`.
+        assert_eq!(
+            extra.get("role_duration_seconds").map(String::as_str),
+            Some("7200")
         );
     }
 }

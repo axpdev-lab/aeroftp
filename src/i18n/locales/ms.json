@@ -1670,7 +1670,15 @@
             "webdavLocalSchemeHelp": "Padankan dengan tetapan HTTP/HTTPS jambatan WebDAV tempatan (Filen Desktop, MEGAcmd). HTTPS menggunakan sijil yang ditandatangani sendiri, jadi pengesahan sijil dilumpuhkan secara automatik.",
             "s3SessionToken": "Token sesi (pilihan)",
             "s3SessionTokenPlaceholder": "Token sesi AWS STS",
-            "s3SessionTokenHint": "Untuk kelayakan sementara daripada AWS STS AssumeRole atau SSO. Biarkan kosong untuk kunci akses IAM kekal."
+            "s3SessionTokenHint": "Untuk kelayakan sementara daripada AWS STS AssumeRole atau SSO. Biarkan kosong untuk kunci akses IAM kekal.",
+            "s3RoleArn": "ARN peranan IAM (pilihan)",
+            "s3RoleArnPlaceholder": "arn:aws:iam::123456789012:role/MyRole",
+            "s3RoleArnHint": "Ambil peranan ini melalui AWS STS: kunci akses di atas menjadi kelayakan asas untuk meminta kelayakan sementara yang terhad kepada peranan. Biarkan kosong untuk menggunakan kunci secara terus.",
+            "s3RoleExternalId": "ID luaran (pilihan)",
+            "s3RoleSessionName": "Nama sesi peranan (pilihan)",
+            "s3RoleSessionNamePlaceholder": "aeroftp-session",
+            "s3RoleDurationSeconds": "Tempoh sesi dalam saat (pilihan)",
+            "s3RoleDurationSecondsPlaceholder": "3600"
         },
         "shortcuts": {
             "title": "Pintasan Papan Kekunci",

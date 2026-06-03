@@ -1670,7 +1670,15 @@
             "webdavLocalSchemeHelp": "Усогласете со HTTP/HTTPS поставката на локалниот WebDAV мост (Filen Desktop, MEGAcmd). HTTPS користи самопотпишан сертификат, така што верификацијата на сертификатот автоматски се исклучува.",
             "s3SessionToken": "Токен на сесија (опционално)",
             "s3SessionTokenPlaceholder": "Токен на сесија на AWS STS",
-            "s3SessionTokenHint": "За привремени акредитиви од AWS STS AssumeRole или SSO. Оставете празно за трајни IAM клучеви за пристап."
+            "s3SessionTokenHint": "За привремени акредитиви од AWS STS AssumeRole или SSO. Оставете празно за трајни IAM клучеви за пристап.",
+            "s3RoleArn": "ARN на улогата IAM (опционално)",
+            "s3RoleArnPlaceholder": "arn:aws:iam::123456789012:role/MyRole",
+            "s3RoleArnHint": "Преземете ја оваа улога преку AWS STS: горните клучеви за пристап стануваат основни акредитиви за барање привремени акредитиви ограничени на улогата. Оставете празно за директно користење на клучевите.",
+            "s3RoleExternalId": "Надворешен идентификатор (опционално)",
+            "s3RoleSessionName": "Име на сесијата на улогата (опционално)",
+            "s3RoleSessionNamePlaceholder": "aeroftp-session",
+            "s3RoleDurationSeconds": "Времетраење на сесијата во секунди (опционално)",
+            "s3RoleDurationSecondsPlaceholder": "3600"
         },
         "shortcuts": {
             "title": "Кратенки на тастатура",

@@ -1670,7 +1670,15 @@
             "webdavLocalSchemeHelp": "შეუსაბამეთ ლოკალური WebDAV ხიდის HTTP/HTTPS პარამეტრს (Filen Desktop, MEGAcmd). HTTPS იყენებს თვითხელმოწერილ სერტიფიკატს, ამიტომ სერტიფიკატის შემოწმება ავტომატურად გათიშულია.",
             "s3SessionToken": "სესიის ტოკენი (არასავალდებულო)",
             "s3SessionTokenPlaceholder": "AWS STS სესიის ტოკენი",
-            "s3SessionTokenHint": "AWS STS AssumeRole-ის ან SSO-ის დროებითი სერტიფიკატებისთვის. დატოვეთ ცარიელი მუდმივი IAM წვდომის გასაღებებისთვის."
+            "s3SessionTokenHint": "AWS STS AssumeRole-ის ან SSO-ის დროებითი სერტიფიკატებისთვის. დატოვეთ ცარიელი მუდმივი IAM წვდომის გასაღებებისთვის.",
+            "s3RoleArn": "IAM როლის ARN (არასავალდებულო)",
+            "s3RoleArnPlaceholder": "arn:aws:iam::123456789012:role/MyRole",
+            "s3RoleArnHint": "მიიღეთ ეს როლი AWS STS-ის მეშვეობით: ზემოთ მოცემული წვდომის გასაღებები ხდება საბაზისო სერტიფიკატები დროებითი, როლით შეზღუდული სერტიფიკატების მოსათხოვნად. დატოვეთ ცარიელი გასაღებების პირდაპირ გამოსაყენებლად.",
+            "s3RoleExternalId": "გარე ID (არასავალდებულო)",
+            "s3RoleSessionName": "როლის სესიის სახელი (არასავალდებულო)",
+            "s3RoleSessionNamePlaceholder": "aeroftp-session",
+            "s3RoleDurationSeconds": "სესიის ხანგრძლივობა წამებში (არასავალდებულო)",
+            "s3RoleDurationSecondsPlaceholder": "3600"
         },
         "shortcuts": {
             "title": "კლავიატურის მალსახმობები",

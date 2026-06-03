@@ -1670,7 +1670,15 @@
             "webdavLocalSchemeHelp": "Uskladite s HTTP/HTTPS postavkom lokalnog WebDAV mosta (Filen Desktop, MEGAcmd). HTTPS koristi samopotpisani certifikat, pa je provjera certifikata automatski onemogućena.",
             "s3SessionToken": "Token sesije (neobavezno)",
             "s3SessionTokenPlaceholder": "AWS STS token sesije",
-            "s3SessionTokenHint": "Za privremene vjerodajnice iz AWS STS AssumeRole ili SSO. Ostavite prazno za trajne IAM pristupne ključeve."
+            "s3SessionTokenHint": "Za privremene vjerodajnice iz AWS STS AssumeRole ili SSO. Ostavite prazno za trajne IAM pristupne ključeve.",
+            "s3RoleArn": "ARN IAM uloge (neobavezno)",
+            "s3RoleArnPlaceholder": "arn:aws:iam::123456789012:role/MyRole",
+            "s3RoleArnHint": "Preuzmite ovu ulogu putem AWS STS: gornji pristupni ključevi postaju osnovne vjerodajnice za zahtijevanje privremenih vjerodajnica ograničenih na ulogu. Ostavite prazno za izravno korištenje ključeva.",
+            "s3RoleExternalId": "Vanjski ID (neobavezno)",
+            "s3RoleSessionName": "Naziv sesije uloge (neobavezno)",
+            "s3RoleSessionNamePlaceholder": "aeroftp-session",
+            "s3RoleDurationSeconds": "Trajanje sesije u sekundama (neobavezno)",
+            "s3RoleDurationSecondsPlaceholder": "3600"
         },
         "shortcuts": {
             "title": "Tipkovnički prečaci",

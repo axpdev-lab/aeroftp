@@ -46,6 +46,16 @@ pub struct SessionConnectionParams {
     /// AWS STS session token for temporary credentials (AssumeRole / SSO).
     /// AWS-only; ignored by S3-compatible backends without STS.
     pub session_token: Option<String>,
+    /// ARN of an IAM role to assume via STS `AssumeRole` (issue #301). When
+    /// set, `connect()` exchanges the access key/secret for temporary creds.
+    /// AWS-only.
+    pub role_arn: Option<String>,
+    /// `ExternalId` for the AssumeRole call (cross-account confused-deputy).
+    pub role_external_id: Option<String>,
+    /// Caller-chosen `RoleSessionName`; defaults to `aeroftp-session`.
+    pub role_session_name: Option<String>,
+    /// Requested credential lifetime in seconds (900..=43200).
+    pub role_duration_seconds: Option<u32>,
     /// OAuth client ID (for OAuth providers)
     pub client_id: Option<String>,
     /// OAuth client secret (for OAuth providers)
@@ -140,6 +150,19 @@ pub async fn session_connect(
             .filter(|s| !s.is_empty())
         {
             extra.insert("session_token".to_string(), token.to_string());
+        }
+        // STS AssumeRole (issue #301, Fase 2): trimmed, blank-as-absent.
+        for (key, value) in [
+            ("role_arn", params.role_arn.as_ref()),
+            ("role_external_id", params.role_external_id.as_ref()),
+            ("role_session_name", params.role_session_name.as_ref()),
+        ] {
+            if let Some(v) = value.map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                extra.insert(key.to_string(), v.to_string());
+            }
+        }
+        if let Some(d) = params.role_duration_seconds {
+            extra.insert("role_duration_seconds".to_string(), d.to_string());
         }
     }
 

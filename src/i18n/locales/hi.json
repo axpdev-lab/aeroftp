@@ -1670,7 +1670,15 @@
             "webdavLocalSchemeHelp": "स्थानीय WebDAV ब्रिज (Filen Desktop, MEGAcmd) की HTTP/HTTPS सेटिंग से मिलाएँ। HTTPS एक स्वयं-हस्ताक्षरित प्रमाणपत्र का उपयोग करता है, इसलिए प्रमाणपत्र सत्यापन स्वचालित रूप से अक्षम हो जाता है।",
             "s3SessionToken": "सत्र टोकन (वैकल्पिक)",
             "s3SessionTokenPlaceholder": "AWS STS सत्र टोकन",
-            "s3SessionTokenHint": "AWS STS AssumeRole या SSO से अस्थायी क्रेडेंशियल के लिए। स्थायी IAM एक्सेस कुंजियों के लिए खाली छोड़ें।"
+            "s3SessionTokenHint": "AWS STS AssumeRole या SSO से अस्थायी क्रेडेंशियल के लिए। स्थायी IAM एक्सेस कुंजियों के लिए खाली छोड़ें।",
+            "s3RoleArn": "IAM भूमिका ARN (वैकल्पिक)",
+            "s3RoleArnPlaceholder": "arn:aws:iam::123456789012:role/MyRole",
+            "s3RoleArnHint": "AWS STS के माध्यम से यह भूमिका ग्रहण करें: ऊपर दी गई एक्सेस कुंजियाँ अस्थायी, भूमिका-सीमित क्रेडेंशियल का अनुरोध करने के लिए आधार क्रेडेंशियल बन जाती हैं। कुंजियों का सीधे उपयोग करने के लिए खाली छोड़ें।",
+            "s3RoleExternalId": "बाहरी ID (वैकल्पिक)",
+            "s3RoleSessionName": "भूमिका सत्र नाम (वैकल्पिक)",
+            "s3RoleSessionNamePlaceholder": "aeroftp-session",
+            "s3RoleDurationSeconds": "सेकंड में सत्र अवधि (वैकल्पिक)",
+            "s3RoleDurationSecondsPlaceholder": "3600"
         },
         "shortcuts": {
             "title": "कीबोर्ड शॉर्टकट",

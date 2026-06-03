@@ -1670,7 +1670,15 @@
             "webdavLocalSchemeHelp": "Potriviți cu setarea HTTP/HTTPS a punții WebDAV locale (Filen Desktop, MEGAcmd). HTTPS folosește un certificat autosemnat, prin urmare verificarea certificatului este dezactivată automat.",
             "s3SessionToken": "Token de sesiune (opțional)",
             "s3SessionTokenPlaceholder": "Token de sesiune AWS STS",
-            "s3SessionTokenHint": "Pentru credențiale temporare de la AWS STS AssumeRole sau SSO. Lăsați gol pentru chei de acces IAM permanente."
+            "s3SessionTokenHint": "Pentru credențiale temporare de la AWS STS AssumeRole sau SSO. Lăsați gol pentru chei de acces IAM permanente.",
+            "s3RoleArn": "ARN-ul rolului IAM (opțional)",
+            "s3RoleArnPlaceholder": "arn:aws:iam::123456789012:role/MyRole",
+            "s3RoleArnHint": "Asumați acest rol prin AWS STS: cheile de acces de mai sus devin credențiale de bază pentru a solicita credențiale temporare limitate la rol. Lăsați gol pentru a folosi cheile direct.",
+            "s3RoleExternalId": "ID extern (opțional)",
+            "s3RoleSessionName": "Nume sesiune rol (opțional)",
+            "s3RoleSessionNamePlaceholder": "aeroftp-session",
+            "s3RoleDurationSeconds": "Durata sesiunii în secunde (opțional)",
+            "s3RoleDurationSecondsPlaceholder": "3600"
         },
         "shortcuts": {
             "title": "Scurtături tastatură",

@@ -1670,7 +1670,15 @@
             "webdavLocalSchemeHelp": "Samsvarið HTTP/HTTPS stillingu staðbundinnar WebDAV brúar (Filen Desktop, MEGAcmd). HTTPS notar sjálfundirritað skírteini, þannig að skírteinisstaðfesting er sjálfkrafa óvirk.",
             "s3SessionToken": "Setutókn (valfrjálst)",
             "s3SessionTokenPlaceholder": "AWS STS-setutókn",
-            "s3SessionTokenHint": "Fyrir tímabundin auðkenni frá AWS STS AssumeRole eða SSO. Skildu eftir autt fyrir varanlega IAM-aðgangslykla."
+            "s3SessionTokenHint": "Fyrir tímabundin auðkenni frá AWS STS AssumeRole eða SSO. Skildu eftir autt fyrir varanlega IAM-aðgangslykla.",
+            "s3RoleArn": "ARN IAM-hlutverks (valfrjálst)",
+            "s3RoleArnPlaceholder": "arn:aws:iam::123456789012:role/MyRole",
+            "s3RoleArnHint": "Taktu að þér þetta hlutverk gegnum AWS STS: aðgangslyklarnir að ofan verða grunnauðkenni til að biðja um tímabundin auðkenni bundin við hlutverkið. Skildu eftir autt til að nota lyklana beint.",
+            "s3RoleExternalId": "Ytra auðkenni (valfrjálst)",
+            "s3RoleSessionName": "Heiti hlutverkslotu (valfrjálst)",
+            "s3RoleSessionNamePlaceholder": "aeroftp-session",
+            "s3RoleDurationSeconds": "Lotulengd í sekúndum (valfrjálst)",
+            "s3RoleDurationSecondsPlaceholder": "3600"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",

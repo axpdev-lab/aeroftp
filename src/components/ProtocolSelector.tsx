@@ -704,6 +704,11 @@ interface ProtocolFieldsProps {
         pathStyle?: boolean;
         // S3 temporary credentials (AWS STS AssumeRole / SSO), issue #301
         sessionToken?: string;
+        // S3 STS AssumeRole config (issue #301 Fase 2)
+        roleArn?: string;
+        roleExternalId?: string;
+        roleSessionName?: string;
+        roleDurationSeconds?: number;
         // SFTP-specific
         private_key_path?: string;
         key_passphrase?: string;
@@ -960,6 +965,88 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                             </button>
                         </div>
                         <p className="text-xs text-gray-500 mt-1">{t('protocol.s3SessionTokenHint')}</p>
+                    </div>
+                )}
+
+                {/* AWS STS AssumeRole (issue #301 Fase 2). Same AWS-only visibility
+                    as the session token. When a Role ARN is set, connect() exchanges
+                    the access keys above for temporary, role-scoped credentials; the
+                    accessory fields appear only once a Role ARN is entered. */}
+                {(!providerConfig || providerConfig.isGeneric) && (
+                    <div className="space-y-3 rounded-lg border border-gray-200 dark:border-gray-700 p-3">
+                        <div>
+                            <label className="block text-sm font-medium mb-1.5">
+                                {t('protocol.s3RoleArn')}
+                            </label>
+                            <input
+                                type="text"
+                                value={options.roleArn || ''}
+                                onChange={(e) => onChange({ ...options, roleArn: e.target.value })}
+                                disabled={disabled}
+                                autoComplete="off"
+                                spellCheck={false}
+                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-mono"
+                                placeholder={t('protocol.s3RoleArnPlaceholder')}
+                            />
+                            <p className="text-xs text-gray-500 mt-1">{t('protocol.s3RoleArnHint')}</p>
+                        </div>
+                        {(options.roleArn || '').trim() !== '' && (
+                            <>
+                                <div>
+                                    <label className="block text-sm font-medium mb-1.5">
+                                        {t('protocol.s3RoleExternalId')}
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={options.roleExternalId || ''}
+                                        onChange={(e) => onChange({ ...options, roleExternalId: e.target.value })}
+                                        disabled={disabled}
+                                        autoComplete="off"
+                                        spellCheck={false}
+                                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-mono"
+                                    />
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1.5">
+                                            {t('protocol.s3RoleSessionName')}
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={options.roleSessionName || ''}
+                                            onChange={(e) => onChange({ ...options, roleSessionName: e.target.value })}
+                                            disabled={disabled}
+                                            autoComplete="off"
+                                            spellCheck={false}
+                                            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-mono"
+                                            placeholder={t('protocol.s3RoleSessionNamePlaceholder')}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1.5">
+                                            {t('protocol.s3RoleDurationSeconds')}
+                                        </label>
+                                        <input
+                                            type="number"
+                                            min={900}
+                                            max={43200}
+                                            value={options.roleDurationSeconds ?? ''}
+                                            onChange={(e) =>
+                                                onChange({
+                                                    ...options,
+                                                    roleDurationSeconds: e.target.value
+                                                        ? Number(e.target.value)
+                                                        : undefined,
+                                                })
+                                            }
+                                            disabled={disabled}
+                                            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-mono"
+                                            placeholder={t('protocol.s3RoleDurationSecondsPlaceholder')}
+                                        />
+                                    </div>
+                                </div>
+                            </>
+                        )}
                     </div>
                 )}
 

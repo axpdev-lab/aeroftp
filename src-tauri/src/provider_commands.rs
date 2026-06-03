@@ -280,6 +280,16 @@ pub struct ProviderConnectionParams {
     /// S3: AWS STS session token for temporary credentials (AssumeRole / SSO).
     /// AWS-only; ignored by S3-compatible backends without STS.
     pub session_token: Option<String>,
+    /// S3: ARN of an IAM role to assume via STS `AssumeRole` (issue #301).
+    /// When set, `connect()` exchanges the access key/secret for temporary
+    /// credentials. AWS-only.
+    pub role_arn: Option<String>,
+    /// S3: `ExternalId` for the AssumeRole call (cross-account protection).
+    pub role_external_id: Option<String>,
+    /// S3: caller-chosen `RoleSessionName`; defaults to `aeroftp-session`.
+    pub role_session_name: Option<String>,
+    /// S3: requested credential lifetime in seconds (900..=43200).
+    pub role_duration_seconds: Option<u32>,
     /// Save session keys (MEGA)
     pub save_session: Option<bool>,
     /// Backend selection for MEGA: "native" or "megacmd"
@@ -416,6 +426,19 @@ impl ProviderConnectionParams {
                 .filter(|s| !s.is_empty())
             {
                 extra.insert("session_token".to_string(), token.to_string());
+            }
+            // STS AssumeRole config (issue #301, Fase 2). AWS-only.
+            for (key, value) in [
+                ("role_arn", self.role_arn.as_ref()),
+                ("role_external_id", self.role_external_id.as_ref()),
+                ("role_session_name", self.role_session_name.as_ref()),
+            ] {
+                if let Some(v) = value.map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                    extra.insert(key.to_string(), v.to_string());
+                }
+            }
+            if let Some(d) = self.role_duration_seconds {
+                extra.insert("role_duration_seconds".to_string(), d.to_string());
             }
         }
 
@@ -9944,6 +9967,10 @@ mod tests {
             sse_mode: None,
             sse_kms_key_id: None,
             session_token: None,
+            role_arn: None,
+            role_external_id: None,
+            role_session_name: None,
+            role_duration_seconds: None,
             save_session: None,
             mega_mode: None,
             session_expires_at: None,
@@ -10003,6 +10030,49 @@ mod tests {
         params.session_token = Some("   ".to_string());
         let config = params.to_provider_config().unwrap();
         assert!(!config.extra.contains_key("session_token"));
+    }
+
+    #[test]
+    fn test_s3_provider_params_absent_assume_role() {
+        let config = s3_params(None).to_provider_config().unwrap();
+        assert!(!config.extra.contains_key("role_arn"));
+        assert!(!config.extra.contains_key("role_external_id"));
+        assert!(!config.extra.contains_key("role_session_name"));
+        assert!(!config.extra.contains_key("role_duration_seconds"));
+    }
+
+    #[test]
+    fn test_s3_provider_params_forward_assume_role() {
+        let mut params = s3_params(None);
+        params.role_arn = Some("arn:aws:iam::123456789012:role/Demo".to_string());
+        params.role_external_id = Some("ext-42".to_string());
+        params.role_session_name = Some("team-sync".to_string());
+        params.role_duration_seconds = Some(7200);
+        let config = params.to_provider_config().unwrap();
+        assert_eq!(
+            config.extra.get("role_arn").map(String::as_str),
+            Some("arn:aws:iam::123456789012:role/Demo")
+        );
+        assert_eq!(
+            config.extra.get("role_external_id").map(String::as_str),
+            Some("ext-42")
+        );
+        assert_eq!(
+            config.extra.get("role_session_name").map(String::as_str),
+            Some("team-sync")
+        );
+        assert_eq!(
+            config.extra.get("role_duration_seconds").map(String::as_str),
+            Some("7200")
+        );
+    }
+
+    #[test]
+    fn test_s3_provider_params_trim_blank_role_arn() {
+        let mut params = s3_params(None);
+        params.role_arn = Some("   ".to_string());
+        let config = params.to_provider_config().unwrap();
+        assert!(!config.extra.contains_key("role_arn"));
     }
 
     #[test]

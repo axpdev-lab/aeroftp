@@ -1670,7 +1670,15 @@
             "webdavLocalSchemeHelp": "Yerel WebDAV köprüsünün HTTP/HTTPS ayarıyla eşleştirin (Filen Desktop, MEGAcmd). HTTPS kendinden imzalı sertifika kullanır, bu nedenle sertifika doğrulaması otomatik olarak devre dışı bırakılır.",
             "s3SessionToken": "Oturum belirteci (isteğe bağlı)",
             "s3SessionTokenPlaceholder": "AWS STS oturum belirteci",
-            "s3SessionTokenHint": "AWS STS AssumeRole veya SSO'dan alınan geçici kimlik bilgileri için. Kalıcı IAM erişim anahtarları için boş bırakın."
+            "s3SessionTokenHint": "AWS STS AssumeRole veya SSO'dan alınan geçici kimlik bilgileri için. Kalıcı IAM erişim anahtarları için boş bırakın.",
+            "s3RoleArn": "IAM rol ARN'si (isteğe bağlı)",
+            "s3RoleArnPlaceholder": "arn:aws:iam::123456789012:role/MyRole",
+            "s3RoleArnHint": "Bu rolü AWS STS ile üstlenin: yukarıdaki erişim anahtarları, role kapsamlı geçici kimlik bilgileri istemek için temel kimlik bilgileri olur. Anahtarları doğrudan kullanmak için boş bırakın.",
+            "s3RoleExternalId": "Harici kimlik (isteğe bağlı)",
+            "s3RoleSessionName": "Rol oturumu adı (isteğe bağlı)",
+            "s3RoleSessionNamePlaceholder": "aeroftp-session",
+            "s3RoleDurationSeconds": "Saniye cinsinden oturum süresi (isteğe bağlı)",
+            "s3RoleDurationSecondsPlaceholder": "3600"
         },
         "shortcuts": {
             "title": "Klavye Kısayolları",

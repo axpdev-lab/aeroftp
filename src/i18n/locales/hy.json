@@ -1663,7 +1663,15 @@
             "webdavLocalSchemeHelp": "Համապատասխանեցրեք տեղական WebDAV կամրջի HTTP/HTTPS կարգավորմանը (Filen Desktop, MEGAcmd)։ HTTPS-ն օգտագործում է ինքնաստորագրված վկայական, ուստի վկայականի ստուգումն ինքնաշխատ կերպով անջատվում է։",
             "s3SessionToken": "Աշխատաշրջանի թոքեն (ընտրովի)",
             "s3SessionTokenPlaceholder": "AWS STS աշխատաշրջանի թոքեն",
-            "s3SessionTokenHint": "AWS STS AssumeRole-ից կամ SSO-ից ստացված ժամանակավոր հավատարմագրերի համար։ Երկարաժամկետ IAM մուտքի բանալիների համար թողեք դատարկ։"
+            "s3SessionTokenHint": "AWS STS AssumeRole-ից կամ SSO-ից ստացված ժամանակավոր հավատարմագրերի համար։ Երկարաժամկետ IAM մուտքի բանալիների համար թողեք դատարկ։",
+            "s3RoleArn": "IAM դերի ARN (ընտրովի)",
+            "s3RoleArnPlaceholder": "arn:aws:iam::123456789012:role/MyRole",
+            "s3RoleArnHint": "Ստանձնեք այս դերը AWS STS-ի միջոցով. վերևի մուտքի բանալիները դառնում են բազային հավատարմագրեր՝ դերով սահմանափակված ժամանակավոր հավատարմագրեր ստանալու համար։ Թողեք դատարկ՝ բանալիներն ուղղակիորեն օգտագործելու համար։",
+            "s3RoleExternalId": "Արտաքին ID (ընտրովի)",
+            "s3RoleSessionName": "Դերի աշխատաշրջանի անունը (ընտրովի)",
+            "s3RoleSessionNamePlaceholder": "aeroftp-session",
+            "s3RoleDurationSeconds": "Աշխատաշրջանի տևողությունը վայրկյաններով (ընտրովի)",
+            "s3RoleDurationSecondsPlaceholder": "3600"
         },
         "shortcuts": {
             "title": "Ստեղնաշարի դյուրանցումներ",

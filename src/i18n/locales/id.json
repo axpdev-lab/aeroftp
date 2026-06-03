@@ -1670,7 +1670,15 @@
             "webdavLocalSchemeHelp": "Sesuaikan dengan pengaturan HTTP/HTTPS jembatan WebDAV lokal (Filen Desktop, MEGAcmd). HTTPS menggunakan sertifikat yang ditandatangani sendiri, sehingga verifikasi sertifikat dinonaktifkan secara otomatis.",
             "s3SessionToken": "Token sesi (opsional)",
             "s3SessionTokenPlaceholder": "Token sesi AWS STS",
-            "s3SessionTokenHint": "Untuk kredensial sementara dari AWS STS AssumeRole atau SSO. Biarkan kosong untuk kunci akses IAM permanen."
+            "s3SessionTokenHint": "Untuk kredensial sementara dari AWS STS AssumeRole atau SSO. Biarkan kosong untuk kunci akses IAM permanen.",
+            "s3RoleArn": "ARN peran IAM (opsional)",
+            "s3RoleArnPlaceholder": "arn:aws:iam::123456789012:role/MyRole",
+            "s3RoleArnHint": "Ambil peran ini melalui AWS STS: kunci akses di atas menjadi kredensial dasar untuk meminta kredensial sementara yang dibatasi peran. Biarkan kosong untuk menggunakan kunci secara langsung.",
+            "s3RoleExternalId": "ID eksternal (opsional)",
+            "s3RoleSessionName": "Nama sesi peran (opsional)",
+            "s3RoleSessionNamePlaceholder": "aeroftp-session",
+            "s3RoleDurationSeconds": "Durasi sesi dalam detik (opsional)",
+            "s3RoleDurationSecondsPlaceholder": "3600"
         },
         "shortcuts": {
             "title": "Pintasan Keyboard",

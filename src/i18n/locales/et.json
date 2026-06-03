@@ -1670,7 +1670,15 @@
             "webdavLocalSchemeHelp": "Sobita kohaliku WebDAV silla HTTP/HTTPS sättega (Filen Desktop, MEGAcmd). HTTPS kasutab iseallkirjastatud sertifikaati, seega on sertifikaadi kontroll automaatselt välja lülitatud.",
             "s3SessionToken": "Seansiluba (valikuline)",
             "s3SessionTokenPlaceholder": "AWS STS seansiluba",
-            "s3SessionTokenHint": "Ajutiste mandaatide jaoks AWS STS AssumeRole'ist või SSO-st. Püsivate IAM pääsuvõtmete puhul jätke tühjaks."
+            "s3SessionTokenHint": "Ajutiste mandaatide jaoks AWS STS AssumeRole'ist või SSO-st. Püsivate IAM pääsuvõtmete puhul jätke tühjaks.",
+            "s3RoleArn": "IAM-rolli ARN (valikuline)",
+            "s3RoleArnPlaceholder": "arn:aws:iam::123456789012:role/MyRole",
+            "s3RoleArnHint": "Võta see roll AWS STS kaudu: ülaltoodud pääsuvõtmetest saavad baasmandaadid, millega taotletakse ajutisi, rolliga piiratud mandaate. Jäta tühjaks, et kasutada võtmeid otse.",
+            "s3RoleExternalId": "Väline ID (valikuline)",
+            "s3RoleSessionName": "Rolli seansi nimi (valikuline)",
+            "s3RoleSessionNamePlaceholder": "aeroftp-session",
+            "s3RoleDurationSeconds": "Seansi kestus sekundites (valikuline)",
+            "s3RoleDurationSecondsPlaceholder": "3600"
         },
         "shortcuts": {
             "title": "Kiirklahvid",

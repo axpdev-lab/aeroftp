@@ -1670,7 +1670,15 @@
             "webdavLocalSchemeHelp": "ផ្គូផ្គងការកំណត់ HTTP/HTTPS របស់ស្ពាន WebDAV ក្នុងស្រុក (Filen Desktop, MEGAcmd)។ HTTPS ប្រើវិញ្ញាបនបត្រដែលចុះហត្ថលេខាដោយខ្លួនឯង ដូច្នេះការផ្ទៀងផ្ទាត់វិញ្ញាបនបត្រត្រូវបានបិទដោយស្វ័យប្រវត្តិ។",
             "s3SessionToken": "ថូខឹនវគ្គ (ស្រេចចិត្ត)",
             "s3SessionTokenPlaceholder": "ថូខឹនវគ្គ AWS STS",
-            "s3SessionTokenHint": "សម្រាប់ព័ត៌មានសម្គាល់បណ្ដោះអាសន្នពី AWS STS AssumeRole ឬ SSO។ ទុកឱ្យនៅទទេសម្រាប់សោចូលប្រើ IAM អចិន្ត្រៃយ៍។"
+            "s3SessionTokenHint": "សម្រាប់ព័ត៌មានសម្គាល់បណ្ដោះអាសន្នពី AWS STS AssumeRole ឬ SSO។ ទុកឱ្យនៅទទេសម្រាប់សោចូលប្រើ IAM អចិន្ត្រៃយ៍។",
+            "s3RoleArn": "ARN របស់តួនាទី IAM (ស្រេចចិត្ត)",
+            "s3RoleArnPlaceholder": "arn:aws:iam::123456789012:role/MyRole",
+            "s3RoleArnHint": "ទទួលយកតួនាទីនេះតាមរយៈ AWS STS៖ សោចូលប្រើខាងលើក្លាយជាព័ត៌មានសម្គាល់មូលដ្ឋានដើម្បីស្នើសុំព័ត៌មានសម្គាល់បណ្ដោះអាសន្នដែលកំណត់តាមតួនាទី។ ទុកឱ្យនៅទទេដើម្បីប្រើសោដោយផ្ទាល់។",
+            "s3RoleExternalId": "លេខសម្គាល់ខាងក្រៅ (ស្រេចចិត្ត)",
+            "s3RoleSessionName": "ឈ្មោះវគ្គតួនាទី (ស្រេចចិត្ត)",
+            "s3RoleSessionNamePlaceholder": "aeroftp-session",
+            "s3RoleDurationSeconds": "រយៈពេលវគ្គគិតជាវិនាទី (ស្រេចចិត្ត)",
+            "s3RoleDurationSecondsPlaceholder": "3600"
         },
         "shortcuts": {
             "title": "ផ្លូវកាត់ក្តារចុច",

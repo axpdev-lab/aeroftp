@@ -1670,7 +1670,15 @@
             "webdavLocalSchemeHelp": "匹配本地 WebDAV 桥接 (Filen Desktop, MEGAcmd) 的 HTTP/HTTPS 设置。HTTPS 使用自签名证书, 因此证书验证会自动禁用。",
             "s3SessionToken": "会话令牌（可选）",
             "s3SessionTokenPlaceholder": "AWS STS 会话令牌",
-            "s3SessionTokenHint": "用于来自 AWS STS AssumeRole 或 SSO 的临时凭证。对于长期 IAM 访问密钥，请留空。"
+            "s3SessionTokenHint": "用于来自 AWS STS AssumeRole 或 SSO 的临时凭证。对于长期 IAM 访问密钥，请留空。",
+            "s3RoleArn": "IAM 角色 ARN（可选）",
+            "s3RoleArnPlaceholder": "arn:aws:iam::123456789012:role/MyRole",
+            "s3RoleArnHint": "通过 AWS STS 担任此角色：上面的访问密钥将作为基础凭证，用于请求受角色限制的临时凭证。留空则直接使用密钥。",
+            "s3RoleExternalId": "外部 ID（可选）",
+            "s3RoleSessionName": "角色会话名称（可选）",
+            "s3RoleSessionNamePlaceholder": "aeroftp-session",
+            "s3RoleDurationSeconds": "会话时长（秒，可选）",
+            "s3RoleDurationSecondsPlaceholder": "3600"
         },
         "shortcuts": {
             "title": "键盘快捷键",

@@ -1670,7 +1670,15 @@
             "webdavLocalSchemeHelp": "Odpovídá nastavení HTTP/HTTPS lokálního WebDAV mostu (Filen Desktop, MEGAcmd). HTTPS používá samopodepsaný certifikát, takže ověřování certifikátu je automaticky vypnuto.",
             "s3SessionToken": "Token relace (volitelné)",
             "s3SessionTokenPlaceholder": "Token relace AWS STS",
-            "s3SessionTokenHint": "Pro dočasné přihlašovací údaje z AWS STS AssumeRole nebo SSO. Pro trvalé přístupové klíče IAM ponechte prázdné."
+            "s3SessionTokenHint": "Pro dočasné přihlašovací údaje z AWS STS AssumeRole nebo SSO. Pro trvalé přístupové klíče IAM ponechte prázdné.",
+            "s3RoleArn": "ARN role IAM (volitelné)",
+            "s3RoleArnPlaceholder": "arn:aws:iam::123456789012:role/MyRole",
+            "s3RoleArnHint": "Převzít tuto roli přes AWS STS: výše uvedené přístupové klíče se stanou základními přihlašovacími údaji pro vyžádání dočasných údajů omezených na roli. Ponechte prázdné pro přímé použití klíčů.",
+            "s3RoleExternalId": "Externí ID (volitelné)",
+            "s3RoleSessionName": "Název relace role (volitelné)",
+            "s3RoleSessionNamePlaceholder": "aeroftp-session",
+            "s3RoleDurationSeconds": "Délka relace v sekundách (volitelné)",
+            "s3RoleDurationSecondsPlaceholder": "3600"
         },
         "shortcuts": {
             "title": "Klávesové zkratky",

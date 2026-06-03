@@ -578,7 +578,15 @@
             "openProviderDocs": "Apri la documentazione di {provider}",
             "s3SessionToken": "Token di sessione (opzionale)",
             "s3SessionTokenPlaceholder": "Token di sessione AWS STS",
-            "s3SessionTokenHint": "Per credenziali temporanee da AWS STS AssumeRole o SSO. Lascia vuoto per chiavi IAM permanenti."
+            "s3SessionTokenHint": "Per credenziali temporanee da AWS STS AssumeRole o SSO. Lascia vuoto per chiavi IAM permanenti.",
+            "s3RoleArn": "ARN del ruolo IAM (opzionale)",
+            "s3RoleArnPlaceholder": "arn:aws:iam::123456789012:role/MyRole",
+            "s3RoleArnHint": "Assumi questo ruolo tramite AWS STS: le chiavi di accesso sopra diventano le credenziali base per ottenere credenziali temporanee con i permessi del ruolo. Lascia vuoto per usare direttamente le chiavi.",
+            "s3RoleExternalId": "ID esterno (opzionale)",
+            "s3RoleSessionName": "Nome sessione del ruolo (opzionale)",
+            "s3RoleSessionNamePlaceholder": "aeroftp-session",
+            "s3RoleDurationSeconds": "Durata sessione in secondi (opzionale)",
+            "s3RoleDurationSecondsPlaceholder": "3600"
         },
         "browser": {
             "remote": "Remoto",

@@ -1670,7 +1670,15 @@
             "webdavLocalSchemeHelp": "Match HTTP/HTTPS-indstillingen for den lokale WebDAV-bro (Filen Desktop, MEGAcmd). HTTPS bruger et selvsigneret certifikat, så certifikatverifikation deaktiveres automatisk.",
             "s3SessionToken": "Sessionstoken (valgfrit)",
             "s3SessionTokenPlaceholder": "AWS STS-sessionstoken",
-            "s3SessionTokenHint": "Til midlertidige legitimationsoplysninger fra AWS STS AssumeRole eller SSO. Lad feltet stå tomt for permanente IAM-adgangsnøgler."
+            "s3SessionTokenHint": "Til midlertidige legitimationsoplysninger fra AWS STS AssumeRole eller SSO. Lad feltet stå tomt for permanente IAM-adgangsnøgler.",
+            "s3RoleArn": "IAM-rolle-ARN (valgfrit)",
+            "s3RoleArnPlaceholder": "arn:aws:iam::123456789012:role/MyRole",
+            "s3RoleArnHint": "Antag denne rolle via AWS STS: adgangsnøglerne ovenfor bliver basislegitimationsoplysninger til at anmode om midlertidige, rolleafgrænsede legitimationsoplysninger. Lad feltet stå tomt for at bruge nøglerne direkte.",
+            "s3RoleExternalId": "Eksternt ID (valgfrit)",
+            "s3RoleSessionName": "Navn på rollesession (valgfrit)",
+            "s3RoleSessionNamePlaceholder": "aeroftp-session",
+            "s3RoleDurationSeconds": "Sessionsvarighed i sekunder (valgfrit)",
+            "s3RoleDurationSecondsPlaceholder": "3600"
         },
         "shortcuts": {
             "title": "Tastaturgenveje",

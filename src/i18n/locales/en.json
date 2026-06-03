@@ -2543,7 +2543,15 @@
             "discoverGitLab": "Repository & CI/CD platform",
             "s3SessionToken": "Session Token (optional)",
             "s3SessionTokenPlaceholder": "AWS STS session token",
-            "s3SessionTokenHint": "For temporary credentials from AWS STS AssumeRole or SSO. Leave empty for long-term IAM access keys."
+            "s3SessionTokenHint": "For temporary credentials from AWS STS AssumeRole or SSO. Leave empty for long-term IAM access keys.",
+            "s3RoleArn": "IAM Role ARN (optional)",
+            "s3RoleArnPlaceholder": "arn:aws:iam::123456789012:role/MyRole",
+            "s3RoleArnHint": "Assume this role via AWS STS: the access keys above become base credentials used to request temporary, role-scoped credentials. Leave empty to use the keys directly.",
+            "s3RoleExternalId": "External ID (optional)",
+            "s3RoleSessionName": "Role session name (optional)",
+            "s3RoleSessionNamePlaceholder": "aeroftp-session",
+            "s3RoleDurationSeconds": "Session duration in seconds (optional)",
+            "s3RoleDurationSecondsPlaceholder": "3600"
         },
         "quickLook": {
             "noPreview": "No preview available",

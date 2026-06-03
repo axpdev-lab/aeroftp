@@ -1670,7 +1670,15 @@
             "webdavLocalSchemeHelp": "ให้ตรงกับการตั้งค่า HTTP/HTTPS ของบริดจ์ WebDAV ในเครื่อง (Filen Desktop, MEGAcmd) HTTPS ใช้ใบรับรองที่ลงนามด้วยตนเอง ดังนั้นการตรวจสอบใบรับรองจะถูกปิดใช้งานโดยอัตโนมัติ",
             "s3SessionToken": "โทเค็นเซสชัน (ไม่บังคับ)",
             "s3SessionTokenPlaceholder": "โทเค็นเซสชัน AWS STS",
-            "s3SessionTokenHint": "สำหรับข้อมูลรับรองชั่วคราวจาก AWS STS AssumeRole หรือ SSO เว้นว่างไว้สำหรับคีย์การเข้าถึง IAM แบบถาวร"
+            "s3SessionTokenHint": "สำหรับข้อมูลรับรองชั่วคราวจาก AWS STS AssumeRole หรือ SSO เว้นว่างไว้สำหรับคีย์การเข้าถึง IAM แบบถาวร",
+            "s3RoleArn": "ARN ของบทบาท IAM (ไม่บังคับ)",
+            "s3RoleArnPlaceholder": "arn:aws:iam::123456789012:role/MyRole",
+            "s3RoleArnHint": "รับบทบาทนี้ผ่าน AWS STS: คีย์การเข้าถึงด้านบนจะกลายเป็นข้อมูลรับรองพื้นฐานเพื่อขอข้อมูลรับรองชั่วคราวที่จำกัดตามบทบาท เว้นว่างไว้เพื่อใช้คีย์โดยตรง",
+            "s3RoleExternalId": "รหัสภายนอก (ไม่บังคับ)",
+            "s3RoleSessionName": "ชื่อเซสชันบทบาท (ไม่บังคับ)",
+            "s3RoleSessionNamePlaceholder": "aeroftp-session",
+            "s3RoleDurationSeconds": "ระยะเวลาเซสชันเป็นวินาที (ไม่บังคับ)",
+            "s3RoleDurationSecondsPlaceholder": "3600"
         },
         "shortcuts": {
             "title": "แป้นพิมพ์ลัด",

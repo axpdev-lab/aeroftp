@@ -1670,7 +1670,15 @@
             "webdavLocalSchemeHelp": "Узгодьте з налаштуванням HTTP/HTTPS локального мосту WebDAV (Filen Desktop, MEGAcmd). HTTPS використовує самопідписаний сертифікат, тому перевірка сертифіката автоматично вимкнена.",
             "s3SessionToken": "Токен сеансу (необов'язково)",
             "s3SessionTokenPlaceholder": "Токен сеансу AWS STS",
-            "s3SessionTokenHint": "Для тимчасових облікових даних із AWS STS AssumeRole або SSO. Залиште порожнім для постійних ключів доступу IAM."
+            "s3SessionTokenHint": "Для тимчасових облікових даних із AWS STS AssumeRole або SSO. Залиште порожнім для постійних ключів доступу IAM.",
+            "s3RoleArn": "ARN ролі IAM (необов'язково)",
+            "s3RoleArnPlaceholder": "arn:aws:iam::123456789012:role/MyRole",
+            "s3RoleArnHint": "Прийняти цю роль через AWS STS: наведені вище ключі доступу стають базовими обліковими даними для запиту тимчасових облікових даних у межах ролі. Залиште порожнім, щоб використовувати ключі безпосередньо.",
+            "s3RoleExternalId": "Зовнішній ідентифікатор (необов'язково)",
+            "s3RoleSessionName": "Назва сеансу ролі (необов'язково)",
+            "s3RoleSessionNamePlaceholder": "aeroftp-session",
+            "s3RoleDurationSeconds": "Тривалість сеансу в секундах (необов'язково)",
+            "s3RoleDurationSecondsPlaceholder": "3600"
         },
         "shortcuts": {
             "title": "Грячі клавіші",

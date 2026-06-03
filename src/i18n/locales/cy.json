@@ -1670,7 +1670,15 @@
             "webdavLocalSchemeHelp": "Cyfateb i osodiad HTTP/HTTPS y bont WebDAV leol (Filen Desktop, MEGAcmd). Mae HTTPS yn defnyddio tystysgrif hunan-lofnodedig, felly mae gwirio tystysgrifau yn cael ei analluogi'n awtomatig.",
             "s3SessionToken": "Tocyn sesiwn (dewisol)",
             "s3SessionTokenPlaceholder": "Tocyn sesiwn AWS STS",
-            "s3SessionTokenHint": "Ar gyfer manylion dilysu dros dro o AWS STS AssumeRole neu SSO. Gadewch yn wag ar gyfer allweddi mynediad IAM hirdymor."
+            "s3SessionTokenHint": "Ar gyfer manylion dilysu dros dro o AWS STS AssumeRole neu SSO. Gadewch yn wag ar gyfer allweddi mynediad IAM hirdymor.",
+            "s3RoleArn": "ARN rôl IAM (dewisol)",
+            "s3RoleArnPlaceholder": "arn:aws:iam::123456789012:role/MyRole",
+            "s3RoleArnHint": "Cymerwch y rôl hon drwy AWS STS: daw'r allweddi mynediad uchod yn fanylion sylfaen i ofyn am fanylion dros dro wedi'u cyfyngu i'r rôl. Gadewch yn wag i ddefnyddio'r allweddi'n uniongyrchol.",
+            "s3RoleExternalId": "ID allanol (dewisol)",
+            "s3RoleSessionName": "Enw sesiwn y rôl (dewisol)",
+            "s3RoleSessionNamePlaceholder": "aeroftp-session",
+            "s3RoleDurationSeconds": "Hyd y sesiwn mewn eiliadau (dewisol)",
+            "s3RoleDurationSecondsPlaceholder": "3600"
         },
         "shortcuts": {
             "title": "Llwybrau Byr Bysellfwrdd",

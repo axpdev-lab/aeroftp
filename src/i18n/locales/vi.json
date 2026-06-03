@@ -1670,7 +1670,15 @@
             "webdavLocalSchemeHelp": "Khớp với cài đặt HTTP/HTTPS của cầu WebDAV cục bộ (Filen Desktop, MEGAcmd). HTTPS sử dụng chứng chỉ tự ký, vì vậy việc xác minh chứng chỉ bị tự động vô hiệu hóa.",
             "s3SessionToken": "Mã thông báo phiên (tùy chọn)",
             "s3SessionTokenPlaceholder": "Mã thông báo phiên AWS STS",
-            "s3SessionTokenHint": "Dành cho thông tin xác thực tạm thời từ AWS STS AssumeRole hoặc SSO. Để trống cho khóa truy cập IAM dài hạn."
+            "s3SessionTokenHint": "Dành cho thông tin xác thực tạm thời từ AWS STS AssumeRole hoặc SSO. Để trống cho khóa truy cập IAM dài hạn.",
+            "s3RoleArn": "ARN của vai trò IAM (tùy chọn)",
+            "s3RoleArnPlaceholder": "arn:aws:iam::123456789012:role/MyRole",
+            "s3RoleArnHint": "Đảm nhận vai trò này qua AWS STS: các khóa truy cập ở trên trở thành thông tin xác thực cơ sở để yêu cầu thông tin xác thực tạm thời giới hạn theo vai trò. Để trống để dùng khóa trực tiếp.",
+            "s3RoleExternalId": "ID bên ngoài (tùy chọn)",
+            "s3RoleSessionName": "Tên phiên vai trò (tùy chọn)",
+            "s3RoleSessionNamePlaceholder": "aeroftp-session",
+            "s3RoleDurationSeconds": "Thời lượng phiên tính bằng giây (tùy chọn)",
+            "s3RoleDurationSecondsPlaceholder": "3600"
         },
         "shortcuts": {
             "title": "Phím tắt",
