@@ -7065,6 +7065,30 @@ fn unlock_with_master_and_totp(password: &str) -> Result<(), String> {
     }
 }
 
+fn unlock_auto_keyring_with_totp() -> Result<(), String> {
+    use ftp_client_gui_lib::credential_store::{CredentialError, CredentialStore};
+
+    let totp_env = std::env::var("AEROFTP_TOTP_CODE").ok();
+    let env_code = totp_env.as_deref().map(str::trim).filter(|c| !c.is_empty());
+
+    match CredentialStore::unlock_auto_keyring_with_totp(env_code) {
+        Err(CredentialError::TotpRequired) if std::io::stdin().is_terminal() => {
+            eprint!("Two-factor code: ");
+            let _ = io::stderr().flush();
+            let mut line = String::new();
+            io::stdin()
+                .read_line(&mut line)
+                .map_err(|e| format!("Failed to read 2FA code: {}", e))?;
+            let mut code = line.trim().to_string();
+            let result = CredentialStore::unlock_auto_keyring_with_totp(Some(code.as_str()))
+                .map_err(|e| format!("Failed to unlock vault: {}", e));
+            code.zeroize();
+            result
+        }
+        other => other.map_err(|e| format!("Failed to unlock vault: {}", e)),
+    }
+}
+
 fn open_vault(cli: &Cli) -> Result<ftp_client_gui_lib::credential_store::CredentialStore, String> {
     use ftp_client_gui_lib::credential_store::CredentialStore;
 
@@ -7100,6 +7124,9 @@ fn open_vault(cli: &Cli) -> Result<ftp_client_gui_lib::credential_store::Credent
                         .to_string(),
                 );
             }
+        }
+        Ok(status) if status == "2FA_REQUIRED" => {
+            unlock_auto_keyring_with_totp()?;
         }
         Ok(_) => {} // Auto mode - already open
         Err(e) => return Err(format!("Failed to open vault: {}", e)),

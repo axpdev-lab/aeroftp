@@ -60,9 +60,9 @@ const MAX_BACKUP_FILE_SIZE: u64 = 2 * 1024 * 1024 * 1024;
 /// the AES-GCM plaintext. Same reasoning as MAX_BACKUP_FILE_SIZE but
 /// guards against a "zstd decompression bomb": a few-KB ciphertext
 /// that legitimately decrypts to gigabytes of zeroes. The ceiling
-/// is intentionally generous (2 GiB) so it never trips on a real
+/// is intentionally generous (512 MiB) so it never trips on a real
 /// power-user backup. See AUDIT 2026-05-11 H2.
-const MAX_DECOMPRESSED_PAYLOAD_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+const MAX_DECOMPRESSED_PAYLOAD_BYTES: u64 = 512 * 1024 * 1024;
 
 /// Whitelist of SQLite databases included in a full backup.
 ///
@@ -981,6 +981,7 @@ pub fn import_keystore(
     // the backend in the very first read.
     let file_data = read_backup_with_cap(file_path)?;
     let export_file: KeystoreExportFile = serde_json::from_slice(&file_data)?;
+    drop(file_data);
 
     if export_file.version > FILE_VERSION {
         return Err(KeystoreExportError::UnsupportedVersion(export_file.version));
@@ -1032,8 +1033,10 @@ pub fn import_keystore(
             )))
         }
     });
+    drop(raw_payload);
 
     let mut payload = parse_export_payload(export_file.version, &payload_json)?;
+    drop(payload_json);
     validate_authenticated_metadata(&export_file.metadata, &payload)?;
     let entries = if sections.vault {
         std::mem::take(&mut payload.vault_entries)

@@ -194,10 +194,10 @@ export const securityLevels = {
         bgColor: 'bg-blue-600',
         borderColor: 'border-blue-500',
         label: 'Standard',
-        version: 1,
+        version: 2,
         cascade: false,
-        features: ['AES-256-GCM', 'Argon2id 64 MB', 'Fast encryption'],
-        description: 'AES-256-GCM · Argon2id 64 MB · Fast'
+        features: ['AES-256-GCM-SIV', 'Argon2id 128 MB', 'Encrypted filenames'],
+        description: 'AES-256-GCM-SIV · Argon2id 128 MB · Fast'
     },
     advanced: {
         icon: ShieldCheck,

@@ -608,7 +608,8 @@ pub fn export_winscp(
         exported += 1;
     }
 
-    std::fs::write(output_path, ini).map_err(|e| format!("Write WinSCP config: {}", e))?;
+    crate::bridge_shared::atomic_write_600(output_path, ini.as_bytes())
+        .map_err(|e| format!("Write WinSCP config: {}", e))?;
 
     Ok(exported)
 }

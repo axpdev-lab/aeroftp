@@ -17,8 +17,11 @@ use secrecy::zeroize::Zeroize;
 use serde::{Deserialize, Serialize};
 use sha2::Sha512;
 use std::collections::{BTreeMap, HashSet};
+use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
+use std::thread::sleep;
+use std::time::{Duration, Instant};
 
 const MAGIC: &[u8; 10] = b"AEROVAULT3";
 const VERSION: u8 = 3;
@@ -217,6 +220,8 @@ pub struct VaultV3FileInfo {
 struct OpenVaultV3 {
     path: PathBuf,
     header: VaultHeaderV3,
+    opened_file_len: u64,
+    opened_header_mac: [u8; MAC_SIZE],
     master_key: [u8; KEY_SIZE],
     mac_key: [u8; KEY_SIZE],
     manifest: VaultManifestV3,
@@ -1459,6 +1464,8 @@ fn open_vault(path: impl Into<PathBuf>, password: &str) -> Result<OpenVaultV3, S
 
     Ok(OpenVaultV3 {
         path,
+        opened_file_len: file_len,
+        opened_header_mac: header.header_mac,
         header,
         master_key,
         mac_key,
@@ -1499,6 +1506,7 @@ fn validate_ranges(header: &VaultHeaderV3, file_len: u64) -> Result<(), String> 
 }
 
 fn save_open_vault(vault: &OpenVaultV3) -> Result<(), String> {
+    assert_vault_generation_current(vault)?;
     let bytes = build_file_bytes(
         vault.header.clone(),
         &vault.mac_key,
@@ -1508,6 +1516,85 @@ fn save_open_vault(vault: &OpenVaultV3) -> Result<(), String> {
         &vault.data,
     )?;
     atomic_write(&vault.path, &bytes)
+}
+
+struct VaultWriteLock {
+    path: PathBuf,
+    _file: File,
+}
+
+impl Drop for VaultWriteLock {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+fn lock_path_for(vault_path: &Path) -> Result<PathBuf, String> {
+    let parent = vault_path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let name = vault_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| format!("Invalid vault path: {}", vault_path.display()))?;
+    Ok(parent.join(format!(".{name}.lock")))
+}
+
+fn acquire_vault_write_lock(vault_path: &Path) -> Result<VaultWriteLock, String> {
+    let lock_path = lock_path_for(vault_path)?;
+    if let Some(parent) = lock_path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("Create lock dir: {e}"))?;
+    }
+
+    let started = Instant::now();
+    loop {
+        match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&lock_path)
+        {
+            Ok(mut file) => {
+                let _ = writeln!(
+                    file,
+                    "pid={} created_at={}",
+                    std::process::id(),
+                    chrono::Utc::now().to_rfc3339()
+                );
+                let _ = file.sync_all();
+                return Ok(VaultWriteLock {
+                    path: lock_path,
+                    _file: file,
+                });
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                if started.elapsed() > Duration::from_secs(30) {
+                    return Err(format!(
+                        "AeroVault v3 write lock is busy: {}",
+                        lock_path.display()
+                    ));
+                }
+                sleep(Duration::from_millis(50));
+            }
+            Err(e) => return Err(format!("Create vault write lock: {e}")),
+        }
+    }
+}
+
+fn assert_vault_generation_current(vault: &OpenVaultV3) -> Result<(), String> {
+    let mut file = std::fs::File::open(&vault.path).map_err(|e| format!("Open vault: {e}"))?;
+    let file_len = file
+        .metadata()
+        .map_err(|e| format!("Vault metadata: {e}"))?
+        .len();
+    let mut header_bytes = [0u8; HEADER_SIZE];
+    file.read_exact(&mut header_bytes)
+        .map_err(|e| format!("Read header: {e}"))?;
+    let header = VaultHeaderV3::from_bytes(&header_bytes)?;
+    if file_len != vault.opened_file_len || header.header_mac != vault.opened_header_mac {
+        return Err("Vault changed while this write was in progress; retry operation".to_string());
+    }
+    Ok(())
 }
 
 fn extract_entry(
@@ -1636,6 +1723,7 @@ pub async fn vault_v3_create(
     password: String,
     compression_profile: Option<String>,
 ) -> Result<String, String> {
+    let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
     let level = match compression_profile.as_deref() {
         Some("fast") => 3,
         Some("archive") => 19,
@@ -1671,7 +1759,17 @@ pub async fn vault_v3_add_files(
     password: String,
     file_paths: Vec<String>,
 ) -> Result<VaultV3Info, String> {
-    let started = std::time::Instant::now();
+    let started = Instant::now();
+    let mut sources: Vec<(PathBuf, String)> = Vec::with_capacity(file_paths.len());
+    for file_path in &file_paths {
+        let path = PathBuf::from(file_path);
+        if !path.is_file() {
+            return Err(format!("Not a regular file: {file_path}"));
+        }
+        let name = safe_entry_name(&path)?;
+        sources.push((path, name));
+    }
+    let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
     let mut vault = open_vault(&vault_path, &password)?;
     vault.report = VaultReport::new("add_files", VERSION);
     vault
@@ -1684,16 +1782,6 @@ pub async fn vault_v3_add_files(
     vault
         .report
         .set_algorithms(algorithm_chain(&vault.manifest));
-
-    let mut sources: Vec<(PathBuf, String)> = Vec::with_capacity(file_paths.len());
-    for file_path in &file_paths {
-        let path = PathBuf::from(file_path);
-        if !path.is_file() {
-            return Err(format!("Not a regular file: {file_path}"));
-        }
-        let name = safe_entry_name(&path)?;
-        sources.push((path, name));
-    }
     append_sources_batched(&mut vault, &sources)?;
     vault.report.step("seal: rebuild manifest + atomic write");
     save_open_vault(&vault)?;
@@ -1720,6 +1808,7 @@ pub async fn vault_v3_add_files_to_dir(
     target_dir: String,
 ) -> Result<serde_json::Value, String> {
     let target_dir = normalize_vault_relative_path(&target_dir)?;
+    let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
     let mut vault = open_vault(&vault_path, &password)?;
     create_directory_in_manifest(&mut vault.manifest, &target_dir)?;
     let mut sources: Vec<(PathBuf, String)> = Vec::with_capacity(file_paths.len());
@@ -1743,6 +1832,7 @@ pub async fn vault_v3_create_directory(
     password: String,
     dir_name: String,
 ) -> Result<serde_json::Value, String> {
+    let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
     let mut vault = open_vault(&vault_path, &password)?;
     let created = create_directory_in_manifest(&mut vault.manifest, &dir_name)?;
     save_open_vault(&vault)?;
@@ -1758,6 +1848,7 @@ pub async fn vault_v3_delete_entry(
     password: String,
     entry_name: String,
 ) -> Result<serde_json::Value, String> {
+    let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
     let mut vault = open_vault(&vault_path, &password)?;
     delete_entries_from_manifest(&mut vault, std::slice::from_ref(&entry_name), false)?;
     save_open_vault(&vault)?;
@@ -1774,6 +1865,7 @@ pub async fn vault_v3_delete_entries(
     entry_names: Vec<String>,
     recursive: bool,
 ) -> Result<serde_json::Value, String> {
+    let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
     let mut vault = open_vault(&vault_path, &password)?;
     let removed = delete_entries_from_manifest(&mut vault, &entry_names, recursive)?;
     save_open_vault(&vault)?;
@@ -1790,6 +1882,7 @@ pub async fn vault_v3_move_entry(
     from: String,
     to: String,
 ) -> Result<serde_json::Value, String> {
+    let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
     let mut vault = open_vault(&vault_path, &password)?;
     move_entry_in_manifest(&mut vault, &from, &to)?;
     save_open_vault(&vault)?;
@@ -1814,6 +1907,7 @@ pub async fn vault_v3_rename_entry(
     } else {
         new_name.clone()
     };
+    let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
     let mut vault = open_vault(&vault_path, &password)?;
     move_entry_in_manifest(&mut vault, &current_name, &destination)?;
     save_open_vault(&vault)?;
@@ -1831,6 +1925,7 @@ pub async fn vault_v3_copy_entry(
     from: String,
     to: String,
 ) -> Result<serde_json::Value, String> {
+    let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
     let mut vault = open_vault(&vault_path, &password)?;
     copy_entry_in_manifest(&mut vault, &from, &to)?;
     save_open_vault(&vault)?;
@@ -1847,6 +1942,7 @@ pub async fn vault_v3_change_password(
     old_password: String,
     new_password: String,
 ) -> Result<String, String> {
+    let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
     let mut vault = open_vault(&vault_path, &old_password)?;
     change_password_in_place(&mut vault, &new_password)?;
     save_open_vault(&vault)?;
@@ -1923,6 +2019,7 @@ pub async fn vault_v3_add_directory(
     let files: Vec<&DirEntry> = all_entries.iter().filter(|entry| !entry.is_dir).collect();
     dirs.sort_by_key(|entry| entry.depth);
 
+    let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
     let mut vault = open_vault(&vault_path, &password)?;
     let mut added_dirs = 0usize;
     for dir_entry in dirs {

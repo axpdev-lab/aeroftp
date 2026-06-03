@@ -96,6 +96,17 @@ impl McpServer {
                     )
                 }
             }
+            Ok(status) if status == "2FA_REQUIRED" => {
+                let totp = std::env::var("AEROFTP_TOTP_CODE").ok();
+                let totp = totp.as_deref().map(str::trim).filter(|c| !c.is_empty());
+                match CredentialStore::unlock_auto_keyring_with_totp(totp) {
+                    Ok(()) => None,
+                    Err(e) => Some(format!(
+                        "Vault requires AutoKeyring 2FA; set AEROFTP_TOTP_CODE: {}",
+                        e
+                    )),
+                }
+            }
             Ok(other) => Some(format!("Unexpected vault init status: {}", other)),
             Err(e) => Some(format!("Vault init failed: {}", e)),
         };
