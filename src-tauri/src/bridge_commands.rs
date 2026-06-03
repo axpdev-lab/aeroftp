@@ -525,6 +525,18 @@ pub async fn export_bridge_config(
             restic_import::ResticExportServer,
             restic_import::export_restic
         ),
+        "rclone" => run_export!(
+            rclone_import::RcloneExportServer,
+            rclone_import::export_rclone
+        ),
+        "winscp" => run_export!(
+            winscp_import::WinScpExportServer,
+            winscp_import::export_winscp
+        ),
+        "filezilla" => run_export!(
+            filezilla_import::FileZillaExportServer,
+            filezilla_import::export_filezilla
+        ),
         other => return Err(format!("unknown export source: {other}")),
     };
     Ok(out)
@@ -585,5 +597,25 @@ mod tests {
         let path = write_temp("x.txt", "nothing");
         assert!(dispatch_import("totalcommander", &path).is_err());
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn legacy_export_servers_deserialize_from_profile_json() {
+        // The run_export! macro deserializes each profile entry into the
+        // source's *ExportServer type; verify the three migrated sources
+        // accept the standard saved-server JSON shape.
+        let entry = json!({
+            "id": "abc", "name": "S", "host": "h.example.com", "port": 21,
+            "username": "u", "protocol": "ftp", "options": {}
+        });
+        assert!(
+            serde_json::from_value::<rclone_import::RcloneExportServer>(entry.clone()).is_ok()
+        );
+        assert!(
+            serde_json::from_value::<winscp_import::WinScpExportServer>(entry.clone()).is_ok()
+        );
+        assert!(
+            serde_json::from_value::<filezilla_import::FileZillaExportServer>(entry).is_ok()
+        );
     }
 }
