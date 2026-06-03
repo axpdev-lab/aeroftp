@@ -505,6 +505,9 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                                     </option>
                                 ))}
                             </select>
+                            <p className="mt-1 text-[10px] leading-snug text-gray-500 dark:text-gray-400">
+                                {t('syncPanel.compressionHint') || 'Compresses data on the wire to speed up the transfer; it does not store compressed files at the destination. Auto skips formats that are already compressed (zip, jpg, mp4, and similar).'}
+                            </p>
                         </div>
                     </div>
                 )}
@@ -545,6 +548,9 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                         </label>
                         <p className="mt-1 text-[10px] leading-snug text-gray-500 dark:text-gray-400">
                             {t('syncPanel.canaryDesc') || 'Run a trial sync on a subset of files before committing to the full operation.'}
+                        </p>
+                        <p className="mt-1 text-[10px] leading-snug text-gray-500 dark:text-gray-400">
+                            {t('syncPanel.canaryDryRun') || 'Nothing is transferred: this previews what a full sync would do, computed from the sample (similar to rclone --dry-run).'}
                         </p>
                         {canaryMode && (
                             <div className="mt-2 flex flex-wrap gap-3">

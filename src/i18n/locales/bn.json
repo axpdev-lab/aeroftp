@@ -2007,7 +2007,9 @@
             "aerosyncScriptFromWrapper": "(wrapper থেকে)",
             "aerosyncScriptUnmappedFields": "অচেনা metadata ফিল্ড",
             "aerosyncScriptApplyButton": "preset হিসাবে সংরক্ষণ করুন",
-            "aerosyncScriptAppliedToast": "ইম্পোর্ট করা preset সংরক্ষিত হয়েছে। ব্যবহার করতে AeroSync খুলুন।"
+            "aerosyncScriptAppliedToast": "ইম্পোর্ট করা preset সংরক্ষিত হয়েছে। ব্যবহার করতে AeroSync খুলুন।",
+            "compressionHint": "স্থানান্তর দ্রুত করতে ট্রান্সফারের সময় ডেটা সংকুচিত করে; এটি গন্তব্যে সংকুচিত ফাইল সংরক্ষণ করে না। Auto সেই ফরম্যাটগুলো এড়িয়ে যায় যা ইতিমধ্যে সংকুচিত (zip, jpg, mp4 এবং অনুরূপ)।",
+            "canaryDryRun": "কিছুই স্থানান্তর করা হয় না: এটি একটি পূর্ণ সিঙ্ক কী করবে তার একটি পূর্বরূপ দেখায়, নমুনা থেকে গণনা করা (rclone --dry-run এর অনুরূপ)।"
         },
         "ui": {
             "syncing": "সিঙ্ক হচ্ছে...",

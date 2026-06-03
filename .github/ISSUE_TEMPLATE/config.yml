@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Feature request or idea
+    url: https://github.com/axpdev-lab/aeroftp/discussions/categories/feature
+    about: The Issues tab is for bugs and security reports only. Please suggest features, request new providers, and share ideas in Discussions.
+  - name: Community wishlist
+    url: https://github.com/axpdev-lab/aeroftp/discussions/categories/wishlist
+    about: Browse, vote on, and add to the community wishlist.
+  - name: Question or setup help
+    url: https://github.com/axpdev-lab/aeroftp/discussions/categories/q-a
+    about: Ask how to use AeroFTP, get configuration help, or discuss anything that is not a bug.

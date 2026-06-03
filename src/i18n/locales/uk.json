@@ -2007,7 +2007,9 @@
             "aerosyncScriptFromWrapper": "(з wrapper)",
             "aerosyncScriptUnmappedFields": "Нерозпiзнанi поля metadata",
             "aerosyncScriptApplyButton": "Зберегти як preset",
-            "aerosyncScriptAppliedToast": "Iмпортований preset збережено. Вiдкрийте AeroSync, щоб використати його."
+            "aerosyncScriptAppliedToast": "Iмпортований preset збережено. Вiдкрийте AeroSync, щоб використати його.",
+            "compressionHint": "Стискає дані під час передавання, щоб пришвидшити перенесення; не зберігає стиснені файли в місці призначення. Auto пропускає вже стиснені формати (zip, jpg, mp4 та подібні).",
+            "canaryDryRun": "Нічого не передається: це показує попередній перегляд того, що зробила б повна синхронізація, обчислений на основі вибірки (подібно до rclone --dry-run)."
         },
         "ui": {
             "syncing": "Синхронізація...",

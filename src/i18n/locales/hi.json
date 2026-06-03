@@ -2007,7 +2007,9 @@
             "aerosyncScriptFromWrapper": "(wrapper से)",
             "aerosyncScriptUnmappedFields": "अज्ञात metadata फ़ील्ड",
             "aerosyncScriptApplyButton": "preset के रूप में सहेजें",
-            "aerosyncScriptAppliedToast": "आयातित preset सहेजा गया। उपयोग करने के लिए AeroSync खोलें।"
+            "aerosyncScriptAppliedToast": "आयातित preset सहेजा गया। उपयोग करने के लिए AeroSync खोलें।",
+            "compressionHint": "स्थानांतरण को तेज़ करने के लिए डेटा को ट्रांसफर के दौरान संपीड़ित करता है; यह गंतव्य पर संपीड़ित फ़ाइलें संग्रहीत नहीं करता। Auto उन प्रारूपों को छोड़ देता है जो पहले से संपीड़ित हैं (zip, jpg, mp4 और इसी तरह के)।",
+            "canaryDryRun": "कुछ भी स्थानांतरित नहीं होता: यह पूर्वावलोकन दिखाता है कि एक पूर्ण सिंक क्या करेगा, जो नमूने से गणना किया गया है (rclone --dry-run के समान)।"
         },
         "ui": {
             "syncing": "सिंक हो रहा है...",

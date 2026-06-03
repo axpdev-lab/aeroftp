@@ -2007,7 +2007,9 @@
             "aerosyncScriptFromWrapper": "(来自 wrapper)",
             "aerosyncScriptUnmappedFields": "无法识别的 metadata 字段",
             "aerosyncScriptApplyButton": "另存为 preset",
-            "aerosyncScriptAppliedToast": "已保存导入的 preset。打开 AeroSync 即可使用。"
+            "aerosyncScriptAppliedToast": "已保存导入的 preset。打开 AeroSync 即可使用。",
+            "compressionHint": "在传输过程中压缩数据以加快传输速度；不会在目标位置存储压缩文件。Auto 会跳过已压缩的格式（zip、jpg、mp4 等）。",
+            "canaryDryRun": "不会传输任何内容：此操作根据样本预览完整同步将执行的操作（类似于 rclone --dry-run）。"
         },
         "ui": {
             "syncing": "正在同步...",

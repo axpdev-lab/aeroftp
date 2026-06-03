@@ -2007,7 +2007,9 @@
             "aerosyncScriptFromWrapper": "(από wrapper)",
             "aerosyncScriptUnmappedFields": "Μη αναγνωρισμένα πεδία metadata",
             "aerosyncScriptApplyButton": "Αποθήκευση ως preset",
-            "aerosyncScriptAppliedToast": "Το εισαγόμενο preset αποθηκεύτηκε. Ανοίξτε το AeroSync για να το χρησιμοποιήσετε."
+            "aerosyncScriptAppliedToast": "Το εισαγόμενο preset αποθηκεύτηκε. Ανοίξτε το AeroSync για να το χρησιμοποιήσετε.",
+            "compressionHint": "Συμπιέζει τα δεδομένα κατά τη μεταφορά για να την επιταχύνει· δεν αποθηκεύει συμπιεσμένα αρχεία στον προορισμό. Το Auto παραλείπει μορφές που είναι ήδη συμπιεσμένες (zip, jpg, mp4 και παρόμοιες).",
+            "canaryDryRun": "Δεν μεταφέρεται τίποτα: αυτό προεπισκοπεί τι θα έκανε ένας πλήρης συγχρονισμός, υπολογισμένο από το δείγμα (παρόμοια με το rclone --dry-run)."
         },
         "ui": {
             "syncing": "Συγχρονισμός...",
