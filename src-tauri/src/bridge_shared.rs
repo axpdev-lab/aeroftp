@@ -393,6 +393,11 @@ pub(crate) fn xml_attr(tag: &str, attr: &str) -> Option<String> {
 
 /// Canonical id list for the generically-dispatched sources.
 pub const BRIDGE_GENERIC_SOURCES: &[&str] = &[
+    // The three original sources, migrated from their dedicated dialog modes
+    // and `*_config` Tauri commands onto the generic bridge dispatcher.
+    "rclone",
+    "winscp",
+    "filezilla",
     "aws",
     "ssh",
     "mc",
@@ -417,6 +422,11 @@ pub fn bridge_supported_protocols(src: &str) -> &'static [&'static str] {
         "lftp" => &["ftp", "ftps", "sftp", "webdav"],
         "ssh" | "putty" => &["sftp"],
         "cyberduck" | "mobaxterm" | "dreamweaver" => &["ftp", "ftps", "sftp", "webdav", "s3"],
+        // Legacy sources, now generic. Protocol sets mirror what the
+        // respective `export_*` writers in `rclone_import`/`winscp_import`/
+        // `filezilla_import` actually emit (anything else is skipped on export).
+        "rclone" | "winscp" => &["ftp", "ftps", "sftp", "webdav", "s3"],
+        "filezilla" => &["ftp", "ftps", "sftp", "s3"],
         _ => &[],
     }
 }
@@ -437,6 +447,9 @@ pub fn bridge_export_format(src: &str) -> Option<(&'static str, &'static str)> {
         "kopia" => ("conf", "kopia repository config"),
         "duplicacy" => ("json", "duplicacy preferences"),
         "restic" => ("sh", "restic env script"),
+        "rclone" => ("conf", "rclone.conf"),
+        "winscp" => ("ini", "WinSCP.ini"),
+        "filezilla" => ("xml", "FileZilla sitemanager"),
         _ => return None,
     };
     Some(pair)
@@ -460,6 +473,9 @@ pub fn bridge_import_filter(src: &str) -> (&'static str, &'static [&'static str]
         "kopia" => ("kopia repository config", &["config", "conf", "json"]),
         "duplicacy" => ("duplicacy preferences", &["json", "txt"]),
         "restic" => ("restic env script", &["sh", "env", "txt"]),
+        "rclone" => ("rclone config", &["conf", "cfg"]),
+        "winscp" => ("WinSCP config", &["ini"]),
+        "filezilla" => ("FileZilla config", &["xml"]),
         _ => ("Configuration", &["*"]),
     }
 }
@@ -472,6 +488,9 @@ pub fn bridge_import_filter(src: &str) -> (&'static str, &'static [&'static str]
 pub fn bridge_secret_policy(src: &str) -> &'static str {
     match src {
         "aws" | "mc" | "s3cmd" | "dreamweaver" | "kopia" | "restic" => "full",
+        // rclone obscure + WinSCP/FileZilla obfuscated secrets are recovered
+        // and re-encrypted into the AES-256-GCM vault (a security upgrade).
+        "rclone" | "winscp" | "filezilla" => "full",
         "lftp" | "mobaxterm" | "duplicacy" => "limited",
         "ssh" | "cyberduck" | "putty" => "metadata",
         _ => "metadata",
@@ -502,10 +521,14 @@ mod tests {
             let (_, exts) = bridge_import_filter(src);
             assert!(!exts.is_empty(), "missing import filter for {src}");
         }
-        // Legacy / unknown sources fall through cleanly.
-        assert!(bridge_supported_protocols("rclone").is_empty());
-        assert!(bridge_export_format("winscp").is_none());
-        assert_eq!(bridge_secret_policy("filezilla"), "metadata");
+        // The three migrated sources are now first-class generic bridge
+        // sources (no longer routed through dedicated `*_config` commands).
+        assert!(!bridge_supported_protocols("rclone").is_empty());
+        assert_eq!(bridge_export_format("winscp"), Some(("ini", "WinSCP.ini")));
+        assert_eq!(bridge_secret_policy("filezilla"), "full");
+        // Truly unknown sources still fall through cleanly.
+        assert!(bridge_supported_protocols("totalcommander").is_empty());
+        assert!(bridge_export_format("borg").is_none());
     }
 
     #[test]
