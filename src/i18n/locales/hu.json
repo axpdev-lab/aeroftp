@@ -1025,7 +1025,10 @@
             "importKeystorePrompt": "Adja meg a keystore biztonsági mentés titkosításához használt jelszót.",
             "importServersPrompt": "Adja meg a server-profiles biztonsági mentés titkosításához használt jelszót.",
             "exportFormatComparisonHint": "A .aeroftp fájl mindent tartalmaz, amire egy profilnak szüksége van egy másik eszközhöz való csatlakozáshoz. A teljes széfmentéshez, beleértve az AI-szolgáltató kulcsokat és a globális beállításokat, használja inkább az .aeroftp-keystore exportot.",
-            "keystoreRestartRequired": "Indítsa újra az AeroFTP-t a visszaállított adatbázisok és bővítmények alkalmazásához."
+            "keystoreRestartRequired": "Indítsa újra az AeroFTP-t a visszaállított adatbázisok és bővítmények alkalmazásához.",
+            "importChooseFile": ".aeroftp fájl kiválasztása...",
+            "importChooseFileHint": "Válasszon ki egy titkosított .aeroftp fájlt az importáláshoz. A jelszavát ezután kérjük majd.",
+            "importChangeFile": "Módosítás"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3308,7 +3311,8 @@
                 "notAvailable": "Előnézet nem érhető el",
                 "notSupported": "Ez a fájltípus nem támogatott előnézethez",
                 "previous": "Előző (←)",
-                "remote": "Távoli"
+                "remote": "Távoli",
+                "edit": "Szerkesztés"
             },
             "image": {
                 "actualSize": "Valós méret",

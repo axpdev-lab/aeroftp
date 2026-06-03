@@ -1025,7 +1025,10 @@
             "importKeystorePrompt": "Masukkan kata sandi yang digunakan untuk mengenkripsi backup keystore ini.",
             "importServersPrompt": "Masukkan kata sandi yang digunakan untuk mengenkripsi backup server-profiles ini.",
             "exportFormatComparisonHint": "File .aeroftp berisi semua yang dibutuhkan profil untuk terhubung di perangkat lain. Untuk pencadangan brankas penuh termasuk kunci penyedia AI dan pengaturan global, gunakan ekspor .aeroftp-keystore sebagai gantinya.",
-            "keystoreRestartRequired": "Mulai ulang AeroFTP untuk menerapkan basis data dan plugin yang dipulihkan."
+            "keystoreRestartRequired": "Mulai ulang AeroFTP untuk menerapkan basis data dan plugin yang dipulihkan.",
+            "importChooseFile": "Pilih file .aeroftp...",
+            "importChooseFileHint": "Pilih file .aeroftp terenkripsi untuk diimpor. Kata sandinya akan diminta berikutnya.",
+            "importChangeFile": "Ubah"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3308,7 +3311,8 @@
                 "notAvailable": "Pratinjau tidak tersedia",
                 "notSupported": "Tipe file ini tidak didukung untuk pratinjau",
                 "previous": "Sebelumnya (←)",
-                "remote": "Remote"
+                "remote": "Remote",
+                "edit": "Edit"
             },
             "image": {
                 "actualSize": "Ukuran Asli",

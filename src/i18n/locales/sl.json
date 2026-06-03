@@ -1025,7 +1025,10 @@
             "importKeystorePrompt": "Vnesi geslo, uporabljeno za sifriranje te varnostne kopije keystore.",
             "importServersPrompt": "Vnesi geslo, uporabljeno za sifriranje te varnostne kopije server-profiles.",
             "exportFormatComparisonHint": "Datoteka .aeroftp vsebuje vse, kar profil potrebuje za povezavo z drugo napravo. Za popolno varnostno kopijo trezorja, vključno s ključi ponudnikov AI in globalnimi nastavitvami, namesto tega uporabite izvoz .aeroftp-keystore.",
-            "keystoreRestartRequired": "Znova zaženite AeroFTP, da uporabite obnovljene baze podatkov in vtičnike."
+            "keystoreRestartRequired": "Znova zaženite AeroFTP, da uporabite obnovljene baze podatkov in vtičnike.",
+            "importChooseFile": "Izberi datoteko .aeroftp...",
+            "importChooseFileHint": "Izberite šifrirano datoteko .aeroftp za uvoz. Geslo boste vnesli v naslednjem koraku.",
+            "importChangeFile": "Spremeni"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3308,7 +3311,8 @@
                 "notAvailable": "Predogled ni na voljo",
                 "notSupported": "Ta vrsta datoteke ni podprta za predogled",
                 "previous": "Prejšnji (←)",
-                "remote": "Oddaljeno"
+                "remote": "Oddaljeno",
+                "edit": "Uredi"
             },
             "image": {
                 "actualSize": "Dejanska velikost",

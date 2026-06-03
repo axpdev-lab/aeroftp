@@ -1025,7 +1025,10 @@
             "importKeystorePrompt": "Nhap mat khau da dung de ma hoa ban sao luu keystore nay.",
             "importServersPrompt": "Nhap mat khau da dung de ma hoa ban sao luu server-profiles nay.",
             "exportFormatComparisonHint": "Tệp .aeroftp chứa mọi thứ mà một hồ sơ cần để kết nối trên thiết bị khác. Để sao lưu kho lưu trữ đầy đủ bao gồm khóa nhà cung cấp AI và cài đặt toàn cục, hãy sử dụng xuất .aeroftp-keystore thay thế.",
-            "keystoreRestartRequired": "Khởi động lại AeroFTP để áp dụng cơ sở dữ liệu và tiện ích bổ sung đã khôi phục."
+            "keystoreRestartRequired": "Khởi động lại AeroFTP để áp dụng cơ sở dữ liệu và tiện ích bổ sung đã khôi phục.",
+            "importChooseFile": "Chon tep .aeroftp...",
+            "importChooseFileHint": "Chon mot tep .aeroftp da ma hoa de nhap. Ban se duoc yeu cau nhap mat khau cua tep o buoc tiep theo.",
+            "importChangeFile": "Thay doi"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3308,7 +3311,8 @@
                 "notAvailable": "Không có bản xem trước",
                 "notSupported": "Loại tệp này không được hỗ trợ xem trước",
                 "previous": "Trước đó (←)",
-                "remote": "Từ xa"
+                "remote": "Từ xa",
+                "edit": "Chinh sua"
             },
             "image": {
                 "actualSize": "Kích thước thực",

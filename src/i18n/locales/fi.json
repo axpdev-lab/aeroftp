@@ -1025,7 +1025,10 @@
             "importKeystorePrompt": "Syötä salasana, jota käytettiin tämän keystore-varmuuskopion salaamiseen.",
             "importServersPrompt": "Syötä salasana, jota käytettiin tämän server-profiles-varmuuskopion salaamiseen.",
             "exportFormatComparisonHint": ".aeroftp-tiedosto sisältää kaiken, mitä profiili tarvitsee yhdistääkseen toiseen laitteeseen. Käytä sen sijaan .aeroftp-keystore-vientiä holvin täydelliseen varmuuskopiointiin, mukaan lukien AI-palveluntarjoajan avaimet ja yleiset asetukset.",
-            "keystoreRestartRequired": "Käynnistä AeroFTP uudelleen ottaaksesi käyttöön palautetut tietokannat ja laajennukset."
+            "keystoreRestartRequired": "Käynnistä AeroFTP uudelleen ottaaksesi käyttöön palautetut tietokannat ja laajennukset.",
+            "importChooseFile": "Valitse .aeroftp-tiedosto...",
+            "importChooseFileHint": "Valitse tuotava salattu .aeroftp-tiedosto. Sen salasanaa kysytään seuraavaksi.",
+            "importChangeFile": "Vaihda"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3308,7 +3311,8 @@
                 "notAvailable": "Esikatselu ei saatavilla",
                 "notSupported": "Tätä tiedostotyyppiä ei tueta esikatselussa",
                 "previous": "Edellinen (←)",
-                "remote": "Etä"
+                "remote": "Etä",
+                "edit": "Muokkaa"
             },
             "image": {
                 "actualSize": "Todellinen koko",

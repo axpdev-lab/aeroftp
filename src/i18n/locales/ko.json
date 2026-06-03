@@ -1025,7 +1025,10 @@
             "importKeystorePrompt": "이 keystore 백업을 암호화할 때 사용한 비밀번호를 입력하세요.",
             "importServersPrompt": "이 server-profiles 백업을 암호화할 때 사용한 비밀번호를 입력하세요.",
             "exportFormatComparisonHint": ".aeroftp 파일에는 프로필이 다른 기기에서 연결하는 데 필요한 모든 것이 포함되어 있습니다. AI 공급자 키 및 전역 설정을 포함한 전체 보관소 백업은 대신 .aeroftp-keystore 내보내기를 사용하세요.",
-            "keystoreRestartRequired": "복원된 데이터베이스와 플러그인을 적용하려면 AeroFTP를 다시 시작하세요."
+            "keystoreRestartRequired": "복원된 데이터베이스와 플러그인을 적용하려면 AeroFTP를 다시 시작하세요.",
+            "importChooseFile": ".aeroftp 파일 선택...",
+            "importChooseFileHint": "가져올 암호화된 .aeroftp 파일을 선택하세요. 다음 단계에서 비밀번호를 입력하게 됩니다.",
+            "importChangeFile": "변경"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3308,7 +3311,8 @@
                 "notAvailable": "미리보기를 사용할 수 없습니다",
                 "notSupported": "이 파일 형식은 미리보기가 지원되지 않습니다",
                 "previous": "이전 (←)",
-                "remote": "원격"
+                "remote": "원격",
+                "edit": "편집"
             },
             "image": {
                 "actualSize": "실제 크기",

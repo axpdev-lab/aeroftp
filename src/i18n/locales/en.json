@@ -2075,6 +2075,7 @@
             "common": {
                 "close": "Close",
                 "download": "Download",
+                "edit": "Edit",
                 "loading": "Loading...",
                 "navigate": "Navigate",
                 "next": "Next (→)",
@@ -2761,6 +2762,9 @@
             "importKeystoreDesc": "Import credentials from a backup file",
             "importKeystorePrompt": "Enter the password used to encrypt this keystore backup.",
             "importServers": "Import Servers",
+            "importChooseFile": "Choose .aeroftp file...",
+            "importChooseFileHint": "Select an encrypted .aeroftp file to import. You will be asked for its password next.",
+            "importChangeFile": "Change",
             "importServersPrompt": "Enter the password used to encrypt this server-profiles backup.",
             "importSuccess": "Imported {count} new servers",
             "includeCredentials": "Include saved credentials",

@@ -1025,7 +1025,10 @@
             "importKeystorePrompt": "Zadejte heslo pouzite k zasifrovani teto zalohy keystore.",
             "importServersPrompt": "Zadejte heslo pouzite k zasifrovani teto zalohy server-profiles.",
             "exportFormatComparisonHint": "Soubor .aeroftp obsahuje vše, co profil potřebuje k připojení na jiném zařízení. Pro úplnou zálohu trezoru včetně klíčů AI poskytovatelů a globálních nastavení použijte místo toho export .aeroftp-keystore.",
-            "keystoreRestartRequired": "Restartujte AeroFTP, abyste použili obnovené databáze a pluginy."
+            "keystoreRestartRequired": "Restartujte AeroFTP, abyste použili obnovené databáze a pluginy.",
+            "importChooseFile": "Vybrat soubor .aeroftp...",
+            "importChooseFileHint": "Vyberte šifrovaný soubor .aeroftp k importu. Následně budete požádáni o jeho heslo.",
+            "importChangeFile": "Změnit"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3308,7 +3311,8 @@
                 "notAvailable": "Náhled není k dispozici",
                 "notSupported": "Tento typ souboru není podporován pro náhled",
                 "previous": "Předchozí (←)",
-                "remote": "Vzdálený"
+                "remote": "Vzdálený",
+                "edit": "Upravit"
             },
             "image": {
                 "actualSize": "Skutečná velikost",

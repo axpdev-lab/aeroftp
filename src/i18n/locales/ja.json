@@ -1025,7 +1025,10 @@
             "importKeystorePrompt": "この keystore バックアップを暗号化するために使用したパスワードを入力してください。",
             "importServersPrompt": "この server-profiles バックアップを暗号化するために使用したパスワードを入力してください。",
             "exportFormatComparisonHint": ".aeroftp ファイルには、プロファイルが別のデバイスで接続するために必要なすべてが含まれています。AI プロバイダーキーやグローバル設定を含む完全な保管庫のバックアップには、代わりに .aeroftp-keystore エクスポートを使用してください。",
-            "keystoreRestartRequired": "復元されたデータベースとプラグインを適用するために AeroFTP を再起動してください。"
+            "keystoreRestartRequired": "復元されたデータベースとプラグインを適用するために AeroFTP を再起動してください。",
+            "importChooseFile": ".aeroftp ファイルを選択...",
+            "importChooseFileHint": "インポートする暗号化された .aeroftp ファイルを選択してください。次にパスワードの入力を求められます。",
+            "importChangeFile": "変更"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3273,7 +3276,8 @@
                 "notAvailable": "プレビューは利用できません",
                 "notSupported": "このファイル形式はプレビューに対応していません",
                 "previous": "前へ (←)",
-                "remote": "リモート"
+                "remote": "リモート",
+                "edit": "編集"
             },
             "image": {
                 "actualSize": "実際のサイズ",

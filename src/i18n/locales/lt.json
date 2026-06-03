@@ -1025,7 +1025,10 @@
             "importKeystorePrompt": "Iveskite slaptazodi, naudota sifruoti si keystore atsargine kopija.",
             "importServersPrompt": "Iveskite slaptazodi, naudota sifruoti si server-profiles atsargine kopija.",
             "exportFormatComparisonHint": ".aeroftp faile yra viskas, ko reikia profiliui prisijungti kitame įrenginyje. Norėdami sukurti visą saugyklos atsarginę kopiją, įskaitant DI tiekėjų raktus ir bendrus nustatymus, vietoj to naudokite .aeroftp-keystore eksportą.",
-            "keystoreRestartRequired": "Iš naujo paleiskite AeroFTP, kad pritaikytumėte atkurtas duomenų bazes ir papildinius."
+            "keystoreRestartRequired": "Iš naujo paleiskite AeroFTP, kad pritaikytumėte atkurtas duomenų bazes ir papildinius.",
+            "importChooseFile": "Pasirinkite .aeroftp failą...",
+            "importChooseFileHint": "Pasirinkite užšifruotą .aeroftp failą importuoti. Toliau būsite paprašyti įvesti jo slaptažodį.",
+            "importChangeFile": "Keisti"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3308,7 +3311,8 @@
                 "notAvailable": "Peržiūra nepasiekiama",
                 "notSupported": "Šis failo tipas nepalaikomas peržiūrai",
                 "previous": "Ankstesnis (←)",
-                "remote": "Nuotolinis"
+                "remote": "Nuotolinis",
+                "edit": "Redaguoti"
             },
             "image": {
                 "actualSize": "Tikrasis dydis",

@@ -1025,7 +1025,10 @@
             "importKeystorePrompt": "Introdu parola folosita pentru a cripta acest backup keystore.",
             "importServersPrompt": "Introdu parola folosita pentru a cripta acest backup al profilurilor server-profiles.",
             "exportFormatComparisonHint": "Fișierul .aeroftp conține tot ceea ce un profil are nevoie pentru a se conecta pe alt dispozitiv. Pentru o copie de rezervă completă a seifului, inclusiv cheile furnizorilor AI și setările globale, utilizați în schimb exportul .aeroftp-keystore.",
-            "keystoreRestartRequired": "Reporniți AeroFTP pentru a aplica bazele de date și pluginurile restaurate."
+            "keystoreRestartRequired": "Reporniți AeroFTP pentru a aplica bazele de date și pluginurile restaurate.",
+            "importChooseFile": "Alege fișierul .aeroftp...",
+            "importChooseFileHint": "Selectează un fișier .aeroftp criptat pentru import. Parola îți va fi cerută în pasul următor.",
+            "importChangeFile": "Schimbă"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3308,7 +3311,8 @@
                 "notAvailable": "Previzualizare indisponibila",
                 "notSupported": "Acest tip de fisier nu este suportat pentru previzualizare",
                 "previous": "Anteriorul (←)",
-                "remote": "Remote"
+                "remote": "Remote",
+                "edit": "Editează"
             },
             "image": {
                 "actualSize": "Dimensiune reala",

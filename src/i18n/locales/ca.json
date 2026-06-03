@@ -1025,7 +1025,10 @@
             "importKeystorePrompt": "Introdueix la contrasenya utilitzada per xifrar aquesta copia de seguretat del keystore.",
             "importServersPrompt": "Introdueix la contrasenya utilitzada per xifrar aquesta copia de seguretat de server-profiles.",
             "exportFormatComparisonHint": "El fitxer .aeroftp conté tot el que un perfil necessita per connectar-se a un altre dispositiu. Per a una còpia de seguretat completa del magatzem amb claus de proveïdors d'IA i paràmetres globals, utilitza en canvi l'exportació .aeroftp-keystore.",
-            "keystoreRestartRequired": "Reinicia AeroFTP per aplicar les bases de dades i els connectors restaurats."
+            "keystoreRestartRequired": "Reinicia AeroFTP per aplicar les bases de dades i els connectors restaurats.",
+            "importChooseFile": "Tria un fitxer .aeroftp...",
+            "importChooseFileHint": "Selecciona un fitxer .aeroftp xifrat per importar. Tot seguit se't demanarà la contrasenya.",
+            "importChangeFile": "Canvia"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3308,7 +3311,8 @@
                 "notAvailable": "Previsualització no disponible",
                 "notSupported": "Aquest tipus de fitxer no és compatible per a la previsualització",
                 "previous": "Anterior (←)",
-                "remote": "Remot"
+                "remote": "Remot",
+                "edit": "Edita"
             },
             "image": {
                 "actualSize": "Mida real",

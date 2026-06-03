@@ -1025,7 +1025,10 @@
             "importKeystorePrompt": "Sartu keystore babeskopia hau zifratzeko erabilitako pasahitza.",
             "importServersPrompt": "Sartu server-profiles babeskopia hau zifratzeko erabilitako pasahitza.",
             "exportFormatComparisonHint": ".aeroftp fitxategiak profil batek beste gailu batera konektatzeko behar duen guztia daramatza. Kutxa gotorraren babes-kopia osoa egiteko, AI hornitzaileen gakoekin eta ezarpen globalekin batera, erabili .aeroftp-keystore esportazioa horren ordez.",
-            "keystoreRestartRequired": "Berrabiarazi AeroFTP berreskuratutako datu-baseak eta pluginak aplikatzeko."
+            "keystoreRestartRequired": "Berrabiarazi AeroFTP berreskuratutako datu-baseak eta pluginak aplikatzeko.",
+            "importChooseFile": "Aukeratu .aeroftp fitxategia...",
+            "importChooseFileHint": "Hautatu inportatzeko zifratutako .aeroftp fitxategi bat. Ondoren, haren pasahitza eskatuko zaizu.",
+            "importChangeFile": "Aldatu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3308,7 +3311,8 @@
                 "notAvailable": "Aurrebista ez dago eskuragarri",
                 "notSupported": "Fitxategi-mota hau ez da onartzen aurrebistatzeko",
                 "previous": "Aurrekoa (←)",
-                "remote": "Urrunekoa"
+                "remote": "Urrunekoa",
+                "edit": "Editatu"
             },
             "image": {
                 "actualSize": "Benetako tamaina",

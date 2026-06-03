@@ -1025,7 +1025,10 @@
             "importKeystorePrompt": "এই keystore ব্যাকআপ এনক্রিপ্ট করতে ব্যবহৃত পাসওয়ার্ড লিখুন।",
             "importServersPrompt": "এই server-profiles ব্যাকআপ এনক্রিপ্ট করতে ব্যবহৃত পাসওয়ার্ড লিখুন।",
             "exportFormatComparisonHint": ".aeroftp ফাইলে অন্য ডিভাইসে সংযোগ করার জন্য একটি প্রোফাইলের প্রয়োজনীয় সবকিছু রয়েছে। AI প্রদানকারী কী এবং বৈশ্বিক সেটিংস সহ একটি সম্পূর্ণ ভল্ট ব্যাকআপের জন্য পরিবর্তে .aeroftp-keystore এক্সপোর্ট ব্যবহার করুন।",
-            "keystoreRestartRequired": "পুনরুদ্ধার করা ডাটাবেস এবং প্লাগইন প্রয়োগ করতে AeroFTP পুনরায় চালু করুন।"
+            "keystoreRestartRequired": "পুনরুদ্ধার করা ডাটাবেস এবং প্লাগইন প্রয়োগ করতে AeroFTP পুনরায় চালু করুন।",
+            "importChooseFile": ".aeroftp ফাইল নির্বাচন করুন...",
+            "importChooseFileHint": "আমদানি করার জন্য একটি এনক্রিপ্ট করা .aeroftp ফাইল নির্বাচন করুন। এরপর এর পাসওয়ার্ড চাওয়া হবে।",
+            "importChangeFile": "পরিবর্তন"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3308,7 +3311,8 @@
                 "notAvailable": "প্রিভিউ উপলব্ধ নয়",
                 "notSupported": "এই ফাইল টাইপ প্রিভিউয়ের জন্য সমর্থিত নয়",
                 "previous": "পূর্ববর্তী (←)",
-                "remote": "রিমোট"
+                "remote": "রিমোট",
+                "edit": "সম্পাদনা"
             },
             "image": {
                 "actualSize": "প্রকৃত আকার",

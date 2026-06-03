@@ -1025,7 +1025,10 @@
             "importKeystorePrompt": "Ievadiet paroli, kas izmantota si keystore dublejuma sifresanai.",
             "importServersPrompt": "Ievadiet paroli, kas izmantota si server-profiles dublejuma sifresanai.",
             "exportFormatComparisonHint": "Failā .aeroftp ir viss, kas profilam nepieciešams, lai izveidotu savienojumu citā ierīcē. Lai izveidotu pilnu seifa dublējumkopiju, ieskaitot AI nodrošinātāju atslēgas un globālos iestatījumus, izmantojiet .aeroftp-keystore eksportu.",
-            "keystoreRestartRequired": "Restartējiet AeroFTP, lai lietotu atjaunotās datu bāzes un spraudņus."
+            "keystoreRestartRequired": "Restartējiet AeroFTP, lai lietotu atjaunotās datu bāzes un spraudņus.",
+            "importChooseFile": "Izvēlieties .aeroftp failu...",
+            "importChooseFileHint": "Atlasiet importēšanai šifrētu .aeroftp failu. Pēc tam tiks pieprasīta tā parole.",
+            "importChangeFile": "Mainīt"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3308,7 +3311,8 @@
                 "notAvailable": "Priekšskatījums nav pieejams",
                 "notSupported": "Šis faila tips netiek atbalstīts priekšskatījumam",
                 "previous": "Iepriekšējais (←)",
-                "remote": "Attālināts"
+                "remote": "Attālināts",
+                "edit": "Rediģēt"
             },
             "image": {
                 "actualSize": "Faktiskais izmērs",

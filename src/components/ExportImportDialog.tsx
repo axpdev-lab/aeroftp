@@ -68,6 +68,10 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
     const [confirmPassword, setConfirmPassword] = useState('');
     const [includeCredentials, setIncludeCredentials] = useState(true);
     const [showPassword, setShowPassword] = useState(false);
+    // KeePassXC-style import flow: the .aeroftp file is chosen first and its
+    // path is held here, then the decryption password is requested. Null
+    // until a file has been selected.
+    const [importFilePath, setImportFilePath] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
@@ -187,13 +191,10 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         }
     };
 
-    const handleImport = async () => {
-        if (password.length < 1) {
-            setError(t('settings.passwordRequired'));
-            return;
-        }
-
-        // Open file picker first
+    // Step 1 of the import: choose the .aeroftp file. The decryption
+    // password is only requested once a file is loaded (KeePassXC pattern),
+    // so the user sees what they are unlocking before typing a secret.
+    const handleChooseImportFile = async () => {
         const filePath = await open({
             title: t('settings.importServers'),
             filters: [
@@ -202,7 +203,23 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
             ],
             multiple: false,
         });
-        if (!filePath) return;
+        if (!filePath || typeof filePath !== 'string') return;
+        setError(null);
+        setSuccess(null);
+        setPassword('');
+        setImportFilePath(filePath);
+    };
+
+    // Step 2 of the import: decrypt the already-chosen file with the password.
+    const handleImport = async () => {
+        const filePath = importFilePath;
+        if (!filePath) {
+            return;
+        }
+        if (password.length < 1) {
+            setError(t('settings.passwordRequired'));
+            return;
+        }
 
         setLoading(true);
         setError(null);
@@ -639,6 +656,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         setSuccess(null);
         setPassword('');
         setConfirmPassword('');
+        setImportFilePath(null);
         setRcloneResult(null);
         setRcloneSelectedIds(new Set());
         setWinscpResult(null);
@@ -1004,24 +1022,63 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                         </div>
                     ) : mode === 'import' ? (
                         <div className="space-y-4">
-                            {/* Password field */}
-                            <div className="relative">
-                                <input
-                                    type={showPassword ? 'text' : 'password'}
-                                    placeholder={t('settings.decryptionPassword')}
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                    className="w-full px-3 py-2 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm"
-                                />
-                                <button
-                                    type="button"
-                                    tabIndex={-1}
-                                    onClick={() => setShowPassword(!showPassword)}
-                                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
-                                >
-                                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                                </button>
-                            </div>
+                            {!importFilePath ? (
+                                /* Step 1: choose the file before asking for a password */
+                                <>
+                                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                                        {t('settings.importChooseFileHint') || 'Select an encrypted .aeroftp file to import. You will be asked for its password next.'}
+                                    </p>
+                                    <button
+                                        onClick={handleChooseImportFile}
+                                        className="w-full px-4 py-3 text-sm border border-dashed border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center justify-center gap-2"
+                                    >
+                                        <FolderInput size={16} />
+                                        {t('settings.importChooseFile') || 'Choose .aeroftp file...'}
+                                    </button>
+                                </>
+                            ) : (
+                                /* Step 2: file is loaded, now request the password */
+                                <>
+                                    <div className="flex items-center justify-between gap-2 p-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40">
+                                        <div className="flex items-center gap-2 min-w-0">
+                                            <Lock size={16} className="text-blue-500 flex-shrink-0" />
+                                            <span className="text-sm text-gray-800 dark:text-gray-100 truncate" title={importFilePath}>
+                                                {importFilePath.split(/[\\/]/).pop()}
+                                            </span>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={handleChooseImportFile}
+                                            className="text-xs text-blue-500 hover:text-blue-600 font-medium flex-shrink-0"
+                                        >
+                                            {t('settings.importChangeFile') || 'Change'}
+                                        </button>
+                                    </div>
+
+                                    {/* Password field */}
+                                    <div className="relative">
+                                        <input
+                                            type={showPassword ? 'text' : 'password'}
+                                            placeholder={t('settings.decryptionPassword')}
+                                            value={password}
+                                            onChange={(e) => setPassword(e.target.value)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter' && password.length >= 1 && !loading) handleImport();
+                                            }}
+                                            autoFocus
+                                            className="w-full px-3 py-2 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm"
+                                        />
+                                        <button
+                                            type="button"
+                                            tabIndex={-1}
+                                            onClick={() => setShowPassword(!showPassword)}
+                                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
+                                        >
+                                            {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                        </button>
+                                    </div>
+                                </>
+                            )}
 
                             {/* Error/Success */}
                             {error && <div className="text-red-500 text-sm flex items-center gap-2"><AlertCircle size={14} />{error}</div>}
@@ -1035,18 +1092,20 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                                 >
                                     {t('common.back')}
                                 </button>
-                                <button
-                                    onClick={handleImport}
-                                    disabled={loading || password.length < 1}
-                                    className="flex-1 px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 flex items-center justify-center gap-2"
-                                >
-                                    {loading ? (
-                                        <span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
-                                    ) : (
-                                        <Upload size={16} />
-                                    )}
-                                    {loading ? t('settings.importing') : t('settings.importServers')}
-                                </button>
+                                {importFilePath && (
+                                    <button
+                                        onClick={handleImport}
+                                        disabled={loading || password.length < 1}
+                                        className="flex-1 px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 flex items-center justify-center gap-2"
+                                    >
+                                        {loading ? (
+                                            <span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                                        ) : (
+                                            <Upload size={16} />
+                                        )}
+                                        {loading ? t('settings.importing') : t('settings.importServers')}
+                                    </button>
+                                )}
                             </div>
                         </div>
                     ) : mode === 'rclone' ? (

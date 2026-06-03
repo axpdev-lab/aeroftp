@@ -1025,7 +1025,10 @@
             "importKeystorePrompt": "Ingiza nenosiri lililotumika kusimba nakala hii ya keystore.",
             "importServersPrompt": "Ingiza nenosiri lililotumika kusimba nakala hii ya server-profiles.",
             "exportFormatComparisonHint": "Faili la .aeroftp lina kila kitu ambacho wasifu unahitaji ili kuunganishwa kwenye kifaa kingine. Kwa nakala kamili ya hifadhi, ikiwa ni pamoja na funguo za watoa huduma za AI na mipangilio ya kimataifa, tumia uhamishaji wa .aeroftp-keystore badala yake.",
-            "keystoreRestartRequired": "Anzisha upya AeroFTP ili kutumia hifadhidata na programu jalizi zilizorejeshwa."
+            "keystoreRestartRequired": "Anzisha upya AeroFTP ili kutumia hifadhidata na programu jalizi zilizorejeshwa.",
+            "importChooseFile": "Chagua faili la .aeroftp...",
+            "importChooseFileHint": "Chagua faili la .aeroftp lililosimbwa ili kuingiza. Utaombwa nenosiri lake hatua inayofuata.",
+            "importChangeFile": "Badilisha"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3308,7 +3311,8 @@
                 "notAvailable": "Onyesho la awali halipatikani",
                 "notSupported": "Aina hii ya faili haitumiki kwa onyesho la awali",
                 "previous": "Iliyotangulia (←)",
-                "remote": "Mbali"
+                "remote": "Mbali",
+                "edit": "Hariri"
             },
             "image": {
                 "actualSize": "Ukubwa Halisi",

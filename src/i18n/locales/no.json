@@ -1025,7 +1025,10 @@
             "importKeystorePrompt": "Skriv inn passordet som ble brukt til å kryptere denne keystore-sikkerhetskopien.",
             "importServersPrompt": "Skriv inn passordet som ble brukt til å kryptere denne server-profiles-sikkerhetskopien.",
             "exportFormatComparisonHint": ".aeroftp-filen inneholder alt en profil trenger for å koble til på en annen enhet. Bruk i stedet eksporten .aeroftp-keystore for en fullstendig sikkerhetskopi av hvelvet, inkludert AI-leverandørnøkler og globale innstillinger.",
-            "keystoreRestartRequired": "Start AeroFTP på nytt for å bruke de gjenopprettede databasene og programtilleggene."
+            "keystoreRestartRequired": "Start AeroFTP på nytt for å bruke de gjenopprettede databasene og programtilleggene.",
+            "importChooseFile": "Velg .aeroftp-fil...",
+            "importChooseFileHint": "Velg en kryptert .aeroftp-fil som skal importeres. Du blir bedt om passordet etterpå.",
+            "importChangeFile": "Endre"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3308,7 +3311,8 @@
                 "notAvailable": "Forhåndsvisning ikke tilgjengelig",
                 "notSupported": "Denne filtypen støttes ikke for forhåndsvisning",
                 "previous": "Forrige (←)",
-                "remote": "Ekstern"
+                "remote": "Ekstern",
+                "edit": "Rediger"
             },
             "image": {
                 "actualSize": "Faktisk størrelse",

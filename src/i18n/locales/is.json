@@ -1025,7 +1025,10 @@
             "importKeystorePrompt": "Sláðu inn lykilorðið sem var notað til að dulkóða þetta keystore afrit.",
             "importServersPrompt": "Sláðu inn lykilorðið sem var notað til að dulkóða þetta server-profiles afrit.",
             "exportFormatComparisonHint": ".aeroftp skráin inniheldur allt sem snið þarf til að tengjast á öðru tæki. Fyrir fullt afrit af hvelfingu, þar á meðal AI veitulykla og almennar stillingar, notaðu .aeroftp-keystore útflutning í staðinn.",
-            "keystoreRestartRequired": "Endurræstu AeroFTP til að beita endurheimtum gagnagrunnum og viðbótum."
+            "keystoreRestartRequired": "Endurræstu AeroFTP til að beita endurheimtum gagnagrunnum og viðbótum.",
+            "importChooseFile": "Veldu .aeroftp skrá...",
+            "importChooseFileHint": "Veldu dulkóðaða .aeroftp skrá til að flytja inn. Beðið verður um lykilorð hennar næst.",
+            "importChangeFile": "Breyta"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3308,7 +3311,8 @@
                 "notAvailable": "Forskoðun ekki tiltæk",
                 "notSupported": "Þessi skráartegund er ekki studd fyrir forskoðun",
                 "previous": "Fyrra (←)",
-                "remote": "Fjartengt"
+                "remote": "Fjartengt",
+                "edit": "Breyta"
             },
             "image": {
                 "actualSize": "Raunstærð",
