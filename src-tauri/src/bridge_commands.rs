@@ -1,15 +1,18 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-//! Generic GUI bridge commands for the 12 expansion sources.
+//! Generic GUI bridge commands for every bridge source.
 //!
-//! The three legacy importers (rclone / WinSCP / FileZilla) keep their
-//! own dedicated `*_config` Tauri commands. The 12 newer sources are
-//! dispatched generically here, mirroring the CLI's
-//! `cmd_import_bridge` / `cmd_export_bridge` design so the GUI and CLI
-//! never diverge. Per-source protocol filtering, the export file
-//! format and the secret policy all come from `bridge_shared` (single
-//! source of truth, shared with the CLI).
+//! Originally only the 12 expansion sources were dispatched here while
+//! rclone / WinSCP / FileZilla kept their own dedicated `*_config` Tauri
+//! commands. APPENDIX-BRIDGE-CONVERGENCE folds those three onto this same
+//! generic path: WinSCP/FileZilla dispatch like any other source, and
+//! rclone is handled natively in `import_bridge_config`/`export_bridge_config`
+//! because it carries per-profile OAuth/Jotta tokens (#214) that the generic
+//! `Value` cannot transport. The design still mirrors the CLI's
+//! `cmd_import_bridge` / `cmd_export_bridge` so GUI and CLI never diverge.
+//! Per-source protocol filtering, the export file format and the secret
+//! policy all come from `bridge_shared` (single source of truth).
 
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -20,9 +23,9 @@ use crate::bridge_shared::{
 };
 use crate::credential_store::CredentialStore;
 use crate::{
-    aws_credentials_import, cyberduck_import, dreamweaver_import, duplicacy_import, kopia_import,
-    lftp_import, mc_import, mobaxterm_import, putty_import, restic_import, s3cmd_import,
-    ssh_config_import,
+    aws_credentials_import, cyberduck_import, dreamweaver_import, duplicacy_import,
+    filezilla_import, kopia_import, lftp_import, mc_import, mobaxterm_import, putty_import,
+    rclone_import, restic_import, s3cmd_import, ssh_config_import, winscp_import,
 };
 
 fn known(source: &str) -> Result<(), String> {
@@ -216,7 +219,56 @@ fn dispatch_import(source: &str, path: &Path) -> Result<Value, String> {
         "kopia" => to_v(kopia_import::import_kopia(path)),
         "duplicacy" => to_v(duplicacy_import::import_duplicacy(path)),
         "restic" => to_v(restic_import::import_restic(path)),
+        "winscp" => to_v(winscp_import::import_winscp(path)),
+        "filezilla" => to_v(filezilla_import::import_filezilla(path)),
+        // rclone is intercepted in import_bridge_config (it needs the
+        // CredentialStore for its #214 per-profile OAuth/Jotta tokens) and
+        // never reaches this pure dispatcher.
         other => Err(format!("unknown import source: {other}")),
+    }
+}
+
+/// Persist rclone's per-profile OAuth/Jotta tokens (#214) into the vault with
+/// the same keys the saved-server reconnect path expects
+/// (`oauth_<slug>_<id>`, `jottacloud_refresh_<id>`). No-op when the vault is
+/// locked; the server-credential loop in `import_bridge_config` already
+/// surfaces that case to the caller.
+fn store_rclone_provider_secrets(result: &rclone_import::RcloneImportResult) {
+    let store = match CredentialStore::from_cache() {
+        Some(s) => s,
+        None => return,
+    };
+    let protocol_by_id: HashMap<&str, String> = result
+        .servers
+        .iter()
+        .map(|s| {
+            (
+                s.id.as_str(),
+                s.protocol.clone().unwrap_or_default().to_lowercase(),
+            )
+        })
+        .collect();
+    for (profile_id, secrets) in &result.provider_secrets {
+        let protocol = match protocol_by_id.get(profile_id.as_str()) {
+            Some(p) => p,
+            None => continue,
+        };
+        if let Some(ref oauth_json) = secrets.oauth {
+            if let Some(slug) = crate::oauth_vault_slug_for_protocol(protocol) {
+                if let Err(e) = store.store(&format!("oauth_{}_{}", slug, profile_id), oauth_json) {
+                    log::warn!("rclone bridge: oauth token store failed for {profile_id}: {e}");
+                }
+            }
+        }
+        if let Some(ref jotta_json) = secrets.jotta_refresh {
+            if protocol == "jottacloud" {
+                if let Err(e) =
+                    store.store(&format!("jottacloud_refresh_{}", profile_id), jotta_json)
+                {
+                    log::warn!("rclone bridge: jotta token store failed for {profile_id}: {e}");
+                }
+            }
+        }
     }
 }
 
@@ -244,7 +296,17 @@ pub async fn import_bridge_config(source: String, file_path: String) -> Result<V
         return Err("File too large (max 10 MB)".to_string());
     }
 
-    let value = dispatch_import(&source, &canonical)?;
+    // rclone carries per-profile OAuth/Jotta tokens (#214) in a
+    // `#[serde(skip)]` field that a generic `Value` cannot transport, so we
+    // import it natively here and persist those tokens before serialising the
+    // server list back into the shared post-processing below.
+    let value = if source == "rclone" {
+        let result = rclone_import::import_rclone(&canonical).map_err(|e| e.to_string())?;
+        store_rclone_provider_secrets(&result);
+        serde_json::to_value(&result).map_err(|e| e.to_string())?
+    } else {
+        dispatch_import(&source, &canonical)?
+    };
     let servers = value
         .get("servers")
         .and_then(|s| s.as_array())
@@ -466,4 +528,62 @@ pub async fn export_bridge_config(
         other => return Err(format!("unknown export source: {other}")),
     };
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn write_temp(name: &str, contents: &str) -> std::path::PathBuf {
+        let path = std::env::temp_dir().join(format!(
+            "aeroftp_bridge_test_{}_{}",
+            std::process::id(),
+            name
+        ));
+        std::fs::write(&path, contents).expect("write temp fixture");
+        path
+    }
+
+    fn server_count(v: &Value) -> usize {
+        v.get("servers")
+            .and_then(|s| s.as_array())
+            .map(|a| a.len())
+            .unwrap_or(0)
+    }
+
+    #[test]
+    fn dispatch_import_handles_winscp() {
+        let ini = "[Sessions\\My%20Server]\nHostName=example.com\nPortNumber=22\nUserName=admin\nFSProtocol=2\nFtps=0\n";
+        let path = write_temp("winscp.ini", ini);
+        let v = dispatch_import("winscp", &path).expect("winscp dispatch");
+        assert_eq!(server_count(&v), 1, "winscp server parsed");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn dispatch_import_handles_filezilla() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<FileZilla3>
+  <Servers>
+    <Server>
+      <Host>ftp.example.com</Host>
+      <Port>21</Port>
+      <Protocol>0</Protocol>
+      <User>admin</User>
+      <Name>My FTP Server</Name>
+    </Server>
+  </Servers>
+</FileZilla3>"#;
+        let path = write_temp("sitemanager.xml", xml);
+        let v = dispatch_import("filezilla", &path).expect("filezilla dispatch");
+        assert_eq!(server_count(&v), 1, "filezilla server parsed");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn dispatch_import_rejects_unknown() {
+        let path = write_temp("x.txt", "nothing");
+        assert!(dispatch_import("totalcommander", &path).is_err());
+        let _ = std::fs::remove_file(&path);
+    }
 }
