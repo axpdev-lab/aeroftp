@@ -153,9 +153,9 @@ dependencies = [
 
 [[package]]
 name = "aerovault"
-version = "0.4.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ccda400fd846336e018a0068c10b2b3d5f4cef58449652009299f5f86f56179d"
+checksum = "1db01aa1c1a514b2dcd6770ad2fb24392731654abbb9942c88bad7a8af00827c"
 dependencies = [
  "aes-gcm-siv",
  "aes-kw",
@@ -166,6 +166,7 @@ dependencies = [
  "data-encoding",
  "hkdf 0.12.4",
  "hmac 0.12.1",
+ "libc",
  "rand 0.8.6",
  "secrecy 0.8.0",
  "serde",
@@ -6870,7 +6871,7 @@ version = "0.14.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "343d3bd7056eda839b03204e68deff7d1b13aba7af2b2fd16890697274262ee7"
 dependencies = [
- "heck 0.4.1",
+ "heck 0.5.0",
  "itertools 0.14.0",
  "log",
  "multimap",
@@ -8881,7 +8882,7 @@ version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c1c97747dbf44bb1ca44a561ece23508e99cb592e862f22222dcf42f51d1e451"
 dependencies = [
- "heck 0.4.1",
+ "heck 0.5.0",
  "proc-macro2",
  "quote",
  "syn 2.0.117",
@@ -9706,7 +9707,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.2",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
