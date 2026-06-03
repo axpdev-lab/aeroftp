@@ -7037,6 +7037,34 @@ fn parse_github_target(url_obj: &url::Url) -> Result<(String, Option<String>), S
 
 // ── Vault Profile Support ─────────────────────────────────────────
 
+/// Unlock the vault with a master password, supplying the TOTP second factor
+/// from `AEROFTP_TOTP_CODE` when present. If the vault has 2FA, no code was
+/// supplied, and we are on an interactive terminal, prompt for the code once
+/// and retry instead of failing outright. The code is zeroized after use.
+fn unlock_with_master_and_totp(password: &str) -> Result<(), String> {
+    use ftp_client_gui_lib::credential_store::{CredentialError, CredentialStore};
+
+    let totp_env = std::env::var("AEROFTP_TOTP_CODE").ok();
+    let env_code = totp_env.as_deref().map(str::trim).filter(|c| !c.is_empty());
+
+    match CredentialStore::unlock_with_master(password, env_code) {
+        Err(CredentialError::TotpRequired) if std::io::stdin().is_terminal() => {
+            eprint!("Two-factor code: ");
+            let _ = io::stderr().flush();
+            let mut line = String::new();
+            io::stdin()
+                .read_line(&mut line)
+                .map_err(|e| format!("Failed to read 2FA code: {}", e))?;
+            let mut code = line.trim().to_string();
+            let result = CredentialStore::unlock_with_master(password, Some(code.as_str()))
+                .map_err(|e| format!("Failed to unlock vault: {}", e));
+            code.zeroize();
+            result
+        }
+        other => other.map_err(|e| format!("Failed to unlock vault: {}", e)),
+    }
+}
+
 fn open_vault(cli: &Cli) -> Result<ftp_client_gui_lib::credential_store::CredentialStore, String> {
     use ftp_client_gui_lib::credential_store::CredentialStore;
 
@@ -7052,11 +7080,9 @@ fn open_vault(cli: &Cli) -> Result<ftp_client_gui_lib::credential_store::Credent
                 }
                 // VER-006: Clone to allow zeroization after use (original in Cli struct cannot be mutated)
                 let mut mp_copy = mp.clone();
-                // If the vault has 2FA, require a TOTP code from AEROFTP_TOTP_CODE.
-                let totp_env = std::env::var("AEROFTP_TOTP_CODE").ok();
-                let totp = totp_env.as_deref().map(str::trim).filter(|c| !c.is_empty());
-                let result = CredentialStore::unlock_with_master(&mp_copy, totp)
-                    .map_err(|e| format!("Failed to unlock vault: {}", e));
+                // 2FA code comes from AEROFTP_TOTP_CODE, or an interactive
+                // prompt on a TTY when the vault requires it but none was set.
+                let result = unlock_with_master_and_totp(&mp_copy);
                 mp_copy.zeroize();
                 result?;
             } else if std::io::stdin().is_terminal() {
@@ -7065,10 +7091,7 @@ fn open_vault(cli: &Cli) -> Result<ftp_client_gui_lib::credential_store::Credent
                 let _ = io::stderr().flush();
                 let mut mp = rpassword::read_password()
                     .map_err(|e| format!("Failed to read master password: {}", e))?;
-                let totp_env = std::env::var("AEROFTP_TOTP_CODE").ok();
-                let totp = totp_env.as_deref().map(str::trim).filter(|c| !c.is_empty());
-                let result = CredentialStore::unlock_with_master(mp.trim(), totp)
-                    .map_err(|e| format!("Failed to unlock vault: {}", e));
+                let result = unlock_with_master_and_totp(mp.trim());
                 mp.zeroize();
                 result?;
             } else {
