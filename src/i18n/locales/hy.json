@@ -1661,9 +1661,9 @@
             "discoverTabDigital": "Tab.digital (8 ԳԲ անվճար, Nextcloud-ի վրա հիմնված, EU/GDPR, տարածաշրջանային ենթադոմեններ)",
             "webdavLocalScheme": "Արձանագրություն",
             "webdavLocalSchemeHelp": "Համապատասխանեցրեք տեղական WebDAV կամրջի HTTP/HTTPS կարգավորմանը (Filen Desktop, MEGAcmd)։ HTTPS-ն օգտագործում է ինքնաստորագրված վկայական, ուստի վկայականի ստուգումն ինքնաշխատ կերպով անջատվում է։",
-            "s3SessionToken": "Session Token (optional)",
-            "s3SessionTokenPlaceholder": "AWS STS session token",
-            "s3SessionTokenHint": "For temporary credentials from AWS STS AssumeRole or SSO. Leave empty for long-term IAM access keys."
+            "s3SessionToken": "Աշխատաշրջանի թոքեն (ընտրովի)",
+            "s3SessionTokenPlaceholder": "AWS STS աշխատաշրջանի թոքեն",
+            "s3SessionTokenHint": "AWS STS AssumeRole-ից կամ SSO-ից ստացված ժամանակավոր հավատարմագրերի համար։ Երկարաժամկետ IAM մուտքի բանալիների համար թողեք դատարկ։"
         },
         "shortcuts": {
             "title": "Ստեղնաշարի դյուրանցումներ",

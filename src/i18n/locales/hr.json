@@ -1668,9 +1668,9 @@
             "discoverTabDigital": "Tab.digital (8 GB besplatno, temeljeno na Nextcloud, EU/GDPR, regionalne poddomene)",
             "webdavLocalScheme": "Protokol",
             "webdavLocalSchemeHelp": "Uskladite s HTTP/HTTPS postavkom lokalnog WebDAV mosta (Filen Desktop, MEGAcmd). HTTPS koristi samopotpisani certifikat, pa je provjera certifikata automatski onemogućena.",
-            "s3SessionToken": "Session Token (optional)",
-            "s3SessionTokenPlaceholder": "AWS STS session token",
-            "s3SessionTokenHint": "For temporary credentials from AWS STS AssumeRole or SSO. Leave empty for long-term IAM access keys."
+            "s3SessionToken": "Token sesije (neobavezno)",
+            "s3SessionTokenPlaceholder": "AWS STS token sesije",
+            "s3SessionTokenHint": "Za privremene vjerodajnice iz AWS STS AssumeRole ili SSO. Ostavite prazno za trajne IAM pristupne ključeve."
         },
         "shortcuts": {
             "title": "Tipkovnički prečaci",

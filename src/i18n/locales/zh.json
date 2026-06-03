@@ -1668,9 +1668,9 @@
             "discoverTabDigital": "Tab.digital (8 GB 免费, 基于 Nextcloud, EU/GDPR, 区域子域名)",
             "webdavLocalScheme": "协议",
             "webdavLocalSchemeHelp": "匹配本地 WebDAV 桥接 (Filen Desktop, MEGAcmd) 的 HTTP/HTTPS 设置。HTTPS 使用自签名证书, 因此证书验证会自动禁用。",
-            "s3SessionToken": "Session Token (optional)",
-            "s3SessionTokenPlaceholder": "AWS STS session token",
-            "s3SessionTokenHint": "For temporary credentials from AWS STS AssumeRole or SSO. Leave empty for long-term IAM access keys."
+            "s3SessionToken": "会话令牌（可选）",
+            "s3SessionTokenPlaceholder": "AWS STS 会话令牌",
+            "s3SessionTokenHint": "用于来自 AWS STS AssumeRole 或 SSO 的临时凭证。对于长期 IAM 访问密钥，请留空。"
         },
         "shortcuts": {
             "title": "键盘快捷键",

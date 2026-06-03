@@ -1668,9 +1668,9 @@
             "discoverTabDigital": "Tab.digital (8 GB percuma, berasaskan Nextcloud, EU/GDPR, subdomain serantau)",
             "webdavLocalScheme": "Protokol",
             "webdavLocalSchemeHelp": "Padankan dengan tetapan HTTP/HTTPS jambatan WebDAV tempatan (Filen Desktop, MEGAcmd). HTTPS menggunakan sijil yang ditandatangani sendiri, jadi pengesahan sijil dilumpuhkan secara automatik.",
-            "s3SessionToken": "Session Token (optional)",
-            "s3SessionTokenPlaceholder": "AWS STS session token",
-            "s3SessionTokenHint": "For temporary credentials from AWS STS AssumeRole or SSO. Leave empty for long-term IAM access keys."
+            "s3SessionToken": "Token sesi (pilihan)",
+            "s3SessionTokenPlaceholder": "Token sesi AWS STS",
+            "s3SessionTokenHint": "Untuk kelayakan sementara daripada AWS STS AssumeRole atau SSO. Biarkan kosong untuk kunci akses IAM kekal."
         },
         "shortcuts": {
             "title": "Pintasan Papan Kekunci",

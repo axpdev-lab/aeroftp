@@ -1668,9 +1668,9 @@
             "discoverTabDigital": "Tab.digital (8 GB ücretsiz, Nextcloud tabanlı, EU/GDPR, bölgesel alt alan adları)",
             "webdavLocalScheme": "Protokol",
             "webdavLocalSchemeHelp": "Yerel WebDAV köprüsünün HTTP/HTTPS ayarıyla eşleştirin (Filen Desktop, MEGAcmd). HTTPS kendinden imzalı sertifika kullanır, bu nedenle sertifika doğrulaması otomatik olarak devre dışı bırakılır.",
-            "s3SessionToken": "Session Token (optional)",
-            "s3SessionTokenPlaceholder": "AWS STS session token",
-            "s3SessionTokenHint": "For temporary credentials from AWS STS AssumeRole or SSO. Leave empty for long-term IAM access keys."
+            "s3SessionToken": "Oturum belirteci (isteğe bağlı)",
+            "s3SessionTokenPlaceholder": "AWS STS oturum belirteci",
+            "s3SessionTokenHint": "AWS STS AssumeRole veya SSO'dan alınan geçici kimlik bilgileri için. Kalıcı IAM erişim anahtarları için boş bırakın."
         },
         "shortcuts": {
             "title": "Klavye Kısayolları",

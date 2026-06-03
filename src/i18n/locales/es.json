@@ -1668,9 +1668,9 @@
             "discoverTabDigital": "Tab.digital (8 GB gratis, basado en Nextcloud, EU/GDPR, subdominios regionales)",
             "webdavLocalScheme": "Protocolo",
             "webdavLocalSchemeHelp": "Coincide con la configuración HTTP/HTTPS del puente WebDAV local (Filen Desktop, MEGAcmd). HTTPS utiliza un certificado autofirmado, por lo que la verificación del certificado se desactiva automáticamente.",
-            "s3SessionToken": "Session Token (optional)",
-            "s3SessionTokenPlaceholder": "AWS STS session token",
-            "s3SessionTokenHint": "For temporary credentials from AWS STS AssumeRole or SSO. Leave empty for long-term IAM access keys."
+            "s3SessionToken": "Token de sesión (opcional)",
+            "s3SessionTokenPlaceholder": "Token de sesión de AWS STS",
+            "s3SessionTokenHint": "Para credenciales temporales de AWS STS AssumeRole o SSO. Deja vacío para claves de acceso IAM permanentes."
         },
         "shortcuts": {
             "title": "Atajos de Teclado",

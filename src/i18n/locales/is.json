@@ -1668,9 +1668,9 @@
             "discoverTabDigital": "Tab.digital (8 GB ókeypis, Nextcloud-byggt, EU/GDPR, svæðisbundin undirlén)",
             "webdavLocalScheme": "Samskiptaregla",
             "webdavLocalSchemeHelp": "Samsvarið HTTP/HTTPS stillingu staðbundinnar WebDAV brúar (Filen Desktop, MEGAcmd). HTTPS notar sjálfundirritað skírteini, þannig að skírteinisstaðfesting er sjálfkrafa óvirk.",
-            "s3SessionToken": "Session Token (optional)",
-            "s3SessionTokenPlaceholder": "AWS STS session token",
-            "s3SessionTokenHint": "For temporary credentials from AWS STS AssumeRole or SSO. Leave empty for long-term IAM access keys."
+            "s3SessionToken": "Setutókn (valfrjálst)",
+            "s3SessionTokenPlaceholder": "AWS STS-setutókn",
+            "s3SessionTokenHint": "Fyrir tímabundin auðkenni frá AWS STS AssumeRole eða SSO. Skildu eftir autt fyrir varanlega IAM-aðgangslykla."
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",

@@ -1668,9 +1668,9 @@
             "discoverTabDigital": "Tab.digital (8 GB ilmainen, Nextcloud-pohjainen, EU/GDPR, alueelliset alidomainit)",
             "webdavLocalScheme": "Protokolla",
             "webdavLocalSchemeHelp": "Vastaa paikallisen WebDAV-sillan HTTP/HTTPS-asetusta (Filen Desktop, MEGAcmd). HTTPS käyttää itse allekirjoitettua varmennetta, joten varmenteen tarkistus poistetaan automaattisesti käytöstä.",
-            "s3SessionToken": "Session Token (optional)",
-            "s3SessionTokenPlaceholder": "AWS STS session token",
-            "s3SessionTokenHint": "For temporary credentials from AWS STS AssumeRole or SSO. Leave empty for long-term IAM access keys."
+            "s3SessionToken": "Istuntotunnus (valinnainen)",
+            "s3SessionTokenPlaceholder": "AWS STS -istuntotunnus",
+            "s3SessionTokenHint": "Väliaikaisille tunnistetiedoille AWS STS AssumeRolesta tai SSO:sta. Jätä tyhjäksi pysyviä IAM-käyttöavaimia varten."
         },
         "shortcuts": {
             "title": "Pikanäppäimet",

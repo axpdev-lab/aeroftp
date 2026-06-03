@@ -1668,9 +1668,9 @@
             "discoverTabDigital": "Tab.digital (8 ГБ безкоштовно, на основі Nextcloud, EU/GDPR, регіональні піддомени)",
             "webdavLocalScheme": "Протокол",
             "webdavLocalSchemeHelp": "Узгодьте з налаштуванням HTTP/HTTPS локального мосту WebDAV (Filen Desktop, MEGAcmd). HTTPS використовує самопідписаний сертифікат, тому перевірка сертифіката автоматично вимкнена.",
-            "s3SessionToken": "Session Token (optional)",
-            "s3SessionTokenPlaceholder": "AWS STS session token",
-            "s3SessionTokenHint": "For temporary credentials from AWS STS AssumeRole or SSO. Leave empty for long-term IAM access keys."
+            "s3SessionToken": "Токен сеансу (необов'язково)",
+            "s3SessionTokenPlaceholder": "Токен сеансу AWS STS",
+            "s3SessionTokenHint": "Для тимчасових облікових даних із AWS STS AssumeRole або SSO. Залиште порожнім для постійних ключів доступу IAM."
         },
         "shortcuts": {
             "title": "Грячі клавіші",

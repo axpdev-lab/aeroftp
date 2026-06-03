@@ -1668,9 +1668,9 @@
             "discoverTabDigital": "Tab.digital (8 GB nemokamai, Nextcloud pagrindu, EU/GDPR, regioniniai padomeniai)",
             "webdavLocalScheme": "Protokolas",
             "webdavLocalSchemeHelp": "Atitikite vietinio WebDAV tilto HTTP/HTTPS nustatymą (Filen Desktop, MEGAcmd). HTTPS naudoja savaime pasirašytą sertifikatą, todėl sertifikato patikrinimas automatiškai išjungiamas.",
-            "s3SessionToken": "Session Token (optional)",
-            "s3SessionTokenPlaceholder": "AWS STS session token",
-            "s3SessionTokenHint": "For temporary credentials from AWS STS AssumeRole or SSO. Leave empty for long-term IAM access keys."
+            "s3SessionToken": "Seanso žetonas (nebūtina)",
+            "s3SessionTokenPlaceholder": "AWS STS seanso žetonas",
+            "s3SessionTokenHint": "Laikiniems prisijungimo duomenims iš AWS STS AssumeRole arba SSO. Nuolatiniams IAM prieigos raktams palikite tuščią."
         },
         "shortcuts": {
             "title": "Klaviatūros trumpiniai",

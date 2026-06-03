@@ -1668,9 +1668,9 @@
             "discoverTabDigital": "Tab.digital (8 GB मुफ़्त, Nextcloud-आधारित, EU/GDPR, क्षेत्रीय उपडोमेन)",
             "webdavLocalScheme": "प्रोटोकॉल",
             "webdavLocalSchemeHelp": "स्थानीय WebDAV ब्रिज (Filen Desktop, MEGAcmd) की HTTP/HTTPS सेटिंग से मिलाएँ। HTTPS एक स्वयं-हस्ताक्षरित प्रमाणपत्र का उपयोग करता है, इसलिए प्रमाणपत्र सत्यापन स्वचालित रूप से अक्षम हो जाता है।",
-            "s3SessionToken": "Session Token (optional)",
-            "s3SessionTokenPlaceholder": "AWS STS session token",
-            "s3SessionTokenHint": "For temporary credentials from AWS STS AssumeRole or SSO. Leave empty for long-term IAM access keys."
+            "s3SessionToken": "सत्र टोकन (वैकल्पिक)",
+            "s3SessionTokenPlaceholder": "AWS STS सत्र टोकन",
+            "s3SessionTokenHint": "AWS STS AssumeRole या SSO से अस्थायी क्रेडेंशियल के लिए। स्थायी IAM एक्सेस कुंजियों के लिए खाली छोड़ें।"
         },
         "shortcuts": {
             "title": "कीबोर्ड शॉर्टकट",

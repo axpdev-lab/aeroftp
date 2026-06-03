@@ -1668,9 +1668,9 @@
             "discoverTabDigital": "Tab.digital (8 GB libre, batay sa Nextcloud, EU/GDPR, mga rehiyonal na subdomain)",
             "webdavLocalScheme": "Protocol",
             "webdavLocalSchemeHelp": "Itugma sa HTTP/HTTPS na setting ng lokal na WebDAV bridge (Filen Desktop, MEGAcmd). Gumagamit ang HTTPS ng self-signed certificate, kaya awtomatikong hindi pinagana ang pag-verify ng certificate.",
-            "s3SessionToken": "Session Token (optional)",
+            "s3SessionToken": "Token ng session (opsyonal)",
             "s3SessionTokenPlaceholder": "AWS STS session token",
-            "s3SessionTokenHint": "For temporary credentials from AWS STS AssumeRole or SSO. Leave empty for long-term IAM access keys."
+            "s3SessionTokenHint": "Para sa mga pansamantalang kredensyal mula sa AWS STS AssumeRole o SSO. Iwanang blangko para sa mga permanenteng IAM access key."
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",

@@ -1668,9 +1668,9 @@
             "discoverTabDigital": "Tab.digital (8 GB gratis, Nextcloud-baseret, EU/GDPR, regionale underdomæner)",
             "webdavLocalScheme": "Protokol",
             "webdavLocalSchemeHelp": "Match HTTP/HTTPS-indstillingen for den lokale WebDAV-bro (Filen Desktop, MEGAcmd). HTTPS bruger et selvsigneret certifikat, så certifikatverifikation deaktiveres automatisk.",
-            "s3SessionToken": "Session Token (optional)",
-            "s3SessionTokenPlaceholder": "AWS STS session token",
-            "s3SessionTokenHint": "For temporary credentials from AWS STS AssumeRole or SSO. Leave empty for long-term IAM access keys."
+            "s3SessionToken": "Sessionstoken (valgfrit)",
+            "s3SessionTokenPlaceholder": "AWS STS-sessionstoken",
+            "s3SessionTokenHint": "Til midlertidige legitimationsoplysninger fra AWS STS AssumeRole eller SSO. Lad feltet stå tomt for permanente IAM-adgangsnøgler."
         },
         "shortcuts": {
             "title": "Tastaturgenveje",

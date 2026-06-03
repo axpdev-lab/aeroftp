@@ -1668,9 +1668,9 @@
             "discoverTabDigital": "Tab.digital (8 GB bure, msingi wa Nextcloud, EU/GDPR, vidomeni vidogo vya kimkoa)",
             "webdavLocalScheme": "Itifaki",
             "webdavLocalSchemeHelp": "Linganisha na mpangilio wa HTTP/HTTPS wa daraja la WebDAV la ndani (Filen Desktop, MEGAcmd). HTTPS hutumia cheti kilichotiwa saini na yenyewe, kwa hivyo uthibitishaji wa cheti unazimwa kiotomatiki.",
-            "s3SessionToken": "Session Token (optional)",
-            "s3SessionTokenPlaceholder": "AWS STS session token",
-            "s3SessionTokenHint": "For temporary credentials from AWS STS AssumeRole or SSO. Leave empty for long-term IAM access keys."
+            "s3SessionToken": "Tokeni ya kipindi (hiari)",
+            "s3SessionTokenPlaceholder": "Tokeni ya kipindi ya AWS STS",
+            "s3SessionTokenHint": "Kwa vitambulisho vya muda kutoka AWS STS AssumeRole au SSO. Acha tupu kwa funguo za ufikiaji za IAM za kudumu."
         },
         "shortcuts": {
             "title": "Njia za Mkato",
