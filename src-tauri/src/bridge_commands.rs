@@ -54,6 +54,9 @@ pub async fn detect_bridge_config(source: String) -> Result<Option<String>, Stri
         "kopia" => kopia_import::default_kopia_config_path(),
         "duplicacy" => duplicacy_import::default_duplicacy_config_path(),
         "restic" => restic_import::default_restic_config_path(),
+        "rclone" => rclone_import::default_rclone_config_path(),
+        "winscp" => winscp_import::default_winscp_config_path(),
+        "filezilla" => filezilla_import::default_filezilla_config_path(),
         other => return Err(format!("unknown bridge source: {other}")),
     };
     Ok(p.map(|p| p.display().to_string()))
