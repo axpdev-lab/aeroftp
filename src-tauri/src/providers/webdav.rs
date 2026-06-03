@@ -46,6 +46,7 @@ pub struct NextcloudTrashEntry {
 // ============ HTTP Digest Authentication (RFC 2617) ============
 
 /// State for HTTP Digest authentication
+#[derive(Clone)]
 struct DigestState {
     realm: String,
     nonce: String,
@@ -215,6 +216,7 @@ fn path_violates_root(path: &str, boundary: Option<&str>) -> bool {
 }
 
 /// WebDAV Storage Provider
+#[derive(Clone)]
 pub struct WebDavProvider {
     config: WebDavConfig,
     client: Client,
@@ -2047,6 +2049,18 @@ fn parse_oc_checksums(raw: &str) -> HashMap<String, String> {
 /// to disk.
 const NEXTCLOUD_DAG_CHUNK_SIZE: u64 = 10 * 1024 * 1024;
 
+/// Size at or above which a Nextcloud upload fans out into chunked v2 parts.
+///
+/// Below it a single `PUT` is used. The 2026-05-29 lab benchmark measured the
+/// chunked path (MKCOL + N `PUT` + `MOVE`) losing to a single `PUT` on a
+/// low-RTT LAN even with 4-way parallel chunks (-36% at 100 MiB), because the
+/// extra round-trips dominate when bandwidth is not the bottleneck. The
+/// threshold keeps medium uploads on the faster single `PUT` while still
+/// chunking large uploads, where a single multi-hundred-MiB `PUT` is fragile
+/// over WAN (one failure restarts the whole transfer) and resumable chunks pay
+/// off (audit Patch Set 2). 256 MiB is the agreed crossover.
+const NEXTCLOUD_DAG_THRESHOLD: u64 = 256 * 1024 * 1024;
+
 /// Cap on parallel `upload_part` nodes for Nextcloud, aligned with S3 / Azure.
 ///
 /// Most self-hosted Nextcloud deployments sit behind nginx / Apache with
@@ -3824,7 +3838,7 @@ impl StorageProvider for WebDavProvider {
             if self.is_nextcloud_for_dav() {
                 (
                     true,
-                    NEXTCLOUD_DAG_CHUNK_SIZE,
+                    NEXTCLOUD_DAG_THRESHOLD,
                     NEXTCLOUD_DAG_CHUNK_SIZE,
                     NEXTCLOUD_DAG_MAX_PARALLEL,
                 )
@@ -3839,6 +3853,29 @@ impl StorageProvider for WebDavProvider {
             supports_range_download: true,
             supports_resume_download: true,
             ..Default::default()
+        }
+    }
+
+    /// Mint an independent worker for concurrent Nextcloud chunked-upload parts.
+    ///
+    /// Nextcloud chunked v2 uploads each chunk as an independent `PUT` to a
+    /// distinct `/uploads/<user>/<uuid>/<n>` path under one shared session
+    /// folder, finalised by a single `MOVE`. Those PUTs carry no ordering
+    /// constraint, so a cloned worker (independent reqwest client, same
+    /// credentials and session uuid carried in the handle) can upload parts in
+    /// parallel safely. This is what turns the serial-chunk upload regression
+    /// into a fan-out win (audit CHUNK-01 follow-up). Vanilla WebDAV has no
+    /// chunked multipart, so it stays un-cloneable and single-stream. NOTE:
+    /// this intentionally does NOT override `transfer_executor_kind()`, so the
+    /// batch/folder executor selection is unchanged; only the single-file
+    /// multipart part path consults `clone_for_transfer()`.
+    fn clone_for_transfer(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
+        if self.is_nextcloud_for_dav() {
+            Ok(Box::new(self.clone()))
+        } else {
+            Err(ProviderError::NotSupported(
+                "clone_for_transfer (vanilla WebDAV has no parallel multipart)".to_string(),
+            ))
         }
     }
 
@@ -4493,7 +4530,9 @@ mod tests {
         let hints = p.transfer_optimization_hints();
         assert!(hints.supports_multipart);
         assert_eq!(hints.multipart_part_size, NEXTCLOUD_DAG_CHUNK_SIZE);
-        assert_eq!(hints.multipart_threshold, NEXTCLOUD_DAG_CHUNK_SIZE);
+        // Chunked v2 only engages at/above the threshold; medium uploads stay
+        // on a single PUT (faster on LAN), audit Patch Set 2.
+        assert_eq!(hints.multipart_threshold, NEXTCLOUD_DAG_THRESHOLD);
         assert_eq!(hints.multipart_max_parallel, NEXTCLOUD_DAG_MAX_PARALLEL);
     }
 

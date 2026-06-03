@@ -322,25 +322,44 @@ impl TransferGraphProfile {
             .filter(|size| *size > 0)
             .unwrap_or(DEFAULT_MULTIPART_CHUNK_SIZE);
 
-        let upload_parts =
-            if direction == TransferDirection::Upload && caps.multipart_upload.is_available() {
-                let parts = file_size.div_ceil(chunk_hint).max(1);
-                (parts as usize).clamp(1, MAX_MULTIPART_PARTS)
-            } else {
-                1
-            };
-        let max_chunk_slots =
-            if direction == TransferDirection::Upload && caps.multipart_upload.is_available() {
-                caps.max_chunk_slots.unwrap_or(1).max(1)
-            } else {
-                1
-            };
-        let preferred_chunk_size =
-            if direction == TransferDirection::Upload && caps.multipart_upload.is_available() {
-                chunk_hint
-            } else {
-                0
-            };
+        // Honour the provider's multipart_threshold: below it, an upload stays a
+        // single PUT exactly like the legacy `upload()` path. `0` means unset, in
+        // which case we fall back to the chunk size (any file larger than one
+        // part fans out, the pre-fix behaviour). This keeps the DAG's
+        // single-vs-multipart decision aligned with the rest of the codebase and
+        // removes the orchestration cost on medium uploads (audit DISP-01/CORR-02).
+        let multipart_threshold = if caps.multipart_threshold == 0 {
+            chunk_hint
+        } else {
+            caps.multipart_threshold
+        };
+        let multipart_eligible = direction == TransferDirection::Upload
+            && caps.multipart_upload.is_available()
+            && file_size >= multipart_threshold;
+
+        let upload_parts = if multipart_eligible {
+            let parts = file_size.div_ceil(chunk_hint).max(1);
+            (parts as usize).clamp(1, MAX_MULTIPART_PARTS)
+        } else {
+            1
+        };
+        let max_chunk_slots = if multipart_eligible {
+            caps.max_chunk_slots.unwrap_or(1).max(1)
+        } else {
+            1
+        };
+        // `upload_parts` is clamped to `MAX_MULTIPART_PARTS`. When the file is
+        // larger than `MAX_MULTIPART_PARTS * chunk_hint` the clamp would leave
+        // `parts * chunk_hint < file_size`, and the runner (which reads exactly
+        // `part_size` bytes per part) would silently drop the tail. Grow the
+        // effective chunk so the parts always cover the whole file. This only
+        // changes anything in the clamped case: when unclamped,
+        // `div_ceil(file_size, upload_parts) <= chunk_hint`.
+        let preferred_chunk_size = if multipart_eligible {
+            chunk_hint.max(file_size.div_ceil(upload_parts as u64))
+        } else {
+            0
+        };
 
         Self {
             upload_parts,
@@ -1454,6 +1473,7 @@ mod tests {
         let caps = TransferCapabilities {
             multipart_upload: Capability::Supported,
             preferred_chunk_size: Some(8 * 1024 * 1024),
+            multipart_threshold: 0, // unset: fan out at chunk size
             ..TransferCapabilities::default()
         };
         let items = vec![
@@ -1539,6 +1559,7 @@ mod tests {
         let caps = TransferCapabilities {
             multipart_upload: Capability::Supported,
             preferred_chunk_size: Some(8 * 1024 * 1024),
+            multipart_threshold: 0, // unset: fan out at chunk size
             ..TransferCapabilities::default()
         };
         let items = vec![
@@ -1708,6 +1729,7 @@ mod tests {
             multipart_upload: Capability::Supported,
             preferred_chunk_size: Some(chunk_size),
             max_chunk_slots: Some(4),
+            multipart_threshold: 0, // unset: fan out at chunk size
             ..TransferCapabilities::default()
         }
     }
@@ -1774,6 +1796,55 @@ mod tests {
     }
 
     #[test]
+    fn shaped_upload_grows_chunk_when_parts_clamp_to_cover_the_tail() {
+        // A file larger than MAX_MULTIPART_PARTS * chunk_hint would otherwise
+        // clamp upload_parts and leave the tail unscheduled (the runner reads
+        // exactly preferred_chunk_size bytes per part). The shaping must grow
+        // the effective chunk so the parts always cover the whole file.
+        const MIB: u64 = 1024 * 1024;
+        let chunk = MIB;
+        let file_size = 20_000 * MIB; // > MAX_MULTIPART_PARTS (10_000) * 1 MiB
+        let built = TransferDagBuilder::shaped_file(
+            TransferDirection::Upload,
+            &caps_multipart(chunk),
+            file_size,
+        );
+
+        // Parts are clamped to the hard cap, but the chunk grew to compensate.
+        assert_eq!(built.profile.upload_parts, MAX_MULTIPART_PARTS);
+        assert!(
+            built.profile.preferred_chunk_size > chunk,
+            "chunk must grow past the hint when clamped"
+        );
+        // The invariant that prevents tail loss: parts * chunk >= file_size.
+        let covered =
+            built.profile.upload_parts as u64 * built.profile.preferred_chunk_size;
+        assert!(
+            covered >= file_size,
+            "parts ({}) * chunk ({}) = {} must cover file_size {}",
+            built.profile.upload_parts,
+            built.profile.preferred_chunk_size,
+            covered,
+            file_size
+        );
+    }
+
+    #[test]
+    fn shaped_upload_keeps_provider_chunk_when_not_clamped() {
+        // The clamp-compensation must be a no-op in the common case: when the
+        // part count fits under the cap, the provider's advertised chunk size
+        // is honoured verbatim (alignment contracts depend on it).
+        let chunk = 8 * 1024 * 1024;
+        let built = TransferDagBuilder::shaped_file(
+            TransferDirection::Upload,
+            &caps_multipart(chunk),
+            80 * 1024 * 1024, // 10 parts, well under the cap
+        );
+        assert_eq!(built.profile.upload_parts, 10);
+        assert_eq!(built.profile.preferred_chunk_size, chunk);
+    }
+
+    #[test]
     fn shaped_upload_multipart_collapses_when_the_file_fits_one_chunk() {
         // 512 KiB file, 1 MiB parts: a single UploadFile, no fan-out.
         let built = TransferDagBuilder::shaped_file(
@@ -1788,6 +1859,71 @@ mod tests {
             built.dag.nodes()[built.transfer[0]].kind,
             TransferNodeKind::UploadFile
         );
+    }
+
+    #[test]
+    fn shaped_upload_below_multipart_threshold_stays_single_put() {
+        // A multipart-capable provider that declares a 200 MiB threshold must
+        // keep a 100 MiB upload as a single UploadFile node, exactly like the
+        // legacy upload() single-PUT decision. Before the fix the DAG fanned
+        // out any file larger than one chunk regardless of threshold (audit
+        // DISP-01 / CORR-02).
+        let caps = TransferCapabilities {
+            multipart_upload: Capability::Supported,
+            preferred_chunk_size: Some(16 * 1024 * 1024),
+            max_chunk_slots: Some(4),
+            multipart_threshold: 200 * 1024 * 1024,
+            ..TransferCapabilities::default()
+        };
+        let built = TransferDagBuilder::shaped_file(
+            TransferDirection::Upload,
+            &caps,
+            100 * 1024 * 1024,
+        );
+        assert_eq!(built.profile.upload_parts, 1, "below threshold => single PUT");
+        assert_eq!(built.transfer.len(), 1);
+        assert_eq!(
+            built.dag.nodes()[built.transfer[0]].kind,
+            TransferNodeKind::UploadFile
+        );
+    }
+
+    #[test]
+    fn shaped_upload_at_or_above_multipart_threshold_fans_out() {
+        let caps = TransferCapabilities {
+            multipart_upload: Capability::Supported,
+            preferred_chunk_size: Some(16 * 1024 * 1024),
+            max_chunk_slots: Some(4),
+            multipart_threshold: 200 * 1024 * 1024,
+            ..TransferCapabilities::default()
+        };
+        // 256 MiB >= 200 MiB threshold: fans out into ceil(256/16) = 16 parts.
+        let built = TransferDagBuilder::shaped_file(
+            TransferDirection::Upload,
+            &caps,
+            256 * 1024 * 1024,
+        );
+        assert_eq!(built.profile.upload_parts, 16);
+        assert_eq!(built.transfer.len(), 16);
+    }
+
+    #[test]
+    fn shaped_upload_threshold_zero_falls_back_to_chunk_size() {
+        // multipart_threshold == 0 means "unset": preserve the historical
+        // "fan out any file larger than one part" behaviour.
+        let caps = TransferCapabilities {
+            multipart_upload: Capability::Supported,
+            preferred_chunk_size: Some(8 * 1024 * 1024),
+            max_chunk_slots: Some(4),
+            multipart_threshold: 0,
+            ..TransferCapabilities::default()
+        };
+        let built = TransferDagBuilder::shaped_file(
+            TransferDirection::Upload,
+            &caps,
+            24 * 1024 * 1024,
+        );
+        assert_eq!(built.profile.upload_parts, 3);
     }
 
     #[test]
