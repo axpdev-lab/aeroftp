@@ -13297,7 +13297,11 @@ async fn app_master_password_check_timeout(
 /// Map a saved-server protocol identifier to the `OAuthProvider` slug used
 /// in the vault key (`oauth_<slug>_<profile_id>`). Returns `None` for
 /// protocols that do not use OAuth2 storage. Issue #214.
-fn oauth_vault_slug_for_protocol(protocol: &str) -> Option<&'static str> {
+///
+/// `pub(crate)` so the generic bridge dispatch (`bridge_commands`) can persist
+/// rclone's per-profile OAuth/Jotta tokens with the same keys, now that rclone
+/// import is served through the unified bridge (APPENDIX-BRIDGE-CONVERGENCE).
+pub(crate) fn oauth_vault_slug_for_protocol(protocol: &str) -> Option<&'static str> {
     match protocol.to_lowercase().as_str() {
         "googledrive" | "google_drive" | "google" => Some("google"),
         "googlephotos" | "google_photos" => Some("googlephotos"),
