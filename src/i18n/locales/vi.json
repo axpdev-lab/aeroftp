@@ -1667,7 +1667,10 @@
             "tabdigitalTooltip": "Tab.digital: nhóm đám mây EU độc lập từ năm 2018, Nextcloud-as-a-service với 8GB miễn phí, tuân thủ GDPR, tên miền phụ theo khu vực (fie.nl, fie.de, ...)",
             "discoverTabDigital": "Tab.digital (8 GB miễn phí, dựa trên Nextcloud, EU/GDPR, tên miền phụ theo khu vực)",
             "webdavLocalScheme": "Giao thức",
-            "webdavLocalSchemeHelp": "Khớp với cài đặt HTTP/HTTPS của cầu WebDAV cục bộ (Filen Desktop, MEGAcmd). HTTPS sử dụng chứng chỉ tự ký, vì vậy việc xác minh chứng chỉ bị tự động vô hiệu hóa."
+            "webdavLocalSchemeHelp": "Khớp với cài đặt HTTP/HTTPS của cầu WebDAV cục bộ (Filen Desktop, MEGAcmd). HTTPS sử dụng chứng chỉ tự ký, vì vậy việc xác minh chứng chỉ bị tự động vô hiệu hóa.",
+            "s3SessionToken": "Session Token (optional)",
+            "s3SessionTokenPlaceholder": "AWS STS session token",
+            "s3SessionTokenHint": "For temporary credentials from AWS STS AssumeRole or SSO. Leave empty for long-term IAM access keys."
         },
         "shortcuts": {
             "title": "Phím tắt",

@@ -1667,7 +1667,10 @@
             "tabdigitalTooltip": "Tab.digital: neatkarīga ES mākoņa komanda kopš 2018. gada, Nextcloud-as-a-service ar 8GB bezmaksas, atbilst GDPR, reģionālie apakšdomēni (fie.nl, fie.de, ...)",
             "discoverTabDigital": "Tab.digital (8 GB bezmaksas, balstīts uz Nextcloud, EU/GDPR, reģionālie apakšdomēni)",
             "webdavLocalScheme": "Protokols",
-            "webdavLocalSchemeHelp": "Saskaņojiet ar lokālā WebDAV tilta HTTP/HTTPS iestatījumu (Filen Desktop, MEGAcmd). HTTPS izmanto pašparakstītu sertifikātu, tāpēc sertifikāta pārbaude tiek automātiski atspējota."
+            "webdavLocalSchemeHelp": "Saskaņojiet ar lokālā WebDAV tilta HTTP/HTTPS iestatījumu (Filen Desktop, MEGAcmd). HTTPS izmanto pašparakstītu sertifikātu, tāpēc sertifikāta pārbaude tiek automātiski atspējota.",
+            "s3SessionToken": "Session Token (optional)",
+            "s3SessionTokenPlaceholder": "AWS STS session token",
+            "s3SessionTokenHint": "For temporary credentials from AWS STS AssumeRole or SSO. Leave empty for long-term IAM access keys."
         },
         "shortcuts": {
             "title": "Tastatūras saīsnes",

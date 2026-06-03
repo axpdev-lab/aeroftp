@@ -1667,7 +1667,10 @@
             "tabdigitalTooltip": "Tab.digital: 2018'den beri bağımsız EU bulut ekibi, 8GB ücretsiz Nextcloud-as-a-service, GDPR uyumlu, bölgesel alt alan adları (fie.nl, fie.de, ...)",
             "discoverTabDigital": "Tab.digital (8 GB ücretsiz, Nextcloud tabanlı, EU/GDPR, bölgesel alt alan adları)",
             "webdavLocalScheme": "Protokol",
-            "webdavLocalSchemeHelp": "Yerel WebDAV köprüsünün HTTP/HTTPS ayarıyla eşleştirin (Filen Desktop, MEGAcmd). HTTPS kendinden imzalı sertifika kullanır, bu nedenle sertifika doğrulaması otomatik olarak devre dışı bırakılır."
+            "webdavLocalSchemeHelp": "Yerel WebDAV köprüsünün HTTP/HTTPS ayarıyla eşleştirin (Filen Desktop, MEGAcmd). HTTPS kendinden imzalı sertifika kullanır, bu nedenle sertifika doğrulaması otomatik olarak devre dışı bırakılır.",
+            "s3SessionToken": "Session Token (optional)",
+            "s3SessionTokenPlaceholder": "AWS STS session token",
+            "s3SessionTokenHint": "For temporary credentials from AWS STS AssumeRole or SSO. Leave empty for long-term IAM access keys."
         },
         "shortcuts": {
             "title": "Klavye Kısayolları",

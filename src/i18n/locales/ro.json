@@ -1667,7 +1667,10 @@
             "tabdigitalTooltip": "Tab.digital: echipă cloud UE independentă din 2018, Nextcloud-as-a-service cu 8GB gratuit, conform GDPR, subdomenii regionale (fie.nl, fie.de, ...)",
             "discoverTabDigital": "Tab.digital (8 GB gratuit, bazat pe Nextcloud, EU/GDPR, subdomenii regionale)",
             "webdavLocalScheme": "Protocol",
-            "webdavLocalSchemeHelp": "Potriviți cu setarea HTTP/HTTPS a punții WebDAV locale (Filen Desktop, MEGAcmd). HTTPS folosește un certificat autosemnat, prin urmare verificarea certificatului este dezactivată automat."
+            "webdavLocalSchemeHelp": "Potriviți cu setarea HTTP/HTTPS a punții WebDAV locale (Filen Desktop, MEGAcmd). HTTPS folosește un certificat autosemnat, prin urmare verificarea certificatului este dezactivată automat.",
+            "s3SessionToken": "Session Token (optional)",
+            "s3SessionTokenPlaceholder": "AWS STS session token",
+            "s3SessionTokenHint": "For temporary credentials from AWS STS AssumeRole or SSO. Leave empty for long-term IAM access keys."
         },
         "shortcuts": {
             "title": "Scurtături tastatură",

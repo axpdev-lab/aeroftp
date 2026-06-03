@@ -1667,7 +1667,10 @@
             "tabdigitalTooltip": "Tab.digital: ανεξάρτητη ομάδα cloud της ΕΕ από το 2018, Nextcloud-as-a-service με 8GB δωρεάν, συμβατό με GDPR, περιφερειακά υποτομέα (fie.nl, fie.de, ...)",
             "discoverTabDigital": "Tab.digital (8 GB δωρεάν, βασισμένο σε Nextcloud, EU/GDPR, περιφερειακά υποτομέα)",
             "webdavLocalScheme": "Πρωτόκολλο",
-            "webdavLocalSchemeHelp": "Ταιριάξτε με τη ρύθμιση HTTP/HTTPS της τοπικής γέφυρας WebDAV (Filen Desktop, MEGAcmd). Το HTTPS χρησιμοποιεί αυτο-υπογεγραμμένο πιστοποιητικό, οπότε η επαλήθευση πιστοποιητικού απενεργοποιείται αυτόματα."
+            "webdavLocalSchemeHelp": "Ταιριάξτε με τη ρύθμιση HTTP/HTTPS της τοπικής γέφυρας WebDAV (Filen Desktop, MEGAcmd). Το HTTPS χρησιμοποιεί αυτο-υπογεγραμμένο πιστοποιητικό, οπότε η επαλήθευση πιστοποιητικού απενεργοποιείται αυτόματα.",
+            "s3SessionToken": "Session Token (optional)",
+            "s3SessionTokenPlaceholder": "AWS STS session token",
+            "s3SessionTokenHint": "For temporary credentials from AWS STS AssumeRole or SSO. Leave empty for long-term IAM access keys."
         },
         "shortcuts": {
             "title": "Συντομεύσεις πληκτρολογίου",

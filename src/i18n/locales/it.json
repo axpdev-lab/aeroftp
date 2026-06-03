@@ -575,7 +575,10 @@
             "infinicloudApiInfoDesc": "Questa modalità utilizza InfiniCLOUD REST API v2 per il rilevamento automatico e la quota in tempo reale. Attualmente disponibile per sviluppatori e beta testing interno.",
             "discoverBackblazeNative": "API B2 v4 nativa: workflow file grandi, copia server-side, cronologia versioni (10 GB gratis)",
             "setupSteps": "Configura prima {provider}",
-            "openProviderDocs": "Apri la documentazione di {provider}"
+            "openProviderDocs": "Apri la documentazione di {provider}",
+            "s3SessionToken": "Token di sessione (opzionale)",
+            "s3SessionTokenPlaceholder": "Token di sessione AWS STS",
+            "s3SessionTokenHint": "Per credenziali temporanee da AWS STS AssumeRole o SSO. Lascia vuoto per chiavi IAM permanenti."
         },
         "browser": {
             "remote": "Remoto",

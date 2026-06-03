@@ -1667,7 +1667,10 @@
             "tabdigitalTooltip": "Tab.digital: 自 2018 年起的独立欧盟云团队, 提供 8GB 免费的 Nextcloud-as-a-service, 符合 GDPR, 区域子域名 (fie.nl, fie.de, ...)",
             "discoverTabDigital": "Tab.digital (8 GB 免费, 基于 Nextcloud, EU/GDPR, 区域子域名)",
             "webdavLocalScheme": "协议",
-            "webdavLocalSchemeHelp": "匹配本地 WebDAV 桥接 (Filen Desktop, MEGAcmd) 的 HTTP/HTTPS 设置。HTTPS 使用自签名证书, 因此证书验证会自动禁用。"
+            "webdavLocalSchemeHelp": "匹配本地 WebDAV 桥接 (Filen Desktop, MEGAcmd) 的 HTTP/HTTPS 设置。HTTPS 使用自签名证书, 因此证书验证会自动禁用。",
+            "s3SessionToken": "Session Token (optional)",
+            "s3SessionTokenPlaceholder": "AWS STS session token",
+            "s3SessionTokenHint": "For temporary credentials from AWS STS AssumeRole or SSO. Leave empty for long-term IAM access keys."
         },
         "shortcuts": {
             "title": "键盘快捷键",

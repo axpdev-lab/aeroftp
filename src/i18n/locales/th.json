@@ -1667,7 +1667,10 @@
             "tabdigitalTooltip": "Tab.digital: ทีมคลาวด์ EU อิสระตั้งแต่ปี 2018, Nextcloud-as-a-service พร้อม 8GB ฟรี, สอดคล้องกับ GDPR, โดเมนย่อยตามภูมิภาค (fie.nl, fie.de, ...)",
             "discoverTabDigital": "Tab.digital (8 GB ฟรี, ใช้ Nextcloud, EU/GDPR, โดเมนย่อยตามภูมิภาค)",
             "webdavLocalScheme": "โปรโตคอล",
-            "webdavLocalSchemeHelp": "ให้ตรงกับการตั้งค่า HTTP/HTTPS ของบริดจ์ WebDAV ในเครื่อง (Filen Desktop, MEGAcmd) HTTPS ใช้ใบรับรองที่ลงนามด้วยตนเอง ดังนั้นการตรวจสอบใบรับรองจะถูกปิดใช้งานโดยอัตโนมัติ"
+            "webdavLocalSchemeHelp": "ให้ตรงกับการตั้งค่า HTTP/HTTPS ของบริดจ์ WebDAV ในเครื่อง (Filen Desktop, MEGAcmd) HTTPS ใช้ใบรับรองที่ลงนามด้วยตนเอง ดังนั้นการตรวจสอบใบรับรองจะถูกปิดใช้งานโดยอัตโนมัติ",
+            "s3SessionToken": "Session Token (optional)",
+            "s3SessionTokenPlaceholder": "AWS STS session token",
+            "s3SessionTokenHint": "For temporary credentials from AWS STS AssumeRole or SSO. Leave empty for long-term IAM access keys."
         },
         "shortcuts": {
             "title": "แป้นพิมพ์ลัด",

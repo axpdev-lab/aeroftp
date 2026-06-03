@@ -1667,7 +1667,10 @@
             "tabdigitalTooltip": "Tab.digital: pasukan awan EU bebas sejak 2018, Nextcloud-as-a-service dengan 8GB percuma, mematuhi GDPR, subdomain serantau (fie.nl, fie.de, ...)",
             "discoverTabDigital": "Tab.digital (8 GB percuma, berasaskan Nextcloud, EU/GDPR, subdomain serantau)",
             "webdavLocalScheme": "Protokol",
-            "webdavLocalSchemeHelp": "Padankan dengan tetapan HTTP/HTTPS jambatan WebDAV tempatan (Filen Desktop, MEGAcmd). HTTPS menggunakan sijil yang ditandatangani sendiri, jadi pengesahan sijil dilumpuhkan secara automatik."
+            "webdavLocalSchemeHelp": "Padankan dengan tetapan HTTP/HTTPS jambatan WebDAV tempatan (Filen Desktop, MEGAcmd). HTTPS menggunakan sijil yang ditandatangani sendiri, jadi pengesahan sijil dilumpuhkan secara automatik.",
+            "s3SessionToken": "Session Token (optional)",
+            "s3SessionTokenPlaceholder": "AWS STS session token",
+            "s3SessionTokenHint": "For temporary credentials from AWS STS AssumeRole or SSO. Leave empty for long-term IAM access keys."
         },
         "shortcuts": {
             "title": "Pintasan Papan Kekunci",

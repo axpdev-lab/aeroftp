@@ -22,6 +22,8 @@ import {
     Info,
     Settings,
     Flame,
+    Eye,
+    EyeOff,
 } from 'lucide-react';
 import { ProviderType, FtpTlsMode } from '../types';
 import { useTranslation } from '../i18n';
@@ -700,6 +702,8 @@ interface ProtocolFieldsProps {
         endpoint?: string;
         accountId?: string;
         pathStyle?: boolean;
+        // S3 temporary credentials (AWS STS AssumeRole / SSO), issue #301
+        sessionToken?: string;
         // SFTP-specific
         private_key_path?: string;
         key_passphrase?: string;
@@ -736,6 +740,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
     const [showS3Advanced, setShowS3Advanced] = useState(false);
     const [s3AdvancedUnlocked, setS3AdvancedUnlocked] = useState(false);
     const [showS3AdvancedWarning, setShowS3AdvancedWarning] = useState(false);
+    const [showS3SessionToken, setShowS3SessionToken] = useState(false);
 
     if (protocol === 'sftp') {
         const isSourceForge = selectedProviderId === 'sourceforge';
@@ -922,6 +927,39 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                         {!isEditing && bucketField?.helpText && (
                             <p className="text-xs text-gray-500 mt-1">{bucketField.helpText}</p>
                         )}
+                    </div>
+                )}
+
+                {/* Session token for AWS STS temporary credentials (AssumeRole / SSO),
+                    issue #301. Only meaningful on AWS / self-hosted STS-capable
+                    backends, so it is shown for the generic S3 tile and hidden on
+                    purpose-built presets (Wasabi, R2, B2, Filen, ...) that have no STS. */}
+                {(!providerConfig || providerConfig.isGeneric) && (
+                    <div>
+                        <label className="block text-sm font-medium mb-1.5">
+                            {t('protocol.s3SessionToken')}
+                        </label>
+                        <div className="relative">
+                            <input
+                                type={showS3SessionToken ? 'text' : 'password'}
+                                value={options.sessionToken || ''}
+                                onChange={(e) => onChange({ ...options, sessionToken: e.target.value })}
+                                disabled={disabled}
+                                autoComplete="off"
+                                spellCheck={false}
+                                className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-mono"
+                                placeholder={t('protocol.s3SessionTokenPlaceholder')}
+                            />
+                            <button
+                                type="button"
+                                tabIndex={-1}
+                                onClick={() => setShowS3SessionToken(v => !v)}
+                                className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                            >
+                                {showS3SessionToken ? <EyeOff size={18} /> : <Eye size={18} />}
+                            </button>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">{t('protocol.s3SessionTokenHint')}</p>
                     </div>
                 )}
 

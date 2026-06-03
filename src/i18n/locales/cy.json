@@ -1667,7 +1667,10 @@
             "tabdigitalTooltip": "Tab.digital: tîm cwmwl annibynnol o'r EU ers 2018, Nextcloud-as-a-service gydag 8GB am ddim, yn cydymffurfio â GDPR, is-barthau rhanbarthol (fie.nl, fie.de, ...)",
             "discoverTabDigital": "Tab.digital (8 GB am ddim, seiliedig ar Nextcloud, EU/GDPR, is-barthau rhanbarthol)",
             "webdavLocalScheme": "Protocol",
-            "webdavLocalSchemeHelp": "Cyfateb i osodiad HTTP/HTTPS y bont WebDAV leol (Filen Desktop, MEGAcmd). Mae HTTPS yn defnyddio tystysgrif hunan-lofnodedig, felly mae gwirio tystysgrifau yn cael ei analluogi'n awtomatig."
+            "webdavLocalSchemeHelp": "Cyfateb i osodiad HTTP/HTTPS y bont WebDAV leol (Filen Desktop, MEGAcmd). Mae HTTPS yn defnyddio tystysgrif hunan-lofnodedig, felly mae gwirio tystysgrifau yn cael ei analluogi'n awtomatig.",
+            "s3SessionToken": "Session Token (optional)",
+            "s3SessionTokenPlaceholder": "AWS STS session token",
+            "s3SessionTokenHint": "For temporary credentials from AWS STS AssumeRole or SSO. Leave empty for long-term IAM access keys."
         },
         "shortcuts": {
             "title": "Llwybrau Byr Bysellfwrdd",

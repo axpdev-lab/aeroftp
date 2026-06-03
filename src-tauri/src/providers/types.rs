@@ -719,6 +719,13 @@ pub struct S3Config {
     pub access_key_id: String,
     /// Secret access key (SecretString for memory zeroization)
     pub secret_access_key: secrecy::SecretString,
+    /// AWS STS session token for temporary credentials (AssumeRole / SSO /
+    /// externally-sourced temp creds). When present, it is emitted as the
+    /// `x-amz-security-token` header on every signed request (and as the
+    /// `X-Amz-Security-Token` query parameter on presigned URLs). `None` for
+    /// long-term IAM user credentials. AWS-only: S3-compatible backends
+    /// (MinIO, Wasabi, R2, B2, Filen, ...) have no STS.
+    pub session_token: Option<secrecy::SecretString>,
     /// Bucket name
     pub bucket: String,
     /// Path prefix within bucket
@@ -816,6 +823,13 @@ impl S3Config {
             .map(|v| v != "false")
             .unwrap_or(true);
 
+        let session_token = config
+            .extra
+            .get("session_token")
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .map(|s| secrecy::SecretString::from(s.to_string()));
+
         Ok(Self {
             endpoint,
             region,
@@ -823,6 +837,7 @@ impl S3Config {
             secret_access_key: secrecy::SecretString::from(
                 config.password.clone().unwrap_or_default(),
             ),
+            session_token,
             bucket,
             prefix: config.initial_path.clone(),
             path_style,

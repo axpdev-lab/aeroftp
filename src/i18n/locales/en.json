@@ -2540,7 +2540,10 @@
             "discoverRebexSftp": "Public read-only SFTP test server",
             "discoverAzureBlob": "Azure Blob Storage",
             "discoverGitHub": "Repository file system",
-            "discoverGitLab": "Repository & CI/CD platform"
+            "discoverGitLab": "Repository & CI/CD platform",
+            "s3SessionToken": "Session Token (optional)",
+            "s3SessionTokenPlaceholder": "AWS STS session token",
+            "s3SessionTokenHint": "For temporary credentials from AWS STS AssumeRole or SSO. Leave empty for long-term IAM access keys."
         },
         "quickLook": {
             "noPreview": "No preview available",

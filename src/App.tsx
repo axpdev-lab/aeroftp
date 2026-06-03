@@ -4309,6 +4309,7 @@ interface UpdateVerificationInfo {
       storage_class: effectiveParams.options?.storage_class || null,
       sse_mode: effectiveParams.options?.sse_mode || null,
       sse_kms_key_id: effectiveParams.options?.sse_kms_key_id || null,
+      session_token: effectiveParams.options?.sessionToken || null,
       save_session: effectiveParams.options?.save_session,
       mega_mode: effectiveParams.options?.mega_mode || null,
       session_expires_at: effectiveParams.options?.session_expires_at,

@@ -1667,7 +1667,10 @@
             "tabdigitalTooltip": "Tab.digital: timu huru ya wingu ya EU tangu 2018, Nextcloud-as-a-service na 8GB bure, inazingatia GDPR, vidomeni vidogo vya kimkoa (fie.nl, fie.de, ...)",
             "discoverTabDigital": "Tab.digital (8 GB bure, msingi wa Nextcloud, EU/GDPR, vidomeni vidogo vya kimkoa)",
             "webdavLocalScheme": "Itifaki",
-            "webdavLocalSchemeHelp": "Linganisha na mpangilio wa HTTP/HTTPS wa daraja la WebDAV la ndani (Filen Desktop, MEGAcmd). HTTPS hutumia cheti kilichotiwa saini na yenyewe, kwa hivyo uthibitishaji wa cheti unazimwa kiotomatiki."
+            "webdavLocalSchemeHelp": "Linganisha na mpangilio wa HTTP/HTTPS wa daraja la WebDAV la ndani (Filen Desktop, MEGAcmd). HTTPS hutumia cheti kilichotiwa saini na yenyewe, kwa hivyo uthibitishaji wa cheti unazimwa kiotomatiki.",
+            "s3SessionToken": "Session Token (optional)",
+            "s3SessionTokenPlaceholder": "AWS STS session token",
+            "s3SessionTokenHint": "For temporary credentials from AWS STS AssumeRole or SSO. Leave empty for long-term IAM access keys."
         },
         "shortcuts": {
             "title": "Njia za Mkato",
