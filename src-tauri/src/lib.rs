@@ -22,6 +22,7 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
 use url::Url;
+use zeroize::Zeroize;
 
 pub mod aerovault;
 pub mod aerovault_v2;
@@ -12986,6 +12987,55 @@ async fn init_credential_store() -> Result<String, String> {
 }
 
 #[tauri::command]
+async fn unlock_auto_keyring_credential_store(
+    totp_code: String,
+    state: State<'_, master_password::MasterPasswordState>,
+    totp_state: State<'_, totp::TotpState>,
+) -> Result<(), String> {
+    let (vault_path, mut vault_key) =
+        credential_store::CredentialStore::verify_auto_keyring().map_err(|e| e.to_string())?;
+    let totp_secret =
+        match credential_store::CredentialStore::totp_secret_with_key(&vault_path, &vault_key)
+            .map_err(|e| e.to_string())?
+        {
+            Some(secret) => secret,
+            None => {
+                vault_key.zeroize();
+                return Err("2FA_NOT_ENABLED".to_string());
+            }
+        };
+
+    if totp_secret.is_empty() {
+        vault_key.zeroize();
+        return Err("2FA_NOT_ENABLED".to_string());
+    }
+
+    if let Err(e) = totp::load_secret_internal(&totp_state, &totp_secret) {
+        vault_key.zeroize();
+        return Err(format!("Failed to load TOTP secret: {}", e));
+    }
+    let valid = match totp::verify_internal(&totp_state, &totp_code) {
+        Ok(valid) => valid,
+        Err(e) => {
+            vault_key.zeroize();
+            state.set_locked(true);
+            return Err(e);
+        }
+    };
+    if !valid {
+        vault_key.zeroize();
+        state.set_locked(true);
+        return Err("2FA_INVALID".to_string());
+    }
+
+    credential_store::CredentialStore::cache_vault(vault_path, vault_key);
+    vault_key.zeroize();
+    state.set_locked(false);
+    state.update_activity();
+    Ok(())
+}
+
+#[tauri::command]
 async fn bootstrap_master_credential_store(
     password: String,
     timeout_seconds: u32,
@@ -13086,60 +13136,63 @@ async fn unlock_credential_store(
 
     // A2-08: Step 1: Verify master password WITHOUT caching vault key.
     // The vault key is only cached after TOTP verification succeeds.
-    let (vault_path, vault_key) = match credential_store::CredentialStore::verify_master(&password)
-    {
-        Ok(result) => {
-            state.reset_throttle();
-            result
+    let (vault_path, mut vault_key) =
+        match credential_store::CredentialStore::verify_master(&password) {
+            Ok(result) => {
+                state.reset_throttle();
+                result
+            }
+            Err(e) => {
+                state.record_failed_attempt();
+                return Err(e.to_string());
+            }
+        };
+
+    let totp_secret =
+        match credential_store::CredentialStore::totp_secret_with_key(&vault_path, &vault_key) {
+            Ok(secret) => secret,
+            Err(e) => {
+                vault_key.zeroize();
+                return Err(e.to_string());
+            }
+        };
+
+    if let Some(secret) = totp_secret.as_ref().filter(|secret| !secret.is_empty()) {
+        // TOTP is enabled: load secret into state and verify code
+        if let Err(e) = totp::load_secret_internal(&totp_state, secret) {
+            vault_key.zeroize();
+            state.set_locked(true);
+            return Err(format!("Failed to load TOTP secret: {}", e));
         }
-        Err(e) => {
-            state.record_failed_attempt();
-            return Err(e.to_string());
-        }
-    };
 
-    // A2-08: Step 2: Temporarily cache to read TOTP secret, then clear if TOTP is enabled
-    credential_store::CredentialStore::cache_vault(vault_path.clone(), vault_key);
-    let totp_secret = credential_store::CredentialStore::from_cache()
-        .and_then(|store| store.get("totp_secret").ok());
-
-    // If TOTP is enabled, clear cache before verification (fail-closed)
-    if let Some(ref secret) = totp_secret {
-        if !secret.is_empty() {
-            credential_store::CredentialStore::clear_cache();
-        }
-    }
-
-    if let Some(secret) = totp_secret {
-        if !secret.is_empty() {
-            // TOTP is enabled: load secret into state and verify code
-            totp::load_secret_internal(&totp_state, &secret).map_err(|e| {
-                state.set_locked(true);
-                format!("Failed to load TOTP secret: {}", e)
-            })?;
-
-            match totp_code {
-                Some(ref code) if !code.is_empty() => {
-                    let valid = totp::verify_internal(&totp_state, code).inspect_err(|_e| {
+        match totp_code {
+            Some(ref code) if !code.is_empty() => {
+                let valid = match totp::verify_internal(&totp_state, code) {
+                    Ok(valid) => valid,
+                    Err(e) => {
+                        vault_key.zeroize();
                         state.set_locked(true);
-                    })?;
-                    if !valid {
-                        state.set_locked(true);
-                        return Err("2FA_INVALID".to_string());
+                        return Err(e);
                     }
-                }
-                _ => {
-                    // No TOTP code provided but 2FA is enabled
+                };
+                if !valid {
+                    vault_key.zeroize();
                     state.set_locked(true);
-                    return Err("2FA_REQUIRED".to_string());
+                    return Err("2FA_INVALID".to_string());
                 }
             }
-
-            // A2-08: TOTP verified: NOW cache the vault key
-            credential_store::CredentialStore::cache_vault(vault_path, vault_key);
+            _ => {
+                // No TOTP code provided but 2FA is enabled
+                vault_key.zeroize();
+                state.set_locked(true);
+                return Err("2FA_REQUIRED".to_string());
+            }
         }
     }
 
+    // A2-08: Cache the vault key only after password and any required TOTP pass.
+    credential_store::CredentialStore::cache_vault(vault_path, vault_key);
+    vault_key.zeroize();
     state.set_locked(false);
     state.update_activity();
     Ok(())
@@ -15279,6 +15332,7 @@ pub fn run() {
             save_server_credentials,
             // Universal Credential Vault
             init_credential_store,
+            unlock_auto_keyring_credential_store,
             bootstrap_master_credential_store,
             get_credential_store_status,
             store_credential,

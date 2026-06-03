@@ -77,7 +77,11 @@ impl McpServer {
             Ok(status) if status == "OK" => None,
             Ok(status) if status == "MASTER_PASSWORD_REQUIRED" => {
                 if let Ok(master) = std::env::var("AEROFTP_MASTER_PASSWORD") {
-                    match CredentialStore::unlock_with_master(&master) {
+                    // If the vault has 2FA, a TOTP code from AEROFTP_TOTP_CODE is
+                    // required (fail-closed). Trimmed; empty is treated as absent.
+                    let totp = std::env::var("AEROFTP_TOTP_CODE").ok();
+                    let totp = totp.as_deref().map(str::trim).filter(|c| !c.is_empty());
+                    match CredentialStore::unlock_with_master(&master, totp) {
                         Ok(()) => None,
                         Err(e) => Some(format!(
                             "Failed to unlock vault with AEROFTP_MASTER_PASSWORD: {}",

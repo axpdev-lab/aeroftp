@@ -357,6 +357,19 @@ pub fn verify_internal(state: &TotpState, code: &str) -> Result<bool, String> {
     Ok(valid)
 }
 
+/// Headless TOTP verification: check a 6-digit code against a base32 secret
+/// without a Tauri `TotpState`. Used by the master-password unlock path
+/// (`CredentialStore::unlock_with_master`) so MCP / CLI automation enforce the
+/// vault's second factor too, completing the W1.1 "route every unlock through
+/// one gate" remediation. Returns `Ok(true)`/`Ok(false)`; `Err` only on a
+/// malformed secret. Uses the same `check_current` (current 30s step, the
+/// `totp_rs` default skew) that the GUI gate relies on.
+pub fn verify_code_against_secret(secret_base32: &str, code: &str) -> Result<bool, String> {
+    build_totp(secret_base32)?
+        .check_current(code)
+        .map_err(|e| format!("TOTP check error: {}", e))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -370,6 +383,18 @@ mod tests {
             failed_attempts: 0,
             lockout_until: None,
         }
+    }
+
+    #[test]
+    fn verify_code_against_secret_accepts_current_and_rejects_malformed() {
+        let secret = generate_secret_base32();
+        let current = build_totp(&secret).unwrap().generate_current().unwrap();
+        // The freshly generated current code verifies against the same secret.
+        assert!(verify_code_against_secret(&secret, &current).unwrap());
+        // A structurally invalid secret is an error, never a silent accept.
+        assert!(verify_code_against_secret("not valid base32 !!!", &current).is_err());
+        // A non-numeric / wrong-length code does not verify.
+        assert!(!verify_code_against_secret(&secret, "abcdef").unwrap());
     }
 
     #[test]

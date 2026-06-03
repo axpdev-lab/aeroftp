@@ -17,6 +17,18 @@ use zip::ZipWriter;
 
 const META_ENTRY: &str = "__aerovault_meta.json";
 
+#[cfg(unix)]
+fn fsync_parent_dir(path: &std::path::Path) {
+    if let Some(parent) = path.parent() {
+        if let Ok(dir) = File::open(parent) {
+            let _ = dir.sync_all();
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn fsync_parent_dir(_path: &std::path::Path) {}
+
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AeroVaultMeta {
@@ -313,12 +325,16 @@ fn write_vault(
             .map_err(|e| format!("Failed to write {}: {}", name, e))?;
     }
 
-    zip.finish()
+    let file = zip
+        .finish()
         .map_err(|e| format!("Failed to finalize vault: {}", e))?;
+    file.sync_all()
+        .map_err(|e| format!("Failed to sync vault: {}", e))?;
 
     // Atomic replace
     std::fs::rename(&tmp_path, vault_path)
         .map_err(|e| format!("Failed to replace vault: {}", e))?;
+    fsync_parent_dir(std::path::Path::new(vault_path));
 
     Ok(vault_path.to_string())
 }

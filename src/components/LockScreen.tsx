@@ -87,10 +87,12 @@ const DEFAULT_PATTERN = 'isometric';
 
 interface LockScreenProps {
     onUnlock: () => void;
+    mode?: 'master' | 'totp';
 }
 
-export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock }) => {
+export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock, mode = 'master' }) => {
     const t = useTranslation();
+    const totpOnly = mode === 'totp';
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState('');
@@ -98,7 +100,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock }) => {
     const [unlockStep, setUnlockStep] = useState(0);
     const [appVersion, setAppVersion] = useState('');
     // 2FA state
-    const [needs2FA, setNeeds2FA] = useState(false);
+    const [needs2FA, setNeeds2FA] = useState(totpOnly);
     const [totpCode, setTotpCode] = useState('');
 
     useEffect(() => { getVersion().then(setAppVersion).catch(() => {}); }, []);
@@ -140,15 +142,15 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock }) => {
     const patternId = localStorage.getItem(LOCK_PATTERN_KEY) || DEFAULT_PATTERN;
     const pattern = LOCK_SCREEN_PATTERNS.find(p => p.id === patternId) || LOCK_SCREEN_PATTERNS[0];
 
-    // Focus password input on mount
+    // Focus the first required input on mount
     useEffect(() => {
-        const input = document.getElementById('lock-password-input');
+        const input = document.getElementById(totpOnly ? 'lock-totp-input' : 'lock-password-input');
         input?.focus();
-    }, []);
+    }, [totpOnly]);
 
     const handleUnlock = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!password || isLoading) return;
+        if ((!totpOnly && !password) || isLoading) return;
         // If 2FA is showing, require the code before submitting
         if (needs2FA && totpCode.length !== 6) return;
 
@@ -156,10 +158,14 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock }) => {
         setError('');
 
         try {
-            await invoke('unlock_credential_store', {
-                password,
-                totpCode: needs2FA ? totpCode : null,
-            });
+            if (totpOnly) {
+                await invoke('unlock_auto_keyring_credential_store', { totpCode });
+            } else {
+                await invoke('unlock_credential_store', {
+                    password,
+                    totpCode: needs2FA ? totpCode : null,
+                });
+            }
             onUnlock();
         } catch (err) {
             const errStr = String(err);
@@ -173,6 +179,12 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock }) => {
                 }, 100);
             } else if (errStr.includes('2FA_INVALID')) {
                 // Password was correct but TOTP code was wrong
+                setError(t('lockScreen.invalid2FACode'));
+                setTotpCode('');
+                setTimeout(() => {
+                    document.getElementById('lock-totp-input')?.focus();
+                }, 100);
+            } else if (totpOnly) {
                 setError(t('lockScreen.invalid2FACode'));
                 setTotpCode('');
                 setTimeout(() => {
@@ -231,6 +243,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock }) => {
 
                         {/* Password form */}
                         <form onSubmit={handleUnlock} className="space-y-4">
+                            {!totpOnly && (
                             <div>
                                 <label htmlFor="lock-password-input" className="block text-sm font-medium text-gray-300 mb-2">
                                     {t('lockScreen.enterPassword')}
@@ -256,6 +269,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock }) => {
                                     </button>
                                 </div>
                             </div>
+                            )}
 
                             {/* TOTP 2FA input: shown when backend requires it */}
                             {needs2FA && (
@@ -288,7 +302,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock }) => {
 
                             <button
                                 type="submit"
-                                disabled={!password || isLoading || (needs2FA && totpCode.length !== 6)}
+                                disabled={(!totpOnly && !password) || isLoading || (needs2FA && totpCode.length !== 6)}
                                 className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
                             >
                                 {isLoading ? (

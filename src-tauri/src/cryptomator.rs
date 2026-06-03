@@ -95,8 +95,26 @@ impl CryptomatorState {
 fn derive_kek(password: &str, salt: &[u8], n: u32, r: u32) -> Result<[u8; 32], String> {
     use scrypt::{scrypt, Params};
 
-    let log_n = (n as f64).log2() as u8;
-    let params = Params::new(log_n, r, 1, 32).map_err(|e| format!("scrypt params: {}", e))?;
+    if !n.is_power_of_two() {
+        return Err(format!(
+            "Unsupported scrypt cost parameter: {n} is not a power of two"
+        ));
+    }
+    let log_n = n.trailing_zeros();
+    if !(14..=22).contains(&log_n) {
+        return Err(format!(
+            "Unsupported scrypt cost parameter: log2(N)={} outside 14..=22",
+            log_n
+        ));
+    }
+    if r != 8 {
+        return Err(format!(
+            "Unsupported scrypt block size: r={} (expected 8)",
+            r
+        ));
+    }
+
+    let params = Params::new(log_n as u8, r, 1, 32).map_err(|e| format!("scrypt params: {}", e))?;
 
     let mut kek = [0u8; 32];
     scrypt(password.as_bytes(), salt, &params, &mut kek)
@@ -268,7 +286,7 @@ fn unlock_vault_inner(
             config.format
         ));
     }
-    if config.cipher_combo != "SIV_GCM" && config.cipher_combo != "SIV_CTRMAC" {
+    if config.cipher_combo != "SIV_GCM" {
         return Err(format!("Unsupported cipher combo: {}", config.cipher_combo));
     }
 
