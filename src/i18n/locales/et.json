@@ -1679,11 +1679,11 @@
             "s3RoleSessionNamePlaceholder": "aeroftp-session",
             "s3RoleDurationSeconds": "Seansi kestus sekundites (valikuline)",
             "s3RoleDurationSecondsPlaceholder": "3600",
-            "s3RoleMfaSerial": "MFA Device Serial (optional)",
+            "s3RoleMfaSerial": "MFA-seadme seerianumber (valikuline)",
             "s3RoleMfaSerialPlaceholder": "arn:aws:iam::123456789012:mfa/user",
-            "s3RoleMfaTokenCode": "MFA Token Code",
+            "s3RoleMfaTokenCode": "MFA tunnuskood",
             "s3RoleMfaTokenCodePlaceholder": "123456",
-            "s3RoleMfaTokenCodeHint": "One-time code from your MFA device, required only if the role enforces MFA. Used once at connect time and never saved."
+            "s3RoleMfaTokenCodeHint": "Ühekordne kood sinu MFA-seadmest, vajalik ainult kui roll nõuab MFA-d. Kasutatakse ühendamisel üks kord ja seda ei salvestata kunagi."
         },
         "shortcuts": {
             "title": "Kiirklahvid",

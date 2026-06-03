@@ -1679,11 +1679,11 @@
             "s3RoleSessionNamePlaceholder": "aeroftp-session",
             "s3RoleDurationSeconds": "រយៈពេលវគ្គគិតជាវិនាទី (ស្រេចចិត្ត)",
             "s3RoleDurationSecondsPlaceholder": "3600",
-            "s3RoleMfaSerial": "MFA Device Serial (optional)",
+            "s3RoleMfaSerial": "លេខស៊េរីឧបករណ៍ MFA (ស្រេចចិត្ត)",
             "s3RoleMfaSerialPlaceholder": "arn:aws:iam::123456789012:mfa/user",
-            "s3RoleMfaTokenCode": "MFA Token Code",
+            "s3RoleMfaTokenCode": "កូដថូខឹន MFA",
             "s3RoleMfaTokenCodePlaceholder": "123456",
-            "s3RoleMfaTokenCodeHint": "One-time code from your MFA device, required only if the role enforces MFA. Used once at connect time and never saved."
+            "s3RoleMfaTokenCodeHint": "កូដប្រើតែម្ដងពីឧបករណ៍ MFA របស់អ្នក ត្រូវការតែប្រសិនបើតួនាទីតម្រូវឱ្យប្រើ MFA។ ប្រើម្ដងនៅពេលតភ្ជាប់ ហើយមិនត្រូវបានរក្សាទុកឡើយ។"
         },
         "shortcuts": {
             "title": "ផ្លូវកាត់ក្តារចុច",
