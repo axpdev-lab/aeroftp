@@ -290,6 +290,11 @@ pub struct ProviderConnectionParams {
     pub role_session_name: Option<String>,
     /// S3: requested credential lifetime in seconds (900..=43200).
     pub role_duration_seconds: Option<u32>,
+    /// S3: MFA device serial/ARN required by the role's trust policy.
+    pub role_mfa_serial: Option<String>,
+    /// S3: one-time MFA token code for the first AssumeRole. Single-use, never
+    /// persisted.
+    pub role_mfa_token_code: Option<String>,
     /// Save session keys (MEGA)
     pub save_session: Option<bool>,
     /// Backend selection for MEGA: "native" or "megacmd"
@@ -432,6 +437,8 @@ impl ProviderConnectionParams {
                 ("role_arn", self.role_arn.as_ref()),
                 ("role_external_id", self.role_external_id.as_ref()),
                 ("role_session_name", self.role_session_name.as_ref()),
+                ("role_mfa_serial", self.role_mfa_serial.as_ref()),
+                ("role_mfa_token_code", self.role_mfa_token_code.as_ref()),
             ] {
                 if let Some(v) = value.map(|s| s.trim()).filter(|s| !s.is_empty()) {
                     extra.insert(key.to_string(), v.to_string());
@@ -9971,6 +9978,8 @@ mod tests {
             role_external_id: None,
             role_session_name: None,
             role_duration_seconds: None,
+            role_mfa_serial: None,
+            role_mfa_token_code: None,
             save_session: None,
             mega_mode: None,
             session_expires_at: None,

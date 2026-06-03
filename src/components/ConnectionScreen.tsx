@@ -844,6 +844,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         if ('two_factor_code' in optionsToSave) {
             delete optionsToSave.two_factor_code;
         }
+        // The one-time STS MFA token code is single-use too (issue #301): never
+        // persist it; the user re-enters it on every reconnect.
+        if ('roleMfaTokenCode' in optionsToSave) {
+            delete optionsToSave.roleMfaTokenCode;
+        }
 
         const existingServers = await loadSavedServerProfiles();
 
@@ -1123,6 +1128,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         if ('two_factor_code' in optionsToSave) {
             delete optionsToSave.two_factor_code;
         }
+        // Single-use STS MFA token code is never persisted (issue #301).
+        if ('roleMfaTokenCode' in optionsToSave) {
+            delete optionsToSave.roleMfaTokenCode;
+        }
 
         const newId = `srv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         const credentialStored = await tryStoreCredential(`server_${newId}`, connectionParams.password);
@@ -1219,6 +1228,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             : { ...connectionParams.options };
         if ('two_factor_code' in optionsToSave) {
             delete optionsToSave.two_factor_code;
+        }
+        // Single-use STS MFA token code is never persisted (issue #301).
+        if ('roleMfaTokenCode' in optionsToSave) {
+            delete optionsToSave.roleMfaTokenCode;
         }
 
         const finalName = (connectionName || originalServer.name).trim() || originalServer.name;

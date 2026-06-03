@@ -4314,6 +4314,8 @@ interface UpdateVerificationInfo {
       role_external_id: effectiveParams.options?.roleExternalId || null,
       role_session_name: effectiveParams.options?.roleSessionName || null,
       role_duration_seconds: effectiveParams.options?.roleDurationSeconds || null,
+      role_mfa_serial: effectiveParams.options?.roleMfaSerial || null,
+      role_mfa_token_code: effectiveParams.options?.roleMfaTokenCode || null,
       save_session: effectiveParams.options?.save_session,
       mega_mode: effectiveParams.options?.mega_mode || null,
       session_expires_at: effectiveParams.options?.session_expires_at,
