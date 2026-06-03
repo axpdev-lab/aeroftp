@@ -79,12 +79,36 @@ pub struct AssumeRoleRequest<'a> {
     pub base_session_token: Option<&'a SecretString>,
 }
 
+/// Reject regions that are not plain AWS region tokens before they are spliced
+/// into the `sts.<region>.amazonaws.com` endpoint. The region comes from the
+/// user's profile, but a value containing `/`, `@`, `.` or whitespace would
+/// reshape the host (e.g. `foo/../evil.com` splits the host off into a path),
+/// so we constrain it to the AWS region alphabet (letters, digits, hyphen).
+fn validate_sts_region(region: &str) -> Result<(), ProviderError> {
+    let r = region.trim();
+    if r.is_empty() || r.eq_ignore_ascii_case("auto") {
+        return Err(ProviderError::InvalidConfig(
+            "STS AssumeRole needs a concrete AWS region (e.g. us-east-1); \
+             'auto'/empty has no STS endpoint."
+                .to_string(),
+        ));
+    }
+    if !r.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-') {
+        return Err(ProviderError::InvalidConfig(format!(
+            "STS AssumeRole: invalid AWS region '{region}' \
+             (only letters, digits and hyphens are allowed)."
+        )));
+    }
+    Ok(())
+}
+
 /// Resolve the regional STS endpoint host for `region`.
 ///
 /// Standard and GovCloud partitions use `sts.<region>.amazonaws.com`; the
 /// China partition uses the `.amazonaws.com.cn` suffix. Regional endpoints are
 /// preferred over the legacy global `sts.amazonaws.com` (which is us-east-1
-/// only and reduces availability).
+/// only and reduces availability). Callers must validate `region` with
+/// [`validate_sts_region`] first.
 fn sts_endpoint_host(region: &str) -> String {
     if region.starts_with("cn-") {
         format!("sts.{region}.amazonaws.com.cn")
@@ -237,13 +261,7 @@ pub async fn assume_role(
     client: &reqwest::Client,
     req: &AssumeRoleRequest<'_>,
 ) -> Result<TempCredentials, ProviderError> {
-    if req.region.trim().is_empty() || req.region.eq_ignore_ascii_case("auto") {
-        return Err(ProviderError::InvalidConfig(
-            "STS AssumeRole needs a concrete AWS region (e.g. us-east-1); \
-             'auto'/empty has no STS endpoint."
-                .to_string(),
-        ));
-    }
+    validate_sts_region(req.region)?;
     if req.role_arn.trim().is_empty() {
         return Err(ProviderError::InvalidConfig(
             "STS AssumeRole requires a Role ARN.".to_string(),
@@ -454,6 +472,28 @@ mod tests {
             mfa_serial: None,
             mfa_token_code: None,
             base_session_token: None,
+        }
+    }
+
+    #[test]
+    fn region_validation_blocks_endpoint_injection() {
+        for ok in ["us-east-1", "eu-central-1", "cn-north-1", "us-gov-west-1"] {
+            assert!(validate_sts_region(ok).is_ok(), "region {ok:?} should pass");
+        }
+        for bad in [
+            "",
+            "auto",
+            "us-east-1/../evil.com",
+            "us@evil",
+            "us east 1",
+            "us.east.1",
+            "us#1",
+            "sts.evil.com:443",
+        ] {
+            assert!(
+                validate_sts_region(bad).is_err(),
+                "region {bad:?} must be rejected"
+            );
         }
     }
 

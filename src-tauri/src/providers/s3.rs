@@ -238,13 +238,26 @@ pub struct S3Provider {
     /// `None` = fall back to `config.storage_class`, else backend default.
     /// Set via `set_storage_class_override`.
     storage_class_override: Option<String>,
-    /// Temporary credentials acquired through STS `AssumeRole` (issue #301,
-    /// Fase 2). Populated by `connect()` when `config.role_arn` is set; the
-    /// data-plane signers then use these instead of the long-term base
-    /// credentials in `config`. The base credentials in `config` are left
-    /// untouched so a reconnect (or Fase 3 refresh) can re-assume the role.
-    /// `None` means the base credentials are used directly.
-    temp_credentials: Option<sts::TempCredentials>,
+    /// Temporary credentials acquired through STS `AssumeRole` (issue #301).
+    /// Populated by `connect()` when `config.role_arn` is set and refreshed
+    /// proactively before expiry (Fase 3); the data-plane signers use these
+    /// instead of the long-term base credentials in `config`, which are left
+    /// untouched so a reconnect or refresh can re-assume the role. `None` means
+    /// the base credentials are used directly. Behind `Arc<RwLock>` so the
+    /// clones spawned for parallel multipart parts share one refreshing cell.
+    temp_credentials: Arc<std::sync::RwLock<Option<sts::TempCredentials>>>,
+    /// Serializes STS refreshes so concurrent multipart parts re-assume the
+    /// role once instead of stampeding the STS endpoint near expiry.
+    sts_refresh_lock: Arc<tokio::sync::Mutex<()>>,
+}
+
+/// Owned snapshot of the credentials a single signing pass uses, taken under
+/// one read lock so the access key, secret and session token always come from
+/// the same credential set (issue #301, Fase 3).
+struct EffectiveCredentials {
+    access_key_id: String,
+    secret_access_key: secrecy::SecretString,
+    session_token: Option<secrecy::SecretString>,
 }
 
 impl S3Provider {
@@ -297,7 +310,8 @@ impl S3Provider {
             disable_checksum: false,
             acl_override: None,
             storage_class_override: None,
-            temp_credentials: None,
+            temp_credentials: Arc::new(std::sync::RwLock::new(None)),
+            sts_refresh_lock: Arc::new(tokio::sync::Mutex::new(())),
         })
     }
 
@@ -393,43 +407,79 @@ impl S3Provider {
         Utc::now() + chrono::Duration::seconds(self.clock_offset_secs)
     }
 
-    /// Access key id the data-plane signers must use: the STS-issued temporary
-    /// key when a role has been assumed (issue #301), else the long-term base
-    /// key from `config`.
-    fn effective_access_key_id(&self) -> &str {
-        match &self.temp_credentials {
-            Some(tc) => &tc.access_key_id,
-            None => &self.config.access_key_id,
+    /// Re-assume the role this many seconds before the temporary credentials
+    /// expire, so long operations (and slow multipart uploads) never sign with
+    /// a token that lapses mid-flight. 5 minutes mirrors the AWS SDK default.
+    const STS_REFRESH_THRESHOLD_SECS: i64 = 300;
+
+    /// A consistent snapshot of the credentials the data-plane signers must
+    /// use: the STS-issued temporary credentials when a role has been assumed
+    /// (issue #301), else the long-term base credentials (or a manually-supplied
+    /// session token) from `config`. Snapshotting under a single read lock keeps
+    /// the access key, secret and session token from a single credential set
+    /// even if another task refreshes concurrently.
+    fn effective_credentials(&self) -> EffectiveCredentials {
+        let guard = self
+            .temp_credentials
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        match guard.as_ref() {
+            Some(tc) => EffectiveCredentials {
+                access_key_id: tc.access_key_id.clone(),
+                secret_access_key: tc.secret_access_key.clone(),
+                session_token: Some(tc.session_token.clone()),
+            },
+            None => EffectiveCredentials {
+                access_key_id: self.config.access_key_id.clone(),
+                secret_access_key: self.config.secret_access_key.clone(),
+                session_token: self.config.session_token.clone(),
+            },
         }
     }
 
-    /// Secret access key matching [`effective_access_key_id`].
-    fn effective_secret(&self) -> &secrecy::SecretString {
-        match &self.temp_credentials {
-            Some(tc) => &tc.secret_access_key,
-            None => &self.config.secret_access_key,
+    /// True when the currently-held temporary credentials are missing or within
+    /// [`Self::STS_REFRESH_THRESHOLD_SECS`] of expiry. Credentials with no
+    /// expiry (STS always returns one, so this is theoretical) are treated as
+    /// fresh: a hard `ExpiredToken` from the server forces a reconnect instead.
+    fn temp_credentials_need_refresh(&self) -> bool {
+        let guard = self
+            .temp_credentials
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        match guard.as_ref() {
+            None => true,
+            Some(tc) => match tc.expiration {
+                Some(exp) => {
+                    exp - self.now_adjusted()
+                        <= chrono::Duration::seconds(Self::STS_REFRESH_THRESHOLD_SECS)
+                }
+                None => false,
+            },
         }
     }
 
-    /// Session token to carry on signed requests: the STS session token when a
-    /// role has been assumed, else any externally-supplied session token from
-    /// `config` (Fase 1 manual temp credentials).
-    fn effective_session_token(&self) -> Option<&secrecy::SecretString> {
-        match &self.temp_credentials {
-            Some(tc) => Some(&tc.session_token),
-            None => self.config.session_token.as_ref(),
-        }
-    }
-
-    /// Acquire temporary credentials via STS `AssumeRole` when `config.role_arn`
-    /// is set, storing them in `self.temp_credentials` for the data-plane
-    /// signers. No-op when no role is configured. Always signs the STS request
-    /// with the long-term base credentials from `config`, so it is safe to call
-    /// again on reconnect / refresh.
-    async fn acquire_temp_credentials(&mut self) -> Result<(), ProviderError> {
+    /// Ensure valid temporary credentials are available when `config.role_arn`
+    /// is set: acquire them on the first call and re-assume the role before they
+    /// expire. No-op when no role is configured (long-term keys or a manual
+    /// session token are used as-is). Always signs the STS request with the base
+    /// credentials from `config`. Refreshes are serialized through
+    /// `sts_refresh_lock` so concurrent multipart parts re-assume once, and the
+    /// staleness check is repeated after acquiring the lock to avoid a redundant
+    /// `AssumeRole` when another task just refreshed.
+    async fn ensure_fresh_credentials(&self) -> Result<(), ProviderError> {
         let Some(role_arn) = self.config.role_arn.as_deref() else {
             return Ok(());
         };
+        if !self.temp_credentials_need_refresh() {
+            return Ok(());
+        }
+
+        let _guard = self.sts_refresh_lock.lock().await;
+        // Another task may have refreshed while we waited for the lock.
+        if !self.temp_credentials_need_refresh() {
+            return Ok(());
+        }
+
         let session_name = self
             .config
             .role_session_name
@@ -456,7 +506,10 @@ impl S3Provider {
             "[S3] STS AssumeRole succeeded for {} (expires {:?})",
             role_arn, creds.expiration
         );
-        self.temp_credentials = Some(creds);
+        *self
+            .temp_credentials
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(creds);
         Ok(())
     }
 
@@ -697,6 +750,10 @@ impl S3Provider {
 
         type HmacSha256 = Hmac<Sha256>;
 
+        // Single consistent snapshot of the effective credentials for this
+        // signing pass (temporary STS creds when a role is assumed, else base).
+        let creds = self.effective_credentials();
+
         let now: DateTime<Utc> = self.now_adjusted();
         let date_stamp = now.format("%Y%m%d").to_string();
         let amz_date = now.format("%Y%m%dT%H%M%SZ").to_string();
@@ -709,7 +766,7 @@ impl S3Provider {
         // request so it is covered by the SigV4 signature. Inserting it into
         // `headers` before the canonical headers are built achieves both, since
         // `s3_request_ext` replays every entry of this map as a real header.
-        if let Some(token) = self.effective_session_token() {
+        if let Some(token) = &creds.session_token {
             headers.insert(
                 "x-amz-security-token".to_string(),
                 token.expose_secret().to_string(),
@@ -813,7 +870,7 @@ impl S3Provider {
         }
 
         let k_date = hmac_sha256(
-            format!("AWS4{}", self.effective_secret().expose_secret()).as_bytes(),
+            format!("AWS4{}", creds.secret_access_key.expose_secret()).as_bytes(),
             date_stamp.as_bytes(),
         );
         let k_region = hmac_sha256(&k_date, self.config.region.as_bytes());
@@ -824,7 +881,7 @@ impl S3Provider {
         // Create authorization header
         let authorization = format!(
             "AWS4-HMAC-SHA256 Credential={}/{}, SignedHeaders={}, Signature={}",
-            self.effective_access_key_id(), credential_scope, signed_headers_str, signature
+            creds.access_key_id, credential_scope, signed_headers_str, signature
         );
 
         Ok(authorization)
@@ -852,6 +909,11 @@ impl S3Provider {
         extra_headers: &[(&str, &str)],
     ) -> Result<reqwest::Response, ProviderError> {
         use sha2::{Digest, Sha256};
+
+        // Refresh STS credentials before they expire (issue #301, Fase 3).
+        // Covers list / delete / stat / mkdir and every multipart part upload,
+        // which funnel through here; no-op when no role is configured.
+        self.ensure_fresh_credentials().await?;
 
         let mut url = self.build_url(key);
         if let Some(params) = query_params {
@@ -1325,6 +1387,7 @@ impl S3Provider {
         key: &str,
         content_type: Option<&str>,
     ) -> Result<String, ProviderError> {
+        self.ensure_fresh_credentials().await?;
         // For multipart, Content-Type must be set on initiation, not on individual parts.
         // We build a custom request to include the header.
         let url = {
@@ -1715,6 +1778,7 @@ impl S3Provider {
         from_key: &str,
         to_key: &str,
     ) -> Result<(), ProviderError> {
+        self.ensure_fresh_credentials().await?;
         let copy_source = format!("/{}/{}", self.config.bucket, encode_s3_key_path(from_key));
 
         let url = self.build_url(to_key);
@@ -2212,12 +2276,13 @@ impl StorageProvider for S3Provider {
     }
 
     async fn connect(&mut self) -> Result<(), ProviderError> {
-        // STS AssumeRole (issue #301, Fase 2): when a role ARN is configured,
-        // exchange the long-term base credentials for temporary ones before any
-        // signed S3 request is made. Runs ahead of the bucket probe (and the
+        // STS AssumeRole (issue #301): when a role ARN is configured, exchange
+        // the long-term base credentials for temporary ones before any signed S3
+        // request is made. Runs ahead of the bucket probe (and the
         // no_check_bucket early return) because the assumed role, not the base
-        // key, is what is authorized for the data-plane workload.
-        self.acquire_temp_credentials().await?;
+        // key, is what is authorized for the data-plane workload. Subsequent
+        // requests re-check freshness and re-assume before expiry (Fase 3).
+        self.ensure_fresh_credentials().await?;
 
         // Guard against the silent AWS auto-region fallback. With no endpoint
         // configured, `endpoint()` builds `https://s3.{region}.amazonaws.com`,
@@ -2762,6 +2827,7 @@ impl StorageProvider for S3Provider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
+        self.ensure_fresh_credentials().await?;
 
         let file_meta = tokio::fs::metadata(local_path)
             .await
@@ -2892,6 +2958,7 @@ impl StorageProvider for S3Provider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
+        self.ensure_fresh_credentials().await?;
 
         // Guard: refuse to wipe the entire bucket
         if path.trim_matches('/').is_empty() {
@@ -3262,6 +3329,10 @@ impl StorageProvider for S3Provider {
 
         type HmacSha256 = Hmac<Sha256>;
 
+        // A presigned URL cannot outlive the session token, so refresh first
+        // (issue #301, Fase 3).
+        self.ensure_fresh_credentials().await?;
+
         let key = path.trim_start_matches('/');
         // MEGA S4 presigned URLs have a maximum expiration of 7 days (604800 seconds)
         let max_expires = if self.is_mega_s4_endpoint() {
@@ -3275,8 +3346,11 @@ impl StorageProvider for S3Provider {
         let date_stamp = now.format("%Y%m%d").to_string();
         let amz_date = now.format("%Y%m%dT%H%M%SZ").to_string();
 
+        // Single consistent snapshot of the effective credentials (issue #301).
+        let creds = self.effective_credentials();
+
         let credential_scope = format!("{}/{}/s3/aws4_request", date_stamp, self.config.region);
-        let credential = format!("{}/{}", self.effective_access_key_id(), credential_scope);
+        let credential = format!("{}/{}", creds.access_key_id, credential_scope);
 
         let url = self.build_url(key);
         let parsed =
@@ -3308,8 +3382,9 @@ impl StorageProvider for S3Provider {
         // credentials the session token is carried as `X-Amz-Security-Token`,
         // which sorts between `X-Amz-Expires` and `X-Amz-SignedHeaders`.
         let signed_headers = "host";
-        let security_token_param = self
-            .effective_session_token()
+        let security_token_param = creds
+            .session_token
+            .as_ref()
             .map(|t| {
                 format!(
                     "X-Amz-Security-Token={}&",
@@ -3352,7 +3427,7 @@ impl StorageProvider for S3Provider {
         }
 
         let k_date = hmac_sha256(
-            format!("AWS4{}", self.effective_secret().expose_secret()).as_bytes(),
+            format!("AWS4{}", creds.secret_access_key.expose_secret()).as_bytes(),
             date_stamp.as_bytes(),
         );
         let k_region = hmac_sha256(&k_date, self.config.region.as_bytes());
@@ -4020,6 +4095,7 @@ impl StorageProvider for S3Provider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
+        self.ensure_fresh_credentials().await?;
 
         let key = path.trim_start_matches('/');
         // Restore by copying the old version to itself. `encode_s3_key_path`
@@ -4091,6 +4167,7 @@ impl S3Provider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
+        self.ensure_fresh_credentials().await?;
         let key = path.trim_start_matches('/');
         // Slashes preserved via encode_s3_key_path; see server_copy /
         // restore_version for the same rationale.
@@ -4150,6 +4227,7 @@ impl S3Provider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
+        self.ensure_fresh_credentials().await?;
         let key = path.trim_start_matches('/');
         let body = format!(
             "<RestoreRequest><Days>{}</Days><GlacierJobParameters><Tier>{}</Tier></GlacierJobParameters></RestoreRequest>",
@@ -4293,6 +4371,7 @@ impl S3Provider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
+        self.ensure_fresh_credentials().await?;
         if self.is_mega_s4_endpoint() {
             return Err(ProviderError::NotSupported(
                 "MEGA S4 does not support object tagging".to_string(),
@@ -4820,6 +4899,77 @@ mod tests {
 
         assert!(!headers.contains_key("x-amz-security-token"));
         assert!(!auth.contains("x-amz-security-token"));
+    }
+
+    fn temp_creds(expiration: Option<DateTime<Utc>>) -> sts::TempCredentials {
+        sts::TempCredentials {
+            access_key_id: "ASIATEMP".to_string(),
+            secret_access_key: secrecy::SecretString::from("tempsecret".to_string()),
+            session_token: secrecy::SecretString::from("tok".to_string()),
+            expiration,
+        }
+    }
+
+    #[test]
+    fn effective_credentials_prefers_temp_when_role_assumed() {
+        let provider = make_provider(Some("http://localhost:9000"));
+        // No role assumed yet: the signer uses the long-term base credentials.
+        let base = provider.effective_credentials();
+        assert_eq!(base.access_key_id, "key");
+        assert_eq!(base.secret_access_key.expose_secret(), "secret");
+        assert!(base.session_token.is_none());
+
+        // After AssumeRole the temporary credentials take over.
+        *provider.temp_credentials.write().unwrap() =
+            Some(temp_creds(Some(Utc::now() + chrono::Duration::hours(1))));
+        let temp = provider.effective_credentials();
+        assert_eq!(temp.access_key_id, "ASIATEMP");
+        assert_eq!(temp.secret_access_key.expose_secret(), "tempsecret");
+        assert_eq!(
+            temp.session_token.as_ref().map(|s| s.expose_secret()),
+            Some("tok")
+        );
+    }
+
+    #[test]
+    fn temp_credentials_refresh_honors_threshold() {
+        let provider = make_provider(Some("http://localhost:9000"));
+        // First call: nothing assumed yet, so a refresh (the initial acquire)
+        // is required.
+        assert!(provider.temp_credentials_need_refresh());
+
+        // Comfortably valid: no refresh.
+        *provider.temp_credentials.write().unwrap() =
+            Some(temp_creds(Some(Utc::now() + chrono::Duration::minutes(30))));
+        assert!(!provider.temp_credentials_need_refresh());
+
+        // Inside the 5-minute window: refresh.
+        *provider.temp_credentials.write().unwrap() =
+            Some(temp_creds(Some(Utc::now() + chrono::Duration::minutes(2))));
+        assert!(provider.temp_credentials_need_refresh());
+
+        // Already expired: refresh.
+        *provider.temp_credentials.write().unwrap() =
+            Some(temp_creds(Some(Utc::now() - chrono::Duration::minutes(1))));
+        assert!(provider.temp_credentials_need_refresh());
+
+        // No expiry returned (theoretical): treated as fresh, a hard 403 would
+        // force a reconnect instead.
+        *provider.temp_credentials.write().unwrap() = Some(temp_creds(None));
+        assert!(!provider.temp_credentials_need_refresh());
+    }
+
+    #[test]
+    fn ensure_fresh_credentials_is_noop_without_role() {
+        // make_provider has no role_arn: ensure_fresh_credentials must not touch
+        // the empty temp-credential cell (no network, no panic).
+        let provider = make_provider(Some("http://localhost:9000"));
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        rt.block_on(provider.ensure_fresh_credentials())
+            .expect("no-op refresh without a role must succeed");
+        assert!(provider.temp_credentials.read().unwrap().is_none());
     }
 
     /// SG-T04 gate: the trait-level `begin_multipart_upload` is a different
