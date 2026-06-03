@@ -884,7 +884,17 @@ pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
         crate::profile_export::ProviderSecrets,
     > = std::collections::HashMap::new();
 
-    for (name, remote) in &sections {
+    // Iterate remotes in a stable, alphabetical order. parse_rclone_conf
+    // returns a HashMap whose iteration order is randomized per run, which
+    // surfaced the imported servers (and the skipped list) in a different
+    // order every time. Sorting the section names by their lexicographic
+    // order mirrors `rclone listremotes`, so the import list matches what
+    // the user sees in rclone itself.
+    let mut section_names: Vec<&String> = sections.keys().collect();
+    section_names.sort();
+
+    for name in section_names {
+        let remote = &sections[name];
         let rclone_type = remote.get("type").map(|s| s.as_str()).unwrap_or("unknown");
 
         let mapped = if rclone_type == "crypt" {
@@ -1752,6 +1762,46 @@ type = fichier
 
         // Verify skipped
         assert_eq!(result.skipped[0].rclone_type, "fichier");
+    }
+
+    #[test]
+    fn test_import_rclone_orders_remotes_alphabetically() {
+        use std::io::Write;
+        // Remotes deliberately listed out of order. parse_rclone_conf stores
+        // them in a HashMap, so without an explicit sort the import surfaced
+        // them in a randomized order. import_rclone must emit them sorted by
+        // name, mirroring `rclone listremotes`.
+        let conf = r#"
+[zulu]
+type = ftp
+host = zulu.example.com
+user = z
+
+[mike]
+type = ftp
+host = mike.example.com
+user = m
+
+[alpha]
+type = ftp
+host = alpha.example.com
+user = a
+
+[tango]
+type = ftp
+host = tango.example.com
+user = t
+"#;
+        let tmp = std::env::temp_dir().join("aeroftp-test-rclone-order.conf");
+        {
+            let mut f = std::fs::File::create(&tmp).unwrap();
+            f.write_all(conf.as_bytes()).unwrap();
+        }
+        let result = import_rclone(&tmp).expect("should parse");
+        std::fs::remove_file(&tmp).ok();
+
+        let names: Vec<&str> = result.servers.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, vec!["alpha", "mike", "tango", "zulu"]);
     }
 
     #[test]
