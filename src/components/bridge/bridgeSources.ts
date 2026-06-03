@@ -2,42 +2,22 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 // Descriptor table for every profile-bridge source surfaced in the
-// Export/Import dialog. The three legacy sources keep their dedicated
-// dialog modes (proven, shipped); the 12 expansion sources are handled
-// generically by BridgeSourcePanel + the bridge_* Tauri commands.
+// Export/Import dialog. All 15 sources are handled generically by
+// BridgeSourcePanel + the bridge_* Tauri commands.
 
 export interface BridgeSourceDescriptor {
     id: string;
     label: string;
     accent: string;   // tailwind text color for the icon
     accentBg: string; // tailwind bg for the icon chip
-    /** Legacy sources route to existing dedicated modes instead of the
-     *  generic panel. */
-    legacyImportMode?: 'rclone' | 'winscp' | 'filezilla';
-    legacyExportMode?: 'rclone-export' | 'winscp-export' | 'filezilla-export';
 }
 
-export const LEGACY_BRIDGE_SOURCES: BridgeSourceDescriptor[] = [
-    {
-        id: 'rclone', label: 'rclone',
-        accent: 'text-orange-500', accentBg: 'bg-orange-100 dark:bg-orange-900/30',
-        legacyImportMode: 'rclone', legacyExportMode: 'rclone-export',
-    },
-    {
-        id: 'winscp', label: 'WinSCP',
-        accent: 'text-purple-500', accentBg: 'bg-purple-100 dark:bg-purple-900/30',
-        legacyImportMode: 'winscp', legacyExportMode: 'winscp-export',
-    },
-    {
-        id: 'filezilla', label: 'FileZilla',
-        accent: 'text-emerald-500', accentBg: 'bg-emerald-100 dark:bg-emerald-900/30',
-        legacyImportMode: 'filezilla', legacyExportMode: 'filezilla-export',
-    },
-];
-
-// Order chosen to group conceptually: cloud CLIs, SSH/FTP clients,
-// site/IDE, backup tools.
+// Order chosen to group conceptually: full-fidelity clients first
+// (rclone, SSH/FTP clients), then cloud CLIs, site/IDE, backup tools.
 export const GENERIC_BRIDGE_SOURCES: BridgeSourceDescriptor[] = [
+    { id: 'rclone', label: 'rclone', accent: 'text-orange-500', accentBg: 'bg-orange-100 dark:bg-orange-900/30' },
+    { id: 'winscp', label: 'WinSCP', accent: 'text-purple-500', accentBg: 'bg-purple-100 dark:bg-purple-900/30' },
+    { id: 'filezilla', label: 'FileZilla', accent: 'text-emerald-500', accentBg: 'bg-emerald-100 dark:bg-emerald-900/30' },
     { id: 'aws', label: 'AWS CLI', accent: 'text-yellow-600', accentBg: 'bg-yellow-100 dark:bg-yellow-900/30' },
     { id: 'mc', label: 'MinIO Client', accent: 'text-red-500', accentBg: 'bg-red-100 dark:bg-red-900/30' },
     { id: 's3cmd', label: 's3cmd', accent: 'text-amber-500', accentBg: 'bg-amber-100 dark:bg-amber-900/30' },
