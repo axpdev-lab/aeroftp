@@ -11,7 +11,7 @@
 #   - docs/dev/roadmap/APPENDIX-SIGSTORE_*.md       (sigstore path, planned)
 #   - docs/security-evidence/AEROFTP-CLI-AUDIT-2026-05-06.md     (origin audit)
 #
-# Reviewed: 2026-05-08 (release v3.7.5)
+# Reviewed: 2026-06-03 (added two russh advisories, deferred to 0.61 bump #251)
 
 [advisories]
 ignore = [
@@ -184,6 +184,39 @@ ignore = [
     # The matching pin rationale lives inline on `tauri = "=2.11.0"` in
     # src-tauri/Cargo.toml lines 44-50.
     "GHSA-7gmj-67g7-phm9",  # Tauri Origin Confusion (not reachable, intentional pin)
+
+    # ----------------------------------------------------------------
+    # russh 0.60.3 - two advisories fixed only in russh 0.61.x (deferred)
+    # ----------------------------------------------------------------
+    # Both are fixed upstream solely by bumping to russh 0.61.1, which is
+    # currently DEFERRED: the 0.61 line migrates the SSH key stack to the
+    # upstream `ssh-key 0.3.0-rc.9` and pulls `rsa 0.10.0-rc.18`, i.e. it
+    # would introduce release-candidate crates into the SSH/SFTP path. The
+    # bump is tracked under dependabot #251 and APPENDIX-RUSSH; it needs a
+    # rebase + SFTP bench + an explicit accept-RC decision before landing.
+    # The `russh = "0.60.3"` pin (src-tauri/Cargo.toml:142) and the
+    # `rand_010` alias (:114) stay until then. Exposure analysis below.
+    #
+    #   GHSA-wwx6-x28x-8259 / CVE-2026-46702 (HIGH) - post-decompression SSH
+    #     packet size unbounded, allowing an oversized compressed packet
+    #     ("ZIP bomb") to drive memory exhaustion.
+    #     Reachability: the vector requires SSH compression to be NEGOTIATED.
+    #     AeroFTP's SFTP client offers zlib only when the user explicitly sets
+    #     `compression_enabled` (providers/sftp.rs:926); the default is `false`
+    #     -> `Preferred::default()` (compression NONE), which never negotiates
+    #     compression. So the default configuration is NOT exposed. The only
+    #     residual is opt-in: a user who enables compression AND connects to a
+    #     hostile/compromised SSH server. Narrow and user-initiated.
+    #
+    #   GHSA-hpv4-5h6f-wqr3 / CVE-2026-46705 (MEDIUM) - server userauth state
+    #     not reset when the authentication principal changes mid-handshake.
+    #     Reachability: SERVER-side only. It touches exclusively the
+    #     experimental `aeroftp serve sftp` bridge (bin/aeroftp_cli.rs:15780),
+    #     and only matters when that server is exposed to untrusted clients
+    #     that switch principals. Not reachable through the client surface that
+    #     the vast majority of AeroFTP usage exercises.
+    "GHSA-wwx6-x28x-8259",  # russh ZIP-bomb (compression off by default)
+    "GHSA-hpv4-5h6f-wqr3",  # russh server userauth reset (serve sftp only)
 ]
 
 # We do NOT ignore "informational" advisories blanket-style. Each ignore is
