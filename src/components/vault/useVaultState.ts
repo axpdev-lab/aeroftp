@@ -29,7 +29,7 @@ const ERROR_PATTERNS: [RegExp, string][] = [
     [/disk (full|space)|no space/i, 'vault.errors.diskFull'],
 ];
 
-function mapVaultError(e: unknown, t: (key: string) => string): string {
+export function mapVaultError(e: unknown, t: (key: string) => string): string {
     const raw = String(e);
     for (const [pattern, key] of ERROR_PATTERNS) {
         if (pattern.test(raw)) {
@@ -37,10 +37,14 @@ function mapVaultError(e: unknown, t: (key: string) => string): string {
             if (mapped && mapped !== key) return mapped;
         }
     }
-    // Fallback: strip internal details (offsets, hex, stack traces)
+    // Fallback: strip internal details (offsets, hex, stack traces) and redact
+    // absolute filesystem paths so raw backend paths are not surfaced to the UI
+    // (CLAUDE-AV-022).
     const cleaned = raw
         .replace(/at offset \d+/gi, '')
         .replace(/0x[0-9a-f]+/gi, '')
+        // Unix absolute paths and Windows drive paths -> redacted placeholder.
+        .replace(/(?:[A-Za-z]:)?[\\/][^\s'":]+(?:[\\/][^\s'":]+)+/g, '<path>')
         .replace(/\s{2,}/g, ' ')
         .trim();
     return cleaned || raw;

@@ -8,6 +8,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { useTranslation } from '../i18n';
 import { ArrowUpDown, Folder, X, Loader2, ArrowUp, ArrowDown, Minus, AlertTriangle, Check } from 'lucide-react';
 import { formatSize } from '../utils/formatters';
+import { mapVaultError } from './vault/useVaultState';
 
 interface VaultSyncDialogProps {
     vaultPath: string;
@@ -79,7 +80,8 @@ const VaultSyncDialog: React.FC<VaultSyncDialogProps> = ({ vaultPath, password, 
             setActions(defaultActions);
             setStep('review');
         } catch (e) {
-            setError(String(e));
+            // Route through the sanitizer so raw backend paths do not leak (CLAUDE-AV-022).
+            setError(mapVaultError(e, t));
             setStep('select_dir');
         }
     }, [localDir, vaultPath, password]);
@@ -99,7 +101,8 @@ const VaultSyncDialog: React.FC<VaultSyncDialogProps> = ({ vaultPath, password, 
             setStep('done');
             if (onSynced) onSynced();
         } catch (e) {
-            setError(String(e));
+            // Route through the sanitizer so raw backend paths do not leak (CLAUDE-AV-022).
+            setError(mapVaultError(e, t));
             setStep('review');
         }
     }, [comparison, actions, vaultPath, password, localDir, onSynced]);

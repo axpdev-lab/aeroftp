@@ -126,6 +126,7 @@ pub async fn extract_zip_entry(
     password: Option<String>,
 ) -> Result<String, String> {
     use std::fs::{self, File};
+    use std::io::Read;
 
     let secret_password: Option<SecretString> = password.map(SecretString::from);
 
@@ -160,9 +161,23 @@ pub async fn extract_zip_entry(
     let tmp_path = out_path.with_extension("aerotmp");
     let mut outfile =
         File::create(&tmp_path).map_err(|e| format!("Failed to create output file: {}", e))?;
-    if let Err(e) = std::io::copy(&mut entry, &mut outfile) {
+    // Bound extraction to the entry's declared uncompressed size (+1 to detect a
+    // stream that expands past what it declared), defusing a deflate bomb that
+    // would otherwise stream unbounded data to disk (CLAUDE-AV-015).
+    let declared = entry.size();
+    let written = match std::io::copy(&mut entry.by_ref().take(declared + 1), &mut outfile) {
+        Ok(n) => n,
+        Err(e) => {
+            let _ = fs::remove_file(&tmp_path);
+            return Err(format!("Failed to extract entry: {}", e));
+        }
+    };
+    if written > declared {
         let _ = fs::remove_file(&tmp_path);
-        return Err(format!("Failed to extract entry: {}", e));
+        return Err(format!(
+            "Archive entry '{}' expands past its declared size (compression bomb?)",
+            entry_name
+        ));
     }
     drop(outfile);
     fs::rename(&tmp_path, out_path)

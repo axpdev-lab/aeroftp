@@ -1008,7 +1008,13 @@ pub fn import_keystore(
         ) {
             Ok(data) => data,
             Err(_) => {
-                // Legacy fallback: file was exported with derive_key (64 MiB)
+                // Legacy fallback: file was exported with derive_key (64 MiB).
+                // CLAUDE-AV-019: surface the downgrade so it is not silent and a
+                // re-export to the strong KDF can be recommended.
+                log::warn!(
+                    "Keystore import fell back to the legacy 64 MiB Argon2id KDF; \
+                     re-export this backup to upgrade to the 128 MiB KDF"
+                );
                 let key_legacy = crate::crypto::derive_key(password, &export_file.salt)
                     .map_err(KeystoreExportError::Encryption)?;
                 crate::crypto::decrypt_aes_gcm(
@@ -1038,7 +1044,7 @@ pub fn import_keystore(
     let mut payload = parse_export_payload(export_file.version, &payload_json)?;
     drop(payload_json);
     validate_authenticated_metadata(&export_file.metadata, &payload)?;
-    let entries = if sections.vault {
+    let mut entries = if sections.vault {
         std::mem::take(&mut payload.vault_entries)
     } else {
         HashMap::new()
@@ -1135,7 +1141,10 @@ pub fn import_keystore(
     let imported = committed.len() as u32;
     zeroize_staged_entries(&mut staged);
     zeroize_optional_string_map_values(&mut originals);
-    zeroize_string_map_values(&mut payload.vault_entries);
+    // CLAUDE-AV-018: zeroize the decrypted secrets themselves; `payload`'s map
+    // was already drained into `entries` via std::mem::take above, so zeroizing
+    // it would be a no-op.
+    zeroize_string_map_values(&mut entries);
 
     // ====== v2 section restore ======
     // The vault commit above succeeded (or was empty when vault was

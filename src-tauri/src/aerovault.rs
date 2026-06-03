@@ -17,6 +17,52 @@ use zip::ZipWriter;
 
 const META_ENTRY: &str = "__aerovault_meta.json";
 
+/// Per-entry decompressed ceiling for v1 (ZIP) vault reads. Rejects a single
+/// entry that declares (or expands to) more than this, bounding a deflate
+/// decompression bomb (CLAUDE-AV-015).
+const MAX_V1_ENTRY_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+/// Cumulative decompressed ceiling: `read_all_entries` holds every entry in
+/// memory simultaneously, so the total is capped as well (CLAUDE-AV-015).
+const MAX_V1_TOTAL_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+/// Metadata is a small JSON blob; cap its read so a tampered container cannot
+/// inflate it (CLAUDE-AV-015).
+const MAX_V1_META_BYTES: u64 = 16 * 1024 * 1024;
+
+/// Read a ZIP entry into memory bounded by its declared uncompressed size, an
+/// absolute per-entry ceiling, and a running cumulative budget. `declared` is
+/// the central-directory uncompressed size; reading `declared + 1` lets us
+/// detect a stream that expands past what it declared (CLAUDE-AV-015).
+fn read_zip_entry_bounded<R: Read>(
+    entry: R,
+    declared: u64,
+    cumulative: &mut u64,
+    name: &str,
+) -> Result<Vec<u8>, String> {
+    if declared > MAX_V1_ENTRY_BYTES {
+        return Err(format!(
+            "Vault entry '{name}' too large: {declared} bytes (max {MAX_V1_ENTRY_BYTES})"
+        ));
+    }
+    *cumulative = cumulative.saturating_add(declared);
+    if *cumulative > MAX_V1_TOTAL_BYTES {
+        return Err(format!(
+            "Vault total decompressed size exceeds {MAX_V1_TOTAL_BYTES} bytes"
+        ));
+    }
+    let mut data = Vec::with_capacity(declared.min(16 * 1024 * 1024) as usize);
+    entry
+        .take(declared + 1)
+        .read_to_end(&mut data)
+        .map_err(|e| format!("Failed to read entry {name}: {e}"))?;
+    if data.len() as u64 > declared {
+        data.zeroize();
+        return Err(format!(
+            "Vault entry '{name}' is larger than its declared size (compression bomb?)"
+        ));
+    }
+    Ok(data)
+}
+
 #[cfg(unix)]
 fn fsync_parent_dir(path: &std::path::Path) {
     if let Some(parent) = path.parent() {
@@ -108,14 +154,21 @@ pub async fn vault_get_meta(vault_path: String, password: String) -> Result<Aero
     let mut archive =
         zip::ZipArchive::new(file).map_err(|e| format!("Failed to read vault: {}", e))?;
 
-    let mut entry = archive
+    let entry = archive
         .by_name_decrypt(META_ENTRY, pwd.expose_secret().as_bytes())
         .map_err(|e| format!("Failed to read metadata: {}", e))?;
 
-    let mut buf = String::new();
+    // Bound the metadata read so a tampered container cannot inflate it
+    // (CLAUDE-AV-015).
+    let mut raw = Vec::new();
     entry
-        .read_to_string(&mut buf)
+        .take(MAX_V1_META_BYTES + 1)
+        .read_to_end(&mut raw)
         .map_err(|e| format!("Failed to read metadata: {}", e))?;
+    if raw.len() as u64 > MAX_V1_META_BYTES {
+        return Err("Vault metadata is implausibly large".to_string());
+    }
+    let buf = String::from_utf8(raw).map_err(|e| format!("Invalid vault metadata: {}", e))?;
 
     serde_json::from_str(&buf).map_err(|e| format!("Invalid vault metadata: {}", e))
 }
@@ -265,19 +318,17 @@ fn read_all_entries(
         zip::ZipArchive::new(file).map_err(|e| format!("Failed to read vault: {}", e))?;
 
     let mut entries = Vec::new();
+    let mut cumulative: u64 = 0;
     for i in 0..archive.len() {
-        let mut entry = archive
+        let entry = archive
             .by_index_decrypt(i, pwd.expose_secret().as_bytes())
             .map_err(|e| format!("Failed to decrypt entry: {}", e))?;
         let name = entry.name().to_string();
         if name == META_ENTRY {
             continue;
         }
-
-        let mut data = Vec::new();
-        entry
-            .read_to_end(&mut data)
-            .map_err(|e| format!("Failed to read entry {}: {}", name, e))?;
+        let declared = entry.size();
+        let data = read_zip_entry_bounded(entry, declared, &mut cumulative, &name)?;
         entries.push((name, data));
     }
 

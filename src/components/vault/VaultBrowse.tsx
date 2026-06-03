@@ -261,6 +261,10 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                             if (state.remoteLocalPath) {
                                 state.handleCleanupRemote();
                             } else {
+                                // Clear the live password (and other vault state)
+                                // so it cannot pre-fill the next unlock field
+                                // (CLAUDE-AV-022).
+                                state.resetState();
                                 state.setMode('home');
                             }
                         }}

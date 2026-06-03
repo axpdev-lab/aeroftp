@@ -9,6 +9,7 @@
 
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::State;
@@ -90,6 +91,49 @@ fn now_epoch() -> i64 {
 
 const MAX_ENTRIES: i64 = 20;
 
+/// Transient remote-vault working copies live at
+/// `<tmp>/aerovault_remote_<uuid>.aerovault` and are deleted right after use.
+/// Recording them would leak a useless, sensitive path into the unencrypted
+/// history DB, so they are never persisted (CLAUDE-AV-023).
+fn is_ephemeral_temp_vault(vault_path: &str) -> bool {
+    Path::new(vault_path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .map(|name| name.starts_with("aerovault_remote_") && name.ends_with(".aerovault"))
+        .unwrap_or(false)
+}
+
+/// Collapse the WAL back into the main DB so trimmed/cleared rows do not linger
+/// in the side `-wal` file in cleartext (CLAUDE-AV-023). Best-effort.
+fn checkpoint_truncate(conn: &Connection) {
+    let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
+}
+
+/// Restrict the history DB (and its WAL/SHM side files) to the owner so a local
+/// co-tenant cannot enumerate vault locations (CLAUDE-AV-023). Best-effort.
+pub fn harden_db_file(db_path: &Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        for suffix in ["", "-wal", "-shm"] {
+            let p = if suffix.is_empty() {
+                db_path.to_path_buf()
+            } else {
+                let mut s = db_path.as_os_str().to_os_string();
+                s.push(suffix);
+                std::path::PathBuf::from(s)
+            };
+            if p.exists() {
+                let _ = std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o600));
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = db_path;
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Tauri Commands
 // ---------------------------------------------------------------------------
@@ -104,6 +148,11 @@ pub async fn vault_history_save(
     cascade_mode: bool,
     file_count: i64,
 ) -> Result<(), String> {
+    // Never persist transient remote-vault temp copies (CLAUDE-AV-023).
+    if is_ephemeral_temp_vault(&vault_path) {
+        return Ok(());
+    }
+
     let conn = acquire_lock(&state);
     let now = now_epoch();
     let cascade_int: i64 = if cascade_mode { 1 } else { 0 };
@@ -132,6 +181,7 @@ pub async fn vault_history_save(
     )
     .map_err(|e| e.to_string())?;
 
+    checkpoint_truncate(&conn);
     Ok(())
 }
 
@@ -184,6 +234,7 @@ pub async fn vault_history_remove(
         params![vault_path],
     )
     .map_err(|e| e.to_string())?;
+    checkpoint_truncate(&conn);
     Ok(())
 }
 
@@ -192,6 +243,7 @@ pub async fn vault_history_clear(state: State<'_, VaultHistoryDb>) -> Result<(),
     let conn = acquire_lock(&state);
     conn.execute("DELETE FROM recent_vaults", [])
         .map_err(|e| e.to_string())?;
+    checkpoint_truncate(&conn);
     Ok(())
 }
 
@@ -338,5 +390,19 @@ mod tests {
     fn max_entries_constant_matches_documented_cap() {
         // Contract check: the retention cap is a documented invariant.
         assert_eq!(MAX_ENTRIES, 20);
+    }
+
+    #[test]
+    fn ephemeral_remote_temp_vaults_are_not_persisted() {
+        // CLAUDE-AV-023: transient remote working copies must be skipped.
+        assert!(is_ephemeral_temp_vault(
+            "/tmp/aerovault_remote_2f1b-uuid.aerovault"
+        ));
+        assert!(is_ephemeral_temp_vault(
+            "/var/folders/xy/aerovault_remote_abc.aerovault"
+        ));
+        // Real, reopenable local vaults must still be recorded.
+        assert!(!is_ephemeral_temp_vault("/home/user/Documents/work.aerovault"));
+        assert!(!is_ephemeral_temp_vault("/tmp/my_aerovault_remote.aerovault"));
     }
 }

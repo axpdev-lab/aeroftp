@@ -104,11 +104,11 @@ pub async fn vault_v2_upload_remote(
         return Err("Path traversal not allowed".into());
     }
 
-    // Verify local file is in temp directory (defense-in-depth for upload)
+    // Confine the source to an AeroFTP-managed temp vault file so a compromised
+    // renderer cannot exfiltrate an arbitrary readable *.aerovault (e.g. a user
+    // vault outside temp) to the connected remote (CLAUDE-AV-021).
     let path = PathBuf::from(&local_path);
-    if !path.exists() {
-        return Err("Local vault file not found".into());
-    }
+    validate_managed_temp_vault_path(&path)?;
 
     let mut provider_guard = state.provider.lock().await;
     let provider = provider_guard
@@ -121,6 +121,40 @@ pub async fn vault_v2_upload_remote(
         .map_err(|e| format!("Upload failed: {}", e))?;
 
     Ok(())
+}
+
+/// Assert that `path` is an existing, non-symlink, regular AeroFTP-managed temp
+/// vault file confined to the OS temp directory. Shared by the upload and
+/// cleanup commands so both enforce the same confinement (CLAUDE-AV-021).
+fn validate_managed_temp_vault_path(path: &Path) -> Result<PathBuf, String> {
+    let file_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or("Invalid vault file name")?;
+    if !is_managed_temp_vault_filename(file_name) {
+        return Err("Not an AeroFTP-managed temporary vault file".into());
+    }
+
+    let meta = std::fs::symlink_metadata(path)
+        .map_err(|_| "Local vault file not found".to_string())?;
+    if meta.file_type().is_symlink() {
+        return Err("Refusing to operate on a symlinked vault file".into());
+    }
+    if !meta.is_file() {
+        return Err("Local vault path is not a regular file".into());
+    }
+
+    let canonical_path = path
+        .canonicalize()
+        .map_err(|e| format!("Failed to resolve vault path: {}", e))?;
+    let canonical_temp = std::env::temp_dir()
+        .canonicalize()
+        .map_err(|e| format!("Failed to resolve temp directory: {}", e))?;
+    if !canonical_path.starts_with(&canonical_temp) {
+        return Err("Local vault file must be in the temp directory".into());
+    }
+
+    Ok(canonical_path)
 }
 
 /// Clean up a temporary vault file securely.
