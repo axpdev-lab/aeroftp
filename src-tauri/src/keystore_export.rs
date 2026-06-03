@@ -10,6 +10,7 @@ use base64::Engine;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::{Component, Path, PathBuf};
+use zeroize::{Zeroize, Zeroizing};
 
 // File format version:
 //   v1 -- legacy, vault entries only, payload uncompressed
@@ -273,6 +274,24 @@ fn validate_envelope_for_crypto(
         }
     }
     Ok(())
+}
+
+fn zeroize_string_map_values(map: &mut HashMap<String, String>) {
+    for value in map.values_mut() {
+        value.zeroize();
+    }
+}
+
+fn zeroize_optional_string_map_values(map: &mut HashMap<String, Option<String>>) {
+    for value in map.values_mut().flatten() {
+        value.zeroize();
+    }
+}
+
+fn zeroize_staged_entries(entries: &mut Vec<(String, String)>) {
+    for (_, value) in entries {
+        value.zeroize();
+    }
 }
 
 // ============ Error Types ============
@@ -594,25 +613,6 @@ fn snapshot_directory_tree(root: &Path) -> Result<HashMap<String, String>, std::
     Ok(out)
 }
 
-/// Plugin entrypoint extensions that need the execute bit after
-/// restore. AUDIT 2026-05-11 C1: the previous implementation looked
-/// for `rel.starts_with("plugins/")` but the prefix had already been
-/// stripped by the grouping loop, so the check could never match and
-/// every restored plugin script was left at 0o600. The list is
-/// hand-extended from the plugin loader's actual interpreter table.
-#[cfg(unix)]
-const EXECUTABLE_SCRIPT_EXTENSIONS: &[&str] = &[
-    ".sh", ".bash", ".zsh", ".py", ".js", ".mjs", ".rb", ".pl", ".ts",
-];
-
-#[cfg(unix)]
-fn looks_like_executable_script(rel: &str) -> bool {
-    let lower = rel.to_ascii_lowercase();
-    EXECUTABLE_SCRIPT_EXTENSIONS
-        .iter()
-        .any(|ext| lower.ends_with(ext))
-}
-
 fn normalise_backup_relative_path(rel: &str) -> Option<PathBuf> {
     if rel.is_empty()
         || rel.starts_with('/')
@@ -687,18 +687,9 @@ fn ensure_safe_restore_parent(root: &Path, rel: &Path) -> Result<PathBuf, std::i
 /// Those would let a maliciously hand-crafted backup write outside the
 /// target directory at import time.
 ///
-/// `make_scripts_executable` opts the call into the plugin-style
-/// permission model (0o700 on recognised script extensions, 0o600
-/// elsewhere). AUDIT 2026-05-11 C1: previously the plugin/non-plugin
-/// distinction was derived from a `rel.starts_with("plugins/")`
-/// substring that was never present at this layer, so every restored
-/// plugin script silently lost its execute bit and the plugin loader
-/// stopped picking them up after a restore.
-#[cfg_attr(not(unix), allow(unused_variables))]
 fn restore_directory_tree(
     root: &Path,
     files: &HashMap<String, Vec<u8>>,
-    make_scripts_executable: bool,
 ) -> Result<u32, std::io::Error> {
     if files.is_empty() {
         return Ok(0);
@@ -718,12 +709,7 @@ fn restore_directory_tree(
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let mode = if make_scripts_executable && looks_like_executable_script(rel) {
-                0o700
-            } else {
-                0o600
-            };
-            let _ = std::fs::set_permissions(&target, std::fs::Permissions::from_mode(mode));
+            let _ = std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o600));
         }
         written += 1;
     }
@@ -849,14 +835,18 @@ pub fn export_keystore(
     };
 
     // Serialize the full v2 payload to JSON
-    let payload = ExportPayload {
+    let mut payload = ExportPayload {
         authenticated_metadata: Some(metadata.clone()),
         vault_entries: entries,
         sqlite_dumps,
         files: files_blob,
         local_storage,
     };
-    let payload_json = serde_json::to_vec(&payload)?;
+    let payload_json = Zeroizing::new(serde_json::to_vec(&payload)?);
+    zeroize_string_map_values(&mut payload.vault_entries);
+    zeroize_string_map_values(&mut payload.sqlite_dumps);
+    zeroize_string_map_values(&mut payload.files);
+    zeroize_string_map_values(&mut payload.local_storage);
     let raw_len = payload_json.len();
 
     // Compress before encryption (compress-then-encrypt is the standard
@@ -865,8 +855,10 @@ pub fn export_keystore(
     // attacker injecting plaintext and measuring the ciphertext length
     // -- the keystore export has no such channel, the user encrypts
     // their own state for themselves, so the optimisation is free.
-    let compressed_payload = zstd::stream::encode_all(&payload_json[..], ZSTD_COMPRESSION_LEVEL)
-        .map_err(|e| KeystoreExportError::Encryption(format!("zstd compress failed: {e}")))?;
+    let compressed_payload = Zeroizing::new(
+        zstd::stream::encode_all(&payload_json[..], ZSTD_COMPRESSION_LEVEL)
+            .map_err(|e| KeystoreExportError::Encryption(format!("zstd compress failed: {e}")))?,
+    );
     let compressed_len = compressed_payload.len();
     tracing::debug!(
         "Keystore payload compressed: {} -> {} bytes ({:.1}%)",
@@ -1007,42 +999,44 @@ pub fn import_keystore(
     // A2-06: Try strong KDF first (128 MiB, new exports), fall back to legacy (64 MiB) for old files
     let key_strong = crate::crypto::derive_key_strong(password, &export_file.salt)
         .map_err(KeystoreExportError::Encryption)?;
-    let raw_payload = match crate::crypto::decrypt_aes_gcm(
-        &key_strong,
-        &export_file.nonce,
-        &export_file.encrypted_payload.0,
-    ) {
-        Ok(data) => data,
-        Err(_) => {
-            // Legacy fallback: file was exported with derive_key (64 MiB)
-            let key_legacy = crate::crypto::derive_key(password, &export_file.salt)
-                .map_err(KeystoreExportError::Encryption)?;
-            crate::crypto::decrypt_aes_gcm(
-                &key_legacy,
-                &export_file.nonce,
-                &export_file.encrypted_payload.0,
-            )
-            .map_err(|_| KeystoreExportError::InvalidPassword)?
-        }
-    };
+    let raw_payload = Zeroizing::new(
+        match crate::crypto::decrypt_aes_gcm(
+            &key_strong,
+            &export_file.nonce,
+            &export_file.encrypted_payload.0,
+        ) {
+            Ok(data) => data,
+            Err(_) => {
+                // Legacy fallback: file was exported with derive_key (64 MiB)
+                let key_legacy = crate::crypto::derive_key(password, &export_file.salt)
+                    .map_err(KeystoreExportError::Encryption)?;
+                crate::crypto::decrypt_aes_gcm(
+                    &key_legacy,
+                    &export_file.nonce,
+                    &export_file.encrypted_payload.0,
+                )
+                .map_err(|_| KeystoreExportError::InvalidPassword)?
+            }
+        },
+    );
 
     // Decompress if the envelope declares a codec. Missing field /
     // "none" leave the bytes as-is, which is the v1 contract.
     // AUDIT 2026-05-11 H2: bounded decompression to cap zip-bomb risk.
-    let payload_json = match export_file.compression.as_deref() {
-        None | Some("none") | Some("") => raw_payload,
+    let payload_json = Zeroizing::new(match export_file.compression.as_deref() {
+        None | Some("none") | Some("") => raw_payload.to_vec(),
         Some("zstd") => decompress_with_cap(&raw_payload)?,
         Some(other) => {
             return Err(KeystoreExportError::Encryption(format!(
                 "Unknown compression codec: {other}"
             )))
         }
-    };
+    });
 
-    let payload = parse_export_payload(export_file.version, &payload_json)?;
+    let mut payload = parse_export_payload(export_file.version, &payload_json)?;
     validate_authenticated_metadata(&export_file.metadata, &payload)?;
     let entries = if sections.vault {
-        payload.vault_entries
+        std::mem::take(&mut payload.vault_entries)
     } else {
         HashMap::new()
     };
@@ -1136,6 +1130,9 @@ pub fn import_keystore(
     }
 
     let imported = committed.len() as u32;
+    zeroize_staged_entries(&mut staged);
+    zeroize_optional_string_map_values(&mut originals);
+    zeroize_string_map_values(&mut payload.vault_entries);
 
     // ====== v2 section restore ======
     // The vault commit above succeeded (or was empty when vault was
@@ -1245,11 +1242,7 @@ pub fn import_keystore(
             let mut done = 0u32;
             for (dir, map) in grouped {
                 let root = cfg.join(dir);
-                // AUDIT 2026-05-11 C1: plugin scripts need their
-                // execute bit restored; sync_snapshots are pure
-                // data and stay at 0o600.
-                let exec_bit = dir == "plugins";
-                match restore_directory_tree(&root, &map, exec_bit) {
+                match restore_directory_tree(&root, &map) {
                     Ok(n) => {
                         files_restored += n;
                         done += n;
@@ -1610,14 +1603,11 @@ mod tests {
         assert_eq!(got, payload);
     }
 
-    /// AUDIT 2026-05-11 C1: plugin scripts must come back from
-    /// restore with the execute bit set. Previously the
-    /// `rel.starts_with("plugins/")` branch was structurally
-    /// unreachable, leaving every restored script at 0o600 and
-    /// silently breaking the plugin loader.
+    /// Backup restore must not make plugin scripts executable. A restored
+    /// plugin tree is data until the user explicitly consents to install/run it.
     #[cfg(unix)]
     #[test]
-    fn restore_directory_tree_sets_exec_bit_on_plugin_scripts() {
+    fn restore_directory_tree_never_sets_exec_bit_on_plugin_scripts() {
         use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().expect("tempdir");
         let mut files = HashMap::new();
@@ -1629,7 +1619,7 @@ mod tests {
             "echo-helper/manifest.json".to_string(),
             b"{\"name\":\"echo-helper\"}".to_vec(),
         );
-        let n = restore_directory_tree(dir.path(), &files, true).expect("restore");
+        let n = restore_directory_tree(dir.path(), &files).expect("restore");
         assert_eq!(n, 2);
         let run_sh_mode = std::fs::metadata(dir.path().join("echo-helper/run.sh"))
             .unwrap()
@@ -1641,7 +1631,10 @@ mod tests {
             .permissions()
             .mode()
             & 0o777;
-        assert_eq!(run_sh_mode, 0o700, "shell scripts in plugins/ need +x");
+        assert_eq!(
+            run_sh_mode, 0o600,
+            "restored plugin scripts require explicit install consent before +x"
+        );
         assert_eq!(
             manifest_mode, 0o600,
             "non-script files in plugins/ stay at 0o600"
@@ -1662,7 +1655,7 @@ mod tests {
             "snapshot-1/asset.sh".to_string(),
             b"# data, not a script\n".to_vec(),
         );
-        restore_directory_tree(dir.path(), &files, false).expect("restore");
+        restore_directory_tree(dir.path(), &files).expect("restore");
         let mode = std::fs::metadata(dir.path().join("snapshot-1/asset.sh"))
             .unwrap()
             .permissions()
@@ -1681,7 +1674,7 @@ mod tests {
         files.insert("/etc/passwd".to_string(), b"x".to_vec());
         files.insert("C:\\Windows\\System32\\evil.dll".to_string(), b"x".to_vec());
         files.insert("safe/inner.txt".to_string(), b"ok".to_vec());
-        let written = restore_directory_tree(dir.path(), &files, false).expect("restore");
+        let written = restore_directory_tree(dir.path(), &files).expect("restore");
         assert_eq!(written, 1, "only the safe entry should land on disk");
         // The escape candidates must not exist anywhere on or near root.
         assert!(!dir.path().parent().unwrap().join("escape.txt").exists());
@@ -1697,7 +1690,7 @@ mod tests {
         symlink(outside.path(), dir.path().join("linked")).expect("symlink");
         let mut files = HashMap::new();
         files.insert("linked/escape.txt".to_string(), b"x".to_vec());
-        let err = restore_directory_tree(dir.path(), &files, false).expect_err("symlink refused");
+        let err = restore_directory_tree(dir.path(), &files).expect_err("symlink refused");
         assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
         assert!(!outside.path().join("escape.txt").exists());
     }

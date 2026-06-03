@@ -14,12 +14,12 @@
 // v2.0: February 2026
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
-use secrecy::zeroize::Zeroize;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tracing::{info, warn};
+use zeroize::{Zeroize, Zeroizing};
 
 // Cached unlocked vault state: (vault.db path, vault_key)
 //
@@ -86,6 +86,10 @@ pub enum CredentialError {
     MasterNotSet,
     #[error("Password must be at least 8 characters")]
     PasswordTooShort,
+    #[error("This vault has 2FA enabled; a TOTP code is required (set AEROFTP_TOTP_CODE)")]
+    TotpRequired,
+    #[error("Invalid TOTP code")]
+    TotpInvalid,
 }
 
 // ============ Vault File Format (vault.db) ============
@@ -297,15 +301,20 @@ impl VaultKeyFile {
                 nonce,
                 encrypted_passphrase,
             } => {
-                let key = crate::crypto::derive_key_strong(password, salt)
-                    .map_err(CredentialError::Encryption)?;
-                let plaintext = crate::crypto::decrypt_aes_gcm(&key, nonce, encrypted_passphrase)
-                    .map_err(|_| CredentialError::InvalidMasterPassword)?;
+                let key = Zeroizing::new(
+                    crate::crypto::derive_key_strong(password, salt)
+                        .map_err(CredentialError::Encryption)?,
+                );
+                let mut plaintext =
+                    crate::crypto::decrypt_aes_gcm(&key, nonce, encrypted_passphrase)
+                        .map_err(|_| CredentialError::InvalidMasterPassword)?;
                 if plaintext.len() != PASSPHRASE_LEN {
+                    plaintext.zeroize();
                     return Err(CredentialError::InvalidKeyFile);
                 }
                 let mut passphrase = [0u8; PASSPHRASE_LEN];
                 passphrase.copy_from_slice(&plaintext);
+                plaintext.zeroize();
                 Ok(passphrase)
             }
         }
@@ -319,8 +328,10 @@ fn keyring_entry() -> Result<keyring::Entry, CredentialError> {
 
 fn store_passphrase_in_keyring(passphrase: &[u8; PASSPHRASE_LEN]) -> Result<(), CredentialError> {
     let entry = keyring_entry()?;
-    let encoded = BASE64.encode(passphrase);
-    entry.set_password(&encoded).map_err(|e| {
+    let mut encoded = BASE64.encode(passphrase);
+    let result = entry.set_password(&encoded);
+    encoded.zeroize();
+    result.map_err(|e| {
         CredentialError::Encryption(format!(
             "Failed to write vault key to system keyring: {}",
             e
@@ -330,17 +341,27 @@ fn store_passphrase_in_keyring(passphrase: &[u8; PASSPHRASE_LEN]) -> Result<(), 
 
 fn load_passphrase_from_keyring() -> Result<[u8; PASSPHRASE_LEN], CredentialError> {
     let entry = keyring_entry()?;
-    let encoded = entry.get_password().map_err(|e| {
+    let mut encoded = entry.get_password().map_err(|e| {
         CredentialError::Encryption(format!("Vault key missing from system keyring: {}", e))
     })?;
-    let decoded = BASE64
-        .decode(encoded.as_bytes())
-        .map_err(|e| CredentialError::Encryption(format!("Invalid keyring payload: {}", e)))?;
+    let mut decoded = match BASE64.decode(encoded.as_bytes()) {
+        Ok(decoded) => decoded,
+        Err(e) => {
+            encoded.zeroize();
+            return Err(CredentialError::Encryption(format!(
+                "Invalid keyring payload: {}",
+                e
+            )));
+        }
+    };
+    encoded.zeroize();
     if decoded.len() != PASSPHRASE_LEN {
+        decoded.zeroize();
         return Err(CredentialError::InvalidKeyFile);
     }
     let mut passphrase = [0u8; PASSPHRASE_LEN];
     passphrase.copy_from_slice(&decoded);
+    decoded.zeroize();
     Ok(passphrase)
 }
 
@@ -368,6 +389,7 @@ impl Drop for CredentialStore {
 impl CredentialStore {
     // ---- Initialization ----
     pub const INIT_MASTER_PASSWORD_SETUP_REQUIRED: &'static str = "MASTER_PASSWORD_SETUP_REQUIRED";
+    pub const INIT_TOTP_REQUIRED: &'static str = "2FA_REQUIRED";
 
     /// VER-005: File-based lock to prevent concurrent vault creation (CLI+GUI TOCTOU).
     /// Uses `create_new(true)` as an atomic mutex. Stale locks (>30s) are auto-removed.
@@ -470,7 +492,8 @@ impl CredentialStore {
                 }
                 .write()?;
 
-                let vault_key = crate::crypto::derive_from_passphrase(passphrase);
+                let passphrase = Zeroizing::new(*passphrase);
+                let mut vault_key = crate::crypto::derive_from_passphrase(&passphrase[..]);
                 let vault_path = Self::vault_path()?;
 
                 // If vault.db doesn't exist yet (shouldn't happen but be safe), create it
@@ -478,16 +501,26 @@ impl CredentialStore {
                     Self::create_empty_vault(&vault_path, &vault_key)?;
                 }
 
+                if Self::totp_secret_with_key(&vault_path, &vault_key)?
+                    .as_deref()
+                    .is_some_and(|secret| !secret.is_empty())
+                {
+                    vault_key.zeroize();
+                    return Ok(Self::INIT_TOTP_REQUIRED.to_string());
+                }
+
                 Self::open_and_cache(vault_path, vault_key)?;
                 Ok("OK".to_string())
             }
             VaultKeyMode::AutoKeyring => {
-                let passphrase = load_passphrase_from_keyring()?;
-                let vault_key = crate::crypto::derive_from_passphrase(&passphrase);
-                let vault_path = Self::vault_path()?;
+                let (vault_path, mut vault_key) = Self::verify_auto_keyring()?;
 
-                if !vault_path.exists() {
-                    Self::create_empty_vault(&vault_path, &vault_key)?;
+                if Self::totp_secret_with_key(&vault_path, &vault_key)?
+                    .as_deref()
+                    .is_some_and(|secret| !secret.is_empty())
+                {
+                    vault_key.zeroize();
+                    return Ok(Self::INIT_TOTP_REQUIRED.to_string());
                 }
 
                 Self::open_and_cache(vault_path, vault_key)?;
@@ -495,6 +528,21 @@ impl CredentialStore {
             }
             VaultKeyMode::Master { .. } => Ok("MASTER_PASSWORD_REQUIRED".to_string()),
         }
+    }
+
+    /// Verify the default keyring-backed vault and return key material without caching it.
+    pub fn verify_auto_keyring() -> Result<(PathBuf, [u8; 32]), CredentialError> {
+        let mut passphrase = load_passphrase_from_keyring()?;
+        let vault_key = crate::crypto::derive_from_passphrase(&passphrase);
+        passphrase.zeroize();
+        let vault_path = Self::vault_path()?;
+
+        if !vault_path.exists() {
+            Self::create_empty_vault(&vault_path, &vault_key)?;
+        }
+
+        Self::verify_vault_key(&vault_path, &vault_key)?;
+        Ok((vault_path, vault_key))
     }
 
     /// First run: generate random passphrase, store it in keyring, create vault.key + vault.db.
@@ -554,8 +602,10 @@ impl CredentialStore {
         let mut salt_arr = [0u8; 32];
         salt_arr.copy_from_slice(&salt);
 
-        let key = crate::crypto::derive_key_strong(password, &salt)
-            .map_err(CredentialError::Encryption)?;
+        let key = Zeroizing::new(
+            crate::crypto::derive_key_strong(password, &salt)
+                .map_err(CredentialError::Encryption)?,
+        );
 
         let nonce_bytes = crate::crypto::random_bytes(12);
         let mut nonce_arr = [0u8; 12];
@@ -607,16 +657,23 @@ impl CredentialStore {
     }
 
     /// Open vault.db and cache the key in memory
-    fn open_and_cache(vault_path: PathBuf, vault_key: [u8; 32]) -> Result<(), CredentialError> {
+    fn verify_vault_key(vault_path: &Path, vault_key: &[u8; 32]) -> Result<(), CredentialError> {
         // Verify we can read and decrypt the vault
-        let vault = Self::read_vault(&vault_path)?;
-        crate::crypto::decrypt_aes_gcm(&vault_key, &vault.verify_nonce, &vault.verify_data)
+        let vault = Self::read_vault(vault_path)?;
+        crate::crypto::decrypt_aes_gcm(vault_key, &vault.verify_nonce, &vault.verify_data)
             .map_err(|_| CredentialError::InvalidMasterPassword)?;
+        Ok(())
+    }
+
+    /// Open vault.db and cache the key in memory
+    fn open_and_cache(vault_path: PathBuf, mut vault_key: [u8; 32]) -> Result<(), CredentialError> {
+        Self::verify_vault_key(&vault_path, &vault_key)?;
 
         // Cache in static
         if let Ok(mut cache) = VAULT_CACHE.lock() {
             *cache = Some((vault_path, vault_key));
         }
+        vault_key.zeroize();
         info!("Credential vault opened and cached");
         Ok(())
     }
@@ -646,14 +703,49 @@ impl CredentialStore {
 
     // ---- Master Password Management ----
 
-    /// Unlock vault with master password (master mode only).
-    /// Note: For TOTP-aware unlock, use verify_master() + cache_vault() instead.
-    #[allow(dead_code)]
-    pub fn unlock_with_master(password: &str) -> Result<(), CredentialError> {
+    /// Unlock vault with master password (master mode only), enforcing the
+    /// vault's TOTP second factor when one is configured.
+    ///
+    /// This is the headless automation entry point (`mcp/mod.rs` via
+    /// `AEROFTP_MASTER_PASSWORD`, CLI via `--master-password`). It completes
+    /// W1.1: every unlock path routes through the same fail-closed TOTP gate. If
+    /// the vault has a `totp_secret`, a valid `totp_code` (supplied by callers
+    /// from `AEROFTP_TOTP_CODE`) is required before the key is cached; a missing
+    /// or wrong code returns `TotpRequired` / `TotpInvalid` and never unlocks.
+    /// The GUI uses `verify_master()` + `cache_vault()` for the interactive flow.
+    pub fn unlock_with_master(
+        password: &str,
+        totp_code: Option<&str>,
+    ) -> Result<(), CredentialError> {
         let key_file = VaultKeyFile::read()?;
-        let passphrase = key_file.decrypt_passphrase(password)?;
-        let vault_key = Self::derive_vault_key(&passphrase);
+        let passphrase = Zeroizing::new(key_file.decrypt_passphrase(password)?);
+        let mut vault_key = Self::derive_vault_key(&passphrase);
         let vault_path = Self::vault_path()?;
+
+        // W1.1 completion: enforce the vault's TOTP second factor on this
+        // headless path too. When a `totp_secret` exists, a valid code (from
+        // AEROFTP_TOTP_CODE, plumbed by the MCP/CLI callers) is required before
+        // the key is cached. Fail closed: no code or a bad code never unlocks.
+        if let Some(secret) = Self::totp_secret_with_key(&vault_path, &vault_key)?
+            .as_deref()
+            .filter(|s| !s.is_empty())
+        {
+            let code = match totp_code.map(str::trim).filter(|c| !c.is_empty()) {
+                Some(c) => c,
+                None => {
+                    vault_key.zeroize();
+                    return Err(CredentialError::TotpRequired);
+                }
+            };
+            match crate::totp::verify_code_against_secret(secret, code) {
+                Ok(true) => {}
+                _ => {
+                    vault_key.zeroize();
+                    return Err(CredentialError::TotpInvalid);
+                }
+            }
+        }
+
         Self::open_and_cache(vault_path, vault_key)
     }
 
@@ -661,25 +753,31 @@ impl CredentialStore {
     /// Used by unlock_credential_store to defer caching until after TOTP verification.
     pub fn verify_master(password: &str) -> Result<(PathBuf, [u8; 32]), CredentialError> {
         let key_file = VaultKeyFile::read()?;
-        let passphrase = key_file.decrypt_passphrase(password)?;
+        let passphrase = Zeroizing::new(key_file.decrypt_passphrase(password)?);
         let vault_key = Self::derive_vault_key(&passphrase);
         let vault_path = Self::vault_path()?;
 
-        // Verify we can read and decrypt the vault (same as open_and_cache)
-        let vault = Self::read_vault(&vault_path)?;
-        crate::crypto::decrypt_aes_gcm(&vault_key, &vault.verify_nonce, &vault.verify_data)
-            .map_err(|_| CredentialError::InvalidMasterPassword)?;
+        Self::verify_vault_key(&vault_path, &vault_key)?;
 
         Ok((vault_path, vault_key))
     }
 
     /// A2-08: Cache previously verified vault key material.
     /// Called after TOTP verification succeeds.
-    pub(crate) fn cache_vault(vault_path: PathBuf, vault_key: [u8; 32]) {
+    pub(crate) fn cache_vault(vault_path: PathBuf, mut vault_key: [u8; 32]) {
         if let Ok(mut cache) = VAULT_CACHE.lock() {
             *cache = Some((vault_path, vault_key));
         }
+        vault_key.zeroize();
         info!("Credential vault opened and cached");
+    }
+
+    /// Read a vault secret with verified key material without opening the global cache.
+    pub(crate) fn totp_secret_with_key(
+        vault_path: &Path,
+        vault_key: &[u8; 32],
+    ) -> Result<Option<Zeroizing<String>>, CredentialError> {
+        Self::secret_with_key(vault_path, vault_key, "totp_secret")
     }
 
     /// Derive a domain-separated wrapping key for per-user partition metadata.
@@ -705,26 +803,29 @@ impl CredentialStore {
         }
 
         let key_file = VaultKeyFile::read()?;
-        let passphrase = match &key_file.mode {
+        let passphrase = Zeroizing::new(match &key_file.mode {
             VaultKeyMode::LegacyAuto { passphrase } => *passphrase,
             VaultKeyMode::AutoKeyring => load_passphrase_from_keyring()?,
             VaultKeyMode::Master { .. } => return Err(CredentialError::MasterAlreadySet),
-        };
+        });
 
         // Encrypt passphrase with Argon2id(password) + AES-GCM
         let salt = crate::crypto::random_bytes(32);
         let mut salt_arr = [0u8; 32];
         salt_arr.copy_from_slice(&salt);
 
-        let key = crate::crypto::derive_key_strong(password, &salt)
-            .map_err(CredentialError::Encryption)?;
+        let key = Zeroizing::new(
+            crate::crypto::derive_key_strong(password, &salt)
+                .map_err(CredentialError::Encryption)?,
+        );
 
         let nonce_bytes = crate::crypto::random_bytes(12);
         let mut nonce_arr = [0u8; 12];
         nonce_arr.copy_from_slice(&nonce_bytes);
 
-        let encrypted_passphrase = crate::crypto::encrypt_aes_gcm(&key, &nonce_bytes, &passphrase)
-            .map_err(CredentialError::Encryption)?;
+        let encrypted_passphrase =
+            crate::crypto::encrypt_aes_gcm(&key, &nonce_bytes, &passphrase[..])
+                .map_err(CredentialError::Encryption)?;
 
         let new_key_file = VaultKeyFile {
             mode: VaultKeyMode::Master {
@@ -743,12 +844,12 @@ impl CredentialStore {
     /// Disable master password: decrypt passphrase and store in cleartext
     pub fn disable_master_password(password: &str) -> Result<(), CredentialError> {
         let key_file = VaultKeyFile::read()?;
-        let passphrase = match &key_file.mode {
+        let passphrase = Zeroizing::new(match &key_file.mode {
             VaultKeyMode::Master { .. } => key_file.decrypt_passphrase(password)?,
             VaultKeyMode::LegacyAuto { .. } | VaultKeyMode::AutoKeyring => {
                 return Err(CredentialError::MasterNotSet)
             }
-        };
+        });
 
         store_passphrase_in_keyring(&passphrase)?;
 
@@ -771,22 +872,25 @@ impl CredentialStore {
         }
 
         let key_file = VaultKeyFile::read()?;
-        let passphrase = key_file.decrypt_passphrase(old_password)?;
+        let passphrase = Zeroizing::new(key_file.decrypt_passphrase(old_password)?);
 
         // Re-encrypt with new password
         let salt = crate::crypto::random_bytes(32);
         let mut salt_arr = [0u8; 32];
         salt_arr.copy_from_slice(&salt);
 
-        let key = crate::crypto::derive_key_strong(new_password, &salt)
-            .map_err(CredentialError::Encryption)?;
+        let key = Zeroizing::new(
+            crate::crypto::derive_key_strong(new_password, &salt)
+                .map_err(CredentialError::Encryption)?,
+        );
 
         let nonce_bytes = crate::crypto::random_bytes(12);
         let mut nonce_arr = [0u8; 12];
         nonce_arr.copy_from_slice(&nonce_bytes);
 
-        let encrypted_passphrase = crate::crypto::encrypt_aes_gcm(&key, &nonce_bytes, &passphrase)
-            .map_err(CredentialError::Encryption)?;
+        let encrypted_passphrase =
+            crate::crypto::encrypt_aes_gcm(&key, &nonce_bytes, &passphrase[..])
+                .map_err(CredentialError::Encryption)?;
 
         let new_key_file = VaultKeyFile {
             mode: VaultKeyMode::Master {
@@ -861,15 +965,30 @@ impl CredentialStore {
     }
 
     /// Retrieve a credential
+    pub fn get_secret(&self, account: &str) -> Result<Zeroizing<String>, CredentialError> {
+        Self::secret_with_key(&self.vault_path, &self.vault_key, account)?
+            .ok_or_else(|| CredentialError::NotFound(account.to_string()))
+    }
+
     pub fn get(&self, account: &str) -> Result<String, CredentialError> {
-        let vault = Self::read_vault(&self.vault_path)?;
-        let entry = vault
-            .entries
-            .get(account)
-            .ok_or_else(|| CredentialError::NotFound(account.to_string()))?;
-        let plaintext = crate::crypto::decrypt_aes_gcm(&self.vault_key, &entry.nonce, &entry.data)
+        self.get_secret(account).map(|secret| secret.to_string())
+    }
+
+    fn secret_with_key(
+        vault_path: &Path,
+        vault_key: &[u8; 32],
+        account: &str,
+    ) -> Result<Option<Zeroizing<String>>, CredentialError> {
+        let vault = Self::read_vault(vault_path)?;
+        let entry = vault.entries.get(account);
+        let Some(entry) = entry else {
+            return Ok(None);
+        };
+        let plaintext = crate::crypto::decrypt_aes_gcm(vault_key, &entry.nonce, &entry.data)
             .map_err(CredentialError::Encryption)?;
-        String::from_utf8(plaintext).map_err(|e| CredentialError::Encryption(e.to_string()))
+        let secret =
+            String::from_utf8(plaintext).map_err(|e| CredentialError::Encryption(e.to_string()))?;
+        Ok(Some(Zeroizing::new(secret)))
     }
 
     /// Delete a credential

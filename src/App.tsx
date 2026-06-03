@@ -530,6 +530,7 @@ const App: React.FC = () => {
   // === Master Password / App Lock State ===
   const [isAppLocked, setIsAppLocked] = useState(false);
   const [masterPasswordSet, setMasterPasswordSet] = useState(false);
+  const [autoKeyringTotpRequired, setAutoKeyringTotpRequired] = useState(false);
   const [showMasterPasswordSetup, setShowMasterPasswordSetup] = useState(false);
   const [masterPasswordBootstrapMode, setMasterPasswordBootstrapMode] = useState(false);
   const [vaultBootComplete, setVaultBootComplete] = useState(false);
@@ -1328,10 +1329,17 @@ const App: React.FC = () => {
         if (result === 'MASTER_PASSWORD_REQUIRED') {
           setIsAppLocked(true);
           setMasterPasswordSet(true);
+          setAutoKeyringTotpRequired(false);
+        } else if (result === '2FA_REQUIRED') {
+          setIsAppLocked(true);
+          setMasterPasswordSet(false);
+          setAutoKeyringTotpRequired(true);
         } else if (result === 'MASTER_PASSWORD_SETUP_REQUIRED') {
           setMasterPasswordBootstrapMode(true);
           setShowMasterPasswordSetup(true);
+          setAutoKeyringTotpRequired(false);
         } else {
+          setAutoKeyringTotpRequired(false);
           // Check if master mode is active (for lock button state)
           const status = await invoke<{ master_mode: boolean; is_locked: boolean; timeout_seconds: number }>('get_credential_store_status');
           setMasterPasswordSet(status.master_mode);
@@ -11317,8 +11325,15 @@ interface UpdateVerificationInfo {
   return (
     <>
       {/* Lock Screen - shown when app is locked with master password */}
-      {isAppLocked && masterPasswordSet && (
-        <LockScreen onUnlock={() => { setIsAppLocked(false); setServersRefreshKey(k => k + 1); }} />
+      {isAppLocked && (masterPasswordSet || autoKeyringTotpRequired) && (
+        <LockScreen
+          mode={autoKeyringTotpRequired ? 'totp' : 'master'}
+          onUnlock={() => {
+            setIsAppLocked(false);
+            setAutoKeyringTotpRequired(false);
+            setServersRefreshKey(k => k + 1);
+          }}
+        />
       )}
 
       {/* Account Lock Screen (L2 multi-user picker) - shown after vault is

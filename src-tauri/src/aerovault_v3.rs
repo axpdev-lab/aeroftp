@@ -624,6 +624,26 @@ fn normalize_leaf_name(name: &str) -> Result<String, String> {
     Ok(trimmed.to_string())
 }
 
+fn validate_manifest_paths(manifest: &VaultManifestV3) -> Result<(), String> {
+    let mut seen = HashSet::new();
+    for entry in &manifest.entries {
+        let normalized = normalize_vault_relative_path(&entry.path)?;
+        if normalized != entry.path {
+            return Err(format!(
+                "Invalid non-canonical AeroVault path: {}",
+                entry.path
+            ));
+        }
+        if !seen.insert(entry.path.as_str()) {
+            return Err(format!(
+                "Duplicate AeroVault path in manifest: {}",
+                entry.path
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn join_vault_path(parent: &str, name: &str) -> String {
     if parent.is_empty() {
         name.to_string()
@@ -1417,6 +1437,7 @@ fn open_vault(path: impl Into<PathBuf>, password: &str) -> Result<OpenVaultV3, S
             manifest.format
         ));
     }
+    validate_manifest_paths(&manifest)?;
 
     let extension_json = read_capped(
         &mut file,
@@ -1533,11 +1554,15 @@ fn extract_entry(
             descendants.sort_by(|a, b| a.path.cmp(&b.path));
 
             for entry in descendants {
+                normalize_vault_relative_path(&entry.path)?;
                 let rel = if entry.path == entry_name {
                     String::new()
                 } else {
                     entry.path[entry_name.len() + 1..].to_string()
                 };
+                if !rel.is_empty() {
+                    normalize_vault_relative_path(&rel)?;
+                }
                 let child_output = if rel.is_empty() {
                     output_root.clone()
                 } else {

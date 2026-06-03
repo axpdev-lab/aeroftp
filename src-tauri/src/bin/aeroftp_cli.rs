@@ -7052,7 +7052,10 @@ fn open_vault(cli: &Cli) -> Result<ftp_client_gui_lib::credential_store::Credent
                 }
                 // VER-006: Clone to allow zeroization after use (original in Cli struct cannot be mutated)
                 let mut mp_copy = mp.clone();
-                let result = CredentialStore::unlock_with_master(&mp_copy)
+                // If the vault has 2FA, require a TOTP code from AEROFTP_TOTP_CODE.
+                let totp_env = std::env::var("AEROFTP_TOTP_CODE").ok();
+                let totp = totp_env.as_deref().map(str::trim).filter(|c| !c.is_empty());
+                let result = CredentialStore::unlock_with_master(&mp_copy, totp)
                     .map_err(|e| format!("Failed to unlock vault: {}", e));
                 mp_copy.zeroize();
                 result?;
@@ -7062,7 +7065,9 @@ fn open_vault(cli: &Cli) -> Result<ftp_client_gui_lib::credential_store::Credent
                 let _ = io::stderr().flush();
                 let mut mp = rpassword::read_password()
                     .map_err(|e| format!("Failed to read master password: {}", e))?;
-                let result = CredentialStore::unlock_with_master(mp.trim())
+                let totp_env = std::env::var("AEROFTP_TOTP_CODE").ok();
+                let totp = totp_env.as_deref().map(str::trim).filter(|c| !c.is_empty());
+                let result = CredentialStore::unlock_with_master(mp.trim(), totp)
                     .map_err(|e| format!("Failed to unlock vault: {}", e));
                 mp.zeroize();
                 result?;
