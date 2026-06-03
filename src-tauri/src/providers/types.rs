@@ -741,6 +741,15 @@ pub struct S3Config {
     /// Requested credential lifetime in seconds (900..=43200). `None` lets AWS
     /// apply the role's default. Only meaningful when `role_arn` is set.
     pub role_duration_seconds: Option<u32>,
+    /// Serial number / ARN of the MFA device required by the role's trust
+    /// policy. Persisted (it is an identifier, not a secret). Only meaningful
+    /// when `role_arn` is set.
+    pub role_mfa_serial: Option<String>,
+    /// One-time MFA token code for the FIRST `AssumeRole` only. Supplied at
+    /// connect time and never persisted: an MFA TOTP code cannot be replayed,
+    /// so a later refresh has no fresh code and surfaces a reconnect error
+    /// instead. Only meaningful when `role_mfa_serial` is set.
+    pub role_mfa_token_code: Option<secrecy::SecretString>,
     /// Bucket name
     pub bucket: String,
     /// Path prefix within bucket
@@ -859,6 +868,15 @@ impl S3Config {
         let role_duration_seconds = trimmed_extra("role_duration_seconds")
             .and_then(|s| s.parse::<u32>().ok())
             .filter(|d| (900..=43_200).contains(d));
+        let role_mfa_serial = trimmed_extra("role_mfa_serial");
+        // One-time MFA code: wrapped in SecretString, never persisted by the
+        // GUI (stripped before save, mirroring the Filen 2FA code path).
+        let role_mfa_token_code = config
+            .extra
+            .get("role_mfa_token_code")
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .map(|s| secrecy::SecretString::from(s.to_string()));
 
         Ok(Self {
             endpoint,
@@ -872,6 +890,8 @@ impl S3Config {
             role_external_id,
             role_session_name,
             role_duration_seconds,
+            role_mfa_serial,
+            role_mfa_token_code,
             bucket,
             prefix: config.initial_path.clone(),
             path_style,
@@ -2053,5 +2073,41 @@ mod s3_config_assume_role_tests {
         let cfg = s3_cfg(extra);
         assert!(cfg.role_arn.is_none());
         assert!(cfg.role_external_id.is_none());
+    }
+
+    #[test]
+    fn mfa_fields_parsed_from_extra() {
+        let mut extra = std::collections::HashMap::new();
+        extra.insert("bucket".to_string(), "data".to_string());
+        extra.insert(
+            "role_arn".to_string(),
+            "arn:aws:iam::123456789012:role/Demo".to_string(),
+        );
+        extra.insert(
+            "role_mfa_serial".to_string(),
+            "arn:aws:iam::123456789012:mfa/user".to_string(),
+        );
+        extra.insert("role_mfa_token_code".to_string(), "654321".to_string());
+        let cfg = s3_cfg(extra);
+        assert_eq!(
+            cfg.role_mfa_serial.as_deref(),
+            Some("arn:aws:iam::123456789012:mfa/user")
+        );
+        // The one-time code is wrapped in SecretString (zeroized on drop).
+        assert_eq!(
+            cfg.role_mfa_token_code.as_ref().map(|s| s.expose_secret()),
+            Some("654321")
+        );
+    }
+
+    #[test]
+    fn blank_mfa_fields_are_treated_as_absent() {
+        let mut extra = std::collections::HashMap::new();
+        extra.insert("bucket".to_string(), "data".to_string());
+        extra.insert("role_mfa_serial".to_string(), "   ".to_string());
+        extra.insert("role_mfa_token_code".to_string(), "".to_string());
+        let cfg = s3_cfg(extra);
+        assert!(cfg.role_mfa_serial.is_none());
+        assert!(cfg.role_mfa_token_code.is_none());
     }
 }

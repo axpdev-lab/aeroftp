@@ -20,6 +20,7 @@ use quick_xml::events::Event;
 use quick_xml::Reader;
 use secrecy::{ExposeSecret, SecretString};
 use sha2::{Digest, Sha256};
+use zeroize::Zeroize;
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -97,6 +98,23 @@ fn validate_sts_region(region: &str) -> Result<(), ProviderError> {
         return Err(ProviderError::InvalidConfig(format!(
             "STS AssumeRole: invalid AWS region '{region}' \
              (only letters, digits and hyphens are allowed)."
+        )));
+    }
+    Ok(())
+}
+
+/// Validate `RoleSessionName` against the STS-documented pattern
+/// `[\w+=,.@-]{2,64}` before the request, so an obviously malformed value fails
+/// locally with a clear message instead of an opaque STS `ValidationError`.
+fn validate_role_session_name(name: &str) -> Result<(), ProviderError> {
+    let len_ok = (2..=64).contains(&name.len());
+    let chars_ok = name.bytes().all(|b| {
+        b.is_ascii_alphanumeric() || matches!(b, b'_' | b'+' | b'=' | b',' | b'.' | b'@' | b'-')
+    });
+    if !len_ok || !chars_ok {
+        return Err(ProviderError::InvalidConfig(format!(
+            "STS AssumeRole: invalid RoleSessionName '{name}' \
+             (allowed characters: letters, digits and _+=,.@- ; length 2..=64)."
         )));
     }
     Ok(())
@@ -249,26 +267,22 @@ fn sign_assume_role(req: &AssumeRoleRequest<'_>, now: DateTime<Utc>) -> SignedSt
     }
 }
 
-/// Exchange long-term base credentials for temporary credentials via STS
-/// `AssumeRole`.
-///
-/// `client` is reused from the S3 provider so TLS/proxy/timeout settings are
-/// shared. Errors are mapped onto [`ProviderError`]: STS deny/auth failures to
-/// [`ProviderError::AuthenticationFailed`], malformed responses to
-/// [`ProviderError::ParseError`], transport faults to
-/// [`ProviderError::NetworkError`].
-pub async fn assume_role(
+/// Raw result of one signed STS round-trip, kept unparsed so the caller can
+/// decide whether to retry (clock skew) before mapping to a `ProviderError`.
+struct StsResponse {
+    status: reqwest::StatusCode,
+    /// `Date` response header (RFC 2822), used to correct a local clock skew.
+    server_date: Option<DateTime<Utc>>,
+    body: String,
+}
+
+/// Sign and send one `AssumeRole` POST at the given clock instant.
+async fn send_assume_role(
     client: &reqwest::Client,
     req: &AssumeRoleRequest<'_>,
-) -> Result<TempCredentials, ProviderError> {
-    validate_sts_region(req.region)?;
-    if req.role_arn.trim().is_empty() {
-        return Err(ProviderError::InvalidConfig(
-            "STS AssumeRole requires a Role ARN.".to_string(),
-        ));
-    }
-
-    let signed = sign_assume_role(req, Utc::now());
+    now: DateTime<Utc>,
+) -> Result<StsResponse, ProviderError> {
+    let signed = sign_assume_role(req, now);
 
     let mut request = client
         .post(&signed.url)
@@ -288,42 +302,112 @@ pub async fn assume_role(
         .map_err(|e| ProviderError::NetworkError(format!("STS AssumeRole request failed: {e}")))?;
 
     let status = response.status();
+    let server_date = response
+        .headers()
+        .get("date")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| DateTime::parse_from_rfc2822(s).ok())
+        .map(|dt| dt.with_timezone(&Utc));
     let body = response
         .text()
         .await
         .map_err(|e| ProviderError::NetworkError(format!("STS response read failed: {e}")))?;
 
-    if !status.is_success() {
-        let (code, message) = parse_sts_error(&body);
-        let detail = match (code.as_deref(), message.as_deref()) {
-            (Some(c), Some(m)) => format!("STS AssumeRole denied: {c}: {m}"),
-            (Some(c), None) => format!("STS AssumeRole denied: {c}"),
-            (None, Some(m)) => format!("STS AssumeRole denied: {m}"),
-            (None, None) => format!("STS AssumeRole failed with HTTP {}", status.as_u16()),
-        };
-        // Access/role/MFA problems are authentication failures; anything else
-        // (throttling, service faults) is a server error.
-        let is_auth = code
-            .as_deref()
-            .map(|c| {
-                let c = c.to_ascii_lowercase();
-                c.contains("accessdenied")
-                    || c.contains("invalidclienttoken")
-                    || c.contains("signature")
-                    || c.contains("expiredtoken")
-                    || c.contains("mfa")
-                    || c.contains("validationerror")
-                    || c.contains("malformedpolicy")
-            })
-            .unwrap_or(status.as_u16() == 403);
-        return Err(if is_auth {
-            ProviderError::AuthenticationFailed(detail)
-        } else {
-            ProviderError::ServerError(detail)
-        });
+    Ok(StsResponse {
+        status,
+        server_date,
+        body,
+    })
+}
+
+/// True when an STS failure looks like a clock-skew / stale-signature problem
+/// that a single retry with the server's own clock can fix.
+fn is_clock_skew_error(body: &str) -> bool {
+    let (code, message) = parse_sts_error(body);
+    let hay = format!("{} {}", code.unwrap_or_default(), message.unwrap_or_default())
+        .to_ascii_lowercase();
+    hay.contains("requesttimetooskewed")
+        || hay.contains("signaturedoesnotmatch")
+        || hay.contains("skew")
+}
+
+/// Map a non-success STS response onto the right `ProviderError`. Access / role
+/// / MFA problems are authentication failures; anything else (throttling,
+/// service faults) is a server error.
+fn map_sts_error(status: reqwest::StatusCode, body: &str) -> ProviderError {
+    let (code, message) = parse_sts_error(body);
+    let detail = match (code.as_deref(), message.as_deref()) {
+        (Some(c), Some(m)) => format!("STS AssumeRole denied: {c}: {m}"),
+        (Some(c), None) => format!("STS AssumeRole denied: {c}"),
+        (None, Some(m)) => format!("STS AssumeRole denied: {m}"),
+        (None, None) => format!("STS AssumeRole failed with HTTP {}", status.as_u16()),
+    };
+    let is_auth = code
+        .as_deref()
+        .map(|c| {
+            let c = c.to_ascii_lowercase();
+            c.contains("accessdenied")
+                || c.contains("invalidclienttoken")
+                || c.contains("signature")
+                || c.contains("expiredtoken")
+                || c.contains("mfa")
+                || c.contains("validationerror")
+                || c.contains("malformedpolicy")
+        })
+        .unwrap_or(status.as_u16() == 403);
+    if is_auth {
+        ProviderError::AuthenticationFailed(detail)
+    } else {
+        ProviderError::ServerError(detail)
+    }
+}
+
+/// Exchange long-term base credentials for temporary credentials via STS
+/// `AssumeRole`, signing at clock instant `now`.
+///
+/// `now` is supplied by the caller (the S3 provider passes its skew-adjusted
+/// clock) so the credential plane uses the same time source as the data plane.
+/// If the first attempt fails with a clock-skew / stale-signature error and STS
+/// returned its own `Date`, the request is retried once with the server clock,
+/// mirroring the data-plane self-correction (issue #301, M1).
+///
+/// `client` is reused from the S3 provider so TLS/proxy/timeout settings are
+/// shared. Errors are mapped onto [`ProviderError`]: STS deny/auth failures to
+/// [`ProviderError::AuthenticationFailed`], malformed responses to
+/// [`ProviderError::ParseError`], transport faults to
+/// [`ProviderError::NetworkError`].
+pub async fn assume_role(
+    client: &reqwest::Client,
+    req: &AssumeRoleRequest<'_>,
+    now: DateTime<Utc>,
+) -> Result<TempCredentials, ProviderError> {
+    validate_sts_region(req.region)?;
+    if req.role_arn.trim().is_empty() {
+        return Err(ProviderError::InvalidConfig(
+            "STS AssumeRole requires a Role ARN.".to_string(),
+        ));
+    }
+    validate_role_session_name(req.role_session_name)?;
+
+    let mut attempt = send_assume_role(client, req, now).await?;
+
+    // Single retry with STS's own clock when the failure smells of clock skew.
+    if !attempt.status.is_success() {
+        if let (true, Some(server_time)) = (is_clock_skew_error(&attempt.body), attempt.server_date)
+        {
+            attempt = send_assume_role(client, req, server_time).await?;
+        }
     }
 
-    parse_assume_role_response(&body)
+    if !attempt.status.is_success() {
+        return Err(map_sts_error(attempt.status, &attempt.body));
+    }
+
+    // Parse, then scrub the raw response: it carries the secret access key and
+    // session token in cleartext and `String` is not zeroized on drop (L1).
+    let creds = parse_assume_role_response(&attempt.body);
+    attempt.body.zeroize();
+    creds
 }
 
 /// Extract `Code`/`Message` from an STS `ErrorResponse` body, if present.
@@ -667,5 +751,46 @@ mod tests {
             message.as_deref(),
             Some("User is not authorized to perform sts:AssumeRole")
         );
+    }
+
+    #[test]
+    fn role_session_name_validation() {
+        // Default and well-formed names pass.
+        assert!(validate_role_session_name("aeroftp-session").is_ok());
+        assert!(validate_role_session_name("Team_Sync+1=a,b.c@d").is_ok());
+        assert!(validate_role_session_name("ab").is_ok());
+        // Too short / empty / too long / illegal chars are rejected locally.
+        assert!(validate_role_session_name("a").is_err());
+        assert!(validate_role_session_name("").is_err());
+        assert!(validate_role_session_name(&"x".repeat(65)).is_err());
+        assert!(validate_role_session_name("has space").is_err());
+        assert!(validate_role_session_name("has/slash").is_err());
+    }
+
+    #[test]
+    fn clock_skew_errors_are_detected_for_retry() {
+        let skewed = r#"<ErrorResponse><Error><Code>RequestTimeTooSkewed</Code>
+            <Message>The difference between the request time and the current time is too large.</Message>
+            </Error></ErrorResponse>"#;
+        assert!(is_clock_skew_error(skewed));
+        let sig = r#"<ErrorResponse><Error><Code>SignatureDoesNotMatch</Code>
+            <Message>Signature expired</Message></Error></ErrorResponse>"#;
+        assert!(is_clock_skew_error(sig));
+        // A genuine authorization failure must NOT trigger a clock retry.
+        let denied = r#"<ErrorResponse><Error><Code>AccessDenied</Code>
+            <Message>User is not authorized to perform sts:AssumeRole</Message>
+            </Error></ErrorResponse>"#;
+        assert!(!is_clock_skew_error(denied));
+    }
+
+    #[test]
+    fn mfa_pair_is_signed_into_canonical_request() {
+        let secret = SecretString::from("secret".to_string());
+        let mut req = base_req("us-east-1", "AKID", &secret, "arn:role", "sess");
+        req.mfa_serial = Some("arn:aws:iam::123456789012:mfa/user");
+        req.mfa_token_code = Some("654321");
+        let body = build_assume_role_body(&req);
+        assert!(body.contains("SerialNumber=arn%3Aaws%3Aiam%3A%3A123456789012%3Amfa%2Fuser"));
+        assert!(body.contains("TokenCode=654321"));
     }
 }

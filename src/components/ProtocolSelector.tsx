@@ -709,6 +709,8 @@ interface ProtocolFieldsProps {
         roleExternalId?: string;
         roleSessionName?: string;
         roleDurationSeconds?: number;
+        roleMfaSerial?: string;
+        roleMfaTokenCode?: string;
         // SFTP-specific
         private_key_path?: string;
         key_passphrase?: string;
@@ -1045,6 +1047,40 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                                         />
                                     </div>
                                 </div>
+                                <div>
+                                    <label className="block text-sm font-medium mb-1.5">
+                                        {t('protocol.s3RoleMfaSerial')}
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={options.roleMfaSerial || ''}
+                                        onChange={(e) => onChange({ ...options, roleMfaSerial: e.target.value })}
+                                        disabled={disabled}
+                                        autoComplete="off"
+                                        spellCheck={false}
+                                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-mono"
+                                        placeholder={t('protocol.s3RoleMfaSerialPlaceholder')}
+                                    />
+                                </div>
+                                {(options.roleMfaSerial || '').trim() !== '' && (
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1.5">
+                                            {t('protocol.s3RoleMfaTokenCode')}
+                                        </label>
+                                        <input
+                                            type="text"
+                                            inputMode="numeric"
+                                            value={options.roleMfaTokenCode || ''}
+                                            onChange={(e) => onChange({ ...options, roleMfaTokenCode: e.target.value || undefined })}
+                                            disabled={disabled}
+                                            autoComplete="off"
+                                            spellCheck={false}
+                                            className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-mono"
+                                            placeholder={t('protocol.s3RoleMfaTokenCodePlaceholder')}
+                                        />
+                                        <p className="text-xs text-gray-500 mt-1">{t('protocol.s3RoleMfaTokenCodeHint')}</p>
+                                    </div>
+                                )}
                             </>
                         )}
                     </div>

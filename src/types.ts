@@ -276,6 +276,8 @@ export interface ProviderOptions {
   roleExternalId?: string; // AWS STS AssumeRole: ExternalId for cross-account protection
   roleSessionName?: string; // AWS STS AssumeRole: RoleSessionName audit label (default aeroftp-session)
   roleDurationSeconds?: number; // AWS STS AssumeRole: requested credential lifetime in seconds (900-43200)
+  roleMfaSerial?: string; // AWS STS AssumeRole: MFA device serial/ARN (persisted identifier), issue #301
+  roleMfaTokenCode?: string; // AWS STS AssumeRole: one-time MFA token code (single-use, NOT persisted), issue #301
 
   // WebDAV-specific
   anonymous?: boolean; // Skip auth headers for local WebDAV bridges

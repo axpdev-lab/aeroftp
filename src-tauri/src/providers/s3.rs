@@ -486,6 +486,44 @@ impl S3Provider {
             .as_deref()
             .filter(|s| !s.is_empty())
             .unwrap_or("aeroftp-session");
+
+        // MFA (issue #301). An MFA-protected AssumeRole consumes a one-time
+        // TOTP code that cannot be replayed, so it works only for the FIRST
+        // acquisition. A later refresh (temp credentials already present and
+        // now near expiry) has no fresh code: surface an explicit reconnect
+        // error instead of replaying a stale code into a guaranteed rejection.
+        let mfa_serial = self
+            .config
+            .role_mfa_serial
+            .as_deref()
+            .filter(|s| !s.is_empty());
+        if mfa_serial.is_some() {
+            let is_initial_acquire = self
+                .temp_credentials
+                .read()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .is_none();
+            if !is_initial_acquire {
+                return Err(ProviderError::AuthenticationFailed(
+                    "MFA-protected AssumeRole session expired. \
+                     Reconnect and enter a new MFA token code."
+                        .to_string(),
+                ));
+            }
+        }
+        let mfa_token_code = self
+            .config
+            .role_mfa_token_code
+            .as_ref()
+            .map(|c| c.expose_secret().to_string());
+        if mfa_serial.is_some() && mfa_token_code.as_deref().filter(|c| !c.is_empty()).is_none() {
+            return Err(ProviderError::AuthenticationFailed(
+                "This role requires MFA but no MFA token code was provided. \
+                 Reconnect and enter your MFA code."
+                    .to_string(),
+            ));
+        }
+
         let req = sts::AssumeRoleRequest {
             region: &self.config.region,
             access_key_id: &self.config.access_key_id,
@@ -494,14 +532,13 @@ impl S3Provider {
             role_session_name: session_name,
             duration_seconds: self.config.role_duration_seconds,
             external_id: self.config.role_external_id.as_deref(),
-            // MFA (serial + one-time token code) is a future follow-up: the
-            // token is interactive and never persisted, so it needs a
-            // connect-time prompt the config layer does not carry yet.
-            mfa_serial: None,
-            mfa_token_code: None,
+            mfa_serial,
+            mfa_token_code: mfa_token_code.as_deref(),
             base_session_token: self.config.session_token.as_ref(),
         };
-        let creds = sts::assume_role(&self.client, &req).await?;
+        // Sign the STS request with the same skew-adjusted clock as the data
+        // plane (issue #301, M1), not the raw system clock.
+        let creds = sts::assume_role(&self.client, &req, self.now_adjusted()).await?;
         info!(
             "[S3] STS AssumeRole succeeded for {} (expires {:?})",
             role_arn, creds.expiration
@@ -2991,6 +3028,9 @@ impl StorageProvider for S3Provider {
 
         // DELETE-01: Use S3 batch delete (POST /?delete) for up to 1000 keys per request
         for chunk in keys.chunks(1000) {
+            // A large multi-chunk delete can outrun the STS credential lifetime;
+            // re-check freshness per chunk (no-op when not near expiry / no role).
+            self.ensure_fresh_credentials().await?;
             let mut xml = String::from("<Delete><Quiet>true</Quiet>");
             for key in chunk {
                 xml.push_str(&format!(
@@ -4653,6 +4693,8 @@ mod tests {
             role_external_id: None,
             role_session_name: None,
             role_duration_seconds: None,
+            role_mfa_serial: None,
+            role_mfa_token_code: None,
             bucket: "test-bucket".to_string(),
             prefix: None,
             path_style: true,
@@ -4681,6 +4723,8 @@ mod tests {
             role_external_id: None,
             role_session_name: None,
             role_duration_seconds: None,
+            role_mfa_serial: None,
+            role_mfa_token_code: None,
             bucket: "my-bucket".to_string(),
             prefix: None,
             path_style: false,
@@ -4737,6 +4781,8 @@ mod tests {
             role_external_id: None,
             role_session_name: None,
             role_duration_seconds: None,
+            role_mfa_serial: None,
+            role_mfa_token_code: None,
             bucket: "test".to_string(),
             prefix: None,
             path_style: false,
@@ -4779,6 +4825,8 @@ mod tests {
             role_external_id: None,
             role_session_name: None,
             role_duration_seconds: None,
+            role_mfa_serial: None,
+            role_mfa_token_code: None,
             bucket: "b".to_string(),
             prefix: None,
             path_style: true,
@@ -4820,6 +4868,8 @@ mod tests {
             role_external_id: None,
             role_session_name: None,
             role_duration_seconds: None,
+            role_mfa_serial: None,
+            role_mfa_token_code: None,
             bucket: "test-bucket".to_string(),
             prefix: None,
             path_style: true,
@@ -4842,6 +4892,8 @@ mod tests {
             role_external_id: None,
             role_session_name: None,
             role_duration_seconds: None,
+            role_mfa_serial: None,
+            role_mfa_token_code: None,
             bucket: "test-bucket".to_string(),
             prefix: None,
             path_style: true,
@@ -4972,6 +5024,45 @@ mod tests {
         assert!(provider.temp_credentials.read().unwrap().is_none());
     }
 
+    #[test]
+    fn mfa_refresh_after_initial_requires_reconnect() {
+        // A role that requires MFA: the first AssumeRole consumed the one-time
+        // code, so a later refresh cannot silently re-assume. It must fail with
+        // an explicit reconnect error WITHOUT touching the network.
+        let mut provider = make_provider(Some("https://s3.us-east-1.amazonaws.com"));
+        provider.config.role_arn = Some("arn:aws:iam::123456789012:role/Demo".to_string());
+        provider.config.role_mfa_serial =
+            Some("arn:aws:iam::123456789012:mfa/user".to_string());
+        // Simulate an already-acquired MFA session that has now lapsed.
+        *provider.temp_credentials.write().unwrap() =
+            Some(temp_creds(Some(Utc::now() - chrono::Duration::minutes(1))));
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let err = rt
+            .block_on(provider.ensure_fresh_credentials())
+            .expect_err("expired MFA session must require reconnect, not re-assume");
+        assert!(matches!(err, ProviderError::AuthenticationFailed(_)));
+    }
+
+    #[test]
+    fn mfa_initial_without_token_code_fails_fast() {
+        // MFA serial configured but no one-time code provided on the initial
+        // acquire: fail fast before any STS call.
+        let mut provider = make_provider(Some("https://s3.us-east-1.amazonaws.com"));
+        provider.config.role_arn = Some("arn:aws:iam::123456789012:role/Demo".to_string());
+        provider.config.role_mfa_serial =
+            Some("arn:aws:iam::123456789012:mfa/user".to_string());
+        // No temp creds yet (initial acquire), no token code.
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let err = rt
+            .block_on(provider.ensure_fresh_credentials())
+            .expect_err("missing MFA code must fail fast, before any STS call");
+        assert!(matches!(err, ProviderError::AuthenticationFailed(_)));
+    }
+
     /// SG-T04 gate: the trait-level `begin_multipart_upload` is a different
     /// method from the inherent `*_internal` pipeline that `upload()` uses
     /// for multipart streaming. Both must coexist without shadowing.
@@ -5055,6 +5146,8 @@ mod tests {
             role_external_id: None,
             role_session_name: None,
             role_duration_seconds: None,
+            role_mfa_serial: None,
+            role_mfa_token_code: None,
             bucket: "b".to_string(),
             prefix: None,
             path_style: true,
@@ -5111,6 +5204,8 @@ mod tests {
             role_external_id: None,
             role_session_name: None,
             role_duration_seconds: None,
+            role_mfa_serial: None,
+            role_mfa_token_code: None,
             bucket: "b".to_string(),
             prefix: None,
             path_style: true,
@@ -5223,6 +5318,8 @@ mod tests {
             role_external_id: None,
             role_session_name: None,
             role_duration_seconds: None,
+            role_mfa_serial: None,
+            role_mfa_token_code: None,
             bucket: "b".to_string(),
             prefix: None,
             path_style: false,
@@ -5473,6 +5570,8 @@ mod tests {
             role_external_id: None,
             role_session_name: None,
             role_duration_seconds: None,
+            role_mfa_serial: None,
+            role_mfa_token_code: None,
             bucket: "test-bucket".to_string(),
             prefix: None,
             path_style: true,

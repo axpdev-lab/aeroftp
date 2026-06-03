@@ -56,6 +56,11 @@ pub struct SessionConnectionParams {
     pub role_session_name: Option<String>,
     /// Requested credential lifetime in seconds (900..=43200).
     pub role_duration_seconds: Option<u32>,
+    /// MFA device serial/ARN required by the role's trust policy.
+    pub role_mfa_serial: Option<String>,
+    /// One-time MFA token code for the first AssumeRole. Single-use, never
+    /// persisted.
+    pub role_mfa_token_code: Option<String>,
     /// OAuth client ID (for OAuth providers)
     pub client_id: Option<String>,
     /// OAuth client secret (for OAuth providers)
@@ -156,6 +161,8 @@ pub async fn session_connect(
             ("role_arn", params.role_arn.as_ref()),
             ("role_external_id", params.role_external_id.as_ref()),
             ("role_session_name", params.role_session_name.as_ref()),
+            ("role_mfa_serial", params.role_mfa_serial.as_ref()),
+            ("role_mfa_token_code", params.role_mfa_token_code.as_ref()),
         ] {
             if let Some(v) = value.map(|s| s.trim()).filter(|s| !s.is_empty()) {
                 extra.insert(key.to_string(), v.to_string());

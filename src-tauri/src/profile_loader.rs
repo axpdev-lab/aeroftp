@@ -43,6 +43,9 @@ pub fn normalize_profile_option_key(key: &str) -> &str {
         "roleExternalId" => "role_external_id",
         "roleSessionName" => "role_session_name",
         "roleDurationSeconds" => "role_duration_seconds",
+        // MFA serial is a persisted identifier; the one-time MFA token code is
+        // never persisted (the GUI strips it before save), so it has no key here.
+        "roleMfaSerial" => "role_mfa_serial",
         other => other,
     }
 }

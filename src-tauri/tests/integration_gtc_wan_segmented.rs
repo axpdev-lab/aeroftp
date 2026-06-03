@@ -748,6 +748,8 @@ fn s3_config(secret: String) -> S3Config {
         role_external_id: None,
         role_session_name: None,
         role_duration_seconds: None,
+        role_mfa_serial: None,
+        role_mfa_token_code: None,
         bucket: S3_BUCKET.to_string(),
         prefix: None,
         path_style: true,
