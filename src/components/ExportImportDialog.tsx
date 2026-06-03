@@ -19,6 +19,10 @@ interface ExportImportDialogProps {
     servers: ServerProfile[];
     onImport: (servers: ServerProfile[]) => void;
     onClose: () => void;
+    // Optional starting mode so callers (e.g. the Settings Backup table) can
+    // open the dialog straight into a specific action. Undefined preserves the
+    // existing landing-page behavior (My Servers export/import flow).
+    initialMode?: 'export' | 'import' | 'bridge-import' | 'bridge-export';
 }
 
 interface ImportedServer {
@@ -48,9 +52,9 @@ interface ImportResult {
     };
 }
 
-export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers, onImport, onClose }) => {
+export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers, onImport, onClose, initialMode }) => {
     const t = useTranslation();
-    const [mode, setMode] = useState<'export' | 'import' | 'bridge-import' | 'bridge-export' | 'bridge-src' | null>(null);
+    const [mode, setMode] = useState<'export' | 'import' | 'bridge-import' | 'bridge-export' | 'bridge-src' | null>(initialMode ?? null);
     // Generic bridge source (the 12 expansion sources routed through BridgeSourcePanel)
     const [bridgeSrc, setBridgeSrc] = useState<BridgeSourceDescriptor | null>(null);
     const [bridgeSrcDir, setBridgeSrcDir] = useState<'import' | 'export'>('import');
