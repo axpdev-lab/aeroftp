@@ -161,6 +161,28 @@ export const usePreview = ({ notify, toast }: UsePreviewProps) => {
     }
   }, [notify]);
 
+  // Open the AeroTools editor from a file already shown in Universal Preview.
+  // Lets any plain-text file (not just code) be edited: the read-only preview
+  // surfaces an Edit button that routes here.
+  const openDevToolsFromData = useCallback(async (pf: PreviewFileData) => {
+    try {
+      const content = pf.isRemote
+        ? await invoke<string>('preview_remote_file', { path: pf.path })
+        : await invoke<string>('read_local_file', { path: pf.path });
+      setDevToolsPreviewFile({
+        name: pf.name,
+        path: pf.path,
+        content,
+        mimeType: 'text/plain',
+        size: pf.size || 0,
+        isRemote: pf.isRemote,
+      });
+      setDevToolsOpen(true);
+    } catch (error) {
+      notify.error('Preview Failed', String(error));
+    }
+  }, [notify]);
+
   // Open Universal Preview Modal (for media files)
   const openUniversalPreview = useCallback(async (file: RemoteFile | LocalFile, isRemote: boolean) => {
     try {
@@ -298,6 +320,7 @@ export const usePreview = ({ notify, toast }: UsePreviewProps) => {
     devToolsPreviewFile,
     setDevToolsPreviewFile,
     openDevToolsPreview,
+    openDevToolsFromData,
 
     // Universal preview
     universalPreviewOpen,

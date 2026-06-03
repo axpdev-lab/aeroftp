@@ -97,6 +97,9 @@ export interface UniversalPreviewProps {
     file: PreviewFileData | null;
     onClose: () => void;
     onDownload?: () => void;
+    /** Open the current file in the AeroTools editor. Shown only for
+     *  source-viewable files (text, markdown, code). */
+    onEdit?: () => void;
     onNext?: () => void;
     onPrevious?: () => void;
     hasNext?: boolean;

@@ -1701,7 +1701,7 @@ interface UpdateVerificationInfo {
   const preview = usePreview({ notify, toast });
   const {
     showLocalPreview, setShowLocalPreview, previewFile, setPreviewFile, previewImageBase64, previewImageDimensions,
-    devToolsOpen, setDevToolsOpen, devToolsPreviewFile, setDevToolsPreviewFile, openDevToolsPreview,
+    devToolsOpen, setDevToolsOpen, devToolsPreviewFile, setDevToolsPreviewFile, openDevToolsPreview, openDevToolsFromData,
     universalPreviewOpen, universalPreviewFile, openUniversalPreview, closeUniversalPreview,
     viewMode, setViewMode,
   } = preview;
@@ -12198,6 +12198,11 @@ interface UpdateVerificationInfo {
           isOpen={universalPreviewOpen}
           file={universalPreviewFile}
           onClose={closeUniversalPreview}
+          onEdit={universalPreviewFile ? () => {
+            const pf = universalPreviewFile;
+            closeUniversalPreview();
+            void openDevToolsFromData(pf);
+          } : undefined}
         />
         <CloudPanel
           isOpen={showCloudPanel}
