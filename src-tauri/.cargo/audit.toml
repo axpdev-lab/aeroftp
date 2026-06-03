@@ -12,6 +12,9 @@
 #   - docs/security-evidence/AEROFTP-CLI-AUDIT-2026-05-06.md     (origin audit)
 #
 # Reviewed: 2026-06-03 (added two russh advisories, deferred to 0.61 bump #251)
+# Reviewed: 2026-06-03 (dual-audit CODEX-AV-007: bumped yanked aes 0.9.0 -> 0.9.1
+#           in Cargo.lock via zip/russh; corrected Path B version refs to the
+#           resolved russh 0.60.3 / rsa 0.10.0-rc.16)
 
 [advisories]
 ignore = [
@@ -33,8 +36,8 @@ ignore = [
     #   instead of refusing the update; SHA-256 of the artifact is the
     #   primary integrity check.
     #
-    #   Path B (rsa 0.10.0-rc.17):
-    #     rsa <- internal-russh-forked-ssh-key 0.6.18 <- russh 0.60.1 <- aeroftp
+    #   Path B (rsa 0.10.0-rc.16):
+    #     rsa <- internal-russh-forked-ssh-key 0.6.18 <- russh 0.60.3 <- aeroftp
     #   Used to parse user SSH private keys (id_rsa, etc.) and sign SSH auth
     #   challenges in providers/sftp.rs and aerorsync/russh_session_transport.rs.
     #   AeroFTP only ever SIGNS with the user's RSA private key (RFC 4252 +

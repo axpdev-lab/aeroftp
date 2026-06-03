@@ -101,9 +101,12 @@ fn derive_kek(password: &str, salt: &[u8], n: u32, r: u32) -> Result<[u8; 32], S
         ));
     }
     let log_n = n.trailing_zeros();
-    if !(14..=22).contains(&log_n) {
+    // Cap log2(N) at 20: with r=8 that bounds the scrypt working set to ~1 GiB
+    // so a hostile masterkey.cryptomator cannot force a multi-GiB allocation on
+    // unlock (CLAUDE-AV-017). Cryptomator's own default is log2(N)=15.
+    if !(14..=20).contains(&log_n) {
         return Err(format!(
-            "Unsupported scrypt cost parameter: log2(N)={} outside 14..=22",
+            "Unsupported scrypt cost parameter: log2(N)={} outside 14..=20",
             log_n
         ));
     }
@@ -269,7 +272,9 @@ fn unlock_vault_inner(
     let jwt_str = fs::read_to_string(&vault_config_path)
         .map_err(|e| format!("Failed to read vault.cryptomator: {}", e))?;
 
-    // Decode JWT payload without signature verification (we verify via masterkey MAC instead)
+    // Decode the JWT payload for the config fields. The HS256 signature is
+    // verified after the master keys are unwrapped (CLAUDE-AV-016), since the
+    // signing key is derived from them.
     let parts: Vec<&str> = jwt_str.trim().split('.').collect();
     if parts.len() != 3 {
         return Err("Invalid vault.cryptomator JWT format".to_string());
@@ -309,8 +314,16 @@ fn unlock_vault_inner(
         .decode(&masterkey.hmac_master_key)
         .map_err(|e| format!("MAC key decode: {}", e))?;
 
-    let enc_key = unwrap_key(&kek, &wrapped_enc)?;
-    let mac_key = unwrap_key(&kek, &wrapped_mac)?;
+    let mut enc_key = unwrap_key(&kek, &wrapped_enc)?;
+    let mut mac_key = unwrap_key(&kek, &wrapped_mac)?;
+
+    // Verify the vault.cryptomator HS256 signature with the unwrapped master
+    // keys before trusting any config field (CLAUDE-AV-016).
+    if let Err(e) = verify_vault_jwt_signature(&jwt_str, &enc_key, &mac_key) {
+        enc_key.zeroize();
+        mac_key.zeroize();
+        return Err(e);
+    }
 
     Ok((
         UnlockedVault {
@@ -321,6 +334,55 @@ fn unlock_vault_inner(
         },
         config,
     ))
+}
+
+/// Verify the `vault.cryptomator` JWT (HS256) signature. Cryptomator signs the
+/// vault config with HMAC-SHA256 keyed by `enc_key || mac_key` (64 bytes), so a
+/// tampered config is rejected once the master keys are unwrapped from the
+/// password (CLAUDE-AV-016).
+fn verify_vault_jwt_signature(
+    jwt: &str,
+    enc_key: &[u8; 32],
+    mac_key: &[u8; 32],
+) -> Result<(), String> {
+    use base64::Engine;
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+    type HmacSha256 = Hmac<Sha256>;
+
+    let parts: Vec<&str> = jwt.trim().split('.').collect();
+    if parts.len() != 3 {
+        return Err("Invalid vault.cryptomator JWT format".to_string());
+    }
+
+    let header_bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(parts[0])
+        .map_err(|e| format!("JWT header decode: {}", e))?;
+    let header: serde_json::Value = serde_json::from_slice(&header_bytes)
+        .map_err(|e| format!("Invalid JWT header: {}", e))?;
+    if header.get("alg").and_then(|v| v.as_str()) != Some("HS256") {
+        return Err("Unsupported vault.cryptomator JWT algorithm (expected HS256)".to_string());
+    }
+
+    let provided_sig = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(parts[2])
+        .map_err(|e| format!("JWT signature decode: {}", e))?;
+
+    let mut signing_key = Vec::with_capacity(64);
+    signing_key.extend_from_slice(enc_key);
+    signing_key.extend_from_slice(mac_key);
+    // Fully-qualified: `KeyInit` (via aes-gcm) and `Mac` both expose
+    // `new_from_slice`, so disambiguate to the MAC impl.
+    let mut mac = <HmacSha256 as Mac>::new_from_slice(&signing_key)
+        .map_err(|e| format!("HMAC init: {}", e))?;
+    signing_key.zeroize();
+
+    // Signing input is `base64url(header).base64url(payload)`.
+    let signing_input = format!("{}.{}", parts[0], parts[1]);
+    mac.update(signing_input.as_bytes());
+
+    mac.verify_slice(&provided_sig)
+        .map_err(|_| "vault.cryptomator signature verification failed".to_string())
 }
 
 /// List a directory in the vault

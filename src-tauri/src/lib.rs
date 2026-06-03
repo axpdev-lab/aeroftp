@@ -14101,6 +14101,8 @@ pub fn run() {
                         if let Err(e) = vault_history::init_db(&conn) {
                             log::error!("Vault history schema init failed: {e}");
                         }
+                        // Restrict the unencrypted history DB to the owner (CLAUDE-AV-023).
+                        vault_history::harden_db_file(&db_path);
                         app.manage(vault_history::VaultHistoryDb(std::sync::Mutex::new(conn)));
                     }
                     Err(e) => {

@@ -36,9 +36,19 @@ const MIN_PASSWORD_LEN: usize = 8;
 const MAX_MANIFEST_SIZE: u64 = 128 * 1024 * 1024;
 const MAX_EXTENSION_DIR_SIZE: u64 = 16 * 1024 * 1024;
 const MAX_BLOCK_SIZE: u64 = 64 * 1024 * 1024;
+/// Absolute upper bound on the decompressed plaintext of a single content block,
+/// matching the largest `max` a `CdcBounds` may declare (`CdcBounds::validate`).
+/// The effective per-block cap is the vault's own recorded chunking `max` (or the
+/// default `CDC_MAX`), clamped to this ceiling, so a decompression bomb cannot
+/// expand a block past one legitimate chunk worth of RAM (CLAUDE-AV-005).
+const MAX_PLAINTEXT_BLOCK_SIZE: u64 = 256 * 1024 * 1024;
 
 const DATA_OFFSET: u64 = HEADER_SIZE as u64;
 const DEFAULT_ZSTD_LEVEL: i32 = 9;
+/// The only wrapper-header layout this build understands. `open_vault` rejects
+/// anything else instead of silently decoding with the hardcoded cipher stack
+/// (CLAUDE-AV-024 / CODEX-AV-006).
+const SUPPORTED_WRAPPER_HEADER_VERSION: u16 = 1;
 const CDC_MIN: usize = 256 * 1024;
 const CDC_AVG: usize = 1024 * 1024;
 const CDC_MAX: usize = 4 * 1024 * 1024;
@@ -1221,8 +1231,34 @@ fn extract_file_entry(
         std::fs::create_dir_all(parent).map_err(|e| format!("Create output dir: {e}"))?;
     }
 
-    let mut out = Vec::with_capacity(entry.size.min(32 * 1024 * 1024) as usize);
+    // We only ever slice `out[offset..offset+size]`, so decoding never needs to
+    // grow `out` past that bound. Tracking it lets us stop early and refuse a
+    // manifest that repeats the same chunk id to amplify memory use far beyond
+    // the entry's real extent (CLAUDE-AV-005).
+    let offset = entry.pack_offset.unwrap_or(0) as usize;
+    let size = entry.size as usize;
+    let end = offset
+        .checked_add(size)
+        .ok_or_else(|| "Entry slice range overflow".to_string())?;
+
+    // The largest plaintext a single block may legitimately hold is this vault's
+    // recorded chunking `max` (or the default), clamped to the format ceiling.
+    let max_block_plaintext = vault
+        .manifest
+        .wrappers
+        .chunking
+        .bounds
+        .map(|b| b.max as u64)
+        .unwrap_or(CDC_MAX as u64)
+        .min(MAX_PLAINTEXT_BLOCK_SIZE);
+
+    let mut out = Vec::with_capacity(end.min(32 * 1024 * 1024));
     for chunk_id in &entry.chunks {
+        if out.len() >= end {
+            // Everything this entry slices is already decoded; ignore the rest
+            // (a hostile pack may list extra/duplicate chunks past this point).
+            break;
+        }
         let record = vault
             .manifest
             .chunks
@@ -1243,6 +1279,14 @@ fn extract_file_entry(
         if block_len != record.block_len || block_len > MAX_BLOCK_SIZE {
             return Err("Chunk length metadata mismatch".to_string());
         }
+        // Reject an over-declared plaintext length before decompressing so a
+        // single block cannot expand to gigabytes (CLAUDE-AV-005).
+        if record.plaintext_len > max_block_plaintext {
+            return Err(format!(
+                "Plaintext block too large for chunk {chunk_id}: {} bytes (max {max_block_plaintext})",
+                record.plaintext_len
+            ));
+        }
         let block_start = len_end;
         let block_end = block_start
             .checked_add(block_len as usize)
@@ -1256,19 +1300,26 @@ fn extract_file_entry(
             return Err(format!("Cipher block hash mismatch for chunk {chunk_id}"));
         }
         let aad = block_aad(record.block_index, chunk_id);
-        let compressed = decrypt_with_aad(&vault.master_key, encrypted, &aad)?;
-        let plaintext = zstd::stream::decode_all(&compressed[..])
+        let mut compressed = decrypt_with_aad(&vault.master_key, encrypted, &aad)?;
+        // Bound the decompressor output to `plaintext_len + 1`: with the cap
+        // above this is at most one chunk (4 MiB), so a zstd bomb cannot
+        // materialise more than that before the length mismatch is detected.
+        let mut decoder = zstd::stream::read::Decoder::new(&compressed[..])
+            .map_err(|e| format!("zstd decompress init failed: {e}"))?;
+        let mut plaintext = Vec::with_capacity(record.plaintext_len as usize);
+        decoder
+            .by_ref()
+            .take(record.plaintext_len + 1)
+            .read_to_end(&mut plaintext)
             .map_err(|e| format!("zstd decompress failed: {e}"))?;
+        compressed.zeroize();
         if plaintext.len() as u64 != record.plaintext_len {
+            plaintext.zeroize();
             return Err(format!("Plaintext length mismatch for chunk {chunk_id}"));
         }
         out.extend_from_slice(&plaintext);
+        plaintext.zeroize();
     }
-    let offset = entry.pack_offset.unwrap_or(0) as usize;
-    let size = entry.size as usize;
-    let end = offset
-        .checked_add(size)
-        .ok_or_else(|| "Entry slice range overflow".to_string())?;
     if end > out.len() {
         return Err(format!(
             "Entry slice [{offset}..{end}] exceeds decoded data ({})",
@@ -1400,6 +1451,31 @@ fn create_empty_vault(path: &Path, password: &str, level: i32) -> Result<(), Str
     atomic_write(path, &bytes)
 }
 
+/// Reject a manifest whose wrapper algorithms differ from the ones this build
+/// hardcodes (AES-256-GCM-SIV / zstd / keyed-blake3 / gear-CDC). The fields are
+/// authenticated, so this is not a downgrade today, but asserting them turns a
+/// future version-confusion bug into a clean, fail-closed error rather than a
+/// silent wrong-algorithm decode (CLAUDE-AV-024 / CODEX-AV-006).
+fn check_wrapper(slot: &str, spec: &AlgorithmSpec, id: &str, ver: u32) -> Result<(), String> {
+    if spec.algorithm_id != id || spec.algorithm_version != ver {
+        return Err(format!(
+            "Unsupported AeroVault v3 {slot} algorithm: {} v{} (expected {id} v{ver})",
+            spec.algorithm_id, spec.algorithm_version
+        ));
+    }
+    Ok(())
+}
+
+fn validate_supported_wrappers(w: &WrapperManifest) -> Result<(), String> {
+    check_wrapper("packing", &w.packing, "small-file-batching", 1)?;
+    check_wrapper("chunking", &w.chunking, "gear-cdc", 1)?;
+    check_wrapper("chunk_id", &w.chunk_id, "blake3-keyed-128", 1)?;
+    check_wrapper("compression", &w.compression, "zstd", 1)?;
+    check_wrapper("crypt", &w.crypt, "aes-256-gcm-siv", 1)?;
+    check_wrapper("cipher_hash", &w.cipher_hash, "blake3-256", 1)?;
+    Ok(())
+}
+
 fn open_vault(path: impl Into<PathBuf>, password: &str) -> Result<OpenVaultV3, String> {
     let path = path.into();
     let mut file = std::fs::File::open(&path).map_err(|e| format!("Open vault: {e}"))?;
@@ -1417,6 +1493,14 @@ fn open_vault(path: impl Into<PathBuf>, password: &str) -> Result<OpenVaultV3, S
     base_kek.zeroize();
     let mac_key = unwrap_key(&kek_mac, &header.wrapped_mac_key)?;
     header.verify_mac(&mac_key)?;
+    // Reject an unknown (authenticated) wrapper-header version instead of
+    // decoding it with the hardcoded cipher stack (CLAUDE-AV-024 / CODEX-AV-006).
+    if header.wrapper_header_version != SUPPORTED_WRAPPER_HEADER_VERSION {
+        return Err(format!(
+            "Unsupported AeroVault v3 wrapper-header version: {} (expected {})",
+            header.wrapper_header_version, SUPPORTED_WRAPPER_HEADER_VERSION
+        ));
+    }
     let master_key = unwrap_key(&kek_master, &header.wrapped_master_key)?;
 
     validate_ranges(&header, file_len)?;
@@ -1425,7 +1509,11 @@ fn open_vault(path: impl Into<PathBuf>, password: &str) -> Result<OpenVaultV3, S
         &mut file,
         header.data_offset,
         header.data_len,
-        u64::MAX,
+        // The data section is authenticated and validate_ranges has already
+        // bounded it within the file; cap explicitly at file length instead of
+        // u64::MAX so the eager read can never exceed the on-disk size
+        // (CODEX-AV-006).
+        file_len,
         "data section",
     )?;
     let encrypted_manifest = read_capped(
@@ -1442,6 +1530,7 @@ fn open_vault(path: impl Into<PathBuf>, password: &str) -> Result<OpenVaultV3, S
             manifest.format
         ));
     }
+    validate_supported_wrappers(&manifest.wrappers)?;
     validate_manifest_paths(&manifest)?;
 
     let extension_json = read_capped(
