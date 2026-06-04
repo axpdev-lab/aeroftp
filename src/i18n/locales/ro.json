@@ -964,14 +964,16 @@
             "backupColFormat": "Format fișier",
             "backupColImport": "Import",
             "backupColExport": "Export",
-            "backupRowFullBackup": "AeroFTP - Backup complet",
+            "backupRowFullBackup": "Backup complet",
             "backupRowFullBackupDesc": "Servere, credențiale, setări și token-uri OAuth",
-            "backupRowServersOnly": "AeroFTP - Doar servere",
+            "backupRowServersOnly": "Profiluri server",
             "backupRowServersOnlyDesc": "Doar profilurile de server, fără setările aplicației",
             "backupRowOtherApps": "Alte aplicații",
             "backupOtherAppsCount": "{count} acceptate",
             "backupImportAny": "Importă orice",
-            "backupImportAnyDesc": "Detectează rclone și orice alt format de backup acceptat"
+            "backupImportAnyDesc": "Detectează rclone și orice alt format de backup acceptat",
+            "bridgeSearchApps": "Caută aplicații...",
+            "bridgeNoApps": "Nicio aplicație nu corespunde căutării"
         },
         "devtools": {
             "title": "AeroTools",

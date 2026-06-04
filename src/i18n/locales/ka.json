@@ -964,14 +964,16 @@
             "backupColFormat": "ფაილის ფორმატი",
             "backupColImport": "იმპორტი",
             "backupColExport": "ექსპორტი",
-            "backupRowFullBackup": "AeroFTP - სრული სარეზერვო ასლი",
+            "backupRowFullBackup": "სრული სარეზერვო ასლი",
             "backupRowFullBackupDesc": "სერვერები, ავტორიზაციის მონაცემები, პარამეტრები და OAuth ტოკენები",
-            "backupRowServersOnly": "AeroFTP - მხოლოდ სერვერები",
+            "backupRowServersOnly": "სერვერის პროფილები",
             "backupRowServersOnlyDesc": "მხოლოდ სერვერების პროფილები, აპის პარამეტრების გარეშე",
             "backupRowOtherApps": "სხვა აპები",
             "backupOtherAppsCount": "{count} მხარდაჭერილი",
             "backupImportAny": "ნებისმიერის იმპორტი",
-            "backupImportAnyDesc": "ამოიცნობს rclone-ს და ყველა სხვა მხარდაჭერილ სარეზერვო ფორმატს"
+            "backupImportAnyDesc": "ამოიცნობს rclone-ს და ყველა სხვა მხარდაჭერილ სარეზერვო ფორმატს",
+            "bridgeSearchApps": "აპების ძებნა...",
+            "bridgeNoApps": "ძიებას არცერთი აპი არ ემთხვევა"
         },
         "devtools": {
             "title": "AeroTools",

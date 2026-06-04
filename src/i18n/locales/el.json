@@ -964,14 +964,16 @@
             "backupColFormat": "Μορφή αρχείου",
             "backupColImport": "Εισαγωγή",
             "backupColExport": "Εξαγωγή",
-            "backupRowFullBackup": "AeroFTP - Πλήρες αντίγραφο ασφαλείας",
+            "backupRowFullBackup": "Πλήρες αντίγραφο ασφαλείας",
             "backupRowFullBackupDesc": "Διακομιστές, διαπιστευτήρια, ρυθμίσεις και διακριτικά OAuth",
-            "backupRowServersOnly": "AeroFTP - Μόνο διακομιστές",
+            "backupRowServersOnly": "Προφίλ διακομιστή",
             "backupRowServersOnlyDesc": "Μόνο προφίλ διακομιστών, χωρίς ρυθμίσεις εφαρμογής",
             "backupRowOtherApps": "Άλλες εφαρμογές",
             "backupOtherAppsCount": "{count} υποστηριζόμενες",
             "backupImportAny": "Εισαγωγή οποιουδήποτε",
-            "backupImportAnyDesc": "Εντοπίζει το rclone και κάθε άλλη υποστηριζόμενη μορφή αντιγράφου ασφαλείας"
+            "backupImportAnyDesc": "Εντοπίζει το rclone και κάθε άλλη υποστηριζόμενη μορφή αντιγράφου ασφαλείας",
+            "bridgeSearchApps": "Αναζήτηση εφαρμογών...",
+            "bridgeNoApps": "Καμία εφαρμογή δεν ταιριάζει με την αναζήτησή σας"
         },
         "devtools": {
             "title": "AeroTools",

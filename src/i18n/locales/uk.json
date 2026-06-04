@@ -964,14 +964,16 @@
             "backupColFormat": "Формат файлу",
             "backupColImport": "Імпорт",
             "backupColExport": "Експорт",
-            "backupRowFullBackup": "AeroFTP - Повна резервна копія",
+            "backupRowFullBackup": "Повна резервна копія",
             "backupRowFullBackupDesc": "Сервери, облікові дані, налаштування та токени OAuth",
-            "backupRowServersOnly": "AeroFTP - Лише сервери",
+            "backupRowServersOnly": "Профілі серверів",
             "backupRowServersOnlyDesc": "Лише профілі серверів, без налаштувань застосунку",
             "backupRowOtherApps": "Інші застосунки",
             "backupOtherAppsCount": "Підтримується: {count}",
             "backupImportAny": "Імпортувати будь-що",
-            "backupImportAnyDesc": "Розпізнає rclone та будь-який інший підтримуваний формат резервної копії"
+            "backupImportAnyDesc": "Розпізнає rclone та будь-який інший підтримуваний формат резервної копії",
+            "bridgeSearchApps": "Пошук додатків...",
+            "bridgeNoApps": "Немає додатків, що відповідають пошуку"
         },
         "devtools": {
             "title": "AeroTools",

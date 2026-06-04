@@ -964,14 +964,16 @@
             "backupColFormat": "文件格式",
             "backupColImport": "导入",
             "backupColExport": "导出",
-            "backupRowFullBackup": "AeroFTP - 完整备份",
+            "backupRowFullBackup": "完整备份",
             "backupRowFullBackupDesc": "服务器、凭据、设置和 OAuth 令牌",
-            "backupRowServersOnly": "AeroFTP - 仅服务器",
+            "backupRowServersOnly": "服务器配置文件",
             "backupRowServersOnlyDesc": "仅服务器配置，不含应用设置",
             "backupRowOtherApps": "其他应用",
             "backupOtherAppsCount": "支持 {count} 个",
             "backupImportAny": "导入任意格式",
-            "backupImportAnyDesc": "检测 rclone 及所有其他受支持的备份格式"
+            "backupImportAnyDesc": "检测 rclone 及所有其他受支持的备份格式",
+            "bridgeSearchApps": "搜索应用...",
+            "bridgeNoApps": "没有应用匹配您的搜索"
         },
         "devtools": {
             "title": "AeroTools",

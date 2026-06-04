@@ -964,14 +964,16 @@
             "backupColFormat": "Failo formatas",
             "backupColImport": "Importuoti",
             "backupColExport": "Eksportuoti",
-            "backupRowFullBackup": "AeroFTP - visa atsarginė kopija",
+            "backupRowFullBackup": "visa atsarginė kopija",
             "backupRowFullBackupDesc": "Serveriai, prisijungimo duomenys, nustatymai ir OAuth raktai",
-            "backupRowServersOnly": "AeroFTP - tik serveriai",
+            "backupRowServersOnly": "Serverio profiliai",
             "backupRowServersOnlyDesc": "Tik serverių profiliai, be programos nustatymų",
             "backupRowOtherApps": "Kitos programos",
             "backupOtherAppsCount": "Palaikoma: {count}",
             "backupImportAny": "Importuoti bet kurį",
-            "backupImportAnyDesc": "Aptinka rclone ir visus kitus palaikomus atsarginių kopijų formatus"
+            "backupImportAnyDesc": "Aptinka rclone ir visus kitus palaikomus atsarginių kopijų formatus",
+            "bridgeSearchApps": "Ieškoti programų...",
+            "bridgeNoApps": "Pagal paiešką programų nerasta"
         },
         "devtools": {
             "title": "AeroTools",

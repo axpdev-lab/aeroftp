@@ -964,14 +964,16 @@
             "backupColFormat": "Muundo wa Faili",
             "backupColImport": "Ingiza",
             "backupColExport": "Hamisha",
-            "backupRowFullBackup": "AeroFTP - Hifadhi Nakala Kamili",
+            "backupRowFullBackup": "Hifadhi Nakala Kamili",
             "backupRowFullBackupDesc": "Seva, vitambulisho, mipangilio na tokeni za OAuth",
-            "backupRowServersOnly": "AeroFTP - Seva Pekee",
+            "backupRowServersOnly": "Wasifu wa seva",
             "backupRowServersOnlyDesc": "Wasifu wa seva pekee, bila mipangilio ya app",
             "backupRowOtherApps": "Programu Nyingine",
             "backupOtherAppsCount": "{count} zinazotegemezwa",
             "backupImportAny": "Ingiza Yoyote",
-            "backupImportAnyDesc": "Hutambua rclone na kila muundo mwingine wa hifadhi nakala unaotegemezwa"
+            "backupImportAnyDesc": "Hutambua rclone na kila muundo mwingine wa hifadhi nakala unaotegemezwa",
+            "bridgeSearchApps": "Tafuta programu...",
+            "bridgeNoApps": "Hakuna programu zinazolingana na utafutaji wako"
         },
         "devtools": {
             "title": "AeroTools",

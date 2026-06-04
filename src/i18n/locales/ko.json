@@ -964,14 +964,16 @@
             "backupColFormat": "파일 형식",
             "backupColImport": "가져오기",
             "backupColExport": "내보내기",
-            "backupRowFullBackup": "AeroFTP - 전체 백업",
+            "backupRowFullBackup": "전체 백업",
             "backupRowFullBackupDesc": "서버, 자격 증명, 설정 및 OAuth 토큰",
-            "backupRowServersOnly": "AeroFTP - 서버만",
+            "backupRowServersOnly": "서버 프로필",
             "backupRowServersOnlyDesc": "서버 프로필만, 앱 설정 제외",
             "backupRowOtherApps": "다른 앱",
             "backupOtherAppsCount": "{count}개 지원",
             "backupImportAny": "모두 가져오기",
-            "backupImportAnyDesc": "rclone 및 지원되는 모든 백업 형식을 감지합니다"
+            "backupImportAnyDesc": "rclone 및 지원되는 모든 백업 형식을 감지합니다",
+            "bridgeSearchApps": "앱 검색...",
+            "bridgeNoApps": "검색과 일치하는 앱이 없습니다"
         },
         "devtools": {
             "title": "AeroTools",

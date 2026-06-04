@@ -964,14 +964,16 @@
             "backupColFormat": "ফাইল ফরম্যাট",
             "backupColImport": "ইম্পোর্ট",
             "backupColExport": "এক্সপোর্ট",
-            "backupRowFullBackup": "AeroFTP - সম্পূর্ণ ব্যাকআপ",
+            "backupRowFullBackup": "সম্পূর্ণ ব্যাকআপ",
             "backupRowFullBackupDesc": "সার্ভার, শংসাপত্র, সেটিংস এবং OAuth টোকেন",
-            "backupRowServersOnly": "AeroFTP - শুধু সার্ভার",
+            "backupRowServersOnly": "সার্ভার প্রোফাইল",
             "backupRowServersOnlyDesc": "শুধু সার্ভার প্রোফাইল, অ্যাপ সেটিংস ছাড়া",
             "backupRowOtherApps": "অন্যান্য অ্যাপ",
             "backupOtherAppsCount": "{count}টি সমর্থিত",
             "backupImportAny": "যেকোনো ইম্পোর্ট করুন",
-            "backupImportAnyDesc": "rclone এবং অন্য সমস্ত সমর্থিত ব্যাকআপ ফরম্যাট শনাক্ত করে"
+            "backupImportAnyDesc": "rclone এবং অন্য সমস্ত সমর্থিত ব্যাকআপ ফরম্যাট শনাক্ত করে",
+            "bridgeSearchApps": "অ্যাপ খুঁজুন...",
+            "bridgeNoApps": "আপনার অনুসন্ধানের সাথে কোনো অ্যাপ মেলেনি"
         },
         "devtools": {
             "title": "AeroTools",

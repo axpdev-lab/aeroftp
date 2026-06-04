@@ -964,14 +964,16 @@
             "backupColFormat": "Fájlformátum",
             "backupColImport": "Importálás",
             "backupColExport": "Exportálás",
-            "backupRowFullBackup": "AeroFTP - Teljes biztonsági mentés",
+            "backupRowFullBackup": "Teljes biztonsági mentés",
             "backupRowFullBackupDesc": "Kiszolgálók, hitelesítő adatok, beállítások és OAuth-tokenek",
-            "backupRowServersOnly": "AeroFTP - Csak kiszolgálók",
+            "backupRowServersOnly": "Kiszolgálóprofilok",
             "backupRowServersOnlyDesc": "Csak kiszolgálóprofilok, alkalmazásbeállítások nélkül",
             "backupRowOtherApps": "Egyéb alkalmazások",
             "backupOtherAppsCount": "{count} támogatott",
             "backupImportAny": "Bármi importálása",
-            "backupImportAnyDesc": "Felismeri az rclone-t és minden más támogatott biztonságimentés-formátumot"
+            "backupImportAnyDesc": "Felismeri az rclone-t és minden más támogatott biztonságimentés-formátumot",
+            "bridgeSearchApps": "Alkalmazások keresése...",
+            "bridgeNoApps": "Egyetlen alkalmazás sem felel meg a keresésnek"
         },
         "devtools": {
             "title": "AeroTools",

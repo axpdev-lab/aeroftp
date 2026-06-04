@@ -964,14 +964,16 @@
             "backupColFormat": "फ़ाइल प्रारूप",
             "backupColImport": "आयात करें",
             "backupColExport": "निर्यात करें",
-            "backupRowFullBackup": "AeroFTP - पूर्ण बैकअप",
+            "backupRowFullBackup": "पूर्ण बैकअप",
             "backupRowFullBackupDesc": "सर्वर, क्रेडेंशियल, सेटिंग्स और OAuth टोकन",
-            "backupRowServersOnly": "AeroFTP - केवल सर्वर",
+            "backupRowServersOnly": "सर्वर प्रोफ़ाइल",
             "backupRowServersOnlyDesc": "केवल सर्वर प्रोफ़ाइल, ऐप सेटिंग्स के बिना",
             "backupRowOtherApps": "अन्य ऐप्स",
             "backupOtherAppsCount": "{count} समर्थित",
             "backupImportAny": "कोई भी आयात करें",
-            "backupImportAnyDesc": "rclone और हर दूसरे समर्थित बैकअप प्रारूप का पता लगाता है"
+            "backupImportAnyDesc": "rclone और हर दूसरे समर्थित बैकअप प्रारूप का पता लगाता है",
+            "bridgeSearchApps": "ऐप्स खोजें...",
+            "bridgeNoApps": "आपकी खोज से कोई ऐप मेल नहीं खाता"
         },
         "devtools": {
             "title": "AeroTools",

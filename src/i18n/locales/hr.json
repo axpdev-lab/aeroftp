@@ -964,14 +964,16 @@
             "backupColFormat": "Format datoteke",
             "backupColImport": "Uvoz",
             "backupColExport": "Izvoz",
-            "backupRowFullBackup": "AeroFTP - Potpuna sigurnosna kopija",
+            "backupRowFullBackup": "Potpuna sigurnosna kopija",
             "backupRowFullBackupDesc": "Poslužitelji, vjerodajnice, postavke i OAuth tokeni",
-            "backupRowServersOnly": "AeroFTP - Samo poslužitelji",
+            "backupRowServersOnly": "Profili poslužitelja",
             "backupRowServersOnlyDesc": "Samo profili poslužitelja, bez postavki aplikacije",
             "backupRowOtherApps": "Druge aplikacije",
             "backupOtherAppsCount": "{count} podržanih",
             "backupImportAny": "Uvezi bilo koji",
-            "backupImportAnyDesc": "Otkriva rclone i sve ostale podržane formate sigurnosne kopije"
+            "backupImportAnyDesc": "Otkriva rclone i sve ostale podržane formate sigurnosne kopije",
+            "bridgeSearchApps": "Pretraži aplikacije...",
+            "bridgeNoApps": "Nijedna aplikacija ne odgovara pretrazi"
         },
         "devtools": {
             "title": "AeroTools",

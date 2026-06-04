@@ -964,14 +964,16 @@
             "backupColFormat": "Ֆայլի ձևաչափ",
             "backupColImport": "Ներմուծել",
             "backupColExport": "Արտահանել",
-            "backupRowFullBackup": "AeroFTP - Ամբողջական պահուստավորում",
+            "backupRowFullBackup": "Ամբողջական պահուստավորում",
             "backupRowFullBackupDesc": "Սերվերներ, հավատարմագրեր, կարգավորումներ և OAuth նշաններ",
-            "backupRowServersOnly": "AeroFTP - Միայն սերվերներ",
+            "backupRowServersOnly": "Սերվերի պրոֆիլներ",
             "backupRowServersOnlyDesc": "Միայն սերվերի պրոֆիլներ, առանց հավելվածի կարգավորումների",
             "backupRowOtherApps": "Այլ հավելվածներ",
             "backupOtherAppsCount": "{count} աջակցվող",
             "backupImportAny": "Ներմուծել ցանկացածը",
-            "backupImportAnyDesc": "Հայտնաբերում է rclone-ը և մյուս բոլոր աջակցվող պահուստավորման ձևաչափերը"
+            "backupImportAnyDesc": "Հայտնաբերում է rclone-ը և մյուս բոլոր աջակցվող պահուստավորման ձևաչափերը",
+            "bridgeSearchApps": "Որոնել հավելվածներ...",
+            "bridgeNoApps": "Ոչ մի հավելված չի համապատասխանում որոնմանը"
         },
         "devtools": {
             "title": "AeroTools",

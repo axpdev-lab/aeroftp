@@ -964,14 +964,16 @@
             "backupColFormat": "Format Fail",
             "backupColImport": "Import",
             "backupColExport": "Eksport",
-            "backupRowFullBackup": "AeroFTP - Sandaran Penuh",
+            "backupRowFullBackup": "Sandaran Penuh",
             "backupRowFullBackupDesc": "Pelayan, kelayakan, tetapan dan token OAuth",
-            "backupRowServersOnly": "AeroFTP - Pelayan Sahaja",
+            "backupRowServersOnly": "Profil pelayan",
             "backupRowServersOnlyDesc": "Profil pelayan sahaja, tanpa tetapan apl",
             "backupRowOtherApps": "Apl Lain",
             "backupOtherAppsCount": "{count} disokong",
             "backupImportAny": "Import Mana-mana",
-            "backupImportAnyDesc": "Mengesan rclone dan setiap format sandaran lain yang disokong"
+            "backupImportAnyDesc": "Mengesan rclone dan setiap format sandaran lain yang disokong",
+            "bridgeSearchApps": "Cari apl...",
+            "bridgeNoApps": "Tiada apl sepadan dengan carian anda"
         },
         "devtools": {
             "title": "AeroTools",

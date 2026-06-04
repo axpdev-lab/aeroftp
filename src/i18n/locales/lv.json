@@ -964,14 +964,16 @@
             "backupColFormat": "Faila formāts",
             "backupColImport": "Importēt",
             "backupColExport": "Eksportēt",
-            "backupRowFullBackup": "AeroFTP - pilna dublējumkopija",
+            "backupRowFullBackup": "pilna dublējumkopija",
             "backupRowFullBackupDesc": "Serveri, akreditācijas dati, iestatījumi un OAuth marķieri",
-            "backupRowServersOnly": "AeroFTP - tikai serveri",
+            "backupRowServersOnly": "Servera profili",
             "backupRowServersOnlyDesc": "Tikai serveru profili, bez lietotnes iestatījumiem",
             "backupRowOtherApps": "Citas lietotnes",
             "backupOtherAppsCount": "Atbalstītas: {count}",
             "backupImportAny": "Importēt jebkuru",
-            "backupImportAnyDesc": "Nosaka rclone un visus citus atbalstītos dublējumu formātus"
+            "backupImportAnyDesc": "Nosaka rclone un visus citus atbalstītos dublējumu formātus",
+            "bridgeSearchApps": "Meklēt lietotnes...",
+            "bridgeNoApps": "Nav lietotņu, kas atbilst meklēšanai"
         },
         "devtools": {
             "title": "AeroTools",

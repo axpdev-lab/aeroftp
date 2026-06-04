@@ -964,14 +964,16 @@
             "backupColFormat": "Dosya Biçimi",
             "backupColImport": "İçe Aktar",
             "backupColExport": "Dışa Aktar",
-            "backupRowFullBackup": "AeroFTP - Tam Yedekleme",
+            "backupRowFullBackup": "Tam Yedekleme",
             "backupRowFullBackupDesc": "Sunucular, kimlik bilgileri, ayarlar ve OAuth jetonları",
-            "backupRowServersOnly": "AeroFTP - Yalnızca Sunucular",
+            "backupRowServersOnly": "Sunucu profilleri",
             "backupRowServersOnlyDesc": "Yalnızca sunucu profilleri, uygulama ayarları olmadan",
             "backupRowOtherApps": "Diğer Uygulamalar",
             "backupOtherAppsCount": "{count} destekleniyor",
             "backupImportAny": "Herhangi Birini İçe Aktar",
-            "backupImportAnyDesc": "rclone ve desteklenen diğer tüm yedekleme biçimlerini algılar"
+            "backupImportAnyDesc": "rclone ve desteklenen diğer tüm yedekleme biçimlerini algılar",
+            "bridgeSearchApps": "Uygulama ara...",
+            "bridgeNoApps": "Aramanızla eşleşen uygulama yok"
         },
         "devtools": {
             "title": "AeroTools",

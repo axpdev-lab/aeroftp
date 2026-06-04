@@ -744,8 +744,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
         setShowExportImport(true);
     };
     // Number of generic bridge sources shown collapsed under "Other Apps"
-    // (rclone is surfaced as its own row, so it is excluded from the count).
-    const otherBridgeAppsCount = GENERIC_BRIDGE_SOURCES.filter((s) => s.id !== 'rclone').length;
+    // (rclone is folded into this row now, no longer surfaced separately).
+    const otherBridgeAppsCount = GENERIC_BRIDGE_SOURCES.length;
     const backupCellBtn = 'inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 text-xs font-medium transition-colors whitespace-nowrap';
     const backupFmtChip = 'px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700/60 text-xs font-mono text-gray-600 dark:text-gray-300';
 
@@ -2784,14 +2784,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                         reveals the inline keystore panel below (reveal-inline, #214 untouched). */}
                                     <div>
                                         <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('settings.backupTableTitle')}</div>
-                                        <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                                        <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-x-auto">
                                             <table className="w-full text-sm">
                                                 <thead>
                                                     <tr className="bg-gray-50 dark:bg-gray-700/50 text-left text-[11px] uppercase tracking-wide text-gray-500">
                                                         <th className="px-4 py-2 font-medium">{t('settings.backupColApp')}</th>
                                                         <th className="px-4 py-2 font-medium">{t('settings.backupColFormat')}</th>
-                                                        <th className="px-4 py-2 font-medium text-center">{t('settings.backupColImport')}</th>
-                                                        <th className="px-4 py-2 font-medium text-center">{t('settings.backupColExport')}</th>
+                                                        <th className="px-4 py-2 font-medium text-center">{t('settings.backupColImport')} / {t('settings.backupColExport')}</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -2807,8 +2806,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                             </div>
                                                         </td>
                                                         <td className="px-4 py-3"><code className={backupFmtChip}>.aeroftp-keystore</code></td>
-                                                        <td className="px-4 py-3 text-center"><button onClick={() => setKeystoreAction('import')} className={backupCellBtn} title={t('settings.importKeystore')}><Upload size={14} /> {t('settings.backupColImport')}</button></td>
-                                                        <td className="px-4 py-3 text-center"><button onClick={() => setKeystoreAction('export')} className={backupCellBtn} title={t('settings.exportKeystore')}><Download size={14} /> {t('settings.backupColExport')}</button></td>
+                                                        <td className="px-4 py-3"><div className="flex items-center justify-center gap-2"><button onClick={() => setKeystoreAction('import')} className={backupCellBtn} title={t('settings.importKeystore')}><Upload size={14} /></button><button onClick={() => setKeystoreAction('export')} className={backupCellBtn} title={t('settings.exportKeystore')}><Download size={14} /></button></div></td>
                                                     </tr>
                                                     {/* AeroFTP Servers Only: .aeroftp via the unified dialog */}
                                                     <tr>
@@ -2822,22 +2820,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                             </div>
                                                         </td>
                                                         <td className="px-4 py-3"><code className={backupFmtChip}>.aeroftp</code></td>
-                                                        <td className="px-4 py-3 text-center"><button onClick={() => openExportImport('import')} className={backupCellBtn} title={t('settings.importServers')}><Upload size={14} /> {t('settings.backupColImport')}</button></td>
-                                                        <td className="px-4 py-3 text-center"><button onClick={() => openExportImport('export')} className={backupCellBtn} title={t('settings.exportServers')}><Download size={14} /> {t('settings.backupColExport')}</button></td>
+                                                        <td className="px-4 py-3"><div className="flex items-center justify-center gap-2"><button onClick={() => openExportImport('import')} className={backupCellBtn} title={t('settings.importServers')}><Upload size={14} /></button><button onClick={() => openExportImport('export')} className={backupCellBtn} title={t('settings.exportServers')}><Download size={14} /></button></div></td>
                                                     </tr>
-                                                    {/* Rclone: its own row, routed through the generic bridge */}
-                                                    <tr>
-                                                        <td className="px-4 py-3">
-                                                            <div className="flex items-center gap-2.5">
-                                                                <div className="w-8 h-8 rounded-lg bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center shrink-0"><span className="text-orange-600 dark:text-orange-400 font-bold text-xs">rc</span></div>
-                                                                <div className="font-medium text-gray-800 dark:text-gray-100">rclone</div>
-                                                            </div>
-                                                        </td>
-                                                        <td className="px-4 py-3"><code className={backupFmtChip}>(rclone).conf</code></td>
-                                                        <td className="px-4 py-3 text-center"><button onClick={() => openExportImport('bridge-import')} className={backupCellBtn} title={t('settings.bridgeImport')}><Upload size={14} /> {t('settings.backupColImport')}</button></td>
-                                                        <td className="px-4 py-3 text-center"><button onClick={() => openExportImport('bridge-export')} className={backupCellBtn} title={t('settings.bridgeExport')}><Download size={14} /> {t('settings.backupColExport')}</button></td>
-                                                    </tr>
-                                                    {/* Other Apps: the remaining generic bridge sources, collapsed */}
+                                                    {/* Other Apps: all generic bridge sources (incl. rclone), collapsed */}
                                                     <tr>
                                                         <td className="px-4 py-3">
                                                             <div className="flex items-center gap-2.5">
@@ -2848,9 +2833,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                 </div>
                                                             </div>
                                                         </td>
-                                                        <td className="px-4 py-3"><span className="text-xs text-gray-400 dark:text-gray-500">WinSCP, FileZilla, AWS CLI, ...</span></td>
-                                                        <td className="px-4 py-3 text-center"><button onClick={() => openExportImport('bridge-import')} className={backupCellBtn} title={t('settings.bridgeImport')}><Upload size={14} /> {t('settings.backupColImport')}</button></td>
-                                                        <td className="px-4 py-3 text-center"><button onClick={() => openExportImport('bridge-export')} className={backupCellBtn} title={t('settings.bridgeExport')}><Download size={14} /> {t('settings.backupColExport')}</button></td>
+                                                        <td className="px-4 py-3"><span className="text-xs text-gray-400 dark:text-gray-500">rclone, WinSCP, FileZilla, AWS CLI, ...</span></td>
+                                                        <td className="px-4 py-3"><div className="flex items-center justify-center gap-2"><button onClick={() => openExportImport('bridge-import')} className={backupCellBtn} title={t('settings.bridgeImport')}><Upload size={14} /></button><button onClick={() => openExportImport('bridge-export')} className={backupCellBtn} title={t('settings.bridgeExport')}><Download size={14} /></button></div></td>
                                                     </tr>
                                                 </tbody>
                                                 <tfoot>
@@ -2860,7 +2844,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                             <div className="text-xs text-gray-500 dark:text-gray-400">{t('settings.backupImportAnyDesc')}</div>
                                                         </td>
                                                         <td className="px-4 py-3 text-center"><button onClick={() => openExportImport(undefined)} className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500 hover:bg-blue-600 text-white text-xs font-medium transition-colors whitespace-nowrap" title={t('settings.backupImportAny')}><Upload size={14} /> {t('settings.backupImportAny')}</button></td>
-                                                        <td className="px-4 py-3 text-center text-xs text-gray-400 dark:text-gray-500">N/A</td>
                                                     </tr>
                                                 </tfoot>
                                             </table>
