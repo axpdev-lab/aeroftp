@@ -1300,14 +1300,16 @@
             "backupColFormat": "Formato file",
             "backupColImport": "Importa",
             "backupColExport": "Esporta",
-            "backupRowFullBackup": "AeroFTP - Backup completo",
+            "backupRowFullBackup": "Backup completo",
             "backupRowFullBackupDesc": "Server, credenziali, impostazioni e token OAuth",
-            "backupRowServersOnly": "AeroFTP - Solo server",
+            "backupRowServersOnly": "Profili server",
             "backupRowServersOnlyDesc": "Solo profili server, senza impostazioni dell'app",
             "backupRowOtherApps": "Altre app",
             "backupOtherAppsCount": "{count} supportate",
             "backupImportAny": "Importa qualsiasi",
-            "backupImportAnyDesc": "Rileva rclone e ogni altro formato di backup supportato"
+            "backupImportAnyDesc": "Rileva rclone e ogni altro formato di backup supportato",
+            "bridgeSearchApps": "Cerca app...",
+            "bridgeNoApps": "Nessuna app corrisponde alla ricerca"
         },
         "appearance": {
             "patternCross": "Croce",

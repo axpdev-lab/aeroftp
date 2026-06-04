@@ -964,14 +964,16 @@
             "backupColFormat": "Tiedostomuoto",
             "backupColImport": "Tuo",
             "backupColExport": "Vie",
-            "backupRowFullBackup": "AeroFTP - Täysi varmuuskopio",
+            "backupRowFullBackup": "Täysi varmuuskopio",
             "backupRowFullBackupDesc": "Palvelimet, tunnistetiedot, asetukset ja OAuth-tunnukset",
-            "backupRowServersOnly": "AeroFTP - Vain palvelimet",
+            "backupRowServersOnly": "Palvelinprofiilit",
             "backupRowServersOnlyDesc": "Vain palvelinprofiilit, ei sovellusasetuksia",
             "backupRowOtherApps": "Muut sovellukset",
             "backupOtherAppsCount": "{count} tuettua",
             "backupImportAny": "Tuo mikä tahansa",
-            "backupImportAnyDesc": "Tunnistaa rclonen ja kaikki muut tuetut varmuuskopiomuodot"
+            "backupImportAnyDesc": "Tunnistaa rclonen ja kaikki muut tuetut varmuuskopiomuodot",
+            "bridgeSearchApps": "Hae sovelluksia...",
+            "bridgeNoApps": "Mikään sovellus ei vastaa hakuasi"
         },
         "devtools": {
             "title": "AeroTools",

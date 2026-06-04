@@ -964,14 +964,16 @@
             "backupColFormat": "Formát súboru",
             "backupColImport": "Import",
             "backupColExport": "Export",
-            "backupRowFullBackup": "AeroFTP - Úplná záloha",
+            "backupRowFullBackup": "Úplná záloha",
             "backupRowFullBackupDesc": "Servery, prihlasovacie údaje, nastavenia a tokeny OAuth",
-            "backupRowServersOnly": "AeroFTP - Iba servery",
+            "backupRowServersOnly": "Profily serverov",
             "backupRowServersOnlyDesc": "Iba profily serverov, bez nastavení aplikácie",
             "backupRowOtherApps": "Iné aplikácie",
             "backupOtherAppsCount": "{count} podporovaných",
             "backupImportAny": "Importovať čokoľvek",
-            "backupImportAnyDesc": "Rozpozná rclone a každý ďalší podporovaný formát zálohy"
+            "backupImportAnyDesc": "Rozpozná rclone a každý ďalší podporovaný formát zálohy",
+            "bridgeSearchApps": "Hľadať aplikácie...",
+            "bridgeNoApps": "Žiadne aplikácie nezodpovedajú hľadaniu"
         },
         "devtools": {
             "title": "AeroTools",

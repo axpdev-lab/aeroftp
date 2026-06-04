@@ -964,14 +964,16 @@
             "backupColFormat": "Bestandsindeling",
             "backupColImport": "Importeren",
             "backupColExport": "Exporteren",
-            "backupRowFullBackup": "AeroFTP - volledige back-up",
+            "backupRowFullBackup": "volledige back-up",
             "backupRowFullBackupDesc": "Servers, inloggegevens, instellingen en OAuth-tokens",
-            "backupRowServersOnly": "AeroFTP - alleen servers",
+            "backupRowServersOnly": "Serverprofielen",
             "backupRowServersOnlyDesc": "Alleen serverprofielen, geen app-instellingen",
             "backupRowOtherApps": "Andere apps",
             "backupOtherAppsCount": "{count} ondersteund",
             "backupImportAny": "Alles importeren",
-            "backupImportAnyDesc": "Detecteert rclone en elk ander ondersteund back-upformaat"
+            "backupImportAnyDesc": "Detecteert rclone en elk ander ondersteund back-upformaat",
+            "bridgeSearchApps": "Apps zoeken...",
+            "bridgeNoApps": "Geen apps komen overeen met je zoekopdracht"
         },
         "devtools": {
             "title": "AeroTools",

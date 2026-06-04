@@ -964,14 +964,16 @@
             "backupColFormat": "Format ng File",
             "backupColImport": "Mag-import",
             "backupColExport": "Mag-export",
-            "backupRowFullBackup": "AeroFTP - Buong Backup",
+            "backupRowFullBackup": "Buong Backup",
             "backupRowFullBackupDesc": "Mga server, kredensyal, setting at OAuth token",
-            "backupRowServersOnly": "AeroFTP - Mga Server Lang",
+            "backupRowServersOnly": "Mga profile ng server",
             "backupRowServersOnlyDesc": "Mga profile ng server lang, walang setting ng app",
             "backupRowOtherApps": "Ibang App",
             "backupOtherAppsCount": "{count} na suportado",
             "backupImportAny": "Mag-import ng Kahit Ano",
-            "backupImportAnyDesc": "Tinutukoy ang rclone at bawat iba pang suportadong format ng backup"
+            "backupImportAnyDesc": "Tinutukoy ang rclone at bawat iba pang suportadong format ng backup",
+            "bridgeSearchApps": "Maghanap ng apps...",
+            "bridgeNoApps": "Walang app na tumutugma sa iyong paghahanap"
         },
         "devtools": {
             "title": "AeroTools",

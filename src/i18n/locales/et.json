@@ -964,14 +964,16 @@
             "backupColFormat": "Failivorming",
             "backupColImport": "Impordi",
             "backupColExport": "Ekspordi",
-            "backupRowFullBackup": "AeroFTP - Täielik varukoopia",
+            "backupRowFullBackup": "Täielik varukoopia",
             "backupRowFullBackupDesc": "Serverid, mandaadid, sätted ja OAuth-load",
-            "backupRowServersOnly": "AeroFTP - Ainult serverid",
+            "backupRowServersOnly": "Serveri profiilid",
             "backupRowServersOnlyDesc": "Ainult serveriprofiilid, ilma rakenduse säteteta",
             "backupRowOtherApps": "Muud rakendused",
             "backupOtherAppsCount": "{count} toetatud",
             "backupImportAny": "Impordi ükskõik milline",
-            "backupImportAnyDesc": "Tuvastab rclone'i ja kõik muud toetatud varundusvormingud"
+            "backupImportAnyDesc": "Tuvastab rclone'i ja kõik muud toetatud varundusvormingud",
+            "bridgeSearchApps": "Otsi rakendusi...",
+            "bridgeNoApps": "Ükski rakendus ei vasta otsingule"
         },
         "devtools": {
             "title": "AeroTools",

@@ -964,14 +964,16 @@
             "backupColFormat": "ទ្រង់ទ្រាយឯកសារ",
             "backupColImport": "នាំចូល",
             "backupColExport": "នាំចេញ",
-            "backupRowFullBackup": "AeroFTP - ការបម្រុងទុកពេញលេញ",
+            "backupRowFullBackup": "ការបម្រុងទុកពេញលេញ",
             "backupRowFullBackupDesc": "ម៉ាស៊ីនមេ ព័ត៌មានសម្គាល់ ការកំណត់ និងថូខឹន OAuth",
-            "backupRowServersOnly": "AeroFTP - ម៉ាស៊ីនមេតែប៉ុណ្ណោះ",
+            "backupRowServersOnly": "ប្រវត្តិរូបម៉ាស៊ីនមេ",
             "backupRowServersOnlyDesc": "ប្រវត្តិរូបម៉ាស៊ីនមេតែប៉ុណ្ណោះ ដោយគ្មានការកំណត់កម្មវិធី",
             "backupRowOtherApps": "កម្មវិធីផ្សេងទៀត",
             "backupOtherAppsCount": "{count} ត្រូវបានគាំទ្រ",
             "backupImportAny": "នាំចូលអ្វីក៏បាន",
-            "backupImportAnyDesc": "រកឃើញ rclone និងទ្រង់ទ្រាយបម្រុងទុកដែលគាំទ្រផ្សេងទៀតទាំងអស់"
+            "backupImportAnyDesc": "រកឃើញ rclone និងទ្រង់ទ្រាយបម្រុងទុកដែលគាំទ្រផ្សេងទៀតទាំងអស់",
+            "bridgeSearchApps": "ស្វែងរកកម្មវិធី...",
+            "bridgeNoApps": "គ្មានកម្មវិធីត្រូវនឹងការស្វែងរករបស់អ្នកទេ"
         },
         "devtools": {
             "title": "AeroTools",

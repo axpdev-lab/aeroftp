@@ -964,14 +964,16 @@
             "backupColFormat": "Fitxategi-formatua",
             "backupColImport": "Inportatu",
             "backupColExport": "Esportatu",
-            "backupRowFullBackup": "AeroFTP - Babeskopia osoa",
+            "backupRowFullBackup": "Babeskopia osoa",
             "backupRowFullBackupDesc": "Zerbitzariak, kredentzialak, ezarpenak eta OAuth tokenak",
-            "backupRowServersOnly": "AeroFTP - Zerbitzariak soilik",
+            "backupRowServersOnly": "Zerbitzari-profilak",
             "backupRowServersOnlyDesc": "Zerbitzari-profilak soilik, aplikazioaren ezarpenik gabe",
             "backupRowOtherApps": "Beste aplikazioak",
             "backupOtherAppsCount": "{count} onartzen dira",
             "backupImportAny": "Inportatu edozein",
-            "backupImportAnyDesc": "rclone eta onartutako beste edozein babeskopia-formatu hautematen ditu"
+            "backupImportAnyDesc": "rclone eta onartutako beste edozein babeskopia-formatu hautematen ditu",
+            "bridgeSearchApps": "Bilatu aplikazioak...",
+            "bridgeNoApps": "Ez dago bilaketarekin bat datorren aplikaziorik"
         },
         "devtools": {
             "title": "AeroTools",

@@ -964,14 +964,16 @@
             "backupColFormat": "ファイル形式",
             "backupColImport": "インポート",
             "backupColExport": "エクスポート",
-            "backupRowFullBackup": "AeroFTP - フルバックアップ",
+            "backupRowFullBackup": "フルバックアップ",
             "backupRowFullBackupDesc": "サーバー、認証情報、設定、OAuth トークン",
-            "backupRowServersOnly": "AeroFTP - サーバーのみ",
+            "backupRowServersOnly": "サーバープロファイル",
             "backupRowServersOnlyDesc": "サーバープロファイルのみ、アプリ設定は含みません",
             "backupRowOtherApps": "他のアプリ",
             "backupOtherAppsCount": "{count} 件対応",
             "backupImportAny": "すべてインポート",
-            "backupImportAnyDesc": "rclone やその他すべての対応バックアップ形式を検出します"
+            "backupImportAnyDesc": "rclone やその他すべての対応バックアップ形式を検出します",
+            "bridgeSearchApps": "アプリを検索...",
+            "bridgeNoApps": "検索に一致するアプリがありません"
         },
         "devtools": {
             "title": "AeroTools",

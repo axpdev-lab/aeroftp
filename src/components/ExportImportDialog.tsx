@@ -6,7 +6,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { open, save } from '@tauri-apps/plugin-dialog';
-import { Upload, Download, Shield, AlertCircle, CheckCircle2, X, Eye, EyeOff, Lock, FolderInput } from 'lucide-react';
+import { Upload, Download, Shield, AlertCircle, CheckCircle2, X, Eye, EyeOff, Lock, FolderInput, Search } from 'lucide-react';
 import { PasswordStrengthBar } from './vault/PasswordStrengthBar';
 import { ServerProfile } from '../types';
 import { loadSavedServerProfiles, storeSavedServerProfiles } from '../utils/serverProfileStore';
@@ -58,6 +58,8 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
     // Generic bridge source (the 12 expansion sources routed through BridgeSourcePanel)
     const [bridgeSrc, setBridgeSrc] = useState<BridgeSourceDescriptor | null>(null);
     const [bridgeSrcDir, setBridgeSrcDir] = useState<'import' | 'export'>('import');
+    // Filter for the bridge app picker (the list is long, so show ~5 + scroll)
+    const [bridgeFilter, setBridgeFilter] = useState('');
     // A profile file dropped onto the dialog and identified by
     // bridge_identify; handed to BridgeSourcePanel to skip browse.
     const [bridgePresetPath, setBridgePresetPath] = useState<string | null>(null);
@@ -407,31 +409,50 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                             const Icon = isImport ? FolderInput : Download;
                             const pick = (s: BridgeSourceDescriptor) =>
                                 routeBridgeSource(s, isImport, bridgePresetPath ?? undefined);
+                            const q = bridgeFilter.trim().toLowerCase();
+                            const filtered = q
+                                ? GENERIC_BRIDGE_SOURCES.filter(s => s.label.toLowerCase().includes(q))
+                                : GENERIC_BRIDGE_SOURCES;
                             return (
                                 <div className="space-y-3">
                                     <div className="text-sm text-gray-600 dark:text-gray-300">
                                         {isImport ? t('settings.bridgeSelectSource') : t('settings.bridgeSelectTarget')}
                                     </div>
-                                    {GENERIC_BRIDGE_SOURCES.map(s => (
-                                        <button
-                                            key={s.id}
-                                            onClick={() => pick(s)}
-                                            disabled={!isImport && servers.length === 0}
-                                            className="w-full p-3 border border-gray-200 dark:border-gray-700 rounded-lg hover:border-blue-400 dark:hover:border-blue-500 flex items-center gap-3 transition-colors disabled:opacity-50"
-                                        >
-                                            <div className={`w-9 h-9 rounded-lg ${s.accentBg} flex items-center justify-center flex-shrink-0`}>
-                                                <Icon size={18} className={s.accent} />
-                                            </div>
-                                            <div className="text-left min-w-0">
-                                                <div className="font-medium">{s.label}</div>
-                                                <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                                                    {(isImport ? t('settings.bridgeGenericImportDesc') : t('settings.bridgeGenericExportDesc')).replace('{app}', s.label)}
+                                    <div className="relative">
+                                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                                        <input
+                                            type="text"
+                                            autoFocus
+                                            value={bridgeFilter}
+                                            onChange={(e) => setBridgeFilter(e.target.value)}
+                                            placeholder={t('settings.bridgeSearchApps')}
+                                            className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:outline-none focus:border-blue-400 dark:focus:border-blue-500"
+                                        />
+                                    </div>
+                                    <div className="space-y-2 max-h-[336px] overflow-y-auto pr-1">
+                                        {filtered.length === 0 ? (
+                                            <div className="py-6 text-center text-sm text-gray-400 dark:text-gray-500">{t('settings.bridgeNoApps')}</div>
+                                        ) : filtered.map(s => (
+                                            <button
+                                                key={s.id}
+                                                onClick={() => pick(s)}
+                                                disabled={!isImport && servers.length === 0}
+                                                className="w-full p-3 border border-gray-200 dark:border-gray-700 rounded-lg hover:border-blue-400 dark:hover:border-blue-500 flex items-center gap-3 transition-colors disabled:opacity-50"
+                                            >
+                                                <div className={`w-9 h-9 rounded-lg ${s.accentBg} flex items-center justify-center flex-shrink-0`}>
+                                                    <Icon size={18} className={s.accent} />
                                                 </div>
-                                            </div>
-                                        </button>
-                                    ))}
+                                                <div className="text-left min-w-0">
+                                                    <div className="font-medium">{s.label}</div>
+                                                    <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                                        {(isImport ? t('settings.bridgeGenericImportDesc') : t('settings.bridgeGenericExportDesc')).replace('{app}', s.label)}
+                                                    </div>
+                                                </div>
+                                            </button>
+                                        ))}
+                                    </div>
                                     <div className="flex gap-2">
-                                        <button onClick={resetMode} className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">{t('common.back')}</button>
+                                        <button onClick={() => { setBridgeFilter(''); resetMode(); }} className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">{t('common.back')}</button>
                                     </div>
                                 </div>
                             );

@@ -964,14 +964,16 @@
             "backupColFormat": "Định dạng tệp",
             "backupColImport": "Nhập",
             "backupColExport": "Xuất",
-            "backupRowFullBackup": "AeroFTP - Sao lưu đầy đủ",
+            "backupRowFullBackup": "Sao lưu đầy đủ",
             "backupRowFullBackupDesc": "Máy chủ, thông tin xác thực, cài đặt và mã thông báo OAuth",
-            "backupRowServersOnly": "AeroFTP - Chỉ máy chủ",
+            "backupRowServersOnly": "Hồ sơ máy chủ",
             "backupRowServersOnlyDesc": "Chỉ hồ sơ máy chủ, không có cài đặt ứng dụng",
             "backupRowOtherApps": "Ứng dụng khác",
             "backupOtherAppsCount": "Hỗ trợ {count}",
             "backupImportAny": "Nhập bất kỳ",
-            "backupImportAnyDesc": "Phát hiện rclone và mọi định dạng sao lưu được hỗ trợ khác"
+            "backupImportAnyDesc": "Phát hiện rclone và mọi định dạng sao lưu được hỗ trợ khác",
+            "bridgeSearchApps": "Tìm ứng dụng...",
+            "bridgeNoApps": "Không có ứng dụng nào khớp với tìm kiếm của bạn"
         },
         "devtools": {
             "title": "AeroTools",

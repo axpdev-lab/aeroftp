@@ -964,14 +964,16 @@
             "backupColFormat": "Skráarsnið",
             "backupColImport": "Flytja inn",
             "backupColExport": "Flytja út",
-            "backupRowFullBackup": "AeroFTP - Heildarafrit",
+            "backupRowFullBackup": "Heildarafrit",
             "backupRowFullBackupDesc": "Þjónar, auðkenni, stillingar og OAuth-teikn",
-            "backupRowServersOnly": "AeroFTP - Aðeins þjónar",
+            "backupRowServersOnly": "Netþjónssnið",
             "backupRowServersOnlyDesc": "Aðeins þjónasnið, engar forritsstillingar",
             "backupRowOtherApps": "Önnur forrit",
             "backupOtherAppsCount": "{count} studd",
             "backupImportAny": "Flytja inn hvað sem er",
-            "backupImportAnyDesc": "Greinir rclone og öll önnur studd afritunarsnið"
+            "backupImportAnyDesc": "Greinir rclone og öll önnur studd afritunarsnið",
+            "bridgeSearchApps": "Leita að forritum...",
+            "bridgeNoApps": "Engin forrit passa við leitina"
         },
         "devtools": {
             "title": "AeroTools",

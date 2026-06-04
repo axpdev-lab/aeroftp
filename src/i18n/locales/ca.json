@@ -964,14 +964,16 @@
             "backupColFormat": "Format de fitxer",
             "backupColImport": "Importa",
             "backupColExport": "Exporta",
-            "backupRowFullBackup": "AeroFTP - Còpia completa",
+            "backupRowFullBackup": "Còpia completa",
             "backupRowFullBackupDesc": "Servidors, credencials, configuració i testimonis OAuth",
-            "backupRowServersOnly": "AeroFTP - Només servidors",
+            "backupRowServersOnly": "Perfils de servidor",
             "backupRowServersOnlyDesc": "Només perfils de servidor, sense configuració de l'aplicació",
             "backupRowOtherApps": "Altres apps",
             "backupOtherAppsCount": "{count} compatibles",
             "backupImportAny": "Importa qualsevol",
-            "backupImportAnyDesc": "Detecta rclone i qualsevol altre format de còpia compatible"
+            "backupImportAnyDesc": "Detecta rclone i qualsevol altre format de còpia compatible",
+            "bridgeSearchApps": "Cerca aplicacions...",
+            "bridgeNoApps": "Cap aplicació coincideix amb la cerca"
         },
         "devtools": {
             "title": "AeroTools",

@@ -964,14 +964,16 @@
             "backupColFormat": "Filformat",
             "backupColImport": "Importera",
             "backupColExport": "Exportera",
-            "backupRowFullBackup": "AeroFTP - Fullständig säkerhetskopia",
+            "backupRowFullBackup": "Fullständig säkerhetskopia",
             "backupRowFullBackupDesc": "Servrar, autentiseringsuppgifter, inställningar och OAuth-token",
-            "backupRowServersOnly": "AeroFTP - Endast servrar",
+            "backupRowServersOnly": "Serverprofiler",
             "backupRowServersOnlyDesc": "Endast serverprofiler, inga appinställningar",
             "backupRowOtherApps": "Andra appar",
             "backupOtherAppsCount": "{count} stöds",
             "backupImportAny": "Importera valfri",
-            "backupImportAnyDesc": "Identifierar rclone och alla andra format för säkerhetskopior som stöds"
+            "backupImportAnyDesc": "Identifierar rclone och alla andra format för säkerhetskopior som stöds",
+            "bridgeSearchApps": "Sök appar...",
+            "bridgeNoApps": "Inga appar matchar din sökning"
         },
         "devtools": {
             "title": "AeroTools",

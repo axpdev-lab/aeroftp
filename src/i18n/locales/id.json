@@ -964,14 +964,16 @@
             "backupColFormat": "Format File",
             "backupColImport": "Impor",
             "backupColExport": "Ekspor",
-            "backupRowFullBackup": "AeroFTP - Cadangan Penuh",
+            "backupRowFullBackup": "Cadangan Penuh",
             "backupRowFullBackupDesc": "Server, kredensial, pengaturan, dan token OAuth",
-            "backupRowServersOnly": "AeroFTP - Hanya Server",
+            "backupRowServersOnly": "Profil server",
             "backupRowServersOnlyDesc": "Hanya profil server, tanpa pengaturan aplikasi",
             "backupRowOtherApps": "Aplikasi Lain",
             "backupOtherAppsCount": "{count} didukung",
             "backupImportAny": "Impor Apa Saja",
-            "backupImportAnyDesc": "Mendeteksi rclone dan setiap format cadangan lain yang didukung"
+            "backupImportAnyDesc": "Mendeteksi rclone dan setiap format cadangan lain yang didukung",
+            "bridgeSearchApps": "Cari aplikasi...",
+            "bridgeNoApps": "Tidak ada aplikasi yang cocok dengan pencarian Anda"
         },
         "devtools": {
             "title": "AeroTools",

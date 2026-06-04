@@ -964,14 +964,16 @@
             "backupColFormat": "รูปแบบไฟล์",
             "backupColImport": "นำเข้า",
             "backupColExport": "ส่งออก",
-            "backupRowFullBackup": "AeroFTP - สำรองข้อมูลทั้งหมด",
+            "backupRowFullBackup": "สำรองข้อมูลทั้งหมด",
             "backupRowFullBackupDesc": "เซิร์ฟเวอร์ ข้อมูลรับรอง การตั้งค่า และโทเค็น OAuth",
-            "backupRowServersOnly": "AeroFTP - เฉพาะเซิร์ฟเวอร์",
+            "backupRowServersOnly": "โปรไฟล์เซิร์ฟเวอร์",
             "backupRowServersOnlyDesc": "เฉพาะโปรไฟล์เซิร์ฟเวอร์ ไม่รวมการตั้งค่าแอป",
             "backupRowOtherApps": "แอปอื่น ๆ",
             "backupOtherAppsCount": "รองรับ {count} รายการ",
             "backupImportAny": "นำเข้าทุกรูปแบบ",
-            "backupImportAnyDesc": "ตรวจจับ rclone และรูปแบบสำรองข้อมูลอื่นที่รองรับทั้งหมด"
+            "backupImportAnyDesc": "ตรวจจับ rclone และรูปแบบสำรองข้อมูลอื่นที่รองรับทั้งหมด",
+            "bridgeSearchApps": "ค้นหาแอป...",
+            "bridgeNoApps": "ไม่มีแอปที่ตรงกับการค้นหาของคุณ"
         },
         "devtools": {
             "title": "AeroTools",

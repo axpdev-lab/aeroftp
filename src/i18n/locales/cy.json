@@ -964,14 +964,16 @@
             "backupColFormat": "Fformat Ffeil",
             "backupColImport": "Mewnforio",
             "backupColExport": "Allforio",
-            "backupRowFullBackup": "AeroFTP - Copi Wrth Gefn Llawn",
+            "backupRowFullBackup": "Copi Wrth Gefn Llawn",
             "backupRowFullBackupDesc": "Gweinyddion, manylion mewngofnodi, gosodiadau a thocynnau OAuth",
-            "backupRowServersOnly": "AeroFTP - Gweinyddion yn Unig",
+            "backupRowServersOnly": "Proffiliau gweinydd",
             "backupRowServersOnlyDesc": "Proffiliau gweinydd yn unig, dim gosodiadau'r ap",
             "backupRowOtherApps": "Apiau Eraill",
             "backupOtherAppsCount": "{count} yn cael eu cefnogi",
             "backupImportAny": "Mewnforio Unrhyw Un",
-            "backupImportAnyDesc": "Yn canfod rclone a phob fformat copi wrth gefn arall a gefnogir"
+            "backupImportAnyDesc": "Yn canfod rclone a phob fformat copi wrth gefn arall a gefnogir",
+            "bridgeSearchApps": "Chwilio apiau...",
+            "bridgeNoApps": "Dim apiau yn cyfateb i'ch chwiliad"
         },
         "devtools": {
             "title": "AeroTools",
