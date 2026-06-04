@@ -508,6 +508,13 @@ pub struct KeystoreImportResult {
     /// from the source with a passphrase set.
     #[serde(default)]
     pub user_partitions_unreadable: u32,
+    /// F-012 W3: filesystem path of the timestamped snapshot taken of the
+    /// pre-existing `user_partitions.db` immediately before the import
+    /// overwrote it. `None` when there was no local partition DB to preserve
+    /// (fresh install / VaultOnly import). The import is therefore reversible:
+    /// restoring this file un-does a destructive cross-machine import.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_partitions_backup_path: Option<String>,
 }
 
 /// User-facing selectivity for import. All flags default to `true` so
@@ -1297,6 +1304,9 @@ pub fn import_keystore(
     // because one file was locked" outcome.
     let mut sqlite_dbs_restored = 0u32;
     let mut files_restored = 0u32;
+    // F-012 W3: path of the pre-import snapshot of user_partitions.db, set
+    // when an existing local partition DB is preserved before the overwrite.
+    let mut user_partitions_backup_path: Option<String> = None;
 
     if sections.sqlite_dbs && !payload.sqlite_dumps.is_empty() {
         if let Some(cfg) = config_dir {
@@ -1326,6 +1336,31 @@ pub fn import_keystore(
                         }
                     };
                     let target = cfg.join(name);
+                    // F-012 W3: the import is a blind whole-file overwrite. For
+                    // user_partitions.db this can replace a healthy local
+                    // multi-user partition with the backup's copy (whose
+                    // passphrase-less DEKs are machine-bound and may be inert
+                    // here). Snapshot the existing file first so the import is
+                    // reversible -- a bad cross-machine import can be undone by
+                    // restoring this .bak. Best-effort: a copy failure must not
+                    // abort the restore.
+                    if name.as_str() == "user_partitions.db" && target.is_file() {
+                        let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ");
+                        let backup = cfg.join(format!("{name}.pre-import-{stamp}.bak"));
+                        match std::fs::copy(&target, &backup) {
+                            Ok(_) => {
+                                user_partitions_backup_path =
+                                    Some(backup.to_string_lossy().into_owned());
+                                tracing::info!(
+                                    "F-012 W3: snapshotted {name} before overwrite -> {}",
+                                    backup.display()
+                                );
+                            }
+                            Err(e) => tracing::warn!(
+                                "F-012 W3: could not snapshot {name} before overwrite: {e}"
+                            ),
+                        }
+                    }
                     // AUDIT 2026-05-11 M3: use the shared
                     // atomic_write_synced helper so the new file is
                     // fsync'd and visible after a crash. Sidecar
@@ -1484,6 +1519,7 @@ pub fn import_keystore(
         skipped_due_to_read_error: 0,
         user_partitions_rekeyed,
         user_partitions_unreadable,
+        user_partitions_backup_path,
     })
 }
 

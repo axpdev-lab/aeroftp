@@ -3316,6 +3316,18 @@ async fn install_appimage_update(
     app.restart();
 }
 
+/// F-012 W1/W4: restart AeroFTP on request. A keystore import that touched the
+/// on-disk SQLite databases (user partitions, chat history, file tags, plugins)
+/// leaves the running app holding stale long-lived connections, so the imported
+/// state only takes effect after a relaunch. Also used by the manual "Restart
+/// AeroFTP" button and after a multi-user partition rebuild. Releases the
+/// single-instance lock first so the relaunch is not rejected as a duplicate.
+#[tauri::command]
+fn restart_app(app: tauri::AppHandle) {
+    tauri_plugin_single_instance::destroy(&app);
+    app.restart();
+}
+
 /// Install a .deb package via pkexec with branded Polkit dialog and restart the app.
 /// Uses /usr/lib/aeroftp/aeroftp-update-helper (installed by .deb) for branded auth dialog.
 /// Falls back to generic `pkexec dpkg -i` if helper is not found.
@@ -14864,6 +14876,9 @@ pub fn run() {
             app_master_password_check_timeout,
             // Multi-user partition metadata
             user_partitions::user_partitions_init,
+            user_partitions::user_partitions_health,
+            user_partitions::user_partitions_repair_rebuild,
+            restart_app,
             user_partitions::user_partitions_list_users,
             user_partitions::user_partitions_get_active_user,
             user_partitions::user_partitions_load_active_server_profiles,

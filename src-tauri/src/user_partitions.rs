@@ -2210,6 +2210,135 @@ pub async fn user_partitions_init(app: AppHandle) -> Result<MigrationReport, Str
     init_or_migrate(&app)
 }
 
+// ============ Repair multi-user data (F-012 W4) ============
+
+/// Health of the active user partition on THIS machine. The Repair panel
+/// surfaces proactively when `active_user_readable` is false: the DEK cannot be
+/// unwrapped with the local root_key, which is the headline cross-machine
+/// import symptom (an imported passphrase-less partition stays bound to the
+/// source machine's vault_key).
+#[derive(Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PartitionHealth {
+    /// True when the active user's server profiles decrypt with the local
+    /// root_key. False = the DEK is bound to another machine (needs repair).
+    pub active_user_readable: bool,
+    /// Name of the active user, for the panel copy.
+    pub active_user_name: Option<String>,
+    /// Profiles readable for the active user (0 when unreadable).
+    pub profile_count: u32,
+    /// Raw backend error code when unreadable (mapped to copy by the frontend
+    /// via `mapUserPartitionError`).
+    pub error_code: Option<String>,
+    /// Whether the legacy credential vault still holds profiles to rebuild
+    /// from (gates the "Rebuild from this device" option).
+    pub can_rebuild_from_device: bool,
+}
+
+/// Outcome of a "rebuild from this device" repair. The active partition is
+/// reconstructed from the legacy credential vault (`config_server_profiles`)
+/// under THIS machine's local root_key, after the possibly-broken
+/// `user_partitions.db` is snapshotted and removed.
+#[derive(Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PartitionRebuildReport {
+    /// Profiles recovered into the rebuilt partition, readable on this machine.
+    pub recovered_profiles: u32,
+    /// Path of the timestamped snapshot of the pre-rebuild user_partitions.db
+    /// (None when there was nothing to preserve).
+    pub backup_path: Option<String>,
+    /// Whether a fresh default user had to be created.
+    pub created_default_user: bool,
+}
+
+#[tauri::command]
+pub async fn user_partitions_health(app: AppHandle) -> Result<PartitionHealth, String> {
+    init_or_migrate(&app)?;
+    let conn = open_or_init(&app)?;
+    let active_user_name = get_active_user(&conn)?.map(|u| u.name);
+
+    let store = CredentialStore::from_cache();
+    let can_rebuild_from_device = store
+        .as_ref()
+        .and_then(|s| s.get("config_server_profiles").ok())
+        .map(|p| {
+            let trimmed = p.trim();
+            !trimmed.is_empty() && trimmed != "[]"
+        })
+        .unwrap_or(false);
+
+    let mut health = PartitionHealth {
+        active_user_name,
+        can_rebuild_from_device,
+        ..Default::default()
+    };
+
+    let Some(store) = store else {
+        health.error_code = Some("STORE_NOT_READY".to_string());
+        return Ok(health);
+    };
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let result = list_active_server_profiles(&conn, &root_key);
+    root_key.zeroize();
+    match result {
+        Ok(profiles) => {
+            health.active_user_readable = true;
+            health.profile_count = profiles.len() as u32;
+        }
+        Err(e) => {
+            health.active_user_readable = false;
+            health.error_code = Some(e);
+        }
+    }
+    Ok(health)
+}
+
+/// Rebuild the active partition from this device's legacy credential vault.
+/// Snapshots and removes the current (possibly machine-bound, unreadable)
+/// `user_partitions.db`, then re-runs the legacy migration so a fresh default
+/// partition is created under THIS machine's local root_key. This is the
+/// manual local-reset the owner ran by hand during the F-012 incident,
+/// productized with an automatic pre-step backup.
+#[tauri::command]
+pub async fn user_partitions_repair_rebuild(
+    app: AppHandle,
+) -> Result<PartitionRebuildReport, String> {
+    let path = db_path(&app)?;
+    let mut report = PartitionRebuildReport::default();
+
+    if path.is_file() {
+        let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ");
+        let backup = path.with_file_name(format!("{DB_FILENAME}.pre-rebuild-{stamp}.bak"));
+        std::fs::copy(&path, &backup)
+            .map_err(|e| format!("Snapshot user_partitions.db before rebuild: {e}"))?;
+        report.backup_path = Some(backup.to_string_lossy().into_owned());
+        // Drop any unlocked session, then remove the DB and its SQLite
+        // sidecars. Connections are short-lived per command, so no open handle
+        // blocks the removal (cross-platform safe).
+        clear_user_session();
+        std::fs::remove_file(&path)
+            .map_err(|e| format!("Remove user_partitions.db for rebuild: {e}"))?;
+        let _ = std::fs::remove_file(path.with_extension("db-wal"));
+        let _ = std::fs::remove_file(path.with_extension("db-shm"));
+    }
+
+    // Rebuild from the legacy credential vault under the local root_key.
+    let migration = init_or_migrate(&app)?;
+    report.created_default_user = migration.created_default_user;
+
+    // Count what came back readable on this machine.
+    if let Some(store) = CredentialStore::from_cache() {
+        let conn = open_or_init(&app)?;
+        let mut root_key = store.derive_user_partition_wrapping_key();
+        let profiles = list_active_server_profiles(&conn, &root_key);
+        root_key.zeroize();
+        if let Ok(profiles) = profiles {
+            report.recovered_profiles = profiles.len() as u32;
+        }
+    }
+    Ok(report)
+}
+
 #[tauri::command]
 pub async fn user_partitions_list_users(app: AppHandle) -> Result<Vec<UserMetadata>, String> {
     init_or_migrate(&app)?;

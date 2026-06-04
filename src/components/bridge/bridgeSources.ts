@@ -41,3 +41,24 @@ export interface BridgeSourceMeta {
     exportLabel: string;
     secretPolicy: 'full' | 'limited' | 'metadata';
 }
+
+// Distinct file-format extensions across all GENERIC_BRIDGE_SOURCES, shown in
+// the Settings -> Backup table FILE FORMAT column (one chip each, styled like
+// the native .aeroftp / .aeroftp-keystore chips). Source of truth for the
+// per-source export extension is `bridge_export_format()` in
+// src-tauri/src/bridge_shared.rs; this is its deduplicated union, so every one
+// of the 15 supported tools' format is represented without repeating .conf /
+// .ini / .json three times each. Keep in sync if a new bridge source adds a
+// format not already listed here.
+export const BRIDGE_FORMAT_EXTENSIONS: string[] = [
+    '.conf', // rclone, OpenSSH, kopia
+    '.ini',  // WinSCP, AWS CLI, MobaXterm
+    '.json', // MinIO Client, Duplicacy
+    '.xml',  // FileZilla
+    '.cfg',  // s3cmd
+    '.rc',   // lftp
+    '.duck', // Cyberduck
+    '.ste',  // Dreamweaver
+    '.reg',  // PuTTY
+    '.sh',   // restic
+];
