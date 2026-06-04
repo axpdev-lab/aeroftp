@@ -14345,9 +14345,11 @@ fn resolve_cli_remote_path(initial_path: &str, user_path: &str) -> String {
         format!("{}/{}", base_normalized, relative)
     };
 
-    // Always log path rewriting to stderr so agents and interactive users see
-    // the resolved path without polluting stdout (JSON / piping).
-    if resolved != user_path {
+    // Log path rewriting to stderr so interactive users see the resolved path
+    // without polluting stdout (JSON / piping). F-003: stay silent in JSON mode
+    // so a machine-readable run produces no informational chatter on either
+    // stream, matching the profile banner and the "Next:" hints.
+    if resolved != user_path && !JSON_MODE.load(Ordering::Relaxed) {
         eprintln!(
             "Note: path '{}' resolved to '{}' (profile base: {})",
             user_path, resolved, base_normalized
