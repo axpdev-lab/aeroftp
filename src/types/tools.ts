@@ -36,7 +36,7 @@ export const AGENT_TOOLS: AITool[] = [
     // Safe: auto-execute
     {
         name: 'remote_list',
-        description: 'List files and folders in a remote directory',
+        description: 'List files and folders in a remote directory. Targets the active connection by default, or a saved server when you pass its name in the server parameter.',
         parameters: [
             { name: 'path', type: 'string', description: 'Remote directory path', required: true },
             { name: 'server', type: 'string', description: 'Saved server name or ID. Omit to use the currently active connection.', required: false },
@@ -45,7 +45,7 @@ export const AGENT_TOOLS: AITool[] = [
     },
     {
         name: 'remote_read',
-        description: 'Read a remote text file (max 5KB)',
+        description: 'Read a remote text file (max 5KB). Targets the active connection by default, or a saved server when you pass its name in the server parameter.',
         parameters: [
             { name: 'path', type: 'string', description: 'Remote file path', required: true },
             { name: 'server', type: 'string', description: 'Saved server name or ID. Omit to use the currently active connection.', required: false },
@@ -54,7 +54,7 @@ export const AGENT_TOOLS: AITool[] = [
     },
     {
         name: 'remote_info',
-        description: 'Get file/directory info (size, modified, permissions)',
+        description: 'Get file/directory info (size, modified, permissions). Targets the active connection by default, or a saved server when you pass its name in the server parameter.',
         parameters: [
             { name: 'path', type: 'string', description: 'Remote path', required: true },
             { name: 'server', type: 'string', description: 'Saved server name or ID. Omit to use the currently active connection.', required: false },
@@ -63,7 +63,7 @@ export const AGENT_TOOLS: AITool[] = [
     },
     {
         name: 'remote_search',
-        description: 'Search for files by name pattern on remote',
+        description: 'Search for files by name pattern on remote. Targets the active connection by default, or a saved server when you pass its name in the server parameter.',
         parameters: [
             { name: 'path', type: 'string', description: 'Directory to search', required: true },
             { name: 'pattern', type: 'string', description: 'Search pattern (e.g. "*.txt")', required: true },
@@ -515,7 +515,7 @@ export const AGENT_TOOLS: AITool[] = [
     // Server management (cross-server operations via saved profiles)
     {
         name: 'server_list_saved',
-        description: 'List all saved server profiles (names, protocols, hosts, usernames). Passwords are never exposed. Use this to discover which servers are available before using server_exec.',
+        description: 'List the saved server PROFILES themselves (names, protocols, hosts, usernames); passwords are never exposed. Returns the profile list only, NOT their files. To list or read files on a saved server, call remote_list / remote_read / server_exec with that server name instead.',
         parameters: [],
         dangerLevel: 'safe',
     },
