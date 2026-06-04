@@ -973,7 +973,9 @@
             "backupImportAny": "Impordi ükskõik milline",
             "backupImportAnyDesc": "Tuvastab rclone'i ja kõik muud toetatud varundusvormingud",
             "bridgeSearchApps": "Otsi rakendusi...",
-            "bridgeNoApps": "Ükski rakendus ei vasta otsingule"
+            "bridgeNoApps": "Ükski rakendus ei vasta otsingule",
+            "keystoreRekeyedPartitions": "{count} konto võti määrati selle seadme jaoks uuesti.",
+            "keystoreUnreadablePartitions": "{count} kontot ei õnnestunud selles seadmes avada. Varukoopia tehti teises arvutis: ekspordi see seal uuesti, määrates neile kontodele parooli, ja impordi siis siia."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4573,7 +4575,20 @@
             "lastUsedToday": "Kasutatud täna",
             "lastUsedYesterday": "Kasutatud eile",
             "lastUsedDaysAgo": "Kasutatud {days} päeva tagasi",
-            "securityNote": "Konto on kaitstud Argon2id + AES-KW + AES-256-GCM krüpteeringuga"
+            "securityNote": "Konto on kaitstud Argon2id + AES-KW + AES-256-GCM krüpteeringuga",
+            "dataKeyUnreadable": "Selle konto andmeid ei saa selles seadmes avada. Varukoopia loodi teises arvutis; ekspordi see seal uuesti, määrates sellele kontole parooli, ja impordi siis siia.",
+            "passphraseRequired": "Sisesta oma praegune konto parool.",
+            "passphraseNotNeeded": "Sellel kontol pole sisestatavat parooli.",
+            "userLocked": "See konto on lukus. Ava see esmalt ja proovi uuesti.",
+            "noActiveUser": "Lülitu esmalt sellele kontole ja proovi uuesti.",
+            "notAuthorized": "Sul pole õigust seda kontot muuta.",
+            "vaultLocked": "Ava esmalt oma konto ja proovi uuesti.",
+            "storeNotReady": "Ava esmalt hoidla ja proovi uuesti.",
+            "cannotDemoteLastAdmin": "Viimast administraatorit ei saa eemaldada.",
+            "cannotDeleteLastAdmin": "Viimast administraatorit ei saa kustutada.",
+            "cannotDeleteLastUser": "Viimast kontot ei saa kustutada.",
+            "adminResetNotForSelf": "Kasuta oma kontol valikut Muuda parooli.",
+            "userNotFound": "Seda kontot enam ei ole."
         },
         "opendrive": {
             "privacyTitle": "OpenDrive'i privaatsus",

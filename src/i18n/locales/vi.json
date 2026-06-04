@@ -973,7 +973,9 @@
             "backupImportAny": "Nhập bất kỳ",
             "backupImportAnyDesc": "Phát hiện rclone và mọi định dạng sao lưu được hỗ trợ khác",
             "bridgeSearchApps": "Tìm ứng dụng...",
-            "bridgeNoApps": "Không có ứng dụng nào khớp với tìm kiếm của bạn"
+            "bridgeNoApps": "Không có ứng dụng nào khớp với tìm kiếm của bạn",
+            "keystoreRekeyedPartitions": "Đã tạo lại khóa cho {count} tài khoản cho thiết bị này.",
+            "keystoreUnreadablePartitions": "Không thể mở khóa {count} tài khoản trên thiết bị này. Bản sao lưu được tạo trên một máy tính khác: hãy xuất lại nó ở đó với mật khẩu đặt cho các tài khoản đó, rồi nhập vào đây."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4573,7 +4575,20 @@
             "lastUsedToday": "Đã sử dụng hôm nay",
             "lastUsedYesterday": "Đã sử dụng hôm qua",
             "lastUsedDaysAgo": "Đã sử dụng {days} ngày trước",
-            "securityNote": "Tài khoản được bảo vệ bằng mã hóa Argon2id + AES-KW + AES-256-GCM"
+            "securityNote": "Tài khoản được bảo vệ bằng mã hóa Argon2id + AES-KW + AES-256-GCM",
+            "dataKeyUnreadable": "Không thể mở khóa dữ liệu của tài khoản này trên thiết bị này. Bản sao lưu được tạo trên một máy tính khác; hãy xuất lại nó ở đó với mật khẩu đặt cho tài khoản này, rồi nhập vào đây.",
+            "passphraseRequired": "Nhập mật khẩu tài khoản hiện tại của bạn.",
+            "passphraseNotNeeded": "Tài khoản này không có mật khẩu để nhập.",
+            "userLocked": "Tài khoản này đã bị khóa. Hãy mở khóa trước rồi thử lại.",
+            "noActiveUser": "Hãy chuyển sang tài khoản này trước rồi thử lại.",
+            "notAuthorized": "Bạn không có quyền thay đổi tài khoản đó.",
+            "vaultLocked": "Hãy mở khóa tài khoản của bạn trước rồi thử lại.",
+            "storeNotReady": "Hãy mở khóa kho lưu trữ trước rồi thử lại.",
+            "cannotDemoteLastAdmin": "Bạn không thể xóa quản trị viên cuối cùng.",
+            "cannotDeleteLastAdmin": "Bạn không thể xóa quản trị viên cuối cùng.",
+            "cannotDeleteLastUser": "Bạn không thể xóa tài khoản cuối cùng.",
+            "adminResetNotForSelf": "Dùng Đổi mật khẩu trên tài khoản của chính bạn.",
+            "userNotFound": "Tài khoản này không còn tồn tại."
         },
         "opendrive": {
             "privacyTitle": "Quyền riêng tư OpenDrive",

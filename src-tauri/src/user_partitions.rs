@@ -15,7 +15,7 @@ use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use secrecy::zeroize::Zeroize;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::AppHandle;
@@ -1484,6 +1484,165 @@ pub fn change_user_passphrase(
     Ok(())
 }
 
+// ============ Keystore portability (F-012) ============
+//
+// A passphrase-less user partition wraps its DEK under the machine-bound
+// `root_key` = HKDF(per-machine vault_key). A `user_partitions.db` carried to
+// another machine in a keystore backup therefore decrypts to nothing there:
+// the destination's `vault_key` differs, so AES-KW unwrap fails the integrity
+// check ("Unwrap user data key: integrity check failed") and every profile
+// under that DEK is unreadable. Passphrase-protected partitions are already
+// portable (wrapped under Argon2id(passphrase)); only passphrase-less ones
+// need help.
+//
+// The fix carries, alongside the backup, each passphrase-less user's DEK
+// re-wrapped under a *transport key* derived from the backup password. On
+// import the destination unwraps with that transport key and re-wraps under
+// its own local `root_key`, so the restored partition becomes readable on the
+// new machine without ever moving the raw `vault_key` between machines.
+
+/// Transport-wrapped DEKs for passphrase-less partitions, produced at export.
+pub struct TransportExport {
+    /// Argon2id salt for the transport wrapping key (raw bytes).
+    pub salt: Vec<u8>,
+    /// Argon2id params JSON for the transport wrapping key.
+    pub kdf_params: String,
+    /// `user_id` -> AES-KW(transport_key, DEK) for each passphrase-less user.
+    pub wrapped_deks: HashMap<i64, Vec<u8>>,
+}
+
+/// Outcome of the import-side re-key pass, surfaced in the import summary.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct TransportRekeyReport {
+    /// Passphrase-less partitions re-keyed from the transport key to this
+    /// machine's local `root_key` (now readable here).
+    pub rekeyed: u32,
+    /// Passphrase-less partitions already readable with the local `root_key`
+    /// (same-machine re-import); left untouched.
+    pub already_local: u32,
+    /// Passphrase-less partitions still unreadable here: imported from another
+    /// machine with no usable transport DEK (e.g. an old backup). The UI
+    /// should advise re-exporting from the source with a passphrase set.
+    pub unreadable: u32,
+    /// Passphrase-protected partitions (already portable; nothing to do).
+    pub passphrase_protected: u32,
+}
+
+/// Build the transport-wrapped DEKs for every passphrase-less user, so a
+/// keystore backup of `user_partitions.db` is portable across machines.
+///
+/// `root_key` is THIS machine's local wrapping key (the export runs on the
+/// source machine where the partitions are readable). `password` is the
+/// backup password; the transport key is `Argon2id(password, salt)`.
+///
+/// Returns `Ok(None)` when there is no passphrase-less user to make portable
+/// (so the caller omits the section entirely and old readers stay happy).
+pub fn export_transport_deks(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    password: &str,
+) -> Result<Option<TransportExport>, String> {
+    let users = list_users(conn)?;
+    if !users.iter().any(|u| !u.has_passphrase) {
+        return Ok(None);
+    }
+
+    let salt = user_crypto::random_salt();
+    let params = default_kdf_params();
+    let transport_key = user_crypto::derive_wrapping_key(password, &salt, &params)?;
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+
+    let mut wrapped_deks: HashMap<i64, Vec<u8>> = HashMap::new();
+    for user in &users {
+        if user.has_passphrase {
+            continue;
+        }
+        let row = read_user_key_row(conn, user.id)?;
+        let dek = unwrap_user_dek_with_key(&row, &root_secret)?;
+        let wrapped = user_crypto::wrap_dek(&transport_key, &dek)?;
+        wrapped_deks.insert(user.id, wrapped);
+    }
+
+    Ok(Some(TransportExport {
+        salt: salt.to_vec(),
+        kdf_params: user_crypto::params_to_json(&params)?,
+        wrapped_deks,
+    }))
+}
+
+/// Re-key imported passphrase-less partitions to THIS machine's local
+/// `root_key`, using the transport-wrapped DEKs produced by
+/// [`export_transport_deks`]. Run after a keystore restore overwrote
+/// `user_partitions.db` with the source machine's copy.
+///
+/// Rows already readable with the local `root_key` (same-machine re-import)
+/// are left untouched. Rows with no usable transport DEK are counted as
+/// unreadable and left as-is (no data is destroyed; the UI warns the user).
+/// `transport_wrapped` empty (e.g. an old backup with no transport section)
+/// degrades cleanly to detect-and-report with no re-keying.
+pub fn rekey_transport_deks(
+    conn: &Connection,
+    local_root_key: &[u8; 32],
+    password: &str,
+    salt: &[u8],
+    kdf_params: &str,
+    transport_wrapped: &HashMap<i64, Vec<u8>>,
+) -> Result<TransportRekeyReport, String> {
+    let local_secret = user_crypto::secret_key_from_bytes(local_root_key);
+    let mut transport_key: Option<SecretKey> = None;
+    let mut report = TransportRekeyReport::default();
+
+    for user in list_users(conn)? {
+        if user.has_passphrase {
+            report.passphrase_protected += 1;
+            continue;
+        }
+        let row = read_user_key_row(conn, user.id)?;
+        // Already readable on this machine (same-machine re-import)?
+        if unwrap_user_dek_with_key(&row, &local_secret).is_ok() {
+            report.already_local += 1;
+            continue;
+        }
+        // Needs re-keying; do we have a transport DEK for this user?
+        let Some(blob) = transport_wrapped.get(&user.id) else {
+            report.unreadable += 1;
+            continue;
+        };
+        // Derive the (expensive) transport key once, lazily.
+        if transport_key.is_none() {
+            let params = user_crypto::params_from_json(kdf_params)?;
+            let salt16: [u8; 16] = salt
+                .try_into()
+                .map_err(|_| "INVALID_TRANSPORT_SALT_SIZE".to_string())?;
+            transport_key = Some(user_crypto::derive_wrapping_key(password, &salt16, &params)?);
+        }
+        let tk = transport_key.as_ref().expect("transport key derived above");
+        let dek = match user_crypto::unwrap_dek(tk, blob) {
+            Ok(dek) => dek,
+            Err(_) => {
+                report.unreadable += 1;
+                continue;
+            }
+        };
+        // The transport DEK must match the row's verifier before we commit it.
+        if !user_crypto::verify_dek(&dek, &row.dek_verifier)? {
+            report.unreadable += 1;
+            continue;
+        }
+        let rewrapped = user_crypto::wrap_dek(&local_secret, &dek)?;
+        conn.execute(
+            "UPDATE users
+             SET wrapped_dek = ?1, updated_at = ?2
+             WHERE id = ?3 AND has_passphrase = 0",
+            params![rewrapped, now_ms(), user.id],
+        )
+        .map_err(|e| format!("Re-key imported user DEK: {e}"))?;
+        report.rekeyed += 1;
+    }
+
+    Ok(report)
+}
+
 pub fn set_active_user(conn: &Connection, user_id: i64) -> Result<(), String> {
     clear_user_session();
     set_active_user_row(conn, user_id)
@@ -2786,6 +2945,131 @@ mod tests {
             )
             .expect("blob after remove");
         assert_eq!(before_blob, after_remove_blob);
+    }
+
+    #[test]
+    fn transport_rekey_makes_passphraseless_partition_portable_cross_machine() {
+        let _guard = test_lock();
+        let conn = migrated_conn(2);
+        let root_a = test_root();
+        // A different machine's local root_key (HKDF of a different vault_key).
+        let root_b = [0x5au8; 32];
+
+        let default = get_active_user(&conn)
+            .expect("active")
+            .expect("default active");
+
+        // Source machine reads its own profiles fine.
+        let before = list_server_profiles_for(&conn, &root_a, default.id).expect("read on A");
+        assert_eq!(before.len(), 2);
+
+        // Export transport DEKs under the backup password.
+        let transport = export_transport_deks(&conn, &root_a, "backup password 123")
+            .expect("export transport")
+            .expect("a passphrase-less user exists");
+        assert!(transport.wrapped_deks.contains_key(&default.id));
+
+        // Simulate the blind-overwrite import on machine B: identical rows,
+        // different local root_key. Before re-keying, B cannot read them.
+        assert!(list_server_profiles_for(&conn, &root_b, default.id).is_err());
+
+        // Re-key to machine B's local root_key.
+        let report = rekey_transport_deks(
+            &conn,
+            &root_b,
+            "backup password 123",
+            &transport.salt,
+            &transport.kdf_params,
+            &transport.wrapped_deks,
+        )
+        .expect("rekey");
+        assert_eq!(report.rekeyed, 1);
+        assert_eq!(report.unreadable, 0);
+        assert_eq!(report.passphrase_protected, 0);
+
+        // Machine B now reads the same profiles, byte-for-byte unchanged
+        // (the DEK is the same, only its wrapping key changed).
+        let after = list_server_profiles_for(&conn, &root_b, default.id).expect("read on B");
+        assert_eq!(before, after);
+    }
+
+    #[test]
+    fn rekey_reports_unreadable_when_no_transport_available() {
+        let _guard = test_lock();
+        let conn = migrated_conn(1);
+        // Old-style backup: no transport section. A foreign machine cannot
+        // open the passphrase-less partition, but nothing is destroyed.
+        let root_b = [0x5au8; 32];
+        let report = rekey_transport_deks(&conn, &root_b, "", &[], "", &HashMap::new())
+            .expect("rekey detect-only");
+        assert_eq!(report.rekeyed, 0);
+        assert_eq!(report.unreadable, 1);
+    }
+
+    #[test]
+    fn rekey_leaves_same_machine_partitions_untouched() {
+        let _guard = test_lock();
+        let conn = migrated_conn(1);
+        let root_a = test_root();
+        let transport = export_transport_deks(&conn, &root_a, "pw")
+            .expect("export")
+            .expect("some");
+        // Re-import on the SAME machine: rows already unwrap with the local
+        // root_key, so the re-key pass is a no-op.
+        let report = rekey_transport_deks(
+            &conn,
+            &root_a,
+            "pw",
+            &transport.salt,
+            &transport.kdf_params,
+            &transport.wrapped_deks,
+        )
+        .expect("rekey");
+        assert_eq!(report.already_local, 1);
+        assert_eq!(report.rekeyed, 0);
+        assert_eq!(report.unreadable, 0);
+    }
+
+    #[test]
+    fn passphrase_protected_partitions_are_excluded_from_transport() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let bob = create_user(
+            &mut conn,
+            &root,
+            "Bob",
+            Some("B"),
+            Some("#6366f1"),
+            Some("correct horse battery staple"),
+        )
+        .expect("create passphrase user");
+        let default = get_active_user(&conn)
+            .expect("active")
+            .expect("default active");
+
+        let transport = export_transport_deks(&conn, &root, "pw")
+            .expect("export")
+            .expect("default is passphrase-less");
+        // The passphrase-less default is carried; Bob (passphrase) is not:
+        // his wrapped_dek is already machine-independent.
+        assert!(transport.wrapped_deks.contains_key(&default.id));
+        assert!(!transport.wrapped_deks.contains_key(&bob.id));
+
+        // A same-machine re-key counts Bob as passphrase-protected and the
+        // default as already-local (no re-keying needed).
+        let report = rekey_transport_deks(
+            &conn,
+            &root,
+            "pw",
+            &transport.salt,
+            &transport.kdf_params,
+            &transport.wrapped_deks,
+        )
+        .expect("rekey");
+        assert_eq!(report.passphrase_protected, 1);
+        assert_eq!(report.already_local, 1);
+        assert_eq!(report.rekeyed, 0);
     }
 
     #[test]

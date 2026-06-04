@@ -973,7 +973,9 @@
             "backupImportAny": "Importuoti bet kurį",
             "backupImportAnyDesc": "Aptinka rclone ir visus kitus palaikomus atsarginių kopijų formatus",
             "bridgeSearchApps": "Ieškoti programų...",
-            "bridgeNoApps": "Pagal paiešką programų nerasta"
+            "bridgeNoApps": "Pagal paiešką programų nerasta",
+            "keystoreRekeyedPartitions": "{count} paskyros (-ų) raktas pakeistas šiam įrenginiui.",
+            "keystoreUnreadablePartitions": "{count} paskyros (-ų) šiame įrenginyje atrakinti nepavyko. Atsarginė kopija sukurta kitame kompiuteryje: ten ją eksportuokite iš naujo nustatę tų paskyrų slaptažodį, tada importuokite čia."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4573,7 +4575,20 @@
             "lastUsedToday": "Naudota šiandien",
             "lastUsedYesterday": "Naudota vakar",
             "lastUsedDaysAgo": "Naudota prieš {days} d.",
-            "securityNote": "Paskyra apsaugota Argon2id + AES-KW + AES-256-GCM šifravimu"
+            "securityNote": "Paskyra apsaugota Argon2id + AES-KW + AES-256-GCM šifravimu",
+            "dataKeyUnreadable": "Šios paskyros duomenų šiame įrenginyje atrakinti negalima. Atsarginė kopija sukurta kitame kompiuteryje; ten ją eksportuokite iš naujo nustatę šios paskyros slaptažodį, tada importuokite čia.",
+            "passphraseRequired": "Įveskite dabartinį paskyros slaptažodį.",
+            "passphraseNotNeeded": "Ši paskyra neturi įvedamo slaptažodžio.",
+            "userLocked": "Ši paskyra užrakinta. Pirma ją atrakinkite ir bandykite dar kartą.",
+            "noActiveUser": "Pirma perjunkite į šią paskyrą ir bandykite dar kartą.",
+            "notAuthorized": "Neturite teisės keisti tos paskyros.",
+            "vaultLocked": "Pirma atrakinkite savo paskyrą ir bandykite dar kartą.",
+            "storeNotReady": "Pirma atrakinkite saugyklą ir bandykite dar kartą.",
+            "cannotDemoteLastAdmin": "Negalite pašalinti paskutinio administratoriaus.",
+            "cannotDeleteLastAdmin": "Negalite ištrinti paskutinio administratoriaus.",
+            "cannotDeleteLastUser": "Negalite ištrinti paskutinės paskyros.",
+            "adminResetNotForSelf": "Savo paskyroje naudokite Keisti slaptažodį.",
+            "userNotFound": "Šios paskyros nebėra."
         },
         "opendrive": {
             "privacyTitle": "OpenDrive privatumas",

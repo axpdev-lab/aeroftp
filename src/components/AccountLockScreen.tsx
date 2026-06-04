@@ -20,6 +20,7 @@ import {
     type UserUnlockStatus,
 } from '../utils/userPartitions';
 import { PROFILES_CHANGED_EVENT } from '../utils/serverProfileStore';
+import { mapUserPartitionError } from '../utils/userPartitionErrors';
 
 const LOCK_PATTERN_KEY = 'aeroftp_lock_pattern';
 const DEFAULT_PATTERN = 'isometric';
@@ -98,10 +99,10 @@ export const AccountLockScreen: React.FC<AccountLockScreenProps> = ({ onContinue
             writeUsersListCache(list);
             return { list, status: st };
         } catch (err) {
-            setError(String(err));
+            setError(mapUserPartitionError(err, t));
             return null;
         }
-    }, []);
+    }, [t]);
 
     React.useEffect(() => { void refresh(); }, [refresh, refreshKey]);
 
@@ -148,7 +149,7 @@ export const AccountLockScreen: React.FC<AccountLockScreenProps> = ({ onContinue
                 setError(t('accountLock.wrongPassphrase'));
                 setPassphrase('');
             } else {
-                setError(String(err));
+                setError(mapUserPartitionError(err, t));
             }
         } finally {
             setIsLoading(false);

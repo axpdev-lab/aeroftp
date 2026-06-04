@@ -42,6 +42,8 @@ import {
     type UserUnlockStatus,
 } from '../utils/userPartitions';
 import { PROFILES_CHANGED_EVENT } from '../utils/serverProfileStore';
+import { mapUserPartitionError } from '../utils/userPartitionErrors';
+import { useTranslation } from '../i18n';
 
 interface UsersManagePanelProps {
     isOpen: boolean;
@@ -73,23 +75,8 @@ const notifyProfilesChanged = (onChanged?: () => void) => {
     onChanged?.();
 };
 
-const mapUserError = (err: unknown): string => {
-    const message = typeof err === 'string' ? err : String(err);
-    if (message.includes('WRONG_PASSPHRASE')) return 'Current password is incorrect.';
-    if (message.includes('PASSPHRASE_REQUIRED')) return 'Enter your current password.';
-    if (message.includes('NOT_ACTIVE_USER')) return 'Switch to this account before changing its password.';
-    if (message.includes('NOT_AUTHORIZED')) return 'You do not have permission to edit that account.';
-    if (message.includes('VAULT_LOCKED')) return 'Unlock your account first, then try again.';
-    if (message.includes('STORE_NOT_READY')) return 'Unlock the vault first, then try again.';
-    if (message.includes('CANNOT_DEMOTE_LAST_ADMIN')) return 'Cannot revoke the last admin.';
-    if (message.includes('CANNOT_DELETE_LAST_ADMIN')) return 'Cannot delete the last admin.';
-    if (message.includes('CANNOT_DELETE_LAST_USER')) return 'Cannot delete the last user.';
-    if (message.includes('ADMIN_RESET_NOT_FOR_SELF')) return 'Use Change Password on your own account.';
-    if (message.includes('USER_NOT_FOUND')) return 'This user no longer exists.';
-    return message;
-};
-
 export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onClose, onChanged }) => {
+    const t = useTranslation();
     const [users, setUsers] = React.useState<UserMetadata[]>([]);
     const [stats, setStats] = React.useState<UserStorageStats[]>([]);
     const [unlockStatus, setUnlockStatus] = React.useState<UserUnlockStatus | null>(null);
@@ -154,11 +141,11 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
             setStats(nextStats);
             setUnlockStatus(nextStatus);
         } catch (err) {
-            setError(mapUserError(err));
+            setError(mapUserPartitionError(err, t));
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [t]);
 
     React.useEffect(() => {
         if (isOpen) void refresh();
@@ -193,7 +180,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
             await refresh();
             notifyProfilesChanged(onChanged);
         } catch (err) {
-            setError(mapUserError(err));
+            setError(mapUserPartitionError(err, t));
         }
     };
 
@@ -217,7 +204,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
             await refresh();
             notifyProfilesChanged(onChanged);
         } catch (err) {
-            setError(mapUserError(err));
+            setError(mapUserPartitionError(err, t));
         } finally {
             setBusyUserId(null);
         }
@@ -242,7 +229,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
             await refresh();
             notifyProfilesChanged(onChanged);
         } catch (err) {
-            setError(mapUserError(err));
+            setError(mapUserPartitionError(err, t));
         } finally {
             setBusyUserId(null);
         }
@@ -281,7 +268,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
             await refresh();
             notifyProfilesChanged(onChanged);
         } catch (err) {
-            setError(mapUserError(err));
+            setError(mapUserPartitionError(err, t));
         } finally {
             setBusyUserId(null);
         }
@@ -295,7 +282,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
             await refresh();
             notifyProfilesChanged(onChanged);
         } catch (err) {
-            setError(mapUserError(err));
+            setError(mapUserPartitionError(err, t));
         } finally {
             setBusyUserId(null);
         }
@@ -327,7 +314,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
             await refresh();
             notifyProfilesChanged(onChanged);
         } catch (err) {
-            setError(mapUserError(err));
+            setError(mapUserPartitionError(err, t));
         } finally {
             setAvatarSaving(false);
             setBusyUserId(null);
@@ -356,7 +343,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
             await refresh();
             notifyProfilesChanged(onChanged);
         } catch (err) {
-            setError(mapUserError(err));
+            setError(mapUserPartitionError(err, t));
             await refresh();
         }
     };

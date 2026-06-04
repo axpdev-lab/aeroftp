@@ -973,7 +973,9 @@
             "backupImportAny": "Import Mana-mana",
             "backupImportAnyDesc": "Mengesan rclone dan setiap format sandaran lain yang disokong",
             "bridgeSearchApps": "Cari apl...",
-            "bridgeNoApps": "Tiada apl sepadan dengan carian anda"
+            "bridgeNoApps": "Tiada apl sepadan dengan carian anda",
+            "keystoreRekeyedPartitions": "{count} akaun telah dikunci semula untuk peranti ini.",
+            "keystoreUnreadablePartitions": "{count} akaun tidak dapat dibuka kunci pada peranti ini. Sandaran dibuat pada komputer lain: eksport semula di sana dengan kata laluan ditetapkan untuk akaun tersebut, kemudian import di sini."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4573,7 +4575,20 @@
             "lastUsedToday": "Digunakan hari ini",
             "lastUsedYesterday": "Digunakan semalam",
             "lastUsedDaysAgo": "Digunakan {days} hari yang lalu",
-            "securityNote": "Akaun dilindungi dengan penyulitan Argon2id + AES-KW + AES-256-GCM"
+            "securityNote": "Akaun dilindungi dengan penyulitan Argon2id + AES-KW + AES-256-GCM",
+            "dataKeyUnreadable": "Data akaun ini tidak dapat dibuka kunci pada peranti ini. Sandaran dibuat pada komputer lain; eksport semula di sana dengan kata laluan ditetapkan untuk akaun ini, kemudian import di sini.",
+            "passphraseRequired": "Masukkan kata laluan akaun semasa anda.",
+            "passphraseNotNeeded": "Akaun ini tiada kata laluan untuk dimasukkan.",
+            "userLocked": "Akaun ini dikunci. Buka kuncinya dahulu, kemudian cuba lagi.",
+            "noActiveUser": "Tukar ke akaun ini dahulu, kemudian cuba lagi.",
+            "notAuthorized": "Anda tiada kebenaran untuk mengubah akaun itu.",
+            "vaultLocked": "Buka kunci akaun anda dahulu, kemudian cuba lagi.",
+            "storeNotReady": "Buka kunci bilik kebal dahulu, kemudian cuba lagi.",
+            "cannotDemoteLastAdmin": "Anda tidak boleh mengeluarkan pentadbir terakhir.",
+            "cannotDeleteLastAdmin": "Anda tidak boleh memadam pentadbir terakhir.",
+            "cannotDeleteLastUser": "Anda tidak boleh memadam akaun terakhir.",
+            "adminResetNotForSelf": "Gunakan Tukar Kata Laluan pada akaun anda sendiri.",
+            "userNotFound": "Akaun ini tidak wujud lagi."
         },
         "opendrive": {
             "privacyTitle": "Privasi OpenDrive",

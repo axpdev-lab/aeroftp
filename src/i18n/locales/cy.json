@@ -973,7 +973,9 @@
             "backupImportAny": "Mewnforio Unrhyw Un",
             "backupImportAnyDesc": "Yn canfod rclone a phob fformat copi wrth gefn arall a gefnogir",
             "bridgeSearchApps": "Chwilio apiau...",
-            "bridgeNoApps": "Dim apiau yn cyfateb i'ch chwiliad"
+            "bridgeNoApps": "Dim apiau yn cyfateb i'ch chwiliad",
+            "keystoreRekeyedPartitions": "Ailallweddwyd {count} cyfrif ar gyfer y ddyfais hon.",
+            "keystoreUnreadablePartitions": "Ni ellid datgloi {count} cyfrif ar y ddyfais hon. Gwnaethpwyd y copi wrth gefn ar gyfrifiadur arall: ei allforio eto yno gyda chyfrinair wedi'i osod ar y cyfrifon hynny, yna ei fewnforio yma."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4592,7 +4594,20 @@
             "lastUsedToday": "Defnyddiwyd heddiw",
             "lastUsedYesterday": "Defnyddiwyd ddoe",
             "lastUsedDaysAgo": "Defnyddiwyd {days} diwrnod yn ôl",
-            "securityNote": "Cyfrif wedi'i ddiogelu â chryptiad Argon2id + AES-KW + AES-256-GCM"
+            "securityNote": "Cyfrif wedi'i ddiogelu â chryptiad Argon2id + AES-KW + AES-256-GCM",
+            "dataKeyUnreadable": "Ni ellir datgloi data'r cyfrif hwn ar y ddyfais hon. Crëwyd y copi wrth gefn ar gyfrifiadur arall; ei allforio eto yno gyda chyfrinair wedi'i osod ar gyfer y cyfrif hwn, yna ei fewnforio yma.",
+            "passphraseRequired": "Rhowch gyfrinair cyfredol eich cyfrif.",
+            "passphraseNotNeeded": "Nid oes gan y cyfrif hwn gyfrinair i'w roi.",
+            "userLocked": "Mae'r cyfrif hwn wedi'i gloi. Ei ddatgloi yn gyntaf, yna rhowch gynnig arall arni.",
+            "noActiveUser": "Newidiwch i'r cyfrif hwn yn gyntaf, yna rhowch gynnig arall arni.",
+            "notAuthorized": "Nid oes gennych ganiatâd i newid y cyfrif hwnnw.",
+            "vaultLocked": "Datgloi eich cyfrif yn gyntaf, yna rhowch gynnig arall arni.",
+            "storeNotReady": "Datgloi'r gladdfa yn gyntaf, yna rhowch gynnig arall arni.",
+            "cannotDemoteLastAdmin": "Ni allwch gael gwared ar y gweinyddwr olaf.",
+            "cannotDeleteLastAdmin": "Ni allwch ddileu'r gweinyddwr olaf.",
+            "cannotDeleteLastUser": "Ni allwch ddileu'r cyfrif olaf.",
+            "adminResetNotForSelf": "Defnyddiwch Newid Cyfrinair ar eich cyfrif eich hun.",
+            "userNotFound": "Nid yw'r cyfrif hwn yn bodoli mwyach."
         },
         "opendrive": {
             "privacyTitle": "Preifatrwydd OpenDrive",

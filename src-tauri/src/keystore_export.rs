@@ -437,6 +437,29 @@ struct ExportPayload {
     /// down to the backend right before export.
     #[serde(default)]
     local_storage: HashMap<String, String>,
+    /// F-012 portability: transport-wrapped DEKs for passphrase-less user
+    /// partitions, so a restored `user_partitions.db` can be re-keyed to the
+    /// destination machine's local root_key. Absent on VaultOnly exports, old
+    /// backups, and exports with no passphrase-less user. Defaulted so older
+    /// files parse unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    user_partition_transport: Option<UserPartitionTransport>,
+}
+
+/// Sidecar that makes passphrase-less user partitions portable across
+/// machines. See [`crate::user_partitions::export_transport_deks`] for the
+/// crypto rationale. All binary fields are base64 (the rest of the payload's
+/// convention) so the existing zeroize machinery applies uniformly.
+#[derive(Serialize, Deserialize, Default, Clone)]
+#[serde(rename_all = "camelCase")]
+struct UserPartitionTransport {
+    /// Base64 Argon2id salt for the transport wrapping key.
+    salt: String,
+    /// Argon2id params JSON (forward-compat with future KDF tuning).
+    kdf_params: String,
+    /// `user_id` (decimal string) -> base64 AES-KW(transport_key, DEK).
+    #[serde(default)]
+    wrapped_deks: HashMap<String, String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -474,6 +497,17 @@ pub struct KeystoreImportResult {
     /// previous export was partial). AUDIT 2026-05-11 M4.
     #[serde(default)]
     pub skipped_due_to_read_error: u32,
+    /// F-012: passphrase-less partitions re-keyed from the backup transport
+    /// key to this machine's local root_key during import (made readable
+    /// here). Zero for VaultOnly imports and same-machine re-imports.
+    #[serde(default)]
+    pub user_partitions_rekeyed: u32,
+    /// F-012: passphrase-less partitions that remain unreadable on this
+    /// machine after import: carried from another machine with no usable
+    /// transport key (e.g. an old backup). The UI should advise re-exporting
+    /// from the source with a passphrase set.
+    #[serde(default)]
+    pub user_partitions_unreadable: u32,
 }
 
 /// User-facing selectivity for import. All flags default to `true` so
@@ -716,6 +750,101 @@ fn restore_directory_tree(
     Ok(written)
 }
 
+// ============ User-partition portability (F-012) ============
+
+/// Build the transport-wrapped DEK sidecar for a Full export, so a restored
+/// `user_partitions.db` is readable on another machine. Returns `None` when
+/// there is no `user_partitions.db`, no passphrase-less user, or the DB cannot
+/// be read: in every such case the export simply omits the section and old
+/// readers are unaffected. A failure here never aborts the export.
+fn build_user_partition_transport(
+    store: &crate::credential_store::CredentialStore,
+    config_dir: &Path,
+    password: &str,
+) -> Option<UserPartitionTransport> {
+    let db_path = config_dir.join("user_partitions.db");
+    if !db_path.is_file() {
+        return None;
+    }
+    let conn = match rusqlite::Connection::open_with_flags(
+        &db_path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    ) {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!("F-012 transport: cannot open user_partitions.db read-only: {e}");
+            return None;
+        }
+    };
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let result = crate::user_partitions::export_transport_deks(&conn, &root_key, password);
+    root_key.zeroize();
+    match result {
+        Ok(Some(export)) => {
+            let wrapped_deks = export
+                .wrapped_deks
+                .iter()
+                .map(|(id, blob)| (id.to_string(), B64.encode(blob)))
+                .collect();
+            Some(UserPartitionTransport {
+                salt: B64.encode(&export.salt),
+                kdf_params: export.kdf_params,
+                wrapped_deks,
+            })
+        }
+        Ok(None) => None,
+        Err(e) => {
+            tracing::warn!("F-012 transport: could not build transport DEKs: {e}");
+            None
+        }
+    }
+}
+
+/// After an import overwrote `user_partitions.db` with the backup's copy,
+/// re-key the passphrase-less partitions to THIS machine's local root_key
+/// (using the transport sidecar) and report what could not be recovered.
+/// `transport` is `None` for old backups; the pass then degrades to
+/// detect-and-report with no re-keying.
+fn rekey_imported_user_partitions(
+    store: &crate::credential_store::CredentialStore,
+    db_path: &Path,
+    transport: Option<&UserPartitionTransport>,
+    password: &str,
+) -> Result<crate::user_partitions::TransportRekeyReport, String> {
+    let conn = rusqlite::Connection::open(db_path)
+        .map_err(|e| format!("open restored user_partitions.db: {e}"))?;
+    let (salt, kdf_params, wrapped) = match transport {
+        Some(t) => {
+            let salt = B64
+                .decode(&t.salt)
+                .map_err(|e| format!("decode transport salt: {e}"))?;
+            let mut map: HashMap<i64, Vec<u8>> = HashMap::new();
+            for (id_str, b64) in &t.wrapped_deks {
+                let Ok(id) = id_str.parse::<i64>() else {
+                    continue;
+                };
+                let Ok(blob) = B64.decode(b64) else {
+                    continue;
+                };
+                map.insert(id, blob);
+            }
+            (salt, t.kdf_params.clone(), map)
+        }
+        None => (Vec::new(), String::new(), HashMap::new()),
+    };
+    let mut local_root_key = store.derive_user_partition_wrapping_key();
+    let result = crate::user_partitions::rekey_transport_deks(
+        &conn,
+        &local_root_key,
+        password,
+        &salt,
+        &kdf_params,
+        &wrapped,
+    );
+    local_root_key.zeroize();
+    result
+}
+
 // ============ Export/Import ============
 
 /// Export the full application state to an encrypted file.
@@ -819,6 +948,14 @@ pub fn export_keystore(
         let _ = (config_dir, local_storage_in);
     }
 
+    // F-012: make passphrase-less partitions portable. Only meaningful for a
+    // Full export (which bundles user_partitions.db); best-effort, never fatal.
+    let user_partition_transport = if mode == ExportMode::Full {
+        config_dir.and_then(|cfg| build_user_partition_transport(&store, cfg, password))
+    } else {
+        None
+    };
+
     let entries_count = entries.len() as u32;
     let mut categories = count_categories(&accounts);
     categories.sqlite_dbs = sqlite_dumps.len() as u32;
@@ -841,12 +978,17 @@ pub fn export_keystore(
         sqlite_dumps,
         files: files_blob,
         local_storage,
+        user_partition_transport,
     };
     let payload_json = Zeroizing::new(serde_json::to_vec(&payload)?);
     zeroize_string_map_values(&mut payload.vault_entries);
     zeroize_string_map_values(&mut payload.sqlite_dumps);
     zeroize_string_map_values(&mut payload.files);
     zeroize_string_map_values(&mut payload.local_storage);
+    if let Some(transport) = payload.user_partition_transport.as_mut() {
+        zeroize_string_map_values(&mut transport.wrapped_deks);
+        transport.salt.zeroize();
+    }
     let raw_len = payload_json.len();
 
     // Compress before encryption (compress-then-encrypt is the standard
@@ -1213,6 +1355,40 @@ pub fn import_keystore(
         }
     }
 
+    // F-012: a blind whole-file overwrite of user_partitions.db carries the
+    // source machine's machine-bound DEK wraps, which are inert here. Re-key
+    // the passphrase-less partitions to THIS machine's local root_key using
+    // the transport sidecar, and count any that cannot be recovered so the UI
+    // can warn instead of silently showing an empty "My Servers".
+    let mut user_partitions_rekeyed = 0u32;
+    let mut user_partitions_unreadable = 0u32;
+    if sections.sqlite_dbs && payload.sqlite_dumps.contains_key("user_partitions.db") {
+        if let Some(cfg) = config_dir {
+            let db_path = cfg.join("user_partitions.db");
+            if db_path.is_file() {
+                match rekey_imported_user_partitions(
+                    &store,
+                    &db_path,
+                    payload.user_partition_transport.as_ref(),
+                    password,
+                ) {
+                    Ok(report) => {
+                        user_partitions_rekeyed = report.rekeyed;
+                        user_partitions_unreadable = report.unreadable;
+                        tracing::info!(
+                            "F-012 re-key: rekeyed={} already_local={} unreadable={} passphrase_protected={}",
+                            report.rekeyed,
+                            report.already_local,
+                            report.unreadable,
+                            report.passphrase_protected
+                        );
+                    }
+                    Err(e) => tracing::warn!("F-012 re-key step failed: {e}"),
+                }
+            }
+        }
+    }
+
     if sections.files && !payload.files.is_empty() {
         if let Some(cfg) = config_dir {
             // Group payload entries by top-level directory so we can
@@ -1306,6 +1482,8 @@ pub fn import_keystore(
         local_storage,
         requires_restart,
         skipped_due_to_read_error: 0,
+        user_partitions_rekeyed,
+        user_partitions_unreadable,
     })
 }
 

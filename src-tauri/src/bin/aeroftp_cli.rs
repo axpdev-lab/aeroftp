@@ -20809,6 +20809,8 @@ async fn cmd_keystore_import(
             "files_restored": outcome.files_restored,
             "local_storage_keys": outcome.local_storage.len(),
             "requires_restart": outcome.requires_restart,
+            "user_partitions_rekeyed": outcome.user_partitions_rekeyed,
+            "user_partitions_unreadable": outcome.user_partitions_unreadable,
         });
         println!("{}", summary);
     } else if matches!(format, OutputFormat::Text) {
@@ -20821,6 +20823,20 @@ async fn cmd_keystore_import(
             outcome.files_restored,
             outcome.local_storage.len(),
         );
+        if outcome.user_partitions_rekeyed > 0 {
+            eprintln!(
+                "Re-keyed {} passphrase-less partition(s) to this machine.",
+                outcome.user_partitions_rekeyed
+            );
+        }
+        if outcome.user_partitions_unreadable > 0 {
+            eprintln!(
+                "Warning: {} passphrase-less partition(s) are unreadable on this machine \
+                 (backup made elsewhere without a portable key). Re-export from the source \
+                 machine with a passphrase set on those users.",
+                outcome.user_partitions_unreadable
+            );
+        }
         if outcome.requires_restart {
             eprintln!(
                 "Restart AeroFTP before reopening AeroAgent/AeroFile: live SQLite \

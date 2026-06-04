@@ -973,7 +973,9 @@
             "backupImportAny": "Herhangi Birini İçe Aktar",
             "backupImportAnyDesc": "rclone ve desteklenen diğer tüm yedekleme biçimlerini algılar",
             "bridgeSearchApps": "Uygulama ara...",
-            "bridgeNoApps": "Aramanızla eşleşen uygulama yok"
+            "bridgeNoApps": "Aramanızla eşleşen uygulama yok",
+            "keystoreRekeyedPartitions": "Bu cihaz için {count} hesabın anahtarı yenilendi.",
+            "keystoreUnreadablePartitions": "{count} hesap bu cihazda açılamadı. Yedek başka bir bilgisayarda oluşturuldu: orada bu hesaplar için bir parola ayarlayarak yeniden dışa aktarın, ardından burada içe aktarın."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4573,7 +4575,20 @@
             "lastUsedToday": "Bugün kullanıldı",
             "lastUsedYesterday": "Dün kullanıldı",
             "lastUsedDaysAgo": "{days} gün önce kullanıldı",
-            "securityNote": "Hesap Argon2id + AES-KW + AES-256-GCM şifrelemesi ile korunuyor"
+            "securityNote": "Hesap Argon2id + AES-KW + AES-256-GCM şifrelemesi ile korunuyor",
+            "dataKeyUnreadable": "Bu hesabın verileri bu cihazda açılamıyor. Yedek başka bir bilgisayarda oluşturuldu; orada bu hesap için bir parola ayarlayarak yeniden dışa aktarın, ardından burada içe aktarın.",
+            "passphraseRequired": "Mevcut hesap parolanızı girin.",
+            "passphraseNotNeeded": "Bu hesabın girilecek bir parolası yok.",
+            "userLocked": "Bu hesap kilitli. Önce kilidini açın, sonra tekrar deneyin.",
+            "noActiveUser": "Önce bu hesaba geçin, sonra tekrar deneyin.",
+            "notAuthorized": "Bu hesabı değiştirme izniniz yok.",
+            "vaultLocked": "Önce hesabınızın kilidini açın, sonra tekrar deneyin.",
+            "storeNotReady": "Önce kasanın kilidini açın, sonra tekrar deneyin.",
+            "cannotDemoteLastAdmin": "Son yöneticiyi kaldıramazsınız.",
+            "cannotDeleteLastAdmin": "Son yöneticiyi silemezsiniz.",
+            "cannotDeleteLastUser": "Son hesabı silemezsiniz.",
+            "adminResetNotForSelf": "Kendi hesabınızda Parolayı Değiştir'i kullanın.",
+            "userNotFound": "Bu hesap artık mevcut değil."
         },
         "opendrive": {
             "privacyTitle": "OpenDrive Gizliliği",

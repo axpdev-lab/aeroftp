@@ -10491,6 +10491,9 @@ interface UpdateVerificationInfo {
             sqliteDbsRestored?: number;
             filesRestored?: number;
             localStorage?: Record<string, string>;
+            // F-012: cross-machine re-key outcome.
+            userPartitionsRekeyed?: number;
+            userPartitionsUnreadable?: number;
           }>('import_keystore', {
             password,
             filePath,
@@ -10509,10 +10512,20 @@ interface UpdateVerificationInfo {
             }
           }
           await refreshProfilesFromImportedKeystore();
-          notify.success(
-            t('settings.importKeystore') || 'Import Keystore',
-            t('settings.keystoreImported', { imported: result.imported, skipped: result.skipped }),
-          );
+          const importedText = t('settings.keystoreImported', { imported: result.imported, skipped: result.skipped });
+          if ((result.userPartitionsUnreadable ?? 0) > 0) {
+            // F-012: backup carried partitions from another machine with no
+            // portable key. Warn instead of a silently incomplete import.
+            notify.warning(
+              t('settings.importKeystore') || 'Import Keystore',
+              `${importedText}. ${t('settings.keystoreUnreadablePartitions', { count: result.userPartitionsUnreadable ?? 0, defaultValue: '{count} account(s) could not be unlocked on this device. The backup was made on another computer: re-export it there with a password set on those accounts, then import it here.' })}`,
+            );
+          } else {
+            notify.success(
+              t('settings.importKeystore') || 'Import Keystore',
+              importedText,
+            );
+          }
         } catch (err) {
           const message = String(err);
           notify.error(

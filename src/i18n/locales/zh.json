@@ -973,7 +973,9 @@
             "backupImportAny": "导入任意格式",
             "backupImportAnyDesc": "检测 rclone 及所有其他受支持的备份格式",
             "bridgeSearchApps": "搜索应用...",
-            "bridgeNoApps": "没有应用匹配您的搜索"
+            "bridgeNoApps": "没有应用匹配您的搜索",
+            "keystoreRekeyedPartitions": "已为本设备重新为 {count} 个账户设置密钥。",
+            "keystoreUnreadablePartitions": "有 {count} 个账户无法在本设备上解锁。该备份是在另一台计算机上创建的：请在那台计算机上为这些账户设置密码后重新导出，然后在此处导入。"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4573,7 +4575,20 @@
             "lastUsedToday": "今天使用",
             "lastUsedYesterday": "昨天使用",
             "lastUsedDaysAgo": "{days} 天前使用",
-            "securityNote": "账户受 Argon2id + AES-KW + AES-256-GCM 加密保护"
+            "securityNote": "账户受 Argon2id + AES-KW + AES-256-GCM 加密保护",
+            "dataKeyUnreadable": "此账户的数据无法在本设备上解锁。该备份是在另一台计算机上创建的；请在那台计算机上为此账户设置密码后重新导出，然后在此处导入。",
+            "passphraseRequired": "请输入当前账户密码。",
+            "passphraseNotNeeded": "此账户没有可输入的密码。",
+            "userLocked": "此账户已锁定。请先解锁，然后重试。",
+            "noActiveUser": "请先切换到此账户，然后重试。",
+            "notAuthorized": "您无权修改该账户。",
+            "vaultLocked": "请先解锁您的账户，然后重试。",
+            "storeNotReady": "请先解锁保险库，然后重试。",
+            "cannotDemoteLastAdmin": "无法移除最后一位管理员。",
+            "cannotDeleteLastAdmin": "无法删除最后一位管理员。",
+            "cannotDeleteLastUser": "无法删除最后一个账户。",
+            "adminResetNotForSelf": "请在您自己的账户上使用“更改密码”。",
+            "userNotFound": "此账户已不存在。"
         },
         "opendrive": {
             "privacyTitle": "OpenDrive 隐私",

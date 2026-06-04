@@ -973,7 +973,9 @@
             "backupImportAny": "Impor Apa Saja",
             "backupImportAnyDesc": "Mendeteksi rclone dan setiap format cadangan lain yang didukung",
             "bridgeSearchApps": "Cari aplikasi...",
-            "bridgeNoApps": "Tidak ada aplikasi yang cocok dengan pencarian Anda"
+            "bridgeNoApps": "Tidak ada aplikasi yang cocok dengan pencarian Anda",
+            "keystoreRekeyedPartitions": "{count} akun telah dikunci ulang untuk perangkat ini.",
+            "keystoreUnreadablePartitions": "{count} akun tidak dapat dibuka di perangkat ini. Cadangan dibuat di komputer lain: ekspor ulang di sana dengan kata sandi yang disetel untuk akun tersebut, lalu impor di sini."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4573,7 +4575,20 @@
             "lastUsedToday": "Digunakan hari ini",
             "lastUsedYesterday": "Digunakan kemarin",
             "lastUsedDaysAgo": "Digunakan {days} hari yang lalu",
-            "securityNote": "Akun dilindungi dengan enkripsi Argon2id + AES-KW + AES-256-GCM"
+            "securityNote": "Akun dilindungi dengan enkripsi Argon2id + AES-KW + AES-256-GCM",
+            "dataKeyUnreadable": "Data akun ini tidak dapat dibuka di perangkat ini. Cadangan dibuat di komputer lain; ekspor ulang di sana dengan kata sandi yang disetel untuk akun ini, lalu impor di sini.",
+            "passphraseRequired": "Masukkan kata sandi akun Anda saat ini.",
+            "passphraseNotNeeded": "Akun ini tidak memiliki kata sandi untuk dimasukkan.",
+            "userLocked": "Akun ini terkunci. Buka kuncinya dulu, lalu coba lagi.",
+            "noActiveUser": "Beralih ke akun ini dulu, lalu coba lagi.",
+            "notAuthorized": "Anda tidak punya izin untuk mengubah akun itu.",
+            "vaultLocked": "Buka kunci akun Anda dulu, lalu coba lagi.",
+            "storeNotReady": "Buka kunci brankas dulu, lalu coba lagi.",
+            "cannotDemoteLastAdmin": "Anda tidak dapat menghapus administrator terakhir.",
+            "cannotDeleteLastAdmin": "Anda tidak dapat menghapus administrator terakhir.",
+            "cannotDeleteLastUser": "Anda tidak dapat menghapus akun terakhir.",
+            "adminResetNotForSelf": "Gunakan Ubah Kata Sandi pada akun Anda sendiri.",
+            "userNotFound": "Akun ini sudah tidak ada."
         },
         "opendrive": {
             "privacyTitle": "Privasi OpenDrive",

@@ -973,7 +973,9 @@
             "backupImportAny": "Importa qualsevol",
             "backupImportAnyDesc": "Detecta rclone i qualsevol altre format de còpia compatible",
             "bridgeSearchApps": "Cerca aplicacions...",
-            "bridgeNoApps": "Cap aplicació coincideix amb la cerca"
+            "bridgeNoApps": "Cap aplicació coincideix amb la cerca",
+            "keystoreRekeyedPartitions": "S'han tornat a xifrar {count} compte(s) per a aquest dispositiu.",
+            "keystoreUnreadablePartitions": "No s'han pogut desbloquejar {count} compte(s) en aquest dispositiu. La còpia de seguretat es va fer en un altre ordinador: torna-la a exportar des d'allà amb una contrasenya definida per a aquests comptes i després importa-la aquí."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4592,7 +4594,20 @@
             "lastUsedToday": "Utilitzat avui",
             "lastUsedYesterday": "Utilitzat ahir",
             "lastUsedDaysAgo": "Utilitzat fa {days} dies",
-            "securityNote": "Compte protegit amb xifratge Argon2id + AES-KW + AES-256-GCM"
+            "securityNote": "Compte protegit amb xifratge Argon2id + AES-KW + AES-256-GCM",
+            "dataKeyUnreadable": "Les dades d'aquest compte no es poden desbloquejar en aquest dispositiu. La còpia de seguretat es va crear en un altre ordinador; torna-la a exportar des d'allà amb una contrasenya definida per a aquest compte i després importa-la aquí.",
+            "passphraseRequired": "Introdueix la contrasenya actual del compte.",
+            "passphraseNotNeeded": "Aquest compte no té cap contrasenya per introduir.",
+            "userLocked": "Aquest compte està bloquejat. Desbloqueja'l primer i torna-ho a provar.",
+            "noActiveUser": "Canvia primer a aquest compte i torna-ho a provar.",
+            "notAuthorized": "No tens permís per modificar aquest compte.",
+            "vaultLocked": "Desbloqueja primer el teu compte i torna-ho a provar.",
+            "storeNotReady": "Desbloqueja primer la caixa forta i torna-ho a provar.",
+            "cannotDemoteLastAdmin": "No pots eliminar l'últim administrador.",
+            "cannotDeleteLastAdmin": "No pots suprimir l'últim administrador.",
+            "cannotDeleteLastUser": "No pots suprimir l'últim compte.",
+            "adminResetNotForSelf": "Fes servir Canvia la contrasenya al teu propi compte.",
+            "userNotFound": "Aquest compte ja no existeix."
         },
         "opendrive": {
             "privacyTitle": "Privacitat d'OpenDrive",

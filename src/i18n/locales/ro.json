@@ -973,7 +973,9 @@
             "backupImportAny": "Importă orice",
             "backupImportAnyDesc": "Detectează rclone și orice alt format de backup acceptat",
             "bridgeSearchApps": "Caută aplicații...",
-            "bridgeNoApps": "Nicio aplicație nu corespunde căutării"
+            "bridgeNoApps": "Nicio aplicație nu corespunde căutării",
+            "keystoreRekeyedPartitions": "S-a re-cheiat {count} cont(uri) pentru acest dispozitiv.",
+            "keystoreUnreadablePartitions": "{count} cont(uri) nu au putut fi deblocate pe acest dispozitiv. Copia de rezervă a fost făcută pe alt computer: exportă-o din nou de acolo cu o parolă setată pentru acele conturi, apoi importă-o aici."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4573,7 +4575,20 @@
             "lastUsedToday": "Utilizat astăzi",
             "lastUsedYesterday": "Utilizat ieri",
             "lastUsedDaysAgo": "Utilizat acum {days} zile",
-            "securityNote": "Cont protejat cu criptare Argon2id + AES-KW + AES-256-GCM"
+            "securityNote": "Cont protejat cu criptare Argon2id + AES-KW + AES-256-GCM",
+            "dataKeyUnreadable": "Datele acestui cont nu pot fi deblocate pe acest dispozitiv. Copia de rezervă a fost creată pe alt computer; exportă-o din nou de acolo cu o parolă setată pentru acest cont, apoi importă-o aici.",
+            "passphraseRequired": "Introdu parola actuală a contului.",
+            "passphraseNotNeeded": "Acest cont nu are nicio parolă de introdus.",
+            "userLocked": "Acest cont este blocat. Deblochează-l mai întâi, apoi încearcă din nou.",
+            "noActiveUser": "Comută mai întâi la acest cont, apoi încearcă din nou.",
+            "notAuthorized": "Nu ai permisiunea de a modifica acel cont.",
+            "vaultLocked": "Deblochează-ți mai întâi contul, apoi încearcă din nou.",
+            "storeNotReady": "Deblochează mai întâi seiful, apoi încearcă din nou.",
+            "cannotDemoteLastAdmin": "Nu poți elimina ultimul administrator.",
+            "cannotDeleteLastAdmin": "Nu poți șterge ultimul administrator.",
+            "cannotDeleteLastUser": "Nu poți șterge ultimul cont.",
+            "adminResetNotForSelf": "Folosește Schimbă parola pentru propriul cont.",
+            "userNotFound": "Acest cont nu mai există."
         },
         "opendrive": {
             "privacyTitle": "Confidențialitate OpenDrive",

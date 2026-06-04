@@ -973,7 +973,9 @@
             "backupImportAny": "Alles importeren",
             "backupImportAnyDesc": "Detecteert rclone en elk ander ondersteund back-upformaat",
             "bridgeSearchApps": "Apps zoeken...",
-            "bridgeNoApps": "Geen apps komen overeen met je zoekopdracht"
+            "bridgeNoApps": "Geen apps komen overeen met je zoekopdracht",
+            "keystoreRekeyedPartitions": "{count} account(s) opnieuw versleuteld voor dit apparaat.",
+            "keystoreUnreadablePartitions": "{count} account(s) konden op dit apparaat niet worden ontgrendeld. De back-up is op een andere computer gemaakt: exporteer hem daar opnieuw met een wachtwoord voor die accounts en importeer hem dan hier."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4573,7 +4575,20 @@
             "lastUsedToday": "Vandaag gebruikt",
             "lastUsedYesterday": "Gisteren gebruikt",
             "lastUsedDaysAgo": "{days} dagen geleden gebruikt",
-            "securityNote": "Account beschermd met Argon2id + AES-KW + AES-256-GCM-versleuteling"
+            "securityNote": "Account beschermd met Argon2id + AES-KW + AES-256-GCM-versleuteling",
+            "dataKeyUnreadable": "De gegevens van dit account kunnen op dit apparaat niet worden ontgrendeld. De back-up is op een andere computer gemaakt; exporteer hem daar opnieuw met een wachtwoord voor dit account en importeer hem dan hier.",
+            "passphraseRequired": "Voer het huidige wachtwoord van je account in.",
+            "passphraseNotNeeded": "Dit account heeft geen wachtwoord om in te voeren.",
+            "userLocked": "Dit account is vergrendeld. Ontgrendel het eerst en probeer het opnieuw.",
+            "noActiveUser": "Schakel eerst over naar dit account en probeer het opnieuw.",
+            "notAuthorized": "Je hebt geen toestemming om dat account te wijzigen.",
+            "vaultLocked": "Ontgrendel eerst je account en probeer het opnieuw.",
+            "storeNotReady": "Ontgrendel eerst de kluis en probeer het opnieuw.",
+            "cannotDemoteLastAdmin": "Je kunt de laatste beheerder niet verwijderen.",
+            "cannotDeleteLastAdmin": "Je kunt de laatste beheerder niet verwijderen.",
+            "cannotDeleteLastUser": "Je kunt het laatste account niet verwijderen.",
+            "adminResetNotForSelf": "Gebruik Wachtwoord wijzigen op je eigen account.",
+            "userNotFound": "Dit account bestaat niet meer."
         },
         "opendrive": {
             "privacyTitle": "OpenDrive Privacy",

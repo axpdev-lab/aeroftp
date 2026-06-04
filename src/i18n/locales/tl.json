@@ -973,7 +973,9 @@
             "backupImportAny": "Mag-import ng Kahit Ano",
             "backupImportAnyDesc": "Tinutukoy ang rclone at bawat iba pang suportadong format ng backup",
             "bridgeSearchApps": "Maghanap ng apps...",
-            "bridgeNoApps": "Walang app na tumutugma sa iyong paghahanap"
+            "bridgeNoApps": "Walang app na tumutugma sa iyong paghahanap",
+            "keystoreRekeyedPartitions": "Na-rekey ang {count} account para sa device na ito.",
+            "keystoreUnreadablePartitions": "Hindi ma-unlock ang {count} account sa device na ito. Ginawa ang backup sa ibang computer: i-export itong muli doon na may nakatakdang password para sa mga account na iyon, pagkatapos ay i-import dito."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4592,7 +4594,20 @@
             "lastUsedToday": "Ginamit ngayong araw",
             "lastUsedYesterday": "Ginamit kahapon",
             "lastUsedDaysAgo": "Ginamit {days} araw na ang nakalipas",
-            "securityNote": "Account protektado ng pag-encrypt na Argon2id + AES-KW + AES-256-GCM"
+            "securityNote": "Account protektado ng pag-encrypt na Argon2id + AES-KW + AES-256-GCM",
+            "dataKeyUnreadable": "Hindi ma-unlock ang data ng account na ito sa device na ito. Ginawa ang backup sa ibang computer; i-export itong muli doon na may nakatakdang password para sa account na ito, pagkatapos ay i-import dito.",
+            "passphraseRequired": "Ilagay ang kasalukuyang password ng iyong account.",
+            "passphraseNotNeeded": "Walang password na ilalagay ang account na ito.",
+            "userLocked": "Naka-lock ang account na ito. I-unlock muna ito, pagkatapos ay subukang muli.",
+            "noActiveUser": "Lumipat muna sa account na ito, pagkatapos ay subukang muli.",
+            "notAuthorized": "Wala kang pahintulot na baguhin ang account na iyon.",
+            "vaultLocked": "I-unlock muna ang iyong account, pagkatapos ay subukang muli.",
+            "storeNotReady": "I-unlock muna ang vault, pagkatapos ay subukang muli.",
+            "cannotDemoteLastAdmin": "Hindi mo maaalis ang huling administrator.",
+            "cannotDeleteLastAdmin": "Hindi mo matatanggal ang huling administrator.",
+            "cannotDeleteLastUser": "Hindi mo matatanggal ang huling account.",
+            "adminResetNotForSelf": "Gamitin ang Baguhin ang Password sa sarili mong account.",
+            "userNotFound": "Wala na ang account na ito."
         },
         "opendrive": {
             "privacyTitle": "Privacy ng OpenDrive",

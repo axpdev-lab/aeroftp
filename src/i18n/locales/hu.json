@@ -973,7 +973,9 @@
             "backupImportAny": "Bármi importálása",
             "backupImportAnyDesc": "Felismeri az rclone-t és minden más támogatott biztonságimentés-formátumot",
             "bridgeSearchApps": "Alkalmazások keresése...",
-            "bridgeNoApps": "Egyetlen alkalmazás sem felel meg a keresésnek"
+            "bridgeNoApps": "Egyetlen alkalmazás sem felel meg a keresésnek",
+            "keystoreRekeyedPartitions": "{count} fiók kulcsa újra lett állítva ehhez az eszközhöz.",
+            "keystoreUnreadablePartitions": "{count} fiókot nem sikerült feloldani ezen az eszközön. A biztonsági mentés egy másik számítógépen készült: exportálja onnan újra az ezekhez a fiókokhoz beállított jelszóval, majd importálja ide."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4573,7 +4575,20 @@
             "lastUsedToday": "Ma használva",
             "lastUsedYesterday": "Tegnap használva",
             "lastUsedDaysAgo": "{days} napja használva",
-            "securityNote": "A fiókot Argon2id + AES-KW + AES-256-GCM titkosítás védi"
+            "securityNote": "A fiókot Argon2id + AES-KW + AES-256-GCM titkosítás védi",
+            "dataKeyUnreadable": "Ennek a fióknak az adatai nem oldhatók fel ezen az eszközön. A biztonsági mentés egy másik számítógépen készült; exportálja onnan újra egy ehhez a fiókhoz beállított jelszóval, majd importálja ide.",
+            "passphraseRequired": "Adja meg fiókja jelenlegi jelszavát.",
+            "passphraseNotNeeded": "Ennek a fióknak nincs megadandó jelszava.",
+            "userLocked": "Ez a fiók zárolva van. Először oldja fel, majd próbálja újra.",
+            "noActiveUser": "Először váltson erre a fiókra, majd próbálja újra.",
+            "notAuthorized": "Nincs jogosultsága a fiók módosításához.",
+            "vaultLocked": "Először oldja fel a fiókját, majd próbálja újra.",
+            "storeNotReady": "Először oldja fel a széfet, majd próbálja újra.",
+            "cannotDemoteLastAdmin": "Nem távolíthatja el az utolsó rendszergazdát.",
+            "cannotDeleteLastAdmin": "Nem törölheti az utolsó rendszergazdát.",
+            "cannotDeleteLastUser": "Nem törölheti az utolsó fiókot.",
+            "adminResetNotForSelf": "Használja a Jelszó módosítása lehetőséget a saját fiókján.",
+            "userNotFound": "Ez a fiók már nem létezik."
         },
         "opendrive": {
             "privacyTitle": "OpenDrive adatvédelem",
