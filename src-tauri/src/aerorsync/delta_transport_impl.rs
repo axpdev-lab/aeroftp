@@ -441,6 +441,23 @@ impl AerorsyncDeltaTransport {
     }
 }
 
+/// Discard the streaming writer's in-flight `<target>.aerotmp` before
+/// bailing out of [`do_download`] down a fallback-eligible path.
+///
+/// The delta [`StreamingAtomicWriter`] and the classic SFTP `AtomicFile`
+/// fallback both target the SAME deterministic `<target>.aerotmp`, and the
+/// classic path opens it with `create_new(true)`. The writer's `Drop`
+/// intentionally keeps the temp, so any abandon path that wants the classic
+/// fallback to succeed must remove it explicitly: otherwise a transient
+/// delta failure degrades into a hard `AlreadyExists` on the retry. The
+/// original target file is never touched here (no rename happened on these
+/// paths; if a rename had committed, `remove_file` is a harmless no-op).
+async fn discard_streaming_temp(writer: StreamingAtomicWriter) {
+    let temp = writer.temp_path().to_path_buf();
+    drop(writer);
+    let _ = fs::remove_file(&temp).await;
+}
+
 /// Module-private download core extracted from `download_inner` in P3-T01
 /// W3.2(a). Behavior byte-identical to the pre-W3.2 single-shot path:
 /// baseline read + FileBaseline/MemoryBaseline pick + StreamingAtomicWriter
@@ -563,13 +580,24 @@ where
         )
         .await;
     if let Err(e) = drive_res {
-        // The `StreamingAtomicWriter` Drop leaves the temp orphan;
-        // the original `local_path` is untouched. Caller-visible
-        // semantics match the pre-W2.5 bulk path.
-        return Err(map_native_error_to_rsync(e, driver.committed()));
+        // Abandon path. A delta failure here (transient transport error,
+        // early channel close, etc.) maps to `DeltaSyncResult::fallback`
+        // and the caller re-runs the classic SFTP download. The
+        // `StreamingAtomicWriter` Drop deliberately keeps the orphan
+        // `<target>.aerotmp`, but the classic `AtomicFile` fallback opens
+        // that SAME deterministic path with `create_new(true)` and would
+        // fail with `AlreadyExists`. Discard the temp so the fallback can
+        // proceed; the original `local_path` is untouched (no rename).
+        let mapped = map_native_error_to_rsync(e, driver.committed());
+        discard_streaming_temp(writer).await;
+        return Err(mapped);
     }
     if let Err(e) = driver.finish_session(&mut bridge).await {
-        return Err(map_native_error_to_rsync(e, driver.committed()));
+        // Same abandon-path reasoning as the `drive_res` arm above: clear
+        // the orphan temp before the classic fallback re-opens it.
+        let mapped = map_native_error_to_rsync(e, driver.committed());
+        discard_streaming_temp(writer).await;
+        return Err(mapped);
     }
 
     let file_size = writer.bytes_written();
@@ -591,6 +619,31 @@ where
         tracing::warn!(
             "native rsync download completed without remote file metadata; preserving local baseline mode only"
         );
+    }
+
+    // Completeness guard. The remote file list carries the authoritative
+    // size. Some embedded rsync servers (e.g. WD MyCloud's custom firmware,
+    // proto 31) close the SSH channel BEFORE the trailing NDX_DONE marker;
+    // `read_trailing_ndx_done` then accepts that early close as a clean EOF
+    // and we would otherwise commit a silently truncated reconstruction as a
+    // successful delta download. Refuse to commit a short file: discard the
+    // temp and return a transfer error so `transfer_with_delta` folds it into
+    // `DeltaSyncResult::fallback` and the caller re-runs the classic SFTP
+    // download (proven correct on these servers). The temp must be removed
+    // here because the classic path opens the same `.aerotmp` with
+    // `create_new(true)` and would otherwise fail with EEXIST; the original
+    // target file is never touched (no rename happened).
+    if let Some(ref entry) = remote_entry {
+        // `file_size` is u64 (bytes written); rsync `entry.size` is i64.
+        if entry.size < 0 || file_size != entry.size as u64 {
+            let stderr = format!(
+                "delta reconstruction incomplete: {} of {} bytes for {} \
+                 (remote closed before completion); falling back to classic download",
+                file_size, entry.size, remote_path
+            );
+            discard_streaming_temp(writer).await;
+            return Err(RsyncError::TransferFailed { exit: -1, stderr });
+        }
     }
 
     // Atomic commit: flush + sync_all + chmod (Unix) + set_mtime + rename.
@@ -2345,5 +2398,62 @@ mod tests {
             Err(other) => panic!("expected HardRejection, got Err({other:?})"),
             Ok(_) => panic!("expected HardRejection, got Ok(_)"),
         }
+    }
+
+    /// Regression: WD MyCloud early-close and transient delta failures.
+    /// The delta `StreamingAtomicWriter` and the classic SFTP `AtomicFile`
+    /// fallback share the SAME deterministic `<target>.aerotmp`, which the
+    /// classic path opens with `create_new(true)`. If `do_download` bails
+    /// out of a fallback-eligible path without clearing that temp, the
+    /// fallback dies with `AlreadyExists` and a transient blip becomes a
+    /// hard error instead of a transparent classic retry. `discard_streaming_temp`
+    /// must remove the orphan while leaving the original target untouched.
+    #[tokio::test]
+    async fn abandon_path_discards_orphan_temp_so_classic_fallback_can_open() {
+        let dir = fresh_tempdir();
+        let target = dir.path().join("payload.md");
+        // Pre-existing target content must survive: no rename happened on
+        // the abandon path.
+        std::fs::File::create(&target)
+            .unwrap()
+            .write_all(b"original-content")
+            .unwrap();
+
+        // Open the streaming writer the way `do_download` does. `new`
+        // creates `<target>.aerotmp` and never touches the target.
+        let writer = StreamingAtomicWriter::new(&target).await.unwrap();
+        let temp = writer.temp_path().to_path_buf();
+        assert!(temp.exists(), "writer must create the deterministic .aerotmp");
+
+        // Without the fix the orphan blocks the classic fallback's open.
+        let blocked = tokio::fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&temp)
+            .await;
+        assert_eq!(
+            blocked.unwrap_err().kind(),
+            std::io::ErrorKind::AlreadyExists,
+            "an orphan temp blocks the classic AtomicFile create_new(true) open"
+        );
+
+        // The abandon path clears the orphan.
+        discard_streaming_temp(writer).await;
+        assert!(!temp.exists(), "orphan .aerotmp must be removed on abandon");
+
+        // The classic fallback's exact open mode now succeeds.
+        let reopened = tokio::fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&temp)
+            .await;
+        assert!(
+            reopened.is_ok(),
+            "classic create_new(true) must succeed once the orphan is gone"
+        );
+        drop(reopened);
+
+        // The original target was never touched (no rename on the abandon path).
+        assert_eq!(std::fs::read(&target).unwrap(), b"original-content");
     }
 }
