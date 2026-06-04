@@ -229,6 +229,10 @@ windows = { version = "0.58", features = [
     "Win32_Storage_FileSystem",
     "Win32_Security",
     "Win32_UI_Shell",
+    # SetConsoleCtrlHandler: MCP/orchestrate stdio daemon must swallow
+    # console Ctrl+C / Ctrl+Break broadcasts (self-updater, parent shell)
+    # instead of dying. See install_mcp_signal_guard in aeroftp_cli.rs.
+    "Win32_System_Console",
 ] }
 # Windows Registry access for auto-update install-format detection.
 # Walks HKLM/HKCU `Software\Microsoft\Windows\CurrentVersion\Uninstall`
