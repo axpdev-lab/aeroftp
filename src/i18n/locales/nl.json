@@ -274,8 +274,7 @@
             "profileConverted": "Profiel geconverteerd",
             "profileDuplicated": "Profiel gedupliceerd",
             "convertUndone": "Profiel hersteld",
-            "undo": "Ongedaan maken",
-            "megacmdDfHint": "MEGAcmd gebruikt mega-df rechtstreeks om gebruikte en totale opslag op te vragen. Het handmatig overschrijven van het totaal is niet nodig."
+            "undo": "Ongedaan maken"
         },
         "browser": {
             "remote": "Extern",

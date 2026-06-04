@@ -71,6 +71,13 @@ export interface ProviderModeGroup {
      *  "OpenDrive (WebDAV)"). A mode may still override per surface. */
     headerProviderId?: string;
     headerName?: string;
+    /** Optional protocol-neutral header description for the whole group.
+     *  When the canonical `headerProviderId` preset carries a
+     *  protocol-specific description (e.g. the OpenDrive WebDAV preset says
+     *  "...via WebDAV"), that string is wrong for the other modes (#270,
+     *  Quick Connect OpenDrive API showed "via WebDAV"). Set this to a
+     *  neutral line; the protocol is already obvious from the MODES chips. */
+    headerDescription?: string;
 }
 
 export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
@@ -172,6 +179,9 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
         // "OpenDrive (WebDAV)".
         headerProviderId: 'opendrive-webdav',
         headerName: 'OpenDrive',
+        // Neutral header: the WebDAV preset's "...via WebDAV" description is
+        // wrong when the Native API mode is selected (#270).
+        headerDescription: 'OpenDrive cloud storage (5 GB free)',
         modes: [
             {
                 // OpenDrive native API selected via ProtocolSelector
@@ -298,12 +308,13 @@ export function findActiveMode(
 export function resolveModeHeader(
     activeProviderId: string | null | undefined,
     activeProtocol: string | null | undefined,
-): { providerId?: string; name?: string } | null {
+): { providerId?: string; name?: string; description?: string } | null {
     const group = findActiveModeGroup(activeProviderId, activeProtocol);
     if (!group) return null;
     const mode = findActiveMode(group, activeProviderId, activeProtocol);
     const providerId = mode?.headerProviderId ?? group.headerProviderId;
     const name = mode?.headerName ?? group.headerName;
+    const description = group.headerDescription;
     if (!providerId && !name) return null;
-    return { providerId, name };
+    return { providerId, name, description };
 }

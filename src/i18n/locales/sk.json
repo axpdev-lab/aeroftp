@@ -274,8 +274,7 @@
             "profileConverted": "Profil prevedený",
             "profileDuplicated": "Profil duplikovaný",
             "convertUndone": "Profil obnovený",
-            "undo": "Späť",
-            "megacmdDfHint": "MEGAcmd používa mega-df priamo na získanie použitého a celkového úložiska. Manuálne prepísanie celkovej hodnoty nie je potrebné."
+            "undo": "Späť"
         },
         "browser": {
             "remote": "Vzdialený",

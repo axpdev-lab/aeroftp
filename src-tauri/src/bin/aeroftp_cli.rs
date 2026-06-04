@@ -5167,6 +5167,8 @@ fn apply_google_drive_runtime_knobs(provider: &mut Box<dyn StorageProvider>, cli
 static SESSION_TRANSFERRED_BYTES: AtomicU64 = AtomicU64::new(0);
 /// Print "Using profile: ..." only once per session (avoids noise from parallel workers).
 static PROFILE_INFO_PRINTED: AtomicBool = AtomicBool::new(false);
+/// Print the MEGAcmd warm-up notice only once per session (#275).
+static MEGACMD_WARMUP_NOTICE_PRINTED: AtomicBool = AtomicBool::new(false);
 /// Set early in main() when the user passed `--json` or `--format json`.
 /// Used to suppress informational stderr output (banners, "Using
 /// profile:") that an agent capturing combined stdout+stderr would
@@ -13186,6 +13188,26 @@ fn profile_to_provider_config(
         format!("{} -> {}{}", protocol.to_uppercase(), host, preset_suffix),
         cli.quiet,
     );
+
+    // MEGAcmd connects can stall on the first call after the daemon was
+    // stopped: the connect-time mega-df warm-up restarts the MEGAcmd Server
+    // in the background, which takes several seconds. Surface that so a slow
+    // first list does not look like a hang (#275), mirroring MEGAcmd's own
+    // "Initiating in the background..." notice.
+    let is_megacmd = matches!(
+        profile.get("providerId").and_then(|v| v.as_str()),
+        Some("megacmd") | Some("megacmd-webdav")
+    ) || (provider_type == ProviderType::Mega
+        && extra.get("mega_mode").map(String::as_str) == Some("megacmd"));
+    if is_megacmd
+        && !cli.quiet
+        && !JSON_MODE.load(Ordering::Relaxed)
+        && !MEGACMD_WARMUP_NOTICE_PRINTED.swap(true, Ordering::Relaxed)
+    {
+        eprintln!(
+            "MEGAcmd: starting the local server in the background if needed (first connect can take a few seconds)..."
+        );
+    }
 
     let config = ProviderConfig {
         name: name.to_string(),
