@@ -1703,9 +1703,11 @@ pub async fn dispatch_tool(
             surface,
         });
     }
-    validate_required_fields(def, args).map_err(|reason| ToolError::InvalidArgs {
-        tool: tool_name.to_string(),
-        reason,
+    validate_required_fields_for_surface(def, args, surface).map_err(|reason| {
+        ToolError::InvalidArgs {
+            tool: tool_name.to_string(),
+            reason,
+        }
     })?;
     match tool_name {
         // ─── Area A: local_* (T3 Gate 2) ─────────────────────────────
@@ -1843,6 +1845,39 @@ pub fn validate_required_fields(def: &ToolDef, args: &Value) -> Result<(), Strin
     Ok(())
 }
 
+/// Surface-aware required-field validation (W1-2 / TOOLS-02).
+///
+/// Remote tools declare `server` as required so the CLI/MCP surfaces (which
+/// have no notion of an "active connection") always operate on a named vault
+/// profile. The GUI, by contrast, has a live active connection: there an absent
+/// `server` means "use the active connection", so `server` is optional. This
+/// skips only the `server` requirement on the GUI surface; every other required
+/// field is still enforced on all surfaces.
+pub fn validate_required_fields_for_surface(
+    def: &ToolDef,
+    args: &Value,
+    surface: Surfaces,
+) -> Result<(), String> {
+    let Some(req) = def.input_schema.get("required").and_then(|v| v.as_array()) else {
+        return Ok(());
+    };
+    let Some(obj) = args.as_object() else {
+        return Err("args must be a JSON object".to_string());
+    };
+    let gui = surface == Surfaces::GUI;
+    for r in req {
+        if let Some(k) = r.as_str() {
+            if gui && k == "server" {
+                continue;
+            }
+            if !obj.contains_key(k) {
+                return Err(format!("missing required field: {k}"));
+            }
+        }
+    }
+    Ok(())
+}
+
 // Re-exports convenienti per i call site. Non usati internamente qui
 // ma servono quando Gate 2 inizia a scrivere tool handlers che vogliono
 // costruire Value direttamente.
@@ -1918,6 +1953,31 @@ mod tests {
         let def = make_def(&[], Surfaces::all());
         assert!(validate_required_fields(&def, &json!({})).is_ok());
         assert!(validate_required_fields(&def, &json!({"any": 1})).is_ok());
+    }
+
+    #[test]
+    fn gui_surface_makes_server_optional_but_keeps_other_required() {
+        // W1-2 / TOOLS-02: a remote tool requiring `server` is callable on the
+        // GUI without it (active-connection contract), but the same call is
+        // rejected on MCP/CLI, and other missing required fields still fail.
+        let def = make_def(&["server"], Surfaces::all());
+        assert!(
+            validate_required_fields_for_surface(&def, &json!({}), Surfaces::GUI).is_ok(),
+            "GUI must treat `server` as optional"
+        );
+        let err =
+            validate_required_fields_for_surface(&def, &json!({}), Surfaces::MCP).unwrap_err();
+        assert!(err.contains("missing required field: server"), "got: {err}");
+
+        // A non-`server` required field is still enforced even on GUI.
+        let def2 = make_def(&["server", "operation"], Surfaces::all());
+        let err2 = validate_required_fields_for_surface(
+            &def2,
+            &json!({"server": "x"}),
+            Surfaces::GUI,
+        )
+        .unwrap_err();
+        assert!(err2.contains("missing required field: operation"), "got: {err2}");
     }
 
     #[test]

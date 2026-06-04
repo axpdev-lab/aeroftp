@@ -2257,7 +2257,12 @@
                 "thinkingDeep": "Βαθιά",
                 "thinkingLight": "Ελαφριά",
                 "thinkingMaximum": "Μέγιστο",
-                "thinkingOff": "Ανενεργό"
+                "thinkingOff": "Ανενεργό",
+                "responseStyle": "Στυλ απάντησης",
+                "styleConcise": "Συνοπτικό",
+                "styleDefault": "Προεπιλογή",
+                "styleExplanatory": "Επεξηγηματικό",
+                "styleLearning": "Εκπαιδευτικό"
             },
             "copy": "Αντιγραφή",
             "attachImage": "Επισύναψη εικόνας",

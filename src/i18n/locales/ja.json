@@ -2222,7 +2222,12 @@
                 "thinkingDeep": "深い",
                 "thinkingLight": "軽い",
                 "thinkingMaximum": "最大",
-                "thinkingOff": "オフ"
+                "thinkingOff": "オフ",
+                "responseStyle": "応答スタイル",
+                "styleConcise": "簡潔",
+                "styleDefault": "デフォルト",
+                "styleExplanatory": "説明的",
+                "styleLearning": "学習"
             },
             "copy": "コピー",
             "attachImage": "画像を添付",

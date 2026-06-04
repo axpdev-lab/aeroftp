@@ -2257,7 +2257,12 @@
                 "thinkingDeep": "Djúpt",
                 "thinkingLight": "Létt",
                 "thinkingMaximum": "Hámark",
-                "thinkingOff": "Af"
+                "thinkingOff": "Af",
+                "responseStyle": "Svarstíll",
+                "styleConcise": "Hnitmiðað",
+                "styleDefault": "Sjálfgefið",
+                "styleExplanatory": "Útskýrandi",
+                "styleLearning": "Námsmiðað"
             },
             "copy": "Afrita",
             "attachImage": "Hengja mynd við",

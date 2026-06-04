@@ -2257,7 +2257,12 @@
                 "thinkingDeep": "ღრმა",
                 "thinkingLight": "მსუბუქი",
                 "thinkingMaximum": "მაქსიმუმი",
-                "thinkingOff": "გამორთული"
+                "thinkingOff": "გამორთული",
+                "responseStyle": "პასუხის სტილი",
+                "styleConcise": "ლაკონური",
+                "styleDefault": "ნაგულისხმევი",
+                "styleExplanatory": "განმარტებითი",
+                "styleLearning": "სასწავლო"
             },
             "copy": "კოპირება",
             "attachImage": "სურათის მიმაგრება",

@@ -2257,7 +2257,12 @@
                 "thinkingDeep": "Globoko",
                 "thinkingLight": "Lahkotno",
                 "thinkingMaximum": "Maksimum",
-                "thinkingOff": "Izklop."
+                "thinkingOff": "Izklop.",
+                "responseStyle": "Slog odgovora",
+                "styleConcise": "Jedrnato",
+                "styleDefault": "Privzeto",
+                "styleExplanatory": "Pojasnjevalno",
+                "styleLearning": "Učno"
             },
             "copy": "Kopiraj",
             "attachImage": "Priloži sliko",

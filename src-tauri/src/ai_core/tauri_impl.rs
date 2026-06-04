@@ -8,7 +8,7 @@
 
 use async_trait::async_trait;
 use serde_json::{json, Value};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 use super::credential_provider::{
     CredentialProvider, ProviderExtraOptions, ServerCredentials, ServerProfile,
@@ -16,26 +16,112 @@ use super::credential_provider::{
 use super::event_sink::{EventSink, ToolProgress};
 use super::remote_backend::{RemoteBackend, StorageQuota};
 use crate::ai_stream::StreamChunk;
-use crate::provider_commands::ProviderState;
-use crate::providers::RemoteEntry;
+use crate::providers::{RemoteEntry, StorageProvider};
 use crate::AppState;
 
 // ─── TauriEventSink ────────────────────────────────────────────────────
 
+/// PERF-01: coalesce text deltas into larger chunks before crossing the webview
+/// IPC bridge. Without this every provider token produced one `app.emit`
+/// (JSON-serialize + IPC round-trip), which in turn drove a full message-list
+/// re-render and a smooth scroll per token on the frontend.
+const COALESCE_FLUSH_BYTES: usize = 256;
+const COALESCE_FLUSH_MILLIS: u128 = 40;
+
+struct CoalesceState {
+    buf: String,
+    last_flush: std::time::Instant,
+}
+
 /// Wraps Tauri AppHandle to emit events to the frontend.
 pub struct TauriEventSink {
     pub(crate) app: AppHandle,
+    coalesce: std::sync::Mutex<CoalesceState>,
+}
+
+/// Build a content-only `StreamChunk` (no thinking/tool/usage/done flags), used
+/// to emit a coalesced batch of text deltas.
+fn content_only_chunk(content: String) -> StreamChunk {
+    StreamChunk {
+        content,
+        done: false,
+        tool_calls: None,
+        input_tokens: None,
+        output_tokens: None,
+        thinking: None,
+        thinking_done: None,
+        cache_creation_input_tokens: None,
+        cache_read_input_tokens: None,
+    }
 }
 
 impl TauriEventSink {
     pub fn new(app: AppHandle) -> Self {
-        Self { app }
+        Self {
+            app,
+            coalesce: std::sync::Mutex::new(CoalesceState {
+                buf: String::new(),
+                last_flush: std::time::Instant::now(),
+            }),
+        }
     }
 }
 
 impl EventSink for TauriEventSink {
     fn emit_stream_chunk(&self, stream_id: &str, chunk: &StreamChunk) {
         let event_name = format!("ai-stream-{}", stream_id);
+
+        // A "pure content" chunk carries only text. Thinking, tool calls, usage
+        // and the terminal `done` chunk are emitted unbuffered so semantics and
+        // ordering are unchanged; buffered text is flushed before each of them.
+        let is_pure_content = !chunk.content.is_empty()
+            && !chunk.done
+            && chunk.tool_calls.is_none()
+            && chunk.input_tokens.is_none()
+            && chunk.output_tokens.is_none()
+            && chunk.thinking.is_none()
+            && chunk.thinking_done.is_none()
+            && chunk.cache_creation_input_tokens.is_none()
+            && chunk.cache_read_input_tokens.is_none();
+
+        if is_pure_content {
+            let to_emit = {
+                let mut state = match self.coalesce.lock() {
+                    Ok(s) => s,
+                    Err(p) => p.into_inner(),
+                };
+                state.buf.push_str(&chunk.content);
+                if state.buf.len() >= COALESCE_FLUSH_BYTES
+                    || state.last_flush.elapsed().as_millis() >= COALESCE_FLUSH_MILLIS
+                {
+                    state.last_flush = std::time::Instant::now();
+                    Some(std::mem::take(&mut state.buf))
+                } else {
+                    None
+                }
+            };
+            if let Some(content) = to_emit {
+                let _ = self.app.emit(&event_name, &content_only_chunk(content));
+            }
+            return;
+        }
+
+        // Non-content chunk: flush any pending text first to preserve order.
+        let pending = {
+            let mut state = match self.coalesce.lock() {
+                Ok(s) => s,
+                Err(p) => p.into_inner(),
+            };
+            state.last_flush = std::time::Instant::now();
+            if state.buf.is_empty() {
+                None
+            } else {
+                Some(std::mem::take(&mut state.buf))
+            }
+        };
+        if let Some(content) = pending {
+            let _ = self.app.emit(&event_name, &content_only_chunk(content));
+        }
         let _ = self.app.emit(&event_name, chunk);
     }
 
@@ -175,173 +261,339 @@ impl CredentialProvider for VaultCredentialProvider {
 
 // ─── TauriRemoteBackend ──────────────────────────────────────────────
 
-/// Wraps ProviderState + AppState for remote operations via Tauri managed state.
-pub struct TauriRemoteBackend<'a> {
-    pub(crate) provider_state: &'a ProviderState,
-    pub(crate) app_state: &'a AppState,
+type ActiveProviderArc = Arc<tokio::sync::Mutex<Option<Box<dyn StorageProvider>>>>;
+
+/// Remote backend for GUI tool calls (TOOLS-01).
+///
+/// Previously this struct borrowed `&'a ProviderState` / `&'a AppState`, which
+/// could never satisfy the `'static` bound of `Arc<dyn RemoteBackend>`; that is
+/// exactly why `TauriToolCtx::remote_backend` was a permanent error stub and
+/// every GUI remote tool failed at runtime. It now owns `'static` handles, so it
+/// can be wrapped in an `Arc` and returned:
+///
+/// * `Active` resolves the live `ProviderState`/`AppState` managed state per
+///   call (the GUI's "operate on the active connection" contract).
+/// * `Temp` holds a vault-resolved provider for a named server, mirroring the
+///   CLI/MCP named-server path.
+pub enum TauriRemoteBackend {
+    Active { app: AppHandle },
+    Temp { provider: tokio::sync::Mutex<Box<dyn StorageProvider>> },
 }
 
 const MAX_AI_DOWNLOAD_SIZE: u64 = 50 * 1024 * 1024;
 
+impl TauriRemoteBackend {
+    /// Clone the active provider `Arc` out of managed state so we never hold the
+    /// Tauri `State` guard across an `.await`.
+    fn active_provider(app: &AppHandle) -> ActiveProviderArc {
+        app.state::<crate::provider_commands::ProviderState>()
+            .provider
+            .clone()
+    }
+}
+
 #[async_trait]
-impl<'a> RemoteBackend for TauriRemoteBackend<'a> {
+impl RemoteBackend for TauriRemoteBackend {
     async fn is_connected(&self) -> bool {
-        self.provider_state.provider.lock().await.is_some()
-            || self.app_state.ftp_manager.lock().await.is_connected()
+        match self {
+            TauriRemoteBackend::Active { app } => {
+                if Self::active_provider(app).lock().await.is_some() {
+                    return true;
+                }
+                app.state::<AppState>()
+                    .ftp_manager
+                    .lock()
+                    .await
+                    .is_connected()
+            }
+            TauriRemoteBackend::Temp { .. } => true,
+        }
     }
 
     async fn list(&self, path: &str) -> Result<Vec<RemoteEntry>, String> {
-        if let Some(ref mut p) = *self.provider_state.provider.lock().await {
-            return p.list(path).await.map_err(|e| e.to_string());
+        match self {
+            TauriRemoteBackend::Active { app } => {
+                if let Some(ref mut p) = *Self::active_provider(app).lock().await {
+                    return p.list(path).await.map_err(|e| e.to_string());
+                }
+                let app_state = app.state::<AppState>();
+                let mut mgr = app_state.ftp_manager.lock().await;
+                mgr.change_dir(path).await.map_err(|e| e.to_string())?;
+                let files = mgr.list_files().await.map_err(|e| e.to_string())?;
+                Ok(files
+                    .into_iter()
+                    .map(|f| RemoteEntry {
+                        name: f.name.clone(),
+                        path: format!("{}/{}", path.trim_end_matches('/'), f.name),
+                        is_dir: f.is_dir,
+                        size: f.size.unwrap_or(0),
+                        modified: f.modified.clone(),
+                        permissions: f.permissions.clone(),
+                        owner: None,
+                        group: None,
+                        is_symlink: false,
+                        link_target: None,
+                        mime_type: None,
+                        metadata: std::collections::HashMap::new(),
+                    })
+                    .collect())
+            }
+            TauriRemoteBackend::Temp { provider } => {
+                provider.lock().await.list(path).await.map_err(|e| e.to_string())
+            }
         }
-        let mut mgr = self.app_state.ftp_manager.lock().await;
-        mgr.change_dir(path).await.map_err(|e| e.to_string())?;
-        let files = mgr.list_files().await.map_err(|e| e.to_string())?;
-        Ok(files
-            .into_iter()
-            .map(|f| RemoteEntry {
-                name: f.name.clone(),
-                path: format!("{}/{}", path.trim_end_matches('/'), f.name),
-                is_dir: f.is_dir,
-                size: f.size.unwrap_or(0),
-                modified: f.modified.clone(),
-                permissions: f.permissions.clone(),
-                owner: None,
-                group: None,
-                is_symlink: false,
-                link_target: None,
-                mime_type: None,
-                metadata: std::collections::HashMap::new(),
-            })
-            .collect())
     }
 
     async fn stat(&self, path: &str) -> Result<RemoteEntry, String> {
-        if let Some(ref mut p) = *self.provider_state.provider.lock().await {
-            return p.stat(path).await.map_err(|e| e.to_string());
+        match self {
+            TauriRemoteBackend::Active { app } => {
+                if let Some(ref mut p) = *Self::active_provider(app).lock().await {
+                    return p.stat(path).await.map_err(|e| e.to_string());
+                }
+                Err("stat not supported on FTP fallback".to_string())
+            }
+            TauriRemoteBackend::Temp { provider } => {
+                provider.lock().await.stat(path).await.map_err(|e| e.to_string())
+            }
         }
-        Err("stat not supported on FTP fallback".to_string())
     }
 
     async fn download_to_bytes(&self, path: &str) -> Result<Vec<u8>, String> {
-        if let Some(ref mut p) = *self.provider_state.provider.lock().await {
-            if let Ok(entry) = p.stat(path).await {
-                if entry.size > MAX_AI_DOWNLOAD_SIZE {
-                    return Err(format!(
-                        "File too large ({:.1} MB). Limit is {} MB.",
-                        entry.size as f64 / 1_048_576.0,
-                        MAX_AI_DOWNLOAD_SIZE / 1_048_576
-                    ));
+        match self {
+            TauriRemoteBackend::Active { app } => {
+                if let Some(ref mut p) = *Self::active_provider(app).lock().await {
+                    return download_provider_bytes(p, path).await;
                 }
+                let app_state = app.state::<AppState>();
+                let mut mgr = app_state.ftp_manager.lock().await;
+                mgr.download_to_bytes(path).await.map_err(|e| e.to_string())
             }
-            return p.download_to_bytes(path).await.map_err(|e| e.to_string());
+            TauriRemoteBackend::Temp { provider } => {
+                let mut guard = provider.lock().await;
+                download_provider_bytes(&mut guard, path).await
+            }
         }
-        let mut mgr = self.app_state.ftp_manager.lock().await;
-        mgr.download_to_bytes(path).await.map_err(|e| e.to_string())
     }
 
     async fn upload_from_bytes(&self, data: &[u8], path: &str) -> Result<(), String> {
-        if let Some(ref mut p) = *self.provider_state.provider.lock().await {
-            // Write data to a secure temp file (exclusive create), upload, then clean up
-            let nonce = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_nanos())
-                .unwrap_or(0);
-            let tmp = std::env::temp_dir().join(format!(
-                "aeroftp_upload_{}_{}",
-                std::process::id(),
-                nonce
-            ));
-            std::fs::write(&tmp, data).map_err(|e| e.to_string())?;
-            let result = p
-                .upload(tmp.to_str().unwrap_or(""), path, None)
-                .await
-                .map_err(|e| e.to_string());
-            let _ = std::fs::remove_file(&tmp);
-            return result;
+        match self {
+            TauriRemoteBackend::Active { app } => {
+                if let Some(ref mut p) = *Self::active_provider(app).lock().await {
+                    return upload_provider_bytes(p, data, path).await;
+                }
+                let app_state = app.state::<AppState>();
+                let mut mgr = app_state.ftp_manager.lock().await;
+                let tmp = temp_upload_path();
+                std::fs::write(&tmp, data).map_err(|e| e.to_string())?;
+                let result = mgr
+                    .upload_file(tmp.to_str().unwrap_or(""), path)
+                    .await
+                    .map_err(|e| e.to_string());
+                let _ = std::fs::remove_file(&tmp);
+                result
+            }
+            TauriRemoteBackend::Temp { provider } => {
+                let mut guard = provider.lock().await;
+                upload_provider_bytes(&mut guard, data, path).await
+            }
         }
-        let mut mgr = self.app_state.ftp_manager.lock().await;
-        let nonce = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        let tmp =
-            std::env::temp_dir().join(format!("aeroftp_upload_{}_{}", std::process::id(), nonce));
-        std::fs::write(&tmp, data).map_err(|e| e.to_string())?;
-        let result = mgr
-            .upload_file(tmp.to_str().unwrap_or(""), path)
-            .await
-            .map_err(|e| e.to_string());
-        let _ = std::fs::remove_file(&tmp);
-        result
     }
 
     async fn download(&self, remote: &str, local: &str) -> Result<(), String> {
-        if let Some(ref mut p) = *self.provider_state.provider.lock().await {
-            return p
+        match self {
+            TauriRemoteBackend::Active { app } => {
+                if let Some(ref mut p) = *Self::active_provider(app).lock().await {
+                    return p
+                        .download(remote, local, None)
+                        .await
+                        .map_err(|e| e.to_string());
+                }
+                let app_state = app.state::<AppState>();
+                let mut mgr = app_state.ftp_manager.lock().await;
+                mgr.download_file(remote, local)
+                    .await
+                    .map_err(|e| e.to_string())
+            }
+            TauriRemoteBackend::Temp { provider } => provider
+                .lock()
+                .await
                 .download(remote, local, None)
                 .await
-                .map_err(|e| e.to_string());
+                .map_err(|e| e.to_string()),
         }
-        let mut mgr = self.app_state.ftp_manager.lock().await;
-        mgr.download_file(remote, local)
-            .await
-            .map_err(|e| e.to_string())
     }
 
     async fn upload(&self, local: &str, remote: &str) -> Result<(), String> {
-        if let Some(ref mut p) = *self.provider_state.provider.lock().await {
-            return p
+        match self {
+            TauriRemoteBackend::Active { app } => {
+                if let Some(ref mut p) = *Self::active_provider(app).lock().await {
+                    return p
+                        .upload(local, remote, None)
+                        .await
+                        .map_err(|e| e.to_string());
+                }
+                let app_state = app.state::<AppState>();
+                let mut mgr = app_state.ftp_manager.lock().await;
+                mgr.upload_file(local, remote)
+                    .await
+                    .map_err(|e| e.to_string())
+            }
+            TauriRemoteBackend::Temp { provider } => provider
+                .lock()
+                .await
                 .upload(local, remote, None)
                 .await
-                .map_err(|e| e.to_string());
+                .map_err(|e| e.to_string()),
         }
-        let mut mgr = self.app_state.ftp_manager.lock().await;
-        mgr.upload_file(local, remote)
-            .await
-            .map_err(|e| e.to_string())
     }
 
     async fn delete(&self, path: &str) -> Result<(), String> {
-        if let Some(ref mut p) = *self.provider_state.provider.lock().await {
-            return p.delete(path).await.map_err(|e| e.to_string());
+        match self {
+            TauriRemoteBackend::Active { app } => {
+                if let Some(ref mut p) = *Self::active_provider(app).lock().await {
+                    return p.delete(path).await.map_err(|e| e.to_string());
+                }
+                let app_state = app.state::<AppState>();
+                let mut mgr = app_state.ftp_manager.lock().await;
+                mgr.remove(path).await.map_err(|e| e.to_string())
+            }
+            TauriRemoteBackend::Temp { provider } => {
+                provider.lock().await.delete(path).await.map_err(|e| e.to_string())
+            }
         }
-        let mut mgr = self.app_state.ftp_manager.lock().await;
-        mgr.remove(path).await.map_err(|e| e.to_string())
     }
 
     async fn mkdir(&self, path: &str) -> Result<(), String> {
-        if let Some(ref mut p) = *self.provider_state.provider.lock().await {
-            return p.mkdir(path).await.map_err(|e| e.to_string());
+        match self {
+            TauriRemoteBackend::Active { app } => {
+                if let Some(ref mut p) = *Self::active_provider(app).lock().await {
+                    return p.mkdir(path).await.map_err(|e| e.to_string());
+                }
+                let app_state = app.state::<AppState>();
+                let mut mgr = app_state.ftp_manager.lock().await;
+                mgr.mkdir(path).await.map_err(|e| e.to_string())
+            }
+            TauriRemoteBackend::Temp { provider } => {
+                provider.lock().await.mkdir(path).await.map_err(|e| e.to_string())
+            }
         }
-        let mut mgr = self.app_state.ftp_manager.lock().await;
-        mgr.mkdir(path).await.map_err(|e| e.to_string())
     }
 
     async fn rename(&self, from: &str, to: &str) -> Result<(), String> {
-        if let Some(ref mut p) = *self.provider_state.provider.lock().await {
-            return p.rename(from, to).await.map_err(|e| e.to_string());
+        match self {
+            TauriRemoteBackend::Active { app } => {
+                if let Some(ref mut p) = *Self::active_provider(app).lock().await {
+                    return p.rename(from, to).await.map_err(|e| e.to_string());
+                }
+                let app_state = app.state::<AppState>();
+                let mut mgr = app_state.ftp_manager.lock().await;
+                mgr.rename(from, to).await.map_err(|e| e.to_string())
+            }
+            TauriRemoteBackend::Temp { provider } => provider
+                .lock()
+                .await
+                .rename(from, to)
+                .await
+                .map_err(|e| e.to_string()),
         }
-        let mut mgr = self.app_state.ftp_manager.lock().await;
-        mgr.rename(from, to).await.map_err(|e| e.to_string())
     }
 
     async fn search(&self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, String> {
-        if let Some(ref mut p) = *self.provider_state.provider.lock().await {
-            return p.find(path, pattern).await.map_err(|e| e.to_string());
+        match self {
+            TauriRemoteBackend::Active { app } => {
+                if let Some(ref mut p) = *Self::active_provider(app).lock().await {
+                    return p.find(path, pattern).await.map_err(|e| e.to_string());
+                }
+                Err("search not supported on FTP fallback".to_string())
+            }
+            TauriRemoteBackend::Temp { provider } => provider
+                .lock()
+                .await
+                .find(path, pattern)
+                .await
+                .map_err(|e| e.to_string()),
         }
-        Err("search not supported on FTP fallback".to_string())
     }
 
     async fn storage_info(&self) -> Result<StorageQuota, String> {
-        if let Some(ref mut p) = *self.provider_state.provider.lock().await {
-            let _info = p.server_info().await.map_err(|e| e.to_string())?;
-            return Err(
-                "Storage quota extraction not yet implemented for this provider".to_string(),
-            );
+        match self {
+            TauriRemoteBackend::Active { app } => {
+                if let Some(ref mut p) = *Self::active_provider(app).lock().await {
+                    return provider_storage_quota(p).await;
+                }
+                Err("storage quota not supported on FTP fallback".to_string())
+            }
+            TauriRemoteBackend::Temp { provider } => {
+                let mut guard = provider.lock().await;
+                provider_storage_quota(&mut guard).await
+            }
         }
-        Err("storage quota not supported on FTP fallback".to_string())
     }
+
+    async fn transfer_capabilities(
+        &self,
+    ) -> Result<Option<crate::transfer_dag::TransferCapabilities>, String> {
+        match self {
+            TauriRemoteBackend::Active { app } => {
+                if let Some(ref p) = *Self::active_provider(app).lock().await {
+                    return Ok(Some(p.transfer_capabilities()));
+                }
+                Ok(None)
+            }
+            TauriRemoteBackend::Temp { provider } => {
+                Ok(Some(provider.lock().await.transfer_capabilities()))
+            }
+        }
+    }
+}
+
+fn temp_upload_path() -> std::path::PathBuf {
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    std::env::temp_dir().join(format!("aeroftp_upload_{}_{}", std::process::id(), nonce))
+}
+
+async fn download_provider_bytes(
+    p: &mut Box<dyn StorageProvider>,
+    path: &str,
+) -> Result<Vec<u8>, String> {
+    if let Ok(entry) = p.stat(path).await {
+        if entry.size > MAX_AI_DOWNLOAD_SIZE {
+            return Err(format!(
+                "File too large ({:.1} MB). Limit is {} MB.",
+                entry.size as f64 / 1_048_576.0,
+                MAX_AI_DOWNLOAD_SIZE / 1_048_576
+            ));
+        }
+    }
+    p.download_to_bytes(path).await.map_err(|e| e.to_string())
+}
+
+async fn upload_provider_bytes(
+    p: &mut Box<dyn StorageProvider>,
+    data: &[u8],
+    path: &str,
+) -> Result<(), String> {
+    // Write data to a secure temp file, upload, then clean up.
+    let tmp = temp_upload_path();
+    std::fs::write(&tmp, data).map_err(|e| e.to_string())?;
+    let result = p
+        .upload(tmp.to_str().unwrap_or(""), path, None)
+        .await
+        .map_err(|e| e.to_string());
+    let _ = std::fs::remove_file(&tmp);
+    result
+}
+
+async fn provider_storage_quota(p: &mut Box<dyn StorageProvider>) -> Result<StorageQuota, String> {
+    let info = p.storage_info().await.map_err(|e| e.to_string())?;
+    Ok(StorageQuota {
+        used: info.used,
+        total: info.total,
+        available: info.free,
+    })
 }
 
 // ─── TauriToolCtx ─────────────────────────────────────────────────────
@@ -365,8 +617,21 @@ impl ToolCtx for TauriToolCtx {
     fn credentials(&self) -> &dyn CredentialProvider {
         &self.creds
     }
-    async fn remote_backend(&self, _server_id: &str) -> Result<Arc<dyn RemoteBackend>, String> {
-        Err("remote_backend not wired in TauriToolCtx (Area A)".to_string())
+    async fn remote_backend(&self, server_id: &str) -> Result<Arc<dyn RemoteBackend>, String> {
+        // TOOLS-01 / W1-2: an empty server selects the live active connection
+        // (the GUI's default contract); a named server resolves a vault profile
+        // and builds a temp provider, mirroring the CLI/MCP named-server path.
+        if server_id.trim().is_empty() {
+            return Ok(Arc::new(TauriRemoteBackend::Active {
+                app: self.app.clone(),
+            }));
+        }
+        let servers = crate::ai_tools::load_saved_servers()?;
+        let server = crate::ai_tools::find_server_by_name_or_id(&servers, server_id)?;
+        let provider = crate::ai_tools::create_temp_provider(&server).await?;
+        Ok(Arc::new(TauriRemoteBackend::Temp {
+            provider: tokio::sync::Mutex::new(provider),
+        }))
     }
     fn context_local_path(&self) -> Option<&str> {
         self.context_local_path.as_deref()

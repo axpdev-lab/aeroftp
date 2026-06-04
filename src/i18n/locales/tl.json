@@ -2257,7 +2257,12 @@
                 "thinkingDeep": "Malalim",
                 "thinkingLight": "Magaan",
                 "thinkingMaximum": "Pinakamataas",
-                "thinkingOff": "Naka-off"
+                "thinkingOff": "Naka-off",
+                "responseStyle": "Estilo ng tugon",
+                "styleConcise": "Maikli",
+                "styleDefault": "Default",
+                "styleExplanatory": "Paliwanag",
+                "styleLearning": "Pagkatuto"
             },
             "copy": "Kopyahin",
             "attachImage": "Mag-attach ng larawan",

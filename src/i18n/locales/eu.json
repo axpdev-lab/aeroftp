@@ -2276,7 +2276,12 @@
                 "thinkingDeep": "Sakona",
                 "thinkingLight": "Arina",
                 "thinkingMaximum": "Maximoa",
-                "thinkingOff": "Itzalita"
+                "thinkingOff": "Itzalita",
+                "responseStyle": "Erantzun-estiloa",
+                "styleConcise": "Laburra",
+                "styleDefault": "Lehenetsia",
+                "styleExplanatory": "Azalpenezkoa",
+                "styleLearning": "Ikaskuntza"
             },
             "rag": {
                 "indexing": "Fitxategiak indexatzen...",

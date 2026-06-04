@@ -2257,7 +2257,12 @@
                 "thinkingDeep": "Djup",
                 "thinkingLight": "Lätt",
                 "thinkingMaximum": "Maximum",
-                "thinkingOff": "Av"
+                "thinkingOff": "Av",
+                "responseStyle": "Svarsstil",
+                "styleConcise": "Koncis",
+                "styleDefault": "Standard",
+                "styleExplanatory": "Förklarande",
+                "styleLearning": "Lärande"
             },
             "copy": "Kopiera",
             "attachImage": "Bifoga bild",

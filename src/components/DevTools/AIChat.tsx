@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Send, Bot, Sparkles, Mic, MicOff, ChevronDown, Trash2, MessageSquare, Copy, Check, ImageIcon, X, GitBranch, Globe, Wrench, ShieldAlert, AlertTriangle, FolderOpen, FileCode, Search, Archive, Terminal, Shield, RefreshCw, Brain, Eye, Key, Settings, Upload, Download, Square } from 'lucide-react';
+import { Send, Bot, Sparkles, Mic, MicOff, ChevronDown, Trash2, MessageSquare, ImageIcon, X, ShieldAlert, AlertTriangle, FolderOpen, FileCode, Search, Archive, Terminal, Shield, RefreshCw, Brain, Eye, Key, Settings, Upload, Download, Square } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { createTauriListener } from '../../hooks/useTauriListener';
 import { GeminiIcon, OpenAIIcon, AnthropicIcon, XAIIcon, OpenRouterIcon, OllamaIcon, KimiIcon, QwenIcon, DeepSeekIcon, MistralIcon, GroqIcon, PerplexityIcon, CohereIcon, TogetherIcon, AI21Icon, CerebrasIcon, SambaNovaIcon, FireworksIcon, NvidiaIcon, ZaiIcon, HyperbolicIcon, NovitaIcon, YiIcon } from './AIIcons';
@@ -12,8 +12,6 @@ import { AgentToolCall, AGENT_TOOLS, toNativeDefinitions, isSafeTool, getToolByN
 import { PluginManifest, allPluginTools, findPluginForTool } from '../../types/plugins';
 import { ToolApproval } from './ToolApproval';
 import { BatchToolApproval } from './BatchToolApproval';
-import { MarkdownRenderer } from './MarkdownRenderer';
-import { ThinkingBlock } from './ThinkingBlock';
 import { type Conversation, cleanupHistory, loadSession } from '../../utils/chatHistory';
 import { secureGetWithFallback } from '../../utils/secureStorage';
 import { useTranslation } from '../../i18n';
@@ -24,7 +22,6 @@ import { analyzeToolError } from './aiChatToolRetry';
 import { buildExecutionLevels, executePipeline } from './aiChatToolPipeline';
 import { ToolMacro, resolveMacroSteps, macrosToToolDefinitions, isMacroCall, getMacroName, DEFAULT_MACROS, MAX_TOTAL_MACRO_STEPS, createMacroStepCounter, MacroStepCounter } from './aiChatToolMacros';
 import { validateToolArgs } from './aiChatToolValidation';
-import { getToolLabel } from './aiChatToolLabels';
 import { computeTokenInfo } from './aiChatTokenInfo';
 import { useAIChatImages } from './useAIChatImages';
 import { useAIChatConversations } from './useAIChatConversations';
@@ -42,6 +39,7 @@ import { DEFAULT_TEMPLATES, loadCustomTemplates, resolveTemplate } from './aiCha
 import type { PromptTemplate } from './aiChatPromptTemplates';
 import PromptTemplateSelector from './PromptTemplateSelector';
 import { ChatSearchOverlay, type SearchMatch } from './ChatSearchOverlay';
+import { ChatMessageRow } from './ChatMessageRow';
 import { ChatHistoryManager } from './ChatHistoryManager';
 import { useKeyboardShortcuts, getDefaultShortcuts } from './useKeyboardShortcuts';
 import { initBudgetManager, checkBudget, recordSpending, getConversationCost, type BudgetCheckResult, type ConversationCost } from './CostBudgetManager';
@@ -557,9 +555,12 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     const [searchMatches, setSearchMatches] = useState<SearchMatch[]>([]);
     const [activeSearchIndex, setActiveSearchIndex] = useState(0);
     const messageListRef = useRef<HTMLDivElement>(null);
+    // PERF-07: only materialize the search-projection array while the Ctrl+F
+    // overlay is open. Otherwise every streamed token would rebuild an O(N)
+    // array for a hidden component.
     const searchMessages = useMemo(() =>
-        messages.map(m => ({ id: m.id, role: m.role, content: m.content })),
-        [messages]
+        showSearch ? messages.map(m => ({ id: m.id, role: m.role, content: m.content })) : [],
+        [messages, showSearch]
     );
 
     // Wrap startNewChat to also clear pending tool calls, token budget, and cost
@@ -758,9 +759,25 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     /** Effective max steps driven by agent mode */
     const effectiveMaxSteps = AGENT_MODE_MAX_STEPS[agentMode];
 
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    };
+    const scrollRafRef = useRef<number | null>(null);
+    const scrollToBottom = useCallback(() => {
+        // PERF-03: coalesce scrolls to one per animation frame. During streaming
+        // use instant scroll (re-issuing a smooth scroll every chunk thrashes the
+        // animation) and skip the scroll entirely if the user has scrolled up to
+        // read earlier output; reserve the smooth settle for the idle state.
+        if (scrollRafRef.current !== null) return;
+        scrollRafRef.current = requestAnimationFrame(() => {
+            scrollRafRef.current = null;
+            const streaming = activeStreamIdRef.current !== null;
+            if (streaming) {
+                const list = messageListRef.current;
+                if (list && list.scrollHeight - list.scrollTop - list.clientHeight > 150) {
+                    return;
+                }
+            }
+            messagesEndRef.current?.scrollIntoView({ behavior: streaming ? 'auto' : 'smooth' });
+        });
+    }, []);
 
     const runSerializedBackendApproval = useCallback(async <T,>(task: () => Promise<T>): Promise<T> => {
         const previous = backendApprovalQueueRef.current;
@@ -820,7 +837,12 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
 
     useEffect(() => {
         scrollToBottom();
-    }, [messages]);
+    }, [messages, scrollToBottom]);
+
+    // PERF-03: cancel any pending scroll frame on unmount.
+    useEffect(() => () => {
+        if (scrollRafRef.current !== null) cancelAnimationFrame(scrollRafRef.current);
+    }, []);
 
     // Debounced persist (fix H-004: stale closure + rapid fire)
     // BUG-009: Capture convId at timer creation to prevent cross-contamination on switch
@@ -1643,6 +1665,33 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             setIsLoading(false);
         }
     }, [executeTool]);
+
+    // PERF-02: stable callbacks for the memoized ChatMessageRow. The row's
+    // comparator deliberately ignores callback identity, so these read the latest
+    // hook closures via a ref to stay current without changing identity.
+    const rowHandlersRef = useRef({ forkConversation, executeTransferPlan });
+    rowHandlersRef.current = { forkConversation, executeTransferPlan };
+    const handleToggleExpand = useCallback((id: string, expand: boolean) => {
+        setExpandedMessages(prev => {
+            const s = new Set(prev);
+            if (expand) s.add(id); else s.delete(id);
+            return s;
+        });
+    }, [setExpandedMessages]);
+    const handleCopyMessage = useCallback((m: Message) => {
+        navigator.clipboard.writeText(m.content.replace(/<[^>]*>/g, ''));
+        setCopiedId(m.id);
+        setTimeout(() => setCopiedId(null), 1500);
+    }, []);
+    const handleForkMessage = useCallback((id: string) => {
+        rowHandlersRef.current.forkConversation(id);
+    }, []);
+    const handleExecutePlanRow = useCallback(async (m: Message, ids: string[]) => {
+        const data = m.toolResultData;
+        if (isTransferPlanResultData(data)) {
+            await rowHandlersRef.current.executeTransferPlan(m.id, data.plan, ids);
+        }
+    }, []);
 
     // Multi-step autonomous tool execution loop
     const executeMultiStep = async (
@@ -2671,136 +2720,25 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     /* Messages List */
                     <div className="p-4 space-y-4">
                         {messages.filter(m => m.role === 'user' || m.content || m.thinking).map((message) => (
-                            <div
+                            <ChatMessageRow
                                 key={message.id}
-                                data-message-id={message.id}
-                                className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                            >
-                                <div
-                                    className={`max-w-[85%] rounded-lg px-4 py-2 text-sm select-text ${message.role === 'user'
-                                        ? ct.userMsg
-                                        : ct.assistantMsg
-                                        }`}
-                                >
-                                    {/* Image thumbnails for vision messages */}
-                                    {message.images && message.images.length > 0 && (
-                                        <div className="flex gap-1.5 mb-2 flex-wrap">
-                                            {message.images.map((img, i) => (
-                                                <img key={i} src={img.preview} alt="Attached image" className="h-16 w-16 object-cover rounded border border-white/20" />
-                                            ))}
-                                        </div>
-                                    )}
-                                    {/* Thinking block (Claude extended thinking): Phase 4: token display (#74) */}
-                                    {message.thinking && (
-                                        <ThinkingBlock
-                                            content={message.thinking}
-                                            isComplete={!!message.thinkingDuration}
-                                            duration={message.thinkingDuration}
-                                            thinkingTokens={message.tokenInfo?.outputTokens}
-                                            responseTokens={message.tokenInfo?.inputTokens}
-                                        />
-                                    )}
-                                    {message.webSearchUsed && (
-                                        <span className="text-[10px] text-zinc-500 flex items-center gap-1 mb-1">
-                                            <Globe size={10} /> {t('ai.webSearchUsed')}
-                                        </span>
-                                    )}
-                                    <div className="relative">
-                                        <div
-                                            className={`select-text ${ct.prose} max-w-none ${
-                                                message.role === 'assistant' && message.content.length > 500 && !expandedMessages.has(message.id)
-                                                    ? 'max-h-[200px] overflow-hidden' : ''
-                                            }`}
-                                        >
-                                            <MarkdownRenderer
-                                                content={message.content}
-                                                isStreaming={isLoading && message.id === streamingMsgIdRef.current}
-                                                editorFilePath={editorFilePath}
-                                                editorFileName={editorFileName}
-                                            />
-                                            {isTransferPlanResultData(message.toolResultData) && (
-                                                <TransferPlanReview
-                                                    plan={message.toolResultData.plan}
-                                                    isExecuting={executingTransferPlanId === message.id}
-                                                    onExecute={async (selectedOperationIds) => {
-                                                        await executeTransferPlan(message.id, message.toolResultData!.plan, selectedOperationIds);
-                                                    }}
-                                                />
-                                            )}
-                                        </div>
-                                        {message.role === 'assistant' && message.content.length > 500 && !expandedMessages.has(message.id) && (
-                                            <div className={`absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t ${ct.gradient} to-transparent flex items-end justify-center`}>
-                                                <button
-                                                    onClick={() => setExpandedMessages(prev => new Set(prev).add(message.id))}
-                                                    className="text-xs text-purple-400 hover:text-purple-300 pb-0.5"
-                                                >
-                                                    {t('ai.showMore') || 'Show more'} ▾
-                                                </button>
-                                            </div>
-                                        )}
-                                        {message.role === 'assistant' && message.content.length > 500 && expandedMessages.has(message.id) && (
-                                            <button
-                                                onClick={() => setExpandedMessages(prev => { const s = new Set(prev); s.delete(message.id); return s; })}
-                                                className="text-xs text-purple-400 hover:text-purple-300 mt-1"
-                                            >
-                                                {t('ai.showLess') || 'Show less'} ▴
-                                            </button>
-                                        )}
-                                    </div>
-                                    <div className={`text-[10px] mt-1 flex items-center gap-2 flex-wrap ${message.role === 'user' ? ct.userMsgMeta : ct.textMuted}`}>
-                                        <span>{message.timestamp.toLocaleTimeString()}</span>
-                                        {message.role === 'assistant' && (
-                                            <button
-                                                onClick={() => {
-                                                    navigator.clipboard.writeText(message.content.replace(/<[^>]*>/g, ''));
-                                                    setCopiedId(message.id);
-                                                    setTimeout(() => setCopiedId(null), 1500);
-                                                }}
-                                                className={`${ct.textMuted} ${ct.textHover} transition-colors`}
-                                                title={t('ai.copy') || 'Copy'}
-                                            >
-                                                {copiedId === message.id ? <Check size={10} className="text-green-400" /> : <Copy size={10} />}
-                                            </button>
-                                        )}
-                                        {message.toolName && (
-                                            <span className="flex items-center gap-1 text-purple-400/70">
-                                                <Wrench size={9} />
-                                                <span>{getToolLabel(message.toolName, t)}</span>
-                                            </span>
-                                        )}
-                                        {message.role === 'assistant' && (
-                                            <button
-                                                onClick={() => forkConversation(message.id)}
-                                                className={`p-0.5 ${ct.textMuted} hover:text-purple-400 transition-colors`}
-                                                title={t('ai.branch.fork') || 'Fork here'}
-                                            >
-                                                <GitBranch size={10} />
-                                            </button>
-                                        )}
-                                        {message.role === 'assistant' && message.modelInfo && (
-                                            <span className={`flex items-center gap-1 ${ct.textSecondary}`}>
-                                                • {getProviderIcon(message.modelInfo.providerType, 10)}
-                                                <span>{message.modelInfo.modelName}</span>
-                                            </span>
-                                        )}
-                                        {message.tokenInfo && (
-                                            <span className="flex items-center gap-1 text-gray-500">
-                                                • {message.tokenInfo.totalTokens ?? ((message.tokenInfo.inputTokens || 0) + (message.tokenInfo.outputTokens || 0))} tok
-                                                {message.tokenInfo.cost !== undefined && message.tokenInfo.cost > 0 && (
-                                                    <span className="text-green-500/70">
-                                                        ${message.tokenInfo.cost < 0.01 ? message.tokenInfo.cost.toFixed(4) : message.tokenInfo.cost.toFixed(3)}
-                                                    </span>
-                                                )}
-                                                {message.tokenInfo.cacheSavings !== undefined && message.tokenInfo.cacheSavings > 0 && (
-                                                    <span className="text-cyan-500/70" title={`Cache: ${message.tokenInfo.cacheReadTokens || 0} read, ${message.tokenInfo.cacheCreationTokens || 0} created`}>
-                                                        ↓${message.tokenInfo.cacheSavings < 0.01 ? message.tokenInfo.cacheSavings.toFixed(4) : message.tokenInfo.cacheSavings.toFixed(3)}
-                                                    </span>
-                                                )}
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
+                                message={message}
+                                ct={ct}
+                                t={t}
+                                isStreamingRow={isLoading && message.id === streamingMsgIdRef.current}
+                                isExpanded={expandedMessages.has(message.id)}
+                                isCopied={copiedId === message.id}
+                                isExecutingPlan={executingTransferPlanId === message.id}
+                                editorFilePath={editorFilePath}
+                                editorFileName={editorFileName}
+                                onToggleExpand={handleToggleExpand}
+                                onCopy={handleCopyMessage}
+                                onFork={handleForkMessage}
+                                onExecutePlan={handleExecutePlanRow}
+                                getProviderIcon={getProviderIcon}
+                                isTransferPlanResultData={isTransferPlanResultData}
+                                TransferPlanReview={TransferPlanReview}
+                            />
                         ))}
                         {isLoading && !pendingToolCalls.some(tc => tc.status === 'pending') && (
                             <div className="flex gap-3">

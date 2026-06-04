@@ -2257,7 +2257,12 @@
                 "thinkingDeep": "Diep",
                 "thinkingLight": "Licht",
                 "thinkingMaximum": "Maximum",
-                "thinkingOff": "Uit"
+                "thinkingOff": "Uit",
+                "responseStyle": "Antwoordstijl",
+                "styleConcise": "Beknopt",
+                "styleDefault": "Standaard",
+                "styleExplanatory": "Verklarend",
+                "styleLearning": "Lerend"
             },
             "copy": "Kopiëren",
             "attachImage": "Afbeelding bijvoegen",

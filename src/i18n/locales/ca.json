@@ -2257,7 +2257,12 @@
                 "thinkingDeep": "Profund",
                 "thinkingLight": "Lleuger",
                 "thinkingMaximum": "Màxim",
-                "thinkingOff": "Desactivat"
+                "thinkingOff": "Desactivat",
+                "responseStyle": "Estil de resposta",
+                "styleConcise": "Concís",
+                "styleDefault": "Predeterminat",
+                "styleExplanatory": "Explicatiu",
+                "styleLearning": "Aprenentatge"
             },
             "copy": "Copiar",
             "attachImage": "Adjuntar imatge",

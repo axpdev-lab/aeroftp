@@ -2257,7 +2257,12 @@
                 "thinkingDeep": "깊게",
                 "thinkingLight": "가볍게",
                 "thinkingMaximum": "최대",
-                "thinkingOff": "끄기"
+                "thinkingOff": "끄기",
+                "responseStyle": "응답 스타일",
+                "styleConcise": "간결",
+                "styleDefault": "기본값",
+                "styleExplanatory": "설명형",
+                "styleLearning": "학습형"
             },
             "copy": "복사",
             "attachImage": "이미지 첨부",

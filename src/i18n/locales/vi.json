@@ -2257,7 +2257,12 @@
                 "thinkingDeep": "Sâu",
                 "thinkingLight": "Nhẹ",
                 "thinkingMaximum": "Tối đa",
-                "thinkingOff": "Tắt"
+                "thinkingOff": "Tắt",
+                "responseStyle": "Kiểu phản hồi",
+                "styleConcise": "Ngắn gọn",
+                "styleDefault": "Mặc định",
+                "styleExplanatory": "Giải thích",
+                "styleLearning": "Học tập"
             },
             "copy": "Sao chép",
             "attachImage": "Đính kèm hình ảnh",

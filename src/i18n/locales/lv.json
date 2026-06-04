@@ -2257,7 +2257,12 @@
                 "thinkingDeep": "Dziļi",
                 "thinkingLight": "Viegli",
                 "thinkingMaximum": "Maksimums",
-                "thinkingOff": "Izslēgts"
+                "thinkingOff": "Izslēgts",
+                "responseStyle": "Atbildes stils",
+                "styleConcise": "Kodolīgs",
+                "styleDefault": "Noklusējums",
+                "styleExplanatory": "Skaidrojošs",
+                "styleLearning": "Mācību"
             },
             "copy": "Kopēt",
             "attachImage": "Pievienot attēlu",

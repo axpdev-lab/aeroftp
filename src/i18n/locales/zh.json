@@ -2257,7 +2257,12 @@
                 "thinkingDeep": "深度",
                 "thinkingLight": "轻量",
                 "thinkingMaximum": "最大",
-                "thinkingOff": "关闭"
+                "thinkingOff": "关闭",
+                "responseStyle": "响应风格",
+                "styleConcise": "简洁",
+                "styleDefault": "默认",
+                "styleExplanatory": "解释性",
+                "styleLearning": "学习"
             },
             "copy": "复制",
             "attachImage": "附加图片",

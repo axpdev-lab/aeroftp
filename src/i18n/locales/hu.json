@@ -2257,7 +2257,12 @@
                 "thinkingDeep": "Mély",
                 "thinkingLight": "Könnyű",
                 "thinkingMaximum": "Maximum",
-                "thinkingOff": "Ki"
+                "thinkingOff": "Ki",
+                "responseStyle": "Válaszstílus",
+                "styleConcise": "Tömör",
+                "styleDefault": "Alapértelmezett",
+                "styleExplanatory": "Magyarázó",
+                "styleLearning": "Tanulási"
             },
             "copy": "Másolás",
             "attachImage": "Kép csatolása",

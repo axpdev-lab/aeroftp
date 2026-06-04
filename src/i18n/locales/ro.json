@@ -2257,7 +2257,12 @@
                 "thinkingDeep": "Profund",
                 "thinkingLight": "Ușor",
                 "thinkingMaximum": "Maxim",
-                "thinkingOff": "Oprit"
+                "thinkingOff": "Oprit",
+                "responseStyle": "Stil de răspuns",
+                "styleConcise": "Concis",
+                "styleDefault": "Implicit",
+                "styleExplanatory": "Explicativ",
+                "styleLearning": "De învățare"
             },
             "copy": "Copiază",
             "attachImage": "Atașează imagine",

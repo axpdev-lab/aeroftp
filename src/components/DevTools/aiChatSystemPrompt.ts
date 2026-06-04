@@ -7,6 +7,7 @@ import { ProjectContext, BudgetMode } from '../../types/contextIntelligence';
 import { PROVIDER_PROFILES, ProviderPromptProfile, getOllamaPromptStyle } from './aiProviderProfiles';
 import { ToolMacro } from './aiChatToolMacros';
 import { APP_KNOWLEDGE_SUMMARY } from './aiChatAppKnowledge';
+import { getResponseStyleDirective } from './aiChatResponseStyles';
 
 export interface SystemPromptContext {
     providerType?: string;
@@ -243,6 +244,10 @@ You are an expert on every protocol and cloud provider AeroFTP supports. When us
 - **Cryptomator**: format 8 support. Unlock, browse, decrypt, encrypt files.`;
 
 export function buildSystemPrompt(settings: AISettings, contextBlock: string, providerType?: AIProviderType, budgetMode?: BudgetMode, modelName?: string, extraTools?: Array<{name: string; description: string; parameters?: Record<string, unknown>}>): string {
+    // CC-10: output style / response persona directive (empty for default).
+    const styleDirective = getResponseStyleDirective(settings.advancedSettings?.responseStyle);
+    const styleSection = styleDirective ? `\n\n## Output Style\n${styleDirective}` : '';
+
     // Use custom prompt if configured
     const customPrompt = settings.advancedSettings?.useCustomPrompt && settings.advancedSettings?.customSystemPrompt?.trim();
 
@@ -253,7 +258,7 @@ export function buildSystemPrompt(settings: AISettings, contextBlock: string, pr
         const toolSection = profile.toolFormat === 'native'
             ? ''
             : `\n\n## Tools\nWhen you need to use a tool, respond with:\nTOOL: tool_name\nARGS: {"param": "value"}\n\nAvailable tools:\n${generateToolsPrompt(extraTools)}`;
-        return `${settings.advancedSettings.customSystemPrompt}${toolSection}${contextBlock}`;
+        return `${settings.advancedSettings.customSystemPrompt}${styleSection}${toolSection}${contextBlock}`;
     }
 
     // Provider-aware prompt
@@ -305,7 +310,7 @@ ${profile.behaviorRules}
 - For errors: quote the error message and explain in plain language.
 - For configuration help: list required fields, then optional fields, with examples.
 - After tool execution: briefly state the outcome, then suggest a logical next step if relevant.
-- Keep responses under 500 words unless the user asks for detail.${contextBlock}`;
+- Keep responses under 500 words unless the user asks for detail.${styleSection}${contextBlock}`;
 }
 
 function buildCompactProtocolExpertise(activeProvider?: string): string {

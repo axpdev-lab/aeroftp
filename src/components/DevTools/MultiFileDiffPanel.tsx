@@ -5,6 +5,7 @@ import React, { useState, useMemo, useCallback } from 'react';
 import { Check, X, FileText, ChevronRight, ChevronDown } from 'lucide-react';
 import { DiffPreview } from './DiffPreview';
 import { Checkbox } from '../ui/Checkbox';
+import { useTranslation } from '../../i18n';
 
 export interface FileDiff {
     filePath: string;
@@ -26,6 +27,7 @@ export const MultiFileDiffPanel: React.FC<MultiFileDiffPanelProps> = ({
     onApplySelected,
     onCancel,
 }) => {
+    const t = useTranslation();
     const [selectedFiles, setSelectedFiles] = useState<Set<string>>(
         () => new Set(diffs.map(d => d.filePath))
     );
@@ -68,11 +70,6 @@ export const MultiFileDiffPanel: React.FC<MultiFileDiffPanelProps> = ({
         [diffs]
     );
 
-    const filesLabel = diffs.length !== 1 ? 'files' : 'file';
-    const applyLabel = selectedFiles.size !== 1
-        ? `Apply ${selectedFiles.size} files`
-        : `Apply ${selectedFiles.size} file`;
-
     return (
         <div className="border border-gray-700/50 rounded-lg overflow-hidden bg-gray-900/80 my-3">
             {/* Header */}
@@ -80,7 +77,7 @@ export const MultiFileDiffPanel: React.FC<MultiFileDiffPanelProps> = ({
                 <div className="flex items-center gap-2 text-xs">
                     <FileText size={13} className="text-purple-400" />
                     <span className="font-medium text-gray-200">
-                        {diffs.length} {filesLabel} changed
+                        {t('ai.multiDiff.filesChanged', { count: diffs.length })}
                     </span>
                     <span className="text-green-400">+{totalAdded}</span>
                     <span className="text-red-400">-{totalRemoved}</span>
@@ -90,14 +87,14 @@ export const MultiFileDiffPanel: React.FC<MultiFileDiffPanelProps> = ({
                         onClick={selectAll}
                         className="text-[10px] text-gray-500 hover:text-gray-300"
                     >
-                        Select all
+                        {t('ai.multiDiff.selectAll')}
                     </button>
                     <span className="text-gray-700">|</span>
                     <button
                         onClick={deselectAll}
                         className="text-[10px] text-gray-500 hover:text-gray-300"
                     >
-                        Deselect all
+                        {t('ai.multiDiff.deselectAll')}
                     </button>
                 </div>
             </div>
@@ -149,7 +146,7 @@ export const MultiFileDiffPanel: React.FC<MultiFileDiffPanelProps> = ({
             {/* Footer actions */}
             <div className="flex items-center justify-between px-3 py-2 border-t border-gray-700/50 bg-gray-800/40">
                 <span className="text-[10px] text-gray-500">
-                    {selectedFiles.size} of {diffs.length} selected
+                    {t('ai.multiDiff.selected', { selected: selectedFiles.size, total: diffs.length })}
                 </span>
                 <div className="flex items-center gap-2">
                     <button
@@ -157,7 +154,7 @@ export const MultiFileDiffPanel: React.FC<MultiFileDiffPanelProps> = ({
                         className="flex items-center gap-1 px-3 py-1 rounded text-[11px] font-medium bg-gray-700/80 hover:bg-gray-600 text-gray-300 transition-colors"
                     >
                         <X size={10} />
-                        Cancel
+                        {t('common.cancel')}
                     </button>
                     <button
                         onClick={handleApply}
@@ -165,7 +162,7 @@ export const MultiFileDiffPanel: React.FC<MultiFileDiffPanelProps> = ({
                         className="flex items-center gap-1 px-3 py-1 rounded text-[11px] font-medium bg-green-600/80 hover:bg-green-500 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                         <Check size={10} />
-                        {applyLabel}
+                        {t('ai.multiDiff.applyFiles', { count: selectedFiles.size })}
                     </button>
                 </div>
             </div>

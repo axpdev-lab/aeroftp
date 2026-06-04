@@ -2257,7 +2257,12 @@
                 "thinkingDeep": "Syvä",
                 "thinkingLight": "Kevyt",
                 "thinkingMaximum": "Maksimi",
-                "thinkingOff": "Pois"
+                "thinkingOff": "Pois",
+                "responseStyle": "Vastaustyyli",
+                "styleConcise": "Ytimekäs",
+                "styleDefault": "Oletus",
+                "styleExplanatory": "Selittävä",
+                "styleLearning": "Oppiva"
             },
             "copy": "Kopioi",
             "attachImage": "Liitä kuva",

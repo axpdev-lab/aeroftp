@@ -178,72 +178,12 @@ pub(crate) fn validate_remote_path(path: &str, param: &str) -> Result<(), String
 }
 
 /// Validate a path argument: reject null bytes, traversal, excessive length
-fn validate_path(path: &str, param: &str) -> Result<(), String> {
-    if path.len() > 4096 {
-        return Err(format!("{}: path exceeds 4096 characters", param));
-    }
-    if path.contains('\0') {
-        return Err(format!("{}: path contains null bytes", param));
-    }
-    let normalized = path.replace('\\', "/");
-    for component in normalized.split('/') {
-        if component == ".." {
-            return Err(format!("{}: path traversal ('..') not allowed", param));
-        }
-    }
-    // Resolve symlinks and verify canonical path is not a sensitive system path.
-    // For non-existent files, check the parent directory to avoid write/read inconsistency.
-    let resolved = std::fs::canonicalize(path).or_else(|_| {
-        std::path::Path::new(path)
-            .parent()
-            .map(std::fs::canonicalize)
-            .unwrap_or(Err(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                "no parent",
-            )))
-    });
-    if let Ok(canonical) = resolved {
-        let s = canonical.to_string_lossy();
-        // Block sensitive system paths (deny-list)
-        let denied = [
-            "/proc",
-            "/sys",
-            "/dev",
-            "/boot",
-            "/root",
-            "/etc/shadow",
-            "/etc/passwd",
-            "/etc/ssh",
-            "/etc/sudoers",
-        ];
-        if denied.iter().any(|d| s.starts_with(d)) {
-            return Err(format!("{}: access to system path denied: {}", param, s));
-        }
-        // Block sensitive home-relative paths
-        if let Ok(home) = std::env::var("HOME") {
-            let home_denied = [
-                ".ssh",
-                ".gnupg",
-                ".aws",
-                ".kube",
-                ".config/gcloud",
-                ".docker",
-                ".config/aeroftp",
-                ".vault-token",
-            ];
-            for sensitive in &home_denied {
-                if s.starts_with(&format!("{}/{}", home, sensitive)) {
-                    return Err(format!("{}: access to sensitive path denied: {}", param, s));
-                }
-            }
-        }
-        // Block runtime secrets directory
-        if s.starts_with("/run/secrets") {
-            return Err(format!("{}: access to system path denied: {}", param, s));
-        }
-    }
-    Ok(())
-}
+// OPT-03: single source of truth for path validation. The pre-flight
+// `validate_tool_args` checks below reuse the canonical boundary-aware
+// matcher in `ai_core::local_tools` (component-aware deny-list) instead of
+// a divergent local copy that used `starts_with`, so the advisory pre-flight
+// surface cannot drift from the authoritative execution-time validator.
+use crate::ai_core::local_tools::validate_path;
 
 // `get_str` / `get_str_opt` live in `ai_core::local_tools` after the
 // T3 Gate 3 cleanup: every tool body that used them now sits in the

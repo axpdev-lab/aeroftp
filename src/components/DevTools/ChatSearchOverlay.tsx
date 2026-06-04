@@ -25,7 +25,7 @@ interface ChatSearchOverlayProps {
     onSearchResults: (matches: SearchMatch[], activeIndex: number) => void;
 }
 
-export const ChatSearchOverlay: React.FC<ChatSearchOverlayProps> = ({
+const ChatSearchOverlayImpl: React.FC<ChatSearchOverlayProps> = ({
     messages,
     visible,
     onClose,
@@ -193,5 +193,10 @@ export const ChatSearchOverlay: React.FC<ChatSearchOverlayProps> = ({
         </div>
     );
 };
+
+// PERF-07: memoized so it does not reconcile on every AIChat re-render while
+// hidden (it renders null when not visible, but the parent still paid the
+// reconcile cost on each streamed token without this boundary).
+export const ChatSearchOverlay = React.memo(ChatSearchOverlayImpl);
 
 export default ChatSearchOverlay;

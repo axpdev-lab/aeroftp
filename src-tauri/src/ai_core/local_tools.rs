@@ -228,7 +228,11 @@ pub async fn local_list(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolEr
     let path = resolve_local_path(&raw, ctx.context_local_path());
     validate_path(&path, "path").map_err(map_str_err)?;
 
-    let entries: Vec<Value> = std::fs::read_dir(&path)
+    // TOOLS-04: count every entry (cheap, no per-entry metadata) so the agent
+    // is told the real total and whether the 100-entry listing was capped,
+    // mirroring remote list_files. Metadata is only read for the kept entries.
+    const LIST_CAP: usize = 100;
+    let all: Vec<std::fs::DirEntry> = std::fs::read_dir(&path)
         .map_err(|e| {
             ToolError::Exec(format!(
                 "Failed to read directory '{}' (resolved from '{}'): {}",
@@ -236,7 +240,12 @@ pub async fn local_list(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolEr
             ))
         })?
         .filter_map(|e| e.ok())
-        .take(100)
+        .collect();
+    let total = all.len();
+    let truncated = total > LIST_CAP;
+    let entries: Vec<Value> = all
+        .into_iter()
+        .take(LIST_CAP)
         .map(|e| {
             let meta = e.metadata().ok();
             json!({
@@ -247,7 +256,11 @@ pub async fn local_list(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolEr
         })
         .collect();
 
-    Ok(json!({ "entries": entries }))
+    Ok(json!({
+        "entries": entries,
+        "total": total,
+        "truncated": truncated,
+    }))
 }
 
 pub async fn local_search(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
@@ -272,7 +285,11 @@ pub async fn local_search(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, Tool
         Box::new(move |name: &str| name.contains(&pat))
     };
 
-    let results: Vec<Value> = std::fs::read_dir(&path)
+    // TOOLS-04: `total` must reflect the real number of matches, not the capped
+    // count, and `truncated` must flag when the 100-result cap was hit, so the
+    // agent never reasons over a partial listing as if it were complete.
+    const SEARCH_CAP: usize = 100;
+    let all_matches: Vec<std::fs::DirEntry> = std::fs::read_dir(&path)
         .map_err(|e| {
             ToolError::Exec(format!(
                 "Failed to read directory '{}' (resolved from '{}'): {}",
@@ -281,7 +298,12 @@ pub async fn local_search(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, Tool
         })?
         .filter_map(|e| e.ok())
         .filter(|e| matcher(&e.file_name().to_string_lossy().to_lowercase()))
-        .take(100)
+        .collect();
+    let total = all_matches.len();
+    let truncated = total > SEARCH_CAP;
+    let results: Vec<Value> = all_matches
+        .into_iter()
+        .take(SEARCH_CAP)
         .map(|e| {
             let meta = e.metadata().ok();
             json!({
@@ -292,10 +314,10 @@ pub async fn local_search(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, Tool
         })
         .collect();
 
-    let total = results.len();
     Ok(json!({
         "results": results,
         "total": total,
+        "truncated": truncated,
     }))
 }
 

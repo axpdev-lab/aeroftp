@@ -1701,6 +1701,35 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                         <div className="space-y-6">
                             <div className="text-sm text-gray-400 mb-4">{t('ai.settings.promptDesc')}</div>
 
+                            {/* CC-10: Response style / output persona */}
+                            <div className="bg-gray-800/50 rounded-lg p-4">
+                                <h4 className="text-sm font-medium text-white mb-3">{t('ai.settings.responseStyle')}</h4>
+                                <div className="flex flex-wrap gap-2">
+                                    {(['default', 'concise', 'explanatory', 'learning'] as const).map((style) => (
+                                        <button
+                                            key={style}
+                                            onClick={() => {
+                                                const newSettings = {
+                                                    ...settings,
+                                                    advancedSettings: {
+                                                        ...settings.advancedSettings,
+                                                        responseStyle: style,
+                                                    },
+                                                };
+                                                setSettings(newSettings);
+                                                saveSettings(newSettings);
+                                            }}
+                                            className={`flex-1 min-w-[120px] px-4 py-2 rounded-lg text-sm font-medium transition-colors ${(settings.advancedSettings?.responseStyle ?? 'default') === style ? 'bg-purple-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+                                        >
+                                            {style === 'default' && t('ai.settings.styleDefault')}
+                                            {style === 'concise' && t('ai.settings.styleConcise')}
+                                            {style === 'explanatory' && t('ai.settings.styleExplanatory')}
+                                            {style === 'learning' && t('ai.settings.styleLearning')}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
                             {/* Toggle */}
                             <div className="flex items-center justify-between p-4 bg-gray-800 rounded-lg">
                                 <div>

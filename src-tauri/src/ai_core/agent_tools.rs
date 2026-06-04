@@ -33,6 +33,30 @@ fn is_text_file(path: &std::path::Path) -> bool {
         .unwrap_or(false)
 }
 
+/// Vendor / build directories excluded from RAG scans (PERF-04). Walking
+/// these wastes I/O and crowds the file budget with junk that is never the
+/// relevant source the agent is looking for.
+const SKIP_DIRS: &[&str] = &[
+    "node_modules",
+    "target",
+    ".git",
+    "dist",
+    "build",
+    ".next",
+    "vendor",
+    ".venv",
+    "venv",
+    "__pycache__",
+    ".cache",
+];
+
+fn is_skipped_dir(path: &std::path::Path) -> bool {
+    path.file_name()
+        .and_then(|n| n.to_str())
+        .map(|n| SKIP_DIRS.contains(&n))
+        .unwrap_or(false)
+}
+
 pub async fn rag_index(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     let path = resolve_local_path(&get_str(args, "path")?, ctx.context_local_path());
     validate_path(&path, "path").map_err(map_str_err)?;
@@ -74,6 +98,9 @@ pub async fn rag_index(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
                     Err(_) => continue,
                 };
                 if meta.is_dir() {
+                    if is_skipped_dir(&entry_path) {
+                        continue;
+                    }
                     *dirs_count += 1;
                     if recursive {
                         scan_dir(&entry_path, base, recursive, files, dirs_count, max_files);
@@ -202,6 +229,9 @@ pub async fn rag_search(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolEr
                     Err(_) => continue,
                 };
                 if meta.is_dir() {
+                    if is_skipped_dir(&entry_path) {
+                        continue;
+                    }
                     search_dir(
                         &entry_path,
                         base,
@@ -219,11 +249,17 @@ pub async fn rag_search(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolEr
                         .unwrap_or_else(|_| entry_path.to_string_lossy().to_string());
 
                     if let Ok(content) = std::fs::read_to_string(&entry_path) {
-                        for (line_num, line) in content.lines().enumerate() {
+                        // PERF-06: lowercase the whole file content once instead of
+                        // allocating a fresh String per line. `to_lowercase()` preserves
+                        // newlines, so line iteration stays aligned with the original.
+                        let lower_content = content.to_lowercase();
+                        for (line_num, (line, lower_line)) in
+                            content.lines().zip(lower_content.lines()).enumerate()
+                        {
                             if matches.len() >= max_results {
                                 break;
                             }
-                            if line.to_lowercase().contains(query_lower) {
+                            if lower_line.contains(query_lower) {
                                 matches.push(json!({
                                     "path": rel,
                                     "line": line_num + 1,
