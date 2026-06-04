@@ -38577,6 +38577,77 @@ async fn cmd_agent_mcp(_provider_name: &str, _cli: &Cli) -> i32 {
     server.run().await
 }
 
+/// True when the invoked command is a long-lived JSON-RPC-over-stdio
+/// daemon: the MCP server (`mcp` subcommand or `agent --mcp`) or the
+/// orchestration loop (`agent --orchestrate`). Such daemons are driven
+/// solely by stdin EOF / explicit shutdown, so they get
+/// [`install_mcp_signal_guard`] instead of the interactive
+/// double-Ctrl+C handler and survive console Ctrl+C broadcasts.
+fn is_stdio_daemon_command(command: &Commands) -> bool {
+    matches!(
+        command,
+        Commands::Mcp
+            | Commands::Agent { mcp: true, .. }
+            | Commands::Agent {
+                orchestrate: true,
+                ..
+            }
+    )
+}
+
+/// Install the stdio-daemon signal guard (MCP / orchestrate mode).
+///
+/// Swallows console Ctrl+C / Ctrl+Break (Windows) and SIGINT (POSIX) so a
+/// console-group control event meant for another process cannot tear down
+/// the JSON-RPC daemon. This is the "Ctrl+C broadcast trap": the AeroFTP
+/// self-updater's `GenerateConsoleCtrlEvent`, or a parent shell, broadcasts
+/// a control event to the whole console group and an unrelated daemon that
+/// happens to share the group dies with it.
+///
+/// The transport lifecycle stays governed only by stdin EOF, an explicit
+/// MCP `shutdown`/`exit`, or a fatal transport write error. Genuine "the
+/// console is going away" events keep their default handling so the daemon
+/// still exits when the host really goes away: CTRL_CLOSE/LOGOFF/SHUTDOWN
+/// on Windows, SIGTERM/SIGHUP on POSIX.
+fn install_mcp_signal_guard() {
+    #[cfg(windows)]
+    {
+        use windows::Win32::Foundation::BOOL;
+        use windows::Win32::System::Console::SetConsoleCtrlHandler;
+
+        unsafe extern "system" fn handler(ctrl_type: u32) -> BOOL {
+            // CTRL_C_EVENT = 0, CTRL_BREAK_EVENT = 1: report handled
+            // (TRUE) so the default terminate-the-process behaviour is
+            // suppressed and the daemon keeps running. Everything else
+            // (CTRL_CLOSE_EVENT = 2, CTRL_LOGOFF_EVENT = 5,
+            // CTRL_SHUTDOWN_EVENT = 6) returns FALSE so the default
+            // handler runs and the daemon shuts down gracefully.
+            match ctrl_type {
+                0 | 1 => BOOL(1),
+                _ => BOOL(0),
+            }
+        }
+
+        // Safety: `handler` is a valid `extern "system"` fn with the
+        // PHANDLER_ROUTINE signature; SetConsoleCtrlHandler only records
+        // the pointer in this process's control-handler list.
+        unsafe {
+            let _ = SetConsoleCtrlHandler(Some(handler), BOOL(1));
+        }
+    }
+
+    #[cfg(unix)]
+    {
+        // Lifecycle is driven by stdin EOF. SIGTERM/SIGHUP keep their
+        // default terminate action so the daemon still stops when the
+        // host genuinely goes away.
+        // Safety: SIG_IGN is a valid disposition for SIGINT.
+        unsafe {
+            libc::signal(libc::SIGINT, libc::SIG_IGN);
+        }
+    }
+}
+
 // ── Main ───────────────────────────────────────────────────────────
 
 #[tokio::main]
@@ -38704,17 +38775,28 @@ async fn main() {
             .init();
     }
 
-    // Setup Ctrl+C handler (double Ctrl+C forces immediate exit with code 130)
+    // Setup Ctrl+C handling. Interactive commands get the double-Ctrl+C
+    // "press again to force quit" UX. The MCP / orchestrate stdio daemons
+    // must NOT die on a console Ctrl+C broadcast (the self-updater's
+    // GenerateConsoleCtrlEvent, or a parent shell): their lifecycle is
+    // governed only by stdin EOF / explicit shutdown, so they get the
+    // signal guard instead and the interactive handler is never installed
+    // on that path. `cancelled` is still created in both modes because the
+    // command dispatch below threads it into transfer/sync/agent flows.
     let cancelled = Arc::new(AtomicBool::new(false));
-    let cancelled_clone = cancelled.clone();
-    let _ = ctrlc::set_handler(move || {
-        if cancelled_clone.load(Ordering::Relaxed) {
-            // Second Ctrl+C - force exit immediately
-            std::process::exit(130);
-        }
-        eprintln!("\nInterrupted (Ctrl+C) - press again to force quit");
-        cancelled_clone.store(true, Ordering::Relaxed);
-    });
+    if is_stdio_daemon_command(&cli.command) {
+        install_mcp_signal_guard();
+    } else {
+        let cancelled_clone = cancelled.clone();
+        let _ = ctrlc::set_handler(move || {
+            if cancelled_clone.load(Ordering::Relaxed) {
+                // Second Ctrl+C - force exit immediately
+                std::process::exit(130);
+            }
+            eprintln!("\nInterrupted (Ctrl+C) - press again to force quit");
+            cancelled_clone.store(true, Ordering::Relaxed);
+        });
+    }
 
     // Apply --inplace mode (skip .aerotmp temp files in downloads)
     if cli.inplace {
@@ -40862,6 +40944,51 @@ mod tests {
     use super::*;
     use ftp_client_gui_lib::profile_loader::insert_profile_option;
     use serde_json::json;
+
+    #[test]
+    fn stdio_daemon_command_classification() {
+        // Regression for the "Ctrl+C broadcast trap": the MCP / orchestrate
+        // stdio daemons must be classified as daemons so they receive the
+        // signal guard instead of the interactive double-Ctrl+C handler.
+        //
+        // Variants are constructed directly rather than via `Cli::parse_from`:
+        // clap's generated parser for this very large `Commands` enum recurses
+        // deep enough to overflow the test harness's 2 MiB thread stack in a
+        // debug build. The flag-to-field wiring (`--mcp`/`--orchestrate`) is
+        // guaranteed by clap derive; what we pin here is the classification.
+        fn agent(mcp: bool, orchestrate: bool) -> Commands {
+            Commands::Agent {
+                message: None,
+                provider: None,
+                model: None,
+                connect: None,
+                auto_approve: "safe".to_string(),
+                max_steps: 10,
+                orchestrate,
+                mcp,
+                stdin: false,
+                yes: false,
+                plan_only: false,
+                cost_limit: None,
+                system: None,
+            }
+        }
+
+        // MCP server: top-level subcommand and `agent --mcp`.
+        assert!(is_stdio_daemon_command(&Commands::Mcp));
+        assert!(is_stdio_daemon_command(&agent(true, false)));
+
+        // Orchestration loop is also a stdin-driven JSON-RPC daemon.
+        assert!(is_stdio_daemon_command(&agent(false, true)));
+
+        // Interactive / one-shot agent keeps the double-Ctrl+C handler.
+        assert!(!is_stdio_daemon_command(&agent(false, false)));
+
+        // A non-agent command is never a stdio daemon.
+        assert!(!is_stdio_daemon_command(&Commands::Completions {
+            shell: clap_complete::Shell::Bash,
+        }));
+    }
 
     #[test]
     fn cli_access_level_maps_to_opendrive_levels() {
