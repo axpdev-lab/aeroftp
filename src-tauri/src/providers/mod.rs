@@ -242,6 +242,27 @@ pub async fn response_bytes_with_limit(
     Ok(bytes)
 }
 
+/// F-011: Unescape the five standard XML entities in an error string.
+/// S3, WebDAV, and Azure return XML error bodies, so a `<Message>` extracted
+/// verbatim keeps `&apos;`/`&amp;`/`&lt;` etc. That is correct for an XML sink
+/// but garbles a plain-text or JSON error field (an agent pattern-matching the
+/// message sees `&apos;` instead of `'`). Plain-text/JSON error bodies never
+/// contain these entity sequences, so unescaping them is a no-op there and a
+/// fix for the XML providers. `&amp;` is decoded last so a double-escaped
+/// `&amp;lt;` does not collapse in one pass.
+fn unescape_xml_entities(s: &str) -> String {
+    if !s.contains('&') {
+        return s.to_string();
+    }
+    s.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#34;", "\"")
+        .replace("&apos;", "'")
+        .replace("&#39;", "'")
+        .replace("&amp;", "&")
+}
+
 /// GAP-A10: Sanitize API error response bodies to prevent leaking sensitive data.
 /// Truncates to first line (max 200 chars), strips potential tokens/keys.
 pub fn sanitize_api_error(body: &str) -> String {
@@ -259,7 +280,9 @@ pub fn sanitize_api_error(body: &str) -> String {
     };
     // Apply the same regex-based sanitization used by the AI pipeline
     // (covers sk-*, Bearer tokens, x-api-key, Google key= params)
-    crate::ai::sanitize_error_message(&truncated)
+    let sanitized = crate::ai::sanitize_error_message(&truncated);
+    // F-011: emit raw UTF-8 for the JSON/plain-text error sink.
+    unescape_xml_entities(&sanitized)
 }
 
 /// Transfer optimization hints: per-provider capability advertisement
@@ -1359,5 +1382,28 @@ mod tests {
         assert!(types.contains(&ProviderType::Ftp));
         assert!(types.contains(&ProviderType::WebDav));
         assert!(types.contains(&ProviderType::S3));
+    }
+
+    #[test]
+    fn unescape_xml_entities_decodes_standard_entities() {
+        assert_eq!(
+            unescape_xml_entities("The key &apos;abc123&apos; is not valid"),
+            "The key 'abc123' is not valid"
+        );
+        assert_eq!(unescape_xml_entities("a &amp; b"), "a & b");
+        assert_eq!(unescape_xml_entities("&lt;tag&gt;"), "<tag>");
+        assert_eq!(unescape_xml_entities("say &quot;hi&quot;"), "say \"hi\"");
+        assert_eq!(unescape_xml_entities("&#39;x&#39;"), "'x'");
+        // No ampersand: returns input unchanged (no-op for plain/JSON errors).
+        assert_eq!(unescape_xml_entities("plain error"), "plain error");
+    }
+
+    #[test]
+    fn sanitize_api_error_unescapes_s3_message() {
+        // F-011: an S3 <Message> with XML entities lands in a JSON error field
+        // as raw UTF-8, not &apos;.
+        let out = sanitize_api_error("The key &apos;003d90ca&apos; is not valid");
+        assert_eq!(out, "The key '003d90ca' is not valid");
+        assert!(!out.contains("&apos;"));
     }
 }

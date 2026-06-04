@@ -525,7 +525,7 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
         ToolDef {
             name: "aeroftp_list_servers",
             description:
-                "List saved server profiles from the encrypted vault. Passwords are never exposed.",
+                "List saved server profiles from the encrypted vault. Passwords are never exposed. Returns lean identity fields by default; pass include_capabilities:true to embed the per-profile transfer_capabilities block.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
@@ -533,6 +533,7 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
                     "protocol": {"type": "string"},
                     "limit": {"type": "integer"},
                     "offset": {"type": "integer"},
+                    "include_capabilities": {"type": "boolean"},
                 },
                 "required": [],
             }),

@@ -388,6 +388,16 @@ async fn list_servers(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErro
         .map(|n| n.min(1_000) as usize)
         .unwrap_or(200);
     let offset = args.get("offset").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+    // F-007: the per-profile transfer_capabilities block is ~20 identical keys
+    // (source: "profile_defaults") repeated for every same-protocol profile. On
+    // a vault of 80+ servers the unfiltered response overflows the MCP
+    // tool-result cap with boilerplate, so an agent's natural first call ("list
+    // the servers") fails by default. Omit it unless explicitly requested; the
+    // identity fields are all an agent needs to choose a server.
+    let include_capabilities = args
+        .get("include_capabilities")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
 
     let profiles = ctx.credentials().list_servers().map_err(ToolError::Exec)?;
     // Snapshot vault keyset once so per-profile auth_state derivation is
@@ -416,11 +426,6 @@ async fn list_servers(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErro
             name_ok && proto_ok
         })
         .map(|p| {
-            let transfer_capabilities = crate::agent_session::transfer_capabilities_block(
-                &p.protocol,
-                None,
-                "profile_defaults",
-            );
             let auth_state = auth_lookup
                 .as_ref()
                 .map(|(store, accounts)| {
@@ -432,7 +437,7 @@ async fn list_servers(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErro
                     )
                 })
                 .unwrap_or("unknown");
-            json!({
+            let mut entry = json!({
                 "id": p.id,
                 "name": p.name,
                 "protocol": p.protocol,
@@ -442,21 +447,35 @@ async fn list_servers(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErro
                 "initialPath": p.initial_path,
                 "providerId": p.provider_id,
                 "auth_state": auth_state,
-                "transfer_capabilities": transfer_capabilities,
-            })
+            });
+            if include_capabilities {
+                entry["transfer_capabilities"] = crate::agent_session::transfer_capabilities_block(
+                    &p.protocol,
+                    None,
+                    "profile_defaults",
+                );
+            }
+            entry
         })
         .collect();
     let matched_total = filtered.len();
     let page: Vec<Value> = filtered.into_iter().skip(offset).take(limit).collect();
     let returned = page.len();
-    Ok(json!({
+    let mut result = json!({
         "servers": page,
         "count": returned,
         "total_matched": matched_total,
         "offset": offset,
         "limit": limit,
         "truncated": offset + returned < matched_total,
-    }))
+        "capabilities_included": include_capabilities,
+    });
+    if !include_capabilities {
+        result["hint"] = json!(
+            "transfer_capabilities omitted for a lean response; pass include_capabilities:true to embed them."
+        );
+    }
+    Ok(result)
 }
 
 async fn list_files(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
