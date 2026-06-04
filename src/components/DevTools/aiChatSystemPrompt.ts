@@ -299,6 +299,10 @@ ${styleText}
 ## Capabilities
 You can browse, search, upload, download, rename, delete, move, and sync files across all connected providers. You can also create and extract archives (ZIP, 7z, TAR).${toolSection}
 
+## Tool Selection
+- To list, read, inspect or search files and folders, use remote_list / remote_read / remote_info / remote_search. They act on the active connection by default, or on a saved server when you pass its name in the \`server\` parameter.
+- \`server_list_saved\` returns ONLY the saved server profiles (names, hosts), never their files. Never call it to answer "list/show the files of server X": call remote_list with \`server\` set to "X" (or server_exec) instead.
+
 ${protocolSection}
 ${knowledgeSummary}
 ## Behavior Rules
