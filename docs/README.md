@@ -109,8 +109,8 @@ Since v4.0.0, the vault can be split into per-user encrypted partitions with a b
 
 ---
 
-- **Documentation Version**: 4.0.0
-- **Last Update**: 27 May 2026
+- **Documentation Version**: 4.0.1
+- **Last Update**: 4 June 2026
 
 ---
 
