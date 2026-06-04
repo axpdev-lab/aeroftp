@@ -17,6 +17,12 @@ A continuous flow rather than a calendar. Items move from right to left as they 
 
 ### 🟢 Just Shipped
 
+- **S3 native AssumeRole, AeroVault audit hardening, settings consolidation** (v4.0.1)
+  Connect to S3 by assuming an IAM role: a Role ARN (plus optional External ID, session name, duration and MFA) turns the access keys into base credentials that AeroFTP exchanges for temporary, role-scoped credentials via AWS STS at connect time, then re-assumes automatically before they expire. Built on a hand-rolled STS client (one SigV4-signed `AssumeRole` POST, no AWS SDK dependency) feeding the existing data-plane signer ([#301](https://github.com/axpdev-lab/aeroftp/issues/301), co-authored with the reporter). Plus the AeroVault dual-independent audit remediation (crate hardened to v3), the unified profile bridge (rclone / WinSCP / FileZilla through one dispatcher), the Servers settings tab folded into the Backup interoperability table ([#270](https://github.com/axpdev-lab/aeroftp/issues/270)), the first community wishlist batch ([#300](https://github.com/axpdev-lab/aeroftp/issues/300)), and a download-integrity fix for embedded rsync servers (WD MyCloud) that previously truncated delta downloads in silence.
+- **Shaped Graph Transfer (DAG): single production path** (v4.0.0)
+  The ready-frontier DAG transfer engine becomes the one production path for every transfer surface: single-file leaves, multi-file batches, sync sessions, intra-file segmented downloads, and cross-bucket copies. The three rollout flags and the hand-rolled JoinSet orchestrator are gone; a capability-aware shaped builder picks the right shape per call from each provider's `TransferCapabilities` (native multipart fan-out, server-side copy, segmented Range downloads), degrading honestly to a single stream when a backend advertises none of them. GUI, CLI, and MCP schedule through the same runners; the CLI exposes 25+ runtime knobs over the engine.
+- **Multi-User Account Partition** (v4.0.0)
+  The vault splits into per-user encrypted partitions (Argon2id-derived keys, AES partition encryption) while single-user installs stay fully compatible and migrate automatically. A boot-time Account Lock Screen lists the configured users, with per-user profiles and AeroSync settings, an opt-in admin role (last-admin guard, peer passphrase reset), and a CLI `--user` flag across profile and transfer commands.
 - **AeroVault wrapper-stack hardening, telemetry, and full CLI vault parity** (v3.8.0)
   Real small-file packing exercised by the v3 write path, a behind-the-scenes technical receipt (`vault_telemetry::VaultReport`), and the `aeroftp-cli vault` subcommand extended to every format: `create/add/info/extract` for v1, v2 and v3 with header auto-detect, `--vault-version`, `--cascade` (v2 paranoid), `--receipt`. Sustained design contribution by **Ehud Kirsh** ([#162](https://github.com/axpdev-lab/aeroftp/issues/162)).
 - **Storage quota override, recursive used-storage scan, and compression columns** (v3.8.0)
@@ -74,12 +80,8 @@ A continuous flow rather than a calendar. Items move from right to left as they 
 
 ### 🟡 In Flight
 
-- **AeroFile Dual Panel — Slice B + Slice C**
-  Slice B promotes each pane from "local only" to "any saved endpoint" (local path or saved remote profile), with a unified transfer planner that routes inside the same trait the existing remote↔local DnD already uses. Slice C lands FreeFileSync-style compare / mirror / backup / bisync workflows on top of the dual-pane surface. Slice A shipped in v3.7.9; the Slice B + Slice C bridge (unified panel controller, endpoint selector, transfer planner, 6-bucket compare panel, conflict policy) shipped in v3.8.0, with full workflow polish continuing.
 - **AeroVault v4 — ECC layer**
   Reed-Solomon / Parchive-style redundancy applied to the encrypted chunks produced by AeroVault v3, on top of the extension directory and payload region already reserved by v3. A v3 vault opened by a v4-aware reader is byte-equivalent to "v4 with ECC turned off" (forward-compat contract pinned in the v3 spec). Tracked as `T-AEROVAULT-ECC` in [issue #162](https://github.com/axpdev-lab/aeroftp/issues/162) section 4.
-- **Local Transport for AeroRsync**
-  Delta sync local-to-local, the same wire-protocol-compatible engine extended to local filesystem pairs.
 - **Bitbucket, Gitea, Forgejo native integrations**
   Git forge Tier 1 on top of the existing GitHub and GitLab providers (~90% reuse of the GitHub code path).
 
@@ -101,8 +103,6 @@ A continuous flow rather than a calendar. Items move from right to left as they 
   Seven services beyond Immich and Google Photos.
 - **Mobile-friendly window dimensions**
   Shrink the minimum width below the current bound so AeroFTP runs comfortably on Linux phones and half-screen splits.
-- **Multiple AeroFTP users**
-  Per-user profile partitioning with a dropdown selector in the titlebar, F2 rename, separate import/export per user, separate AeroSync settings. Vault schema migration is forward-only (the existing single-user install becomes the "default" user). New `--user <name>` flag on `aeroftp-cli`.
 - **Universal File Versioning**
   Unified versions panel across 10 providers (Google Drive, Dropbox, OneDrive, Box, S3, Azure, Nextcloud, kDrive, Filen, pCloud).
 - **AeroCloud Selective Sync**
