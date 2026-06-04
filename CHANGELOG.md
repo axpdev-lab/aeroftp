@@ -5,6 +5,78 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.1] - 2026-06-04
+
+### S3 AssumeRole, AeroVault Audit Hardening and Settings Consolidation
+
+This patch release pairs a new S3 connection mode with a round of security
+hardening and cleanup. It adds native AWS STS AssumeRole support for S3 (#301),
+lands the remediation from the AeroVault dual-independent audit, unifies the
+profile-bridge legacy clients, folds the redundant Servers settings tab into the
+Backup interoperability table (#270), and ships the first batch of community
+wishlist items (#300). It also closes a silent download-corruption edge case on
+embedded rsync servers such as WD MyCloud.
+
+#### Added
+- **S3 native AssumeRole (#301)**: connect to S3 by assuming an IAM role. Set a
+  Role ARN (plus optional External ID, session name, duration and MFA) and the
+  access keys become base credentials that AeroFTP exchanges for temporary,
+  role-scoped credentials via AWS STS at connect time, then signs every request
+  with them. The temporary credentials are re-assumed automatically before they
+  expire, so long browsing sessions and large multipart uploads never fail with
+  an expired token. Built on a hand-rolled STS client (a single SigV4-signed
+  AssumeRole POST, no AWS SDK dependency) feeding the existing data-plane signer.
+  Also accepts an externally supplied session token for credentials already
+  obtained from STS or SSO, emitted as `x-amz-security-token` on signed requests
+  and presigned URLs, both covered by the signature. Shown only on the generic
+  S3 tile; long-term IAM keys are unaffected. Co-authored with the reporter
+  (kennysliding).
+- **Import before password**: the .aeroftp import now loads the file before
+  asking for the decryption password (KeePassXC pattern, #214/#300).
+- **Open any plain-text file in the editor** directly from the preview pane.
+- **CLI**: an `--access` privacy flag for `put`/`mkdir` (#252), a `#` reorder
+  command in the interactive profiles shell, and a 2FA prompt on interactive
+  master unlock.
+
+#### Changed
+- **Profile bridge unified**: rclone, WinSCP and FileZilla import/export now run
+  through the single generic dispatcher and panel, with no loss of features.
+- **Settings consolidation (#270)**: the redundant "Servers" tab is folded into
+  the "Backup" tab as an App / Format / Import / Export interoperability table;
+  the Full Backup row reveals the keystore panel inline.
+- **rclone**: remotes are listed in a stable alphabetical order, and
+  Nextcloud/ownCloud DAV roots are appended correctly on export.
+- **macOS**: per-architecture DMGs built from a universal2 binary.
+- **Transfer**: DAG engine audit fixes and a corrected Nextcloud chunk
+  threshold (#288).
+
+#### Fixed
+- **AeroVault dual-audit remediation**: closed the High-severity findings from
+  the independent crypto/container audit (extract symlink write-through escape,
+  reserved-key filter on credential read and delete, v1 format labeling) plus
+  the remaining tranche-2 items. AeroVault crate hardened to v3 (0.4.x).
+- **Download integrity on embedded rsync servers**: some embedded rsync
+  firmwares (e.g. WD MyCloud) close the SSH channel before the trailing protocol
+  marker, which the delta-sync path could accept as a clean end and commit a
+  truncated file. The delta download now validates the reconstructed size
+  against the remote file list and transparently falls back to the classic SFTP
+  download on any shortfall, so a partial transfer can never overwrite the
+  target with corrupt data.
+- **Profile duplicate keeps stored credentials**: duplicating a saved server
+  profile now copies its stored password or token regardless of the
+  save-credentials flag, so the copy connects without re-entering the secret.
+- **TOTP throttle persistence**: the vault 2FA lockout counter now survives
+  restarts, with a replay guard and a bounded vault read.
+- **Security dependency hardening**: `tmp` bumped to 0.2.7 for the path
+  traversal fix (CVE-2026-44705), codecov-action bumped for the
+  template-injection fix, plus routine dependency bumps.
+
+#### Removed
+- The legacy dedicated rclone/WinSCP/FileZilla Tauri commands and the duplicate
+  Settings "Servers" tab, now superseded by the unified bridge and Backup table.
+  The orphaned `protocol.servers` label string was also dropped from all 47
+  locales (T-BC-08 residual).
+
 ## [4.0.0] - 2026-05-27
 
 ### Shaped Graph Transfer (DAG) and Multi-User Account Partition
