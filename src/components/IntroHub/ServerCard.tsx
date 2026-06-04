@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Edit2, Trash2, Copy, Loader2, Star, Clock, ShieldCheck, Lock, Check, X, ArrowUpRight, ArrowDownLeft, AlertTriangle } from 'lucide-react';
-import { ServerProfile, ProviderType, getProtocolClass, getE2EBits, profileHasQuota, resolveEffectiveQuota } from '../../types';
+import { ServerProfile, ProviderType, getProtocolClass, getE2EBits, profileHasQuota, resolveEffectiveQuota, effectiveManualCap } from '../../types';
 import { ProtocolIcon } from '../ProtocolSelector';
 import { PROVIDER_LOGOS } from '../ProviderLogos';
 import { getGitHubConnectionBadge, getMegaConnectionBadge, getInfiniCloudConnectionBadge } from '../../utils/providerConnectionMeta';
@@ -619,7 +619,7 @@ export const ServerCard = React.memo(function ServerCard({
             {cardLayout === 'detailed' && (
                 <div className="mt-2.5 pt-2 border-t border-gray-100 dark:border-gray-700/60 grid grid-cols-[1fr_auto] items-center gap-2 min-h-[20px]">
                     <div className="min-w-0">
-                        <StorageUsageBar quota={server.lastQuota} supported={quotaSupported} thresholds={thresholds} manualTotal={server.options?.manualTotalBytes} />
+                        <StorageUsageBar quota={server.lastQuota} supported={quotaSupported} thresholds={thresholds} manualTotal={effectiveManualCap(server.options?.manualTotalBytes, server.protocol, server.providerId, server.host)} />
                     </div>
                     <div className="shrink-0 text-gray-300 dark:text-gray-600">
                         <HealthRadial

@@ -274,8 +274,7 @@
             "profileConverted": "Profil dikonversi",
             "profileDuplicated": "Profil diduplikasi",
             "convertUndone": "Profil dipulihkan",
-            "undo": "Urungkan",
-            "megacmdDfHint": "MEGAcmd menggunakan mega-df langsung untuk menanyakan penyimpanan terpakai dan total. Penggantian total manual tidak diperlukan."
+            "undo": "Urungkan"
         },
         "browser": {
             "remote": "Jarak Jauh",

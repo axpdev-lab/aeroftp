@@ -274,8 +274,7 @@
             "profileConverted": "Profil pretvorjen",
             "profileDuplicated": "Profil podvojen",
             "convertUndone": "Profil obnovljen",
-            "undo": "Razveljavi",
-            "megacmdDfHint": "MEGAcmd uporablja mega-df neposredno za poizvedbo o uporabljeni in skupni shrambi. Ročno preglasitev skupne vrednosti ni potrebna."
+            "undo": "Razveljavi"
         },
         "browser": {
             "remote": "Oddaljeno",
