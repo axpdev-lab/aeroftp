@@ -5167,6 +5167,8 @@ fn apply_google_drive_runtime_knobs(provider: &mut Box<dyn StorageProvider>, cli
 static SESSION_TRANSFERRED_BYTES: AtomicU64 = AtomicU64::new(0);
 /// Print "Using profile: ..." only once per session (avoids noise from parallel workers).
 static PROFILE_INFO_PRINTED: AtomicBool = AtomicBool::new(false);
+/// Print the MEGAcmd warm-up notice only once per session (#275).
+static MEGACMD_WARMUP_NOTICE_PRINTED: AtomicBool = AtomicBool::new(false);
 /// Set early in main() when the user passed `--json` or `--format json`.
 /// Used to suppress informational stderr output (banners, "Using
 /// profile:") that an agent capturing combined stdout+stderr would
@@ -9393,7 +9395,7 @@ fn interactive_profiles_loop(cli: &Cli, store: &CredentialStore, profiles: Vec<s
         }
 
         eprintln!(
-            "\nInteractive: l/t/d/f/c/r/e <N|name> [N|name ...]  ·  # <sel> <N> reorder  ·  legacy 1l/l1 still works  ·  0/q = quit"
+            "\nInteractive: l/t/d/f/c/r/e <N|name> [N|name ...]  ·  # <sel> <N> reorder  ·  u switch user  ·  legacy 1l/l1 still works  ·  0/q = quit"
         );
         eprint!("profiles> ");
         let _ = io::stderr().flush();
@@ -9431,6 +9433,7 @@ fn interactive_profiles_loop(cli: &Cli, store: &CredentialStore, profiles: Vec<s
             eprintln!("  s <selector>    save-as-new in a different mode of the same provider group (issue #215)");
             eprintln!("  v <selector>    convert profile to a different mode, REPLACES the original (issue #215)");
             eprintln!("  # <sel> <N>     move a profile to index N (renumber, clamped to count, persisted)");
+            eprintln!("  u [N|name]      switch active user (lists accounts when bare); reloads profiles");
             eprintln!("  Nl  Nt  Nd      legacy single-target compact form (e.g. '1l', 'l1')");
             eprintln!("  0/q             quit");
             eprintln!();
@@ -9520,6 +9523,124 @@ fn interactive_profiles_loop(cli: &Cli, store: &CredentialStore, profiles: Vec<s
                 Err(e) => {
                     current = snapshot;
                     eprintln!("Move failed to persist: {}. Order unchanged.", e);
+                }
+            }
+            continue;
+        }
+
+        // Switch the active local user (#270). `u` alone lists the accounts
+        // and prompts for a selection; `u <N|name>` switches directly. The
+        // numeric selector is the 1-based position in the printed list (what
+        // the user sees), not the database id. After a switch the profile
+        // table reloads to show the new user's profiles.
+        if lower == "u" || lower.starts_with("u ") {
+            let users = match user_partitions::cli_list_users(store) {
+                Ok(u) => u,
+                Err(e) => {
+                    eprintln!("Could not list users: {}", e);
+                    continue;
+                }
+            };
+            if users.len() <= 1 {
+                eprintln!("Only one user account exists; nothing to switch to.");
+                continue;
+            }
+            let inline = raw[1..].trim().to_string();
+            let selector = if inline.is_empty() {
+                eprintln!("\nUsers:");
+                for (i, u) in users.iter().enumerate() {
+                    eprintln!(
+                        "  {}  {}{}{}",
+                        i + 1,
+                        u.name,
+                        if u.has_passphrase { " \u{1f512}" } else { "" },
+                        if u.is_active { "  (active)" } else { "" },
+                    );
+                }
+                eprint!("switch to user # (0 to cancel): ");
+                let _ = io::stderr().flush();
+                let mut sel_line = String::new();
+                match io::stdin().lock().read_line(&mut sel_line) {
+                    Ok(0) => {
+                        eprintln!();
+                        return 0;
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        eprintln!("Read error: {}.", e);
+                        continue;
+                    }
+                }
+                sel_line.trim().to_string()
+            } else {
+                inline
+            };
+            if selector.is_empty() || selector == "0" {
+                continue;
+            }
+            // A bare number is the 1-based list position (matches the printed
+            // list); anything else resolves by name via resolve_cli_user.
+            let user = if let Ok(pos) = selector.parse::<usize>() {
+                if pos >= 1 && pos <= users.len() {
+                    users[pos - 1].clone()
+                } else {
+                    eprintln!("Index out of range (1..={}).", users.len());
+                    continue;
+                }
+            } else {
+                match resolve_cli_user(&users, &selector) {
+                    Ok(u) => u,
+                    Err(e) => {
+                        eprintln!("Selector '{}' skipped: {}", selector, e);
+                        continue;
+                    }
+                }
+            };
+            if user.is_active {
+                eprintln!("Already on user '{}'.", user.name);
+                continue;
+            }
+            let mut passphrase = if user.has_passphrase {
+                match read_user_passphrase(
+                    cli,
+                    &user.name,
+                    &format!("Account password for user '{}': ", user.name),
+                    true,
+                    true,
+                ) {
+                    Ok(value) => value,
+                    Err(e) => {
+                        eprintln!("{}", e);
+                        continue;
+                    }
+                }
+            } else {
+                None
+            };
+            let result = user_partitions::cli_unlock_user(store, user.id, passphrase.as_deref());
+            if let Some(value) = passphrase.as_mut() {
+                value.zeroize();
+            }
+            match result {
+                Ok(_) => {
+                    eprintln!("Switched to user '{}'.", user.name);
+                    match load_active_user_profiles(cli, store) {
+                        Ok(p) => {
+                            current = p;
+                            tombstones.clear();
+                            if current.is_empty() {
+                                eprintln!("(this user has no saved profiles)");
+                            } else {
+                                print_profiles_summary_with_tombstones(&current, &[]);
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("Switched, but could not load this user's profiles: {}", e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Switch failed: {}", e);
                 }
             }
             continue;
@@ -13186,6 +13307,26 @@ fn profile_to_provider_config(
         format!("{} -> {}{}", protocol.to_uppercase(), host, preset_suffix),
         cli.quiet,
     );
+
+    // MEGAcmd connects can stall on the first call after the daemon was
+    // stopped: the connect-time mega-df warm-up restarts the MEGAcmd Server
+    // in the background, which takes several seconds. Surface that so a slow
+    // first list does not look like a hang (#275), mirroring MEGAcmd's own
+    // "Initiating in the background..." notice.
+    let is_megacmd = matches!(
+        profile.get("providerId").and_then(|v| v.as_str()),
+        Some("megacmd") | Some("megacmd-webdav")
+    ) || (provider_type == ProviderType::Mega
+        && extra.get("mega_mode").map(String::as_str) == Some("megacmd"));
+    if is_megacmd
+        && !cli.quiet
+        && !JSON_MODE.load(Ordering::Relaxed)
+        && !MEGACMD_WARMUP_NOTICE_PRINTED.swap(true, Ordering::Relaxed)
+    {
+        eprintln!(
+            "MEGAcmd: starting the local server in the background if needed (first connect can take a few seconds)..."
+        );
+    }
 
     let config = ProviderConfig {
         name: name.to_string(),

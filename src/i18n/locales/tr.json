@@ -274,8 +274,7 @@
             "profileConverted": "Profil dönüştürüldü",
             "profileDuplicated": "Profil çoğaltıldı",
             "convertUndone": "Profil geri yüklendi",
-            "undo": "Geri al",
-            "megacmdDfHint": "MEGAcmd, kullanılan ve toplam depolama alanını sorgulamak için doğrudan mega-df'i kullanır. Toplamın manuel olarak geçersiz kılınmasına gerek yoktur."
+            "undo": "Geri al"
         },
         "browser": {
             "remote": "Uzak",

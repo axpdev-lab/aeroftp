@@ -274,8 +274,7 @@
             "profileConverted": "Profiil teisendatud",
             "profileDuplicated": "Profiil dubleeritud",
             "convertUndone": "Profiil taastatud",
-            "undo": "Võta tagasi",
-            "megacmdDfHint": "MEGAcmd kasutab mega-df otse, et küsida kasutatud ja kogusalvestust. Käsitsi koguarvu alistamine pole vajalik."
+            "undo": "Võta tagasi"
         },
         "browser": {
             "remote": "Kaugserver",

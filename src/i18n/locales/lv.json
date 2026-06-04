@@ -274,8 +274,7 @@
             "profileConverted": "Profils pārvērsts",
             "profileDuplicated": "Profils dublēts",
             "convertUndone": "Profils atjaunots",
-            "undo": "Atsaukt",
-            "megacmdDfHint": "MEGAcmd tieši izmanto mega-df, lai vaicātu izmantoto un kopējo krātuvi. Manuālā kopējās vērtības aizstāšana nav nepieciešama."
+            "undo": "Atsaukt"
         },
         "browser": {
             "remote": "Attālināts",

@@ -525,9 +525,6 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const megaMode = getMegaConnectionMode(connectionParams.options);
     const isMegaCmdMode = megaMode === 'megacmd';
     const activeProviderId = connectionParams.providerId || selectedProviderId || undefined;
-    const isMegaCmdStorage =
-        (protocol === 'mega' && isMegaCmdMode) ||
-        (protocol === 'webdav' && (activeProviderId === 'megacmd' || activeProviderId === 'megacmd-webdav'));
 
     // Protocol selector open state (to hide form when selector is open)
     const [isProtocolSelectorOpen, setIsProtocolSelectorOpen] = useState(false);
@@ -1969,11 +1966,16 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     </p>
                 </div>
                 )}
-                {(!providerServesQuota(
+                {/* The opt-in used-storage scan is only meaningful for backends
+                    that do NOT report their own quota. MEGAcmd now serves its
+                    real quota via mega-df on every connect (run unconditionally
+                    as part of the daemon warm-up), so the checkbox was inert
+                    noise there and is no longer shown (#275). */}
+                {!providerServesQuota(
                     connectionParams.protocol,
                     activeProviderId,
                     connectionParams.server,
-                ) || isMegaCmdStorage) && (
+                ) && (
                     <div>
                         <Checkbox
                             checked={!!connectionParams.options?.autoScanUsedOnConnect}
@@ -1990,9 +1992,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                             labelClassName="text-sm"
                         />
                         <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                            {isMegaCmdStorage
-                                ? t('connection.megacmdDfHint')
-                                : t('connection.autoScanUsedOnConnectHint')}
+                            {t('connection.autoScanUsedOnConnectHint')}
                         </p>
                     </div>
                 )}
@@ -2098,7 +2098,12 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     const v = t(i18nKey);
                                     return v && v !== i18nKey ? v : undefined;
                                 };
-                                const providerDesc = headerProv?.description
+                                // Mode-group neutral description wins: the
+                                // canonical preset's text can be protocol-
+                                // specific (e.g. OpenDrive WebDAV preset says
+                                // "...via WebDAV"), wrong for the API tab (#270).
+                                const providerDesc = modeHeader?.description
+                                    || headerProv?.description
                                     || display?.desc
                                     || tryProtocolDesc(pid)
                                     || tryProtocolDesc(protocol || '');

@@ -274,8 +274,7 @@
             "profileConverted": "Profila bihurtuta",
             "profileDuplicated": "Profila bikoiztuta",
             "convertUndone": "Profila berreskuratuta",
-            "undo": "Desegin",
-            "megacmdDfHint": "MEGAcmd-ek mega-df zuzenean erabiltzen du erabilitako eta guztizko biltegiratzea kontsultatzeko. Ez da behar guztizkoaren eskuzko gainidazketa."
+            "undo": "Desegin"
         },
         "browser": {
             "remote": "Urrunekoa",
