@@ -274,8 +274,7 @@
             "profileConverted": "Profil konvertert",
             "profileDuplicated": "Profil duplisert",
             "convertUndone": "Profil gjenopprettet",
-            "undo": "Angre",
-            "megacmdDfHint": "MEGAcmd bruker mega-df direkte for å spørre om brukt og total lagring. Manuell overstyring av totalen er ikke nødvendig."
+            "undo": "Angre"
         },
         "browser": {
             "remote": "Ekstern",

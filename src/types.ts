@@ -548,6 +548,23 @@ export const resolveEffectiveQuota = (
   return { used: apiUsed, total: 0, totalSource: "none" };
 };
 
+// A manual total cap only applies to backends that do NOT serve their own
+// quota; the connection form hides the field for quota-serving providers.
+// When a provider later GAINS a real quota source (e.g. MEGAcmd via mega-df
+// in v4.0.1), a previously-stored manual cap would wrongly override the real
+// total: #275 reported a stale 1 GB cap rendering >100% red because the form
+// no longer exposed the field to clear it. Ignore the stale cap for
+// quota-serving providers so the API/mega-df total wins; raw FTP/SFTP/S3 and
+// generic WebDAV keep the override (SFTP statfs reports whole-disk, not the
+// user's allotment).
+export const effectiveManualCap = (
+  manualTotalBytes: number | undefined,
+  protocol?: string | null,
+  providerId?: string | null,
+  server?: string | null,
+): number | undefined =>
+  providerServesQuota(protocol, providerId, server) ? undefined : manualTotalBytes;
+
 /**
  * A profile is quota-capable for the My Servers bar/columns when its
  * protocol natively exposes a quota OR the user set a manual total

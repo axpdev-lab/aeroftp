@@ -274,8 +274,7 @@
             "profileConverted": "プロファイルが変換されました",
             "profileDuplicated": "プロファイルが複製されました",
             "convertUndone": "プロファイルが復元されました",
-            "undo": "元に戻す",
-            "megacmdDfHint": "MEGAcmd は mega-df を直接使用して、使用済みおよび合計ストレージを照会します。手動による合計の上書きは不要です。"
+            "undo": "元に戻す"
         },
         "browser": {
             "remote": "リモート",

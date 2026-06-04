@@ -274,8 +274,7 @@
             "profileConverted": "Profiili muunnettu",
             "profileDuplicated": "Profiili monistettu",
             "convertUndone": "Profiili palautettu",
-            "undo": "Kumoa",
-            "megacmdDfHint": "MEGAcmd käyttää suoraan mega-df-komentoa käytetyn ja kokonaistallennustilan kyselyyn. Manuaalista kokonaismäärän ohitusta ei tarvita."
+            "undo": "Kumoa"
         },
         "browser": {
             "remote": "Etä",

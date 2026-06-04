@@ -274,8 +274,7 @@
             "profileConverted": "Na-convert ang profile",
             "profileDuplicated": "Na-duplicate ang profile",
             "convertUndone": "Na-restore ang profile",
-            "undo": "I-undo",
-            "megacmdDfHint": "Direktang ginagamit ng MEGAcmd ang mega-df upang i-query ang nagamit at kabuuang storage. Hindi kailangan ang manu-manong pag-override ng kabuuan."
+            "undo": "I-undo"
         },
         "browser": {
             "remote": "Remote",

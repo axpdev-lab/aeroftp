@@ -516,7 +516,28 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                 >
                                     <div className="flex items-center gap-3">
                                         <GripVertical size={16} className={`shrink-0 text-gray-400 ${currentUserIsAdmin ? 'cursor-grab' : 'opacity-30'}`} />
-                                        <UserAvatar name={user.name} avatarEmoji={user.avatarEmoji} avatarColor={user.avatarColor} size="lg" />
+                                        {/* The avatar itself is the "Edit avatar"
+                                            control (#270): clicking the element you
+                                            want to change is more intuitive than a
+                                            separate palette button. A pencil overlay
+                                            appears on hover/focus to signal it. */}
+                                        {canModify ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => openAvatarEditor(user)}
+                                                disabled={busyUserId === user.id}
+                                                className="group/avatar relative shrink-0 rounded-full outline-none transition-transform hover:scale-105 focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50"
+                                                title="Edit avatar"
+                                                aria-label="Edit avatar"
+                                            >
+                                                <UserAvatar name={user.name} avatarEmoji={user.avatarEmoji} avatarColor={user.avatarColor} size="lg" />
+                                                <span className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-blue-600 text-white opacity-0 shadow transition-opacity group-hover/avatar:opacity-100 group-focus-visible/avatar:opacity-100">
+                                                    <Pencil size={9} />
+                                                </span>
+                                            </button>
+                                        ) : (
+                                            <UserAvatar name={user.name} avatarEmoji={user.avatarEmoji} avatarColor={user.avatarColor} size="lg" />
+                                        )}
                                         <div className="min-w-0 flex-1">
                                             {isEditing ? (
                                                 <form
@@ -572,15 +593,6 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                         <div className="flex shrink-0 items-center gap-1">
                                             {canModify && (
                                                 <>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => openAvatarEditor(user)}
-                                                        disabled={busyUserId === user.id}
-                                                        className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 disabled:opacity-50 dark:hover:bg-gray-700 dark:hover:text-gray-100"
-                                                        title="Edit avatar"
-                                                    >
-                                                        <Palette size={15} />
-                                                    </button>
                                                     <button
                                                         type="button"
                                                         onClick={() => startRename(user)}
