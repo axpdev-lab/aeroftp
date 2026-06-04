@@ -274,8 +274,7 @@
             "profileConverted": "Perfil convertit",
             "profileDuplicated": "Perfil duplicat",
             "convertUndone": "Perfil restaurat",
-            "undo": "Desfés",
-            "megacmdDfHint": "MEGAcmd utilitza mega-df directament per consultar l'espai utilitzat i el total. No cal la substitució manual del total."
+            "undo": "Desfés"
         },
         "browser": {
             "remote": "Remot",

@@ -14,7 +14,7 @@ import {
   FileListResponse, ConnectionParams, DownloadParams, UploadParams,
   LocalFile, TransferEvent, TransferProgress, RemoteFile, FtpSession, ServerProfile,
   ProviderType, isOAuthProvider, isFourSharedProvider, isNonFtpProvider, isFtpProtocol, supportsStorageQuota, supportsNativeShareLink,
-  resolveEffectiveQuota,
+  resolveEffectiveQuota, effectiveManualCap,
   AeroVaultOverlaySession,
   DeltaEligibilityProbeResult,
   SyncDirection, VerifyPolicy, DeltaTransferStats,
@@ -2451,10 +2451,18 @@ interface UpdateVerificationInfo {
         // API total (SFTP statfs = whole server disk, not the user's
         // allotment), so resolve it from the matched profile (source of
         // truth) and let resolveEffectiveQuota apply the precedence.
-        const manualTotal = (typeof prof?.options?.manualTotalBytes === 'number'
-          && prof.options.manualTotalBytes > 0)
-          ? prof.options.manualTotalBytes
-          : opts?.manualTotalBytes;
+        // effectiveManualCap drops the cap for providers that serve their own
+        // quota (MEGAcmd via mega-df, Koofr/OpenDrive WebDAV), so a stale cap
+        // from before that capability existed no longer wins over the real
+        // total (#275).
+        const manualTotal = effectiveManualCap(
+          (typeof prof?.options?.manualTotalBytes === 'number' && prof.options.manualTotalBytes > 0)
+            ? prof.options.manualTotalBytes
+            : opts?.manualTotalBytes,
+          prof?.protocol ?? liveCp.protocol,
+          prof?.providerId ?? liveCp.providerId,
+          prof?.host ?? liveCp.server,
+        );
         // Many providers ARE in supportsStorageQuota yet a given server
         // exposes no real quota (DriveHQ / CloudMe / jianguoyun WebDAV
         // all answer 0/0; SFTP statfs can too). Persisting that 0 wiped
@@ -2632,6 +2640,15 @@ interface UpdateVerificationInfo {
       }
     } catch { /* fall back to currentRemotePath + session opts */ }
     if (manualTotal === undefined) manualTotal = opts?.manualTotalBytes;
+    // Drop a stale manual cap for providers that now serve their own quota
+    // (MEGAcmd mega-df, Koofr/OpenDrive WebDAV) so it cannot override the
+    // real total in the mega-df scan branch below (#275).
+    manualTotal = effectiveManualCap(
+      manualTotal,
+      quotaProfile?.protocol ?? cp.protocol,
+      quotaProfile?.providerId ?? cp.providerId,
+      quotaProfile?.host ?? cp.server,
+    );
     const provisional = (used: number) => {
       // Show the cap live while scanning so the StatusBar/card are not
       // blank: the bar fills against the manual total as `used` grows.

@@ -274,8 +274,7 @@
             "profileConverted": "Profil konverterad",
             "profileDuplicated": "Profil duplicerad",
             "convertUndone": "Profil återställd",
-            "undo": "Ångra",
-            "megacmdDfHint": "MEGAcmd använder mega-df direkt för att fråga efter använt och totalt lagringsutrymme. Manuell åsidosättning av totalen behövs inte."
+            "undo": "Ångra"
         },
         "browser": {
             "remote": "Fjärr",

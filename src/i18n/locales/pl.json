@@ -274,8 +274,7 @@
             "profileConverted": "Profil przekonwertowany",
             "profileDuplicated": "Profil zduplikowany",
             "convertUndone": "Profil przywrócony",
-            "undo": "Cofnij",
-            "megacmdDfHint": "MEGAcmd używa mega-df bezpośrednio do zapytania o wykorzystaną i całkowitą przestrzeń. Ręczne zastąpienie wartości całkowitej nie jest potrzebne."
+            "undo": "Cofnij"
         },
         "browser": {
             "remote": "Zdalny",
