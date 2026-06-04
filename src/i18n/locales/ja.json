@@ -973,7 +973,9 @@
             "backupImportAny": "すべてインポート",
             "backupImportAnyDesc": "rclone やその他すべての対応バックアップ形式を検出します",
             "bridgeSearchApps": "アプリを検索...",
-            "bridgeNoApps": "検索に一致するアプリがありません"
+            "bridgeNoApps": "検索に一致するアプリがありません",
+            "keystoreRekeyedPartitions": "{count} 件のアカウントをこのデバイス用に再キー設定しました。",
+            "keystoreUnreadablePartitions": "{count} 件のアカウントをこのデバイスでロック解除できませんでした。バックアップは別のコンピューターで作成されました。そのコンピューターで該当アカウントにパスワードを設定して再エクスポートし、ここでインポートしてください。"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4573,7 +4575,20 @@
             "lastUsedToday": "今日使用",
             "lastUsedYesterday": "昨日使用",
             "lastUsedDaysAgo": "{days}日前に使用",
-            "securityNote": "アカウントは Argon2id + AES-KW + AES-256-GCM 暗号化で保護されています"
+            "securityNote": "アカウントは Argon2id + AES-KW + AES-256-GCM 暗号化で保護されています",
+            "dataKeyUnreadable": "このアカウントのデータはこのデバイスでロック解除できません。バックアップは別のコンピューターで作成されました。そのコンピューターでこのアカウントにパスワードを設定して再エクスポートし、ここでインポートしてください。",
+            "passphraseRequired": "現在のアカウントパスワードを入力してください。",
+            "passphraseNotNeeded": "このアカウントには入力するパスワードがありません。",
+            "userLocked": "このアカウントはロックされています。先にロックを解除してから、もう一度お試しください。",
+            "noActiveUser": "先にこのアカウントに切り替えてから、もう一度お試しください。",
+            "notAuthorized": "そのアカウントを変更する権限がありません。",
+            "vaultLocked": "先にアカウントのロックを解除してから、もう一度お試しください。",
+            "storeNotReady": "先に保管庫のロックを解除してから、もう一度お試しください。",
+            "cannotDemoteLastAdmin": "最後の管理者を解除することはできません。",
+            "cannotDeleteLastAdmin": "最後の管理者を削除することはできません。",
+            "cannotDeleteLastUser": "最後のアカウントを削除することはできません。",
+            "adminResetNotForSelf": "ご自身のアカウントでは「パスワードを変更」を使用してください。",
+            "userNotFound": "このアカウントは存在しません。"
         },
         "opendrive": {
             "privacyTitle": "OpenDrive プライバシー",

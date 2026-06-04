@@ -973,7 +973,9 @@
             "backupImportAny": "Importēt jebkuru",
             "backupImportAnyDesc": "Nosaka rclone un visus citus atbalstītos dublējumu formātus",
             "bridgeSearchApps": "Meklēt lietotnes...",
-            "bridgeNoApps": "Nav lietotņu, kas atbilst meklēšanai"
+            "bridgeNoApps": "Nav lietotņu, kas atbilst meklēšanai",
+            "keystoreRekeyedPartitions": "{count} kontam atslēga atkārtoti iestatīta šai ierīcei.",
+            "keystoreUnreadablePartitions": "{count} kontu šajā ierīcē neizdevās atbloķēt. Dublējums tika izveidots citā datorā: eksportējiet to tur vēlreiz, iestatot šiem kontiem paroli, un pēc tam importējiet šeit."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4573,7 +4575,20 @@
             "lastUsedToday": "Izmantots šodien",
             "lastUsedYesterday": "Izmantots vakar",
             "lastUsedDaysAgo": "Izmantots pirms {days} dienām",
-            "securityNote": "Konts ir aizsargāts ar Argon2id + AES-KW + AES-256-GCM šifrēšanu"
+            "securityNote": "Konts ir aizsargāts ar Argon2id + AES-KW + AES-256-GCM šifrēšanu",
+            "dataKeyUnreadable": "Šī konta datus šajā ierīcē nevar atbloķēt. Dublējums tika izveidots citā datorā; eksportējiet to tur vēlreiz, iestatot šim kontam paroli, un pēc tam importējiet šeit.",
+            "passphraseRequired": "Ievadiet pašreizējo konta paroli.",
+            "passphraseNotNeeded": "Šim kontam nav ievadāmas paroles.",
+            "userLocked": "Šis konts ir bloķēts. Vispirms to atbloķējiet un mēģiniet vēlreiz.",
+            "noActiveUser": "Vispirms pārslēdzieties uz šo kontu un mēģiniet vēlreiz.",
+            "notAuthorized": "Jums nav atļaujas mainīt šo kontu.",
+            "vaultLocked": "Vispirms atbloķējiet savu kontu un mēģiniet vēlreiz.",
+            "storeNotReady": "Vispirms atbloķējiet glabātavu un mēģiniet vēlreiz.",
+            "cannotDemoteLastAdmin": "Pēdējo administratoru nevar noņemt.",
+            "cannotDeleteLastAdmin": "Pēdējo administratoru nevar dzēst.",
+            "cannotDeleteLastUser": "Pēdējo kontu nevar dzēst.",
+            "adminResetNotForSelf": "Savā kontā izmantojiet Mainīt paroli.",
+            "userNotFound": "Šis konts vairs nepastāv."
         },
         "opendrive": {
             "privacyTitle": "OpenDrive privātums",

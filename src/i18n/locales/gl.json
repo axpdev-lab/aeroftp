@@ -973,7 +973,9 @@
             "backupImportAny": "Importar calquera",
             "backupImportAnyDesc": "Detecta rclone e todos os demais formatos de copia de seguranza compatíbeis",
             "bridgeSearchApps": "Buscar aplicacións...",
-            "bridgeNoApps": "Ningunha aplicación coincide coa busca"
+            "bridgeNoApps": "Ningunha aplicación coincide coa busca",
+            "keystoreRekeyedPartitions": "Volvéronse cifrar {count} conta(s) para este dispositivo.",
+            "keystoreUnreadablePartitions": "Non se puideron desbloquear {count} conta(s) neste dispositivo. A copia de seguranza fíxose noutro computador: expórtaa de novo alí cunha contrasinal definida para esas contas e logo impórtaa aquí."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4592,7 +4594,20 @@
             "lastUsedToday": "Usado hoxe",
             "lastUsedYesterday": "Usado onte",
             "lastUsedDaysAgo": "Usado hai {days} días",
-            "securityNote": "Conta protexida con cifrado Argon2id + AES-KW + AES-256-GCM"
+            "securityNote": "Conta protexida con cifrado Argon2id + AES-KW + AES-256-GCM",
+            "dataKeyUnreadable": "Os datos desta conta non se poden desbloquear neste dispositivo. A copia de seguranza creouse noutro computador; expórtaa de novo alí cunha contrasinal definida para esta conta e logo impórtaa aquí.",
+            "passphraseRequired": "Introduce o contrasinal actual da túa conta.",
+            "passphraseNotNeeded": "Esta conta non ten ningún contrasinal que introducir.",
+            "userLocked": "Esta conta está bloqueada. Desbloquéaa primeiro e téntao de novo.",
+            "noActiveUser": "Cambia primeiro a esta conta e téntao de novo.",
+            "notAuthorized": "Non tes permiso para modificar esa conta.",
+            "vaultLocked": "Desbloquea primeiro a túa conta e téntao de novo.",
+            "storeNotReady": "Desbloquea primeiro a caixa forte e téntao de novo.",
+            "cannotDemoteLastAdmin": "Non podes quitar o último administrador.",
+            "cannotDeleteLastAdmin": "Non podes eliminar o último administrador.",
+            "cannotDeleteLastUser": "Non podes eliminar a última conta.",
+            "adminResetNotForSelf": "Usa Cambiar contrasinal na túa propia conta.",
+            "userNotFound": "Esta conta xa non existe."
         },
         "opendrive": {
             "privacyTitle": "Privacidade de OpenDrive",

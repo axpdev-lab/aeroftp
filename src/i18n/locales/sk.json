@@ -973,7 +973,9 @@
             "backupImportAny": "Importovať čokoľvek",
             "backupImportAnyDesc": "Rozpozná rclone a každý ďalší podporovaný formát zálohy",
             "bridgeSearchApps": "Hľadať aplikácie...",
-            "bridgeNoApps": "Žiadne aplikácie nezodpovedajú hľadaniu"
+            "bridgeNoApps": "Žiadne aplikácie nezodpovedajú hľadaniu",
+            "keystoreRekeyedPartitions": "Pre toto zariadenie bol zmenený kľúč {count} účtu/účtov.",
+            "keystoreUnreadablePartitions": "Na tomto zariadení sa nepodarilo odomknúť {count} účet/účtov. Záloha bola vytvorená na inom počítači: tam ju znova vyexportujte s heslom nastaveným pre tieto účty a potom ju sem naimportujte."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4573,7 +4575,20 @@
             "lastUsedToday": "Použité dnes",
             "lastUsedYesterday": "Použité včera",
             "lastUsedDaysAgo": "Použité pred {days} dňami",
-            "securityNote": "Účet chránený šifrovaním Argon2id + AES-KW + AES-256-GCM"
+            "securityNote": "Účet chránený šifrovaním Argon2id + AES-KW + AES-256-GCM",
+            "dataKeyUnreadable": "Údaje tohto účtu sa na tomto zariadení nedajú odomknúť. Záloha bola vytvorená na inom počítači; tam ju znova vyexportujte s heslom nastaveným pre tento účet a potom ju sem naimportujte.",
+            "passphraseRequired": "Zadajte svoje aktuálne heslo k účtu.",
+            "passphraseNotNeeded": "Tento účet nemá žiadne heslo na zadanie.",
+            "userLocked": "Tento účet je uzamknutý. Najprv ho odomknite a skúste to znova.",
+            "noActiveUser": "Najprv prepnite na tento účet a skúste to znova.",
+            "notAuthorized": "Nemáte oprávnenie meniť tento účet.",
+            "vaultLocked": "Najprv odomknite svoj účet a skúste to znova.",
+            "storeNotReady": "Najprv odomknite trezor a skúste to znova.",
+            "cannotDemoteLastAdmin": "Posledného správcu nemožno odstrániť.",
+            "cannotDeleteLastAdmin": "Posledného správcu nemožno odstrániť.",
+            "cannotDeleteLastUser": "Posledný účet nemožno odstrániť.",
+            "adminResetNotForSelf": "Pri vlastnom účte použite Zmeniť heslo.",
+            "userNotFound": "Tento účet už neexistuje."
         },
         "opendrive": {
             "privacyTitle": "Súkromie OpenDrive",

@@ -973,7 +973,9 @@
             "backupImportAny": "Importer enhver",
             "backupImportAnyDesc": "Registrerer rclone og alle andre understøttede sikkerhedskopiformater",
             "bridgeSearchApps": "Søg apps...",
-            "bridgeNoApps": "Ingen apps matcher din søgning"
+            "bridgeNoApps": "Ingen apps matcher din søgning",
+            "keystoreRekeyedPartitions": "Genkrypterede {count} konto(er) til denne enhed.",
+            "keystoreUnreadablePartitions": "{count} konto(er) kunne ikke låses op på denne enhed. Sikkerhedskopien blev lavet på en anden computer: eksportér den igen der med en adgangskode angivet for disse konti, og importér den derefter her."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4573,7 +4575,20 @@
             "lastUsedToday": "Brugt i dag",
             "lastUsedYesterday": "Brugt i går",
             "lastUsedDaysAgo": "Brugt for {days} dage siden",
-            "securityNote": "Konto beskyttet med Argon2id + AES-KW + AES-256-GCM-kryptering"
+            "securityNote": "Konto beskyttet med Argon2id + AES-KW + AES-256-GCM-kryptering",
+            "dataKeyUnreadable": "Denne kontos data kan ikke låses op på denne enhed. Sikkerhedskopien blev oprettet på en anden computer; eksportér den igen der med en adgangskode angivet for denne konto, og importér den derefter her.",
+            "passphraseRequired": "Indtast din nuværende kontoadgangskode.",
+            "passphraseNotNeeded": "Denne konto har ingen adgangskode at indtaste.",
+            "userLocked": "Denne konto er låst. Lås den op først, og prøv igen.",
+            "noActiveUser": "Skift til denne konto først, og prøv igen.",
+            "notAuthorized": "Du har ikke tilladelse til at ændre den konto.",
+            "vaultLocked": "Lås din konto op først, og prøv igen.",
+            "storeNotReady": "Lås boksen op først, og prøv igen.",
+            "cannotDemoteLastAdmin": "Du kan ikke fjerne den sidste administrator.",
+            "cannotDeleteLastAdmin": "Du kan ikke slette den sidste administrator.",
+            "cannotDeleteLastUser": "Du kan ikke slette den sidste konto.",
+            "adminResetNotForSelf": "Brug Skift adgangskode på din egen konto.",
+            "userNotFound": "Denne konto findes ikke længere."
         },
         "opendrive": {
             "privacyTitle": "OpenDrive-privatliv",

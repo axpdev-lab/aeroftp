@@ -973,7 +973,9 @@
             "backupImportAny": "Importer n'importe quoi",
             "backupImportAnyDesc": "Détecte rclone et tous les autres formats de sauvegarde pris en charge",
             "bridgeSearchApps": "Rechercher des applications...",
-            "bridgeNoApps": "Aucune application ne correspond à votre recherche"
+            "bridgeNoApps": "Aucune application ne correspond à votre recherche",
+            "keystoreRekeyedPartitions": "{count} compte(s) ré-chiffré(s) pour cet appareil.",
+            "keystoreUnreadablePartitions": "{count} compte(s) n'ont pas pu être déverrouillés sur cet appareil. La sauvegarde a été créée sur un autre ordinateur : réexportez-la depuis celui-ci avec un mot de passe défini pour ces comptes, puis importez-la ici."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4573,7 +4575,20 @@
             "lastUsedToday": "Utilisé aujourd'hui",
             "lastUsedYesterday": "Utilisé hier",
             "lastUsedDaysAgo": "Utilisé il y a {days} jours",
-            "securityNote": "Compte protégé par chiffrement Argon2id + AES-KW + AES-256-GCM"
+            "securityNote": "Compte protégé par chiffrement Argon2id + AES-KW + AES-256-GCM",
+            "dataKeyUnreadable": "Les données de ce compte ne peuvent pas être déverrouillées sur cet appareil. La sauvegarde a été créée sur un autre ordinateur ; réexportez-la depuis celui-ci avec un mot de passe défini pour ce compte, puis importez-la ici.",
+            "passphraseRequired": "Saisissez le mot de passe actuel de votre compte.",
+            "passphraseNotNeeded": "Ce compte n'a aucun mot de passe à saisir.",
+            "userLocked": "Ce compte est verrouillé. Déverrouillez-le d'abord, puis réessayez.",
+            "noActiveUser": "Basculez d'abord sur ce compte, puis réessayez.",
+            "notAuthorized": "Vous n'avez pas l'autorisation de modifier ce compte.",
+            "vaultLocked": "Déverrouillez d'abord votre compte, puis réessayez.",
+            "storeNotReady": "Déverrouillez d'abord le coffre-fort, puis réessayez.",
+            "cannotDemoteLastAdmin": "Vous ne pouvez pas retirer le dernier administrateur.",
+            "cannotDeleteLastAdmin": "Vous ne pouvez pas supprimer le dernier administrateur.",
+            "cannotDeleteLastUser": "Vous ne pouvez pas supprimer le dernier compte.",
+            "adminResetNotForSelf": "Utilisez Changer le mot de passe sur votre propre compte.",
+            "userNotFound": "Ce compte n'existe plus."
         },
         "opendrive": {
             "privacyTitle": "Confidentialité OpenDrive",

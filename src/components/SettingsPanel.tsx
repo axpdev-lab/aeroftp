@@ -3202,6 +3202,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                             // rewrote on disk. UI must prompt for a restart so
                                                                             // the imported state actually takes effect.
                                                                             requiresRestart?: boolean;
+                                                                            // F-012: passphrase-less partitions re-keyed to this
+                                                                            // machine, and any that stayed unreadable (backup from
+                                                                            // another machine without a portable key).
+                                                                            userPartitionsRekeyed?: number;
+                                                                            userPartitionsUnreadable?: number;
                                                                         }>('import_keystore', {
                                                                             password: keystoreImportPassword,
                                                                             filePath: keystoreImportFilePath,
@@ -3246,11 +3251,23 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                             imported: result.imported,
                                                                             skipped: result.skipped,
                                                                         });
+                                                                        // F-012: surface the cross-machine re-key outcome so a
+                                                                        // backup import never silently leaves an empty "My
+                                                                        // Servers" with no explanation.
+                                                                        const extraNotes: string[] = [];
+                                                                        if ((result.userPartitionsRekeyed ?? 0) > 0) {
+                                                                            extraNotes.push(t('settings.keystoreRekeyedPartitions', { count: result.userPartitionsRekeyed ?? 0, defaultValue: 'Re-keyed {count} account(s) to this device.' }));
+                                                                        }
+                                                                        if ((result.userPartitionsUnreadable ?? 0) > 0) {
+                                                                            extraNotes.push(t('settings.keystoreUnreadablePartitions', { count: result.userPartitionsUnreadable ?? 0, defaultValue: '{count} account(s) could not be unlocked on this device. The backup was made on another computer: re-export it there with a password set on those accounts, then import it here.' }));
+                                                                        }
+                                                                        if (result.requiresRestart) {
+                                                                            extraNotes.push(t('settings.keystoreRestartRequired', { defaultValue: 'Restart AeroFTP to apply restored databases and plugins.' }));
+                                                                        }
+                                                                        const importHadWarning = (result.userPartitionsUnreadable ?? 0) > 0 || !!result.requiresRestart;
                                                                         setKeystoreMessage({
-                                                                            type: result.requiresRestart ? 'info' : 'success',
-                                                                            text: result.requiresRestart
-                                                                                ? `${successText}. ${t('settings.keystoreRestartRequired', { defaultValue: 'Restart AeroFTP to apply restored databases and plugins.' })}`
-                                                                                : successText,
+                                                                            type: importHadWarning ? 'info' : 'success',
+                                                                            text: extraNotes.length > 0 ? `${successText}. ${extraNotes.join(' ')}` : successText,
                                                                         });
 
                                                                         // Re-query actual vault count + categories (not optimistic)

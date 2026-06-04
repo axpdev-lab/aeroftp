@@ -973,7 +973,9 @@
             "backupImportAny": "Uvezi bilo koji",
             "backupImportAnyDesc": "Otkriva rclone i sve ostale podržane formate sigurnosne kopije",
             "bridgeSearchApps": "Pretraži aplikacije...",
-            "bridgeNoApps": "Nijedna aplikacija ne odgovara pretrazi"
+            "bridgeNoApps": "Nijedna aplikacija ne odgovara pretrazi",
+            "keystoreRekeyedPartitions": "Ključ za {count} račun(a) ponovno je postavljen za ovaj uređaj.",
+            "keystoreUnreadablePartitions": "{count} račun(a) nije se moglo otključati na ovom uređaju. Sigurnosna kopija napravljena je na drugom računalu: ondje je ponovno izvezite uz lozinku postavljenu za te račune, a zatim je uvezite ovdje."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4573,7 +4575,20 @@
             "lastUsedToday": "Korišteno danas",
             "lastUsedYesterday": "Korišteno jučer",
             "lastUsedDaysAgo": "Korišteno prije {days} dana",
-            "securityNote": "Račun zaštićen Argon2id + AES-KW + AES-256-GCM enkripcijom"
+            "securityNote": "Račun zaštićen Argon2id + AES-KW + AES-256-GCM enkripcijom",
+            "dataKeyUnreadable": "Podaci ovog računa ne mogu se otključati na ovom uređaju. Sigurnosna kopija stvorena je na drugom računalu; ondje je ponovno izvezite uz lozinku postavljenu za ovaj račun, a zatim je uvezite ovdje.",
+            "passphraseRequired": "Unesite trenutnu lozinku računa.",
+            "passphraseNotNeeded": "Ovaj račun nema lozinku za unos.",
+            "userLocked": "Ovaj je račun zaključan. Prvo ga otključajte pa pokušajte ponovno.",
+            "noActiveUser": "Prvo se prebacite na ovaj račun pa pokušajte ponovno.",
+            "notAuthorized": "Nemate dopuštenje za izmjenu tog računa.",
+            "vaultLocked": "Prvo otključajte svoj račun pa pokušajte ponovno.",
+            "storeNotReady": "Prvo otključajte trezor pa pokušajte ponovno.",
+            "cannotDemoteLastAdmin": "Ne možete ukloniti posljednjeg administratora.",
+            "cannotDeleteLastAdmin": "Ne možete izbrisati posljednjeg administratora.",
+            "cannotDeleteLastUser": "Ne možete izbrisati posljednji račun.",
+            "adminResetNotForSelf": "Koristite Promjena lozinke na vlastitom računu.",
+            "userNotFound": "Ovaj račun više ne postoji."
         },
         "opendrive": {
             "privacyTitle": "Privatnost OpenDrive",

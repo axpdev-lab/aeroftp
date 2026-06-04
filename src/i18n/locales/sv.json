@@ -973,7 +973,9 @@
             "backupImportAny": "Importera valfri",
             "backupImportAnyDesc": "Identifierar rclone och alla andra format för säkerhetskopior som stöds",
             "bridgeSearchApps": "Sök appar...",
-            "bridgeNoApps": "Inga appar matchar din sökning"
+            "bridgeNoApps": "Inga appar matchar din sökning",
+            "keystoreRekeyedPartitions": "Åternycklade {count} konto(n) för den här enheten.",
+            "keystoreUnreadablePartitions": "{count} konto(n) kunde inte låsas upp på den här enheten. Säkerhetskopian gjordes på en annan dator: exportera den på nytt där med ett lösenord angivet för de kontona och importera den sedan här."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4573,7 +4575,20 @@
             "lastUsedToday": "Använt idag",
             "lastUsedYesterday": "Använt igår",
             "lastUsedDaysAgo": "Använt för {days} dagar sedan",
-            "securityNote": "Konto skyddat med Argon2id + AES-KW + AES-256-GCM-kryptering"
+            "securityNote": "Konto skyddat med Argon2id + AES-KW + AES-256-GCM-kryptering",
+            "dataKeyUnreadable": "Det här kontots data kan inte låsas upp på den här enheten. Säkerhetskopian skapades på en annan dator; exportera den på nytt där med ett lösenord angivet för det här kontot och importera den sedan här.",
+            "passphraseRequired": "Ange ditt nuvarande kontolösenord.",
+            "passphraseNotNeeded": "Det här kontot har inget lösenord att ange.",
+            "userLocked": "Det här kontot är låst. Lås upp det först och försök igen.",
+            "noActiveUser": "Byt till det här kontot först och försök igen.",
+            "notAuthorized": "Du har inte behörighet att ändra det kontot.",
+            "vaultLocked": "Lås upp ditt konto först och försök igen.",
+            "storeNotReady": "Lås upp valvet först och försök igen.",
+            "cannotDemoteLastAdmin": "Du kan inte ta bort den sista administratören.",
+            "cannotDeleteLastAdmin": "Du kan inte radera den sista administratören.",
+            "cannotDeleteLastUser": "Du kan inte radera det sista kontot.",
+            "adminResetNotForSelf": "Använd Ändra lösenord på ditt eget konto.",
+            "userNotFound": "Det här kontot finns inte längre."
         },
         "opendrive": {
             "privacyTitle": "OpenDrive-sekretess",

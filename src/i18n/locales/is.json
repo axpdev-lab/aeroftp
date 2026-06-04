@@ -973,7 +973,9 @@
             "backupImportAny": "Flytja inn hvað sem er",
             "backupImportAnyDesc": "Greinir rclone og öll önnur studd afritunarsnið",
             "bridgeSearchApps": "Leita að forritum...",
-            "bridgeNoApps": "Engin forrit passa við leitina"
+            "bridgeNoApps": "Engin forrit passa við leitina",
+            "keystoreRekeyedPartitions": "Endurlyklaði {count} reikning(a) fyrir þetta tæki.",
+            "keystoreUnreadablePartitions": "Ekki tókst að opna {count} reikning(a) á þessu tæki. Afritið var búið til á annarri tölvu: flyttu það aftur út þar með lykilorði stillt fyrir þá reikninga og flyttu það svo inn hér."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4592,7 +4594,20 @@
             "lastUsedToday": "Notað í dag",
             "lastUsedYesterday": "Notað í gær",
             "lastUsedDaysAgo": "Notað fyrir {days} dögum",
-            "securityNote": "Reikningur varinn með Argon2id + AES-KW + AES-256-GCM dulkóðun"
+            "securityNote": "Reikningur varinn með Argon2id + AES-KW + AES-256-GCM dulkóðun",
+            "dataKeyUnreadable": "Ekki er hægt að opna gögn þessa reiknings á þessu tæki. Afritið var búið til á annarri tölvu; flyttu það aftur út þar með lykilorði stillt fyrir þennan reikning og flyttu það svo inn hér.",
+            "passphraseRequired": "Sláðu inn núverandi lykilorð reikningsins.",
+            "passphraseNotNeeded": "Þessi reikningur er ekki með lykilorð til að slá inn.",
+            "userLocked": "Þessi reikningur er læstur. Opnaðu hann fyrst og reyndu aftur.",
+            "noActiveUser": "Skiptu fyrst yfir á þennan reikning og reyndu aftur.",
+            "notAuthorized": "Þú hefur ekki heimild til að breyta þeim reikningi.",
+            "vaultLocked": "Opnaðu reikninginn þinn fyrst og reyndu aftur.",
+            "storeNotReady": "Opnaðu hvelfinguna fyrst og reyndu aftur.",
+            "cannotDemoteLastAdmin": "Þú getur ekki fjarlægt síðasta stjórnandann.",
+            "cannotDeleteLastAdmin": "Þú getur ekki eytt síðasta stjórnandanum.",
+            "cannotDeleteLastUser": "Þú getur ekki eytt síðasta reikningnum.",
+            "adminResetNotForSelf": "Notaðu Breyta lykilorði á þínum eigin reikningi.",
+            "userNotFound": "Þessi reikningur er ekki lengur til."
         },
         "opendrive": {
             "privacyTitle": "OpenDrive persónuvernd",

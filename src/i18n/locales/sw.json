@@ -973,7 +973,9 @@
             "backupImportAny": "Ingiza Yoyote",
             "backupImportAnyDesc": "Hutambua rclone na kila muundo mwingine wa hifadhi nakala unaotegemezwa",
             "bridgeSearchApps": "Tafuta programu...",
-            "bridgeNoApps": "Hakuna programu zinazolingana na utafutaji wako"
+            "bridgeNoApps": "Hakuna programu zinazolingana na utafutaji wako",
+            "keystoreRekeyedPartitions": "Akaunti {count} zimewekewa ufunguo upya kwa kifaa hiki.",
+            "keystoreUnreadablePartitions": "Akaunti {count} hazikuweza kufunguliwa kwenye kifaa hiki. Nakala rudufu ilitengenezwa kwenye kompyuta nyingine: isafirishe tena huko ukiwa umeweka nenosiri kwa akaunti hizo, kisha uiingize hapa."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4573,7 +4575,20 @@
             "lastUsedToday": "Imetumika leo",
             "lastUsedYesterday": "Imetumika jana",
             "lastUsedDaysAgo": "Imetumika siku {days} zilizopita",
-            "securityNote": "Akaunti imelindwa kwa usimbaji wa Argon2id + AES-KW + AES-256-GCM"
+            "securityNote": "Akaunti imelindwa kwa usimbaji wa Argon2id + AES-KW + AES-256-GCM",
+            "dataKeyUnreadable": "Data ya akaunti hii haiwezi kufunguliwa kwenye kifaa hiki. Nakala rudufu iliundwa kwenye kompyuta nyingine; isafirishe tena huko ukiwa umeweka nenosiri kwa akaunti hii, kisha uiingize hapa.",
+            "passphraseRequired": "Weka nenosiri la sasa la akaunti yako.",
+            "passphraseNotNeeded": "Akaunti hii haina nenosiri la kuingiza.",
+            "userLocked": "Akaunti hii imefungwa. Ifungue kwanza, kisha ujaribu tena.",
+            "noActiveUser": "Badilisha kwenda akaunti hii kwanza, kisha ujaribu tena.",
+            "notAuthorized": "Huna ruhusa ya kubadilisha akaunti hiyo.",
+            "vaultLocked": "Fungua akaunti yako kwanza, kisha ujaribu tena.",
+            "storeNotReady": "Fungua kasha la siri kwanza, kisha ujaribu tena.",
+            "cannotDemoteLastAdmin": "Huwezi kumwondoa msimamizi wa mwisho.",
+            "cannotDeleteLastAdmin": "Huwezi kumfuta msimamizi wa mwisho.",
+            "cannotDeleteLastUser": "Huwezi kufuta akaunti ya mwisho.",
+            "adminResetNotForSelf": "Tumia Badilisha Nenosiri kwenye akaunti yako mwenyewe.",
+            "userNotFound": "Akaunti hii haipo tena."
         },
         "opendrive": {
             "privacyTitle": "Faragha ya OpenDrive",

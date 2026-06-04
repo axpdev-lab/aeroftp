@@ -973,7 +973,9 @@
             "backupImportAny": "Inportatu edozein",
             "backupImportAnyDesc": "rclone eta onartutako beste edozein babeskopia-formatu hautematen ditu",
             "bridgeSearchApps": "Bilatu aplikazioak...",
-            "bridgeNoApps": "Ez dago bilaketarekin bat datorren aplikaziorik"
+            "bridgeNoApps": "Ez dago bilaketarekin bat datorren aplikaziorik",
+            "keystoreRekeyedPartitions": "{count} kontu birgakotu dira gailu honetarako.",
+            "keystoreUnreadablePartitions": "{count} kontu ezin izan dira gailu honetan desblokeatu. Babeskopia beste ordenagailu batean egin zen: esportatu berriz hor kontu horientzat pasahitz bat ezarrita, eta inportatu hemen ondoren."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4592,7 +4594,20 @@
             "lastUsedToday": "Gaur erabilia",
             "lastUsedYesterday": "Atzo erabilia",
             "lastUsedDaysAgo": "Duela {days} egun erabilia",
-            "securityNote": "Kontua Argon2id + AES-KW + AES-256-GCM enkriptaziorekin babestuta"
+            "securityNote": "Kontua Argon2id + AES-KW + AES-256-GCM enkriptaziorekin babestuta",
+            "dataKeyUnreadable": "Kontu honen datuak ezin dira gailu honetan desblokeatu. Babeskopia beste ordenagailu batean sortu zen; esportatu berriz hor kontu honentzat pasahitz bat ezarrita, eta inportatu hemen ondoren.",
+            "passphraseRequired": "Sartu zure uneko kontuaren pasahitza.",
+            "passphraseNotNeeded": "Kontu honek ez du sartzeko pasahitzik.",
+            "userLocked": "Kontu hau blokeatuta dago. Desblokeatu lehenik eta saiatu berriro.",
+            "noActiveUser": "Aldatu lehenik kontu honetara eta saiatu berriro.",
+            "notAuthorized": "Ez duzu kontu hori aldatzeko baimenik.",
+            "vaultLocked": "Desblokeatu lehenik zure kontua eta saiatu berriro.",
+            "storeNotReady": "Desblokeatu lehenik kutxa gotorra eta saiatu berriro.",
+            "cannotDemoteLastAdmin": "Ezin duzu azken administratzailea kendu.",
+            "cannotDeleteLastAdmin": "Ezin duzu azken administratzailea ezabatu.",
+            "cannotDeleteLastUser": "Ezin duzu azken kontua ezabatu.",
+            "adminResetNotForSelf": "Erabili Aldatu pasahitza zure kontuan.",
+            "userNotFound": "Kontu hau jada ez dago."
         },
         "opendrive": {
             "privacyTitle": "OpenDrive pribatutasuna",

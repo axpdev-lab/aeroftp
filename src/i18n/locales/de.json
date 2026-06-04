@@ -973,7 +973,9 @@
             "backupImportAny": "Beliebiges importieren",
             "backupImportAnyDesc": "Erkennt rclone und jedes andere unterstützte Backup-Format",
             "bridgeSearchApps": "Apps suchen...",
-            "bridgeNoApps": "Keine Apps entsprechen Ihrer Suche"
+            "bridgeNoApps": "Keine Apps entsprechen Ihrer Suche",
+            "keystoreRekeyedPartitions": "{count} Konto/Konten für dieses Gerät neu verschlüsselt.",
+            "keystoreUnreadablePartitions": "{count} Konto/Konten konnten auf diesem Gerät nicht entsperrt werden. Die Sicherung wurde auf einem anderen Computer erstellt: exportiere sie dort erneut mit einem für diese Konten festgelegten Passwort und importiere sie dann hier."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4573,7 +4575,20 @@
             "lastUsedToday": "Heute verwendet",
             "lastUsedYesterday": "Gestern verwendet",
             "lastUsedDaysAgo": "Vor {days} Tagen verwendet",
-            "securityNote": "Konto geschützt mit Argon2id + AES-KW + AES-256-GCM-Verschlüsselung"
+            "securityNote": "Konto geschützt mit Argon2id + AES-KW + AES-256-GCM-Verschlüsselung",
+            "dataKeyUnreadable": "Die Daten dieses Kontos können auf diesem Gerät nicht entsperrt werden. Die Sicherung wurde auf einem anderen Computer erstellt; exportiere sie dort erneut mit einem für dieses Konto festgelegten Passwort und importiere sie dann hier.",
+            "passphraseRequired": "Gib das aktuelle Passwort deines Kontos ein.",
+            "passphraseNotNeeded": "Dieses Konto hat kein Passwort zur Eingabe.",
+            "userLocked": "Dieses Konto ist gesperrt. Entsperre es zuerst und versuche es erneut.",
+            "noActiveUser": "Wechsle zuerst zu diesem Konto und versuche es erneut.",
+            "notAuthorized": "Du hast keine Berechtigung, dieses Konto zu ändern.",
+            "vaultLocked": "Entsperre zuerst dein Konto und versuche es erneut.",
+            "storeNotReady": "Entsperre zuerst den Tresor und versuche es erneut.",
+            "cannotDemoteLastAdmin": "Du kannst den letzten Administrator nicht entfernen.",
+            "cannotDeleteLastAdmin": "Du kannst den letzten Administrator nicht löschen.",
+            "cannotDeleteLastUser": "Du kannst das letzte Konto nicht löschen.",
+            "adminResetNotForSelf": "Verwende Passwort ändern für dein eigenes Konto.",
+            "userNotFound": "Dieses Konto existiert nicht mehr."
         },
         "opendrive": {
             "privacyTitle": "OpenDrive Datenschutz",

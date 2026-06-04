@@ -973,7 +973,9 @@
             "backupImportAny": "Importuj dowolny",
             "backupImportAnyDesc": "Wykrywa rclone i każdy inny obsługiwany format kopii zapasowej",
             "bridgeSearchApps": "Szukaj aplikacji...",
-            "bridgeNoApps": "Żadna aplikacja nie pasuje do wyszukiwania"
+            "bridgeNoApps": "Żadna aplikacja nie pasuje do wyszukiwania",
+            "keystoreRekeyedPartitions": "Ponownie zaszyfrowano klucz {count} konta/kont dla tego urządzenia.",
+            "keystoreUnreadablePartitions": "Nie udało się odblokować {count} konta/kont na tym urządzeniu. Kopia zapasowa została utworzona na innym komputerze: wyeksportuj ją tam ponownie z hasłem ustawionym dla tych kont, a następnie zaimportuj ją tutaj."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4573,7 +4575,20 @@
             "lastUsedToday": "Użyte dzisiaj",
             "lastUsedYesterday": "Użyte wczoraj",
             "lastUsedDaysAgo": "Użyte {days} dni temu",
-            "securityNote": "Konto chronione szyfrowaniem Argon2id + AES-KW + AES-256-GCM"
+            "securityNote": "Konto chronione szyfrowaniem Argon2id + AES-KW + AES-256-GCM",
+            "dataKeyUnreadable": "Danych tego konta nie można odblokować na tym urządzeniu. Kopia zapasowa została utworzona na innym komputerze; wyeksportuj ją tam ponownie z hasłem ustawionym dla tego konta, a następnie zaimportuj ją tutaj.",
+            "passphraseRequired": "Wprowadź aktualne hasło konta.",
+            "passphraseNotNeeded": "To konto nie ma hasła do wprowadzenia.",
+            "userLocked": "To konto jest zablokowane. Najpierw je odblokuj, a potem spróbuj ponownie.",
+            "noActiveUser": "Najpierw przełącz się na to konto, a potem spróbuj ponownie.",
+            "notAuthorized": "Nie masz uprawnień do zmiany tego konta.",
+            "vaultLocked": "Najpierw odblokuj swoje konto, a potem spróbuj ponownie.",
+            "storeNotReady": "Najpierw odblokuj sejf, a potem spróbuj ponownie.",
+            "cannotDemoteLastAdmin": "Nie możesz usunąć ostatniego administratora.",
+            "cannotDeleteLastAdmin": "Nie możesz usunąć ostatniego administratora.",
+            "cannotDeleteLastUser": "Nie możesz usunąć ostatniego konta.",
+            "adminResetNotForSelf": "Na własnym koncie użyj opcji Zmień hasło.",
+            "userNotFound": "To konto już nie istnieje."
         },
         "opendrive": {
             "privacyTitle": "Prywatność OpenDrive",

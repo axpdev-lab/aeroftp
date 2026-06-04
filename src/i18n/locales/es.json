@@ -973,7 +973,9 @@
             "backupImportAny": "Importar cualquiera",
             "backupImportAnyDesc": "Detecta rclone y cualquier otro formato de copia compatible",
             "bridgeSearchApps": "Buscar aplicaciones...",
-            "bridgeNoApps": "Ninguna aplicación coincide con tu búsqueda"
+            "bridgeNoApps": "Ninguna aplicación coincide con tu búsqueda",
+            "keystoreRekeyedPartitions": "Se ha vuelto a cifrar {count} cuenta(s) para este dispositivo.",
+            "keystoreUnreadablePartitions": "No se pudieron desbloquear {count} cuenta(s) en este dispositivo. La copia de seguridad se hizo en otro equipo: vuelve a exportarla allí con una contraseña establecida para esas cuentas y luego impórtala aquí."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4573,7 +4575,20 @@
             "lastUsedToday": "Usado hoy",
             "lastUsedYesterday": "Usado ayer",
             "lastUsedDaysAgo": "Usado hace {days} días",
-            "securityNote": "Cuenta protegida con cifrado Argon2id + AES-KW + AES-256-GCM"
+            "securityNote": "Cuenta protegida con cifrado Argon2id + AES-KW + AES-256-GCM",
+            "dataKeyUnreadable": "Los datos de esta cuenta no se pueden desbloquear en este dispositivo. La copia de seguridad se creó en otro equipo; vuelve a exportarla allí con una contraseña establecida para esta cuenta y luego impórtala aquí.",
+            "passphraseRequired": "Introduce la contraseña actual de tu cuenta.",
+            "passphraseNotNeeded": "Esta cuenta no tiene ninguna contraseña que introducir.",
+            "userLocked": "Esta cuenta está bloqueada. Desbloquéala primero e inténtalo de nuevo.",
+            "noActiveUser": "Cambia primero a esta cuenta e inténtalo de nuevo.",
+            "notAuthorized": "No tienes permiso para modificar esa cuenta.",
+            "vaultLocked": "Desbloquea primero tu cuenta e inténtalo de nuevo.",
+            "storeNotReady": "Desbloquea primero la caja fuerte e inténtalo de nuevo.",
+            "cannotDemoteLastAdmin": "No puedes quitar al último administrador.",
+            "cannotDeleteLastAdmin": "No puedes eliminar al último administrador.",
+            "cannotDeleteLastUser": "No puedes eliminar la última cuenta.",
+            "adminResetNotForSelf": "Usa Cambiar contraseña en tu propia cuenta.",
+            "userNotFound": "Esta cuenta ya no existe."
         },
         "opendrive": {
             "privacyTitle": "Privacidad de OpenDrive",

@@ -973,7 +973,9 @@
             "backupImportAny": "Tuo mikä tahansa",
             "backupImportAnyDesc": "Tunnistaa rclonen ja kaikki muut tuetut varmuuskopiomuodot",
             "bridgeSearchApps": "Hae sovelluksia...",
-            "bridgeNoApps": "Mikään sovellus ei vastaa hakuasi"
+            "bridgeNoApps": "Mikään sovellus ei vastaa hakuasi",
+            "keystoreRekeyedPartitions": "{count} tilin avain vaihdettiin tälle laitteelle.",
+            "keystoreUnreadablePartitions": "{count} tiliä ei voitu avata tällä laitteella. Varmuuskopio tehtiin toisella tietokoneella: vie se siellä uudelleen näille tileille asetetulla salasanalla ja tuo se sitten tähän."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4573,7 +4575,20 @@
             "lastUsedToday": "Käytetty tänään",
             "lastUsedYesterday": "Käytetty eilen",
             "lastUsedDaysAgo": "Käytetty {days} päivää sitten",
-            "securityNote": "Tili suojattu Argon2id + AES-KW + AES-256-GCM -salauksella"
+            "securityNote": "Tili suojattu Argon2id + AES-KW + AES-256-GCM -salauksella",
+            "dataKeyUnreadable": "Tämän tilin tietoja ei voi avata tällä laitteella. Varmuuskopio luotiin toisella tietokoneella; vie se siellä uudelleen tälle tilille asetetulla salasanalla ja tuo se sitten tähän.",
+            "passphraseRequired": "Anna tilisi nykyinen salasana.",
+            "passphraseNotNeeded": "Tällä tilillä ei ole syötettävää salasanaa.",
+            "userLocked": "Tämä tili on lukittu. Avaa se ensin ja yritä uudelleen.",
+            "noActiveUser": "Vaihda ensin tähän tiliin ja yritä uudelleen.",
+            "notAuthorized": "Sinulla ei ole oikeutta muuttaa tuota tiliä.",
+            "vaultLocked": "Avaa ensin tilisi ja yritä uudelleen.",
+            "storeNotReady": "Avaa ensin holvi ja yritä uudelleen.",
+            "cannotDemoteLastAdmin": "Et voi poistaa viimeistä järjestelmänvalvojaa.",
+            "cannotDeleteLastAdmin": "Et voi poistaa viimeistä järjestelmänvalvojaa.",
+            "cannotDeleteLastUser": "Et voi poistaa viimeistä tiliä.",
+            "adminResetNotForSelf": "Käytä Vaihda salasana omalla tililläsi.",
+            "userNotFound": "Tätä tiliä ei ole enää olemassa."
         },
         "opendrive": {
             "privacyTitle": "OpenDrive-yksityisyys",
