@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { AlertTriangle, ArrowDownLeft, ArrowUpRight, Clock, Copy, Edit2, Folder, GripVertical, HardDrive, Loader2, Star, Trash2 } from 'lucide-react';
-import { ServerProfile, profileHasQuota, resolveEffectiveQuota } from '../../types';
+import { ServerProfile, profileHasQuota, resolveEffectiveQuota, effectiveManualCap } from '../../types';
 import { getServerSubtitle } from '../../utils/serverSubtitle';
 import { formatBytes } from '../../utils/formatters';
 import {
@@ -180,7 +180,7 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
     // with total:0 (scan ran before the cap, or against a duplicate profile
     // lacking options.manualTotalBytes).
     const q = server.lastQuota;
-    const manual = server.options?.manualTotalBytes;
+    const manual = effectiveManualCap(server.options?.manualTotalBytes, server.protocol, server.providerId, server.host);
     const rawUsed = q?.used && q.used > 0 ? q.used : 0;
     const rawTotal = q?.total && q.total > 0 ? q.total : 0;
     const eff = resolveEffectiveQuota(rawUsed, rawTotal, manual);

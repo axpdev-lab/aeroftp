@@ -1186,7 +1186,6 @@
             "manualTotalStorageHint": "Optional. Plan/account cap for backends with no quota API (FTP, S3, WebDAV) or that report only used space (Backblaze B2). The provider's own total always takes precedence.",
             "autoScanUsedOnConnect": "Calculate used storage on connect",
             "autoScanUsedOnConnectHint": "Only for backends with no used-space API (FTP, S3, WebDAV). Off by default: a large tree (e.g. a web project) is walked recursively, which can be slow. Otherwise use the StatusBar action on demand.",
-            "megacmdDfHint": "MEGAcmd uses mega-df directly to query used and total storage. The manual total override is not needed.",
             "localPathPlaceholder": "/home/user/projects",
             "logoutOnDisconnect": "Logout on disconnect",
             "logoutOnDisconnectDesc": "Terminate MEGAcmd session when closing connection",
