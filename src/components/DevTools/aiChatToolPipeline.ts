@@ -114,6 +114,38 @@ export function buildExecutionLevels(toolCalls: AgentToolCall[]): ExecutionLevel
     return levels;
 }
 
+/** PERF-05: max tool calls run concurrently within a single execution level. */
+const LEVEL_CONCURRENCY_LIMIT = 6;
+
+/**
+ * Run `worker` over `items` with a bounded number of in-flight calls, returning
+ * results in input order (like `Promise.allSettled`). A wide level (many
+ * path-independent tool calls) drains in capped waves instead of firing every
+ * local shell/grep/archive call at once, while still parallelizing up to the cap.
+ */
+async function settleWithLimit<T>(
+    items: T[],
+    worker: (item: T) => Promise<string | null>,
+    limit: number,
+): Promise<PromiseSettledResult<string | null>[]> {
+    const results: PromiseSettledResult<string | null>[] = new Array(items.length);
+    let cursor = 0;
+    const runOne = async (): Promise<void> => {
+        for (;;) {
+            const index = cursor++;
+            if (index >= items.length) return;
+            try {
+                results[index] = { status: 'fulfilled', value: await worker(items[index]) };
+            } catch (reason) {
+                results[index] = { status: 'rejected', reason };
+            }
+        }
+    };
+    const runners = Array.from({ length: Math.min(limit, items.length) }, () => runOne());
+    await Promise.all(runners);
+    return results;
+}
+
 /**
  * Execute tool calls in pipeline order: parallel within each level, sequential between levels.
  */
@@ -139,7 +171,7 @@ export async function executePipeline(
             runnableTools.push(toolCall);
         }
 
-        const settled = await Promise.allSettled(runnableTools.map(tc => executor(tc)));
+        const settled = await settleWithLimit(runnableTools, executor, LEVEL_CONCURRENCY_LIMIT);
         settled.forEach((result, index) => {
             const toolCall = runnableTools[index];
             if (result.status === 'fulfilled' && result.value !== null) {

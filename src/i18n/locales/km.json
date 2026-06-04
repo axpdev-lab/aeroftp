@@ -2257,7 +2257,12 @@
                 "thinkingDeep": "ជ្រៅ",
                 "thinkingLight": "ស្រាល",
                 "thinkingMaximum": "អតិបរមា",
-                "thinkingOff": "បិទ"
+                "thinkingOff": "បិទ",
+                "responseStyle": "រចនាប័ទ្មឆ្លើយតប",
+                "styleConcise": "សង្ខេប",
+                "styleDefault": "លំនាំដើម",
+                "styleExplanatory": "ពន្យល់",
+                "styleLearning": "សិក្សា"
             },
             "copy": "ចម្លង",
             "attachImage": "ភ្ជប់រូបភាព",

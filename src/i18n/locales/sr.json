@@ -2257,7 +2257,12 @@
                 "thinkingDeep": "Дубоко",
                 "thinkingLight": "Лагано",
                 "thinkingMaximum": "Максимум",
-                "thinkingOff": "Искључено"
+                "thinkingOff": "Искључено",
+                "responseStyle": "Стил одговора",
+                "styleConcise": "Сажето",
+                "styleDefault": "Подразумевано",
+                "styleExplanatory": "Објашњавајуће",
+                "styleLearning": "Учење"
             },
             "copy": "Kopiraj",
             "attachImage": "Priloži sliku",

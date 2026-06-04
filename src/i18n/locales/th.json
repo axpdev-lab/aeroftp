@@ -2257,7 +2257,12 @@
                 "thinkingDeep": "ลึก",
                 "thinkingLight": "เบา",
                 "thinkingMaximum": "สูงสุด",
-                "thinkingOff": "ปิด"
+                "thinkingOff": "ปิด",
+                "responseStyle": "รูปแบบการตอบ",
+                "styleConcise": "กระชับ",
+                "styleDefault": "ค่าเริ่มต้น",
+                "styleExplanatory": "อธิบาย",
+                "styleLearning": "การเรียนรู้"
             },
             "copy": "คัดลอก",
             "attachImage": "แนบรูปภาพ",

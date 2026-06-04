@@ -256,7 +256,11 @@ fn entry_json(e: &crate::providers::RemoteEntry, include_permissions: bool) -> V
 }
 
 fn normalize_server(args: &Value) -> Result<String, ToolError> {
-    get_str(args, "server")
+    // W1-2: `server` is optional. On the GUI an empty value selects the active
+    // connection (TauriToolCtx::remote_backend("")); on CLI/MCP an empty value
+    // surfaces a clear "server not found" from the backend resolver, since those
+    // surfaces always operate on a named vault profile.
+    Ok(get_str_opt(args, "server").unwrap_or_default())
 }
 
 fn normalize_path_arg(args: &Value, primary: &str, default: &str) -> String {

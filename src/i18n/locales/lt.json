@@ -2257,7 +2257,12 @@
                 "thinkingDeep": "Gilus",
                 "thinkingLight": "Lengvas",
                 "thinkingMaximum": "Maksimumas",
-                "thinkingOff": "Išjungta"
+                "thinkingOff": "Išjungta",
+                "responseStyle": "Atsakymo stilius",
+                "styleConcise": "Glaustas",
+                "styleDefault": "Numatytasis",
+                "styleExplanatory": "Aiškinamasis",
+                "styleLearning": "Mokomasis"
             },
             "copy": "Kopijuoti",
             "attachImage": "Pridėti vaizdą",

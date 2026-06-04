@@ -39,6 +39,7 @@ export const AGENT_TOOLS: AITool[] = [
         description: 'List files and folders in a remote directory',
         parameters: [
             { name: 'path', type: 'string', description: 'Remote directory path', required: true },
+            { name: 'server', type: 'string', description: 'Saved server name or ID. Omit to use the currently active connection.', required: false },
         ],
         dangerLevel: 'safe',
     },
@@ -47,6 +48,7 @@ export const AGENT_TOOLS: AITool[] = [
         description: 'Read a remote text file (max 5KB)',
         parameters: [
             { name: 'path', type: 'string', description: 'Remote file path', required: true },
+            { name: 'server', type: 'string', description: 'Saved server name or ID. Omit to use the currently active connection.', required: false },
         ],
         dangerLevel: 'safe',
     },
@@ -55,6 +57,7 @@ export const AGENT_TOOLS: AITool[] = [
         description: 'Get file/directory info (size, modified, permissions)',
         parameters: [
             { name: 'path', type: 'string', description: 'Remote path', required: true },
+            { name: 'server', type: 'string', description: 'Saved server name or ID. Omit to use the currently active connection.', required: false },
         ],
         dangerLevel: 'safe',
     },
@@ -64,6 +67,7 @@ export const AGENT_TOOLS: AITool[] = [
         parameters: [
             { name: 'path', type: 'string', description: 'Directory to search', required: true },
             { name: 'pattern', type: 'string', description: 'Search pattern (e.g. "*.txt")', required: true },
+            { name: 'server', type: 'string', description: 'Saved server name or ID. Omit to use the currently active connection.', required: false },
         ],
         dangerLevel: 'safe',
     },
@@ -197,6 +201,7 @@ export const AGENT_TOOLS: AITool[] = [
         parameters: [
             { name: 'remote_path', type: 'string', description: 'Remote file path', required: true },
             { name: 'local_path', type: 'string', description: 'Local destination', required: true },
+            { name: 'server', type: 'string', description: 'Saved server name or ID. Omit to use the currently active connection.', required: false },
         ],
         dangerLevel: 'medium',
     },
@@ -206,6 +211,7 @@ export const AGENT_TOOLS: AITool[] = [
         parameters: [
             { name: 'local_path', type: 'string', description: 'Local file path', required: true },
             { name: 'remote_path', type: 'string', description: 'Remote destination', required: true },
+            { name: 'server', type: 'string', description: 'Saved server name or ID. Omit to use the currently active connection.', required: false },
         ],
         dangerLevel: 'medium',
     },
@@ -214,6 +220,7 @@ export const AGENT_TOOLS: AITool[] = [
         description: 'Create a directory on remote',
         parameters: [
             { name: 'path', type: 'string', description: 'Directory path to create', required: true },
+            { name: 'server', type: 'string', description: 'Saved server name or ID. Omit to use the currently active connection.', required: false },
         ],
         dangerLevel: 'medium',
     },
@@ -223,6 +230,7 @@ export const AGENT_TOOLS: AITool[] = [
         parameters: [
             { name: 'from', type: 'string', description: 'Current path', required: true },
             { name: 'to', type: 'string', description: 'New path', required: true },
+            { name: 'server', type: 'string', description: 'Saved server name or ID. Omit to use the currently active connection.', required: false },
         ],
         dangerLevel: 'medium',
     },
@@ -417,6 +425,7 @@ export const AGENT_TOOLS: AITool[] = [
         description: 'Delete a file or directory on remote',
         parameters: [
             { name: 'path', type: 'string', description: 'Path to delete', required: true },
+            { name: 'server', type: 'string', description: 'Saved server name or ID. Omit to use the currently active connection.', required: false },
         ],
         dangerLevel: 'high',
     },

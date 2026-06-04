@@ -2269,7 +2269,12 @@
                 "thinkingDeep": "Խորը",
                 "thinkingLight": "Թեթև",
                 "thinkingMaximum": "Առավելագույն",
-                "thinkingOff": "Անջատված"
+                "thinkingOff": "Անջատված",
+                "responseStyle": "Պատասխանի ոճ",
+                "styleConcise": "Հակիրճ",
+                "styleDefault": "Կանխադրված",
+                "styleExplanatory": "Բացատրական",
+                "styleLearning": "Ուսուցողական"
             },
             "rag": {
                 "indexing": "Ֆայլերի ինդեքսավորում...",

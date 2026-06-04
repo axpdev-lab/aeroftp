@@ -2257,7 +2257,12 @@
                 "thinkingDeep": "Głębokie",
                 "thinkingLight": "Lekkie",
                 "thinkingMaximum": "Maksimum",
-                "thinkingOff": "Wył."
+                "thinkingOff": "Wył.",
+                "responseStyle": "Styl odpowiedzi",
+                "styleConcise": "Zwięzły",
+                "styleDefault": "Domyślny",
+                "styleExplanatory": "Wyjaśniający",
+                "styleLearning": "Edukacyjny"
             },
             "copy": "Kopiuj",
             "attachImage": "Załącz obraz",

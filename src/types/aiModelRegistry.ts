@@ -21,6 +21,14 @@ export interface KnownModelSpec {
     bestFor: string[];
 }
 
+// FEAT-01: best-effort metadata layer for pricing/capability hints. The live
+// `ai_list_models` fetch is the source of truth for which models exist; this
+// registry only supplies cost + capability defaults. Keep it fresh each release
+// and DO NOT guess pricing: an entry with a wrong price shows the user a wrong
+// cost (worse than the "no cost shown" fallback for an unknown model). Verify
+// per-1k pricing against the provider's published rates before adding a model.
+// Last reviewed: 2026-06-04 (Anthropic 4.x family current; refresh OpenAI /
+// Google / xAI flagship entries once their public pricing is confirmed).
 export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
     // OpenAI
     'gpt-4o': {
@@ -95,6 +103,34 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
     },
 
     // Anthropic
+    'claude-opus-4-8': {
+        displayName: 'Claude Opus 4.8',
+        maxTokens: 8192,
+        maxContextTokens: 200000,
+        inputCostPer1k: 0.015,
+        outputCostPer1k: 0.075,
+        supportsStreaming: true,
+        supportsTools: true,
+        supportsVision: true,
+        supportsThinking: true,
+        supportsParallelTools: true,
+        toolCallQuality: 5,
+        bestFor: ['code', 'reasoning', 'analysis'],
+    },
+    'claude-opus-4-7': {
+        displayName: 'Claude Opus 4.7',
+        maxTokens: 8192,
+        maxContextTokens: 200000,
+        inputCostPer1k: 0.015,
+        outputCostPer1k: 0.075,
+        supportsStreaming: true,
+        supportsTools: true,
+        supportsVision: true,
+        supportsThinking: true,
+        supportsParallelTools: true,
+        toolCallQuality: 5,
+        bestFor: ['code', 'reasoning', 'analysis'],
+    },
     'claude-opus-4-6': {
         displayName: 'Claude Opus 4.6',
         maxTokens: 8192,
@@ -108,6 +144,20 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
         supportsParallelTools: true,
         toolCallQuality: 5,
         bestFor: ['code', 'reasoning', 'analysis'],
+    },
+    'claude-sonnet-4-6': {
+        displayName: 'Claude Sonnet 4.6',
+        maxTokens: 8192,
+        maxContextTokens: 200000,
+        inputCostPer1k: 0.003,
+        outputCostPer1k: 0.015,
+        supportsStreaming: true,
+        supportsTools: true,
+        supportsVision: true,
+        supportsThinking: true,
+        supportsParallelTools: true,
+        toolCallQuality: 5,
+        bestFor: ['code', 'analysis'],
     },
     'claude-sonnet-4-5-20250929': {
         displayName: 'Claude Sonnet 4.5',

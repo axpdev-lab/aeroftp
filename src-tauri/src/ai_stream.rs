@@ -1043,12 +1043,13 @@ async fn stream_gemini(
     cancel: &AtomicBool,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let api_key = request.api_key.as_ref().ok_or("Missing API key")?;
-    // SECURITY NOTE: Google Gemini API requires the API key as a URL query parameter (`key=`).
-    // This is Google's mandated authentication method: header-based auth is not supported.
-    // The key is sanitized from error messages via `sanitize_error_message()` in ai.rs.
+    // SEC-05: pass the Gemini API key in the `x-goog-api-key` header instead of
+    // the URL `key=` query parameter, so it can never appear in a reflected URL
+    // inside a transport-level error Display. The error sanitizer in ai.rs is a
+    // defense-in-depth backstop; this removes the leak path at the source.
     let url = format!(
-        "{}/models/{}:streamGenerateContent?alt=sse&key={}",
-        request.base_url, request.model, api_key
+        "{}/models/{}:streamGenerateContent?alt=sse",
+        request.base_url, request.model
     );
 
     let tools: Option<Vec<serde_json::Value>> = request.tools.as_ref().map(|defs| {
@@ -1113,7 +1114,12 @@ async fn stream_gemini(
         body["cachedContent"] = serde_json::json!(cache_name);
     }
 
-    let response = client.post(&url).json(&body).send().await?;
+    let response = client
+        .post(&url)
+        .header("x-goog-api-key", api_key)
+        .json(&body)
+        .send()
+        .await?;
     if !response.status().is_success() {
         let status = response.status();
         let err_body = response.text().await.unwrap_or_default();

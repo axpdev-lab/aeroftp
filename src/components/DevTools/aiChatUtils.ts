@@ -512,10 +512,20 @@ export function formatToolResult(_toolName: string, result: unknown): string {
                 const display = e.path || e.name;
                 return `${e.is_dir ? '/' : ' '} ${display}${!e.is_dir && e.size != null ? ` (${e.size} bytes)` : ''}`;
             });
-            return `\`\`\`\n${lines.join('\n')}\n\`\`\``;
+            let output = lines.join('\n');
+            // TOOLS-04: surface the real match count and a truncation note.
+            if (r.truncated) output += `\n_...truncated (${r.total} total)_`;
+            return `\`\`\`\n${output}\n\`\`\``;
         }
     }
-    return `\`\`\`json\n${JSON.stringify(result, null, 2)}\n\`\`\``;
+    // TOOLS-05: bound the catch-all serialization so an unrecognized large tool
+    // result cannot inject unbounded JSON into the conversation context.
+    const serialized = JSON.stringify(result, null, 2);
+    const CATCH_ALL_CAP = 8192;
+    if (serialized.length > CATCH_ALL_CAP) {
+        return `\`\`\`json\n${serialized.slice(0, CATCH_ALL_CAP)}\n\`\`\`\n_...truncated (${serialized.length} bytes total)_`;
+    }
+    return `\`\`\`json\n${serialized}\n\`\`\``;
 }
 
 /**

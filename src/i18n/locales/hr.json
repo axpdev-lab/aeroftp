@@ -2276,7 +2276,12 @@
                 "thinkingDeep": "Duboko",
                 "thinkingLight": "Lagano",
                 "thinkingMaximum": "Maksimum",
-                "thinkingOff": "Isključeno"
+                "thinkingOff": "Isključeno",
+                "responseStyle": "Stil odgovora",
+                "styleConcise": "Sažeto",
+                "styleDefault": "Zadano",
+                "styleExplanatory": "Objašnjavajuće",
+                "styleLearning": "Učenje"
             },
             "rag": {
                 "indexing": "Indeksiranje datoteka...",

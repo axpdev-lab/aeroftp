@@ -66,28 +66,15 @@ export interface AISettings {
         streamingTimeoutSecs?: number; // Streaming response timeout in seconds (default 120)
         chatHistoryRetentionDays?: number; // 0 = unlimited, 30/60/90/180/365 days
         enableAutoRAGIndexing?: boolean;   // B07: opt-in auto-index workspace for RAG context (default: true)
+        responseStyle?: 'default' | 'concise' | 'explanatory' | 'learning'; // CC-10 output style persona
     };
     defaultModelId: string | null;
 }
 
-// Chat message types
-export interface ChatMessage {
-    id: string;
-    role: 'user' | 'assistant' | 'system';
-    content: string;
-    timestamp: Date;
-    modelId?: string;
-    toolCalls?: ToolCall[];
-}
-
-export interface ToolCall {
-    id: string;
-    name: string;
-    arguments: Record<string, unknown>;
-    result?: unknown;
-    status: 'pending' | 'approved' | 'rejected' | 'completed' | 'error';
-    error?: string;
-}
+// OPT-06: the canonical chat message type is `Message` in
+// `components/DevTools/aiChatTypes.ts`; the SQLite persistence shape is
+// `ChatMessage` in `utils/chatHistory.ts`. The orphan `ChatMessage`/`ToolCall`
+// interfaces that used to live here had zero importers and were removed.
 
 // Built-in provider presets
 export const PROVIDER_PRESETS: Omit<AIProvider, 'id' | 'apiKey' | 'createdAt' | 'updatedAt'>[] = [

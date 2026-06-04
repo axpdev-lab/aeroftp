@@ -2257,7 +2257,12 @@
                 "thinkingDeep": "Sügav",
                 "thinkingLight": "Kerge",
                 "thinkingMaximum": "Maksimum",
-                "thinkingOff": "Väljas"
+                "thinkingOff": "Väljas",
+                "responseStyle": "Vastuse stiil",
+                "styleConcise": "Lühike",
+                "styleDefault": "Vaikimisi",
+                "styleExplanatory": "Selgitav",
+                "styleLearning": "Õpetlik"
             },
             "copy": "Kopeeri",
             "attachImage": "Lisa pilt",

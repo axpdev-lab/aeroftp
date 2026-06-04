@@ -2257,7 +2257,12 @@
                 "thinkingDeep": "Hlboké",
                 "thinkingLight": "Ľahké",
                 "thinkingMaximum": "Maximum",
-                "thinkingOff": "Vyp."
+                "thinkingOff": "Vyp.",
+                "responseStyle": "Štýl odpovede",
+                "styleConcise": "Stručný",
+                "styleDefault": "Predvolené",
+                "styleExplanatory": "Vysvetľujúci",
+                "styleLearning": "Vzdelávací"
             },
             "copy": "Kopirovat",
             "attachImage": "Prilozit obrazok",

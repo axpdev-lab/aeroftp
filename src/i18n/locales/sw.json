@@ -2257,7 +2257,12 @@
                 "thinkingDeep": "Kirefu",
                 "thinkingLight": "Nyepesi",
                 "thinkingMaximum": "Upeo",
-                "thinkingOff": "Zima"
+                "thinkingOff": "Zima",
+                "responseStyle": "Mtindo wa jibu",
+                "styleConcise": "Fupi",
+                "styleDefault": "Chaguo-msingi",
+                "styleExplanatory": "Maelezo",
+                "styleLearning": "Kujifunza"
             },
             "copy": "Nakili",
             "attachImage": "Ambatanisha picha",

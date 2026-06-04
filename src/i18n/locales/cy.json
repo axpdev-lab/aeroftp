@@ -2257,7 +2257,12 @@
                 "thinkingDeep": "Dwfn",
                 "thinkingLight": "Ysgafn",
                 "thinkingMaximum": "Uchafswm",
-                "thinkingOff": "Diffodd"
+                "thinkingOff": "Diffodd",
+                "responseStyle": "Arddull ymateb",
+                "styleConcise": "Cryno",
+                "styleDefault": "Rhagosodedig",
+                "styleExplanatory": "Esboniadol",
+                "styleLearning": "Dysgu"
             },
             "copy": "Copïo",
             "attachImage": "Atodi delwedd",

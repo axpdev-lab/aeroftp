@@ -2257,7 +2257,12 @@
                 "thinkingDeep": "Глубокое",
                 "thinkingLight": "Лёгкое",
                 "thinkingMaximum": "Максимум",
-                "thinkingOff": "Выкл."
+                "thinkingOff": "Выкл.",
+                "responseStyle": "Стиль ответа",
+                "styleConcise": "Краткий",
+                "styleDefault": "По умолчанию",
+                "styleExplanatory": "Пояснительный",
+                "styleLearning": "Обучающий"
             },
             "copy": "Копировать",
             "attachImage": "Прикрепить изображение",

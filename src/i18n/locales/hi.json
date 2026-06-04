@@ -2276,7 +2276,12 @@
                 "thinkingDeep": "गहन",
                 "thinkingLight": "हल्का",
                 "thinkingMaximum": "अधिकतम",
-                "thinkingOff": "बंद"
+                "thinkingOff": "बंद",
+                "responseStyle": "प्रतिक्रिया शैली",
+                "styleConcise": "संक्षिप्त",
+                "styleDefault": "डिफ़ॉल्ट",
+                "styleExplanatory": "व्याख्यात्मक",
+                "styleLearning": "सीखने वाला"
             },
             "rag": {
                 "indexing": "फ़ाइलें इंडेक्स हो रही हैं...",

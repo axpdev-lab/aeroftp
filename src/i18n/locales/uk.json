@@ -2257,7 +2257,12 @@
                 "thinkingDeep": "Глибоке",
                 "thinkingLight": "Легке",
                 "thinkingMaximum": "Максимум",
-                "thinkingOff": "Вимк."
+                "thinkingOff": "Вимк.",
+                "responseStyle": "Стиль відповіді",
+                "styleConcise": "Стислий",
+                "styleDefault": "За замовчуванням",
+                "styleExplanatory": "Пояснювальний",
+                "styleLearning": "Навчальний"
             },
             "copy": "Копіювати",
             "attachImage": "Прикріпити зображення",

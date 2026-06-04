@@ -2257,7 +2257,12 @@
                 "thinkingDeep": "Derin",
                 "thinkingLight": "Hafif",
                 "thinkingMaximum": "Maksimum",
-                "thinkingOff": "Kapalı"
+                "thinkingOff": "Kapalı",
+                "responseStyle": "Yanıt stili",
+                "styleConcise": "Özlü",
+                "styleDefault": "Varsayılan",
+                "styleExplanatory": "Açıklayıcı",
+                "styleLearning": "Öğrenme"
             },
             "copy": "Kopyala",
             "attachImage": "Görsel ekle",

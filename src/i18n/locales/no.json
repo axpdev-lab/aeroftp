@@ -2257,7 +2257,12 @@
                 "thinkingDeep": "Dyp",
                 "thinkingLight": "Lett",
                 "thinkingMaximum": "Maksimum",
-                "thinkingOff": "Av"
+                "thinkingOff": "Av",
+                "responseStyle": "Svarstil",
+                "styleConcise": "Kortfattet",
+                "styleDefault": "Standard",
+                "styleExplanatory": "Forklarende",
+                "styleLearning": "Læring"
             },
             "copy": "Kopier",
             "attachImage": "Legg ved bilde",

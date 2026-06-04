@@ -447,12 +447,12 @@ mod gemini {
     pub async fn call(client: &Client, request: &AIRequest) -> Result<AIResponse, AIError> {
         let api_key = request.api_key.as_ref().ok_or(AIError::MissingApiKey)?;
 
-        // SECURITY NOTE: Google Gemini API requires the API key as a URL query parameter.
-        // Header-based auth (Bearer token) is not supported by this endpoint.
-        // Error messages are sanitized via `sanitize_error_message()` to strip `key=` params.
+        // SEC-05: pass the Gemini API key in the `x-goog-api-key` header rather
+        // than the URL `key=` query parameter so it never appears in a reflected
+        // URL inside an error Display. Sanitization remains as a backstop.
         let url = format!(
-            "{}/models/{}:generateContent?key={}",
-            request.base_url, request.model, api_key
+            "{}/models/{}:generateContent",
+            request.base_url, request.model
         );
 
         let gemini_tools = request.tools.as_ref().map(|tools| {
@@ -534,7 +534,12 @@ mod gemini {
             cached_content: request.cached_content.clone(),
         };
 
-        let response = client.post(&url).json(&gemini_request).send().await?;
+        let response = client
+            .post(&url)
+            .header("x-goog-api-key", api_key)
+            .json(&gemini_request)
+            .send()
+            .await?;
 
         let gemini_response: GeminiResponse = response.json().await?;
 
@@ -1307,8 +1312,12 @@ pub async fn test_provider(
         AIProviderType::Google => {
             // List models endpoint
             let api_key = api_key.ok_or(AIError::MissingApiKey)?;
-            let url = format!("{}/models?key={}", base_url, api_key);
-            let response = client.get(&url).send().await?;
+            let url = format!("{}/models", base_url);
+            let response = client
+                .get(&url)
+                .header("x-goog-api-key", api_key)
+                .send()
+                .await?;
             Ok(response.status().is_success())
         }
         _ => {
@@ -1353,8 +1362,12 @@ pub async fn list_models(
         }
         AIProviderType::Google => {
             let api_key = api_key.ok_or(AIError::MissingApiKey)?;
-            let url = format!("{}/models?key={}", base_url, api_key);
-            let response = client.get(&url).send().await?;
+            let url = format!("{}/models", base_url);
+            let response = client
+                .get(&url)
+                .header("x-goog-api-key", api_key)
+                .send()
+                .await?;
             if !response.status().is_success() {
                 let status = response.status();
                 let body = response.text().await.unwrap_or_default();
@@ -1569,7 +1582,7 @@ pub async fn gemini_create_cache(
     ttl_seconds: u32,
 ) -> Result<GeminiCacheInfo, String> {
     let client = &*AI_HTTP_CLIENT;
-    let url = format!("{}/cachedContents?key={}", base_url, api_key);
+    let url = format!("{}/cachedContents", base_url);
 
     let body = serde_json::json!({
         "model": format!("models/{}", model),
@@ -1585,6 +1598,7 @@ pub async fn gemini_create_cache(
 
     let response = client
         .post(&url)
+        .header("x-goog-api-key", api_key)
         .json(&body)
         .send()
         .await

@@ -2257,7 +2257,12 @@
                 "thinkingDeep": "গভীর",
                 "thinkingLight": "হালকা",
                 "thinkingMaximum": "সর্বোচ্চ",
-                "thinkingOff": "বন্ধ"
+                "thinkingOff": "বন্ধ",
+                "responseStyle": "প্রতিক্রিয়ার ধরন",
+                "styleConcise": "সংক্ষিপ্ত",
+                "styleDefault": "ডিফল্ট",
+                "styleExplanatory": "ব্যাখ্যামূলক",
+                "styleLearning": "শিক্ষামূলক"
             },
             "copy": "অনুলিপি",
             "attachImage": "ছবি সংযুক্ত করুন",

@@ -2257,7 +2257,12 @@
                 "thinkingDeep": "Mendalam",
                 "thinkingLight": "Ringan",
                 "thinkingMaximum": "Maksimum",
-                "thinkingOff": "Mati"
+                "thinkingOff": "Mati",
+                "responseStyle": "Gaya respons",
+                "styleConcise": "Ringkas",
+                "styleDefault": "Bawaan",
+                "styleExplanatory": "Penjelasan",
+                "styleLearning": "Pembelajaran"
             },
             "copy": "Salin",
             "attachImage": "Lampirkan Gambar",
