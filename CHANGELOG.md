@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.2] - 2026-06-04
+
+### Cross-Machine Keystore Portability & Agent-Facing Polish
+
+Makes a multi-user keystore backup open correctly on a second computer, makes the
+import reversible and legible, and lands the agent-breaking CLI/MCP fixes.
+
+#### Added
+- **Portable passphrase-less accounts**: a keystore backup now carries a transport-wrapped key (Argon2id over the backup password) for each passphrase-less user partition, and the import re-keys it to the local device. An account that previously showed an empty "My Servers" after a cross-machine import now populates correctly.
+- **Repair multi-user data**: a Settings panel that proactively detects accounts whose data key is bound to another machine and rebuilds them from this device's saved servers, always taking a timestamped snapshot first.
+- **Reversible keystore import**: the import snapshots the existing `user_partitions.db` to a timestamped `.bak` before overwriting it, and a post-import summary modal surfaces the restart prompt, cross-machine re-key counts, and the snapshot path instead of a transient toast.
+- **Lean MCP `list_servers`**: `aeroftp_list_servers` returns lean identity fields by default; pass `include_capabilities: true` to embed the full per-profile transfer-capabilities block. A vault of 80+ servers no longer overflows the agent tool-result cap on the default call.
+
+#### Fixed
+- **MCP error readability**: S3, WebDAV, and Azure XML error messages no longer leak `&apos;`/`&amp;`/`&lt;` into JSON error fields; the final error formatter now emits raw UTF-8.
+- **Quiet JSON output**: the path-resolution `Note:` line is now silenced in `--json` mode, matching the profile banner and `Next:` hints, so a machine-readable run stays quiet on both streams.
+
+#### Changed
+- **Settings backup table**: the legacy "Other Apps" and "Import Any" rows collapse into a single "Bridge" row with a FILE FORMAT column listing the supported export extensions.
+- **i18n style**: replaced roughly 2024 em-dashes with ASCII hyphens across all 47 locale files (punctuation only, no meaning change).
+- **Dependencies**: chrono 0.4.45, log 0.4.32, reqwest 0.13.4 (non-pinned patch updates).
+- Merged wishlist slice 2/3 from main: OpenDrive Native API header label, MEGAcmd real-quota storage handling, Manage Users avatar edit, and switching the active user from the interactive `profiles -i` loop.
+
 ## [4.0.1] - 2026-06-04
 
 ### S3 AssumeRole, AeroVault Audit Hardening and Settings Consolidation
@@ -600,7 +623,7 @@ The release also closes the TOTP passthrough point raised in issue [#128](https:
 
 #### Added
 
-- **AeroFile Dual Panel — Slice A**: two side-by-side local panes with full keyboard parity, Total-Commander F5/F6/F7 shortcuts, unified tab bar with L/R markers, drag-to-copy/move between panes, keyboard-operable resize separator, blue/amber focus rings, persisted split ratio.
+- **AeroFile Dual Panel - Slice A**: two side-by-side local panes with full keyboard parity, Total-Commander F5/F6/F7 shortcuts, unified tab bar with L/R markers, drag-to-copy/move between panes, keyboard-operable resize separator, blue/amber focus rings, persisted split ratio.
 - **AeroVault v3 (Experimental)**: gear-CDC chunking, zstd profiles fast/balanced/archive, AES-256-GCM-SIV per chunk, BLAKE3-128 chunk id + BLAKE3-256 cipher hash, Argon2id-derived KEKs (encryption + MAC) via HKDF + AES-KW, HMAC-SHA512 header MAC, reserved extension directory + payload region for the future v4 ECC layer. Draft spec in `docs/AEROVAULT-V3-SPEC.md`.
 - **TOTP secret passthrough (Filen + MEGA)**: a base32 2FA secret can be persisted once per profile; the backend derives the current 6-digit code on every connect via `totp_helper::generate_totp_code`. Single-use codes still accepted as fallback. Closes the TOTP passthrough point in [#128](https://github.com/axpdev-lab/aeroftp/issues/128).
 - **MEGA HTTP 402 response-body surface**: the MEGA native client now reads the response body before classifying HTTP failures and embeds a 200-byte preview in both the tracing log and the surfaced error. Diagnostic-only, no policy change.

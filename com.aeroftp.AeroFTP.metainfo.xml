@@ -137,6 +137,12 @@
   </languages>
 
   <releases>
+    <release version="4.0.2" date="2026-06-04">
+      <description>
+        <p>Cross-Machine Keystore Portability and Agent-Facing Polish. A keystore backup now carries a transport-wrapped key (derived from the backup password with Argon2id) for each passphrase-less user account, and the import re-keys it to the local device, so an account that previously showed an empty My Servers after restoring a backup on a second computer now populates correctly. The import is also reversible (it snapshots the existing multi-user database to a timestamped backup before overwriting) and legible (a post-import summary reports the restart prompt, the cross-machine re-key counts and the snapshot path), and a new Repair multi-user data panel in Settings proactively detects accounts bound to another machine and rebuilds them from this device, always taking a snapshot first.</p>
+        <p>Agent and CLI: the MCP list-servers tool returns lean identity fields by default so a large vault no longer overflows the agent tool-result limit (opt back in with include_capabilities), provider error messages no longer leak XML entities into JSON error fields, and machine-readable JSON output is fully quiet. The Settings backup table gains a file-format column, all 47 locales were swept of em-dashes for consistent typography, and chrono, log and reqwest were updated to their latest patch releases. 47 languages translated.</p>
+      </description>
+    </release>
     <release version="4.0.1" date="2026-06-04">
       <description>
         <p>S3 AssumeRole, AeroVault Audit Hardening and Settings Consolidation. This patch release adds native AWS STS AssumeRole support for S3 (#301): set a Role ARN plus optional External ID, session name, duration and MFA, and AeroFTP exchanges the access keys for temporary role-scoped credentials via STS at connect time, re-assuming them automatically before they expire so long sessions and large multipart uploads never fail with an expired token. It is built on a hand-rolled STS client (a single SigV4-signed AssumeRole POST, no AWS SDK dependency) feeding the existing data-plane signer, and also accepts an externally supplied session token for credentials already obtained from STS or SSO.</p>
