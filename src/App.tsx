@@ -242,6 +242,7 @@ import KeystoreMigrationWizard from './components/KeystoreMigrationWizard';
 import { Checkbox } from './components/ui/Checkbox';
 import { FileVersionsDialog } from './components/FileVersionsDialog';
 import { HostKeyDialog, HostKeyInfo } from './components/HostKeyDialog';
+import { KeystoreImportResultModal, KeystoreImportResult } from './components/KeystoreImportResultModal';
 import { APP_BACKGROUND_PATTERNS, APP_BACKGROUND_KEY, DEFAULT_APP_BACKGROUND } from './utils/appBackgroundPatterns';
 import { resolveS3Endpoint, getProviderById } from './providers/registry';
 import { SharePermissionsDialog } from './components/SharePermissionsDialog';
@@ -766,6 +767,8 @@ const App: React.FC = () => {
     onContinue: () => void;
   } | null>(null);
   const [inputDialog, setInputDialog] = useState<{ title: string; defaultValue: string; onConfirm: (v: string) => void; isPassword?: boolean; placeholder?: string; description?: string } | null>(null);
+  // F-012 W1/W2: post-import summary modal (restart prompt + cross-machine warning).
+  const [keystoreImportResult, setKeystoreImportResult] = useState<KeystoreImportResult | null>(null);
   const [zohoShareLinksDialog, setZohoShareLinksDialog] = useState<{ fileName: string; links: Array<{ id: string; attributes: Record<string, unknown> }> } | null>(null);
   const [zohoDeletedLinkIds] = useState(() => new Set<string>());
   const [gitHubCommitDialog, setGitHubCommitDialog] = useState<{
@@ -10491,9 +10494,11 @@ interface UpdateVerificationInfo {
             sqliteDbsRestored?: number;
             filesRestored?: number;
             localStorage?: Record<string, string>;
-            // F-012: cross-machine re-key outcome.
+            // F-012: cross-machine re-key outcome + restart/backup signals.
+            requiresRestart?: boolean;
             userPartitionsRekeyed?: number;
             userPartitionsUnreadable?: number;
+            userPartitionsBackupPath?: string;
           }>('import_keystore', {
             password,
             filePath,
@@ -10512,18 +10517,27 @@ interface UpdateVerificationInfo {
             }
           }
           await refreshProfilesFromImportedKeystore();
-          const importedText = t('settings.keystoreImported', { imported: result.imported, skipped: result.skipped });
-          if ((result.userPartitionsUnreadable ?? 0) > 0) {
-            // F-012: backup carried partitions from another machine with no
-            // portable key. Warn instead of a silently incomplete import.
-            notify.warning(
-              t('settings.importKeystore') || 'Import Keystore',
-              `${importedText}. ${t('settings.keystoreUnreadablePartitions', { count: result.userPartitionsUnreadable ?? 0, defaultValue: '{count} account(s) could not be unlocked on this device. The backup was made on another computer: re-export it there with a password set on those accounts, then import it here.' })}`,
-            );
+          // F-012 W1/W2: when the import needs a restart or carried cross-machine
+          // partitions (re-keyed or unreadable) or snapshotted the local DB,
+          // surface a modal that cannot be missed instead of a transient toast.
+          const needsModal =
+            !!result.requiresRestart ||
+            (result.userPartitionsUnreadable ?? 0) > 0 ||
+            (result.userPartitionsRekeyed ?? 0) > 0 ||
+            !!result.userPartitionsBackupPath;
+          if (needsModal) {
+            setKeystoreImportResult({
+              imported: result.imported,
+              skipped: result.skipped,
+              requiresRestart: result.requiresRestart,
+              userPartitionsRekeyed: result.userPartitionsRekeyed,
+              userPartitionsUnreadable: result.userPartitionsUnreadable,
+              userPartitionsBackupPath: result.userPartitionsBackupPath,
+            });
           } else {
             notify.success(
               t('settings.importKeystore') || 'Import Keystore',
-              importedText,
+              t('settings.keystoreImported', { imported: result.imported, skipped: result.skipped }),
             );
           }
         } catch (err) {
@@ -12139,6 +12153,12 @@ interface UpdateVerificationInfo {
           onAccept={handleHostKeyAccept}
           onReject={handleHostKeyReject}
         />
+        {keystoreImportResult && (
+          <KeystoreImportResultModal
+            result={keystoreImportResult}
+            onClose={() => setKeystoreImportResult(null)}
+          />
+        )}
         {twoFactorPrompt && (
           <TwoFactorPromptDialog
             isOpen={twoFactorPrompt.open}

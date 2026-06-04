@@ -7,7 +7,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { sendNotification } from '@tauri-apps/plugin-notification';
 import { readFile } from '@tauri-apps/plugin-fs';
-import { X, Settings, Server, Upload, Download, Palette, FolderOpen, Wifi, FileCheck, Cloud, ExternalLink, Key, Clock, Shield, Lock, Eye, EyeOff, ShieldCheck, AlertCircle, CheckCircle2, MonitorCheck, Power, Sun, Moon, MoonStar, Leaf, Snowflake, Flame, Monitor, Image, Shapes, Info, Boxes } from 'lucide-react';
+import { X, Settings, Server, Upload, Download, Palette, FolderOpen, Wifi, FileCheck, Cloud, ExternalLink, Key, KeyRound, Clock, Shield, Lock, Eye, EyeOff, ShieldCheck, AlertCircle, CheckCircle2, MonitorCheck, Power, Sun, Moon, MoonStar, Leaf, Snowflake, Flame, Monitor, Image, Shapes, Info, Boxes } from 'lucide-react';
 import type { Theme } from '../hooks/useTheme';
 import { getEffectiveTheme } from '../hooks/useTheme';
 import { useIconTheme } from '../hooks/useIconTheme';
@@ -17,7 +17,9 @@ import { ServerProfile } from '../types';
 import { LanguageSelector } from './LanguageSelector';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { ExportImportDialog } from './ExportImportDialog';
-import { GENERIC_BRIDGE_SOURCES } from './bridge/bridgeSources';
+import { KeystoreImportResultModal, KeystoreImportResult } from './KeystoreImportResultModal';
+import { RepairMultiUserPanel } from './RepairMultiUserPanel';
+import { GENERIC_BRIDGE_SOURCES, BRIDGE_FORMAT_EXTENSIONS } from './bridge/bridgeSources';
 import { ConfirmDialog } from './Dialogs';
 import { ImportExportIcon } from './icons/ImportExportIcon';
 import { LOCK_SCREEN_PATTERNS } from './LockScreen';
@@ -333,6 +335,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     // #270 Backup table: reveal the inline Vault Backup (keystore) panel below
     // the table when the user picks the Full Backup row. Null keeps it collapsed.
     const [keystoreAction, setKeystoreAction] = useState<'export' | 'import' | null>(null);
+    // F-012 W1/W2: post-import summary modal (restart prompt + cross-machine warning).
+    const [keystoreImportResult, setKeystoreImportResult] = useState<KeystoreImportResult | null>(null);
     const [nativeRsyncCompiled, setNativeRsyncCompiled] = useState<boolean | null>(null);
     const [nativeRsyncMode, setNativeRsyncMode] = useState<'auto' | 'classic' | 'native'>('auto');
     // Z.4.5 R2: classic rsync binary availability. When false we
@@ -2328,6 +2332,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                             <div>
                                                 <h4 className="font-medium text-base">{t('settings.masterPassword')}</h4>
                                                 <p className="text-sm text-gray-500 mt-1">{t('settings.masterPasswordDesc')}</p>
+                                                {/* F-012 W2: disambiguate the three passwords. The master
+                                                    password protects only this device's vault; it does NOT
+                                                    make accounts/backups portable to another machine. */}
+                                                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{t('settings.masterPasswordScopeNote')}</p>
                                             </div>
                                         </div>
 
@@ -2789,8 +2797,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 <thead>
                                                     <tr className="bg-gray-50 dark:bg-gray-700/50 text-left text-[11px] uppercase tracking-wide text-gray-500">
                                                         <th className="px-4 py-2 font-medium">{t('settings.backupColApp')}</th>
-                                                        <th className="px-4 py-2 font-medium">{t('settings.backupColFormat')}</th>
-                                                        <th className="px-4 py-2 font-medium text-center">{t('settings.backupColImport')} / {t('settings.backupColExport')}</th>
+                                                        <th className="px-3 py-2 font-medium w-44">{t('settings.backupColFormat')}</th>
+                                                        <th className="px-4 py-2 font-medium text-center w-28">{t('settings.backupColImport')} / {t('settings.backupColExport')}</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -2822,33 +2830,32 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         <td className="px-4 py-3"><code className={backupFmtChip}>.aeroftp</code></td>
                                                         <td className="px-4 py-3"><div className="flex items-center justify-center gap-2"><button onClick={() => openExportImport('import')} className={backupCellBtn} title={t('settings.importServers')}><Upload size={14} /></button><button onClick={() => openExportImport('export')} className={backupCellBtn} title={t('settings.exportServers')}><Download size={14} /></button></div></td>
                                                     </tr>
-                                                    {/* Other Apps: all generic bridge sources (incl. rclone), collapsed */}
+                                                    {/* Bridge: import/export with rclone, WinSCP, FileZilla, AWS CLI and
+                                                        every other supported tool. One coherent row (import AND export)
+                                                        replacing the old "Other Apps" row + duplicate "Import Any" button. */}
                                                     <tr>
                                                         <td className="px-4 py-3">
                                                             <div className="flex items-center gap-2.5">
                                                                 <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center shrink-0"><Boxes size={16} className="text-gray-500 dark:text-gray-400" /></div>
                                                                 <div>
-                                                                    <div className="font-medium text-gray-800 dark:text-gray-100">{t('settings.backupRowOtherApps')}</div>
-                                                                    <div className="text-xs text-gray-500 dark:text-gray-400">{t('settings.backupOtherAppsCount', { count: otherBridgeAppsCount })}</div>
+                                                                    <div className="font-medium text-gray-800 dark:text-gray-100">{t('settings.backupRowBridge')}</div>
+                                                                    <div className="text-xs text-gray-500 dark:text-gray-400">{t('settings.backupRowBridgeDesc', { count: otherBridgeAppsCount })}</div>
                                                                 </div>
                                                             </div>
                                                         </td>
-                                                        <td className="px-4 py-3"><span className="text-xs text-gray-400 dark:text-gray-500">rclone, WinSCP, FileZilla, AWS CLI, ...</span></td>
+                                                        <td className="px-3 py-3"><div className="flex flex-wrap gap-1">{BRIDGE_FORMAT_EXTENSIONS.map((ext) => (<code key={ext} className={backupFmtChip}>{ext}</code>))}</div></td>
                                                         <td className="px-4 py-3"><div className="flex items-center justify-center gap-2"><button onClick={() => openExportImport('bridge-import')} className={backupCellBtn} title={t('settings.bridgeImport')}><Upload size={14} /></button><button onClick={() => openExportImport('bridge-export')} className={backupCellBtn} title={t('settings.bridgeExport')}><Download size={14} /></button></div></td>
                                                     </tr>
                                                 </tbody>
-                                                <tfoot>
-                                                    <tr className="bg-gray-50 dark:bg-gray-700/50 border-t-2 border-gray-200 dark:border-gray-600">
-                                                        <td className="px-4 py-3" colSpan={2}>
-                                                            <div className="font-medium text-gray-800 dark:text-gray-100">{t('settings.backupImportAny')}</div>
-                                                            <div className="text-xs text-gray-500 dark:text-gray-400">{t('settings.backupImportAnyDesc')}</div>
-                                                        </td>
-                                                        <td className="px-4 py-3 text-center"><button onClick={() => openExportImport(undefined)} className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500 hover:bg-blue-600 text-white text-xs font-medium transition-colors whitespace-nowrap" title={t('settings.backupImportAny')}><Upload size={14} /> {t('settings.backupImportAny')}</button></td>
-                                                    </tr>
-                                                </tfoot>
                                             </table>
                                         </div>
                                     </div>
+
+                                    {/* F-012 W4: Repair multi-user data (proactive health + rebuild/re-key/restart) */}
+                                    <RepairMultiUserPanel
+                                        onImportClick={() => setKeystoreAction('import')}
+                                        onRepaired={() => onServersChanged?.()}
+                                    />
 
                                     {/* Vault Backup (reveal-inline from the Full Backup row) */}
                                     {keystoreAction !== null && (
@@ -2921,6 +2928,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     </div>
                                                 </div>
                                                 <PasswordStrengthBar password={keystoreExportPassword} />
+                                                {/* F-012 W2: portability disclosure. Passphrase-less accounts only
+                                                    open on another device if this build embeds a portable key;
+                                                    setting an account password guarantees portability. */}
+                                                <div className="flex items-start gap-2 rounded-md border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 p-3 text-xs text-blue-700 dark:text-blue-300">
+                                                    <KeyRound size={14} className="mt-0.5 flex-shrink-0" />
+                                                    <span>{t('settings.keystoreExportPortabilityHint')}</span>
+                                                </div>
                                                 <div className="flex flex-col gap-2 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-3 text-xs">
                                                     <div className="text-gray-700 dark:text-gray-300 font-medium">
                                                         {t('settings.keystoreExportModeTitle')}
@@ -3207,6 +3221,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                             // another machine without a portable key).
                                                                             userPartitionsRekeyed?: number;
                                                                             userPartitionsUnreadable?: number;
+                                                                            // F-012 W3: pre-import snapshot path of the local
+                                                                            // user_partitions.db (makes the import reversible).
+                                                                            userPartitionsBackupPath?: string;
                                                                         }>('import_keystore', {
                                                                             password: keystoreImportPassword,
                                                                             filePath: keystoreImportFilePath,
@@ -3269,6 +3286,25 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                             type: importHadWarning ? 'info' : 'success',
                                                                             text: extraNotes.length > 0 ? `${successText}. ${extraNotes.join(' ')}` : successText,
                                                                         });
+                                                                        // F-012 W1/W2: an unmissable modal for the cases that
+                                                                        // matter (restart needed, cross-machine re-key/unreadable,
+                                                                        // or a reversible snapshot was taken). The inline message
+                                                                        // above stays as a persistent confirmation.
+                                                                        if (
+                                                                            !!result.requiresRestart ||
+                                                                            (result.userPartitionsUnreadable ?? 0) > 0 ||
+                                                                            (result.userPartitionsRekeyed ?? 0) > 0 ||
+                                                                            !!result.userPartitionsBackupPath
+                                                                        ) {
+                                                                            setKeystoreImportResult({
+                                                                                imported: result.imported,
+                                                                                skipped: result.skipped,
+                                                                                requiresRestart: result.requiresRestart,
+                                                                                userPartitionsRekeyed: result.userPartitionsRekeyed,
+                                                                                userPartitionsUnreadable: result.userPartitionsUnreadable,
+                                                                                userPartitionsBackupPath: result.userPartitionsBackupPath,
+                                                                            });
+                                                                        }
 
                                                                         // Re-query actual vault count + categories (not optimistic)
                                                                         try {
@@ -3481,6 +3517,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                         onServersChanged?.();
                     }}
                     onClose={() => { setShowExportImport(false); setExportImportInitialMode(undefined); }}
+                />
+            )}
+
+            {/* F-012 W1/W2: post-import summary (restart prompt + cross-machine warning) */}
+            {keystoreImportResult && (
+                <KeystoreImportResultModal
+                    result={keystoreImportResult}
+                    onClose={() => setKeystoreImportResult(null)}
                 />
             )}
         </>
