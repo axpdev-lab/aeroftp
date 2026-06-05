@@ -103,6 +103,8 @@ run-clean.sh
 !/scripts/prepare-dispatch-bundle.cjs
 # Exception: regenerates the embedded CLI catalog from the GUI SSOT (#224)
 !/scripts/gen-cli-catalog.ts
+# Exception: regenerates the providers table from the GUI SSOT (#270 17104681)
+!/scripts/gen-providers-table.ts
 
 # Security reports: keep latest snapshot in repo, ignore dated copies
 /docs/security/security-report-20*.html
