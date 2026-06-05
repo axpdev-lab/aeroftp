@@ -48,8 +48,12 @@ function searchText(c: CatalogCompany): string {
         .toLowerCase();
 }
 
-function HealthDot({ status }: { status: HealthStatus }) {
+function HealthDot({ status, enabled }: { status: HealthStatus; enabled: boolean }) {
     const t = useTranslation();
+    // Feature off: show a dimmed grey dot rather than a stale green one.
+    if (!enabled) {
+        return <span className="inline-block w-2.5 h-2.5 rounded-full bg-gray-300 dark:bg-gray-600 opacity-40" />;
+    }
     if (status === 'unknown') {
         return <span className="inline-block w-2.5 h-2.5 rounded-full bg-gray-300 dark:bg-gray-600" />;
     }
@@ -87,9 +91,11 @@ interface CatalogTableProps {
     companies: CatalogCompany[];
     onSelectProvider: (protocol: ProviderType, providerId?: string) => void;
     getHealth: (logoId: string) => HealthStatus;
+    /** When false the health feature is off: dots render dimmed grey. */
+    healthEnabled: boolean;
 }
 
-export function CatalogTable({ companies, onSelectProvider, getHealth }: CatalogTableProps) {
+export function CatalogTable({ companies, onSelectProvider, getHealth, healthEnabled }: CatalogTableProps) {
     const t = useTranslation();
     const [query, setQuery] = useState('');
     const [showColumns, setShowColumns] = useState(false);
@@ -240,7 +246,7 @@ export function CatalogTable({ companies, onSelectProvider, getHealth }: Catalog
                 return (
                     <td key={col.id} className={`py-1.5 px-3 ${alignClass(col.id)}`}>
                         <div className="flex items-center justify-center">
-                            <HealthDot status={c.healthCheckUrl ? getHealth(c.logoId) : 'unknown'} />
+                            <HealthDot status={c.healthCheckUrl ? getHealth(c.logoId) : 'unknown'} enabled={healthEnabled} />
                         </div>
                     </td>
                 );
