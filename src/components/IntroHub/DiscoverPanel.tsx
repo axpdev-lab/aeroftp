@@ -15,6 +15,7 @@ import type { CatalogCompany } from '../providerCatalog';
 import { useProviderHealth, type HealthStatus } from '../../hooks/useProviderHealth';
 import { useIntroHubIconSize } from '../../hooks/useIntroHubIconSize';
 import { useDiscoverHealthCheck } from '../../hooks/useDiscoverHealthCheck';
+import { openUrl } from '../../utils/openUrl';
 import { CatalogTable } from './CatalogTable';
 import { PROVIDER_CATALOG, companyInCategory } from '../providerCatalog';
 
@@ -188,6 +189,8 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
         const saved = localStorage.getItem(VIEW_MODE_KEY);
         return saved === 'list' ? 'list' : 'grid';
     });
+    // Grid-view search (the list view has its own search inside CatalogTable).
+    const [gridQuery, setGridQuery] = useState('');
 
     // Provider health scan: per-tab eager (small categories) + chunked
     // sequential for the large All / list views (My Servers pattern). The
@@ -208,6 +211,40 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
         const cat = categories.find(c => c.id === activeCategory);
         return cat?.items ?? [];
     }, [categories, activeCategory]);
+
+    // Grid view, filtered by the search box (health scans still cover the full
+    // category, so a query never changes reachability results).
+    const visibleGridItems = useMemo(() => {
+        const q = gridQuery.trim().toLowerCase();
+        if (!q) return activeItems;
+        return activeItems.filter(item =>
+            [item.name, item.description, item.badge, item.protocol, item.providerId, item.id]
+                .filter(Boolean).join(' ').toLowerCase().includes(q));
+    }, [activeItems, gridQuery]);
+
+    // Signup/website URL per company, resolved from the discover items (which
+    // carry the registry/protocol signupUrl). Keyed by providerId first, then
+    // protocol, so the list view can offer a "learn more" link per row.
+    const signupUrlByKey = useMemo(() => {
+        const map = new Map<string, string>();
+        for (const cat of categories) {
+            for (const item of cat.items) {
+                if (!item.signupUrl) continue;
+                const pid = item.providerId || item.id;
+                if (pid && !map.has(pid)) map.set(pid, item.signupUrl);
+                if (!map.has(item.protocol)) map.set(item.protocol, item.signupUrl);
+            }
+        }
+        return map;
+    }, [categories]);
+
+    const resolveCompanySignupUrl = useCallback((c: CatalogCompany): string | undefined => {
+        for (const p of c.protocols) {
+            if (p.providerId && signupUrlByKey.has(p.providerId)) return signupUrlByKey.get(p.providerId);
+            if (signupUrlByKey.has(p.protocol)) return signupUrlByKey.get(p.protocol);
+        }
+        return undefined;
+    }, [signupUrlByKey]);
 
     // List data: company-centric catalog, filtered by category ('all' = full).
     // Each company gets its reachability URL resolved from the same sources the
@@ -312,7 +349,7 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
         ? t('introHub.category.all')
         : t(activeCatMeta?.labelKey || '');
 
-    const headerCount = viewMode === 'list' ? catalogCompanies.length : activeItems.length;
+    const headerCount = viewMode === 'list' ? catalogCompanies.length : visibleGridItems.length;
 
     return (
         <div className="h-full flex gap-4">
@@ -468,6 +505,8 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
                             onSelectProvider={onSelectProvider}
                             getHealth={(logoId) => getStatus(logoId).status}
                             healthEnabled={healthEnabled}
+                            getSignupUrl={resolveCompanySignupUrl}
+                            onOpenUrl={openUrl}
                         />
                         {/* Custom / generic servers below the table */}
                         <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
@@ -490,9 +529,29 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
                     </div>
                 ) : (
                     <>
+                        {/* Grid search (the list view has its own search inside CatalogTable) */}
+                        <div className="relative mb-3 max-w-md">
+                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                            <input
+                                type="text"
+                                value={gridQuery}
+                                onChange={(e) => setGridQuery(e.target.value)}
+                                placeholder={t('introHub.list.searchPlaceholder')}
+                                className="w-full pl-9 pr-8 py-1.5 bg-gray-50 dark:bg-gray-700/60 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                            />
+                            {gridQuery && (
+                                <button
+                                    onClick={() => setGridQuery('')}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                                    aria-label={t('common.close')}
+                                >
+                                    <X size={13} />
+                                </button>
+                            )}
+                        </div>
                         {/* Provider grid */}
                         <div className="flex-1 overflow-y-auto">
-                            {activeItems.length === 0 ? (
+                            {visibleGridItems.length === 0 ? (
                                 <div className="text-center py-12 text-gray-400 dark:text-gray-500">
                                     <Search size={32} className="mx-auto mb-3 opacity-50" />
                                     <p className="text-sm">{t('introHub.noResults')}</p>
@@ -502,7 +561,7 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
                                     className="grid gap-2"
                                     style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}
                                 >
-                                    {activeItems.map((item) => (
+                                    {visibleGridItems.map((item) => (
                                         <ServiceCard
                                             key={item.id}
                                             item={item}
