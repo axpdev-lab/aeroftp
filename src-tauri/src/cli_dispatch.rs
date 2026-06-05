@@ -54,6 +54,7 @@ pub const CLI_SUBCOMMANDS: &[&str] = &[
     "agent",
     "mcp",
     "completions",
+    "catalog",
     "profiles",
     "users",
     "profile-add",
