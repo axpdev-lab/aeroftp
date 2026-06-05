@@ -9454,6 +9454,9 @@ fn interactive_profiles_loop(cli: &Cli, store: &CredentialStore, profiles: Vec<s
 
     let mut current = profiles;
     let mut tombstones: Vec<(usize, serde_json::Value)> = Vec::new();
+    // Command queued by the raw-mode `tui` navigator: when set, it is consumed
+    // instead of reading a line, so the existing action dispatch runs it.
+    let mut pending_command: Option<String> = None;
 
     loop {
         if !tombstones.is_empty() {
@@ -9465,25 +9468,30 @@ fn interactive_profiles_loop(cli: &Cli, store: &CredentialStore, profiles: Vec<s
             return 0;
         }
 
-        eprintln!(
-            "\nInteractive: l/t/d/f/c/r/e <N|name> [N|name ...]  ·  # <sel> <N> reorder  ·  u switch user  ·  legacy 1l/l1 still works  ·  0/q = quit"
-        );
-        eprint!("profiles> ");
-        let _ = io::stderr().flush();
+        let raw_owned: String = if let Some(cmd) = pending_command.take() {
+            cmd
+        } else {
+            eprintln!(
+                "\nInteractive: l/t/d/f/c/r/e <N|name> [N|name ...]  ·  # <sel> <N> reorder  ·  u switch user  ·  tui arrow-key navigator  ·  legacy 1l/l1 still works  ·  0/q = quit"
+            );
+            eprint!("profiles> ");
+            let _ = io::stderr().flush();
 
-        let mut line = String::new();
-        match io::stdin().lock().read_line(&mut line) {
-            Ok(0) => {
-                eprintln!();
-                return 0;
+            let mut line = String::new();
+            match io::stdin().lock().read_line(&mut line) {
+                Ok(0) => {
+                    eprintln!();
+                    return 0;
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    eprintln!("Read error: {}. Exiting interactive mode.", e);
+                    return 1;
+                }
             }
-            Ok(_) => {}
-            Err(e) => {
-                eprintln!("Read error: {}. Exiting interactive mode.", e);
-                return 1;
-            }
-        }
-        let raw = line.trim();
+            line
+        };
+        let raw = raw_owned.trim();
         if raw.is_empty() {
             continue;
         }
@@ -9505,12 +9513,31 @@ fn interactive_profiles_loop(cli: &Cli, store: &CredentialStore, profiles: Vec<s
             eprintln!("  v <selector>    convert profile to a different mode, REPLACES the original (issue #215)");
             eprintln!("  # <sel> <N>     move a profile to index N (renumber, clamped to count, persisted)");
             eprintln!("  u [N|name]      switch active user (lists accounts when bare); reloads profiles");
+            eprintln!("  tui / nav       raw-mode arrow-key navigator: pick a profile + action visually");
             eprintln!("  Nl  Nt  Nd      legacy single-target compact form (e.g. '1l', 'l1')");
             eprintln!("  0/q             quit");
             eprintln!();
             eprintln!("  Selectors are space-separated; use double quotes for names with spaces.");
             eprintln!("  Example: c \"My Cloud Drive\" 7 box     d 4 box 10 7 mega     f mybox");
             eprintln!("  Mode switch: s 3 (then prompts for mode label: api, webdav, s3, ftp)");
+            continue;
+        }
+
+        // Raw-mode arrow-key navigator (issue #270 17137604). Opt-in from the
+        // line prompt: it lets the user pick a profile + action visually and
+        // returns the equivalent line-mode command, which the existing dispatch
+        // below executes (with its prompts and confirmations). Keeping the
+        // mutation logic in one place means the navigator never duplicates it.
+        if lower == "tui" || lower == "nav" {
+            if !std::io::stdin().is_terminal() {
+                eprintln!("The arrow-key navigator needs an interactive terminal.");
+                continue;
+            }
+            match profiles_tui_pick(&current) {
+                Ok(ProfilesTuiOutcome::Quit) => {}
+                Ok(ProfilesTuiOutcome::Command(cmd)) => pending_command = Some(cmd),
+                Err(e) => eprintln!("Navigator error: {}. Back to the prompt.", e),
+            }
             continue;
         }
 
@@ -10263,6 +10290,180 @@ fn interactive_profiles_loop(cli: &Cli, store: &CredentialStore, profiles: Vec<s
             return 0;
         }
     }
+}
+
+/// Outcome of one raw-mode navigator session over the profile list.
+enum ProfilesTuiOutcome {
+    /// User picked an action for a profile: the equivalent line-mode command.
+    Command(String),
+    /// User left the navigator (q/Esc) without choosing an action.
+    Quit,
+}
+
+/// Raw-mode arrow-key navigator for `profiles -i` (issue #270 17137604).
+///
+/// A pure input front-end: it renders the profile list, lets the user move with
+/// the arrow keys (or j/k) and press an action key, then returns the equivalent
+/// line-mode command (e.g. `d 3`). The caller runs that through the existing,
+/// tested action handlers after raw mode is left, so all vault mutation stays in
+/// one place. Mirrors the ncdu TUI's crossterm/ratatui setup and always restores
+/// the terminal, even on error.
+fn profiles_tui_pick(profiles: &[serde_json::Value]) -> std::io::Result<ProfilesTuiOutcome> {
+    use crossterm::{
+        event::{self, Event, KeyCode, KeyEventKind},
+        terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+        ExecutableCommand,
+    };
+    use ratatui::{
+        backend::CrosstermBackend,
+        layout::{Constraint, Layout},
+        style::{Color, Modifier, Style},
+        text::{Line, Span},
+        widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
+        Terminal,
+    };
+
+    if profiles.is_empty() {
+        return Ok(ProfilesTuiOutcome::Quit);
+    }
+
+    let mut stdout = std::io::stdout();
+    enable_raw_mode()?;
+    stdout.execute(EnterAlternateScreen)?;
+    let backend = CrosstermBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
+
+    let mut selected: usize = 0;
+    let mut outcome = ProfilesTuiOutcome::Quit;
+
+    // Run the event loop in a closure so the terminal is restored unconditionally
+    // afterwards, even if a draw/read call returns an error.
+    let loop_result: std::io::Result<()> = (|| {
+        loop {
+            terminal.draw(|frame| {
+                let area = frame.area();
+                let chunks = Layout::vertical([
+                    Constraint::Length(2),
+                    Constraint::Min(1),
+                    Constraint::Length(2),
+                ])
+                .split(area);
+
+                let header = Paragraph::new(vec![
+                    Line::from(Span::styled(
+                        " AeroFTP profiles",
+                        Style::default()
+                            .fg(Color::Cyan)
+                            .add_modifier(Modifier::BOLD),
+                    )),
+                    Line::from(Span::styled(
+                        format!(" {} profile(s)", profiles.len()),
+                        Style::default().fg(Color::DarkGray),
+                    )),
+                ]);
+                frame.render_widget(header, chunks[0]);
+
+                let items: Vec<ListItem> = profiles
+                    .iter()
+                    .enumerate()
+                    .map(|(i, p)| {
+                        let name = p.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed");
+                        let proto = p
+                            .get("protocol")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("ftp");
+                        let host = p.get("host").and_then(|v| v.as_str()).unwrap_or("");
+                        let fav = p
+                            .get("favorite")
+                            .and_then(|v| v.as_bool())
+                            .or_else(|| p.get("isFavorite").and_then(|v| v.as_bool()))
+                            .unwrap_or(false);
+                        let star = if fav { "\u{2605} " } else { "  " };
+                        ListItem::new(Line::from(vec![
+                            Span::styled(
+                                format!("{:>2}. ", i + 1),
+                                Style::default().fg(Color::DarkGray),
+                            ),
+                            Span::styled(star, Style::default().fg(Color::Yellow)),
+                            Span::raw(name.to_string()),
+                            Span::styled(
+                                format!("  {}", proto),
+                                Style::default().fg(Color::Blue),
+                            ),
+                            Span::styled(
+                                format!("  {}", host),
+                                Style::default().fg(Color::DarkGray),
+                            ),
+                        ]))
+                    })
+                    .collect();
+                let list = List::new(items)
+                    .block(Block::default().borders(Borders::ALL).title(" Profiles "))
+                    .highlight_style(
+                        Style::default()
+                            .bg(Color::Blue)
+                            .fg(Color::White)
+                            .add_modifier(Modifier::BOLD),
+                    )
+                    .highlight_symbol("> ");
+                let mut list_state = ListState::default();
+                list_state.select(Some(selected));
+                frame.render_stateful_widget(list, chunks[1], &mut list_state);
+
+                let footer = Paragraph::new(vec![
+                    Line::from(Span::styled(
+                        " Up/Down move   Enter/l list   t tree   f fav   c copy   r rename   e edit   d delete",
+                        Style::default().fg(Color::DarkGray),
+                    )),
+                    Line::from(Span::styled(
+                        " q/Esc back to the prompt",
+                        Style::default().fg(Color::DarkGray),
+                    )),
+                ]);
+                frame.render_widget(footer, chunks[2]);
+            })?;
+
+            if event::poll(std::time::Duration::from_millis(100))? {
+                if let Event::Key(key) = event::read()? {
+                    if key.kind != KeyEventKind::Press {
+                        continue;
+                    }
+                    let n = profiles.len();
+                    match key.code {
+                        KeyCode::Char('q') | KeyCode::Esc => {
+                            outcome = ProfilesTuiOutcome::Quit;
+                            break;
+                        }
+                        KeyCode::Down | KeyCode::Char('j') if selected + 1 < n => selected += 1,
+                        KeyCode::Up | KeyCode::Char('k') if selected > 0 => selected -= 1,
+                        KeyCode::Home => selected = 0,
+                        KeyCode::End => selected = n - 1,
+                        KeyCode::PageDown => {
+                            selected = (selected + 10).min(n.saturating_sub(1));
+                        }
+                        KeyCode::PageUp => selected = selected.saturating_sub(10),
+                        KeyCode::Enter | KeyCode::Char('l') => {
+                            outcome =
+                                ProfilesTuiOutcome::Command(format!("l {}", selected + 1));
+                            break;
+                        }
+                        KeyCode::Char(c) if matches!(c, 't' | 'f' | 'c' | 'r' | 'e' | 'd') => {
+                            outcome = ProfilesTuiOutcome::Command(format!("{} {}", c, selected + 1));
+                            break;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        Ok(())
+    })();
+
+    let _ = disable_raw_mode();
+    let _ = terminal.backend_mut().execute(LeaveAlternateScreen);
+    let _ = terminal.show_cursor();
+    loop_result?;
+    Ok(outcome)
 }
 
 /// Resolve a single selector (integer or profile name) against the visible
