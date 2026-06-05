@@ -753,7 +753,7 @@
             "nFilesAtATime": "{n} file sekaligus",
             "retryCountOnError": "Jumlah Percobaan Ulang saat Kesalahan",
             "cloudProviderSettings": "Pengaturan Penyedia Cloud",
-            "cloudProviderDesc": "Konfigurasi penyedia penyimpanan cloud. AeroCloud menggunakan server FTP Anda, penyedia OAuth2 memerlukan kredensial API.",
+            "cloudProviderDesc": "Konfigurasikan penyedia penyimpanan cloud. AeroCloud mengubah server apa pun yang didukung menjadi cloud pribadi Anda (FTP, FTPS, SFTP, WebDAV, dan penyedia cloud bawaan); penyedia OAuth2 memerlukan kredensial API.",
             "hideSecrets": "Sembunyikan rahasia",
             "showSecrets": "Tampilkan rahasia",
             "aerocloudName": "AeroCloud",
@@ -2004,7 +2004,7 @@
             "aerosyncScriptApplyButton": "Simpan sebagai preset",
             "aerosyncScriptAppliedToast": "Preset yang diimpor telah disimpan. Buka AeroSync untuk menggunakannya.",
             "compressionHint": "Mengompresi data saat transit untuk mempercepat transfer; tidak menyimpan berkas terkompresi di tujuan. Auto melewati format yang sudah terkompresi (zip, jpg, mp4, dan sejenisnya).",
-            "canaryDryRun": "Tidak ada yang ditransfer: ini menampilkan pratinjau yang akan dilakukan sinkronisasi penuh, dihitung dari sampel (mirip dengan rclone --dry-run)."
+            "canaryDryRun": "Tidak ada yang ditransfer: ini menampilkan pratinjau dari apa yang akan dilakukan sinkronisasi penuh, dihitung dari sampel. Ini adalah padanan GUI dari perintah aeroftp-cli sync --dry-run (dan --dry-run milik rclone)."
         },
         "ui": {
             "syncing": "Menyinkronkan...",
@@ -3309,7 +3309,8 @@
                 "notSupported": "Tipe file ini tidak didukung untuk pratinjau",
                 "previous": "Sebelumnya (←)",
                 "remote": "Remote",
-                "edit": "Edit"
+                "edit": "Edit",
+                "viewAsText": "Lihat sebagai teks"
             },
             "image": {
                 "actualSize": "Ukuran Asli",

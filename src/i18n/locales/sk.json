@@ -753,7 +753,7 @@
             "nFilesAtATime": "{n} súborov naraz",
             "retryCountOnError": "Počet pokusov pri chybe",
             "cloudProviderSettings": "Nastavenia poskytovatela cloudu",
-            "cloudProviderDesc": "Nakonfigurujte poskytovateľov cloudového úložiska. AeroCloud používa váš FTP server, poskytovatelia OAuth2 potrebujú API poverenia.",
+            "cloudProviderDesc": "Nakonfigurujte poskytovateľov cloudového úložiska. AeroCloud premení akýkoľvek podporovaný server na váš osobný cloud (FTP, FTPS, SFTP, WebDAV a natívni cloudoví poskytovatelia); poskytovatelia OAuth2 vyžadujú prihlasovacie údaje API.",
             "hideSecrets": "Skryť tajné údaje",
             "showSecrets": "Zobraziť tajné údaje",
             "aerocloudName": "AeroCloud",
@@ -2004,7 +2004,7 @@
             "aerosyncScriptApplyButton": "Uložiť ako preset",
             "aerosyncScriptAppliedToast": "Importovaný preset uložený. Otvor AeroSync na jeho použitie.",
             "compressionHint": "Komprimuje dáta počas prenosu, aby ho zrýchlil; v cieli neukladá komprimované súbory. Auto preskakuje formáty, ktoré sú už komprimované (zip, jpg, mp4 a podobné).",
-            "canaryDryRun": "Nič sa neprenáša: toto zobrazuje náhľad toho, čo by urobila úplná synchronizácia, vypočítaný zo vzorky (podobne ako rclone --dry-run)."
+            "canaryDryRun": "Nič sa neprenáša: zobrazí náhľad toho, čo by urobila úplná synchronizácia, vypočítaný zo vzorky. Je to grafický náprotivok príkazu aeroftp-cli sync --dry-run (a --dry-run nástroja rclone)."
         },
         "ui": {
             "syncing": "Synchronizacia...",
@@ -3309,7 +3309,8 @@
                 "notSupported": "Tento typ suboru nie je podporovany pre nahled",
                 "previous": "Predchadzajuci (←)",
                 "remote": "Vzdialeny",
-                "edit": "Upraviť"
+                "edit": "Upraviť",
+                "viewAsText": "Zobraziť ako text"
             },
             "image": {
                 "actualSize": "Skutocna velkost",

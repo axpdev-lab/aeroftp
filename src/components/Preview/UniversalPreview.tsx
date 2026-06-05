@@ -16,7 +16,7 @@
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { X, Download, ChevronLeft, ChevronRight, ExternalLink, Pencil } from 'lucide-react';
+import { X, Download, ChevronLeft, ChevronRight, ExternalLink, Pencil, FileText } from 'lucide-react';
 import { UniversalPreviewProps, PreviewFileData } from './types';
 import { getPreviewCategory, formatFileSize, getCategoryIcon, isSourceViewable } from './utils/fileTypes';
 import { ImageViewer } from './viewers/ImageViewer';
@@ -40,15 +40,23 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
     const { t } = useI18n();
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    // Opt-in "view as text" for files whose extension is not recognised as a
+    // known text/code format. Lets any plain-text file (e.g. a custom-suffix
+    // notes file) be read as if it were a .txt, on the user's explicit
+    // request, without auto-rendering binary blobs (#270 comment 17105085).
+    const [forceText, setForceText] = useState(false);
 
-    // Reset error when file changes
+    // Reset error + the view-as-text override when the file changes
     useEffect(() => {
         setError(null);
         setIsLoading(false);
+        setForceText(false);
     }, [file?.name, file?.path]);
 
-    // Determine file category
-    const category = file ? getPreviewCategory(file.name) : 'unknown';
+    // Determine file category. When the user asked to view an otherwise
+    // unrecognised file as text, treat it as text for rendering.
+    const detectedCategory = file ? getPreviewCategory(file.name) : 'unknown';
+    const category = forceText ? 'text' : detectedCategory;
 
     // Handle keyboard navigation
     useEffect(() => {
@@ -128,6 +136,15 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
                             <div className="text-sm text-gray-500 mt-2">
                                 {t('preview.common.notSupported')}
                             </div>
+                            {/* Let the user read any unrecognised file as plain
+                                text on demand (#270 comment 17105085). */}
+                            <button
+                                onClick={() => setForceText(true)}
+                                className="mt-5 flex items-center gap-2 mx-auto px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-lg transition-colors"
+                            >
+                                <FileText size={16} />
+                                {t('preview.common.viewAsText') || 'View as text'}
+                            </button>
                         </div>
                     </div>
                 );
@@ -167,8 +184,10 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
 
                     {/* Actions */}
                     <div className="flex items-center gap-2">
-                        {/* Edit button: open plain-text/code files in the AeroTools editor */}
-                        {onEdit && file && isSourceViewable(file.name) && (
+                        {/* Edit button: open plain-text/code files in the
+                            AeroTools editor. Also offered once the user chose
+                            to view an unrecognised file as text. */}
+                        {onEdit && file && (isSourceViewable(file.name) || forceText) && (
                             <button
                                 onClick={onEdit}
                                 className="flex items-center gap-2 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-lg transition-colors"

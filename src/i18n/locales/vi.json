@@ -753,7 +753,7 @@
             "nFilesAtATime": "{n} tệp cùng một lúc",
             "retryCountOnError": "Số lần thử lại khi lỗi",
             "cloudProviderSettings": "Cài đặt nhà cung cấp đám mây",
-            "cloudProviderDesc": "Cấu hình các nhà cung cấp dịch vụ lưu trữ đám mây. AeroCloud sử dụng máy chủ FTP của bạn, nhà cung cấp OAuth2 cần thông tin xác thực API.",
+            "cloudProviderDesc": "Cấu hình các nhà cung cấp lưu trữ đám mây. AeroCloud biến bất kỳ máy chủ được hỗ trợ nào thành đám mây cá nhân của bạn (FTP, FTPS, SFTP, WebDAV và các nhà cung cấp đám mây gốc); các nhà cung cấp OAuth2 cần thông tin xác thực API.",
             "hideSecrets": "Ẩn bí mật",
             "showSecrets": "Hiển thị bí mật",
             "aerocloudName": "AeroCloud",
@@ -2004,7 +2004,7 @@
             "aerosyncScriptApplyButton": "Luu lam preset",
             "aerosyncScriptAppliedToast": "Da luu preset duoc nhap. Mo AeroSync de su dung.",
             "compressionHint": "Nén dữ liệu trong quá trình truyền để tăng tốc độ truyền; không lưu trữ các tệp đã nén tại đích. Auto bỏ qua các định dạng đã được nén sẵn (zip, jpg, mp4 và tương tự).",
-            "canaryDryRun": "Không có gì được truyền: thao tác này xem trước những gì một lần đồng bộ đầy đủ sẽ thực hiện, được tính từ mẫu (tương tự rclone --dry-run)."
+            "canaryDryRun": "Không có gì được chuyển: thao tác này xem trước những gì một đồng bộ đầy đủ sẽ làm, được tính từ mẫu. Đây là phiên bản GUI tương đương của lệnh aeroftp-cli sync --dry-run (và --dry-run của rclone)."
         },
         "ui": {
             "syncing": "Đang đồng bộ...",
@@ -3309,7 +3309,8 @@
                 "notSupported": "Loại tệp này không được hỗ trợ xem trước",
                 "previous": "Trước đó (←)",
                 "remote": "Từ xa",
-                "edit": "Chinh sua"
+                "edit": "Chinh sua",
+                "viewAsText": "Xem dưới dạng văn bản"
             },
             "image": {
                 "actualSize": "Kích thước thực",

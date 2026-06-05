@@ -753,7 +753,7 @@
             "nFilesAtATime": "{n} datoteka odjednom",
             "retryCountOnError": "Broj ponovnih pokušaja pri greški",
             "cloudProviderSettings": "Postavke pružatelja oblaka",
-            "cloudProviderDesc": "Konfigurirajte pružatelje pohrane u oblaku. AeroCloud koristi vaš FTP poslužitelj, OAuth2 pružatelji trebaju API vjerodajnice.",
+            "cloudProviderDesc": "Konfigurirajte pružatelje usluga skladištenja u oblaku. AeroCloud pretvara bilo koji podržani poslužitelj u vaš osobni oblak (FTP, FTPS, SFTP, WebDAV i izvorne pružatelje usluga u oblaku); OAuth2 pružatelji zahtijevaju API vjerodajnice.",
             "hideSecrets": "Sakrij tajne",
             "showSecrets": "Prikaži tajne",
             "aerocloudName": "AeroCloud",
@@ -2004,7 +2004,7 @@
             "aerosyncScriptApplyButton": "Spremi kao preset",
             "aerosyncScriptAppliedToast": "Uvezeni preset spremljen. Otvori AeroSync za korištenje.",
             "compressionHint": "Komprimira podatke tijekom prijenosa kako bi ga ubrzao; ne pohranjuje komprimirane datoteke na odredištu. Auto preskače formate koji su već komprimirani (zip, jpg, mp4 i slično).",
-            "canaryDryRun": "Ništa se ne prenosi: ovo prikazuje pretpregled onoga što bi učinila potpuna sinkronizacija, izračunato na temelju uzorka (slično naredbi rclone --dry-run)."
+            "canaryDryRun": "Ništa se ne prenosi: ovo prikazuje pretpregled onoga što bi učinila potpuna sinkronizacija, izračunato iz uzorka. To je grafički ekvivalent naredbe aeroftp-cli sync --dry-run (i --dry-run alata rclone)."
         },
         "ui": {
             "syncing": "Sinkronizacija...",
@@ -3309,7 +3309,8 @@
                 "notSupported": "Ovaj tip datoteke nije podržan za pregled",
                 "previous": "Prethodno (←)",
                 "remote": "Udaljeno",
-                "edit": "Uredi"
+                "edit": "Uredi",
+                "viewAsText": "Prikaži kao tekst"
             },
             "image": {
                 "actualSize": "Stvarna veličina",

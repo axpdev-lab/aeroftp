@@ -753,7 +753,7 @@
             "nFilesAtATime": "{n} ficheiros de vez",
             "retryCountOnError": "Número de reintentos en caso de erro",
             "cloudProviderSettings": "Axustes de proveedor na nube",
-            "cloudProviderDesc": "Configura provedores de almacenamento na nube. AeroCloud usa o teu servidor FTP, os provedores OAuth2 necesitan credenciais de API.",
+            "cloudProviderDesc": "Configura os provedores de almacenamento na nube. AeroCloud converte calquera servidor compatible na túa nube persoal (FTP, FTPS, SFTP, WebDAV e os provedores de nube nativos); os provedores OAuth2 necesitan credenciais de API.",
             "hideSecrets": "Ocultar segredos",
             "showSecrets": "Mostrar segredos",
             "aerocloudName": "AeroCloud",
@@ -2004,7 +2004,7 @@
             "aerosyncScriptApplyButton": "Gardar como preset",
             "aerosyncScriptAppliedToast": "Preset importado gardado. Abre AeroSync para usalo.",
             "compressionHint": "Comprime os datos durante a transferencia para aceleraa; non almacena ficheiros comprimidos no destino. Auto omite os formatos que xa están comprimidos (zip, jpg, mp4 e similares).",
-            "canaryDryRun": "Non se transfire nada: isto mostra unha vista previa do que faría unha sincronización completa, calculada a partir da mostra (similar a rclone --dry-run)."
+            "canaryDryRun": "Non se transfire nada: mostra unha vista previa do que faría unha sincronización completa, calculada a partir da mostra. É o equivalente gráfico do comando aeroftp-cli sync --dry-run (e de --dry-run de rclone)."
         },
         "ui": {
             "syncing": "Sincronizando...",
@@ -3309,7 +3309,8 @@
                 "notSupported": "Este tipo de ficheiro non está soportado para vista previa",
                 "previous": "Anterior (←)",
                 "remote": "Remoto",
-                "edit": "Editar"
+                "edit": "Editar",
+                "viewAsText": "Ver como texto"
             },
             "image": {
                 "actualSize": "Tamaño real",

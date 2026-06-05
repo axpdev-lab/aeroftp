@@ -753,7 +753,7 @@
             "nFilesAtATime": "{n} fájl egyszerre",
             "retryCountOnError": "Újrapróbálkozások száma hiba esetén",
             "cloudProviderSettings": "Felhőszolgáltató beállítások",
-            "cloudProviderDesc": "Felhőtárolási szolgáltatók konfigurálása. Az AeroCloud az Ön FTP-szerverét használja, az OAuth2 szolgáltatók API-hitelesítő adatokat igényelnek.",
+            "cloudProviderDesc": "Konfigurálja a felhőtárhely-szolgáltatókat. Az AeroCloud bármilyen támogatott kiszolgálót személyes felhővé alakít (FTP, FTPS, SFTP, WebDAV és a natív felhőszolgáltatók); az OAuth2-szolgáltatók API-hitelesítő adatokat igényelnek.",
             "hideSecrets": "Titkok elrejtése",
             "showSecrets": "Titkok megjelenítése",
             "aerocloudName": "AeroCloud",
@@ -2004,7 +2004,7 @@
             "aerosyncScriptApplyButton": "Mentés presetként",
             "aerosyncScriptAppliedToast": "Importált preset elmentve. Nyisd meg az AeroSync-et a használatához.",
             "compressionHint": "Az adatokat átvitel közben tömöríti az átvitel felgyorsításához; a célhelyen nem tárol tömörített fájlokat. Az Auto kihagyja a már tömörített formátumokat (zip, jpg, mp4 és hasonlók).",
-            "canaryDryRun": "Semmilyen adat nem kerül átvitelre: ez előnézetet ad arról, mit tenne egy teljes szinkronizálás, a minta alapján kiszámítva (hasonlóan az rclone --dry-run működéséhez)."
+            "canaryDryRun": "Semmi sem kerül átvitelre: ez előnézetet ad arról, mit tenne egy teljes szinkronizálás, a mintából számítva. Ez a aeroftp-cli sync --dry-run parancs (és az rclone --dry-run) grafikus megfelelője."
         },
         "ui": {
             "syncing": "Szinkronizálás...",
@@ -3309,7 +3309,8 @@
                 "notSupported": "Ez a fájltípus nem támogatott előnézethez",
                 "previous": "Előző (←)",
                 "remote": "Távoli",
-                "edit": "Szerkesztés"
+                "edit": "Szerkesztés",
+                "viewAsText": "Megjelenítés szövegként"
             },
             "image": {
                 "actualSize": "Valós méret",

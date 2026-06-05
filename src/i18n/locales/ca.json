@@ -753,7 +753,7 @@
             "nFilesAtATime": "{n} fitxers a la vegada",
             "retryCountOnError": "Nombre de Reintents per Error",
             "cloudProviderSettings": "Configuració del Proveïdor en Núvol",
-            "cloudProviderDesc": "Configureu els proveïdors d'emmagatzematge en núvol. AeroCloud utilitza el vostre servidor FTP, els proveïdors OAuth2 necessiten credencials d'API.",
+            "cloudProviderDesc": "Configura els proveïdors d'emmagatzematge al núvol. AeroCloud converteix qualsevol servidor compatible en el teu núvol personal (FTP, FTPS, SFTP, WebDAV i els proveïdors de núvol natius); els proveïdors OAuth2 necessiten credencials d'API.",
             "hideSecrets": "Amagar secrets",
             "showSecrets": "Mostrar secrets",
             "aerocloudName": "AeroCloud",
@@ -2004,7 +2004,7 @@
             "aerosyncScriptApplyButton": "Desa com a preset",
             "aerosyncScriptAppliedToast": "Preset importat desat. Obre AeroSync per utilitzar-lo.",
             "compressionHint": "Comprimeix les dades durant el trànsit per accelerar la transferència; no desa fitxers comprimits a la destinació. Auto omet els formats que ja estan comprimits (zip, jpg, mp4 i similars).",
-            "canaryDryRun": "No es transfereix res: això mostra una previsualització del que faria una sincronització completa, calculada a partir de la mostra (similar a rclone --dry-run)."
+            "canaryDryRun": "No es transfereix res: mostra una vista prèvia del que faria una sincronització completa, calculada a partir de la mostra. És l'equivalent gràfic de l'ordre aeroftp-cli sync --dry-run (i de --dry-run de rclone)."
         },
         "ui": {
             "syncing": "Sincronitzant...",
@@ -3309,7 +3309,8 @@
                 "notSupported": "Aquest tipus de fitxer no és compatible per a la previsualització",
                 "previous": "Anterior (←)",
                 "remote": "Remot",
-                "edit": "Edita"
+                "edit": "Edita",
+                "viewAsText": "Mostra com a text"
             },
             "image": {
                 "actualSize": "Mida real",

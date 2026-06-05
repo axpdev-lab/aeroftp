@@ -2104,7 +2104,8 @@
                 "notAvailable": "Preview not available",
                 "notSupported": "This file type is not supported for preview",
                 "previous": "Previous (←)",
-                "remote": "Remote"
+                "remote": "Remote",
+                "viewAsText": "View as text"
             },
             "image": {
                 "actualSize": "Actual Size",
@@ -2700,7 +2701,7 @@
             "chooseIcon": "Choose Icon",
             "clientId": "Client ID",
             "clientSecret": "Client Secret",
-            "cloudProviderDesc": "Configure cloud storage providers. AeroCloud uses your FTP server, OAuth2 providers need API credentials.",
+            "cloudProviderDesc": "Configure cloud storage providers. AeroCloud turns any supported server into your personal cloud (FTP, FTPS, SFTP, WebDAV and the native cloud providers); OAuth2 providers need API credentials.",
             "cloudProviders": "Cloud Providers",
             "cloudProviderSettings": "Cloud Provider Settings",
             "columnModified": "Modified",
@@ -3452,7 +3453,7 @@
             "canaryNewest": "Newest",
             "canaryLargest": "Largest",
             "canaryDesc": "Run a trial sync on a subset of files before committing to the full operation.",
-            "canaryDryRun": "Nothing is transferred: this previews what a full sync would do, computed from the sample (similar to rclone --dry-run).",
+            "canaryDryRun": "Nothing is transferred: this previews what a full sync would do, computed from the sample. It is the GUI counterpart of the CLI's aeroftp-cli sync --dry-run (and rclone's --dry-run).",
             "canaryRun": "Canary Sync",
             "canaryResults": "Canary Sync Results",
             "canarySampled": "Sampled",

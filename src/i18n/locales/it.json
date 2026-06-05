@@ -1164,7 +1164,7 @@
             "nFilesAtATime": "{n} file alla volta",
             "retryCountOnError": "Tentativi in Caso di Errore",
             "cloudProviderSettings": "Impostazioni Provider Cloud",
-            "cloudProviderDesc": "Configura i provider di archiviazione cloud. AeroCloud usa il tuo server FTP, i provider OAuth2 necessitano di credenziali API.",
+            "cloudProviderDesc": "Configura i provider di cloud storage. AeroCloud trasforma qualsiasi server supportato nel tuo cloud personale (FTP, FTPS, SFTP, WebDAV e i provider cloud nativi); i provider OAuth2 richiedono credenziali API.",
             "hideSecrets": "Nascondi segreti",
             "showSecrets": "Mostra segreti",
             "aerocloudName": "AeroCloud",
@@ -2106,7 +2106,7 @@
             "canaryNewest": "Piu recenti",
             "canaryLargest": "Piu grandi",
             "canaryDesc": "Esegui una sincronizzazione di prova su un sottoinsieme di file prima di procedere con l'operazione completa.",
-            "canaryDryRun": "Non viene trasferito nulla: mostra in anteprima cosa farebbe una sincronizzazione completa, calcolato sul campione (simile a rclone --dry-run).",
+            "canaryDryRun": "Non viene trasferito nulla: mostra un'anteprima di cosa farebbe una sincronizzazione completa, calcolata dal campione. E' l'equivalente GUI del comando CLI aeroftp-cli sync --dry-run (e di --dry-run di rclone).",
             "canaryRun": "Sync Canary",
             "canaryResults": "Risultati Sync Canary",
             "canarySampled": "Campionati",
@@ -3670,7 +3670,8 @@
                 "remote": "Remoto",
                 "previous": "Precedente (←)",
                 "next": "Successivo (→)",
-                "navigate": "Naviga"
+                "navigate": "Naviga",
+                "viewAsText": "Visualizza come testo"
             },
             "webgl": {
                 "notSupported": "WebGL 2 non supportato"

@@ -753,7 +753,7 @@
             "nFilesAtATime": "{n} file sa isang oras",
             "retryCountOnError": "Bilang ng Pag-retry sa Error",
             "cloudProviderSettings": "Mga Setting ng Cloud Provider",
-            "cloudProviderDesc": "I-configure ang mga cloud storage provider. Gumagamit ang AeroCloud ng iyong FTP server, ang OAuth2 provider ay nangangailangan ng API credentials.",
+            "cloudProviderDesc": "I-configure ang mga provider ng cloud storage. Ginagawa ng AeroCloud ang anumang suportadong server na iyong personal na cloud (FTP, FTPS, SFTP, WebDAV at ang mga native na cloud provider); ang mga provider ng OAuth2 ay nangangailangan ng mga kredensyal ng API.",
             "hideSecrets": "Itago ang mga secrets",
             "showSecrets": "Ipakita ang mga secrets",
             "aerocloudName": "AeroCloud",
@@ -2004,7 +2004,7 @@
             "aerosyncScriptApplyButton": "I-save bilang preset",
             "aerosyncScriptAppliedToast": "Na-save ang na-import na preset. Buksan ang AeroSync upang gamitin ito.",
             "compressionHint": "Kino-compress ang data habang inililipat para mapabilis ang transfer; hindi ito nag-iimbak ng mga naka-compress na file sa destinasyon. Nilalaktawan ng Auto ang mga format na naka-compress na (zip, jpg, mp4, at iba pa).",
-            "canaryDryRun": "Walang inililipat: ipinapakita lang nito kung ano ang gagawin ng buong sync, batay sa sample (katulad ng rclone --dry-run)."
+            "canaryDryRun": "Walang inililipat: ipinapakita nito kung ano ang gagawin ng isang buong sync, kinakalkula mula sa sample. Ito ang katumbas na GUI ng utos na aeroftp-cli sync --dry-run (at ng --dry-run ng rclone)."
         },
         "ui": {
             "syncing": "Sinsi-sync...",
@@ -3309,7 +3309,8 @@
                 "notSupported": "Hindi sinusuportahan ang ganitong uri ng file para sa preview",
                 "previous": "Nakaraan (←)",
                 "remote": "Remote",
-                "edit": "I-edit"
+                "edit": "I-edit",
+                "viewAsText": "Tingnan bilang teksto"
             },
             "image": {
                 "actualSize": "Totoong Laki",

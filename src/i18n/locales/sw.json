@@ -753,7 +753,7 @@
             "nFilesAtATime": "faili {n} kwa wakati mmoja",
             "retryCountOnError": "Idadi ya Majaribio Tena kwa Hitilafu",
             "cloudProviderSettings": "Mipangilio ya Mtoa Huduma wa Wingu",
-            "cloudProviderDesc": "Sanidi watoa huduma wa hifadhi ya wingu. AeroCloud hutumia seva yako ya FTP, watoa huduma wa OAuth2 wanahitaji kitambulisho cha API.",
+            "cloudProviderDesc": "Sanidi watoa huduma za hifadhi ya wingu. AeroCloud hubadilisha seva yoyote inayotumika kuwa wingu lako binafsi (FTP, FTPS, SFTP, WebDAV na watoa huduma asili wa wingu); watoa huduma wa OAuth2 wanahitaji vitambulisho vya API.",
             "hideSecrets": "Ficha siri",
             "showSecrets": "Onyesha siri",
             "aerocloudName": "AeroCloud",
@@ -2004,7 +2004,7 @@
             "aerosyncScriptApplyButton": "Hifadhi kama preset",
             "aerosyncScriptAppliedToast": "Preset iliyoingizwa imehifadhiwa. Fungua AeroSync kuitumia.",
             "compressionHint": "Hubana data wakati wa uhamishaji ili kuuharakisha; haihifadhi faili zilizobanwa mahali pa kufikia. Auto huruka miundo ambayo tayari imebanwa (zip, jpg, mp4 na kadhalika).",
-            "canaryDryRun": "Hakuna kinachohamishwa: hii inaonyesha hakikisho la kile ambacho usawazishaji kamili ungefanya, kilichokokotolewa kutoka kwa sampuli (sawa na rclone --dry-run)."
+            "canaryDryRun": "Hakuna kinachohamishwa: hii inaonyesha kihakikisho cha kile ambacho ulandanishaji kamili ungefanya, kilichokokotolewa kutoka kwa sampuli. Ni mlinganisho wa GUI wa amri aeroftp-cli sync --dry-run (na --dry-run ya rclone)."
         },
         "ui": {
             "syncing": "Inasawazisha...",
@@ -3309,7 +3309,8 @@
                 "notSupported": "Aina hii ya faili haitumiki kwa onyesho la awali",
                 "previous": "Iliyotangulia (←)",
                 "remote": "Mbali",
-                "edit": "Hariri"
+                "edit": "Hariri",
+                "viewAsText": "Tazama kama maandishi"
             },
             "image": {
                 "actualSize": "Ukubwa Halisi",

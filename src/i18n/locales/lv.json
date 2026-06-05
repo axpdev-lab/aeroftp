@@ -753,7 +753,7 @@
             "nFilesAtATime": "{n} failus vienlaikus",
             "retryCountOnError": "Atkārtoti mēģinājumi kļūdas gadījumā",
             "cloudProviderSettings": "Debesies pakalpojumu iestatījumi",
-            "cloudProviderDesc": "Konfigurējiet savas debesies pakalpojumu akreditācijas",
+            "cloudProviderDesc": "Konfigurējiet mākoņa krātuves pakalpojumu sniedzējus. AeroCloud jebkuru atbalstītu serveri pārvērš par jūsu personīgo mākoni (FTP, FTPS, SFTP, WebDAV un vietējie mākoņa pakalpojumu sniedzēji); OAuth2 pakalpojumu sniedzējiem nepieciešami API akreditācijas dati.",
             "hideSecrets": "Slēpt noslēpumus",
             "showSecrets": "Rādīt noslēpumus",
             "aerocloudName": "AeroCloud",
@@ -2004,7 +2004,7 @@
             "aerosyncScriptApplyButton": "Saglabat ka preset",
             "aerosyncScriptAppliedToast": "Importetais preset saglabats. Atveriet AeroSync, lai to izmantotu.",
             "compressionHint": "Saspiež datus pārsūtīšanas laikā, lai paātrinātu pārsūtīšanu; tā nesaglabā saspiestus failus galamērķī. Auto izlaiž formātus, kas jau ir saspiesti (zip, jpg, mp4 un līdzīgus).",
-            "canaryDryRun": "Nekas netiek pārsūtīts: tas parāda priekšskatījumu tam, ko veiktu pilna sinhronizācija, aprēķinot to pēc parauga (līdzīgi kā rclone --dry-run)."
+            "canaryDryRun": "Nekas netiek pārsūtīts: tas parāda priekšskatījumu tam, ko darītu pilna sinhronizācija, aprēķinātu no izlases. Tas ir komandas aeroftp-cli sync --dry-run (un rclone --dry-run) grafiskais ekvivalents."
         },
         "ui": {
             "syncing": "Sinhronizē...",
@@ -3309,7 +3309,8 @@
                 "notSupported": "Šis faila tips netiek atbalstīts priekšskatījumam",
                 "previous": "Iepriekšējais (←)",
                 "remote": "Attālināts",
-                "edit": "Rediģēt"
+                "edit": "Rediģēt",
+                "viewAsText": "Skatīt kā tekstu"
             },
             "image": {
                 "actualSize": "Faktiskais izmērs",

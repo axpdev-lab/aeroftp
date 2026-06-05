@@ -753,7 +753,7 @@
             "nFilesAtATime": "{n} tiedostoa kerralla",
             "retryCountOnError": "Uudelleenyritysten määrä virheellä",
             "cloudProviderSettings": "Pilvipalvelun asetukset",
-            "cloudProviderDesc": "Määritä pilvipalvelut. AeroCloud käyttää FTP-palvelintasi, OAuth2-palvelut vaativat API-tunnistetiedot.",
+            "cloudProviderDesc": "Määritä pilvitallennuspalvelujen tarjoajat. AeroCloud muuttaa minkä tahansa tuetun palvelimen henkilökohtaiseksi pilveksi (FTP, FTPS, SFTP, WebDAV ja natiivit pilvipalvelut); OAuth2-palvelut vaativat API-tunnistetiedot.",
             "hideSecrets": "Piilota salaisuudet",
             "showSecrets": "Näytä salaisuudet",
             "aerocloudName": "AeroCloud",
@@ -2004,7 +2004,7 @@
             "aerosyncScriptApplyButton": "Tallenna presetinä",
             "aerosyncScriptAppliedToast": "Tuotu preset tallennettu. Avaa AeroSync käyttääksesi sitä.",
             "compressionHint": "Pakkaa tiedot siirron aikana siirron nopeuttamiseksi; se ei tallenna pakattuja tiedostoja kohteeseen. Auto ohittaa muodot, jotka on jo pakattu (zip, jpg, mp4 ja vastaavat).",
-            "canaryDryRun": "Mitään ei siirretä: tämä esikatselee, mitä täysi synkronointi tekisi, laskettuna otoksen perusteella (vastaa komentoa rclone --dry-run)."
+            "canaryDryRun": "Mitään ei siirretä: tämä esikatselee, mitä täysi synkronointi tekisi, laskettuna otoksesta. Se on CLI-komennon aeroftp-cli sync --dry-run (ja rclonen --dry-run) graafinen vastine."
         },
         "ui": {
             "syncing": "Synkronoidaan...",
@@ -3309,7 +3309,8 @@
                 "notSupported": "Tätä tiedostotyyppiä ei tueta esikatselussa",
                 "previous": "Edellinen (←)",
                 "remote": "Etä",
-                "edit": "Muokkaa"
+                "edit": "Muokkaa",
+                "viewAsText": "Näytä tekstinä"
             },
             "image": {
                 "actualSize": "Todellinen koko",

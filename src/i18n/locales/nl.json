@@ -753,7 +753,7 @@
             "nFilesAtATime": "{n} bestanden tegelijk",
             "retryCountOnError": "Aantal herhalingen bij fout",
             "cloudProviderSettings": "Cloud Provider-instellingen",
-            "cloudProviderDesc": "Configureer cloud-opslagproviders. AeroCloud gebruikt uw FTP-server, OAuth2-providers hebben API-inloggegevens nodig.",
+            "cloudProviderDesc": "Configureer cloudopslagproviders. AeroCloud verandert elke ondersteunde server in jouw persoonlijke cloud (FTP, FTPS, SFTP, WebDAV en de native cloudproviders); OAuth2-providers hebben API-referenties nodig.",
             "hideSecrets": "Geheimen verbergen",
             "showSecrets": "Geheimen weergeven",
             "aerocloudName": "AeroCloud",
@@ -2004,7 +2004,7 @@
             "aerosyncScriptApplyButton": "Opslaan als preset",
             "aerosyncScriptAppliedToast": "Geïmporteerde preset opgeslagen. Open AeroSync om het te gebruiken.",
             "compressionHint": "Comprimeert gegevens tijdens het verzenden om de overdracht te versnellen; het slaat geen gecomprimeerde bestanden op de bestemming op. Auto slaat formaten over die al gecomprimeerd zijn (zip, jpg, mp4 en dergelijke).",
-            "canaryDryRun": "Er wordt niets overgedragen: dit toont een voorbeeld van wat een volledige synchronisatie zou doen, berekend op basis van het voorbeeld (vergelijkbaar met rclone --dry-run)."
+            "canaryDryRun": "Er wordt niets overgedragen: dit toont een voorbeeld van wat een volledige synchronisatie zou doen, berekend op basis van de steekproef. Het is de grafische tegenhanger van het CLI-commando aeroftp-cli sync --dry-run (en --dry-run van rclone)."
         },
         "ui": {
             "syncing": "Synchroniseren...",
@@ -3309,7 +3309,8 @@
                 "notSupported": "Dit bestandstype wordt niet ondersteund voor voorbeeld",
                 "previous": "Vorige (←)",
                 "remote": "Extern",
-                "edit": "Bewerken"
+                "edit": "Bewerken",
+                "viewAsText": "Als tekst weergeven"
             },
             "image": {
                 "actualSize": "Werkelijke grootte",

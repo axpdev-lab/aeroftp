@@ -753,7 +753,7 @@
             "nFilesAtATime": "{n} filer om gangen",
             "retryCountOnError": "Forsøksantall ved feil",
             "cloudProviderSettings": "Innstillinger for skyleverandør",
-            "cloudProviderDesc": "Konfigurer skyleverandører. AeroCloud bruker FTP-serveren din, OAuth2-leverandører krever API-legitimasjon.",
+            "cloudProviderDesc": "Konfigurer skylagringsleverandører. AeroCloud gjør enhver støttet server om til din personlige sky (FTP, FTPS, SFTP, WebDAV og de native skyleverandørene); OAuth2-leverandører krever API-legitimasjon.",
             "hideSecrets": "Skjul hemmeligheter",
             "showSecrets": "Vis hemmeligheter",
             "aerocloudName": "AeroCloud",
@@ -2004,7 +2004,7 @@
             "aerosyncScriptApplyButton": "Lagre som preset",
             "aerosyncScriptAppliedToast": "Importert preset lagret. Åpne AeroSync for å bruke det.",
             "compressionHint": "Komprimerer data under overføringen for å gjøre den raskere; den lagrer ikke komprimerte filer på destinasjonen. Auto hopper over formater som allerede er komprimert (zip, jpg, mp4 og lignende).",
-            "canaryDryRun": "Ingenting overføres: dette viser en forhåndsvisning av hva en full synkronisering ville gjort, beregnet ut fra utvalget (tilsvarer rclone --dry-run)."
+            "canaryDryRun": "Ingenting overføres: dette viser hva en full synkronisering ville gjort, beregnet fra utvalget. Det er den grafiske motparten til CLI-kommandoen aeroftp-cli sync --dry-run (og rclones --dry-run)."
         },
         "ui": {
             "syncing": "Synkroniserer...",
@@ -3309,7 +3309,8 @@
                 "notSupported": "Denne filtypen støttes ikke for forhåndsvisning",
                 "previous": "Forrige (←)",
                 "remote": "Ekstern",
-                "edit": "Rediger"
+                "edit": "Rediger",
+                "viewAsText": "Vis som tekst"
             },
             "image": {
                 "actualSize": "Faktisk størrelse",

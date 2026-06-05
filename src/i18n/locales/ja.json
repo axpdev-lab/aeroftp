@@ -753,7 +753,7 @@
             "nFilesAtATime": "{n}ファイルずつ",
             "retryCountOnError": "エラー時のリトライ回数",
             "cloudProviderSettings": "クラウドプロバイダー設定",
-            "cloudProviderDesc": "クラウドストレージプロバイダーを設定します。AeroCloudはFTPサーバー、OAuth2プロバイダーはAPI資格情報が必要です。",
+            "cloudProviderDesc": "クラウドストレージプロバイダーを構成します。AeroCloud は対応する任意のサーバーをあなた専用のクラウドに変えます（FTP、FTPS、SFTP、WebDAV、およびネイティブのクラウドプロバイダー）。OAuth2 プロバイダーには API 資格情報が必要です。",
             "hideSecrets": "シークレットを非表示",
             "showSecrets": "シークレットを表示",
             "aerocloudName": "AeroCloud",
@@ -1969,7 +1969,7 @@
             "aerosyncScriptApplyButton": "preset として保存",
             "aerosyncScriptAppliedToast": "インポートした preset を保存しました。AeroSync を開いて使用してください。",
             "compressionHint": "転送を高速化するため通信中にデータを圧縮します。圧縮ファイルが転送先に保存されることはありません。Auto はすでに圧縮された形式（zip、jpg、mp4 など）をスキップします。",
-            "canaryDryRun": "何も転送されません。これはサンプルに基づいて算出した、完全な同期で行われる内容のプレビューです（rclone --dry-run に似ています）。"
+            "canaryDryRun": "何も転送されません。これはサンプルから計算した、完全同期で行われる内容のプレビューです。CLI コマンド aeroftp-cli sync --dry-run（および rclone の --dry-run）の GUI 版です。"
         },
         "ui": {
             "syncing": "同期中...",
@@ -3274,7 +3274,8 @@
                 "notSupported": "このファイル形式はプレビューに対応していません",
                 "previous": "前へ (←)",
                 "remote": "リモート",
-                "edit": "編集"
+                "edit": "編集",
+                "viewAsText": "テキストとして表示"
             },
             "image": {
                 "actualSize": "実際のサイズ",

@@ -753,7 +753,7 @@
             "nFilesAtATime": "{n} filer åt gången",
             "retryCountOnError": "Försöksantal vid fel",
             "cloudProviderSettings": "Inställningar för molnleverantörer",
-            "cloudProviderDesc": "Konfigurera molnlagringsleverantörer. AeroCloud använder din FTP-server, OAuth2-leverantörer behöver API-autentiseringsuppgifter.",
+            "cloudProviderDesc": "Konfigurera molnlagringsleverantörer. AeroCloud förvandlar vilken stödd server som helst till ditt personliga moln (FTP, FTPS, SFTP, WebDAV och de inbyggda molnleverantörerna); OAuth2-leverantörer kräver API-autentiseringsuppgifter.",
             "hideSecrets": "Dölj hemligheter",
             "showSecrets": "Visa hemligheter",
             "aerocloudName": "AeroCloud",
@@ -2004,7 +2004,7 @@
             "aerosyncScriptApplyButton": "Spara som preset",
             "aerosyncScriptAppliedToast": "Importerad preset sparad. Oppna AeroSync for att anvanda den.",
             "compressionHint": "Komprimerar data under överföringen för att snabba upp den; den lagrar inga komprimerade filer på destinationen. Auto hoppar över format som redan är komprimerade (zip, jpg, mp4 och liknande).",
-            "canaryDryRun": "Inget överförs: detta förhandsvisar vad en fullständig synkronisering skulle göra, beräknat utifrån urvalet (liknande rclone --dry-run)."
+            "canaryDryRun": "Inget överförs: detta förhandsvisar vad en fullständig synkronisering skulle göra, beräknat från urvalet. Det är den grafiska motsvarigheten till CLI-kommandot aeroftp-cli sync --dry-run (och rclones --dry-run)."
         },
         "ui": {
             "syncing": "Synkroniserar...",
@@ -3309,7 +3309,8 @@
                 "notSupported": "Denna filtyp stods inte for forhandsgranskning",
                 "previous": "Foregaende (←)",
                 "remote": "Fjarrserver",
-                "edit": "Redigera"
+                "edit": "Redigera",
+                "viewAsText": "Visa som text"
             },
             "image": {
                 "actualSize": "Verklig storlek",

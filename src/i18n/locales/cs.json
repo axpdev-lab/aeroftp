@@ -753,7 +753,7 @@
             "nFilesAtATime": "{n} souborů najednou",
             "retryCountOnError": "Počet pokusů při chybě",
             "cloudProviderSettings": "Nastavení poskytovatele cloudu",
-            "cloudProviderDesc": "Nakonfigurujte poskytovatele cloudového úložiště. AeroCloud používá váš FTP server, poskytovatelé OAuth2 potřebují přihlašovací údaje API.",
+            "cloudProviderDesc": "Nakonfigurujte poskytovatele cloudového úložiště. AeroCloud promění libovolný podporovaný server ve váš osobní cloud (FTP, FTPS, SFTP, WebDAV a nativní cloudové poskytovatele); poskytovatelé OAuth2 vyžadují přihlašovací údaje API.",
             "hideSecrets": "Skrýt tajemství",
             "showSecrets": "Zobrazit tajemství",
             "aerocloudName": "AeroCloud",
@@ -2004,7 +2004,7 @@
             "aerosyncScriptApplyButton": "Ulozit jako preset",
             "aerosyncScriptAppliedToast": "Importovany preset ulozen. Otevrete AeroSync pro jeho pouziti.",
             "compressionHint": "Komprimuje data během přenosu pro jeho zrychlení; v cíli neukládá komprimované soubory. Auto přeskakuje formáty, které jsou již komprimované (zip, jpg, mp4 a podobné).",
-            "canaryDryRun": "Nic se nepřenáší: toto zobrazí náhled toho, co by provedla úplná synchronizace, vypočtený ze vzorku (podobně jako rclone --dry-run)."
+            "canaryDryRun": "Nic se nepřenáší: zobrazí náhled toho, co by udělala úplná synchronizace, vypočtený ze vzorku. Je to grafický protějšek příkazu aeroftp-cli sync --dry-run (a --dry-run nástroje rclone)."
         },
         "ui": {
             "syncing": "Synchronizace...",
@@ -3309,7 +3309,8 @@
                 "notSupported": "Tento typ souboru není podporován pro náhled",
                 "previous": "Předchozí (←)",
                 "remote": "Vzdálený",
-                "edit": "Upravit"
+                "edit": "Upravit",
+                "viewAsText": "Zobrazit jako text"
             },
             "image": {
                 "actualSize": "Skutečná velikost",

@@ -14718,7 +14718,13 @@ pub fn run() {
                         }
                         "tray_show" => {
                             if let Some(window) = app.get_webview_window("main") {
+                                // unminimize() is required when the window was
+                                // sent to the taskbar via the minimize (-)
+                                // button: show() alone only un-hides a hidden
+                                // (close-to-tray) window, so a minimized window
+                                // would stay minimized (#270 comment 17195020).
                                 let _ = window.show();
+                                let _ = window.unminimize();
                                 let _ = window.set_focus();
                             }
                         }
@@ -14737,7 +14743,12 @@ pub fn run() {
                     } = event
                     {
                         if let Some(window) = tray.app_handle().get_webview_window("main") {
+                            // Mirror the tray "Show AeroFTP" menu: unminimize()
+                            // so a left-click also restores a window that was
+                            // minimized via the (-) button, not just one that
+                            // was hidden to tray (#270 comment 17195020).
                             let _ = window.show();
+                            let _ = window.unminimize();
                             let _ = window.set_focus();
                         }
                     }
