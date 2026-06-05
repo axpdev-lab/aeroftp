@@ -4636,7 +4636,9 @@
             "cannotDeleteLastAdmin": "आप अंतिम व्यवस्थापक को नहीं मिटा सकते।",
             "cannotDeleteLastUser": "आप अंतिम खाते को नहीं मिटा सकते।",
             "adminResetNotForSelf": "अपने खाते पर पासवर्ड बदलें का उपयोग करें।",
-            "userNotFound": "यह खाता अब मौजूद नहीं है।"
+            "userNotFound": "यह खाता अब मौजूद नहीं है।",
+            "skipNextTime": "अगली बार इस स्क्रीन को छोड़ें",
+            "skipNextTimeHint": "(यह खाता सीधे खोलता है; केवल बिना पासवर्ड वाले खाते)"
         },
         "opendrive": {
             "privacyTitle": "OpenDrive गोपनीयता",

@@ -4636,7 +4636,9 @@
             "cannotDeleteLastAdmin": "Viimast administraatorit ei saa kustutada.",
             "cannotDeleteLastUser": "Viimast kontot ei saa kustutada.",
             "adminResetNotForSelf": "Kasuta oma kontol valikut Muuda parooli.",
-            "userNotFound": "Seda kontot enam ei ole."
+            "userNotFound": "Seda kontot enam ei ole.",
+            "skipNextTime": "Jäta see ekraan järgmisel korral vahele",
+            "skipNextTimeHint": "(avab selle konto otse; ainult paroolita kontod)"
         },
         "opendrive": {
             "privacyTitle": "OpenDrive'i privaatsus",

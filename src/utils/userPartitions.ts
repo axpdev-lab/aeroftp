@@ -262,3 +262,34 @@ export const dispatchAccountLockScreenRequested = (): void => {
         // Browserless tests: best effort.
     }
 };
+
+// Default account for the welcome-screen skip (discussion #270). When set,
+// the boot flow auto-opens this account and bypasses the AccountLockScreen,
+// but ONLY for password-free accounts: an account with a passphrase always
+// shows the prompt, so authentication is never skipped. The explicit
+// "switch account" action (ACCOUNT_LOCK_SCREEN_REQUESTED_EVENT) still forces
+// the picker regardless of this preference.
+const DEFAULT_ACCOUNT_KEY = 'aeroftp_default_account';
+
+export const readDefaultAccountId = (): number | null => {
+    try {
+        const raw = localStorage.getItem(DEFAULT_ACCOUNT_KEY);
+        if (!raw) return null;
+        const n = Number.parseInt(raw, 10);
+        return Number.isFinite(n) ? n : null;
+    } catch {
+        return null;
+    }
+};
+
+export const writeDefaultAccountId = (id: number | null): void => {
+    try {
+        if (id == null) {
+            localStorage.removeItem(DEFAULT_ACCOUNT_KEY);
+        } else {
+            localStorage.setItem(DEFAULT_ACCOUNT_KEY, String(id));
+        }
+    } catch {
+        // localStorage quota / private mode: not critical.
+    }
+};

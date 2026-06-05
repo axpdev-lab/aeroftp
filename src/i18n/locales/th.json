@@ -4636,7 +4636,9 @@
             "cannotDeleteLastAdmin": "คุณไม่สามารถลบผู้ดูแลระบบคนสุดท้ายได้",
             "cannotDeleteLastUser": "คุณไม่สามารถลบบัญชีสุดท้ายได้",
             "adminResetNotForSelf": "ใช้ เปลี่ยนรหัสผ่าน กับบัญชีของคุณเอง",
-            "userNotFound": "บัญชีนี้ไม่มีอยู่อีกต่อไป"
+            "userNotFound": "บัญชีนี้ไม่มีอยู่อีกต่อไป",
+            "skipNextTime": "ข้ามหน้าจอนี้ในครั้งถัดไป",
+            "skipNextTimeHint": "(เปิดบัญชีนี้โดยตรง เฉพาะบัญชีที่ไม่มีรหัสผ่าน)"
         },
         "opendrive": {
             "privacyTitle": "ความเป็นส่วนตัว OpenDrive",

@@ -788,23 +788,28 @@ export const ActivityLogPanel: React.FC<ActivityLogPanelProps> = ({
                                         {t('activityPanel.filters.all')}
                                     </button>
                                     <div className="border-t border-current opacity-10 my-1" />
-                                    {FILTER_OPTIONS.map(op => {
-                                        const checked = filterTypes.has(op);
-                                        return (
-                                            <label
-                                                key={op}
-                                                className="flex items-center gap-2 px-3 py-1.5 hover:bg-black/10 dark:hover:bg-white/5 cursor-pointer"
-                                            >
-                                                <input
-                                                    type="checkbox"
-                                                    checked={checked}
-                                                    onChange={() => toggleFilterType(op)}
-                                                    className="cursor-pointer"
-                                                />
-                                                <span>{getFilterLabel(op)}</span>
-                                            </label>
-                                        );
-                                    })}
+                                    {/* Scroll the category list so every option (incl. Errors)
+                                        stays reachable when the menu would overflow the
+                                        viewport. "All" stays pinned above the scroll area. */}
+                                    <div className="max-h-[50vh] overflow-y-auto">
+                                        {FILTER_OPTIONS.map(op => {
+                                            const checked = filterTypes.has(op);
+                                            return (
+                                                <label
+                                                    key={op}
+                                                    className="flex items-center gap-2 px-3 py-1.5 hover:bg-black/10 dark:hover:bg-white/5 cursor-pointer"
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={checked}
+                                                        onChange={() => toggleFilterType(op)}
+                                                        className="cursor-pointer"
+                                                    />
+                                                    <span>{getFilterLabel(op)}</span>
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
                                 </div>
                             </>
                         )}

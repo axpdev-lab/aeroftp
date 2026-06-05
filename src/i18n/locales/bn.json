@@ -4636,7 +4636,9 @@
             "cannotDeleteLastAdmin": "আপনি শেষ প্রশাসককে মুছতে পারবেন না।",
             "cannotDeleteLastUser": "আপনি শেষ অ্যাকাউন্টটি মুছতে পারবেন না।",
             "adminResetNotForSelf": "নিজের অ্যাকাউন্টে পাসওয়ার্ড পরিবর্তন ব্যবহার করুন।",
-            "userNotFound": "এই অ্যাকাউন্টটি আর নেই।"
+            "userNotFound": "এই অ্যাকাউন্টটি আর নেই।",
+            "skipNextTime": "পরের বার এই স্ক্রিনটি এড়িয়ে যান",
+            "skipNextTimeHint": "(এই অ্যাকাউন্টটি সরাসরি খোলে; শুধুমাত্র পাসওয়ার্ড-মুক্ত অ্যাকাউন্ট)"
         },
         "opendrive": {
             "privacyTitle": "OpenDrive গোপনীয়তা",

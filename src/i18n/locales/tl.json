@@ -4655,7 +4655,9 @@
             "cannotDeleteLastAdmin": "Hindi mo matatanggal ang huling administrator.",
             "cannotDeleteLastUser": "Hindi mo matatanggal ang huling account.",
             "adminResetNotForSelf": "Gamitin ang Baguhin ang Password sa sarili mong account.",
-            "userNotFound": "Wala na ang account na ito."
+            "userNotFound": "Wala na ang account na ito.",
+            "skipNextTime": "Laktawan ang screen na ito sa susunod",
+            "skipNextTimeHint": "(direktang binubuksan ang account na ito; mga account lang na walang password)"
         },
         "opendrive": {
             "privacyTitle": "Privacy ng OpenDrive",

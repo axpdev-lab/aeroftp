@@ -4636,7 +4636,9 @@
             "cannotDeleteLastAdmin": "Nem törölheti az utolsó rendszergazdát.",
             "cannotDeleteLastUser": "Nem törölheti az utolsó fiókot.",
             "adminResetNotForSelf": "Használja a Jelszó módosítása lehetőséget a saját fiókján.",
-            "userNotFound": "Ez a fiók már nem létezik."
+            "userNotFound": "Ez a fiók már nem létezik.",
+            "skipNextTime": "Legközelebb hagyja ki ezt a képernyőt",
+            "skipNextTimeHint": "(közvetlenül megnyitja ezt a fiókot; csak jelszó nélküli fiókok)"
         },
         "opendrive": {
             "privacyTitle": "OpenDrive adatvédelem",

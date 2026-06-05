@@ -4636,7 +4636,9 @@
             "cannotDeleteLastAdmin": "Du kan inte radera den sista administratören.",
             "cannotDeleteLastUser": "Du kan inte radera det sista kontot.",
             "adminResetNotForSelf": "Använd Ändra lösenord på ditt eget konto.",
-            "userNotFound": "Det här kontot finns inte längre."
+            "userNotFound": "Det här kontot finns inte längre.",
+            "skipNextTime": "Hoppa över den här skärmen nästa gång",
+            "skipNextTimeHint": "(öppnar det här kontot direkt; endast konton utan lösenord)"
         },
         "opendrive": {
             "privacyTitle": "OpenDrive-sekretess",

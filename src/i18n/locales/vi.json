@@ -4636,7 +4636,9 @@
             "cannotDeleteLastAdmin": "Bạn không thể xóa quản trị viên cuối cùng.",
             "cannotDeleteLastUser": "Bạn không thể xóa tài khoản cuối cùng.",
             "adminResetNotForSelf": "Dùng Đổi mật khẩu trên tài khoản của chính bạn.",
-            "userNotFound": "Tài khoản này không còn tồn tại."
+            "userNotFound": "Tài khoản này không còn tồn tại.",
+            "skipNextTime": "Bỏ qua màn hình này lần sau",
+            "skipNextTimeHint": "(mở tài khoản này trực tiếp; chỉ tài khoản không có mật khẩu)"
         },
         "opendrive": {
             "privacyTitle": "Quyền riêng tư OpenDrive",

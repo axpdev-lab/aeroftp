@@ -4636,7 +4636,9 @@
             "cannotDeleteLastAdmin": "Anda tidak dapat menghapus administrator terakhir.",
             "cannotDeleteLastUser": "Anda tidak dapat menghapus akun terakhir.",
             "adminResetNotForSelf": "Gunakan Ubah Kata Sandi pada akun Anda sendiri.",
-            "userNotFound": "Akun ini sudah tidak ada."
+            "userNotFound": "Akun ini sudah tidak ada.",
+            "skipNextTime": "Lewati layar ini lain kali",
+            "skipNextTimeHint": "(membuka akun ini secara langsung; hanya akun tanpa kata sandi)"
         },
         "opendrive": {
             "privacyTitle": "Privasi OpenDrive",

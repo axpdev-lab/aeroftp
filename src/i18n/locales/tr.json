@@ -4636,7 +4636,9 @@
             "cannotDeleteLastAdmin": "Son yöneticiyi silemezsiniz.",
             "cannotDeleteLastUser": "Son hesabı silemezsiniz.",
             "adminResetNotForSelf": "Kendi hesabınızda Parolayı Değiştir'i kullanın.",
-            "userNotFound": "Bu hesap artık mevcut değil."
+            "userNotFound": "Bu hesap artık mevcut değil.",
+            "skipNextTime": "Bir dahaki sefere bu ekranı atla",
+            "skipNextTimeHint": "(bu hesabı doğrudan açar; yalnızca parolasız hesaplar)"
         },
         "opendrive": {
             "privacyTitle": "OpenDrive Gizliliği",

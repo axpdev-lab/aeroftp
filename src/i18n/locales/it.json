@@ -79,6 +79,8 @@
             "openAccount": "Apri",
             "newUser": "Nuovo utente",
             "newUserHint": "Crea un altro account",
+            "skipNextTime": "Salta questa schermata la prossima volta",
+            "skipNextTimeHint": "(apre direttamente questo account; solo account senza password)",
             "manageUsers": "Gestisci utenti",
             "accountPasswordLabel": "Password account",
             "backToList": "Torna agli account",

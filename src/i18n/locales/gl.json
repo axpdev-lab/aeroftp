@@ -4655,7 +4655,9 @@
             "cannotDeleteLastAdmin": "Non podes eliminar o último administrador.",
             "cannotDeleteLastUser": "Non podes eliminar a última conta.",
             "adminResetNotForSelf": "Usa Cambiar contrasinal na túa propia conta.",
-            "userNotFound": "Esta conta xa non existe."
+            "userNotFound": "Esta conta xa non existe.",
+            "skipNextTime": "Omitir esta pantalla a próxima vez",
+            "skipNextTimeHint": "(abre esta conta directamente; só contas sen contrasinal)"
         },
         "opendrive": {
             "privacyTitle": "Privacidade de OpenDrive",

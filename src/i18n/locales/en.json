@@ -1855,6 +1855,8 @@
             "openAccount": "Open",
             "newUser": "New user",
             "newUserHint": "Create another account",
+            "skipNextTime": "Skip this screen next time",
+            "skipNextTimeHint": "(opens this account directly; password-free accounts only)",
             "manageUsers": "Manage users",
             "accountPasswordLabel": "Account password",
             "backToList": "Back to accounts",

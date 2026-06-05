@@ -4636,7 +4636,9 @@
             "cannotDeleteLastAdmin": "Posledního správce nelze odstranit.",
             "cannotDeleteLastUser": "Poslední účet nelze odstranit.",
             "adminResetNotForSelf": "U vlastního účtu použijte Změnit heslo.",
-            "userNotFound": "Tento účet již neexistuje."
+            "userNotFound": "Tento účet již neexistuje.",
+            "skipNextTime": "Příště přeskočit tuto obrazovku",
+            "skipNextTimeHint": "(otevře tento účet přímo; pouze účty bez hesla)"
         },
         "opendrive": {
             "privacyTitle": "Soukromí OpenDrive",

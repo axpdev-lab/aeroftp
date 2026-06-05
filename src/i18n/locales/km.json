@@ -4655,7 +4655,9 @@
             "cannotDeleteLastAdmin": "អ្នកមិនអាចលុបអ្នកគ្រប់គ្រងចុងក្រោយបានទេ។",
             "cannotDeleteLastUser": "អ្នកមិនអាចលុបគណនីចុងក្រោយបានទេ។",
             "adminResetNotForSelf": "សូមប្រើ ប្ដូរពាក្យសម្ងាត់ នៅលើគណនីផ្ទាល់ខ្លួនរបស់អ្នក។",
-            "userNotFound": "គណនីនេះលែងមានទៀតហើយ។"
+            "userNotFound": "គណនីនេះលែងមានទៀតហើយ។",
+            "skipNextTime": "រំលងអេក្រង់នេះនៅពេលក្រោយ",
+            "skipNextTimeHint": "(បើកគណនីនេះដោយផ្ទាល់; តែគណនីដែលគ្មានពាក្យសម្ងាត់ប៉ុណ្ណោះ)"
         },
         "opendrive": {
             "privacyTitle": "ឯកជនភាព OpenDrive",

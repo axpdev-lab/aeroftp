@@ -4636,7 +4636,9 @@
             "cannotDeleteLastAdmin": "Pēdējo administratoru nevar dzēst.",
             "cannotDeleteLastUser": "Pēdējo kontu nevar dzēst.",
             "adminResetNotForSelf": "Savā kontā izmantojiet Mainīt paroli.",
-            "userNotFound": "Šis konts vairs nepastāv."
+            "userNotFound": "Šis konts vairs nepastāv.",
+            "skipNextTime": "Nākamreiz izlaist šo ekrānu",
+            "skipNextTimeHint": "(atver šo kontu tieši; tikai konti bez paroles)"
         },
         "opendrive": {
             "privacyTitle": "OpenDrive privātums",
