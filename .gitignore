@@ -90,7 +90,10 @@ run-clean.sh
 /scripts/i18n/
 
 # Development scripts (root only, not .github/scripts/)
-/scripts/
+# Ignore the directory contents (not the dir itself) so the !exceptions below
+# can re-include specific tracked scripts; git cannot re-include a file when its
+# parent directory is excluded outright.
+/scripts/*
 # Exception: CI-required scripts
 !/scripts/i18n-validate.ts
 !/scripts/i18n-sync.ts
@@ -98,6 +101,8 @@ run-clean.sh
 !/scripts/security-report.cjs
 # Exception: bundle-required script (Tauri beforeBundleCommand)
 !/scripts/prepare-dispatch-bundle.cjs
+# Exception: regenerates the embedded CLI catalog from the GUI SSOT (#224)
+!/scripts/gen-cli-catalog.ts
 
 # Security reports: keep latest snapshot in repo, ignore dated copies
 /docs/security/security-report-20*.html

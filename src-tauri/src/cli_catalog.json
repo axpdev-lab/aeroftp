@@ -1,0 +1,1131 @@
+[
+  {
+    "company": "MEGA",
+    "logoId": "mega",
+    "country": "NZ",
+    "freeGb": 20,
+    "freeNote": "E2E",
+    "regions": [
+      "NZ",
+      "EU",
+      "CA"
+    ],
+    "protocols": [
+      {
+        "label": "API",
+        "protocol": "mega",
+        "providerId": null,
+        "paid": false,
+        "category": "cloud-storage",
+        "note": null
+      },
+      {
+        "label": "MEGAcmd",
+        "protocol": "webdav",
+        "providerId": "megacmd-webdav",
+        "paid": false,
+        "category": "webdav",
+        "note": "local bridge"
+      }
+    ]
+  },
+  {
+    "company": "MEGA S4 Object Storage",
+    "logoId": "mega-s4",
+    "country": "EU",
+    "freeGb": null,
+    "freeNote": "Pro plan",
+    "regions": [
+      "EU",
+      "CA"
+    ],
+    "protocols": [
+      {
+        "label": "S3",
+        "protocol": "s3",
+        "providerId": "mega-s4",
+        "paid": true,
+        "category": "object-storage",
+        "note": "MEGA S4 object storage"
+      }
+    ]
+  },
+  {
+    "company": "Drime",
+    "logoId": "drime",
+    "country": "FR",
+    "freeGb": 20,
+    "freeNote": null,
+    "regions": [
+      "FR"
+    ],
+    "protocols": [
+      {
+        "label": "API",
+        "protocol": "drime",
+        "providerId": null,
+        "paid": false,
+        "category": "cloud-storage",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "InfiniCloud",
+    "logoId": "infinicloud",
+    "country": "JP",
+    "freeGb": 20,
+    "freeNote": null,
+    "regions": [
+      "JP"
+    ],
+    "protocols": [
+      {
+        "label": "WebDAV",
+        "protocol": "webdav",
+        "providerId": "infinicloud",
+        "paid": false,
+        "category": "webdav",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "ImageKit",
+    "logoId": "imagekit",
+    "country": "IN",
+    "freeGb": 20,
+    "freeNote": "media CDN",
+    "regions": [
+      "IN"
+    ],
+    "protocols": [
+      {
+        "label": "API",
+        "protocol": "imagekit",
+        "providerId": "imagekit",
+        "paid": false,
+        "category": "media-services",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "Blomp",
+    "logoId": "blomp",
+    "country": "US",
+    "freeGb": 20,
+    "freeNote": "referral bonus",
+    "regions": [
+      "US"
+    ],
+    "protocols": [
+      {
+        "label": "Swift",
+        "protocol": "swift",
+        "providerId": "blomp",
+        "paid": false,
+        "category": "cloud-storage",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "Storj",
+    "logoId": "storj",
+    "country": "US",
+    "freeGb": 25,
+    "freeNote": "decentralized",
+    "regions": [
+      "global"
+    ],
+    "protocols": [
+      {
+        "label": "S3",
+        "protocol": "s3",
+        "providerId": "storj",
+        "paid": false,
+        "category": "object-storage",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "Google Drive",
+    "logoId": "googledrive",
+    "country": "US",
+    "freeGb": 15,
+    "freeNote": null,
+    "regions": [
+      "US"
+    ],
+    "protocols": [
+      {
+        "label": "OAuth",
+        "protocol": "googledrive",
+        "providerId": null,
+        "paid": false,
+        "category": "cloud-storage",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "4shared",
+    "logoId": "4shared",
+    "country": "VG",
+    "freeGb": 15,
+    "freeNote": null,
+    "regions": [
+      "VG"
+    ],
+    "protocols": [
+      {
+        "label": "OAuth",
+        "protocol": "fourshared",
+        "providerId": null,
+        "paid": false,
+        "category": "cloud-storage",
+        "note": null
+      },
+      {
+        "label": "WebDAV",
+        "protocol": "webdav",
+        "providerId": "4shared",
+        "paid": false,
+        "category": "webdav",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "kDrive",
+    "logoId": "kdrive",
+    "country": "CH",
+    "freeGb": 15,
+    "freeNote": null,
+    "regions": [
+      "CH"
+    ],
+    "protocols": [
+      {
+        "label": "API",
+        "protocol": "kdrive",
+        "providerId": null,
+        "paid": false,
+        "category": "cloud-storage",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "Box",
+    "logoId": "box",
+    "country": "US",
+    "freeGb": 10,
+    "freeNote": null,
+    "regions": [
+      "US"
+    ],
+    "protocols": [
+      {
+        "label": "OAuth",
+        "protocol": "box",
+        "providerId": null,
+        "paid": false,
+        "category": "cloud-storage",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "pCloud",
+    "logoId": "pcloud",
+    "country": "CH",
+    "freeGb": 10,
+    "freeNote": null,
+    "regions": [
+      "CH"
+    ],
+    "protocols": [
+      {
+        "label": "OAuth",
+        "protocol": "pcloud",
+        "providerId": null,
+        "paid": false,
+        "category": "cloud-storage",
+        "note": null
+      },
+      {
+        "label": "WebDAV",
+        "protocol": "webdav",
+        "providerId": "pcloud-webdav",
+        "paid": true,
+        "category": "webdav",
+        "note": "premium plan"
+      }
+    ]
+  },
+  {
+    "company": "Filen",
+    "logoId": "filen",
+    "country": "DE",
+    "freeGb": 10,
+    "freeNote": "E2E",
+    "regions": [
+      "DE"
+    ],
+    "protocols": [
+      {
+        "label": "API",
+        "protocol": "filen",
+        "providerId": null,
+        "paid": false,
+        "category": "cloud-storage",
+        "note": null
+      },
+      {
+        "label": "S3",
+        "protocol": "s3",
+        "providerId": "filen-desktop-s3",
+        "paid": false,
+        "category": "object-storage",
+        "note": "desktop bridge"
+      },
+      {
+        "label": "WebDAV",
+        "protocol": "webdav",
+        "providerId": "filen-desktop-webdav",
+        "paid": false,
+        "category": "webdav",
+        "note": "desktop bridge"
+      }
+    ]
+  },
+  {
+    "company": "Koofr",
+    "logoId": "koofr",
+    "country": "SI",
+    "freeGb": 10,
+    "freeNote": null,
+    "regions": [
+      "SI"
+    ],
+    "protocols": [
+      {
+        "label": "API",
+        "protocol": "koofr",
+        "providerId": null,
+        "paid": false,
+        "category": "cloud-storage",
+        "note": null
+      },
+      {
+        "label": "WebDAV",
+        "protocol": "webdav",
+        "providerId": "koofr",
+        "paid": false,
+        "category": "webdav",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "Backblaze B2",
+    "logoId": "backblaze",
+    "country": "US",
+    "freeGb": 10,
+    "freeNote": null,
+    "regions": [
+      "US",
+      "NL"
+    ],
+    "protocols": [
+      {
+        "label": "API",
+        "protocol": "backblaze",
+        "providerId": "backblaze-native",
+        "paid": false,
+        "category": "cloud-storage",
+        "note": null
+      },
+      {
+        "label": "S3",
+        "protocol": "s3",
+        "providerId": "backblaze",
+        "paid": false,
+        "category": "object-storage",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "IDrive e2",
+    "logoId": "idrive-e2",
+    "country": "US",
+    "freeGb": 10,
+    "freeNote": null,
+    "regions": [
+      "US",
+      "IE",
+      "DE"
+    ],
+    "protocols": [
+      {
+        "label": "S3",
+        "protocol": "s3",
+        "providerId": "idrive-e2",
+        "paid": false,
+        "category": "object-storage",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "Cloudflare R2",
+    "logoId": "cloudflare-r2",
+    "country": "US",
+    "freeGb": 10,
+    "freeNote": "egress-free",
+    "regions": [
+      "global"
+    ],
+    "protocols": [
+      {
+        "label": "S3",
+        "protocol": "s3",
+        "providerId": "cloudflare-r2",
+        "paid": false,
+        "category": "object-storage",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "Oracle Cloud",
+    "logoId": "oracle-cloud",
+    "country": "US",
+    "freeGb": 20,
+    "freeNote": "always-free",
+    "regions": [
+      "US",
+      "DE",
+      "GB",
+      "JP",
+      "IN",
+      "AU",
+      "BR",
+      "CA"
+    ],
+    "protocols": [
+      {
+        "label": "S3",
+        "protocol": "s3",
+        "providerId": "oracle-cloud",
+        "paid": false,
+        "category": "object-storage",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "OneDrive",
+    "logoId": "onedrive",
+    "country": "US",
+    "freeGb": 5,
+    "freeNote": null,
+    "regions": [
+      "US"
+    ],
+    "protocols": [
+      {
+        "label": "OAuth",
+        "protocol": "onedrive",
+        "providerId": null,
+        "paid": false,
+        "category": "cloud-storage",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "Zoho WorkDrive",
+    "logoId": "zohoworkdrive",
+    "country": "IN",
+    "freeGb": 5,
+    "freeNote": null,
+    "regions": [
+      "IN"
+    ],
+    "protocols": [
+      {
+        "label": "OAuth",
+        "protocol": "zohoworkdrive",
+        "providerId": null,
+        "paid": false,
+        "category": "cloud-storage",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "Jottacloud",
+    "logoId": "jottacloud",
+    "country": "NO",
+    "freeGb": 5,
+    "freeNote": null,
+    "regions": [
+      "NO"
+    ],
+    "protocols": [
+      {
+        "label": "API",
+        "protocol": "jottacloud",
+        "providerId": null,
+        "paid": false,
+        "category": "cloud-storage",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "OpenDrive",
+    "logoId": "opendrive",
+    "country": "US",
+    "freeGb": 5,
+    "freeNote": null,
+    "regions": [
+      "US"
+    ],
+    "protocols": [
+      {
+        "label": "API",
+        "protocol": "opendrive",
+        "providerId": null,
+        "paid": false,
+        "category": "cloud-storage",
+        "note": null
+      },
+      {
+        "label": "WebDAV",
+        "protocol": "webdav",
+        "providerId": "opendrive-webdav",
+        "paid": false,
+        "category": "webdav",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "Yandex Disk",
+    "logoId": "yandexdisk",
+    "country": "RU",
+    "freeGb": 5,
+    "freeNote": null,
+    "regions": [
+      "RU"
+    ],
+    "protocols": [
+      {
+        "label": "OAuth",
+        "protocol": "yandexdisk",
+        "providerId": null,
+        "paid": false,
+        "category": "cloud-storage",
+        "note": null
+      },
+      {
+        "label": "WebDAV",
+        "protocol": "webdav",
+        "providerId": "yandexdisk-webdav",
+        "paid": false,
+        "category": "webdav",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "Yandex Object Storage",
+    "logoId": "yandex-storage",
+    "country": "RU",
+    "freeGb": null,
+    "freeNote": "paid plan",
+    "regions": [
+      "RU"
+    ],
+    "protocols": [
+      {
+        "label": "S3",
+        "protocol": "s3",
+        "providerId": "yandex-storage",
+        "paid": true,
+        "category": "object-storage",
+        "note": "Yandex Object Storage"
+      }
+    ]
+  },
+  {
+    "company": "Google Cloud Storage",
+    "logoId": "google-cloud-storage",
+    "country": "US",
+    "freeGb": 5,
+    "freeNote": "always-free tier",
+    "regions": [
+      "US",
+      "EU",
+      "SG",
+      "JP",
+      "AU",
+      "BR",
+      "IN"
+    ],
+    "protocols": [
+      {
+        "label": "S3",
+        "protocol": "s3",
+        "providerId": "google-cloud-storage",
+        "paid": false,
+        "category": "object-storage",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "CloudMe",
+    "logoId": "cloudme",
+    "country": "SE",
+    "freeGb": 3,
+    "freeNote": null,
+    "regions": [
+      "SE"
+    ],
+    "protocols": [
+      {
+        "label": "WebDAV",
+        "protocol": "webdav",
+        "providerId": "cloudme",
+        "paid": false,
+        "category": "webdav",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "Uploadcare",
+    "logoId": "uploadcare",
+    "country": "US",
+    "freeGb": 3,
+    "freeNote": "media CDN",
+    "regions": [
+      "US"
+    ],
+    "protocols": [
+      {
+        "label": "API",
+        "protocol": "uploadcare",
+        "providerId": "uploadcare",
+        "paid": false,
+        "category": "media-services",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "Dropbox",
+    "logoId": "dropbox",
+    "country": "US",
+    "freeGb": 2,
+    "freeNote": null,
+    "regions": [
+      "US"
+    ],
+    "protocols": [
+      {
+        "label": "OAuth",
+        "protocol": "dropbox",
+        "providerId": null,
+        "paid": false,
+        "category": "cloud-storage",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "Internxt",
+    "logoId": "internxt",
+    "country": "ES",
+    "freeGb": 1,
+    "freeNote": "E2E",
+    "regions": [
+      "ES"
+    ],
+    "protocols": [
+      {
+        "label": "API",
+        "protocol": "internxt",
+        "providerId": null,
+        "paid": false,
+        "category": "cloud-storage",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "FileLu",
+    "logoId": "filelu",
+    "country": "US",
+    "freeGb": 1,
+    "freeNote": null,
+    "regions": [
+      "US"
+    ],
+    "protocols": [
+      {
+        "label": "API",
+        "protocol": "filelu",
+        "providerId": null,
+        "paid": false,
+        "category": "cloud-storage",
+        "note": null
+      },
+      {
+        "label": "WebDAV",
+        "protocol": "webdav",
+        "providerId": "filelu-webdav",
+        "paid": false,
+        "category": "webdav",
+        "note": null
+      },
+      {
+        "label": "S3",
+        "protocol": "s3",
+        "providerId": "filelu-s3",
+        "paid": false,
+        "category": "object-storage",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "DriveHQ",
+    "logoId": "drivehq",
+    "country": "US",
+    "freeGb": 1,
+    "freeNote": null,
+    "regions": [
+      "US"
+    ],
+    "protocols": [
+      {
+        "label": "WebDAV",
+        "protocol": "webdav",
+        "providerId": "drivehq",
+        "paid": false,
+        "category": "webdav",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "Jianguoyun",
+    "logoId": "jianguoyun",
+    "country": "CN",
+    "freeGb": 1,
+    "freeNote": "monthly traffic cap",
+    "regions": [
+      "CN"
+    ],
+    "protocols": [
+      {
+        "label": "WebDAV",
+        "protocol": "webdav",
+        "providerId": "jianguoyun",
+        "paid": false,
+        "category": "webdav",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "Felicloud",
+    "logoId": "felicloud",
+    "country": "",
+    "freeGb": null,
+    "freeNote": "Nextcloud host",
+    "regions": [],
+    "protocols": [
+      {
+        "label": "WebDAV",
+        "protocol": "webdav",
+        "providerId": "felicloud",
+        "paid": false,
+        "category": "webdav",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "Cloudinary",
+    "logoId": "cloudinary",
+    "country": "US",
+    "freeGb": null,
+    "freeNote": "credit-based",
+    "regions": [
+      "US"
+    ],
+    "protocols": [
+      {
+        "label": "API",
+        "protocol": "cloudinary",
+        "providerId": "cloudinary",
+        "paid": false,
+        "category": "media-services",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "Amazon S3",
+    "logoId": "amazon-s3",
+    "country": "US",
+    "freeGb": null,
+    "freeNote": "5 GB 12-month trial",
+    "regions": [
+      "US",
+      "IE",
+      "DE",
+      "GB",
+      "FR",
+      "SG",
+      "JP",
+      "IN",
+      "BR",
+      "AU",
+      "CA",
+      "KR"
+    ],
+    "protocols": [
+      {
+        "label": "S3",
+        "protocol": "s3",
+        "providerId": "amazon-s3",
+        "paid": true,
+        "category": "object-storage",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "Wasabi",
+    "logoId": "wasabi",
+    "country": "US",
+    "freeGb": null,
+    "freeNote": "30-day trial",
+    "regions": [
+      "US",
+      "NL",
+      "JP",
+      "AU",
+      "CA",
+      "SG"
+    ],
+    "protocols": [
+      {
+        "label": "S3",
+        "protocol": "s3",
+        "providerId": "wasabi",
+        "paid": true,
+        "category": "object-storage",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "DigitalOcean Spaces",
+    "logoId": "digitalocean-spaces",
+    "country": "US",
+    "freeGb": null,
+    "freeNote": "paid plan",
+    "regions": [
+      "US",
+      "NL",
+      "SG",
+      "IN",
+      "DE"
+    ],
+    "protocols": [
+      {
+        "label": "S3",
+        "protocol": "s3",
+        "providerId": "digitalocean-spaces",
+        "paid": true,
+        "category": "object-storage",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "Alibaba OSS",
+    "logoId": "alibaba-oss",
+    "country": "CN",
+    "freeGb": null,
+    "freeNote": "paid plan",
+    "regions": [
+      "CN",
+      "SG",
+      "US",
+      "DE",
+      "JP",
+      "AU"
+    ],
+    "protocols": [
+      {
+        "label": "S3",
+        "protocol": "s3",
+        "providerId": "alibaba-oss",
+        "paid": true,
+        "category": "object-storage",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "Tencent COS",
+    "logoId": "tencent-cos",
+    "country": "CN",
+    "freeGb": null,
+    "freeNote": "paid plan",
+    "regions": [
+      "CN",
+      "SG",
+      "US",
+      "DE",
+      "JP",
+      "KR"
+    ],
+    "protocols": [
+      {
+        "label": "S3",
+        "protocol": "s3",
+        "providerId": "tencent-cos",
+        "paid": true,
+        "category": "object-storage",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "Azure Blob",
+    "logoId": "azure",
+    "country": "US",
+    "freeGb": null,
+    "freeNote": "12-month trial",
+    "regions": [
+      "US"
+    ],
+    "protocols": [
+      {
+        "label": "Blob",
+        "protocol": "azure",
+        "providerId": null,
+        "paid": true,
+        "category": "object-storage",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "Hetzner Storage Box",
+    "logoId": "hetzner-storage-box",
+    "country": "DE",
+    "freeGb": null,
+    "freeNote": "paid plan",
+    "regions": [
+      "DE"
+    ],
+    "protocols": [
+      {
+        "label": "SFTP",
+        "protocol": "sftp",
+        "providerId": "hetzner-storage-box",
+        "paid": true,
+        "category": "protocols",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "Tab.digital",
+    "logoId": "tabdigital",
+    "country": "IN",
+    "freeGb": null,
+    "freeNote": "managed Nextcloud",
+    "regions": [
+      "IN"
+    ],
+    "protocols": [
+      {
+        "label": "WebDAV",
+        "protocol": "webdav",
+        "providerId": "tabdigital",
+        "paid": true,
+        "category": "webdav",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "PixelUnion",
+    "logoId": "pixelunion",
+    "country": "EU",
+    "freeGb": null,
+    "freeNote": "managed Immich",
+    "regions": [
+      "EU"
+    ],
+    "protocols": [
+      {
+        "label": "API",
+        "protocol": "immich",
+        "providerId": "pixelunion",
+        "paid": true,
+        "category": "media-services",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "MinIO",
+    "logoId": "minio",
+    "country": "",
+    "freeGb": null,
+    "freeNote": "self-hosted",
+    "regions": [
+      "global"
+    ],
+    "protocols": [
+      {
+        "label": "S3",
+        "protocol": "s3",
+        "providerId": "minio",
+        "paid": false,
+        "category": "object-storage",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "Nextcloud",
+    "logoId": "nextcloud",
+    "country": "",
+    "freeGb": null,
+    "freeNote": "self-hosted",
+    "regions": [],
+    "protocols": [
+      {
+        "label": "WebDAV",
+        "protocol": "webdav",
+        "providerId": "nextcloud",
+        "paid": false,
+        "category": "webdav",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "Seafile",
+    "logoId": "seafile",
+    "country": "",
+    "freeGb": null,
+    "freeNote": "self-hosted",
+    "regions": [],
+    "protocols": [
+      {
+        "label": "WebDAV",
+        "protocol": "webdav",
+        "providerId": "seafile",
+        "paid": false,
+        "category": "webdav",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "Immich",
+    "logoId": "immich",
+    "country": "",
+    "freeGb": null,
+    "freeNote": "self-hosted",
+    "regions": [],
+    "protocols": [
+      {
+        "label": "API",
+        "protocol": "immich",
+        "providerId": null,
+        "paid": false,
+        "category": "media-services",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "SourceForge",
+    "logoId": "sourceforge",
+    "country": "US",
+    "freeGb": null,
+    "freeNote": "OSS hosting",
+    "regions": [
+      "US"
+    ],
+    "protocols": [
+      {
+        "label": "SFTP",
+        "protocol": "sftp",
+        "providerId": "sourceforge",
+        "paid": false,
+        "category": "developer",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "GitHub",
+    "logoId": "github",
+    "country": "US",
+    "freeGb": null,
+    "freeNote": "repo storage",
+    "regions": [
+      "US"
+    ],
+    "protocols": [
+      {
+        "label": "API",
+        "protocol": "github",
+        "providerId": null,
+        "paid": false,
+        "category": "developer",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "GitLab",
+    "logoId": "gitlab",
+    "country": "US",
+    "freeGb": null,
+    "freeNote": "repo storage",
+    "regions": [
+      "US"
+    ],
+    "protocols": [
+      {
+        "label": "API",
+        "protocol": "gitlab",
+        "providerId": null,
+        "paid": false,
+        "category": "developer",
+        "note": null
+      }
+    ]
+  }
+]

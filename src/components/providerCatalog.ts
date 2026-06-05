@@ -340,6 +340,52 @@ export function companyRegions(c: CatalogCompany): string[] {
     return c.countryCode ? [c.countryCode] : [];
 }
 
+/** One connection method as projected into the CLI catalog JSON. */
+export interface CliCatalogProtocol {
+    label: CatalogProtocol;
+    protocol: ProviderType;
+    providerId: string | null;
+    paid: boolean;
+    category: CatalogCategoryId;
+    note: string | null;
+}
+
+/** One company as projected into the CLI catalog JSON. */
+export interface CliCatalogCompany {
+    company: string;
+    logoId: string;
+    country: string;
+    freeGb: number | null;
+    freeNote: string | null;
+    regions: string[];
+    protocols: CliCatalogProtocol[];
+}
+
+/**
+ * Project `PROVIDER_CATALOG` into the flat, dependency-free shape the Rust CLI
+ * embeds via `include_str!` (see `scripts/gen-cli-catalog.ts`). Kept here so the
+ * generator and the drift-guard test share a single serializer: the committed
+ * `src-tauri/src/cli_catalog.json` must equal this projection.
+ */
+export function buildCliCatalog(): CliCatalogCompany[] {
+    return PROVIDER_CATALOG.map(c => ({
+        company: c.company,
+        logoId: c.logoId,
+        country: c.countryCode,
+        freeGb: c.freeStorageGb,
+        freeNote: c.freeNote ?? null,
+        regions: companyRegions(c),
+        protocols: c.protocols.map(p => ({
+            label: p.label,
+            protocol: p.protocol,
+            providerId: p.providerId ?? null,
+            paid: !!p.paid,
+            category: p.category,
+            note: p.note ?? null,
+        })),
+    }));
+}
+
 /**
  * Logo-id → company index, with a small alias table so callers that key by
  * a slightly different id (e.g. `ProvidersDialog` uses 'hetzner' /
