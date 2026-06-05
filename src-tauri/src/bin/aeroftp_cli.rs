@@ -3879,13 +3879,12 @@ struct BenchmarkSummary {
 // ── Helpers ────────────────────────────────────────────────────────
 
 fn cli_config_path() -> Result<PathBuf, String> {
-    let base = dirs::config_dir().ok_or_else(|| "Cannot resolve config directory".to_string())?;
-    Ok(base.join("aeroftp").join("config.toml"))
+    Ok(cli_state_dir()?.join("config.toml"))
 }
 
 fn cli_state_dir() -> Result<PathBuf, String> {
-    let base = dirs::config_dir().ok_or_else(|| "Cannot resolve config directory".to_string())?;
-    Ok(base.join("aeroftp"))
+    ftp_client_gui_lib::portable::aeroftp_data_root()
+        .ok_or_else(|| "Cannot resolve AeroFTP data root".to_string())
 }
 
 fn cli_update_cache_path() -> Result<PathBuf, String> {
@@ -5767,7 +5766,7 @@ impl From<AimdTomlClassWindow> for ftp_client_gui_lib::transfer_dag::AimdClassWi
 /// `<XDG_CONFIG_HOME>/aeroftp/aimd.toml` (or `~/.config/aeroftp/aimd.toml`),
 /// or `None` when neither environment variable resolves.
 fn default_aimd_config_path() -> Option<PathBuf> {
-    dirs::config_dir().map(|d| d.join("aeroftp").join("aimd.toml"))
+    ftp_client_gui_lib::portable::aeroftp_data_root().map(|d| d.join("aimd.toml"))
 }
 
 /// Load per-class AIMD window overrides from a TOML file. Returns
@@ -30027,9 +30026,8 @@ async fn cmd_mount_windows(
 // ── Daemon + Jobs ────────────────────────────────────────────────
 
 fn daemon_config_dir() -> PathBuf {
-    let dir = dirs::config_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("aeroftp");
+    let dir = ftp_client_gui_lib::portable::aeroftp_data_root()
+        .unwrap_or_else(|| PathBuf::from("."));
     let _ = std::fs::create_dir_all(&dir);
     #[cfg(unix)]
     {

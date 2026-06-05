@@ -1949,14 +1949,12 @@ mod tests {
         assert_eq!(body, "from-wal");
     }
 
-    /// Sanity check the CLI helper resolves a path whose last
-    /// component matches the Tauri identifier in `tauri.conf.json`.
-    /// A future identifier rename that forgets to update
-    /// `portable::cli_app_config_dir` would break the assumption
-    /// that "CLI keystore export covers the same files the GUI
-    /// touches", so we wire the constant into a test.
+    /// Sanity check the CLI helper resolves to the same canonical AeroFTP data
+    /// leaf the GUI uses for app config. This protects the keystore export
+    /// contract after the dev/release split moved app databases out of the
+    /// Tauri identifier-scoped config directory.
     #[test]
-    fn cli_app_config_dir_matches_tauri_identifier() {
+    fn cli_app_config_dir_matches_canonical_data_leaf() {
         let Some(p) = crate::portable::cli_app_config_dir() else {
             // No HOME / no APPDATA in the test environment: this is
             // a soft skip rather than a failure (CI containers can
@@ -1964,12 +1962,11 @@ mod tests {
             return;
         };
         let last = p.file_name().and_then(|s| s.to_str()).unwrap_or_default();
+        let expected = crate::portable::aeroftp_data_leaf_for_debug(cfg!(debug_assertions));
         assert_eq!(
-            last,
-            crate::portable::TAURI_APP_IDENTIFIER,
-            "cli_app_config_dir last segment {:?} does not match TAURI_APP_IDENTIFIER {:?}",
-            last,
-            crate::portable::TAURI_APP_IDENTIFIER
+            last, expected,
+            "cli_app_config_dir last segment {:?} does not match canonical AeroFTP data leaf {:?}",
+            last, expected
         );
     }
 }

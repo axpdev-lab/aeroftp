@@ -167,7 +167,7 @@ impl TimeWindow {
 
 /// Sync schedule configuration.
 ///
-/// Persisted to `~/.config/aeroftp/sync_schedule.json`.
+/// Persisted to the canonical AeroFTP data root as `sync_schedule.json`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncSchedule {
     /// Master toggle: when `false` the scheduler never fires.
@@ -337,10 +337,11 @@ fn seconds_until_window_opens(window: &TimeWindow, now: &DateTime<Local>) -> u64
 // Persistence
 // ---------------------------------------------------------------------------
 
-/// Resolve the path to `~/.config/aeroftp/sync_schedule.json`.
+/// Resolve the path to `sync_schedule.json` under the canonical AeroFTP data root.
 fn schedule_path() -> Result<PathBuf, String> {
-    let base = dirs::config_dir().ok_or_else(|| "Cannot determine config directory".to_string())?;
-    Ok(base.join("aeroftp").join("sync_schedule.json"))
+    Ok(crate::portable::aeroftp_data_root()
+        .ok_or_else(|| "Cannot determine AeroFTP data root".to_string())?
+        .join("sync_schedule.json"))
 }
 
 /// Load the sync schedule from persistent config.

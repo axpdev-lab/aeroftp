@@ -50,16 +50,21 @@ const KEYRING_SERVICE: &str = "com.aeroftp.AeroFTP";
 
 /// Keyring account name. Portable builds use a separate slot so a portable
 /// AeroFTP instance launched on a machine that already has an installed
-/// AeroFTP can never overwrite the installed app's vault passphrase. Both
-/// builds otherwise share the same `KEYRING_SERVICE`, so a single user
-/// inspecting Credential Manager / Keychain / libsecret sees the AeroFTP
-/// entries grouped together.
-fn keyring_account() -> &'static str {
-    if crate::portable::is_portable() {
-        "vault-passphrase-portable"
-    } else {
-        "vault-passphrase"
+/// AeroFTP can never overwrite the installed app's vault passphrase. Debug
+/// builds use their own slot too, so a dev vault init cannot replace the
+/// release passphrase. All variants share `KEYRING_SERVICE`, so Credential
+/// Manager / Keychain / libsecret still groups AeroFTP entries together.
+fn keyring_account_for(portable: bool, debug: bool) -> &'static str {
+    match (portable, debug) {
+        (true, true) => "vault-passphrase-portable-dev",
+        (true, false) => "vault-passphrase-portable",
+        (false, true) => "vault-passphrase-dev",
+        (false, false) => "vault-passphrase",
     }
+}
+
+fn keyring_account() -> &'static str {
+    keyring_account_for(crate::portable::is_portable(), cfg!(debug_assertions))
 }
 
 // ============ Error Types ============
@@ -1153,13 +1158,14 @@ impl CredentialStore {
 /// Get aeroftp config directory, creating it with secure permissions if needed.
 ///
 /// Resolution order:
-///   1. Portable mode: `<exe-dir>/data/aeroftp` (when `portable.marker` is
-///      present alongside the executable). This keeps the vault, master
+///   1. Portable mode: `<exe-dir>/data/aeroftp` in release, or
+///      `<exe-dir>/data/aeroftp-dev` in debug. This keeps the vault, master
 ///      passphrase reference, and per-app secrets self-contained inside the
-///      portable folder, so users can copy the folder between machines.
-///   2. Standard install: `dirs::config_dir().join("aeroftp")` — the
-///      historical location, preserved for backwards compatibility with
-///      existing installs.
+///      portable folder.
+///   2. Standard release install: the historical `aeroftp` config leaf — the
+///      historical location, preserved for backwards compatibility.
+///   3. Standard debug build: `dirs::config_dir().join("aeroftp-dev")`, so
+///      local development never touches an installed release vault.
 fn config_dir() -> Result<PathBuf, CredentialError> {
     let dir = crate::portable::credential_store_dir().ok_or_else(|| {
         CredentialError::Io(std::io::Error::new(
@@ -1259,7 +1265,7 @@ pub fn secure_delete(path: &Path) -> Result<(), CredentialError> {
 
 #[cfg(test)]
 mod tests {
-    use super::CredentialStore;
+    use super::{keyring_account_for, CredentialStore};
 
     #[test]
     fn reserved_account_guard_covers_system_keys_and_prefix() {
@@ -1276,5 +1282,19 @@ mod tests {
 
         assert!(!CredentialStore::is_reserved_account("server_profile_123"));
         assert!(CredentialStore::reject_reserved_account("server_profile_123").is_ok());
+    }
+
+    #[test]
+    fn keyring_account_splits_portable_and_debug_slots() {
+        assert_eq!(keyring_account_for(false, false), "vault-passphrase");
+        assert_eq!(keyring_account_for(false, true), "vault-passphrase-dev");
+        assert_eq!(
+            keyring_account_for(true, false),
+            "vault-passphrase-portable"
+        );
+        assert_eq!(
+            keyring_account_for(true, true),
+            "vault-passphrase-portable-dev"
+        );
     }
 }

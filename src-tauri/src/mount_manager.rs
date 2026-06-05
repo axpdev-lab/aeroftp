@@ -110,9 +110,9 @@ static ACTIVE: LazyLock<AsyncMutex<HashMap<String, ActiveMount>>> =
 
 /// Sidecar config path.
 fn sidecar_path() -> PathBuf {
-    let base = dirs::config_dir()
-        .unwrap_or_else(|| dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")));
-    base.join("aeroftp").join(SIDECAR_FILENAME)
+    crate::portable::aeroftp_data_root()
+        .unwrap_or_else(|| dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")))
+        .join(SIDECAR_FILENAME)
 }
 
 /// Locate the bundled `aeroftp-cli` binary.

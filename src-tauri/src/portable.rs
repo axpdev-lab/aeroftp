@@ -20,9 +20,12 @@ use std::sync::OnceLock;
 
 const MARKER_FILENAME: &str = "portable.marker";
 const PORTABLE_DATA_DIRNAME: &str = "data";
+const AEROFTP_DATA_RELEASE_LEAF: &str = "aeroftp";
+const AEROFTP_DATA_DEBUG_LEAF: &str = "aeroftp-dev";
 
 /// Cached portable-mode flag. Computed on first access and reused.
 static PORTABLE_ROOT: OnceLock<Option<PathBuf>> = OnceLock::new();
+static LEGACY_APP_CONFIG_MIGRATED: OnceLock<()> = OnceLock::new();
 
 /// Resolve the portable root directory (the folder containing AeroFTP.exe
 /// and `portable.marker`). Returns `None` when not running as portable.
@@ -58,25 +61,128 @@ fn ensure_dir(path: &Path) -> Result<(), String> {
         std::fs::create_dir_all(path)
             .map_err(|e| format!("Failed to create {}: {e}", path.display()))?;
     }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
+            .map_err(|e| format!("Failed to secure {}: {e}", path.display()))?;
+    }
     Ok(())
 }
 
+pub fn aeroftp_data_leaf_for_debug(debug: bool) -> &'static str {
+    if debug {
+        AEROFTP_DATA_DEBUG_LEAF
+    } else {
+        AEROFTP_DATA_RELEASE_LEAF
+    }
+}
+
+fn aeroftp_data_leaf() -> &'static str {
+    aeroftp_data_leaf_for_debug(cfg!(debug_assertions))
+}
+
+/// Single source of truth for AeroFTP's file-backed app state.
+///
+/// Release builds preserve the historical `aeroftp` leaf byte-for-byte. Debug
+/// builds use the sibling `aeroftp-dev` leaf so `tauri dev` / `cargo run`
+/// cannot read or mutate an installed release vault, sync journal, settings, or
+/// SQLite history. Portable builds keep the same self-contained `<exe>/data`
+/// root and apply the same release/debug leaf underneath it.
+pub fn aeroftp_data_root() -> Option<PathBuf> {
+    let leaf = aeroftp_data_leaf();
+    if let Some(data_root) = portable_data_root() {
+        let dir = data_root.join(leaf);
+        ensure_dir(&dir).ok()?;
+        return Some(dir);
+    }
+    let dir = dirs::config_dir()
+        .or_else(dirs::home_dir)
+        .map(|base| base.join(leaf))?;
+    ensure_dir(&dir).ok()?;
+    Some(dir)
+}
+
+/// Resolve the legacy Tauri identifier-scoped config directory used before the
+/// unified data-root migration. This is read only as a release-build migration
+/// source; debug builds intentionally do not copy release state into
+/// `aeroftp-dev`.
+fn legacy_app_config_dir(app: &tauri::AppHandle) -> Option<PathBuf> {
+    use tauri::Manager;
+    app.path().app_config_dir().ok()
+}
+
+fn legacy_cli_app_config_dir() -> Option<PathBuf> {
+    dirs::config_dir().map(|base| base.join(TAURI_APP_IDENTIFIER))
+}
+
+fn copy_missing_tree(src: &Path, dst: &Path) -> std::io::Result<()> {
+    if src.is_dir() {
+        std::fs::create_dir_all(dst)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(dst, std::fs::Permissions::from_mode(0o700));
+        }
+        for entry in std::fs::read_dir(src)? {
+            let entry = entry?;
+            let name = entry.file_name();
+            copy_missing_tree(&entry.path(), &dst.join(name))?;
+        }
+    } else if src.is_file() && !dst.exists() {
+        if let Some(parent) = dst.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let _ = std::fs::copy(src, dst)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(dst, std::fs::Permissions::from_mode(0o600));
+        }
+    }
+    Ok(())
+}
+
+fn migrate_legacy_app_config_dir(legacy_dir: Option<PathBuf>, new_dir: &Path) {
+    if cfg!(debug_assertions) || is_portable() {
+        return;
+    }
+    if LEGACY_APP_CONFIG_MIGRATED.get().is_some() {
+        return;
+    }
+    let Some(legacy_dir) = legacy_dir else {
+        return;
+    };
+    if !legacy_dir.is_dir() || legacy_dir == new_dir {
+        return;
+    }
+    match copy_missing_tree(&legacy_dir, new_dir) {
+        Ok(()) => tracing::info!(
+            "Migrated legacy AeroFTP app config from {} to {}",
+            legacy_dir.display(),
+            new_dir.display()
+        ),
+        Err(e) => tracing::warn!(
+            "Failed to migrate legacy AeroFTP app config from {} to {}: {}",
+            legacy_dir.display(),
+            new_dir.display(),
+            e
+        ),
+    }
+    let _ = LEGACY_APP_CONFIG_MIGRATED.set(());
+}
+
 /// Resolve the per-app config directory. In portable mode this is
-/// `<exe-dir>/data/config`; otherwise delegates to Tauri's `app_config_dir`.
+/// `<exe-dir>/data/aeroftp` (or `aeroftp-dev` in debug); otherwise it is the
+/// canonical AeroFTP data root.
 ///
 /// This is the wrapper to use everywhere instead of calling
-/// `app.path().app_config_dir()` directly. It guarantees portable installs
-/// stay self-contained.
+/// `app.path().app_config_dir()` directly. It keeps portable installs
+/// self-contained and keeps debug builds isolated from release data.
 pub fn app_config_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    use tauri::Manager;
-    if let Some(data_root) = portable_data_root() {
-        let dir = data_root.join("config");
-        ensure_dir(&dir)?;
-        return Ok(dir);
-    }
-    app.path()
-        .app_config_dir()
-        .map_err(|e| format!("Cannot resolve app config dir: {e}"))
+    let dir = aeroftp_data_root().ok_or_else(|| "Cannot resolve AeroFTP data root".to_string())?;
+    migrate_legacy_app_config_dir(legacy_app_config_dir(app), &dir);
+    Ok(dir)
 }
 
 /// Resolve the per-app data directory. In portable mode this is
@@ -92,20 +198,10 @@ pub fn app_data_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
         .map_err(|e| format!("Cannot resolve app data dir: {e}"))
 }
 
-/// Resolve the credential-store directory. The credential store predates
-/// the rest of the app and uses `dirs::config_dir().join("aeroftp")` rather
-/// than the Tauri identifier-scoped path. We preserve that on non-portable
-/// builds (so existing users don't lose their vault), and route to
-/// `<exe-dir>/data/aeroftp` when portable.
+/// Resolve the credential-store directory. Kept as a compatibility wrapper
+/// because diagnostics and credential-store code already call this name.
 pub fn credential_store_dir() -> Option<PathBuf> {
-    if let Some(data_root) = portable_data_root() {
-        let dir = data_root.join("aeroftp");
-        ensure_dir(&dir).ok()?;
-        return Some(dir);
-    }
-    dirs::config_dir()
-        .or_else(dirs::home_dir)
-        .map(|base| base.join("aeroftp"))
+    aeroftp_data_root()
 }
 
 /// CLI-friendly resolution of the per-app config directory, mirroring
@@ -114,28 +210,17 @@ pub fn credential_store_dir() -> Option<PathBuf> {
 /// export/import sees the same SQLite databases + plugin trees that
 /// the GUI runtime would.
 ///
-/// The identifier is hard-coded to match `tauri.conf.json`. If that
-/// ever changes, the CLI and the GUI would resolve different folders
-/// and the keystore round-trip would target a different installation
-/// from the one the user is restoring, caught by
-/// `keystore_export::tests::cli_app_config_dir_matches_tauri_identifier`.
-///
 /// Returns `None` when no plausible config root exists (no `$HOME`,
 /// no `%APPDATA%`). Callers should fall back to "vault only" mode in
 /// that case rather than silently writing into the working directory.
 pub fn cli_app_config_dir() -> Option<PathBuf> {
-    if let Some(data_root) = portable_data_root() {
-        let dir = data_root.join("config");
-        ensure_dir(&dir).ok()?;
-        return Some(dir);
-    }
-    let base = dirs::config_dir()?;
-    Some(base.join("com.aeroftp.AeroFTP"))
+    let dir = aeroftp_data_root()?;
+    migrate_legacy_app_config_dir(legacy_cli_app_config_dir(), &dir);
+    Some(dir)
 }
 
-/// The Tauri identifier hard-coded in `tauri.conf.json`. Exposed as a
-/// const so [`cli_app_config_dir`] and any future portable-aware
-/// helper share a single source of truth.
+/// The Tauri identifier hard-coded in `tauri.conf.json`. Kept for legacy
+/// migration from the old identifier-scoped config directory.
 pub const TAURI_APP_IDENTIFIER: &str = "com.aeroftp.AeroFTP";
 
 /// Resolve the WebView2 / WebKitGTK per-window data directory.
@@ -364,5 +449,20 @@ mod tests {
             }
             other => panic!("portable_root and portable_data_root disagree: {other:?}"),
         }
+    }
+
+    #[test]
+    fn data_root_leaf_is_sibling_safe() {
+        assert_eq!(aeroftp_data_leaf_for_debug(false), "aeroftp");
+        assert_eq!(aeroftp_data_leaf_for_debug(true), "aeroftp-dev");
+    }
+
+    #[test]
+    fn current_profile_data_root_uses_expected_leaf() {
+        let Some(root) = aeroftp_data_root() else {
+            return;
+        };
+        let expected = aeroftp_data_leaf_for_debug(cfg!(debug_assertions));
+        assert_eq!(root.file_name().and_then(|s| s.to_str()), Some(expected));
     }
 }

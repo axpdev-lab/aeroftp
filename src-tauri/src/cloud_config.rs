@@ -171,9 +171,9 @@ pub struct CloudStats {
 
 /// Get the path to the cloud config file
 fn get_config_path() -> PathBuf {
-    let config_dir = dirs::config_dir()
-        .unwrap_or_else(|| dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")));
-    config_dir.join("aeroftp").join("cloud_config.json")
+    crate::portable::aeroftp_data_root()
+        .unwrap_or_else(|| dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")))
+        .join("cloud_config.json")
 }
 
 /// Load cloud configuration from disk
