@@ -4236,8 +4236,7 @@
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
             },
-            "healthOff": "চেক বন্ধ",
-            "healthToggleHint": "সক্ষম/অক্ষম করতে ডাবল-ক্লিক করুন"
+            "healthCheck": "হেলথ চেক"
         },
         "gitlab": {
             "projectPath": "প্রকল্পের পাথ",

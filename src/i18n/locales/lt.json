@@ -4236,8 +4236,7 @@
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
             },
-            "healthOff": "Tikrinimas išjungtas",
-            "healthToggleHint": "Dukart spustelėkite, kad įjungtumėte/išjungtumėte"
+            "healthCheck": "Pasiekiamumo tikrinimas"
         },
         "gitlab": {
             "projectPath": "Projekto kelias",

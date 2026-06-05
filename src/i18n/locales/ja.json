@@ -4236,8 +4236,7 @@
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
             },
-            "healthOff": "確認オフ",
-            "healthToggleHint": "ダブルクリックで有効/無効"
+            "healthCheck": "ヘルスチェック"
         },
         "gitlab": {
             "projectPath": "プロジェクトパス",

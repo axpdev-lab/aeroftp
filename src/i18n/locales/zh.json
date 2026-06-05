@@ -4236,8 +4236,7 @@
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
             },
-            "healthOff": "检查已关闭",
-            "healthToggleHint": "双击以启用/禁用"
+            "healthCheck": "健康检查"
         },
         "gitlab": {
             "projectPath": "项目路径",

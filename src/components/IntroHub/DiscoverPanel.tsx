@@ -2,14 +2,16 @@ import * as React from 'react';
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
     Server, Database, Globe, Cloud, Code, Camera, Layers,
-    ChevronRight, Search, X, Zap, Activity, ShieldCheck, Lock, Info, LayoutGrid, List as ListIcon,
+    ChevronRight, Search, X, Zap, Activity, ShieldCheck, Lock, Info, LayoutGrid, List as ListIcon, RefreshCw,
 } from 'lucide-react';
 import { ProviderType } from '../../types';
 import { PROVIDER_LOGOS } from '../ProviderLogos';
 import { ProtocolIcon, ProtocolBadge, isSecureBadge, isCipherStrengthBadge } from '../ProtocolSelector';
 import { useTranslation } from '../../i18n';
-import { buildDiscoverCategories, DiscoverCategory, DiscoverItem, DISCOVER_DESC_KEYS } from './discoverData';
+import { buildDiscoverCategories, DiscoverCategory, DiscoverItem, DISCOVER_DESC_KEYS, PROVIDER_HEALTH_URLS } from './discoverData';
+import { getProviderById } from '../../providers';
 import { CatalogCategoryId, getCatalogCategory } from '../../types/catalog';
+import type { CatalogCompany } from '../providerCatalog';
 import { useProviderHealth, type HealthStatus } from '../../hooks/useProviderHealth';
 import { useIntroHubIconSize } from '../../hooks/useIntroHubIconSize';
 import { useDiscoverHealthCheck } from '../../hooks/useDiscoverHealthCheck';
@@ -29,6 +31,25 @@ const CATEGORY_KEY = 'aeroftp-discover-category';
 const HEALTH_SCAN_CHUNK_SIZE = 12;
 const HEALTH_SCAN_CHUNK_DELAY_MS = 180;
 const wait = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+
+/**
+ * Resolve a reachability probe URL for a catalog company, mirroring what the
+ * grid cards use so the list view shows the same green dots. Order: the
+ * catalog's explicit URL, then the cloud-protocol map, then the registry
+ * preset's healthCheckUrl. Undefined when nothing maps (self-hosted, generic).
+ */
+function resolveCompanyHealthUrl(c: CatalogCompany): string | undefined {
+    if (c.healthCheckUrl) return c.healthCheckUrl;
+    for (const p of c.protocols) {
+        const byProtocol = PROVIDER_HEALTH_URLS[p.protocol];
+        if (byProtocol) return byProtocol;
+        if (p.providerId) {
+            const url = getProviderById(p.providerId)?.healthCheckUrl;
+            if (url) return url;
+        }
+    }
+    return undefined;
+}
 
 /** Generic / custom server entry points shown below the list view. */
 const CUSTOM_PROFILES: { labelKey: string; protocol: ProviderType; providerId?: string }[] = [
@@ -175,7 +196,6 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
     const { getStatus, scanItems, scanning } = useProviderHealth();
     const healthScanRunRef = useRef(0);
     const [healthEnabled, setHealthEnabled] = useDiscoverHealthCheck();
-    const checkClickTimerRef = useRef<number | null>(null);
 
     const totalItemCount = useMemo(
         () => categories.reduce((sum, c) => sum + c.items.length, 0),
@@ -190,10 +210,15 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
     }, [categories, activeCategory]);
 
     // List data: company-centric catalog, filtered by category ('all' = full).
-    const catalogCompanies = useMemo(() => {
-        if (activeCategory === 'all') return PROVIDER_CATALOG;
-        return PROVIDER_CATALOG.filter(c =>
-            c.protocols.some(p => getCatalogCategory(p.providerId || p.protocol) === activeCategory));
+    // Each company gets its reachability URL resolved from the same sources the
+    // grid cards use (catalog -> protocol map -> registry preset), so the list
+    // and grid health dots match across every category.
+    const catalogCompanies = useMemo<CatalogCompany[]>(() => {
+        const base = activeCategory === 'all'
+            ? PROVIDER_CATALOG
+            : PROVIDER_CATALOG.filter(c =>
+                c.protocols.some(p => getCatalogCategory(p.providerId || p.protocol) === activeCategory));
+        return base.map(c => ({ ...c, healthCheckUrl: resolveCompanyHealthUrl(c) }));
     }, [activeCategory]);
 
     // Whether the heavy (chunked) scan path applies: list view, or grid 'All'.
@@ -268,33 +293,6 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
             .map(item => ({ id: item.providerId || item.id, url: item.healthCheckUrl! }));
         scanItems(targets, true);
     }, [healthEnabled, usesChunkedScan, chunkedTargets, activeItems, scanItems]);
-
-    // Check button: single click = manual re-scan, double click = toggle the
-    // whole health-check feature on/off. A short timer disambiguates the two so
-    // the double click does not also fire a scan.
-    const handleCheckClick = useCallback(() => {
-        if (checkClickTimerRef.current) {
-            window.clearTimeout(checkClickTimerRef.current);
-            checkClickTimerRef.current = null;
-            return; // second click of a double-click: let onDoubleClick handle it
-        }
-        checkClickTimerRef.current = window.setTimeout(() => {
-            checkClickTimerRef.current = null;
-            handleManualCheck();
-        }, 220);
-    }, [handleManualCheck]);
-
-    const handleCheckDoubleClick = useCallback(() => {
-        if (checkClickTimerRef.current) {
-            window.clearTimeout(checkClickTimerRef.current);
-            checkClickTimerRef.current = null;
-        }
-        setHealthEnabled(!healthEnabled);
-    }, [healthEnabled, setHealthEnabled]);
-
-    useEffect(() => () => {
-        if (checkClickTimerRef.current) window.clearTimeout(checkClickTimerRef.current);
-    }, []);
 
     const handleSelect = useCallback((item: DiscoverItem) => {
         onSelectProvider(item.protocol, item.providerId, item.demo);
@@ -403,21 +401,39 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
                             <ListIcon size={12} />
                         </button>
                     </div>
+                    {/* Health-check on/off toggle: a small switch (blue dot when
+                        on, grey when off), independent of the manual Check button. */}
                     <button
-                        onClick={handleCheckClick}
-                        onDoubleClick={handleCheckDoubleClick}
-                        disabled={scanning}
+                        onClick={() => setHealthEnabled(!healthEnabled)}
+                        role="switch"
+                        aria-checked={healthEnabled}
+                        title={t('introHub.healthCheck')}
+                        aria-label={t('introHub.healthCheck')}
+                        className="flex items-center gap-1.5 mr-1 text-gray-400 dark:text-gray-500"
+                    >
+                        <Activity size={11} className={healthEnabled ? 'text-blue-500' : ''} />
+                        <span className={`relative inline-flex h-3.5 w-6 items-center rounded-full transition-colors ${
+                            healthEnabled ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'
+                        }`}>
+                            <span className={`inline-block h-2.5 w-2.5 rounded-full bg-white shadow transition-transform ${
+                                healthEnabled ? 'translate-x-3' : 'translate-x-0.5'
+                            }`} />
+                        </span>
+                    </button>
+                    <button
+                        onClick={handleManualCheck}
+                        disabled={scanning || !healthEnabled}
                         className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] transition-colors ${
                             scanning
                                 ? 'text-gray-400 dark:text-gray-500 cursor-wait'
                                 : !healthEnabled
-                                    ? 'text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700/50'
+                                    ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
                                     : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/50'
                         }`}
-                        title={`${healthEnabled ? t('introHub.checkAvailability') : t('introHub.healthOff')} · ${t('introHub.healthToggleHint')}`}
+                        title={t('introHub.checkAvailability')}
                     >
-                        <Activity size={11} className={scanning ? 'animate-pulse' : (!healthEnabled ? 'opacity-60' : '')} />
-                        {scanning ? t('introHub.scanning') : (healthEnabled ? t('introHub.check') : t('introHub.healthOff'))}
+                        <RefreshCw size={11} className={scanning ? 'animate-spin' : ''} />
+                        {scanning ? t('introHub.scanning') : t('introHub.check')}
                     </button>
                 </div>
 

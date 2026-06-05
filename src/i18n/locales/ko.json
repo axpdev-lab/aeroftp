@@ -4236,8 +4236,7 @@
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
             },
-            "healthOff": "확인 끔",
-            "healthToggleHint": "더블클릭하여 켜기/끄기"
+            "healthCheck": "상태 확인"
         },
         "gitlab": {
             "projectPath": "프로젝트 경로",

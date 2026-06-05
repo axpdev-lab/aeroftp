@@ -4236,8 +4236,7 @@
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
             },
-            "healthOff": "Перевірку вимкнено",
-            "healthToggleHint": "Подвійний клік для увімкнення/вимкнення"
+            "healthCheck": "Перевірка доступності"
         },
         "gitlab": {
             "projectPath": "Шлях до проєкту",

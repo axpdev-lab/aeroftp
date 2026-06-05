@@ -4236,8 +4236,7 @@
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
             },
-            "healthOff": "Prüfung aus",
-            "healthToggleHint": "Doppelklick zum Ein-/Ausschalten"
+            "healthCheck": "Verfügbarkeitsprüfung"
         },
         "gitlab": {
             "projectPath": "Projektpfad",

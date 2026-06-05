@@ -4236,8 +4236,7 @@
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
             },
-            "healthOff": "Kontroll av",
-            "healthToggleHint": "Dubbelklicka för att slå på/av"
+            "healthCheck": "Tillgänglighetskontroll"
         },
         "gitlab": {
             "projectPath": "Projektsokvag",
