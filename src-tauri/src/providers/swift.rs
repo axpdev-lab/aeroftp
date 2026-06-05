@@ -1201,7 +1201,18 @@ impl StorageProvider for SwiftProvider {
         true
     }
 
+    fn supports_server_side_copy(&self) -> bool {
+        true
+    }
+
     async fn server_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        // Legacy alias kept so CLI / MCP / provider_commands callers keep
+        // working. The real `X-Copy-From` PUT lives on `server_side_copy`
+        // (S3-T10 migration, v4.0.0).
+        StorageProvider::server_side_copy(self, from, to).await
+    }
+
+    async fn server_side_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         let from_clean = Self::normalize_path(from);
         let to_clean = Self::normalize_path(to);
         let dest_url = self.object_url(&to_clean)?;

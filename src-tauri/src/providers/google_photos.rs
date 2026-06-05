@@ -1413,6 +1413,30 @@ impl StorageProvider for GooglePhotosProvider {
     }
 
     fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
+        // Shaped-graph multipart trait (S3-T09): intentionally NotSupported
+        // by design on Google Photos.
+        //
+        // The Google Photos Library API enforces a two-step upload that
+        // does not fit the shaped-graph multipart shape:
+        //   1. `POST /uploads` with the entire raw media bytes in the
+        //      request body and `X-Goog-Upload-Protocol: raw` (or the
+        //      resumable variant `X-Goog-Upload-Protocol: resumable`,
+        //      but the resumable session is single-stream and not
+        //      part-addressable).
+        //   2. `POST /mediaItems:batchCreate` with the opaque upload
+        //      token returned by step 1 to register the asset against
+        //      a library or album.
+        // There is no native primitive for uploading independent parts
+        // out of order and stitching them at commit time: the resumable
+        // upload accepts byte ranges sequentially against one session
+        // URL only. A fake-multipart wrapper would either buffer the
+        // whole file (defeats streaming) or serialise per-chunk PUTs
+        // against the same session (no parallelism gain).
+        //
+        // The legacy upload() path already streams the body to step 1
+        // via `tokio_util::io::ReaderStream`, then chains step 2 with
+        // the returned upload token. We leave `supports_multipart=false`
+        // and let the runner pick the legacy single-stream path.
         super::TransferOptimizationHints {
             supports_resume_download: true,
             ..Default::default()
