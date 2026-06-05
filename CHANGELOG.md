@@ -5,6 +5,46 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.3] - 2026-06-05
+
+### Community Roadmap, CLI Security Audit & Transfer Hardening
+
+A community-driven release: the Add Service catalog is rebuilt (#224), the Ehud wishlist lands across several waves (#270), the MEGAcmd WebDAV bridge is fixed end-to-end (#275/#264), and a two-stage independent CLI security audit hardens every destructive and agent-facing surface. It also fixes window presentation on macOS Tahoe (#290), isolates development from the released app's credentials (#302), and folds in the DAG transfer audit patch sets and the server-side-copy migration.
+
+#### Added
+- **Add Service catalog overhaul (#224)**: the Add Service page becomes a company-centric catalog with a list view alongside the grid, per-protocol categories that split a company's products, available storage regions shown inline, a free/paid filter, in-grid search, and provider website links. A matching CLI `catalog` subcommand mirrors the same data from a single source of truth. (@EhudKirsh, #224)
+- **MEGAcmd WebDAV bridge auto-arm (#275, #264)**: connecting a MEGAcmd profile auto-arms the local WebDAV bridge with a warmup notice; keep-alive reuse is disabled and transport errors are detailed, fixing single-file image preview. (@EhudKirsh, #275)
+- **Connection UX**: cancel an in-progress connection with Esc, plus a slow-connect modal while a connection is still establishing.
+- **Backblaze B2 concurrent Range download** for the native provider.
+- **CLI**: interactive `tree` depth control with a MEGAcmd warmup notice, a raw-mode arrow-key navigator in the interactive `profiles -i` shell, and `dedupe --force` / `--max-delete` for the destructive resolution modes.
+- **Wishlist items (#270)**: tray restore from minimize, view-as-text in the preview pane, Yandex storage quota, image-preview transparency background, multi-user welcome polish, an offline-users note, and assorted copy fixes. (@EhudKirsh, #270)
+
+#### Changed
+- **Server-side copy unified**: 14 native providers migrated from the legacy `server_copy` to `server_side_copy`; the multipart trait is documented as NotSupported-by-design on the remaining 8.
+- **Snap Store listing** description refreshed.
+
+#### Fixed
+- **CLI security audit (Codex + Opus, parallel then joint)**: closed the merged release-gate findings (W0/W1) and a second-pass follow-up (W0.6) across every destructive and agent-facing surface:
+  - Atomic download failure no longer deletes a pre-existing target file (`get`/`pget`).
+  - `sync --delete` refuses to run from an incomplete or partial directory scan, including a `--from-reconcile` plan produced from a partial reconcile; a default delete cap bounds the blast radius.
+  - The CLI remote-path resolver and the `serve`, `speed` and `benchmark` commands reject `..` traversal and null bytes (exit 5) instead of operating on a substituted or escaped path.
+  - `rm -r`, `sync --delete` and the `dedupe` destructive modes fail closed in non-interactive (non-TTY) use without an explicit confirmation flag.
+  - MCP tool errors are scrubbed of API keys and bearer tokens before entering model context; the MCP line reader is bounded; debug snapshots redact secrets.
+  - Agent profile lookup is deterministic on duplicate names, accepts numeric selectors, and applies provider options; discovery output emits stable protocol lists.
+  - Roughly forty findings closed with new unit tests and a live read-only matrix.
+- **macOS 26.5 Tahoe no window (#290)**: a borderless main window could not become key, leaving only a Dock icon after the splash; the window now presents via an overlay title bar. (@alexhorner, #290)
+- **Dev/release data isolation (#302)**: debug builds use a sibling data root and `-dev` keyring accounts, with a release-only non-destructive migration, so a development run can no longer read or corrupt the released app's credentials. (@raelb, #302)
+- **DAG transfer audit**: two patch sets correcting the multipart threshold (and growing the chunk when the part count clamps), an AIMD deficit race, a multipart commit leak, parallel-part dispatch, Nextcloud parallel chunks and chunked-v2 threshold (256 MiB), the Azure threshold, and WebDAV download routing.
+- **S3 (#196)**: request logging routed to debug so `ls` and `tree` stay clean. (@EhudKirsh, #196)
+- **Archive**: archives are written to a temporary file and renamed on success; the `compress_files` command registration is restored.
+- **CLI**: `profile-copy-user` / `profile-move-user` registered in the dispatcher allowlist; connection mode tabs persist across an in-edit protocol switch.
+
+#### Contributors
+
+Thanks to the people who shaped this release:
+
+[<img src="https://github.com/EhudKirsh.png?size=48" width="48" height="48" alt="@EhudKirsh" />](https://github.com/EhudKirsh) [<img src="https://github.com/alexhorner.png?size=48" width="48" height="48" alt="@alexhorner" />](https://github.com/alexhorner) [<img src="https://github.com/raelb.png?size=48" width="48" height="48" alt="@raelb" />](https://github.com/raelb)
+
 ## [4.0.2] - 2026-06-04
 
 ### Cross-Machine Keystore Portability & Agent-Facing Polish
