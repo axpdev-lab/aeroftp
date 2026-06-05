@@ -279,6 +279,41 @@ export function hasFreeTier(c: CatalogCompany): boolean {
 }
 
 /**
+ * Principal storage regions per company, as distinct ISO 3166-1 alpha-2
+ * country codes (plus 'EU' for pan-EU multi-region and 'global' for
+ * decentralized / self-hosted). EDITORIAL and APPROXIMATE: only providers
+ * with a meaningful multi-region footprint (mostly S3) are listed; the list
+ * is trimmed to the principal regions, not exhaustive. Everything else falls
+ * back to the single HQ country. Verify with the provider.
+ */
+const REGIONS_BY_LOGO: Record<string, string[]> = {
+    'amazon-s3': ['US', 'IE', 'DE', 'GB', 'FR', 'SG', 'JP', 'IN', 'BR', 'AU', 'CA', 'KR'],
+    'wasabi': ['US', 'NL', 'JP', 'AU', 'CA', 'SG'],
+    'storj': ['global'],
+    'cloudflare-r2': ['global'],
+    'idrive-e2': ['US', 'IE', 'DE'],
+    'oracle-cloud': ['US', 'DE', 'GB', 'JP', 'IN', 'AU', 'BR', 'CA'],
+    'digitalocean-spaces': ['US', 'NL', 'SG', 'IN', 'DE'],
+    'alibaba-oss': ['CN', 'SG', 'US', 'DE', 'JP', 'AU'],
+    'tencent-cos': ['CN', 'SG', 'US', 'DE', 'JP', 'KR'],
+    'google-cloud-storage': ['US', 'EU', 'SG', 'JP', 'AU', 'BR', 'IN'],
+    'minio': ['global'],
+    'backblaze': ['US', 'NL'],
+    'mega': ['NZ', 'EU', 'CA'],
+};
+
+/**
+ * Distinct storage regions for a company (country codes, 'EU', or 'global'),
+ * falling back to the HQ country when no multi-region data exists. The table
+ * shows the first few as flags and a "+N" overflow.
+ */
+export function companyRegions(c: CatalogCompany): string[] {
+    const regions = REGIONS_BY_LOGO[c.logoId];
+    if (regions && regions.length) return regions;
+    return c.countryCode ? [c.countryCode] : [];
+}
+
+/**
  * Logo-id → company index, with a small alias table so callers that key by
  * a slightly different id (e.g. `ProvidersDialog` uses 'hetzner' /
  * 'tab-digital') still resolve. Returns the first matching company.
