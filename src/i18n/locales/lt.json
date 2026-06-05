@@ -3775,7 +3775,9 @@
             "actions": "Actions",
             "pages": "Pages",
             "prs": "PRs",
-            "devTools": "Dev Tools"
+            "devTools": "Dev Tools",
+            "freeTier": "Nemokamas planas",
+            "paidTier": "Mokama"
         },
         "zohoworkdrive": {
             "manageLabels": "Valdyti žymes",
@@ -4135,7 +4137,8 @@
                 "webdav": "WebDAV ir savarankiškai talpinami",
                 "cloudStorage": "Debesų saugykla",
                 "developer": "Kūrėjams",
-                "mediaServices": "Medijos paslaugos"
+                "mediaServices": "Medijos paslaugos",
+                "all": "Visi"
             },
             "confirmDeleteServer": "Ištrinti serverį \"{name}\"? Tai pašalins išsaugotus kredencialus ir negalės būti atšaukta.",
             "renameWithHotkey": "Pervadinti (F2)",
@@ -4204,6 +4207,32 @@
             "connectError": {
                 "failed": "Paskutinis prisijungimo bandymas nepavyko",
                 "lastFailedAt": "Paskutinė klaida prieš {time}"
+            },
+            "view": {
+                "grid": "Tinklelis",
+                "list": "Sąrašas"
+            },
+            "check": "Tikrinti",
+            "scanning": "Nuskaitoma...",
+            "checkAvailability": "Tikrinti paslaugos prieinamumą",
+            "list": {
+                "company": "Tiekėjas",
+                "region": "Regionas",
+                "freeStorage": "Nemokama",
+                "freeProtocols": "Nemokami protokolai",
+                "paidProtocols": "Mokami protokolai",
+                "health": "Būsena",
+                "columns": "Stulpeliai",
+                "searchPlaceholder": "Ieškoti tiekėjų, protokolų...",
+                "footerSummary": "{count} tiekėjų · ~{gb} GB nemokamai",
+                "approximate": "apytikslis, patikrinkite pas tiekėją",
+                "connectHint": "Prisijungti prie {company}",
+                "customProfiles": "Pasirinktiniai / bendrieji serveriai",
+                "customFtp": "FTP / FTPS",
+                "customSftp": "SFTP",
+                "customS3": "S3",
+                "customWebdav": "WebDAV",
+                "customAzure": "Azure Blob"
             }
         },
         "gitlab": {

@@ -3775,7 +3775,9 @@
             "actions": "Actions",
             "pages": "Pages",
             "prs": "PRs",
-            "devTools": "Dev Tools"
+            "devTools": "Dev Tools",
+            "freeTier": "Անվճար փաթեթ",
+            "paidTier": "Վճարովի"
         },
         "zohoworkdrive": {
             "manageLabels": "Մենաէղ Եղերը",
@@ -4135,7 +4137,8 @@
                 "webdav": "WebDAV և ինքնապահպանված",
                 "cloudStorage": "Ամպային պահոց",
                 "developer": "Ծրագրավորող",
-                "mediaServices": "Մեդիա ծառայություններ"
+                "mediaServices": "Մեդիա ծառայություններ",
+                "all": "Բոլորը"
             },
             "confirmDeleteServer": "Ջնջե՞լ սերվերը \"{name}\"? Սա կհեռացնի պահված հավատարմագրերը և հնարավոր չի լինի չեղարկել:",
             "renameWithHotkey": "Վերանվանել (F2)",
@@ -4204,6 +4207,32 @@
             "connectError": {
                 "failed": "Միացման վերջին փորձն անհաջող էր",
                 "lastFailedAt": "Վերջին սխալը {time} առաջ"
+            },
+            "view": {
+                "grid": "Ցանց",
+                "list": "Ցանկ"
+            },
+            "check": "Ստուգել",
+            "scanning": "Սկանավորում...",
+            "checkAvailability": "Ստուգել ծառայության հասանելիությունը",
+            "list": {
+                "company": "Մատակարար",
+                "region": "Տարածաշրջան",
+                "freeStorage": "Անվճար",
+                "freeProtocols": "Անվճար արձանագրություններ",
+                "paidProtocols": "Վճարովի արձանագրություններ",
+                "health": "Կարգավիճակ",
+                "columns": "Սյունակներ",
+                "searchPlaceholder": "Որոնել մատակարարներ, արձանագրություններ...",
+                "footerSummary": "{count} մատակարար · ~{gb} GB անվճար",
+                "approximate": "մոտավոր, ստուգեք մատակարարի մոտ",
+                "connectHint": "Միանալ {company}-ին",
+                "customProfiles": "Հատուկ / ընդհանուր սերվերներ",
+                "customFtp": "FTP / FTPS",
+                "customSftp": "SFTP",
+                "customS3": "S3",
+                "customWebdav": "WebDAV",
+                "customAzure": "Azure Blob"
             }
         },
         "gitlab": {

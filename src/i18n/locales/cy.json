@@ -3794,7 +3794,9 @@
             "actions": "Actions",
             "pages": "Pages",
             "prs": "PRs",
-            "devTools": "Dev Tools"
+            "devTools": "Dev Tools",
+            "freeTier": "Cynllun am ddim",
+            "paidTier": "Taledig"
         },
         "zohoworkdrive": {
             "manageLabels": "Rheoli Labeli",
@@ -4154,7 +4156,8 @@
                 "webdav": "WebDAV a hunanletya",
                 "cloudStorage": "Storfa Cwmwl",
                 "developer": "Datblygwr",
-                "mediaServices": "Gwasanaethau cyfryngau"
+                "mediaServices": "Gwasanaethau cyfryngau",
+                "all": "Y cyfan"
             },
             "confirmDeleteServer": "Dileu'r gweinydd \"{name}\"? Mae hyn yn dileu manylion mewngofnodi a gadwyd ac ni ellir ei ddadwneud.",
             "renameWithHotkey": "Ailenwi (F2)",
@@ -4223,6 +4226,32 @@
             "connectError": {
                 "failed": "Methodd y cais cysylltu diwethaf",
                 "lastFailedAt": "Methiant diwethaf {time} yn ôl"
+            },
+            "view": {
+                "grid": "Grid",
+                "list": "Rhestr"
+            },
+            "check": "Gwirio",
+            "scanning": "Sganio...",
+            "checkAvailability": "Gwirio argaeledd y gwasanaeth",
+            "list": {
+                "company": "Darparwr",
+                "region": "Rhanbarth",
+                "freeStorage": "Am ddim",
+                "freeProtocols": "Protocolau am ddim",
+                "paidProtocols": "Protocolau taledig",
+                "health": "Statws",
+                "columns": "Colofnau",
+                "searchPlaceholder": "Chwilio darparwyr, protocolau...",
+                "footerSummary": "{count} darparwr · ~{gb} GB am ddim",
+                "approximate": "bras, gwiriwch gyda'r darparwr",
+                "connectHint": "Cysylltu â {company}",
+                "customProfiles": "Gweinyddion personol / generig",
+                "customFtp": "FTP / FTPS",
+                "customSftp": "SFTP",
+                "customS3": "S3",
+                "customWebdav": "WebDAV",
+                "customAzure": "Azure Blob"
             }
         },
         "gitlab": {

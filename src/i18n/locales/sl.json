@@ -3775,7 +3775,9 @@
             "actions": "Actions",
             "pages": "Pages",
             "prs": "PRs",
-            "devTools": "Dev Tools"
+            "devTools": "Dev Tools",
+            "freeTier": "Brezplačni paket",
+            "paidTier": "Plačljivo"
         },
         "zohoworkdrive": {
             "manageLabels": "Upravljanje oznak",
@@ -4135,7 +4137,8 @@
                 "webdav": "WebDAV in samogostovanje",
                 "cloudStorage": "Oblačna shramba",
                 "developer": "Razvijalec",
-                "mediaServices": "Medijske storitve"
+                "mediaServices": "Medijske storitve",
+                "all": "Vse"
             },
             "confirmDeleteServer": "Izbrisati strežnik \"{name}\"? S tem se odstranijo shranjene poverilnice in tega ni mogoče razveljaviti.",
             "renameWithHotkey": "Preimenuj (F2)",
@@ -4204,6 +4207,32 @@
             "connectError": {
                 "failed": "Zadnji poskus povezave ni uspel",
                 "lastFailedAt": "Zadnja napaka pred {time}"
+            },
+            "view": {
+                "grid": "Mreža",
+                "list": "Seznam"
+            },
+            "check": "Preveri",
+            "scanning": "Pregledovanje...",
+            "checkAvailability": "Preveri razpoložljivost storitve",
+            "list": {
+                "company": "Ponudnik",
+                "region": "Regija",
+                "freeStorage": "Brezplačno",
+                "freeProtocols": "Brezplačni protokoli",
+                "paidProtocols": "Plačljivi protokoli",
+                "health": "Stanje",
+                "columns": "Stolpci",
+                "searchPlaceholder": "Iskanje ponudnikov, protokolov...",
+                "footerSummary": "{count} ponudnikov · ~{gb} GB brezplačno",
+                "approximate": "približno, preverite pri ponudniku",
+                "connectHint": "Poveži s {company}",
+                "customProfiles": "Strežniki po meri / splošni strežniki",
+                "customFtp": "FTP / FTPS",
+                "customSftp": "SFTP",
+                "customS3": "S3",
+                "customWebdav": "WebDAV",
+                "customAzure": "Azure Blob"
             }
         },
         "gitlab": {

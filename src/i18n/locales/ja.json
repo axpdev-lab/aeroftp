@@ -3775,7 +3775,9 @@
             "actions": "Actions",
             "pages": "Pages",
             "prs": "PRs",
-            "devTools": "Dev Tools"
+            "devTools": "Dev Tools",
+            "freeTier": "無料プラン",
+            "paidTier": "有料"
         },
         "zohoworkdrive": {
             "manageLabels": "ラベルを管理",
@@ -4135,7 +4137,8 @@
                 "webdav": "WebDAV & セルフホスト",
                 "cloudStorage": "クラウドストレージ",
                 "developer": "開発者向け",
-                "mediaServices": "メディアサービス"
+                "mediaServices": "メディアサービス",
+                "all": "すべて"
             },
             "confirmDeleteServer": "サーバー \"{name}\" を削除しますか？保存された認証情報が削除され、元に戻すことはできません。",
             "renameWithHotkey": "名前を変更 (F2)",
@@ -4204,6 +4207,32 @@
             "connectError": {
                 "failed": "前回の接続試行に失敗しました",
                 "lastFailedAt": "前回の失敗は{time}前"
+            },
+            "view": {
+                "grid": "グリッド",
+                "list": "リスト"
+            },
+            "check": "確認",
+            "scanning": "スキャン中...",
+            "checkAvailability": "サービスの可用性を確認",
+            "list": {
+                "company": "プロバイダー",
+                "region": "地域",
+                "freeStorage": "無料",
+                "freeProtocols": "無料プロトコル",
+                "paidProtocols": "有料プロトコル",
+                "health": "ステータス",
+                "columns": "列",
+                "searchPlaceholder": "プロバイダー、プロトコルを検索...",
+                "footerSummary": "{count} 件のプロバイダー · 約 {gb} GB 無料",
+                "approximate": "概算です。プロバイダーで確認してください",
+                "connectHint": "{company} に接続",
+                "customProfiles": "カスタム / 汎用サーバー",
+                "customFtp": "FTP / FTPS",
+                "customSftp": "SFTP",
+                "customS3": "S3",
+                "customWebdav": "WebDAV",
+                "customAzure": "Azure Blob"
             }
         },
         "gitlab": {

@@ -3794,7 +3794,9 @@
             "actions": "Actions",
             "pages": "Pages",
             "prs": "PRs",
-            "devTools": "Dev Tools"
+            "devTools": "Dev Tools",
+            "freeTier": "Doako plana",
+            "paidTier": "Ordainpekoa"
         },
         "zohoworkdrive": {
             "manageLabels": "Etiketak kudeatu",
@@ -4154,7 +4156,8 @@
                 "webdav": "WebDAV eta auto-ostatatua",
                 "cloudStorage": "Hodeiko biltegiratzea",
                 "developer": "Garatzailea",
-                "mediaServices": "Multimedia zerbitzuak"
+                "mediaServices": "Multimedia zerbitzuak",
+                "all": "Guztiak"
             },
             "confirmDeleteServer": "\"{name}\" zerbitzaria ezabatu? Honek gordetako kredentzialak kentzen ditu eta ezin da desegin.",
             "renameWithHotkey": "Berrizendatu (F2)",
@@ -4223,6 +4226,32 @@
             "connectError": {
                 "failed": "Azken konexio-saiakera huts egin du",
                 "lastFailedAt": "Azken hutsegitea duela {time}"
+            },
+            "view": {
+                "grid": "Sareta",
+                "list": "Zerrenda"
+            },
+            "check": "Egiaztatu",
+            "scanning": "Eskaneatzen...",
+            "checkAvailability": "Egiaztatu zerbitzuaren erabilgarritasuna",
+            "list": {
+                "company": "Hornitzailea",
+                "region": "Eskualdea",
+                "freeStorage": "Doan",
+                "freeProtocols": "Doako protokoloak",
+                "paidProtocols": "Ordainpeko protokoloak",
+                "health": "Egoera",
+                "columns": "Zutabeak",
+                "searchPlaceholder": "Bilatu hornitzaileak, protokoloak...",
+                "footerSummary": "{count} hornitzaile · ~{gb} GB doan",
+                "approximate": "gutxi gorabehera, egiaztatu hornitzailearekin",
+                "connectHint": "Konektatu {company}-(e)ra",
+                "customProfiles": "Zerbitzari pertsonalizatuak / generikoak",
+                "customFtp": "FTP / FTPS",
+                "customSftp": "SFTP",
+                "customS3": "S3",
+                "customWebdav": "WebDAV",
+                "customAzure": "Azure Blob"
             }
         },
         "gitlab": {

@@ -1,17 +1,42 @@
 import * as React from 'react';
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
-    Server, Database, Globe, Cloud, Code, Camera,
-    ChevronRight, Search, X, Zap, Activity, ShieldCheck, Lock, Info,
+    Server, Database, Globe, Cloud, Code, Camera, Layers,
+    ChevronRight, Search, X, Zap, Activity, ShieldCheck, Lock, Info, LayoutGrid, List as ListIcon,
 } from 'lucide-react';
 import { ProviderType } from '../../types';
 import { PROVIDER_LOGOS } from '../ProviderLogos';
 import { ProtocolIcon, ProtocolBadge, isSecureBadge, isCipherStrengthBadge } from '../ProtocolSelector';
 import { useTranslation } from '../../i18n';
 import { buildDiscoverCategories, DiscoverCategory, DiscoverItem, DISCOVER_DESC_KEYS } from './discoverData';
-import { CatalogCategoryId } from '../../types/catalog';
+import { CatalogCategoryId, getCatalogCategory } from '../../types/catalog';
 import { useProviderHealth, type HealthStatus } from '../../hooks/useProviderHealth';
 import { useIntroHubIconSize } from '../../hooks/useIntroHubIconSize';
+import { CatalogTable } from './CatalogTable';
+import { PROVIDER_CATALOG } from '../providerCatalog';
+
+/** All category sidebar entries share these keys; 'all' is a virtual category. */
+type DiscoverCategoryId = CatalogCategoryId | 'all';
+type DiscoverViewMode = 'grid' | 'list';
+
+const VIEW_MODE_KEY = 'aeroftp-discover-view';
+const CATEGORY_KEY = 'aeroftp-discover-category';
+
+// Reuse the My Servers chunked-sequential health pattern for the large
+// All / list views: probe in small waves so opening the view does not fan
+// out 50+ simultaneous outbound probes to third-party endpoints.
+const HEALTH_SCAN_CHUNK_SIZE = 12;
+const HEALTH_SCAN_CHUNK_DELAY_MS = 180;
+const wait = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+
+/** Generic / custom server entry points shown below the list view. */
+const CUSTOM_PROFILES: { labelKey: string; protocol: ProviderType; providerId?: string }[] = [
+    { labelKey: 'introHub.list.customFtp', protocol: 'ftp' },
+    { labelKey: 'introHub.list.customSftp', protocol: 'sftp' },
+    { labelKey: 'introHub.list.customS3', protocol: 's3', providerId: 'custom-s3' },
+    { labelKey: 'introHub.list.customWebdav', protocol: 'webdav', providerId: 'custom-webdav' },
+    { labelKey: 'introHub.list.customAzure', protocol: 'azure' },
+];
 
 const CATEGORY_ICONS: Record<string, React.ReactNode> = {
     Server: <Server size={16} />,
@@ -133,39 +158,131 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
     const t = useTranslation();
     const introHubIconSize = useIntroHubIconSize();
     const categories = useMemo(() => buildDiscoverCategories(), []);
-    const [activeCategory, setActiveCategory] = useState<CatalogCategoryId>(() => {
-        const saved = localStorage.getItem('aeroftp-discover-category');
-        return (saved as CatalogCategoryId) || 'protocols';
+    const [activeCategory, setActiveCategory] = useState<DiscoverCategoryId>(() => {
+        const saved = localStorage.getItem(CATEGORY_KEY);
+        return (saved as DiscoverCategoryId) || 'protocols';
+    });
+    const [viewMode, setViewMode] = useState<DiscoverViewMode>(() => {
+        const saved = localStorage.getItem(VIEW_MODE_KEY);
+        return saved === 'list' ? 'list' : 'grid';
     });
 
-    // Provider health scan: per-tab, triggered on tab change
+    // Provider health scan: per-tab eager (small categories) + chunked
+    // sequential for the large All / list views (My Servers pattern).
     const { getStatus, scanItems, scanning } = useProviderHealth();
+    const healthScanRunRef = useRef(0);
 
+    const totalItemCount = useMemo(
+        () => categories.reduce((sum, c) => sum + c.items.length, 0),
+        [categories],
+    );
+
+    // Grid data for the active category ('all' flattens every category).
     const activeItems = useMemo(() => {
+        if (activeCategory === 'all') return categories.flatMap(c => c.items);
         const cat = categories.find(c => c.id === activeCategory);
         return cat?.items ?? [];
     }, [categories, activeCategory]);
 
-    // Auto-scan when tab changes (800ms delay for lazy load feel)
+    // List data: company-centric catalog, filtered by category ('all' = full).
+    const catalogCompanies = useMemo(() => {
+        if (activeCategory === 'all') return PROVIDER_CATALOG;
+        return PROVIDER_CATALOG.filter(c =>
+            c.protocols.some(p => getCatalogCategory(p.providerId || p.protocol) === activeCategory));
+    }, [activeCategory]);
+
+    // Whether the heavy (chunked) scan path applies: list view, or grid 'All'.
+    const usesChunkedScan = viewMode === 'list' || activeCategory === 'all';
+
+    const chunkedTargets = useMemo(() => {
+        if (!usesChunkedScan) return [];
+        if (viewMode === 'list') {
+            return catalogCompanies
+                .filter(c => c.healthCheckUrl)
+                .map(c => ({ id: c.logoId, url: c.healthCheckUrl! }));
+        }
+        return activeItems
+            .filter(item => item.healthCheckUrl)
+            .map(item => ({ id: item.providerId || item.id, url: item.healthCheckUrl! }));
+    }, [usesChunkedScan, viewMode, catalogCompanies, activeItems]);
+
+    // Eager per-category scan: small categories in grid view only. The All
+    // and list views take the chunked path below.
     useEffect(() => {
+        if (usesChunkedScan) return;
         const targets = activeItems
             .filter(item => item.healthCheckUrl)
             .map(item => ({ id: item.providerId || item.id, url: item.healthCheckUrl! }));
         if (targets.length === 0) return;
         const timer = setTimeout(() => scanItems(targets), 600);
         return () => clearTimeout(timer);
-    }, [activeCategory, activeItems, scanItems]);
+    }, [usesChunkedScan, activeItems, scanItems]);
+
+    // Chunked-sequential scan for All / list: 12 at a time, 180ms apart,
+    // cancellable via a generation counter so switching view/category aborts
+    // a running scan. Cache (5 min) is reused by the hook.
+    useEffect(() => {
+        if (chunkedTargets.length === 0) return;
+        const runId = ++healthScanRunRef.current;
+        let cancelled = false;
+        const timer = window.setTimeout(() => {
+            void (async () => {
+                for (let i = 0; i < chunkedTargets.length; i += HEALTH_SCAN_CHUNK_SIZE) {
+                    if (cancelled || healthScanRunRef.current !== runId) return;
+                    await scanItems(chunkedTargets.slice(i, i + HEALTH_SCAN_CHUNK_SIZE));
+                    if (i + HEALTH_SCAN_CHUNK_SIZE < chunkedTargets.length) {
+                        await wait(HEALTH_SCAN_CHUNK_DELAY_MS);
+                    }
+                }
+            })();
+        }, 600);
+        return () => {
+            cancelled = true;
+            healthScanRunRef.current++;
+            window.clearTimeout(timer);
+        };
+    }, [chunkedTargets, scanItems]);
 
     const handleManualCheck = useCallback(() => {
+        if (usesChunkedScan) {
+            const runId = ++healthScanRunRef.current;
+            void (async () => {
+                for (let i = 0; i < chunkedTargets.length; i += HEALTH_SCAN_CHUNK_SIZE) {
+                    if (healthScanRunRef.current !== runId) return;
+                    await scanItems(chunkedTargets.slice(i, i + HEALTH_SCAN_CHUNK_SIZE), true);
+                    if (i + HEALTH_SCAN_CHUNK_SIZE < chunkedTargets.length) {
+                        await wait(HEALTH_SCAN_CHUNK_DELAY_MS);
+                    }
+                }
+            })();
+            return;
+        }
         const targets = activeItems
             .filter(item => item.healthCheckUrl)
             .map(item => ({ id: item.providerId || item.id, url: item.healthCheckUrl! }));
         scanItems(targets, true);
-    }, [activeItems, scanItems]);
+    }, [usesChunkedScan, chunkedTargets, activeItems, scanItems]);
 
     const handleSelect = useCallback((item: DiscoverItem) => {
         onSelectProvider(item.protocol, item.providerId, item.demo);
     }, [onSelectProvider]);
+
+    const setView = useCallback((mode: DiscoverViewMode) => {
+        setViewMode(mode);
+        try { localStorage.setItem(VIEW_MODE_KEY, mode); } catch { /* ignore */ }
+    }, []);
+
+    const setCategory = useCallback((id: DiscoverCategoryId) => {
+        setActiveCategory(id);
+        try { localStorage.setItem(CATEGORY_KEY, id); } catch { /* ignore */ }
+    }, []);
+
+    const activeCatMeta = categories.find(c => c.id === activeCategory);
+    const headerLabel = activeCategory === 'all'
+        ? t('introHub.category.all')
+        : t(activeCatMeta?.labelKey || '');
+
+    const headerCount = viewMode === 'list' ? catalogCompanies.length : activeItems.length;
 
     return (
         <div className="h-full flex gap-4">
@@ -176,10 +293,25 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
                 <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 px-3 py-2">
                     {t('introHub.discoverTitle')}
                 </div>
+                {/* "All" entry: one flat list of every provider (Ehud #224). */}
+                <button
+                    onClick={() => setCategory('all')}
+                    className={`flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm transition-colors ${
+                        activeCategory === 'all'
+                            ? 'bg-blue-50 dark:bg-blue-900/25 text-blue-600 dark:text-blue-400 font-medium'
+                            : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/50'
+                    }`}
+                >
+                    <span className="text-indigo-400"><Layers size={16} /></span>
+                    <span className="flex-1 text-left truncate">{t('introHub.category.all')}</span>
+                    <span className="text-[10px] text-gray-400 dark:text-gray-500 tabular-nums px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700/50">
+                        {totalItemCount}
+                    </span>
+                </button>
                 {categories.map((cat) => (
                     <button
                         key={cat.id}
-                        onClick={() => { setActiveCategory(cat.id); localStorage.setItem('aeroftp-discover-category', cat.id); }}
+                        onClick={() => setCategory(cat.id)}
                         className={`flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm transition-colors ${
                             activeCategory === cat.id
                                 ? 'bg-blue-50 dark:bg-blue-900/25 text-blue-600 dark:text-blue-400 font-medium'
@@ -201,16 +333,43 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
             <div className="flex-1 min-w-0 flex flex-col">
                 {/* Category header */}
                 <div className="flex items-center gap-2 mb-3">
-                    <span className={CATEGORY_COLORS[activeCategory]}>
-                        {CATEGORY_ICONS[categories.find(c => c.id === activeCategory)?.icon || 'Server']}
+                    <span className={activeCategory === 'all' ? 'text-indigo-400' : CATEGORY_COLORS[activeCategory]}>
+                        {activeCategory === 'all' ? <Layers size={16} /> : CATEGORY_ICONS[activeCatMeta?.icon || 'Server']}
                     </span>
                     <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                        {t(categories.find(c => c.id === activeCategory)?.labelKey || '')}
+                        {headerLabel}
                     </h3>
                     <span className="text-[10px] text-gray-400 dark:text-gray-500 tabular-nums px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700/50">
-                        {activeItems.length} {activeItems.length === 1 ? 'service' : 'services'}
+                        {headerCount}
                     </span>
                     <div className="flex-1" />
+                    {/* Grid / list view toggle (persisted), mirroring My Servers. */}
+                    <div className="flex items-center rounded-md border border-gray-200 dark:border-gray-600 overflow-hidden mr-1">
+                        <button
+                            onClick={() => setView('grid')}
+                            className={`flex items-center gap-1 px-2 py-1 text-[11px] transition-colors ${
+                                viewMode === 'grid'
+                                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+                                    : 'text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700/50'
+                            }`}
+                            title={t('introHub.view.grid')}
+                            aria-pressed={viewMode === 'grid'}
+                        >
+                            <LayoutGrid size={12} />
+                        </button>
+                        <button
+                            onClick={() => setView('list')}
+                            className={`flex items-center gap-1 px-2 py-1 text-[11px] transition-colors ${
+                                viewMode === 'list'
+                                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+                                    : 'text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700/50'
+                            }`}
+                            title={t('introHub.view.list')}
+                            aria-pressed={viewMode === 'list'}
+                        >
+                            <ListIcon size={12} />
+                        </button>
+                    </div>
                     <button
                         onClick={handleManualCheck}
                         disabled={scanning}
@@ -219,15 +378,15 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
                                 ? 'text-gray-400 dark:text-gray-500 cursor-wait'
                                 : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/50'
                         }`}
-                        title="Check service availability"
+                        title={t('introHub.checkAvailability')}
                     >
                         <Activity size={11} className={scanning ? 'animate-pulse' : ''} />
-                        {scanning ? 'Scanning...' : 'Check'}
+                        {scanning ? t('introHub.scanning') : t('introHub.check')}
                     </button>
                 </div>
 
-                {/* Info banner for each category */}
-                {(() => {
+                {/* Info banner per category (grid view, the 6 named categories) */}
+                {viewMode === 'grid' && activeCategory !== 'all' && (() => {
                     const infoKeyMap: Record<CatalogCategoryId, string> = {
                         'protocols': 'protocols',
                         'object-storage': 's3',
@@ -249,38 +408,69 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
                     );
                 })()}
 
-                {/* Provider grid */}
-                <div className="flex-1 overflow-y-auto">
-                    {activeItems.length === 0 ? (
-                        <div className="text-center py-12 text-gray-400 dark:text-gray-500">
-                            <Search size={32} className="mx-auto mb-3 opacity-50" />
-                            <p className="text-sm">{t('introHub.noResults')}</p>
+                {viewMode === 'list' ? (
+                    /* Company-centric list view (issue #224) */
+                    <div className="flex-1 min-h-0 flex flex-col">
+                        <CatalogTable
+                            companies={catalogCompanies}
+                            onSelectProvider={onSelectProvider}
+                            getHealth={(logoId) => getStatus(logoId).status}
+                        />
+                        {/* Custom / generic servers below the table */}
+                        <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                            <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2">
+                                {t('introHub.list.customProfiles')}
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                {CUSTOM_PROFILES.map((p) => (
+                                    <button
+                                        key={p.labelKey}
+                                        onClick={() => onSelectProvider(p.protocol, p.providerId)}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:border-blue-300 dark:hover:border-blue-500/40 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
+                                    >
+                                        <Server size={12} className="text-gray-400" />
+                                        {t(p.labelKey)}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
-                    ) : (
-                        <div
-                            className="grid gap-2"
-                            style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}
-                        >
-                            {activeItems.map((item) => (
-                                <ServiceCard
-                                    key={item.id}
-                                    item={item}
-                                    onSelect={() => handleSelect(item)}
-                                    healthStatus={item.healthCheckUrl ? getStatus(item.providerId || item.id).status : 'unknown'}
-                                    iconSize={introHubIconSize}
-                                />
-                            ))}
+                    </div>
+                ) : (
+                    <>
+                        {/* Provider grid */}
+                        <div className="flex-1 overflow-y-auto">
+                            {activeItems.length === 0 ? (
+                                <div className="text-center py-12 text-gray-400 dark:text-gray-500">
+                                    <Search size={32} className="mx-auto mb-3 opacity-50" />
+                                    <p className="text-sm">{t('introHub.noResults')}</p>
+                                </div>
+                            ) : (
+                                <div
+                                    className="grid gap-2"
+                                    style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}
+                                >
+                                    {activeItems.map((item) => (
+                                        <ServiceCard
+                                            key={item.id}
+                                            item={item}
+                                            onSelect={() => handleSelect(item)}
+                                            healthStatus={item.healthCheckUrl ? getStatus(item.providerId || item.id).status : 'unknown'}
+                                            iconSize={introHubIconSize}
+                                        />
+                                    ))}
+                                </div>
+                            )}
                         </div>
-                    )}
-                </div>
 
-                {/* Bottom info */}
-                <div className="mt-4 pt-3 border-t border-gray-200 dark:border-gray-700 flex items-center gap-2">
-                    <Zap size={13} className="text-yellow-500" />
-                    <span className="text-[11px] text-gray-400 dark:text-gray-500">
-                        {t('introHub.discoverHint')}
-                    </span>
-                </div>
+                        {/* Bottom info */}
+                        <div className="mt-4 pt-3 border-t border-gray-200 dark:border-gray-700 flex items-center gap-2">
+                            <Zap size={13} className="text-yellow-500" />
+                            <span className="text-[11px] text-gray-400 dark:text-gray-500">
+                                {t('introHub.discoverHint')}
+                            </span>
+                        </div>
+                    </>
+                )}
             </div>
         </div>
     );

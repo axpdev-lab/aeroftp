@@ -3775,7 +3775,9 @@
             "actions": "Actions",
             "pages": "Pages",
             "prs": "PRs",
-            "devTools": "Dev Tools"
+            "devTools": "Dev Tools",
+            "freeTier": "Pelan percuma",
+            "paidTier": "Berbayar"
         },
         "zohoworkdrive": {
             "manageLabels": "Kelola Label",
@@ -4135,7 +4137,8 @@
                 "webdav": "WebDAV & Self-hosted",
                 "cloudStorage": "Storan Awan",
                 "developer": "Pembangun",
-                "mediaServices": "Perkhidmatan Media"
+                "mediaServices": "Perkhidmatan Media",
+                "all": "Semua"
             },
             "confirmDeleteServer": "Padam pelayan \"{name}\"? Ini akan mengalih keluar kelayakan yang disimpan dan tidak boleh dibuat asal.",
             "renameWithHotkey": "Namakan semula (F2)",
@@ -4204,6 +4207,32 @@
             "connectError": {
                 "failed": "Percubaan sambungan terakhir gagal",
                 "lastFailedAt": "Kegagalan terakhir {time} lalu"
+            },
+            "view": {
+                "grid": "Grid",
+                "list": "Senarai"
+            },
+            "check": "Semak",
+            "scanning": "Mengimbas...",
+            "checkAvailability": "Semak ketersediaan perkhidmatan",
+            "list": {
+                "company": "Penyedia",
+                "region": "Wilayah",
+                "freeStorage": "Percuma",
+                "freeProtocols": "Protokol percuma",
+                "paidProtocols": "Protokol berbayar",
+                "health": "Status",
+                "columns": "Lajur",
+                "searchPlaceholder": "Cari penyedia, protokol...",
+                "footerSummary": "{count} penyedia · ~{gb} GB percuma",
+                "approximate": "anggaran, sahkan dengan penyedia",
+                "connectHint": "Sambung ke {company}",
+                "customProfiles": "Pelayan tersuai / generik",
+                "customFtp": "FTP / FTPS",
+                "customSftp": "SFTP",
+                "customS3": "S3",
+                "customWebdav": "WebDAV",
+                "customAzure": "Azure Blob"
             }
         },
         "gitlab": {

@@ -3775,7 +3775,9 @@
             "actions": "Actions",
             "pages": "Pages",
             "prs": "PRs",
-            "devTools": "Dev Tools"
+            "devTools": "Dev Tools",
+            "freeTier": "Bezmaksas plāns",
+            "paidTier": "Maksas"
         },
         "zohoworkdrive": {
             "manageLabels": "Pārvaldīt etiķetes",
@@ -4135,7 +4137,8 @@
                 "webdav": "WebDAV un pašmitināti",
                 "cloudStorage": "Mākoņkrātuve",
                 "developer": "Izstrādātājiem",
-                "mediaServices": "Multivides pakalpojumi"
+                "mediaServices": "Multivides pakalpojumi",
+                "all": "Visi"
             },
             "confirmDeleteServer": "Dzēst serveri \"{name}\"? Tas noņems saglabātos akreditācijas datus un darbību nevar atsaukt.",
             "renameWithHotkey": "Pārdēvēt (F2)",
@@ -4204,6 +4207,32 @@
             "connectError": {
                 "failed": "Pēdējais savienojuma mēģinājums neizdevās",
                 "lastFailedAt": "Pēdējā kļūda pirms {time}"
+            },
+            "view": {
+                "grid": "Režģis",
+                "list": "Saraksts"
+            },
+            "check": "Pārbaudīt",
+            "scanning": "Notiek skenēšana...",
+            "checkAvailability": "Pārbaudīt pakalpojuma pieejamību",
+            "list": {
+                "company": "Pakalpojumu sniedzējs",
+                "region": "Reģions",
+                "freeStorage": "Bezmaksas",
+                "freeProtocols": "Bezmaksas protokoli",
+                "paidProtocols": "Maksas protokoli",
+                "health": "Statuss",
+                "columns": "Kolonnas",
+                "searchPlaceholder": "Meklēt pakalpojumu sniedzējus, protokolus...",
+                "footerSummary": "{count} sniedzēji · ~{gb} GB bez maksas",
+                "approximate": "aptuvens, pārbaudiet pie pakalpojumu sniedzēja",
+                "connectHint": "Savienoties ar {company}",
+                "customProfiles": "Pielāgoti / vispārīgi serveri",
+                "customFtp": "FTP / FTPS",
+                "customSftp": "SFTP",
+                "customS3": "S3",
+                "customWebdav": "WebDAV",
+                "customAzure": "Azure Blob"
             }
         },
         "gitlab": {

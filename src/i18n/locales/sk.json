@@ -3775,7 +3775,9 @@
             "actions": "Actions",
             "pages": "Pages",
             "prs": "PRs",
-            "devTools": "Dev Tools"
+            "devTools": "Dev Tools",
+            "freeTier": "Bezplatný plán",
+            "paidTier": "Platené"
         },
         "zohoworkdrive": {
             "manageLabels": "Spravovať štítky",
@@ -4135,7 +4137,8 @@
                 "webdav": "WebDAV a self-hosted",
                 "cloudStorage": "Cloudové úložisko",
                 "developer": "Vývojár",
-                "mediaServices": "Mediálne služby"
+                "mediaServices": "Mediálne služby",
+                "all": "Všetko"
             },
             "confirmDeleteServer": "Odstrániť server \"{name}\"? Týmto sa odstránia uložené prihlasovacie údaje a túto akciu nie je možné vrátiť späť.",
             "renameWithHotkey": "Premenovať (F2)",
@@ -4204,6 +4207,32 @@
             "connectError": {
                 "failed": "Posledný pokus o pripojenie zlyhal",
                 "lastFailedAt": "Posledná chyba pred {time}"
+            },
+            "view": {
+                "grid": "Mriežka",
+                "list": "Zoznam"
+            },
+            "check": "Skontrolovať",
+            "scanning": "Skenovanie...",
+            "checkAvailability": "Skontrolovať dostupnosť služby",
+            "list": {
+                "company": "Poskytovateľ",
+                "region": "Región",
+                "freeStorage": "Zadarmo",
+                "freeProtocols": "Bezplatné protokoly",
+                "paidProtocols": "Platené protokoly",
+                "health": "Stav",
+                "columns": "Stĺpce",
+                "searchPlaceholder": "Hľadať poskytovateľov, protokoly...",
+                "footerSummary": "{count} poskytovateľov · ~{gb} GB zadarmo",
+                "approximate": "približné, overte u poskytovateľa",
+                "connectHint": "Pripojiť k {company}",
+                "customProfiles": "Vlastné / všeobecné servery",
+                "customFtp": "FTP / FTPS",
+                "customSftp": "SFTP",
+                "customS3": "S3",
+                "customWebdav": "WebDAV",
+                "customAzure": "Azure Blob"
             }
         },
         "gitlab": {

@@ -4291,12 +4291,39 @@
             "searchServices": "Search services...",
             "discoverHint": "Click a service to set up a pre-configured connection with minimal input.",
             "category": {
+                "all": "All",
                 "protocols": "Protocols",
                 "objectStorage": "S3 / Object Storage",
                 "webdav": "WebDAV & Self-hosted",
                 "cloudStorage": "Cloud Storage",
                 "mediaServices": "Media Services",
                 "developer": "Developer"
+            },
+            "view": {
+                "grid": "Grid",
+                "list": "List"
+            },
+            "check": "Check",
+            "scanning": "Scanning...",
+            "checkAvailability": "Check service availability",
+            "list": {
+                "company": "Provider",
+                "region": "Region",
+                "freeStorage": "Free",
+                "freeProtocols": "Free protocols",
+                "paidProtocols": "Paid protocols",
+                "health": "Status",
+                "columns": "Columns",
+                "searchPlaceholder": "Search providers, protocols...",
+                "footerSummary": "{count} providers · ~{gb} GB free",
+                "approximate": "approximate, verify with the provider",
+                "connectHint": "Connect to {company}",
+                "customProfiles": "Custom / generic servers",
+                "customFtp": "FTP / FTPS",
+                "customSftp": "SFTP",
+                "customS3": "S3",
+                "customWebdav": "WebDAV",
+                "customAzure": "Azure Blob"
             },
             "table": {
                 "columnSettings": "Columns",
@@ -4395,6 +4422,8 @@
             "baseFeatures": "Base",
             "proFeatures": "Advanced",
             "enterpriseOnly": "Enterprise only",
+            "freeTier": "Free tier",
+            "paidTier": "Paid",
             "totalCount": "{count} integrated providers",
             "upload": "Upload",
             "download": "Download",

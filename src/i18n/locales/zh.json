@@ -3775,7 +3775,9 @@
             "actions": "Actions",
             "pages": "Pages",
             "prs": "PRs",
-            "devTools": "Dev Tools"
+            "devTools": "Dev Tools",
+            "freeTier": "免费套餐",
+            "paidTier": "付费"
         },
         "zohoworkdrive": {
             "manageLabels": "管理标签",
@@ -4135,7 +4137,8 @@
                 "webdav": "WebDAV 和自托管",
                 "cloudStorage": "云存储",
                 "developer": "开发者",
-                "mediaServices": "媒体服务"
+                "mediaServices": "媒体服务",
+                "all": "全部"
             },
             "confirmDeleteServer": "删除服务器 \"{name}\"？这将移除已保存的凭据，且无法撤销。",
             "renameWithHotkey": "重命名 (F2)",
@@ -4204,6 +4207,32 @@
             "connectError": {
                 "failed": "上次连接尝试失败",
                 "lastFailedAt": "上次失败于 {time} 前"
+            },
+            "view": {
+                "grid": "网格",
+                "list": "列表"
+            },
+            "check": "检查",
+            "scanning": "扫描中...",
+            "checkAvailability": "检查服务可用性",
+            "list": {
+                "company": "提供商",
+                "region": "地区",
+                "freeStorage": "免费",
+                "freeProtocols": "免费协议",
+                "paidProtocols": "付费协议",
+                "health": "状态",
+                "columns": "列",
+                "searchPlaceholder": "搜索提供商、协议...",
+                "footerSummary": "{count} 个提供商 · 约 {gb} GB 免费",
+                "approximate": "近似值，请向提供商核实",
+                "connectHint": "连接到 {company}",
+                "customProfiles": "自定义 / 通用服务器",
+                "customFtp": "FTP / FTPS",
+                "customSftp": "SFTP",
+                "customS3": "S3",
+                "customWebdav": "WebDAV",
+                "customAzure": "Azure Blob"
             }
         },
         "gitlab": {

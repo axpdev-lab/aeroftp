@@ -3775,7 +3775,9 @@
             "actions": "Actions",
             "pages": "Pages",
             "prs": "PRs",
-            "devTools": "Dev Tools"
+            "devTools": "Dev Tools",
+            "freeTier": "Mpango wa bure",
+            "paidTier": "Ya malipo"
         },
         "zohoworkdrive": {
             "manageLabels": "Dhibiti Lebo",
@@ -4135,7 +4137,8 @@
                 "webdav": "WebDAV na kujihifadhi",
                 "cloudStorage": "Hifadhi ya wingu",
                 "developer": "Msanidi",
-                "mediaServices": "Huduma za Media"
+                "mediaServices": "Huduma za Media",
+                "all": "Zote"
             },
             "confirmDeleteServer": "Futa seva \"{name}\"? Hii itaondoa vitambulisho vilivyohifadhiwa na haiwezi kutendwa upya.",
             "renameWithHotkey": "Pa jina jipya (F2)",
@@ -4204,6 +4207,32 @@
             "connectError": {
                 "failed": "Jaribio la mwisho la kuunganisha limeshindwa",
                 "lastFailedAt": "Hitilafu ya mwisho {time} iliyopita"
+            },
+            "view": {
+                "grid": "Gridi",
+                "list": "Orodha"
+            },
+            "check": "Angalia",
+            "scanning": "Inachanganua...",
+            "checkAvailability": "Angalia upatikanaji wa huduma",
+            "list": {
+                "company": "Mtoa huduma",
+                "region": "Eneo",
+                "freeStorage": "Bila malipo",
+                "freeProtocols": "Itifaki za bure",
+                "paidProtocols": "Itifaki za malipo",
+                "health": "Hali",
+                "columns": "Safu wima",
+                "searchPlaceholder": "Tafuta watoa huduma, itifaki...",
+                "footerSummary": "{count} watoa huduma · ~{gb} GB bure",
+                "approximate": "takriban, thibitisha na mtoa huduma",
+                "connectHint": "Unganisha kwa {company}",
+                "customProfiles": "Seva maalum / za jumla",
+                "customFtp": "FTP / FTPS",
+                "customSftp": "SFTP",
+                "customS3": "S3",
+                "customWebdav": "WebDAV",
+                "customAzure": "Azure Blob"
             }
         },
         "gitlab": {

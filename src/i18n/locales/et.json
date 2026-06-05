@@ -3775,7 +3775,9 @@
             "actions": "Actions",
             "pages": "Pages",
             "prs": "PRs",
-            "devTools": "Dev Tools"
+            "devTools": "Dev Tools",
+            "freeTier": "Tasuta pakett",
+            "paidTier": "Tasuline"
         },
         "zohoworkdrive": {
             "manageLabels": "Halda sildeid",
@@ -4135,7 +4137,8 @@
                 "webdav": "WebDAV ja isehostitav",
                 "cloudStorage": "Pilvesalvestus",
                 "developer": "Arendaja",
-                "mediaServices": "Meediateenused"
+                "mediaServices": "Meediateenused",
+                "all": "Kõik"
             },
             "confirmDeleteServer": "Kustutada server \"{name}\"? See eemaldab salvestatud mandaadid ja seda ei saa tagasi võtta.",
             "renameWithHotkey": "Nimeta ümber (F2)",
@@ -4204,6 +4207,32 @@
             "connectError": {
                 "failed": "Viimane ühenduskatse ebaõnnestus",
                 "lastFailedAt": "Viimane viga {time} tagasi"
+            },
+            "view": {
+                "grid": "Ruudustik",
+                "list": "Loend"
+            },
+            "check": "Kontrolli",
+            "scanning": "Skannimine...",
+            "checkAvailability": "Kontrolli teenuse saadavust",
+            "list": {
+                "company": "Teenusepakkuja",
+                "region": "Piirkond",
+                "freeStorage": "Tasuta",
+                "freeProtocols": "Tasuta protokollid",
+                "paidProtocols": "Tasulised protokollid",
+                "health": "Olek",
+                "columns": "Veerud",
+                "searchPlaceholder": "Otsi teenusepakkujaid, protokolle...",
+                "footerSummary": "{count} pakkujat · ~{gb} GB tasuta",
+                "approximate": "ligikaudne, kontrolli teenusepakkujaga",
+                "connectHint": "Ühenda teenusega {company}",
+                "customProfiles": "Kohandatud / üldised serverid",
+                "customFtp": "FTP / FTPS",
+                "customSftp": "SFTP",
+                "customS3": "S3",
+                "customWebdav": "WebDAV",
+                "customAzure": "Azure Blob"
             }
         },
         "gitlab": {

@@ -3775,7 +3775,9 @@
             "actions": "Actions",
             "pages": "Pages",
             "prs": "PRs",
-            "devTools": "Dev Tools"
+            "devTools": "Dev Tools",
+            "freeTier": "Paket gratis",
+            "paidTier": "Berbayar"
         },
         "zohoworkdrive": {
             "manageLabels": "Kelola Label",
@@ -4135,7 +4137,8 @@
                 "webdav": "WebDAV & Self-hosted",
                 "cloudStorage": "Penyimpanan Cloud",
                 "developer": "Pengembang",
-                "mediaServices": "Layanan Media"
+                "mediaServices": "Layanan Media",
+                "all": "Semua"
             },
             "confirmDeleteServer": "Hapus server \"{name}\"? Ini akan menghapus kredensial yang tersimpan dan tidak dapat dibatalkan.",
             "renameWithHotkey": "Ganti nama (F2)",
@@ -4204,6 +4207,32 @@
             "connectError": {
                 "failed": "Upaya koneksi terakhir gagal",
                 "lastFailedAt": "Kegagalan terakhir {time} lalu"
+            },
+            "view": {
+                "grid": "Kisi",
+                "list": "Daftar"
+            },
+            "check": "Periksa",
+            "scanning": "Memindai...",
+            "checkAvailability": "Periksa ketersediaan layanan",
+            "list": {
+                "company": "Penyedia",
+                "region": "Wilayah",
+                "freeStorage": "Gratis",
+                "freeProtocols": "Protokol gratis",
+                "paidProtocols": "Protokol berbayar",
+                "health": "Status",
+                "columns": "Kolom",
+                "searchPlaceholder": "Cari penyedia, protokol...",
+                "footerSummary": "{count} penyedia · ~{gb} GB gratis",
+                "approximate": "perkiraan, verifikasi dengan penyedia",
+                "connectHint": "Hubungkan ke {company}",
+                "customProfiles": "Server kustom / umum",
+                "customFtp": "FTP / FTPS",
+                "customSftp": "SFTP",
+                "customS3": "S3",
+                "customWebdav": "WebDAV",
+                "customAzure": "Azure Blob"
             }
         },
         "gitlab": {

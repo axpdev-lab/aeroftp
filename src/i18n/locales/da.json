@@ -3775,7 +3775,9 @@
             "actions": "Actions",
             "pages": "Pages",
             "prs": "PRs",
-            "devTools": "Dev Tools"
+            "devTools": "Dev Tools",
+            "freeTier": "Gratis plan",
+            "paidTier": "Betalt"
         },
         "zohoworkdrive": {
             "manageLabels": "Administrer mærker",
@@ -4135,7 +4137,8 @@
                 "webdav": "WebDAV & Selvhostet",
                 "cloudStorage": "Cloud-lagring",
                 "developer": "Udvikler",
-                "mediaServices": "Medietjenester"
+                "mediaServices": "Medietjenester",
+                "all": "Alle"
             },
             "confirmDeleteServer": "Slet serveren \"{name}\"? Dette fjerner gemte legitimationsoplysninger og kan ikke fortrydes.",
             "renameWithHotkey": "Omdøb (F2)",
@@ -4204,6 +4207,32 @@
             "connectError": {
                 "failed": "Sidste forbindelsesforsøg mislykkedes",
                 "lastFailedAt": "Seneste fejl for {time} siden"
+            },
+            "view": {
+                "grid": "Gitter",
+                "list": "Liste"
+            },
+            "check": "Tjek",
+            "scanning": "Scanner...",
+            "checkAvailability": "Tjek tjenestens tilgængelighed",
+            "list": {
+                "company": "Udbyder",
+                "region": "Region",
+                "freeStorage": "Gratis",
+                "freeProtocols": "Gratis protokoller",
+                "paidProtocols": "Betalte protokoller",
+                "health": "Status",
+                "columns": "Kolonner",
+                "searchPlaceholder": "Søg efter udbydere, protokoller...",
+                "footerSummary": "{count} udbydere · ~{gb} GB gratis",
+                "approximate": "omtrentlig, bekræft hos udbyderen",
+                "connectHint": "Forbind til {company}",
+                "customProfiles": "Tilpassede / generiske servere",
+                "customFtp": "FTP / FTPS",
+                "customSftp": "SFTP",
+                "customS3": "S3",
+                "customWebdav": "WebDAV",
+                "customAzure": "Azure Blob"
             }
         },
         "gitlab": {

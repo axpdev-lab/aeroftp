@@ -3794,7 +3794,9 @@
             "actions": "Actions",
             "pages": "Pages",
             "prs": "PRs",
-            "devTools": "Dev Tools"
+            "devTools": "Dev Tools",
+            "freeTier": "Libreng plan",
+            "paidTier": "Bayad"
         },
         "zohoworkdrive": {
             "manageLabels": "Pamahalaan ang mga Label",
@@ -4154,7 +4156,8 @@
                 "webdav": "WebDAV at Self-hosted",
                 "cloudStorage": "Cloud Storage",
                 "developer": "Developer",
-                "mediaServices": "Mga Serbisyo ng Media"
+                "mediaServices": "Mga Serbisyo ng Media",
+                "all": "Lahat"
             },
             "confirmDeleteServer": "Burahin ang server na \"{name}\"? Aalisin nito ang mga naka-save na kredensyal at hindi ito maaaring ibalik.",
             "renameWithHotkey": "Palitan ang pangalan (F2)",
@@ -4223,6 +4226,32 @@
             "connectError": {
                 "failed": "Nabigo ang huling pagsubok na kumonekta",
                 "lastFailedAt": "Huling pagkabigo {time} ang nakalipas"
+            },
+            "view": {
+                "grid": "Grid",
+                "list": "Listahan"
+            },
+            "check": "Tingnan",
+            "scanning": "Nag-iiscan...",
+            "checkAvailability": "Tingnan ang availability ng serbisyo",
+            "list": {
+                "company": "Provider",
+                "region": "Rehiyon",
+                "freeStorage": "Libre",
+                "freeProtocols": "Mga libreng protocol",
+                "paidProtocols": "Mga bayad na protocol",
+                "health": "Status",
+                "columns": "Mga column",
+                "searchPlaceholder": "Maghanap ng mga provider, protocol...",
+                "footerSummary": "{count} provider · ~{gb} GB libre",
+                "approximate": "tinatayang, i-verify sa provider",
+                "connectHint": "Kumonekta sa {company}",
+                "customProfiles": "Custom / generic na mga server",
+                "customFtp": "FTP / FTPS",
+                "customSftp": "SFTP",
+                "customS3": "S3",
+                "customWebdav": "WebDAV",
+                "customAzure": "Azure Blob"
             }
         },
         "gitlab": {

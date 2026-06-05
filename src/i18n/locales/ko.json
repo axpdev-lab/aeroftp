@@ -3775,7 +3775,9 @@
             "actions": "Actions",
             "pages": "Pages",
             "prs": "PRs",
-            "devTools": "Dev Tools"
+            "devTools": "Dev Tools",
+            "freeTier": "무료 플랜",
+            "paidTier": "유료"
         },
         "zohoworkdrive": {
             "manageLabels": "라벨 관리",
@@ -4135,7 +4137,8 @@
                 "webdav": "WebDAV & 셀프 호스팅",
                 "cloudStorage": "클라우드 스토리지",
                 "developer": "개발자",
-                "mediaServices": "미디어 서비스"
+                "mediaServices": "미디어 서비스",
+                "all": "전체"
             },
             "confirmDeleteServer": "서버 \"{name}\"을(를) 삭제하시겠습니까? 저장된 자격 증명이 제거되며 되돌릴 수 없습니다.",
             "renameWithHotkey": "이름 바꾸기 (F2)",
@@ -4204,6 +4207,32 @@
             "connectError": {
                 "failed": "마지막 연결 시도 실패",
                 "lastFailedAt": "마지막 실패 {time} 전"
+            },
+            "view": {
+                "grid": "그리드",
+                "list": "목록"
+            },
+            "check": "확인",
+            "scanning": "스캔 중...",
+            "checkAvailability": "서비스 가용성 확인",
+            "list": {
+                "company": "제공업체",
+                "region": "지역",
+                "freeStorage": "무료",
+                "freeProtocols": "무료 프로토콜",
+                "paidProtocols": "유료 프로토콜",
+                "health": "상태",
+                "columns": "열",
+                "searchPlaceholder": "제공업체, 프로토콜 검색...",
+                "footerSummary": "{count}개 제공업체 · 약 {gb} GB 무료",
+                "approximate": "대략적인 값이며 제공업체에서 확인하세요",
+                "connectHint": "{company}에 연결",
+                "customProfiles": "사용자 지정 / 일반 서버",
+                "customFtp": "FTP / FTPS",
+                "customSftp": "SFTP",
+                "customS3": "S3",
+                "customWebdav": "WebDAV",
+                "customAzure": "Azure Blob"
             }
         },
         "gitlab": {
