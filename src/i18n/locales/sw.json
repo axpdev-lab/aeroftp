@@ -269,7 +269,7 @@
             "autoScanUsedOnConnectHint": "Kwa backend zisizo na API ya nafasi iliyotumika tu (FTP, S3, WebDAV). Imezimwa kwa chaguo-msingi: mti mkubwa (mf. mradi wa wavuti) hupitiwa kwa kujirudia, jambo ambalo linaweza kuwa polepole. Vinginevyo tumia kitendo cha StatusBar unapohitaji.",
             "saveAsNewProfile": "Hifadhi kama wasifu mpya",
             "saveAsNewProfileTitle": "Hifadhi fomu ya sasa kama wasifu mpya katika hali hii. Wasifu wa awali utahifadhiwa.",
-            "convertToMode": "Badilisha kuwa {{mode}}",
+            "convertToMode": "Badilisha kuwa {mode}",
             "convertReplacesOriginal": "Inabadilisha wasifu wa awali",
             "profileConverted": "Wasifu umebadilishwa",
             "profileDuplicated": "Wasifu umenakiliwa",
@@ -4384,7 +4384,7 @@
             "storageVault": "Vault",
             "storageModeSidecarHint": "Daftari la maandishi wazi chini ya saraka yako ya usanidi. Linaweza kusomwa na daemon za kuanza otomatiki bila kufungua kasha la usalama.",
             "storageModeVaultHint": "Daftari la upachikaji limesimbwa kwa nenosiri lako kuu. Kasha la usalama lazima lifunguliwe wakati wa kuanza kwa programu.",
-            "confirmDelete": "Futa upachikaji '{{name}}'? Hii haiathiri faili za mbali.",
+            "confirmDelete": "Futa upachikaji '{name}'? Hii haiathiri faili za mbali.",
             "openMountAction": "Fungua upachikaji katika kidhibiti cha faili"
         },
         "reconnect": {

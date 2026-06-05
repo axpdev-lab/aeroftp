@@ -269,7 +269,7 @@
             "autoScanUsedOnConnectHint": "Vain taustajärjestelmille, joilla ei ole käytetyn tilan API:a (FTP, S3, WebDAV). Oletuksena pois käytöstä: suuri puu (esim. verkkoprojekti) käydään läpi rekursiivisesti, mikä voi olla hidasta. Käytä muutoin StatusBar-toimintoa tarpeen mukaan.",
             "saveAsNewProfile": "Tallenna uudeksi profiiliksi",
             "saveAsNewProfileTitle": "Tallenna nykyinen lomake uudeksi profiiliksi tässä tilassa. Alkuperäinen profiili säilyy.",
-            "convertToMode": "Muunna {{mode}}-tilaan",
+            "convertToMode": "Muunna {mode}-tilaan",
             "convertReplacesOriginal": "Korvaa alkuperäisen profiilin",
             "profileConverted": "Profiili muunnettu",
             "profileDuplicated": "Profiili monistettu",
@@ -4384,7 +4384,7 @@
             "storageVault": "Vault",
             "storageModeSidecarHint": "Selkokielinen rekisteri asetushakemistossasi. Automaattisten käynnistysdemonien luettavissa ilman holvin avaamista.",
             "storageModeVaultHint": "Liitäntärekisteri salattu pääsalasanallasi. Holvin on oltava avattuna sovelluksen käynnistyessä.",
-            "confirmDelete": "Poistetaanko liitäntä '{{name}}'? Tämä ei vaikuta etätiedostoihin.",
+            "confirmDelete": "Poistetaanko liitäntä '{name}'? Tämä ei vaikuta etätiedostoihin.",
             "openMountAction": "Avaa liitäntä tiedostonhallinnassa"
         },
         "reconnect": {

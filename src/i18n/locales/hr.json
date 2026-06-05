@@ -269,7 +269,7 @@
             "autoScanUsedOnConnectHint": "Samo za pozadinske sustave bez API-ja za iskorišteni prostor (FTP, S3, WebDAV). Prema zadanim postavkama isključeno: veliko stablo (npr. web projekt) prolazi se rekurzivno, što može biti sporo. U protivnom koristite radnju StatusBar po potrebi.",
             "saveAsNewProfile": "Spremi kao novi profil",
             "saveAsNewProfileTitle": "Spremi trenutni obrazac kao novi profil u ovom načinu. Izvorni profil ostaje sačuvan.",
-            "convertToMode": "Pretvori u {{mode}}",
+            "convertToMode": "Pretvori u {mode}",
             "convertReplacesOriginal": "Zamjenjuje izvorni profil",
             "profileConverted": "Profil pretvoren",
             "profileDuplicated": "Profil dupliciran",
@@ -4384,7 +4384,7 @@
             "storageVault": "Vault",
             "storageModeSidecarHint": "Registar u običnom tekstu unutar vašeg konfiguracijskog direktorija. Čitljiv autostart demonima bez otključavanja trezora.",
             "storageModeVaultHint": "Registar montaža šifriran vašom glavnom lozinkom. Trezor mora biti otključan pri pokretanju aplikacije.",
-            "confirmDelete": "Izbrisati montažu '{{name}}'? Ovo ne utječe na udaljene datoteke.",
+            "confirmDelete": "Izbrisati montažu '{name}'? Ovo ne utječe na udaljene datoteke.",
             "openMountAction": "Otvori montažu u upravitelju datotekama"
         },
         "reconnect": {

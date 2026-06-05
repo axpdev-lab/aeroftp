@@ -269,7 +269,7 @@
             "autoScanUsedOnConnectHint": "Só para backends sen API de espazo usado (FTP, S3, WebDAV). Desactivado por defecto: unha árbore grande (p. ex. un proxecto web) percórrese de forma recursiva, o que pode ser lento. En caso contrario, use a acción da StatusBar cando o precise.",
             "saveAsNewProfile": "Gardar como novo perfil",
             "saveAsNewProfileTitle": "Garde o formulario actual como un novo perfil neste modo. O perfil orixinal consérvase.",
-            "convertToMode": "Converter a {{mode}}",
+            "convertToMode": "Converter a {mode}",
             "convertReplacesOriginal": "Substitúe o perfil orixinal",
             "profileConverted": "Perfil convertido",
             "profileDuplicated": "Perfil duplicado",
@@ -4403,7 +4403,7 @@
             "storageVault": "Vault",
             "storageModeSidecarHint": "Rexistro en texto plano no teu directorio de configuración. Lexible polos demos de inicio automático sen desbloquear a caixa forte.",
             "storageModeVaultHint": "Rexistro de montaxes cifrado co teu contrasinal mestre. A caixa forte debe estar desbloqueada ao iniciar a aplicación.",
-            "confirmDelete": "Eliminar a montaxe '{{name}}'? Isto non afecta os ficheiros remotos.",
+            "confirmDelete": "Eliminar a montaxe '{name}'? Isto non afecta os ficheiros remotos.",
             "openMountAction": "Abrir montaxe no xestor de ficheiros"
         },
         "reconnect": {

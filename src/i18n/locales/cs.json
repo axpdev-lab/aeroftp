@@ -269,7 +269,7 @@
             "autoScanUsedOnConnectHint": "Pouze pro backendy bez API pro využité místo (FTP, S3, WebDAV). Ve výchozím nastavení vypnuto: velký strom (např. webový projekt) se prochází rekurzivně, což může být pomalé. Jinak použijte akci v StatusBar podle potřeby.",
             "saveAsNewProfile": "Uložit jako nový profil",
             "saveAsNewProfileTitle": "Uložte aktuální formulář jako nový profil v tomto režimu. Původní profil zůstane zachován.",
-            "convertToMode": "Převést na {{mode}}",
+            "convertToMode": "Převést na {mode}",
             "convertReplacesOriginal": "Nahradí původní profil",
             "profileConverted": "Profil převeden",
             "profileDuplicated": "Profil duplikován",
@@ -4384,7 +4384,7 @@
             "storageVault": "Vault",
             "storageModeSidecarHint": "Registr v čistém textu ve vašem konfiguračním adresáři. Čitelný pro automaticky spouštěné démony bez odemčení trezoru.",
             "storageModeVaultHint": "Registr připojení šifrovaný hlavním heslem. Trezor musí být při startu aplikace odemčen.",
-            "confirmDelete": "Smazat připojení '{{name}}'? Toto neovlivní vzdálené soubory.",
+            "confirmDelete": "Smazat připojení '{name}'? Toto neovlivní vzdálené soubory.",
             "openMountAction": "Otevřít připojení ve správci souborů"
         },
         "reconnect": {

@@ -269,7 +269,7 @@
             "autoScanUsedOnConnectHint": "Només per a backends sense API d'espai utilitzat (FTP, S3, WebDAV). Desactivat per defecte: un arbre gran (p. ex. un projecte web) es recorre recursivament, cosa que pot ser lenta. Si no, useu l'acció de la StatusBar quan calgui.",
             "saveAsNewProfile": "Desa com a perfil nou",
             "saveAsNewProfileTitle": "Desa el formulari actual com un nou perfil en aquest mode. El perfil original es conserva.",
-            "convertToMode": "Converteix a {{mode}}",
+            "convertToMode": "Converteix a {mode}",
             "convertReplacesOriginal": "Substitueix el perfil original",
             "profileConverted": "Perfil convertit",
             "profileDuplicated": "Perfil duplicat",
@@ -4403,7 +4403,7 @@
             "storageVault": "Vault",
             "storageModeSidecarHint": "Registre en text pla al teu directori de configuració. Llegible per dimonis d'inici automàtic sense desbloquejar la caixa forta.",
             "storageModeVaultHint": "Registre de muntatges xifrat amb la teva contrasenya mestra. La caixa forta s'ha de desbloquejar a l'inici de l'aplicació.",
-            "confirmDelete": "Vols suprimir el muntatge '{{name}}'? Això no afecta els fitxers remots.",
+            "confirmDelete": "Vols suprimir el muntatge '{name}'? Això no afecta els fitxers remots.",
             "openMountAction": "Obre el muntatge al gestor de fitxers"
         },
         "reconnect": {

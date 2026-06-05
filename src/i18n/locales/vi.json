@@ -269,7 +269,7 @@
             "autoScanUsedOnConnectHint": "Chỉ dành cho các backend không có API dung lượng đã dùng (FTP, S3, WebDAV). Mặc định tắt: một cây lớn (vd. một dự án web) được duyệt đệ quy, có thể chậm. Nếu không, hãy dùng tác vụ trên StatusBar khi cần.",
             "saveAsNewProfile": "Lưu thành hồ sơ mới",
             "saveAsNewProfileTitle": "Lưu biểu mẫu hiện tại thành hồ sơ mới trong chế độ này. Hồ sơ ban đầu được giữ nguyên.",
-            "convertToMode": "Chuyển đổi sang {{mode}}",
+            "convertToMode": "Chuyển đổi sang {mode}",
             "convertReplacesOriginal": "Thay thế hồ sơ ban đầu",
             "profileConverted": "Đã chuyển đổi hồ sơ",
             "profileDuplicated": "Đã nhân bản hồ sơ",
@@ -4384,7 +4384,7 @@
             "storageVault": "Vault",
             "storageModeSidecarHint": "Sổ đăng ký văn bản thuần trong thư mục cấu hình của bạn. Có thể đọc được bởi các daemon tự khởi động mà không cần mở khóa kho.",
             "storageModeVaultHint": "Sổ đăng ký gắn kết được mã hóa bằng mật khẩu chính của bạn. Kho phải được mở khóa khi khởi động ứng dụng.",
-            "confirmDelete": "Xóa gắn kết '{{name}}'? Điều này không ảnh hưởng đến các tệp từ xa.",
+            "confirmDelete": "Xóa gắn kết '{name}'? Điều này không ảnh hưởng đến các tệp từ xa.",
             "openMountAction": "Mở gắn kết trong trình quản lý tệp"
         },
         "reconnect": {

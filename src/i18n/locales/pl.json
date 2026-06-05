@@ -269,7 +269,7 @@
             "autoScanUsedOnConnectHint": "Tylko dla backendów bez API zajętego miejsca (FTP, S3, WebDAV). Domyślnie wyłączone: duże drzewo (np. projekt webowy) jest przeszukiwane rekurencyjnie, co może być wolne. W przeciwnym razie użyj akcji w pasku StatusBar na żądanie.",
             "saveAsNewProfile": "Zapisz jako nowy profil",
             "saveAsNewProfileTitle": "Zapisz bieżący formularz jako nowy profil w tym trybie. Oryginalny profil zostanie zachowany.",
-            "convertToMode": "Konwertuj na {{mode}}",
+            "convertToMode": "Konwertuj na {mode}",
             "convertReplacesOriginal": "Zastępuje oryginalny profil",
             "profileConverted": "Profil przekonwertowany",
             "profileDuplicated": "Profil zduplikowany",
@@ -4384,7 +4384,7 @@
             "storageVault": "Vault",
             "storageModeSidecarHint": "Rejestr w postaci zwykłego tekstu w katalogu konfiguracyjnym. Odczytywalny przez demony autostartu bez odblokowywania sejfu.",
             "storageModeVaultHint": "Rejestr montaży zaszyfrowany hasłem głównym. Sejf musi być odblokowany przy starcie aplikacji.",
-            "confirmDelete": "Usunąć montaż '{{name}}'? Nie wpływa to na pliki zdalne.",
+            "confirmDelete": "Usunąć montaż '{name}'? Nie wpływa to na pliki zdalne.",
             "openMountAction": "Otwórz montaż w menedżerze plików"
         },
         "reconnect": {

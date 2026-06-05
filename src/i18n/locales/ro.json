@@ -269,7 +269,7 @@
             "autoScanUsedOnConnectHint": "Doar pentru backend-uri fără API de spațiu folosit (FTP, S3, WebDAV). Dezactivat implicit: un arbore mare (ex.: un proiect web) este parcurs recursiv, ceea ce poate fi lent. În caz contrar, folosește acțiunea din StatusBar la cerere.",
             "saveAsNewProfile": "Salvează ca profil nou",
             "saveAsNewProfileTitle": "Salvați formularul curent ca un profil nou în acest mod. Profilul original este păstrat.",
-            "convertToMode": "Convertește la {{mode}}",
+            "convertToMode": "Convertește la {mode}",
             "convertReplacesOriginal": "Înlocuiește profilul original",
             "profileConverted": "Profil convertit",
             "profileDuplicated": "Profil duplicat",
@@ -4384,7 +4384,7 @@
             "storageVault": "Vault",
             "storageModeSidecarHint": "Registru în text clar în directorul tău de configurare. Lizibil de demonii de autostart fără deblocarea seifului.",
             "storageModeVaultHint": "Registrul de montări criptat cu parola ta principală. Seiful trebuie să fie deblocat la pornirea aplicației.",
-            "confirmDelete": "Șterge montarea '{{name}}'? Acest lucru nu afectează fișierele de la distanță.",
+            "confirmDelete": "Șterge montarea '{name}'? Acest lucru nu afectează fișierele de la distanță.",
             "openMountAction": "Deschide montarea în managerul de fișiere"
         },
         "reconnect": {
