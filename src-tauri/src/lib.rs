@@ -7196,6 +7196,46 @@ async fn calculate_checksum(path: String, algorithm: String) -> Result<String, S
 
 /// Compress files/folders into a ZIP archive
 #[tauri::command]
+/// RAII guard for atomic archive writes. The archive is written to a sibling
+/// `<output>.aerotmp` and renamed into place only on success; on any early
+/// error (a `?` return) `Drop` removes the temp file, so the compress path can
+/// never leave a partial or 0-byte sibling next to the source (discussion
+/// #270). Mirrors the atomic pattern already used by extraction.
+struct ArchiveTempFile {
+    tmp: std::path::PathBuf,
+    committed: bool,
+}
+
+impl ArchiveTempFile {
+    fn new(final_path: &str) -> Self {
+        Self {
+            tmp: std::path::PathBuf::from(format!("{}.aerotmp", final_path)),
+            committed: false,
+        }
+    }
+
+    fn path(&self) -> &std::path::Path {
+        &self.tmp
+    }
+
+    /// Close-then-rename. The caller must have dropped the file handle first
+    /// (Windows refuses to rename an open file).
+    fn commit(mut self, final_path: &str) -> Result<(), String> {
+        std::fs::rename(&self.tmp, final_path)
+            .map_err(|e| format!("Failed to finalize archive: {}", e))?;
+        self.committed = true;
+        Ok(())
+    }
+}
+
+impl Drop for ArchiveTempFile {
+    fn drop(&mut self) {
+        if !self.committed {
+            let _ = std::fs::remove_file(&self.tmp);
+        }
+    }
+}
+
 async fn compress_files(
     paths: Vec<String>,
     output_path: String,
@@ -7216,8 +7256,10 @@ async fn compress_files(
     // Wrap password in SecretString for zeroization on drop
     let secret_password: Option<SecretString> = password.map(SecretString::from);
 
+    // Atomic write: build into <output>.aerotmp, rename on success.
+    let temp = ArchiveTempFile::new(&output_path);
     let file =
-        File::create(&output_path).map_err(|e| format!("Failed to create ZIP file: {}", e))?;
+        File::create(temp.path()).map_err(|e| format!("Failed to create ZIP file: {}", e))?;
 
     let mut zip = ZipWriter::new(file);
     let level = compression_level.unwrap_or(6);
@@ -7313,8 +7355,13 @@ async fn compress_files(
         }
     }
 
-    zip.finish()
-        .map_err(|e| format!("Failed to finalize ZIP: {}", e))?;
+    // finish() returns the inner File; dropping it closes the handle so the
+    // rename in commit() succeeds on Windows too.
+    drop(
+        zip.finish()
+            .map_err(|e| format!("Failed to finalize ZIP: {}", e))?,
+    );
+    temp.commit(&output_path)?;
 
     Ok(output_path)
 }
@@ -7459,9 +7506,10 @@ async fn compress_7z(
         return Err("No files to compress".to_string());
     }
 
-    // Create the 7z archive
+    // Create the 7z archive (atomic temp; renamed into place on success).
+    let temp = ArchiveTempFile::new(&output_path);
     let output_file =
-        File::create(&output_path).map_err(|e| format!("Failed to create 7z file: {}", e))?;
+        File::create(temp.path()).map_err(|e| format!("Failed to create 7z file: {}", e))?;
 
     let mut sz =
         SevenZWriter::new(output_file).map_err(|e| format!("Failed to create 7z writer: {}", e))?;
@@ -7490,8 +7538,11 @@ async fn compress_7z(
             .map_err(|e| format!("Failed to add file '{}': {}", archive_name, e))?;
     }
 
+    // finish() consumes the writer and drops the inner file handle, so the
+    // rename in commit() succeeds (Windows included).
     sz.finish()
         .map_err(|e| format!("Failed to finalize 7z archive: {}", e))?;
+    temp.commit(&output_path)?;
 
     Ok(output_path)
 }
@@ -7743,8 +7794,10 @@ async fn compress_tar(
         return Err("No files to compress".to_string());
     }
 
-    // Create the archive based on format
-    let file = File::create(output).map_err(|e| format!("Failed to create archive: {}", e))?;
+    // Create the archive based on format (atomic temp; renamed on success).
+    let temp = ArchiveTempFile::new(&output_path);
+    let file =
+        File::create(temp.path()).map_err(|e| format!("Failed to create archive: {}", e))?;
 
     match format.as_str() {
         "tar" => {
@@ -7808,6 +7861,8 @@ async fn compress_tar(
         }
         _ => return Err(format!("Unsupported format: {}", format)),
     }
+
+    temp.commit(&output_path)?;
 
     let file_count = entries.len();
     Ok(format!(
