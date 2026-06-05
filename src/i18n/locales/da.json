@@ -4636,7 +4636,9 @@
             "cannotDeleteLastAdmin": "Du kan ikke slette den sidste administrator.",
             "cannotDeleteLastUser": "Du kan ikke slette den sidste konto.",
             "adminResetNotForSelf": "Brug Skift adgangskode på din egen konto.",
-            "userNotFound": "Denne konto findes ikke længere."
+            "userNotFound": "Denne konto findes ikke længere.",
+            "skipNextTime": "Spring denne skærm over næste gang",
+            "skipNextTimeHint": "(åbner denne konto direkte; kun konti uden adgangskode)"
         },
         "opendrive": {
             "privacyTitle": "OpenDrive-privatliv",

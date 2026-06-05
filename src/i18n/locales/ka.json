@@ -4636,7 +4636,9 @@
             "cannotDeleteLastAdmin": "ვერ წაშლით ბოლო ადმინისტრატორს.",
             "cannotDeleteLastUser": "ვერ წაშლით ბოლო ანგარიშს.",
             "adminResetNotForSelf": "თქვენს ანგარიშზე გამოიყენეთ პაროლის შეცვლა.",
-            "userNotFound": "ეს ანგარიში აღარ არსებობს."
+            "userNotFound": "ეს ანგარიში აღარ არსებობს.",
+            "skipNextTime": "შემდეგ ჯერზე გამოტოვეთ ეს ეკრანი",
+            "skipNextTimeHint": "(პირდაპირ ხსნის ამ ანგარიშს; მხოლოდ პაროლის გარეშე ანგარიშები)"
         },
         "opendrive": {
             "privacyTitle": "OpenDrive კონფიდენციალურობა",

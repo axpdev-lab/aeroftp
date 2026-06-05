@@ -4636,7 +4636,9 @@
             "cannotDeleteLastAdmin": "마지막 관리자는 삭제할 수 없습니다.",
             "cannotDeleteLastUser": "마지막 계정은 삭제할 수 없습니다.",
             "adminResetNotForSelf": "본인 계정에서는 비밀번호 변경을 사용하세요.",
-            "userNotFound": "이 계정은 더 이상 존재하지 않습니다."
+            "userNotFound": "이 계정은 더 이상 존재하지 않습니다.",
+            "skipNextTime": "다음에 이 화면 건너뛰기",
+            "skipNextTimeHint": "(이 계정을 바로 엽니다. 비밀번호 없는 계정만)"
         },
         "opendrive": {
             "privacyTitle": "OpenDrive 개인정보",

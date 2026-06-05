@@ -4636,7 +4636,9 @@
             "cannotDeleteLastAdmin": "Ne možete izbrisati posljednjeg administratora.",
             "cannotDeleteLastUser": "Ne možete izbrisati posljednji račun.",
             "adminResetNotForSelf": "Koristite Promjena lozinke na vlastitom računu.",
-            "userNotFound": "Ovaj račun više ne postoji."
+            "userNotFound": "Ovaj račun više ne postoji.",
+            "skipNextTime": "Preskoči ovaj zaslon sljedeći put",
+            "skipNextTimeHint": "(otvara ovaj račun izravno; samo računi bez lozinke)"
         },
         "opendrive": {
             "privacyTitle": "Privatnost OpenDrive",

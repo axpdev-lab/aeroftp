@@ -4636,7 +4636,9 @@
             "cannotDeleteLastAdmin": "Negalite ištrinti paskutinio administratoriaus.",
             "cannotDeleteLastUser": "Negalite ištrinti paskutinės paskyros.",
             "adminResetNotForSelf": "Savo paskyroje naudokite Keisti slaptažodį.",
-            "userNotFound": "Šios paskyros nebėra."
+            "userNotFound": "Šios paskyros nebėra.",
+            "skipNextTime": "Kitą kartą praleisti šį ekraną",
+            "skipNextTimeHint": "(atidaro šią paskyrą tiesiogiai; tik paskyros be slaptažodžio)"
         },
         "opendrive": {
             "privacyTitle": "OpenDrive privatumas",

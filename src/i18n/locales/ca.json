@@ -4655,7 +4655,9 @@
             "cannotDeleteLastAdmin": "No pots suprimir l'últim administrador.",
             "cannotDeleteLastUser": "No pots suprimir l'últim compte.",
             "adminResetNotForSelf": "Fes servir Canvia la contrasenya al teu propi compte.",
-            "userNotFound": "Aquest compte ja no existeix."
+            "userNotFound": "Aquest compte ja no existeix.",
+            "skipNextTime": "Omet aquesta pantalla la pròxima vegada",
+            "skipNextTimeHint": "(obre aquest compte directament; només comptes sense contrasenya)"
         },
         "opendrive": {
             "privacyTitle": "Privacitat d'OpenDrive",

@@ -4655,7 +4655,9 @@
             "cannotDeleteLastAdmin": "Þú getur ekki eytt síðasta stjórnandanum.",
             "cannotDeleteLastUser": "Þú getur ekki eytt síðasta reikningnum.",
             "adminResetNotForSelf": "Notaðu Breyta lykilorði á þínum eigin reikningi.",
-            "userNotFound": "Þessi reikningur er ekki lengur til."
+            "userNotFound": "Þessi reikningur er ekki lengur til.",
+            "skipNextTime": "Sleppa þessum skjá næst",
+            "skipNextTimeHint": "(opnar þennan reikning beint; aðeins reikningar án lykilorðs)"
         },
         "opendrive": {
             "privacyTitle": "OpenDrive persónuvernd",

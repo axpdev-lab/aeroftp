@@ -4636,7 +4636,9 @@
             "cannotDeleteLastAdmin": "Je kunt de laatste beheerder niet verwijderen.",
             "cannotDeleteLastUser": "Je kunt het laatste account niet verwijderen.",
             "adminResetNotForSelf": "Gebruik Wachtwoord wijzigen op je eigen account.",
-            "userNotFound": "Dit account bestaat niet meer."
+            "userNotFound": "Dit account bestaat niet meer.",
+            "skipNextTime": "Dit scherm de volgende keer overslaan",
+            "skipNextTimeHint": "(opent dit account direct; alleen accounts zonder wachtwoord)"
         },
         "opendrive": {
             "privacyTitle": "OpenDrive Privacy",

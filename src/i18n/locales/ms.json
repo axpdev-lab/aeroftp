@@ -4636,7 +4636,9 @@
             "cannotDeleteLastAdmin": "Anda tidak boleh memadam pentadbir terakhir.",
             "cannotDeleteLastUser": "Anda tidak boleh memadam akaun terakhir.",
             "adminResetNotForSelf": "Gunakan Tukar Kata Laluan pada akaun anda sendiri.",
-            "userNotFound": "Akaun ini tidak wujud lagi."
+            "userNotFound": "Akaun ini tidak wujud lagi.",
+            "skipNextTime": "Langkau skrin ini kali seterusnya",
+            "skipNextTimeHint": "(membuka akaun ini secara terus; hanya akaun tanpa kata laluan)"
         },
         "opendrive": {
             "privacyTitle": "Privasi OpenDrive",

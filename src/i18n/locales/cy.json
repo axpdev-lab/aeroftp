@@ -4655,7 +4655,9 @@
             "cannotDeleteLastAdmin": "Ni allwch ddileu'r gweinyddwr olaf.",
             "cannotDeleteLastUser": "Ni allwch ddileu'r cyfrif olaf.",
             "adminResetNotForSelf": "Defnyddiwch Newid Cyfrinair ar eich cyfrif eich hun.",
-            "userNotFound": "Nid yw'r cyfrif hwn yn bodoli mwyach."
+            "userNotFound": "Nid yw'r cyfrif hwn yn bodoli mwyach.",
+            "skipNextTime": "Hepgor y sgrin hon y tro nesaf",
+            "skipNextTimeHint": "(yn agor y cyfrif hwn yn uniongyrchol; cyfrifon heb gyfrinair yn unig)"
         },
         "opendrive": {
             "privacyTitle": "Preifatrwydd OpenDrive",

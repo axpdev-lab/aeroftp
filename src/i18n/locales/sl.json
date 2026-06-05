@@ -4636,7 +4636,9 @@
             "cannotDeleteLastAdmin": "Zadnjega skrbnika ni mogoče izbrisati.",
             "cannotDeleteLastUser": "Zadnjega računa ni mogoče izbrisati.",
             "adminResetNotForSelf": "V svojem računu uporabite Spremeni geslo.",
-            "userNotFound": "Ta račun ne obstaja več."
+            "userNotFound": "Ta račun ne obstaja več.",
+            "skipNextTime": "Naslednjič preskoči ta zaslon",
+            "skipNextTimeHint": "(neposredno odpre ta račun; samo računi brez gesla)"
         },
         "opendrive": {
             "privacyTitle": "Zasebnost OpenDrive",

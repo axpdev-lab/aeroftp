@@ -4636,7 +4636,9 @@
             "cannotDeleteLastAdmin": "Nu poți șterge ultimul administrator.",
             "cannotDeleteLastUser": "Nu poți șterge ultimul cont.",
             "adminResetNotForSelf": "Folosește Schimbă parola pentru propriul cont.",
-            "userNotFound": "Acest cont nu mai există."
+            "userNotFound": "Acest cont nu mai există.",
+            "skipNextTime": "Omite acest ecran data viitoare",
+            "skipNextTimeHint": "(deschide acest cont direct; doar conturi fără parolă)"
         },
         "opendrive": {
             "privacyTitle": "Confidențialitate OpenDrive",

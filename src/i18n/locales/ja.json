@@ -4636,7 +4636,9 @@
             "cannotDeleteLastAdmin": "最後の管理者を削除することはできません。",
             "cannotDeleteLastUser": "最後のアカウントを削除することはできません。",
             "adminResetNotForSelf": "ご自身のアカウントでは「パスワードを変更」を使用してください。",
-            "userNotFound": "このアカウントは存在しません。"
+            "userNotFound": "このアカウントは存在しません。",
+            "skipNextTime": "次回からこの画面をスキップ",
+            "skipNextTimeHint": "(このアカウントを直接開きます。パスワードなしのアカウントのみ)"
         },
         "opendrive": {
             "privacyTitle": "OpenDrive プライバシー",

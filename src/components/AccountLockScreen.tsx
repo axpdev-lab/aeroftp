@@ -7,13 +7,16 @@ import { getVersion } from '@tauri-apps/api/app';
 import { useTranslation } from '../i18n';
 import { UserAvatar } from './UserAvatar';
 import { UsersManagePanel } from './UsersManagePanel';
+import { WindowControls } from './WindowControls';
 import { LOCK_SCREEN_PATTERNS } from './LockScreen';
 import {
     getUnlockStatus,
     initUserPartitions,
     listUsers,
+    readDefaultAccountId,
     readUsersListCache,
     unlockUser,
+    writeDefaultAccountId,
     writeUsersListCache,
     type CachedUserListEntry,
     type UserMetadata,
@@ -86,6 +89,8 @@ export const AccountLockScreen: React.FC<AccountLockScreenProps> = ({ onContinue
     const [showManagePanel, setShowManagePanel] = React.useState(false);
     const [appVersion, setAppVersion] = React.useState('');
     const [refreshKey, setRefreshKey] = React.useState(0);
+    // Welcome-screen skip: true when a default account is already remembered.
+    const [skipWelcome, setSkipWelcome] = React.useState<boolean>(() => readDefaultAccountId() != null);
 
     React.useEffect(() => { getVersion().then(setAppVersion).catch(() => {}); }, []);
 
@@ -138,6 +143,14 @@ export const AccountLockScreen: React.FC<AccountLockScreenProps> = ({ onContinue
                 unlockUser(user.id, providedPassphrase),
                 new Promise<void>((resolve) => setTimeout(resolve, MIN_SPINNER_MS)),
             ]);
+            // Remember (or clear) the default account for the welcome-screen
+            // skip. Only password-free accounts qualify, mirroring the boot
+            // guard in App.tsx so authentication is never skipped (#270).
+            if (skipWelcome && !user.hasPassphrase) {
+                writeDefaultAccountId(user.id);
+            } else if (!skipWelcome) {
+                writeDefaultAccountId(null);
+            }
             try { window.dispatchEvent(new CustomEvent(PROFILES_CHANGED_EVENT)); } catch { /* best effort */ }
             onContinue();
         } catch (err) {
@@ -154,7 +167,7 @@ export const AccountLockScreen: React.FC<AccountLockScreenProps> = ({ onContinue
         } finally {
             setIsLoading(false);
         }
-    }, [onContinue, t]);
+    }, [onContinue, skipWelcome, t]);
 
     const handleCardClick = (user: DisplayUser) => {
         if (isLoading) return;
@@ -229,6 +242,16 @@ export const AccountLockScreen: React.FC<AccountLockScreenProps> = ({ onContinue
                     <div className="absolute inset-0" style={{ backgroundImage: pattern.svg }} />
                 </div>
             )}
+
+            {/* Window controls + drag region. The lock screen renders above the
+                main titlebar, so without this the minimize/maximize/close
+                buttons would be unreachable on this screen (discussion #270). */}
+            <div
+                data-tauri-drag-region
+                className="absolute inset-x-0 top-0 z-20 flex h-9 items-center justify-end px-2"
+            >
+                <WindowControls />
+            </div>
 
             <div className="relative flex w-full max-w-5xl flex-col items-center px-6 py-10">
                 <div className="mb-8 flex flex-col items-center gap-2">
@@ -323,6 +346,23 @@ export const AccountLockScreen: React.FC<AccountLockScreenProps> = ({ onContinue
                                 <div className="text-[11px] opacity-50">{t('accountLock.newUserHint')}</div>
                             </button>
                         </div>
+
+                        {/* Default-account skip (discussion #270). Applies on the
+                            next startup, and only to password-free accounts. */}
+                        <label className="mt-6 inline-flex cursor-pointer items-center gap-2 text-xs opacity-70 transition-opacity hover:opacity-100">
+                            <input
+                                type="checkbox"
+                                checked={skipWelcome}
+                                onChange={(e) => {
+                                    const checked = e.target.checked;
+                                    setSkipWelcome(checked);
+                                    if (!checked) writeDefaultAccountId(null);
+                                }}
+                                className="cursor-pointer accent-emerald-500"
+                            />
+                            <span>{t('accountLock.skipNextTime')}</span>
+                            <span className="opacity-50">{t('accountLock.skipNextTimeHint')}</span>
+                        </label>
 
                         <div className="mt-8 flex items-center gap-3 text-xs opacity-60">
                             <button

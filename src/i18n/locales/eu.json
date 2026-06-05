@@ -4655,7 +4655,9 @@
             "cannotDeleteLastAdmin": "Ezin duzu azken administratzailea ezabatu.",
             "cannotDeleteLastUser": "Ezin duzu azken kontua ezabatu.",
             "adminResetNotForSelf": "Erabili Aldatu pasahitza zure kontuan.",
-            "userNotFound": "Kontu hau jada ez dago."
+            "userNotFound": "Kontu hau jada ez dago.",
+            "skipNextTime": "Saltatu pantaila hau hurrengoan",
+            "skipNextTimeHint": "(kontu hau zuzenean irekitzen du; pasahitzik gabeko kontuak soilik)"
         },
         "opendrive": {
             "privacyTitle": "OpenDrive pribatutasuna",

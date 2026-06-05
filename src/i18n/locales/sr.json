@@ -4636,7 +4636,9 @@
             "cannotDeleteLastAdmin": "Не можете да обришете последњег администратора.",
             "cannotDeleteLastUser": "Не можете да обришете последњи налог.",
             "adminResetNotForSelf": "На свом налогу користите Промена лозинке.",
-            "userNotFound": "Овај налог више не постоји."
+            "userNotFound": "Овај налог више не постоји.",
+            "skipNextTime": "Прескочи овај екран следећи пут",
+            "skipNextTimeHint": "(отвара овај налог директно; само налози без лозинке)"
         },
         "opendrive": {
             "privacyTitle": "OpenDrive приватност",

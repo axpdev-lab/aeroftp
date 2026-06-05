@@ -235,7 +235,9 @@ import {
     getUnlockStatus,
     initUserPartitions,
     listUsers,
+    readDefaultAccountId,
     readUsersListCache,
+    unlockUser,
     writeUsersListCache,
 } from './utils/userPartitions';
 import KeystoreMigrationWizard from './components/KeystoreMigrationWizard';
@@ -1386,6 +1388,26 @@ const App: React.FC = () => {
         if (users.length === 0) { setAccountLockState('ready'); return; }
         const singleUserNeedsUnlock = users.length === 1 && users[0].hasPassphrase && !status.isUnlocked;
         const finalNeeded = users.length > 1 || singleUserNeedsUnlock;
+        // Default-account fast path (discussion #270): when a default account is
+        // set and it has no passphrase, auto-open it and bypass the picker.
+        // Accounts with a passphrase always show the prompt, so authentication
+        // is never skipped. An explicit "switch account" still forces the picker.
+        if (finalNeeded && !status.isUnlocked) {
+          const defaultId = readDefaultAccountId();
+          const target = defaultId != null ? users.find(u => u.id === defaultId) : undefined;
+          if (target && !target.hasPassphrase) {
+            try {
+              await unlockUser(target.id, null);
+              if (cancelled) return;
+              window.dispatchEvent(new CustomEvent(PROFILES_CHANGED_EVENT));
+              setAccountLockState('ready');
+              return;
+            } catch (err) {
+              console.warn('[mu] default-account auto-unlock failed:', err);
+              // fall through to the picker
+            }
+          }
+        }
         setAccountLockState(finalNeeded ? 'needed' : 'ready');
       } catch (err) {
         // user_partitions unavailable (e.g. STORE_NOT_READY race): proceed

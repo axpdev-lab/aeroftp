@@ -4636,7 +4636,9 @@
             "cannotDeleteLastAdmin": "Du kannst den letzten Administrator nicht löschen.",
             "cannotDeleteLastUser": "Du kannst das letzte Konto nicht löschen.",
             "adminResetNotForSelf": "Verwende Passwort ändern für dein eigenes Konto.",
-            "userNotFound": "Dieses Konto existiert nicht mehr."
+            "userNotFound": "Dieses Konto existiert nicht mehr.",
+            "skipNextTime": "Diesen Bildschirm nächstes Mal überspringen",
+            "skipNextTimeHint": "(öffnet dieses Konto direkt; nur Konten ohne Passwort)"
         },
         "opendrive": {
             "privacyTitle": "OpenDrive Datenschutz",

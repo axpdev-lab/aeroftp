@@ -4636,7 +4636,9 @@
             "cannotDeleteLastAdmin": "Huwezi kumfuta msimamizi wa mwisho.",
             "cannotDeleteLastUser": "Huwezi kufuta akaunti ya mwisho.",
             "adminResetNotForSelf": "Tumia Badilisha Nenosiri kwenye akaunti yako mwenyewe.",
-            "userNotFound": "Akaunti hii haipo tena."
+            "userNotFound": "Akaunti hii haipo tena.",
+            "skipNextTime": "Ruka skrini hii wakati ujao",
+            "skipNextTimeHint": "(hufungua akaunti hii moja kwa moja; akaunti zisizo na nenosiri pekee)"
         },
         "opendrive": {
             "privacyTitle": "Faragha ya OpenDrive",

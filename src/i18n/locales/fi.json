@@ -4636,7 +4636,9 @@
             "cannotDeleteLastAdmin": "Et voi poistaa viimeistä järjestelmänvalvojaa.",
             "cannotDeleteLastUser": "Et voi poistaa viimeistä tiliä.",
             "adminResetNotForSelf": "Käytä Vaihda salasana omalla tililläsi.",
-            "userNotFound": "Tätä tiliä ei ole enää olemassa."
+            "userNotFound": "Tätä tiliä ei ole enää olemassa.",
+            "skipNextTime": "Ohita tämä näyttö ensi kerralla",
+            "skipNextTimeHint": "(avaa tämän tilin suoraan; vain salasanattomat tilit)"
         },
         "opendrive": {
             "privacyTitle": "OpenDrive-yksityisyys",

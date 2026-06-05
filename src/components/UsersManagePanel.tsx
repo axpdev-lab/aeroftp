@@ -44,6 +44,7 @@ import {
 import { PROFILES_CHANGED_EVENT } from '../utils/serverProfileStore';
 import { mapUserPartitionError } from '../utils/userPartitionErrors';
 import { useTranslation } from '../i18n';
+import { useDraggableModal } from '../hooks/useDraggableModal';
 
 interface UsersManagePanelProps {
     isOpen: boolean;
@@ -77,6 +78,7 @@ const notifyProfilesChanged = (onChanged?: () => void) => {
 
 export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onClose, onChanged }) => {
     const t = useTranslation();
+    const modalDrag = useDraggableModal();
     const [users, setUsers] = React.useState<UserMetadata[]>([]);
     const [stats, setStats] = React.useState<UserStorageStats[]>([]);
     const [unlockStatus, setUnlockStatus] = React.useState<UserUnlockStatus | null>(null);
@@ -356,8 +358,14 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                 className="absolute inset-0 bg-black/50 backdrop-blur-sm"
                 onClick={onClose}
             />
-            <div className="relative w-full max-w-3xl max-h-[84vh] overflow-hidden rounded-lg border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-800">
-                <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+            <div
+                {...modalDrag.panelProps}
+                className="relative w-full max-w-3xl max-h-[84vh] overflow-hidden rounded-lg border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-800"
+            >
+                <div
+                    {...modalDrag.dragHandleProps}
+                    className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700 cursor-grab select-none active:cursor-grabbing"
+                >
                     <div className="flex items-center gap-2">
                         <Shield size={18} className="text-blue-500" />
                         <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Manage Users</h2>
