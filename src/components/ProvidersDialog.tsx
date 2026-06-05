@@ -18,6 +18,9 @@ interface ProvidersDialogProps {
 interface ProviderFeatures {
   name: string;
   logoId: string;
+  /** Catalog company id for the free/paid + flag join, when it differs from
+   *  logoId (e.g. MEGA S4 shares the MEGA logo but is a separate paid product). */
+  catalogId?: string;
   base: string[];
   advanced: string[];
   section?: string; // Section header before this provider
@@ -188,7 +191,7 @@ const ALL_PROVIDERS: ProviderFeatures[] = [
   { name: 'FileLu S5', logoId: 'filelu',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink'],
     advanced: [] },
-  { name: 'MEGA S4 Object Storage', logoId: 'mega',
+  { name: 'MEGA S4 Object Storage', logoId: 'mega', catalogId: 'mega-s4',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink'],
     advanced: [] },
   { name: 'MinIO', logoId: 'minio',
@@ -356,7 +359,7 @@ export function ProvidersDialog({ isOpen, onClose }: ProvidersDialogProps) {
               {ALL_PROVIDERS.map((provider, idx) => {
                 const Logo = PROVIDER_LOGOS[provider.logoId];
                 const hasCoreOps = CORE_OPS.every(op => provider.base.includes(op));
-                const catalog = findCatalogByLogo(provider.logoId);
+                const catalog = findCatalogByLogo(provider.catalogId ?? provider.logoId);
                 const isFree = catalog ? hasFreeTier(catalog) : false;
                 return (
                   <React.Fragment key={`${provider.logoId}-${idx}`}>

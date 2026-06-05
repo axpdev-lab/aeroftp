@@ -33,6 +33,7 @@
  */
 
 import { ProviderType } from '../types';
+import { CatalogCategoryId } from '../types/catalog';
 
 /** Protocol / connection-method label shown as a badge. */
 export type CatalogProtocol =
@@ -53,6 +54,10 @@ export interface CatalogProtocolRef {
     label: CatalogProtocol;
     /** ProviderType handed to Quick Connect (`onSelectProvider`). */
     protocol: ProviderType;
+    /** Catalog category this connection method belongs to. Drives the
+     *  list-view category filter and the context-aware row launch target,
+     *  so a multi-protocol company surfaces in every category it touches. */
+    category: CatalogCategoryId;
     /** Registry/discover providerId handed to Quick Connect (optional). */
     providerId?: string;
     /** Paid-plan / credit-card gated (orange badge) vs free (blue). */
@@ -88,174 +93,178 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
     { company: 'MEGA', logoId: 'mega', countryCode: 'NZ', freeStorageGb: 20,
       freeNote: 'E2E', healthCheckUrl: 'https://g.api.mega.co.nz',
       protocols: [
-          { label: 'API', protocol: 'mega' },
-          { label: 'MEGAcmd', protocol: 'webdav', providerId: 'megacmd-webdav', note: 'local bridge' },
-          { label: 'S3', protocol: 's3', providerId: 'mega-s4', paid: true, note: 'MEGA S4 object storage' },
+          { label: 'API', protocol: 'mega', category: 'cloud-storage' },
+          { label: 'MEGAcmd', protocol: 'webdav', providerId: 'megacmd-webdav', category: 'webdav', note: 'local bridge' },
       ] },
+    { company: 'MEGA S4 Object Storage', logoId: 'mega-s4', countryCode: 'EU', freeStorageGb: null,
+      freeNote: 'Pro plan',
+      protocols: [{ label: 'S3', protocol: 's3', providerId: 'mega-s4', category: 'object-storage', paid: true, note: 'MEGA S4 object storage' }] },
     { company: 'Drime', logoId: 'drime', countryCode: 'FR', freeStorageGb: 20,
       healthCheckUrl: 'https://app.drime.cloud',
-      protocols: [{ label: 'API', protocol: 'drime' }] },
+      protocols: [{ label: 'API', protocol: 'drime', category: 'cloud-storage' }] },
     { company: 'InfiniCloud', logoId: 'infinicloud', countryCode: 'JP', freeStorageGb: 20,
-      protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'infinicloud' }] },
+      protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'infinicloud', category: 'webdav' }] },
     { company: 'ImageKit', logoId: 'imagekit', countryCode: 'IN', freeStorageGb: 20,
       freeNote: 'media CDN', healthCheckUrl: 'https://api.imagekit.io',
-      protocols: [{ label: 'API', protocol: 'imagekit', providerId: 'imagekit' }] },
+      protocols: [{ label: 'API', protocol: 'imagekit', providerId: 'imagekit', category: 'media-services' }] },
     { company: 'Blomp', logoId: 'blomp', countryCode: 'US', freeStorageGb: 20,
       freeNote: 'referral bonus',
-      protocols: [{ label: 'Swift', protocol: 'swift', providerId: 'blomp' }] },
+      protocols: [{ label: 'Swift', protocol: 'swift', providerId: 'blomp', category: 'cloud-storage' }] },
     { company: 'Storj', logoId: 'storj', countryCode: 'US', freeStorageGb: 25,
       freeNote: 'decentralized',
-      protocols: [{ label: 'S3', protocol: 's3', providerId: 'storj' }] },
+      protocols: [{ label: 'S3', protocol: 's3', providerId: 'storj', category: 'object-storage' }] },
     { company: 'Google Drive', logoId: 'googledrive', countryCode: 'US', freeStorageGb: 15,
       healthCheckUrl: 'https://www.googleapis.com',
-      protocols: [{ label: 'OAuth', protocol: 'googledrive' }] },
+      protocols: [{ label: 'OAuth', protocol: 'googledrive', category: 'cloud-storage' }] },
     { company: '4shared', logoId: '4shared', countryCode: 'VG', freeStorageGb: 15,
       healthCheckUrl: 'https://webdav.4shared.com',
       protocols: [
-          { label: 'OAuth', protocol: 'fourshared' },
-          { label: 'WebDAV', protocol: 'webdav', providerId: '4shared' },
+          { label: 'OAuth', protocol: 'fourshared', category: 'cloud-storage' },
+          { label: 'WebDAV', protocol: 'webdav', providerId: '4shared', category: 'webdav' },
       ] },
     { company: 'kDrive', logoId: 'kdrive', countryCode: 'CH', freeStorageGb: 15,
       healthCheckUrl: 'https://api.infomaniak.com',
-      protocols: [{ label: 'API', protocol: 'kdrive' }] },
+      protocols: [{ label: 'API', protocol: 'kdrive', category: 'cloud-storage' }] },
     { company: 'Box', logoId: 'box', countryCode: 'US', freeStorageGb: 10,
       healthCheckUrl: 'https://api.box.com',
-      protocols: [{ label: 'OAuth', protocol: 'box' }] },
+      protocols: [{ label: 'OAuth', protocol: 'box', category: 'cloud-storage' }] },
     { company: 'pCloud', logoId: 'pcloud', countryCode: 'CH', freeStorageGb: 10,
       healthCheckUrl: 'https://api.pcloud.com',
       protocols: [
-          { label: 'OAuth', protocol: 'pcloud' },
-          { label: 'WebDAV', protocol: 'webdav', providerId: 'pcloud-webdav', paid: true, note: 'premium plan' },
+          { label: 'OAuth', protocol: 'pcloud', category: 'cloud-storage' },
+          { label: 'WebDAV', protocol: 'webdav', providerId: 'pcloud-webdav', category: 'webdav', paid: true, note: 'premium plan' },
       ] },
     { company: 'Filen', logoId: 'filen', countryCode: 'DE', freeStorageGb: 10,
       freeNote: 'E2E', healthCheckUrl: 'https://gateway.filen.io',
       protocols: [
-          { label: 'API', protocol: 'filen' },
-          { label: 'S3', protocol: 's3', providerId: 'filen-desktop-s3', note: 'desktop bridge' },
-          { label: 'WebDAV', protocol: 'webdav', providerId: 'filen-desktop-webdav', note: 'desktop bridge' },
+          { label: 'API', protocol: 'filen', category: 'cloud-storage' },
+          { label: 'S3', protocol: 's3', providerId: 'filen-desktop-s3', category: 'object-storage', note: 'desktop bridge' },
+          { label: 'WebDAV', protocol: 'webdav', providerId: 'filen-desktop-webdav', category: 'webdav', note: 'desktop bridge' },
       ] },
     { company: 'Koofr', logoId: 'koofr', countryCode: 'SI', freeStorageGb: 10,
       healthCheckUrl: 'https://app.koofr.net',
       protocols: [
-          { label: 'API', protocol: 'koofr' },
-          { label: 'WebDAV', protocol: 'webdav', providerId: 'koofr' },
+          { label: 'API', protocol: 'koofr', category: 'cloud-storage' },
+          { label: 'WebDAV', protocol: 'webdav', providerId: 'koofr', category: 'webdav' },
       ] },
     { company: 'Backblaze B2', logoId: 'backblaze', countryCode: 'US', freeStorageGb: 10,
       healthCheckUrl: 'https://api.backblazeb2.com',
       protocols: [
-          { label: 'API', protocol: 'backblaze', providerId: 'backblaze-native' },
-          { label: 'S3', protocol: 's3', providerId: 'backblaze' },
+          { label: 'API', protocol: 'backblaze', providerId: 'backblaze-native', category: 'cloud-storage' },
+          { label: 'S3', protocol: 's3', providerId: 'backblaze', category: 'object-storage' },
       ] },
     { company: 'IDrive e2', logoId: 'idrive-e2', countryCode: 'US', freeStorageGb: 10,
-      protocols: [{ label: 'S3', protocol: 's3', providerId: 'idrive-e2' }] },
+      protocols: [{ label: 'S3', protocol: 's3', providerId: 'idrive-e2', category: 'object-storage' }] },
     { company: 'Cloudflare R2', logoId: 'cloudflare-r2', countryCode: 'US', freeStorageGb: 10,
       freeNote: 'egress-free',
-      protocols: [{ label: 'S3', protocol: 's3', providerId: 'cloudflare-r2' }] },
+      protocols: [{ label: 'S3', protocol: 's3', providerId: 'cloudflare-r2', category: 'object-storage' }] },
     { company: 'Oracle Cloud', logoId: 'oracle-cloud', countryCode: 'US', freeStorageGb: 20,
       freeNote: 'always-free',
-      protocols: [{ label: 'S3', protocol: 's3', providerId: 'oracle-cloud' }] },
+      protocols: [{ label: 'S3', protocol: 's3', providerId: 'oracle-cloud', category: 'object-storage' }] },
     { company: 'OneDrive', logoId: 'onedrive', countryCode: 'US', freeStorageGb: 5,
       healthCheckUrl: 'https://graph.microsoft.com',
-      protocols: [{ label: 'OAuth', protocol: 'onedrive' }] },
+      protocols: [{ label: 'OAuth', protocol: 'onedrive', category: 'cloud-storage' }] },
     { company: 'Zoho WorkDrive', logoId: 'zohoworkdrive', countryCode: 'IN', freeStorageGb: 5,
       healthCheckUrl: 'https://www.zohoapis.com',
-      protocols: [{ label: 'OAuth', protocol: 'zohoworkdrive' }] },
+      protocols: [{ label: 'OAuth', protocol: 'zohoworkdrive', category: 'cloud-storage' }] },
     { company: 'Jottacloud', logoId: 'jottacloud', countryCode: 'NO', freeStorageGb: 5,
       healthCheckUrl: 'https://jottacloud.com',
-      protocols: [{ label: 'API', protocol: 'jottacloud' }] },
+      protocols: [{ label: 'API', protocol: 'jottacloud', category: 'cloud-storage' }] },
     { company: 'OpenDrive', logoId: 'opendrive', countryCode: 'US', freeStorageGb: 5,
       healthCheckUrl: 'https://dev.opendrive.com',
       protocols: [
-          { label: 'API', protocol: 'opendrive' },
-          { label: 'WebDAV', protocol: 'webdav', providerId: 'opendrive-webdav' },
+          { label: 'API', protocol: 'opendrive', category: 'cloud-storage' },
+          { label: 'WebDAV', protocol: 'webdav', providerId: 'opendrive-webdav', category: 'webdav' },
       ] },
     { company: 'Yandex Disk', logoId: 'yandexdisk', countryCode: 'RU', freeStorageGb: 5,
       healthCheckUrl: 'https://cloud-api.yandex.net',
       protocols: [
-          { label: 'OAuth', protocol: 'yandexdisk' },
-          { label: 'WebDAV', protocol: 'webdav', providerId: 'yandexdisk-webdav' },
-          { label: 'S3', protocol: 's3', providerId: 'yandex-storage', paid: true, note: 'Yandex Object Storage' },
+          { label: 'OAuth', protocol: 'yandexdisk', category: 'cloud-storage' },
+          { label: 'WebDAV', protocol: 'webdav', providerId: 'yandexdisk-webdav', category: 'webdav' },
       ] },
+    { company: 'Yandex Object Storage', logoId: 'yandex-storage', countryCode: 'RU', freeStorageGb: null,
+      freeNote: 'paid plan',
+      protocols: [{ label: 'S3', protocol: 's3', providerId: 'yandex-storage', category: 'object-storage', paid: true, note: 'Yandex Object Storage' }] },
     { company: 'Google Cloud Storage', logoId: 'google-cloud-storage', countryCode: 'US', freeStorageGb: 5,
       freeNote: 'always-free tier', healthCheckUrl: 'https://storage.googleapis.com',
-      protocols: [{ label: 'S3', protocol: 's3', providerId: 'google-cloud-storage' }] },
+      protocols: [{ label: 'S3', protocol: 's3', providerId: 'google-cloud-storage', category: 'object-storage' }] },
     { company: 'CloudMe', logoId: 'cloudme', countryCode: 'SE', freeStorageGb: 3,
-      protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'cloudme' }] },
+      protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'cloudme', category: 'webdav' }] },
     { company: 'Uploadcare', logoId: 'uploadcare', countryCode: 'US', freeStorageGb: 3,
       freeNote: 'media CDN', healthCheckUrl: 'https://api.uploadcare.com',
-      protocols: [{ label: 'API', protocol: 'uploadcare', providerId: 'uploadcare' }] },
+      protocols: [{ label: 'API', protocol: 'uploadcare', providerId: 'uploadcare', category: 'media-services' }] },
     { company: 'Dropbox', logoId: 'dropbox', countryCode: 'US', freeStorageGb: 2,
       healthCheckUrl: 'https://api.dropboxapi.com',
-      protocols: [{ label: 'OAuth', protocol: 'dropbox' }] },
+      protocols: [{ label: 'OAuth', protocol: 'dropbox', category: 'cloud-storage' }] },
     { company: 'Internxt', logoId: 'internxt', countryCode: 'ES', freeStorageGb: 1,
       freeNote: 'E2E', healthCheckUrl: 'https://api.internxt.com',
-      protocols: [{ label: 'API', protocol: 'internxt' }] },
+      protocols: [{ label: 'API', protocol: 'internxt', category: 'cloud-storage' }] },
     { company: 'FileLu', logoId: 'filelu', countryCode: 'US', freeStorageGb: 1,
       healthCheckUrl: 'https://filelu.com',
       protocols: [
-          { label: 'API', protocol: 'filelu' },
-          { label: 'WebDAV', protocol: 'webdav', providerId: 'filelu-webdav' },
-          { label: 'S3', protocol: 's3', providerId: 'filelu-s3' },
+          { label: 'API', protocol: 'filelu', category: 'cloud-storage' },
+          { label: 'WebDAV', protocol: 'webdav', providerId: 'filelu-webdav', category: 'webdav' },
+          { label: 'S3', protocol: 's3', providerId: 'filelu-s3', category: 'object-storage' },
       ] },
     { company: 'DriveHQ', logoId: 'drivehq', countryCode: 'US', freeStorageGb: 1,
-      protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'drivehq' }] },
+      protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'drivehq', category: 'webdav' }] },
     { company: 'Jianguoyun', logoId: 'jianguoyun', countryCode: 'CN', freeStorageGb: 1,
       freeNote: 'monthly traffic cap',
-      protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'jianguoyun' }] },
+      protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'jianguoyun', category: 'webdav' }] },
     { company: 'Felicloud', logoId: 'felicloud', countryCode: '', freeStorageGb: null,
       freeNote: 'Nextcloud host',
-      protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'felicloud' }] },
+      protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'felicloud', category: 'webdav' }] },
     { company: 'Cloudinary', logoId: 'cloudinary', countryCode: 'US', freeStorageGb: null,
       freeNote: 'credit-based', healthCheckUrl: 'https://api.cloudinary.com',
-      protocols: [{ label: 'API', protocol: 'cloudinary', providerId: 'cloudinary' }] },
+      protocols: [{ label: 'API', protocol: 'cloudinary', providerId: 'cloudinary', category: 'media-services' }] },
     { company: 'Amazon S3', logoId: 'amazon-s3', countryCode: 'US', freeStorageGb: null,
       freeNote: '5 GB 12-month trial', healthCheckUrl: 'https://s3.amazonaws.com',
-      protocols: [{ label: 'S3', protocol: 's3', providerId: 'amazon-s3', paid: true }] },
+      protocols: [{ label: 'S3', protocol: 's3', providerId: 'amazon-s3', category: 'object-storage', paid: true }] },
     { company: 'Wasabi', logoId: 'wasabi', countryCode: 'US', freeStorageGb: null,
       freeNote: '30-day trial',
-      protocols: [{ label: 'S3', protocol: 's3', providerId: 'wasabi', paid: true }] },
+      protocols: [{ label: 'S3', protocol: 's3', providerId: 'wasabi', category: 'object-storage', paid: true }] },
     { company: 'DigitalOcean Spaces', logoId: 'digitalocean-spaces', countryCode: 'US', freeStorageGb: null,
       freeNote: 'paid plan',
-      protocols: [{ label: 'S3', protocol: 's3', providerId: 'digitalocean-spaces', paid: true }] },
+      protocols: [{ label: 'S3', protocol: 's3', providerId: 'digitalocean-spaces', category: 'object-storage', paid: true }] },
     { company: 'Alibaba OSS', logoId: 'alibaba-oss', countryCode: 'CN', freeStorageGb: null,
       freeNote: 'paid plan',
-      protocols: [{ label: 'S3', protocol: 's3', providerId: 'alibaba-oss', paid: true }] },
+      protocols: [{ label: 'S3', protocol: 's3', providerId: 'alibaba-oss', category: 'object-storage', paid: true }] },
     { company: 'Tencent COS', logoId: 'tencent-cos', countryCode: 'CN', freeStorageGb: null,
       freeNote: 'paid plan',
-      protocols: [{ label: 'S3', protocol: 's3', providerId: 'tencent-cos', paid: true }] },
+      protocols: [{ label: 'S3', protocol: 's3', providerId: 'tencent-cos', category: 'object-storage', paid: true }] },
     { company: 'Azure Blob', logoId: 'azure', countryCode: 'US', freeStorageGb: null,
       freeNote: '12-month trial', healthCheckUrl: 'https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration',
-      protocols: [{ label: 'Blob', protocol: 'azure', paid: true }] },
+      protocols: [{ label: 'Blob', protocol: 'azure', category: 'object-storage', paid: true }] },
     { company: 'Hetzner Storage Box', logoId: 'hetzner-storage-box', countryCode: 'DE', freeStorageGb: null,
       freeNote: 'paid plan',
-      protocols: [{ label: 'SFTP', protocol: 'sftp', providerId: 'hetzner-storage-box', paid: true }] },
+      protocols: [{ label: 'SFTP', protocol: 'sftp', providerId: 'hetzner-storage-box', category: 'protocols', paid: true }] },
     { company: 'Tab.digital', logoId: 'tabdigital', countryCode: 'IN', freeStorageGb: null,
       freeNote: 'managed Nextcloud',
-      protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'tabdigital', paid: true }] },
+      protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'tabdigital', category: 'webdav', paid: true }] },
     { company: 'PixelUnion', logoId: 'pixelunion', countryCode: 'EU', freeStorageGb: null,
       freeNote: 'managed Immich', healthCheckUrl: 'https://pixelunion.eu',
-      protocols: [{ label: 'API', protocol: 'immich', providerId: 'pixelunion', paid: true }] },
+      protocols: [{ label: 'API', protocol: 'immich', providerId: 'pixelunion', category: 'media-services', paid: true }] },
     { company: 'MinIO', logoId: 'minio', countryCode: '', freeStorageGb: null,
       freeNote: 'self-hosted',
-      protocols: [{ label: 'S3', protocol: 's3', providerId: 'minio' }] },
+      protocols: [{ label: 'S3', protocol: 's3', providerId: 'minio', category: 'object-storage' }] },
     { company: 'Nextcloud', logoId: 'nextcloud', countryCode: '', freeStorageGb: null,
       freeNote: 'self-hosted',
-      protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'nextcloud' }] },
+      protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'nextcloud', category: 'webdav' }] },
     { company: 'Seafile', logoId: 'seafile', countryCode: '', freeStorageGb: null,
       freeNote: 'self-hosted',
-      protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'seafile' }] },
+      protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'seafile', category: 'webdav' }] },
     { company: 'Immich', logoId: 'immich', countryCode: '', freeStorageGb: null,
       freeNote: 'self-hosted', healthCheckUrl: 'https://immich.app',
-      protocols: [{ label: 'API', protocol: 'immich' }] },
+      protocols: [{ label: 'API', protocol: 'immich', category: 'media-services' }] },
     { company: 'SourceForge', logoId: 'sourceforge', countryCode: 'US', freeStorageGb: null,
       freeNote: 'OSS hosting',
-      protocols: [{ label: 'SFTP', protocol: 'sftp', providerId: 'sourceforge' }] },
+      protocols: [{ label: 'SFTP', protocol: 'sftp', providerId: 'sourceforge', category: 'developer' }] },
     { company: 'GitHub', logoId: 'github', countryCode: 'US', freeStorageGb: null,
       freeNote: 'repo storage', healthCheckUrl: 'https://api.github.com',
-      protocols: [{ label: 'API', protocol: 'github' }] },
+      protocols: [{ label: 'API', protocol: 'github', category: 'developer' }] },
     { company: 'GitLab', logoId: 'gitlab', countryCode: 'US', freeStorageGb: null,
       freeNote: 'repo storage', healthCheckUrl: 'https://gitlab.com',
-      protocols: [{ label: 'API', protocol: 'gitlab' }] },
+      protocols: [{ label: 'API', protocol: 'gitlab', category: 'developer' }] },
 ];
 
 /** Sum of approximate free GB across the given companies (footer total). */
@@ -276,6 +285,22 @@ export function paidProtocols(c: CatalogCompany): CatalogProtocolRef[] {
 /** True when the company has at least one free-tier connection method. */
 export function hasFreeTier(c: CatalogCompany): boolean {
     return c.protocols.some(p => !p.paid);
+}
+
+/** True when any of the company's connection methods belongs to `category`. */
+export function companyInCategory(c: CatalogCompany, category: CatalogCategoryId): boolean {
+    return c.protocols.some(p => p.category === category);
+}
+
+/**
+ * The connection method launched when the user clicks the company row inside a
+ * given category: the first protocol whose category matches, else the company
+ * default (`protocols[0]`). In the virtual "All" view nothing matches, so the
+ * default is used: a row click in the S3 category opens the Filen S3 form, the
+ * same row in the WebDAV category opens the WebDAV form.
+ */
+export function companyLaunchProtocol(c: CatalogCompany, category: CatalogCategoryId | 'all'): CatalogProtocolRef {
+    return c.protocols.find(p => p.category === category) ?? c.protocols[0];
 }
 
 /**
@@ -300,6 +325,8 @@ const REGIONS_BY_LOGO: Record<string, string[]> = {
     'minio': ['global'],
     'backblaze': ['US', 'NL'],
     'mega': ['NZ', 'EU', 'CA'],
+    'mega-s4': ['EU', 'CA'],
+    'yandex-storage': ['RU'],
 };
 
 /**
@@ -323,7 +350,6 @@ const LOGO_ALIASES: Record<string, string> = {
     'tab-digital': 'tabdigital',
     'zoho-workdrive': 'zohoworkdrive',
     'backblaze-native': 'backblaze',
-    'mega-s4': 'mega',
     'megacmd-webdav': 'mega',
     'filelu-s3': 'filelu',
     'filelu-webdav': 'filelu',

@@ -13,6 +13,7 @@ import * as React from 'react';
 import { useMemo, useState, useRef, useCallback } from 'react';
 import { Search, X, Columns3, ChevronUp, ChevronDown, ChevronsUpDown, Globe } from 'lucide-react';
 import { ProviderType } from '../../types';
+import { CatalogCategoryId } from '../../types/catalog';
 import { PROVIDER_LOGOS } from '../ProviderLogos';
 import { CountryFlag } from '../CountryFlag';
 import { useTranslation } from '../../i18n';
@@ -26,6 +27,7 @@ import {
     freeProtocols,
     paidProtocols,
     companyRegions,
+    companyLaunchProtocol,
 } from '../providerCatalog';
 
 type CatalogColId = 'company' | 'region' | 'freeGb' | 'free' | 'paid' | 'health';
@@ -90,13 +92,15 @@ function ProtocolBadge({ p, paid, onClick }: { p: CatalogProtocolRef; paid: bool
 
 interface CatalogTableProps {
     companies: CatalogCompany[];
+    /** Active category ('all' = virtual). Drives the context-aware row launch. */
+    category: CatalogCategoryId | 'all';
     onSelectProvider: (protocol: ProviderType, providerId?: string) => void;
     getHealth: (logoId: string) => HealthStatus;
     /** When false the health feature is off: dots render dimmed grey. */
     healthEnabled: boolean;
 }
 
-export function CatalogTable({ companies, onSelectProvider, getHealth, healthEnabled }: CatalogTableProps) {
+export function CatalogTable({ companies, category, onSelectProvider, getHealth, healthEnabled }: CatalogTableProps) {
     const t = useTranslation();
     const [query, setQuery] = useState('');
     const [showColumns, setShowColumns] = useState(false);
@@ -336,7 +340,9 @@ export function CatalogTable({ companies, onSelectProvider, getHealth, healthEna
                             </tr>
                         ) : (
                             filtered.map((c) => {
-                                const primary = c.protocols[0];
+                                // Context-aware launch: in a specific category the row opens
+                                // that category's connection form; in 'All' the default.
+                                const primary = companyLaunchProtocol(c, category);
                                 return (
                                     <tr
                                         key={c.company}
