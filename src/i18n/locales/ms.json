@@ -991,7 +991,9 @@
             "repairRekeyFromBackup": "Enkrip semula daripada sandaran",
             "restartApp": "Mulakan semula AeroFTP",
             "backupRowBridge": "Bridge",
-            "backupRowBridgeDesc": "Import & eksport dengan {count} alat lain"
+            "backupRowBridgeDesc": "Import & eksport dengan {count} alat lain",
+            "discoverHealthCheck": "Pemeriksaan kesihatan pada Add Services",
+            "discoverHealthCheckDesc": "Menyemak kebolehcapaian penyedia dalam senarai Add Services. Klik dua kali butang Semak pada tab itu untuk menogolnya juga."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4233,7 +4235,9 @@
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
-            }
+            },
+            "healthOff": "Semakan mati",
+            "healthToggleHint": "Klik dua kali untuk hidupkan/matikan"
         },
         "gitlab": {
             "projectPath": "Laluan Projek",

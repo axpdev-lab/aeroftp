@@ -93,6 +93,8 @@ export interface AppSettings {
   cardLayout: 'compact' | 'detailed';
   /** Provider logo size in the IntroHub My Servers and Discover cards. */
   introHubIconSize: number;
+  /** Probe provider reachability in the Add Services list/All view. Default on. */
+  discoverHealthCheck: boolean;
   /** When ON (default), single and folder transfers launch immediately on
    *  drag/drop or click, byte-identical to the legacy behaviour. When OFF,
    *  transfers are parked in the Transfer Queue panel as `staged` so the
@@ -131,6 +133,7 @@ const DEFAULTS: AppSettings = {
   disableUpdateChecks: false,
   cardLayout: 'compact',
   introHubIconSize: DEFAULT_INTRO_HUB_ICON_SIZE,
+  discoverHealthCheck: true,
   autoStartTransfers: true,
 };
 
@@ -162,6 +165,7 @@ export const useSettings = () => {
   const [disableUpdateChecks, setDisableUpdateChecks] = useState(DEFAULTS.disableUpdateChecks);
   const [cardLayout, setCardLayout] = useState<AppSettings['cardLayout']>(DEFAULTS.cardLayout);
   const [introHubIconSize, setIntroHubIconSize] = useState<number>(DEFAULTS.introHubIconSize);
+  const [discoverHealthCheck, setDiscoverHealthCheck] = useState(DEFAULTS.discoverHealthCheck);
   const [autoStartTransfers, setAutoStartTransfers] = useState(DEFAULTS.autoStartTransfers);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
 
@@ -204,6 +208,7 @@ export const useSettings = () => {
     if (typeof parsed.introHubIconSize === 'number' || typeof parsed.introHubIconSize === 'string') {
       setIntroHubIconSize(clampIntroHubIconSize(parsed.introHubIconSize));
     }
+    if (typeof parsed.discoverHealthCheck === 'boolean') setDiscoverHealthCheck(parsed.discoverHealthCheck);
     if (typeof parsed.autoStartTransfers === 'boolean') setAutoStartTransfers(parsed.autoStartTransfers);
   }, []);
 
@@ -292,6 +297,7 @@ export const useSettings = () => {
     disableUpdateChecks,
     cardLayout,
     introHubIconSize,
+    discoverHealthCheck,
     autoStartTransfers,
     showSettingsPanel,
 
@@ -323,6 +329,7 @@ export const useSettings = () => {
     setDisableUpdateChecks,
     setCardLayout,
     setIntroHubIconSize,
+    setDiscoverHealthCheck,
     setAutoStartTransfers,
     setShowSettingsPanel,
 

@@ -991,7 +991,9 @@
             "repairRekeyFromBackup": "Bir yedekten yeniden şifrele",
             "restartApp": "AeroFTP'yi yeniden başlat",
             "backupRowBridge": "Bridge",
-            "backupRowBridgeDesc": "Diğer {count} araçla içe ve dışa aktarma"
+            "backupRowBridgeDesc": "Diğer {count} araçla içe ve dışa aktarma",
+            "discoverHealthCheck": "Add Services'te sağlık kontrolü",
+            "discoverHealthCheckDesc": "Add Services listesinde sağlayıcıların erişilebilirliğini kontrol eder. O sekmedeki Kontrol et düğmesine çift tıklayarak da açıp kapatabilirsiniz."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4233,7 +4235,9 @@
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
-            }
+            },
+            "healthOff": "Kontrol kapalı",
+            "healthToggleHint": "Etkinleştirmek/devre dışı bırakmak için çift tıklayın"
         },
         "gitlab": {
             "projectPath": "Proje Yolu",

@@ -991,7 +991,9 @@
             "repairRekeyFromBackup": "백업에서 다시 암호화",
             "restartApp": "AeroFTP 다시 시작",
             "backupRowBridge": "Bridge",
-            "backupRowBridgeDesc": "다른 {count}개의 도구와 가져오기 및 내보내기"
+            "backupRowBridgeDesc": "다른 {count}개의 도구와 가져오기 및 내보내기",
+            "discoverHealthCheck": "Add Services의 상태 확인",
+            "discoverHealthCheckDesc": "Add Services 목록에서 제공업체 연결 가능성을 확인합니다. 해당 탭의 확인 버튼을 더블클릭해도 전환됩니다."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4233,7 +4235,9 @@
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
-            }
+            },
+            "healthOff": "확인 끔",
+            "healthToggleHint": "더블클릭하여 켜기/끄기"
         },
         "gitlab": {
             "projectPath": "프로젝트 경로",

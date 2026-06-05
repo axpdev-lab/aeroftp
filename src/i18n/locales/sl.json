@@ -991,7 +991,9 @@
             "repairRekeyFromBackup": "Znova šifriraj iz varnostne kopije",
             "restartApp": "Znova zaženi AeroFTP",
             "backupRowBridge": "Bridge",
-            "backupRowBridgeDesc": "Uvoz in izvoz z {count} drugimi orodji"
+            "backupRowBridgeDesc": "Uvoz in izvoz z {count} drugimi orodji",
+            "discoverHealthCheck": "Preverjanje razpoložljivosti v Add Services",
+            "discoverHealthCheckDesc": "Preveri dosegljivost ponudnikov na seznamu Add Services. Z dvojnim klikom na gumb Preveri na tem zavihku ga prav tako preklopite."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4233,7 +4235,9 @@
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
-            }
+            },
+            "healthOff": "Preverjanje izklopljeno",
+            "healthToggleHint": "Dvojni klik za vklop/izklop"
         },
         "gitlab": {
             "projectPath": "Pot projekta",

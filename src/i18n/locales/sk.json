@@ -991,7 +991,9 @@
             "repairRekeyFromBackup": "Znovu zašifrovať zo zálohy",
             "restartApp": "Reštartovať AeroFTP",
             "backupRowBridge": "Bridge",
-            "backupRowBridgeDesc": "Import a export s ďalšími {count} nástrojmi"
+            "backupRowBridgeDesc": "Import a export s ďalšími {count} nástrojmi",
+            "discoverHealthCheck": "Kontrola dostupnosti v Add Services",
+            "discoverHealthCheckDesc": "Overuje dostupnosť poskytovateľov v zozname Add Services. Dvojklikom na tlačidlo Skontrolovať na tejto karte ho tiež prepnete."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4233,7 +4235,9 @@
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
-            }
+            },
+            "healthOff": "Kontrola vypnutá",
+            "healthToggleHint": "Dvojklik na zapnutie/vypnutie"
         },
         "gitlab": {
             "projectPath": "Cesta k projektu",

@@ -991,7 +991,9 @@
             "repairRekeyFromBackup": "เข้ารหัสใหม่จากข้อมูลสำรอง",
             "restartApp": "เริ่ม AeroFTP ใหม่",
             "backupRowBridge": "Bridge",
-            "backupRowBridgeDesc": "นำเข้าและส่งออกกับเครื่องมืออื่นอีก {count} รายการ"
+            "backupRowBridgeDesc": "นำเข้าและส่งออกกับเครื่องมืออื่นอีก {count} รายการ",
+            "discoverHealthCheck": "การตรวจสอบสถานะใน Add Services",
+            "discoverHealthCheckDesc": "ตรวจสอบการเข้าถึงผู้ให้บริการในรายการ Add Services ดับเบิลคลิกปุ่มตรวจสอบในแท็บนั้นเพื่อสลับเปิด/ปิดได้เช่นกัน"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4233,7 +4235,9 @@
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
-            }
+            },
+            "healthOff": "ปิดการตรวจสอบ",
+            "healthToggleHint": "ดับเบิลคลิกเพื่อเปิด/ปิด"
         },
         "gitlab": {
             "projectPath": "เส้นทางโปรเจกต์",

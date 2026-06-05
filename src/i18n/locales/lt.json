@@ -991,7 +991,9 @@
             "repairRekeyFromBackup": "Iš naujo užšifruoti iš atsarginės kopijos",
             "restartApp": "Paleisti AeroFTP iš naujo",
             "backupRowBridge": "Bridge",
-            "backupRowBridgeDesc": "Importuoti ir eksportuoti su {count} kitais įrankiais"
+            "backupRowBridgeDesc": "Importuoti ir eksportuoti su {count} kitais įrankiais",
+            "discoverHealthCheck": "Pasiekiamumo tikrinimas Add Services rodinyje",
+            "discoverHealthCheckDesc": "Tikrina tiekėjų pasiekiamumą Add Services sąraše. Dukart spustelėjus mygtuką Tikrinti toje kortelėje, jį taip pat įjungsite/išjungsite."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4233,7 +4235,9 @@
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
-            }
+            },
+            "healthOff": "Tikrinimas išjungtas",
+            "healthToggleHint": "Dukart spustelėkite, kad įjungtumėte/išjungtumėte"
         },
         "gitlab": {
             "projectPath": "Projekto kelias",

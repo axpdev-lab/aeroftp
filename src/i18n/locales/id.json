@@ -991,7 +991,9 @@
             "repairRekeyFromBackup": "Enkripsi ulang dari cadangan",
             "restartApp": "Mulai ulang AeroFTP",
             "backupRowBridge": "Bridge",
-            "backupRowBridgeDesc": "Impor & ekspor dengan {count} alat lainnya"
+            "backupRowBridgeDesc": "Impor & ekspor dengan {count} alat lainnya",
+            "discoverHealthCheck": "Pemeriksaan kesehatan di Add Services",
+            "discoverHealthCheckDesc": "Memeriksa keterjangkauan penyedia di daftar Add Services. Klik dua kali tombol Periksa di tab itu untuk mengalihkannya juga."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4233,7 +4235,9 @@
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
-            }
+            },
+            "healthOff": "Pemeriksaan mati",
+            "healthToggleHint": "Klik dua kali untuk mengaktifkan/menonaktifkan"
         },
         "gitlab": {
             "projectPath": "Jalur Proyek",

@@ -1276,6 +1276,8 @@
             "closeToTrayDesc": "Quando premi il pulsante di chiusura della finestra, AeroFTP viene nascosto nella tray di sistema invece di terminare. Le attività in background come la sincronizzazione AeroCloud continuano a funzionare. Usa il menu della tray per uscire.",
             "detailedCards": "Card server dettagliate",
             "detailedCardsDesc": "Mostra la barra di utilizzo dello storage memorizzato nelle card dei server.",
+            "discoverHealthCheck": "Health check su Add Services",
+            "discoverHealthCheckDesc": "Sonda la raggiungibilità dei provider nell'elenco Add Services. Doppio clic sul pulsante Verifica in quella scheda per attivarlo/disattivarlo anche da lì.",
             "storageThresholds": "Colori uso archiviazione",
             "storageThresholdsDesc": "Quando la colonna % in I miei server diventa ambra e rossa. Default 80% / 95% - oltre la quota (>100%) sempre rossa, sotto il 5% grigia.",
             "storageWarn": "Soglia di avviso (ambra)",
@@ -4295,6 +4297,8 @@
             "check": "Verifica",
             "scanning": "Scansione...",
             "checkAvailability": "Verifica la disponibilità del servizio",
+            "healthOff": "Controllo off",
+            "healthToggleHint": "Doppio clic per abilitare/disabilitare",
             "list": {
                 "company": "Provider",
                 "region": "Regione",

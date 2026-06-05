@@ -991,7 +991,9 @@
             "repairRekeyFromBackup": "एक बैकअप से पुनः-कुंजीबद्ध करें",
             "restartApp": "AeroFTP पुनः आरंभ करें",
             "backupRowBridge": "Bridge",
-            "backupRowBridgeDesc": "{count} अन्य उपकरणों के साथ आयात और निर्यात करें"
+            "backupRowBridgeDesc": "{count} अन्य उपकरणों के साथ आयात और निर्यात करें",
+            "discoverHealthCheck": "Add Services पर हेल्थ चेक",
+            "discoverHealthCheckDesc": "Add Services सूची में प्रदाता की पहुँच जाँचता है। उस टैब पर Check बटन पर डबल-क्लिक करके इसे वहाँ भी टॉगल करें।"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4233,7 +4235,9 @@
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
-            }
+            },
+            "healthOff": "जाँच बंद",
+            "healthToggleHint": "सक्षम/अक्षम करने के लिए डबल-क्लिक करें"
         },
         "gitlab": {
             "projectPath": "प्रोजेक्ट पथ",

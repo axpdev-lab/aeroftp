@@ -991,7 +991,9 @@
             "repairRekeyFromBackup": "ხელახლა დაშიფვრა სარეზერვო ასლიდან",
             "restartApp": "AeroFTP-ის გადატვირთვა",
             "backupRowBridge": "Bridge",
-            "backupRowBridgeDesc": "იმპორტი და ექსპორტი კიდევ {count} სხვა ხელსაწყოსთან"
+            "backupRowBridgeDesc": "იმპორტი და ექსპორტი კიდევ {count} სხვა ხელსაწყოსთან",
+            "discoverHealthCheck": "ხელმისაწვდომობის შემოწმება Add Services-ში",
+            "discoverHealthCheckDesc": "ამოწმებს პროვაიდერების ხელმისაწვდომობას Add Services სიაში. იმ ჩანართზე ღილაკ Check-ზე ორმაგი დაწკაპუნებითაც გადაირთვება."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4233,7 +4235,9 @@
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
-            }
+            },
+            "healthOff": "შემოწმება გამორთ.",
+            "healthToggleHint": "ორმაგი დაწკაპუნება ჩასართავად/გამოსართავად"
         },
         "gitlab": {
             "projectPath": "პროექტის გზა",

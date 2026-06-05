@@ -991,7 +991,9 @@
             "repairRekeyFromBackup": "Mã hóa lại từ một bản sao lưu",
             "restartApp": "Khởi động lại AeroFTP",
             "backupRowBridge": "Bridge",
-            "backupRowBridgeDesc": "Nhập và xuất với {count} công cụ khác"
+            "backupRowBridgeDesc": "Nhập và xuất với {count} công cụ khác",
+            "discoverHealthCheck": "Kiểm tra tình trạng trong Add Services",
+            "discoverHealthCheckDesc": "Kiểm tra khả năng kết nối của nhà cung cấp trong danh sách Add Services. Nhấp đúp vào nút Kiểm tra trên tab đó để bật/tắt nó ngay tại đó."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4233,7 +4235,9 @@
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
-            }
+            },
+            "healthOff": "Tắt kiểm tra",
+            "healthToggleHint": "Nhấp đúp để bật/tắt"
         },
         "gitlab": {
             "projectPath": "Duong dan du an",

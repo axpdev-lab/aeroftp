@@ -168,6 +168,9 @@ interface AppSettings {
     fontFamily: string;
     cardLayout: 'compact' | 'detailed';
     introHubIconSize: number;
+    /** Probe provider reachability (health dots) in the Add Services list/All
+     *  view. Off skips all outbound probes there. Default on. */
+    discoverHealthCheck: boolean;
     // Columns
     visibleColumns: string[];
     // File browser
@@ -211,6 +214,7 @@ const defaultSettings: AppSettings = {
     fontFamily: DEFAULT_APP_FONT_FAMILY,
     cardLayout: 'compact',
     introHubIconSize: DEFAULT_INTRO_HUB_ICON_SIZE,
+    discoverHealthCheck: true,
     visibleColumns: ['name', 'size', 'type', 'permissions', 'modified'],
     sortFoldersFirst: true,
     showFileExtensions: true,
@@ -2149,6 +2153,19 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     <div>
                                                         <p className="font-medium">{t('settings.detailedCards')}</p>
                                                         <p className="text-sm text-gray-500">{t('settings.detailedCardsDesc')}</p>
+                                                    </div>
+                                                }
+                                            />
+
+                                            {/* Health check on the Add Services list/All view. Also toggleable
+                                                by double-clicking the Check button on that tab. */}
+                                            <Checkbox
+                                                checked={settings.discoverHealthCheck}
+                                                onChange={(v) => updateSetting('discoverHealthCheck', v)}
+                                                label={
+                                                    <div>
+                                                        <p className="font-medium">{t('settings.discoverHealthCheck')}</p>
+                                                        <p className="text-sm text-gray-500">{t('settings.discoverHealthCheckDesc')}</p>
                                                     </div>
                                                 }
                                             />

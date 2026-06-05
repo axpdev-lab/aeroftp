@@ -991,7 +991,9 @@
             "repairRekeyFromBackup": "Voltar a cifrar a partir de uma cópia de segurança",
             "restartApp": "Reiniciar o AeroFTP",
             "backupRowBridge": "Bridge",
-            "backupRowBridgeDesc": "Importe e exporte com {count} outras ferramentas"
+            "backupRowBridgeDesc": "Importe e exporte com {count} outras ferramentas",
+            "discoverHealthCheck": "Verificação de disponibilidade em Add Services",
+            "discoverHealthCheckDesc": "Verifica a acessibilidade dos provedores na lista Add Services. Clique duas vezes no botão Verificar nessa aba para alterná-lo por lá também."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4233,7 +4235,9 @@
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
-            }
+            },
+            "healthOff": "Verificação desativada",
+            "healthToggleHint": "Clique duas vezes para ativar/desativar"
         },
         "gitlab": {
             "projectPath": "Caminho do projeto",

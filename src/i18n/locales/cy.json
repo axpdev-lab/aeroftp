@@ -991,7 +991,9 @@
             "repairRekeyFromBackup": "Ail-allweddu o gopi wrth gefn",
             "restartApp": "Ailgychwyn AeroFTP",
             "backupRowBridge": "Bridge",
-            "backupRowBridgeDesc": "Mewnforio ac allforio gyda {count} offeryn arall"
+            "backupRowBridgeDesc": "Mewnforio ac allforio gyda {count} offeryn arall",
+            "discoverHealthCheck": "Gwiriad iechyd ar Add Services",
+            "discoverHealthCheckDesc": "Profi cyrhaeddadwyedd darparwyr yn y rhestr Add Services. Cliciwch ddwywaith ar y botwm Gwirio ar y tab hwnnw i'w droi ymlaen/i ffwrdd hefyd."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4252,7 +4254,9 @@
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
-            }
+            },
+            "healthOff": "Gwirio i ffwrdd",
+            "healthToggleHint": "Clic dwbl i alluogi/analluogi"
         },
         "gitlab": {
             "projectPath": "Llwybr y prosiect",

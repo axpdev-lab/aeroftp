@@ -991,7 +991,9 @@
             "repairRekeyFromBackup": "Torna a xifrar des d'una còpia de seguretat",
             "restartApp": "Reinicia AeroFTP",
             "backupRowBridge": "Bridge",
-            "backupRowBridgeDesc": "Importa i exporta amb {count} altres eines"
+            "backupRowBridgeDesc": "Importa i exporta amb {count} altres eines",
+            "discoverHealthCheck": "Comprovació de salut a Add Services",
+            "discoverHealthCheckDesc": "Comprova la disponibilitat dels proveïdors a la llista Add Services. Fes doble clic al botó Comprova d'aquesta pestanya per activar-ho o desactivar-ho."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4252,7 +4254,9 @@
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
-            }
+            },
+            "healthOff": "Comprovació desactivada",
+            "healthToggleHint": "Doble clic per activar/desactivar"
         },
         "gitlab": {
             "projectPath": "Ruta del projecte",

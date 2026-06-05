@@ -991,7 +991,9 @@
             "repairRekeyFromBackup": "Επανακρυπτογράφηση από αντίγραφο ασφαλείας",
             "restartApp": "Επανεκκίνηση του AeroFTP",
             "backupRowBridge": "Bridge",
-            "backupRowBridgeDesc": "Εισαγωγή και εξαγωγή με {count} άλλα εργαλεία"
+            "backupRowBridgeDesc": "Εισαγωγή και εξαγωγή με {count} άλλα εργαλεία",
+            "discoverHealthCheck": "Έλεγχος διαθεσιμότητας στο Add Services",
+            "discoverHealthCheckDesc": "Ελέγχει τη διαθεσιμότητα των παρόχων στη λίστα Add Services. Διπλό κλικ στο κουμπί Έλεγχος σε εκείνη την καρτέλα το εναλλάσσει επίσης."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4233,7 +4235,9 @@
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
-            }
+            },
+            "healthOff": "Έλεγχος ανενεργός",
+            "healthToggleHint": "Διπλό κλικ για ενεργοποίηση/απενεργοποίηση"
         },
         "gitlab": {
             "projectPath": "Διαδρομή Έργου",

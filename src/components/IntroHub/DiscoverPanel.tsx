@@ -12,6 +12,7 @@ import { buildDiscoverCategories, DiscoverCategory, DiscoverItem, DISCOVER_DESC_
 import { CatalogCategoryId, getCatalogCategory } from '../../types/catalog';
 import { useProviderHealth, type HealthStatus } from '../../hooks/useProviderHealth';
 import { useIntroHubIconSize } from '../../hooks/useIntroHubIconSize';
+import { useDiscoverHealthCheck } from '../../hooks/useDiscoverHealthCheck';
 import { CatalogTable } from './CatalogTable';
 import { PROVIDER_CATALOG } from '../providerCatalog';
 
@@ -168,9 +169,13 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
     });
 
     // Provider health scan: per-tab eager (small categories) + chunked
-    // sequential for the large All / list views (My Servers pattern).
+    // sequential for the large All / list views (My Servers pattern). The
+    // whole feature can be turned off from Settings or by double-clicking the
+    // Check button here (both write the same `discoverHealthCheck` setting).
     const { getStatus, scanItems, scanning } = useProviderHealth();
     const healthScanRunRef = useRef(0);
+    const [healthEnabled, setHealthEnabled] = useDiscoverHealthCheck();
+    const checkClickTimerRef = useRef<number | null>(null);
 
     const totalItemCount = useMemo(
         () => categories.reduce((sum, c) => sum + c.items.length, 0),
@@ -209,20 +214,20 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
     // Eager per-category scan: small categories in grid view only. The All
     // and list views take the chunked path below.
     useEffect(() => {
-        if (usesChunkedScan) return;
+        if (!healthEnabled || usesChunkedScan) return;
         const targets = activeItems
             .filter(item => item.healthCheckUrl)
             .map(item => ({ id: item.providerId || item.id, url: item.healthCheckUrl! }));
         if (targets.length === 0) return;
         const timer = setTimeout(() => scanItems(targets), 600);
         return () => clearTimeout(timer);
-    }, [usesChunkedScan, activeItems, scanItems]);
+    }, [healthEnabled, usesChunkedScan, activeItems, scanItems]);
 
     // Chunked-sequential scan for All / list: 12 at a time, 180ms apart,
     // cancellable via a generation counter so switching view/category aborts
     // a running scan. Cache (5 min) is reused by the hook.
     useEffect(() => {
-        if (chunkedTargets.length === 0) return;
+        if (!healthEnabled || chunkedTargets.length === 0) return;
         const runId = ++healthScanRunRef.current;
         let cancelled = false;
         const timer = window.setTimeout(() => {
@@ -241,9 +246,10 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
             healthScanRunRef.current++;
             window.clearTimeout(timer);
         };
-    }, [chunkedTargets, scanItems]);
+    }, [healthEnabled, chunkedTargets, scanItems]);
 
     const handleManualCheck = useCallback(() => {
+        if (!healthEnabled) return;
         if (usesChunkedScan) {
             const runId = ++healthScanRunRef.current;
             void (async () => {
@@ -261,7 +267,34 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
             .filter(item => item.healthCheckUrl)
             .map(item => ({ id: item.providerId || item.id, url: item.healthCheckUrl! }));
         scanItems(targets, true);
-    }, [usesChunkedScan, chunkedTargets, activeItems, scanItems]);
+    }, [healthEnabled, usesChunkedScan, chunkedTargets, activeItems, scanItems]);
+
+    // Check button: single click = manual re-scan, double click = toggle the
+    // whole health-check feature on/off. A short timer disambiguates the two so
+    // the double click does not also fire a scan.
+    const handleCheckClick = useCallback(() => {
+        if (checkClickTimerRef.current) {
+            window.clearTimeout(checkClickTimerRef.current);
+            checkClickTimerRef.current = null;
+            return; // second click of a double-click: let onDoubleClick handle it
+        }
+        checkClickTimerRef.current = window.setTimeout(() => {
+            checkClickTimerRef.current = null;
+            handleManualCheck();
+        }, 220);
+    }, [handleManualCheck]);
+
+    const handleCheckDoubleClick = useCallback(() => {
+        if (checkClickTimerRef.current) {
+            window.clearTimeout(checkClickTimerRef.current);
+            checkClickTimerRef.current = null;
+        }
+        setHealthEnabled(!healthEnabled);
+    }, [healthEnabled, setHealthEnabled]);
+
+    useEffect(() => () => {
+        if (checkClickTimerRef.current) window.clearTimeout(checkClickTimerRef.current);
+    }, []);
 
     const handleSelect = useCallback((item: DiscoverItem) => {
         onSelectProvider(item.protocol, item.providerId, item.demo);
@@ -371,17 +404,20 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
                         </button>
                     </div>
                     <button
-                        onClick={handleManualCheck}
+                        onClick={handleCheckClick}
+                        onDoubleClick={handleCheckDoubleClick}
                         disabled={scanning}
                         className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] transition-colors ${
                             scanning
                                 ? 'text-gray-400 dark:text-gray-500 cursor-wait'
-                                : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/50'
+                                : !healthEnabled
+                                    ? 'text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700/50'
+                                    : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/50'
                         }`}
-                        title={t('introHub.checkAvailability')}
+                        title={`${healthEnabled ? t('introHub.checkAvailability') : t('introHub.healthOff')} · ${t('introHub.healthToggleHint')}`}
                     >
-                        <Activity size={11} className={scanning ? 'animate-pulse' : ''} />
-                        {scanning ? t('introHub.scanning') : t('introHub.check')}
+                        <Activity size={11} className={scanning ? 'animate-pulse' : (!healthEnabled ? 'opacity-60' : '')} />
+                        {scanning ? t('introHub.scanning') : (healthEnabled ? t('introHub.check') : t('introHub.healthOff'))}
                     </button>
                 </div>
 

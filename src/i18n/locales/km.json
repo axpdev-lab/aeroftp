@@ -991,7 +991,9 @@
             "repairRekeyFromBackup": "ដាក់សោឡើងវិញពីការបម្រុងទុក",
             "restartApp": "ចាប់ផ្ដើម AeroFTP ឡើងវិញ",
             "backupRowBridge": "Bridge",
-            "backupRowBridgeDesc": "នាំចូល និងនាំចេញជាមួយឧបករណ៍ផ្សេងទៀតចំនួន {count}"
+            "backupRowBridgeDesc": "នាំចូល និងនាំចេញជាមួយឧបករណ៍ផ្សេងទៀតចំនួន {count}",
+            "discoverHealthCheck": "ការពិនិត្យសុខភាពនៅ Add Services",
+            "discoverHealthCheckDesc": "ពិនិត្យលទ្ធភាពភ្ជាប់របស់អ្នកផ្តល់សេវានៅក្នុងបញ្ជី Add Services។ ចុចពីរដងលើប៊ូតុង Check នៅផ្ទាំងនោះ ដើម្បីបិទ/បើកវាផងដែរ។"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4252,7 +4254,9 @@
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
-            }
+            },
+            "healthOff": "បិទការពិនិត្យ",
+            "healthToggleHint": "ចុចពីរដងដើម្បីបើក/បិទ"
         },
         "gitlab": {
             "projectPath": "ផ្លូវគម្រោង",

@@ -991,7 +991,9 @@
             "repairRekeyFromBackup": "Kodeeri varukoopiast ümber",
             "restartApp": "Taaskäivita AeroFTP",
             "backupRowBridge": "Bridge",
-            "backupRowBridgeDesc": "Impordi ja ekspordi {count} muu tööriistaga"
+            "backupRowBridgeDesc": "Impordi ja ekspordi {count} muu tööriistaga",
+            "discoverHealthCheck": "Saadavuse kontroll Add Services vaates",
+            "discoverHealthCheckDesc": "Kontrollib teenusepakkujate saadavust Add Services loendis. Topeltklõps selle vahekaardi nupul Kontrolli lülitab selle samuti sisse/välja."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4233,7 +4235,9 @@
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
-            }
+            },
+            "healthOff": "Kontroll väljas",
+            "healthToggleHint": "Topeltklõps lubamiseks/keelamiseks"
         },
         "gitlab": {
             "projectPath": "Projekti tee",

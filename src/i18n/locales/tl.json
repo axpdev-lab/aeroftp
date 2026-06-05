@@ -991,7 +991,9 @@
             "repairRekeyFromBackup": "Muling i-encrypt mula sa isang backup",
             "restartApp": "I-restart ang AeroFTP",
             "backupRowBridge": "Bridge",
-            "backupRowBridgeDesc": "Mag-import at mag-export gamit ang {count} pang ibang tool"
+            "backupRowBridgeDesc": "Mag-import at mag-export gamit ang {count} pang ibang tool",
+            "discoverHealthCheck": "Health check sa Add Services",
+            "discoverHealthCheckDesc": "Sinusuri ang reachability ng provider sa listahan ng Add Services. I-double click ang Check button sa tab na iyon para i-toggle din ito doon."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4252,7 +4254,9 @@
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
-            }
+            },
+            "healthOff": "Naka-off ang check",
+            "healthToggleHint": "I-double click para i-on/off"
         },
         "gitlab": {
             "projectPath": "Path ng Project",

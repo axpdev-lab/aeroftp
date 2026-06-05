@@ -2692,6 +2692,8 @@
             "swapPanelsDesc": "Place the local panel on the left and the remote panel on the right",
             "detailedCards": "Detailed server cards",
             "detailedCardsDesc": "Show the cached storage usage bar on My Servers cards.",
+            "discoverHealthCheck": "Health check on Add Services",
+            "discoverHealthCheckDesc": "Probe provider reachability in the Add Services list. Double-click the Check button on that tab to toggle it there too.",
             "concurrentTransfers": "Concurrent Transfers",
             "configEntriesLabel": "config entries",
             "configureAerocloud": "Configure in AeroCloud Panel",
@@ -4306,6 +4308,8 @@
             "check": "Check",
             "scanning": "Scanning...",
             "checkAvailability": "Check service availability",
+            "healthOff": "Health off",
+            "healthToggleHint": "Double-click to enable/disable",
             "list": {
                 "company": "Provider",
                 "region": "Region",

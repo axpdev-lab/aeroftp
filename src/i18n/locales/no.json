@@ -991,7 +991,9 @@
             "repairRekeyFromBackup": "Krypter på nytt fra en sikkerhetskopi",
             "restartApp": "Start AeroFTP på nytt",
             "backupRowBridge": "Bridge",
-            "backupRowBridgeDesc": "Importer og eksporter med {count} andre verktøy"
+            "backupRowBridgeDesc": "Importer og eksporter med {count} andre verktøy",
+            "discoverHealthCheck": "Helsesjekk i Add Services",
+            "discoverHealthCheckDesc": "Sjekker leverandørenes tilgjengelighet i Add Services-listen. Dobbeltklikk på Sjekk-knappen i den fanen for å slå det på/av der også."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4252,7 +4254,9 @@
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
-            }
+            },
+            "healthOff": "Sjekk av",
+            "healthToggleHint": "Dobbeltklikk for å slå på/av"
         },
         "gitlab": {
             "projectPath": "Prosjektsti",

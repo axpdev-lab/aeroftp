@@ -991,7 +991,9 @@
             "repairRekeyFromBackup": "从备份重新加密",
             "restartApp": "重启 AeroFTP",
             "backupRowBridge": "Bridge",
-            "backupRowBridgeDesc": "与其他 {count} 个工具导入和导出"
+            "backupRowBridgeDesc": "与其他 {count} 个工具导入和导出",
+            "discoverHealthCheck": "Add Services 中的健康检查",
+            "discoverHealthCheckDesc": "在 Add Services 列表中探测提供商的可达性。双击该选项卡中的检查按钮也可切换此功能。"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4233,7 +4235,9 @@
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
-            }
+            },
+            "healthOff": "检查已关闭",
+            "healthToggleHint": "双击以启用/禁用"
         },
         "gitlab": {
             "projectPath": "项目路径",

@@ -991,7 +991,9 @@
             "repairRekeyFromBackup": "Simba upya kutoka kwenye nakala rudufu",
             "restartApp": "Anzisha upya AeroFTP",
             "backupRowBridge": "Bridge",
-            "backupRowBridgeDesc": "Ingiza na hamisha kwa zana {count} nyingine"
+            "backupRowBridgeDesc": "Ingiza na hamisha kwa zana {count} nyingine",
+            "discoverHealthCheck": "Ukaguzi wa afya kwenye Add Services",
+            "discoverHealthCheckDesc": "Hukagua upatikanaji wa watoa huduma katika orodha ya Add Services. Bofya mara mbili kitufe cha Angalia kwenye kichupo hicho ili kukiwasha/kuzima pia."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4233,7 +4235,9 @@
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
-            }
+            },
+            "healthOff": "Ukaguzi umezimwa",
+            "healthToggleHint": "Bofya mara mbili kuwasha/kuzima"
         },
         "gitlab": {
             "projectPath": "Njia ya mradi",
