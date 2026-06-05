@@ -4,9 +4,12 @@
 import { describe, it, expect } from 'vitest';
 import type { CatalogCategoryId } from '../types/catalog';
 import committedCliCatalog from '../../src-tauri/src/cli_catalog.json?raw';
+import readmeRaw from '../../README.md?raw';
+import providersDocRaw from '../../docs/PROVIDERS.md?raw';
 import {
     PROVIDER_CATALOG,
     buildCliCatalog,
+    buildProvidersMarkdown,
     companyInCategory,
     companyLaunchProtocol,
 } from './providerCatalog';
@@ -18,6 +21,32 @@ describe('CLI catalog drift guard', () => {
             committedCliCatalog,
             'src-tauri/src/cli_catalog.json is stale - run `npm run gen:cli-catalog`',
         ).toBe(expected);
+    });
+});
+
+describe('providers table drift guard (issue #270 17104681)', () => {
+    const BEGIN = '<!-- BEGIN PROVIDERS-TABLE -->';
+    const END = '<!-- END PROVIDERS-TABLE -->';
+    const between = (src: string): string => {
+        const b = src.indexOf(BEGIN);
+        const e = src.indexOf(END);
+        expect(b, 'BEGIN PROVIDERS-TABLE anchor present').toBeGreaterThanOrEqual(0);
+        expect(e, 'END PROVIDERS-TABLE anchor after BEGIN').toBeGreaterThan(b);
+        return src.slice(b + BEGIN.length, e).trim();
+    };
+
+    it('README provider matrix matches buildProvidersMarkdown()', () => {
+        expect(
+            between(readmeRaw),
+            'README.md provider matrix is stale - run `npm run gen:providers-table`',
+        ).toBe(buildProvidersMarkdown().trim());
+    });
+
+    it('docs/PROVIDERS.md matches buildProvidersMarkdown()', () => {
+        expect(
+            between(providersDocRaw),
+            'docs/PROVIDERS.md is stale - run `npm run gen:providers-table`',
+        ).toBe(buildProvidersMarkdown().trim());
     });
 });
 

@@ -19,7 +19,8 @@
     "i18n:validate": "npx tsx scripts/i18n-validate.ts",
     "i18n:sync": "npx tsx scripts/i18n-sync.ts",
     "i18n:stats": "npx tsx scripts/i18n-stats.ts",
-    "gen:cli-catalog": "npx tsx scripts/gen-cli-catalog.ts"
+    "gen:cli-catalog": "npx tsx scripts/gen-cli-catalog.ts",
+    "gen:providers-table": "npx tsx scripts/gen-providers-table.ts"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",

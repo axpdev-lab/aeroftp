@@ -391,6 +391,52 @@ export function buildCliCatalog(): CliCatalogCompany[] {
     }));
 }
 
+/** Escape a value for a single markdown table cell. */
+function mdCell(s: string): string {
+    return s.replace(/\|/g, '\\|');
+}
+
+/**
+ * Project `PROVIDER_CATALOG` into the canonical markdown providers table
+ * (issue #270 17104681: the cloud-drive tables drift between README, the site
+ * and docs). The generator `scripts/gen-providers-table.ts` injects this block
+ * between the `PROVIDERS-TABLE` anchors in `README.md` and `docs/PROVIDERS.md`;
+ * a vitest drift guard (`providerCatalog.test.ts`) fails the gate if either copy
+ * falls out of sync, so the SSOT stays the single source. Pure and
+ * deterministic (sorted by company name, no Date/random), ASCII only (no
+ * em-dash in user-facing output).
+ */
+export function buildProvidersMarkdown(): string {
+    const rows = [...PROVIDER_CATALOG]
+        .sort((a, b) => a.company.toLowerCase().localeCompare(b.company.toLowerCase(), 'en'))
+        .map(c => {
+            const hq = c.countryCode ? c.countryCode.toUpperCase() : '-';
+            let free: string;
+            if (c.freeStorageGb != null) {
+                free = `${c.freeStorageGb} GB`;
+                if (c.freeNote) free += ` (${c.freeNote})`;
+            } else {
+                free = c.freeNote ?? '-';
+            }
+            const methods = c.protocols
+                .map(p => (p.paid ? `${p.label}*` : p.label))
+                .join(', ');
+            return `| ${mdCell(c.company)} | ${hq} | ${mdCell(free)} | ${mdCell(methods)} |`;
+        });
+
+    const methodCount = PROVIDER_CATALOG.reduce((n, c) => n + c.protocols.length, 0);
+
+    return [
+        '<!-- Generated from src/components/providerCatalog.ts by `npm run gen:providers-table`. Do not edit by hand. -->',
+        '',
+        '| Provider | HQ | Free tier | Connection methods |',
+        '| --- | --- | --- | --- |',
+        ...rows,
+        '',
+        `<sub>${PROVIDER_CATALOG.length} providers, ${methodCount} connection methods. \`*\` marks a paid / credit-card-gated plan. HQ is the ISO 3166-1 alpha-2 of the company HQ (EU = pan-European). Free-tier sizes are approximate: verify with the provider.</sub>`,
+    ].join('\n');
+}
+
 /**
  * Logo-id → company index, with a small alias table so callers that key by
  * a slightly different id (e.g. `ProvidersDialog` uses 'hetzner' /
