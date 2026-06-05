@@ -3775,7 +3775,9 @@
             "actions": "Actions",
             "pages": "Pages",
             "prs": "PRs",
-            "devTools": "Dev Tools"
+            "devTools": "Dev Tools",
+            "freeTier": "Δωρεάν πλάνο",
+            "paidTier": "Επί πληρωμή"
         },
         "zohoworkdrive": {
             "manageLabels": "Διαχείριση ετικετών",
@@ -4135,7 +4137,8 @@
                 "webdav": "WebDAV & Αυτο-φιλοξενούμενο",
                 "cloudStorage": "Αποθήκευση Cloud",
                 "developer": "Προγραμματιστής",
-                "mediaServices": "Υπηρεσίες πολυμέσων"
+                "mediaServices": "Υπηρεσίες πολυμέσων",
+                "all": "Όλα"
             },
             "confirmDeleteServer": "Διαγραφή διακομιστή \"{name}\"; Αυτό αφαιρεί τα αποθηκευμένα διαπιστευτήρια και δεν μπορεί να αναιρεθεί.",
             "renameWithHotkey": "Μετονομασία (F2)",
@@ -4204,6 +4207,32 @@
             "connectError": {
                 "failed": "Η τελευταία προσπάθεια σύνδεσης απέτυχε",
                 "lastFailedAt": "Τελευταίο σφάλμα πριν {time}"
+            },
+            "view": {
+                "grid": "Πλέγμα",
+                "list": "Λίστα"
+            },
+            "check": "Έλεγχος",
+            "scanning": "Σάρωση...",
+            "checkAvailability": "Έλεγχος διαθεσιμότητας υπηρεσίας",
+            "list": {
+                "company": "Πάροχος",
+                "region": "Περιοχή",
+                "freeStorage": "Δωρεάν",
+                "freeProtocols": "Δωρεάν πρωτόκολλα",
+                "paidProtocols": "Πληρωμένα πρωτόκολλα",
+                "health": "Κατάσταση",
+                "columns": "Στήλες",
+                "searchPlaceholder": "Αναζήτηση παρόχων, πρωτοκόλλων...",
+                "footerSummary": "{count} πάροχοι · ~{gb} GB δωρεάν",
+                "approximate": "κατά προσέγγιση, επιβεβαιώστε με τον πάροχο",
+                "connectHint": "Σύνδεση με {company}",
+                "customProfiles": "Προσαρμοσμένοι / γενικοί διακομιστές",
+                "customFtp": "FTP / FTPS",
+                "customSftp": "SFTP",
+                "customS3": "S3",
+                "customWebdav": "WebDAV",
+                "customAzure": "Azure Blob"
             }
         },
         "gitlab": {

@@ -3775,7 +3775,9 @@
             "actions": "Actions",
             "pages": "Pages",
             "prs": "PRs",
-            "devTools": "Dev Tools"
+            "devTools": "Dev Tools",
+            "freeTier": "Ingyenes csomag",
+            "paidTier": "Fizetős"
         },
         "zohoworkdrive": {
             "manageLabels": "Címkék kezelése",
@@ -4135,7 +4137,8 @@
                 "webdav": "WebDAV és saját tárhely",
                 "cloudStorage": "Felhőtároló",
                 "developer": "Fejlesztői eszközök",
-                "mediaServices": "Médiaszolgáltatások"
+                "mediaServices": "Médiaszolgáltatások",
+                "all": "Összes"
             },
             "confirmDeleteServer": "Törli a(z) \"{name}\" szervert? Ez eltávolítja a mentett hitelesítő adatokat, és nem vonható vissza.",
             "renameWithHotkey": "Átnevezés (F2)",
@@ -4204,6 +4207,32 @@
             "connectError": {
                 "failed": "Az utolsó csatlakozási kísérlet sikertelen",
                 "lastFailedAt": "Utolsó hiba {time} ezelőtt"
+            },
+            "view": {
+                "grid": "Rács",
+                "list": "Lista"
+            },
+            "check": "Ellenőrzés",
+            "scanning": "Keresés...",
+            "checkAvailability": "Szolgáltatás elérhetőségének ellenőrzése",
+            "list": {
+                "company": "Szolgáltató",
+                "region": "Régió",
+                "freeStorage": "Ingyenes",
+                "freeProtocols": "Ingyenes protokollok",
+                "paidProtocols": "Fizetős protokollok",
+                "health": "Állapot",
+                "columns": "Oszlopok",
+                "searchPlaceholder": "Szolgáltatók, protokollok keresése...",
+                "footerSummary": "{count} szolgáltató · ~{gb} GB ingyen",
+                "approximate": "hozzávetőleges, ellenőrizze a szolgáltatónál",
+                "connectHint": "Csatlakozás ehhez: {company}",
+                "customProfiles": "Egyéni / általános kiszolgálók",
+                "customFtp": "FTP / FTPS",
+                "customSftp": "SFTP",
+                "customS3": "S3",
+                "customWebdav": "WebDAV",
+                "customAzure": "Azure Blob"
             }
         },
         "gitlab": {

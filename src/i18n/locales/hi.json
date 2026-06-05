@@ -3775,7 +3775,9 @@
             "actions": "Actions",
             "pages": "Pages",
             "prs": "PRs",
-            "devTools": "Dev Tools"
+            "devTools": "Dev Tools",
+            "freeTier": "मुफ़्त योजना",
+            "paidTier": "सशुल्क"
         },
         "zohoworkdrive": {
             "manageLabels": "लेबल प्रबंधित करें",
@@ -4135,7 +4137,8 @@
                 "webdav": "WebDAV और सेल्फ-होस्टेड",
                 "cloudStorage": "क्लाउड स्टोरेज",
                 "developer": "डेवलपर",
-                "mediaServices": "मीडिया सेवाएं"
+                "mediaServices": "मीडिया सेवाएं",
+                "all": "सभी"
             },
             "confirmDeleteServer": "सर्वर \"{name}\" हटाएं? इससे सहेजी गई क्रेडेंशियल हट जाएंगी और इसे पूर्ववत नहीं किया जा सकता।",
             "renameWithHotkey": "नाम बदलें (F2)",
@@ -4204,6 +4207,32 @@
             "connectError": {
                 "failed": "अंतिम कनेक्शन प्रयास विफल",
                 "lastFailedAt": "अंतिम विफलता {time} पहले"
+            },
+            "view": {
+                "grid": "ग्रिड",
+                "list": "सूची"
+            },
+            "check": "जाँचें",
+            "scanning": "स्कैन हो रहा है...",
+            "checkAvailability": "सेवा की उपलब्धता जाँचें",
+            "list": {
+                "company": "प्रदाता",
+                "region": "क्षेत्र",
+                "freeStorage": "मुफ़्त",
+                "freeProtocols": "मुफ़्त प्रोटोकॉल",
+                "paidProtocols": "सशुल्क प्रोटोकॉल",
+                "health": "स्थिति",
+                "columns": "कॉलम",
+                "searchPlaceholder": "प्रदाता, प्रोटोकॉल खोजें...",
+                "footerSummary": "{count} प्रदाता · ~{gb} GB मुफ़्त",
+                "approximate": "अनुमानित, प्रदाता से सत्यापित करें",
+                "connectHint": "{company} से कनेक्ट करें",
+                "customProfiles": "कस्टम / सामान्य सर्वर",
+                "customFtp": "FTP / FTPS",
+                "customSftp": "SFTP",
+                "customS3": "S3",
+                "customWebdav": "WebDAV",
+                "customAzure": "Azure Blob"
             }
         },
         "gitlab": {

@@ -3794,7 +3794,9 @@
             "actions": "Actions",
             "pages": "Pages",
             "prs": "PRs",
-            "devTools": "Dev Tools"
+            "devTools": "Dev Tools",
+            "freeTier": "Ókeypis áskrift",
+            "paidTier": "Gjaldskylt"
         },
         "zohoworkdrive": {
             "manageLabels": "Stjórna merkjum",
@@ -4154,7 +4156,8 @@
                 "webdav": "WebDAV og sjálfshýst",
                 "cloudStorage": "Skýgeymsla",
                 "developer": "Þróunarverkfæri",
-                "mediaServices": "Margmiðlunarþjónustur"
+                "mediaServices": "Margmiðlunarþjónustur",
+                "all": "Allt"
             },
             "confirmDeleteServer": "Eyða þjóninum \"{name}\"? Þetta fjarlægir vistuð skilríki og er óafturkræft.",
             "renameWithHotkey": "Endurnefna (F2)",
@@ -4223,6 +4226,32 @@
             "connectError": {
                 "failed": "Síðasta tengitilraun mistókst",
                 "lastFailedAt": "Síðasta villa fyrir {time}"
+            },
+            "view": {
+                "grid": "Reitir",
+                "list": "Listi"
+            },
+            "check": "Athuga",
+            "scanning": "Skanna...",
+            "checkAvailability": "Athuga framboð þjónustu",
+            "list": {
+                "company": "Þjónustuaðili",
+                "region": "Svæði",
+                "freeStorage": "Ókeypis",
+                "freeProtocols": "Ókeypis samskiptareglur",
+                "paidProtocols": "Gjaldskyldar samskiptareglur",
+                "health": "Staða",
+                "columns": "Dálkar",
+                "searchPlaceholder": "Leita að þjónustuaðilum, samskiptareglum...",
+                "footerSummary": "{count} þjónustuaðilar · ~{gb} GB ókeypis",
+                "approximate": "áætlað, staðfestu hjá þjónustuaðila",
+                "connectHint": "Tengjast við {company}",
+                "customProfiles": "Sérsniðnir / almennir þjónar",
+                "customFtp": "FTP / FTPS",
+                "customSftp": "SFTP",
+                "customS3": "S3",
+                "customWebdav": "WebDAV",
+                "customAzure": "Azure Blob"
             }
         },
         "gitlab": {

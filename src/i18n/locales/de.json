@@ -3775,7 +3775,9 @@
             "actions": "Actions",
             "pages": "Pages",
             "prs": "PRs",
-            "devTools": "Dev Tools"
+            "devTools": "Dev Tools",
+            "freeTier": "Kostenloses Kontingent",
+            "paidTier": "Kostenpflichtig"
         },
         "zohoworkdrive": {
             "manageLabels": "Beschriftungen verwalten",
@@ -4135,7 +4137,8 @@
                 "webdav": "WebDAV & Selbstgehostet",
                 "cloudStorage": "Cloud-Speicher",
                 "developer": "Entwickler",
-                "mediaServices": "Mediendienste"
+                "mediaServices": "Mediendienste",
+                "all": "Alle"
             },
             "confirmDeleteServer": "Server \"{name}\" löschen? Dies entfernt gespeicherte Anmeldedaten und kann nicht rückgängig gemacht werden.",
             "renameWithHotkey": "Umbenennen (F2)",
@@ -4204,6 +4207,32 @@
             "connectError": {
                 "failed": "Letzter Verbindungsversuch fehlgeschlagen",
                 "lastFailedAt": "Letzter Fehler vor {time}"
+            },
+            "view": {
+                "grid": "Raster",
+                "list": "Liste"
+            },
+            "check": "Prüfen",
+            "scanning": "Wird gescannt...",
+            "checkAvailability": "Verfügbarkeit des Dienstes prüfen",
+            "list": {
+                "company": "Anbieter",
+                "region": "Region",
+                "freeStorage": "Kostenlos",
+                "freeProtocols": "Kostenlose Protokolle",
+                "paidProtocols": "Kostenpflichtige Protokolle",
+                "health": "Status",
+                "columns": "Spalten",
+                "searchPlaceholder": "Anbieter, Protokolle suchen...",
+                "footerSummary": "{count} Anbieter · ~{gb} GB kostenlos",
+                "approximate": "ungefähr, beim Anbieter prüfen",
+                "connectHint": "Mit {company} verbinden",
+                "customProfiles": "Benutzerdefinierte / generische Server",
+                "customFtp": "FTP / FTPS",
+                "customSftp": "SFTP",
+                "customS3": "S3",
+                "customWebdav": "WebDAV",
+                "customAzure": "Azure Blob"
             }
         },
         "gitlab": {

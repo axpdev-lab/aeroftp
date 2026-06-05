@@ -3794,7 +3794,9 @@
             "actions": "Actions",
             "pages": "Pages",
             "prs": "PRs",
-            "devTools": "Dev Tools"
+            "devTools": "Dev Tools",
+            "freeTier": "Бесплатен план",
+            "paidTier": "Платено"
         },
         "zohoworkdrive": {
             "manageLabels": "Управувај со етикети",
@@ -4154,7 +4156,8 @@
                 "webdav": "WebDAV и самохостирано",
                 "cloudStorage": "Облак складиште",
                 "developer": "Развивачки алатки",
-                "mediaServices": "Медиумски услуги"
+                "mediaServices": "Медиумски услуги",
+                "all": "Сите"
             },
             "confirmDeleteServer": "Да се избрише серверот \"{name}\"? Ова ги отстранува зачуваните ингеренции и не може да се поништи.",
             "renameWithHotkey": "Преименувај (F2)",
@@ -4223,6 +4226,32 @@
             "connectError": {
                 "failed": "Последниот обид за поврзување не успеа",
                 "lastFailedAt": "Последна грешка пред {time}"
+            },
+            "view": {
+                "grid": "Мрежа",
+                "list": "Список"
+            },
+            "check": "Провери",
+            "scanning": "Скенирање...",
+            "checkAvailability": "Провери ја достапноста на услугата",
+            "list": {
+                "company": "Провајдер",
+                "region": "Регион",
+                "freeStorage": "Бесплатно",
+                "freeProtocols": "Бесплатни протоколи",
+                "paidProtocols": "Платени протоколи",
+                "health": "Статус",
+                "columns": "Колони",
+                "searchPlaceholder": "Пребарувај провајдери, протоколи...",
+                "footerSummary": "{count} провајдери · ~{gb} GB бесплатно",
+                "approximate": "приближно, проверете кај провајдерот",
+                "connectHint": "Поврзи се со {company}",
+                "customProfiles": "Прилагодени / генерички сервери",
+                "customFtp": "FTP / FTPS",
+                "customSftp": "SFTP",
+                "customS3": "S3",
+                "customWebdav": "WebDAV",
+                "customAzure": "Azure Blob"
             }
         },
         "gitlab": {

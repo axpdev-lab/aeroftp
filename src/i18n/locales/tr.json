@@ -3775,7 +3775,9 @@
             "actions": "Actions",
             "pages": "Pages",
             "prs": "PRs",
-            "devTools": "Dev Tools"
+            "devTools": "Dev Tools",
+            "freeTier": "Ücretsiz plan",
+            "paidTier": "Ücretli"
         },
         "zohoworkdrive": {
             "manageLabels": "Etiketleri Yönet",
@@ -4135,7 +4137,8 @@
                 "webdav": "WebDAV ve Kendi Barındırma",
                 "cloudStorage": "Bulut Depolama",
                 "developer": "Geliştirici",
-                "mediaServices": "Medya Hizmetleri"
+                "mediaServices": "Medya Hizmetleri",
+                "all": "Tümü"
             },
             "confirmDeleteServer": "\"{name}\" sunucusu silinsin mi? Bu işlem kayıtlı kimlik bilgilerini kaldırır ve geri alınamaz.",
             "renameWithHotkey": "Yeniden adlandır (F2)",
@@ -4204,6 +4207,32 @@
             "connectError": {
                 "failed": "Son bağlantı denemesi başarısız",
                 "lastFailedAt": "Son hata {time} önce"
+            },
+            "view": {
+                "grid": "Izgara",
+                "list": "Liste"
+            },
+            "check": "Kontrol et",
+            "scanning": "Taranıyor...",
+            "checkAvailability": "Hizmet kullanılabilirliğini kontrol et",
+            "list": {
+                "company": "Sağlayıcı",
+                "region": "Bölge",
+                "freeStorage": "Ücretsiz",
+                "freeProtocols": "Ücretsiz protokoller",
+                "paidProtocols": "Ücretli protokoller",
+                "health": "Durum",
+                "columns": "Sütunlar",
+                "searchPlaceholder": "Sağlayıcı, protokol ara...",
+                "footerSummary": "{count} sağlayıcı · ~{gb} GB ücretsiz",
+                "approximate": "yaklaşık, sağlayıcıyla doğrulayın",
+                "connectHint": "{company} öğesine bağlan",
+                "customProfiles": "Özel / genel sunucular",
+                "customFtp": "FTP / FTPS",
+                "customSftp": "SFTP",
+                "customS3": "S3",
+                "customWebdav": "WebDAV",
+                "customAzure": "Azure Blob"
             }
         },
         "gitlab": {

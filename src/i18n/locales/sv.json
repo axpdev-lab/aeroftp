@@ -3775,7 +3775,9 @@
             "actions": "Actions",
             "pages": "Pages",
             "prs": "PRs",
-            "devTools": "Dev Tools"
+            "devTools": "Dev Tools",
+            "freeTier": "Gratisplan",
+            "paidTier": "Betald"
         },
         "zohoworkdrive": {
             "manageLabels": "Hantera etiketter",
@@ -4135,7 +4137,8 @@
                 "webdav": "WebDAV och självhostad",
                 "cloudStorage": "Molnlagring",
                 "developer": "Utvecklare",
-                "mediaServices": "Medietjänster"
+                "mediaServices": "Medietjänster",
+                "all": "Alla"
             },
             "confirmDeleteServer": "Ta bort servern \"{name}\"? Detta tar bort sparade inloggningsuppgifter och kan inte ångras.",
             "renameWithHotkey": "Byt namn (F2)",
@@ -4204,6 +4207,32 @@
             "connectError": {
                 "failed": "Senaste anslutningsförsöket misslyckades",
                 "lastFailedAt": "Senaste fel för {time} sedan"
+            },
+            "view": {
+                "grid": "Rutnät",
+                "list": "Lista"
+            },
+            "check": "Kontrollera",
+            "scanning": "Söker...",
+            "checkAvailability": "Kontrollera tjänstens tillgänglighet",
+            "list": {
+                "company": "Leverantör",
+                "region": "Region",
+                "freeStorage": "Gratis",
+                "freeProtocols": "Gratis protokoll",
+                "paidProtocols": "Betalda protokoll",
+                "health": "Status",
+                "columns": "Kolumner",
+                "searchPlaceholder": "Sök leverantörer, protokoll...",
+                "footerSummary": "{count} leverantörer · ~{gb} GB gratis",
+                "approximate": "ungefärligt, kontrollera med leverantören",
+                "connectHint": "Anslut till {company}",
+                "customProfiles": "Anpassade / generiska servrar",
+                "customFtp": "FTP / FTPS",
+                "customSftp": "SFTP",
+                "customS3": "S3",
+                "customWebdav": "WebDAV",
+                "customAzure": "Azure Blob"
             }
         },
         "gitlab": {

@@ -3775,7 +3775,9 @@
             "actions": "Actions",
             "pages": "Pages",
             "prs": "PRs",
-            "devTools": "Dev Tools"
+            "devTools": "Dev Tools",
+            "freeTier": "Gói miễn phí",
+            "paidTier": "Trả phí"
         },
         "zohoworkdrive": {
             "manageLabels": "Quản lý nhãn",
@@ -4135,7 +4137,8 @@
                 "webdav": "WebDAV & Tự lưu trữ",
                 "cloudStorage": "Lưu trữ đám mây",
                 "developer": "Nhà phát triển",
-                "mediaServices": "Dịch vụ Phương tiện"
+                "mediaServices": "Dịch vụ Phương tiện",
+                "all": "Tất cả"
             },
             "confirmDeleteServer": "Xóa máy chủ \"{name}\"? Thao tác này sẽ xóa thông tin xác thực đã lưu và không thể hoàn tác.",
             "renameWithHotkey": "Đổi tên (F2)",
@@ -4204,6 +4207,32 @@
             "connectError": {
                 "failed": "Lần kết nối cuối cùng đã thất bại",
                 "lastFailedAt": "Lỗi gần nhất {time} trước"
+            },
+            "view": {
+                "grid": "Lưới",
+                "list": "Danh sách"
+            },
+            "check": "Kiểm tra",
+            "scanning": "Đang quét...",
+            "checkAvailability": "Kiểm tra tình trạng dịch vụ",
+            "list": {
+                "company": "Nhà cung cấp",
+                "region": "Khu vực",
+                "freeStorage": "Miễn phí",
+                "freeProtocols": "Giao thức miễn phí",
+                "paidProtocols": "Giao thức trả phí",
+                "health": "Trạng thái",
+                "columns": "Cột",
+                "searchPlaceholder": "Tìm nhà cung cấp, giao thức...",
+                "footerSummary": "{count} nhà cung cấp · ~{gb} GB miễn phí",
+                "approximate": "ước tính, hãy xác minh với nhà cung cấp",
+                "connectHint": "Kết nối tới {company}",
+                "customProfiles": "Máy chủ tùy chỉnh / chung",
+                "customFtp": "FTP / FTPS",
+                "customSftp": "SFTP",
+                "customS3": "S3",
+                "customWebdav": "WebDAV",
+                "customAzure": "Azure Blob"
             }
         },
         "gitlab": {

@@ -3775,7 +3775,9 @@
             "actions": "Actions",
             "pages": "Pages",
             "prs": "PRs",
-            "devTools": "Dev Tools"
+            "devTools": "Dev Tools",
+            "freeTier": "Ilmainen taso",
+            "paidTier": "Maksullinen"
         },
         "zohoworkdrive": {
             "manageLabels": "Hallitse tunnisteita",
@@ -4135,7 +4137,8 @@
                 "webdav": "WebDAV ja itse isännöity",
                 "cloudStorage": "Pilvitallennustila",
                 "developer": "Kehittäjä",
-                "mediaServices": "Mediapalvelut"
+                "mediaServices": "Mediapalvelut",
+                "all": "Kaikki"
             },
             "confirmDeleteServer": "Poistetaanko palvelin \"{name}\"? Tämä poistaa tallennetut tunnistetiedot eikä sitä voi kumota.",
             "renameWithHotkey": "Nimeä uudelleen (F2)",
@@ -4204,6 +4207,32 @@
             "connectError": {
                 "failed": "Viimeisin yhteysyritys epäonnistui",
                 "lastFailedAt": "Viimeisin virhe {time} sitten"
+            },
+            "view": {
+                "grid": "Ruudukko",
+                "list": "Luettelo"
+            },
+            "check": "Tarkista",
+            "scanning": "Skannataan...",
+            "checkAvailability": "Tarkista palvelun saatavuus",
+            "list": {
+                "company": "Palveluntarjoaja",
+                "region": "Alue",
+                "freeStorage": "Ilmainen",
+                "freeProtocols": "Ilmaiset protokollat",
+                "paidProtocols": "Maksulliset protokollat",
+                "health": "Tila",
+                "columns": "Sarakkeet",
+                "searchPlaceholder": "Hae palveluntarjoajia, protokollia...",
+                "footerSummary": "{count} palveluntarjoajaa · ~{gb} GB ilmaiseksi",
+                "approximate": "arvio, vahvista palveluntarjoajalta",
+                "connectHint": "Yhdistä palveluun {company}",
+                "customProfiles": "Mukautetut / yleiset palvelimet",
+                "customFtp": "FTP / FTPS",
+                "customSftp": "SFTP",
+                "customS3": "S3",
+                "customWebdav": "WebDAV",
+                "customAzure": "Azure Blob"
             }
         },
         "gitlab": {

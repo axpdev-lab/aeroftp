@@ -7,6 +7,8 @@ import { X, Check, Minus } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { CountryFlag } from './CountryFlag';
+import { findCatalogByLogo, hasFreeTier } from './providerCatalog';
 
 interface ProvidersDialogProps {
   isOpen: boolean;
@@ -278,7 +280,7 @@ export function ProvidersDialog({ isOpen, onClose }: ProvidersDialogProps) {
 
       <div
         {...modalDrag.panelProps}
-        className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl w-full max-w-[700px] overflow-hidden flex flex-col animate-scale-in"
+        className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl w-full max-w-[780px] overflow-hidden flex flex-col animate-scale-in"
         style={{ maxHeight: '90vh', ...modalDrag.panelProps.style }}
         role="dialog"
         aria-modal="true"
@@ -313,6 +315,14 @@ export function ProvidersDialog({ isOpen, onClose }: ProvidersDialogProps) {
             <span className="text-[9px] font-bold bg-gradient-to-r from-amber-500 to-orange-500 text-white px-1 rounded">PRO</span>
             <span>Enterprise only</span>
           </div>
+          <div className="flex items-center gap-1.5 text-[10px] text-gray-500 dark:text-gray-400">
+            <span className="text-[9px] font-medium px-1 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">GB</span>
+            <span>{t('providers.freeTier')}</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-[10px] text-gray-500 dark:text-gray-400">
+            <span className="text-[9px] font-medium px-1 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">$</span>
+            <span>{t('providers.paidTier')}</span>
+          </div>
         </div>
 
         {/* Single unified table */}
@@ -346,6 +356,8 @@ export function ProvidersDialog({ isOpen, onClose }: ProvidersDialogProps) {
               {ALL_PROVIDERS.map((provider, idx) => {
                 const Logo = PROVIDER_LOGOS[provider.logoId];
                 const hasCoreOps = CORE_OPS.every(op => provider.base.includes(op));
+                const catalog = findCatalogByLogo(provider.logoId);
+                const isFree = catalog ? hasFreeTier(catalog) : false;
                 return (
                   <React.Fragment key={`${provider.logoId}-${idx}`}>
                     {provider.section && (
@@ -365,6 +377,20 @@ export function ProvidersDialog({ isOpen, onClose }: ProvidersDialogProps) {
                             {Logo ? <Logo size={16} /> : <div className="w-4 h-4 rounded bg-gray-400" />}
                           </div>
                           <span className="font-medium text-gray-900 dark:text-gray-100 whitespace-nowrap text-[11px]">{provider.name}</span>
+                          {catalog?.countryCode && (
+                            <CountryFlag code={catalog.countryCode} title={catalog.countryCode} className="w-4 h-3 rounded-[2px] shadow-sm shrink-0" />
+                          )}
+                          {catalog && (
+                            isFree ? (
+                              <span className="text-[9px] font-medium px-1 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 whitespace-nowrap shrink-0">
+                                {catalog.freeStorageGb != null ? `${catalog.freeStorageGb} GB` : t('providers.freeTier')}
+                              </span>
+                            ) : (
+                              <span className="text-[9px] font-medium px-1 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 whitespace-nowrap shrink-0">
+                                {t('providers.paidTier')}
+                              </span>
+                            )
+                          )}
                         </div>
                       </td>
                       <td className="text-center py-1.5 px-2" title={hasCoreOps ? 'Upload, Download, Delete, Rename, Move, Create Folder, Search' : ''}>
