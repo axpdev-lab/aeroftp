@@ -147,6 +147,27 @@ fn md5_hex(input: &str) -> String {
     format!("{:x}", digest)
 }
 
+/// Render a reqwest error with its full source chain.
+///
+/// reqwest's top-level `Display` for a send failure is the generic
+/// "error sending request for url (...)"; the actionable cause (connection
+/// reset, connection closed before message completed, timed out, ...) lives
+/// in the source chain. Surfacing it turns an opaque preview/download failure
+/// into a diagnosable one (issue #264, MEGAcmd bridge GET failures).
+fn describe_reqwest_error(e: &reqwest::Error) -> String {
+    let mut msg = e.to_string();
+    let mut source = std::error::Error::source(e);
+    while let Some(s) = source {
+        let detail = s.to_string();
+        if !detail.is_empty() && !msg.ends_with(&detail) {
+            msg.push_str(": ");
+            msg.push_str(&detail);
+        }
+        source = s.source();
+    }
+    msg
+}
+
 /// Extract the path component from a full URL, preserving trailing slash
 fn extract_uri_path(url: &str) -> String {
     if let Some(idx) = url.find("://") {
@@ -276,7 +297,7 @@ impl WebDavProvider {
                 config.url
             );
         }
-        let client = Client::builder()
+        let mut client_builder = Client::builder()
             .user_agent(crate::providers::AEROFTP_WEBDAV_USER_AGENT)
             .danger_accept_invalid_certs(!config.verify_cert)
             .connect_timeout(std::time::Duration::from_secs(30))
@@ -284,11 +305,23 @@ impl WebDavProvider {
             // server-side post-processing (md5, replication). 300s previously
             // killed 1 GiB uploads on jianguoyun, InfiniCloud, DriveHQ, and
             // Koofr WebDAV when sustained throughput dropped below ~27 Mbps.
-            .read_timeout(std::time::Duration::from_secs(1800))
-            .build()
-            .map_err(|e| {
-                ProviderError::ConnectionFailed(format!("HTTP client init failed: {e}"))
-            })?;
+            .read_timeout(std::time::Duration::from_secs(1800));
+
+        // Issue #264: MEGAcmd's embedded `mega-webdav` bridge does not
+        // reliably honor HTTP keep-alive. A connection kept idle after the
+        // connect-time PROPFIND (or the stat that precedes an image preview)
+        // is frequently closed by the bridge, so reqwest reuses a dead socket
+        // and the following GET fails before any byte is sent ("error sending
+        // request for url ...", a transport error rather than an HTTP status).
+        // The bridge is loopback-only, so forcing a fresh connection per
+        // request costs nothing and removes the stale-reuse failure class.
+        if super::mega_df::is_megacmd_webdav_provider_id(config.provider_id.as_deref()) {
+            client_builder = client_builder.pool_max_idle_per_host(0);
+        }
+
+        let client = client_builder.build().map_err(|e| {
+            ProviderError::ConnectionFailed(format!("HTTP client init failed: {e}"))
+        })?;
 
         Ok(Self {
             config,
@@ -727,7 +760,7 @@ impl WebDavProvider {
             let response = req
                 .send()
                 .await
-                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+                .map_err(|e| ProviderError::NetworkError(describe_reqwest_error(&e)))?;
 
             if response.status() != StatusCode::TOO_EARLY || attempt == MAX_ATTEMPTS {
                 return Ok(response);
