@@ -15,6 +15,7 @@ use super::ProviderError;
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 const MEGA_DF_TIMEOUT_SECS: u64 = 30;
+const MEGA_WEBDAV_TIMEOUT_SECS: u64 = 30;
 
 /// Metadata key used to carry the GUI registry preset id through ProviderConfig.
 pub const PROVIDER_ID_META_KEY: &str = "_aeroftp_provider_id";
@@ -103,6 +104,85 @@ pub async fn mega_df_query() -> Result<(u64, u64), ProviderError> {
     }
 
     parse_mega_df_output(&stdout)
+}
+
+/// Spawn a MEGAcmd command and capture its output with a timeout.
+async fn run_mega_cmd_capture(
+    cmd: &str,
+    args: &[&str],
+) -> Result<std::process::Output, ProviderError> {
+    let resolved_cmd = resolve_mega_cmd(cmd);
+    let mut command = Command::new(&resolved_cmd);
+    command.args(args);
+    #[cfg(windows)]
+    {
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    tokio::time::timeout(
+        std::time::Duration::from_secs(MEGA_WEBDAV_TIMEOUT_SECS),
+        command.output(),
+    )
+    .await
+    .map_err(|_| ProviderError::Timeout)?
+    .map_err(|e| {
+        ProviderError::NotSupported(format!(
+            "{} is not available (resolved: {}): {}",
+            cmd, resolved_cmd, e
+        ))
+    })
+}
+
+/// Interpret a `mega-webdav /` invocation. Pure, for testability.
+///
+/// `mega-webdav /` is idempotent: re-running it when the bridge is already up is
+/// a no-op the user would do themselves. We treat a clean exit, or output that
+/// says the location is already served, as success; "not logged in" becomes an
+/// actionable auth error; anything else surfaces verbatim.
+pub(crate) fn classify_mega_webdav_result(
+    success: bool,
+    combined: &str,
+) -> Result<(), ProviderError> {
+    if success {
+        return Ok(());
+    }
+    let lower = combined.to_ascii_lowercase();
+    if lower.contains("already") || lower.contains("serving") || lower.contains("served") {
+        return Ok(());
+    }
+    if lower.contains("not logged in")
+        || lower.contains("not logged-in")
+        || lower.contains("login required")
+    {
+        return Err(ProviderError::AuthenticationFailed(
+            "MEGAcmd has no active session; run `mega-login <email>` once in the MEGAcmd \
+             terminal, then reconnect (the anonymous local-WebDAV bridge carries no MEGA \
+             credentials, so AeroFTP cannot log in for you)"
+                .to_string(),
+        ));
+    }
+    Err(ProviderError::ServerError(format!(
+        "mega-webdav /: {}",
+        combined.trim()
+    )))
+}
+
+/// Ensure the local MEGAcmd WebDAV bridge is serving the account root.
+///
+/// Zero-config bridge (issue #275 17076174): a MEGAcmd Server restart drops the
+/// `webdav` location, forcing the user back to the terminal to re-run
+/// `webdav /`. Driving it here removes that recurring step. It requires an
+/// existing `mega-login` session: the bridge preset is anonymous and carries no
+/// MEGA credentials, so the one-time login stays manual until a credentialled
+/// MEGAcmd connection mode exists. Best-effort: callers treat any error as
+/// non-fatal and fall back to the existing connection probe.
+pub async fn ensure_megacmd_webdav_bridge() -> Result<(), ProviderError> {
+    let output = run_mega_cmd_capture("mega-webdav", &["/"]).await?;
+    let combined = format!(
+        "{} {}",
+        String::from_utf8_lossy(&output.stderr),
+        String::from_utf8_lossy(&output.stdout)
+    );
+    classify_mega_webdav_result(output.status.success(), &combined)
 }
 
 pub(crate) fn parse_mega_df_output(output: &str) -> Result<(u64, u64), ProviderError> {
@@ -271,5 +351,31 @@ Total size taken up by file versions:     31457280
         let out = resolve_mega_cmd("mega-df");
         assert!(!out.is_empty());
         assert!(out.contains("mega-df") || out.ends_with("mega-df"));
+    }
+
+    #[test]
+    fn mega_webdav_clean_exit_is_ok() {
+        assert!(classify_mega_webdav_result(true, "").is_ok());
+    }
+
+    #[test]
+    fn mega_webdav_already_served_is_ok() {
+        assert!(
+            classify_mega_webdav_result(false, "/: already being served at http://127.0.0.1:4443/")
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn mega_webdav_not_logged_in_is_auth_error() {
+        let err = classify_mega_webdav_result(false, "[err: Not logged in.]").unwrap_err();
+        assert!(matches!(err, ProviderError::AuthenticationFailed(_)));
+        assert!(err.to_string().to_lowercase().contains("mega-login"));
+    }
+
+    #[test]
+    fn mega_webdav_unknown_failure_is_server_error() {
+        let err = classify_mega_webdav_result(false, "some other failure").unwrap_err();
+        assert!(matches!(err, ProviderError::ServerError(_)));
     }
 }
