@@ -841,6 +841,12 @@ fn validate_sp(server: &str, path: Option<&str>) -> Result<(), String> {
 /// array on single failure, longer on aggregate failures. The element shape
 /// is `{message, code?, path?}` as agreed for the uniform envelope.
 fn err(msg: String) -> (Value, bool) {
+    // MCP-02: every tool error is serialized into the model-facing tool result
+    // (`content[0].text`). Scrub API keys / bearer tokens / x-api-key reflections
+    // before they reach model context, matching the AI-stream and CLI-agent paths.
+    // This is the single chokepoint for all tool-result errors (the unified
+    // dispatcher and every inline failure arm route through it).
+    let msg = crate::ai::sanitize_error_message(&msg);
     let errors = json!([{ "message": msg.clone() }]);
     (json!({ "error": msg, "errors": errors }), true)
 }
@@ -1962,6 +1968,36 @@ mod tests {
             .expect("errors array");
         assert_eq!(arr.len(), 1);
         assert_eq!(arr[0].get("message").and_then(|v| v.as_str()), Some("boom"));
+    }
+
+    #[test]
+    fn err_envelope_scrubs_secrets() {
+        // MCP-02: an error that reflects a bearer token / API key (whether from a
+        // provider response or echoed user input) must be redacted before it lands
+        // in the model-facing tool result.
+        let (payload, is_error) =
+            super::err("Invalid direction 'Bearer sk-abcdefghijklmnopqrstuvwxyz123456'".to_string());
+        assert!(is_error);
+        let scalar = payload.get("error").and_then(|v| v.as_str()).unwrap();
+        assert!(
+            scalar.contains("[REDACTED]"),
+            "scalar error not scrubbed: {scalar}"
+        );
+        assert!(
+            !scalar.contains("sk-abcdefghijklmnopqrstuvwxyz123456"),
+            "raw token leaked in scalar: {scalar}"
+        );
+        let arr_msg = payload
+            .get("errors")
+            .and_then(|v| v.as_array())
+            .and_then(|a| a.first())
+            .and_then(|e| e.get("message"))
+            .and_then(|m| m.as_str())
+            .unwrap();
+        assert!(
+            !arr_msg.contains("sk-abcdefghijklmnopqrstuvwxyz123456"),
+            "raw token leaked in errors[]: {arr_msg}"
+        );
     }
 
     #[test]

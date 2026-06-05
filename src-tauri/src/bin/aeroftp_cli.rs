@@ -1677,6 +1677,14 @@ enum Commands {
         /// Preview only (don't delete)
         #[arg(long)]
         dry_run: bool,
+        /// Confirm destructive modes (delete/newest/oldest/largest/smallest/rename).
+        /// Required in non-interactive (non-TTY) runs; in a TTY it skips the prompt.
+        #[arg(long)]
+        force: bool,
+        /// Cap on the number of files a destructive mode may delete/rename in one run
+        /// (absolute N or N%). Defaults to 100 when omitted; raise it to act on more.
+        #[arg(long)]
+        max_delete: Option<String>,
     },
     /// Synchronize local and remote directories
     Sync {
@@ -3850,8 +3858,24 @@ struct StoredReconcileGroups {
     missing_local: Vec<StoredReconcileEntry>,
 }
 
+#[derive(Debug, Default, Deserialize)]
+struct StoredReconcileSummary {
+    #[serde(default)]
+    remote_scan_incomplete: bool,
+    #[serde(default)]
+    remote_scan_errors: u64,
+    #[serde(default)]
+    remote_scan_truncated: bool,
+}
+
 #[derive(Debug, Deserialize)]
 struct StoredReconcileResult {
+    /// Top-level reconcile verdict: "ok", "differences_found", or "partial".
+    #[serde(default)]
+    status: Option<String>,
+    /// Scan-health summary; "partial" is keyed on an incomplete remote scan.
+    #[serde(default)]
+    summary: Option<StoredReconcileSummary>,
     groups: Option<StoredReconcileGroups>,
 }
 
@@ -5565,6 +5589,30 @@ fn load_sync_plan_from_reconcile(
         .map_err(|err| format!("Cannot read reconcile file '{}': {}", path, err))?;
     let stored: StoredReconcileResult = serde_json::from_str(&raw)
         .map_err(|err| format!("Invalid reconcile JSON '{}': {}", path, err))?;
+    // TX-01 (reconcile path): a reconcile produced from an incomplete remote scan
+    // marks "missing_remote"/"missing_local" unreliably. Feeding it into
+    // `sync --from-reconcile --delete` would classify intact files as orphans and
+    // delete them, bypassing the live-scan completeness gate (which trusts a
+    // user-supplied reconcile as a complete source of truth). Refuse delete when
+    // the stored verdict is "partial" or the summary flags an incomplete remote
+    // scan. Non-delete transfers from a partial reconcile stay allowed (they only
+    // move fewer files, never destroy data).
+    if delete {
+        let status_partial = stored.status.as_deref() == Some("partial");
+        let summary_incomplete = stored.summary.as_ref().is_some_and(|s| {
+            s.remote_scan_incomplete || s.remote_scan_errors > 0 || s.remote_scan_truncated
+        });
+        if status_partial || summary_incomplete {
+            return Err(format!(
+                "refusing --delete: reconcile file '{}' was produced from an incomplete remote scan \
+                 (status=partial). A partial listing would classify intact files as orphans and \
+                 delete them. Re-run reconcile to completion (restore connectivity / raise --max-depth) \
+                 or drop --delete.",
+                path
+            ));
+        }
+    }
+
     let groups = stored.groups.ok_or_else(|| {
         format!(
             "Reconcile file '{}' does not contain detailed groups. Re-run reconcile without --format summary.",
@@ -14948,11 +14996,18 @@ enum ToolExposureKind {
 const AGENT_REMOTE_PREVIEW_BYTES: u64 = 5 * 1024;
 const AGENT_REMOTE_FALLBACK_MAX_BYTES: u64 = 1024 * 1024;
 
-fn serve_effective_base_path(path: &str, url_path: &str) -> String {
+fn serve_effective_base_path(path: &str, url_path: &str) -> Result<String, RemotePathError> {
     if path == "/" && url_path != "/" {
-        normalize_remote_path(url_path)
+        // `url_path` is the connection's initial directory (profile/URL), the
+        // trusted base; no user-supplied serve root to validate here.
+        Ok(normalize_remote_path(url_path))
     } else {
-        normalize_remote_path(path)
+        // `path` is the user-supplied serve root and becomes the remote base for
+        // every served request: reject `..`/null so it cannot escape the intended
+        // root (PATH-01). `normalize_remote_path` drops empty/`.` segments but
+        // does NOT strip `..`, so the check must happen before normalization.
+        check_remote_path_safe(path)?;
+        Ok(normalize_remote_path(path))
     }
 }
 
@@ -15227,6 +15282,16 @@ fn try_resolve_cli_remote_path(
     initial_path: &str,
     user_path: &str,
 ) -> Result<String, RemotePathError> {
+    check_remote_path_safe(user_path)?;
+    Ok(resolve_cli_remote_path_unchecked(initial_path, user_path))
+}
+
+/// Reject a user-supplied remote path that must never be operated on verbatim:
+/// null bytes and `..` traversal components (including the backslash-separated
+/// form). Shared by the resolver and by the verbatim-path command surfaces
+/// (`serve`, `speed --remote-path`, `benchmark --test-root-prefix`) that build a
+/// remote root directly from user input instead of going through the resolver.
+fn check_remote_path_safe(user_path: &str) -> Result<(), RemotePathError> {
     if user_path.contains('\0') {
         return Err(RemotePathError::NullByte);
     }
@@ -15235,7 +15300,7 @@ fn try_resolve_cli_remote_path(
             return Err(RemotePathError::Traversal(user_path.to_string()));
         }
     }
-    Ok(resolve_cli_remote_path_unchecked(initial_path, user_path))
+    Ok(())
 }
 
 /// Infallible CLI remote-path resolver.
@@ -15800,7 +15865,15 @@ async fn cmd_serve_http(
     };
     let (auth_token, generated_auth_token) = resolve_service_auth_token(auth_token, bind_addr);
 
-    let base_path = serve_effective_base_path(path, &url_path);
+    let base_path = match serve_effective_base_path(path, &url_path) {
+        Ok(value) => value,
+        Err(error) => {
+            // `provider` is immutable here (moved into the serve state below) and
+            // drops cleanly on return, matching the sibling bind-error branches.
+            print_error(format, &error.to_string(), 5);
+            return 5;
+        }
+    };
     let provider_label = if let Some(profile) = &cli.profile {
         format!("profile {}", profile)
     } else {
@@ -16256,7 +16329,15 @@ async fn cmd_serve_webdav(
     };
     let (auth_token, generated_auth_token) = resolve_service_auth_token(auth_token, bind_addr);
 
-    let base_path = serve_effective_base_path(path, &url_path);
+    let base_path = match serve_effective_base_path(path, &url_path) {
+        Ok(value) => value,
+        Err(error) => {
+            // `provider` is immutable here (moved into the serve state below) and
+            // drops cleanly on return, matching the sibling bind-error branches.
+            print_error(format, &error.to_string(), 5);
+            return 5;
+        }
+    };
     let provider_label = if let Some(profile) = &cli.profile {
         format!("profile {}", profile)
     } else {
@@ -16638,7 +16719,15 @@ async fn cmd_serve_ftp(
         Err(code) => return code,
     };
 
-    let base_path = serve_effective_base_path(path, &url_path);
+    let base_path = match serve_effective_base_path(path, &url_path) {
+        Ok(value) => value,
+        Err(error) => {
+            // `provider` is immutable here (moved into the serve state below) and
+            // drops cleanly on return, matching the sibling bind-error branches.
+            print_error(format, &error.to_string(), 5);
+            return 5;
+        }
+    };
     let quiet = cli.quiet || matches!(format, OutputFormat::Json);
     let bind_addr =
         match validate_bind_addr(&endpoint.addr, endpoint.allow_remote_bind, "FTP serve") {
@@ -17493,7 +17582,15 @@ async fn cmd_serve_sftp(
         Err(code) => return code,
     };
 
-    let base_path = serve_effective_base_path(path, &url_path);
+    let base_path = match serve_effective_base_path(path, &url_path) {
+        Ok(value) => value,
+        Err(error) => {
+            // `provider` is immutable here (moved into the serve state below) and
+            // drops cleanly on return, matching the sibling bind-error branches.
+            print_error(format, &error.to_string(), 5);
+            return 5;
+        }
+    };
     let quiet = cli.quiet || matches!(format, OutputFormat::Json);
     let bind_addr =
         match validate_bind_addr(&endpoint.addr, endpoint.allow_remote_bind, "SFTP serve") {
@@ -24839,6 +24936,17 @@ async fn cmd_speed(
         }
     };
 
+    // PATH-01: `--remote-path` is used verbatim for upload/download/delete (it is
+    // not run through the resolver), so a `..`/null path would let the speed test
+    // write and then delete an attacker-chosen location. Validate before any
+    // connection. The default UUID scratch path is always safe.
+    if let Some(user_path) = remote_path {
+        if let Err(e) = check_remote_path_safe(user_path) {
+            print_error(format, &format!("invalid --remote-path: {}", e), 5);
+            return 5;
+        }
+    }
+
     let remote_test_path = remote_path
         .map(|path| path.to_string())
         .unwrap_or_else(|| format!("/.aeroftp-speedtest-{}.bin", uuid::Uuid::new_v4()));
@@ -25859,6 +25967,16 @@ async fn cmd_benchmark(
         return 5;
     }
 
+    // PATH-01: `--test-root-prefix` is honored verbatim and becomes the root for
+    // mkdir/upload/rmdir_recursive. Reject `..`/null so the scratch tree (and its
+    // recursive cleanup) cannot escape the chosen prefix.
+    if let Some(prefix) = test_root_prefix_override {
+        if let Err(e) = check_remote_path_safe(prefix) {
+            print_error(format, &format!("invalid --test-root-prefix: {}", e), 5);
+            return 5;
+        }
+    }
+
     // Hold this for the entire benchmark lifetime: see SigpipeIgnoreGuard
     // doc-comment for the rationale (Backblaze multipart SIGPIPE workaround).
     let _sigpipe_guard = SigpipeIgnoreGuard::new();
@@ -26717,11 +26835,14 @@ async fn cmd_cleanup(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn cmd_dedupe(
     url: &str,
     path: &str,
     mode: &str,
     dry_run: bool,
+    force: bool,
+    max_delete: Option<&str>,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
@@ -26937,6 +27058,87 @@ async fn cmd_dedupe(
         && effective_mode != "skip"
         && effective_mode != "list"
         && effective_mode != "interactive";
+
+    // DEL-01 (dedupe path): the batch destructive modes (delete/newest/oldest/
+    // largest/smallest/rename) used to run unattended in non-TTY/JSON with no
+    // --force, prompt, or cap. Gate them like `rm -r` and `sync --delete`: fail
+    // closed without --force in a non-interactive context, prompt in a TTY, and
+    // bound the blast radius with a default cap (raise via --max-delete N|N%).
+    if is_actionable {
+        let planned_actions: usize = duplicate_groups
+            .iter()
+            .map(|g| g.len().saturating_sub(1))
+            .sum();
+        let action_verb = if effective_mode == "rename" {
+            "rename"
+        } else {
+            "delete"
+        };
+
+        if !force {
+            if std::io::stdin().is_terminal() {
+                eprint!(
+                    "Dedupe will {} {} duplicate file(s) across {} group(s) (mode: {}). Proceed? [y/N]: ",
+                    action_verb,
+                    planned_actions,
+                    duplicate_groups.len(),
+                    effective_mode
+                );
+                let _ = io::stderr().flush();
+                let mut input = String::new();
+                let _ = io::stdin().read_line(&mut input);
+                if !input.trim().eq_ignore_ascii_case("y") {
+                    if !cli.quiet {
+                        eprintln!("Aborted.");
+                    }
+                    let _ = provider.disconnect().await;
+                    return 0;
+                }
+            } else {
+                print_error(
+                    format,
+                    &format!(
+                        "dedupe --mode {} would {} {} file(s) but requires --force in non-interactive (non-TTY) mode (or use --dry-run to preview)",
+                        effective_mode, action_verb, planned_actions
+                    ),
+                    5,
+                );
+                let _ = provider.disconnect().await;
+                return 5;
+            }
+        }
+
+        // Safety cap: bound the number of destructive actions. Percentages are
+        // taken against the total scanned files. Default cap when --max-delete is
+        // omitted; an explicit value raises (or lowers) it.
+        let limit = match max_delete {
+            Some(v) if v.ends_with('%') => {
+                let pct: f64 = v.trim_end_matches('%').parse().unwrap_or(100.0);
+                ((pct / 100.0) * files.len() as f64).ceil() as usize
+            }
+            Some(v) => v.parse::<usize>().unwrap_or(usize::MAX),
+            None => DEFAULT_SYNC_MAX_DELETE,
+        };
+        if planned_actions > limit {
+            let msg = if max_delete.is_none() {
+                format!(
+                    "Safety abort: dedupe would {} {} file(s) (default cap: {}). Pass --max-delete N (or N%) to raise the limit, or --dry-run to preview.",
+                    action_verb, planned_actions, limit
+                )
+            } else {
+                format!(
+                    "Safety abort: dedupe would {} {} file(s) (limit: {}). Increase --max-delete or remove the flag.",
+                    action_verb,
+                    planned_actions,
+                    max_delete.unwrap_or_default()
+                )
+            };
+            print_error(format, &msg, 4);
+            let _ = provider.disconnect().await;
+            return 4;
+        }
+    }
+
     if is_actionable {
         for group in &duplicate_groups {
             if effective_mode == "rename" {
@@ -41525,13 +41727,25 @@ async fn main() {
             path,
             mode,
             dry_run,
+            force,
+            max_delete,
         } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str())
             } else {
                 (url.as_str(), path.as_str())
             };
-            cmd_dedupe(u, p, mode, *dry_run, &cli, format).await
+            cmd_dedupe(
+                u,
+                p,
+                mode,
+                *dry_run,
+                *force,
+                max_delete.as_deref(),
+                &cli,
+                format,
+            )
+            .await
         }
         Commands::Mcp => cmd_agent_mcp("", &cli).await,
         Commands::ProfileDelete { selector, yes } => {
@@ -44076,12 +44290,42 @@ mod tests {
 
     #[test]
     fn test_serve_effective_base_path() {
-        assert_eq!(serve_effective_base_path("/", "/home/user"), "/home/user");
         assert_eq!(
-            serve_effective_base_path("/custom", "/home/user"),
+            serve_effective_base_path("/", "/home/user").unwrap(),
+            "/home/user"
+        );
+        assert_eq!(
+            serve_effective_base_path("/custom", "/home/user").unwrap(),
             "/custom"
         );
-        assert_eq!(serve_effective_base_path("/", "/"), "/");
+        assert_eq!(serve_effective_base_path("/", "/").unwrap(), "/");
+    }
+
+    #[test]
+    fn test_serve_effective_base_path_rejects_traversal() {
+        // PATH-01: a user-supplied serve root with `..` must fail closed instead
+        // of producing a base path that escapes the intended remote root.
+        assert!(matches!(
+            serve_effective_base_path("../../etc", "/home/user"),
+            Err(RemotePathError::Traversal(_))
+        ));
+        assert!(matches!(
+            serve_effective_base_path("/srv/../../etc", "/home/user"),
+            Err(RemotePathError::Traversal(_))
+        ));
+        assert!(matches!(
+            serve_effective_base_path("..\\..\\etc", "/home/user"),
+            Err(RemotePathError::Traversal(_))
+        ));
+        assert!(matches!(
+            serve_effective_base_path("/srv\0/etc", "/home/user"),
+            Err(RemotePathError::NullByte)
+        ));
+        // The `path == "/"` fallback keeps trusting the connection's initial path.
+        assert_eq!(
+            serve_effective_base_path("/", "/home/user").unwrap(),
+            "/home/user"
+        );
     }
 
     #[test]
@@ -44353,6 +44597,30 @@ mod tests {
     }
 
     #[test]
+    fn test_check_remote_path_safe() {
+        // Shared guard used by serve / speed / benchmark verbatim-path surfaces.
+        assert!(check_remote_path_safe("aeroftp-bench").is_ok());
+        assert!(check_remote_path_safe("/srv/scratch").is_ok());
+        assert!(check_remote_path_safe("file..backup.txt").is_ok());
+        assert!(matches!(
+            check_remote_path_safe("../../etc"),
+            Err(RemotePathError::Traversal(_))
+        ));
+        assert!(matches!(
+            check_remote_path_safe("a/../../b"),
+            Err(RemotePathError::Traversal(_))
+        ));
+        assert!(matches!(
+            check_remote_path_safe("a\\..\\b"),
+            Err(RemotePathError::Traversal(_))
+        ));
+        assert!(matches!(
+            check_remote_path_safe("a\0b"),
+            Err(RemotePathError::NullByte)
+        ));
+    }
+
+    #[test]
     fn test_try_resolve_cli_remote_path_accepts_safe_paths() {
         // A filename that merely contains ".." as a substring is fine.
         assert_eq!(
@@ -44528,6 +44796,103 @@ mod tests {
             load_sync_plan_from_reconcile(path.to_str().unwrap(), "upload", false).unwrap_err();
 
         assert!(err.contains("does not contain detailed groups"));
+    }
+
+    #[test]
+    fn test_load_sync_plan_from_reconcile_refuses_delete_on_partial_status() {
+        // TX-01 (reconcile path): a reconcile produced from an incomplete remote
+        // scan must not drive `sync --from-reconcile --delete`: the "missing_remote"
+        // entries could be intact files the scan never saw.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("partial.json");
+        let body = serde_json::json!({
+            "status": "partial",
+            "summary": {
+                "remote_scan_incomplete": true,
+                "remote_scan_errors": 1,
+                "remote_scan_truncated": false
+            },
+            "groups": {
+                "match": [],
+                "differ": [],
+                "missing_remote": [{"path": "keep.txt", "local_size": 5}],
+                "missing_local": []
+            }
+        })
+        .to_string();
+        std::fs::write(&path, &body).unwrap();
+
+        // --delete is refused on a partial reconcile.
+        let err =
+            load_sync_plan_from_reconcile(path.to_str().unwrap(), "download", true).unwrap_err();
+        assert!(
+            err.contains("incomplete remote scan"),
+            "unexpected error: {err}"
+        );
+
+        // The same partial file is still usable for a non-delete transfer.
+        let plan =
+            load_sync_plan_from_reconcile(path.to_str().unwrap(), "download", false).unwrap();
+        assert!(plan.to_delete_local.is_empty());
+    }
+
+    #[test]
+    fn test_load_sync_plan_from_reconcile_refuses_delete_on_summary_incomplete() {
+        // Even without a top-level "partial" status, an incomplete-scan summary
+        // (e.g. a truncated listing) must block --delete.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("truncated.json");
+        let body = serde_json::json!({
+            "status": "differences_found",
+            "summary": {
+                "remote_scan_incomplete": true,
+                "remote_scan_errors": 0,
+                "remote_scan_truncated": true
+            },
+            "groups": {
+                "match": [],
+                "differ": [],
+                "missing_remote": [{"path": "keep.txt", "local_size": 5}],
+                "missing_local": []
+            }
+        })
+        .to_string();
+        std::fs::write(&path, &body).unwrap();
+
+        let err =
+            load_sync_plan_from_reconcile(path.to_str().unwrap(), "download", true).unwrap_err();
+        assert!(
+            err.contains("incomplete remote scan"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn test_load_sync_plan_from_reconcile_allows_delete_on_complete() {
+        // A complete reconcile ("differences_found", no incompleteness flags) still
+        // drives --delete normally.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("complete.json");
+        let body = serde_json::json!({
+            "status": "differences_found",
+            "summary": {
+                "remote_scan_incomplete": false,
+                "remote_scan_errors": 0,
+                "remote_scan_truncated": false
+            },
+            "groups": {
+                "match": [],
+                "differ": [],
+                "missing_remote": [{"path": "orphan.txt", "local_size": 5}],
+                "missing_local": []
+            }
+        })
+        .to_string();
+        std::fs::write(&path, &body).unwrap();
+
+        let plan =
+            load_sync_plan_from_reconcile(path.to_str().unwrap(), "download", true).unwrap();
+        assert_eq!(plan.to_delete_local, vec!["orphan.txt"]);
     }
 
     // -----------------------------------------------------------------------
