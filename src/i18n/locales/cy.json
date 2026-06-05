@@ -993,7 +993,13 @@
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "Mewnforio ac allforio gyda {count} offeryn arall",
             "discoverHealthCheck": "Gwiriad iechyd ar Add Services",
-            "discoverHealthCheckDesc": "Profi cyrhaeddadwyedd darparwyr yn y rhestr Add Services. Cliciwch ddwywaith ar y botwm Gwirio ar y tab hwnnw i'w droi ymlaen/i ffwrdd hefyd."
+            "discoverHealthCheckDesc": "Profi cyrhaeddadwyedd darparwyr yn y rhestr Add Services. Cliciwch ddwywaith ar y botwm Gwirio ar y tab hwnnw i'w droi ymlaen/i ffwrdd hefyd.",
+            "imagePreviewBg": "Cefndir rhagolwg delwedd",
+            "imagePreviewBgDesc": "Lliw a ddangosir y tu ôl i ddelweddau tryloyw (PNG, SVG, WebP) yn y rhagolwg. Gellir ei newid o far offer y rhagolwg hefyd.",
+            "imagePreviewBgCheckerboard": "Bwrdd gwyddbwyll",
+            "imagePreviewBgDark": "Tywyll",
+            "imagePreviewBgLight": "Golau",
+            "imagePreviewBgCustom": "Addasedig"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3366,7 +3372,8 @@
                     "saveSaving": "Yn cadw...",
                     "saveSaved": "Delwedd wedi'i chadw'n llwyddiannus",
                     "saveFailed": "Methwyd â chadw'r ddelwedd"
-                }
+                },
+                "toggleTransparencyBg": "Cefndir tryloywder (cylchdroi)"
             },
             "mixer": {
                 "balance": "Cydbwysedd",
@@ -4681,7 +4688,8 @@
             "adminResetNotForSelf": "Defnyddiwch Newid Cyfrinair ar eich cyfrif eich hun.",
             "userNotFound": "Nid yw'r cyfrif hwn yn bodoli mwyach.",
             "skipNextTime": "Hepgor y sgrin hon y tro nesaf",
-            "skipNextTimeHint": "(yn agor y cyfrif hwn yn uniongyrchol; cyfrifon heb gyfrinair yn unig)"
+            "skipNextTimeHint": "(yn agor y cyfrif hwn yn uniongyrchol; cyfrifon heb gyfrinair yn unig)",
+            "offlineNote": "Mae'r cyfrifon hyn yn gwbl all-lein: proffiliau lleol ar y ddyfais hon ydynt, heb eu cysylltu ag unrhyw gyfrif ar-lein."
         },
         "opendrive": {
             "privacyTitle": "Preifatrwydd OpenDrive",

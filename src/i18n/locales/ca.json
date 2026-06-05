@@ -993,7 +993,13 @@
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "Importa i exporta amb {count} altres eines",
             "discoverHealthCheck": "Comprovació de salut a Add Services",
-            "discoverHealthCheckDesc": "Comprova la disponibilitat dels proveïdors a la llista Add Services. Fes doble clic al botó Comprova d'aquesta pestanya per activar-ho o desactivar-ho."
+            "discoverHealthCheckDesc": "Comprova la disponibilitat dels proveïdors a la llista Add Services. Fes doble clic al botó Comprova d'aquesta pestanya per activar-ho o desactivar-ho.",
+            "imagePreviewBg": "Fons de la previsualització d'imatge",
+            "imagePreviewBgDesc": "Color que es mostra darrere de les imatges transparents (PNG, SVG, WebP) a la previsualització. També es pot canviar des de la barra de la previsualització.",
+            "imagePreviewBgCheckerboard": "Tauler d'escacs",
+            "imagePreviewBgDark": "Fosc",
+            "imagePreviewBgLight": "Clar",
+            "imagePreviewBgCustom": "Personalitzat"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3366,7 +3372,8 @@
                     "saveSaving": "Desant...",
                     "saveSaved": "Imatge desada correctament",
                     "saveFailed": "Error en desar la imatge"
-                }
+                },
+                "toggleTransparencyBg": "Fons de transparència (alterna)"
             },
             "mixer": {
                 "balance": "Balanç",
@@ -4681,7 +4688,8 @@
             "adminResetNotForSelf": "Fes servir Canvia la contrasenya al teu propi compte.",
             "userNotFound": "Aquest compte ja no existeix.",
             "skipNextTime": "Omet aquesta pantalla la pròxima vegada",
-            "skipNextTimeHint": "(obre aquest compte directament; només comptes sense contrasenya)"
+            "skipNextTimeHint": "(obre aquest compte directament; només comptes sense contrasenya)",
+            "offlineNote": "Aquests comptes són totalment fora de línia: són perfils locals en aquest dispositiu i no estan vinculats a cap compte en línia."
         },
         "opendrive": {
             "privacyTitle": "Privacitat d'OpenDrive",

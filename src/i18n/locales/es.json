@@ -993,7 +993,13 @@
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "Importa y exporta con otras {count} herramientas",
             "discoverHealthCheck": "Comprobación de estado en Add Services",
-            "discoverHealthCheckDesc": "Comprueba la disponibilidad de los proveedores en la lista Add Services. Haz doble clic en el botón Comprobar de esa pestaña para activarlo o desactivarlo también."
+            "discoverHealthCheckDesc": "Comprueba la disponibilidad de los proveedores en la lista Add Services. Haz doble clic en el botón Comprobar de esa pestaña para activarlo o desactivarlo también.",
+            "imagePreviewBg": "Fondo de la vista previa de imagen",
+            "imagePreviewBgDesc": "Color mostrado detrás de las imágenes transparentes (PNG, SVG, WebP) en la vista previa. También se puede cambiar desde la barra de la vista previa.",
+            "imagePreviewBgCheckerboard": "Tablero de ajedrez",
+            "imagePreviewBgDark": "Oscuro",
+            "imagePreviewBgLight": "Claro",
+            "imagePreviewBgCustom": "Personalizado"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3366,7 +3372,8 @@
                     "saveSaving": "Guardando...",
                     "saveSaved": "Imagen guardada correctamente",
                     "saveFailed": "Error al guardar la imagen"
-                }
+                },
+                "toggleTransparencyBg": "Fondo de transparencia (alternar)"
             },
             "mixer": {
                 "balance": "Balance",
@@ -4662,7 +4669,8 @@
             "adminResetNotForSelf": "Usa Cambiar contraseña en tu propia cuenta.",
             "userNotFound": "Esta cuenta ya no existe.",
             "skipNextTime": "Omitir esta pantalla la próxima vez",
-            "skipNextTimeHint": "(abre esta cuenta directamente; solo cuentas sin contraseña)"
+            "skipNextTimeHint": "(abre esta cuenta directamente; solo cuentas sin contraseña)",
+            "offlineNote": "Estas cuentas son totalmente sin conexión: son perfiles locales en este dispositivo y no están vinculadas a ninguna cuenta en línea."
         },
         "opendrive": {
             "privacyTitle": "Privacidad de OpenDrive",

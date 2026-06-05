@@ -993,7 +993,13 @@
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "Mag-import at mag-export gamit ang {count} pang ibang tool",
             "discoverHealthCheck": "Health check sa Add Services",
-            "discoverHealthCheckDesc": "Sinusuri ang reachability ng provider sa listahan ng Add Services. I-double click ang Check button sa tab na iyon para i-toggle din ito doon."
+            "discoverHealthCheckDesc": "Sinusuri ang reachability ng provider sa listahan ng Add Services. I-double click ang Check button sa tab na iyon para i-toggle din ito doon.",
+            "imagePreviewBg": "Background ng preview ng larawan",
+            "imagePreviewBgDesc": "Kulay na ipinapakita sa likod ng mga transparent na larawan (PNG, SVG, WebP) sa preview. Mapapalitan din mula sa toolbar ng preview.",
+            "imagePreviewBgCheckerboard": "Checkerboard",
+            "imagePreviewBgDark": "Madilim",
+            "imagePreviewBgLight": "Maliwanag",
+            "imagePreviewBgCustom": "Pasadya"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3366,7 +3372,8 @@
                     "saveSaving": "Sine-save...",
                     "saveSaved": "Matagumpay na na-save ang larawan",
                     "saveFailed": "Hindi ma-save ang larawan"
-                }
+                },
+                "toggleTransparencyBg": "Background ng transparency (i-cycle)"
             },
             "mixer": {
                 "balance": "Balanse",
@@ -4681,7 +4688,8 @@
             "adminResetNotForSelf": "Gamitin ang Baguhin ang Password sa sarili mong account.",
             "userNotFound": "Wala na ang account na ito.",
             "skipNextTime": "Laktawan ang screen na ito sa susunod",
-            "skipNextTimeHint": "(direktang binubuksan ang account na ito; mga account lang na walang password)"
+            "skipNextTimeHint": "(direktang binubuksan ang account na ito; mga account lang na walang password)",
+            "offlineNote": "Ganap na offline ang mga account na ito: mga lokal na profile ang mga ito sa device na ito at hindi naka-link sa anumang online account."
         },
         "opendrive": {
             "privacyTitle": "Privacy ng OpenDrive",

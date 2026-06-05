@@ -993,7 +993,13 @@
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "Увоз и извоз са {count} других алата",
             "discoverHealthCheck": "Провера доступности у Add Services",
-            "discoverHealthCheckDesc": "Проверава доступност провајдера у листи Add Services. Двоструким кликом на дугме Провери у тој картици такође га укључујете/искључујете."
+            "discoverHealthCheckDesc": "Проверава доступност провајдера у листи Add Services. Двоструким кликом на дугме Провери у тој картици такође га укључујете/искључујете.",
+            "imagePreviewBg": "Позадина прегледа слике",
+            "imagePreviewBgDesc": "Боја приказана иза провидних слика (PNG, SVG, WebP) у прегледу. Може да се мења и са траке прегледа.",
+            "imagePreviewBgCheckerboard": "Шаховска табла",
+            "imagePreviewBgDark": "Тамно",
+            "imagePreviewBgLight": "Светло",
+            "imagePreviewBgCustom": "Прилагођено"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3366,7 +3372,8 @@
                     "saveSaving": "Чување...",
                     "saveSaved": "Слика је успешно сачувана",
                     "saveFailed": "Чување слике није успело"
-                }
+                },
+                "toggleTransparencyBg": "Позадина провидности (кружи)"
             },
             "mixer": {
                 "balance": "Баланс",
@@ -4662,7 +4669,8 @@
             "adminResetNotForSelf": "На свом налогу користите Промена лозинке.",
             "userNotFound": "Овај налог више не постоји.",
             "skipNextTime": "Прескочи овај екран следећи пут",
-            "skipNextTimeHint": "(отвара овај налог директно; само налози без лозинке)"
+            "skipNextTimeHint": "(отвара овај налог директно; само налози без лозинке)",
+            "offlineNote": "Ови налози су потпуно ван мреже: то су локални профили на овом уређају и нису повезани ни са једним мрежним налогом."
         },
         "opendrive": {
             "privacyTitle": "OpenDrive приватност",

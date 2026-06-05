@@ -993,7 +993,13 @@
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "Importă și exportă cu alte {count} instrumente",
             "discoverHealthCheck": "Verificarea disponibilității în Add Services",
-            "discoverHealthCheckDesc": "Verifică accesibilitatea furnizorilor în lista Add Services. Dublu clic pe butonul Verifică din acea filă îl comută și de acolo."
+            "discoverHealthCheckDesc": "Verifică accesibilitatea furnizorilor în lista Add Services. Dublu clic pe butonul Verifică din acea filă îl comută și de acolo.",
+            "imagePreviewBg": "Fundalul previzualizării imaginii",
+            "imagePreviewBgDesc": "Culoarea afișată în spatele imaginilor transparente (PNG, SVG, WebP) în previzualizare. Poate fi comutată și din bara previzualizării.",
+            "imagePreviewBgCheckerboard": "Tablă de șah",
+            "imagePreviewBgDark": "Întunecat",
+            "imagePreviewBgLight": "Luminos",
+            "imagePreviewBgCustom": "Personalizat"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3366,7 +3372,8 @@
                     "saveSaving": "Se salvează...",
                     "saveSaved": "Imaginea a fost salvată cu succes",
                     "saveFailed": "Salvarea imaginii a eșuat"
-                }
+                },
+                "toggleTransparencyBg": "Fundal de transparență (comută)"
             },
             "mixer": {
                 "balance": "Balans",
@@ -4662,7 +4669,8 @@
             "adminResetNotForSelf": "Folosește Schimbă parola pentru propriul cont.",
             "userNotFound": "Acest cont nu mai există.",
             "skipNextTime": "Omite acest ecran data viitoare",
-            "skipNextTimeHint": "(deschide acest cont direct; doar conturi fără parolă)"
+            "skipNextTimeHint": "(deschide acest cont direct; doar conturi fără parolă)",
+            "offlineNote": "Aceste conturi sunt complet offline: sunt profiluri locale pe acest dispozitiv și nu sunt asociate cu niciun cont online."
         },
         "opendrive": {
             "privacyTitle": "Confidențialitate OpenDrive",

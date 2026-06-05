@@ -993,7 +993,13 @@
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "Uvoz in izvoz z {count} drugimi orodji",
             "discoverHealthCheck": "Preverjanje razpoložljivosti v Add Services",
-            "discoverHealthCheckDesc": "Preveri dosegljivost ponudnikov na seznamu Add Services. Z dvojnim klikom na gumb Preveri na tem zavihku ga prav tako preklopite."
+            "discoverHealthCheckDesc": "Preveri dosegljivost ponudnikov na seznamu Add Services. Z dvojnim klikom na gumb Preveri na tem zavihku ga prav tako preklopite.",
+            "imagePreviewBg": "Ozadje predogleda slike",
+            "imagePreviewBgDesc": "Barva za prosojnimi slikami (PNG, SVG, WebP) v predogledu. Preklopite jo lahko tudi v orodni vrstici predogleda.",
+            "imagePreviewBgCheckerboard": "Šahovnica",
+            "imagePreviewBgDark": "Temno",
+            "imagePreviewBgLight": "Svetlo",
+            "imagePreviewBgCustom": "Po meri"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3366,7 +3372,8 @@
                     "saveSaving": "Shranjevanje...",
                     "saveSaved": "Slika je bila uspešno shranjena",
                     "saveFailed": "Shranjevanje slike ni uspelo"
-                }
+                },
+                "toggleTransparencyBg": "Ozadje prosojnosti (preklopi)"
             },
             "mixer": {
                 "balance": "Ravnovesje",
@@ -4662,7 +4669,8 @@
             "adminResetNotForSelf": "V svojem računu uporabite Spremeni geslo.",
             "userNotFound": "Ta račun ne obstaja več.",
             "skipNextTime": "Naslednjič preskoči ta zaslon",
-            "skipNextTimeHint": "(neposredno odpre ta račun; samo računi brez gesla)"
+            "skipNextTimeHint": "(neposredno odpre ta račun; samo računi brez gesla)",
+            "offlineNote": "Ti računi so popolnoma brez povezave: so lokalni profili v tej napravi in niso povezani z nobenim spletnim računom."
         },
         "opendrive": {
             "privacyTitle": "Zasebnost OpenDrive",

@@ -993,7 +993,13 @@
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "Inportatu eta esportatu beste {count} tresnarekin",
             "discoverHealthCheck": "Osasun-egiaztapena Add Services-en",
-            "discoverHealthCheckDesc": "Egiaztatu hornitzaileen erabilgarritasuna Add Services zerrendan. Egin klik bikoitza fitxa horretako Egiaztatu botoian hori ere txandakatzeko."
+            "discoverHealthCheckDesc": "Egiaztatu hornitzaileen erabilgarritasuna Add Services zerrendan. Egin klik bikoitza fitxa horretako Egiaztatu botoian hori ere txandakatzeko.",
+            "imagePreviewBg": "Irudiaren aurrebistaren atzeko planoa",
+            "imagePreviewBgDesc": "Aurrebistan irudi gardenen (PNG, SVG, WebP) atzean agertzen den kolorea. Aurrebistaren tresna-barratik ere alda daiteke.",
+            "imagePreviewBgCheckerboard": "Xake-taula",
+            "imagePreviewBgDark": "Iluna",
+            "imagePreviewBgLight": "Argia",
+            "imagePreviewBgCustom": "Pertsonalizatua"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3366,7 +3372,8 @@
                     "saveSaving": "Gordetzen...",
                     "saveSaved": "Irudia ondo gorde da",
                     "saveFailed": "Ezin izan da irudia gorde"
-                }
+                },
+                "toggleTransparencyBg": "Gardentasun atzeko planoa (txandakatu)"
             },
             "mixer": {
                 "balance": "Balantzea",
@@ -4681,7 +4688,8 @@
             "adminResetNotForSelf": "Erabili Aldatu pasahitza zure kontuan.",
             "userNotFound": "Kontu hau jada ez dago.",
             "skipNextTime": "Saltatu pantaila hau hurrengoan",
-            "skipNextTimeHint": "(kontu hau zuzenean irekitzen du; pasahitzik gabeko kontuak soilik)"
+            "skipNextTimeHint": "(kontu hau zuzenean irekitzen du; pasahitzik gabeko kontuak soilik)",
+            "offlineNote": "Kontu hauek erabat lineaz kanpo daude: gailu honetako tokiko profilak dira eta ez daude lineako konturik lotuta."
         },
         "opendrive": {
             "privacyTitle": "OpenDrive pribatutasuna",

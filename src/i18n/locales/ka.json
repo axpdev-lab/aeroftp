@@ -993,7 +993,13 @@
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "იმპორტი და ექსპორტი კიდევ {count} სხვა ხელსაწყოსთან",
             "discoverHealthCheck": "ხელმისაწვდომობის შემოწმება Add Services-ში",
-            "discoverHealthCheckDesc": "ამოწმებს პროვაიდერების ხელმისაწვდომობას Add Services სიაში. იმ ჩანართზე ღილაკ Check-ზე ორმაგი დაწკაპუნებითაც გადაირთვება."
+            "discoverHealthCheckDesc": "ამოწმებს პროვაიდერების ხელმისაწვდომობას Add Services სიაში. იმ ჩანართზე ღილაკ Check-ზე ორმაგი დაწკაპუნებითაც გადაირთვება.",
+            "imagePreviewBg": "სურათის გადახედვის ფონი",
+            "imagePreviewBgDesc": "ფერი, რომელიც გადახედვისას გამჭვირვალე სურათების (PNG, SVG, WebP) უკან ჩანს. ასევე გადართვადია გადახედვის ხელსაწყოთა ზოლიდან.",
+            "imagePreviewBgCheckerboard": "ჭადრაკის დაფა",
+            "imagePreviewBgDark": "მუქი",
+            "imagePreviewBgLight": "ღია",
+            "imagePreviewBgCustom": "მორგებული"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3366,7 +3372,8 @@
                     "saveSaving": "შენახვა...",
                     "saveSaved": "სურათი წარმატებით შეინახა",
                     "saveFailed": "სურათის შენახვა ვერ მოხერხდა"
-                }
+                },
+                "toggleTransparencyBg": "გამჭვირვალობის ფონი (გადართვა)"
             },
             "mixer": {
                 "balance": "ბალანსი",
@@ -4662,7 +4669,8 @@
             "adminResetNotForSelf": "თქვენს ანგარიშზე გამოიყენეთ პაროლის შეცვლა.",
             "userNotFound": "ეს ანგარიში აღარ არსებობს.",
             "skipNextTime": "შემდეგ ჯერზე გამოტოვეთ ეს ეკრანი",
-            "skipNextTimeHint": "(პირდაპირ ხსნის ამ ანგარიშს; მხოლოდ პაროლის გარეშე ანგარიშები)"
+            "skipNextTimeHint": "(პირდაპირ ხსნის ამ ანგარიშს; მხოლოდ პაროლის გარეშე ანგარიშები)",
+            "offlineNote": "ეს ანგარიშები სრულიად ხაზგარეშეა: ეს არის ამ მოწყობილობის ლოკალური პროფილები და არცერთ ონლაინ ანგარიშს არ უკავშირდება."
         },
         "opendrive": {
             "privacyTitle": "OpenDrive კონფიდენციალურობა",

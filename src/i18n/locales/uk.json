@@ -993,7 +993,13 @@
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "Імпорт та експорт з {count} іншими інструментами",
             "discoverHealthCheck": "Перевірка доступності в Add Services",
-            "discoverHealthCheckDesc": "Перевіряє доступність провайдерів у списку Add Services. Подвійний клік по кнопці Перевірити на цій вкладці також перемикає її."
+            "discoverHealthCheckDesc": "Перевіряє доступність провайдерів у списку Add Services. Подвійний клік по кнопці Перевірити на цій вкладці також перемикає її.",
+            "imagePreviewBg": "Тло перегляду зображення",
+            "imagePreviewBgDesc": "Колір за прозорими зображеннями (PNG, SVG, WebP) у перегляді. Також перемикається на панелі перегляду.",
+            "imagePreviewBgCheckerboard": "Шахівниця",
+            "imagePreviewBgDark": "Темний",
+            "imagePreviewBgLight": "Світлий",
+            "imagePreviewBgCustom": "Власний"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3366,7 +3372,8 @@
                     "saveSaving": "Збереження...",
                     "saveSaved": "Зображення успішно збережено",
                     "saveFailed": "Не вдалося зберегти зображення"
-                }
+                },
+                "toggleTransparencyBg": "Тло прозорості (перемкнути)"
             },
             "mixer": {
                 "balance": "Баланс",
@@ -4662,7 +4669,8 @@
             "adminResetNotForSelf": "У своєму обліковому записі скористайтеся командою Змінити пароль.",
             "userNotFound": "Цього облікового запису більше не існує.",
             "skipNextTime": "Пропускати цей екран наступного разу",
-            "skipNextTimeHint": "(відкриває цей обліковий запис напряму; лише записи без пароля)"
+            "skipNextTimeHint": "(відкриває цей обліковий запис напряму; лише записи без пароля)",
+            "offlineNote": "Ці облікові записи повністю офлайн: це локальні профілі на цьому пристрої, не пов'язані з жодним онлайн-обліковим записом."
         },
         "opendrive": {
             "privacyTitle": "Приватність OpenDrive",

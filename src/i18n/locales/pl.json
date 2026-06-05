@@ -993,7 +993,13 @@
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "Import i eksport z {count} innymi narzędziami",
             "discoverHealthCheck": "Sprawdzanie dostępności w Add Services",
-            "discoverHealthCheckDesc": "Sprawdza dostępność dostawców na liście Add Services. Dwukrotne kliknięcie przycisku Sprawdź na tej karcie również go przełącza."
+            "discoverHealthCheckDesc": "Sprawdza dostępność dostawców na liście Add Services. Dwukrotne kliknięcie przycisku Sprawdź na tej karcie również go przełącza.",
+            "imagePreviewBg": "Tło podglądu obrazu",
+            "imagePreviewBgDesc": "Kolor wyświetlany za przezroczystymi obrazami (PNG, SVG, WebP) w podglądzie. Można też przełączać z paska podglądu.",
+            "imagePreviewBgCheckerboard": "Szachownica",
+            "imagePreviewBgDark": "Ciemny",
+            "imagePreviewBgLight": "Jasny",
+            "imagePreviewBgCustom": "Niestandardowy"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3366,7 +3372,8 @@
                     "saveSaving": "Zapisywanie...",
                     "saveSaved": "Obraz został zapisany",
                     "saveFailed": "Nie udało się zapisać obrazu"
-                }
+                },
+                "toggleTransparencyBg": "Tło przezroczystości (przełącz)"
             },
             "mixer": {
                 "balance": "Balans",
@@ -4662,7 +4669,8 @@
             "adminResetNotForSelf": "Na własnym koncie użyj opcji Zmień hasło.",
             "userNotFound": "To konto już nie istnieje.",
             "skipNextTime": "Pomiń ten ekran następnym razem",
-            "skipNextTimeHint": "(otwiera to konto bezpośrednio; tylko konta bez hasła)"
+            "skipNextTimeHint": "(otwiera to konto bezpośrednio; tylko konta bez hasła)",
+            "offlineNote": "Te konta są całkowicie offline: to lokalne profile na tym urządzeniu, niepowiązane z żadnym kontem online."
         },
         "opendrive": {
             "privacyTitle": "Prywatność OpenDrive",

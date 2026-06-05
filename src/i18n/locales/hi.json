@@ -993,7 +993,13 @@
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "{count} अन्य उपकरणों के साथ आयात और निर्यात करें",
             "discoverHealthCheck": "Add Services पर हेल्थ चेक",
-            "discoverHealthCheckDesc": "Add Services सूची में प्रदाता की पहुँच जाँचता है। उस टैब पर Check बटन पर डबल-क्लिक करके इसे वहाँ भी टॉगल करें।"
+            "discoverHealthCheckDesc": "Add Services सूची में प्रदाता की पहुँच जाँचता है। उस टैब पर Check बटन पर डबल-क्लिक करके इसे वहाँ भी टॉगल करें।",
+            "imagePreviewBg": "छवि पूर्वावलोकन पृष्ठभूमि",
+            "imagePreviewBgDesc": "पूर्वावलोकन में पारदर्शी छवियों (PNG, SVG, WebP) के पीछे दिखाया गया रंग। पूर्वावलोकन टूलबार से भी बदला जा सकता है।",
+            "imagePreviewBgCheckerboard": "शतरंज बोर्ड",
+            "imagePreviewBgDark": "गहरा",
+            "imagePreviewBgLight": "हल्का",
+            "imagePreviewBgCustom": "कस्टम"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3366,7 +3372,8 @@
                     "saveSaving": "सहेजा जा रहा है...",
                     "saveSaved": "छवि सफलतापूर्वक सहेजी गई",
                     "saveFailed": "छवि सहेजने में विफल"
-                }
+                },
+                "toggleTransparencyBg": "पारदर्शिता पृष्ठभूमि (चक्र)"
             },
             "mixer": {
                 "balance": "बैलेंस",
@@ -4662,7 +4669,8 @@
             "adminResetNotForSelf": "अपने खाते पर पासवर्ड बदलें का उपयोग करें।",
             "userNotFound": "यह खाता अब मौजूद नहीं है।",
             "skipNextTime": "अगली बार इस स्क्रीन को छोड़ें",
-            "skipNextTimeHint": "(यह खाता सीधे खोलता है; केवल बिना पासवर्ड वाले खाते)"
+            "skipNextTimeHint": "(यह खाता सीधे खोलता है; केवल बिना पासवर्ड वाले खाते)",
+            "offlineNote": "ये खाते पूरी तरह ऑफ़लाइन हैं: ये इस डिवाइस पर स्थानीय प्रोफ़ाइल हैं और किसी ऑनलाइन खाते से जुड़े नहीं हैं।"
         },
         "opendrive": {
             "privacyTitle": "OpenDrive गोपनीयता",

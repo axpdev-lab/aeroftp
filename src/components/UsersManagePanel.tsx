@@ -411,6 +411,11 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                 </div>
 
                 <div className="max-h-[calc(84vh-57px)] overflow-y-auto p-4">
+                    {/* Offline-only clarification (discussion #270): these are
+                        local partitions on this device, not online sign-ins. */}
+                    <p className="mb-3 text-[11px] leading-snug text-gray-500 dark:text-gray-400">
+                        {t('accountLock.offlineNote')}
+                    </p>
                     {error && (
                         <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
                             {error}

@@ -993,7 +993,13 @@
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "Ներմուծում և արտահանում ևս {count} այլ գործիքով",
             "discoverHealthCheck": "Հասանելիության ստուգում Add Services-ում",
-            "discoverHealthCheckDesc": "Ստուգում է մատակարարների հասանելիությունը Add Services ցանկում: Այդ ներդիրում Ստուգել կոճակի վրա կրկնակի սեղմելը նույնպես փոխարկում է այն:"
+            "discoverHealthCheckDesc": "Ստուգում է մատակարարների հասանելիությունը Add Services ցանկում: Այդ ներդիրում Ստուգել կոճակի վրա կրկնակի սեղմելը նույնպես փոխարկում է այն:",
+            "imagePreviewBg": "Պատկերի նախադիտման ֆոն",
+            "imagePreviewBgDesc": "Գույնը, որ ցուցադրվում է նախադիտման մեջ թափանցիկ պատկերների (PNG, SVG, WebP) հետևում։ Կարելի է փոխել նաև նախադիտման գործիքագոտուց։",
+            "imagePreviewBgCheckerboard": "Շախմատի տախտակ",
+            "imagePreviewBgDark": "Մուգ",
+            "imagePreviewBgLight": "Բաց",
+            "imagePreviewBgCustom": "Հատուկ"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3359,7 +3365,8 @@
                     "saveSaving": "Պահպանում...",
                     "saveSaved": "Պատկերը հաջողությամբ պահպանվեց",
                     "saveFailed": "Պատկերի պահպանումը ձախողվեց"
-                }
+                },
+                "toggleTransparencyBg": "Թափանցիկության ֆոն (փոխել)"
             },
             "mixer": {
                 "balance": "Հավասարակշրություն",
@@ -4662,7 +4669,8 @@
             "adminResetNotForSelf": "Ձեր սեփական հաշվում օգտագործեք Փոխել գաղտնաբառը։",
             "userNotFound": "Այս հաշիվն այլևս գոյություն չունի։",
             "skipNextTime": "Հաջորդ անգամ բաց թողնել այս էկրանը",
-            "skipNextTimeHint": "(ուղղակիորեն բացում է այս հաշիվը; միայն առանց գաղտնաբառի հաշիվներ)"
+            "skipNextTimeHint": "(ուղղակիորեն բացում է այս հաշիվը; միայն առանց գաղտնաբառի հաշիվներ)",
+            "offlineNote": "Այս հաշիվները լիովին անցանց են. դրանք այս սարքի տեղային պրոֆիլներ են և կապված չեն որևէ առցանց հաշվի հետ։"
         },
         "opendrive": {
             "privacyTitle": "OpenDrive գաղտնիություն",

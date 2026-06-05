@@ -993,7 +993,13 @@
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "Nhập và xuất với {count} công cụ khác",
             "discoverHealthCheck": "Kiểm tra tình trạng trong Add Services",
-            "discoverHealthCheckDesc": "Kiểm tra khả năng kết nối của nhà cung cấp trong danh sách Add Services. Nhấp đúp vào nút Kiểm tra trên tab đó để bật/tắt nó ngay tại đó."
+            "discoverHealthCheckDesc": "Kiểm tra khả năng kết nối của nhà cung cấp trong danh sách Add Services. Nhấp đúp vào nút Kiểm tra trên tab đó để bật/tắt nó ngay tại đó.",
+            "imagePreviewBg": "Nền xem trước ảnh",
+            "imagePreviewBgDesc": "Màu hiển thị phía sau ảnh trong suốt (PNG, SVG, WebP) trong bản xem trước. Cũng có thể chuyển từ thanh công cụ xem trước.",
+            "imagePreviewBgCheckerboard": "Bàn cờ",
+            "imagePreviewBgDark": "Tối",
+            "imagePreviewBgLight": "Sáng",
+            "imagePreviewBgCustom": "Tùy chỉnh"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3366,7 +3372,8 @@
                     "saveSaving": "Đang lưu...",
                     "saveSaved": "Đã lưu ảnh thành công",
                     "saveFailed": "Không thể lưu ảnh"
-                }
+                },
+                "toggleTransparencyBg": "Nền trong suốt (xoay vòng)"
             },
             "mixer": {
                 "balance": "Cân bằng",
@@ -4662,7 +4669,8 @@
             "adminResetNotForSelf": "Dùng Đổi mật khẩu trên tài khoản của chính bạn.",
             "userNotFound": "Tài khoản này không còn tồn tại.",
             "skipNextTime": "Bỏ qua màn hình này lần sau",
-            "skipNextTimeHint": "(mở tài khoản này trực tiếp; chỉ tài khoản không có mật khẩu)"
+            "skipNextTimeHint": "(mở tài khoản này trực tiếp; chỉ tài khoản không có mật khẩu)",
+            "offlineNote": "Các tài khoản này hoàn toàn ngoại tuyến: chúng là hồ sơ cục bộ trên thiết bị này và không liên kết với bất kỳ tài khoản trực tuyến nào."
         },
         "opendrive": {
             "privacyTitle": "Quyền riêng tư OpenDrive",

@@ -993,7 +993,13 @@
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "Importuoti ir eksportuoti su {count} kitais įrankiais",
             "discoverHealthCheck": "Pasiekiamumo tikrinimas Add Services rodinyje",
-            "discoverHealthCheckDesc": "Tikrina tiekėjų pasiekiamumą Add Services sąraše. Dukart spustelėjus mygtuką Tikrinti toje kortelėje, jį taip pat įjungsite/išjungsite."
+            "discoverHealthCheckDesc": "Tikrina tiekėjų pasiekiamumą Add Services sąraše. Dukart spustelėjus mygtuką Tikrinti toje kortelėje, jį taip pat įjungsite/išjungsite.",
+            "imagePreviewBg": "Vaizdo peržiūros fonas",
+            "imagePreviewBgDesc": "Spalva, rodoma už skaidrių paveikslėlių (PNG, SVG, WebP) peržiūroje. Taip pat perjungiama peržiūros įrankių juostoje.",
+            "imagePreviewBgCheckerboard": "Šachmatų lenta",
+            "imagePreviewBgDark": "Tamsus",
+            "imagePreviewBgLight": "Šviesus",
+            "imagePreviewBgCustom": "Pasirinktinis"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3366,7 +3372,8 @@
                     "saveSaving": "Saugoma...",
                     "saveSaved": "Vaizdas sėkmingai išsaugotas",
                     "saveFailed": "Nepavyko išsaugoti vaizdo"
-                }
+                },
+                "toggleTransparencyBg": "Skaidrumo fonas (perjungti)"
             },
             "mixer": {
                 "balance": "Balansas",
@@ -4662,7 +4669,8 @@
             "adminResetNotForSelf": "Savo paskyroje naudokite Keisti slaptažodį.",
             "userNotFound": "Šios paskyros nebėra.",
             "skipNextTime": "Kitą kartą praleisti šį ekraną",
-            "skipNextTimeHint": "(atidaro šią paskyrą tiesiogiai; tik paskyros be slaptažodžio)"
+            "skipNextTimeHint": "(atidaro šią paskyrą tiesiogiai; tik paskyros be slaptažodžio)",
+            "offlineNote": "Šios paskyros yra visiškai neprisijungus: tai vietiniai profiliai šiame įrenginyje, nesusieti su jokia internetine paskyra."
         },
         "opendrive": {
             "privacyTitle": "OpenDrive privatumas",

@@ -993,7 +993,13 @@
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "与其他 {count} 个工具导入和导出",
             "discoverHealthCheck": "Add Services 中的健康检查",
-            "discoverHealthCheckDesc": "在 Add Services 列表中探测提供商的可达性。双击该选项卡中的检查按钮也可切换此功能。"
+            "discoverHealthCheckDesc": "在 Add Services 列表中探测提供商的可达性。双击该选项卡中的检查按钮也可切换此功能。",
+            "imagePreviewBg": "图片预览背景",
+            "imagePreviewBgDesc": "预览中透明图片（PNG、SVG、WebP）后面显示的颜色。也可从预览工具栏切换。",
+            "imagePreviewBgCheckerboard": "棋盘格",
+            "imagePreviewBgDark": "深色",
+            "imagePreviewBgLight": "浅色",
+            "imagePreviewBgCustom": "自定义"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3366,7 +3372,8 @@
                     "saveSaving": "正在保存...",
                     "saveSaved": "图片保存成功",
                     "saveFailed": "图片保存失败"
-                }
+                },
+                "toggleTransparencyBg": "透明背景（循环切换）"
             },
             "mixer": {
                 "balance": "平衡",
@@ -4662,7 +4669,8 @@
             "adminResetNotForSelf": "请在您自己的账户上使用“更改密码”。",
             "userNotFound": "此账户已不存在。",
             "skipNextTime": "下次跳过此屏幕",
-            "skipNextTimeHint": "(直接打开此账户；仅限无密码账户)"
+            "skipNextTimeHint": "(直接打开此账户；仅限无密码账户)",
+            "offlineNote": "这些账户完全离线：它们是此设备上的本地配置文件，不与任何在线账户关联。"
         },
         "opendrive": {
             "privacyTitle": "OpenDrive 隐私",

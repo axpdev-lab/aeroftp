@@ -993,7 +993,13 @@
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "Importez et exportez avec {count} autres outils",
             "discoverHealthCheck": "Vérification de disponibilité dans Add Services",
-            "discoverHealthCheckDesc": "Vérifie l'accessibilité des fournisseurs dans la liste Add Services. Double-cliquez sur le bouton Vérifier de cet onglet pour l'activer ou le désactiver."
+            "discoverHealthCheckDesc": "Vérifie l'accessibilité des fournisseurs dans la liste Add Services. Double-cliquez sur le bouton Vérifier de cet onglet pour l'activer ou le désactiver.",
+            "imagePreviewBg": "Arrière-plan de l'aperçu d'image",
+            "imagePreviewBgDesc": "Couleur affichée derrière les images transparentes (PNG, SVG, WebP) dans l'aperçu. Aussi modifiable depuis la barre d'outils de l'aperçu.",
+            "imagePreviewBgCheckerboard": "Damier",
+            "imagePreviewBgDark": "Sombre",
+            "imagePreviewBgLight": "Clair",
+            "imagePreviewBgCustom": "Personnalisé"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3366,7 +3372,8 @@
                     "saveSaving": "Enregistrement...",
                     "saveSaved": "Image enregistrée avec succès",
                     "saveFailed": "Échec de l'enregistrement de l'image"
-                }
+                },
+                "toggleTransparencyBg": "Arrière-plan de transparence (faire défiler)"
             },
             "mixer": {
                 "balance": "Balance",
@@ -4662,7 +4669,8 @@
             "adminResetNotForSelf": "Utilisez Changer le mot de passe sur votre propre compte.",
             "userNotFound": "Ce compte n'existe plus.",
             "skipNextTime": "Ignorer cet écran la prochaine fois",
-            "skipNextTimeHint": "(ouvre ce compte directement ; uniquement les comptes sans mot de passe)"
+            "skipNextTimeHint": "(ouvre ce compte directement ; uniquement les comptes sans mot de passe)",
+            "offlineNote": "Ces comptes sont entièrement hors ligne : ce sont des profils locaux sur cet appareil, non liés à un compte en ligne."
         },
         "opendrive": {
             "privacyTitle": "Confidentialité OpenDrive",

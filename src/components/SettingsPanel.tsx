@@ -24,6 +24,7 @@ import { ConfirmDialog } from './Dialogs';
 import { ImportExportIcon } from './icons/ImportExportIcon';
 import { LOCK_SCREEN_PATTERNS } from './LockScreen';
 import { APP_BACKGROUND_PATTERNS, APP_BACKGROUND_KEY, DEFAULT_APP_BACKGROUND } from '../utils/appBackgroundPatterns';
+import { IMAGE_PREVIEW_BG_PRESETS, readImagePreviewBg, writeImagePreviewBg, resolveImagePreviewBgStyle, resolveImagePreviewBgHex } from '../utils/imagePreviewBg';
 import { TotpSetup } from './TotpSetup';
 import { PasswordStrengthBar } from './vault/PasswordStrengthBar';
 import { SettingsAeroCloudTab } from './settings/SettingsAeroCloudTab';
@@ -2329,6 +2330,66 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                             );
                                                         })}
                                                     </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Image Preview Transparency Background (discussion #270) */}
+                                            <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                                                <div className="bg-gray-50 dark:bg-gray-700/50 px-4 py-2 border-b border-gray-200 dark:border-gray-700">
+                                                    <h4 className="font-medium flex items-center gap-2 text-sm">
+                                                        <Image size={14} className="text-gray-500" />
+                                                        {t('settings.imagePreviewBg')}
+                                                    </h4>
+                                                </div>
+                                                <div className="p-4">
+                                                    <p className="text-xs text-gray-500 mb-3">{t('settings.imagePreviewBgDesc')}</p>
+                                                    {(() => {
+                                                        const current = readImagePreviewBg();
+                                                        const isCustom = !IMAGE_PREVIEW_BG_PRESETS.some((p) => p.id === current);
+                                                        return (
+                                                            <div className="flex flex-wrap items-center gap-2">
+                                                                {IMAGE_PREVIEW_BG_PRESETS.map((preset) => {
+                                                                    const isSelected = current === preset.id;
+                                                                    return (
+                                                                        <button
+                                                                            key={preset.id}
+                                                                            onClick={() => { writeImagePreviewBg(preset.id); flashSaved(); }}
+                                                                            className={`relative h-12 w-16 rounded-lg border-2 overflow-hidden transition-all ${isSelected ? 'border-blue-500 ring-1 ring-blue-500/30' : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'}`}
+                                                                            title={t(preset.nameKey)}
+                                                                        >
+                                                                            <div className="absolute inset-0" style={resolveImagePreviewBgStyle(preset.id)} />
+                                                                            <div className="absolute inset-0 flex items-end justify-center pb-0.5">
+                                                                                <span className="text-[9px] font-medium text-gray-700 dark:text-gray-200 bg-white/70 dark:bg-black/40 px-1 rounded">{t(preset.nameKey)}</span>
+                                                                            </div>
+                                                                            {isSelected && (
+                                                                                <div className="absolute top-1 right-1 w-3.5 h-3.5 bg-blue-500 rounded-full flex items-center justify-center">
+                                                                                    <svg className="w-2 h-2 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                                                                    </svg>
+                                                                                </div>
+                                                                            )}
+                                                                        </button>
+                                                                    );
+                                                                })}
+                                                                <label
+                                                                    className={`relative h-12 w-16 rounded-lg border-2 overflow-hidden cursor-pointer transition-all ${isCustom ? 'border-blue-500 ring-1 ring-blue-500/30' : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'}`}
+                                                                    title={t('settings.imagePreviewBgCustom')}
+                                                                >
+                                                                    <div className="absolute inset-0" style={{ backgroundColor: resolveImagePreviewBgHex(current) }} />
+                                                                    <div className="absolute inset-0 flex items-end justify-center pb-0.5">
+                                                                        <span className="text-[9px] font-medium text-gray-700 dark:text-gray-200 bg-white/70 dark:bg-black/40 px-1 rounded">{t('settings.imagePreviewBgCustom')}</span>
+                                                                    </div>
+                                                                    <input
+                                                                        type="color"
+                                                                        value={resolveImagePreviewBgHex(current)}
+                                                                        onChange={(e) => { writeImagePreviewBg(e.target.value); flashSaved(); }}
+                                                                        className="absolute inset-0 opacity-0 cursor-pointer"
+                                                                        aria-label={t('settings.imagePreviewBgCustom')}
+                                                                    />
+                                                                </label>
+                                                            </div>
+                                                        );
+                                                    })()}
                                                 </div>
                                             </div>
                                         </div>

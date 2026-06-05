@@ -993,7 +993,13 @@
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "Importe e exporte com {count} outras ferramentas",
             "discoverHealthCheck": "Verificação de disponibilidade em Add Services",
-            "discoverHealthCheckDesc": "Verifica a acessibilidade dos provedores na lista Add Services. Clique duas vezes no botão Verificar nessa aba para alterná-lo por lá também."
+            "discoverHealthCheckDesc": "Verifica a acessibilidade dos provedores na lista Add Services. Clique duas vezes no botão Verificar nessa aba para alterná-lo por lá também.",
+            "imagePreviewBg": "Fundo da pré-visualização de imagem",
+            "imagePreviewBgDesc": "Cor mostrada por trás das imagens transparentes (PNG, SVG, WebP) na pré-visualização. Também alternável a partir da barra da pré-visualização.",
+            "imagePreviewBgCheckerboard": "Xadrez",
+            "imagePreviewBgDark": "Escuro",
+            "imagePreviewBgLight": "Claro",
+            "imagePreviewBgCustom": "Personalizado"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3366,7 +3372,8 @@
                     "saveSaving": "Salvando...",
                     "saveSaved": "Imagem salva com sucesso",
                     "saveFailed": "Falha ao salvar a imagem"
-                }
+                },
+                "toggleTransparencyBg": "Fundo de transparência (alternar)"
             },
             "mixer": {
                 "balance": "Balanco",
@@ -4662,7 +4669,8 @@
             "adminResetNotForSelf": "Use Alterar palavra-passe na sua própria conta.",
             "userNotFound": "Esta conta já não existe.",
             "skipNextTime": "Pular esta tela da próxima vez",
-            "skipNextTimeHint": "(abre esta conta diretamente; apenas contas sem senha)"
+            "skipNextTimeHint": "(abre esta conta diretamente; apenas contas sem senha)",
+            "offlineNote": "Estas contas são totalmente offline: são perfis locais neste dispositivo e não estão associadas a nenhuma conta online."
         },
         "opendrive": {
             "privacyTitle": "Privacidade do OpenDrive",

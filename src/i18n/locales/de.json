@@ -993,7 +993,13 @@
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "Import und Export mit {count} weiteren Tools",
             "discoverHealthCheck": "Verfügbarkeitsprüfung in Add Services",
-            "discoverHealthCheckDesc": "Prüft die Erreichbarkeit der Anbieter in der Add-Services-Liste. Per Doppelklick auf die Schaltfläche Prüfen lässt sich das dort ebenfalls umschalten."
+            "discoverHealthCheckDesc": "Prüft die Erreichbarkeit der Anbieter in der Add-Services-Liste. Per Doppelklick auf die Schaltfläche Prüfen lässt sich das dort ebenfalls umschalten.",
+            "imagePreviewBg": "Hintergrund der Bildvorschau",
+            "imagePreviewBgDesc": "Farbe hinter transparenten Bildern (PNG, SVG, WebP) in der Vorschau. Auch über die Vorschau-Symbolleiste umschaltbar.",
+            "imagePreviewBgCheckerboard": "Schachbrett",
+            "imagePreviewBgDark": "Dunkel",
+            "imagePreviewBgLight": "Hell",
+            "imagePreviewBgCustom": "Benutzerdefiniert"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3366,7 +3372,8 @@
                     "saveSaving": "Speichern...",
                     "saveSaved": "Bild erfolgreich gespeichert",
                     "saveFailed": "Fehler beim Speichern des Bildes"
-                }
+                },
+                "toggleTransparencyBg": "Transparenz-Hintergrund (wechseln)"
             },
             "mixer": {
                 "balance": "Balance",
@@ -4662,7 +4669,8 @@
             "adminResetNotForSelf": "Verwende Passwort ändern für dein eigenes Konto.",
             "userNotFound": "Dieses Konto existiert nicht mehr.",
             "skipNextTime": "Diesen Bildschirm nächstes Mal überspringen",
-            "skipNextTimeHint": "(öffnet dieses Konto direkt; nur Konten ohne Passwort)"
+            "skipNextTimeHint": "(öffnet dieses Konto direkt; nur Konten ohne Passwort)",
+            "offlineNote": "Diese Konten sind vollständig offline: Es sind lokale Profile auf diesem Gerät und nicht mit einem Online-Konto verknüpft."
         },
         "opendrive": {
             "privacyTitle": "OpenDrive Datenschutz",

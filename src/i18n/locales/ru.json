@@ -993,7 +993,13 @@
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "Импорт и экспорт с {count} другими инструментами",
             "discoverHealthCheck": "Проверка доступности в Add Services",
-            "discoverHealthCheckDesc": "Проверяет доступность провайдеров в списке Add Services. Двойной клик по кнопке Проверить на этой вкладке также переключает её."
+            "discoverHealthCheckDesc": "Проверяет доступность провайдеров в списке Add Services. Двойной клик по кнопке Проверить на этой вкладке также переключает её.",
+            "imagePreviewBg": "Фон предпросмотра изображения",
+            "imagePreviewBgDesc": "Цвет за прозрачными изображениями (PNG, SVG, WebP) в предпросмотре. Также переключается на панели предпросмотра.",
+            "imagePreviewBgCheckerboard": "Шахматная доска",
+            "imagePreviewBgDark": "Тёмный",
+            "imagePreviewBgLight": "Светлый",
+            "imagePreviewBgCustom": "Свой"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3366,7 +3372,8 @@
                     "saveSaving": "Сохранение...",
                     "saveSaved": "Изображение успешно сохранено",
                     "saveFailed": "Не удалось сохранить изображение"
-                }
+                },
+                "toggleTransparencyBg": "Фон прозрачности (переключить)"
             },
             "mixer": {
                 "balance": "Баланс",
@@ -4662,7 +4669,8 @@
             "adminResetNotForSelf": "В своей учётной записи используйте «Сменить пароль».",
             "userNotFound": "Эта учётная запись больше не существует.",
             "skipNextTime": "Пропускать этот экран в следующий раз",
-            "skipNextTimeHint": "(открывает эту учётную запись напрямую; только записи без пароля)"
+            "skipNextTimeHint": "(открывает эту учётную запись напрямую; только записи без пароля)",
+            "offlineNote": "Эти учётные записи полностью офлайн: это локальные профили на этом устройстве, не связанные с каким-либо онлайн-аккаунтом."
         },
         "opendrive": {
             "privacyTitle": "Конфиденциальность OpenDrive",

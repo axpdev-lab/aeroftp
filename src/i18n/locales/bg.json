@@ -993,7 +993,13 @@
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "Импортиране и експортиране с още {count} инструмента",
             "discoverHealthCheck": "Проверка на достъпността в Add Services",
-            "discoverHealthCheckDesc": "Проверява достъпността на доставчиците в списъка Add Services. Двукратно щракване върху бутона Провери в тази раздел също го превключва."
+            "discoverHealthCheckDesc": "Проверява достъпността на доставчиците в списъка Add Services. Двукратно щракване върху бутона Провери в тази раздел също го превключва.",
+            "imagePreviewBg": "Фон на визуализацията на изображение",
+            "imagePreviewBgDesc": "Цвят зад прозрачните изображения (PNG, SVG, WebP) във визуализацията. Може да се превключва и от лентата на визуализацията.",
+            "imagePreviewBgCheckerboard": "Шахматна дъска",
+            "imagePreviewBgDark": "Тъмен",
+            "imagePreviewBgLight": "Светъл",
+            "imagePreviewBgCustom": "По избор"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3366,7 +3372,8 @@
                     "saveSaving": "Запазване...",
                     "saveSaved": "Изображението е запазено успешно",
                     "saveFailed": "Неуспешно запазване на изображението"
-                }
+                },
+                "toggleTransparencyBg": "Фон за прозрачност (превключване)"
             },
             "mixer": {
                 "balance": "Баланс",
@@ -4662,7 +4669,8 @@
             "adminResetNotForSelf": "Използвайте Смяна на паролата за собствения си акаунт.",
             "userNotFound": "Този акаунт вече не съществува.",
             "skipNextTime": "Пропусни този екран следващия път",
-            "skipNextTimeHint": "(отваря този акаунт директно; само акаунти без парола)"
+            "skipNextTimeHint": "(отваря този акаунт директно; само акаунти без парола)",
+            "offlineNote": "Тези акаунти са изцяло офлайн: това са локални профили на това устройство и не са свързани с онлайн акаунт."
         },
         "opendrive": {
             "privacyTitle": "Поверителност на OpenDrive",

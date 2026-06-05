@@ -993,7 +993,13 @@
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "他の {count} 個のツールとインポート・エクスポート",
             "discoverHealthCheck": "Add Services でのヘルスチェック",
-            "discoverHealthCheckDesc": "Add Services の一覧でプロバイダーの到達性を確認します。そのタブの確認ボタンをダブルクリックしても切り替えられます。"
+            "discoverHealthCheckDesc": "Add Services の一覧でプロバイダーの到達性を確認します。そのタブの確認ボタンをダブルクリックしても切り替えられます。",
+            "imagePreviewBg": "画像プレビューの背景",
+            "imagePreviewBgDesc": "プレビューで透過画像（PNG、SVG、WebP）の背後に表示する色。プレビューのツールバーからも切り替えできます。",
+            "imagePreviewBgCheckerboard": "市松模様",
+            "imagePreviewBgDark": "ダーク",
+            "imagePreviewBgLight": "ライト",
+            "imagePreviewBgCustom": "カスタム"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3331,7 +3337,8 @@
                     "saveSaving": "保存中...",
                     "saveSaved": "画像を保存しました",
                     "saveFailed": "画像の保存に失敗しました"
-                }
+                },
+                "toggleTransparencyBg": "透過の背景（切り替え）"
             },
             "mixer": {
                 "balance": "バランス",
@@ -4662,7 +4669,8 @@
             "adminResetNotForSelf": "ご自身のアカウントでは「パスワードを変更」を使用してください。",
             "userNotFound": "このアカウントは存在しません。",
             "skipNextTime": "次回からこの画面をスキップ",
-            "skipNextTimeHint": "(このアカウントを直接開きます。パスワードなしのアカウントのみ)"
+            "skipNextTimeHint": "(このアカウントを直接開きます。パスワードなしのアカウントのみ)",
+            "offlineNote": "これらのアカウントは完全にオフラインです。この端末上のローカルプロファイルで、オンラインアカウントには関連付けられていません。"
         },
         "opendrive": {
             "privacyTitle": "OpenDrive プライバシー",

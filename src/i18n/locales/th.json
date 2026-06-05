@@ -993,7 +993,13 @@
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "นำเข้าและส่งออกกับเครื่องมืออื่นอีก {count} รายการ",
             "discoverHealthCheck": "การตรวจสอบสถานะใน Add Services",
-            "discoverHealthCheckDesc": "ตรวจสอบการเข้าถึงผู้ให้บริการในรายการ Add Services ดับเบิลคลิกปุ่มตรวจสอบในแท็บนั้นเพื่อสลับเปิด/ปิดได้เช่นกัน"
+            "discoverHealthCheckDesc": "ตรวจสอบการเข้าถึงผู้ให้บริการในรายการ Add Services ดับเบิลคลิกปุ่มตรวจสอบในแท็บนั้นเพื่อสลับเปิด/ปิดได้เช่นกัน",
+            "imagePreviewBg": "พื้นหลังตัวอย่างรูปภาพ",
+            "imagePreviewBgDesc": "สีที่แสดงด้านหลังรูปภาพโปร่งใส (PNG, SVG, WebP) ในตัวอย่าง สลับได้จากแถบเครื่องมือตัวอย่างด้วย",
+            "imagePreviewBgCheckerboard": "ตาหมากรุก",
+            "imagePreviewBgDark": "มืด",
+            "imagePreviewBgLight": "สว่าง",
+            "imagePreviewBgCustom": "กำหนดเอง"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3366,7 +3372,8 @@
                     "saveSaving": "กำลังบันทึก...",
                     "saveSaved": "บันทึกรูปภาพสำเร็จ",
                     "saveFailed": "ไม่สามารถบันทึกรูปภาพได้"
-                }
+                },
+                "toggleTransparencyBg": "พื้นหลังความโปร่งใส (วนสลับ)"
             },
             "mixer": {
                 "balance": "สมดุล",
@@ -4662,7 +4669,8 @@
             "adminResetNotForSelf": "ใช้ เปลี่ยนรหัสผ่าน กับบัญชีของคุณเอง",
             "userNotFound": "บัญชีนี้ไม่มีอยู่อีกต่อไป",
             "skipNextTime": "ข้ามหน้าจอนี้ในครั้งถัดไป",
-            "skipNextTimeHint": "(เปิดบัญชีนี้โดยตรง เฉพาะบัญชีที่ไม่มีรหัสผ่าน)"
+            "skipNextTimeHint": "(เปิดบัญชีนี้โดยตรง เฉพาะบัญชีที่ไม่มีรหัสผ่าน)",
+            "offlineNote": "บัญชีเหล่านี้ออฟไลน์ทั้งหมด: เป็นโปรไฟล์ในเครื่องบนอุปกรณ์นี้ และไม่ได้เชื่อมโยงกับบัญชีออนไลน์ใด ๆ"
         },
         "opendrive": {
             "privacyTitle": "ความเป็นส่วนตัว OpenDrive",

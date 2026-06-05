@@ -993,7 +993,13 @@
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "Flytja inn og út með {count} öðrum verkfærum",
             "discoverHealthCheck": "Heilsuathugun í Add Services",
-            "discoverHealthCheckDesc": "Kannar aðgengi þjónustuaðila í Add Services listanum. Tvísmelltu á Athuga hnappinn á þeim flipa til að kveikja/slökkva á því líka."
+            "discoverHealthCheckDesc": "Kannar aðgengi þjónustuaðila í Add Services listanum. Tvísmelltu á Athuga hnappinn á þeim flipa til að kveikja/slökkva á því líka.",
+            "imagePreviewBg": "Bakgrunnur myndaforskoðunar",
+            "imagePreviewBgDesc": "Litur á bak við gegnsæjar myndir (PNG, SVG, WebP) í forskoðun. Einnig hægt að skipta úr tækjastiku forskoðunar.",
+            "imagePreviewBgCheckerboard": "Skákborð",
+            "imagePreviewBgDark": "Dökkt",
+            "imagePreviewBgLight": "Ljóst",
+            "imagePreviewBgCustom": "Sérsniðið"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3366,7 +3372,8 @@
                     "saveSaving": "Vista...",
                     "saveSaved": "Mynd vistuð",
                     "saveFailed": "Ekki tókst að vista mynd"
-                }
+                },
+                "toggleTransparencyBg": "Bakgrunnur gegnsæis (skipta)"
             },
             "mixer": {
                 "balance": "Jafnvægi",
@@ -4681,7 +4688,8 @@
             "adminResetNotForSelf": "Notaðu Breyta lykilorði á þínum eigin reikningi.",
             "userNotFound": "Þessi reikningur er ekki lengur til.",
             "skipNextTime": "Sleppa þessum skjá næst",
-            "skipNextTimeHint": "(opnar þennan reikning beint; aðeins reikningar án lykilorðs)"
+            "skipNextTimeHint": "(opnar þennan reikning beint; aðeins reikningar án lykilorðs)",
+            "offlineNote": "Þessir reikningar eru algjörlega án nettengingar: þetta eru staðbundin snið á þessu tæki og eru ekki tengd neinum netreikningi."
         },
         "opendrive": {
             "privacyTitle": "OpenDrive persónuvernd",
