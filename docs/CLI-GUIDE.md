@@ -692,14 +692,19 @@ Shows provider name, type, server info, and storage quota (used/free/total) when
 # Scan for duplicate files (report only)
 aeroftp-cli dedupe --profile "server" /data --dry-run
 
-# Delete duplicates (keep first occurrence)
+# Report only, no action (default mode)
 aeroftp-cli dedupe --profile "server" /data --mode skip
 
 # JSON output with group details
 aeroftp-cli dedupe --profile "server" /data --dry-run --json
+
+# Destructive mode in a script: --force is required without a TTY
+aeroftp-cli dedupe --profile "server" /data --mode newest --force --max-delete 50
 ```
 
 Finds duplicate files by content hash (SHA-256). Groups files by size first (fast pre-filter), then hashes to confirm. Modes: `skip` (report only), `newest` (keep newest), `oldest` (keep oldest), `largest` (keep largest), `smallest` (keep smallest), `rename` (rename duplicates with numeric suffix), `interactive` (prompt per group), `list` (list without action).
+
+The destructive modes (`delete`, `newest`, `oldest`, `largest`, `smallest`, `rename`) are gated like `rm -r` and `sync --delete`: in an interactive terminal they prompt for confirmation, and in a non-interactive (non-TTY/JSON/cron) context they **fail closed (exit 5)** unless `--force` is passed. A safety cap bounds how many files one run may delete/rename: default **100**, raised or lowered with `--max-delete N` (or `N%` of the scanned files); exceeding the cap aborts with exit 4. Use `--dry-run` to preview without acting.
 
 ### cleanup - Remove Orphaned Temp Files
 
