@@ -11,7 +11,7 @@
 
 import * as React from 'react';
 import { useMemo, useState, useRef, useCallback } from 'react';
-import { Search, X, Columns3, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
+import { Search, X, Columns3, ChevronUp, ChevronDown, ChevronsUpDown, Globe } from 'lucide-react';
 import { ProviderType } from '../../types';
 import { PROVIDER_LOGOS } from '../ProviderLogos';
 import { CountryFlag } from '../CountryFlag';
@@ -25,6 +25,7 @@ import {
     totalFreeStorageGb,
     freeProtocols,
     paidProtocols,
+    companyRegions,
 } from '../providerCatalog';
 
 type CatalogColId = 'company' | 'region' | 'freeGb' | 'free' | 'paid' | 'health';
@@ -40,9 +41,9 @@ const CATALOG_COLUMNS: TableColumnDef<CatalogColId>[] = [
 
 const SORTABLE: CatalogColId[] = ['company', 'region', 'freeGb'];
 
-/** Tokens a company is searchable by (name, country, every protocol label). */
+/** Tokens a company is searchable by (name, regions, note, protocol labels). */
 function searchText(c: CatalogCompany): string {
-    return [c.company, c.countryCode, c.freeNote, ...c.protocols.map(p => p.label)]
+    return [c.company, c.countryCode, c.freeNote, ...companyRegions(c), ...c.protocols.map(p => p.label)]
         .filter(Boolean)
         .join(' ')
         .toLowerCase();
@@ -194,16 +195,30 @@ export function CatalogTable({ companies, onSelectProvider, getHealth, healthEna
                         </div>
                     </td>
                 );
-            case 'region':
+            case 'region': {
+                const regions = companyRegions(c);
+                const MAX_FLAGS = 3;
+                const shown = regions.slice(0, MAX_FLAGS);
+                const extra = regions.length - shown.length;
                 return (
                     <td key={col.id} className={`py-1.5 px-3 ${alignClass(col.id)}`}>
-                        <div className="flex items-center justify-center">
-                            {c.countryCode
-                                ? <CountryFlag code={c.countryCode} title={c.countryCode} className="w-5 h-3.5 rounded-[2px] shadow-sm" />
-                                : <span className="text-gray-300 dark:text-gray-600">-</span>}
+                        <div className="flex items-center justify-center gap-0.5" title={regions.join(', ')}>
+                            {regions.length === 0 ? (
+                                <span className="text-gray-300 dark:text-gray-600">-</span>
+                            ) : (
+                                <>
+                                    {shown.map((code, i) => code === 'global'
+                                        ? <Globe key={`${code}-${i}`} size={13} className="text-gray-400 dark:text-gray-500" />
+                                        : <CountryFlag key={`${code}-${i}`} code={code} title={code} className="w-4 h-3 rounded-[1px] shadow-sm" />)}
+                                    {extra > 0 && (
+                                        <span className="text-[9px] text-gray-400 dark:text-gray-500 tabular-nums">+{extra}</span>
+                                    )}
+                                </>
+                            )}
                         </div>
                     </td>
                 );
+            }
             case 'freeGb':
                 return (
                     <td key={col.id} className={`py-1.5 px-3 tabular-nums ${alignClass(col.id)}`}>
