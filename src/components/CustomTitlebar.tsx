@@ -206,6 +206,10 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
     } = props;
 
     const t = useTranslation();
+    // macOS uses the native Overlay title bar (issue #290): the traffic-light
+    // controls render top-left over our content, so we pad the bar's left edge
+    // to clear them and hide our own redundant window-control cluster.
+    const isMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform);
     const [isMaximized, setIsMaximized] = React.useState(false);
     const [openMenu, setOpenMenu] = React.useState<string | null>(null);
     const [appVersion, setAppVersion] = React.useState('');
@@ -341,7 +345,7 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
         // child drag regions below (the logo+name cluster on the left
         // and the spacer between the menu and the right cluster).
         <div
-            className="aero-titlebar flex items-center h-9 px-2 bg-[var(--color-bg-secondary)] border-b border-[var(--color-border)] select-none shrink-0"
+            className={`aero-titlebar flex items-center h-9 px-2 bg-[var(--color-bg-secondary)] border-b border-[var(--color-border)] select-none shrink-0${isMac ? ' pl-[76px]' : ''}`}
         >
             {/* Left: Logo + App name */}
             <div
@@ -507,7 +511,10 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
                     </button>
                 </div>
 
-                {/* Cluster 3: Window Controls */}
+                {/* Cluster 3: Window Controls.
+                    Hidden on macOS, where the native Overlay traffic lights
+                    (top-left) provide minimize/maximize/close instead (#290). */}
+                {!isMac && (
                 <div className="flex items-center gap-0.5">
                     <button
                         onClick={handleMinimize}
@@ -535,6 +542,7 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
                         <X size={15} className="text-[var(--color-text-secondary)] group-hover:text-white" />
                     </button>
                 </div>
+                )}
             </div>
         </div>
     );

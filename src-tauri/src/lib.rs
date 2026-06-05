@@ -8685,6 +8685,51 @@ fn is_autostart_launch() -> bool {
 }
 
 /// Called by the frontend when React has finished initializing.
+/// Emits detailed main-window state to the logs right after a `show()` attempt.
+///
+/// macOS (Tahoe especially) can report a successful `show()` while the window
+/// never actually presents (issue #290): only the Dock icon appears. These
+/// lines let a tester's terminal capture the real post-show state so we can
+/// tell "shown but off-screen / on a missing monitor" from "shown but the
+/// compositor never presented it". Cheap, log-only, all platforms.
+fn log_window_diagnostics(window: &tauri::WebviewWindow, ctx: &str) {
+    match window.is_visible() {
+        Ok(v) => info!("[diag #290] {ctx}: is_visible={v}"),
+        Err(e) => warn!("[diag #290] {ctx}: is_visible error: {e}"),
+    }
+    if let Ok(m) = window.is_minimized() {
+        info!("[diag #290] {ctx}: is_minimized={m}");
+    }
+    if let Ok(f) = window.is_focused() {
+        info!("[diag #290] {ctx}: is_focused={f}");
+    }
+    if let Ok(scale) = window.scale_factor() {
+        info!("[diag #290] {ctx}: scale_factor={scale}");
+    }
+    if let Ok(pos) = window.outer_position() {
+        info!("[diag #290] {ctx}: outer_position=({}, {})", pos.x, pos.y);
+    }
+    if let Ok(size) = window.inner_size() {
+        info!("[diag #290] {ctx}: inner_size={}x{}", size.width, size.height);
+    }
+    match window.current_monitor() {
+        Ok(Some(mon)) => {
+            let ms = mon.size();
+            let mp = mon.position();
+            info!(
+                "[diag #290] {ctx}: monitor={:?} size={}x{} origin=({}, {})",
+                mon.name(),
+                ms.width,
+                ms.height,
+                mp.x,
+                mp.y
+            );
+        }
+        Ok(None) => warn!("[diag #290] {ctx}: current_monitor=None (window off all monitors?)"),
+        Err(e) => warn!("[diag #290] {ctx}: current_monitor error: {e}"),
+    }
+}
+
 /// Closes the splash screen, sets the app menu (deferred from setup to
 /// prevent GTK menu flash on the borderless splash), and shows the main window.
 ///
@@ -8750,6 +8795,7 @@ async fn app_ready(app: AppHandle, start_minimized: Option<bool>) {
             let _ = main_window.show();
             let _ = main_window.set_focus();
             info!("Main window shown");
+            log_window_diagnostics(&main_window, "app_ready post-show");
         }
     }
 
@@ -14294,9 +14340,24 @@ pub fn run() {
                 .maximizable(true)
                 .minimizable(true)
                 .closable(true)
-                .decorations(false)
                 .visible(false)
                 .disable_drag_drop_handler();
+            // Window chrome (issue #290, macOS Tahoe "no window after splash").
+            // A fully borderless window (decorations(false)) cannot become the
+            // key window on macOS and fails to present after the splash closes,
+            // leaving only a Dock icon and no visible window. On macOS we keep
+            // native decorations but switch to the Overlay title-bar style with
+            // a hidden title: the native traffic lights stay (key-able window,
+            // top-left) while the frontend still draws its own title bar over the
+            // content. Linux/Windows keep the borderless custom title bar, which
+            // presents reliably there. Overlay requires decorations: true, so the
+            // macOS branch deliberately does not call decorations(false).
+            #[cfg(target_os = "macos")]
+            let main_builder = main_builder
+                .title_bar_style(tauri::TitleBarStyle::Overlay)
+                .hidden_title(true);
+            #[cfg(not(target_os = "macos"))]
+            let main_builder = main_builder.decorations(false);
             let main_builder = match portable::webview_data_dir() {
                 Some(dir) => main_builder.data_directory(dir),
                 None => main_builder,
@@ -14543,6 +14604,7 @@ pub fn run() {
                     );
                     let _ = main_window.show();
                     let _ = main_window.set_focus();
+                    log_window_diagnostics(&main_window, "safety-timeout post-show");
                 }
             });
             // ============ System Tray Icon ============
