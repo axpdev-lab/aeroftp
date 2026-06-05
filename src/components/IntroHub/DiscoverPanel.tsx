@@ -10,13 +10,13 @@ import { ProtocolIcon, ProtocolBadge, isSecureBadge, isCipherStrengthBadge } fro
 import { useTranslation } from '../../i18n';
 import { buildDiscoverCategories, DiscoverCategory, DiscoverItem, DISCOVER_DESC_KEYS, PROVIDER_HEALTH_URLS } from './discoverData';
 import { getProviderById } from '../../providers';
-import { CatalogCategoryId, getCatalogCategory } from '../../types/catalog';
+import { CatalogCategoryId } from '../../types/catalog';
 import type { CatalogCompany } from '../providerCatalog';
 import { useProviderHealth, type HealthStatus } from '../../hooks/useProviderHealth';
 import { useIntroHubIconSize } from '../../hooks/useIntroHubIconSize';
 import { useDiscoverHealthCheck } from '../../hooks/useDiscoverHealthCheck';
 import { CatalogTable } from './CatalogTable';
-import { PROVIDER_CATALOG } from '../providerCatalog';
+import { PROVIDER_CATALOG, companyInCategory } from '../providerCatalog';
 
 /** All category sidebar entries share these keys; 'all' is a virtual category. */
 type DiscoverCategoryId = CatalogCategoryId | 'all';
@@ -216,8 +216,7 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
     const catalogCompanies = useMemo<CatalogCompany[]>(() => {
         const base = activeCategory === 'all'
             ? PROVIDER_CATALOG
-            : PROVIDER_CATALOG.filter(c =>
-                c.protocols.some(p => getCatalogCategory(p.providerId || p.protocol) === activeCategory));
+            : PROVIDER_CATALOG.filter(c => companyInCategory(c, activeCategory));
         return base.map(c => ({ ...c, healthCheckUrl: resolveCompanyHealthUrl(c) }));
     }, [activeCategory]);
 
@@ -465,6 +464,7 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
                     <div className="flex-1 min-h-0 flex flex-col">
                         <CatalogTable
                             companies={catalogCompanies}
+                            category={activeCategory}
                             onSelectProvider={onSelectProvider}
                             getHealth={(logoId) => getStatus(logoId).status}
                             healthEnabled={healthEnabled}
