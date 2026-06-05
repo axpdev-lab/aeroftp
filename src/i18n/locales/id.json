@@ -1267,7 +1267,12 @@
             "copyCompleted": "Penyalinan selesai",
             "localPathNotFound": "Folder lokal \"{path}\" tidak ditemukan. Dinavigasi ke direktori beranda.",
             "zeroByteWarning": "File 0 B - mungkin menunjukkan kesalahan transfer",
-            "megacmdWarmup": "Server MEGAcmd tidak berjalan, memulai di latar belakang..."
+            "megacmdWarmup": "Server MEGAcmd tidak berjalan, memulai di latar belakang...",
+            "stillConnecting": "Masih menyambungkan...",
+            "stillConnectingHint": "Server membutuhkan waktu lebih lama dari biasanya untuk merespons. Terus tunggu, atau batalkan koneksi (Anda juga bisa menekan Esc).",
+            "connectionCancelled": "Koneksi dibatalkan",
+            "keepWaiting": "Terus tunggu",
+            "cancelConnection": "Batalkan koneksi"
         },
         "about": {
             "tagline": "Lebih dari FTP. Perangkat lengkap untuk pengembang.",

@@ -1712,7 +1712,12 @@
             "copyCompleted": "Copia completata",
             "localPathNotFound": "Cartella locale \"{path}\" non trovata. Navigato alla directory home.",
             "zeroByteWarning": "File 0 B - potrebbe indicare un errore di trasferimento",
-            "megacmdWarmup": "Server MEGAcmd non in esecuzione, avvio in background..."
+            "megacmdWarmup": "Server MEGAcmd non in esecuzione, avvio in background...",
+            "stillConnecting": "Connessione ancora in corso...",
+            "stillConnectingHint": "Il server sta impiegando piu tempo del solito a rispondere. Attendi ancora, oppure annulla la connessione (puoi anche premere Esc).",
+            "connectionCancelled": "Connessione annullata",
+            "keepWaiting": "Continua ad attendere",
+            "cancelConnection": "Annulla connessione"
         },
         "about": {
             "tagline": "Più che FTP. Un toolkit completo per sviluppatori.",

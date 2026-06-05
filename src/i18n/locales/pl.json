@@ -1267,7 +1267,12 @@
             "copyCompleted": "Kopiowanie zakończone",
             "localPathNotFound": "Lokalny folder \"{path}\" nie znaleziony. Nawigowano do katalogu domowego.",
             "zeroByteWarning": "Plik 0 B - może wskazywać na błąd transferu",
-            "megacmdWarmup": "Serwer MEGAcmd nie działa, uruchamianie w tle..."
+            "megacmdWarmup": "Serwer MEGAcmd nie działa, uruchamianie w tle...",
+            "stillConnecting": "Wciąż łączenie...",
+            "stillConnectingHint": "Serwer odpowiada wolniej niż zwykle. Poczekaj dalej lub anuluj połączenie (możesz też nacisnąć Esc).",
+            "connectionCancelled": "Połączenie anulowane",
+            "keepWaiting": "Czekaj dalej",
+            "cancelConnection": "Anuluj połączenie"
         },
         "about": {
             "tagline": "Więcej niż FTP. Kompletny zestaw narzędzi dla deweloperów.",

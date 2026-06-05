@@ -1267,7 +1267,12 @@
             "copyCompleted": "コピーが完了しました",
             "localPathNotFound": "ローカルフォルダー \"{path}\" が見つかりませんでした。ホームディレクトリに移動しました。",
             "zeroByteWarning": "0 B のファイル - 転送エラーの可能性があります",
-            "megacmdWarmup": "MEGAcmd サーバーが起動していません。バックグラウンドで起動しています..."
+            "megacmdWarmup": "MEGAcmd サーバーが起動していません。バックグラウンドで起動しています...",
+            "stillConnecting": "接続中...",
+            "stillConnectingHint": "サーバーの応答に通常より時間がかかっています。このまま待つか、接続をキャンセルしてください（Esc キーでもキャンセルできます）。",
+            "connectionCancelled": "接続をキャンセルしました",
+            "keepWaiting": "待機を続ける",
+            "cancelConnection": "接続をキャンセル"
         },
         "about": {
             "tagline": "FTPを超えて。完全な開発者ツールキット。",

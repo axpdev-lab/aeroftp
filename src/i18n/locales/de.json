@@ -1267,7 +1267,12 @@
             "copyCompleted": "Kopieren abgeschlossen",
             "localPathNotFound": "Lokaler Ordner \"{path}\" nicht gefunden. Zum Heimverzeichnis navigiert.",
             "zeroByteWarning": "Datei mit 0 B - möglicherweise ein Übertragungsfehler",
-            "megacmdWarmup": "MEGAcmd-Server läuft nicht, wird im Hintergrund gestartet..."
+            "megacmdWarmup": "MEGAcmd-Server läuft nicht, wird im Hintergrund gestartet...",
+            "stillConnecting": "Verbindung wird noch hergestellt...",
+            "stillConnectingHint": "Der Server antwortet langsamer als gewöhnlich. Warten Sie weiter oder brechen Sie die Verbindung ab (Sie können auch Esc drücken).",
+            "connectionCancelled": "Verbindung abgebrochen",
+            "keepWaiting": "Weiter warten",
+            "cancelConnection": "Verbindung abbrechen"
         },
         "about": {
             "tagline": "Mehr als FTP. Ein komplettes Entwickler-Toolkit.",

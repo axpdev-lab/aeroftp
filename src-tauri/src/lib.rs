@@ -2178,6 +2178,13 @@ pub struct ConnectionParams {
     server: String,
     username: String,
     password: String,
+    /// W3.1 (#270.5): frontend-generated token identifying this connection
+    /// attempt. When present, `connect_ftp` registers a cancellation token
+    /// under it so an Esc / "still connecting" Cancel can abort the connect
+    /// via `cancel_connection`. Unknown extra fields on the wire are ignored,
+    /// so legacy callers that omit it keep working.
+    #[serde(default, alias = "connectToken")]
+    connect_token: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -3494,21 +3501,49 @@ async fn install_windows_update(
 // ============ FTP Commands ============
 
 #[tauri::command]
-async fn connect_ftp(state: State<'_, AppState>, params: ConnectionParams) -> Result<(), String> {
+async fn connect_ftp(
+    state: State<'_, AppState>,
+    cancel_registry: State<'_, provider_commands::ConnectionCancelRegistry>,
+    params: ConnectionParams,
+) -> Result<(), String> {
     info!("Connecting to FTP server: {}", params.server);
+
+    // W3.1 (#270.5): register a cancellation token under the frontend-supplied
+    // connect token so an Esc / "still connecting" Cancel can abort the connect
+    // (and the slow AUTH TLS handshake on login). The guard de-registers it on
+    // every exit path. suppaftp's connect/login are async, so dropping the
+    // future on cancel tears the in-flight TCP/TLS handshake down cleanly.
+    let connect_key = params.connect_token.clone();
+    let cancel_token = connect_key
+        .as_deref()
+        .map(|key| cancel_registry.register(key));
+    let _cancel_guard = connect_key
+        .as_deref()
+        .map(|key| provider_commands::ConnectTokenGuard::new(&cancel_registry, key.to_string()));
+
     let mut ftp_manager = state.ftp_manager.lock().await;
 
-    ftp_manager
-        .connect(&params.server)
-        .await
-        .map_err(|e| format!("Connection failed: {}", e))?;
+    let do_connect = async {
+        ftp_manager
+            .connect(&params.server)
+            .await
+            .map_err(|e| format!("Connection failed: {}", e))?;
 
-    ftp_manager
-        .login(&params.username, &params.password)
-        .await
-        .map_err(|e| format!("Login failed: {}", e))?;
+        ftp_manager
+            .login(&params.username, &params.password)
+            .await
+            .map_err(|e| format!("Login failed: {}", e))?;
 
-    Ok(())
+        Ok::<(), String>(())
+    };
+
+    match cancel_token.as_ref() {
+        Some(token) => tokio::select! {
+            res = do_connect => res,
+            _ = token.cancelled() => Err(provider_commands::CONNECT_CANCELLED.to_string()),
+        },
+        None => do_connect.await,
+    }
 }
 
 #[tauri::command]
@@ -14818,6 +14853,7 @@ pub fn run() {
         })
         .manage(AppState::new())
         .manage(provider_commands::ProviderState::new())
+        .manage(provider_commands::ConnectionCancelRegistry::new())
         .manage(session_manager::MultiProviderState::new());
 
     // Add PTY state for terminal support (all platforms)
@@ -15207,6 +15243,7 @@ pub fn run() {
             ai::deepseek_fim_complete,
             // Multi-protocol provider commands
             provider_commands::provider_connect,
+            provider_commands::cancel_connection,
             provider_commands::provider_disconnect,
             provider_commands::provider_check_connection,
             provider_commands::provider_list_files,

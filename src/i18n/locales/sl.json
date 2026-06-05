@@ -1267,7 +1267,12 @@
             "copyCompleted": "Kopiranje končano",
             "localPathNotFound": "Lokalna mapa \"{path}\" ni bila najdena. Preusmerjeno v domači imenik.",
             "zeroByteWarning": "Datoteka 0 B - lahko pomeni napako pri prenosu",
-            "megacmdWarmup": "Strežnik MEGAcmd ne deluje, zaganjanje v ozadju..."
+            "megacmdWarmup": "Strežnik MEGAcmd ne deluje, zaganjanje v ozadju...",
+            "stillConnecting": "Še vedno se povezuje...",
+            "stillConnectingHint": "Strežnik odgovarja počasneje kot običajno. Še naprej počakajte ali prekličite povezavo (pritisnete lahko tudi Esc).",
+            "connectionCancelled": "Povezava preklicana",
+            "keepWaiting": "Še naprej čakaj",
+            "cancelConnection": "Prekliči povezavo"
         },
         "about": {
             "tagline": "Več kot FTP. Popolno razvojno orodje.",

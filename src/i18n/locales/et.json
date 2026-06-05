@@ -1267,7 +1267,12 @@
             "copyCompleted": "Kopeerimine lõpetatud",
             "localPathNotFound": "Kohalikku kausta \"{path}\" ei leitud. Liiguti kodukataloogile.",
             "zeroByteWarning": "0 B fail - võib viidata edastusveale",
-            "megacmdWarmup": "MEGAcmd-server ei tööta, käivitamine taustal..."
+            "megacmdWarmup": "MEGAcmd-server ei tööta, käivitamine taustal...",
+            "stillConnecting": "Ühendamine veel käib...",
+            "stillConnectingHint": "Server vastab tavalisest aeglasemalt. Oota edasi või tühista ühendus (võid vajutada ka Esc).",
+            "connectionCancelled": "Ühendus tühistatud",
+            "keepWaiting": "Oota edasi",
+            "cancelConnection": "Tühista ühendus"
         },
         "about": {
             "tagline": "Rohkem kui FTP. Täielik arendustööriistade komplekt.",

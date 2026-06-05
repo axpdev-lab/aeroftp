@@ -3551,7 +3551,12 @@
             "uploadComplete": "Upload complete",
             "uploadFailed": "Upload failed",
             "uploadStarted": "Upload started",
-            "megacmdWarmup": "MEGAcmd server not running, starting in the background..."
+            "megacmdWarmup": "MEGAcmd server not running, starting in the background...",
+            "stillConnecting": "Still connecting...",
+            "stillConnectingHint": "The server is taking longer than usual to respond. Keep waiting, or cancel the connection (you can also press Esc).",
+            "connectionCancelled": "Connection cancelled",
+            "keepWaiting": "Keep waiting",
+            "cancelConnection": "Cancel connection"
         },
         "toolbar": {
             "aerovaultOverlayActive": "AeroVault container overlay active - click to detach",

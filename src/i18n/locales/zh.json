@@ -1267,7 +1267,12 @@
             "copyCompleted": "复制完成",
             "localPathNotFound": "未找到本地文件夹 \"{path}\"。已导航至主目录。",
             "zeroByteWarning": "0 B 文件 - 可能表示传输错误",
-            "megacmdWarmup": "MEGAcmd 服务器未运行，正在后台启动..."
+            "megacmdWarmup": "MEGAcmd 服务器未运行，正在后台启动...",
+            "stillConnecting": "仍在连接...",
+            "stillConnectingHint": "服务器响应时间比平时长。请继续等待，或取消连接（也可以按 Esc 键）。",
+            "connectionCancelled": "连接已取消",
+            "keepWaiting": "继续等待",
+            "cancelConnection": "取消连接"
         },
         "about": {
             "tagline": "不仅仅是 FTP。完整的开发者工具包。",

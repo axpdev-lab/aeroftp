@@ -1267,7 +1267,12 @@
             "copyCompleted": "Kopiointi valmis",
             "localPathNotFound": "Paikallista kansiota \"{path}\" ei löydy. Siirryttiin kotihakemistoon.",
             "zeroByteWarning": "0 B tiedosto - voi viitata siirtovirheeseen",
-            "megacmdWarmup": "MEGAcmd-palvelin ei ole käynnissä, käynnistetään taustalla..."
+            "megacmdWarmup": "MEGAcmd-palvelin ei ole käynnissä, käynnistetään taustalla...",
+            "stillConnecting": "Yhdistetään yhä...",
+            "stillConnectingHint": "Palvelin vastaa tavallista hitaammin. Jatka odottamista tai peruuta yhteys (voit myös painaa Esc).",
+            "connectionCancelled": "Yhteys peruutettu",
+            "keepWaiting": "Jatka odottamista",
+            "cancelConnection": "Peruuta yhteys"
         },
         "about": {
             "tagline": "Enemmän kuin FTP. Täydellinen kehittäjän työkalupakki.",

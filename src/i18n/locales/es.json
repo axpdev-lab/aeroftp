@@ -1267,7 +1267,12 @@
             "copyCompleted": "Copia completada",
             "localPathNotFound": "La carpeta local \"{path}\" no se encontró. Se navegó al directorio de inicio.",
             "zeroByteWarning": "Archivo de 0 B - puede indicar un error de transferencia",
-            "megacmdWarmup": "El servidor MEGAcmd no se está ejecutando, iniciando en segundo plano..."
+            "megacmdWarmup": "El servidor MEGAcmd no se está ejecutando, iniciando en segundo plano...",
+            "stillConnecting": "Aún conectando...",
+            "stillConnectingHint": "El servidor está tardando más de lo habitual en responder. Sigue esperando o cancela la conexión (también puedes pulsar Esc).",
+            "connectionCancelled": "Conexión cancelada",
+            "keepWaiting": "Seguir esperando",
+            "cancelConnection": "Cancelar conexión"
         },
         "about": {
             "tagline": "Más que FTP. Un toolkit completo para desarrolladores.",

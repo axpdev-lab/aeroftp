@@ -1267,7 +1267,12 @@
             "copyCompleted": "Copiere finalizată",
             "localPathNotFound": "Folderul local \"{path}\" nu a fost găsit. S-a navigat la directorul acasă.",
             "zeroByteWarning": "Fișier de 0 B - poate indica o eroare de transfer",
-            "megacmdWarmup": "Serverul MEGAcmd nu rulează, se pornește în fundal..."
+            "megacmdWarmup": "Serverul MEGAcmd nu rulează, se pornește în fundal...",
+            "stillConnecting": "Încă se conectează...",
+            "stillConnectingHint": "Serverul răspunde mai greu decât de obicei. Continuă să aștepți sau anulează conexiunea (poți apăsa și Esc).",
+            "connectionCancelled": "Conexiune anulată",
+            "keepWaiting": "Continuă să aștepți",
+            "cancelConnection": "Anulează conexiunea"
         },
         "about": {
             "tagline": "Mai mult decât FTP. Un set complet de instrumente pentru dezvoltatori.",

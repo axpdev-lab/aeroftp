@@ -437,6 +437,39 @@ import { useLocalPanel } from './hooks/useLocalPanel';
 import { useTerminalCwd } from './hooks/useTerminalCwd';
 import { useUnifiedPanelController } from './hooks/useUnifiedPanelController';
 
+// W3.1 (#270.5): marker the backend connect commands return when the user
+// aborts an in-progress connection (Esc / "still connecting" Cancel). The
+// connect catch blocks match on it to surface a calm "connection cancelled"
+// flow instead of a "connection failed" error, and to skip the saved-server
+// connect-failure marker (a deliberate cancel is not a failure).
+const CONNECT_CANCELLED_MARKER = 'CONNECT_CANCELLED';
+
+function isConnectCancelledError(error: unknown): boolean {
+  if (error == null) return false;
+  if (error instanceof Error) return error.message.includes(CONNECT_CANCELLED_MARKER);
+  return String(error).includes(CONNECT_CANCELLED_MARKER);
+}
+
+// Generate a per-attempt connection token threaded to the backend connect
+// command and used by `cancel_connection` to abort that exact attempt. Prefer
+// a crypto-random id; fall back to a counter-free timestamp-less random string
+// when crypto is unavailable (keeps the value stable-test friendly).
+function makeConnectToken(): string {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return `conn_${crypto.randomUUID()}`;
+    }
+  } catch {
+    // fall through to the Math.random fallback
+  }
+  return `conn_${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
+}
+
+// Delay before the "still connecting..." modal appears on a slow connect
+// (W3.2 #275.9). Covers MEGAcmd cold-daemon warmup and pCloud-WebDAV hosts
+// unreachable until the email-confirmation step.
+const STILL_CONNECTING_DELAY_MS = 8000;
+
 // ============================================================================
 // Main App Component
 // ============================================================================
@@ -1687,6 +1720,88 @@ interface UpdateVerificationInfo {
       return showToastNotifications ? toast.warning(title, message) : null;
     }
   }), [showToastNotifications, toast, activityLog]);
+
+  // ── W3 (#270.5 / #275.9): cancellable connect + "still connecting" modal ──
+  // A connect is a single awaited invoke with no abort path. These refs/state
+  // let a central `runConnect` wrapper thread a per-attempt token to the
+  // backend, cancel it on Esc / modal Cancel via `cancel_connection`, and pop
+  // a "still connecting" modal after STILL_CONNECTING_DELAY_MS. Refs (not
+  // state) hold the live token/cancel flag so they never trigger re-renders.
+  const activeConnectTokenRef = useRef<string | null>(null);
+  const connectCancelledRef = useRef(false);
+  const stillConnectingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [stillConnecting, setStillConnecting] = useState(false);
+
+  // Cancel the in-progress connection (Esc key or modal Cancel button). Signals
+  // the backend, which makes the connect's tokio::select return CONNECT_CANCELLED;
+  // `runConnect` then surfaces the calm cancelled toast. Idempotent and safe to
+  // call when nothing is connecting.
+  const cancelActiveConnect = useCallback(async () => {
+    const token = activeConnectTokenRef.current;
+    if (!token) return;
+    connectCancelledRef.current = true;
+    try {
+      await invoke('cancel_connection', { token });
+    } catch (e) {
+      // The backend call is best-effort: the connect may have already resolved.
+      logger.debug('[cancelActiveConnect] cancel_connection failed (likely already resolved):', e);
+    }
+  }, []);
+
+  // Central cancellable connect wrapper. Every connect invoke funnels through
+  // here so the token plumbing, Esc handling, still-connecting modal, and the
+  // cancelled-vs-failed toast distinction live in ONE place instead of nine
+  // ad-hoc try/catches. `command` picks the backend connect; `params` is the
+  // existing payload object, which we extend with the connect token.
+  const runConnect = useCallback(async <T,>(
+    command: 'provider_connect' | 'connect_ftp',
+    params: Record<string, unknown>,
+  ): Promise<T> => {
+    const token = makeConnectToken();
+    activeConnectTokenRef.current = token;
+    connectCancelledRef.current = false;
+    if (stillConnectingTimerRef.current) clearTimeout(stillConnectingTimerRef.current);
+    stillConnectingTimerRef.current = setTimeout(() => {
+      // Only show the modal if this very attempt is still the live one.
+      if (activeConnectTokenRef.current === token) setStillConnecting(true);
+    }, STILL_CONNECTING_DELAY_MS);
+    try {
+      return await invoke<T>(command, { params: { ...params, connectToken: token } });
+    } catch (error) {
+      // A user cancel surfaces a calm toast here (single point), then re-throws
+      // so the connect flow's success path is aborted. The per-flow catch sees
+      // the CONNECT_CANCELLED marker and skips its "connection failed" report.
+      if (connectCancelledRef.current || isConnectCancelledError(error)) {
+        notify.info(t('toast.connectionCancelled'));
+        throw new Error(CONNECT_CANCELLED_MARKER);
+      }
+      throw error;
+    } finally {
+      if (stillConnectingTimerRef.current) {
+        clearTimeout(stillConnectingTimerRef.current);
+        stillConnectingTimerRef.current = null;
+      }
+      if (activeConnectTokenRef.current === token) {
+        activeConnectTokenRef.current = null;
+        setStillConnecting(false);
+      }
+    }
+  }, [notify, t]);
+
+  // Esc aborts an in-progress connection. Always-mounted listener that only
+  // acts while a token is live, so it never competes with other Esc handlers
+  // when nothing is connecting.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && activeConnectTokenRef.current) {
+        e.preventDefault();
+        e.stopPropagation();
+        void cancelActiveConnect();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [cancelActiveConnect]);
 
   // Issue #215: cross-component toast bus. Any component can dispatch a
   // `CustomEvent('aeroftp-toast', { detail: {...} })` to surface a toast
@@ -4480,7 +4595,7 @@ interface UpdateVerificationInfo {
     try {
       const { effectiveParams, providerParams } = await buildProviderParams(nextParams, currentRemotePath || null);
       await invoke('provider_disconnect').catch(() => {});
-      await invoke('provider_connect', { params: providerParams });
+      await runConnect('provider_connect', providerParams);
 
       let response: FileListResponse;
       try {
@@ -4508,6 +4623,8 @@ interface UpdateVerificationInfo {
       await refreshGitHubContext(true);
       notify.success('GitHub', t('github.branchSwitched', { branch }));
     } catch (error) {
+      // W3.1: user-cancelled branch-switch reconnect, not an error.
+      if (isConnectCancelledError(error)) return;
       notify.error(t('common.error'), String(error));
     } finally {
       setLoading(false);
@@ -4928,7 +5045,7 @@ interface UpdateVerificationInfo {
         }
         const connHost = effectiveParams.server || getProviderHostFallback(protocol, effectiveParams.username);
         const { resolvedIp: connIp, connectingLogId } = await logConnectionSteps(connHost, effectiveParams.port || 443, protocol);
-        await invoke('provider_connect', { params: providerParams });
+        await runConnect('provider_connect', providerParams);
         // 2FA accepted: clear the saved-secret auto-retry budget (issue #128).
         totpRetryCountRef.current = 0;
         if (connectingLogId) humanLog.updateEntry(connectingLogId, { status: 'success', message: t('activity.connected_to', { ip: connIp || connHost, port: String(effectiveParams.port || 443) }) });
@@ -5004,6 +5121,10 @@ interface UpdateVerificationInfo {
         );
         fetchStorageQuota(protocol, sessionParams);
       } catch (error) {
+        // W3.1: a user-initiated cancel is not a failure. runConnect already
+        // showed the calm "cancelled" toast; skip the error path and the
+        // connect-failure marker. finally still re-enables the form.
+        if (isConnectCancelledError(error)) return;
         // Issue #128: if the server is asking for a 2FA TOTP, surface the
         // dedicated prompt instead of a generic "connection failed" toast.
         // Replace the "Check credentials" log line with a 2FA-specific one
@@ -5044,7 +5165,7 @@ interface UpdateVerificationInfo {
       }
       const ftpProto = effectiveParams.protocol || 'ftp';
       const { resolvedIp: ftpIp, connectingLogId: ftpConnLogId } = await logConnectionSteps(effectiveParams.server, effectiveParams.port || 21, ftpProto);
-      await invoke('connect_ftp', { params: effectiveParams });
+      await runConnect('connect_ftp', effectiveParams as unknown as Record<string, unknown>);
       if (ftpConnLogId) humanLog.updateEntry(ftpConnLogId, { status: 'success', message: t('activity.connected_to', { ip: ftpIp || effectiveParams.server, port: String(effectiveParams.port || 21) }) });
       // Clear the standalone connect-failure marker on a confirmed FTP/SFTP
       // login (#180 / 4486730822). Separate signal from health.
@@ -5086,6 +5207,8 @@ interface UpdateVerificationInfo {
         ftpResponse?.files
       );
     } catch (error) {
+      // W3.1: user-cancelled connect, not a failure (see runConnect).
+      if (isConnectCancelledError(error)) return;
       humanLog.logError('CONNECT', { server: effectiveParams.server }, logId);
       notify.error(t('connection.connectionFailed'), String(error));
       // #180 / 4486730822: stamp the standalone connect-failure marker so
@@ -5417,7 +5540,7 @@ interface UpdateVerificationInfo {
           const accepted = await checkSftpHostKey(connectParams.server, connectParams.port || 22);
           if (!accepted) throw new Error('Host key rejected by user');
         }
-        await invoke('provider_connect', { params: providerParams });
+        await runConnect('provider_connect', providerParams);
         if (targetSession.remotePath && targetSession.remotePath !== '/') {
           try { await invoke('provider_change_dir', { path: targetSession.remotePath }); } catch (e) { console.warn('Restore path failed', e); }
         }
@@ -5431,7 +5554,7 @@ interface UpdateVerificationInfo {
         } catch {
           // Ignore if not connected to OAuth
         }
-        await invoke('connect_ftp', { params: targetSession.connectionParams });
+        await runConnect('connect_ftp', targetSession.connectionParams as unknown as Record<string, unknown>);
 
         // Navigate to the saved path to restore session state.
         // Avoid using paths from previous WebDAV/S3 sessions (e.g., /wwwhome, /bucket-name)
@@ -5482,6 +5605,17 @@ interface UpdateVerificationInfo {
       setCurrentLocalPath(targetSession.localPath);
 
     } catch (e) {
+      // W3.1: user-cancelled reconnect. Mark the session cached (not errored)
+      // and close the activity entry cleanly; runConnect already toasted.
+      if (isConnectCancelledError(e)) {
+        activityLog.updateEntry(reconnectLogId, {
+          status: 'success',
+          message: t('toast.connectionCancelled'),
+        });
+        setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'cached' } : s));
+        setCurrentLocalPath(targetSession.localPath);
+        return;
+      }
       logger.error('Reconnect error:', e);
       activityLog.updateEntry(reconnectLogId, {
         status: 'error',
@@ -5726,7 +5860,7 @@ interface UpdateVerificationInfo {
             totp_secret: cloudServer.options?.totp_secret || null,
             filen_api_key: cloudServer.options?.filen_api_key || null,
           };
-          await invoke('provider_connect', { params: providerParams });
+          await runConnect('provider_connect', providerParams);
         } else {
           // FTP/FTPS: use connect_ftp
           const ftpParams = {
@@ -5735,7 +5869,7 @@ interface UpdateVerificationInfo {
             password: cloudPassword,
             protocol,
           };
-          await invoke('connect_ftp', { params: ftpParams });
+          await runConnect('connect_ftp', ftpParams);
         }
       };
 
@@ -5810,8 +5944,12 @@ interface UpdateVerificationInfo {
             setConnectionParams(connParams);
             humanLog.logRaw('activity.connect_success', 'CONNECT', { server: `AeroCloud (${cloudServerName})`, protocol: protocolLabel }, 'success');
           } catch (connError) {
-            logger.error('Failed to connect to cloud server:', connError);
-            notify.error(t('toast.connectionFailedTitle'), String(connError));
+            // W3.1: a user cancel skips the error toast but still restores the
+            // previous session (runConnect already toasted the cancellation).
+            if (!isConnectCancelledError(connError)) {
+              logger.error('Failed to connect to cloud server:', connError);
+              notify.error(t('toast.connectionFailedTitle'), String(connError));
+            }
             // Restore previous session
             if (capturedSessionId) {
               setActiveSessionId(capturedSessionId);
@@ -5897,6 +6035,12 @@ interface UpdateVerificationInfo {
       }
 
     } catch (error) {
+      // W3.1: user-cancelled AeroCloud connect. Reopen the cloud panel so the
+      // user can retry, but skip the error toast (runConnect already toasted).
+      if (isConnectCancelledError(error)) {
+        setShowCloudPanel(true);
+        return;
+      }
       logger.error('Cloud tab click error:', error);
       notify.error(t('connection.connectionFailed'), String(error));
       setShowCloudPanel(true);
@@ -12202,6 +12346,35 @@ interface UpdateVerificationInfo {
           onAccept={handleHostKeyAccept}
           onReject={handleHostKeyReject}
         />
+        {/* W3.2 (#275.9): "still connecting" notice on a slow connect. Pairs
+            with the Esc-cancel path: the Cancel button calls cancel_connection
+            via cancelActiveConnect; runConnect then closes this modal and
+            surfaces the calm "connection cancelled" toast. */}
+        {stillConnecting && (
+          <div className="fixed inset-0 z-[90] flex items-start justify-center pt-[20vh] bg-black/50 backdrop-blur-sm animate-scale-in">
+            <div className="w-full max-w-sm mx-4 rounded-xl shadow-2xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-6">
+              <div className="flex items-center gap-3 mb-3">
+                <Loader2 size={22} className="text-blue-600 dark:text-blue-400 animate-spin shrink-0" />
+                <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">{t('toast.stillConnecting')}</h3>
+              </div>
+              <p className="text-sm text-gray-600 dark:text-gray-300 mb-5">{t('toast.stillConnectingHint')}</p>
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => setStillConnecting(false)}
+                  className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                >
+                  {t('toast.keepWaiting')}
+                </button>
+                <button
+                  onClick={() => { void cancelActiveConnect(); }}
+                  className="px-3 py-1.5 text-sm rounded-lg bg-red-600 hover:bg-red-700 text-white transition-colors"
+                >
+                  {t('toast.cancelConnection')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         {keystoreImportResult && (
           <KeystoreImportResultModal
             result={keystoreImportResult}
@@ -12876,7 +13049,7 @@ interface UpdateVerificationInfo {
                     }
                     const savedConnHost = connectedParams.server || getProviderHostFallback(connectedParams.protocol, connectedParams.username);
                     const { resolvedIp: savedIp, connectingLogId: savedConnLogId } = await logConnectionSteps(savedConnHost, connectedParams.port || 443, connectedParams.protocol || 'ftp');
-                      await invoke('provider_connect', { params: providerParams });
+                      await runConnect('provider_connect', providerParams);
 
                       const isFilenConnect =
                         connectedParams.protocol === 'filen' ||
@@ -12951,6 +13124,9 @@ interface UpdateVerificationInfo {
                     setConnectionParams({ server: '', username: '', password: '' });
                     setQuickConnectDirs({ remoteDir: '', localDir: '' });
                   } catch (error) {
+                    // W3.1: user-cancelled connect, not a failure (runConnect
+                    // already toasted). finally re-enables the form.
+                    if (isConnectCancelledError(error)) return;
                     // Issue #128: surface dedicated 2FA prompt for MEGA / Filen / Internxt.
                     // Check for the 2FA challenge BEFORE emitting the failure log so the
                     // activity panel shows the "enter 2FA hint" line instead of the misleading
@@ -12989,7 +13165,7 @@ interface UpdateVerificationInfo {
 
                   const savedFtpProto = params.protocol || 'ftp';
                   const { resolvedIp: savedFtpIp, connectingLogId: savedFtpConnLogId } = await logConnectionSteps(params.server, params.port || 21, savedFtpProto);
-                  await invoke('connect_ftp', { params });
+                  await runConnect('connect_ftp', params as unknown as Record<string, unknown>);
                   if (savedFtpConnLogId) humanLog.updateEntry(savedFtpConnLogId, { status: 'success', message: t('activity.connected_to', { ip: savedFtpIp || params.server, port: String(params.port || 21) }) });
                   // Clear standalone connect-failure marker (#180 / 4486730822).
                   if (params.savedServerId) {
@@ -13034,6 +13210,9 @@ interface UpdateVerificationInfo {
                   setConnectionParams({ server: '', username: '', password: '' });
                   setQuickConnectDirs({ remoteDir: '', localDir: '' });
                 } catch (error) {
+                  // W3.1: user-cancelled connect, not a failure (runConnect
+                  // already toasted). finally re-enables the form.
+                  if (isConnectCancelledError(error)) return;
                   humanLog.logError('CONNECT', { server: params.server }, logId);
                   notify.error(t('connection.connectionFailed'), String(error));
                   // #180 / 4486730822: stamp the standalone connect-failure

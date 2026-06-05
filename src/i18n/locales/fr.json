@@ -1267,7 +1267,12 @@
             "copyCompleted": "Copie terminée",
             "localPathNotFound": "Le dossier local \"{path}\" est introuvable. Navigation vers le répertoire personnel.",
             "zeroByteWarning": "Fichier de 0 o - peut indiquer une erreur de transfert",
-            "megacmdWarmup": "Le serveur MEGAcmd n'est pas en cours d'exécution, démarrage en arrière-plan..."
+            "megacmdWarmup": "Le serveur MEGAcmd n'est pas en cours d'exécution, démarrage en arrière-plan...",
+            "stillConnecting": "Connexion en cours...",
+            "stillConnectingHint": "Le serveur met plus de temps que d'habitude à répondre. Continuez à patienter ou annulez la connexion (vous pouvez aussi appuyer sur Esc).",
+            "connectionCancelled": "Connexion annulée",
+            "keepWaiting": "Continuer à attendre",
+            "cancelConnection": "Annuler la connexion"
         },
         "about": {
             "tagline": "Plus que FTP. Une boîte à outils complète pour développeurs.",
