@@ -2264,9 +2264,45 @@ impl StorageProvider for WebDavProvider {
 
     async fn connect(&mut self) -> Result<(), ProviderError> {
         if super::mega_df::is_megacmd_webdav_provider_id(self.config.provider_id.as_deref()) {
-            // SAFETY: mega-df warms up the MEGAcmd Server when it has been quit/
-            // exited. See issue #253.
-            let _ = super::mega_df::mega_df_query().await;
+            // mega-df warms up the MEGAcmd Server when it has been quit/exited
+            // (issue #253) and tells us whether a login session exists.
+            match super::mega_df::mega_df_query().await {
+                Ok(_) if self.config.url.starts_with("http://") => {
+                    // Zero-config bridge (issue #275 17076174): re-arm
+                    // `mega-webdav /` so a MEGAcmd Server restart, which drops the
+                    // WebDAV location, does not force the user back to the
+                    // terminal. Best-effort: any failure is non-fatal and we fall
+                    // through to the PROPFIND probe below, preserving the previous
+                    // behavior and issue #264's diagnosable errors. Only the
+                    // default plaintext bridge is auto-armed; a TLS bridge
+                    // (`webdav -tls /`) is left to the user, who configured HTTPS.
+                    match super::mega_df::ensure_megacmd_webdav_bridge().await {
+                        Ok(()) => tracing::info!(
+                            "[MEGAcmd] local WebDAV bridge ensured (mega-webdav /)"
+                        ),
+                        Err(e) => tracing::warn!(
+                            "[MEGAcmd] could not auto-start the WebDAV bridge ({}); run `mega-webdav /` manually if the connection fails",
+                            e
+                        ),
+                    }
+                }
+                Ok(_) => {
+                    // TLS bridge configured: do not auto-run the plaintext
+                    // `mega-webdav /`, which would not match the HTTPS endpoint.
+                    tracing::info!(
+                        "[MEGAcmd] TLS bridge configured; skipping auto mega-webdav (run `mega-webdav -tls /` manually if needed)"
+                    );
+                }
+                Err(e) => {
+                    // No session / daemon not installed: keep the previous
+                    // behavior and let the PROPFIND below surface the diagnosable
+                    // error. Log an actionable hint for a fresh setup.
+                    tracing::warn!(
+                        "[MEGAcmd] warm-up could not confirm a login session ({}); if this is a fresh setup run `mega-login <email>` then `mega-webdav /` once",
+                        e
+                    );
+                }
+            }
         }
 
         // A3-03: Warn when using unencrypted HTTP: credentials and data sent in plaintext
