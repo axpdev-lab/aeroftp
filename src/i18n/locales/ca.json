@@ -4255,8 +4255,7 @@
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
             },
-            "healthOff": "Comprovació desactivada",
-            "healthToggleHint": "Doble clic per activar/desactivar"
+            "healthCheck": "Comprovació de disponibilitat"
         },
         "gitlab": {
             "projectPath": "Ruta del projecte",

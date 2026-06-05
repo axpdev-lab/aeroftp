@@ -4297,8 +4297,7 @@
             "check": "Verifica",
             "scanning": "Scansione...",
             "checkAvailability": "Verifica la disponibilità del servizio",
-            "healthOff": "Controllo off",
-            "healthToggleHint": "Doppio clic per abilitare/disabilitare",
+            "healthCheck": "Controllo disponibilità",
             "list": {
                 "company": "Provider",
                 "region": "Regione",

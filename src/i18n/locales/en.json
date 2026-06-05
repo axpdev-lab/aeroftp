@@ -4308,8 +4308,7 @@
             "check": "Check",
             "scanning": "Scanning...",
             "checkAvailability": "Check service availability",
-            "healthOff": "Health off",
-            "healthToggleHint": "Double-click to enable/disable",
+            "healthCheck": "Health check",
             "list": {
                 "company": "Provider",
                 "region": "Region",

@@ -4236,8 +4236,7 @@
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
             },
-            "healthOff": "Controle uit",
-            "healthToggleHint": "Dubbelklik om in/uit te schakelen"
+            "healthCheck": "Beschikbaarheidscontrole"
         },
         "gitlab": {
             "projectPath": "Projectpad",

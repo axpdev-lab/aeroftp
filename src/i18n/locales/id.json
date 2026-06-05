@@ -4236,8 +4236,7 @@
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
             },
-            "healthOff": "Pemeriksaan mati",
-            "healthToggleHint": "Klik dua kali untuk mengaktifkan/menonaktifkan"
+            "healthCheck": "Pemeriksaan ketersediaan"
         },
         "gitlab": {
             "projectPath": "Jalur Proyek",

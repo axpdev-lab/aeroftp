@@ -4255,8 +4255,7 @@
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
             },
-            "healthOff": "Egiaztapena desaktibatuta",
-            "healthToggleHint": "Klik bikoitza gaitzeko/desgaitzeko"
+            "healthCheck": "Erabilgarritasun-egiaztapena"
         },
         "gitlab": {
             "projectPath": "Proiektuaren bidea",

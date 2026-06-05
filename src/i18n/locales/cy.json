@@ -4255,8 +4255,7 @@
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
             },
-            "healthOff": "Gwirio i ffwrdd",
-            "healthToggleHint": "Clic dwbl i alluogi/analluogi"
+            "healthCheck": "Gwiriad iechyd"
         },
         "gitlab": {
             "projectPath": "Llwybr y prosiect",

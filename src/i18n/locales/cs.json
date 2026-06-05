@@ -4236,8 +4236,7 @@
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
             },
-            "healthOff": "Kontrola vypnuta",
-            "healthToggleHint": "Dvojklik pro zapnutí/vypnutí"
+            "healthCheck": "Kontrola dostupnosti"
         },
         "gitlab": {
             "projectPath": "Cesta k projektu",

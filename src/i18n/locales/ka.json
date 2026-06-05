@@ -4236,8 +4236,7 @@
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
             },
-            "healthOff": "შემოწმება გამორთ.",
-            "healthToggleHint": "ორმაგი დაწკაპუნება ჩასართავად/გამოსართავად"
+            "healthCheck": "ხელმისაწვდომობის შემოწმება"
         },
         "gitlab": {
             "projectPath": "პროექტის გზა",

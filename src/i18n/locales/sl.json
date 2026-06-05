@@ -4236,8 +4236,7 @@
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
             },
-            "healthOff": "Preverjanje izklopljeno",
-            "healthToggleHint": "Dvojni klik za vklop/izklop"
+            "healthCheck": "Preverjanje razpoložljivosti"
         },
         "gitlab": {
             "projectPath": "Pot projekta",
