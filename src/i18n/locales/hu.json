@@ -991,7 +991,9 @@
             "repairRekeyFromBackup": "Újratitkosítás biztonsági mentésből",
             "restartApp": "Az AeroFTP újraindítása",
             "backupRowBridge": "Bridge",
-            "backupRowBridgeDesc": "Importálás és exportálás további {count} eszközzel"
+            "backupRowBridgeDesc": "Importálás és exportálás további {count} eszközzel",
+            "discoverHealthCheck": "Elérhetőség-ellenőrzés az Add Services nézetben",
+            "discoverHealthCheckDesc": "Ellenőrzi a szolgáltatók elérhetőségét az Add Services listában. Az adott lapon az Ellenőrzés gombra duplán kattintva is be-/kikapcsolható."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4233,7 +4235,9 @@
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
-            }
+            },
+            "healthOff": "Ellenőrzés ki",
+            "healthToggleHint": "Dupla kattintás a be-/kikapcsoláshoz"
         },
         "gitlab": {
             "projectPath": "Projekt utvonal",

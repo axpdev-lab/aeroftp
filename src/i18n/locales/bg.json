@@ -991,7 +991,9 @@
             "repairRekeyFromBackup": "Прешифровай от архив",
             "restartApp": "Рестартирай AeroFTP",
             "backupRowBridge": "Bridge",
-            "backupRowBridgeDesc": "Импортиране и експортиране с още {count} инструмента"
+            "backupRowBridgeDesc": "Импортиране и експортиране с още {count} инструмента",
+            "discoverHealthCheck": "Проверка на достъпността в Add Services",
+            "discoverHealthCheckDesc": "Проверява достъпността на доставчиците в списъка Add Services. Двукратно щракване върху бутона Провери в тази раздел също го превключва."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4233,7 +4235,9 @@
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
-            }
+            },
+            "healthOff": "Проверка изкл.",
+            "healthToggleHint": "Двукратно щракване за вкл./изкл."
         },
         "gitlab": {
             "projectPath": "Път на проекта",

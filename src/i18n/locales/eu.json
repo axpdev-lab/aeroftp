@@ -991,7 +991,9 @@
             "repairRekeyFromBackup": "Birgakotu babeskopia batetik",
             "restartApp": "Berrabiarazi AeroFTP",
             "backupRowBridge": "Bridge",
-            "backupRowBridgeDesc": "Inportatu eta esportatu beste {count} tresnarekin"
+            "backupRowBridgeDesc": "Inportatu eta esportatu beste {count} tresnarekin",
+            "discoverHealthCheck": "Osasun-egiaztapena Add Services-en",
+            "discoverHealthCheckDesc": "Egiaztatu hornitzaileen erabilgarritasuna Add Services zerrendan. Egin klik bikoitza fitxa horretako Egiaztatu botoian hori ere txandakatzeko."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4252,7 +4254,9 @@
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
-            }
+            },
+            "healthOff": "Egiaztapena desaktibatuta",
+            "healthToggleHint": "Klik bikoitza gaitzeko/desgaitzeko"
         },
         "gitlab": {
             "projectPath": "Proiektuaren bidea",

@@ -991,7 +991,9 @@
             "repairRekeyFromBackup": "Pāršifrēt no dublējuma",
             "restartApp": "Restartēt AeroFTP",
             "backupRowBridge": "Bridge",
-            "backupRowBridgeDesc": "Importēt un eksportēt ar {count} citiem rīkiem"
+            "backupRowBridgeDesc": "Importēt un eksportēt ar {count} citiem rīkiem",
+            "discoverHealthCheck": "Pieejamības pārbaude Add Services skatā",
+            "discoverHealthCheckDesc": "Pārbauda pakalpojumu sniedzēju pieejamību Add Services sarakstā. Veicot dubultklikšķi uz pogas Pārbaudīt šajā cilnē, to var arī pārslēgt."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4233,7 +4235,9 @@
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
-            }
+            },
+            "healthOff": "Pārbaude izslēgta",
+            "healthToggleHint": "Veiciet dubultklikšķi, lai ieslēgtu/izslēgtu"
         },
         "gitlab": {
             "projectPath": "Projekta ceļš",

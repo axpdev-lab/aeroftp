@@ -991,7 +991,9 @@
             "repairRekeyFromBackup": "একটি ব্যাকআপ থেকে পুনরায়-কী করুন",
             "restartApp": "AeroFTP পুনরায় চালু করুন",
             "backupRowBridge": "Bridge",
-            "backupRowBridgeDesc": "আরও {count}টি টুলের সাথে আমদানি ও রপ্তানি করুন"
+            "backupRowBridgeDesc": "আরও {count}টি টুলের সাথে আমদানি ও রপ্তানি করুন",
+            "discoverHealthCheck": "Add Services-এ হেলথ চেক",
+            "discoverHealthCheckDesc": "Add Services তালিকায় প্রদানকারীর সংযোগযোগ্যতা পরীক্ষা করে। সেই ট্যাবে Check বোতামে ডাবল-ক্লিক করেও এটি টগল করা যায়।"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4233,7 +4235,9 @@
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
-            }
+            },
+            "healthOff": "চেক বন্ধ",
+            "healthToggleHint": "সক্ষম/অক্ষম করতে ডাবল-ক্লিক করুন"
         },
         "gitlab": {
             "projectPath": "প্রকল্পের পাথ",

@@ -991,7 +991,9 @@
             "repairRekeyFromBackup": "Salaa uudelleen varmuuskopiosta",
             "restartApp": "Käynnistä AeroFTP uudelleen",
             "backupRowBridge": "Bridge",
-            "backupRowBridgeDesc": "Tuo ja vie {count} muun työkalun kanssa"
+            "backupRowBridgeDesc": "Tuo ja vie {count} muun työkalun kanssa",
+            "discoverHealthCheck": "Saatavuuden tarkistus Add Services -näkymässä",
+            "discoverHealthCheckDesc": "Tarkistaa palveluntarjoajien saatavuuden Add Services -luettelossa. Kaksoisnapsauta kyseisen välilehden Tarkista-painiketta vaihtaaksesi sen myös sieltä."
         },
         "devtools": {
             "title": "AeroTools",
@@ -4233,7 +4235,9 @@
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
-            }
+            },
+            "healthOff": "Tarkistus pois",
+            "healthToggleHint": "Kaksoisnapsauta ottaaksesi käyttöön/pois"
         },
         "gitlab": {
             "projectPath": "Projektipolku",
