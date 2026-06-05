@@ -117,13 +117,21 @@ impl TransferCapabilities {
                 caps.max_file_slots = Some(8);
                 caps.max_checker_slots = Some(4);
             }
-            ProviderType::S3 | ProviderType::Azure | ProviderType::Swift => {
+            ProviderType::S3
+            | ProviderType::Azure
+            | ProviderType::Swift
+            | ProviderType::Backblaze => {
+                // Backblaze B2 is S3-class object storage: its
+                // `b2_download_file_by_name` endpoint honours `Range` natively
+                // (HTTP 206), so concurrent range download needs no per-session
+                // probe. Treat it like the other object stores rather than the
+                // probe-gated WebDAV family.
                 caps.strict_concurrent_range_download =
                     Capability::from_bool(hints.supports_range_download);
                 caps.max_file_slots = Some(1);
                 caps.max_checker_slots = Some(8);
             }
-            ProviderType::WebDav | ProviderType::Koofr | ProviderType::Backblaze => {
+            ProviderType::WebDav | ProviderType::Koofr => {
                 caps.strict_concurrent_range_download = if hints.supports_range_download {
                     Capability::SupportedAfterProbe
                 } else {
@@ -241,6 +249,41 @@ mod tests {
         assert_eq!(
             caps.strict_concurrent_range_download,
             Capability::SupportedAfterProbe
+        );
+    }
+
+    #[test]
+    fn backblaze_range_is_supported_not_probe_gated() {
+        // B2 is S3-class object storage: its download endpoint honours Range
+        // natively, so concurrent range download is `Supported` (no per-session
+        // probe), unlike the WebDAV family.
+        let caps = TransferCapabilities::from_provider_hints(
+            ProviderType::Backblaze,
+            &TransferOptimizationHints {
+                supports_range_download: true,
+                ..TransferOptimizationHints::default()
+            },
+            false,
+        );
+
+        assert_eq!(
+            caps.strict_concurrent_range_download,
+            Capability::Supported
+        );
+        assert_eq!(caps.max_checker_slots, Some(8));
+    }
+
+    #[test]
+    fn backblaze_range_off_when_hint_unset() {
+        let caps = TransferCapabilities::from_provider_hints(
+            ProviderType::Backblaze,
+            &TransferOptimizationHints::default(),
+            false,
+        );
+
+        assert_eq!(
+            caps.strict_concurrent_range_download,
+            Capability::Unsupported
         );
     }
 }
