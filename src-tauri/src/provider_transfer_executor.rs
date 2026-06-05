@@ -123,13 +123,17 @@ pub fn provider_segmented_download_eligible(
         return None;
     }
 
-    // Capability gate 2: provider must advertise strict concurrent
-    // range download (the post-PD-CLI-CONV-E honest flag).
-    if primary
-        .transfer_capabilities()
-        .strict_concurrent_range_download
-        != Capability::Supported
-    {
+    // Capability gate 2: provider must advertise strict concurrent range
+    // download. XFER-01: accept `SupportedAfterProbe` as well as `Supported`,
+    // since the runtime range read (and the single-stream fallback on failure)
+    // validates providers that can only confirm range safety after a live probe
+    // (e.g. several WebDAV servers). `Experimental`/`Unsupported` stay excluded.
+    if !matches!(
+        primary
+            .transfer_capabilities()
+            .strict_concurrent_range_download,
+        Capability::Supported | Capability::SupportedAfterProbe
+    ) {
         return None;
     }
 

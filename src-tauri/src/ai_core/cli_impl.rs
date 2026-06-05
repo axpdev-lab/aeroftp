@@ -121,47 +121,57 @@ impl CredentialProvider for CliCredentialProvider {
     fn list_servers(&self) -> Result<Vec<ServerProfile>, String> {
         // Try vault first (may be open from a previous unlock)
         if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-            if let Ok(json_str) = store.get("config_server_profiles") {
-                if let Ok(profiles) = serde_json::from_str::<Vec<Value>>(&json_str) {
-                    return Ok(profiles
-                        .iter()
-                        .filter_map(|p| {
-                            Some(ServerProfile {
-                                id: p.get("id")?.as_str()?.to_string(),
-                                name: p
-                                    .get("name")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("")
-                                    .to_string(),
-                                host: p
-                                    .get("host")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("")
-                                    .to_string(),
-                                port: p.get("port").and_then(|v| v.as_u64()).unwrap_or(0) as u16,
-                                username: p
-                                    .get("username")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("")
-                                    .to_string(),
-                                protocol: p
-                                    .get("protocol")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("ftp")
-                                    .to_string(),
-                                initial_path: p
-                                    .get("initialPath")
-                                    .and_then(|v| v.as_str())
-                                    .map(String::from),
-                                provider_id: p
-                                    .get("providerId")
-                                    .and_then(|v| v.as_str())
-                                    .map(String::from),
-                            })
-                        })
-                        .collect());
-                }
-            }
+            // AGENT-04: prefer the active user partition (multi-user mode) so agent
+            // discovery matches `profiles --json`, falling back to the global
+            // profile list for single-user installs. Mirrors the connect path.
+            let profiles: Vec<Value> =
+                match crate::user_partitions::cli_list_active_server_profiles(&store) {
+                    Ok(p) => p,
+                    Err(e) if e == "USER_LOCKED" || e == "NO_ACTIVE_USER" => return Err(e),
+                    Err(_) => match store.get("config_server_profiles") {
+                        Ok(json_str) => {
+                            serde_json::from_str::<Vec<Value>>(&json_str).unwrap_or_default()
+                        }
+                        Err(_) => return Ok(Vec::new()),
+                    },
+                };
+            return Ok(profiles
+                .iter()
+                .filter_map(|p| {
+                    Some(ServerProfile {
+                        id: p.get("id")?.as_str()?.to_string(),
+                        name: p
+                            .get("name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                        host: p
+                            .get("host")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                        port: p.get("port").and_then(|v| v.as_u64()).unwrap_or(0) as u16,
+                        username: p
+                            .get("username")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                        protocol: p
+                            .get("protocol")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("ftp")
+                            .to_string(),
+                        initial_path: p
+                            .get("initialPath")
+                            .and_then(|v| v.as_str())
+                            .map(String::from),
+                        provider_id: p
+                            .get("providerId")
+                            .and_then(|v| v.as_str())
+                            .map(String::from),
+                    })
+                })
+                .collect());
         }
         // No vault: return empty
         Ok(Vec::new())

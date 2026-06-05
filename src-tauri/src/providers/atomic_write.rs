@@ -222,6 +222,13 @@ impl ResumableFile {
                 .open(&temp_path)
                 .await?
         } else {
+            // RESUME-01: open_fresh's contract is to discard any existing partial
+            // data. A stale `.aerotmp` from a previous interrupted download would
+            // otherwise make create_new fail with AlreadyExists, wedging every
+            // retry until the user removes it by hand. Remove it first (best
+            // effort), then create the fresh temp so the create_new race guard is
+            // preserved for genuinely concurrent writers.
+            let _ = fs::remove_file(&temp_path).await;
             fs::OpenOptions::new()
                 .create_new(true)
                 .write(true)

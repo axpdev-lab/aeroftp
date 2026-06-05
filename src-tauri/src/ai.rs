@@ -42,7 +42,11 @@ pub(crate) fn truncate_safe(s: &str, max_bytes: usize) -> &str {
 }
 
 /// Strip API keys, bearer tokens, and sensitive headers from error messages.
-pub(crate) fn sanitize_error_message(msg: &str) -> String {
+///
+/// Public so the CLI-agent / orchestrate surface in the `aeroftp-cli` binary can
+/// scrub provider/tool error strings before they enter model context (MCP-02),
+/// matching the MCP and AI-stream paths.
+pub fn sanitize_error_message(msg: &str) -> String {
     static PATTERNS: LazyLock<Vec<regex::Regex>> = LazyLock::new(|| {
         [
             r"[?&]key=[^&\s\)]*",                    // Google key= query parameter

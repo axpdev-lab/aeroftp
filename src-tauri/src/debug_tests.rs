@@ -281,6 +281,12 @@ fn redaction_patterns() -> &'static [(regex::Regex, &'static str)] {
                 r#"(?i)\bauthorization\s*[:=]\s*[^\s,;'"<>]+"#,
                 "authorization: ***REDACTED***",
             ),
+            // MCP-06: generic key=value secrets (password=, secret:, token=, ...).
+            // Keeps the key name for debugging context, scrubs the value.
+            (
+                r#"(?i)\b(pass(?:word|wd)?|pwd|secret|token|api[_-]?key)\s*[:=]\s*[^\s,;'"<>]+"#,
+                "$1=***REDACTED***",
+            ),
             (
                 r"\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}",
                 "***JWT-REDACTED***",
