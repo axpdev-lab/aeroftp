@@ -49,6 +49,13 @@ export const WindowControls: React.FC<{ className?: string }> = ({ className }) 
         try { await getCurrentWindow().close(); } catch { /* no-op */ }
     };
 
+    // macOS draws native Overlay traffic lights (top-left) on every window,
+    // including the screens shown before the main title bar (issue #290), so
+    // these custom controls would be redundant there.
+    if (typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform)) {
+        return null;
+    }
+
     return (
         <div className={`flex items-center gap-0.5 ${className ?? ''}`}>
             <button
