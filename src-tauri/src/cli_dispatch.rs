@@ -62,6 +62,8 @@ pub const CLI_SUBCOMMANDS: &[&str] = &[
     "profile-duplicate-mode",
     "profile-convert-mode",
     "profile-delete",
+    "profile-copy-user",
+    "profile-move-user",
     "profile-set-password",
     "ai-models",
     "agent-bootstrap",
