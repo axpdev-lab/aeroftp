@@ -178,6 +178,38 @@ export const findCrossUserDedup = (
 ): Promise<CrossUserDedupMatch[]> =>
     invoke<CrossUserDedupMatch[]>('user_partitions_find_cross_user_dedup', { profile });
 
+// N4 (discussion #270): copy/move a saved server profile from the ACTIVE
+// account into another user account. The source is always the active user, so
+// the caller only supplies the target. `newProfileId` is generated frontend
+// side (same `srv_<ts>_<rand>` convention as Duplicate) so the relocated copy
+// is independent of the original; the backend copies the `server_<id>`
+// credential onto it. A passphrase is required only when the target account is
+// protected. When the target already holds the same server the insert is
+// skipped (`alreadyPresent`).
+export interface ProfileRelocation {
+    sourceProfileId: string;
+    newProfileId: string;
+    profileName: string;
+    targetUserId: number;
+    moved: boolean;
+    alreadyPresent: boolean;
+}
+
+export const relocateServerProfile = (
+    targetUserId: number,
+    profileId: string,
+    newProfileId: string,
+    moveProfile: boolean,
+    targetPassphrase?: string | null,
+): Promise<ProfileRelocation> =>
+    invoke<ProfileRelocation>('user_partitions_relocate_server_profile', {
+        targetUserId,
+        profileId,
+        newProfileId,
+        targetPassphrase: targetPassphrase ?? null,
+        moveProfile,
+    });
+
 const USERS_LIST_CACHE_KEY = 'aeroftp-users-list-cache';
 const USERS_LIST_CACHE_VERSION = 1;
 

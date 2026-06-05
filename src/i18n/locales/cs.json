@@ -1266,7 +1266,8 @@
             "batchRenameResult": "{success} přejmenováno, {errors} selhalo",
             "copyCompleted": "Kopírování dokončeno",
             "localPathNotFound": "Místní složka \"{path}\" nebyla nalezena. Přešlo se do domovského adresáře.",
-            "zeroByteWarning": "Soubor 0 B - může značit chybu přenosu"
+            "zeroByteWarning": "Soubor 0 B - může značit chybu přenosu",
+            "megacmdWarmup": "Server MEGAcmd neběží, spouští se na pozadí..."
         },
         "about": {
             "tagline": "Více než FTP. Kompletní sada nástrojů pro vývojáře.",
@@ -3465,7 +3466,25 @@
             "hideCredentials": "Skrýt přihlašovací údaje",
             "showCredentials": "Zobrazit přihlašovací údaje",
             "showUsername": "Zobrazit uživatelské jméno na kartách",
-            "hideUsername": "Skrýt uživatelské jméno na kartách"
+            "hideUsername": "Skrýt uživatelské jméno na kartách",
+            "copyToUser": "Kopírovat do účtu...",
+            "moveToUser": "Přesunout do účtu...",
+            "relocateCopyTitle": "Kopírovat server do jiného účtu",
+            "relocateMoveTitle": "Přesunout server do jiného účtu",
+            "relocatePickUser": "Vyberte cílový účet",
+            "relocateNoOtherUsers": "Žádný další účet není k dispozici. Nejprve nějaký vytvořte ve Správě uživatelů.",
+            "relocateTargetPasswordLabel": "Heslo pro {user}",
+            "relocateTargetPasswordHint": "{user} je chráněný. Zadejte jeho heslo, aby se tam server uložil.",
+            "relocateMoveWarning": "Po přesunutí se originál z tohoto účtu odstraní.",
+            "relocateSubmitCopy": "Kopírovat",
+            "relocateSubmitMove": "Přesunout",
+            "relocateBusyCopy": "Kopírování...",
+            "relocateBusyMove": "Přesouvání...",
+            "relocateSuccessCopy": "„{name}“ zkopírováno do {user}",
+            "relocateSuccessMove": "„{name}“ přesunuto do {user}",
+            "relocateAlreadyPresent": "„{name}“ je už uloženo v {user}",
+            "relocateError": "Server se nepodařilo přenést: {error}",
+            "relocateWrongPassword": "Nesprávné heslo pro {user}."
         },
         "cyberTools": {
             "title": "Bezpečnostní nástroje",

@@ -1266,7 +1266,8 @@
             "batchRenameResult": "{success} átnevezve, {errors} sikertelen",
             "copyCompleted": "Másolás befejezve",
             "localPathNotFound": "A(z) \"{path}\" helyi mappa nem található. Átnavigálva a saját könyvtárba.",
-            "zeroByteWarning": "0 B fájl - átviteli hibára utalhat"
+            "zeroByteWarning": "0 B fájl - átviteli hibára utalhat",
+            "megacmdWarmup": "A MEGAcmd-kiszolgáló nem fut, indítás a háttérben..."
         },
         "about": {
             "tagline": "Több mint FTP. Teljes fejlesztői eszközkészlet.",
@@ -3465,7 +3466,25 @@
             "hideCredentials": "Hitelesítő adatok elrejtése",
             "showCredentials": "Hitelesítő adatok megjelenítése",
             "showUsername": "Felhasználónév megjelenítése a kártyákon",
-            "hideUsername": "Felhasználónév elrejtése a kártyákon"
+            "hideUsername": "Felhasználónév elrejtése a kártyákon",
+            "copyToUser": "Másolás fiókba...",
+            "moveToUser": "Áthelyezés fiókba...",
+            "relocateCopyTitle": "Kiszolgáló másolása másik fiókba",
+            "relocateMoveTitle": "Kiszolgáló áthelyezése másik fiókba",
+            "relocatePickUser": "Válassza ki a célfiókot",
+            "relocateNoOtherUsers": "Nincs másik fiók. Hozzon létre egyet a Felhasználók kezelése részben.",
+            "relocateTargetPasswordLabel": "{user} jelszava",
+            "relocateTargetPasswordHint": "A(z) {user} védett. Adja meg a jelszavát a kiszolgáló odamentéséhez.",
+            "relocateMoveWarning": "Az eredeti az áthelyezés után törlődik erről a fiókról.",
+            "relocateSubmitCopy": "Másolás",
+            "relocateSubmitMove": "Áthelyezés",
+            "relocateBusyCopy": "Másolás...",
+            "relocateBusyMove": "Áthelyezés...",
+            "relocateSuccessCopy": "A(z) „{name}” átmásolva ide: {user}",
+            "relocateSuccessMove": "A(z) „{name}” áthelyezve ide: {user}",
+            "relocateAlreadyPresent": "A(z) „{name}” már mentve van itt: {user}",
+            "relocateError": "A kiszolgálót nem sikerült átvinni: {error}",
+            "relocateWrongPassword": "Helytelen jelszó a következőhöz: {user}."
         },
         "cyberTools": {
             "title": "Biztonsági eszközök",

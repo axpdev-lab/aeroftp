@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Plus, Server as ServerIcon, Play, Edit2, Copy, Trash2, Activity, Star, PencilLine, ArrowUpRight, ArrowDownLeft, Database, Globe, Cloud, Camera, Code, Gauge, HardDrive, LogOut } from 'lucide-react';
+import { Plus, Server as ServerIcon, Play, Edit2, Copy, Trash2, Activity, Star, PencilLine, ArrowUpRight, ArrowDownLeft, Database, Globe, Cloud, Camera, Code, Gauge, HardDrive, LogOut, Scissors } from 'lucide-react';
 import { ServerProfile, ConnectionParams, ProviderType, getE2EBits, getProtocolClass, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol } from '../../types';
 import { MyServersViewMode, MyServersFilterBy, FILTER_CHIPS, CatalogCategoryId } from '../../types/catalog';
 import { MyServersToolbar } from './MyServersToolbar';
@@ -18,6 +18,8 @@ import { logger } from '../../utils/logger';
 import { ServerHealthCheck } from '../ServerHealthCheck';
 import { SpeedTestDialog } from '../SpeedTestDialog';
 import { AlertDialog } from '../Dialogs';
+import { ProfileRelocateDialog } from '../ProfileRelocateDialog';
+import { listUsers } from '../../utils/userPartitions';
 import { supportsSpeedTest } from '../../utils/speedTest';
 import { useProviderHealth, type HealthTarget } from '../../hooks/useProviderHealth';
 import { useCardLayout } from '../../hooks/useCardLayout';
@@ -44,6 +46,7 @@ const MENU_ICON_DISCONNECT   = <LogOut size={14} className="text-amber-500" />;
 const MENU_ICON_EDIT         = <Edit2 size={14} />;
 const MENU_ICON_RENAME       = <PencilLine size={14} />;
 const MENU_ICON_COPY         = <Copy size={14} />;
+const MENU_ICON_MOVE_USER    = <Scissors size={14} className="text-amber-500" />;
 const MENU_ICON_FAVORITE     = <Star size={14} />;
 const MENU_ICON_CROSS_SRC    = <ArrowUpRight size={14} className="text-indigo-500" />;
 const MENU_ICON_CROSS_DEST   = <ArrowDownLeft size={14} className="text-emerald-500" />;
@@ -299,6 +302,9 @@ export function MyServersPanel({
     const [healthCheckTarget, setHealthCheckTarget] = useState<string | false>(false);
     const [speedTestTarget, setSpeedTestTarget] = useState<string | undefined | false>(false);
     const [deleteTarget, setDeleteTarget] = useState<ServerProfile | null>(null);
+    // N4 (#270): cross-user copy/move. Gated on at least one OTHER account.
+    const [relocateState, setRelocateState] = useState<{ profile: ServerProfile; mode: 'copy' | 'move' } | null>(null);
+    const [hasOtherUsers, setHasOtherUsers] = useState(false);
     // Drag & reorder
     const [dragIdx, setDragIdx] = useState<number | null>(null);
     const [overIdx, setOverIdx] = useState<number | null>(null);
@@ -401,6 +407,18 @@ export function MyServersPanel({
                 });
             } catch { /* vault not ready / locked, retry on next lastUpdate bump */ }
         })();
+        return () => { cancelled = true; };
+    }, [lastUpdate]);
+
+    useEffect(() => {
+        // N4 (#270): gate the cross-user copy/move menu entries on at least
+        // one OTHER account existing. Best-effort: failure leaves them hidden.
+        let cancelled = false;
+        listUsers()
+            .then(list => {
+                if (!cancelled) setHasOtherUsers(list.filter(u => !u.isActive).length > 0);
+            })
+            .catch(() => {});
         return () => { cancelled = true; };
     }, [lastUpdate]);
 
@@ -1093,6 +1111,12 @@ export function MyServersPanel({
             { label: t('common.copy'), icon: MENU_ICON_COPY, action: () => handleDuplicate(server) },
             { label: isFav ? t('introHub.removeFavorite') : t('introHub.addFavorite'), icon: MENU_ICON_FAVORITE, action: () => toggleFavorite(server.id) },
         );
+        if (hasOtherUsers) {
+            items.push(
+                { label: t('savedServers.copyToUser'), icon: MENU_ICON_COPY, action: () => setRelocateState({ profile: server, mode: 'copy' }), divider: true },
+                { label: t('savedServers.moveToUser'), icon: MENU_ICON_MOVE_USER, action: () => setRelocateState({ profile: server, mode: 'move' }) },
+            );
+        }
         if (onOpenCrossProfile && servers.length > 1) {
             items.push({
                 label: t('introHub.setAsCrossProfileSource'),
@@ -1118,7 +1142,7 @@ export function MyServersPanel({
             { label: t('common.delete'), icon: MENU_ICON_DELETE, action: () => handleDelete(server), danger: true },
         );
         showContextMenu(e, items);
-    }, [t, handleConnect, onEdit, handleDuplicate, handleDelete, handleRenameStart, toggleFavorite, favorites, showContextMenu, onOpenCrossProfile, setAsCrossProfileSource, setAsCrossProfileDestination, servers.length, handleOpenMount, activeProfileIds, onDisconnectProfile]);
+    }, [t, handleConnect, onEdit, handleDuplicate, handleDelete, handleRenameStart, toggleFavorite, favorites, showContextMenu, onOpenCrossProfile, setAsCrossProfileSource, setAsCrossProfileDestination, servers.length, handleOpenMount, activeProfileIds, onDisconnectProfile, hasOtherUsers]);
 
     return (
         <div className="h-full flex flex-col" onClick={handlePanelBlankClick}>
@@ -1391,6 +1415,20 @@ export function MyServersPanel({
                     actionLabel={t('common.delete')}
                     onAction={confirmDelete}
                     actionIcon={<Trash2 size={14} />}
+                />
+            )}
+            {relocateState && (
+                <ProfileRelocateDialog
+                    mode={relocateState.mode}
+                    profile={relocateState.profile}
+                    onClose={() => setRelocateState(null)}
+                    onDone={({ moved }) => {
+                        // A Move deleted the source row from the active vault
+                        // partition; drop it from local state to match.
+                        if (moved) {
+                            setServers(prev => prev.filter(s => s.id !== relocateState.profile.id));
+                        }
+                    }}
                 />
             )}
         </div>

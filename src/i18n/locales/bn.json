@@ -1266,7 +1266,8 @@
             "batchRenameResult": "{success} পুনঃনামকরণ হয়েছে, {errors} ব্যর্থ হয়েছে",
             "copyCompleted": "অনুলিপি সম্পন্ন",
             "localPathNotFound": "স্থানীয় ফোল্ডার \"{path}\" পাওয়া যায়নি। হোম ডিরেক্টরিতে নেভিগেট করা হয়েছে।",
-            "zeroByteWarning": "0 B ফাইল - ট্রান্সফার ত্রুটি হতে পারে"
+            "zeroByteWarning": "0 B ফাইল - ট্রান্সফার ত্রুটি হতে পারে",
+            "megacmdWarmup": "MEGAcmd সার্ভার চলছে না, ব্যাকগ্রাউন্ডে শুরু হচ্ছে..."
         },
         "about": {
             "tagline": "FTP এর চেয়েও বেশি। একটি সম্পূর্ণ ডেভেলপার টুলকিট।",
@@ -3465,7 +3466,25 @@
             "hideCredentials": "শংসাপত্র লুকান",
             "showCredentials": "শংসাপত্র দেখান",
             "showUsername": "কার্ডে ইউজারনেম দেখান",
-            "hideUsername": "কার্ডে ইউজারনেম লুকান"
+            "hideUsername": "কার্ডে ইউজারনেম লুকান",
+            "copyToUser": "অ্যাকাউন্টে কপি করুন...",
+            "moveToUser": "অ্যাকাউন্টে সরান...",
+            "relocateCopyTitle": "সার্ভার অন্য অ্যাকাউন্টে কপি করুন",
+            "relocateMoveTitle": "সার্ভার অন্য অ্যাকাউন্টে সরান",
+            "relocatePickUser": "গন্তব্য অ্যাকাউন্ট বেছে নিন",
+            "relocateNoOtherUsers": "অন্য কোনো অ্যাকাউন্ট নেই। প্রথমে ব্যবহারকারী ব্যবস্থাপনায় একটি তৈরি করুন।",
+            "relocateTargetPasswordLabel": "{user}-এর পাসওয়ার্ড",
+            "relocateTargetPasswordHint": "{user} সুরক্ষিত। সেখানে সার্ভার সংরক্ষণ করতে এর পাসওয়ার্ড দিন।",
+            "relocateMoveWarning": "সরানোর পরে মূলটি এই অ্যাকাউন্ট থেকে মুছে যায়।",
+            "relocateSubmitCopy": "কপি",
+            "relocateSubmitMove": "সরান",
+            "relocateBusyCopy": "কপি হচ্ছে...",
+            "relocateBusyMove": "সরানো হচ্ছে...",
+            "relocateSuccessCopy": "\"{name}\" {user}-এ কপি করা হয়েছে",
+            "relocateSuccessMove": "\"{name}\" {user}-এ সরানো হয়েছে",
+            "relocateAlreadyPresent": "\"{name}\" ইতিমধ্যে {user}-এ সংরক্ষিত আছে",
+            "relocateError": "সার্ভার স্থানান্তর করা যায়নি: {error}",
+            "relocateWrongPassword": "{user}-এর জন্য ভুল পাসওয়ার্ড।"
         },
         "cyberTools": {
             "title": "নিরাপত্তা সরঞ্জাম",

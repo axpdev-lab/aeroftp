@@ -1266,7 +1266,8 @@
             "batchRenameResult": "{success} перейменовано, {errors} не вдалося",
             "copyCompleted": "Копіювання завершено",
             "localPathNotFound": "Локальну папку \"{path}\" не знайдено. Перейдено до домашнього каталогу.",
-            "zeroByteWarning": "Файл 0 Б - можливо, помилка передачі"
+            "zeroByteWarning": "Файл 0 Б - можливо, помилка передачі",
+            "megacmdWarmup": "Сервер MEGAcmd не запущено, запуск у фоновому режимі..."
         },
         "about": {
             "tagline": "Більше ніж FTP. Повний набір інструментів розробника.",
@@ -3465,7 +3466,25 @@
             "hideCredentials": "Сховати облікові дані",
             "showCredentials": "Показати облікові дані",
             "showUsername": "Показувати ім'я користувача на картках",
-            "hideUsername": "Сховати ім'я користувача на картках"
+            "hideUsername": "Сховати ім'я користувача на картках",
+            "copyToUser": "Копіювати до облікового запису...",
+            "moveToUser": "Перемістити до облікового запису...",
+            "relocateCopyTitle": "Копіювати сервер до іншого облікового запису",
+            "relocateMoveTitle": "Перемістити сервер до іншого облікового запису",
+            "relocatePickUser": "Виберіть цільовий обліковий запис",
+            "relocateNoOtherUsers": "Інших облікових записів немає. Спершу створіть його в розділі «Керування користувачами».",
+            "relocateTargetPasswordLabel": "Пароль для {user}",
+            "relocateTargetPasswordHint": "{user} захищено. Введіть його пароль, щоб зберегти там сервер.",
+            "relocateMoveWarning": "Після переміщення оригінал видаляється з цього облікового запису.",
+            "relocateSubmitCopy": "Копіювати",
+            "relocateSubmitMove": "Перемістити",
+            "relocateBusyCopy": "Копіювання...",
+            "relocateBusyMove": "Переміщення...",
+            "relocateSuccessCopy": "«{name}» скопійовано до {user}",
+            "relocateSuccessMove": "«{name}» переміщено до {user}",
+            "relocateAlreadyPresent": "«{name}» вже збережено в {user}",
+            "relocateError": "Не вдалося перенести сервер: {error}",
+            "relocateWrongPassword": "Неправильний пароль для {user}."
         },
         "cyberTools": {
             "title": "Інструменти безпеки",

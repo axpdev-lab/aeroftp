@@ -1266,7 +1266,8 @@
             "batchRenameResult": "{success} reanomenats, {errors} fallits",
             "copyCompleted": "Copia completada",
             "localPathNotFound": "La carpeta local \"{path}\" no s'ha trobat. S'ha navegat al directori d'inici.",
-            "zeroByteWarning": "Fitxer de 0 B - pot indicar un error de transferència"
+            "zeroByteWarning": "Fitxer de 0 B - pot indicar un error de transferència",
+            "megacmdWarmup": "El servidor MEGAcmd no s'està executant, s'està iniciant en segon pla..."
         },
         "about": {
             "tagline": "Mes que FTP. Un conjunt complet d'eines per a desenvolupadors.",
@@ -3465,7 +3466,25 @@
             "hideCredentials": "Amaga credencials",
             "showCredentials": "Mostra credencials",
             "showUsername": "Mostra el nom d'usuari a les targetes",
-            "hideUsername": "Amaga el nom d'usuari a les targetes"
+            "hideUsername": "Amaga el nom d'usuari a les targetes",
+            "copyToUser": "Copia a un compte...",
+            "moveToUser": "Mou a un compte...",
+            "relocateCopyTitle": "Copia el servidor a un altre compte",
+            "relocateMoveTitle": "Mou el servidor a un altre compte",
+            "relocatePickUser": "Tria el compte de destinació",
+            "relocateNoOtherUsers": "No hi ha cap altre compte disponible. Crea'n un a Gestió d'usuaris.",
+            "relocateTargetPasswordLabel": "Contrasenya de {user}",
+            "relocateTargetPasswordHint": "{user} està protegit. Introdueix-ne la contrasenya per desar-hi el servidor.",
+            "relocateMoveWarning": "L'original s'elimina d'aquest compte després de moure'l.",
+            "relocateSubmitCopy": "Copia",
+            "relocateSubmitMove": "Mou",
+            "relocateBusyCopy": "S'està copiant...",
+            "relocateBusyMove": "S'està movent...",
+            "relocateSuccessCopy": "«{name}» s'ha copiat a {user}",
+            "relocateSuccessMove": "«{name}» s'ha mogut a {user}",
+            "relocateAlreadyPresent": "«{name}» ja està desat a {user}",
+            "relocateError": "No s'ha pogut transferir el servidor: {error}",
+            "relocateWrongPassword": "Contrasenya incorrecta per a {user}."
         },
         "cyberTools": {
             "title": "Eines de seguretat",

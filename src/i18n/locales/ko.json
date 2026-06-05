@@ -1266,7 +1266,8 @@
             "batchRenameResult": "{success}개 이름 변경, {errors}개 실패",
             "copyCompleted": "복사 완료",
             "localPathNotFound": "로컬 폴더 \"{path}\"을(를) 찾을 수 없습니다. 홈 디렉토리로 이동했습니다.",
-            "zeroByteWarning": "0 B 파일 - 전송 오류일 수 있습니다"
+            "zeroByteWarning": "0 B 파일 - 전송 오류일 수 있습니다",
+            "megacmdWarmup": "MEGAcmd 서버가 실행되고 있지 않아 백그라운드에서 시작합니다..."
         },
         "about": {
             "tagline": "FTP 그 이상. 완벽한 개발자 툴킷.",
@@ -3465,7 +3466,25 @@
             "hideCredentials": "자격 증명 숨기기",
             "showCredentials": "자격 증명 표시",
             "showUsername": "카드에 사용자 이름 표시",
-            "hideUsername": "카드에서 사용자 이름 숨기기"
+            "hideUsername": "카드에서 사용자 이름 숨기기",
+            "copyToUser": "계정에 복사...",
+            "moveToUser": "계정으로 이동...",
+            "relocateCopyTitle": "서버를 다른 계정에 복사",
+            "relocateMoveTitle": "서버를 다른 계정으로 이동",
+            "relocatePickUser": "대상 계정 선택",
+            "relocateNoOtherUsers": "다른 계정이 없습니다. 먼저 사용자 관리에서 하나 만드세요.",
+            "relocateTargetPasswordLabel": "{user}의 비밀번호",
+            "relocateTargetPasswordHint": "{user}은(는) 보호되어 있습니다. 서버를 저장하려면 비밀번호를 입력하세요.",
+            "relocateMoveWarning": "이동 후 원본은 이 계정에서 제거됩니다.",
+            "relocateSubmitCopy": "복사",
+            "relocateSubmitMove": "이동",
+            "relocateBusyCopy": "복사 중...",
+            "relocateBusyMove": "이동 중...",
+            "relocateSuccessCopy": "\"{name}\"을(를) {user}에 복사했습니다",
+            "relocateSuccessMove": "\"{name}\"을(를) {user}(으)로 이동했습니다",
+            "relocateAlreadyPresent": "\"{name}\"은(는) 이미 {user}에 저장되어 있습니다",
+            "relocateError": "서버를 전송할 수 없습니다: {error}",
+            "relocateWrongPassword": "{user}의 비밀번호가 잘못되었습니다."
         },
         "cyberTools": {
             "title": "보안 도구",

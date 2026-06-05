@@ -985,6 +985,45 @@ fn with_user_dek<R>(
     f(user_id, &dek)
 }
 
+/// Resolve a user's DEK with an explicit (optional) passphrase, WITHOUT
+/// touching `active_user_id` or the global [`USER_SESSION`]. This is the
+/// session-free counterpart of [`unlock_user_transient`]: it is used to write
+/// into ANOTHER user's partition (cross-user profile copy/move, N4) while the
+/// source user's session stays primed.
+///
+/// For a passphrase-protected target the passphrase is REQUIRED
+/// (`TARGET_PASSPHRASE_REQUIRED` otherwise) and lockout accounting is enforced
+/// exactly like an interactive unlock, so this path cannot be used to brute
+/// force a partition. For a passphrase-free target the local `root_key`
+/// unwraps the DEK and a stray passphrase is rejected.
+fn resolve_user_dek_scoped(
+    conn: &Connection,
+    root_secret: &SecretKey,
+    user_id: i64,
+    passphrase: Option<&str>,
+) -> Result<SecretKey, String> {
+    let row = read_user_key_row(conn, user_id)?;
+    if row.has_passphrase {
+        check_lockout(conn, user_id)?;
+        let passphrase = passphrase.ok_or_else(|| "TARGET_PASSPHRASE_REQUIRED".to_string())?;
+        match unwrap_user_dek_with_passphrase(&row, passphrase) {
+            Ok(dek) => {
+                reset_lockout(conn, user_id)?;
+                Ok(dek)
+            }
+            Err(_) => {
+                record_unlock_failure(conn, user_id)?;
+                Err("WRONG_PASSPHRASE".to_string())
+            }
+        }
+    } else {
+        if passphrase.is_some() {
+            return Err("PASSPHRASE_NOT_NEEDED".to_string());
+        }
+        unwrap_user_dek_with_key(&row, root_secret)
+    }
+}
+
 pub fn list_active_server_profiles(
     conn: &Connection,
     root_key: &[u8; 32],
@@ -1013,27 +1052,40 @@ pub fn list_server_profiles_for(
 ) -> Result<Vec<Value>, String> {
     let root_secret = user_crypto::secret_key_from_bytes(root_key);
     with_user_dek(conn, &root_secret, user_id, |user_id, dek| {
-        let mut stmt = conn
-            .prepare(
-                "SELECT encrypted_blob, nonce
-                 FROM server_profiles
-                 WHERE user_id = ?1
-                 ORDER BY id ASC",
-            )
-            .map_err(|e| format!("Prepare profile list: {e}"))?;
-        let rows = stmt
-            .query_map(params![user_id], |row| {
-                Ok((row.get::<_, Vec<u8>>(0)?, row.get::<_, Vec<u8>>(1)?))
-            })
-            .map_err(|e| format!("Query profile list: {e}"))?;
-
-        let mut profiles = Vec::new();
-        for row in rows {
-            let (encrypted_blob, nonce) = row.map_err(|e| format!("Read profile row: {e}"))?;
-            profiles.push(decrypt_value(dek, &nonce, &encrypted_blob)?);
-        }
-        Ok(profiles)
+        read_profiles_with_dek(conn, user_id, dek)
     })
+}
+
+/// Decrypt every server profile row for `user_id` with an already-resolved DEK.
+/// Session-free: the caller is responsible for obtaining `dek` (via
+/// [`with_user_dek`] or [`resolve_user_dek_scoped`]). Extracted so cross-user
+/// relocation can read a target partition without clobbering the global
+/// [`USER_SESSION`].
+fn read_profiles_with_dek(
+    conn: &Connection,
+    user_id: i64,
+    dek: &SecretKey,
+) -> Result<Vec<Value>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT encrypted_blob, nonce
+             FROM server_profiles
+             WHERE user_id = ?1
+             ORDER BY id ASC",
+        )
+        .map_err(|e| format!("Prepare profile list: {e}"))?;
+    let rows = stmt
+        .query_map(params![user_id], |row| {
+            Ok((row.get::<_, Vec<u8>>(0)?, row.get::<_, Vec<u8>>(1)?))
+        })
+        .map_err(|e| format!("Query profile list: {e}"))?;
+
+    let mut profiles = Vec::new();
+    for row in rows {
+        let (encrypted_blob, nonce) = row.map_err(|e| format!("Read profile row: {e}"))?;
+        profiles.push(decrypt_value(dek, &nonce, &encrypted_blob)?);
+    }
+    Ok(profiles)
 }
 
 /// Overwrite server profiles for a specific user id without changing
@@ -1046,36 +1098,170 @@ pub fn replace_server_profiles_for(
 ) -> Result<(), String> {
     let root_secret = user_crypto::secret_key_from_bytes(root_key);
     with_user_dek(conn, &root_secret, user_id, |user_id, dek| {
-        let tx = conn
-            .unchecked_transaction()
-            .map_err(|e| format!("Start replace profiles: {e}"))?;
+        write_profiles_with_dek(conn, &root_secret, user_id, dek, profiles)
+    })
+}
+
+/// Overwrite every server profile row for `user_id` with an already-resolved
+/// DEK. Session-free companion of [`read_profiles_with_dek`]: the caller
+/// supplies both the `dek` (content key) and `root_secret` (used to derive the
+/// deterministic `profile_uid` / `dedup_key` tags). Same DELETE-then-reinsert
+/// semantics as [`replace_server_profiles_for`].
+fn write_profiles_with_dek(
+    conn: &Connection,
+    root_secret: &SecretKey,
+    user_id: i64,
+    dek: &SecretKey,
+    profiles: &[Value],
+) -> Result<(), String> {
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| format!("Start replace profiles: {e}"))?;
+    tx.execute(
+        "DELETE FROM server_profiles WHERE user_id = ?1",
+        params![user_id],
+    )
+    .map_err(|e| format!("Delete previous profiles: {e}"))?;
+
+    let now = now_ms();
+    let mut seen_uids = HashSet::new();
+    for (index, profile) in profiles.iter().enumerate() {
+        let uid_seed = profile_uid_seed(profile, index, &mut seen_uids);
+        let uid = user_crypto::metadata_tag(root_secret, b"profile-uid", &uid_seed)?;
+        let key = profile_dedup_key(root_secret, profile, &uid_seed)?;
+        let (encrypted_blob, nonce) = encrypt_value(dek, profile)?;
         tx.execute(
-            "DELETE FROM server_profiles WHERE user_id = ?1",
-            params![user_id],
+            "INSERT INTO server_profiles(
+                 user_id, profile_uid, dedup_key, name, encrypted_blob, nonce,
+                 aead_alg, created_at, updated_at
+             )
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'aes-256-gcm', ?7, ?7)",
+            params![user_id, uid, key, uid, encrypted_blob, nonce, now],
         )
-        .map_err(|e| format!("Delete previous profiles: {e}"))?;
+        .map_err(|e| format!("Insert profile: {e}"))?;
+    }
 
-        let now = now_ms();
-        let mut seen_uids = HashSet::new();
-        for (index, profile) in profiles.iter().enumerate() {
-            let uid_seed = profile_uid_seed(profile, index, &mut seen_uids);
-            let uid = user_crypto::metadata_tag(&root_secret, b"profile-uid", &uid_seed)?;
-            let key = profile_dedup_key(&root_secret, profile, &uid_seed)?;
-            let (encrypted_blob, nonce) = encrypt_value(dek, profile)?;
-            tx.execute(
-                "INSERT INTO server_profiles(
-                     user_id, profile_uid, dedup_key, name, encrypted_blob, nonce,
-                     aead_alg, created_at, updated_at
-                 )
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'aes-256-gcm', ?7, ?7)",
-                params![user_id, uid, key, uid, encrypted_blob, nonce, now],
-            )
-            .map_err(|e| format!("Insert profile: {e}"))?;
+    tx.commit()
+        .map_err(|e| format!("Commit replace profiles: {e}"))?;
+    Ok(())
+}
+
+/// Outcome of a cross-user profile relocation (N4). Returned to the GUI/CLI so
+/// the caller can refresh state and finish credential bookkeeping outside the
+/// partition DB (`server_<id>` lives in the OS keyring, not the SQLite file).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileRelocation {
+    /// Source profile id, as it existed in the source partition.
+    pub source_profile_id: String,
+    /// Fresh id the relocated copy received in the target partition. Equal to
+    /// `source_profile_id` only when the caller deliberately reuses it.
+    pub new_profile_id: String,
+    /// Display name of the relocated profile (for the confirmation toast).
+    pub profile_name: String,
+    /// Target user the profile now lives in.
+    pub target_user_id: i64,
+    /// True for Move/Cut (the source row was deleted), false for Copy.
+    pub moved: bool,
+    /// True when the target partition already contained an equivalent server
+    /// (same dedup identity): the insert was skipped to avoid a duplicate.
+    pub already_present: bool,
+}
+
+/// Copy or move a single server profile from `source_user_id` into
+/// `target_user_id` (N4, Ehud wishlist #270). The backend stays authoritative:
+/// the caller passes only an id, the genuine source blob is read from the
+/// vault, re-keyed under `new_profile_id`, and inserted into the target
+/// partition. Credentials (`server_<id>`) live outside the partition DB and are
+/// handled by the caller using the returned ids.
+///
+/// Security: writing into a passphrase-protected target requires its
+/// passphrase (`TARGET_PASSPHRASE_REQUIRED` otherwise); the target DEK is
+/// resolved session-free so the source user's primed session is never
+/// disturbed. When the target already holds an equivalent server the insert is
+/// skipped (`already_present`), but for `remove_from_source` the source row is
+/// still deleted so a Move always satisfies "this profile now lives in B".
+#[allow(clippy::too_many_arguments)]
+pub fn relocate_server_profile(
+    conn: &mut Connection,
+    root_key: &[u8; 32],
+    source_user_id: i64,
+    target_user_id: i64,
+    profile_id: &str,
+    new_profile_id: &str,
+    target_passphrase: Option<&str>,
+    remove_from_source: bool,
+) -> Result<ProfileRelocation, String> {
+    if source_user_id == target_user_id {
+        return Err("RELOCATE_SAME_USER".to_string());
+    }
+    if new_profile_id.trim().is_empty() {
+        return Err("NEW_PROFILE_ID_REQUIRED".to_string());
+    }
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+
+    // The target must exist before we read the (potentially large) source list.
+    read_user_key_row(conn, target_user_id)?;
+
+    // 1. Read the source (active, already-unlocked) partition via its session.
+    let source_profiles = list_server_profiles_for(conn, root_key, source_user_id)?;
+    let source = source_profiles
+        .iter()
+        .find(|p| value_str(p, &["id", "uid", "profileUid"]) == Some(profile_id))
+        .cloned()
+        .ok_or_else(|| format!("PROFILE_NOT_FOUND: {profile_id}"))?;
+    let profile_name = value_str(&source, &["name", "label", "host", "hostname"])
+        .unwrap_or(profile_id)
+        .to_string();
+
+    // 2. Clone the blob under a fresh id and drop the per-account session field.
+    let mut relocated = source.clone();
+    if let Value::Object(map) = &mut relocated {
+        map.insert("id".into(), Value::String(new_profile_id.to_string()));
+        map.remove("lastConnected");
+    }
+
+    // 3. Resolve the target DEK with its own passphrase, never via the session.
+    let target_dek = resolve_user_dek_scoped(conn, &root_secret, target_user_id, target_passphrase)?;
+
+    // 4. Dedup against the target on the stable identity (username-based when
+    //    available, so a fresh id never masks an existing same-account server).
+    let source_seed = value_str(&source, &["id", "uid", "profileUid"]).unwrap_or(profile_id);
+    let source_tag = profile_dedup_key(&root_secret, &source, source_seed)?;
+    let target_profiles = read_profiles_with_dek(conn, target_user_id, &target_dek)?;
+    let mut already_present = false;
+    for existing in &target_profiles {
+        let seed = value_str(existing, &["id", "uid", "profileUid"]).unwrap_or("");
+        if profile_dedup_key(&root_secret, existing, seed)? == source_tag {
+            already_present = true;
+            break;
         }
+    }
 
-        tx.commit()
-            .map_err(|e| format!("Commit replace profiles: {e}"))?;
-        Ok(())
+    // 5. Insert into the target (prepend, like Duplicate) unless it is a dup.
+    if !already_present {
+        let mut new_list = Vec::with_capacity(target_profiles.len() + 1);
+        new_list.push(relocated);
+        new_list.extend(target_profiles);
+        write_profiles_with_dek(conn, &root_secret, target_user_id, &target_dek, &new_list)?;
+    }
+
+    // 6. Move/Cut: drop the source row from the active partition.
+    if remove_from_source {
+        let remaining: Vec<Value> = source_profiles
+            .into_iter()
+            .filter(|p| value_str(p, &["id", "uid", "profileUid"]) != Some(profile_id))
+            .collect();
+        replace_server_profiles_for(conn, root_key, source_user_id, &remaining)?;
+    }
+
+    Ok(ProfileRelocation {
+        source_profile_id: profile_id.to_string(),
+        new_profile_id: new_profile_id.to_string(),
+        profile_name,
+        target_user_id,
+        moved: remove_from_source,
+        already_present,
     })
 }
 
@@ -2188,6 +2374,38 @@ pub fn cli_replace_server_profiles_for_user(
     result
 }
 
+/// CLI bridge for the cross-user `profile-copy` / `profile-move` commands (N4).
+/// The active (source) user must already be unlocked by the caller, e.g. via
+/// `ensure_active_user_unlocked`; the target passphrase (if the target account
+/// is protected) is supplied here. Credentials (`server_<id>`) are copied or
+/// removed by the CLI command itself using the returned [`ProfileRelocation`].
+#[allow(clippy::too_many_arguments)]
+pub fn cli_relocate_server_profile(
+    store: &CredentialStore,
+    source_user_id: i64,
+    target_user_id: i64,
+    profile_id: &str,
+    new_profile_id: &str,
+    target_passphrase: Option<&str>,
+    remove_from_source: bool,
+) -> Result<ProfileRelocation, String> {
+    init_or_migrate_cli(store)?;
+    let mut conn = open_or_init_cli()?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let result = relocate_server_profile(
+        &mut conn,
+        &root_key,
+        source_user_id,
+        target_user_id,
+        profile_id,
+        new_profile_id,
+        target_passphrase,
+        remove_from_source,
+    );
+    root_key.zeroize();
+    result
+}
+
 /// Resolve a target user by name (CLI `--user` flag). Returns the user metadata
 /// or `Err("USER_NOT_FOUND: <name>")` if the canonical lookup fails.
 pub fn cli_find_user_by_name(store: &CredentialStore, name: &str) -> Result<UserMetadata, String> {
@@ -2380,6 +2598,57 @@ pub async fn user_partitions_save_active_server_profiles(
     let result = replace_active_server_profiles(&mut conn, &root_key, &profiles);
     root_key.zeroize();
     result
+}
+
+/// N4: copy or move a saved server profile from the ACTIVE (source) user into
+/// another user account. The source is always the active user, so the caller
+/// only supplies the target. `new_profile_id` is generated by the frontend
+/// (same `srv_<ts>_<rand>` convention as Duplicate) so the relocated copy is
+/// fully independent of the original. `target_passphrase` is required only when
+/// the target account is passphrase protected.
+#[tauri::command]
+pub async fn user_partitions_relocate_server_profile(
+    app: AppHandle,
+    target_user_id: i64,
+    profile_id: String,
+    new_profile_id: String,
+    mut target_passphrase: Option<String>,
+    move_profile: bool,
+) -> Result<ProfileRelocation, String> {
+    init_or_migrate(&app)?;
+    let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
+    let mut conn = open_or_init(&app)?;
+    let source_user_id = active_user_id(&conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let result = relocate_server_profile(
+        &mut conn,
+        &root_key,
+        source_user_id,
+        target_user_id,
+        &profile_id,
+        &new_profile_id,
+        target_passphrase.as_deref(),
+        move_profile,
+    );
+    root_key.zeroize();
+    if let Some(passphrase) = target_passphrase.as_mut() {
+        passphrase.zeroize();
+    }
+    let relocation = result?;
+
+    // Credentials live in the OS keyring (`server_<id>`), outside the partition
+    // DB. Copy the source secret onto the new id when a fresh row was inserted;
+    // a no-op dedup leaves the existing target secret untouched.
+    if !relocation.already_present {
+        if let Ok(secret) = store.get(&format!("server_{}", relocation.source_profile_id)) {
+            let _ = store.store(&format!("server_{}", relocation.new_profile_id), &secret);
+        }
+    }
+    // Move/Cut: the source row is gone, so its now-orphaned secret is removed.
+    if relocation.moved {
+        let _ = store.delete(&format!("server_{}", relocation.source_profile_id));
+    }
+    Ok(relocation)
 }
 
 /// Generic per-user setting access (MU-4 foundation). Settings are keyed by
@@ -3276,6 +3545,193 @@ mod tests {
             .expect("active after")
             .expect("active user after");
         assert_eq!(active_after.id, active_before.id);
+    }
+
+    // ============ N4 cross-user profile relocation ============
+
+    fn sftp_profile(id: &str) -> Value {
+        json!({
+            "id": id,
+            "name": "My SFTP",
+            "protocol": "sftp",
+            "host": "example.com",
+            "port": 22,
+            "username": "alice"
+        })
+    }
+
+    #[test]
+    fn relocate_copy_into_passphraseless_target_keeps_source() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn).expect("active").expect("default");
+        let bob = create_passphrase_less_user(&mut conn, &root, "Bob", Some("B"), Some("#6366f1"))
+            .expect("create bob");
+        replace_active_server_profiles(&mut conn, &root, &[sftp_profile("srv_src")])
+            .expect("seed source profile");
+
+        let report = relocate_server_profile(
+            &mut conn,
+            &root,
+            default.id,
+            bob.id,
+            "srv_src",
+            "srv_new",
+            None,
+            /*remove_from_source=*/ false,
+        )
+        .expect("copy");
+        assert!(!report.moved);
+        assert!(!report.already_present);
+        assert_eq!(report.new_profile_id, "srv_new");
+        assert_eq!(report.profile_name, "My SFTP");
+
+        // Source untouched.
+        let source = list_server_profiles_for(&conn, &root, default.id).expect("source list");
+        assert_eq!(source.len(), 1);
+        assert_eq!(source[0]["id"], "srv_src");
+
+        // Target received an independent copy under the new id.
+        let target = list_server_profiles_for(&conn, &root, bob.id).expect("target list");
+        assert_eq!(target.len(), 1);
+        assert_eq!(target[0]["id"], "srv_new");
+        assert_eq!(target[0]["host"], "example.com");
+        assert!(target[0].get("lastConnected").is_none());
+    }
+
+    #[test]
+    fn relocate_move_removes_source_row() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn).expect("active").expect("default");
+        let bob = create_passphrase_less_user(&mut conn, &root, "Bob", Some("B"), Some("#6366f1"))
+            .expect("create bob");
+        replace_active_server_profiles(&mut conn, &root, &[sftp_profile("srv_src")])
+            .expect("seed source profile");
+
+        let report = relocate_server_profile(
+            &mut conn,
+            &root,
+            default.id,
+            bob.id,
+            "srv_src",
+            "srv_new",
+            None,
+            /*remove_from_source=*/ true,
+        )
+        .expect("move");
+        assert!(report.moved);
+        assert!(!report.already_present);
+
+        let source = list_server_profiles_for(&conn, &root, default.id).expect("source list");
+        assert!(source.is_empty(), "source profile must be gone after a move");
+        let target = list_server_profiles_for(&conn, &root, bob.id).expect("target list");
+        assert_eq!(target.len(), 1);
+        assert_eq!(target[0]["id"], "srv_new");
+    }
+
+    #[test]
+    fn relocate_into_protected_target_requires_passphrase() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn).expect("active").expect("default");
+        let bob = create_user(
+            &mut conn,
+            &root,
+            "Bob",
+            Some("B"),
+            Some("#6366f1"),
+            Some("correct horse battery staple"),
+        )
+        .expect("create protected bob");
+        replace_active_server_profiles(&mut conn, &root, &[sftp_profile("srv_src")])
+            .expect("seed source profile");
+
+        // No passphrase -> rejected.
+        let err = relocate_server_profile(
+            &mut conn, &root, default.id, bob.id, "srv_src", "srv_new", None, false,
+        )
+        .expect_err("must require passphrase");
+        assert_eq!(err, "TARGET_PASSPHRASE_REQUIRED");
+
+        // Correct passphrase -> writes into the protected partition.
+        relocate_server_profile(
+            &mut conn,
+            &root,
+            default.id,
+            bob.id,
+            "srv_src",
+            "srv_new",
+            Some("correct horse battery staple"),
+            false,
+        )
+        .expect("copy with passphrase");
+
+        // Prime the target session to read it back.
+        unlock_user_transient(&conn, &root, bob.id, Some("correct horse battery staple"))
+            .expect("unlock target");
+        let target = list_server_profiles_for(&conn, &root, bob.id).expect("target list");
+        assert_eq!(target.len(), 1);
+        assert_eq!(target[0]["id"], "srv_new");
+        clear_user_session();
+    }
+
+    #[test]
+    fn relocate_rejects_same_user() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn).expect("active").expect("default");
+        replace_active_server_profiles(&mut conn, &root, &[sftp_profile("srv_src")])
+            .expect("seed");
+        let err = relocate_server_profile(
+            &mut conn, &root, default.id, default.id, "srv_src", "srv_new", None, false,
+        )
+        .expect_err("same user");
+        assert_eq!(err, "RELOCATE_SAME_USER");
+    }
+
+    #[test]
+    fn relocate_copy_skips_when_target_already_has_server() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn).expect("active").expect("default");
+        let bob = create_passphrase_less_user(&mut conn, &root, "Bob", Some("B"), Some("#6366f1"))
+            .expect("create bob");
+        replace_active_server_profiles(&mut conn, &root, &[sftp_profile("srv_src")])
+            .expect("seed source profile");
+
+        relocate_server_profile(
+            &mut conn, &root, default.id, bob.id, "srv_src", "srv_new1", None, false,
+        )
+        .expect("first copy");
+        // Same logical server (same host/user) -> dedup skip, no duplicate row.
+        let report = relocate_server_profile(
+            &mut conn, &root, default.id, bob.id, "srv_src", "srv_new2", None, false,
+        )
+        .expect("second copy");
+        assert!(report.already_present);
+        let target = list_server_profiles_for(&conn, &root, bob.id).expect("target list");
+        assert_eq!(target.len(), 1, "dedup must not create a second copy");
+    }
+
+    #[test]
+    fn relocate_unknown_profile_errors() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn).expect("active").expect("default");
+        let bob = create_passphrase_less_user(&mut conn, &root, "Bob", Some("B"), Some("#6366f1"))
+            .expect("create bob");
+        let err = relocate_server_profile(
+            &mut conn, &root, default.id, bob.id, "does_not_exist", "srv_new", None, false,
+        )
+        .expect_err("missing profile");
+        assert!(err.starts_with("PROFILE_NOT_FOUND"));
     }
 
     #[test]

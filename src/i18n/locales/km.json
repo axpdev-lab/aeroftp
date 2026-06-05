@@ -1266,7 +1266,8 @@
             "batchRenameResult": "{success} ប្តូរឈ្មោះហើយ, {errors} បរាជ័យ",
             "copyCompleted": "ការចម្លងបានបញ្ចប់",
             "localPathNotFound": "រកមិនឃើញថតក្នុងម៉ាស៊ីន \"{path}\"។ បានរុករកទៅថតផ្ទះ។",
-            "zeroByteWarning": "ឯកសារ 0 B - អាចបង្ហាញពីកំហុសក្នុងការផ្ទេរ"
+            "zeroByteWarning": "ឯកសារ 0 B - អាចបង្ហាញពីកំហុសក្នុងការផ្ទេរ",
+            "megacmdWarmup": "ម៉ាស៊ីនមេ MEGAcmd មិនកំពុងដំណើរការ កំពុងចាប់ផ្តើមនៅផ្ទៃខាងក្រោយ..."
         },
         "about": {
             "tagline": "លើសពី FTP។ ប្រអប់ឧបករណ៍អ្នកអភិវឌ្ឍន៍ពេញលេញ។",
@@ -3465,7 +3466,25 @@
             "hideCredentials": "លាក់ព័ត៌មានសម្ងាត់",
             "showCredentials": "បង្ហាញព័ត៌មានសម្ងាត់",
             "showUsername": "បង្ហាញឈ្មោះអ្នកប្រើនៅលើកាត",
-            "hideUsername": "លាក់ឈ្មោះអ្នកប្រើនៅលើកាត"
+            "hideUsername": "លាក់ឈ្មោះអ្នកប្រើនៅលើកាត",
+            "copyToUser": "ចម្លងទៅគណនី...",
+            "moveToUser": "ផ្លាស់ទីទៅគណនី...",
+            "relocateCopyTitle": "ចម្លងម៉ាស៊ីនមេទៅគណនីផ្សេង",
+            "relocateMoveTitle": "ផ្លាស់ទីម៉ាស៊ីនមេទៅគណនីផ្សេង",
+            "relocatePickUser": "ជ្រើសរើសគណនីគោលដៅ",
+            "relocateNoOtherUsers": "គ្មានគណនីផ្សេងទេ។ សូមបង្កើតមួយនៅក្នុងការគ្រប់គ្រងអ្នកប្រើជាមុនសិន។",
+            "relocateTargetPasswordLabel": "ពាក្យសម្ងាត់សម្រាប់ {user}",
+            "relocateTargetPasswordHint": "{user} ត្រូវបានការពារ។ បញ្ចូលពាក្យសម្ងាត់របស់វាដើម្បីរក្សាទុកម៉ាស៊ីនមេនៅទីនោះ។",
+            "relocateMoveWarning": "ច្បាប់ដើមត្រូវបានដកចេញពីគណនីនេះបន្ទាប់ពីផ្លាស់ទី។",
+            "relocateSubmitCopy": "ចម្លង",
+            "relocateSubmitMove": "ផ្លាស់ទី",
+            "relocateBusyCopy": "កំពុងចម្លង...",
+            "relocateBusyMove": "កំពុងផ្លាស់ទី...",
+            "relocateSuccessCopy": "«{name}» ត្រូវបានចម្លងទៅ {user}",
+            "relocateSuccessMove": "«{name}» ត្រូវបានផ្លាស់ទីទៅ {user}",
+            "relocateAlreadyPresent": "«{name}» ត្រូវបានរក្សាទុករួចហើយនៅ {user}",
+            "relocateError": "មិនអាចផ្ទេរម៉ាស៊ីនមេបានទេ៖ {error}",
+            "relocateWrongPassword": "ពាក្យសម្ងាត់មិនត្រឹមត្រូវសម្រាប់ {user}។"
         },
         "cyberTools": {
             "title": "ឧបករណ៍សុវត្ថិភាព",

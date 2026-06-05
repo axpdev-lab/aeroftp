@@ -1266,7 +1266,8 @@
             "batchRenameResult": "{success} diganti nama, {errors} gagal",
             "copyCompleted": "Penyalinan selesai",
             "localPathNotFound": "Folder lokal \"{path}\" tidak ditemukan. Dinavigasi ke direktori beranda.",
-            "zeroByteWarning": "File 0 B - mungkin menunjukkan kesalahan transfer"
+            "zeroByteWarning": "File 0 B - mungkin menunjukkan kesalahan transfer",
+            "megacmdWarmup": "Server MEGAcmd tidak berjalan, memulai di latar belakang..."
         },
         "about": {
             "tagline": "Lebih dari FTP. Perangkat lengkap untuk pengembang.",
@@ -3465,7 +3466,25 @@
             "hideCredentials": "Sembunyikan kredensial",
             "showCredentials": "Tampilkan kredensial",
             "showUsername": "Tampilkan nama pengguna di kartu",
-            "hideUsername": "Sembunyikan nama pengguna di kartu"
+            "hideUsername": "Sembunyikan nama pengguna di kartu",
+            "copyToUser": "Salin ke akun...",
+            "moveToUser": "Pindahkan ke akun...",
+            "relocateCopyTitle": "Salin server ke akun lain",
+            "relocateMoveTitle": "Pindahkan server ke akun lain",
+            "relocatePickUser": "Pilih akun tujuan",
+            "relocateNoOtherUsers": "Tidak ada akun lain. Buat satu di Kelola Pengguna terlebih dahulu.",
+            "relocateTargetPasswordLabel": "Kata sandi untuk {user}",
+            "relocateTargetPasswordHint": "{user} terlindungi. Masukkan kata sandinya untuk menyimpan server di sana.",
+            "relocateMoveWarning": "Yang asli dihapus dari akun ini setelah dipindahkan.",
+            "relocateSubmitCopy": "Salin",
+            "relocateSubmitMove": "Pindahkan",
+            "relocateBusyCopy": "Menyalin...",
+            "relocateBusyMove": "Memindahkan...",
+            "relocateSuccessCopy": "\"{name}\" disalin ke {user}",
+            "relocateSuccessMove": "\"{name}\" dipindahkan ke {user}",
+            "relocateAlreadyPresent": "\"{name}\" sudah tersimpan di {user}",
+            "relocateError": "Server tidak dapat ditransfer: {error}",
+            "relocateWrongPassword": "Kata sandi salah untuk {user}."
         },
         "cyberTools": {
             "title": "Alat Keamanan",

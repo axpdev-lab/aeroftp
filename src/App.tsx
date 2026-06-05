@@ -3574,6 +3574,16 @@ interface UpdateVerificationInfo {
     }
   });
 
+  // MEGAcmd warmup notice (#275, W1.4): the provider emits this when it has to
+  // (re)start the local MEGAcmd server, so the first-call delay is explained
+  // rather than mysterious. Same wording as the CLI stderr line; routed through
+  // the `aeroftp-toast` event so it honours the toast-notifications setting.
+  useTauriListener<string>('mega-warmup-notice', () => {
+    window.dispatchEvent(new CustomEvent('aeroftp-toast', {
+      detail: { type: 'info', title: t('toast.megacmdWarmup'), duration: 6000 },
+    }));
+  });
+
   // OS file association: a double-clicked .aeroftp-keystore opens Settings
   // on the Backup tab with the file preloaded for import, instead of just
   // raising the window (issue #214 pt.4a). SettingsPanel selects the Backup

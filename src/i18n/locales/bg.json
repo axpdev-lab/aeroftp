@@ -1266,7 +1266,8 @@
             "batchRenameResult": "{success} преименувани, {errors} неуспешни",
             "copyCompleted": "Копирането завършено",
             "localPathNotFound": "Локалната папка \"{path}\" не е намерена. Навигирано към домашната директория.",
-            "zeroByteWarning": "Файл от 0 B - може да означава грешка при прехвърляне"
+            "zeroByteWarning": "Файл от 0 B - може да означава грешка при прехвърляне",
+            "megacmdWarmup": "Сървърът MEGAcmd не е стартиран, стартиране във фонов режим..."
         },
         "about": {
             "tagline": "Повече от FTP. Пълен набор инструменти за разработчици.",
@@ -3465,7 +3466,25 @@
             "hideCredentials": "Скриване на идентификационни данни",
             "showCredentials": "Показване на идентификационни данни",
             "showUsername": "Покажи потребителското име на картите",
-            "hideUsername": "Скрий потребителското име на картите"
+            "hideUsername": "Скрий потребителското име на картите",
+            "copyToUser": "Копирай в акаунт...",
+            "moveToUser": "Премести в акаунт...",
+            "relocateCopyTitle": "Копиране на сървъра в друг акаунт",
+            "relocateMoveTitle": "Преместване на сървъра в друг акаунт",
+            "relocatePickUser": "Изберете целевия акаунт",
+            "relocateNoOtherUsers": "Няма друг наличен акаунт. Първо създайте такъв в Управление на потребители.",
+            "relocateTargetPasswordLabel": "Парола за {user}",
+            "relocateTargetPasswordHint": "{user} е защитен. Въведете паролата му, за да запазите сървъра там.",
+            "relocateMoveWarning": "Оригиналът се премахва от този акаунт след преместването.",
+            "relocateSubmitCopy": "Копирай",
+            "relocateSubmitMove": "Премести",
+            "relocateBusyCopy": "Копиране...",
+            "relocateBusyMove": "Преместване...",
+            "relocateSuccessCopy": "„{name}“ е копиран в {user}",
+            "relocateSuccessMove": "„{name}“ е преместен в {user}",
+            "relocateAlreadyPresent": "„{name}“ вече е запазен в {user}",
+            "relocateError": "Сървърът не може да бъде прехвърлен: {error}",
+            "relocateWrongPassword": "Грешна парола за {user}."
         },
         "cyberTools": {
             "title": "Инструменти за сигурност",

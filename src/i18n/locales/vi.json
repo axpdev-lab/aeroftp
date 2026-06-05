@@ -1266,7 +1266,8 @@
             "batchRenameResult": "{success} đã đổi tên, {errors} thất bại",
             "copyCompleted": "Sao chép hoàn tất",
             "localPathNotFound": "Không tìm thấy thư mục cục bộ \"{path}\". Đã điều hướng đến thư mục chính.",
-            "zeroByteWarning": "Tệp 0 B - có thể do lỗi truyền tải"
+            "zeroByteWarning": "Tệp 0 B - có thể do lỗi truyền tải",
+            "megacmdWarmup": "Máy chủ MEGAcmd không chạy, đang khởi động ở chế độ nền..."
         },
         "about": {
             "tagline": "Hơn cả FTP. Bộ công cụ hoàn chỉnh cho nhà phát triển.",
@@ -3465,7 +3466,25 @@
             "hideCredentials": "Ẩn thông tin đăng nhập",
             "showCredentials": "Hiện thông tin đăng nhập",
             "showUsername": "Hiển thị tên người dùng trên thẻ",
-            "hideUsername": "Ẩn tên người dùng trên thẻ"
+            "hideUsername": "Ẩn tên người dùng trên thẻ",
+            "copyToUser": "Sao chép vào tài khoản...",
+            "moveToUser": "Chuyển vào tài khoản...",
+            "relocateCopyTitle": "Sao chép máy chủ sang tài khoản khác",
+            "relocateMoveTitle": "Chuyển máy chủ sang tài khoản khác",
+            "relocatePickUser": "Chọn tài khoản đích",
+            "relocateNoOtherUsers": "Không có tài khoản nào khác. Hãy tạo một tài khoản trong Quản lý người dùng trước.",
+            "relocateTargetPasswordLabel": "Mật khẩu cho {user}",
+            "relocateTargetPasswordHint": "{user} được bảo vệ. Nhập mật khẩu của tài khoản để lưu máy chủ vào đó.",
+            "relocateMoveWarning": "Bản gốc sẽ bị xóa khỏi tài khoản này sau khi chuyển.",
+            "relocateSubmitCopy": "Sao chép",
+            "relocateSubmitMove": "Chuyển",
+            "relocateBusyCopy": "Đang sao chép...",
+            "relocateBusyMove": "Đang chuyển...",
+            "relocateSuccessCopy": "Đã sao chép \"{name}\" sang {user}",
+            "relocateSuccessMove": "Đã chuyển \"{name}\" sang {user}",
+            "relocateAlreadyPresent": "\"{name}\" đã được lưu trong {user}",
+            "relocateError": "Không thể chuyển máy chủ: {error}",
+            "relocateWrongPassword": "Sai mật khẩu cho {user}."
         },
         "cyberTools": {
             "title": "Công cụ bảo mật",

@@ -1266,7 +1266,8 @@
             "batchRenameResult": "{success} umbenannt, {errors} fehlgeschlagen",
             "copyCompleted": "Kopieren abgeschlossen",
             "localPathNotFound": "Lokaler Ordner \"{path}\" nicht gefunden. Zum Heimverzeichnis navigiert.",
-            "zeroByteWarning": "Datei mit 0 B - möglicherweise ein Übertragungsfehler"
+            "zeroByteWarning": "Datei mit 0 B - möglicherweise ein Übertragungsfehler",
+            "megacmdWarmup": "MEGAcmd-Server läuft nicht, wird im Hintergrund gestartet..."
         },
         "about": {
             "tagline": "Mehr als FTP. Ein komplettes Entwickler-Toolkit.",
@@ -3465,7 +3466,25 @@
             "hideCredentials": "Anmeldedaten ausblenden",
             "showCredentials": "Anmeldedaten anzeigen",
             "showUsername": "Benutzernamen auf Karten anzeigen",
-            "hideUsername": "Benutzernamen auf Karten ausblenden"
+            "hideUsername": "Benutzernamen auf Karten ausblenden",
+            "copyToUser": "In Konto kopieren...",
+            "moveToUser": "In Konto verschieben...",
+            "relocateCopyTitle": "Server in ein anderes Konto kopieren",
+            "relocateMoveTitle": "Server in ein anderes Konto verschieben",
+            "relocatePickUser": "Zielkonto auswählen",
+            "relocateNoOtherUsers": "Kein weiteres Konto verfügbar. Erstellen Sie zuerst eines unter Benutzer verwalten.",
+            "relocateTargetPasswordLabel": "Passwort für {user}",
+            "relocateTargetPasswordHint": "{user} ist geschützt. Geben Sie das Passwort ein, um den Server dort zu speichern.",
+            "relocateMoveWarning": "Das Original wird nach dem Verschieben aus diesem Konto entfernt.",
+            "relocateSubmitCopy": "Kopieren",
+            "relocateSubmitMove": "Verschieben",
+            "relocateBusyCopy": "Wird kopiert...",
+            "relocateBusyMove": "Wird verschoben...",
+            "relocateSuccessCopy": "„{name}“ nach {user} kopiert",
+            "relocateSuccessMove": "„{name}“ nach {user} verschoben",
+            "relocateAlreadyPresent": "„{name}“ ist bereits in {user} gespeichert",
+            "relocateError": "Server konnte nicht übertragen werden: {error}",
+            "relocateWrongPassword": "Falsches Passwort für {user}."
         },
         "cyberTools": {
             "title": "Sicherheitstools",

@@ -1266,7 +1266,8 @@
             "batchRenameResult": "{success} zmieniono nazwę, {errors} nie powiodło się",
             "copyCompleted": "Kopiowanie zakończone",
             "localPathNotFound": "Lokalny folder \"{path}\" nie znaleziony. Nawigowano do katalogu domowego.",
-            "zeroByteWarning": "Plik 0 B - może wskazywać na błąd transferu"
+            "zeroByteWarning": "Plik 0 B - może wskazywać na błąd transferu",
+            "megacmdWarmup": "Serwer MEGAcmd nie działa, uruchamianie w tle..."
         },
         "about": {
             "tagline": "Więcej niż FTP. Kompletny zestaw narzędzi dla deweloperów.",
@@ -3465,7 +3466,25 @@
             "hideCredentials": "Ukryj dane logowania",
             "showCredentials": "Pokaż dane logowania",
             "showUsername": "Pokaż nazwę użytkownika na kartach",
-            "hideUsername": "Ukryj nazwę użytkownika na kartach"
+            "hideUsername": "Ukryj nazwę użytkownika na kartach",
+            "copyToUser": "Kopiuj do konta...",
+            "moveToUser": "Przenieś do konta...",
+            "relocateCopyTitle": "Kopiuj serwer do innego konta",
+            "relocateMoveTitle": "Przenieś serwer do innego konta",
+            "relocatePickUser": "Wybierz konto docelowe",
+            "relocateNoOtherUsers": "Brak innego konta. Najpierw utwórz je w Zarządzaniu użytkownikami.",
+            "relocateTargetPasswordLabel": "Hasło do {user}",
+            "relocateTargetPasswordHint": "{user} jest chronione. Wpisz jego hasło, aby zapisać tam serwer.",
+            "relocateMoveWarning": "Po przeniesieniu oryginał zostaje usunięty z tego konta.",
+            "relocateSubmitCopy": "Kopiuj",
+            "relocateSubmitMove": "Przenieś",
+            "relocateBusyCopy": "Kopiowanie...",
+            "relocateBusyMove": "Przenoszenie...",
+            "relocateSuccessCopy": "Skopiowano „{name}” do {user}",
+            "relocateSuccessMove": "Przeniesiono „{name}” do {user}",
+            "relocateAlreadyPresent": "„{name}” jest już zapisane w {user}",
+            "relocateError": "Nie udało się przenieść serwera: {error}",
+            "relocateWrongPassword": "Nieprawidłowe hasło do {user}."
         },
         "cyberTools": {
             "title": "Narzędzia bezpieczeństwa",

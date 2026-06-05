@@ -1266,7 +1266,8 @@
             "batchRenameResult": "{success} μετονομάστηκαν, {errors} απέτυχαν",
             "copyCompleted": "Η αντιγραφή ολοκληρώθηκε",
             "localPathNotFound": "Ο τοπικός φάκελος \"{path}\" δεν βρέθηκε. Πλοηγήθηκε στον κατάλογο αρχικής σελίδας.",
-            "zeroByteWarning": "Αρχείο 0 B - μπορεί να υποδεικνύει σφάλμα μεταφοράς"
+            "zeroByteWarning": "Αρχείο 0 B - μπορεί να υποδεικνύει σφάλμα μεταφοράς",
+            "megacmdWarmup": "Ο διακομιστής MEGAcmd δεν εκτελείται, εκκίνηση στο παρασκήνιο..."
         },
         "about": {
             "tagline": "Περισσότερο από FTP. Πλήρης εργαλειοθήκη προγραμματιστή.",
@@ -3465,7 +3466,25 @@
             "hideCredentials": "Απόκρυψη διαπιστευτηρίων",
             "showCredentials": "Εμφάνιση διαπιστευτηρίων",
             "showUsername": "Εμφάνιση ονόματος χρήστη στις κάρτες",
-            "hideUsername": "Απόκρυψη ονόματος χρήστη στις κάρτες"
+            "hideUsername": "Απόκρυψη ονόματος χρήστη στις κάρτες",
+            "copyToUser": "Αντιγραφή σε λογαριασμό...",
+            "moveToUser": "Μετακίνηση σε λογαριασμό...",
+            "relocateCopyTitle": "Αντιγραφή του διακομιστή σε άλλον λογαριασμό",
+            "relocateMoveTitle": "Μετακίνηση του διακομιστή σε άλλον λογαριασμό",
+            "relocatePickUser": "Επιλέξτε τον λογαριασμό προορισμού",
+            "relocateNoOtherUsers": "Δεν υπάρχει άλλος λογαριασμός. Δημιουργήστε έναν πρώτα στη Διαχείριση χρηστών.",
+            "relocateTargetPasswordLabel": "Κωδικός για {user}",
+            "relocateTargetPasswordHint": "Ο {user} είναι προστατευμένος. Εισαγάγετε τον κωδικό του για να αποθηκεύσετε εκεί τον διακομιστή.",
+            "relocateMoveWarning": "Το πρωτότυπο αφαιρείται από αυτόν τον λογαριασμό μετά τη μετακίνηση.",
+            "relocateSubmitCopy": "Αντιγραφή",
+            "relocateSubmitMove": "Μετακίνηση",
+            "relocateBusyCopy": "Αντιγραφή...",
+            "relocateBusyMove": "Μετακίνηση...",
+            "relocateSuccessCopy": "Το «{name}» αντιγράφηκε στο {user}",
+            "relocateSuccessMove": "Το «{name}» μετακινήθηκε στο {user}",
+            "relocateAlreadyPresent": "Το «{name}» είναι ήδη αποθηκευμένο στο {user}",
+            "relocateError": "Δεν ήταν δυνατή η μεταφορά του διακομιστή: {error}",
+            "relocateWrongPassword": "Λάθος κωδικός για {user}."
         },
         "cyberTools": {
             "title": "Εργαλεία Ασφαλείας",

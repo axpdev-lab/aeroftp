@@ -2605,7 +2605,25 @@
             "hideUsername": "Hide username on cards",
             "clickToRenew": "Click to renew session and connect",
             "standardDisplay": "{username}@{host}:{port}",
-            "webdavDisplay": "{username}@{host}"
+            "webdavDisplay": "{username}@{host}",
+            "copyToUser": "Copy to account...",
+            "moveToUser": "Move to account...",
+            "relocateCopyTitle": "Copy server to another account",
+            "relocateMoveTitle": "Move server to another account",
+            "relocatePickUser": "Choose the destination account",
+            "relocateNoOtherUsers": "No other account available. Create one in Manage Users first.",
+            "relocateTargetPasswordLabel": "Password for {user}",
+            "relocateTargetPasswordHint": "{user} is protected. Enter its password to save the server there.",
+            "relocateMoveWarning": "The original is removed from this account after the move.",
+            "relocateSubmitCopy": "Copy",
+            "relocateSubmitMove": "Move",
+            "relocateBusyCopy": "Copying...",
+            "relocateBusyMove": "Moving...",
+            "relocateSuccessCopy": "Copied \"{name}\" to {user}",
+            "relocateSuccessMove": "Moved \"{name}\" to {user}",
+            "relocateAlreadyPresent": "\"{name}\" is already saved in {user}",
+            "relocateError": "Could not transfer the server: {error}",
+            "relocateWrongPassword": "Wrong password for {user}."
         },
         "search": {
             "clear": "Clear search",
@@ -3532,7 +3550,8 @@
             "unlockFailed": "Failed to unlock",
             "uploadComplete": "Upload complete",
             "uploadFailed": "Upload failed",
-            "uploadStarted": "Upload started"
+            "uploadStarted": "Upload started",
+            "megacmdWarmup": "MEGAcmd server not running, starting in the background..."
         },
         "toolbar": {
             "aerovaultOverlayActive": "AeroVault container overlay active - click to detach",

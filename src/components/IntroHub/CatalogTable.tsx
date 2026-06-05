@@ -11,10 +11,11 @@
 
 import * as React from 'react';
 import { useMemo, useState, useRef, useCallback } from 'react';
-import { Search, X, Columns3, ChevronUp, ChevronDown, ChevronsUpDown, Globe, ExternalLink } from 'lucide-react';
+import { Search, X, Columns3, ChevronUp, ChevronDown, ChevronsUpDown, Globe, ExternalLink, Braces, KeyRound, Server, Database, Boxes, TerminalSquare, ShieldCheck } from 'lucide-react';
 import { ProviderType } from '../../types';
 import { CatalogCategoryId } from '../../types/catalog';
-import { PROVIDER_LOGOS } from '../ProviderLogos';
+import { PROVIDER_LOGOS, S3BucketLogo } from '../ProviderLogos';
+import type { CatalogProtocol } from '../providerCatalog';
 import { CountryFlag } from '../CountryFlag';
 import { useTranslation } from '../../i18n';
 import { useTableColumns, type TableColumnDef } from '../../hooks/useTableColumns';
@@ -75,18 +76,36 @@ function HealthDot({ status, enabled }: { status: HealthStatus; enabled: boolean
     );
 }
 
+// Per-connection-method glyph (issue #270, Ehud): a tiny inline icon before
+// the badge label so an S3 object-storage bucket reads differently from a
+// generic REST API at a glance. Keyed by the closed `CatalogProtocol` enum;
+// inherits the badge text colour via `currentColor`.
+const PROTOCOL_GLYPHS: Record<CatalogProtocol, React.ReactNode> = {
+    S3: <S3BucketLogo size={11} />,
+    API: <Braces size={11} />,
+    OAuth: <KeyRound size={11} />,
+    WebDAV: <Globe size={11} />,
+    Swift: <Boxes size={11} />,
+    Blob: <Database size={11} />,
+    FTP: <Server size={11} />,
+    FTPS: <ShieldCheck size={11} />,
+    SFTP: <ShieldCheck size={11} />,
+    MEGAcmd: <TerminalSquare size={11} />,
+};
+
 function ProtocolBadge({ p, paid, onClick }: { p: CatalogProtocolRef; paid: boolean; onClick: () => void }) {
     return (
         <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onClick(); }}
             title={p.note}
-            className={`text-[10px] px-1.5 py-0.5 rounded font-medium transition-colors ${
+            className={`inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded font-medium transition-colors ${
                 paid
                     ? 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:hover:bg-amber-900/60'
                     : 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:hover:bg-blue-900/60'
             }`}
         >
+            <span className="flex-shrink-0 opacity-80">{PROTOCOL_GLYPHS[p.label]}</span>
             {p.label}
         </button>
     );

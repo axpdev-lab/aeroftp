@@ -1266,7 +1266,8 @@
             "batchRenameResult": "{success} omdöpta, {errors} misslyckades",
             "copyCompleted": "Kopiering slutförd",
             "localPathNotFound": "Den lokala mappen \"{path}\" hittades inte. Navigerade till hemkatalogen.",
-            "zeroByteWarning": "Fil på 0 B - kan tyda på ett överföringsfel"
+            "zeroByteWarning": "Fil på 0 B - kan tyda på ett överföringsfel",
+            "megacmdWarmup": "MEGAcmd-servern körs inte, startar i bakgrunden..."
         },
         "about": {
             "tagline": "Mer än FTP. En komplett utvecklarverktygslåda.",
@@ -3465,7 +3466,25 @@
             "hideCredentials": "Dölj inloggningsuppgifter",
             "showCredentials": "Visa inloggningsuppgifter",
             "showUsername": "Visa användarnamn på kort",
-            "hideUsername": "Dölj användarnamn på kort"
+            "hideUsername": "Dölj användarnamn på kort",
+            "copyToUser": "Kopiera till konto...",
+            "moveToUser": "Flytta till konto...",
+            "relocateCopyTitle": "Kopiera servern till ett annat konto",
+            "relocateMoveTitle": "Flytta servern till ett annat konto",
+            "relocatePickUser": "Välj målkontot",
+            "relocateNoOtherUsers": "Inget annat konto är tillgängligt. Skapa ett i Hantera användare först.",
+            "relocateTargetPasswordLabel": "Lösenord för {user}",
+            "relocateTargetPasswordHint": "{user} är skyddat. Ange dess lösenord för att spara servern där.",
+            "relocateMoveWarning": "Originalet tas bort från det här kontot efter flytten.",
+            "relocateSubmitCopy": "Kopiera",
+            "relocateSubmitMove": "Flytta",
+            "relocateBusyCopy": "Kopierar...",
+            "relocateBusyMove": "Flyttar...",
+            "relocateSuccessCopy": "”{name}” kopierades till {user}",
+            "relocateSuccessMove": "”{name}” flyttades till {user}",
+            "relocateAlreadyPresent": "”{name}” är redan sparat i {user}",
+            "relocateError": "Det gick inte att överföra servern: {error}",
+            "relocateWrongPassword": "Fel lösenord för {user}."
         },
         "cyberTools": {
             "title": "Säkerhetsverktyg",

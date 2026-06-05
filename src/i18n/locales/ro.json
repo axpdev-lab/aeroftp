@@ -1266,7 +1266,8 @@
             "batchRenameResult": "{success} redenumite, {errors} eșuate",
             "copyCompleted": "Copiere finalizată",
             "localPathNotFound": "Folderul local \"{path}\" nu a fost găsit. S-a navigat la directorul acasă.",
-            "zeroByteWarning": "Fișier de 0 B - poate indica o eroare de transfer"
+            "zeroByteWarning": "Fișier de 0 B - poate indica o eroare de transfer",
+            "megacmdWarmup": "Serverul MEGAcmd nu rulează, se pornește în fundal..."
         },
         "about": {
             "tagline": "Mai mult decât FTP. Un set complet de instrumente pentru dezvoltatori.",
@@ -3465,7 +3466,25 @@
             "hideCredentials": "Ascunde datele de autentificare",
             "showCredentials": "Afișează datele de autentificare",
             "showUsername": "Afișează numele de utilizator pe carduri",
-            "hideUsername": "Ascunde numele de utilizator pe carduri"
+            "hideUsername": "Ascunde numele de utilizator pe carduri",
+            "copyToUser": "Copiază în cont...",
+            "moveToUser": "Mută în cont...",
+            "relocateCopyTitle": "Copiază serverul în alt cont",
+            "relocateMoveTitle": "Mută serverul în alt cont",
+            "relocatePickUser": "Alege contul de destinație",
+            "relocateNoOtherUsers": "Niciun alt cont disponibil. Creează unul în Gestionare utilizatori mai întâi.",
+            "relocateTargetPasswordLabel": "Parola pentru {user}",
+            "relocateTargetPasswordHint": "{user} este protejat. Introdu parola pentru a salva serverul acolo.",
+            "relocateMoveWarning": "Originalul este eliminat din acest cont după mutare.",
+            "relocateSubmitCopy": "Copiază",
+            "relocateSubmitMove": "Mută",
+            "relocateBusyCopy": "Se copiază...",
+            "relocateBusyMove": "Se mută...",
+            "relocateSuccessCopy": "„{name}” copiat în {user}",
+            "relocateSuccessMove": "„{name}” mutat în {user}",
+            "relocateAlreadyPresent": "„{name}” este deja salvat în {user}",
+            "relocateError": "Serverul nu a putut fi transferat: {error}",
+            "relocateWrongPassword": "Parolă greșită pentru {user}."
         },
         "cyberTools": {
             "title": "Instrumente de Securitate",

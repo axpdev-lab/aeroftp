@@ -1266,7 +1266,8 @@
             "batchRenameResult": "{success} hernoemd, {errors} mislukt",
             "copyCompleted": "Kopiëren voltooid",
             "localPathNotFound": "Lokale map \"{path}\" niet gevonden. Genavigeerd naar de thuismap.",
-            "zeroByteWarning": "Bestand van 0 B - kan duiden op een overdrachtsfout"
+            "zeroByteWarning": "Bestand van 0 B - kan duiden op een overdrachtsfout",
+            "megacmdWarmup": "MEGAcmd-server draait niet, wordt op de achtergrond gestart..."
         },
         "about": {
             "tagline": "Meer dan FTP. Een complete ontwikkelaarstoolkit.",
@@ -3465,7 +3466,25 @@
             "hideCredentials": "Inloggegevens verbergen",
             "showCredentials": "Inloggegevens tonen",
             "showUsername": "Gebruikersnaam tonen op kaarten",
-            "hideUsername": "Gebruikersnaam verbergen op kaarten"
+            "hideUsername": "Gebruikersnaam verbergen op kaarten",
+            "copyToUser": "Naar account kopiëren...",
+            "moveToUser": "Naar account verplaatsen...",
+            "relocateCopyTitle": "Server naar een ander account kopiëren",
+            "relocateMoveTitle": "Server naar een ander account verplaatsen",
+            "relocatePickUser": "Kies het doelaccount",
+            "relocateNoOtherUsers": "Geen ander account beschikbaar. Maak er eerst een aan in Gebruikers beheren.",
+            "relocateTargetPasswordLabel": "Wachtwoord voor {user}",
+            "relocateTargetPasswordHint": "{user} is beveiligd. Voer het wachtwoord in om de server daar op te slaan.",
+            "relocateMoveWarning": "Het origineel wordt na het verplaatsen uit dit account verwijderd.",
+            "relocateSubmitCopy": "Kopiëren",
+            "relocateSubmitMove": "Verplaatsen",
+            "relocateBusyCopy": "Kopiëren...",
+            "relocateBusyMove": "Verplaatsen...",
+            "relocateSuccessCopy": "\"{name}\" gekopieerd naar {user}",
+            "relocateSuccessMove": "\"{name}\" verplaatst naar {user}",
+            "relocateAlreadyPresent": "\"{name}\" is al opgeslagen in {user}",
+            "relocateError": "Kan de server niet overdragen: {error}",
+            "relocateWrongPassword": "Onjuist wachtwoord voor {user}."
         },
         "cyberTools": {
             "title": "Beveiligingstools",

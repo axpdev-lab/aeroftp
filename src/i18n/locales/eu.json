@@ -1266,7 +1266,8 @@
             "batchRenameResult": "{success} berrizendatu, {errors} huts egin",
             "copyCompleted": "Kopia osatua",
             "localPathNotFound": "\"{path}\" tokiko karpeta ez da aurkitu. Hasierako direktoriora nabigatu da.",
-            "zeroByteWarning": "0 B fitxategia - transferentzia errorea adieraz dezake"
+            "zeroByteWarning": "0 B fitxategia - transferentzia errorea adieraz dezake",
+            "megacmdWarmup": "MEGAcmd zerbitzaria ez dago martxan, atzeko planoan abiarazten..."
         },
         "about": {
             "tagline": "FTP baino gehiago. Garatzaileentzako tresna-sorta osoa.",
@@ -3465,7 +3466,25 @@
             "hideCredentials": "Ezkutatu kredentzialak",
             "showCredentials": "Erakutsi kredentzialak",
             "showUsername": "Erakutsi erabiltzaile-izena txarteletan",
-            "hideUsername": "Ezkutatu erabiltzaile-izena txarteletan"
+            "hideUsername": "Ezkutatu erabiltzaile-izena txarteletan",
+            "copyToUser": "Kopiatu kontu batera...",
+            "moveToUser": "Eraman kontu batera...",
+            "relocateCopyTitle": "Kopiatu zerbitzaria beste kontu batera",
+            "relocateMoveTitle": "Eraman zerbitzaria beste kontu batera",
+            "relocatePickUser": "Aukeratu helburuko kontua",
+            "relocateNoOtherUsers": "Ez dago beste konturik. Sortu bat lehenik Erabiltzaileak kudeatu atalean.",
+            "relocateTargetPasswordLabel": "{user}(r)en pasahitza",
+            "relocateTargetPasswordHint": "{user} babestuta dago. Sartu bere pasahitza zerbitzaria han gordetzeko.",
+            "relocateMoveWarning": "Eraman ondoren, jatorrizkoa kontu honetatik kentzen da.",
+            "relocateSubmitCopy": "Kopiatu",
+            "relocateSubmitMove": "Eraman",
+            "relocateBusyCopy": "Kopiatzen...",
+            "relocateBusyMove": "Eramaten...",
+            "relocateSuccessCopy": "«{name}» {user}(e)ra kopiatu da",
+            "relocateSuccessMove": "«{name}» {user}(e)ra eraman da",
+            "relocateAlreadyPresent": "«{name}» dagoeneko gordeta dago {user}(e)n",
+            "relocateError": "Ezin izan da zerbitzaria transferitu: {error}",
+            "relocateWrongPassword": "Pasahitz okerra {user}(r)entzat."
         },
         "cyberTools": {
             "title": "Segurtasun tresnak",

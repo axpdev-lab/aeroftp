@@ -1711,7 +1711,8 @@
             "batchRenameResult": "{success} rinominati, {errors} falliti",
             "copyCompleted": "Copia completata",
             "localPathNotFound": "Cartella locale \"{path}\" non trovata. Navigato alla directory home.",
-            "zeroByteWarning": "File 0 B - potrebbe indicare un errore di trasferimento"
+            "zeroByteWarning": "File 0 B - potrebbe indicare un errore di trasferimento",
+            "megacmdWarmup": "Server MEGAcmd non in esecuzione, avvio in background..."
         },
         "about": {
             "tagline": "Più che FTP. Un toolkit completo per sviluppatori.",
@@ -3717,7 +3718,25 @@
             "foursharedConfigError": "Configura le credenziali 4shared in Impostazioni > Provider Cloud.",
             "expBadge": "EXP",
             "sessionExpired": "Sessione scaduta (24h)",
-            "clickToRenew": "Clicca per rinnovare la sessione e connetterti"
+            "clickToRenew": "Clicca per rinnovare la sessione e connetterti",
+            "copyToUser": "Copia in un account...",
+            "moveToUser": "Sposta in un account...",
+            "relocateCopyTitle": "Copia il server in un altro account",
+            "relocateMoveTitle": "Sposta il server in un altro account",
+            "relocatePickUser": "Scegli l'account di destinazione",
+            "relocateNoOtherUsers": "Nessun altro account disponibile. Creane uno in Gestione utenti.",
+            "relocateTargetPasswordLabel": "Password di {user}",
+            "relocateTargetPasswordHint": "{user} è protetto. Inserisci la sua password per salvarci il server.",
+            "relocateMoveWarning": "L'originale viene rimosso da questo account dopo lo spostamento.",
+            "relocateSubmitCopy": "Copia",
+            "relocateSubmitMove": "Sposta",
+            "relocateBusyCopy": "Copia in corso...",
+            "relocateBusyMove": "Spostamento...",
+            "relocateSuccessCopy": "\"{name}\" copiato in {user}",
+            "relocateSuccessMove": "\"{name}\" spostato in {user}",
+            "relocateAlreadyPresent": "\"{name}\" è già salvato in {user}",
+            "relocateError": "Impossibile trasferire il server: {error}",
+            "relocateWrongPassword": "Password errata per {user}."
         },
         "dialog": {
             "deleteFile": "Eliminare \"{name}\"?",

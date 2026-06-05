@@ -1266,7 +1266,8 @@
             "batchRenameResult": "{success} nimetty uudelleen, {errors} epäonnistui",
             "copyCompleted": "Kopiointi valmis",
             "localPathNotFound": "Paikallista kansiota \"{path}\" ei löydy. Siirryttiin kotihakemistoon.",
-            "zeroByteWarning": "0 B tiedosto - voi viitata siirtovirheeseen"
+            "zeroByteWarning": "0 B tiedosto - voi viitata siirtovirheeseen",
+            "megacmdWarmup": "MEGAcmd-palvelin ei ole käynnissä, käynnistetään taustalla..."
         },
         "about": {
             "tagline": "Enemmän kuin FTP. Täydellinen kehittäjän työkalupakki.",
@@ -3465,7 +3466,25 @@
             "hideCredentials": "Piilota tunnistetiedot",
             "showCredentials": "Näytä tunnistetiedot",
             "showUsername": "Näytä käyttäjänimi korteissa",
-            "hideUsername": "Piilota käyttäjänimi korteissa"
+            "hideUsername": "Piilota käyttäjänimi korteissa",
+            "copyToUser": "Kopioi tilille...",
+            "moveToUser": "Siirrä tilille...",
+            "relocateCopyTitle": "Kopioi palvelin toiselle tilille",
+            "relocateMoveTitle": "Siirrä palvelin toiselle tilille",
+            "relocatePickUser": "Valitse kohdetili",
+            "relocateNoOtherUsers": "Muita tilejä ei ole. Luo sellainen ensin Käyttäjien hallinnassa.",
+            "relocateTargetPasswordLabel": "Tilin {user} salasana",
+            "relocateTargetPasswordHint": "{user} on suojattu. Anna sen salasana tallentaaksesi palvelimen sinne.",
+            "relocateMoveWarning": "Alkuperäinen poistetaan tältä tililtä siirron jälkeen.",
+            "relocateSubmitCopy": "Kopioi",
+            "relocateSubmitMove": "Siirrä",
+            "relocateBusyCopy": "Kopioidaan...",
+            "relocateBusyMove": "Siirretään...",
+            "relocateSuccessCopy": "”{name}” kopioitu tilille {user}",
+            "relocateSuccessMove": "”{name}” siirretty tilille {user}",
+            "relocateAlreadyPresent": "”{name}” on jo tallennettu tilille {user}",
+            "relocateError": "Palvelinta ei voitu siirtää: {error}",
+            "relocateWrongPassword": "Väärä salasana tilille {user}."
         },
         "cyberTools": {
             "title": "Turvallisuustyö­kalut",

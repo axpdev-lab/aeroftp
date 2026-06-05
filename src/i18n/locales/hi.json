@@ -1266,7 +1266,8 @@
             "batchRenameResult": "{success} का नाम बदला गया, {errors} विफल",
             "copyCompleted": "प्रतिलिपि पूर्ण",
             "localPathNotFound": "स्थानीय फ़ोल्डर \"{path}\" नहीं मिला। होम डायरेक्टरी पर नेविगेट किया गया।",
-            "zeroByteWarning": "0 B फ़ाइल - ट्रांसफर त्रुटि हो सकती है"
+            "zeroByteWarning": "0 B फ़ाइल - ट्रांसफर त्रुटि हो सकती है",
+            "megacmdWarmup": "MEGAcmd सर्वर नहीं चल रहा है, पृष्ठभूमि में प्रारंभ हो रहा है..."
         },
         "about": {
             "tagline": "FTP से अधिक। एक पूर्ण डेवलपर टूलकिट।",
@@ -3465,7 +3466,25 @@
             "hideCredentials": "क्रेडेंशियल छुपाएं",
             "showCredentials": "क्रेडेंशियल दिखाएं",
             "showUsername": "कार्ड पर उपयोगकर्ता नाम दिखाएं",
-            "hideUsername": "कार्ड पर उपयोगकर्ता नाम छिपाएं"
+            "hideUsername": "कार्ड पर उपयोगकर्ता नाम छिपाएं",
+            "copyToUser": "खाते में कॉपी करें...",
+            "moveToUser": "खाते में ले जाएँ...",
+            "relocateCopyTitle": "सर्वर को दूसरे खाते में कॉपी करें",
+            "relocateMoveTitle": "सर्वर को दूसरे खाते में ले जाएँ",
+            "relocatePickUser": "गंतव्य खाता चुनें",
+            "relocateNoOtherUsers": "कोई अन्य खाता उपलब्ध नहीं है। पहले उपयोगकर्ता प्रबंधन में एक बनाएँ।",
+            "relocateTargetPasswordLabel": "{user} का पासवर्ड",
+            "relocateTargetPasswordHint": "{user} सुरक्षित है। वहाँ सर्वर सहेजने के लिए उसका पासवर्ड दर्ज करें।",
+            "relocateMoveWarning": "ले जाने के बाद मूल इस खाते से हटा दिया जाता है।",
+            "relocateSubmitCopy": "कॉपी",
+            "relocateSubmitMove": "ले जाएँ",
+            "relocateBusyCopy": "कॉपी हो रहा है...",
+            "relocateBusyMove": "ले जाया जा रहा है...",
+            "relocateSuccessCopy": "\"{name}\" को {user} में कॉपी किया गया",
+            "relocateSuccessMove": "\"{name}\" को {user} में ले जाया गया",
+            "relocateAlreadyPresent": "\"{name}\" पहले से ही {user} में सहेजा गया है",
+            "relocateError": "सर्वर स्थानांतरित नहीं किया जा सका: {error}",
+            "relocateWrongPassword": "{user} के लिए गलत पासवर्ड।"
         },
         "cyberTools": {
             "title": "सुरक्षा उपकरण",

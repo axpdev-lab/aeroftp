@@ -1266,7 +1266,8 @@
             "batchRenameResult": "{success} เปลี่ยนชื่อสำเร็จ, {errors} ล้มเหลว",
             "copyCompleted": "คัดลอกเสร็จสมบูรณ์",
             "localPathNotFound": "ไม่พบโฟลเดอร์ในเครื่อง \"{path}\" นำทางไปยังไดเรกทอรีหน้าแรกแล้ว",
-            "zeroByteWarning": "ไฟล์ 0 B - อาจบ่งบอกถึงข้อผิดพลาดในการถ่ายโอน"
+            "zeroByteWarning": "ไฟล์ 0 B - อาจบ่งบอกถึงข้อผิดพลาดในการถ่ายโอน",
+            "megacmdWarmup": "เซิร์ฟเวอร์ MEGAcmd ไม่ได้ทำงาน กำลังเริ่มในเบื้องหลัง..."
         },
         "about": {
             "tagline": "มากกว่า FTP ชุดเครื่องมือครบวงจรสำหรับนักพัฒนา",
@@ -3465,7 +3466,25 @@
             "hideCredentials": "ซ่อนข้อมูลรับรอง",
             "showCredentials": "แสดงข้อมูลรับรอง",
             "showUsername": "แสดงชื่อผู้ใช้บนการ์ด",
-            "hideUsername": "ซ่อนชื่อผู้ใช้บนการ์ด"
+            "hideUsername": "ซ่อนชื่อผู้ใช้บนการ์ด",
+            "copyToUser": "คัดลอกไปยังบัญชี...",
+            "moveToUser": "ย้ายไปยังบัญชี...",
+            "relocateCopyTitle": "คัดลอกเซิร์ฟเวอร์ไปยังบัญชีอื่น",
+            "relocateMoveTitle": "ย้ายเซิร์ฟเวอร์ไปยังบัญชีอื่น",
+            "relocatePickUser": "เลือกบัญชีปลายทาง",
+            "relocateNoOtherUsers": "ไม่มีบัญชีอื่น สร้างบัญชีในการจัดการผู้ใช้ก่อน",
+            "relocateTargetPasswordLabel": "รหัสผ่านสำหรับ {user}",
+            "relocateTargetPasswordHint": "{user} ได้รับการป้องกัน ป้อนรหัสผ่านเพื่อบันทึกเซิร์ฟเวอร์ที่นั่น",
+            "relocateMoveWarning": "ต้นฉบับจะถูกลบออกจากบัญชีนี้หลังจากย้าย",
+            "relocateSubmitCopy": "คัดลอก",
+            "relocateSubmitMove": "ย้าย",
+            "relocateBusyCopy": "กำลังคัดลอก...",
+            "relocateBusyMove": "กำลังย้าย...",
+            "relocateSuccessCopy": "คัดลอก \"{name}\" ไปยัง {user} แล้ว",
+            "relocateSuccessMove": "ย้าย \"{name}\" ไปยัง {user} แล้ว",
+            "relocateAlreadyPresent": "\"{name}\" ถูกบันทึกใน {user} อยู่แล้ว",
+            "relocateError": "ไม่สามารถถ่ายโอนเซิร์ฟเวอร์ได้: {error}",
+            "relocateWrongPassword": "รหัสผ่านไม่ถูกต้องสำหรับ {user}"
         },
         "cyberTools": {
             "title": "เครื่องมือความปลอดภัย",

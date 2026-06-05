@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Server, Plus, Trash2, Edit2, Copy, X, Check, Cloud, AlertCircle, GripVertical, Search, Activity, Play, Loader2, Eye, EyeOff } from 'lucide-react';
+import { Server, Plus, Trash2, Edit2, Copy, X, Check, Cloud, AlertCircle, GripVertical, Search, Activity, Play, Loader2, Eye, EyeOff, Scissors } from 'lucide-react';
 import { ImportExportIcon } from './icons/ImportExportIcon';
 import { open } from '@tauri-apps/plugin-dialog';
 import { ServerProfile, ConnectionParams, ProviderType, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol } from '../types';
@@ -24,6 +24,8 @@ import { maskCredential } from '../utils/maskCredential';
 import { useContextMenu, ContextMenu, ContextMenuItem } from './ContextMenu';
 import { ServerHealthCheck } from './ServerHealthCheck';
 import { AlertDialog } from './Dialogs';
+import { ProfileRelocateDialog } from './ProfileRelocateDialog';
+import { listUsers } from '../utils/userPartitions';
 
 // Helper: get credential with retry if vault not ready yet (race condition on app startup)
 const getCredentialWithRetry = async (account: string, maxRetries = 3): Promise<string> => {
@@ -135,6 +137,10 @@ export const SavedServers: React.FC<SavedServersProps> = ({
     const [credentialsMasked, setCredentialsMasked] = useState(true);
     const [healthCheckTarget, setHealthCheckTarget] = useState<string | false>(false);
     const [deleteTarget, setDeleteTarget] = useState<ServerProfile | null>(null);
+    // N4 (#270): cross-user copy/move. `hasOtherUsers` gates the menu entries
+    // so single-account installs never see a pointless "Copy to account" item.
+    const [relocateState, setRelocateState] = useState<{ profile: ServerProfile; mode: 'copy' | 'move' } | null>(null);
+    const [hasOtherUsers, setHasOtherUsers] = useState(false);
     const { state: contextMenuState, show: showContextMenu, hide: hideContextMenu } = useContextMenu();
 
     useEffect(() => {
@@ -245,29 +251,44 @@ export const SavedServers: React.FC<SavedServersProps> = ({
         zohoworkdrive: 'from-yellow-500 to-orange-400',
     };
 
+    // Multi-user partition wiring (MU-FE-P0): read servers via the
+    // partition-aware helper. No synchronous localStorage paint: the
+    // helper is fast and a brief empty state is preferable to showing
+    // the previous user's data after a switch.
+    const reloadServers = useCallback(async () => {
+        try {
+            const vaultServers = await loadSavedServerProfiles();
+            let migrated = false;
+            for (const s of vaultServers) {
+                if (!s.providerId) {
+                    const derived = deriveProviderId(s);
+                    if (derived) { s.providerId = derived; migrated = true; }
+                }
+            }
+            if (migrated) saveServers(vaultServers);
+            setServers(vaultServers);
+        } catch {
+            setServers([]);
+        }
+    }, []);
+
     useEffect(() => {
-        // Multi-user partition wiring (MU-FE-P0): read servers via the
-        // partition-aware helper. No synchronous localStorage paint: the
-        // helper is fast and a brief empty state is preferable to showing
-        // the previous user's data after a switch.
         let cancelled = false;
         (async () => {
-            try {
-                const vaultServers = await loadSavedServerProfiles();
-                if (cancelled) return;
-                let migrated = false;
-                for (const s of vaultServers) {
-                    if (!s.providerId) {
-                        const derived = deriveProviderId(s);
-                        if (derived) { s.providerId = derived; migrated = true; }
-                    }
-                }
-                if (migrated) saveServers(vaultServers);
-                setServers(vaultServers);
-            } catch {
-                if (!cancelled) setServers([]);
-            }
+            if (!cancelled) await reloadServers();
         })();
+        return () => { cancelled = true; };
+    }, [lastUpdate, reloadServers]);
+
+    useEffect(() => {
+        // N4 (#270): only show the cross-user copy/move actions when at least
+        // one OTHER account exists. Best-effort: a failure leaves them hidden.
+        let cancelled = false;
+        listUsers()
+            .then(list => {
+                if (!cancelled) setHasOtherUsers(list.filter(u => !u.isActive).length > 0);
+            })
+            .catch(() => {});
         return () => { cancelled = true; };
     }, [lastUpdate]);
 
@@ -342,12 +363,16 @@ export const SavedServers: React.FC<SavedServersProps> = ({
             { label: t('common.connect'), icon: <Play size={14} />, action: () => handleConnect(server) },
             { label: t('connection.editServer'), icon: <Edit2 size={14} />, action: () => handleEdit(server) },
             { label: t('connection.duplicateServer'), icon: <Copy size={14} />, action: () => handleDuplicate(server) },
+            ...(hasOtherUsers ? [
+                { label: t('savedServers.copyToUser'), icon: <Copy size={14} />, action: () => setRelocateState({ profile: server, mode: 'copy' as const }) },
+                { label: t('savedServers.moveToUser'), icon: <Scissors size={14} />, action: () => setRelocateState({ profile: server, mode: 'move' as const }) },
+            ] : []),
             { label: t('healthCheck.title'), icon: <Activity size={14} />, action: () => setHealthCheckTarget(server.id), divider: true },
             { label: t('connection.deleteServer'), icon: <Trash2 size={14} />, danger: true, action: () => handleDelete(server), divider: true },
         ];
         showContextMenu(e, items);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [servers, t]);
+    }, [servers, t, hasOtherUsers]);
 
     const handleConnect = async (serverParam: ServerProfile) => {
         const server = serverParam;
@@ -898,6 +923,18 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                     actionLabel={t('common.delete')}
                     onAction={confirmDelete}
                     actionIcon={<Trash2 size={14} />}
+                />
+            )}
+            {relocateState && (
+                <ProfileRelocateDialog
+                    mode={relocateState.mode}
+                    profile={relocateState.profile}
+                    onClose={() => setRelocateState(null)}
+                    onDone={({ moved }) => {
+                        // A Move removes the source profile from the active
+                        // account, so refresh the list to drop it immediately.
+                        if (moved) void reloadServers();
+                    }}
                 />
             )}
         </div>

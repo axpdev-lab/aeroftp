@@ -1266,7 +1266,8 @@
             "batchRenameResult": "{success} omdøpt, {errors} mislyktes",
             "copyCompleted": "Kopiering fullført",
             "localPathNotFound": "Lokal mappe \"{path}\" ble ikke funnet. Navigert til hjemmekatalog.",
-            "zeroByteWarning": "Fil på 0 B - kan indikere en overføringsfeil"
+            "zeroByteWarning": "Fil på 0 B - kan indikere en overføringsfeil",
+            "megacmdWarmup": "MEGAcmd-serveren kjører ikke, starter i bakgrunnen..."
         },
         "about": {
             "tagline": "Mer enn FTP. Et komplett utviklerverktøy.",
@@ -3465,7 +3466,25 @@
             "hideCredentials": "Skjul legitimasjon",
             "showCredentials": "Vis legitimasjon",
             "showUsername": "Vis brukernavn på kort",
-            "hideUsername": "Skjul brukernavn på kort"
+            "hideUsername": "Skjul brukernavn på kort",
+            "copyToUser": "Kopier til konto...",
+            "moveToUser": "Flytt til konto...",
+            "relocateCopyTitle": "Kopier serveren til en annen konto",
+            "relocateMoveTitle": "Flytt serveren til en annen konto",
+            "relocatePickUser": "Velg målkontoen",
+            "relocateNoOtherUsers": "Ingen annen konto tilgjengelig. Opprett en i Administrer brukere først.",
+            "relocateTargetPasswordLabel": "Passord for {user}",
+            "relocateTargetPasswordHint": "{user} er beskyttet. Skriv inn passordet for å lagre serveren der.",
+            "relocateMoveWarning": "Originalen fjernes fra denne kontoen etter flyttingen.",
+            "relocateSubmitCopy": "Kopier",
+            "relocateSubmitMove": "Flytt",
+            "relocateBusyCopy": "Kopierer...",
+            "relocateBusyMove": "Flytter...",
+            "relocateSuccessCopy": "«{name}» kopiert til {user}",
+            "relocateSuccessMove": "«{name}» flyttet til {user}",
+            "relocateAlreadyPresent": "«{name}» er allerede lagret i {user}",
+            "relocateError": "Kunne ikke overføre serveren: {error}",
+            "relocateWrongPassword": "Feil passord for {user}."
         },
         "cyberTools": {
             "title": "Sikkerhetsverk­tøy",

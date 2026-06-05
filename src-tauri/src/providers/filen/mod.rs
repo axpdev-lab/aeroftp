@@ -8,6 +8,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 pub mod notes;
+mod statfs;
 
 use aes_gcm::aead::Aead;
 use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
@@ -2029,6 +2030,19 @@ impl StorageProvider for FilenProvider {
     }
 
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
+        // W2.2 (#275): when the Filen CLI is installed, `filen statfs` is a
+        // cleaner quota source than the REST call. Opportunistic and guarded:
+        // any failure or implausible output falls through to the REST path
+        // below. The CLI reports whatever account it is logged into, so this
+        // is best-effort, never a hard dependency.
+        if let Ok((used, total)) = statfs::filen_statfs_query().await {
+            return Ok(StorageInfo {
+                total,
+                used,
+                free: total.saturating_sub(used),
+            });
+        }
+
         let request = self
             .client
             .get(format!("{}/v3/user/info", GATEWAY))

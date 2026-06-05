@@ -1266,7 +1266,8 @@
             "batchRenameResult": "{success} napalitan ang pangalan, {errors} nabigo",
             "copyCompleted": "Kumpleto na ang pagkopya",
             "localPathNotFound": "Hindi nahanap ang lokal na folder na \"{path}\". Na-navigate sa home directory.",
-            "zeroByteWarning": "0 B na file - maaaring nagpapahiwatig ng error sa paglipat"
+            "zeroByteWarning": "0 B na file - maaaring nagpapahiwatig ng error sa paglipat",
+            "megacmdWarmup": "Hindi tumatakbo ang MEGAcmd server, sinisimulan sa background..."
         },
         "about": {
             "tagline": "Higit pa sa FTP. Isang kumpletong developer toolkit.",
@@ -3465,7 +3466,25 @@
             "hideCredentials": "Itago ang mga kredensyal",
             "showCredentials": "Ipakita ang mga kredensyal",
             "showUsername": "Ipakita ang username sa mga card",
-            "hideUsername": "Itago ang username sa mga card"
+            "hideUsername": "Itago ang username sa mga card",
+            "copyToUser": "Kopyahin sa account...",
+            "moveToUser": "Ilipat sa account...",
+            "relocateCopyTitle": "Kopyahin ang server sa ibang account",
+            "relocateMoveTitle": "Ilipat ang server sa ibang account",
+            "relocatePickUser": "Piliin ang patutunguhang account",
+            "relocateNoOtherUsers": "Walang ibang account. Gumawa muna ng isa sa Pamahalaan ang mga User.",
+            "relocateTargetPasswordLabel": "Password para sa {user}",
+            "relocateTargetPasswordHint": "Protektado ang {user}. Ilagay ang password nito para i-save doon ang server.",
+            "relocateMoveWarning": "Aalisin ang orihinal sa account na ito pagkatapos ilipat.",
+            "relocateSubmitCopy": "Kopyahin",
+            "relocateSubmitMove": "Ilipat",
+            "relocateBusyCopy": "Kinokopya...",
+            "relocateBusyMove": "Inililipat...",
+            "relocateSuccessCopy": "Nakopya ang \"{name}\" sa {user}",
+            "relocateSuccessMove": "Nailipat ang \"{name}\" sa {user}",
+            "relocateAlreadyPresent": "Naka-save na ang \"{name}\" sa {user}",
+            "relocateError": "Hindi mailipat ang server: {error}",
+            "relocateWrongPassword": "Maling password para sa {user}."
         },
         "cyberTools": {
             "title": "Security Tools",

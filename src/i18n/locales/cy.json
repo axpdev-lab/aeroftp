@@ -1266,7 +1266,8 @@
             "batchRenameResult": "{success} wedi'u hailenwi, {errors} wedi methu",
             "copyCompleted": "Copïo wedi'i gwblhau",
             "localPathNotFound": "Ni chanfuwyd ffolder leol \"{path}\". Llywiwyd i'r cyfeiriadur cartref.",
-            "zeroByteWarning": "Ffeil 0 B - gall nodi gwall trosglwyddo"
+            "zeroByteWarning": "Ffeil 0 B - gall nodi gwall trosglwyddo",
+            "megacmdWarmup": "Nid yw gweinydd MEGAcmd yn rhedeg, yn cychwyn yn y cefndir..."
         },
         "about": {
             "tagline": "Mwy na FTP. Pecyn datblygu cyflawn.",
@@ -3465,7 +3466,25 @@
             "hideCredentials": "Cuddio manylion",
             "showCredentials": "Dangos manylion",
             "showUsername": "Dangos enw defnyddiwr ar gardiau",
-            "hideUsername": "Cuddio enw defnyddiwr ar gardiau"
+            "hideUsername": "Cuddio enw defnyddiwr ar gardiau",
+            "copyToUser": "Copïo i gyfrif...",
+            "moveToUser": "Symud i gyfrif...",
+            "relocateCopyTitle": "Copïo'r gweinydd i gyfrif arall",
+            "relocateMoveTitle": "Symud y gweinydd i gyfrif arall",
+            "relocatePickUser": "Dewiswch y cyfrif cyrchfan",
+            "relocateNoOtherUsers": "Dim cyfrif arall ar gael. Crëwch un yn Rheoli Defnyddwyr yn gyntaf.",
+            "relocateTargetPasswordLabel": "Cyfrinair {user}",
+            "relocateTargetPasswordHint": "Mae {user} wedi'i ddiogelu. Rhowch ei gyfrinair i gadw'r gweinydd yno.",
+            "relocateMoveWarning": "Mae'r gwreiddiol yn cael ei dynnu o'r cyfrif hwn ar ôl symud.",
+            "relocateSubmitCopy": "Copïo",
+            "relocateSubmitMove": "Symud",
+            "relocateBusyCopy": "Yn copïo...",
+            "relocateBusyMove": "Yn symud...",
+            "relocateSuccessCopy": "Copïwyd \"{name}\" i {user}",
+            "relocateSuccessMove": "Symudwyd \"{name}\" i {user}",
+            "relocateAlreadyPresent": "Mae \"{name}\" eisoes wedi'i gadw yn {user}",
+            "relocateError": "Methu trosglwyddo'r gweinydd: {error}",
+            "relocateWrongPassword": "Cyfrinair anghywir ar gyfer {user}."
         },
         "cyberTools": {
             "title": "Offer diogelwch",
