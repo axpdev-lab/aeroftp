@@ -467,6 +467,7 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
                             companies={catalogCompanies}
                             onSelectProvider={onSelectProvider}
                             getHealth={(logoId) => getStatus(logoId).status}
+                            healthEnabled={healthEnabled}
                         />
                         {/* Custom / generic servers below the table */}
                         <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
@@ -506,7 +507,7 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
                                             key={item.id}
                                             item={item}
                                             onSelect={() => handleSelect(item)}
-                                            healthStatus={item.healthCheckUrl ? getStatus(item.providerId || item.id).status : 'unknown'}
+                                            healthStatus={(healthEnabled && item.healthCheckUrl) ? getStatus(item.providerId || item.id).status : 'unknown'}
                                             iconSize={introHubIconSize}
                                         />
                                     ))}
