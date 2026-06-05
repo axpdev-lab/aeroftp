@@ -11,7 +11,7 @@
 
 import * as React from 'react';
 import { useMemo, useState, useRef, useCallback } from 'react';
-import { Search, X, Columns3, ChevronUp, ChevronDown, ChevronsUpDown, Globe } from 'lucide-react';
+import { Search, X, Columns3, ChevronUp, ChevronDown, ChevronsUpDown, Globe, ExternalLink } from 'lucide-react';
 import { ProviderType } from '../../types';
 import { CatalogCategoryId } from '../../types/catalog';
 import { PROVIDER_LOGOS } from '../ProviderLogos';
@@ -28,9 +28,11 @@ import {
     paidProtocols,
     companyRegions,
     companyLaunchProtocol,
+    hasFreeTier,
 } from '../providerCatalog';
 
 type CatalogColId = 'company' | 'region' | 'freeGb' | 'free' | 'paid' | 'health';
+type TierFilter = 'all' | 'free' | 'paid';
 
 const CATALOG_COLUMNS: TableColumnDef<CatalogColId>[] = [
     { id: 'company', labelKey: 'introHub.list.company', sortable: true, defaultVisible: true, defaultWidth: 200, minWidth: 140, pinnedStart: true, defaultAlign: 'left' },
@@ -98,11 +100,16 @@ interface CatalogTableProps {
     getHealth: (logoId: string) => HealthStatus;
     /** When false the health feature is off: dots render dimmed grey. */
     healthEnabled: boolean;
+    /** Resolve the provider's signup/website URL for the row "learn more" link. */
+    getSignupUrl: (c: CatalogCompany) => string | undefined;
+    /** Open an external URL (scheme-allowlisted in the caller). */
+    onOpenUrl: (url: string) => void;
 }
 
-export function CatalogTable({ companies, category, onSelectProvider, getHealth, healthEnabled }: CatalogTableProps) {
+export function CatalogTable({ companies, category, onSelectProvider, getHealth, healthEnabled, getSignupUrl, onOpenUrl }: CatalogTableProps) {
     const t = useTranslation();
     const [query, setQuery] = useState('');
+    const [tierFilter, setTierFilter] = useState<TierFilter>('all');
     const [showColumns, setShowColumns] = useState(false);
     const columnsBtnRef = useRef<HTMLDivElement>(null);
 
@@ -117,7 +124,9 @@ export function CatalogTable({ companies, category, onSelectProvider, getHealth,
 
     const filtered = useMemo(() => {
         const q = query.trim().toLowerCase();
-        const rows = q ? companies.filter(c => searchText(c).includes(q)) : companies.slice();
+        let rows = q ? companies.filter(c => searchText(c).includes(q)) : companies.slice();
+        if (tierFilter === 'free') rows = rows.filter(hasFreeTier);
+        else if (tierFilter === 'paid') rows = rows.filter(c => !hasFreeTier(c));
         const dir = effectiveSort.dir === 'asc' ? 1 : -1;
         rows.sort((a, b) => {
             switch (effectiveSort.colId) {
@@ -135,7 +144,7 @@ export function CatalogTable({ companies, category, onSelectProvider, getHealth,
             }
         });
         return rows;
-    }, [companies, query, effectiveSort.colId, effectiveSort.dir]);
+    }, [companies, query, tierFilter, effectiveSort.colId, effectiveSort.dir]);
 
     const totalGb = useMemo(() => totalFreeStorageGb(filtered), [filtered]);
 
@@ -188,17 +197,30 @@ export function CatalogTable({ companies, category, onSelectProvider, getHealth,
     const renderBodyCell = (col: TableColumnDef<CatalogColId>, c: CatalogCompany) => {
         const Logo = PROVIDER_LOGOS[c.logoId];
         switch (col.id) {
-            case 'company':
+            case 'company': {
+                const signupUrl = getSignupUrl(c);
                 return (
                     <td key={col.id} className={`py-1.5 px-3 ${alignClass(col.id)}`}>
-                        <div className="flex items-center gap-2 min-w-0">
+                        <div className="flex items-center gap-2 min-w-0 group/company">
                             <div className="w-5 h-5 shrink-0 flex items-center justify-center">
                                 {Logo ? <Logo size={16} /> : <div className="w-4 h-4 rounded bg-gray-400" />}
                             </div>
                             <span className="font-medium text-gray-900 dark:text-gray-100 truncate">{c.company}</span>
+                            {signupUrl && (
+                                <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); onOpenUrl(signupUrl); }}
+                                    title={t('menu.website')}
+                                    aria-label={t('menu.website')}
+                                    className="shrink-0 text-gray-400 hover:text-blue-500 dark:text-gray-500 dark:hover:text-blue-400 opacity-0 group-hover/company:opacity-100 focus:opacity-100 transition-opacity"
+                                >
+                                    <ExternalLink size={12} />
+                                </button>
+                            )}
                         </div>
                     </td>
                 );
+            }
             case 'region': {
                 const regions = companyRegions(c);
                 const MAX_FLAGS = 3;
@@ -296,6 +318,27 @@ export function CatalogTable({ companies, category, onSelectProvider, getHealth,
                             <X size={13} />
                         </button>
                     )}
+                </div>
+                {/* Free / paid tier filter (parity with `aeroftp-cli catalog --free/--paid`) */}
+                <div className="flex items-center rounded-md border border-gray-200 dark:border-gray-600 overflow-hidden">
+                    {([
+                        ['all', t('introHub.filter.all')],
+                        ['free', t('providers.freeTier')],
+                        ['paid', t('providers.paidTier')],
+                    ] as [TierFilter, string][]).map(([id, label]) => (
+                        <button
+                            key={id}
+                            onClick={() => setTierFilter(id)}
+                            aria-pressed={tierFilter === id}
+                            className={`px-2.5 py-1.5 text-[11px] transition-colors ${
+                                tierFilter === id
+                                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-medium'
+                                    : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700/50'
+                            }`}
+                        >
+                            {label}
+                        </button>
+                    ))}
                 </div>
                 <div className="relative" ref={columnsBtnRef}>
                     <button
