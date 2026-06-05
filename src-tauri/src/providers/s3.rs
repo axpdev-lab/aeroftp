@@ -263,7 +263,7 @@ struct EffectiveCredentials {
 impl S3Provider {
     /// Create a new S3 provider with the given configuration
     pub fn new(config: S3Config) -> Result<Self, ProviderError> {
-        eprintln!(
+        debug!(
             "[S3] new(): endpoint={:?} bucket={} region={} path_style={} verify_cert={}",
             config.endpoint, config.bucket, config.region, config.path_style, config.verify_cert,
         );
@@ -279,7 +279,7 @@ impl S3Provider {
             .map(is_local_s3_endpoint)
             .unwrap_or(false);
         let accept_invalid_certs = !config.verify_cert || endpoint_is_local;
-        eprintln!(
+        debug!(
             "[S3] new(): endpoint_is_local={} accept_invalid_certs={}",
             endpoint_is_local, accept_invalid_certs,
         );
@@ -289,7 +289,7 @@ impl S3Provider {
             .read_timeout(std::time::Duration::from_secs(1800))
             .http1_only();
         if accept_invalid_certs {
-            eprintln!("[S3] accepting invalid TLS certificates (self-signed / loopback)");
+            debug!("[S3] accepting invalid TLS certificates (self-signed / loopback)");
             client_builder = client_builder.danger_accept_invalid_certs(true);
         }
         let client = client_builder.build().map_err(|e| {
@@ -964,12 +964,9 @@ impl S3Provider {
             }
         }
 
-        debug!("S3 Request: {} {}", method, url);
+        // Per-request diagnostics stay on the gated `debug!` target so a plain
+        // `ls` / `tree` on an S3 profile is not cluttered with GET lines (#196).
         debug!(
-            "S3 Bucket: {}, Region: {}, Path-style: {}",
-            self.config.bucket, self.config.region, self.config.path_style
-        );
-        eprintln!(
             "[S3] {} {} (bucket={} region={} path_style={})",
             method, url, self.config.bucket, self.config.region, self.config.path_style
         );
@@ -2462,7 +2459,7 @@ impl StorageProvider for S3Provider {
             ))),
             status => {
                 let body = response.text().await.unwrap_or_default();
-                eprintln!("[S3] connect() failed with status={} body={}", status, body);
+                debug!("[S3] connect() failed with status={} body={}", status, body);
                 Err(ProviderError::ConnectionFailed(format!(
                     "S3 error ({}): {}",
                     status,
