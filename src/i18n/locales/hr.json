@@ -1267,7 +1267,12 @@
             "copyCompleted": "Kopiranje dovršeno",
             "localPathNotFound": "Lokalna mapa \"{path}\" nije pronađena. Navigirano na kućni direktorij.",
             "zeroByteWarning": "Datoteka od 0 B - može ukazivati na pogrešku prijenosa",
-            "megacmdWarmup": "MEGAcmd poslužitelj nije pokrenut, pokretanje u pozadini..."
+            "megacmdWarmup": "MEGAcmd poslužitelj nije pokrenut, pokretanje u pozadini...",
+            "stillConnecting": "Još uvijek se povezuje...",
+            "stillConnectingHint": "Poslužitelj odgovara sporije nego inače. Nastavite čekati ili otkažite vezu (možete pritisnuti i Esc).",
+            "connectionCancelled": "Veza otkazana",
+            "keepWaiting": "Nastavi čekati",
+            "cancelConnection": "Otkaži vezu"
         },
         "about": {
             "tagline": "Više od FTP-a. Potpuni alat za programere.",

@@ -1267,7 +1267,12 @@
             "copyCompleted": "Kumpleto na ang pagkopya",
             "localPathNotFound": "Hindi nahanap ang lokal na folder na \"{path}\". Na-navigate sa home directory.",
             "zeroByteWarning": "0 B na file - maaaring nagpapahiwatig ng error sa paglipat",
-            "megacmdWarmup": "Hindi tumatakbo ang MEGAcmd server, sinisimulan sa background..."
+            "megacmdWarmup": "Hindi tumatakbo ang MEGAcmd server, sinisimulan sa background...",
+            "stillConnecting": "Kumokonekta pa rin...",
+            "stillConnectingHint": "Mas matagal kaysa karaniwan ang server na tumugon. Magpatuloy sa paghihintay, o kanselahin ang koneksyon (maaari mo ring pindutin ang Esc).",
+            "connectionCancelled": "Nakansela ang koneksyon",
+            "keepWaiting": "Magpatuloy sa paghihintay",
+            "cancelConnection": "Kanselahin ang koneksyon"
         },
         "about": {
             "tagline": "Higit pa sa FTP. Isang kumpletong developer toolkit.",

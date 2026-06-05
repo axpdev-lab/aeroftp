@@ -1267,7 +1267,12 @@
             "copyCompleted": "Copïo wedi'i gwblhau",
             "localPathNotFound": "Ni chanfuwyd ffolder leol \"{path}\". Llywiwyd i'r cyfeiriadur cartref.",
             "zeroByteWarning": "Ffeil 0 B - gall nodi gwall trosglwyddo",
-            "megacmdWarmup": "Nid yw gweinydd MEGAcmd yn rhedeg, yn cychwyn yn y cefndir..."
+            "megacmdWarmup": "Nid yw gweinydd MEGAcmd yn rhedeg, yn cychwyn yn y cefndir...",
+            "stillConnecting": "Wrthi'n cysylltu o hyd...",
+            "stillConnectingHint": "Mae'r gweinydd yn cymryd mwy o amser nag arfer i ymateb. Daliwch i aros, neu canslwch y cysylltiad (gallwch hefyd wasgu Esc).",
+            "connectionCancelled": "Cysylltiad wedi'i ganslo",
+            "keepWaiting": "Dal i aros",
+            "cancelConnection": "Canslo'r cysylltiad"
         },
         "about": {
             "tagline": "Mwy na FTP. Pecyn datblygu cyflawn.",

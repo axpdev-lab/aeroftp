@@ -1267,7 +1267,12 @@
             "copyCompleted": "Kunakili kumekamilika",
             "localPathNotFound": "Folda ya ndani \"{path}\" haikupatikana. Imeelekeza kwenye saraka ya nyumbani.",
             "zeroByteWarning": "Faili ya 0 B - inaweza kuonyesha hitilafu ya uhamishaji",
-            "megacmdWarmup": "Seva ya MEGAcmd haiendeshwi, inaanzishwa chinichini..."
+            "megacmdWarmup": "Seva ya MEGAcmd haiendeshwi, inaanzishwa chinichini...",
+            "stillConnecting": "Bado inaunganisha...",
+            "stillConnectingHint": "Seva inachukua muda mrefu kuliko kawaida kujibu. Endelea kusubiri, au ghairi muunganisho (unaweza pia kubonyeza Esc).",
+            "connectionCancelled": "Muunganisho umeghairiwa",
+            "keepWaiting": "Endelea kusubiri",
+            "cancelConnection": "Ghairi muunganisho"
         },
         "about": {
             "tagline": "Zaidi ya FTP. Zana kamili za msanidi.",

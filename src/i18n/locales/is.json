@@ -1267,7 +1267,12 @@
             "copyCompleted": "Afritun lokið",
             "localPathNotFound": "Staðbundin mappa \"{path}\" fannst ekki. Fór í heimamöppuna.",
             "zeroByteWarning": "0 B skrá - gæti bent á flutningsvillu",
-            "megacmdWarmup": "MEGAcmd-þjónninn er ekki í gangi, ræsi í bakgrunni..."
+            "megacmdWarmup": "MEGAcmd-þjónninn er ekki í gangi, ræsi í bakgrunni...",
+            "stillConnecting": "Enn að tengjast...",
+            "stillConnectingHint": "Þjónninn er lengur en venjulega að svara. Haltu áfram að bíða eða hættu við tenginguna (þú getur líka ýtt á Esc).",
+            "connectionCancelled": "Hætt við tengingu",
+            "keepWaiting": "Halda áfram að bíða",
+            "cancelConnection": "Hætta við tengingu"
         },
         "about": {
             "tagline": "Meira en FTP. Heildarverkfærapakki fyrir þróunaraðila.",

@@ -1267,7 +1267,12 @@
             "copyCompleted": "Sao chép hoàn tất",
             "localPathNotFound": "Không tìm thấy thư mục cục bộ \"{path}\". Đã điều hướng đến thư mục chính.",
             "zeroByteWarning": "Tệp 0 B - có thể do lỗi truyền tải",
-            "megacmdWarmup": "Máy chủ MEGAcmd không chạy, đang khởi động ở chế độ nền..."
+            "megacmdWarmup": "Máy chủ MEGAcmd không chạy, đang khởi động ở chế độ nền...",
+            "stillConnecting": "Vẫn đang kết nối...",
+            "stillConnectingHint": "Máy chủ đang phản hồi lâu hơn bình thường. Hãy tiếp tục chờ, hoặc hủy kết nối (bạn cũng có thể nhấn Esc).",
+            "connectionCancelled": "Đã hủy kết nối",
+            "keepWaiting": "Tiếp tục chờ",
+            "cancelConnection": "Hủy kết nối"
         },
         "about": {
             "tagline": "Hơn cả FTP. Bộ công cụ hoàn chỉnh cho nhà phát triển.",

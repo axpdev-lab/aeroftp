@@ -1267,7 +1267,12 @@
             "copyCompleted": "Kopia osatua",
             "localPathNotFound": "\"{path}\" tokiko karpeta ez da aurkitu. Hasierako direktoriora nabigatu da.",
             "zeroByteWarning": "0 B fitxategia - transferentzia errorea adieraz dezake",
-            "megacmdWarmup": "MEGAcmd zerbitzaria ez dago martxan, atzeko planoan abiarazten..."
+            "megacmdWarmup": "MEGAcmd zerbitzaria ez dago martxan, atzeko planoan abiarazten...",
+            "stillConnecting": "Oraindik konektatzen...",
+            "stillConnectingHint": "Zerbitzariak ohi baino denbora gehiago behar du erantzuteko. Itxaron jarraitu edo bertan behera utzi konexioa (Esc ere saka dezakezu).",
+            "connectionCancelled": "Konexioa bertan behera utzita",
+            "keepWaiting": "Itxaroten jarraitu",
+            "cancelConnection": "Utzi konexioa"
         },
         "about": {
             "tagline": "FTP baino gehiago. Garatzaileentzako tresna-sorta osoa.",

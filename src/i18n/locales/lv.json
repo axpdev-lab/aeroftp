@@ -1267,7 +1267,12 @@
             "copyCompleted": "Kopēšana pabeigta",
             "localPathNotFound": "Lokālā mape \"{path}\" nav atrasta. Navigēts uz mājas direktoriju.",
             "zeroByteWarning": "0 B fails - var norādīt uz pārsūtīšanas kļūdu",
-            "megacmdWarmup": "MEGAcmd serveris nedarbojas, palaiž fonā..."
+            "megacmdWarmup": "MEGAcmd serveris nedarbojas, palaiž fonā...",
+            "stillConnecting": "Vēl notiek savienošana...",
+            "stillConnectingHint": "Serveris atbild lēnāk nekā parasti. Turpiniet gaidīt vai atceliet savienojumu (varat arī nospiest Esc).",
+            "connectionCancelled": "Savienojums atcelts",
+            "keepWaiting": "Turpināt gaidīt",
+            "cancelConnection": "Atcelt savienojumu"
         },
         "about": {
             "tagline": "Vairāk nekā FTP. Pilns izstrādātāja rīku komplekts.",

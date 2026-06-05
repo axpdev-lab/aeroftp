@@ -1267,7 +1267,12 @@
             "copyCompleted": "Kopírovanie dokončené",
             "localPathNotFound": "Lokálny priečinok \"{path}\" nebol nájdený. Navigácia presmerovaná do domovského adresára.",
             "zeroByteWarning": "Súbor 0 B - môže znamenať chybu prenosu",
-            "megacmdWarmup": "Server MEGAcmd nebeží, spúšťa sa na pozadí..."
+            "megacmdWarmup": "Server MEGAcmd nebeží, spúšťa sa na pozadí...",
+            "stillConnecting": "Stále sa pripája...",
+            "stillConnectingHint": "Server odpovedá dlhšie ako zvyčajne. Pokračujte v čakaní alebo zrušte pripojenie (môžete stlačiť aj Esc).",
+            "connectionCancelled": "Pripojenie zrušené",
+            "keepWaiting": "Pokračovať v čakaní",
+            "cancelConnection": "Zrušiť pripojenie"
         },
         "about": {
             "tagline": "Viac ako FTP. Kompletná sada nástrojov pre vývojárov.",

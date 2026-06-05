@@ -1267,7 +1267,12 @@
             "copyCompleted": "Penyalinan selesai",
             "localPathNotFound": "Folder tempatan \"{path}\" tidak ditemui. Telah dinavigasi ke direktori rumah.",
             "zeroByteWarning": "Fail 0 B - mungkin menunjukkan ralat pemindahan",
-            "megacmdWarmup": "Pelayan MEGAcmd tidak berjalan, memulakan di latar belakang..."
+            "megacmdWarmup": "Pelayan MEGAcmd tidak berjalan, memulakan di latar belakang...",
+            "stillConnecting": "Masih menyambung...",
+            "stillConnectingHint": "Pelayan mengambil masa lebih lama daripada biasa untuk membalas. Teruskan menunggu, atau batalkan sambungan (anda juga boleh tekan Esc).",
+            "connectionCancelled": "Sambungan dibatalkan",
+            "keepWaiting": "Teruskan menunggu",
+            "cancelConnection": "Batalkan sambungan"
         },
         "about": {
             "tagline": "Lebih daripada FTP. Kit alat lengkap untuk pembangun.",

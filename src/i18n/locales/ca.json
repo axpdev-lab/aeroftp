@@ -1267,7 +1267,12 @@
             "copyCompleted": "Copia completada",
             "localPathNotFound": "La carpeta local \"{path}\" no s'ha trobat. S'ha navegat al directori d'inici.",
             "zeroByteWarning": "Fitxer de 0 B - pot indicar un error de transferència",
-            "megacmdWarmup": "El servidor MEGAcmd no s'està executant, s'està iniciant en segon pla..."
+            "megacmdWarmup": "El servidor MEGAcmd no s'està executant, s'està iniciant en segon pla...",
+            "stillConnecting": "Encara connectant...",
+            "stillConnectingHint": "El servidor està trigant més del normal a respondre. Continua esperant o cancel·la la connexió (també pots prémer Esc).",
+            "connectionCancelled": "Connexió cancel·lada",
+            "keepWaiting": "Continua esperant",
+            "cancelConnection": "Cancel·la la connexió"
         },
         "about": {
             "tagline": "Mes que FTP. Un conjunt complet d'eines per a desenvolupadors.",

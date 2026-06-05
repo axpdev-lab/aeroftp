@@ -1267,7 +1267,12 @@
             "copyCompleted": "Másolás befejezve",
             "localPathNotFound": "A(z) \"{path}\" helyi mappa nem található. Átnavigálva a saját könyvtárba.",
             "zeroByteWarning": "0 B fájl - átviteli hibára utalhat",
-            "megacmdWarmup": "A MEGAcmd-kiszolgáló nem fut, indítás a háttérben..."
+            "megacmdWarmup": "A MEGAcmd-kiszolgáló nem fut, indítás a háttérben...",
+            "stillConnecting": "Még csatlakozik...",
+            "stillConnectingHint": "A kiszolgáló a szokásosnál tovább válaszol. Várjon tovább, vagy szakítsa meg a kapcsolatot (az Esc billentyűt is megnyomhatja).",
+            "connectionCancelled": "Kapcsolat megszakítva",
+            "keepWaiting": "Várakozás folytatása",
+            "cancelConnection": "Kapcsolat megszakítása"
         },
         "about": {
             "tagline": "Több mint FTP. Teljes fejlesztői eszközkészlet.",

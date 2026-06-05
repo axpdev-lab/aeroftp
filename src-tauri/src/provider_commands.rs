@@ -114,6 +114,99 @@ impl Default for ProviderState {
     }
 }
 
+/// Error string returned by a connect command when the user aborts an
+/// in-progress connection (Esc / "still connecting" Cancel, Ehud wishlist
+/// W3.1 #270.5). The frontend matches on this marker to surface a calm
+/// "connection cancelled" toast instead of a "connection failed" error, and
+/// to skip stamping a connect-failure marker on the saved-server card.
+pub const CONNECT_CANCELLED: &str = "CONNECT_CANCELLED";
+
+/// Registry of cancellation tokens for in-progress connection attempts,
+/// keyed by a frontend-generated connection token string. It lets the
+/// `cancel_connection` command abort a slow `provider_connect` / `connect_ftp`
+/// running under `tokio::select!` without coupling to either command's
+/// provider/ftp state. A token is registered when the connect starts and
+/// removed by a drop guard when the connect resolves (success, error, or
+/// cancel), so the map never accumulates stale entries.
+#[derive(Default)]
+pub struct ConnectionCancelRegistry {
+    tokens: std::sync::Mutex<std::collections::HashMap<String, CancellationToken>>,
+}
+
+impl ConnectionCancelRegistry {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Register a fresh cancellation token under `key` and return it for the
+    /// connect command to `select!` on. If a token is already registered for
+    /// the same key (a retried attempt that reused the id), it is cancelled
+    /// and replaced so a stale entry can never shadow the live attempt.
+    pub fn register(&self, key: &str) -> CancellationToken {
+        let token = CancellationToken::new();
+        let mut map = self.lock();
+        if let Some(previous) = map.insert(key.to_string(), token.clone()) {
+            previous.cancel();
+        }
+        token
+    }
+
+    /// Remove the token for `key`. Called by the drop guard once the connect
+    /// resolves. A no-op when the key is absent.
+    pub fn unregister(&self, key: &str) {
+        self.lock().remove(key);
+    }
+
+    /// Cancel the in-progress connection registered under `key`. Idempotent:
+    /// returns `true` if a live token was found and signalled, `false` if the
+    /// key was already gone (the connect resolved before the cancel landed, or
+    /// it was never registered).
+    pub fn cancel(&self, key: &str) -> bool {
+        match self.lock().get(key) {
+            Some(token) => {
+                token.cancel();
+                true
+            }
+            None => false,
+        }
+    }
+
+    fn lock(
+        &self,
+    ) -> std::sync::MutexGuard<'_, std::collections::HashMap<String, CancellationToken>> {
+        self.tokens
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    #[cfg(test)]
+    pub fn active_count(&self) -> usize {
+        self.lock().len()
+    }
+}
+
+/// RAII guard that de-registers a connection cancellation token from the
+/// [`ConnectionCancelRegistry`] on every exit path of a connect command,
+/// including early `?` returns and the cancel branch. Without it a token that
+/// outlived its connect would let a late `cancel_connection` cancel a fresh,
+/// unrelated attempt that happened to reuse the id.
+pub(crate) struct ConnectTokenGuard<'a> {
+    registry: &'a ConnectionCancelRegistry,
+    key: String,
+}
+
+impl<'a> ConnectTokenGuard<'a> {
+    pub(crate) fn new(registry: &'a ConnectionCancelRegistry, key: String) -> Self {
+        Self { registry, key }
+    }
+}
+
+impl Drop for ConnectTokenGuard<'_> {
+    fn drop(&mut self) {
+        self.registry.unregister(&self.key);
+    }
+}
+
 /// RAII guard around `ProviderState::in_flight_transfers`. Acquired by the
 /// command-level entry points before they hand a `SharedProvider` clone to
 /// a spawned DAG transfer task and dropped only when that task returns,
@@ -334,6 +427,12 @@ pub struct ProviderConnectionParams {
     pub github_token_expires_at: Option<String>,
     /// GitHub: optional branch override
     pub github_branch: Option<String>,
+    /// W3.1 (#270.5): frontend-generated token identifying this connection
+    /// attempt. When present, `provider_connect` registers a cancellation
+    /// token under it so an Esc / "still connecting" Cancel can abort the
+    /// connect via `cancel_connection`. Absent for callers that opt out.
+    #[serde(default, alias = "connectToken")]
+    pub connect_token: Option<String>,
 }
 
 impl ProviderConnectionParams {
@@ -774,6 +873,7 @@ pub struct ProviderConnectionInfo {
 #[tauri::command]
 pub async fn provider_connect(
     state: State<'_, ProviderState>,
+    cancel_registry: State<'_, ConnectionCancelRegistry>,
     params: ProviderConnectionParams,
 ) -> Result<String, String> {
     info!(
@@ -804,11 +904,34 @@ pub async fn provider_connect(
     // A3-05: Zeroize password after it has been consumed by the provider
     config.zeroize_password();
 
-    // Connect
-    provider
-        .connect()
-        .await
-        .map_err(|e| format!("Connection failed: {}", e))?;
+    // W3.1 (#270.5): register a cancellation token under the frontend-supplied
+    // connect token so an Esc / "still connecting" Cancel can abort this
+    // connect. The guard de-registers it on every exit path.
+    let connect_key = params.connect_token.clone();
+    let cancel_token = connect_key
+        .as_deref()
+        .map(|key| cancel_registry.register(key));
+    let _cancel_guard = connect_key
+        .as_deref()
+        .map(|key| ConnectTokenGuard::new(&cancel_registry, key.to_string()));
+
+    // Connect, cancellable via the registered token. Dropping the
+    // `provider.connect()` future on cancel tears down the in-flight
+    // TCP/TLS/HTTP connect cleanly for async transports (reqwest, russh,
+    // suppaftp). An `ssh2` SFTP handshake on `spawn_blocking` is NOT abortable
+    // mid-syscall: it runs to completion in the background and is dropped right
+    // after, which is acceptable for a first cut (documented in the PR).
+    let connect_outcome: Result<(), String> = match cancel_token.as_ref() {
+        Some(token) => tokio::select! {
+            res = provider.connect() => res.map_err(|e| format!("Connection failed: {}", e)),
+            _ = token.cancelled() => Err(CONNECT_CANCELLED.to_string()),
+        },
+        None => provider
+            .connect()
+            .await
+            .map_err(|e| format!("Connection failed: {}", e)),
+    };
+    connect_outcome?;
 
     let display_name = provider.display_name();
     let protocol = format!("{:?}", provider.provider_type());
@@ -841,6 +964,24 @@ pub async fn provider_connect(
 
     info!("Connected successfully: {}", display_name);
     Ok(format!("Connected to {} via {}", display_name, protocol))
+}
+
+/// Cancel an in-progress connection attempt identified by the frontend-
+/// generated `token` (Ehud wishlist W3.1 #270.5). Looks the token up in the
+/// shared [`ConnectionCancelRegistry`] and signals its cancellation, which
+/// wakes the `tokio::select!` in `provider_connect` / `connect_ftp` and makes
+/// the connect return `CONNECT_CANCELLED`. Idempotent: returns `Ok(())` even
+/// when the token is already gone (the connect resolved before the cancel
+/// landed), so the UI never has to special-case the race.
+#[tauri::command]
+pub async fn cancel_connection(
+    cancel_registry: State<'_, ConnectionCancelRegistry>,
+    token: String,
+) -> Result<(), String> {
+    if cancel_registry.cancel(&token) {
+        info!("cancel_connection: signalled cancel for in-progress connect");
+    }
+    Ok(())
 }
 
 /// Disconnect from the current provider
@@ -9949,8 +10090,9 @@ pub async fn b2_permanent_delete(
 #[cfg(test)]
 mod tests {
     use super::{
-        drain_in_flight_transfers, remote_matches_repo, ProviderConnectionParams, ProviderState,
-        TransferOperationGuard,
+        drain_in_flight_transfers, remote_matches_repo, ConnectTokenGuard,
+        ConnectionCancelRegistry, ProviderConnectionParams, ProviderState, TransferOperationGuard,
+        CONNECT_CANCELLED,
     };
     use std::sync::atomic::Ordering;
     use std::sync::Arc;
@@ -9998,7 +10140,82 @@ mod tests {
             github_pem_path: None,
             github_token_expires_at: None,
             github_branch: None,
+            connect_token: None,
         }
+    }
+
+    #[test]
+    fn test_connection_cancel_registry_register_and_cleanup() {
+        let registry = ConnectionCancelRegistry::new();
+        assert_eq!(registry.active_count(), 0);
+        let token = registry.register("conn-1");
+        assert_eq!(registry.active_count(), 1);
+        assert!(!token.is_cancelled());
+        // The drop guard mirrors what the connect command does on every exit
+        // path: removing the token so the map cannot accumulate stale entries.
+        registry.unregister("conn-1");
+        assert_eq!(registry.active_count(), 0);
+    }
+
+    #[test]
+    fn test_connection_cancel_registry_cancel_signals_token() {
+        let registry = ConnectionCancelRegistry::new();
+        let token = registry.register("conn-2");
+        assert!(registry.cancel("conn-2"), "live token must report found");
+        assert!(token.is_cancelled());
+    }
+
+    #[test]
+    fn test_connection_cancel_registry_cancel_unknown_is_idempotent() {
+        let registry = ConnectionCancelRegistry::new();
+        // Cancelling a token that was never registered is a no-op returning false.
+        assert!(!registry.cancel("missing"));
+        // Once the entry is de-registered, a late cancel stays false (no panic).
+        let token = registry.register("conn-3");
+        assert!(registry.cancel("conn-3"));
+        registry.unregister("conn-3");
+        assert!(!registry.cancel("conn-3"));
+        assert!(token.is_cancelled());
+    }
+
+    #[test]
+    fn test_connection_cancel_registry_reregister_cancels_previous() {
+        let registry = ConnectionCancelRegistry::new();
+        let first = registry.register("conn-4");
+        // A retried attempt reusing the same id must not leave two live tokens.
+        let second = registry.register("conn-4");
+        assert!(
+            first.is_cancelled(),
+            "stale token must be cancelled on re-register"
+        );
+        assert!(!second.is_cancelled());
+        assert_eq!(registry.active_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_select_cancel_returns_marker_and_guard_cleans_up() {
+        let registry = ConnectionCancelRegistry::new();
+        let key = "conn-select";
+        let token = registry.register(key);
+        let guard = ConnectTokenGuard::new(&registry, key.to_string());
+        assert_eq!(registry.active_count(), 1);
+
+        // A connect that never resolves; the cancel branch must win the select
+        // exactly as it does in provider_connect / connect_ftp.
+        let never = std::future::pending::<Result<(), String>>();
+        registry.cancel(key);
+        let outcome: Result<(), String> = tokio::select! {
+            res = never => res,
+            _ = token.cancelled() => Err(CONNECT_CANCELLED.to_string()),
+        };
+        assert_eq!(outcome.unwrap_err(), CONNECT_CANCELLED);
+
+        drop(guard);
+        assert_eq!(
+            registry.active_count(),
+            0,
+            "guard must de-register the token on drop"
+        );
     }
 
     #[test]

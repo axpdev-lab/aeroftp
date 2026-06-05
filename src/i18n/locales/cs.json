@@ -1267,7 +1267,12 @@
             "copyCompleted": "Kopírování dokončeno",
             "localPathNotFound": "Místní složka \"{path}\" nebyla nalezena. Přešlo se do domovského adresáře.",
             "zeroByteWarning": "Soubor 0 B - může značit chybu přenosu",
-            "megacmdWarmup": "Server MEGAcmd neběží, spouští se na pozadí..."
+            "megacmdWarmup": "Server MEGAcmd neběží, spouští se na pozadí...",
+            "stillConnecting": "Stále se připojuje...",
+            "stillConnectingHint": "Server odpovídá déle než obvykle. Počkejte, nebo zrušte připojení (můžete také stisknout Esc).",
+            "connectionCancelled": "Připojení zrušeno",
+            "keepWaiting": "Čekat dál",
+            "cancelConnection": "Zrušit připojení"
         },
         "about": {
             "tagline": "Více než FTP. Kompletní sada nástrojů pro vývojáře.",

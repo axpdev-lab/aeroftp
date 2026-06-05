@@ -1267,7 +1267,12 @@
             "copyCompleted": "Kopyalama tamamlandı",
             "localPathNotFound": "Yerel klasör \"{path}\" bulunamadı. Ana dizine gidildi.",
             "zeroByteWarning": "0 B dosya - bir aktarım hatası olabilir",
-            "megacmdWarmup": "MEGAcmd sunucusu çalışmıyor, arka planda başlatılıyor..."
+            "megacmdWarmup": "MEGAcmd sunucusu çalışmıyor, arka planda başlatılıyor...",
+            "stillConnecting": "Hâlâ bağlanıyor...",
+            "stillConnectingHint": "Sunucu her zamankinden daha uzun sürede yanıt veriyor. Beklemeye devam edin veya bağlantıyı iptal edin (Esc tuşuna da basabilirsiniz).",
+            "connectionCancelled": "Bağlantı iptal edildi",
+            "keepWaiting": "Beklemeye devam et",
+            "cancelConnection": "Bağlantıyı iptal et"
         },
         "about": {
             "tagline": "FTP'den fazlası. Tam bir geliştirici araç seti.",

@@ -1267,7 +1267,12 @@
             "copyCompleted": "Kopiering slutförd",
             "localPathNotFound": "Den lokala mappen \"{path}\" hittades inte. Navigerade till hemkatalogen.",
             "zeroByteWarning": "Fil på 0 B - kan tyda på ett överföringsfel",
-            "megacmdWarmup": "MEGAcmd-servern körs inte, startar i bakgrunden..."
+            "megacmdWarmup": "MEGAcmd-servern körs inte, startar i bakgrunden...",
+            "stillConnecting": "Ansluter fortfarande...",
+            "stillConnectingHint": "Servern svarar långsammare än vanligt. Fortsätt vänta eller avbryt anslutningen (du kan också trycka på Esc).",
+            "connectionCancelled": "Anslutning avbruten",
+            "keepWaiting": "Fortsätt vänta",
+            "cancelConnection": "Avbryt anslutning"
         },
         "about": {
             "tagline": "Mer än FTP. En komplett utvecklarverktygslåda.",

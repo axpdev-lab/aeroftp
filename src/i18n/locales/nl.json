@@ -1267,7 +1267,12 @@
             "copyCompleted": "Kopiëren voltooid",
             "localPathNotFound": "Lokale map \"{path}\" niet gevonden. Genavigeerd naar de thuismap.",
             "zeroByteWarning": "Bestand van 0 B - kan duiden op een overdrachtsfout",
-            "megacmdWarmup": "MEGAcmd-server draait niet, wordt op de achtergrond gestart..."
+            "megacmdWarmup": "MEGAcmd-server draait niet, wordt op de achtergrond gestart...",
+            "stillConnecting": "Nog steeds verbinden...",
+            "stillConnectingHint": "De server reageert langzamer dan normaal. Blijf wachten of annuleer de verbinding (je kunt ook op Esc drukken).",
+            "connectionCancelled": "Verbinding geannuleerd",
+            "keepWaiting": "Blijf wachten",
+            "cancelConnection": "Verbinding annuleren"
         },
         "about": {
             "tagline": "Meer dan FTP. Een complete ontwikkelaarstoolkit.",

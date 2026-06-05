@@ -1267,7 +1267,12 @@
             "copyCompleted": "Kopijavimas baigtas",
             "localPathNotFound": "Vietinis aplankas \"{path}\" nerastas. Pereita į pagrindinį katalogą.",
             "zeroByteWarning": "0 B failas - gali reikšti perkėlimo klaidą",
-            "megacmdWarmup": "MEGAcmd serveris neveikia, paleidžiama fone..."
+            "megacmdWarmup": "MEGAcmd serveris neveikia, paleidžiama fone...",
+            "stillConnecting": "Vis dar jungiamasi...",
+            "stillConnectingHint": "Serveris atsako lėčiau nei įprastai. Palaukite arba atšaukite ryšį (taip pat galite paspausti Esc).",
+            "connectionCancelled": "Ryšys atšauktas",
+            "keepWaiting": "Toliau laukti",
+            "cancelConnection": "Atšaukti ryšį"
         },
         "about": {
             "tagline": "Daugiau nei FTP. Pilnas kureju irankiu rinkinys.",
