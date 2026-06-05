@@ -705,6 +705,25 @@ async fn run_benchmark_via_subprocess(
     let exe =
         std::env::current_exe().map_err(|e| format!("Cannot resolve current executable: {}", e))?;
 
+    // MCP-05: reject a `-`-leading value that argv parsing in the child would
+    // mistake for a CLI flag. There is no shell here (no injection), but a crafted
+    // profile/level/sizes/operations value could still flip an unintended flag.
+    for (label, value) in [
+        ("profile", Some(profile)),
+        ("level", Some(level)),
+        ("sizes", sizes),
+        ("operations", operations),
+    ] {
+        if let Some(v) = value {
+            if v.starts_with('-') {
+                return Err(format!(
+                    "invalid {} value '{}': must not start with '-'",
+                    label, v
+                ));
+            }
+        }
+    }
+
     let mut cmd = tokio::process::Command::new(&exe);
     cmd.arg("--profile")
         .arg(profile)

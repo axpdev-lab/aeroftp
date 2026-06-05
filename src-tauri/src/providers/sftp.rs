@@ -1963,12 +1963,13 @@ impl StorageProvider for SftpProvider {
     }
 
     fn set_chunk_sizes(&mut self, upload: Option<u64>, download: Option<u64>) {
-        // Cap at 16 MB (larger buffers waste memory without improving throughput)
+        // Cap at 16 MB (larger buffers waste memory without improving throughput).
+        // BUFFER-01: SFTP uses a single transfer buffer for both directions, so
+        // when both --chunk-size and --buffer-size are given we apply the larger
+        // value deterministically instead of silently letting the last writer win.
         let cap = 16 * 1024 * 1024;
-        if let Some(size) = upload {
-            self.buffer_size = (size as usize).clamp(4096, cap);
-        }
-        if let Some(size) = download {
+        let requested = upload.into_iter().chain(download).max();
+        if let Some(size) = requested {
             self.buffer_size = (size as usize).clamp(4096, cap);
         }
     }

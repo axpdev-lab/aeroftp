@@ -76,8 +76,16 @@ pub struct CompareOptions {
     pub compare_timestamp: bool,
     /// Compare by size
     pub compare_size: bool,
-    /// Compare by checksum (slower but accurate)
+    /// Compare by checksum (slower but accurate). Best-effort by default: when a
+    /// checksum is unavailable on either side the comparison falls back to
+    /// size/timestamp (see `strict_checksum`).
     pub compare_checksum: bool,
+    /// CHECKSUM-01: when set together with `compare_checksum`, a missing checksum
+    /// on either side is reported as a `Conflict` instead of silently degrading to
+    /// size/timestamp, so "I asked for checksum comparison" never quietly becomes
+    /// "I compared sizes". Default false preserves the best-effort behavior.
+    #[serde(default)]
+    pub strict_checksum: bool,
     /// Patterns to exclude (e.g., "node_modules", ".git")
     pub exclude_patterns: Vec<String>,
     /// Direction of comparison
@@ -102,6 +110,7 @@ impl Default for CompareOptions {
             compare_timestamp: true,
             compare_size: true,
             compare_checksum: false,
+            strict_checksum: false,
             exclude_patterns: vec![
                 "node_modules".to_string(),
                 ".git".to_string(),
@@ -665,11 +674,21 @@ pub fn compare_file_pair(
                         }
                     }
                     (None, None) => {
-                        // Checksums not available, fall through to size/timestamp
+                        // CHECKSUM-01: in strict mode an unavailable checksum is a
+                        // conflict, not a silent downgrade to size/timestamp.
+                        if options.strict_checksum {
+                            return SyncStatus::Conflict;
+                        }
+                        // Best-effort: checksums not available, fall through to
+                        // size/timestamp.
                     }
                     _ => {
-                        // One has checksum, one doesn't - can't use checksum comparison
-                        // Fall through to size/timestamp
+                        // One side has a checksum, the other does not.
+                        if options.strict_checksum {
+                            return SyncStatus::Conflict;
+                        }
+                        // Best-effort: can't use checksum comparison, fall through
+                        // to size/timestamp.
                     }
                 }
             }

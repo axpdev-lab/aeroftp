@@ -1,7 +1,7 @@
 # AeroFTP CLI - User Guide
 
 > **Binary**: `aeroftp-cli` (ships alongside the GUI)
-> **Version reference**: v3.8.3 (May 2026) - last reviewed 19 May 2026
+> **Version reference**: v4.0.2 (June 2026) - last reviewed 5 June 2026
 > **License**: GPL-3.0
 
 ---
@@ -1764,6 +1764,59 @@ aeroftp-cli ls sftp://user@host / --json 2>/dev/null | jq '.entries[].name'
 
 ---
 
+## Additional subcommands
+
+These commands round out discovery, file preview, and profile management.
+
+### `peek` - smart file preview
+
+```bash
+aeroftp-cli peek --profile NAME /path/file [-n N] [--bytes B] [--tail]
+```
+
+Smart preview of a remote file: by default the first 20 lines, `--tail` for the
+last lines, `--bytes B` for a binary-safe byte slice (base64 in JSON when the
+slice is not valid UTF-8).
+
+### `catalog` - provider catalog (SSOT)
+
+```bash
+aeroftp-cli catalog [--json] [--free] [--paid]
+```
+
+Prints the built-in provider catalog (the same single source of truth that drives
+the GUI Discover Services view): protocol, auth model, free/paid tier, storage
+region, and website. `--free` / `--paid` filter by pricing tier.
+
+### `profile-duplicate-mode` / `profile-convert-mode` - switch a profile's mode
+
+```bash
+aeroftp-cli profile-duplicate-mode SELECTOR --mode <api|webdav|s3|ftp> [--name NAME] [--username USER] [--password-stdin]
+aeroftp-cli profile-convert-mode   SELECTOR --mode <api|webdav|s3|ftp> [--name NAME] [--username USER] [--password-stdin] [--yes]
+```
+
+`profile-duplicate-mode` creates a second profile for the same account in a
+different access mode (e.g. FileLu API key vs WebDAV), cloning the source
+credential when the modes share one. `profile-convert-mode` does the same but
+**replaces** the original (keeping its slot), like the GUI's "Convert to ..."
+button; it prompts for confirmation on a TTY unless `--yes` is given. Prefer
+`--password-env VAR` or `--password-stdin` over inline `--password` so the secret
+never lands in argv or shell history.
+
+### `profile-copy-user` / `profile-move-user` - relocate a profile between users
+
+```bash
+aeroftp-cli profile-copy-user SELECTOR --to-user NAME
+aeroftp-cli profile-move-user SELECTOR --to-user NAME [--yes]
+```
+
+Multi-user installs only: copy (or move) a saved profile from the active user's
+encrypted partition into another user's partition. `profile-move-user` removes the
+source after the copy and prompts for confirmation on a TTY unless `--yes` is
+given. See [MULTI-USER.md](./MULTI-USER.md) for the partition model.
+
+---
+
 ## Exit Codes
 
 | Code | Meaning |
@@ -1781,6 +1834,7 @@ aeroftp-cli ls sftp://user@host / --json 2>/dev/null | jq '.entries[].name'
 | 10 | Server error / parse error |
 | 11 | I/O error |
 | 99 | Unknown error |
+| 130 | Interrupted by SIGINT (Ctrl+C); second Ctrl+C force-exits |
 
 ```bash
 aeroftp-cli connect sftp://user@host

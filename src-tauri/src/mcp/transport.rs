@@ -34,22 +34,53 @@ impl StdinReader {
 
     /// Read the next line from stdin.
     /// Returns `None` on EOF (stdin closed), `Err` on line-too-long or IO error.
+    ///
+    /// MCP-01: the line is assembled from bounded `fill_buf`/`consume` chunks and
+    /// the size cap is enforced incrementally, so a newline-free multi-GB input
+    /// cannot allocate an unbounded buffer (the previous `read_line` read the whole
+    /// line into memory before checking the limit).
     pub async fn next_line(&mut self) -> Option<Result<String, TransportError>> {
-        let mut line = String::new();
-        match self.reader.read_line(&mut line).await {
-            Ok(0) => None, // EOF
-            Ok(n) if n > MAX_LINE_BYTES => Some(Err(TransportError::LineTooLong(n))),
-            Ok(_) => {
-                let trimmed = line.trim().to_string();
-                if trimmed.is_empty() {
-                    // Skip blank lines, try next
-                    Some(Ok(String::new()))
-                } else {
-                    Some(Ok(trimmed))
+        let mut line: Vec<u8> = Vec::new();
+        loop {
+            // Peek at buffered data and copy the relevant chunk so the borrow is
+            // released before consume(). Each chunk is bounded by the BufReader's
+            // internal buffer (typically 8 KB).
+            let (chunk, found_newline) = {
+                let available = match self.reader.fill_buf().await {
+                    Ok(b) => b,
+                    Err(e) => return Some(Err(TransportError::Io(e.to_string()))),
+                };
+                if available.is_empty() {
+                    // EOF
+                    if line.is_empty() {
+                        return None;
+                    }
+                    break;
                 }
+                match available.iter().position(|&b| b == b'\n') {
+                    Some(pos) => (available[..=pos].to_vec(), true),
+                    None => (available.to_vec(), false),
+                }
+            };
+            let chunk_len = chunk.len();
+            // Enforce the cap BEFORE growing `line`.
+            if line.len() + chunk_len > MAX_LINE_BYTES {
+                self.reader.consume(chunk_len);
+                return Some(Err(TransportError::LineTooLong(line.len() + chunk_len)));
             }
-            Err(e) => Some(Err(TransportError::Io(e.to_string()))),
+            if found_newline {
+                line.extend_from_slice(&chunk[..chunk_len - 1]);
+            } else {
+                line.extend_from_slice(&chunk);
+            }
+            self.reader.consume(chunk_len);
+            if found_newline {
+                break;
+            }
         }
+        // Decode once at the end so a multi-byte char split across chunk
+        // boundaries is not corrupted. Blank lines yield "" (skipped by caller).
+        Some(Ok(String::from_utf8_lossy(&line).trim().to_string()))
     }
 }
 

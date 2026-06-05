@@ -1657,6 +1657,11 @@ enum Commands {
         /// Actually delete orphaned files (default: dry-run listing)
         #[arg(long)]
         force: bool,
+        /// Only delete .aerotmp files older than this age (e.g. 30m, 2h, 1d).
+        /// Recent temp files may belong to an in-progress transfer and are kept.
+        /// Files without a known modification time are never deleted. Default: 1h.
+        #[arg(long, default_value = "1h")]
+        min_age: String,
     },
     /// Find duplicate files on a remote by content hash and optionally remove them.
     Dedupe {
@@ -2254,8 +2259,17 @@ enum Commands {
         /// Override the stored password / token for the new profile. When
         /// omitted, the source's credential is cloned (works only when
         /// the two modes share credentials, e.g. Koofr/OpenDrive).
+        /// Inline values land in argv/shell history; prefer --password-env or
+        /// --password-stdin.
         #[arg(long, value_name = "PASSWORD")]
         password: Option<String>,
+        /// Read the password/token from this environment variable instead of
+        /// --password (keeps the secret out of argv and shell history).
+        #[arg(long, value_name = "VAR")]
+        password_env: Option<String>,
+        /// Read the password/token from stdin (first line) instead of --password.
+        #[arg(long)]
+        password_stdin: bool,
     },
     /// Convert a profile to a different mode (replaces the original, issue #215)
     ///
@@ -2278,10 +2292,18 @@ enum Commands {
         /// Override the username for the converted profile.
         #[arg(long, value_name = "USERNAME")]
         username: Option<String>,
-        /// Override the stored password / token for the converted
-        /// profile. When omitted, the source's credential is cloned.
+        /// Override the stored password / token for the converted profile. When
+        /// omitted, the source's credential is cloned. Inline values land in
+        /// argv/shell history; prefer --password-env or --password-stdin.
         #[arg(long, value_name = "PASSWORD")]
         password: Option<String>,
+        /// Read the password/token from this environment variable instead of
+        /// --password (keeps the secret out of argv and shell history).
+        #[arg(long, value_name = "VAR")]
+        password_env: Option<String>,
+        /// Read the password/token from stdin (first line) instead of --password.
+        #[arg(long)]
+        password_stdin: bool,
         /// Skip the interactive confirmation prompt.
         #[arg(long, short = 'y')]
         yes: bool,
@@ -2422,7 +2444,13 @@ enum Commands {
         remote_path: Option<String>,
     },
     /// Show CLI capabilities for AI agent discovery (always JSON)
-    AgentInfo,
+    AgentInfo {
+        /// Redact per-profile host and username identifiers (PRIV-01). Use when a
+        /// large agent context only needs tool discovery, not account metadata;
+        /// the full identifiers stay available via `profiles --json`.
+        #[arg(long)]
+        redact_identifiers: bool,
+    },
     /// Single-shot connect surface for agents: returns per-block status
     /// (connect/capabilities/quota/path) in one JSON call. Replaces the
     /// boilerplate `connect → about → df → ls /` sequence.
@@ -4545,6 +4573,10 @@ fn remote_entry_to_cli(e: &RemoteEntry) -> CliFileEntry {
 const MAX_SCAN_DEPTH: usize = 100;
 /// Maximum entries to collect during BFS scan to prevent OOM.
 const MAX_SCAN_ENTRIES: usize = 500_000;
+/// Default safety cap for `sync --delete` when no explicit `--max-delete` is
+/// given (DEL-02): an interactive run will abort rather than delete more than
+/// this many files unattended. Override with `--max-delete N` (or a percentage).
+const DEFAULT_SYNC_MAX_DELETE: usize = 100;
 
 /// Validate a relative path component is safe (no path traversal).
 /// Returns the sanitized path or None if it contains traversal attempts.
@@ -5395,12 +5427,31 @@ fn scan_local_tree_with_progress(
     entries
 }
 
+/// Health of a remote BFS scan: how many `list()` calls failed and whether the
+/// traversal was truncated by the entry/depth caps. An incomplete scan must not
+/// be treated as an authoritative source of truth for `--delete` planning, so
+/// callers surface this in their exit code / JSON output (TX-01).
+#[derive(Default, Clone, Copy)]
+struct RemoteScanHealth {
+    errors: usize,
+    truncated: bool,
+}
+
+impl RemoteScanHealth {
+    fn is_incomplete(&self) -> bool {
+        self.errors > 0 || self.truncated
+    }
+}
+
 async fn scan_remote_tree_with_progress(
     provider: &mut Box<dyn StorageProvider>,
     remote_root: &str,
     opts: &ftp_client_gui_lib::sync_core::ScanOptions,
     spinner: &Option<ProgressBar>,
-) -> Vec<ftp_client_gui_lib::sync_core::scan::RemoteEntry> {
+) -> (
+    Vec<ftp_client_gui_lib::sync_core::scan::RemoteEntry>,
+    RemoteScanHealth,
+) {
     let matchers: Vec<globset::GlobMatcher> = opts
         .exclude_patterns
         .iter()
@@ -5417,10 +5468,14 @@ async fn scan_remote_tree_with_progress(
         .checked_sub(std::time::Duration::from_millis(500))
         .unwrap_or_else(Instant::now);
     let mut results = Vec::new();
+    let mut health = RemoteScanHealth::default();
     let mut queue: Vec<(String, String, usize)> = vec![(remote_root.to_string(), String::new(), 0)];
 
     while let Some((abs_dir, rel_prefix, current_depth)) = queue.pop() {
         if current_depth >= depth || results.len() >= cap {
+            // A subtree we declined to descend into (depth or entry cap): the
+            // listing is no longer authoritative.
+            health.truncated = true;
             continue;
         }
         match provider.list(&abs_dir).await {
@@ -5479,6 +5534,7 @@ async fn scan_remote_tree_with_progress(
                         format!("Scanning remote... {} files so far", results.len()),
                     );
                     if results.len() >= cap {
+                        health.truncated = true;
                         break;
                     }
                 }
@@ -5488,6 +5544,7 @@ async fn scan_remote_tree_with_progress(
                     "[scan_remote_tree] warning: failed to list {}: {}",
                     abs_dir, err
                 );
+                health.errors += 1;
             }
         }
     }
@@ -5496,7 +5553,7 @@ async fn scan_remote_tree_with_progress(
         pb.set_message(format!("Scanning remote... {} files", results.len()));
     }
 
-    results
+    (results, health)
 }
 
 fn load_sync_plan_from_reconcile(
@@ -10980,6 +11037,55 @@ fn cmd_profile_add(
 /// stored credential, and prepends the copy to the profile list so it
 /// surfaces at the top of the table. Always emits the new id on stdout
 /// in text mode for scripting (the JSON path wraps it in a struct).
+/// PASS-01: resolve the optional override password for profile mode conversion
+/// from at most one of --password / --password-env / --password-stdin. Inline
+/// --password is honoured but warned about (it lands in argv/shell history).
+/// Returns `Ok(None)` when no source is given (the source credential is cloned).
+fn resolve_mode_password(
+    inline: Option<&str>,
+    password_env: Option<&str>,
+    password_stdin: bool,
+    format: OutputFormat,
+) -> Result<Option<String>, i32> {
+    let count = inline.is_some() as u8 + password_env.is_some() as u8 + password_stdin as u8;
+    if count > 1 {
+        print_error(
+            format,
+            "pass at most one of --password, --password-env, --password-stdin",
+            5,
+        );
+        return Err(5);
+    }
+    if let Some(var) = password_env {
+        return match std::env::var(var) {
+            Ok(v) => Ok(Some(v)),
+            Err(_) => {
+                print_error(
+                    format,
+                    &format!("environment variable '{}' is not set", var),
+                    5,
+                );
+                Err(5)
+            }
+        };
+    }
+    if password_stdin {
+        let mut line = String::new();
+        if std::io::stdin().read_line(&mut line).is_err() {
+            print_error(format, "failed to read password from stdin", 5);
+            return Err(5);
+        }
+        return Ok(Some(line.trim_end_matches(['\r', '\n']).to_string()));
+    }
+    if let Some(p) = inline {
+        eprintln!(
+            "Warning: --password was passed inline and may be recorded in shell history and process listings. Prefer --password-env or --password-stdin."
+        );
+        return Ok(Some(p.to_string()));
+    }
+    Ok(None)
+}
+
 fn cmd_profile_duplicate(
     cli: &Cli,
     format: OutputFormat,
@@ -12502,10 +12608,14 @@ fn list_ai_models(cli: &Cli, format: OutputFormat) -> i32 {
 }
 
 fn truncate_str(s: &str, max: usize) -> String {
-    if s.len() <= max {
+    // UX-01: count and slice by char, not byte, so multi-byte UTF-8 names
+    // (provider/profile/model labels) never panic on a non-boundary index.
+    if s.chars().count() <= max {
         s.to_string()
     } else {
-        format!("{}...", &s[..max.saturating_sub(3)])
+        let keep = max.saturating_sub(3);
+        let truncated: String = s.chars().take(keep).collect();
+        format!("{}...", truncated)
     }
 }
 
@@ -12612,48 +12722,83 @@ async fn create_and_connect_for_agent(
             }
         };
 
-    // Find matching profile (exact name or ID first; otherwise require a unique substring match)
-    let query_lower = server_query.to_lowercase();
-    let exact_match = profiles.iter().find(|p| {
-        let name = p
-            .get("name")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_lowercase();
-        let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
-        name == query_lower || id == server_query
-    });
-    let matched = if let Some(profile) = exact_match {
-        profile
+    // Find the matching profile: 1-based numeric selector (AGENT-02), then exact
+    // id, then exact (case-insensitive) name with duplicate detection (AGENT-01),
+    // then a unique substring fallback. Mirrors `agent_session::lookup_profile`.
+    let matched: &serde_json::Value = if let Some(p) = server_query
+        .trim()
+        .parse::<usize>()
+        .ok()
+        .filter(|n| *n >= 1)
+        .and_then(|n| profiles.get(n - 1))
+    {
+        p
+    } else if let Some(p) = profiles
+        .iter()
+        .find(|p| p.get("id").and_then(|v| v.as_str()).unwrap_or("") == server_query)
+    {
+        p
     } else {
-        let partial_matches: Vec<&serde_json::Value> = profiles
+        let query_lower = server_query.to_lowercase();
+        let exact_name: Vec<&serde_json::Value> = profiles
             .iter()
             .filter(|p| {
-                let name = p
-                    .get("name")
+                p.get("name")
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
-                    .to_lowercase();
-                name.contains(&query_lower)
+                    .to_lowercase()
+                    == query_lower
             })
             .collect();
-        match partial_matches.as_slice() {
-            [single] => *single,
+        match exact_name.as_slice() {
+            [single] => single,
             [] => {
-                return Err(format!(
-                    "Server '{}' not found in saved profiles",
-                    server_query
-                ))
+                let partial_matches: Vec<&serde_json::Value> = profiles
+                    .iter()
+                    .filter(|p| {
+                        p.get("name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_lowercase()
+                            .contains(&query_lower)
+                    })
+                    .collect();
+                match partial_matches.as_slice() {
+                    [single] => single,
+                    [] => {
+                        return Err(format!(
+                            "Server '{}' not found in saved profiles",
+                            server_query
+                        ))
+                    }
+                    many => {
+                        let names = many
+                            .iter()
+                            .filter_map(|p| p.get("name").and_then(|v| v.as_str()))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        return Err(format!(
+                            "Server '{}' is ambiguous. Use an exact profile name or id. Matches: {}",
+                            server_query, names
+                        ));
+                    }
+                }
             }
             many => {
-                let names = many
+                // Duplicate display name: surface ids so the agent can retry
+                // deterministically with the id or the numeric selector.
+                let ids = many
                     .iter()
-                    .filter_map(|p| p.get("name").and_then(|v| v.as_str()))
+                    .map(|p| {
+                        let name = p.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                        let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                        format!("{name} [id={id}]")
+                    })
                     .collect::<Vec<_>>()
                     .join(", ");
                 return Err(format!(
-                    "Server '{}' is ambiguous. Use an exact profile name. Matches: {}",
-                    server_query, names
+                    "Server '{}' is ambiguous (duplicate name). Use the id or numeric selector. Matches: {}",
+                    server_query, ids
                 ));
             }
         }
@@ -12668,7 +12813,11 @@ async fn create_and_connect_for_agent(
         .get("protocol")
         .and_then(|v| v.as_str())
         .unwrap_or("");
-    let host = matched.get("host").and_then(|v| v.as_str()).unwrap_or("");
+    let mut host = matched
+        .get("host")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
     let port = matched.get("port").and_then(|v| v.as_u64()).unwrap_or(0) as u16;
     let username = matched
         .get("username")
@@ -12696,10 +12845,31 @@ async fn create_and_connect_for_agent(
         other => return Err(format!("Protocol '{}' on server '{}' is not supported for agent server_exec. Supported: FTP, FTPS, SFTP, WebDAV, S3, GitHub, GitLab.", other, profile_name)),
     };
 
+    // AGENT-03: apply provider-specific options (S3 bucket/region/endpoint, Azure
+    // container, ...) exactly like the normal CLI profile path, instead of
+    // connecting with an empty option set.
+    let mut extra: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    apply_profile_options(&mut extra, matched);
+    let provider_id_opt = matched
+        .get("providerId")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    if let Some(pid) = provider_id_opt {
+        extra.insert("provider_id".to_string(), pid.to_string());
+    }
+    if provider_type == ftp_client_gui_lib::providers::ProviderType::S3 {
+        if let Some(resolved_endpoint) = apply_s3_profile_defaults(&mut extra, provider_id_opt) {
+            if host.trim().is_empty() {
+                host = resolved_endpoint;
+            }
+        }
+    }
+
     let config = ftp_client_gui_lib::providers::ProviderConfig {
         name: profile_name.to_string(),
         provider_type,
-        host: host.to_string(),
+        host: host.clone(),
         port: if port > 0 { Some(port) } else { None },
         username: if username.is_empty() {
             None
@@ -12712,7 +12882,7 @@ async fn create_and_connect_for_agent(
             Some(password)
         },
         initial_path: Some(initial_path.to_string()),
-        extra: std::collections::HashMap::new(),
+        extra,
     };
 
     let mut provider = ftp_client_gui_lib::providers::ProviderFactory::create(&config)
@@ -12726,7 +12896,7 @@ async fn create_and_connect_for_agent(
     Ok((provider, initial_path.to_string()))
 }
 
-fn cmd_agent_info(cli: &Cli) -> i32 {
+fn cmd_agent_info(cli: &Cli, redact_identifiers: bool) -> i32 {
     let (profiles, profiles_error) = match safe_vault_profiles(cli) {
         Ok(profiles) => (profiles, None),
         Err(error) => (vec![], Some(error)),
@@ -12735,15 +12905,29 @@ fn cmd_agent_info(cli: &Cli) -> i32 {
         .into_iter()
         .map(|p| {
             let protocol = p.get("protocol").and_then(|v| v.as_str()).unwrap_or("");
+            // PRIV-01: optionally redact host/username so a tool-discovery context
+            // does not carry account metadata (full values via `profiles --json`).
+            let host = if redact_identifiers {
+                "[redacted]"
+            } else {
+                p.get("host").and_then(|v| v.as_str()).unwrap_or("")
+            };
+            let username = if redact_identifiers {
+                "[redacted]"
+            } else {
+                p.get("username").and_then(|v| v.as_str()).unwrap_or("")
+            };
             serde_json::json!({
                 "id": p.get("id").and_then(|v| v.as_str()).unwrap_or(""),
                 "name": p.get("name").and_then(|v| v.as_str()).unwrap_or(""),
                 "protocol": protocol,
-                "host": p.get("host").and_then(|v| v.as_str()).unwrap_or(""),
+                "host": host,
                 "port": p.get("port").and_then(|v| v.as_u64()).unwrap_or(0),
-                "username": p.get("username").and_then(|v| v.as_str()).unwrap_or(""),
+                "username": username,
                 "initialPath": p.get("initialPath").and_then(|v| v.as_str()).unwrap_or("/"),
-                "providerId": p.get("providerId").and_then(|v| v.as_str()).unwrap_or(""),
+                // CLI-JSON-01: emit null (not "") for a missing providerId so the
+                // shape matches `profiles --json`; agents need not special-case both.
+                "providerId": p.get("providerId").and_then(|v| v.as_str()).filter(|s| !s.is_empty()),
                 "transfer_capabilities": ftp_client_gui_lib::agent_session::transfer_capabilities_block(
                     protocol,
                     None,
@@ -12798,6 +12982,19 @@ fn cmd_agent_info(cli: &Cli) -> i32 {
     })
     .collect::<serde_json::Map<_, _>>();
 
+    // CLI-DISC-01: the protocols actually present in the saved profiles, distinct
+    // from the static `protocol_transfer_capabilities` table (canonical protocol
+    // ids with default capability blocks). This is the authoritative "what is
+    // configured here" list; the capability table is "what the binary supports".
+    let mut profile_protocols_seen: Vec<String> = profiles
+        .iter()
+        .filter_map(|p| p.get("protocol").and_then(|v| v.as_str()))
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .collect();
+    profile_protocols_seen.sort();
+    profile_protocols_seen.dedup();
+
     let info = serde_json::json!({
         "version": env!("CARGO_PKG_VERSION"),
         "description": "AeroFTP CLI - multi-protocol file transfer with encrypted vault profiles",
@@ -12838,7 +13035,7 @@ fn cmd_agent_info(cli: &Cli) -> i32 {
             "destructive": [
                 {"name": "rm", "syntax": "aeroftp-cli rm --profile NAME /path [-f]", "description": "Delete file (-f: force, no error if not found)"},
                 {"name": "rm -rf", "syntax": "aeroftp-cli rm --profile NAME /dir/ -rf", "description": "Delete directory recursively (force, no prompt)"},
-                {"name": "sync --delete", "syntax": "aeroftp-cli sync --profile NAME ./local/ /remote/ --delete", "description": "Sync with orphan deletion (always confirm)"},
+                {"name": "sync --delete", "syntax": "aeroftp-cli sync --profile NAME ./local/ /remote/ --delete", "description": "Sync with orphan deletion (capped by --max-delete, default 100; non-interactive runs require an explicit --max-delete)"},
             ],
             "advanced": [
                 {"name": "head", "syntax": "aeroftp-cli head --profile NAME /path/file [-n N]", "description": "Read first lines of a remote text file"},
@@ -12947,6 +13144,7 @@ fn cmd_agent_info(cli: &Cli) -> i32 {
             "gitlab": ftp_client_gui_lib::agent_session::capabilities_for_protocol("gitlab")
         },
         "protocol_transfer_capabilities": protocol_transfer_capabilities,
+        "profile_protocols_seen": profile_protocols_seen,
         "agent_connect_supported_protocols": [
             "ftp", "ftps", "sftp", "webdav", "s3", "github", "gitlab"
         ],
@@ -14880,15 +15078,22 @@ fn request_is_authorized(headers: &HeaderMap, expected_token: Option<&str>) -> b
         return false;
     };
 
+    // SEC-03/TOKEN-01: compare the bearer/basic secret in constant time so a
+    // timing side-channel cannot recover the loopback service token byte by byte.
+    use subtle::ConstantTimeEq;
     if let Some(token) = raw_auth.strip_prefix("Bearer ") {
-        return token.trim() == expected_token;
+        return token
+            .trim()
+            .as_bytes()
+            .ct_eq(expected_token.as_bytes())
+            .into();
     }
 
     if let Some(encoded) = raw_auth.strip_prefix("Basic ") {
         if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(encoded.trim()) {
             if let Ok(decoded) = String::from_utf8(bytes) {
                 if let Some((_, password)) = decoded.split_once(':') {
-                    return password == expected_token;
+                    return password.as_bytes().ct_eq(expected_token.as_bytes()).into();
                 }
             }
         }
@@ -14989,24 +15194,72 @@ fn strip_legacy_nextcloud_webdav_root(
     initial_path.to_string()
 }
 
-fn resolve_cli_remote_path(initial_path: &str, user_path: &str) -> String {
-    // Reject path traversal components (.. as a path segment)
-    for component in user_path.split('/') {
-        if component == ".." {
-            eprintln!(
-                "Error: path '{}' contains '..' traversal component: rejected for safety. Use absolute paths instead.",
-                user_path
-            );
-            // Return the base path unchanged so the command operates on a safe location.
-            // The caller will see the mismatch and the error on stderr.
-            let base = initial_path.trim();
-            return if base.is_empty() || base == "/" {
-                "/".to_string()
-            } else {
-                base.trim_end_matches('/').to_string()
-            };
+/// Error returned by [`try_resolve_cli_remote_path`] when a user-supplied remote
+/// path must never be silently rewritten against the profile base.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum RemotePathError {
+    NullByte,
+    Traversal(String),
+}
+
+impl std::fmt::Display for RemotePathError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RemotePathError::NullByte => write!(f, "remote path contains a null byte"),
+            RemotePathError::Traversal(p) => write!(
+                f,
+                "remote path '{}' contains a '..' traversal component: rejected for safety, use an absolute path instead",
+                p
+            ),
         }
     }
+}
+
+/// Fallible core of CLI remote-path resolution.
+///
+/// Rejects paths that must not be silently substituted (null bytes, `..`
+/// traversal segments, including the backslash-separated form) so that
+/// destructive call sites fail closed instead of operating on a substituted base
+/// path. The sibling agent resolver (`resolve_agent_remote_path`) is already
+/// fallible; this brings the CLI surface to parity. [`resolve_cli_remote_path`]
+/// is the infallible wrapper used by the bulk of read paths.
+fn try_resolve_cli_remote_path(
+    initial_path: &str,
+    user_path: &str,
+) -> Result<String, RemotePathError> {
+    if user_path.contains('\0') {
+        return Err(RemotePathError::NullByte);
+    }
+    for component in user_path.replace('\\', "/").split('/') {
+        if component == ".." {
+            return Err(RemotePathError::Traversal(user_path.to_string()));
+        }
+    }
+    Ok(resolve_cli_remote_path_unchecked(initial_path, user_path))
+}
+
+/// Infallible CLI remote-path resolver.
+///
+/// Historically this returned the profile base path on a rejected `..` input and
+/// let the command run to exit 0, silently operating on the wrong location. It
+/// now fails closed: a traversal/null-byte path prints a structured error
+/// (JSON-aware) and exits with code 5 before any provider operation runs.
+fn resolve_cli_remote_path(initial_path: &str, user_path: &str) -> String {
+    match try_resolve_cli_remote_path(initial_path, user_path) {
+        Ok(resolved) => resolved,
+        Err(e) => {
+            let format = if JSON_MODE.load(Ordering::Relaxed) {
+                OutputFormat::Json
+            } else {
+                OutputFormat::Text
+            };
+            print_error(format, &e.to_string(), 5);
+            std::process::exit(5);
+        }
+    }
+}
+
+fn resolve_cli_remote_path_unchecked(initial_path: &str, user_path: &str) -> String {
     let base = initial_path.trim();
     // No meaningful initial_path: pass user_path through with minimal
     // rewriting:
@@ -17863,7 +18116,13 @@ async fn cmd_get(
             if let Some(pb) = pb {
                 pb.finish_and_clear();
             }
-            if !cli.partial {
+            // Only the --inplace path writes the final destination directly, so a
+            // failed transfer can leave a truncated file there. In default atomic
+            // mode the provider writes to a `.aerotmp` sidecar (cleaned up on
+            // failure) and never touches the final path, so removing it here would
+            // destroy a pre-existing file the download never wrote. Match the batch
+            // download guard: clean up only when --inplace and --partial is off.
+            if cli.inplace && !cli.partial {
                 let _ = std::fs::remove_file(local_path);
             }
             print_error(
@@ -18274,7 +18533,11 @@ async fn pget_fallback_single(
             if let Some(pb) = pb {
                 pb.finish_and_clear();
             }
-            if !cli.partial {
+            // Same guard as the single-stream and batch download paths: the atomic
+            // `.aerotmp` strategy never wrote the final destination on failure, so
+            // removing it here would erase a pre-existing file. Only clean up the
+            // final path when --inplace wrote it directly and --partial is off.
+            if cli.inplace && !cli.partial {
                 let _ = std::fs::remove_file(local_path);
             }
             let code = provider_error_to_exit_code(&e);
@@ -19529,18 +19792,32 @@ async fn cmd_rm(
         return 1;
     }
 
-    // Confirmation for recursive delete (unless --force)
-    if recursive && !force && std::io::stdin().is_terminal() {
-        eprint!("Recursively delete '{}'? [y/N]: ", path);
-        let _ = io::stderr().flush();
-        let mut input = String::new();
-        let _ = io::stdin().read_line(&mut input);
-        if !input.trim().eq_ignore_ascii_case("y") {
-            if !cli.quiet {
-                eprintln!("Aborted.");
+    // Confirmation for recursive delete (unless --force).
+    if recursive && !force {
+        if std::io::stdin().is_terminal() {
+            eprint!("Recursively delete '{}'? [y/N]: ", path);
+            let _ = io::stderr().flush();
+            let mut input = String::new();
+            let _ = io::stdin().read_line(&mut input);
+            if !input.trim().eq_ignore_ascii_case("y") {
+                if !cli.quiet {
+                    eprintln!("Aborted.");
+                }
+                let _ = provider.disconnect().await;
+                return 0;
             }
+        } else {
+            // DEL-01: fail closed in a non-interactive (non-TTY) context instead
+            // of deleting unattended. Without a terminal there is no one to answer
+            // the prompt; a cron/CI job must pass --force to confirm the recursive
+            // delete explicitly. This matches the fail-closed users-delete path.
+            print_error(
+                format,
+                "recursive delete requires --force in non-interactive (non-TTY) mode",
+                5,
+            );
             let _ = provider.disconnect().await;
-            return 0;
+            return 5;
         }
     }
 
@@ -26190,7 +26467,28 @@ fn print_benchmark_publish_block(serialized: &str) {
     println!("--- END BENCHMARK REPORT ---");
 }
 
-async fn cmd_cleanup(url: &str, path: &str, force: bool, cli: &Cli, format: OutputFormat) -> i32 {
+async fn cmd_cleanup(
+    url: &str,
+    path: &str,
+    force: bool,
+    min_age: &str,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    // CLEAN-01: parse the staleness threshold up front so an invalid value fails
+    // before we connect or delete anything.
+    let min_age_secs = match parse_age_filter(min_age) {
+        Ok(secs) => secs as i64,
+        Err(e) => {
+            print_error(
+                format,
+                &format!("invalid --min-age '{}': {}", min_age, e),
+                5,
+            );
+            return 5;
+        }
+    };
+
     let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
         Err(code) => return code,
@@ -26202,25 +26500,40 @@ async fn cmd_cleanup(url: &str, path: &str, force: bool, cli: &Cli, format: Outp
         eprintln!("Scanning {} for orphaned .aerotmp files...", path);
     }
 
-    // BFS scan for .aerotmp files
-    let mut orphans: Vec<(String, u64)> = Vec::new();
-    let mut dirs = vec![path.to_string()];
+    // BFS scan for .aerotmp files. BFS-01: bound depth, cap entries, and guard
+    // against symlinked directory cycles. Carry each file's mtime so cleanup can
+    // prove staleness before deleting (CLEAN-01).
+    let mut orphans: Vec<(String, u64, Option<String>)> = Vec::new();
+    let mut dirs: Vec<(String, usize)> = vec![(path.to_string(), 0)];
+    let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
     let max_entries = 100_000usize;
+    let mut scanned_entries = 0u64;
     let mut scan_errors = 0u32;
     let mut delete_errors = 0u32;
+    let mut truncated = false;
     let mut exit_code = 0i32;
 
-    while let Some(dir) = dirs.pop() {
+    while let Some((dir, depth)) = dirs.pop() {
         if orphans.len() >= max_entries {
+            truncated = true;
             break;
+        }
+        if depth >= MAX_SCAN_DEPTH {
+            truncated = true;
+            continue;
+        }
+        if !visited.insert(dir.clone()) {
+            // Cycle guard: a symlinked directory loop would otherwise spin forever.
+            continue;
         }
         match provider.list(&dir).await {
             Ok(entries) => {
                 for entry in entries {
+                    scanned_entries += 1;
                     if entry.is_dir {
-                        dirs.push(entry.path.clone());
+                        dirs.push((entry.path.clone(), depth + 1));
                     } else if entry.name.ends_with(".aerotmp") || entry.path.ends_with(".aerotmp") {
-                        orphans.push((entry.path.clone(), entry.size));
+                        orphans.push((entry.path.clone(), entry.size, entry.modified.clone()));
                     }
                 }
             }
@@ -26253,6 +26566,11 @@ async fn cmd_cleanup(url: &str, path: &str, force: bool, cli: &Cli, format: Outp
                 "status": if scan_errors == 0 { "ok" } else { "partial" },
                 "cleaned": 0,
                 "bytes_freed": 0,
+                "scanned_entries": scanned_entries,
+                "truncated": truncated,
+                "eligible": 0,
+                "skipped_recent": 0,
+                "skipped_no_mtime": 0,
                 "scan_errors": scan_errors,
                 "delete_errors": 0,
             }));
@@ -26265,24 +26583,46 @@ async fn cmd_cleanup(url: &str, path: &str, force: bool, cli: &Cli, format: Outp
         };
     }
 
-    let total_bytes: u64 = orphans.iter().map(|(_, s)| *s).sum();
+    let total_bytes: u64 = orphans.iter().map(|(_, s, _)| *s).sum();
+
+    // CLEAN-01: classify orphans by staleness. Only files with a known mtime
+    // older than --min-age are eligible for deletion. A recent temp file may
+    // belong to an in-progress transfer, and a file with no mtime cannot be
+    // proven stale, so both are kept.
+    let now = chrono::Utc::now().timestamp();
+    let threshold = now - min_age_secs;
+    let mut eligible: Vec<(&String, u64)> = Vec::new();
+    let mut skipped_recent = 0u32;
+    let mut skipped_no_mtime = 0u32;
+    for (p, s, mtime) in &orphans {
+        match mtime.as_deref().and_then(parse_mtime_secs) {
+            Some(ts) if ts <= threshold => eligible.push((p, *s)),
+            Some(_) => skipped_recent += 1,
+            None => skipped_no_mtime += 1,
+        }
+    }
+    let eligible_bytes: u64 = eligible.iter().map(|(_, s)| *s).sum();
 
     if !force {
         // Dry run (default)
         match format {
             OutputFormat::Text => {
                 eprintln!(
-                    "\nFound {} orphaned file(s), {} total:",
+                    "\nFound {} orphaned file(s), {} total. {} eligible for deletion (older than {}), {} too recent, {} without a known mtime:",
                     orphans.len(),
-                    format_size(total_bytes)
+                    format_size(total_bytes),
+                    eligible.len(),
+                    min_age,
+                    skipped_recent,
+                    skipped_no_mtime
                 );
-                for (p, s) in &orphans {
+                for (p, s) in &eligible {
                     eprintln!("  {} ({})", p, format_size(*s));
                 }
-                eprintln!("\nUse --force to delete these files.");
+                eprintln!("\nUse --force to delete the eligible files (adjust --min-age to change the staleness window).");
             }
             OutputFormat::Json => {
-                let files: Vec<serde_json::Value> = orphans
+                let files: Vec<serde_json::Value> = eligible
                     .iter()
                     .map(|(p, s)| serde_json::json!({"path": p, "size": s}))
                     .collect();
@@ -26291,6 +26631,13 @@ async fn cmd_cleanup(url: &str, path: &str, force: bool, cli: &Cli, format: Outp
                     "dry_run": true,
                     "orphans": orphans.len(),
                     "bytes": total_bytes,
+                    "eligible": eligible.len(),
+                    "eligible_bytes": eligible_bytes,
+                    "skipped_recent": skipped_recent,
+                    "skipped_no_mtime": skipped_no_mtime,
+                    "min_age_secs": min_age_secs,
+                    "scanned_entries": scanned_entries,
+                    "truncated": truncated,
                     "scan_errors": scan_errors,
                     "delete_errors": 0,
                     "files": files,
@@ -26305,10 +26652,10 @@ async fn cmd_cleanup(url: &str, path: &str, force: bool, cli: &Cli, format: Outp
         };
     }
 
-    // Force: delete orphans
+    // Force: delete only the eligible (proven-stale) orphans.
     let mut cleaned = 0u32;
     let mut bytes_freed = 0u64;
-    for (p, s) in &orphans {
+    for (p, s) in &eligible {
         match provider.delete(p).await {
             Ok(()) => {
                 cleaned += 1;
@@ -26332,9 +26679,11 @@ async fn cmd_cleanup(url: &str, path: &str, force: bool, cli: &Cli, format: Outp
     match format {
         OutputFormat::Text => {
             eprintln!(
-                "\nCleaned {} file(s), {} freed.",
+                "\nCleaned {} file(s), {} freed. Kept {} recent and {} without a known mtime.",
                 cleaned,
-                format_size(bytes_freed)
+                format_size(bytes_freed),
+                skipped_recent,
+                skipped_no_mtime
             );
             if had_partial_errors {
                 eprintln!(
@@ -26348,6 +26697,12 @@ async fn cmd_cleanup(url: &str, path: &str, force: bool, cli: &Cli, format: Outp
                 "status": if had_partial_errors { "partial" } else { "ok" },
                 "cleaned": cleaned,
                 "bytes_freed": bytes_freed,
+                "eligible": eligible.len(),
+                "skipped_recent": skipped_recent,
+                "skipped_no_mtime": skipped_no_mtime,
+                "min_age_secs": min_age_secs,
+                "scanned_entries": scanned_entries,
+                "truncated": truncated,
                 "scan_errors": scan_errors,
                 "delete_errors": delete_errors,
             }));
@@ -26393,24 +26748,33 @@ async fn cmd_dedupe(
         eprintln!("Scanning {} for duplicates...", path);
     }
 
-    // BFS scan to collect all files with sizes and mtime
+    // BFS scan to collect all files with sizes and mtime. BFS-01: bound depth,
+    // cap entries, and guard against symlinked directory cycles.
     let mut files: Vec<(String, u64, Option<String>)> = Vec::new();
-    let mut dirs = vec![path.to_string()];
+    let mut dirs: Vec<(String, usize)> = vec![(path.to_string(), 0)];
+    let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
     let max_entries = 100_000usize;
     let mut scan_errors = 0u32;
     let mut hash_errors = 0u32;
     let mut action_errors = 0u32;
     let mut exit_code = 0i32;
 
-    while let Some(dir) = dirs.pop() {
+    while let Some((dir, depth)) = dirs.pop() {
         if files.len() >= max_entries {
             break;
+        }
+        if depth >= MAX_SCAN_DEPTH {
+            continue;
+        }
+        if !visited.insert(dir.clone()) {
+            // Cycle guard: a symlinked directory loop would otherwise spin forever.
+            continue;
         }
         match provider.list(&dir).await {
             Ok(entries) => {
                 for entry in entries {
                     if entry.is_dir {
-                        dirs.push(entry.path.clone());
+                        dirs.push((entry.path.clone(), depth + 1));
                     } else {
                         files.push((entry.path.clone(), entry.size, entry.modified.clone()));
                     }
@@ -26498,10 +26862,8 @@ async fn cmd_dedupe(
         let mut hash_map: std::collections::HashMap<String, Vec<(String, u64, Option<String>)>> =
             std::collections::HashMap::new();
         for (p, mtime) in paths_with_mtime {
-            match provider.download_to_bytes(p).await {
-                Ok(data) => {
-                    use sha2::Digest;
-                    let hash = format!("{:x}", sha2::Sha256::digest(&data));
+            match dedupe_hash_remote_sha256(&mut provider, p, *size).await {
+                Ok(hash) => {
                     hash_map
                         .entry(hash)
                         .or_default()
@@ -26565,6 +26927,57 @@ async fn cmd_dedupe(
 
     let mut deleted = 0u32;
     let mut renamed = 0u32;
+
+    // DEDUPE-01: execute the delete/rename plan for non-interactive modes here so
+    // it runs identically under text and JSON output. The action loops used to
+    // live only in the text arm, so `dedupe --json --mode delete|rename` reported
+    // a plan but never acted. Interactive mode (TTY + text) is still handled inline
+    // in the text arm below; it falls back to "skip" when stdin is not a terminal.
+    let is_actionable = !dry_run
+        && effective_mode != "skip"
+        && effective_mode != "list"
+        && effective_mode != "interactive";
+    if is_actionable {
+        for group in &duplicate_groups {
+            if effective_mode == "rename" {
+                for (j, (p, _, _)) in group.iter().enumerate() {
+                    if j == 0 {
+                        continue; // keep the first
+                    }
+                    let renamed_path = dedupe_rename_path(p, j);
+                    match provider.rename(p, &renamed_path).await {
+                        Ok(()) => {
+                            renamed += 1;
+                            if !quiet {
+                                eprintln!("  Renamed {} -> {}", p, renamed_path);
+                            }
+                        }
+                        Err(e) => {
+                            action_errors += 1;
+                            if exit_code == 0 {
+                                exit_code = provider_error_to_exit_code(&e);
+                            }
+                            eprintln!("  Failed to rename {}: {}", p, e);
+                        }
+                    }
+                }
+            } else {
+                // delete, newest, oldest, largest, smallest: index 0 is the keeper
+                for (p, _, _) in group.iter().skip(1) {
+                    match provider.delete(p).await {
+                        Ok(()) => deleted += 1,
+                        Err(e) => {
+                            action_errors += 1;
+                            if exit_code == 0 {
+                                exit_code = provider_error_to_exit_code(&e);
+                            }
+                            eprintln!("  Failed to delete {}: {}", p, e);
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     // Report and act
     match format {
@@ -26637,50 +27050,9 @@ async fn cmd_dedupe(
                     continue;
                 }
 
-                if dry_run || effective_mode == "skip" || effective_mode == "list" {
-                    continue;
-                }
-
-                // Rename mode: rename duplicates with numeric suffix
-                if effective_mode == "rename" {
-                    for (j, (p, _, _)) in group.iter().enumerate() {
-                        if j == 0 {
-                            continue; // keep the first
-                        }
-                        let renamed_path = dedupe_rename_path(p, j);
-                        match provider.rename(p, &renamed_path).await {
-                            Ok(()) => {
-                                renamed += 1;
-                                if !quiet {
-                                    eprintln!("  Renamed {} -> {}", p, renamed_path);
-                                }
-                            }
-                            Err(e) => {
-                                action_errors += 1;
-                                if exit_code == 0 {
-                                    exit_code = provider_error_to_exit_code(&e);
-                                }
-                                eprintln!("  Failed to rename {}: {}", p, e);
-                            }
-                        }
-                    }
-                    continue;
-                }
-
-                // Delete mode (delete, newest, oldest, largest, smallest):
-                // group is already sorted so index 0 is the keeper
-                for (p, _, _) in group.iter().skip(1) {
-                    match provider.delete(p).await {
-                        Ok(()) => deleted += 1,
-                        Err(e) => {
-                            action_errors += 1;
-                            if exit_code == 0 {
-                                exit_code = provider_error_to_exit_code(&e);
-                            }
-                            eprintln!("  Failed to delete {}: {}", p, e);
-                        }
-                    }
-                }
+                // Non-interactive delete/rename already executed in the shared
+                // action block above (DEDUPE-01); the markers printed above show
+                // what was done. Nothing more to do per group here.
             }
 
             if dry_run {
@@ -26734,6 +27106,51 @@ async fn cmd_dedupe(
     } else {
         0
     }
+}
+
+/// Streaming SHA-256 of a remote file used by `dedupe` (DEDUPE-02). Small files
+/// keep the single-shot `download_to_bytes`; larger files feed the hasher from
+/// ranged reads so peak memory stays bounded to one chunk instead of the whole
+/// file. If the provider cannot serve ranged reads we fall back to a full
+/// download for that file (no worse than the previous behaviour).
+async fn dedupe_hash_remote_sha256(
+    provider: &mut Box<dyn StorageProvider>,
+    path: &str,
+    size: u64,
+) -> Result<String, ProviderError> {
+    use sha2::Digest;
+    const STREAM_THRESHOLD: u64 = 16 * 1024 * 1024; // 16 MB
+    const CHUNK: u64 = 8 * 1024 * 1024; // 8 MB per ranged read
+
+    if size <= STREAM_THRESHOLD {
+        let data = provider.download_to_bytes(path).await?;
+        return Ok(format!("{:x}", sha2::Sha256::digest(&data)));
+    }
+
+    let mut hasher = sha2::Sha256::new();
+    let mut offset = 0u64;
+    let mut used_ranges = false;
+    while offset < size {
+        let len = CHUNK.min(size - offset);
+        match provider.read_range(path, offset, len).await {
+            Ok(chunk) => {
+                if chunk.is_empty() {
+                    break;
+                }
+                used_ranges = true;
+                hasher.update(&chunk);
+                offset += chunk.len() as u64;
+            }
+            Err(_) if !used_ranges => {
+                // Provider does not support ranged reads: fall back to a full
+                // download for this file.
+                let data = provider.download_to_bytes(path).await?;
+                return Ok(format!("{:x}", sha2::Sha256::digest(&data)));
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(format!("{:x}", hasher.finalize()))
 }
 
 /// Sort a dedupe group so index 0 is the file to keep, based on mode.
@@ -27420,6 +27837,14 @@ async fn cmd_sync(
     let files_from_set = load_files_from(cli);
     let scan_depth = cli.max_depth.map(|d| d as usize).unwrap_or(100);
 
+    // TX-01 / SCAN-01: track scan completeness so an incomplete source-of-truth
+    // listing can never silently drive --delete orphan planning, and a partial
+    // scan surfaces in the exit code / JSON status instead of reporting success.
+    let mut remote_scan_errors: usize = 0;
+    let mut remote_scan_truncated = false;
+    let mut local_scan_errors: usize = 0;
+    let mut local_scan_truncated = false;
+
     let mut reconcile_plan: Option<ReconcileSyncPlan> = None;
     #[allow(clippy::type_complexity)]
     let (local_entries, remote_entries): (
@@ -27453,11 +27878,15 @@ async fn cmd_sync(
             for entry in walker {
                 if entries.len() >= 500_000 {
                     eprintln!("Warning: local scan capped at 500,000 entries");
+                    local_scan_truncated = true;
                     break;
                 }
                 let entry = match entry {
                     Ok(e) => e,
-                    Err(_) => continue,
+                    Err(_) => {
+                        local_scan_errors += 1;
+                        continue;
+                    }
                 };
                 if !entry.file_type().is_file() {
                     continue;
@@ -27568,6 +27997,7 @@ async fn cmd_sync(
                                             MAX_SCAN_ENTRIES
                                         );
                                     }
+                                    remote_scan_truncated = true;
                                     break;
                                 }
                                 let relative = e
@@ -27626,12 +28056,14 @@ async fn cmd_sync(
                         if !quiet {
                             eprintln!("Warning: max scan depth reached at {}", abs_dir);
                         }
+                        remote_scan_truncated = true;
                         continue;
                     }
                     if remote_entries.len() >= MAX_SCAN_ENTRIES {
                         if !quiet {
                             eprintln!("Warning: max entries reached during remote scan");
                         }
+                        remote_scan_truncated = true;
                         break;
                     }
                     match provider.list(&abs_dir).await {
@@ -27662,6 +28094,7 @@ async fn cmd_sync(
                             if !quiet {
                                 eprintln!("Warning: cannot scan {}: {}", abs_dir, e);
                             }
+                            remote_scan_errors += 1;
                         }
                     }
                 }
@@ -27693,6 +28126,51 @@ async fn cmd_sync(
 
     let default_time_val = resolve_default_time(cli);
     let default_time_ref = default_time_val.as_deref();
+
+    // TX-01: refuse --delete when the governing scan is incomplete. Local orphans
+    // are derived from the remote listing (download), remote orphans from the
+    // local listing (upload), and "both" reads both sides. A partial listing on
+    // the governing side would classify intact files as orphans and delete them,
+    // so fail closed (exit 4) with zero deletions. Dry-run stays read-only and
+    // reports the partial state below (SCAN-01). A from-reconcile plan is an
+    // explicit, user-supplied source of truth and is treated as complete.
+    let remote_scan_incomplete = remote_scan_errors > 0 || remote_scan_truncated;
+    let local_scan_incomplete = local_scan_errors > 0 || local_scan_truncated;
+    let scan_incomplete =
+        reconcile_plan.is_none() && (remote_scan_incomplete || local_scan_incomplete);
+
+    if delete && !dry_run && reconcile_plan.is_none() {
+        let blocking = match direction {
+            "download" => remote_scan_incomplete,
+            "upload" => local_scan_incomplete,
+            _ => remote_scan_incomplete || local_scan_incomplete,
+        };
+        if blocking {
+            print_error(
+                format,
+                &format!(
+                    "refusing --delete: source-of-truth scan is incomplete \
+                     (remote: {} list error(s){}, local: {} error(s){}). A partial \
+                     listing would classify intact files as orphans and delete them. \
+                     Re-run without --delete or restore full connectivity.",
+                    remote_scan_errors,
+                    if remote_scan_truncated { ", truncated" } else { "" },
+                    local_scan_errors,
+                    if local_scan_truncated { ", truncated" } else { "" },
+                ),
+                4,
+            );
+            let _ = provider.disconnect().await;
+            return 4.into();
+        }
+    }
+
+    if scan_incomplete && !quiet {
+        eprintln!(
+            "Warning: scan incomplete (remote errors: {}, local errors: {}, remote truncated: {}, local truncated: {}); results may be partial.",
+            remote_scan_errors, local_scan_errors, remote_scan_truncated, local_scan_truncated
+        );
+    }
 
     let (
         owned_to_upload,
@@ -28070,8 +28548,34 @@ async fn cmd_sync(
         );
     }
 
+    // DEL-01 / DEL-02: gate destructive --delete before applying the cap.
+    //  - A live (non dry-run) --delete with no explicit --max-delete fails closed
+    //    in a non-interactive (non-TTY) context: an unattended job must state its
+    //    delete cap explicitly. Interactive runs fall back to a default cap so a
+    //    surprise mass-delete is bounded instead of unlimited.
+    //  - dry-run stays read-only (no gate, no default cap: it only previews).
+    let effective_max_delete: Option<String> = if delete && !dry_run {
+        match max_delete {
+            Some(v) => Some(v.to_string()),
+            None => {
+                if !std::io::stdin().is_terminal() {
+                    print_error(
+                        format,
+                        "refusing --delete in non-interactive (non-TTY) mode without an explicit --max-delete cap (pass --max-delete N or N%, or --dry-run to preview)",
+                        5,
+                    );
+                    let _ = provider.disconnect().await;
+                    return 5.into();
+                }
+                Some(DEFAULT_SYNC_MAX_DELETE.to_string())
+            }
+        }
+    } else {
+        max_delete.map(|s| s.to_string())
+    };
+
     // --max-delete safety check
-    if let Some(max_del) = max_delete {
+    if let Some(max_del) = effective_max_delete.as_deref() {
         let delete_count = to_delete_remote.len() + to_delete_local.len();
         let total_files = local_map.len() + remote_map.len();
         let limit = if max_del.ends_with('%') {
@@ -28081,10 +28585,18 @@ async fn cmd_sync(
             max_del.parse::<usize>().unwrap_or(usize::MAX)
         };
         if delete_count > limit {
-            let msg = format!(
-                "Safety abort: {} files would be deleted (limit: {}). Increase --max-delete or remove the flag.",
-                delete_count, max_del
-            );
+            let defaulted = max_delete.is_none();
+            let msg = if defaulted {
+                format!(
+                    "Safety abort: {} files would be deleted (default cap: {}). Pass --max-delete N (or N%) to raise the limit, or --dry-run to preview.",
+                    delete_count, limit
+                )
+            } else {
+                format!(
+                    "Safety abort: {} files would be deleted (limit: {}). Increase --max-delete or remove the flag.",
+                    delete_count, max_del
+                )
+            };
             print_error(format, &msg, 4);
             let _ = provider.disconnect().await;
             return 4.into();
@@ -28206,7 +28718,8 @@ async fn cmd_sync(
         }
         let _ = provider.disconnect().await;
         return SyncCycleStats {
-            exit_code: 0,
+            // SCAN-01: a dry-run computed from a partial listing is itself partial.
+            exit_code: if scan_incomplete { 4 } else { 0 },
             uploaded: to_upload.len() as u32,
             downloaded: to_download.len() as u32,
             deleted: (to_delete_remote.len() + to_delete_local.len()) as u32,
@@ -28726,7 +29239,11 @@ async fn cmd_sync(
         }
         OutputFormat::Json => {
             print_json(&CliSyncResult {
-                status: if errors.is_empty() { "ok" } else { "partial" },
+                status: if errors.is_empty() && !scan_incomplete {
+                    "ok"
+                } else {
+                    "partial"
+                },
                 uploaded,
                 downloaded,
                 deleted,
@@ -28741,6 +29258,9 @@ async fn cmd_sync(
     let _ = provider.disconnect().await;
     SyncCycleStats {
         exit_code: if !errors.is_empty() {
+            4
+        } else if scan_incomplete {
+            // SCAN-01: completed run but the listing was partial; report non-zero.
             4
         } else if session_transfer_exceeded(resolve_max_transfer(cli)) {
             // Intentional --max-transfer cap (honest note already emitted
@@ -33825,6 +34345,10 @@ async fn cmd_cryptcheck(
 
     let match_count_safe = Arc::new(AsyncMutex::new(0));
     let differ_count_safe = Arc::new(AsyncMutex::new(0));
+    // CRYPT-01: operational failures (unreadable local file, download/connect
+    // failure, decrypt failure) are counted separately from content differences
+    // so they are not silently reported as data mismatches.
+    let error_count_safe = Arc::new(AsyncMutex::new(0u32));
 
     let details_safe = Arc::new(AsyncMutex::new(Vec::new()));
 
@@ -33868,14 +34392,47 @@ async fn cmd_cryptcheck(
         let rp = remote_path_resolved.clone();
         let mc = Arc::clone(&match_count_safe);
         let dc = Arc::clone(&differ_count_safe);
+        let ec = Arc::clone(&error_count_safe);
         let ds = Arc::clone(&details_safe);
         let c = cfg.clone();
         let permit = Arc::clone(&semaphore).acquire_owned().await.unwrap();
 
         join_handles.push(tokio::spawn(async move {
+            // CRYPT-01: classify each operational failure with a distinct status
+            // and counter so a connect/download/decrypt error is never reported as
+            // a content `differ`. Helper records the error and emits a text marker.
+            async fn record_error(
+                ec: &Arc<AsyncMutex<u32>>,
+                ds: &Arc<AsyncMutex<Vec<CliCheckEntry>>>,
+                rel: &str,
+                status: &str,
+                local_size: Option<u64>,
+                remote_size: Option<u64>,
+                text: bool,
+            ) {
+                *ec.lock().await += 1;
+                ds.lock().await.push(CliCheckEntry {
+                    path: rel.to_string(),
+                    status: status.to_string(),
+                    local_size,
+                    remote_size,
+                });
+                if text {
+                    eprintln!("! {} ({})", rel, status);
+                }
+            }
+            let is_text = matches!(format, OutputFormat::Text);
+
             let rel = &local_file.rel_path;
             let local_full = format!("{}/{}", lp, rel);
-            let local_bytes = tokio::fs::read(&local_full).await.unwrap_or_default();
+            let local_bytes = match tokio::fs::read(&local_full).await {
+                Ok(b) => b,
+                Err(_) => {
+                    record_error(&ec, &ds, rel, "local_read_error", Some(local_file.size), Some(remote_file.size), is_text).await;
+                    drop(permit);
+                    return;
+                }
+            };
 
             let local_hash = if algo == "md5" {
                 use md5::Digest;
@@ -33886,36 +34443,46 @@ async fn cmd_cryptcheck(
             };
 
             let remote_full = format!("{}/{}", rp, remote_file.rel_path);
-            let remote_hash = if let Ok(mut p) = ProviderFactory::create(&c) {
-                if let Ok(()) = p.connect().await {
-                    let remote_bytes = p.download_to_bytes(&remote_full).await.unwrap_or_default();
-                    if algo == "md5" {
-                        match ftp_client_gui_lib::rclone_crypt::decrypt_and_hash::<md5::Md5>(
-                            &remote_bytes,
-                            &dk,
-                        ) {
-                            Ok((h, _)) => format!("{:x}", h),
-                            Err(_) => "error".to_string(),
-                        }
-                    } else {
-                        match ftp_client_gui_lib::rclone_crypt::decrypt_and_hash::<sha2::Sha256>(
-                            &remote_bytes,
-                            &dk,
-                        ) {
-                            Ok((h, _)) => format!("{:x}", h),
-                            Err(_) => "error".to_string(),
-                        }
-                    }
-                } else {
-                    "error".to_string()
+            let mut p = match ProviderFactory::create(&c) {
+                Ok(p) => p,
+                Err(_) => {
+                    record_error(&ec, &ds, rel, "connect_error", Some(local_bytes.len() as u64), Some(remote_file.size), is_text).await;
+                    drop(permit);
+                    return;
                 }
+            };
+            if p.connect().await.is_err() {
+                record_error(&ec, &ds, rel, "connect_error", Some(local_bytes.len() as u64), Some(remote_file.size), is_text).await;
+                drop(permit);
+                return;
+            }
+            let remote_bytes = match p.download_to_bytes(&remote_full).await {
+                Ok(b) => b,
+                Err(_) => {
+                    record_error(&ec, &ds, rel, "remote_download_error", Some(local_bytes.len() as u64), Some(remote_file.size), is_text).await;
+                    drop(permit);
+                    return;
+                }
+            };
+            let decrypted = if algo == "md5" {
+                ftp_client_gui_lib::rclone_crypt::decrypt_and_hash::<md5::Md5>(&remote_bytes, &dk)
+                    .map(|(h, _)| format!("{:x}", h))
             } else {
-                "error".to_string()
+                ftp_client_gui_lib::rclone_crypt::decrypt_and_hash::<sha2::Sha256>(&remote_bytes, &dk)
+                    .map(|(h, _)| format!("{:x}", h))
+            };
+            let remote_hash = match decrypted {
+                Ok(h) => h,
+                Err(_) => {
+                    record_error(&ec, &ds, rel, "decrypt_error", Some(local_bytes.len() as u64), Some(remote_file.size), is_text).await;
+                    drop(permit);
+                    return;
+                }
             };
 
             if local_hash == remote_hash {
                 *mc.lock().await += 1;
-                if matches!(format, OutputFormat::Text) {
+                if is_text {
                     eprintln!("= {}", rel);
                 }
             } else {
@@ -33926,7 +34493,7 @@ async fn cmd_cryptcheck(
                     local_size: Some(local_bytes.len() as u64),
                     remote_size: Some(remote_file.size),
                 });
-                if matches!(format, OutputFormat::Text) {
+                if is_text {
                     eprintln!("* {}", rel);
                 }
             }
@@ -33941,6 +34508,7 @@ async fn cmd_cryptcheck(
 
     match_count += *match_count_safe.lock().await;
     differ_count += *differ_count_safe.lock().await;
+    let error_count = *error_count_safe.lock().await;
     details.append(&mut *details_safe.lock().await);
 
     if !one_way {
@@ -33962,9 +34530,16 @@ async fn cmd_cryptcheck(
 
     if matches!(format, OutputFormat::Json) {
         print_json(&serde_json::json!({
-            "status": if differ_count == 0 && missing_local == 0 && missing_remote == 0 { "ok" } else { "differences_found" },
+            "status": if error_count > 0 {
+                "partial"
+            } else if differ_count == 0 && missing_local == 0 && missing_remote == 0 {
+                "ok"
+            } else {
+                "differences_found"
+            },
             "match_count": match_count,
             "differ_count": differ_count,
+            "error_count": error_count,
             "missing_local": missing_local,
             "missing_remote": missing_remote,
             "elapsed_secs": elapsed,
@@ -33973,13 +34548,15 @@ async fn cmd_cryptcheck(
         }));
     } else {
         eprintln!(
-            "\n  Match: {}  Differ: {}  Missing local: {}  Missing remote: {}  ({:.1}s)",
-            match_count, differ_count, missing_local, missing_remote, elapsed
+            "\n  Match: {}  Differ: {}  Errors: {}  Missing local: {}  Missing remote: {}  ({:.1}s)",
+            match_count, differ_count, error_count, missing_local, missing_remote, elapsed
         );
     }
 
     let _ = provider.disconnect().await;
-    if differ_count > 0 || missing_local > 0 || missing_remote > 0 {
+    // CRYPT-01: an operational error is exit 4 (incomplete check), distinct from a
+    // clean run; differences/missing also exit 4. Only a fully clean run is 0.
+    if differ_count > 0 || missing_local > 0 || missing_remote > 0 || error_count > 0 {
         4
     } else {
         0
@@ -34041,11 +34618,21 @@ async fn cmd_reconcile(
     }
 
     let remote_spinner = maybe_create_scan_spinner(format, cli, "Scanning remote...");
-    let remotes =
+    let (remotes, remote_health) =
         scan_remote_tree_with_progress(&mut provider, remote_path, &scan_opts, &remote_spinner)
             .await;
     if let Some(pb) = remote_spinner {
         pb.finish_and_clear();
+    }
+    // TX-01: an incomplete remote listing makes "missing_remote" unreliable; if a
+    // later `sync --from-reconcile --delete` trusted this file it could delete
+    // intact local files. Surface the partial state so a pipeline can stop here.
+    if remote_health.is_incomplete() && !cli.quiet {
+        eprintln!(
+            "Warning: remote scan incomplete ({} list error(s){}); reconcile result is partial and unsafe to feed into `sync --delete`.",
+            remote_health.errors,
+            if remote_health.truncated { ", truncated" } else { "" }
+        );
     }
     let diff = compare_trees(&locals, &remotes, one_way);
 
@@ -34103,7 +34690,9 @@ async fn cmd_reconcile(
     );
 
     let result = CliReconcileResult {
-        status: if differ_group.is_empty()
+        status: if remote_health.is_incomplete() {
+            "partial"
+        } else if differ_group.is_empty()
             && missing_remote_group.is_empty()
             && missing_local_group.is_empty()
         {
@@ -34118,6 +34707,9 @@ async fn cmd_reconcile(
             "differ_count": differ_group.len(),
             "missing_remote_count": missing_remote_group.len(),
             "missing_local_count": missing_local_group.len(),
+            "remote_scan_incomplete": remote_health.is_incomplete(),
+            "remote_scan_errors": remote_health.errors,
+            "remote_scan_truncated": remote_health.truncated,
             "elapsed_secs": elapsed,
         }),
         groups: serde_json::json!({
@@ -34177,6 +34769,7 @@ async fn cmd_reconcile(
     }
 
     let _ = provider.disconnect().await;
+    // "ok" -> 0; "differences_found" and "partial" (incomplete remote scan) -> 4.
     if result.status == "ok" {
         0
     } else {
@@ -38893,7 +39486,12 @@ async fn agent_tool_loop(
                                     eprint!("\r                                        \r");
                                     eprintln!("  \x1b[31m✗\x1b[0m {} failed: {}", tc.name, e);
                                 }
-                                format!("Error: {}", e)
+                                // MCP-02: scrub token-bearing provider/tool error
+                                // strings before they enter the model conversation.
+                                format!(
+                                    "Error: {}",
+                                    ftp_client_gui_lib::ai::sanitize_error_message(&e.to_string())
+                                )
                             }
                         }
                     } else {
@@ -39370,9 +39968,50 @@ async fn cmd_agent_repl(cfg: &AgentConfig) -> i32 {
 }
 
 /// Orchestration mode - JSON-RPC 2.0 over stdin/stdout
+/// Read one newline-delimited line from a blocking `BufRead` with a hard byte
+/// cap (MCP-01). Returns `Ok(None)` at EOF, otherwise the line bytes (newline
+/// stripped) plus an `exceeded` flag set when the line ran past `max`. Memory is
+/// bounded to `max` plus one `fill_buf` chunk: an oversized line is drained, not
+/// buffered, so a newline-free multi-GB input cannot OOM the daemon.
+fn read_line_bounded_std<R: std::io::BufRead>(
+    reader: &mut R,
+    max: usize,
+) -> std::io::Result<Option<(Vec<u8>, bool)>> {
+    let mut line: Vec<u8> = Vec::new();
+    let mut exceeded = false;
+    loop {
+        let available = reader.fill_buf()?;
+        if available.is_empty() {
+            if line.is_empty() && !exceeded {
+                return Ok(None); // EOF, nothing read
+            }
+            return Ok(Some((line, exceeded)));
+        }
+        match available.iter().position(|&b| b == b'\n') {
+            Some(pos) => {
+                if !exceeded && line.len() + pos <= max {
+                    line.extend_from_slice(&available[..pos]);
+                } else {
+                    exceeded = true;
+                }
+                reader.consume(pos + 1);
+                return Ok(Some((line, exceeded)));
+            }
+            None => {
+                let len = available.len();
+                if !exceeded && line.len() + len <= max {
+                    line.extend_from_slice(available);
+                } else {
+                    exceeded = true;
+                }
+                reader.consume(len);
+            }
+        }
+    }
+}
+
 async fn cmd_agent_orchestrate(cfg: &AgentConfig) -> i32 {
     use ftp_client_gui_lib::ai::ChatMessage;
-    use std::io::BufRead;
 
     let mut conversation: Vec<ChatMessage> = Vec::new();
 
@@ -39393,12 +40032,16 @@ async fn cmd_agent_orchestrate(cfg: &AgentConfig) -> i32 {
 
     const ORCH_MAX_LINE_BYTES: usize = 1_048_576; // 1 MB
     let stdin = io::stdin();
-    for line in stdin.lock().lines() {
-        let line = match line {
-            Ok(l) => l,
+    let mut locked = stdin.lock();
+    loop {
+        // MCP-01: bounded line read so a newline-free multi-GB line cannot OOM
+        // the orchestrate daemon before the size cap is checked.
+        let (bytes, exceeded) = match read_line_bounded_std(&mut locked, ORCH_MAX_LINE_BYTES) {
+            Ok(Some(v)) => v,
+            Ok(None) => break, // EOF
             Err(_) => break,
         };
-        if line.len() > ORCH_MAX_LINE_BYTES {
+        if exceeded {
             println!(
                 "{}",
                 serde_json::json!({
@@ -39409,7 +40052,7 @@ async fn cmd_agent_orchestrate(cfg: &AgentConfig) -> i32 {
             );
             continue;
         }
-        let line = line.trim().to_string();
+        let line = String::from_utf8_lossy(&bytes).trim().to_string();
         if line.is_empty() {
             continue;
         }
@@ -40864,13 +41507,18 @@ async fn main() {
             )
             .await
         }
-        Commands::Cleanup { url, path, force } => {
+        Commands::Cleanup {
+            url,
+            path,
+            force,
+            min_age,
+        } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str())
             } else {
                 (url.as_str(), path.as_str())
             };
-            cmd_cleanup(u, p, *force, &cli, format).await
+            cmd_cleanup(u, p, *force, min_age, &cli, format).await
         }
         Commands::Dedupe {
             url,
@@ -41362,32 +42010,52 @@ async fn main() {
             name,
             username,
             password,
-        } => cmd_profile_duplicate_mode(
-            &cli,
-            format,
-            selector,
-            mode,
-            name.as_deref(),
-            username.as_deref(),
+            password_env,
+            password_stdin,
+        } => match resolve_mode_password(
             password.as_deref(),
-        ),
+            password_env.as_deref(),
+            *password_stdin,
+            format,
+        ) {
+            Ok(pw) => cmd_profile_duplicate_mode(
+                &cli,
+                format,
+                selector,
+                mode,
+                name.as_deref(),
+                username.as_deref(),
+                pw.as_deref(),
+            ),
+            Err(code) => code,
+        },
         Commands::ProfileConvertMode {
             selector,
             mode,
             name,
             username,
             password,
+            password_env,
+            password_stdin,
             yes,
-        } => cmd_profile_convert_mode(
-            &cli,
-            format,
-            selector,
-            mode,
-            name.as_deref(),
-            username.as_deref(),
+        } => match resolve_mode_password(
             password.as_deref(),
-            *yes,
-        ),
+            password_env.as_deref(),
+            *password_stdin,
+            format,
+        ) {
+            Ok(pw) => cmd_profile_convert_mode(
+                &cli,
+                format,
+                selector,
+                mode,
+                name.as_deref(),
+                username.as_deref(),
+                pw.as_deref(),
+                *yes,
+            ),
+            Err(code) => code,
+        },
         Commands::ProfileCopyUser { selector, to_user } => {
             cmd_profile_relocate_user(&cli, format, selector, to_user, false, false)
         }
@@ -41420,7 +42088,7 @@ async fn main() {
             local_path.as_deref(),
             remote_path.as_deref(),
         ),
-        Commands::AgentInfo => cmd_agent_info(&cli),
+        Commands::AgentInfo { redact_identifiers } => cmd_agent_info(&cli, *redact_identifiers),
         Commands::AgentConnect { profile } => cmd_agent_connect(&cli, profile).await,
         Commands::Crypt { command } => {
             let resolve_crypt_password = |p: &Option<String>| -> Option<String> {
@@ -43655,6 +44323,92 @@ mod tests {
             resolve_cli_remote_path("/www.ericsolar.it", "/www.ericsolar.it/app"),
             "/www.ericsolar.it/app"
         );
+    }
+
+    // ── PATH-01: fallible CLI remote-path resolver ─────────────────────
+
+    #[test]
+    fn test_try_resolve_cli_remote_path_rejects_traversal() {
+        assert!(matches!(
+            try_resolve_cli_remote_path("/base", "../etc/passwd"),
+            Err(RemotePathError::Traversal(_))
+        ));
+        assert!(matches!(
+            try_resolve_cli_remote_path("/base", "a/../../b"),
+            Err(RemotePathError::Traversal(_))
+        ));
+        // Backslash-separated traversal is normalised before the check.
+        assert!(matches!(
+            try_resolve_cli_remote_path("/base", "a\\..\\b"),
+            Err(RemotePathError::Traversal(_))
+        ));
+    }
+
+    #[test]
+    fn test_try_resolve_cli_remote_path_rejects_null_byte() {
+        assert!(matches!(
+            try_resolve_cli_remote_path("/base", "a\0b"),
+            Err(RemotePathError::NullByte)
+        ));
+    }
+
+    #[test]
+    fn test_try_resolve_cli_remote_path_accepts_safe_paths() {
+        // A filename that merely contains ".." as a substring is fine.
+        assert_eq!(
+            try_resolve_cli_remote_path("/", "file..backup.txt").unwrap(),
+            "file..backup.txt"
+        );
+        assert_eq!(
+            try_resolve_cli_remote_path("/base", "front/includes").unwrap(),
+            "/base/front/includes"
+        );
+    }
+
+    // ── UX-01: truncate_str is UTF-8 boundary safe ─────────────────────
+
+    #[test]
+    fn test_truncate_str_does_not_panic_on_multibyte() {
+        // Multi-byte chars near the cut must not panic and stay valid UTF-8.
+        let s = "ÀÉÎÕÜ café piñata 日本語テスト";
+        let out = truncate_str(s, 8);
+        assert!(out.ends_with("..."));
+        assert!(out.chars().count() <= 8);
+        // Round-trips as valid UTF-8 (String is always valid; assert non-empty).
+        assert!(!out.is_empty());
+        // Short strings are returned unchanged.
+        assert_eq!(truncate_str("café", 10), "café");
+    }
+
+    // ── MCP-01: bounded line reader ────────────────────────────────────
+
+    #[test]
+    fn test_read_line_bounded_std_normal_and_eof() {
+        use std::io::Cursor;
+        let mut r = Cursor::new(b"hello\nworld\n".to_vec());
+        let (l1, e1) = read_line_bounded_std(&mut r, 1024).unwrap().unwrap();
+        assert_eq!(l1, b"hello");
+        assert!(!e1);
+        let (l2, e2) = read_line_bounded_std(&mut r, 1024).unwrap().unwrap();
+        assert_eq!(l2, b"world");
+        assert!(!e2);
+        assert!(read_line_bounded_std(&mut r, 1024).unwrap().is_none());
+    }
+
+    #[test]
+    fn test_read_line_bounded_std_flags_oversized() {
+        use std::io::Cursor;
+        // A line longer than the cap is reported as exceeded; the next line is
+        // still readable (the reader resynced past the newline).
+        let mut data = vec![b'x'; 50];
+        data.push(b'\n');
+        data.extend_from_slice(b"ok\n");
+        let mut r = Cursor::new(data);
+        let (_, exceeded) = read_line_bounded_std(&mut r, 10).unwrap().unwrap();
+        assert!(exceeded, "oversized line should set the exceeded flag");
+        let (next, e) = read_line_bounded_std(&mut r, 10).unwrap().unwrap();
+        assert_eq!(next, b"ok");
+        assert!(!e);
     }
 
     // ── BUG-4: parse_mtime_secs with FTP Z suffix ──────────────────────

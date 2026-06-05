@@ -1517,9 +1517,12 @@ impl StorageProvider for FtpProvider {
     }
 
     fn set_chunk_sizes(&mut self, upload: Option<u64>, download: Option<u64>) {
-        // Cap at 16 MB; use the larger of upload/download as unified buffer
+        // Cap at 16 MB. BUFFER-01: FTP uses a single transfer buffer for both
+        // directions; apply the larger of --chunk-size/--buffer-size deterministically
+        // (the previous `.or()` silently dropped --buffer-size whenever --chunk-size
+        // was also set).
         let cap = 16 * 1024 * 1024;
-        if let Some(size) = upload.or(download) {
+        if let Some(size) = upload.into_iter().chain(download).max() {
             self.buffer_size = (size as usize).clamp(4096, cap);
         }
     }

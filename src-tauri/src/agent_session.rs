@@ -120,60 +120,9 @@ impl std::fmt::Display for LookupError {
     }
 }
 
-/// Resolve a profile by exact name/id, falling back to a unique
-/// substring match. Mirrors the lookup rules in
-/// `bin/aeroftp_cli.rs::create_and_connect_for_agent` so CLI and MCP
-/// agree on what "server X" means.
-pub fn lookup_profile(query: &str) -> Result<ProfileSummary, LookupError> {
-    let store = CredentialStore::from_cache().ok_or(LookupError::VaultClosed)?;
-    let profiles_json = store
-        .get("config_server_profiles")
-        .map_err(|e| LookupError::ProfilesUnavailable(e.to_string()))?;
-    let profiles: Vec<Value> = serde_json::from_str(&profiles_json)
-        .map_err(|e| LookupError::ProfilesUnavailable(e.to_string()))?;
-
-    let query_lower = query.to_lowercase();
-    let exact_match = profiles.iter().find(|p| {
-        let name = p
-            .get("name")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_lowercase();
-        let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
-        name == query_lower || id == query
-    });
-
-    let matched = if let Some(p) = exact_match {
-        p
-    } else {
-        let partials: Vec<&Value> = profiles
-            .iter()
-            .filter(|p| {
-                let name = p
-                    .get("name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_lowercase();
-                name.contains(&query_lower)
-            })
-            .collect();
-        match partials.as_slice() {
-            [single] => *single,
-            [] => return Err(LookupError::NotFound(query.to_string())),
-            many => {
-                let candidates = many
-                    .iter()
-                    .filter_map(|p| p.get("name").and_then(|v| v.as_str()).map(str::to_string))
-                    .collect();
-                return Err(LookupError::Ambiguous {
-                    query: query.to_string(),
-                    candidates,
-                });
-            }
-        }
-    };
-
-    Ok(ProfileSummary {
+/// Build a [`ProfileSummary`] from a raw saved-profile JSON value.
+fn profile_summary_from(matched: &Value) -> ProfileSummary {
+    ProfileSummary {
         id: matched
             .get("id")
             .and_then(|v| v.as_str())
@@ -209,7 +158,105 @@ pub fn lookup_profile(query: &str) -> Result<ProfileSummary, LookupError> {
             .unwrap_or("/")
             .to_string(),
         extras: flatten_options(matched.get("options")),
-    })
+    }
+}
+
+/// Resolve a profile by 1-based numeric selector, exact id, or exact
+/// (case-insensitive) name, falling back to a unique substring match. Mirrors
+/// the lookup rules in `bin/aeroftp_cli.rs::create_and_connect_for_agent` so CLI
+/// and MCP agree on what "server X" means.
+///
+/// AGENT-01: duplicate exact display names resolve to `Ambiguous` (with ids)
+/// instead of silently picking the first match. AGENT-02: the 1-based selector
+/// printed by `profiles --json` is accepted directly.
+pub fn lookup_profile(query: &str) -> Result<ProfileSummary, LookupError> {
+    let store = CredentialStore::from_cache().ok_or(LookupError::VaultClosed)?;
+    let profiles_json = store
+        .get("config_server_profiles")
+        .map_err(|e| LookupError::ProfilesUnavailable(e.to_string()))?;
+    let profiles: Vec<Value> = serde_json::from_str(&profiles_json)
+        .map_err(|e| LookupError::ProfilesUnavailable(e.to_string()))?;
+
+    // AGENT-02: accept the 1-based numeric selector from `profiles --json`.
+    if let Ok(idx) = query.trim().parse::<usize>() {
+        if idx >= 1 {
+            return match profiles.get(idx - 1) {
+                Some(p) => Ok(profile_summary_from(p)),
+                None => Err(LookupError::NotFound(query.to_string())),
+            };
+        }
+    }
+
+    let query_lower = query.to_lowercase();
+
+    // Exact id match first: ids are unique, so this never collides.
+    if let Some(p) = profiles
+        .iter()
+        .find(|p| p.get("id").and_then(|v| v.as_str()).unwrap_or("") == query)
+    {
+        return Ok(profile_summary_from(p));
+    }
+
+    // AGENT-01: collect ALL exact (case-insensitive) name matches. A duplicated
+    // display name is reported as ambiguous with ids, not silently resolved.
+    let exact_name: Vec<&Value> = profiles
+        .iter()
+        .filter(|p| {
+            p.get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_lowercase()
+                == query_lower
+        })
+        .collect();
+
+    let matched = match exact_name.as_slice() {
+        [single] => *single,
+        [] => {
+            let partials: Vec<&Value> = profiles
+                .iter()
+                .filter(|p| {
+                    p.get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_lowercase()
+                        .contains(&query_lower)
+                })
+                .collect();
+            match partials.as_slice() {
+                [single] => *single,
+                [] => return Err(LookupError::NotFound(query.to_string())),
+                many => {
+                    return Err(LookupError::Ambiguous {
+                        query: query.to_string(),
+                        candidates: many
+                            .iter()
+                            .filter_map(|p| {
+                                p.get("name").and_then(|v| v.as_str()).map(str::to_string)
+                            })
+                            .collect(),
+                    });
+                }
+            }
+        }
+        many => {
+            // Same display name on multiple profiles: surface ids so the agent
+            // can retry deterministically with the id or the numeric selector.
+            return Err(LookupError::Ambiguous {
+                query: query.to_string(),
+                candidates: many
+                    .iter()
+                    .map(|p| {
+                        let name = p.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                        let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                        format!("{name} [id={id}]")
+                    })
+                    .collect(),
+            });
+        }
+    };
+
+    Ok(profile_summary_from(matched))
 }
 
 /// Collapse `//`, drop trailing `/`, normalise empty → `/`.
@@ -680,7 +727,11 @@ pub async fn build_agent_connect_payload(query: &str) -> Value {
             let quota = match provider.storage_info().await {
                 Ok(info) => quota_block_ok(info.used, info.total, info.free),
                 Err(ProviderError::NotSupported(_)) => quota_block_unsupported(&profile.protocol),
-                Err(e) => quota_block_unavailable(&e.to_string()),
+                // MCP-02: scrub token-bearing provider error strings before they
+                // reach the model context, matching the MCP/AI-stream surface.
+                Err(e) => {
+                    quota_block_unavailable(&crate::ai::sanitize_error_message(&e.to_string()))
+                }
             };
             (connect, quota)
         }
