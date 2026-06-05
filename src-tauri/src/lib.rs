@@ -7194,8 +7194,6 @@ async fn calculate_checksum(path: String, algorithm: String) -> Result<String, S
     }
 }
 
-/// Compress files/folders into a ZIP archive
-#[tauri::command]
 /// RAII guard for atomic archive writes. The archive is written to a sibling
 /// `<output>.aerotmp` and renamed into place only on success; on any early
 /// error (a `?` return) `Drop` removes the temp file, so the compress path can
@@ -7236,6 +7234,8 @@ impl Drop for ArchiveTempFile {
     }
 }
 
+/// Compress files/folders into a ZIP archive
+#[tauri::command]
 async fn compress_files(
     paths: Vec<String>,
     output_path: String,
