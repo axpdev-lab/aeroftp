@@ -269,7 +269,7 @@
             "autoScanUsedOnConnectHint": "Alleen voor backends zonder API voor gebruikte ruimte (FTP, S3, WebDAV). Standaard uit: een grote boom (bijv. een webproject) wordt recursief doorlopen, wat traag kan zijn. Gebruik anders de StatusBar-actie wanneer nodig.",
             "saveAsNewProfile": "Opslaan als nieuw profiel",
             "saveAsNewProfileTitle": "Sla het huidige formulier op als een nieuw profiel in deze modus. Het oorspronkelijke profiel blijft behouden.",
-            "convertToMode": "Converteren naar {{mode}}",
+            "convertToMode": "Converteren naar {mode}",
             "convertReplacesOriginal": "Vervangt het oorspronkelijke profiel",
             "profileConverted": "Profiel geconverteerd",
             "profileDuplicated": "Profiel gedupliceerd",
@@ -4384,7 +4384,7 @@
             "storageVault": "Vault",
             "storageModeSidecarHint": "Register in platte tekst in uw configuratiemap. Leesbaar door autostart-daemons zonder de kluis te ontgrendelen.",
             "storageModeVaultHint": "Koppelingsregister versleuteld met uw hoofdwachtwoord. De kluis moet ontgrendeld zijn bij het starten van de app.",
-            "confirmDelete": "Koppeling '{{name}}' verwijderen? Dit heeft geen invloed op externe bestanden.",
+            "confirmDelete": "Koppeling '{name}' verwijderen? Dit heeft geen invloed op externe bestanden.",
             "openMountAction": "Koppeling openen in bestandsbeheer"
         },
         "reconnect": {

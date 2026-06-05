@@ -409,8 +409,17 @@ export function IntroHub(props: IntroHubProps) {
                 {/* Dynamic Form Tabs: render the active one */}
                 {activeFormTab && (
                     <div className="flex-1 flex flex-col">
+                        {/* Key must stay stable per form tab. Including the
+                            protocol here remounted ConnectionScreen on every
+                            mode switch (Native API <-> WebDAV/S3/FTP); in edit
+                            mode that remount re-ran handleEdit and reset the
+                            form to the original profile, so the unified mode
+                            tabs disappeared and the switch was lost (#215
+                            follow-up). handleProtocolChange already syncs the
+                            form on protocol change, and handleProtocolSelectorOpenChange
+                            is formOnly-guarded, so no remount is needed. */}
                         <ConnectionScreen
-                            key={`${activeFormTab.id}-${activeFormTab.connectionParams.protocol || 'none'}`}
+                            key={activeFormTab.id}
                             formOnly
                             connectionParams={activeFormTab.connectionParams}
                             quickConnectDirs={activeFormTab.quickConnectDirs}

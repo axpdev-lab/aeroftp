@@ -269,7 +269,7 @@
             "autoScanUsedOnConnectHint": "Yalnızca kullanılan alan API'si olmayan arka uçlar için (FTP, S3, WebDAV). Varsayılan olarak kapalı: büyük bir ağaç (ör. bir web projesi) özyinelemeli olarak gezilir ve bu yavaş olabilir. Aksi halde StatusBar eylemini gerektiğinde kullanın.",
             "saveAsNewProfile": "Yeni profil olarak kaydet",
             "saveAsNewProfileTitle": "Mevcut formu bu modda yeni bir profil olarak kaydedin. Orijinal profil korunur.",
-            "convertToMode": "{{mode}} moduna dönüştür",
+            "convertToMode": "{mode} moduna dönüştür",
             "convertReplacesOriginal": "Orijinal profili değiştirir",
             "profileConverted": "Profil dönüştürüldü",
             "profileDuplicated": "Profil çoğaltıldı",
@@ -4384,7 +4384,7 @@
             "storageVault": "Vault",
             "storageModeSidecarHint": "Yapılandırma dizininizdeki düz metin kayıt defteri. Kasanın kilidini açmadan otomatik başlatma daemon'ları tarafından okunabilir.",
             "storageModeVaultHint": "Bağlama kayıt defteri, ana parolanızla şifrelenmiştir. Uygulama başlangıcında kasanın kilidi açılmalıdır.",
-            "confirmDelete": "'{{name}}' bağlaması silinsin mi? Bu, uzak dosyaları etkilemez.",
+            "confirmDelete": "'{name}' bağlaması silinsin mi? Bu, uzak dosyaları etkilemez.",
             "openMountAction": "Bağlamayı dosya yöneticisinde aç"
         },
         "reconnect": {

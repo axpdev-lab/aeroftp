@@ -269,7 +269,7 @@
             "autoScanUsedOnConnectHint": "Para lamang sa mga backend na walang API ng nagamit na espasyo (FTP, S3, WebDAV). Naka-off bilang default: ang malaking tree (hal. isang web project) ay nire-recurse nang paulit-ulit, na maaaring mabagal. Kung hindi, gamitin ang aksyon sa StatusBar kapag kailangan.",
             "saveAsNewProfile": "I-save bilang bagong profile",
             "saveAsNewProfileTitle": "I-save ang kasalukuyang form bilang bagong profile sa mode na ito. Ang orihinal na profile ay mapapanatili.",
-            "convertToMode": "I-convert sa {{mode}}",
+            "convertToMode": "I-convert sa {mode}",
             "convertReplacesOriginal": "Pinapalitan ang orihinal na profile",
             "profileConverted": "Na-convert ang profile",
             "profileDuplicated": "Na-duplicate ang profile",
@@ -4403,7 +4403,7 @@
             "storageVault": "Vault",
             "storageModeSidecarHint": "Plaintext registry sa ilalim ng iyong config directory. Nababasa ng autostart daemons nang hindi ina-unlock ang vault.",
             "storageModeVaultHint": "Mount registry na naka-encrypt sa ilalim ng iyong master password. Dapat naka-unlock ang vault sa pag-umpisa ng app.",
-            "confirmDelete": "Tanggalin ang mount na '{{name}}'? Hindi ito makakaapekto sa mga remote file.",
+            "confirmDelete": "Tanggalin ang mount na '{name}'? Hindi ito makakaapekto sa mga remote file.",
             "openMountAction": "Buksan ang mount sa file manager"
         },
         "reconnect": {

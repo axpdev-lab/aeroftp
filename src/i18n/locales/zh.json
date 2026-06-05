@@ -269,7 +269,7 @@
             "autoScanUsedOnConnectHint": "仅适用于没有已用空间 API 的后端（FTP、S3、WebDAV）。默认关闭：大型目录树（例如一个网站项目）会被递归遍历，可能较慢。否则请按需使用 StatusBar 中的操作。",
             "saveAsNewProfile": "另存为新配置",
             "saveAsNewProfileTitle": "将当前表单作为此模式下的新配置保存。原始配置将被保留。",
-            "convertToMode": "转换为 {{mode}}",
+            "convertToMode": "转换为 {mode}",
             "convertReplacesOriginal": "替换原始配置",
             "profileConverted": "配置已转换",
             "profileDuplicated": "配置已复制",
@@ -4384,7 +4384,7 @@
             "storageVault": "Vault",
             "storageModeSidecarHint": "在配置目录下的明文注册表。无需解锁保险库即可被自启动守护进程读取。",
             "storageModeVaultHint": "使用主密码加密的挂载注册表。应用启动时必须解锁保险库。",
-            "confirmDelete": "删除挂载 '{{name}}'？这不会影响远程文件。",
+            "confirmDelete": "删除挂载 '{name}'？这不会影响远程文件。",
             "openMountAction": "在文件管理器中打开挂载"
         },
         "reconnect": {

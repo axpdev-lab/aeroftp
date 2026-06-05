@@ -269,7 +269,7 @@
             "autoScanUsedOnConnectHint": "Aðeins fyrir bakenda án API fyrir notað pláss (FTP, S3, WebDAV). Sjálfgefið slökkt: stórt tré (t.d. vefverkefni) er gengið endurkvæmt, sem getur verið hægt. Annars notaðu StatusBar-aðgerðina eftir þörfum.",
             "saveAsNewProfile": "Vista sem nýja vistun",
             "saveAsNewProfileTitle": "Vista núverandi eyðublað sem nýja vistun í þessum ham. Upprunalega vistunin er varðveitt.",
-            "convertToMode": "Umbreyta í {{mode}}",
+            "convertToMode": "Umbreyta í {mode}",
             "convertReplacesOriginal": "Kemur í stað upprunalegrar vistunar",
             "profileConverted": "Vistun umbreytt",
             "profileDuplicated": "Vistun afrituð",
@@ -4403,7 +4403,7 @@
             "storageVault": "Vault",
             "storageModeSidecarHint": "Skrásetning í hreinum texta undir stillingarmöppu þinni. Læsileg af sjálfvirkum ræsihandbendlum án þess að opna hvelfingu.",
             "storageModeVaultHint": "Tengingaskrá dulkóðuð með aðallykilorði þínu. Hvelfingin verður að vera opin þegar forritið ræsir.",
-            "confirmDelete": "Eyða tengingu '{{name}}'? Þetta hefur ekki áhrif á fjarskrár.",
+            "confirmDelete": "Eyða tengingu '{name}'? Þetta hefur ekki áhrif á fjarskrár.",
             "openMountAction": "Opna tengingu í skráastjóra"
         },
         "reconnect": {

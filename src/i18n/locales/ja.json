@@ -269,7 +269,7 @@
             "autoScanUsedOnConnectHint": "使用容量 API がないバックエンド (FTP、S3、WebDAV) のみ。既定ではオフです: 大きなツリー (例: Web プロジェクト) を再帰的にたどるため、処理が遅くなる場合があります。それ以外の場合は必要に応じて StatusBar の操作を使用してください。",
             "saveAsNewProfile": "新しいプロファイルとして保存",
             "saveAsNewProfileTitle": "現在のフォームをこのモードで新しいプロファイルとして保存します。元のプロファイルは保持されます。",
-            "convertToMode": "{{mode}} に変換",
+            "convertToMode": "{mode} に変換",
             "convertReplacesOriginal": "元のプロファイルを置き換えます",
             "profileConverted": "プロファイルが変換されました",
             "profileDuplicated": "プロファイルが複製されました",
@@ -4384,7 +4384,7 @@
             "storageVault": "Vault",
             "storageModeSidecarHint": "設定ディレクトリ内のプレーンテキストレジストリ。ボールトをロック解除せずに自動起動デーモンが読み取れます。",
             "storageModeVaultHint": "マスターパスワードで暗号化されたマウントレジストリ。アプリ起動時にボールトをロック解除する必要があります。",
-            "confirmDelete": "マウント '{{name}}' を削除しますか？これはリモートファイルには影響しません。",
+            "confirmDelete": "マウント '{name}' を削除しますか？これはリモートファイルには影響しません。",
             "openMountAction": "ファイルマネージャーでマウントを開く"
         },
         "reconnect": {

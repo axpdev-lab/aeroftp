@@ -269,7 +269,7 @@
             "autoScanUsedOnConnectHint": "Hanya untuk backend tanpa API ruang terpakai (FTP, S3, WebDAV). Nonaktif secara bawaan: pohon yang besar (mis. proyek web) ditelusuri secara rekursif, yang bisa lambat. Jika tidak, gunakan tindakan StatusBar sesuai kebutuhan.",
             "saveAsNewProfile": "Simpan sebagai profil baru",
             "saveAsNewProfileTitle": "Simpan formulir saat ini sebagai profil baru dalam mode ini. Profil asli dipertahankan.",
-            "convertToMode": "Konversi ke {{mode}}",
+            "convertToMode": "Konversi ke {mode}",
             "convertReplacesOriginal": "Mengganti profil asli",
             "profileConverted": "Profil dikonversi",
             "profileDuplicated": "Profil diduplikasi",
@@ -4384,7 +4384,7 @@
             "storageVault": "Vault",
             "storageModeSidecarHint": "Registri teks biasa di bawah direktori konfigurasi Anda. Dapat dibaca oleh daemon autostart tanpa membuka brankas.",
             "storageModeVaultHint": "Registri mount terenkripsi dengan kata sandi master Anda. Brankas harus dibuka saat aplikasi dimulai.",
-            "confirmDelete": "Hapus mount '{{name}}'? Ini tidak memengaruhi berkas jarak jauh.",
+            "confirmDelete": "Hapus mount '{name}'? Ini tidak memengaruhi berkas jarak jauh.",
             "openMountAction": "Buka mount di pengelola berkas"
         },
         "reconnect": {

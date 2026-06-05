@@ -269,7 +269,7 @@
             "autoScanUsedOnConnectHint": "Hanya untuk bahagian belakang tanpa API ruang digunakan (FTP, S3, WebDAV). Dimatikan secara lalai: pepohon yang besar (cth. projek web) dilalui secara rekursif, yang boleh menjadi perlahan. Jika tidak, gunakan tindakan StatusBar mengikut keperluan.",
             "saveAsNewProfile": "Simpan sebagai profil baru",
             "saveAsNewProfileTitle": "Simpan borang semasa sebagai profil baru dalam mod ini. Profil asal dikekalkan.",
-            "convertToMode": "Tukar ke {{mode}}",
+            "convertToMode": "Tukar ke {mode}",
             "convertReplacesOriginal": "Menggantikan profil asal",
             "profileConverted": "Profil ditukar",
             "profileDuplicated": "Profil diduplikasi",
@@ -4384,7 +4384,7 @@
             "storageVault": "Vault",
             "storageModeSidecarHint": "Pendaftaran teks biasa di bawah direktori konfigurasi anda. Boleh dibaca oleh daemon autostart tanpa membuka peti besi.",
             "storageModeVaultHint": "Pendaftaran lekapan disulitkan dengan kata laluan induk anda. Peti besi mesti dibuka semasa aplikasi dimulakan.",
-            "confirmDelete": "Padam lekapan '{{name}}'? Ini tidak menjejaskan fail jauh.",
+            "confirmDelete": "Padam lekapan '{name}'? Ini tidak menjejaskan fail jauh.",
             "openMountAction": "Buka lekapan dalam pengurus fail"
         },
         "reconnect": {

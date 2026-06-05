@@ -1242,7 +1242,7 @@
             "saveAsNew": "Save as New",
             "saveAsNewProfile": "Save as new profile",
             "saveAsNewProfileTitle": "Save the current form as a new profile in this mode. The original profile is preserved.",
-            "convertToMode": "Convert to {{mode}}",
+            "convertToMode": "Convert to {mode}",
             "convertReplacesOriginal": "Replaces the original profile",
             "profileConverted": "Profile converted",
             "profileDuplicated": "Profile duplicated",
@@ -1997,7 +1997,7 @@
             "storageVault": "Vault",
             "storageModeSidecarHint": "Plaintext registry under your config directory. Readable by autostart daemons without unlocking the vault.",
             "storageModeVaultHint": "Mount registry encrypted under your master password. Vault must be unlocked at app start.",
-            "confirmDelete": "Delete mount '{{name}}'? This does not affect remote files.",
+            "confirmDelete": "Delete mount '{name}'? This does not affect remote files.",
             "openMountAction": "Open mount in file manager"
         },
         "mcp": {

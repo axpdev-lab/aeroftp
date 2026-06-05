@@ -269,7 +269,7 @@
             "autoScanUsedOnConnectHint": "Csak olyan háttérrendszerekhez, amelyeknek nincs használthely-API-juk (FTP, S3, WebDAV). Alapértelmezés szerint kikapcsolva: egy nagy fát (pl. egy webprojektet) rekurzívan bejár, ami lassú lehet. Egyébként használd a StatusBar műveletét igény szerint.",
             "saveAsNewProfile": "Mentés új profilként",
             "saveAsNewProfileTitle": "Mentse el az aktuális űrlapot új profilként ebben a módban. Az eredeti profil megmarad.",
-            "convertToMode": "Konvertálás {{mode}} módra",
+            "convertToMode": "Konvertálás {mode} módra",
             "convertReplacesOriginal": "Lecseréli az eredeti profilt",
             "profileConverted": "Profil konvertálva",
             "profileDuplicated": "Profil megkettőzve",
@@ -4384,7 +4384,7 @@
             "storageVault": "Vault",
             "storageModeSidecarHint": "Sima szöveges nyilvántartás a konfigurációs könyvtárában. Az automatikusan induló démonok olvashatják a széf feloldása nélkül.",
             "storageModeVaultHint": "A csatolási nyilvántartás titkosítva a fő jelszavával. Az alkalmazás indításakor a széfet fel kell oldani.",
-            "confirmDelete": "Törli a(z) '{{name}}' csatolást? Ez nem érinti a távoli fájlokat.",
+            "confirmDelete": "Törli a(z) '{name}' csatolást? Ez nem érinti a távoli fájlokat.",
             "openMountAction": "Csatolás megnyitása fájlkezelőben"
         },
         "reconnect": {

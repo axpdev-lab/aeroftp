@@ -269,7 +269,7 @@
             "autoScanUsedOnConnectHint": "Nur für Backends ohne API für belegten Speicher (FTP, S3, WebDAV). Standardmäßig deaktiviert: ein großer Baum (z. B. ein Webprojekt) wird rekursiv durchlaufen, was langsam sein kann. Verwenden Sie andernfalls die StatusBar-Aktion bei Bedarf.",
             "saveAsNewProfile": "Als neues Profil speichern",
             "saveAsNewProfileTitle": "Aktuelles Formular als neues Profil in diesem Modus speichern. Das ursprüngliche Profil bleibt erhalten.",
-            "convertToMode": "In {{mode}} umwandeln",
+            "convertToMode": "In {mode} umwandeln",
             "convertReplacesOriginal": "Ersetzt das ursprüngliche Profil",
             "profileConverted": "Profil umgewandelt",
             "profileDuplicated": "Profil dupliziert",
@@ -4384,7 +4384,7 @@
             "storageVault": "Vault",
             "storageModeSidecarHint": "Klartext-Registry in Ihrem Konfigurationsverzeichnis. Lesbar für Autostart-Daemons ohne Entsperren des Tresors.",
             "storageModeVaultHint": "Mount-Registry verschlüsselt mit Ihrem Master-Passwort. Der Tresor muss beim Start der App entsperrt sein.",
-            "confirmDelete": "Mount '{{name}}' löschen? Dies wirkt sich nicht auf Remote-Dateien aus.",
+            "confirmDelete": "Mount '{name}' löschen? Dies wirkt sich nicht auf Remote-Dateien aus.",
             "openMountAction": "Mount im Dateimanager öffnen"
         },
         "reconnect": {

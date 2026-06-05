@@ -269,7 +269,7 @@
             "autoScanUsedOnConnectHint": "Samo za zaledja brez API-ja za porabljen prostor (FTP, S3, WebDAV). Privzeto izklopljeno: veliko drevo (npr. spletni projekt) se rekurzivno prehodi, kar je lahko počasno. Sicer uporabite dejanje v StatusBar po potrebi.",
             "saveAsNewProfile": "Shrani kot nov profil",
             "saveAsNewProfileTitle": "Shrani trenutni obrazec kot nov profil v tem načinu. Izvirni profil je ohranjen.",
-            "convertToMode": "Pretvori v {{mode}}",
+            "convertToMode": "Pretvori v {mode}",
             "convertReplacesOriginal": "Nadomesti izvirni profil",
             "profileConverted": "Profil pretvorjen",
             "profileDuplicated": "Profil podvojen",
@@ -4384,7 +4384,7 @@
             "storageVault": "Vault",
             "storageModeSidecarHint": "Register v navadnem besedilu v vašem konfiguracijskem imeniku. Berljiv s strani samodejnih zagonskih demonov brez odklepanja trezorja.",
             "storageModeVaultHint": "Register priklopov, šifriran z vašim glavnim geslom. Trezor mora biti odklenjen ob zagonu aplikacije.",
-            "confirmDelete": "Izbrišem priklop '{{name}}'? To ne vpliva na oddaljene datoteke.",
+            "confirmDelete": "Izbrišem priklop '{name}'? To ne vpliva na oddaljene datoteke.",
             "openMountAction": "Odpri priklop v upravitelju datotek"
         },
         "reconnect": {

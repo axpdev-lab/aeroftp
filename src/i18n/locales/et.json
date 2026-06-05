@@ -269,7 +269,7 @@
             "autoScanUsedOnConnectHint": "Ainult backendide jaoks, millel pole kasutatud ruumi API-t (FTP, S3, WebDAV). Vaikimisi väljas: suurt puud (nt veebiprojekt) läbitakse rekursiivselt, mis võib olla aeglane. Vastasel juhul kasutage vajadusel StatusBar toimingut.",
             "saveAsNewProfile": "Salvesta uue profiilina",
             "saveAsNewProfileTitle": "Salvesta praegune vorm uue profiilina selles režiimis. Algne profiil säilitatakse.",
-            "convertToMode": "Teisenda {{mode}}-ks",
+            "convertToMode": "Teisenda {mode}-ks",
             "convertReplacesOriginal": "Asendab algse profiili",
             "profileConverted": "Profiil teisendatud",
             "profileDuplicated": "Profiil dubleeritud",
@@ -4384,7 +4384,7 @@
             "storageVault": "Vault",
             "storageModeSidecarHint": "Lihttekstiline register sinu seadistuste kataloogis. Loetav automaatkäivitavate deemonite poolt ilma võlvi avamata.",
             "storageModeVaultHint": "Ühenduste register, mis on krüpteeritud sinu peaparooli all. Võlv peab rakenduse käivitamisel olema avatud.",
-            "confirmDelete": "Kustutada ühendus '{{name}}'? See ei mõjuta kaugfaile.",
+            "confirmDelete": "Kustutada ühendus '{name}'? See ei mõjuta kaugfaile.",
             "openMountAction": "Ava ühendus failihalduris"
         },
         "reconnect": {

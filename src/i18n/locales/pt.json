@@ -269,7 +269,7 @@
             "autoScanUsedOnConnectHint": "Apenas para backends sem API de espaço usado (FTP, S3, WebDAV). Desativado por padrão: uma árvore grande (ex.: um projeto web) é percorrida recursivamente, o que pode ser lento. Caso contrário, use a ação na StatusBar quando precisar.",
             "saveAsNewProfile": "Salvar como novo perfil",
             "saveAsNewProfileTitle": "Salve o formulário atual como um novo perfil neste modo. O perfil original é preservado.",
-            "convertToMode": "Converter para {{mode}}",
+            "convertToMode": "Converter para {mode}",
             "convertReplacesOriginal": "Substitui o perfil original",
             "profileConverted": "Perfil convertido",
             "profileDuplicated": "Perfil duplicado",
@@ -4384,7 +4384,7 @@
             "storageVault": "Vault",
             "storageModeSidecarHint": "Registro em texto simples no seu diretório de configuração. Legível por daemons de inicialização automática sem desbloquear o cofre.",
             "storageModeVaultHint": "Registro de montagens criptografado com sua senha mestra. O cofre deve estar desbloqueado ao iniciar o aplicativo.",
-            "confirmDelete": "Excluir a montagem '{{name}}'? Isso não afeta os arquivos remotos.",
+            "confirmDelete": "Excluir a montagem '{name}'? Isso não afeta os arquivos remotos.",
             "openMountAction": "Abrir montagem no gerenciador de arquivos"
         },
         "reconnect": {

@@ -269,7 +269,7 @@
             "autoScanUsedOnConnectHint": "Tikai aizmugursistēmām bez izmantotās vietas API (FTP, S3, WebDAV). Pēc noklusējuma izslēgts: liels koks (piem. tīmekļa projekts) tiek apstaigāts rekursīvi, kas var būt lēni. Pretējā gadījumā izmantojiet StatusBar darbību pēc pieprasījuma.",
             "saveAsNewProfile": "Saglabāt kā jaunu profilu",
             "saveAsNewProfileTitle": "Saglabājiet pašreizējo veidlapu kā jaunu profilu šajā režīmā. Sākotnējais profils tiek saglabāts.",
-            "convertToMode": "Pārvērst uz {{mode}}",
+            "convertToMode": "Pārvērst uz {mode}",
             "convertReplacesOriginal": "Aizvieto sākotnējo profilu",
             "profileConverted": "Profils pārvērsts",
             "profileDuplicated": "Profils dublēts",
@@ -4384,7 +4384,7 @@
             "storageVault": "Vault",
             "storageModeSidecarHint": "Vienkāršā teksta reģistrs jūsu konfigurācijas direktorijā. Lasāms autostart dēmoniem bez glabātavas atbloķēšanas.",
             "storageModeVaultHint": "Montēšanas reģistrs šifrēts ar jūsu galveno paroli. Glabātavai jābūt atbloķētai lietotnes startēšanas brīdī.",
-            "confirmDelete": "Dzēst montāžu '{{name}}'? Tas neietekmē attālos failus.",
+            "confirmDelete": "Dzēst montāžu '{name}'? Tas neietekmē attālos failus.",
             "openMountAction": "Atvērt montāžu failu pārvaldniekā"
         },
         "reconnect": {

@@ -269,7 +269,7 @@
             "autoScanUsedOnConnectHint": "Uniquement pour les backends sans API d'espace utilisé (FTP, S3, WebDAV). Désactivé par défaut : une grande arborescence (ex. un projet web) est parcourue récursivement, ce qui peut être lent. Sinon, utilisez l'action de la StatusBar à la demande.",
             "saveAsNewProfile": "Enregistrer comme nouveau profil",
             "saveAsNewProfileTitle": "Enregistrer le formulaire actuel comme un nouveau profil dans ce mode. Le profil d'origine est conservé.",
-            "convertToMode": "Convertir en {{mode}}",
+            "convertToMode": "Convertir en {mode}",
             "convertReplacesOriginal": "Remplace le profil d'origine",
             "profileConverted": "Profil converti",
             "profileDuplicated": "Profil dupliqué",
@@ -4384,7 +4384,7 @@
             "storageVault": "Vault",
             "storageModeSidecarHint": "Registre en clair dans votre répertoire de configuration. Lisible par les démons de démarrage automatique sans déverrouiller le coffre.",
             "storageModeVaultHint": "Registre des montages chiffré avec votre mot de passe maître. Le coffre doit être déverrouillé au démarrage de l'application.",
-            "confirmDelete": "Supprimer le montage « {{name}} » ? Cela n'affecte pas les fichiers distants.",
+            "confirmDelete": "Supprimer le montage « {name} » ? Cela n'affecte pas les fichiers distants.",
             "openMountAction": "Ouvrir le montage dans le gestionnaire de fichiers"
         },
         "reconnect": {

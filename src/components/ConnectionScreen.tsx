@@ -1502,7 +1502,15 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                             protocol: newProtocol,
                             port: provider.defaults?.port || getDefaultPort(newProtocol),
                             providerId: provider.id,
-                            server: connectionParams.server || provider.defaults?.server || '',
+                            // Adopt the target preset's canonical endpoint. The
+                            // modes in a group share an account but have
+                            // DIFFERENT hosts (OpenDrive API dev.opendrive.com
+                            // vs WebDAV webdav.opendrive.com), so carrying over
+                            // the old server connected WebDAV to the API host
+                            // and returned 404. Prefer the preset default; fall
+                            // back to the current server only when the preset
+                            // has none.
+                            server: provider.defaults?.server || connectionParams.server || '',
                             options: {
                                 pathStyle: provider.defaults?.pathStyle,
                                 region: provider.defaults?.region,

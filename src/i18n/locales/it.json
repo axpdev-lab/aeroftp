@@ -337,7 +337,7 @@
             "autoScanUsedOnConnectHint": "Solo per i backend senza API per lo spazio usato (FTP, S3, WebDAV). Disattivato per impostazione predefinita: un albero di grandi dimensioni (es. un progetto web) viene percorso ricorsivamente, operazione che può essere lenta. In alternativa usa l'azione nella StatusBar quando serve.",
             "saveAsNewProfile": "Salva come nuovo profilo",
             "saveAsNewProfileTitle": "Salva il modulo corrente come nuovo profilo in questa modalità. Il profilo originale viene mantenuto.",
-            "convertToMode": "Converti in {{mode}}",
+            "convertToMode": "Converti in {mode}",
             "convertReplacesOriginal": "Sostituisce il profilo originale",
             "profileConverted": "Profilo convertito",
             "profileDuplicated": "Profilo duplicato",
@@ -3436,7 +3436,7 @@
             "storageVault": "Vault",
             "storageModeSidecarHint": "Registro in chiaro nella cartella di configurazione. Leggibile da daemon di avvio automatico senza sbloccare il vault.",
             "storageModeVaultHint": "Registro mount cifrato con la master password. Il vault deve essere sbloccato all'avvio.",
-            "confirmDelete": "Eliminare il mount '{{name}}'? I file remoti non saranno toccati.",
+            "confirmDelete": "Eliminare il mount '{name}'? I file remoti non saranno toccati.",
             "openMountAction": "Apri mount nel file manager"
         },
         "activityPanel": {

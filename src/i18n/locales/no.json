@@ -269,7 +269,7 @@
             "autoScanUsedOnConnectHint": "Kun for bakgrunnssystemer uten API for brukt plass (FTP, S3, WebDAV). Av som standard: et stort tre (f.eks. et webprosjekt) gjennomgås rekursivt, noe som kan være tregt. Ellers bruk StatusBar-handlingen ved behov.",
             "saveAsNewProfile": "Lagre som ny profil",
             "saveAsNewProfileTitle": "Lagre gjeldende skjema som en ny profil i denne modusen. Den opprinnelige profilen beholdes.",
-            "convertToMode": "Konverter til {{mode}}",
+            "convertToMode": "Konverter til {mode}",
             "convertReplacesOriginal": "Erstatter den opprinnelige profilen",
             "profileConverted": "Profil konvertert",
             "profileDuplicated": "Profil duplisert",
@@ -4403,7 +4403,7 @@
             "storageVault": "Vault",
             "storageModeSidecarHint": "Klartekstregister i konfigurasjonskatalogen din. Lesbart av autostart-daemoner uten å låse opp hvelvet.",
             "storageModeVaultHint": "Monteringsregister kryptert med hovedpassordet ditt. Hvelvet må være låst opp ved appstart.",
-            "confirmDelete": "Slett monteringen '{{name}}'? Dette påvirker ikke eksterne filer.",
+            "confirmDelete": "Slett monteringen '{name}'? Dette påvirker ikke eksterne filer.",
             "openMountAction": "Åpne montering i filbehandler"
         },
         "reconnect": {
