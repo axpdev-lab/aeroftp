@@ -29,6 +29,7 @@ pub mod aerovault_v2;
 pub mod aerovault_v3;
 pub mod agent_memory_db;
 pub mod ai;
+pub mod app_events;
 pub mod ai_core;
 pub mod ai_stream;
 mod ai_tools;
@@ -14074,6 +14075,11 @@ pub fn run() {
             // silently keep the existing one.
             let _ = tracing::subscriber::set_global_default(TracingToLogBridge);
 
+            // Register the global AppHandle so Tauri-agnostic code paths
+            // (e.g. the MEGAcmd warmup notice in the provider layer) can emit
+            // frontend events without threading a handle through every call.
+            crate::app_events::register_app_handle(app.handle().clone());
+
             // Wait for tauri-plugin-localhost to bind the loopback port before
             // any webview tries to load from it.
             //
@@ -14997,6 +15003,7 @@ pub fn run() {
             user_partitions::user_partitions_get_active_user,
             user_partitions::user_partitions_load_active_server_profiles,
             user_partitions::user_partitions_save_active_server_profiles,
+            user_partitions::user_partitions_relocate_server_profile,
             user_partitions::user_partitions_add_user,
             user_partitions::user_partitions_unlock_user,
             user_partitions::user_partitions_lock_session,

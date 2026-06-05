@@ -12,6 +12,26 @@ interface LogoProps {
     size?: number;
 }
 
+// Generic S3 "bucket" glyph (issue #270, Ehud). A stroke-based bucket that
+// inherits `currentColor`, used in the Add Service list badges to tell an
+// S3 object-storage endpoint apart from a generic REST API at a glance.
+export const S3BucketLogo: React.FC<LogoProps> = ({ size = 16 }) => (
+    <svg
+        width={size}
+        height={size}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+    >
+        <path d="M5 7l1.2 11.1a2 2 0 0 0 2 1.8h7.6a2 2 0 0 0 2-1.8L19 7" />
+        <ellipse cx="12" cy="6.5" rx="7" ry="2.5" />
+    </svg>
+);
+
 // MEGA: red circle with white "M"
 export const MegaLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 512 512">

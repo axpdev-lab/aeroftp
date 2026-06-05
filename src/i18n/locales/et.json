@@ -1266,7 +1266,8 @@
             "batchRenameResult": "{success} ümber nimetatud, {errors} ebaõnnestus",
             "copyCompleted": "Kopeerimine lõpetatud",
             "localPathNotFound": "Kohalikku kausta \"{path}\" ei leitud. Liiguti kodukataloogile.",
-            "zeroByteWarning": "0 B fail - võib viidata edastusveale"
+            "zeroByteWarning": "0 B fail - võib viidata edastusveale",
+            "megacmdWarmup": "MEGAcmd-server ei tööta, käivitamine taustal..."
         },
         "about": {
             "tagline": "Rohkem kui FTP. Täielik arendustööriistade komplekt.",
@@ -3465,7 +3466,25 @@
             "hideCredentials": "Peida mandaadid",
             "showCredentials": "Kuva mandaadid",
             "showUsername": "Näita kasutajanime kaartidel",
-            "hideUsername": "Peida kasutajanimi kaartidelt"
+            "hideUsername": "Peida kasutajanimi kaartidelt",
+            "copyToUser": "Kopeeri kontole...",
+            "moveToUser": "Teisalda kontole...",
+            "relocateCopyTitle": "Kopeeri server teisele kontole",
+            "relocateMoveTitle": "Teisalda server teisele kontole",
+            "relocatePickUser": "Vali sihtkonto",
+            "relocateNoOtherUsers": "Ühtegi teist kontot pole. Loo esmalt mõni kasutajate halduses.",
+            "relocateTargetPasswordLabel": "{user} parool",
+            "relocateTargetPasswordHint": "{user} on kaitstud. Sinna serveri salvestamiseks sisesta selle parool.",
+            "relocateMoveWarning": "Pärast teisaldamist eemaldatakse originaal sellelt kontolt.",
+            "relocateSubmitCopy": "Kopeeri",
+            "relocateSubmitMove": "Teisalda",
+            "relocateBusyCopy": "Kopeerimine...",
+            "relocateBusyMove": "Teisaldamine...",
+            "relocateSuccessCopy": "„{name}“ kopeeriti kontole {user}",
+            "relocateSuccessMove": "„{name}“ teisaldati kontole {user}",
+            "relocateAlreadyPresent": "„{name}“ on juba salvestatud kontole {user}",
+            "relocateError": "Serverit ei õnnestunud üle kanda: {error}",
+            "relocateWrongPassword": "Vale parool kontole {user}."
         },
         "cyberTools": {
             "title": "Turvalisuse tööriistad",

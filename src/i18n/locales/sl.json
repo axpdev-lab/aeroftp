@@ -1266,7 +1266,8 @@
             "batchRenameResult": "{success} preimenovanih, {errors} neuspešnih",
             "copyCompleted": "Kopiranje končano",
             "localPathNotFound": "Lokalna mapa \"{path}\" ni bila najdena. Preusmerjeno v domači imenik.",
-            "zeroByteWarning": "Datoteka 0 B - lahko pomeni napako pri prenosu"
+            "zeroByteWarning": "Datoteka 0 B - lahko pomeni napako pri prenosu",
+            "megacmdWarmup": "Strežnik MEGAcmd ne deluje, zaganjanje v ozadju..."
         },
         "about": {
             "tagline": "Več kot FTP. Popolno razvojno orodje.",
@@ -3465,7 +3466,25 @@
             "hideCredentials": "Skrij poverilnice",
             "showCredentials": "Prikaži poverilnice",
             "showUsername": "Prikaži uporabniško ime na karticah",
-            "hideUsername": "Skrij uporabniško ime na karticah"
+            "hideUsername": "Skrij uporabniško ime na karticah",
+            "copyToUser": "Kopiraj v račun...",
+            "moveToUser": "Premakni v račun...",
+            "relocateCopyTitle": "Kopiraj strežnik v drug račun",
+            "relocateMoveTitle": "Premakni strežnik v drug račun",
+            "relocatePickUser": "Izberite ciljni račun",
+            "relocateNoOtherUsers": "Na voljo ni drugega računa. Najprej ga ustvarite v Upravljanju uporabnikov.",
+            "relocateTargetPasswordLabel": "Geslo za {user}",
+            "relocateTargetPasswordHint": "{user} je zaščiten. Vnesite njegovo geslo, da tja shranite strežnik.",
+            "relocateMoveWarning": "Izvirnik se po premiku odstrani iz tega računa.",
+            "relocateSubmitCopy": "Kopiraj",
+            "relocateSubmitMove": "Premakni",
+            "relocateBusyCopy": "Kopiranje...",
+            "relocateBusyMove": "Premikanje...",
+            "relocateSuccessCopy": "»{name}« kopiran v {user}",
+            "relocateSuccessMove": "»{name}« premaknjen v {user}",
+            "relocateAlreadyPresent": "»{name}« je že shranjen v {user}",
+            "relocateError": "Strežnika ni bilo mogoče prenesti: {error}",
+            "relocateWrongPassword": "Napačno geslo za {user}."
         },
         "cyberTools": {
             "title": "Varnostna orodja",

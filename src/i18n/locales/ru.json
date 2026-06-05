@@ -1266,7 +1266,8 @@
             "batchRenameResult": "{success} переименовано, {errors} не удалось",
             "copyCompleted": "Копирование завершено",
             "localPathNotFound": "Локальная папка \"{path}\" не найдена. Выполнен переход в домашний каталог.",
-            "zeroByteWarning": "Файл 0 Б - возможно, ошибка передачи"
+            "zeroByteWarning": "Файл 0 Б - возможно, ошибка передачи",
+            "megacmdWarmup": "Сервер MEGAcmd не запущен, запуск в фоновом режиме..."
         },
         "about": {
             "tagline": "Больше чем FTP. Полный инструментарий разработчика.",
@@ -3465,7 +3466,25 @@
             "hideCredentials": "Скрыть учетные данные",
             "showCredentials": "Показать учетные данные",
             "showUsername": "Показывать имя пользователя на карточках",
-            "hideUsername": "Скрыть имя пользователя на карточках"
+            "hideUsername": "Скрыть имя пользователя на карточках",
+            "copyToUser": "Копировать в аккаунт...",
+            "moveToUser": "Переместить в аккаунт...",
+            "relocateCopyTitle": "Копировать сервер в другой аккаунт",
+            "relocateMoveTitle": "Переместить сервер в другой аккаунт",
+            "relocatePickUser": "Выберите целевой аккаунт",
+            "relocateNoOtherUsers": "Других аккаунтов нет. Сначала создайте его в разделе «Управление пользователями».",
+            "relocateTargetPasswordLabel": "Пароль для {user}",
+            "relocateTargetPasswordHint": "{user} защищён. Введите его пароль, чтобы сохранить там сервер.",
+            "relocateMoveWarning": "После перемещения оригинал удаляется из этого аккаунта.",
+            "relocateSubmitCopy": "Копировать",
+            "relocateSubmitMove": "Переместить",
+            "relocateBusyCopy": "Копирование...",
+            "relocateBusyMove": "Перемещение...",
+            "relocateSuccessCopy": "«{name}» скопирован в {user}",
+            "relocateSuccessMove": "«{name}» перемещён в {user}",
+            "relocateAlreadyPresent": "«{name}» уже сохранён в {user}",
+            "relocateError": "Не удалось перенести сервер: {error}",
+            "relocateWrongPassword": "Неверный пароль для {user}."
         },
         "cyberTools": {
             "title": "Инструменты безопасности",

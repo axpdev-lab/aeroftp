@@ -1266,7 +1266,8 @@
             "batchRenameResult": "{success} zimebadilishwa jina, {errors} zimeshindwa",
             "copyCompleted": "Kunakili kumekamilika",
             "localPathNotFound": "Folda ya ndani \"{path}\" haikupatikana. Imeelekeza kwenye saraka ya nyumbani.",
-            "zeroByteWarning": "Faili ya 0 B - inaweza kuonyesha hitilafu ya uhamishaji"
+            "zeroByteWarning": "Faili ya 0 B - inaweza kuonyesha hitilafu ya uhamishaji",
+            "megacmdWarmup": "Seva ya MEGAcmd haiendeshwi, inaanzishwa chinichini..."
         },
         "about": {
             "tagline": "Zaidi ya FTP. Zana kamili za msanidi.",
@@ -3465,7 +3466,25 @@
             "hideCredentials": "Ficha vitambulisho",
             "showCredentials": "Onyesha vitambulisho",
             "showUsername": "Onyesha jina la mtumiaji kwenye kadi",
-            "hideUsername": "Ficha jina la mtumiaji kwenye kadi"
+            "hideUsername": "Ficha jina la mtumiaji kwenye kadi",
+            "copyToUser": "Nakili kwenye akaunti...",
+            "moveToUser": "Hamisha kwenye akaunti...",
+            "relocateCopyTitle": "Nakili seva kwenye akaunti nyingine",
+            "relocateMoveTitle": "Hamisha seva kwenye akaunti nyingine",
+            "relocatePickUser": "Chagua akaunti lengwa",
+            "relocateNoOtherUsers": "Hakuna akaunti nyingine. Tengeneza moja katika Dhibiti Watumiaji kwanza.",
+            "relocateTargetPasswordLabel": "Nenosiri la {user}",
+            "relocateTargetPasswordHint": "{user} imelindwa. Weka nenosiri lake ili kuhifadhi seva hapo.",
+            "relocateMoveWarning": "Nakala asili huondolewa kwenye akaunti hii baada ya kuhamisha.",
+            "relocateSubmitCopy": "Nakili",
+            "relocateSubmitMove": "Hamisha",
+            "relocateBusyCopy": "Inanakili...",
+            "relocateBusyMove": "Inahamisha...",
+            "relocateSuccessCopy": "\"{name}\" imenakiliwa kwa {user}",
+            "relocateSuccessMove": "\"{name}\" imehamishwa kwa {user}",
+            "relocateAlreadyPresent": "\"{name}\" tayari imehifadhiwa katika {user}",
+            "relocateError": "Seva haikuweza kuhamishwa: {error}",
+            "relocateWrongPassword": "Nenosiri si sahihi kwa {user}."
         },
         "cyberTools": {
             "title": "Zana za Usalama",

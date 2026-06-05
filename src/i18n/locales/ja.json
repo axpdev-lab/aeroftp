@@ -1266,7 +1266,8 @@
             "batchRenameResult": "{success} 件の名前変更成功、{errors} 件の失敗",
             "copyCompleted": "コピーが完了しました",
             "localPathNotFound": "ローカルフォルダー \"{path}\" が見つかりませんでした。ホームディレクトリに移動しました。",
-            "zeroByteWarning": "0 B のファイル - 転送エラーの可能性があります"
+            "zeroByteWarning": "0 B のファイル - 転送エラーの可能性があります",
+            "megacmdWarmup": "MEGAcmd サーバーが起動していません。バックグラウンドで起動しています..."
         },
         "about": {
             "tagline": "FTPを超えて。完全な開発者ツールキット。",
@@ -3430,7 +3431,25 @@
             "hideCredentials": "認証情報を非表示",
             "showCredentials": "認証情報を表示",
             "showUsername": "カードにユーザー名を表示",
-            "hideUsername": "カードのユーザー名を非表示"
+            "hideUsername": "カードのユーザー名を非表示",
+            "copyToUser": "アカウントにコピー...",
+            "moveToUser": "アカウントに移動...",
+            "relocateCopyTitle": "サーバーを別のアカウントにコピー",
+            "relocateMoveTitle": "サーバーを別のアカウントに移動",
+            "relocatePickUser": "移動先のアカウントを選択",
+            "relocateNoOtherUsers": "他のアカウントがありません。まず「ユーザー管理」で作成してください。",
+            "relocateTargetPasswordLabel": "{user} のパスワード",
+            "relocateTargetPasswordHint": "{user} は保護されています。サーバーをそこに保存するにはパスワードを入力してください。",
+            "relocateMoveWarning": "移動後、元はこのアカウントから削除されます。",
+            "relocateSubmitCopy": "コピー",
+            "relocateSubmitMove": "移動",
+            "relocateBusyCopy": "コピー中...",
+            "relocateBusyMove": "移動中...",
+            "relocateSuccessCopy": "「{name}」を {user} にコピーしました",
+            "relocateSuccessMove": "「{name}」を {user} に移動しました",
+            "relocateAlreadyPresent": "「{name}」はすでに {user} に保存されています",
+            "relocateError": "サーバーを転送できませんでした: {error}",
+            "relocateWrongPassword": "{user} のパスワードが違います。"
         },
         "cyberTools": {
             "title": "セキュリティツール",

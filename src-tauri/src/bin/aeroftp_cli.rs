@@ -2301,6 +2301,49 @@ enum Commands {
         #[arg(long, short = 'y')]
         yes: bool,
     },
+    /// Copy a saved server profile into ANOTHER user account (#270)
+    ///
+    /// Reads the profile (config + any `server_<id>` credential) from the
+    /// active account and inserts an independent copy under a fresh id into
+    /// the target user's partition, mirroring the GUI's "Copy to user..."
+    /// context-menu action. The source profile is left untouched. When the
+    /// target account is passphrase protected its password is read from
+    /// `--user-passphrase` / `--passphrase-file` /
+    /// `AEROFTP_USER_PASSPHRASE_<NAME>` / a TTY prompt: a profile is NEVER
+    /// written into a protected partition without its passphrase. If the
+    /// target already holds the same server the copy is skipped (reported as
+    /// `already_present`).
+    ProfileCopyUser {
+        /// Selector: profile index (1-based, as shown in `profiles`) or
+        /// (case-insensitive) name / id. Substring match falls back to a
+        /// unique row only.
+        #[arg(value_name = "SELECTOR")]
+        selector: String,
+        /// Target user account name (as listed by `users list`).
+        #[arg(long = "to-user", value_name = "USER")]
+        to_user: String,
+    },
+    /// Move a saved server profile into ANOTHER user account (#270)
+    ///
+    /// Like `profile-copy-user` but DELETES the source profile after the
+    /// copy succeeds (Cut/Move semantics), mirroring the GUI's "Move to
+    /// user..." action. The `server_<id>` credential and any
+    /// `config_favorite_servers` membership are cleaned up on the source
+    /// side. Without `--yes` the command prompts on stderr when stdin is a
+    /// TTY. Same passphrase rules as `profile-copy-user`.
+    ProfileMoveUser {
+        /// Selector: profile index (1-based, as shown in `profiles`) or
+        /// (case-insensitive) name / id. Substring match falls back to a
+        /// unique row only.
+        #[arg(value_name = "SELECTOR")]
+        selector: String,
+        /// Target user account name (as listed by `users list`).
+        #[arg(long = "to-user", value_name = "USER")]
+        to_user: String,
+        /// Skip the interactive confirmation prompt.
+        #[arg(long, short = 'y')]
+        yes: bool,
+    },
     /// Set or update the credential blob for a saved server profile
     ///
     /// Writes the per-protocol credential (typically a JSON object with
@@ -10866,6 +10909,259 @@ fn cmd_profile_duplicate(
                 "Duplicated '{}' as '{}' (id={})",
                 source_name, resolved_name, new_id
             );
+        }
+    }
+    0
+}
+
+/// Shared implementation of `profile-copy-user` and `profile-move-user` (N4,
+/// #270). Resolves the source profile in the active account, the target user
+/// by name, prompts for the target passphrase when the account is protected,
+/// and delegates the cross-partition relocation to the vault. For Move the
+/// source profile + its `server_<id>` credential + favourite entry are removed
+/// after a successful copy.
+fn cmd_profile_relocate_user(
+    cli: &Cli,
+    format: OutputFormat,
+    selector: &str,
+    to_user: &str,
+    remove_from_source: bool,
+    skip_confirm: bool,
+) -> i32 {
+    use ftp_client_gui_lib::user_partitions;
+
+    let store = match open_vault(cli) {
+        Ok(s) => s,
+        Err(e) => {
+            print_error(format, &e, 5);
+            return 5;
+        }
+    };
+
+    // Source = the active (or --user) account. Unlock it so we can read it.
+    let source_user = match ensure_active_user_unlocked(cli, &store) {
+        Ok(Some(u)) => u,
+        Ok(None) => {
+            print_error(format, "No active user account", 5);
+            return 5;
+        }
+        Err(e) => {
+            print_error(format, &e, 6);
+            return 6;
+        }
+    };
+
+    let profiles: Vec<serde_json::Value> = match load_active_user_profiles(cli, &store) {
+        Ok(p) => p,
+        Err(e) => {
+            print_error(format, &format!("Failed to read profiles: {}", e), 5);
+            return 5;
+        }
+    };
+    let source_idx = match resolve_profile_selector(&profiles, selector) {
+        Ok(i) => i,
+        Err(e) => {
+            print_error(format, &format!("Profile lookup failed: {}", e), 2);
+            return 2;
+        }
+    };
+    let source = &profiles[source_idx];
+    let source_id = source
+        .get("id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let source_name = source
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unnamed")
+        .to_string();
+    if source_id.is_empty() {
+        print_error(
+            format,
+            &format!("Profile '{}' has no id; cannot relocate", source_name),
+            5,
+        );
+        return 5;
+    }
+
+    // Target user, resolved by name. Reject a same-account no-op early.
+    let target_user = match user_partitions::cli_find_user_by_name(&store, to_user) {
+        Ok(u) => u,
+        Err(e) => {
+            print_error(format, &format!("Target user lookup failed: {}", e), 2);
+            return 2;
+        }
+    };
+    if target_user.id == source_user.id {
+        print_error(
+            format,
+            "Source and target are the same account; pick a different --to-user",
+            5,
+        );
+        return 5;
+    }
+
+    let verb = if remove_from_source { "Move" } else { "Copy" };
+    if remove_from_source && !skip_confirm {
+        use std::io::IsTerminal;
+        if !std::io::stdin().is_terminal() {
+            print_error(
+                format,
+                "refusing to move without --yes when stdin is not a TTY (running under CI / pipe)",
+                5,
+            );
+            return 5;
+        }
+        eprint!(
+            "Move profile '{}' from '{}' to '{}'? The source copy is deleted. [y/N] ",
+            source_name, source_user.name, target_user.name
+        );
+        use std::io::{BufRead, Write};
+        std::io::stderr().flush().ok();
+        let mut answer = String::new();
+        if std::io::stdin().lock().read_line(&mut answer).is_err() {
+            print_error(format, "failed to read confirmation from stdin", 5);
+            return 5;
+        }
+        let trimmed = answer.trim().to_ascii_lowercase();
+        if trimmed != "y" && trimmed != "yes" {
+            match format {
+                OutputFormat::Json => print_json(&serde_json::json!({
+                    "status": "cancelled",
+                    "id": source_id,
+                    "name": source_name,
+                })),
+                OutputFormat::Text => eprintln!("Cancelled."),
+            }
+            return 0;
+        }
+    }
+
+    // Read the target passphrase only when the target account is protected.
+    let mut target_passphrase: Option<String> = None;
+    if target_user.has_passphrase {
+        let prompt = format!("Account password for target user '{}': ", target_user.name);
+        match read_user_passphrase(cli, &target_user.name, &prompt, true, true) {
+            Ok(Some(p)) => target_passphrase = Some(p),
+            Ok(None) => {
+                print_error(
+                    format,
+                    &format!(
+                        "Target account '{}' is protected. Provide --user-passphrase, --passphrase-file, or AEROFTP_USER_PASSPHRASE_{}.",
+                        target_user.name,
+                        user_env_suffix(&target_user.name)
+                    ),
+                    6,
+                );
+                return 6;
+            }
+            Err(e) => {
+                print_error(format, &e, 6);
+                return 6;
+            }
+        }
+    }
+
+    // Fresh id for the relocated copy, matching the GUI `srv_<ms>_<rand>` scheme.
+    let now_ms = chrono::Utc::now().timestamp_millis().max(0) as u64;
+    let rand_suffix: String = {
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
+        (0..9)
+            .map(|_| {
+                let idx: u8 = rng.gen_range(0..36);
+                if idx < 10 {
+                    (b'0' + idx) as char
+                } else {
+                    (b'a' + (idx - 10)) as char
+                }
+            })
+            .collect()
+    };
+    let new_id = format!("srv_{}_{}", now_ms, rand_suffix);
+
+    let relocation = user_partitions::cli_relocate_server_profile(
+        &store,
+        source_user.id,
+        target_user.id,
+        &source_id,
+        &new_id,
+        target_passphrase.as_deref(),
+        remove_from_source,
+    );
+    if let Some(p) = target_passphrase.as_mut() {
+        p.zeroize();
+    }
+    let relocation = match relocation {
+        Ok(r) => r,
+        Err(e) => {
+            let code = if e.contains("PASSPHRASE") { 6 } else { 5 };
+            print_error(format, &format!("{} failed: {}", verb, e), code);
+            return code;
+        }
+    };
+
+    // Credential bookkeeping (outside the partition DB).
+    if !relocation.already_present {
+        if let Ok(cred) = store.get(&format!("server_{}", source_id)) {
+            let _ = store.store(&format!("server_{}", new_id), &cred);
+        }
+    }
+    if relocation.moved {
+        let _ = store.delete(&format!("server_{}", source_id));
+        // Drop the moved id from the favourites set (best effort).
+        if let Ok(fav_raw) = store.get("config_favorite_servers") {
+            if let Ok(mut ids) = serde_json::from_str::<Vec<String>>(&fav_raw) {
+                let before = ids.len();
+                ids.retain(|id| id != &source_id);
+                if ids.len() != before {
+                    if let Ok(payload) = serde_json::to_string(&ids) {
+                        let _ = store.store("config_favorite_servers", &payload);
+                    }
+                }
+            }
+        }
+    }
+
+    match format {
+        OutputFormat::Json => {
+            print_json(&serde_json::json!({
+                "status": if relocation.already_present { "already_present" } else { "ok" },
+                "action": if remove_from_source { "move" } else { "copy" },
+                "source_id": relocation.source_profile_id,
+                "new_id": if relocation.already_present { serde_json::Value::Null } else { serde_json::Value::String(relocation.new_profile_id.clone()) },
+                "name": relocation.profile_name,
+                "from_user": source_user.name,
+                "to_user": target_user.name,
+                "moved": relocation.moved,
+                "already_present": relocation.already_present,
+            }));
+        }
+        OutputFormat::Text => {
+            if relocation.already_present {
+                println!(
+                    "'{}' is already saved in '{}'; {} skipped{}.",
+                    relocation.profile_name,
+                    target_user.name,
+                    verb.to_lowercase(),
+                    if relocation.moved {
+                        " (source removed)"
+                    } else {
+                        ""
+                    }
+                );
+            } else {
+                let past = if remove_from_source { "Moved" } else { "Copied" };
+                println!(
+                    "{} '{}' from '{}' to '{}' (id={})",
+                    past,
+                    relocation.profile_name,
+                    source_user.name,
+                    target_user.name,
+                    relocation.new_profile_id
+                );
+            }
         }
     }
     0
@@ -22372,8 +22668,8 @@ fn cmd_catalog(
                     return 0;
                 }
                 println!(
-                    "{:<24} {:<8} {:<24} {:<5} {}",
-                    "COMPANY", "METHOD", "PROVIDER-ID", "TIER", "CATEGORY"
+                    "{:<24} {:<8} {:<24} {:<5} CATEGORY",
+                    "COMPANY", "METHOD", "PROVIDER-ID", "TIER"
                 );
                 for (c, m) in &rows {
                     println!(
@@ -22437,8 +22733,8 @@ fn cmd_catalog(
                 return 0;
             }
             println!(
-                "{:<24} {:<10} {:<20} {}",
-                "COMPANY", "TIER", "REGIONS", "PROTOCOLS"
+                "{:<24} {:<10} {:<20} PROTOCOLS",
+                "COMPANY", "TIER", "REGIONS"
             );
             for c in &companies {
                 let protos = c
@@ -40888,6 +41184,14 @@ async fn main() {
             password.as_deref(),
             *yes,
         ),
+        Commands::ProfileCopyUser { selector, to_user } => {
+            cmd_profile_relocate_user(&cli, format, selector, to_user, false, false)
+        }
+        Commands::ProfileMoveUser {
+            selector,
+            to_user,
+            yes,
+        } => cmd_profile_relocate_user(&cli, format, selector, to_user, true, *yes),
         Commands::AiModels => list_ai_models(&cli, format),
         Commands::AgentBootstrap {
             task,

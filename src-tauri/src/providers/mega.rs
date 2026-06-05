@@ -337,10 +337,12 @@ impl MegaCmdProvider {
             }
             Err(_) => {
                 // Daemon might not be running: try to start it. Surface a
-                // status line on stderr so CLI users understand why the first
-                // call is slow instead of staring at a silent wait. stderr
-                // keeps --json stdout clean (discussion #275).
-                eprintln!("MEGAcmd server not running, starting in the background...");
+                // status line so users understand why the first call is slow
+                // instead of staring at a silent wait. CLI gets the stderr line
+                // (keeps --json stdout clean); the GUI gets the same wording as
+                // a toast via a frontend event (discussion #275, W1.4).
+                eprintln!("{}", crate::app_events::MEGA_WARMUP_MESSAGE);
+                crate::app_events::emit_mega_warmup_notice();
                 tracing::info!(target: "mega", "[DAEMON] Attempting to start MEGAcmd daemon...");
                 let server_cmd = Self::resolve_mega_cmd("mega-cmd-server");
                 let mut daemon_cmd = Command::new(&server_cmd);

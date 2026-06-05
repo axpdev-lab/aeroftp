@@ -1266,7 +1266,8 @@
             "batchRenameResult": "{success} 个已重命名，{errors} 个失败",
             "copyCompleted": "复制完成",
             "localPathNotFound": "未找到本地文件夹 \"{path}\"。已导航至主目录。",
-            "zeroByteWarning": "0 B 文件 - 可能表示传输错误"
+            "zeroByteWarning": "0 B 文件 - 可能表示传输错误",
+            "megacmdWarmup": "MEGAcmd 服务器未运行，正在后台启动..."
         },
         "about": {
             "tagline": "不仅仅是 FTP。完整的开发者工具包。",
@@ -3465,7 +3466,25 @@
             "hideCredentials": "隐藏凭据",
             "showCredentials": "显示凭据",
             "showUsername": "在卡片上显示用户名",
-            "hideUsername": "在卡片上隐藏用户名"
+            "hideUsername": "在卡片上隐藏用户名",
+            "copyToUser": "复制到账户...",
+            "moveToUser": "移动到账户...",
+            "relocateCopyTitle": "将服务器复制到其他账户",
+            "relocateMoveTitle": "将服务器移动到其他账户",
+            "relocatePickUser": "选择目标账户",
+            "relocateNoOtherUsers": "没有其他账户。请先在“管理用户”中创建一个。",
+            "relocateTargetPasswordLabel": "{user} 的密码",
+            "relocateTargetPasswordHint": "{user} 受保护。请输入其密码以将服务器保存到该账户。",
+            "relocateMoveWarning": "移动后，原始项会从此账户中移除。",
+            "relocateSubmitCopy": "复制",
+            "relocateSubmitMove": "移动",
+            "relocateBusyCopy": "正在复制...",
+            "relocateBusyMove": "正在移动...",
+            "relocateSuccessCopy": "已将“{name}”复制到 {user}",
+            "relocateSuccessMove": "已将“{name}”移动到 {user}",
+            "relocateAlreadyPresent": "“{name}”已保存在 {user} 中",
+            "relocateError": "无法转移服务器：{error}",
+            "relocateWrongPassword": "{user} 的密码错误。"
         },
         "cyberTools": {
             "title": "安全工具",

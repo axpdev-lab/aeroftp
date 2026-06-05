@@ -18,6 +18,7 @@ import {
     RotateCcw,
     Shield,
     ShieldCheck,
+    Star,
     Trash2,
     X,
 } from 'lucide-react';
@@ -33,10 +34,12 @@ import {
     getUnlockStatus,
     initUserPartitions,
     listUsers,
+    readDefaultAccountId,
     renameUser,
     reorderUsers,
     setUserAdmin,
     setUserAvatar,
+    writeDefaultAccountId,
     type UserMetadata,
     type UserStorageStats,
     type UserUnlockStatus,
@@ -106,6 +109,10 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
     const [avatarDraftColor, setAvatarDraftColor] = React.useState(COLOR_CHOICES[0]);
     const [avatarSaving, setAvatarSaving] = React.useState(false);
     const [showIconPicker, setShowIconPicker] = React.useState(false);
+    // N3 (#270): the default account that skips the welcome screen on next
+    // boot. Mirrors the AccountLockScreen checkbox and shares the same
+    // localStorage helpers; only applies to password-free accounts.
+    const [defaultAccountId, setDefaultAccountId] = React.useState<number | null>(() => readDefaultAccountId());
     // No-recovery acknowledgement gates submit when an account password is
     // being set for the first time (add-user with passphrase, or set
     // passphrase on an existing user). MU-LS gate decision: warn at setup,
@@ -142,12 +149,35 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
             setUsers(nextUsers);
             setStats(nextStats);
             setUnlockStatus(nextStatus);
+            // Reconcile the stored default against reality: a deleted or now
+            // passphrase-protected account must not stay the silent-boot target.
+            const storedDefault = readDefaultAccountId();
+            const validDefault = nextUsers.find(
+                (u) => u.id === storedDefault && !u.hasPassphrase,
+            );
+            if (storedDefault != null && !validDefault) {
+                writeDefaultAccountId(null);
+                setDefaultAccountId(null);
+            } else {
+                setDefaultAccountId(storedDefault);
+            }
         } catch (err) {
             setError(mapUserPartitionError(err, t));
         } finally {
             setLoading(false);
         }
     }, [t]);
+
+    const toggleDefaultAccount = React.useCallback((user: UserMetadata) => {
+        // Only password-free accounts can skip the welcome screen (a protected
+        // account always shows its prompt), matching the AccountLockScreen rule.
+        if (user.hasPassphrase) return;
+        setDefaultAccountId((current) => {
+            const next = current === user.id ? null : user.id;
+            writeDefaultAccountId(next);
+            return next;
+        });
+    }, []);
 
     React.useEffect(() => {
         if (isOpen) void refresh();
@@ -599,6 +629,22 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                             </div>
                                         </div>
                                         <div className="flex shrink-0 items-center gap-1">
+                                            {!user.hasPassphrase && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => toggleDefaultAccount(user)}
+                                                    disabled={busyUserId === user.id}
+                                                    className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors disabled:opacity-50 ${
+                                                        defaultAccountId === user.id
+                                                            ? 'text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-950/30'
+                                                            : 'text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-700 dark:hover:text-gray-100'
+                                                    }`}
+                                                    title={`${t('accountLock.skipNextTime')} ${t('accountLock.skipNextTimeHint')}`}
+                                                    aria-pressed={defaultAccountId === user.id}
+                                                >
+                                                    <Star size={15} fill={defaultAccountId === user.id ? 'currentColor' : 'none'} />
+                                                </button>
+                                            )}
                                             {canModify && (
                                                 <>
                                                     <button

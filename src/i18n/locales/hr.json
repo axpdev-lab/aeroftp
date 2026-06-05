@@ -1266,7 +1266,8 @@
             "batchRenameResult": "{success} preimenovano, {errors} neuspjelo",
             "copyCompleted": "Kopiranje dovršeno",
             "localPathNotFound": "Lokalna mapa \"{path}\" nije pronađena. Navigirano na kućni direktorij.",
-            "zeroByteWarning": "Datoteka od 0 B - može ukazivati na pogrešku prijenosa"
+            "zeroByteWarning": "Datoteka od 0 B - može ukazivati na pogrešku prijenosa",
+            "megacmdWarmup": "MEGAcmd poslužitelj nije pokrenut, pokretanje u pozadini..."
         },
         "about": {
             "tagline": "Više od FTP-a. Potpuni alat za programere.",
@@ -3465,7 +3466,25 @@
             "hideCredentials": "Sakrij vjerodajnice",
             "showCredentials": "Prikaži vjerodajnice",
             "showUsername": "Prikaži korisničko ime na karticama",
-            "hideUsername": "Sakrij korisničko ime na karticama"
+            "hideUsername": "Sakrij korisničko ime na karticama",
+            "copyToUser": "Kopiraj na račun...",
+            "moveToUser": "Premjesti na račun...",
+            "relocateCopyTitle": "Kopiraj poslužitelj na drugi račun",
+            "relocateMoveTitle": "Premjesti poslužitelj na drugi račun",
+            "relocatePickUser": "Odaberite odredišni račun",
+            "relocateNoOtherUsers": "Nema drugog računa. Najprije ga stvorite u Upravljanju korisnicima.",
+            "relocateTargetPasswordLabel": "Lozinka za {user}",
+            "relocateTargetPasswordHint": "{user} je zaštićen. Unesite njegovu lozinku da biste tamo spremili poslužitelj.",
+            "relocateMoveWarning": "Izvornik se nakon premještanja uklanja s ovog računa.",
+            "relocateSubmitCopy": "Kopiraj",
+            "relocateSubmitMove": "Premjesti",
+            "relocateBusyCopy": "Kopiranje...",
+            "relocateBusyMove": "Premještanje...",
+            "relocateSuccessCopy": "„{name}“ kopiran na {user}",
+            "relocateSuccessMove": "„{name}“ premješten na {user}",
+            "relocateAlreadyPresent": "„{name}“ je već spremljen u {user}",
+            "relocateError": "Poslužitelj nije moguće prenijeti: {error}",
+            "relocateWrongPassword": "Pogrešna lozinka za {user}."
         },
         "cyberTools": {
             "title": "Sigurnosni alati",

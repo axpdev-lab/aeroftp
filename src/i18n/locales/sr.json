@@ -1266,7 +1266,8 @@
             "batchRenameResult": "{success} преименовано, {errors} неуспешно",
             "copyCompleted": "Копирање завршено",
             "localPathNotFound": "Локална фасцикла \"{path}\" није пронађена. Пређено у почетни директоријум.",
-            "zeroByteWarning": "Датотека од 0 B - може указивати на грешку при преносу"
+            "zeroByteWarning": "Датотека од 0 B - може указивати на грешку при преносу",
+            "megacmdWarmup": "MEGAcmd сервер није покренут, покретање у позадини..."
         },
         "about": {
             "tagline": "Више од FTP-а. Комплетан развојни алат.",
@@ -3465,7 +3466,25 @@
             "hideCredentials": "Сакриј акредитиве",
             "showCredentials": "Прикажи акредитиве",
             "showUsername": "Прикажи корисничко име на картицама",
-            "hideUsername": "Сакриј корисничко име на картицама"
+            "hideUsername": "Сакриј корисничко име на картицама",
+            "copyToUser": "Копирај на налог...",
+            "moveToUser": "Премести на налог...",
+            "relocateCopyTitle": "Копирај сервер на други налог",
+            "relocateMoveTitle": "Премести сервер на други налог",
+            "relocatePickUser": "Изаберите циљни налог",
+            "relocateNoOtherUsers": "Нема другог налога. Прво га направите у Управљању корисницима.",
+            "relocateTargetPasswordLabel": "Лозинка за {user}",
+            "relocateTargetPasswordHint": "{user} је заштићен. Унесите његову лозинку да бисте тамо сачували сервер.",
+            "relocateMoveWarning": "Оригинал се након премештања уклања са овог налога.",
+            "relocateSubmitCopy": "Копирај",
+            "relocateSubmitMove": "Премести",
+            "relocateBusyCopy": "Копирање...",
+            "relocateBusyMove": "Премештање...",
+            "relocateSuccessCopy": "„{name}“ копиран на {user}",
+            "relocateSuccessMove": "„{name}“ премештен на {user}",
+            "relocateAlreadyPresent": "„{name}“ је већ сачуван у {user}",
+            "relocateError": "Сервер није могуће пренети: {error}",
+            "relocateWrongPassword": "Погрешна лозинка за {user}."
         },
         "cyberTools": {
             "title": "Безбедносни алати",

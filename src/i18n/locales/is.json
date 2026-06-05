@@ -1266,7 +1266,8 @@
             "batchRenameResult": "{success} endurnefnt, {errors} mistókst",
             "copyCompleted": "Afritun lokið",
             "localPathNotFound": "Staðbundin mappa \"{path}\" fannst ekki. Fór í heimamöppuna.",
-            "zeroByteWarning": "0 B skrá - gæti bent á flutningsvillu"
+            "zeroByteWarning": "0 B skrá - gæti bent á flutningsvillu",
+            "megacmdWarmup": "MEGAcmd-þjónninn er ekki í gangi, ræsi í bakgrunni..."
         },
         "about": {
             "tagline": "Meira en FTP. Heildarverkfærapakki fyrir þróunaraðila.",
@@ -3465,7 +3466,25 @@
             "hideCredentials": "Fela auðkenni",
             "showCredentials": "Sýna auðkenni",
             "showUsername": "Sýna notandanafn á kortum",
-            "hideUsername": "Fela notandanafn á kortum"
+            "hideUsername": "Fela notandanafn á kortum",
+            "copyToUser": "Afrita á reikning...",
+            "moveToUser": "Færa á reikning...",
+            "relocateCopyTitle": "Afrita þjóninn á annan reikning",
+            "relocateMoveTitle": "Færa þjóninn á annan reikning",
+            "relocatePickUser": "Veldu áfangareikninginn",
+            "relocateNoOtherUsers": "Enginn annar reikningur er til. Búðu fyrst til einn í Notendaumsjón.",
+            "relocateTargetPasswordLabel": "Lykilorð fyrir {user}",
+            "relocateTargetPasswordHint": "{user} er varinn. Sláðu inn lykilorðið til að vista þjóninn þar.",
+            "relocateMoveWarning": "Frumritið er fjarlægt af þessum reikningi eftir færsluna.",
+            "relocateSubmitCopy": "Afrita",
+            "relocateSubmitMove": "Færa",
+            "relocateBusyCopy": "Afrita...",
+            "relocateBusyMove": "Færi...",
+            "relocateSuccessCopy": "„{name}“ afritað á {user}",
+            "relocateSuccessMove": "„{name}“ fært á {user}",
+            "relocateAlreadyPresent": "„{name}“ er þegar vistað á {user}",
+            "relocateError": "Ekki tókst að flytja þjóninn: {error}",
+            "relocateWrongPassword": "Rangt lykilorð fyrir {user}."
         },
         "cyberTools": {
             "title": "Öryggistæki",

@@ -1266,7 +1266,8 @@
             "batchRenameResult": "{success} pārdēvēti, {errors} neizdevās",
             "copyCompleted": "Kopēšana pabeigta",
             "localPathNotFound": "Lokālā mape \"{path}\" nav atrasta. Navigēts uz mājas direktoriju.",
-            "zeroByteWarning": "0 B fails - var norādīt uz pārsūtīšanas kļūdu"
+            "zeroByteWarning": "0 B fails - var norādīt uz pārsūtīšanas kļūdu",
+            "megacmdWarmup": "MEGAcmd serveris nedarbojas, palaiž fonā..."
         },
         "about": {
             "tagline": "Vairāk nekā FTP. Pilns izstrādātāja rīku komplekts.",
@@ -3465,7 +3466,25 @@
             "hideCredentials": "Slēpt akreditācijas datus",
             "showCredentials": "Rādīt akreditācijas datus",
             "showUsername": "Rādīt lietotājvārdu kartītēs",
-            "hideUsername": "Slēpt lietotājvārdu kartītēs"
+            "hideUsername": "Slēpt lietotājvārdu kartītēs",
+            "copyToUser": "Kopēt uz kontu...",
+            "moveToUser": "Pārvietot uz kontu...",
+            "relocateCopyTitle": "Kopēt serveri uz citu kontu",
+            "relocateMoveTitle": "Pārvietot serveri uz citu kontu",
+            "relocatePickUser": "Izvēlieties mērķa kontu",
+            "relocateNoOtherUsers": "Citu kontu nav. Vispirms izveidojiet kontu sadaļā Lietotāju pārvaldība.",
+            "relocateTargetPasswordLabel": "{user} parole",
+            "relocateTargetPasswordHint": "{user} ir aizsargāts. Ievadiet tā paroli, lai tur saglabātu serveri.",
+            "relocateMoveWarning": "Pēc pārvietošanas oriģināls tiek noņemts no šī konta.",
+            "relocateSubmitCopy": "Kopēt",
+            "relocateSubmitMove": "Pārvietot",
+            "relocateBusyCopy": "Kopē...",
+            "relocateBusyMove": "Pārvieto...",
+            "relocateSuccessCopy": "“{name}” nokopēts uz {user}",
+            "relocateSuccessMove": "“{name}” pārvietots uz {user}",
+            "relocateAlreadyPresent": "“{name}” jau ir saglabāts kontā {user}",
+            "relocateError": "Neizdevās pārsūtīt serveri: {error}",
+            "relocateWrongPassword": "Nepareiza {user} parole."
         },
         "cyberTools": {
             "title": "Drošības rīki",

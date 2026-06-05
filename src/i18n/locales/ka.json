@@ -1266,7 +1266,8 @@
             "batchRenameResult": "{success} გადარქმეულია, {errors} ვერ შესრულდა",
             "copyCompleted": "კოპირება დასრულებულია",
             "localPathNotFound": "ლოკალური საქაღალდე \"{path}\" ვერ მოიძებნა. გადადით მთავარ დირექტორიაში.",
-            "zeroByteWarning": "0 B ფაილი - შესაძლოა მიუთითებდეს ტრანსფერის შეცდომაზე"
+            "zeroByteWarning": "0 B ფაილი - შესაძლოა მიუთითებდეს ტრანსფერის შეცდომაზე",
+            "megacmdWarmup": "MEGAcmd სერვერი არ მუშაობს, ეშვება ფონურ რეჟიმში..."
         },
         "about": {
             "tagline": "მეტი ვიდრე FTP. სრული დეველოპერის ინსტრუმენტარიუმი.",
@@ -3465,7 +3466,25 @@
             "hideCredentials": "სერთიფიკატების დამალვა",
             "showCredentials": "სერთიფიკატების ჩვენება",
             "showUsername": "მომხმარებლის სახელის ჩვენება ბარათებზე",
-            "hideUsername": "მომხმარებლის სახელის დამალვა ბარათებზე"
+            "hideUsername": "მომხმარებლის სახელის დამალვა ბარათებზე",
+            "copyToUser": "ანგარიშზე კოპირება...",
+            "moveToUser": "ანგარიშზე გადატანა...",
+            "relocateCopyTitle": "სერვერის კოპირება სხვა ანგარიშზე",
+            "relocateMoveTitle": "სერვერის გადატანა სხვა ანგარიშზე",
+            "relocatePickUser": "აირჩიეთ სამიზნე ანგარიში",
+            "relocateNoOtherUsers": "სხვა ანგარიში არ არის. ჯერ შექმენით ერთი მომხმარებლების მართვაში.",
+            "relocateTargetPasswordLabel": "{user}-ის პაროლი",
+            "relocateTargetPasswordHint": "{user} დაცულია. შეიყვანეთ მისი პაროლი, რომ სერვერი იქ შეინახოთ.",
+            "relocateMoveWarning": "გადატანის შემდეგ ორიგინალი ამ ანგარიშიდან იშლება.",
+            "relocateSubmitCopy": "კოპირება",
+            "relocateSubmitMove": "გადატანა",
+            "relocateBusyCopy": "მიმდინარეობს კოპირება...",
+            "relocateBusyMove": "მიმდინარეობს გადატანა...",
+            "relocateSuccessCopy": "„{name}“ დაკოპირდა {user}-ში",
+            "relocateSuccessMove": "„{name}“ გადავიდა {user}-ში",
+            "relocateAlreadyPresent": "„{name}“ უკვე შენახულია {user}-ში",
+            "relocateError": "სერვერის გადატანა ვერ მოხერხდა: {error}",
+            "relocateWrongPassword": "არასწორი პაროლი {user}-ისთვის."
         },
         "cyberTools": {
             "title": "უსაფრთხოების ხელსაწყოები",

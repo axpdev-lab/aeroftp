@@ -1266,7 +1266,8 @@
             "batchRenameResult": "{success} renomeados, {errors} fallidos",
             "copyCompleted": "Copia completada",
             "localPathNotFound": "Non se atopou o cartafol local \"{path}\". Navegouse ao directorio de inicio.",
-            "zeroByteWarning": "Ficheiro de 0 B - pode indicar un erro de transferencia"
+            "zeroByteWarning": "Ficheiro de 0 B - pode indicar un erro de transferencia",
+            "megacmdWarmup": "O servidor MEGAcmd non se está executando, iniciando en segundo plano..."
         },
         "about": {
             "tagline": "Máis que FTP. Unha caixa de ferramentas completa para desenvolvedores.",
@@ -3465,7 +3466,25 @@
             "hideCredentials": "Ocultar credenciais",
             "showCredentials": "Mostrar credenciais",
             "showUsername": "Mostrar nome de usuario nas tarxetas",
-            "hideUsername": "Ocultar nome de usuario nas tarxetas"
+            "hideUsername": "Ocultar nome de usuario nas tarxetas",
+            "copyToUser": "Copiar a unha conta...",
+            "moveToUser": "Mover a unha conta...",
+            "relocateCopyTitle": "Copiar o servidor a outra conta",
+            "relocateMoveTitle": "Mover o servidor a outra conta",
+            "relocatePickUser": "Escolle a conta de destino",
+            "relocateNoOtherUsers": "Non hai ningunha outra conta dispoñible. Crea unha en Xestionar usuarios primeiro.",
+            "relocateTargetPasswordLabel": "Contrasinal de {user}",
+            "relocateTargetPasswordHint": "{user} está protexida. Introduce o seu contrasinal para gardar alí o servidor.",
+            "relocateMoveWarning": "O orixinal elimínase desta conta tras movelo.",
+            "relocateSubmitCopy": "Copiar",
+            "relocateSubmitMove": "Mover",
+            "relocateBusyCopy": "Copiando...",
+            "relocateBusyMove": "Movendo...",
+            "relocateSuccessCopy": "«{name}» copiado a {user}",
+            "relocateSuccessMove": "«{name}» movido a {user}",
+            "relocateAlreadyPresent": "«{name}» xa está gardado en {user}",
+            "relocateError": "Non se puido transferir o servidor: {error}",
+            "relocateWrongPassword": "Contrasinal incorrecto para {user}."
         },
         "cyberTools": {
             "title": "Ferramentas de seguridade",

@@ -1259,7 +1259,8 @@
             "batchRenameResult": "{success} վերանվանված, {errors} ձախողված",
             "copyCompleted": "Պատճենը ավարտված է",
             "localPathNotFound": "\"{path}\" տեղական թղթապանակը չի գտնվել: Անցում կատարվեց տնային թղթապանակ:",
-            "zeroByteWarning": "0 B ֆայլ - կարող է նշանակել փոխանցման սխալ"
+            "zeroByteWarning": "0 B ֆայլ - կարող է նշանակել փոխանցման սխալ",
+            "megacmdWarmup": "MEGAcmd սերվերը գործարկված չէ, գործարկվում է ֆոնում..."
         },
         "about": {
             "tagline": "Ավելին քան FTP: Ամբողջական գործիքակազմ մշակողների համար:",
@@ -3458,7 +3459,25 @@
             "hideCredentials": "Թաքցնել հավատարագրերը",
             "showCredentials": "Ցույց տալ հավատարագրերը",
             "showUsername": "Ցույց տալ օգտագործողի անունը քարտերի վրա",
-            "hideUsername": "Թաքցնել օգտագործողի անունը քարտերի վրա"
+            "hideUsername": "Թաքցնել օգտագործողի անունը քարտերի վրա",
+            "copyToUser": "Պատճենել հաշվում...",
+            "moveToUser": "Տեղափոխել հաշվում...",
+            "relocateCopyTitle": "Պատճենել սերվերը այլ հաշվում",
+            "relocateMoveTitle": "Տեղափոխել սերվերը այլ հաշվում",
+            "relocatePickUser": "Ընտրեք նպատակային հաշիվը",
+            "relocateNoOtherUsers": "Այլ հաշիվ չկա։ Նախ ստեղծեք մեկը Օգտատերերի կառավարման մեջ։",
+            "relocateTargetPasswordLabel": "{user}-ի գաղտնաբառը",
+            "relocateTargetPasswordHint": "{user}-ը պաշտպանված է։ Մուտքագրեք նրա գաղտնաբառը՝ սերվերն այնտեղ պահելու համար։",
+            "relocateMoveWarning": "Տեղափոխումից հետո բնօրինակը հեռացվում է այս հաշվից։",
+            "relocateSubmitCopy": "Պատճենել",
+            "relocateSubmitMove": "Տեղափոխել",
+            "relocateBusyCopy": "Պատճենվում է...",
+            "relocateBusyMove": "Տեղափոխվում է...",
+            "relocateSuccessCopy": "«{name}»-ը պատճենվեց {user}",
+            "relocateSuccessMove": "«{name}»-ը տեղափոխվեց {user}",
+            "relocateAlreadyPresent": "«{name}»-ն արդեն պահված է {user}-ում",
+            "relocateError": "Չհաջողվեց փոխանցել սերվերը՝ {error}",
+            "relocateWrongPassword": "Սխալ գաղտնաբառ {user}-ի համար։"
         },
         "cyberTools": {
             "title": "Անվտանգության գործիքներ",

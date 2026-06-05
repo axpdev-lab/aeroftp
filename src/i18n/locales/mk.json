@@ -1266,7 +1266,8 @@
             "batchRenameResult": "{success} преименувани, {errors} неуспешни",
             "copyCompleted": "Копирањето е завршено",
             "localPathNotFound": "Локалната папка \"{path}\" не е пронајдена. Пренасочено кон домашниот директориум.",
-            "zeroByteWarning": "Датотека од 0 B - може да укажува на грешка при пренос"
+            "zeroByteWarning": "Датотека од 0 B - може да укажува на грешка при пренос",
+            "megacmdWarmup": "Серверот MEGAcmd не работи, се стартува во заднина..."
         },
         "about": {
             "tagline": "Повеќе од FTP. Комплетна развојна алатка.",
@@ -3465,7 +3466,25 @@
             "hideCredentials": "Сокриј акредитиви",
             "showCredentials": "Прикажи акредитиви",
             "showUsername": "Прикажи корисничко име на картичките",
-            "hideUsername": "Сокриј корисничко име на картичките"
+            "hideUsername": "Сокриј корисничко име на картичките",
+            "copyToUser": "Копирај на сметка...",
+            "moveToUser": "Премести на сметка...",
+            "relocateCopyTitle": "Копирај го серверот на друга сметка",
+            "relocateMoveTitle": "Премести го серверот на друга сметка",
+            "relocatePickUser": "Изберете ја целната сметка",
+            "relocateNoOtherUsers": "Нема друга сметка. Прво создадете една во Управување со корисници.",
+            "relocateTargetPasswordLabel": "Лозинка за {user}",
+            "relocateTargetPasswordHint": "{user} е заштитена. Внесете ја нејзината лозинка за да го зачувате серверот таму.",
+            "relocateMoveWarning": "Оригиналот се отстранува од оваа сметка по преместувањето.",
+            "relocateSubmitCopy": "Копирај",
+            "relocateSubmitMove": "Премести",
+            "relocateBusyCopy": "Копирање...",
+            "relocateBusyMove": "Преместување...",
+            "relocateSuccessCopy": "„{name}“ е копиран на {user}",
+            "relocateSuccessMove": "„{name}“ е преместен на {user}",
+            "relocateAlreadyPresent": "„{name}“ е веќе зачуван во {user}",
+            "relocateError": "Серверот не може да се пренесе: {error}",
+            "relocateWrongPassword": "Погрешна лозинка за {user}."
         },
         "cyberTools": {
             "title": "Безбедносни алатки",

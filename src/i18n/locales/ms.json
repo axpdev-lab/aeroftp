@@ -1266,7 +1266,8 @@
             "batchRenameResult": "{success} dinamakan semula, {errors} gagal",
             "copyCompleted": "Penyalinan selesai",
             "localPathNotFound": "Folder tempatan \"{path}\" tidak ditemui. Telah dinavigasi ke direktori rumah.",
-            "zeroByteWarning": "Fail 0 B - mungkin menunjukkan ralat pemindahan"
+            "zeroByteWarning": "Fail 0 B - mungkin menunjukkan ralat pemindahan",
+            "megacmdWarmup": "Pelayan MEGAcmd tidak berjalan, memulakan di latar belakang..."
         },
         "about": {
             "tagline": "Lebih daripada FTP. Kit alat lengkap untuk pembangun.",
@@ -3465,7 +3466,25 @@
             "hideCredentials": "Sembunyikan kelayakan",
             "showCredentials": "Tunjukkan kelayakan",
             "showUsername": "Tunjukkan nama pengguna pada kad",
-            "hideUsername": "Sembunyikan nama pengguna pada kad"
+            "hideUsername": "Sembunyikan nama pengguna pada kad",
+            "copyToUser": "Salin ke akaun...",
+            "moveToUser": "Alih ke akaun...",
+            "relocateCopyTitle": "Salin pelayan ke akaun lain",
+            "relocateMoveTitle": "Alih pelayan ke akaun lain",
+            "relocatePickUser": "Pilih akaun destinasi",
+            "relocateNoOtherUsers": "Tiada akaun lain. Cipta satu dalam Urus Pengguna dahulu.",
+            "relocateTargetPasswordLabel": "Kata laluan untuk {user}",
+            "relocateTargetPasswordHint": "{user} dilindungi. Masukkan kata laluannya untuk menyimpan pelayan di sana.",
+            "relocateMoveWarning": "Yang asal dialih keluar daripada akaun ini selepas dialihkan.",
+            "relocateSubmitCopy": "Salin",
+            "relocateSubmitMove": "Alih",
+            "relocateBusyCopy": "Menyalin...",
+            "relocateBusyMove": "Mengalih...",
+            "relocateSuccessCopy": "\"{name}\" disalin ke {user}",
+            "relocateSuccessMove": "\"{name}\" dialih ke {user}",
+            "relocateAlreadyPresent": "\"{name}\" sudah disimpan dalam {user}",
+            "relocateError": "Pelayan tidak dapat dipindahkan: {error}",
+            "relocateWrongPassword": "Kata laluan salah untuk {user}."
         },
         "cyberTools": {
             "title": "Alatan Keselamatan",

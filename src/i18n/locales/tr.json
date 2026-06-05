@@ -1266,7 +1266,8 @@
             "batchRenameResult": "{success} yeniden adlandırıldı, {errors} başarısız",
             "copyCompleted": "Kopyalama tamamlandı",
             "localPathNotFound": "Yerel klasör \"{path}\" bulunamadı. Ana dizine gidildi.",
-            "zeroByteWarning": "0 B dosya - bir aktarım hatası olabilir"
+            "zeroByteWarning": "0 B dosya - bir aktarım hatası olabilir",
+            "megacmdWarmup": "MEGAcmd sunucusu çalışmıyor, arka planda başlatılıyor..."
         },
         "about": {
             "tagline": "FTP'den fazlası. Tam bir geliştirici araç seti.",
@@ -3465,7 +3466,25 @@
             "hideCredentials": "Kimlik bilgilerini gizle",
             "showCredentials": "Kimlik bilgilerini göster",
             "showUsername": "Kartlarda kullanıcı adını göster",
-            "hideUsername": "Kartlarda kullanıcı adını gizle"
+            "hideUsername": "Kartlarda kullanıcı adını gizle",
+            "copyToUser": "Hesaba kopyala...",
+            "moveToUser": "Hesaba taşı...",
+            "relocateCopyTitle": "Sunucuyu başka bir hesaba kopyala",
+            "relocateMoveTitle": "Sunucuyu başka bir hesaba taşı",
+            "relocatePickUser": "Hedef hesabı seçin",
+            "relocateNoOtherUsers": "Başka hesap yok. Önce Kullanıcıları Yönet bölümünde bir tane oluşturun.",
+            "relocateTargetPasswordLabel": "{user} için parola",
+            "relocateTargetPasswordHint": "{user} korumalı. Sunucuyu oraya kaydetmek için parolasını girin.",
+            "relocateMoveWarning": "Taşıdıktan sonra orijinal bu hesaptan kaldırılır.",
+            "relocateSubmitCopy": "Kopyala",
+            "relocateSubmitMove": "Taşı",
+            "relocateBusyCopy": "Kopyalanıyor...",
+            "relocateBusyMove": "Taşınıyor...",
+            "relocateSuccessCopy": "\"{name}\" {user} hesabına kopyalandı",
+            "relocateSuccessMove": "\"{name}\" {user} hesabına taşındı",
+            "relocateAlreadyPresent": "\"{name}\" zaten {user} hesabında kayıtlı",
+            "relocateError": "Sunucu aktarılamadı: {error}",
+            "relocateWrongPassword": "{user} için yanlış parola."
         },
         "cyberTools": {
             "title": "Güvenlik Araçları",

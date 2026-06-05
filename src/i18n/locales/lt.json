@@ -1266,7 +1266,8 @@
             "batchRenameResult": "{success} pervadinta, {errors} nepavyko",
             "copyCompleted": "Kopijavimas baigtas",
             "localPathNotFound": "Vietinis aplankas \"{path}\" nerastas. Pereita į pagrindinį katalogą.",
-            "zeroByteWarning": "0 B failas - gali reikšti perkėlimo klaidą"
+            "zeroByteWarning": "0 B failas - gali reikšti perkėlimo klaidą",
+            "megacmdWarmup": "MEGAcmd serveris neveikia, paleidžiama fone..."
         },
         "about": {
             "tagline": "Daugiau nei FTP. Pilnas kureju irankiu rinkinys.",
@@ -3465,7 +3466,25 @@
             "hideCredentials": "Slėpti prisijungimo duomenis",
             "showCredentials": "Rodyti prisijungimo duomenis",
             "showUsername": "Rodyti naudotojo vardą kortelėse",
-            "hideUsername": "Slėpti naudotojo vardą kortelėse"
+            "hideUsername": "Slėpti naudotojo vardą kortelėse",
+            "copyToUser": "Kopijuoti į paskyrą...",
+            "moveToUser": "Perkelti į paskyrą...",
+            "relocateCopyTitle": "Kopijuoti serverį į kitą paskyrą",
+            "relocateMoveTitle": "Perkelti serverį į kitą paskyrą",
+            "relocatePickUser": "Pasirinkite paskirties paskyrą",
+            "relocateNoOtherUsers": "Kitų paskyrų nėra. Pirma sukurkite ją Naudotojų tvarkyme.",
+            "relocateTargetPasswordLabel": "{user} slaptažodis",
+            "relocateTargetPasswordHint": "{user} apsaugota. Įveskite jos slaptažodį, kad ten išsaugotumėte serverį.",
+            "relocateMoveWarning": "Perkėlus originalas pašalinamas iš šios paskyros.",
+            "relocateSubmitCopy": "Kopijuoti",
+            "relocateSubmitMove": "Perkelti",
+            "relocateBusyCopy": "Kopijuojama...",
+            "relocateBusyMove": "Perkeliama...",
+            "relocateSuccessCopy": "„{name}“ nukopijuota į {user}",
+            "relocateSuccessMove": "„{name}“ perkelta į {user}",
+            "relocateAlreadyPresent": "„{name}“ jau išsaugota paskyroje {user}",
+            "relocateError": "Nepavyko perkelti serverio: {error}",
+            "relocateWrongPassword": "Neteisingas {user} slaptažodis."
         },
         "cyberTools": {
             "title": "Saugumo įrankiai",
