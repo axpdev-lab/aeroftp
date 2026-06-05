@@ -306,26 +306,31 @@ export function companyLaunchProtocol(c: CatalogCompany, category: CatalogCatego
 /**
  * Principal storage regions per company, as distinct ISO 3166-1 alpha-2
  * country codes (plus 'EU' for pan-EU multi-region and 'global' for
- * decentralized / self-hosted). EDITORIAL and APPROXIMATE: only providers
- * with a meaningful multi-region footprint (mostly S3) are listed; the list
- * is trimmed to the principal regions, not exhaustive. Everything else falls
- * back to the single HQ country. Verify with the provider.
+ * decentralized / self-hosted). Curated to the principal regions, NOT
+ * exhaustive: only providers with a meaningful multi-region footprint (mostly
+ * S3) are listed; everything else falls back to the single HQ country.
+ *
+ * Verified against the providers' official region/endpoint pages (2026-06).
+ * Storj / Cloudflare R2 / MinIO stay 'global' (decentralized, automatic
+ * placement, or self-hosted: no per-country region list applies). 'mega' lists
+ * actual storage regions (EU + Canada); the company `countryCode` keeps 'NZ' as
+ * brand origin. Re-verify before quoting, region footprints drift.
  */
 const REGIONS_BY_LOGO: Record<string, string[]> = {
     'amazon-s3': ['US', 'IE', 'DE', 'GB', 'FR', 'SG', 'JP', 'IN', 'BR', 'AU', 'CA', 'KR'],
-    'wasabi': ['US', 'NL', 'JP', 'AU', 'CA', 'SG'],
+    'wasabi': ['US', 'NL', 'JP', 'AU', 'CA', 'SG', 'DE', 'GB', 'FR', 'IT'],
     'storj': ['global'],
     'cloudflare-r2': ['global'],
-    'idrive-e2': ['US', 'IE', 'DE'],
+    'idrive-e2': ['US', 'IE', 'DE', 'CA', 'GB', 'FR', 'SG', 'JP'],
     'oracle-cloud': ['US', 'DE', 'GB', 'JP', 'IN', 'AU', 'BR', 'CA'],
-    'digitalocean-spaces': ['US', 'NL', 'SG', 'IN', 'DE'],
-    'alibaba-oss': ['CN', 'SG', 'US', 'DE', 'JP', 'AU'],
+    'digitalocean-spaces': ['US', 'NL', 'SG', 'IN', 'DE', 'CA', 'GB', 'AU'],
+    'alibaba-oss': ['CN', 'SG', 'US', 'DE', 'JP', 'KR'],
     'tencent-cos': ['CN', 'SG', 'US', 'DE', 'JP', 'KR'],
     'google-cloud-storage': ['US', 'EU', 'SG', 'JP', 'AU', 'BR', 'IN'],
     'minio': ['global'],
-    'backblaze': ['US', 'NL'],
-    'mega': ['NZ', 'EU', 'CA'],
-    'mega-s4': ['EU', 'CA'],
+    'backblaze': ['US', 'NL', 'CA'],
+    'mega': ['EU', 'CA'],
+    'mega-s4': ['NL', 'LU', 'CA'],
     'yandex-storage': ['RU'],
 };
 

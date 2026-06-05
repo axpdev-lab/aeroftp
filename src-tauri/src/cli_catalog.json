@@ -6,7 +6,6 @@
     "freeGb": 20,
     "freeNote": "E2E",
     "regions": [
-      "NZ",
       "EU",
       "CA"
     ],
@@ -36,7 +35,8 @@
     "freeGb": null,
     "freeNote": "Pro plan",
     "regions": [
-      "EU",
+      "NL",
+      "LU",
       "CA"
     ],
     "protocols": [
@@ -338,7 +338,8 @@
     "freeNote": null,
     "regions": [
       "US",
-      "NL"
+      "NL",
+      "CA"
     ],
     "protocols": [
       {
@@ -368,7 +369,12 @@
     "regions": [
       "US",
       "IE",
-      "DE"
+      "DE",
+      "CA",
+      "GB",
+      "FR",
+      "SG",
+      "JP"
     ],
     "protocols": [
       {
@@ -827,7 +833,11 @@
       "JP",
       "AU",
       "CA",
-      "SG"
+      "SG",
+      "DE",
+      "GB",
+      "FR",
+      "IT"
     ],
     "protocols": [
       {
@@ -851,7 +861,10 @@
       "NL",
       "SG",
       "IN",
-      "DE"
+      "DE",
+      "CA",
+      "GB",
+      "AU"
     ],
     "protocols": [
       {
@@ -876,7 +889,7 @@
       "US",
       "DE",
       "JP",
-      "AU"
+      "KR"
     ],
     "protocols": [
       {
