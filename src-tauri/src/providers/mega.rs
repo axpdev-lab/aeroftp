@@ -885,7 +885,18 @@ impl StorageProvider for MegaCmdProvider {
         true
     }
 
+    fn supports_server_side_copy(&self) -> bool {
+        true
+    }
+
     async fn server_copy(&mut self, f: &str, t: &str) -> Result<(), ProviderError> {
+        // Legacy alias kept so CLI / MCP / provider_commands callers keep
+        // working. The real `mega-cp` shellout lives on `server_side_copy`
+        // (S3-T10 migration, v4.0.0).
+        StorageProvider::server_side_copy(self, f, t).await
+    }
+
+    async fn server_side_copy(&mut self, f: &str, t: &str) -> Result<(), ProviderError> {
         let f = self.resolve_path(f);
         let t = self.resolve_path(t);
         self.run_mega_cmd_with_reauth("mega-cp", &[&f, &t]).await?;

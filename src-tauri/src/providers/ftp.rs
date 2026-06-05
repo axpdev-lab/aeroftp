@@ -1452,6 +1452,23 @@ impl StorageProvider for FtpProvider {
     }
 
     fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
+        // Shaped-graph multipart trait (S3-T09): intentionally NotSupported
+        // by design on FTP and FTPS.
+        //
+        // The FTP protocol (RFC 959 + RFC 3659 + RFC 4217) has no native
+        // notion of independent "parts" that can be uploaded out of order
+        // and stitched together at commit time: STOR is monolithic, REST
+        // only rewinds the byte offset on a single transfer stream, and
+        // APPE concatenates without ordering guarantees across multiple
+        // sessions. Real file-level parallelism on FTP comes from
+        // re-dialling N independent control connections via the dedicated
+        // `FtpSessionPool`/`FtpDownloadExecutor` (see
+        // `transfer_executor_kind` below: `FtpConnectionPool` once a
+        // connection spec exists). Wiring a fake-multipart shim that
+        // sliced one upload into REST/STOR pairs across one connection
+        // would not improve resumability and would defeat the executor
+        // pool, so we leave `supports_multipart=false` and let the runner
+        // pick the legacy single-stream path with REST-based resume.
         super::TransferOptimizationHints {
             supports_resume_download: true,
             supports_resume_upload: true,
