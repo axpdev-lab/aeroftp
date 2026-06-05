@@ -753,7 +753,7 @@
             "nFilesAtATime": "{n} skrár í einu",
             "retryCountOnError": "Fjöldi endurtilrauna við villu",
             "cloudProviderSettings": "Stillingar Skýjaveitu",
-            "cloudProviderDesc": "Stilltu skýjalagerstað-veitu. AeroCloud notar þinn FTP netþjón, OAuth2 veitir þurfa API skilríki.",
+            "cloudProviderDesc": "Stilltu skýjageymsluveitur. AeroCloud breytir hvaða studdum þjóni sem er í þitt persónulega ský (FTP, FTPS, SFTP, WebDAV og innbyggðar skýjaveitur); OAuth2 veitur þurfa API-auðkenni.",
             "hideSecrets": "Fela leynilykla",
             "showSecrets": "Sýna leynilykla",
             "aerocloudName": "AeroCloud",
@@ -2004,7 +2004,7 @@
             "aerosyncScriptApplyButton": "Vista sem preset",
             "aerosyncScriptAppliedToast": "Innfluttur preset vistaður. Opnaðu AeroSync til að nota hann.",
             "compressionHint": "Þjappar gögnum við flutning til að flýta fyrir flutningnum; geymir ekki þjappaðar skrár á áfangastað. Auto sleppir sniðum sem eru þegar þjöppuð (zip, jpg, mp4 og álíka).",
-            "canaryDryRun": "Engu er flutt: þetta sýnir forskoðun á því sem full samstilling myndi gera, reiknað út frá sýninu (svipað og rclone --dry-run)."
+            "canaryDryRun": "Ekkert er flutt: þetta sýnir forskoðun á því sem full samstilling myndi gera, reiknað út frá úrtakinu. Það er myndræna hliðstæðan við skipunina aeroftp-cli sync --dry-run (og --dry-run hjá rclone)."
         },
         "ui": {
             "syncing": "Samstillir...",
@@ -3309,7 +3309,8 @@
                 "notSupported": "Þessi skráartegund er ekki studd fyrir forskoðun",
                 "previous": "Fyrra (←)",
                 "remote": "Fjartengt",
-                "edit": "Breyta"
+                "edit": "Breyta",
+                "viewAsText": "Skoða sem texta"
             },
             "image": {
                 "actualSize": "Raunstærð",

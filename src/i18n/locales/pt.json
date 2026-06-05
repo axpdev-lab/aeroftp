@@ -753,7 +753,7 @@
             "nFilesAtATime": "{n} arquivos por vez",
             "retryCountOnError": "Contagem de Tentativas em Erro",
             "cloudProviderSettings": "Configurações do Provedor Cloud",
-            "cloudProviderDesc": "Configure provedores de armazenamento em nuvem. AeroCloud usa seu servidor FTP, provedores OAuth2 precisam de credenciais de API.",
+            "cloudProviderDesc": "Configure os provedores de armazenamento em nuvem. O AeroCloud transforma qualquer servidor compatível na sua nuvem pessoal (FTP, FTPS, SFTP, WebDAV e os provedores de nuvem nativos); os provedores OAuth2 precisam de credenciais de API.",
             "hideSecrets": "Ocultar segredos",
             "showSecrets": "Mostrar segredos",
             "aerocloudName": "AeroCloud",
@@ -2004,7 +2004,7 @@
             "aerosyncScriptApplyButton": "Guardar como preset",
             "aerosyncScriptAppliedToast": "Preset importado guardado. Abre o AeroSync para o utilizar.",
             "compressionHint": "Comprime os dados durante a transmissão para acelerar a transferência; não armazena ficheiros comprimidos no destino. Auto ignora formatos que já estão comprimidos (zip, jpg, mp4 e semelhantes).",
-            "canaryDryRun": "Nada é transferido: isto pré-visualiza o que uma sincronização completa faria, calculado a partir da amostra (semelhante a rclone --dry-run)."
+            "canaryDryRun": "Nada é transferido: isto mostra uma prévia do que uma sincronização completa faria, calculada a partir da amostra. É o equivalente gráfico do comando aeroftp-cli sync --dry-run (e do --dry-run do rclone)."
         },
         "ui": {
             "syncing": "Sincronizando...",
@@ -3309,7 +3309,8 @@
                 "notSupported": "Este tipo de arquivo nao e suportado para pre-visualizacao",
                 "previous": "Anterior (←)",
                 "remote": "Remoto",
-                "edit": "Editar"
+                "edit": "Editar",
+                "viewAsText": "Ver como texto"
             },
             "image": {
                 "actualSize": "Tamanho real",

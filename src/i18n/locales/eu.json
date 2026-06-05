@@ -753,7 +753,7 @@
             "nFilesAtATime": "{n} fitxategi bata bestearen ondoren",
             "retryCountOnError": "Berriro saiakera kopurua errorean",
             "cloudProviderSettings": "Hodei hornitzailearen ezarpenak",
-            "cloudProviderDesc": "Konfiguratu hodei biltegiratze hornitzaileak. AeroCloud-ek zure FTP zerbitzaria erabiltzen du, OAuth2 hornitzaileek API gakoak behar dituzte.",
+            "cloudProviderDesc": "Konfiguratu hodeiko biltegiratze hornitzaileak. AeroCloud-ek onartutako edozein zerbitzari zure hodei pertsonal bihurtzen du (FTP, FTPS, SFTP, WebDAV eta jatorrizko hodei hornitzaileak); OAuth2 hornitzaileek API kredentzialak behar dituzte.",
             "hideSecrets": "Ezkutatu sekretuak",
             "showSecrets": "Erakutsi sekretuak",
             "aerocloudName": "AeroCloud",
@@ -2004,7 +2004,7 @@
             "aerosyncScriptApplyButton": "Gorde preset gisa",
             "aerosyncScriptAppliedToast": "Inportatutako preset-a gordeta. Ireki AeroSync erabiltzeko.",
             "compressionHint": "Datuak transferentzian zehar konprimitzen ditu, transferentzia bizkortzeko; ez ditu fitxategi konprimituak helmugan gordetzen. Auto aukerak dagoeneko konprimituta dauden formatuak saltatzen ditu (zip, jpg, mp4 eta antzekoak).",
-            "canaryDryRun": "Ez da ezer transferitzen: honek sinkronizazio osoak egingo lukeenaren aurrebista erakusten du, laginetik kalkulatuta (rclone --dry-run komandoaren antzekoa)."
+            "canaryDryRun": "Ez da ezer transferitzen: sinkronizazio osoak zer egingo lukeen aurreikusten du, laginetik kalkulatuta. aeroftp-cli sync --dry-run komandoaren (eta rclone-ren --dry-run) interfaze grafikoaren baliokidea da."
         },
         "ui": {
             "syncing": "Sinkronizatzen...",
@@ -3309,7 +3309,8 @@
                 "notSupported": "Fitxategi-mota hau ez da onartzen aurrebistatzeko",
                 "previous": "Aurrekoa (←)",
                 "remote": "Urrunekoa",
-                "edit": "Editatu"
+                "edit": "Editatu",
+                "viewAsText": "Ikusi testu gisa"
             },
             "image": {
                 "actualSize": "Benetako tamaina",

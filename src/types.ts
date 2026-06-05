@@ -171,6 +171,9 @@ export const isNativeApiProtocol = (protocol?: string | null): boolean => {
 //    the real quota from the provider REST API instead (webdav.rs
 //    storage_info special-cases app.koofr.net and webdav.opendrive.com).
 //    So a Koofr/OpenDrive profile, API or WebDAV, never needs the cap.
+//  - Yandex Disk over WebDAV (webdav.yandex.ru) returns real RFC 4331
+//    quota via the standard PROPFIND path, so the cap and used-scan are
+//    pointless noise there too (#270 comment 17195110).
 //
 // Raw FTP/FTPS/SFTP, generic S3/WebDAV, and USED-but-no-TOTAL backends
 // (Backblaze B2) are deliberately NOT covered: they keep the override.
@@ -188,6 +191,9 @@ export const providerServesQuota = (
       providerId === "opendrive-webdav" ||
       host.includes("webdav.opendrive.com")
     ) {
+      return true;
+    }
+    if (providerId === "yandexdisk-webdav" || host.includes("webdav.yandex")) {
       return true;
     }
   }

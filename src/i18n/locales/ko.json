@@ -753,7 +753,7 @@
             "nFilesAtATime": "한 번에 {n}개 파일",
             "retryCountOnError": "오류 시 재시도 횟수",
             "cloudProviderSettings": "클라우드 공급자 설정",
-            "cloudProviderDesc": "클라우드 저장소 공급자를 구성하세요. AeroCloud는 FTP 서버를 사용하고 OAuth2 공급자는 API 자격 증명이 필요합니다.",
+            "cloudProviderDesc": "클라우드 스토리지 공급자를 구성합니다. AeroCloud는 지원되는 모든 서버를 개인 클라우드로 전환합니다(FTP, FTPS, SFTP, WebDAV 및 기본 클라우드 공급자). OAuth2 공급자는 API 자격 증명이 필요합니다.",
             "hideSecrets": "비밀 숨기기",
             "showSecrets": "비밀 표시",
             "aerocloudName": "AeroCloud",
@@ -2004,7 +2004,7 @@
             "aerosyncScriptApplyButton": "preset 으로 저장",
             "aerosyncScriptAppliedToast": "가져온 preset 을 저장했습니다. AeroSync 를 열어 사용하세요.",
             "compressionHint": "전송 속도를 높이기 위해 전송 중에 데이터를 압축하며, 대상에 압축 파일을 저장하지는 않습니다. Auto는 이미 압축된 형식(zip, jpg, mp4 등)을 건너뜁니다.",
-            "canaryDryRun": "아무것도 전송되지 않습니다: 이는 샘플을 기반으로 계산하여 전체 동기화가 수행할 작업을 미리 보여 줍니다(rclone --dry-run과 유사)."
+            "canaryDryRun": "아무것도 전송되지 않습니다. 이것은 샘플에서 계산하여 전체 동기화가 수행할 작업을 미리 봅니다. CLI 명령 aeroftp-cli sync --dry-run(및 rclone의 --dry-run)의 GUI 대응 기능입니다."
         },
         "ui": {
             "syncing": "동기화 중...",
@@ -3309,7 +3309,8 @@
                 "notSupported": "이 파일 형식은 미리보기가 지원되지 않습니다",
                 "previous": "이전 (←)",
                 "remote": "원격",
-                "edit": "편집"
+                "edit": "편집",
+                "viewAsText": "텍스트로 보기"
             },
             "image": {
                 "actualSize": "실제 크기",

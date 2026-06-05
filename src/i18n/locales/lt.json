@@ -753,7 +753,7 @@
             "nFilesAtATime": "{n} failų vienu metu",
             "retryCountOnError": "Bandymai iš naujo suklydus",
             "cloudProviderSettings": "Debesies paslaugų nustatymai",
-            "cloudProviderDesc": "Konfigūruokite savo debesies paslaugų kredencialus",
+            "cloudProviderDesc": "Konfigūruokite debesų saugyklos teikėjus. AeroCloud bet kurį palaikomą serverį paverčia jūsų asmeniniu debesimi (FTP, FTPS, SFTP, WebDAV ir savieji debesų teikėjai); OAuth2 teikėjams reikia API kredencialų.",
             "hideSecrets": "Slėpti slaptažodžius",
             "showSecrets": "Rodyti slaptažodžius",
             "aerocloudName": "AeroCloud",
@@ -2004,7 +2004,7 @@
             "aerosyncScriptApplyButton": "Issaugoti kaip preset",
             "aerosyncScriptAppliedToast": "Importuotas preset issaugotas. Atidarykite AeroSync, kad ji naudotumete.",
             "compressionHint": "Suspaudžia duomenis perdavimo metu, kad transferis būtų greitesnis; suspaustų failų paskirties vietoje nesaugo. Auto praleidžia jau suspaustus formatus (zip, jpg, mp4 ir panašius).",
-            "canaryDryRun": "Nieko neperduodama: tai parodo, ką atliktų visa sinchronizacija, apskaičiuota pagal pavyzdį (panašiai kaip rclone --dry-run)."
+            "canaryDryRun": "Niekas neperkeliama: tai parodo, ką darytų visas sinchronizavimas, apskaičiuota iš imties. Tai komandos aeroftp-cli sync --dry-run (ir rclone --dry-run) grafinis atitikmuo."
         },
         "ui": {
             "syncing": "Sinchronizuojama...",
@@ -3309,7 +3309,8 @@
                 "notSupported": "Šis failo tipas nepalaikomas peržiūrai",
                 "previous": "Ankstesnis (←)",
                 "remote": "Nuotolinis",
-                "edit": "Redaguoti"
+                "edit": "Redaguoti",
+                "viewAsText": "Rodyti kaip tekstą"
             },
             "image": {
                 "actualSize": "Tikrasis dydis",

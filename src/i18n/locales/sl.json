@@ -753,7 +753,7 @@
             "nFilesAtATime": "{n} datotek hkrati",
             "retryCountOnError": "Število ponovnih poskusov pri napaki",
             "cloudProviderSettings": "Nastavitve ponudnika oblaka",
-            "cloudProviderDesc": "Nastavite ponudnike oblačnega shranjevanja. AeroCloud uporablja vaš FTP strežnik, ponudniki OAuth2 potrebujejo poverilnice API.",
+            "cloudProviderDesc": "Konfigurirajte ponudnike shrambe v oblaku. AeroCloud spremeni kateri koli podprt strežnik v vaš osebni oblak (FTP, FTPS, SFTP, WebDAV in izvorni ponudniki oblaka); ponudniki OAuth2 potrebujejo poverilnice API.",
             "hideSecrets": "Skrij skrivnosti",
             "showSecrets": "Prikaži skrivnosti",
             "aerocloudName": "AeroCloud",
@@ -2004,7 +2004,7 @@
             "aerosyncScriptApplyButton": "Shrani kot preset",
             "aerosyncScriptAppliedToast": "Uvozeni preset shranjen. Odpri AeroSync za uporabo.",
             "compressionHint": "Stiska podatke med prenosom, da ga pospeši; na cilju ne shranjuje stisnjenih datotek. Auto preskoči formate, ki so že stisnjeni (zip, jpg, mp4 in podobni).",
-            "canaryDryRun": "Nič se ne prenese: to prikaže predogled tega, kar bi storila popolna sinhronizacija, izračunan iz vzorca (podobno kot rclone --dry-run)."
+            "canaryDryRun": "Nič se ne prenese: to prikaže predogled tega, kar bi naredila polna sinhronizacija, izračunan iz vzorca. To je grafični ustreznik ukaza aeroftp-cli sync --dry-run (in --dry-run orodja rclone)."
         },
         "ui": {
             "syncing": "Sinhronizacija...",
@@ -3309,7 +3309,8 @@
                 "notSupported": "Ta vrsta datoteke ni podprta za predogled",
                 "previous": "Prejšnji (←)",
                 "remote": "Oddaljeno",
-                "edit": "Uredi"
+                "edit": "Uredi",
+                "viewAsText": "Prikaži kot besedilo"
             },
             "image": {
                 "actualSize": "Dejanska velikost",

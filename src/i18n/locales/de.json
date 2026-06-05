@@ -753,7 +753,7 @@
             "nFilesAtATime": "{n} Dateien auf einmal",
             "retryCountOnError": "Wiederholungsanzahl bei Fehler",
             "cloudProviderSettings": "Cloud-Anbieter-Einstellungen",
-            "cloudProviderDesc": "Konfigurieren Sie Cloud-Speicheranbieter. AeroCloud verwendet Ihren FTP-Server, OAuth2-Anbieter benötigen API-Anmeldedaten.",
+            "cloudProviderDesc": "Konfigurieren Sie Cloud-Speicheranbieter. AeroCloud verwandelt jeden unterstützten Server in Ihre persönliche Cloud (FTP, FTPS, SFTP, WebDAV und die nativen Cloud-Anbieter); OAuth2-Anbieter benötigen API-Anmeldedaten.",
             "hideSecrets": "Geheimnisse ausblenden",
             "showSecrets": "Geheimnisse anzeigen",
             "aerocloudName": "AeroCloud",
@@ -2004,7 +2004,7 @@
             "aerosyncScriptApplyButton": "Als preset speichern",
             "aerosyncScriptAppliedToast": "Importiertes preset gespeichert. Offne AeroSync, um es zu verwenden.",
             "compressionHint": "Komprimiert die Daten während der Übertragung, um diese zu beschleunigen; am Zielort werden keine komprimierten Dateien gespeichert. Auto überspringt bereits komprimierte Formate (zip, jpg, mp4 und ähnliche).",
-            "canaryDryRun": "Es wird nichts übertragen: Dies zeigt eine Vorschau dessen, was eine vollständige Synchronisierung tun würde, berechnet anhand der Stichprobe (ähnlich wie rclone --dry-run)."
+            "canaryDryRun": "Es wird nichts übertragen: Dies zeigt eine Vorschau, was eine vollständige Synchronisierung tun würde, berechnet aus der Stichprobe. Es ist das GUI-Gegenstück zum CLI-Befehl aeroftp-cli sync --dry-run (und zu --dry-run von rclone)."
         },
         "ui": {
             "syncing": "Synchronisiere...",
@@ -3309,7 +3309,8 @@
                 "notSupported": "Dieser Dateityp wird für die Vorschau nicht unterstützt",
                 "previous": "Vorherige (←)",
                 "remote": "Remote",
-                "edit": "Bearbeiten"
+                "edit": "Bearbeiten",
+                "viewAsText": "Als Text anzeigen"
             },
             "image": {
                 "actualSize": "Tatsächliche Größe",

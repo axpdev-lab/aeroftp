@@ -753,7 +753,7 @@
             "nFilesAtATime": "Aynı anda {n} dosya",
             "retryCountOnError": "Hata Durumunda Yeniden Deneme Sayısı",
             "cloudProviderSettings": "Bulut Sağlayıcı Ayarları",
-            "cloudProviderDesc": "Bulut depolama sağlayıcılarını yapılandırın. AeroCloud FTP sunucunuzu kullanır, OAuth2 sağlayıcıları API kimlik bilgilerine ihtiyaç duyar.",
+            "cloudProviderDesc": "Bulut depolama sağlayıcılarını yapılandırın. AeroCloud, desteklenen herhangi bir sunucuyu kişisel bulutunuza dönüştürür (FTP, FTPS, SFTP, WebDAV ve yerel bulut sağlayıcıları); OAuth2 sağlayıcıları API kimlik bilgileri gerektirir.",
             "hideSecrets": "Gizli bilgileri gizle",
             "showSecrets": "Gizli bilgileri göster",
             "aerocloudName": "AeroCloud",
@@ -2004,7 +2004,7 @@
             "aerosyncScriptApplyButton": "Preset olarak kaydet",
             "aerosyncScriptAppliedToast": "Ice aktarilan preset kaydedildi. Kullanmak icin AeroSync'i acin.",
             "compressionHint": "Aktarımı hızlandırmak için verileri aktarım sırasında sıkıştırır; hedefte sıkıştırılmış dosyalar saklamaz. Auto, zaten sıkıştırılmış biçimleri atlar (zip, jpg, mp4 ve benzerleri).",
-            "canaryDryRun": "Hiçbir şey aktarılmaz: bu, örneğe dayanarak tam bir eşitlemenin ne yapacağını önizler (rclone --dry-run gibi)."
+            "canaryDryRun": "Hiçbir şey aktarılmaz: bu, tam bir eşitlemenin ne yapacağının örnekten hesaplanan bir önizlemesidir. CLI komutu aeroftp-cli sync --dry-run (ve rclone'un --dry-run) komutunun grafik karşılığıdır."
         },
         "ui": {
             "syncing": "Senkronize ediliyor...",
@@ -3309,7 +3309,8 @@
                 "notSupported": "Bu dosya türü önizleme için desteklenmiyor",
                 "previous": "Önceki (←)",
                 "remote": "Uzak",
-                "edit": "Duzenle"
+                "edit": "Duzenle",
+                "viewAsText": "Metin olarak görüntüle"
             },
             "image": {
                 "actualSize": "Gerçek Boyut",

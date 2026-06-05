@@ -753,7 +753,7 @@
             "nFilesAtATime": "{n} faili korraga",
             "retryCountOnError": "Korduskatsete arv vea korral",
             "cloudProviderSettings": "Pilvepakkuja seaded",
-            "cloudProviderDesc": "Seadistage pilvesalvestuse pakkujad. AeroCloud kasutab teie FTP serverit, OAuth2 pakkujad vajavad API mandaate.",
+            "cloudProviderDesc": "Seadistage pilvesalvestuse pakkujad. AeroCloud muudab mis tahes toetatud serveri teie isiklikuks pilveks (FTP, FTPS, SFTP, WebDAV ja natiivsed pilvepakkujad); OAuth2 pakkujad vajavad API mandaate.",
             "hideSecrets": "Peida saladused",
             "showSecrets": "Kuva saladused",
             "aerocloudName": "AeroCloud",
@@ -2004,7 +2004,7 @@
             "aerosyncScriptApplyButton": "Salvesta presetina",
             "aerosyncScriptAppliedToast": "Imporditud preset salvestatud. Ava AeroSync selle kasutamiseks.",
             "compressionHint": "Tihendab andmeid edastamise ajal, et kiirendada ülekannet; sihtkohta ei salvestata tihendatud faile. Auto jätab vahele juba tihendatud vormingud (zip, jpg, mp4 ja sarnased).",
-            "canaryDryRun": "Midagi ei edastata: see näitab eelvaadet sellest, mida täielik sünkroonimine teeks, arvutatuna valimi põhjal (sarnaselt rclone --dry-run käsuga)."
+            "canaryDryRun": "Midagi ei edastata: see näitab eelvaadet, mida täielik sünkroonimine teeks, arvutatuna valimi põhjal. See on käsu aeroftp-cli sync --dry-run (ja rclone'i --dry-run) graafilise liidese vaste."
         },
         "ui": {
             "syncing": "Sünkroniseerimine...",
@@ -3309,7 +3309,8 @@
                 "notSupported": "See failitüüp pole eelvaate jaoks toetatud",
                 "previous": "Eelmine (←)",
                 "remote": "Kaug",
-                "edit": "Muuda"
+                "edit": "Muuda",
+                "viewAsText": "Kuva tekstina"
             },
             "image": {
                 "actualSize": "Tegelik suurus",

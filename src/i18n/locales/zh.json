@@ -753,7 +753,7 @@
             "nFilesAtATime": "一次 {n} 个文件",
             "retryCountOnError": "错误时的重试次数",
             "cloudProviderSettings": "云存储提供商设置",
-            "cloudProviderDesc": "配置云存储提供商。AeroCloud 使用您的 FTP 服务器，OAuth2 提供商需要 API 凭据。",
+            "cloudProviderDesc": "配置云存储提供商。AeroCloud 可将任何受支持的服务器变成您的个人云（FTP、FTPS、SFTP、WebDAV 以及原生云提供商）；OAuth2 提供商需要 API 凭据。",
             "hideSecrets": "隐藏密钥",
             "showSecrets": "显示密钥",
             "aerocloudName": "AeroCloud",
@@ -2004,7 +2004,7 @@
             "aerosyncScriptApplyButton": "另存为 preset",
             "aerosyncScriptAppliedToast": "已保存导入的 preset。打开 AeroSync 即可使用。",
             "compressionHint": "在传输过程中压缩数据以加快传输速度；不会在目标位置存储压缩文件。Auto 会跳过已压缩的格式（zip、jpg、mp4 等）。",
-            "canaryDryRun": "不会传输任何内容：此操作根据样本预览完整同步将执行的操作（类似于 rclone --dry-run）。"
+            "canaryDryRun": "不会传输任何内容：这会根据样本预览完整同步将执行的操作。它是 CLI 命令 aeroftp-cli sync --dry-run（以及 rclone 的 --dry-run）的图形界面对应功能。"
         },
         "ui": {
             "syncing": "正在同步...",
@@ -3309,7 +3309,8 @@
                 "notSupported": "此文件类型不支持预览",
                 "previous": "上一个 (←)",
                 "remote": "远程",
-                "edit": "编辑"
+                "edit": "编辑",
+                "viewAsText": "以文本查看"
             },
             "image": {
                 "actualSize": "实际大小",

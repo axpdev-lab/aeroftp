@@ -753,7 +753,7 @@
             "nFilesAtATime": "{n} ffeil ar y tro",
             "retryCountOnError": "Nifer yr Ail-geisiadau ar Gwall",
             "cloudProviderSettings": "Gosodiadau Darparwr Cwmwl",
-            "cloudProviderDesc": "Ffurfweddwch ddarparwyr storio cwmwl. Mae AeroCloud yn defnyddio'ch gweinydd FTP, mae angen credydau API ar ddarparwyr OAuth2.",
+            "cloudProviderDesc": "Ffurfweddwch ddarparwyr storfa cwmwl. Mae AeroCloud yn troi unrhyw weinydd a gefnogir yn gwmwl personol i chi (FTP, FTPS, SFTP, WebDAV a'r darparwyr cwmwl brodorol); mae angen tystlythyrau API ar ddarparwyr OAuth2.",
             "hideSecrets": "Cuddio cyfrinachau",
             "showSecrets": "Dangos cyfrinachau",
             "aerocloudName": "AeroCloud",
@@ -2004,7 +2004,7 @@
             "aerosyncScriptApplyButton": "Cadw fel preset",
             "aerosyncScriptAppliedToast": "Preset wedi'i fewnforio wedi'i gadw. Agorwch AeroSync i'w ddefnyddio.",
             "compressionHint": "Yn cywasgu data wrth ei drosglwyddo i gyflymu'r trosglwyddiad; nid yw'n storio ffeiliau wedi'u cywasgu yn y cyrchfan. Mae Auto yn hepgor fformatau sydd eisoes wedi'u cywasgu (zip, jpg, mp4 a rhai tebyg).",
-            "canaryDryRun": "Ni throsglwyddir dim: mae hyn yn rhagolwg o'r hyn y byddai cysoni llawn yn ei wneud, wedi'i gyfrifo o'r sampl (tebyg i rclone --dry-run)."
+            "canaryDryRun": "Ni throsglwyddir dim: mae hyn yn rhagolwg o'r hyn y byddai cydweddu llawn yn ei wneud, wedi'i gyfrifo o'r sampl. Dyma gyfwerth GUI y gorchymyn aeroftp-cli sync --dry-run (a --dry-run rclone)."
         },
         "ui": {
             "syncing": "Yn cysoni...",
@@ -3309,7 +3309,8 @@
                 "notSupported": "Nid yw'r math hwn o ffeil yn cael ei gefnogi ar gyfer rhagolwg",
                 "previous": "Blaenorol (←)",
                 "remote": "Pell",
-                "edit": "Golygu"
+                "edit": "Golygu",
+                "viewAsText": "Gweld fel testun"
             },
             "image": {
                 "actualSize": "Maint gwirioneddol",

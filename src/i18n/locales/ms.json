@@ -753,7 +753,7 @@
             "nFilesAtATime": "{n} fail pada satu waktu",
             "retryCountOnError": "Bilangan Cubaan Semula pada Ralat",
             "cloudProviderSettings": "Tetapan Penyedia Awan",
-            "cloudProviderDesc": "Konfigurasikan penyedia penyimpanan awan. AeroCloud menggunakan pelayan FTP anda, penyedia OAuth2 memerlukan kelayakan API.",
+            "cloudProviderDesc": "Konfigurasikan penyedia storan awan. AeroCloud menjadikan mana-mana pelayan yang disokong sebagai awan peribadi anda (FTP, FTPS, SFTP, WebDAV dan penyedia awan asli); penyedia OAuth2 memerlukan kelayakan API.",
             "hideSecrets": "Sembunyikan rahsia",
             "showSecrets": "Tunjukkan rahsia",
             "aerocloudName": "AeroCloud",
@@ -2004,7 +2004,7 @@
             "aerosyncScriptApplyButton": "Simpan sebagai preset",
             "aerosyncScriptAppliedToast": "Preset yang diimport telah disimpan. Buka AeroSync untuk menggunakannya.",
             "compressionHint": "Memampatkan data semasa penghantaran untuk mempercepatkan pemindahan; ia tidak menyimpan fail termampat di destinasi. Auto melangkau format yang sudah dimampatkan (zip, jpg, mp4 dan yang seumpamanya).",
-            "canaryDryRun": "Tiada apa-apa dipindahkan: ini memaparkan pratonton apa yang akan dilakukan oleh penyegerakan penuh, dikira daripada sampel (serupa dengan rclone --dry-run)."
+            "canaryDryRun": "Tiada apa-apa dipindahkan: ini memaparkan pratonton perkara yang akan dilakukan oleh penyegerakan penuh, dikira daripada sampel. Ia adalah padanan GUI bagi perintah aeroftp-cli sync --dry-run (dan --dry-run rclone)."
         },
         "ui": {
             "syncing": "Menyegerak...",
@@ -3309,7 +3309,8 @@
                 "notSupported": "Jenis fail ini tidak disokong untuk pratonton",
                 "previous": "Sebelumnya (←)",
                 "remote": "Jauh",
-                "edit": "Sunting"
+                "edit": "Sunting",
+                "viewAsText": "Lihat sebagai teks"
             },
             "image": {
                 "actualSize": "Saiz Sebenar",

@@ -753,7 +753,7 @@
             "nFilesAtATime": "{n} fișiere la un moment",
             "retryCountOnError": "Număr de reîncercări la eroare",
             "cloudProviderSettings": "Setări furnizor Cloud",
-            "cloudProviderDesc": "Configurează furnizori de stocare cloud. AeroCloud folosește serverul tău FTP, furnizorii OAuth2 au nevoie de credențiale API.",
+            "cloudProviderDesc": "Configurați furnizorii de stocare în cloud. AeroCloud transformă orice server acceptat în cloudul tău personal (FTP, FTPS, SFTP, WebDAV și furnizorii cloud nativi); furnizorii OAuth2 necesită credențiale API.",
             "hideSecrets": "Ascunde secrete",
             "showSecrets": "Arată secrete",
             "aerocloudName": "AeroCloud",
@@ -2004,7 +2004,7 @@
             "aerosyncScriptApplyButton": "Salveaza ca preset",
             "aerosyncScriptAppliedToast": "Preset importat salvat. Deschide AeroSync pentru a-l folosi.",
             "compressionHint": "Comprimă datele în timpul transferului pentru a-l accelera; nu stochează fișiere comprimate la destinație. Auto omite formatele deja comprimate (zip, jpg, mp4 și altele similare).",
-            "canaryDryRun": "Nu se transferă nimic: aceasta previzualizează ce ar face o sincronizare completă, calculat pe baza eșantionului (similar cu rclone --dry-run)."
+            "canaryDryRun": "Nu se transferă nimic: aceasta previzualizează ce ar face o sincronizare completă, calculată din eșantion. Este echivalentul grafic al comenzii aeroftp-cli sync --dry-run (și al --dry-run din rclone)."
         },
         "ui": {
             "syncing": "Se sincronizează...",
@@ -3309,7 +3309,8 @@
                 "notSupported": "Acest tip de fisier nu este suportat pentru previzualizare",
                 "previous": "Anteriorul (←)",
                 "remote": "Remote",
-                "edit": "Editează"
+                "edit": "Editează",
+                "viewAsText": "Vizualizează ca text"
             },
             "image": {
                 "actualSize": "Dimensiune reala",
