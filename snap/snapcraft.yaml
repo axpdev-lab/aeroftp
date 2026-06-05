@@ -4,23 +4,39 @@ summary: Modern File Transfer & Cloud Client, 28 Protocols, AI Assistant
 description: |
   AeroFTP is a modern file transfer client that goes beyond traditional FTP.
   Connect to FTP/FTPS servers, SFTP, WebDAV, S3-compatible storage, and major
-  cloud providers — all from a single, elegant interface.
+  cloud providers, all from a single, elegant interface.
 
-  Supported Protocols (25):
-  FTP, FTPS (TLS 1.3), SFTP, WebDAV (Nextcloud, CloudMe, Seafile, DriveHQ),
-  4shared, S3-compatible (AWS, Backblaze B2, Wasabi, MinIO), Google Drive,
-  Dropbox, OneDrive, MEGA.nz, Filen, Box, pCloud, Azure Blob Storage,
-  Zoho WorkDrive, Internxt Drive, kDrive, Koofr, Jottacloud, FileLu,
-  Yandex Disk, OpenDrive.
+  Supported Protocols:
+  - FTP / FTPS (TLS 1.3)
+  - SFTP (SSH File Transfer)
+  - WebDAV (Nextcloud, CloudMe, Seafile, DriveHQ)
+  - S3-compatible (AWS, Backblaze B2, Wasabi, MinIO, and more)
+  - Google Drive (OAuth2, 15 GB free)
+  - Dropbox (OAuth2, 2 GB free)
+  - OneDrive (OAuth2, 5 GB free)
+  - MEGA.nz (E2E encryption, 20 GB free)
+  - Filen (E2E encryption, 10 GB free)
+  - Box, pCloud (OAuth2, 10 GB free)
+  - Azure Blob Storage (HMAC)
+  - 4shared (OAuth 1.0, 15 GB free)
+  - Zoho WorkDrive (OAuth2, 8 regional endpoints, 5 GB free)
+  - Internxt Drive (E2E, zero-knowledge, 1 GB free)
+  - kDrive (Infomaniak, 15 GB free)
+  - Koofr (EU-based, OAuth2 PKCE, 10 GB free)
+  - Jottacloud (Norwegian-hosted, unlimited plans)
+  - FileLu (API Key, file passwords, privacy toggle, 1 GB free)
+  - Yandex Disk (OAuth2, 5 GB free)
+  - OpenDrive (API Key, 5 GB free)
+  - GitHub (repository as filesystem, commits, releases)
 
   Data Protection:
   - AeroVault v2 encrypted containers (AES-256-GCM-SIV, Argon2id)
   - Master Password with auto-lock
   - Cryptomator vault support (format 8)
   - OS Keyring integration (libsecret / Keychain / Credential Manager)
-  - Zero telemetry — all credentials stored locally
+  - Zero telemetry, all credentials stored locally
 
-  AeroCloud — Personal Cloud:
+  AeroCloud, your Personal Cloud:
   Turn any FTP server into your private cloud with bidirectional sync
   and background service.
 
@@ -30,7 +46,7 @@ description: |
   - AeroAgent AI assistant (19 providers including OpenAI, Anthropic,
     Gemini, Ollama, and more)
 
-  AeroSync — Reliable Synchronization:
+  AeroSync, Reliable Synchronization:
   - Bidirectional sync with journal checkpoint and resume
   - Checksum verification and post-transfer validation
   - Configurable retry with exponential backoff
