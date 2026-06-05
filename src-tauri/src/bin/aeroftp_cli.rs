@@ -9447,7 +9447,7 @@ fn interactive_profiles_loop(cli: &Cli, store: &CredentialStore, profiles: Vec<s
         }
         if lower == "help" || lower == "?" {
             eprintln!("  l <selectors>   list root of each profile");
-            eprintln!("  t <selectors>   tree (depth 2) of each profile");
+            eprintln!("  t <selectors> [:N]  tree of each profile (default depth 2; :N sets depth, :0 = full)");
             eprintln!("  d <selectors>   delete (red rendering, tombstone reprint)");
             eprintln!("  f <selectors>   toggle favourite \u{2605} (green/yellow rendering)");
             eprintln!("  c <selectors>   copy / duplicate (blue rendering)");
@@ -9695,6 +9695,29 @@ fn interactive_profiles_loop(cli: &Cli, store: &CredentialStore, profiles: Vec<s
             continue;
         }
 
+        // Optional tree depth: a `:N` token (u8) among the selectors overrides
+        // the `t` (tree) depth; `:0` requests a full tree. It is stripped from
+        // the selector list so profile resolution never sees it. Other actions
+        // ignore it. Requested in discussion #270.
+        let mut tree_depth: Option<u32> = None;
+        let selectors: Vec<String> = selectors
+            .into_iter()
+            .filter(|s| match s.strip_prefix(':') {
+                Some(rest) => match rest.parse::<u32>() {
+                    Ok(n) => {
+                        tree_depth = Some(n);
+                        false
+                    }
+                    Err(_) => true,
+                },
+                None => true,
+            })
+            .collect();
+        if selectors.is_empty() {
+            eprintln!("No profile selector given. Type '?' for help.");
+            continue;
+        }
+
         // Resolve selectors against the current profile list. Quit
         // selectors (`0`/`-1`) cut the line short: subsequent selectors are
         // ignored and the loop exits cleanly after processing what came
@@ -9746,6 +9769,13 @@ fn interactive_profiles_loop(cli: &Cli, store: &CredentialStore, profiles: Vec<s
                 }
             }
             't' => {
+                // Default depth stays 2 (historical behavior); `:0` -> full
+                // tree (capped at MAX_SCAN_DEPTH); `:N` -> exactly N levels.
+                let depth_arg = match tree_depth {
+                    None => "2".to_string(),
+                    Some(0) => MAX_SCAN_DEPTH.to_string(),
+                    Some(n) => n.to_string(),
+                };
                 for (zero, profile) in &targets {
                     let name = profile
                         .get("name")
@@ -9753,7 +9783,7 @@ fn interactive_profiles_loop(cli: &Cli, store: &CredentialStore, profiles: Vec<s
                         .unwrap_or("")
                         .to_string();
                     eprintln!("\n=== tree #{} {} ===", zero + 1, name);
-                    run_self_subcommand(&["tree", "/", "--profile", &name, "-d", "2"]);
+                    run_self_subcommand(&["tree", "/", "--profile", &name, "-d", &depth_arg]);
                 }
             }
             'd' => {

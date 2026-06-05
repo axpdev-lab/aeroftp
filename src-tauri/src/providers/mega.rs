@@ -336,7 +336,11 @@ impl MegaCmdProvider {
                 ))
             }
             Err(_) => {
-                // Daemon might not be running: try to start it
+                // Daemon might not be running: try to start it. Surface a
+                // status line on stderr so CLI users understand why the first
+                // call is slow instead of staring at a silent wait. stderr
+                // keeps --json stdout clean (discussion #275).
+                eprintln!("MEGAcmd server not running, starting in the background...");
                 tracing::info!(target: "mega", "[DAEMON] Attempting to start MEGAcmd daemon...");
                 let server_cmd = Self::resolve_mega_cmd("mega-cmd-server");
                 let mut daemon_cmd = Command::new(&server_cmd);
