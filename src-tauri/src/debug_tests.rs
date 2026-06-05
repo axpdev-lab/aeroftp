@@ -387,12 +387,12 @@ pub async fn debug_export_bundle(
         &serde_json::to_string_pretty(&bundle.local_storage_keys).unwrap_or_else(|_| "{}".into()),
     )?;
 
-    // Tail of the on-disk Rust log. tauri-plugin-log writes to
-    // `<config>/aeroftp/logs/aeroftp.log` on most platforms.
-    if let Some(log_dir) = dirs::config_dir() {
+    // Tail of the on-disk Rust log. tauri-plugin-log writes under the
+    // canonical AeroFTP data root on most platforms.
+    if let Some(log_dir) = crate::portable::aeroftp_data_root() {
         let candidates = [
-            log_dir.join("aeroftp").join("logs").join("aeroftp.log"),
-            log_dir.join("aeroftp").join("aeroftp.log"),
+            log_dir.join("logs").join("aeroftp.log"),
+            log_dir.join("aeroftp.log"),
         ];
         for path in candidates.iter() {
             if path.exists() {

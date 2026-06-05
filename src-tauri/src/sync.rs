@@ -2069,8 +2069,9 @@ fn atomic_write(path: &std::path::Path, data: &[u8]) -> Result<(), String> {
 
 /// Get the directory where sync indices are stored
 fn sync_index_dir() -> Result<std::path::PathBuf, String> {
-    let base = dirs::config_dir().ok_or_else(|| "Cannot determine config directory".to_string())?;
-    let dir = base.join("aeroftp").join("sync-index");
+    let dir = crate::portable::aeroftp_data_root()
+        .ok_or_else(|| "Cannot determine AeroFTP data root".to_string())?
+        .join("sync-index");
     std::fs::create_dir_all(&dir)
         .map_err(|e| format!("Failed to create sync index directory: {}", e))?;
     Ok(dir)
@@ -2603,8 +2604,9 @@ impl SyncJournal {
 
 /// Get the directory where sync journals are stored
 fn sync_journal_dir() -> Result<PathBuf, String> {
-    let base = dirs::config_dir().ok_or_else(|| "Cannot determine config directory".to_string())?;
-    let dir = base.join("aeroftp").join("sync-journal");
+    let dir = crate::portable::aeroftp_data_root()
+        .ok_or_else(|| "Cannot determine AeroFTP data root".to_string())?
+        .join("sync-journal");
     std::fs::create_dir_all(&dir)
         .map_err(|e| format!("Failed to create sync journal directory: {}", e))?;
     Ok(dir)
@@ -2925,8 +2927,9 @@ impl SyncProfile {
 
 /// Directory for custom sync profiles
 fn sync_profiles_dir() -> Result<PathBuf, String> {
-    let base = dirs::config_dir().ok_or_else(|| "Cannot determine config directory".to_string())?;
-    let dir = base.join("aeroftp").join("sync-profiles");
+    let dir = crate::portable::aeroftp_data_root()
+        .ok_or_else(|| "Cannot determine AeroFTP data root".to_string())?
+        .join("sync-profiles");
     std::fs::create_dir_all(&dir)
         .map_err(|e| format!("Failed to create sync profiles directory: {}", e))?;
     Ok(dir)
@@ -3022,7 +3025,9 @@ pub struct MultiPathConfig {
 
 /// Load multi-path config from disk
 pub fn load_multi_path_config() -> MultiPathConfig {
-    let dir = dirs::config_dir().unwrap_or_default().join("aeroftp");
+    let Some(dir) = crate::portable::aeroftp_data_root() else {
+        return MultiPathConfig::default();
+    };
     let path = dir.join("multi_path.json");
     if path.exists() {
         std::fs::read_to_string(&path)
@@ -3036,7 +3041,8 @@ pub fn load_multi_path_config() -> MultiPathConfig {
 
 /// Save multi-path config to disk (atomic temp+rename)
 pub fn save_multi_path_config(config: &MultiPathConfig) -> Result<(), String> {
-    let dir = dirs::config_dir().unwrap_or_default().join("aeroftp");
+    let dir = crate::portable::aeroftp_data_root()
+        .ok_or_else(|| "Cannot determine AeroFTP data root".to_string())?;
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let data = serde_json::to_string_pretty(config).map_err(|e| e.to_string())?;
     atomic_write(&dir.join("multi_path.json"), data.as_bytes())
@@ -3570,9 +3576,8 @@ pub fn create_sync_snapshot(
 
 /// Directory where snapshots are stored
 fn snapshots_dir() -> Result<PathBuf, String> {
-    let dir = dirs::config_dir()
-        .unwrap_or_default()
-        .join("aeroftp")
+    let dir = crate::portable::aeroftp_data_root()
+        .ok_or_else(|| "Cannot determine AeroFTP data root".to_string())?
         .join("sync-snapshots");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     Ok(dir)

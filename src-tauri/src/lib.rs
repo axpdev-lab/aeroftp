@@ -337,9 +337,7 @@ fn resolve_overlay_target(current: &str, target: &str) -> Result<String, String>
 }
 
 fn persist_overlay_idle_timeout(seconds: u64) -> Result<(), String> {
-    let config_dir = dirs::config_dir()
-        .ok_or("Cannot find config directory")?
-        .join("aeroftp");
+    let config_dir = portable::aeroftp_data_root().ok_or("Cannot find AeroFTP data root")?;
     std::fs::create_dir_all(&config_dir).map_err(|e| e.to_string())?;
     std::fs::write(
         config_dir.join("aerovault_overlay_idle_timeout"),
@@ -349,8 +347,8 @@ fn persist_overlay_idle_timeout(seconds: u64) -> Result<(), String> {
 }
 
 fn load_persisted_overlay_idle_timeout() -> Option<u64> {
-    dirs::config_dir()
-        .map(|d| d.join("aeroftp").join("aerovault_overlay_idle_timeout"))
+    portable::aeroftp_data_root()
+        .map(|d| d.join("aerovault_overlay_idle_timeout"))
         .and_then(|p| std::fs::read_to_string(p).ok())
         .and_then(|s| s.trim().parse::<u64>().ok())
         .map(|v| v.clamp(OVERLAY_IDLE_TIMEOUT_MIN_SECS, OVERLAY_IDLE_TIMEOUT_MAX_SECS))
@@ -2369,7 +2367,11 @@ const SIGSTORE_WORKFLOW_IDENTITY_PREFIX: &str =
 /// resolvable. Issue #176.
 fn updates_staging_dir() -> PathBuf {
     if let Some(cache) = dirs::cache_dir() {
-        return cache.join("aeroftp").join("updates");
+        return cache
+            .join(portable::aeroftp_data_leaf_for_debug(cfg!(
+                debug_assertions
+            )))
+            .join("updates");
     }
     std::env::temp_dir().join("aeroftp-updates")
 }
@@ -5964,12 +5966,12 @@ async fn check_crate_versions(crate_names: Vec<String>) -> Vec<CrateVersionResul
 
 #[tauri::command]
 fn get_system_info() -> SystemInfo {
-    let config_dir = dirs::config_dir()
-        .map(|d| d.join("aeroftp").to_string_lossy().to_string())
+    let config_dir = portable::aeroftp_data_root()
+        .map(|d| d.to_string_lossy().to_string())
         .unwrap_or_else(|| "unknown".into());
 
-    let vault_exists = dirs::config_dir()
-        .map(|d| d.join("aeroftp").join("vault.db").exists())
+    let vault_exists = portable::aeroftp_data_root()
+        .map(|d| d.join("vault.db").exists())
         .unwrap_or(false);
 
     let known_hosts_exists = dirs::home_dir()
@@ -10923,9 +10925,8 @@ async fn get_journal_signing_key(
         return Err("Remote path contains null bytes".to_string());
     }
 
-    let key_dir = dirs::config_dir()
-        .ok_or_else(|| "Cannot determine config directory".to_string())?
-        .join("aeroftp")
+    let key_dir = portable::aeroftp_data_root()
+        .ok_or_else(|| "Cannot determine AeroFTP data root".to_string())?
         .join("sync-journal");
     tokio::fs::create_dir_all(&key_dir)
         .await
@@ -10999,9 +11000,8 @@ async fn sign_sync_journal(
     let signature = sign_journal(&journal, &key_bytes)?;
 
     // Save .sig file alongside the journal
-    let journal_dir = dirs::config_dir()
-        .ok_or_else(|| "Cannot determine config directory".to_string())?
-        .join("aeroftp")
+    let journal_dir = portable::aeroftp_data_root()
+        .ok_or_else(|| "Cannot determine AeroFTP data root".to_string())?
         .join("sync-journal");
     let sig_path = journal_dir.join(journal_sig_filename(&local_path, &remote_path));
     tokio::fs::write(&sig_path, signature.as_bytes())
@@ -11029,9 +11029,8 @@ async fn verify_journal_signature(
         .ok_or_else(|| "No sync journal found for this path pair".to_string())?;
 
     // Read the .sig file
-    let journal_dir = dirs::config_dir()
-        .ok_or_else(|| "Cannot determine config directory".to_string())?
-        .join("aeroftp")
+    let journal_dir = portable::aeroftp_data_root()
+        .ok_or_else(|| "Cannot determine AeroFTP data root".to_string())?
         .join("sync-journal");
     let sig_path = journal_dir.join(journal_sig_filename(&local_path, &remote_path));
     let stored_sig = tokio::fs::read_to_string(&sig_path)
@@ -13260,9 +13259,7 @@ async fn change_master_password(old_password: String, new_password: String) -> R
 
 /// Persist auto-lock timeout to config file (not a secret, plain text)
 fn persist_auto_lock_timeout(seconds: u64) -> Result<(), String> {
-    let config_dir = dirs::config_dir()
-        .ok_or("Cannot find config directory")?
-        .join("aeroftp");
+    let config_dir = portable::aeroftp_data_root().ok_or("Cannot find AeroFTP data root")?;
     std::fs::create_dir_all(&config_dir).map_err(|e| e.to_string())?;
     std::fs::write(config_dir.join("auto_lock_timeout"), seconds.to_string())
         .map_err(|e| e.to_string())
@@ -13270,8 +13267,8 @@ fn persist_auto_lock_timeout(seconds: u64) -> Result<(), String> {
 
 /// Load persisted auto-lock timeout from config file
 fn load_persisted_timeout() -> u64 {
-    dirs::config_dir()
-        .map(|d| d.join("aeroftp").join("auto_lock_timeout"))
+    portable::aeroftp_data_root()
+        .map(|d| d.join("auto_lock_timeout"))
         .and_then(|p| std::fs::read_to_string(p).ok())
         .and_then(|s| s.trim().parse::<u64>().ok())
         .unwrap_or(0)

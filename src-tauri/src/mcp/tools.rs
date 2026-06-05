@@ -548,11 +548,11 @@ async fn build_debug_snapshot(tail_n: usize) -> Value {
     let os = std::env::consts::OS;
     let arch = std::env::consts::ARCH;
 
-    let config_dir = dirs::config_dir()
-        .map(|d| d.join("aeroftp").to_string_lossy().to_string())
+    let config_dir = crate::portable::aeroftp_data_root()
+        .map(|d| d.to_string_lossy().to_string())
         .unwrap_or_else(|| "unknown".into());
-    let vault_exists = dirs::config_dir()
-        .map(|d| d.join("aeroftp").join("vault.db").exists())
+    let vault_exists = crate::portable::aeroftp_data_root()
+        .map(|d| d.join("vault.db").exists())
         .unwrap_or(false);
     let known_hosts_exists = dirs::home_dir()
         .map(|d| d.join(".ssh").join("known_hosts").exists())
@@ -560,10 +560,10 @@ async fn build_debug_snapshot(tail_n: usize) -> Value {
 
     let mut log_tail = String::new();
     let mut log_path_used: Option<String> = None;
-    if let Some(cfg) = dirs::config_dir() {
+    if let Some(cfg) = crate::portable::aeroftp_data_root() {
         let candidates = [
-            cfg.join("aeroftp").join("logs").join("aeroftp.log"),
-            cfg.join("aeroftp").join("aeroftp.log"),
+            cfg.join("logs").join("aeroftp.log"),
+            cfg.join("aeroftp.log"),
         ];
         for path in candidates.iter() {
             if path.exists() {

@@ -44,9 +44,8 @@ fn db_path_from_app(app: &AppHandle) -> Result<PathBuf, String> {
 }
 
 fn db_path_cli() -> Result<PathBuf, String> {
-    let config_dir = dirs::config_dir()
-        .ok_or_else(|| "Cannot resolve config dir".to_string())?
-        .join("AeroFTP");
+    let config_dir = crate::portable::cli_app_config_dir()
+        .ok_or_else(|| "Cannot resolve AeroFTP CLI config directory".to_string())?;
     Ok(config_dir.join("agent_memory.db"))
 }
 

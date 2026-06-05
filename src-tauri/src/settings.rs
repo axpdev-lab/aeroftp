@@ -44,10 +44,9 @@ impl NativeRsyncSettings {
 
 #[cfg(feature = "aerorsync")]
 fn native_rsync_config_path() -> Result<PathBuf, String> {
-    let base = dirs::config_dir()
-        .or_else(dirs::home_dir)
-        .ok_or_else(|| "Cannot determine config directory".to_string())?;
-    Ok(base.join("aeroftp").join("native_rsync.toml"))
+    Ok(crate::portable::aeroftp_data_root()
+        .ok_or_else(|| "Cannot determine AeroFTP data root".to_string())?
+        .join("native_rsync.toml"))
 }
 
 #[cfg(feature = "aerorsync")]

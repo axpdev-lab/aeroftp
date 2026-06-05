@@ -718,9 +718,9 @@ impl OAuth2Manager {
 
     /// Get the token storage directory
     fn token_dir() -> Result<std::path::PathBuf, ProviderError> {
-        let base = dirs::config_dir()
-            .ok_or_else(|| ProviderError::Other("Could not find config directory".to_string()))?;
-        let token_dir = base.join("aeroftp").join("oauth_tokens");
+        let token_dir = crate::portable::aeroftp_data_root()
+            .ok_or_else(|| ProviderError::Other("Could not find AeroFTP data root".to_string()))?
+            .join("oauth_tokens");
         if !token_dir.exists() {
             std::fs::create_dir_all(&token_dir).map_err(|e| {
                 ProviderError::Other(format!("Failed to create token directory: {}", e))
