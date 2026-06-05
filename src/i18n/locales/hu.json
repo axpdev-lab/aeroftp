@@ -993,7 +993,13 @@
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "Importálás és exportálás további {count} eszközzel",
             "discoverHealthCheck": "Elérhetőség-ellenőrzés az Add Services nézetben",
-            "discoverHealthCheckDesc": "Ellenőrzi a szolgáltatók elérhetőségét az Add Services listában. Az adott lapon az Ellenőrzés gombra duplán kattintva is be-/kikapcsolható."
+            "discoverHealthCheckDesc": "Ellenőrzi a szolgáltatók elérhetőségét az Add Services listában. Az adott lapon az Ellenőrzés gombra duplán kattintva is be-/kikapcsolható.",
+            "imagePreviewBg": "Képelőnézet háttere",
+            "imagePreviewBgDesc": "Az előnézetben az átlátszó képek (PNG, SVG, WebP) mögött megjelenő szín. Az előnézet eszköztárából is váltható.",
+            "imagePreviewBgCheckerboard": "Sakktábla",
+            "imagePreviewBgDark": "Sötét",
+            "imagePreviewBgLight": "Világos",
+            "imagePreviewBgCustom": "Egyéni"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3366,7 +3372,8 @@
                     "saveSaving": "Mentés...",
                     "saveSaved": "Kép sikeresen mentve",
                     "saveFailed": "A kép mentése sikertelen"
-                }
+                },
+                "toggleTransparencyBg": "Átlátszósági háttér (váltás)"
             },
             "mixer": {
                 "balance": "Balansz",
@@ -4662,7 +4669,8 @@
             "adminResetNotForSelf": "Használja a Jelszó módosítása lehetőséget a saját fiókján.",
             "userNotFound": "Ez a fiók már nem létezik.",
             "skipNextTime": "Legközelebb hagyja ki ezt a képernyőt",
-            "skipNextTimeHint": "(közvetlenül megnyitja ezt a fiókot; csak jelszó nélküli fiókok)"
+            "skipNextTimeHint": "(közvetlenül megnyitja ezt a fiókot; csak jelszó nélküli fiókok)",
+            "offlineNote": "Ezek a fiókok teljesen offline: helyi profilok ezen az eszközön, és nincsenek online fiókhoz kötve."
         },
         "opendrive": {
             "privacyTitle": "OpenDrive adatvédelem",

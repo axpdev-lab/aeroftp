@@ -993,7 +993,13 @@
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "Importer og eksporter med {count} andre verktøy",
             "discoverHealthCheck": "Helsesjekk i Add Services",
-            "discoverHealthCheckDesc": "Sjekker leverandørenes tilgjengelighet i Add Services-listen. Dobbeltklikk på Sjekk-knappen i den fanen for å slå det på/av der også."
+            "discoverHealthCheckDesc": "Sjekker leverandørenes tilgjengelighet i Add Services-listen. Dobbeltklikk på Sjekk-knappen i den fanen for å slå det på/av der også.",
+            "imagePreviewBg": "Bakgrunn for bildeforhåndsvisning",
+            "imagePreviewBgDesc": "Farge bak gjennomsiktige bilder (PNG, SVG, WebP) i forhåndsvisningen. Kan også veksles fra forhåndsvisningens verktøylinje.",
+            "imagePreviewBgCheckerboard": "Sjakkbrett",
+            "imagePreviewBgDark": "Mørk",
+            "imagePreviewBgLight": "Lys",
+            "imagePreviewBgCustom": "Egendefinert"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3366,7 +3372,8 @@
                     "saveSaving": "Lagrer...",
                     "saveSaved": "Bildet ble lagret",
                     "saveFailed": "Kunne ikke lagre bildet"
-                }
+                },
+                "toggleTransparencyBg": "Gjennomsiktighetsbakgrunn (veksle)"
             },
             "mixer": {
                 "balance": "Balanse",
@@ -4681,7 +4688,8 @@
             "adminResetNotForSelf": "Bruk Endre passord på din egen konto.",
             "userNotFound": "Denne kontoen finnes ikke lenger.",
             "skipNextTime": "Hopp over denne skjermen neste gang",
-            "skipNextTimeHint": "(åpner denne kontoen direkte; bare kontoer uten passord)"
+            "skipNextTimeHint": "(åpner denne kontoen direkte; bare kontoer uten passord)",
+            "offlineNote": "Disse kontoene er helt frakoblet: de er lokale profiler på denne enheten og er ikke knyttet til noen nettkonto."
         },
         "opendrive": {
             "privacyTitle": "OpenDrive-personvern",

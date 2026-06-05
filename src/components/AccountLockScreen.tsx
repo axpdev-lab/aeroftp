@@ -347,6 +347,10 @@ export const AccountLockScreen: React.FC<AccountLockScreenProps> = ({ onContinue
                             </button>
                         </div>
 
+                        {/* Offline-only clarification (discussion #270): these
+                            accounts are local partitions, not online sign-ins. */}
+                        <p className="mt-5 text-[11px] opacity-50">{t('accountLock.offlineNote')}</p>
+
                         {/* Default-account skip (discussion #270). Applies on the
                             next startup, and only to password-free accounts. */}
                         <label className="mt-6 inline-flex cursor-pointer items-center gap-2 text-xs opacity-70 transition-opacity hover:opacity-100">

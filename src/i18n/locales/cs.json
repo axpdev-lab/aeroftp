@@ -993,7 +993,13 @@
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "Import a export s dalšími {count} nástroji",
             "discoverHealthCheck": "Kontrola dostupnosti v Add Services",
-            "discoverHealthCheckDesc": "Ověřuje dostupnost poskytovatelů v seznamu Add Services. Dvojklikem na tlačítko Zkontrolovat na této kartě jej také přepnete."
+            "discoverHealthCheckDesc": "Ověřuje dostupnost poskytovatelů v seznamu Add Services. Dvojklikem na tlačítko Zkontrolovat na této kartě jej také přepnete.",
+            "imagePreviewBg": "Pozadí náhledu obrázku",
+            "imagePreviewBgDesc": "Barva zobrazená za průhlednými obrázky (PNG, SVG, WebP) v náhledu. Lze přepínat i z panelu náhledu.",
+            "imagePreviewBgCheckerboard": "Šachovnice",
+            "imagePreviewBgDark": "Tmavé",
+            "imagePreviewBgLight": "Světlé",
+            "imagePreviewBgCustom": "Vlastní"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3366,7 +3372,8 @@
                     "saveSaving": "Ukládání...",
                     "saveSaved": "Obrázek úspěšně uložen",
                     "saveFailed": "Nepodařilo se uložit obrázek"
-                }
+                },
+                "toggleTransparencyBg": "Pozadí průhlednosti (přepnout)"
             },
             "mixer": {
                 "balance": "Vyvážení",
@@ -4662,7 +4669,8 @@
             "adminResetNotForSelf": "U vlastního účtu použijte Změnit heslo.",
             "userNotFound": "Tento účet již neexistuje.",
             "skipNextTime": "Příště přeskočit tuto obrazovku",
-            "skipNextTimeHint": "(otevře tento účet přímo; pouze účty bez hesla)"
+            "skipNextTimeHint": "(otevře tento účet přímo; pouze účty bez hesla)",
+            "offlineNote": "Tyto účty jsou zcela offline: jsou to místní profily v tomto zařízení a nejsou propojeny s žádným online účtem."
         },
         "opendrive": {
             "privacyTitle": "Soukromí OpenDrive",

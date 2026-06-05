@@ -993,7 +993,13 @@
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "Impordi ja ekspordi {count} muu tööriistaga",
             "discoverHealthCheck": "Saadavuse kontroll Add Services vaates",
-            "discoverHealthCheckDesc": "Kontrollib teenusepakkujate saadavust Add Services loendis. Topeltklõps selle vahekaardi nupul Kontrolli lülitab selle samuti sisse/välja."
+            "discoverHealthCheckDesc": "Kontrollib teenusepakkujate saadavust Add Services loendis. Topeltklõps selle vahekaardi nupul Kontrolli lülitab selle samuti sisse/välja.",
+            "imagePreviewBg": "Pildi eelvaate taust",
+            "imagePreviewBgDesc": "Värv läbipaistvate piltide (PNG, SVG, WebP) taga eelvaates. Saab vahetada ka eelvaate tööriistaribalt.",
+            "imagePreviewBgCheckerboard": "Malelaud",
+            "imagePreviewBgDark": "Tume",
+            "imagePreviewBgLight": "Hele",
+            "imagePreviewBgCustom": "Kohandatud"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3366,7 +3372,8 @@
                     "saveSaving": "Salvestamine...",
                     "saveSaved": "Pilt edukalt salvestatud",
                     "saveFailed": "Pildi salvestamine ebaõnnestus"
-                }
+                },
+                "toggleTransparencyBg": "Läbipaistvuse taust (vaheta)"
             },
             "mixer": {
                 "balance": "Tasakaal",
@@ -4662,7 +4669,8 @@
             "adminResetNotForSelf": "Kasuta oma kontol valikut Muuda parooli.",
             "userNotFound": "Seda kontot enam ei ole.",
             "skipNextTime": "Jäta see ekraan järgmisel korral vahele",
-            "skipNextTimeHint": "(avab selle konto otse; ainult paroolita kontod)"
+            "skipNextTimeHint": "(avab selle konto otse; ainult paroolita kontod)",
+            "offlineNote": "Need kontod on täiesti võrguühenduseta: need on selle seadme kohalikud profiilid ega ole seotud ühegi võrgukontoga."
         },
         "opendrive": {
             "privacyTitle": "OpenDrive'i privaatsus",

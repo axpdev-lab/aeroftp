@@ -993,7 +993,13 @@
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "Import & eksport dengan {count} alat lain",
             "discoverHealthCheck": "Pemeriksaan kesihatan pada Add Services",
-            "discoverHealthCheckDesc": "Menyemak kebolehcapaian penyedia dalam senarai Add Services. Klik dua kali butang Semak pada tab itu untuk menogolnya juga."
+            "discoverHealthCheckDesc": "Menyemak kebolehcapaian penyedia dalam senarai Add Services. Klik dua kali butang Semak pada tab itu untuk menogolnya juga.",
+            "imagePreviewBg": "Latar pratonton imej",
+            "imagePreviewBgDesc": "Warna yang dipaparkan di belakang imej lutsinar (PNG, SVG, WebP) dalam pratonton. Juga boleh ditukar dari bar alat pratonton.",
+            "imagePreviewBgCheckerboard": "Papan dam",
+            "imagePreviewBgDark": "Gelap",
+            "imagePreviewBgLight": "Cerah",
+            "imagePreviewBgCustom": "Tersuai"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3366,7 +3372,8 @@
                     "saveSaving": "Menyimpan...",
                     "saveSaved": "Imej berjaya disimpan",
                     "saveFailed": "Gagal menyimpan imej"
-                }
+                },
+                "toggleTransparencyBg": "Latar kelutsinaran (kitar)"
             },
             "mixer": {
                 "balance": "Imbangan",
@@ -4662,7 +4669,8 @@
             "adminResetNotForSelf": "Gunakan Tukar Kata Laluan pada akaun anda sendiri.",
             "userNotFound": "Akaun ini tidak wujud lagi.",
             "skipNextTime": "Langkau skrin ini kali seterusnya",
-            "skipNextTimeHint": "(membuka akaun ini secara terus; hanya akaun tanpa kata laluan)"
+            "skipNextTimeHint": "(membuka akaun ini secara terus; hanya akaun tanpa kata laluan)",
+            "offlineNote": "Akaun ini sepenuhnya luar talian: ia adalah profil tempatan pada peranti ini dan tidak dikaitkan dengan mana-mana akaun dalam talian."
         },
         "opendrive": {
             "privacyTitle": "Privasi OpenDrive",

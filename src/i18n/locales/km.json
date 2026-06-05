@@ -993,7 +993,13 @@
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "នាំចូល និងនាំចេញជាមួយឧបករណ៍ផ្សេងទៀតចំនួន {count}",
             "discoverHealthCheck": "ការពិនិត្យសុខភាពនៅ Add Services",
-            "discoverHealthCheckDesc": "ពិនិត្យលទ្ធភាពភ្ជាប់របស់អ្នកផ្តល់សេវានៅក្នុងបញ្ជី Add Services។ ចុចពីរដងលើប៊ូតុង Check នៅផ្ទាំងនោះ ដើម្បីបិទ/បើកវាផងដែរ។"
+            "discoverHealthCheckDesc": "ពិនិត្យលទ្ធភាពភ្ជាប់របស់អ្នកផ្តល់សេវានៅក្នុងបញ្ជី Add Services។ ចុចពីរដងលើប៊ូតុង Check នៅផ្ទាំងនោះ ដើម្បីបិទ/បើកវាផងដែរ។",
+            "imagePreviewBg": "ផ្ទៃខាងក្រោយការមើលរូបភាពជាមុន",
+            "imagePreviewBgDesc": "ពណ៌ដែលបង្ហាញនៅពីក្រោយរូបភាពថ្លា (PNG, SVG, WebP) ក្នុងការមើលជាមុន។ អាចប្ដូរបានពីរបារឧបករណ៍មើលជាមុនផងដែរ។",
+            "imagePreviewBgCheckerboard": "ក្ដារអុក",
+            "imagePreviewBgDark": "ងងឹត",
+            "imagePreviewBgLight": "ភ្លឺ",
+            "imagePreviewBgCustom": "ផ្ទាល់ខ្លួន"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3366,7 +3372,8 @@
                     "saveSaving": "កំពុងរក្សាទុក...",
                     "saveSaved": "រូបភាពត្រូវបានរក្សាទុកដោយជោគជ័យ",
                     "saveFailed": "មិនអាចរក្សាទុករូបភាពបានទេ"
-                }
+                },
+                "toggleTransparencyBg": "ផ្ទៃខាងក្រោយតម្លាភាព (ប្ដូរវេន)"
             },
             "mixer": {
                 "balance": "បាឡង់",
@@ -4681,7 +4688,8 @@
             "adminResetNotForSelf": "សូមប្រើ ប្ដូរពាក្យសម្ងាត់ នៅលើគណនីផ្ទាល់ខ្លួនរបស់អ្នក។",
             "userNotFound": "គណនីនេះលែងមានទៀតហើយ។",
             "skipNextTime": "រំលងអេក្រង់នេះនៅពេលក្រោយ",
-            "skipNextTimeHint": "(បើកគណនីនេះដោយផ្ទាល់; តែគណនីដែលគ្មានពាក្យសម្ងាត់ប៉ុណ្ណោះ)"
+            "skipNextTimeHint": "(បើកគណនីនេះដោយផ្ទាល់; តែគណនីដែលគ្មានពាក្យសម្ងាត់ប៉ុណ្ណោះ)",
+            "offlineNote": "គណនីទាំងនេះគឺនៅក្រៅបណ្ដាញទាំងស្រុង៖ ពួកវាជាប្រវត្តិរូបក្នុងតំបន់នៅលើឧបករណ៍នេះ ហើយមិនភ្ជាប់ទៅគណនីលើបណ្ដាញណាមួយឡើយ។"
         },
         "opendrive": {
             "privacyTitle": "ឯកជនភាព OpenDrive",

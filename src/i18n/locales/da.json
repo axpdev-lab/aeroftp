@@ -993,7 +993,13 @@
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "Importer og eksporter med {count} andre værktøjer",
             "discoverHealthCheck": "Sundhedstjek på Add Services",
-            "discoverHealthCheckDesc": "Tjekker udbyderes tilgængelighed i Add Services-listen. Dobbeltklik på Tjek-knappen på den fane for også at slå det til/fra."
+            "discoverHealthCheckDesc": "Tjekker udbyderes tilgængelighed i Add Services-listen. Dobbeltklik på Tjek-knappen på den fane for også at slå det til/fra.",
+            "imagePreviewBg": "Baggrund for billedeksempel",
+            "imagePreviewBgDesc": "Farve vist bag gennemsigtige billeder (PNG, SVG, WebP) i eksemplet. Kan også skiftes fra eksempel-værktøjslinjen.",
+            "imagePreviewBgCheckerboard": "Skakbræt",
+            "imagePreviewBgDark": "Mørk",
+            "imagePreviewBgLight": "Lys",
+            "imagePreviewBgCustom": "Tilpasset"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3366,7 +3372,8 @@
                     "saveSaving": "Gemmer...",
                     "saveSaved": "Billede gemt",
                     "saveFailed": "Kunne ikke gemme billedet"
-                }
+                },
+                "toggleTransparencyBg": "Gennemsigtighedsbaggrund (skift)"
             },
             "mixer": {
                 "balance": "Balance",
@@ -4662,7 +4669,8 @@
             "adminResetNotForSelf": "Brug Skift adgangskode på din egen konto.",
             "userNotFound": "Denne konto findes ikke længere.",
             "skipNextTime": "Spring denne skærm over næste gang",
-            "skipNextTimeHint": "(åbner denne konto direkte; kun konti uden adgangskode)"
+            "skipNextTimeHint": "(åbner denne konto direkte; kun konti uden adgangskode)",
+            "offlineNote": "Disse konti er helt offline: det er lokale profiler på denne enhed og er ikke knyttet til nogen onlinekonto."
         },
         "opendrive": {
             "privacyTitle": "OpenDrive-privatliv",

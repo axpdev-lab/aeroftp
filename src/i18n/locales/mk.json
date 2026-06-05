@@ -993,7 +993,13 @@
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "Увоз и извоз со {count} други алатки",
             "discoverHealthCheck": "Проверка на достапност во Add Services",
-            "discoverHealthCheckDesc": "Ја проверува достапноста на провајдерите во списокот Add Services. Двоен клик на копчето Провери во таа картичка исто така го вклучува/исклучува."
+            "discoverHealthCheckDesc": "Ја проверува достапноста на провајдерите во списокот Add Services. Двоен клик на копчето Провери во таа картичка исто така го вклучува/исклучува.",
+            "imagePreviewBg": "Позадина на прегледот на слика",
+            "imagePreviewBgDesc": "Боја прикажана зад провидните слики (PNG, SVG, WebP) во прегледот. Може да се менува и од лентата на прегледот.",
+            "imagePreviewBgCheckerboard": "Шаховска табла",
+            "imagePreviewBgDark": "Темно",
+            "imagePreviewBgLight": "Светло",
+            "imagePreviewBgCustom": "Прилагодено"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3366,7 +3372,8 @@
                     "saveSaving": "Зачувување...",
                     "saveSaved": "Сликата е успешно зачувана",
                     "saveFailed": "Неуспешно зачувување на сликата"
-                }
+                },
+                "toggleTransparencyBg": "Позадина на проѕирност (менувај)"
             },
             "mixer": {
                 "balance": "Баланс",
@@ -4681,7 +4688,8 @@
             "adminResetNotForSelf": "Користете Промена на лозинка на сопствената сметка.",
             "userNotFound": "Оваа сметка повеќе не постои.",
             "skipNextTime": "Прескокни го овој екран следниот пат",
-            "skipNextTimeHint": "(ја отвора оваа сметка директно; само сметки без лозинка)"
+            "skipNextTimeHint": "(ја отвора оваа сметка директно; само сметки без лозинка)",
+            "offlineNote": "Овие сметки се целосно офлајн: тоа се локални профили на овој уред и не се поврзани со ниедна онлајн сметка."
         },
         "opendrive": {
             "privacyTitle": "Приватност на OpenDrive",

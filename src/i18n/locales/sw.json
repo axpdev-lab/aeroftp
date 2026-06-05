@@ -993,7 +993,13 @@
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "Ingiza na hamisha kwa zana {count} nyingine",
             "discoverHealthCheck": "Ukaguzi wa afya kwenye Add Services",
-            "discoverHealthCheckDesc": "Hukagua upatikanaji wa watoa huduma katika orodha ya Add Services. Bofya mara mbili kitufe cha Angalia kwenye kichupo hicho ili kukiwasha/kuzima pia."
+            "discoverHealthCheckDesc": "Hukagua upatikanaji wa watoa huduma katika orodha ya Add Services. Bofya mara mbili kitufe cha Angalia kwenye kichupo hicho ili kukiwasha/kuzima pia.",
+            "imagePreviewBg": "Mandharinyuma ya onyesho la awali la picha",
+            "imagePreviewBgDesc": "Rangi inayoonyeshwa nyuma ya picha angavu (PNG, SVG, WebP) katika onyesho la awali. Inaweza pia kubadilishwa kutoka upau wa zana wa onyesho la awali.",
+            "imagePreviewBgCheckerboard": "Ubao wa sataranji",
+            "imagePreviewBgDark": "Giza",
+            "imagePreviewBgLight": "Angavu",
+            "imagePreviewBgCustom": "Maalum"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3366,7 +3372,8 @@
                     "saveSaving": "Inahifadhi...",
                     "saveSaved": "Picha imehifadhiwa kwa mafanikio",
                     "saveFailed": "Imeshindwa kuhifadhi picha"
-                }
+                },
+                "toggleTransparencyBg": "Mandharinyuma ya uwazi (zungusha)"
             },
             "mixer": {
                 "balance": "Usawa",
@@ -4662,7 +4669,8 @@
             "adminResetNotForSelf": "Tumia Badilisha Nenosiri kwenye akaunti yako mwenyewe.",
             "userNotFound": "Akaunti hii haipo tena.",
             "skipNextTime": "Ruka skrini hii wakati ujao",
-            "skipNextTimeHint": "(hufungua akaunti hii moja kwa moja; akaunti zisizo na nenosiri pekee)"
+            "skipNextTimeHint": "(hufungua akaunti hii moja kwa moja; akaunti zisizo na nenosiri pekee)",
+            "offlineNote": "Akaunti hizi ziko nje ya mtandao kabisa: ni wasifu wa ndani kwenye kifaa hiki na hazijaunganishwa na akaunti yoyote ya mtandaoni."
         },
         "opendrive": {
             "privacyTitle": "Faragha ya OpenDrive",

@@ -993,7 +993,13 @@
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "Importa e exporta con outras {count} ferramentas",
             "discoverHealthCheck": "Comprobación de estado en Add Services",
-            "discoverHealthCheckDesc": "Comproba a dispoñibilidade dos provedores na lista Add Services. Fai dobre clic no botón Comprobar desa lapela para activalo ou desactivalo tamén."
+            "discoverHealthCheckDesc": "Comproba a dispoñibilidade dos provedores na lista Add Services. Fai dobre clic no botón Comprobar desa lapela para activalo ou desactivalo tamén.",
+            "imagePreviewBg": "Fondo da vista previa da imaxe",
+            "imagePreviewBgDesc": "Cor amosada detrás das imaxes transparentes (PNG, SVG, WebP) na vista previa. Tamén se pode cambiar desde a barra da vista previa.",
+            "imagePreviewBgCheckerboard": "Taboleiro de xadrez",
+            "imagePreviewBgDark": "Escuro",
+            "imagePreviewBgLight": "Claro",
+            "imagePreviewBgCustom": "Personalizado"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3366,7 +3372,8 @@
                     "saveSaving": "Gardando...",
                     "saveSaved": "Imaxe gardada correctamente",
                     "saveFailed": "Erro ao gardar a imaxe"
-                }
+                },
+                "toggleTransparencyBg": "Fondo de transparencia (alterna)"
             },
             "mixer": {
                 "balance": "Balance",
@@ -4681,7 +4688,8 @@
             "adminResetNotForSelf": "Usa Cambiar contrasinal na túa propia conta.",
             "userNotFound": "Esta conta xa non existe.",
             "skipNextTime": "Omitir esta pantalla a próxima vez",
-            "skipNextTimeHint": "(abre esta conta directamente; só contas sen contrasinal)"
+            "skipNextTimeHint": "(abre esta conta directamente; só contas sen contrasinal)",
+            "offlineNote": "Estas contas están totalmente sen conexión: son perfís locais neste dispositivo e non están vinculadas a ningunha conta en liña."
         },
         "opendrive": {
             "privacyTitle": "Privacidade de OpenDrive",

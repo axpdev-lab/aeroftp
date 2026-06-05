@@ -14,10 +14,11 @@
  */
 
 import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
-import { ZoomIn, ZoomOut, RotateCw, Maximize2, Minimize2, Move, Pipette, Pencil, X } from 'lucide-react';
+import { ZoomIn, ZoomOut, RotateCw, Maximize2, Minimize2, Move, Pipette, Pencil, X, SquareDashedBottom } from 'lucide-react';
 import { ViewerBaseProps, ImageMetadata, EditState, INITIAL_EDIT_STATE, CropRect } from '../types';
 import type { ImageResult } from '../types';
 import { useI18n } from '../../../i18n';
+import { useImagePreviewBg, writeImagePreviewBg, IMAGE_PREVIEW_BG_PRESETS } from '../../../utils/imagePreviewBg';
 import ImageEditor from './ImageEditor';
 import { CropOverlay } from './CropOverlay';
 import { ImageSaveDialog } from './ImageSaveDialog';
@@ -39,6 +40,15 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     const { t } = useI18n();
     const containerRef = useRef<HTMLDivElement>(null);
     const imageRef = useRef<HTMLImageElement>(null);
+
+    // Transparency background behind the image (discussion #270). Synced with
+    // Settings > Appearance; the toolbar button cycles the presets in place.
+    const { value: previewBgValue, style: previewBgStyle } = useImagePreviewBg();
+    const cyclePreviewBg = useCallback(() => {
+        const ids = IMAGE_PREVIEW_BG_PRESETS.map((p) => p.id) as string[];
+        const idx = ids.indexOf(previewBgValue);
+        writeImagePreviewBg(ids[(idx + 1) % ids.length] ?? ids[0]);
+    }, [previewBgValue]);
 
     // View state
     const [zoom, setZoom] = useState(1);
@@ -375,6 +385,17 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                         )}
                     </button>
 
+                    {/* Transparency background cycle (discussion #270): toggles
+                        the colour shown behind a transparent image. Persisted and
+                        synced with Settings > Appearance. */}
+                    <button
+                        onClick={cyclePreviewBg}
+                        className="p-2 rounded-lg transition-colors hover:bg-gray-700 text-gray-400"
+                        title={t('preview.image.toggleTransparencyBg')}
+                    >
+                        <SquareDashedBottom size={18} />
+                    </button>
+
                     {/* Edit button (local files only) */}
                     {canEdit && (
                         <>
@@ -408,6 +429,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                 {/* Image container */}
                 <div
                     ref={containerRef}
+                    style={previewBgStyle}
                     className={`flex-1 overflow-hidden flex items-center justify-center relative ${
                         colorPickMode ? 'cursor-crosshair' :
                         cropMode ? 'cursor-default' :

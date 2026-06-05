@@ -993,7 +993,13 @@
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "Tuo ja vie {count} muun työkalun kanssa",
             "discoverHealthCheck": "Saatavuuden tarkistus Add Services -näkymässä",
-            "discoverHealthCheckDesc": "Tarkistaa palveluntarjoajien saatavuuden Add Services -luettelossa. Kaksoisnapsauta kyseisen välilehden Tarkista-painiketta vaihtaaksesi sen myös sieltä."
+            "discoverHealthCheckDesc": "Tarkistaa palveluntarjoajien saatavuuden Add Services -luettelossa. Kaksoisnapsauta kyseisen välilehden Tarkista-painiketta vaihtaaksesi sen myös sieltä.",
+            "imagePreviewBg": "Kuvan esikatselun tausta",
+            "imagePreviewBgDesc": "Läpinäkyvien kuvien (PNG, SVG, WebP) takana esikatselussa näytettävä väri. Vaihdettavissa myös esikatselun työkalupalkista.",
+            "imagePreviewBgCheckerboard": "Ruutukuvio",
+            "imagePreviewBgDark": "Tumma",
+            "imagePreviewBgLight": "Vaalea",
+            "imagePreviewBgCustom": "Mukautettu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3366,7 +3372,8 @@
                     "saveSaving": "Tallennetaan...",
                     "saveSaved": "Kuva tallennettu onnistuneesti",
                     "saveFailed": "Kuvan tallentaminen epäonnistui"
-                }
+                },
+                "toggleTransparencyBg": "Läpinäkyvyyden tausta (vaihda)"
             },
             "mixer": {
                 "balance": "Balanssi",
@@ -4662,7 +4669,8 @@
             "adminResetNotForSelf": "Käytä Vaihda salasana omalla tililläsi.",
             "userNotFound": "Tätä tiliä ei ole enää olemassa.",
             "skipNextTime": "Ohita tämä näyttö ensi kerralla",
-            "skipNextTimeHint": "(avaa tämän tilin suoraan; vain salasanattomat tilit)"
+            "skipNextTimeHint": "(avaa tämän tilin suoraan; vain salasanattomat tilit)",
+            "offlineNote": "Nämä tilit ovat täysin offline-tilassa: ne ovat tämän laitteen paikallisia profiileja eivätkä ole sidoksissa mihinkään verkkotiliin."
         },
         "opendrive": {
             "privacyTitle": "OpenDrive-yksityisyys",

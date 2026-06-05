@@ -2148,6 +2148,9 @@ enum Commands {
         interactive: bool,
     },
     /// Manage local AeroFTP user partitions
+    ///
+    /// These users are entirely offline: they are local partitions of the
+    /// vault on this device and are not tied to any online account or login.
     Users {
         #[command(subcommand)]
         command: UsersCommands,

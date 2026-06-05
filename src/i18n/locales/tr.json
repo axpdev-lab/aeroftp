@@ -993,7 +993,13 @@
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "Diğer {count} araçla içe ve dışa aktarma",
             "discoverHealthCheck": "Add Services'te sağlık kontrolü",
-            "discoverHealthCheckDesc": "Add Services listesinde sağlayıcıların erişilebilirliğini kontrol eder. O sekmedeki Kontrol et düğmesine çift tıklayarak da açıp kapatabilirsiniz."
+            "discoverHealthCheckDesc": "Add Services listesinde sağlayıcıların erişilebilirliğini kontrol eder. O sekmedeki Kontrol et düğmesine çift tıklayarak da açıp kapatabilirsiniz.",
+            "imagePreviewBg": "Görsel Önizleme Arka Planı",
+            "imagePreviewBgDesc": "Önizlemede saydam görsellerin (PNG, SVG, WebP) arkasında gösterilen renk. Önizleme araç çubuğundan da değiştirilebilir.",
+            "imagePreviewBgCheckerboard": "Dama tahtası",
+            "imagePreviewBgDark": "Koyu",
+            "imagePreviewBgLight": "Açık",
+            "imagePreviewBgCustom": "Özel"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3366,7 +3372,8 @@
                     "saveSaving": "Kaydediliyor...",
                     "saveSaved": "Resim başarıyla kaydedildi",
                     "saveFailed": "Resim kaydedilemedi"
-                }
+                },
+                "toggleTransparencyBg": "Saydamlık arka planı (değiştir)"
             },
             "mixer": {
                 "balance": "Denge",
@@ -4662,7 +4669,8 @@
             "adminResetNotForSelf": "Kendi hesabınızda Parolayı Değiştir'i kullanın.",
             "userNotFound": "Bu hesap artık mevcut değil.",
             "skipNextTime": "Bir dahaki sefere bu ekranı atla",
-            "skipNextTimeHint": "(bu hesabı doğrudan açar; yalnızca parolasız hesaplar)"
+            "skipNextTimeHint": "(bu hesabı doğrudan açar; yalnızca parolasız hesaplar)",
+            "offlineNote": "Bu hesaplar tamamen çevrimdışıdır: bu cihazdaki yerel profillerdir ve herhangi bir çevrimiçi hesaba bağlı değildir."
         },
         "opendrive": {
             "privacyTitle": "OpenDrive Gizliliği",

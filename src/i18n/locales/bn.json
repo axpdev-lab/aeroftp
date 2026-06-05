@@ -993,7 +993,13 @@
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "আরও {count}টি টুলের সাথে আমদানি ও রপ্তানি করুন",
             "discoverHealthCheck": "Add Services-এ হেলথ চেক",
-            "discoverHealthCheckDesc": "Add Services তালিকায় প্রদানকারীর সংযোগযোগ্যতা পরীক্ষা করে। সেই ট্যাবে Check বোতামে ডাবল-ক্লিক করেও এটি টগল করা যায়।"
+            "discoverHealthCheckDesc": "Add Services তালিকায় প্রদানকারীর সংযোগযোগ্যতা পরীক্ষা করে। সেই ট্যাবে Check বোতামে ডাবল-ক্লিক করেও এটি টগল করা যায়।",
+            "imagePreviewBg": "ছবি প্রিভিউ পটভূমি",
+            "imagePreviewBgDesc": "প্রিভিউতে স্বচ্ছ ছবির (PNG, SVG, WebP) পেছনে দেখানো রঙ। প্রিভিউ টুলবার থেকেও পরিবর্তন করা যায়।",
+            "imagePreviewBgCheckerboard": "দাবার ছক",
+            "imagePreviewBgDark": "গাঢ়",
+            "imagePreviewBgLight": "হালকা",
+            "imagePreviewBgCustom": "কাস্টম"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3366,7 +3372,8 @@
                     "saveSaving": "সেভ হচ্ছে...",
                     "saveSaved": "ছবি সফলভাবে সেভ হয়েছে",
                     "saveFailed": "ছবি সেভ করা যায়নি"
-                }
+                },
+                "toggleTransparencyBg": "স্বচ্ছতা পটভূমি (চক্র)"
             },
             "mixer": {
                 "balance": "ব্যালেন্স",
@@ -4662,7 +4669,8 @@
             "adminResetNotForSelf": "নিজের অ্যাকাউন্টে পাসওয়ার্ড পরিবর্তন ব্যবহার করুন।",
             "userNotFound": "এই অ্যাকাউন্টটি আর নেই।",
             "skipNextTime": "পরের বার এই স্ক্রিনটি এড়িয়ে যান",
-            "skipNextTimeHint": "(এই অ্যাকাউন্টটি সরাসরি খোলে; শুধুমাত্র পাসওয়ার্ড-মুক্ত অ্যাকাউন্ট)"
+            "skipNextTimeHint": "(এই অ্যাকাউন্টটি সরাসরি খোলে; শুধুমাত্র পাসওয়ার্ড-মুক্ত অ্যাকাউন্ট)",
+            "offlineNote": "এই অ্যাকাউন্টগুলি সম্পূর্ণ অফলাইন: এগুলি এই ডিভাইসের স্থানীয় প্রোফাইল এবং কোনো অনলাইন অ্যাকাউন্টের সাথে যুক্ত নয়।"
         },
         "opendrive": {
             "privacyTitle": "OpenDrive গোপনীয়তা",

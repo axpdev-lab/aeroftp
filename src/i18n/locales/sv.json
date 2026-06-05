@@ -993,7 +993,13 @@
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "Importera och exportera med {count} andra verktyg",
             "discoverHealthCheck": "Hälsokontroll i Add Services",
-            "discoverHealthCheckDesc": "Kontrollerar leverantörers tillgänglighet i Add Services-listan. Dubbelklicka på Kontrollera-knappen på den fliken för att slå på/av det där också."
+            "discoverHealthCheckDesc": "Kontrollerar leverantörers tillgänglighet i Add Services-listan. Dubbelklicka på Kontrollera-knappen på den fliken för att slå på/av det där också.",
+            "imagePreviewBg": "Bakgrund för bildförhandsvisning",
+            "imagePreviewBgDesc": "Färg bakom genomskinliga bilder (PNG, SVG, WebP) i förhandsvisningen. Kan även växlas från förhandsvisningens verktygsfält.",
+            "imagePreviewBgCheckerboard": "Schackbräde",
+            "imagePreviewBgDark": "Mörk",
+            "imagePreviewBgLight": "Ljus",
+            "imagePreviewBgCustom": "Anpassad"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3366,7 +3372,8 @@
                     "saveSaving": "Sparar...",
                     "saveSaved": "Bilden har sparats",
                     "saveFailed": "Det gick inte att spara bilden"
-                }
+                },
+                "toggleTransparencyBg": "Genomskinlighetsbakgrund (växla)"
             },
             "mixer": {
                 "balance": "Balans",
@@ -4662,7 +4669,8 @@
             "adminResetNotForSelf": "Använd Ändra lösenord på ditt eget konto.",
             "userNotFound": "Det här kontot finns inte längre.",
             "skipNextTime": "Hoppa över den här skärmen nästa gång",
-            "skipNextTimeHint": "(öppnar det här kontot direkt; endast konton utan lösenord)"
+            "skipNextTimeHint": "(öppnar det här kontot direkt; endast konton utan lösenord)",
+            "offlineNote": "Dessa konton är helt offline: de är lokala profiler på den här enheten och är inte kopplade till något onlinekonto."
         },
         "opendrive": {
             "privacyTitle": "OpenDrive-sekretess",

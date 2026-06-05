@@ -993,7 +993,13 @@
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "Uvoz i izvoz s {count} drugih alata",
             "discoverHealthCheck": "Provjera dostupnosti u Add Services",
-            "discoverHealthCheckDesc": "Provjerava dostupnost pružatelja na popisu Add Services. Dvostrukim klikom na gumb Provjeri na toj kartici također ga uključujete/isključujete."
+            "discoverHealthCheckDesc": "Provjerava dostupnost pružatelja na popisu Add Services. Dvostrukim klikom na gumb Provjeri na toj kartici također ga uključujete/isključujete.",
+            "imagePreviewBg": "Pozadina pregleda slike",
+            "imagePreviewBgDesc": "Boja prikazana iza prozirnih slika (PNG, SVG, WebP) u pregledu. Može se promijeniti i s alatne trake pregleda.",
+            "imagePreviewBgCheckerboard": "Šahovnica",
+            "imagePreviewBgDark": "Tamno",
+            "imagePreviewBgLight": "Svijetlo",
+            "imagePreviewBgCustom": "Prilagođeno"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3366,7 +3372,8 @@
                     "saveSaving": "Spremanje...",
                     "saveSaved": "Slika uspješno spremljena",
                     "saveFailed": "Spremanje slike nije uspjelo"
-                }
+                },
+                "toggleTransparencyBg": "Pozadina prozirnosti (kruži)"
             },
             "mixer": {
                 "balance": "Balans",
@@ -4662,7 +4669,8 @@
             "adminResetNotForSelf": "Koristite Promjena lozinke na vlastitom računu.",
             "userNotFound": "Ovaj račun više ne postoji.",
             "skipNextTime": "Preskoči ovaj zaslon sljedeći put",
-            "skipNextTimeHint": "(otvara ovaj račun izravno; samo računi bez lozinke)"
+            "skipNextTimeHint": "(otvara ovaj račun izravno; samo računi bez lozinke)",
+            "offlineNote": "Ovi računi su potpuno izvanmrežni: to su lokalni profili na ovom uređaju i nisu povezani ni s jednim mrežnim računom."
         },
         "opendrive": {
             "privacyTitle": "Privatnost OpenDrive",

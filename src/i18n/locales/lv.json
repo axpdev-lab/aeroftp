@@ -993,7 +993,13 @@
             "backupRowBridge": "Bridge",
             "backupRowBridgeDesc": "Importēt un eksportēt ar {count} citiem rīkiem",
             "discoverHealthCheck": "Pieejamības pārbaude Add Services skatā",
-            "discoverHealthCheckDesc": "Pārbauda pakalpojumu sniedzēju pieejamību Add Services sarakstā. Veicot dubultklikšķi uz pogas Pārbaudīt šajā cilnē, to var arī pārslēgt."
+            "discoverHealthCheckDesc": "Pārbauda pakalpojumu sniedzēju pieejamību Add Services sarakstā. Veicot dubultklikšķi uz pogas Pārbaudīt šajā cilnē, to var arī pārslēgt.",
+            "imagePreviewBg": "Attēla priekšskatījuma fons",
+            "imagePreviewBgDesc": "Krāsa aiz caurspīdīgiem attēliem (PNG, SVG, WebP) priekšskatījumā. To var pārslēgt arī priekšskatījuma rīkjoslā.",
+            "imagePreviewBgCheckerboard": "Šaha galdiņš",
+            "imagePreviewBgDark": "Tumšs",
+            "imagePreviewBgLight": "Gaišs",
+            "imagePreviewBgCustom": "Pielāgots"
         },
         "devtools": {
             "title": "AeroTools",
@@ -3366,7 +3372,8 @@
                     "saveSaving": "Saglabā...",
                     "saveSaved": "Attēls veiksmīgi saglabāts",
                     "saveFailed": "Neizdevās saglabāt attēlu"
-                }
+                },
+                "toggleTransparencyBg": "Caurspīdīguma fons (pārslēgt)"
             },
             "mixer": {
                 "balance": "Balanss",
@@ -4662,7 +4669,8 @@
             "adminResetNotForSelf": "Savā kontā izmantojiet Mainīt paroli.",
             "userNotFound": "Šis konts vairs nepastāv.",
             "skipNextTime": "Nākamreiz izlaist šo ekrānu",
-            "skipNextTimeHint": "(atver šo kontu tieši; tikai konti bez paroles)"
+            "skipNextTimeHint": "(atver šo kontu tieši; tikai konti bez paroles)",
+            "offlineNote": "Šie konti ir pilnībā bezsaistē: tie ir vietējie profili šajā ierīcē un nav saistīti ne ar vienu tiešsaistes kontu."
         },
         "opendrive": {
             "privacyTitle": "OpenDrive privātums",
