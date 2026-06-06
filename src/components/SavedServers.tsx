@@ -421,7 +421,7 @@ export const SavedServers: React.FC<SavedServersProps> = ({
                 };
 
                 // Check if tokens already exist - if so, try to connect directly
-                const hasTokens = await invoke<boolean>('oauth2_has_tokens', { provider: oauthProvider, profile_id: server.id });
+                const hasTokens = await invoke<boolean>('oauth2_has_tokens', { provider: oauthProvider, profileId: server.id });
 
                 if (!hasTokens) {
                     // No tokens - need full auth flow (opens browser)

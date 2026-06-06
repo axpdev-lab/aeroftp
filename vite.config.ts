@@ -61,6 +61,12 @@ export default defineConfig({
     host: '127.0.0.1',
     port: 5173,
     strictPort: true,
+    // Don't watch the Rust build tree: src-tauri/target holds thousands of
+    // build artifacts that otherwise exhaust the kernel's inotify watch limit
+    // and crash the dev server's file watcher.
+    watch: {
+      ignored: ['**/src-tauri/**'],
+    },
   },
   define: {
     __FRONTEND_VERSIONS__: JSON.stringify({

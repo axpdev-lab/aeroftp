@@ -109,7 +109,7 @@ export function useOAuth2(): UseOAuth2Return {
    */
   const hasTokens = useCallback(async (provider: OAuthProvider, profileId?: string): Promise<boolean> => {
     try {
-      return await invoke<boolean>('oauth2_has_tokens', { provider, profile_id: profileId ?? '' });
+      return await invoke<boolean>('oauth2_has_tokens', { provider, profileId: profileId ?? '' });
     } catch (e) {
       console.error('Error checking tokens:', e);
       return false;
@@ -123,7 +123,7 @@ export function useOAuth2(): UseOAuth2Return {
    */
   const logout = useCallback(async (provider: OAuthProvider, profileId?: string): Promise<void> => {
     try {
-      await invoke('oauth2_logout', { provider, profile_id: profileId ?? '' });
+      await invoke('oauth2_logout', { provider, profileId: profileId ?? '' });
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : String(e);
       setError(errorMsg);

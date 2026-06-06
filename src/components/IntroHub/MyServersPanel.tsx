@@ -833,7 +833,7 @@ export function MyServersPanel({
                 }
                 const params = { provider: oauthProvider, client_id: credentials.clientId, client_secret: credentials.clientSecret, profile_id: server.id, ...(region && { region }) };
 
-                const hasTokens = await invoke<boolean>('oauth2_has_tokens', { provider: oauthProvider, profile_id: server.id });
+                const hasTokens = await invoke<boolean>('oauth2_has_tokens', { provider: oauthProvider, profileId: server.id });
                 if (!hasTokens) await invoke('oauth2_full_auth', { params });
 
                 let result: { display_name: string; account_email: string | null };
