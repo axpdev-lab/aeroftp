@@ -1120,7 +1120,6 @@ pub fn export_rclone(
                 output.push_str(&format!("host = {}\n", server.host));
                 output.push_str(&format!("port = {}\n", server.port));
                 output.push_str(&format!("user = {}\n", server.username));
-                output.push_str("tls = true\n");
                 output.push_str("explicit_tls = true\n");
                 if let Some(pw) = password {
                     output.push_str(&format!(
@@ -1228,7 +1227,8 @@ pub fn export_rclone(
                     // verify_cert is stored as a bool by the GUI but may arrive
                     // as the string "false" through normalization; honour both.
                     if let Some(vc) = opts.get("verify_cert").or_else(|| opts.get("verifyCert")) {
-                        verify_cert_off = vc.as_bool() == Some(false) || vc.as_str() == Some("false");
+                        verify_cert_off =
+                            vc.as_bool() == Some(false) || vc.as_str() == Some("false");
                     }
                 }
 
@@ -1894,6 +1894,38 @@ user = t
     }
 
     #[test]
+    fn test_export_rclone_ftps_uses_explicit_tls_only() {
+        // rclone treats `tls = true` as implicit FTPS and rejects it when
+        // `explicit_tls = true` is also present. AeroFTP's `ftps` profiles are
+        // explicit TLS on port 21, so export must set only `explicit_tls`.
+        let servers = vec![RcloneExportServer {
+            name: "secure-ftp".to_string(),
+            host: "ftp.example.com".to_string(),
+            port: 21,
+            username: "alice".to_string(),
+            protocol: Some("ftps".to_string()),
+            options: None,
+            provider_id: None,
+        }];
+        let mut passwords = HashMap::new();
+        passwords.insert("secure-ftp".to_string(), "secret123".to_string());
+
+        let tmp = std::env::temp_dir().join("aeroftp-test-export-ftps.conf");
+        export_rclone(&servers, &passwords, &tmp).expect("should export");
+        let conf = std::fs::read_to_string(&tmp).expect("read conf");
+        std::fs::remove_file(&tmp).ok();
+
+        assert!(
+            conf.contains("explicit_tls = true"),
+            "explicit FTPS flag must be present:\n{conf}"
+        );
+        assert!(
+            !conf.contains("\ntls = true\n"),
+            "must not also enable implicit FTPS:\n{conf}"
+        );
+    }
+
+    #[test]
     fn test_export_rclone_s3_bucket_alias() {
         // F1 regression: a profile-pinned bucket must NOT be emitted as the
         // inert `bucket =` s3 key (silently ignored by rclone), but as an
@@ -2089,7 +2121,9 @@ user = t
         assert!(endpoint_is_loopback("https://[::1]:443"));
         assert!(endpoint_is_loopback("https://127.5.6.7:8000/path"));
         assert!(!endpoint_is_loopback("https://storage.googleapis.com"));
-        assert!(!endpoint_is_loopback("https://s3.eu-central-003.backblazeb2.com"));
+        assert!(!endpoint_is_loopback(
+            "https://s3.eu-central-003.backblazeb2.com"
+        ));
         // A bucket literally named "localhost" must not be misread: the host
         // here is the real endpoint, not the path segment.
         assert!(!endpoint_is_loopback("https://s3.example.com/localhost"));
