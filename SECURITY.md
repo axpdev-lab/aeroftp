@@ -4,10 +4,10 @@
 
 | Version | Supported           |
 | ------- | ------------------- |
-| 3.7.x   | Yes (current)       |
-| 3.6.x   | Security fixes only |
-| 3.5.x   | End of Life         |
-| < 3.5   | No                  |
+| 4.0.x   | Yes (current)       |
+| 3.8.x   | Security fixes only |
+| 3.7.x   | End of Life         |
+| < 3.7   | No                  |
 
 ## Security Architecture
 
@@ -184,4 +184,4 @@ For the full disclosure policy, bug bounty scope, and Security Hall of Fame, see
 
 ---
 
-*AeroFTP v3.8.0 - 15 May 2026*
+*AeroFTP v4.0.4 - 7 June 2026*

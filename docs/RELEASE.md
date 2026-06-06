@@ -16,17 +16,18 @@ That's it! GitHub Actions handles everything else automatically.
 
 ## Pre-Release Checklist (12 files)
 
-### Version Files (7 files - MUST be identical)
+### Version Files (6 files - MUST be identical)
 
 | # | File | Field | Notes |
 |---|------|-------|-------|
 | 1 | `package.json` | `"version": "X.Y.Z"` | Line ~4 |
 | 2 | `src-tauri/tauri.conf.json` | `"version": "X.Y.Z"` | Line ~4 |
 | 3 | `src-tauri/Cargo.toml` | `version = "X.Y.Z"` | Line ~3 |
-| 4 | `snap/snapcraft.yaml` | `version: 'X.Y.Z'` | Path is `snap/`, NOT root |
-| 5 | `public/splash.html` | Hardcoded in `.version` div | Tauri IPC not available in splash |
-| 6 | `aur/PKGBUILD` | `pkgver=X.Y.Z` | Also update `pkgrel=1` |
-| 7 | `aur/.SRCINFO` | `pkgver`, source URLs, noextract | 3 occurrences to update |
+| 4 | `src-tauri/Cargo.lock` | `name = "aeroftp"` package `version` | Re-locks on `cargo build`; commit it |
+| 5 | `snap/snapcraft.yaml` | `version: 'X.Y.Z'` | Path is `snap/`, NOT root |
+| 6 | `public/splash.html` | Hardcoded in `.version` div | Tauri IPC not available in splash |
+
+> **AUR is maintained in a separate repository**, not the in-repo `aur/` folder (that copy is stale and no longer the source of truth). The AUR `PKGBUILD` / `.SRCINFO` are bumped and pushed from that separate checkout after CI publishes the `.deb` (see Post-CI: AUR Update). Do not treat the in-repo `aur/` files as a release gate.
 
 ### Metadata & Release Notes (2 files)
 
@@ -35,13 +36,14 @@ That's it! GitHub Actions handles everything else automatically.
 | 8 | `com.aeroftp.AeroFTP.metainfo.xml` | Add new `<release version="X.Y.Z" date="YYYY-MM-DD">` with `<description>` (Ubuntu Store / GNOME Software) |
 | 9 | `CHANGELOG.md` | New `## [X.Y.Z] - YYYY-MM-DD` section at top (CI extracts this for GitHub Release body) |
 
-### Documentation (3 files)
+### Documentation (2 files)
 
 | # | File | What to update |
 |---|------|----------------|
-| 10 | `CLAUDE.md` | `## Versione corrente: vX.Y.Z` + completed items |
-| 11 | `SECURITY.md` | Footer `*AeroFTP vX.Y.Z - DD Month YYYY*` |
-| 12 | `docs/dev/roadmap/README.md` | `Current Version: vX.Y.Z` + blockquote summary |
+| 10 | `SECURITY.md` | Footer `*AeroFTP vX.Y.Z - DD Month YYYY*`, plus the Supported Versions table when a new minor line opens |
+| 11 | `AGENTS.md` | Footer stamp `*AeroFTP CLI vX.Y.Z - ...*` when the CLI surface changed |
+
+Also sweep `docs/PROTOCOL-FEATURES.md` and the relevant feature guide (`docs/CLI-GUIDE.md`, `docs/PROVIDERS.md`, etc.) when the release adds or changes user-visible behavior, and confirm `CHANGELOG.md` and `com.aeroftp.AeroFTP.metainfo.xml` describe the same set of changes.
 
 ### Pre-push Validation
 
@@ -70,51 +72,39 @@ git push origin main --tags
 
 ## Post-CI: AUR Update
 
-After GitHub Actions publishes artifacts (AppImage available on GitHub Releases):
+The AUR package is `aeroftp-bin`, maintained in its own checkout (`ssh://aur@aur.archlinux.org/aeroftp-bin.git`), separate from this repo. The package installs the `.deb` payload (not the AppImage, which hit `EGL_BAD_PARAMETER` on some GPU drivers). After GitHub Actions publishes the release artifacts:
 
 ### 1. Compute SHA-256 for ALL 3 sources
 
 ```bash
-# Download AppImage
-curl -L -o /tmp/AeroFTP.AppImage \
-  "https://github.com/axpdev-lab/aeroftp/releases/download/vX.Y.Z/AeroFTP_X.Y.Z_amd64.AppImage"
+# Download the .deb (the AUR PKGBUILD source)
+curl -L -o /tmp/AeroFTP.deb \
+  "https://github.com/axpdev-lab/aeroftp/releases/download/vX.Y.Z/AeroFTP_X.Y.Z_amd64.deb"
 
 # Download icon
 curl -L -o /tmp/aeroftp-icon.png \
   "https://raw.githubusercontent.com/axpdev-lab/aeroftp/main/src-tauri/icons/128x128.png"
 
-# Compute hashes
-sha256sum /tmp/AeroFTP.AppImage
-sha256sum aur/aeroftp.desktop
+# Compute hashes (deb, then the local aeroftp.desktop in the AUR checkout, then the icon)
+sha256sum /tmp/AeroFTP.deb
+sha256sum aeroftp.desktop
 sha256sum /tmp/aeroftp-icon.png
 ```
 
-### 2. Update aur/PKGBUILD and aur/.SRCINFO
+### 2. Update PKGBUILD and .SRCINFO (in the AUR checkout)
 
-- Replace all 3 `sha256sums` (AppImage, .desktop, .png) - never leave `SKIP`
-- Update `pkgver`, `pkgdesc`, source URLs, `noextract` in `.SRCINFO`
+- Bump `pkgver=X.Y.Z` and reset `pkgrel=1`
+- Replace all 3 `sha256sums` (deb, .desktop, .png) - never leave `SKIP`
+- Update the source URLs in both `PKGBUILD` and `.SRCINFO` (3 occurrences in `.SRCINFO`)
+- Regenerate `.SRCINFO` if `makepkg` is available: `makepkg --printsrcinfo > .SRCINFO`
 
 ### 3. Push to AUR
 
 ```bash
-cd /tmp
-git clone ssh://aur@aur.archlinux.org/aeroftp-bin.git aur-aeroftp
-cp /path/to/aur/PKGBUILD aur-aeroftp/
-cp /path/to/aur/.SRCINFO aur-aeroftp/
-cp /path/to/aur/aeroftp.desktop aur-aeroftp/
-cd aur-aeroftp
+cd /path/to/aeroftp-bin   # the separate AUR checkout
 git add PKGBUILD .SRCINFO aeroftp.desktop
 git commit -m "Update to X.Y.Z"
 git push
-```
-
-### 4. Sync main repo
-
-```bash
-# Commit updated PKGBUILD + .SRCINFO back to GitHub
-git add aur/PKGBUILD aur/.SRCINFO
-git commit -m "chore(aur): update PKGBUILD and .SRCINFO to vX.Y.Z"
-git push origin main
 ```
 
 ---
@@ -138,7 +128,7 @@ The pipeline runs automatically when a tag matching `v*` is pushed.
 |-------------|-----------|------------|
 | GitHub Releases | All platforms | Automatic via `softprops/action-gh-release` |
 | Snap Store | `.snap` (stable channel) | Automatic via `snapcraft upload` |
-| AUR | `.AppImage` | Manual post-CI (see above) |
+| AUR | `.deb` (in `aeroftp-bin`, separate repo) | Manual post-CI (see above) |
 
 ---
 

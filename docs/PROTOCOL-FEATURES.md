@@ -204,6 +204,18 @@ These providers do not expose a per-item public/private toggle in the same shape
 
 ---
 
+## Restricted Filename Handling (v4.0.4)
+
+Several providers reject filenames that contain characters their storage layer treats as reserved, which previously surfaced as a silent rename or upload failure. AeroFTP handles this in two ways depending on the provider:
+
+- **Reversible encoding** (Box, Dropbox, Jottacloud, OpenDrive): a filename containing a reserved character is transparently encoded before it reaches the provider and decoded back when the entry is listed, so the name you see in AeroFTP is always the original. The scheme is a faithful port of the rclone `lib/encoder` mapping (fullwidth substitutes for the reserved set, control-picture substitutes for control characters, a `QuoteRune` escape for the collision case, and position-dependent rules for a trailing space or a whole-name dot), and is property-tested so that `decode(encode(name)) == name` over tens of thousands of generated cases per provider. The reserved set is per provider (for example Dropbox and Box reserve `\`, Jottacloud reserves `" * : < > ? | %`, OpenDrive reserves `" * : < > ? \ |`); control characters are always encoded.
+
+- **Clear rejection** (control-character-only providers): where a provider only forbids control characters and a reversible mapping would add no value, the operation fails with a clear, localized error naming the offending character rather than silently dropping the file.
+
+The encode/decode runs once at the provider boundary, so it applies uniformly across the GUI, every CLI command, CLI `sync` and `benchmark`, the transfer engine and the session manager. No setting controls it; the behavior is always on.
+
+---
+
 ## FileLu Special Features (v2.7.0)
 
 FileLu exposes privacy and management features beyond generic file operations:
