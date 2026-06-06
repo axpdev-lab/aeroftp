@@ -8769,6 +8769,66 @@ fn log_window_diagnostics(window: &tauri::WebviewWindow, ctx: &str) {
     }
 }
 
+/// Minimum sane inner size for the main window, mirroring the `min_inner_size`
+/// passed to the builder. Used both as a builder constraint reference and to
+/// detect a degenerate restored size (issue #290).
+const MAIN_MIN_INNER_W: f64 = 1024.0;
+const MAIN_MIN_INNER_H: f64 = 600.0;
+
+/// Compute the initial inner size for the main window, clamped to the primary
+/// monitor so the window never opens off-screen on small Retina displays.
+/// Shared by the builder (fresh launch) and the post-restore self-heal so a
+/// poisoned/degenerate restored size falls back to exactly the dimensions a
+/// first launch would have used. Falls back to 1540x1050 when the monitor
+/// cannot be probed (very early startup, headless). See issue #241/#290.
+fn computed_initial_inner_size(app: &AppHandle) -> (f64, f64) {
+    app.primary_monitor()
+        .ok()
+        .flatten()
+        .map(|m| {
+            let size = m.size().to_logical::<f64>(m.scale_factor());
+            let target_w = 1540.0_f64.min((size.width - 60.0_f64).max(MAIN_MIN_INNER_W));
+            let target_h = 1050.0_f64.min((size.height - 100.0_f64).max(MAIN_MIN_INNER_H));
+            (target_w, target_h)
+        })
+        .unwrap_or((1540.0, 1050.0))
+}
+
+/// Heal a degenerate window size restored by the window-state plugin.
+///
+/// Issue #290: the borderless macOS builds (<= v4.0.2) never presented the
+/// main window, so its inner size stayed 0x0 for the whole session. On exit
+/// the plugin refuses to *save* a 0x0 size, but it still saves the position,
+/// leaving a non-default record `{x, y, width: 0, height: 0}` on disk. Because
+/// that record differs from `WindowState::default()`, the next launch's
+/// `restore_state(SIZE)` enters its restore branch and faithfully calls
+/// `set_size(0, 0)` — so even after the v4.0.3 Overlay chrome fix the window
+/// opens at 0x0: visible and focused, but invisible (matching the `[diag #290]
+/// inner_size=0x0` report). We detect any inner size below the minimum and
+/// reset it to the computed initial size, then re-center. Cross-platform so it
+/// repairs already-poisoned state files without the user deleting anything.
+fn restored_size_is_degenerate(logical_w: f64, logical_h: f64) -> bool {
+    logical_w < MAIN_MIN_INNER_W || logical_h < MAIN_MIN_INNER_H
+}
+
+fn heal_restored_window_size(window: &tauri::WebviewWindow) {
+    let scale = window.scale_factor().unwrap_or(1.0);
+    let Ok(size) = window.inner_size() else {
+        return;
+    };
+    let logical = size.to_logical::<f64>(scale);
+    if !restored_size_is_degenerate(logical.width, logical.height) {
+        return;
+    }
+    let (w, h) = computed_initial_inner_size(window.app_handle());
+    warn!(
+        "[diag #290] restored inner_size {}x{} below minimum {}x{}; healing to {}x{}",
+        size.width, size.height, MAIN_MIN_INNER_W as u32, MAIN_MIN_INNER_H as u32, w, h
+    );
+    let _ = window.set_size(tauri::LogicalSize::new(w, h));
+    let _ = window.center();
+}
+
 /// Closes the splash screen, sets the app menu (deferred from setup to
 /// prevent GTK menu flash on the borderless splash), and shows the main window.
 ///
@@ -8828,6 +8888,9 @@ async fn app_ready(app: AppHandle, start_minimized: Option<bool>) {
         let _ = main_window.remove_menu();
         let _ = main_window
             .restore_state(StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED);
+        // Heal a poisoned 0x0 size restored from earlier broken builds (#290)
+        // before the window is shown, so it never flashes at zero size.
+        heal_restored_window_size(&main_window);
         if start_minimized {
             info!("Main window kept hidden (autostart minimized)");
         } else {
@@ -14363,22 +14426,14 @@ pub fn run() {
             // titlebar to fit. Falls back to the historical 1540x1050 if the
             // monitor cannot be probed (very early startup, headless run).
             // Margins reserve space for the menu bar / dock. Issue #241.
-            let (initial_w, initial_h) = app
-                .primary_monitor()
-                .ok()
-                .flatten()
-                .map(|m| {
-                    let size = m.size().to_logical::<f64>(m.scale_factor());
-                    let target_w = 1540.0_f64.min((size.width - 60.0_f64).max(1024.0_f64));
-                    let target_h = 1050.0_f64.min((size.height - 100.0_f64).max(600.0_f64));
-                    (target_w, target_h)
-                })
-                .unwrap_or((1540.0, 1050.0));
+            // Shared with the post-restore self-heal so a poisoned restored
+            // size falls back to the exact first-launch dimensions (#290).
+            let (initial_w, initial_h) = computed_initial_inner_size(app.handle());
 
             let main_builder = WebviewWindowBuilder::new(app, "main", main_url)
                 .title("AeroFTP")
                 .inner_size(initial_w, initial_h)
-                .min_inner_size(1024.0, 600.0)
+                .min_inner_size(MAIN_MIN_INNER_W, MAIN_MIN_INNER_H)
                 .center()
                 .resizable(true)
                 .maximizable(true)
@@ -14646,6 +14701,8 @@ pub fn run() {
                     let _ = main_window.restore_state(
                         StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED,
                     );
+                    // Heal a poisoned 0x0 size restored from earlier broken builds (#290).
+                    heal_restored_window_size(&main_window);
                     let _ = main_window.show();
                     let _ = main_window.set_focus();
                     log_window_diagnostics(&main_window, "safety-timeout post-show");
@@ -15741,6 +15798,33 @@ impl tracing::Subscriber for TracingToLogBridge {
 
     fn enter(&self, _id: &tracing::span::Id) {}
     fn exit(&self, _id: &tracing::span::Id) {}
+}
+
+#[cfg(test)]
+mod window_size_heal_tests {
+    use super::{restored_size_is_degenerate, MAIN_MIN_INNER_H, MAIN_MIN_INNER_W};
+
+    #[test]
+    fn zero_size_is_degenerate() {
+        // The exact symptom from issue #290: restore_state applied a poisoned
+        // {width: 0, height: 0} record, so the window opened at 0x0.
+        assert!(restored_size_is_degenerate(0.0, 0.0));
+    }
+
+    #[test]
+    fn below_minimum_either_axis_is_degenerate() {
+        assert!(restored_size_is_degenerate(MAIN_MIN_INNER_W - 1.0, 800.0));
+        assert!(restored_size_is_degenerate(1200.0, MAIN_MIN_INNER_H - 1.0));
+    }
+
+    #[test]
+    fn at_or_above_minimum_is_kept() {
+        assert!(!restored_size_is_degenerate(
+            MAIN_MIN_INNER_W,
+            MAIN_MIN_INNER_H
+        ));
+        assert!(!restored_size_is_degenerate(1540.0, 1050.0));
+    }
 }
 
 #[cfg(test)]
