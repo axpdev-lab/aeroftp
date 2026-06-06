@@ -704,10 +704,7 @@ impl OpenDriveProvider {
         let response: FolderIdByPathResponse = self
             .post_form(
                 "folder/idbypath.json",
-                &[
-                    ("session_id", self.session_id.clone()),
-                    ("path", encoded),
-                ],
+                &[("session_id", self.session_id.clone()), ("path", encoded)],
             )
             .await?;
 
@@ -723,10 +720,7 @@ impl OpenDriveProvider {
         let encoded = crate::restricted_chars::encode_path(ProviderType::OpenDrive, &normalized);
         self.post_form(
             "file/idbypath.json",
-            &[
-                ("session_id", self.session_id.clone()),
-                ("path", encoded),
-            ],
+            &[("session_id", self.session_id.clone()), ("path", encoded)],
         )
         .await
     }
@@ -2217,9 +2211,9 @@ impl StorageProvider for OpenDriveProvider {
             })
             .await?;
 
-        let file_id = created.file_id.ok_or_else(|| {
-            ProviderError::ParseError("Missing FileId from create_file".into())
-        })?;
+        let file_id = created
+            .file_id
+            .ok_or_else(|| ProviderError::ParseError("Missing FileId from create_file".into()))?;
 
         let opened: OpenUploadResponse = self
             .with_reauth(|this| {

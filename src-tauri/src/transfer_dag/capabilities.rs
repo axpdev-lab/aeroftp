@@ -266,10 +266,7 @@ mod tests {
             false,
         );
 
-        assert_eq!(
-            caps.strict_concurrent_range_download,
-            Capability::Supported
-        );
+        assert_eq!(caps.strict_concurrent_range_download, Capability::Supported);
         assert_eq!(caps.max_checker_slots, Some(8));
     }
 

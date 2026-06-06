@@ -182,9 +182,9 @@ fn recommend_webdav_nextcloud(ctx: RouteContext) -> Decision {
     // never fans out, so the DAG only adds the node-graph wrapper, which the
     // 2026-05-29 lab re-benchmark showed regressing (audit PS2).
     match ctx.operation {
-        Operation::Download => {
-            default_legacy("WebDAV Nextcloud download: DAG adds wrapper cost, no fan-out (audit PS2)")
-        }
+        Operation::Download => default_legacy(
+            "WebDAV Nextcloud download: DAG adds wrapper cost, no fan-out (audit PS2)",
+        ),
         Operation::Upload => {
             default_dag("WebDAV Nextcloud upload: parallel chunked v2 fan-out via shaped graph")
         }
@@ -198,7 +198,9 @@ fn recommend_s3(_ctx: RouteContext) -> Decision {
     // (audit DISP-01); the router only selects the engine, so there is no
     // size branch here (the previous MEDIUM_CUTOFF arm was dead: both arms
     // returned DAG, audit DISP-04).
-    default_dag("S3: multipart fan-out for large uploads, single PUT below threshold (builder-gated)")
+    default_dag(
+        "S3: multipart fan-out for large uploads, single PUT below threshold (builder-gated)",
+    )
 }
 
 fn recommend_b2(_ctx: RouteContext) -> Decision {

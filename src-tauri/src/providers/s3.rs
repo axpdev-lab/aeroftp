@@ -395,7 +395,6 @@ impl S3Provider {
         self.acl_override.as_deref()
     }
 
-
     /// Maximum number of concurrent download streams accepted by `set_multi_thread_download`.
     pub const MULTI_THREAD_MAX_STREAMS: usize = 16;
     /// Default cutoff above which multi-thread download engages (250 MiB).
@@ -516,7 +515,12 @@ impl S3Provider {
             .role_mfa_token_code
             .as_ref()
             .map(|c| c.expose_secret().to_string());
-        if mfa_serial.is_some() && mfa_token_code.as_deref().filter(|c| !c.is_empty()).is_none() {
+        if mfa_serial.is_some()
+            && mfa_token_code
+                .as_deref()
+                .filter(|c| !c.is_empty())
+                .is_none()
+        {
             return Err(ProviderError::AuthenticationFailed(
                 "This role requires MFA but no MFA token code was provided. \
                  Reconnect and enter your MFA code."
@@ -1550,10 +1554,7 @@ impl S3Provider {
     ) -> Result<String, ProviderError> {
         let part_num_str = part_number.to_string();
         let range_value = format!("bytes={}-{}", range_start, range_end_inclusive);
-        let params: &[(&str, &str)] = &[
-            ("partNumber", &part_num_str),
-            ("uploadId", upload_id),
-        ];
+        let params: &[(&str, &str)] = &[("partNumber", &part_num_str), ("uploadId", upload_id)];
         let extra: &[(&str, &str)] = &[
             ("x-amz-copy-source", copy_source),
             ("x-amz-copy-source-range", &range_value),
@@ -3684,13 +3685,8 @@ impl StorageProvider for S3Provider {
         // the source metadata is not (S3 multipart copy lacks the
         // single-PUT `metadata-directive: COPY` slot).
         let content_type = source_meta.mime_type;
-        self.server_side_copy_multipart(
-            from_key,
-            to_key,
-            source_size,
-            content_type.as_deref(),
-        )
-        .await
+        self.server_side_copy_multipart(from_key, to_key, source_size, content_type.as_deref())
+            .await
     }
 
     // Shaped-graph multipart trait wiring.
@@ -5028,8 +5024,7 @@ mod tests {
         // an explicit reconnect error WITHOUT touching the network.
         let mut provider = make_provider(Some("https://s3.us-east-1.amazonaws.com"));
         provider.config.role_arn = Some("arn:aws:iam::123456789012:role/Demo".to_string());
-        provider.config.role_mfa_serial =
-            Some("arn:aws:iam::123456789012:mfa/user".to_string());
+        provider.config.role_mfa_serial = Some("arn:aws:iam::123456789012:mfa/user".to_string());
         // Simulate an already-acquired MFA session that has now lapsed.
         *provider.temp_credentials.write().unwrap() =
             Some(temp_creds(Some(Utc::now() - chrono::Duration::minutes(1))));
@@ -5048,8 +5043,7 @@ mod tests {
         // acquire: fail fast before any STS call.
         let mut provider = make_provider(Some("https://s3.us-east-1.amazonaws.com"));
         provider.config.role_arn = Some("arn:aws:iam::123456789012:role/Demo".to_string());
-        provider.config.role_mfa_serial =
-            Some("arn:aws:iam::123456789012:mfa/user".to_string());
+        provider.config.role_mfa_serial = Some("arn:aws:iam::123456789012:mfa/user".to_string());
         // No temp creds yet (initial acquire), no token code.
         let rt = tokio::runtime::Builder::new_current_thread()
             .build()
@@ -5362,7 +5356,8 @@ mod tests {
     fn s3_is_rate_limited_rejects_503_service_unavailable() {
         // Generic 503 is a transient retried by send_with_retry, but NOT a
         // throttle signal: AIMD should not get a Retry-After hint from it.
-        let body = r#"<Error><Code>ServiceUnavailable</Code><Message>backend down</Message></Error>"#;
+        let body =
+            r#"<Error><Code>ServiceUnavailable</Code><Message>backend down</Message></Error>"#;
         assert!(!s3_is_rate_limited(503, body));
         assert!(!s3_is_rate_limited(503, ""));
     }

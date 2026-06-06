@@ -358,7 +358,13 @@ pub fn decode_path(provider: ProviderType, path: &str) -> String {
 /// empty segments verbatim.
 fn join_segments(path: &str, f: impl Fn(&str) -> String) -> String {
     path.split('/')
-        .map(|seg| if seg.is_empty() { String::new() } else { f(seg) })
+        .map(|seg| {
+            if seg.is_empty() {
+                String::new()
+            } else {
+                f(seg)
+            }
+        })
         .collect::<Vec<_>>()
         .join("/")
 }
@@ -432,7 +438,10 @@ mod tests {
         let err = validate_filename(ProviderType::S3, "a\tb").unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("S3"), "message was: {msg}");
-        assert_eq!(err_provider(ProviderType::S3, "a\tb").as_deref(), Some("S3"));
+        assert_eq!(
+            err_provider(ProviderType::S3, "a\tb").as_deref(),
+            Some("S3")
+        );
     }
 
     #[test]
@@ -456,13 +465,11 @@ mod tests {
     /// short strings over THIS set exercises every escape branch.
     const ALPHABET: &[char] = &[
         // source punctuation across the four tables
-        ':', '?', '*', '"', '<', '>', '|', '\\', '%',
-        // control + space + dot sources
+        ':', '?', '*', '"', '<', '>', '|', '\\', '%', // control + space + dot sources
         '\0', '\t', '\n', '\r', '\u{7F}', ' ', '.',
         // the replacement runes (the collision case)
-        '：', '？', '＊', '＂', '＜', '＞', '｜', '＼', '％',
-        '\u{2400}', '\u{2409}', '\u{2421}', '\u{2420}', '\u{FF0E}',
-        // the quote rune + ordinary letters
+        '：', '？', '＊', '＂', '＜', '＞', '｜', '＼', '％', '\u{2400}', '\u{2409}', '\u{2421}',
+        '\u{2420}', '\u{FF0E}', // the quote rune + ordinary letters
         '\u{201B}', 'a', 'é',
     ];
 
@@ -549,7 +556,10 @@ mod tests {
     #[test]
     fn position_dependent_space_rules() {
         // OpenDrive restricts both edges; Box/Dropbox only the trailing edge.
-        assert_eq!(encode_leaf(ProviderType::OpenDrive, " a "), "\u{2420}a\u{2420}");
+        assert_eq!(
+            encode_leaf(ProviderType::OpenDrive, " a "),
+            "\u{2420}a\u{2420}"
+        );
         assert_eq!(encode_leaf(ProviderType::Box, " a "), " a\u{2420}");
         assert_eq!(encode_leaf(ProviderType::Dropbox, "a "), "a\u{2420}");
         // An interior space is never touched.
@@ -578,8 +588,14 @@ mod tests {
 
     #[test]
     fn path_preserves_slashes_and_emptiness() {
-        assert_eq!(encode_path(ProviderType::OpenDrive, "/a:b/c?d/"), "/a：b/c？d/");
-        assert_eq!(decode_path(ProviderType::OpenDrive, "/a：b/c？d/"), "/a:b/c?d/");
+        assert_eq!(
+            encode_path(ProviderType::OpenDrive, "/a:b/c?d/"),
+            "/a：b/c？d/"
+        );
+        assert_eq!(
+            decode_path(ProviderType::OpenDrive, "/a：b/c？d/"),
+            "/a:b/c?d/"
+        );
         assert_eq!(encode_path(ProviderType::OpenDrive, ""), "");
         assert_eq!(encode_path(ProviderType::OpenDrive, "/"), "/");
     }

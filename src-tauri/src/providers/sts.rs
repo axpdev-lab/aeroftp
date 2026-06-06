@@ -223,9 +223,8 @@ fn sign_assume_role(req: &AssumeRoleRequest<'_>, now: DateTime<Utc>) -> SignedSt
         .collect::<String>();
 
     // POST to "/" with no query string.
-    let canonical_request = format!(
-        "POST\n/\n\n{canonical_headers}\n{signed_headers_str}\n{content_sha256}"
-    );
+    let canonical_request =
+        format!("POST\n/\n\n{canonical_headers}\n{signed_headers_str}\n{content_sha256}");
     let canonical_request_hash = {
         let mut hasher = Sha256::new();
         hasher.update(canonical_request.as_bytes());
@@ -233,9 +232,8 @@ fn sign_assume_role(req: &AssumeRoleRequest<'_>, now: DateTime<Utc>) -> SignedSt
     };
 
     let credential_scope = format!("{date_stamp}/{}/sts/aws4_request", req.region);
-    let string_to_sign = format!(
-        "AWS4-HMAC-SHA256\n{amz_date}\n{credential_scope}\n{canonical_request_hash}"
-    );
+    let string_to_sign =
+        format!("AWS4-HMAC-SHA256\n{amz_date}\n{credential_scope}\n{canonical_request_hash}");
 
     fn hmac_sha256(key: &[u8], data: &[u8]) -> Vec<u8> {
         let mut mac = HmacSha256::new_from_slice(key).expect("HMAC accepts any key length");
@@ -286,7 +284,10 @@ async fn send_assume_role(
 
     let mut request = client
         .post(&signed.url)
-        .header("Content-Type", "application/x-www-form-urlencoded; charset=utf-8")
+        .header(
+            "Content-Type",
+            "application/x-www-form-urlencoded; charset=utf-8",
+        )
         .header("X-Amz-Date", &signed.amz_date)
         .header("X-Amz-Content-Sha256", &signed.content_sha256)
         .header("Authorization", &signed.authorization)
@@ -295,11 +296,10 @@ async fn send_assume_role(
         request = request.header("X-Amz-Security-Token", token);
     }
 
-    let response = request
-        .body(signed.body)
-        .send()
-        .await
-        .map_err(|e| ProviderError::NetworkError(format!("STS AssumeRole request failed: {e}")))?;
+    let response =
+        request.body(signed.body).send().await.map_err(|e| {
+            ProviderError::NetworkError(format!("STS AssumeRole request failed: {e}"))
+        })?;
 
     let status = response.status();
     let server_date = response
@@ -324,8 +324,12 @@ async fn send_assume_role(
 /// that a single retry with the server's own clock can fix.
 fn is_clock_skew_error(body: &str) -> bool {
     let (code, message) = parse_sts_error(body);
-    let hay = format!("{} {}", code.unwrap_or_default(), message.unwrap_or_default())
-        .to_ascii_lowercase();
+    let hay = format!(
+        "{} {}",
+        code.unwrap_or_default(),
+        message.unwrap_or_default()
+    )
+    .to_ascii_lowercase();
     hay.contains("requesttimetooskewed")
         || hay.contains("signaturedoesnotmatch")
         || hay.contains("skew")
@@ -494,9 +498,7 @@ fn parse_assume_role_response(xml: &str) -> Result<TempCredentials, ProviderErro
             }
             Ok(Event::End(e)) => match e.local_name().as_ref() {
                 b"Credentials" => in_credentials = false,
-                b"AccessKeyId" | b"SecretAccessKey" | b"SessionToken" | b"Expiration" => {
-                    cur = None
-                }
+                b"AccessKeyId" | b"SecretAccessKey" | b"SessionToken" | b"Expiration" => cur = None,
                 _ => {}
             },
             Ok(Event::Eof) => break,
@@ -510,9 +512,9 @@ fn parse_assume_role_response(xml: &str) -> Result<TempCredentials, ProviderErro
         buf.clear();
     }
 
-    let access_key_id = access_key_id.filter(|s| !s.is_empty()).ok_or_else(|| {
-        ProviderError::ParseError("STS response missing AccessKeyId".to_string())
-    })?;
+    let access_key_id = access_key_id
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| ProviderError::ParseError("STS response missing AccessKeyId".to_string()))?;
     let secret_access_key = secret_access_key.filter(|s| !s.is_empty()).ok_or_else(|| {
         ProviderError::ParseError("STS response missing SecretAccessKey".to_string())
     })?;
@@ -583,7 +585,10 @@ mod tests {
 
     #[test]
     fn endpoint_host_resolves_per_partition() {
-        assert_eq!(sts_endpoint_host("us-east-1"), "sts.us-east-1.amazonaws.com");
+        assert_eq!(
+            sts_endpoint_host("us-east-1"),
+            "sts.us-east-1.amazonaws.com"
+        );
         assert_eq!(
             sts_endpoint_host("eu-central-1"),
             "sts.eu-central-1.amazonaws.com"
@@ -652,14 +657,14 @@ mod tests {
         // Deterministic for fixed inputs (regression guard).
         assert_eq!(s1.authorization, s2.authorization);
         assert_eq!(s1.url, "https://sts.us-east-1.amazonaws.com/");
-        assert!(s1.authorization.starts_with("AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/"));
         assert!(s1
             .authorization
-            .contains("/us-east-1/sts/aws4_request"));
+            .starts_with("AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/"));
+        assert!(s1.authorization.contains("/us-east-1/sts/aws4_request"));
         // content-type, host, x-amz-content-sha256, x-amz-date are signed.
-        assert!(s1.authorization.contains(
-            "SignedHeaders=content-type;host;x-amz-content-sha256;x-amz-date,"
-        ));
+        assert!(s1
+            .authorization
+            .contains("SignedHeaders=content-type;host;x-amz-content-sha256;x-amz-date,"));
     }
 
     #[test]
@@ -693,7 +698,10 @@ mod tests {
         req.base_session_token = Some(&token);
         let now = Utc.with_ymd_and_hms(2026, 6, 3, 12, 0, 0).unwrap();
         let signed = sign_assume_role(&req, now);
-        assert_eq!(signed.security_token.as_deref(), Some("FwoGZXIvYXdzEXAMPLE"));
+        assert_eq!(
+            signed.security_token.as_deref(),
+            Some("FwoGZXIvYXdzEXAMPLE")
+        );
         assert!(signed
             .authorization
             .contains("x-amz-content-sha256;x-amz-date;x-amz-security-token,"));
@@ -719,7 +727,10 @@ mod tests {
         let creds = parse_assume_role_response(xml).expect("parse ok");
         assert_eq!(creds.access_key_id, "ASIAEXAMPLE");
         assert_eq!(creds.secret_access_key.expose_secret(), "secretkey/EXAMPLE");
-        assert_eq!(creds.session_token.expose_secret(), "FQoGZXIvYXdzEXAMPLETOKEN");
+        assert_eq!(
+            creds.session_token.expose_secret(),
+            "FQoGZXIvYXdzEXAMPLETOKEN"
+        );
         assert_eq!(
             creds.expiration,
             Some(Utc.with_ymd_and_hms(2026, 6, 3, 18, 30, 0).unwrap())

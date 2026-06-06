@@ -665,14 +665,12 @@ impl StorageProvider for UploadcareProvider {
             basename(&target).to_string()
         };
 
-        let mime = content_type
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| {
-                mime_guess::from_path(&file_name)
-                    .first_or_octet_stream()
-                    .as_ref()
-                    .to_string()
-            });
+        let mime = content_type.map(|s| s.to_string()).unwrap_or_else(|| {
+            mime_guess::from_path(&file_name)
+                .first_or_octet_stream()
+                .as_ref()
+                .to_string()
+        });
 
         let form = multipart::Form::new()
             .text("UPLOADCARE_PUB_KEY", self.config.public_key.clone())
@@ -1020,4 +1018,3 @@ mod tests {
         assert!(hints.supports_resume_upload);
     }
 }
-

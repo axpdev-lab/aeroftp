@@ -2038,14 +2038,12 @@ impl StorageProvider for MegaNativeProvider {
             let (chunk_offset, target_size, need) = {
                 let state = self.multipart_state.as_ref().ok_or_else(|| {
                     ProviderError::Other(
-                        "MEGA upload_part called without an active multipart session"
-                            .to_string(),
+                        "MEGA upload_part called without an active multipart session".to_string(),
                     )
                 })?;
                 if state.chunk_idx >= state.ramp_chunks.len() {
                     return Err(ProviderError::Other(
-                        "MEGA upload_part: bytes received beyond declared file size"
-                            .to_string(),
+                        "MEGA upload_part: bytes received beyond declared file size".to_string(),
                     ));
                 }
                 let (off, sz) = state.ramp_chunks[state.chunk_idx];
@@ -2077,18 +2075,12 @@ impl StorageProvider for MegaNativeProvider {
             // chunk pointer. The MAC is computed on plaintext before the
             // in-place AES-CTR pass.
             let plaintext = {
-                let state = self
-                    .multipart_state
-                    .as_mut()
-                    .expect("state checked above");
+                let state = self.multipart_state.as_mut().expect("state checked above");
                 std::mem::take(&mut state.chunk_buffer)
             };
             let mac = chunk_mac(&plaintext, &file_key, &nonce)?;
             {
-                let state = self
-                    .multipart_state
-                    .as_mut()
-                    .expect("state checked above");
+                let state = self.multipart_state.as_mut().expect("state checked above");
                 state.chunk_macs.push(mac);
                 state.chunk_idx += 1;
             }
@@ -2125,10 +2117,7 @@ impl StorageProvider for MegaNativeProvider {
                 // gfs* returns the cumulative completion token on the PUT
                 // that lands the last byte of the file. Capture it for the
                 // commit step.
-                let state = self
-                    .multipart_state
-                    .as_mut()
-                    .expect("state checked above");
+                let state = self.multipart_state.as_mut().expect("state checked above");
                 state.upload_handle = Some(body);
             }
         }

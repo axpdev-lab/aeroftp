@@ -94,9 +94,8 @@ fn onedrive_retry_marker_tail(
     let hint = retry_header
         .and_then(super::retry_after::parse_retry_after_seconds)
         .or_else(|| {
-            reset_header.and_then(|raw| {
-                super::retry_after::parse_x_ratelimit_reset(raw, now_epoch_secs)
-            })
+            reset_header
+                .and_then(|raw| super::retry_after::parse_x_ratelimit_reset(raw, now_epoch_secs))
         })?;
     Some(crate::transfer_dag::adaptive::embed_retry_after_marker(
         hint.as_secs(),
@@ -122,7 +121,12 @@ async fn onedrive_error_from_response(
         .and_then(|v| v.to_str().ok())
         .map(String::from);
     let text = response.text().await.unwrap_or_default();
-    let mut msg = format!("{} {}: {}", context_prefix, status, sanitize_api_error(&text));
+    let mut msg = format!(
+        "{} {}: {}",
+        context_prefix,
+        status,
+        sanitize_api_error(&text)
+    );
     let now_epoch = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -320,7 +324,8 @@ impl OneDriveProvider {
     /// Clamped to `[LIST_CHUNK_MIN, LIST_CHUNK_MAX]`. Passing `None`
     /// removes the override (server picks default).
     pub fn set_list_chunk(&mut self, chunk: Option<u32>) {
-        self.list_chunk_override = chunk.map(|c| c.clamp(Self::LIST_CHUNK_MIN, Self::LIST_CHUNK_MAX));
+        self.list_chunk_override =
+            chunk.map(|c| c.clamp(Self::LIST_CHUNK_MIN, Self::LIST_CHUNK_MAX));
     }
 
     /// KE-B3.3: Set the share-link scope. Typical values: `anonymous`,
@@ -332,9 +337,7 @@ impl OneDriveProvider {
     /// Resolved share-link scope: runtime override, else the legacy
     /// hardcoded `anonymous` (preserves pre-K2 behaviour).
     fn effective_link_scope(&self) -> &str {
-        self.link_scope_override
-            .as_deref()
-            .unwrap_or("anonymous")
+        self.link_scope_override.as_deref().unwrap_or("anonymous")
     }
 
     /// Resolved `$top` query parameter for `/children`. Returns the
@@ -351,13 +354,16 @@ impl OneDriveProvider {
         let response = match self
             .client
             .get(&url)
-            .header(AUTHORIZATION, match self.auth_header().await {
-                Ok(h) => h,
-                Err(e) => {
-                    warn!("onedrive purge_old_versions: auth header failed: {}", e);
-                    return;
-                }
-            })
+            .header(
+                AUTHORIZATION,
+                match self.auth_header().await {
+                    Ok(h) => h,
+                    Err(e) => {
+                        warn!("onedrive purge_old_versions: auth header failed: {}", e);
+                        return;
+                    }
+                },
+            )
             .send()
             .await
         {
@@ -897,7 +903,9 @@ impl OneDriveProvider {
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
-            return Err(onedrive_error_from_response(response, "Create upload session failed:").await);
+            return Err(
+                onedrive_error_from_response(response, "Create upload session failed:").await,
+            );
         }
 
         #[derive(Deserialize)]
@@ -2566,7 +2574,10 @@ mod tests {
             500 * 1024 * 1024,
             10 * 1024 * 1024 * 1024,
         ] {
-            assert_eq!(onedrive_runner_part_size(total), ONEDRIVE_MULTIPART_PART_SIZE);
+            assert_eq!(
+                onedrive_runner_part_size(total),
+                ONEDRIVE_MULTIPART_PART_SIZE
+            );
         }
     }
 

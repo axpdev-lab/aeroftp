@@ -611,14 +611,8 @@ mod tests {
             "id": "abc", "name": "S", "host": "h.example.com", "port": 21,
             "username": "u", "protocol": "ftp", "options": {}
         });
-        assert!(
-            serde_json::from_value::<rclone_import::RcloneExportServer>(entry.clone()).is_ok()
-        );
-        assert!(
-            serde_json::from_value::<winscp_import::WinScpExportServer>(entry.clone()).is_ok()
-        );
-        assert!(
-            serde_json::from_value::<filezilla_import::FileZillaExportServer>(entry).is_ok()
-        );
+        assert!(serde_json::from_value::<rclone_import::RcloneExportServer>(entry.clone()).is_ok());
+        assert!(serde_json::from_value::<winscp_import::WinScpExportServer>(entry.clone()).is_ok());
+        assert!(serde_json::from_value::<filezilla_import::FileZillaExportServer>(entry).is_ok());
     }
 }

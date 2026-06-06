@@ -10303,7 +10303,10 @@ mod tests {
             Some("team-sync")
         );
         assert_eq!(
-            config.extra.get("role_duration_seconds").map(String::as_str),
+            config
+                .extra
+                .get("role_duration_seconds")
+                .map(String::as_str),
             Some("7200")
         );
     }

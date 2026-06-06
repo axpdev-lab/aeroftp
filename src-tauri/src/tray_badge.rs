@@ -346,6 +346,9 @@ pub fn update_tray_badge(app: &AppHandle, state: TrayBadgeState) {
     });
 
     if let Err(e) = marshal {
-        error!("Failed to marshal tray badge update onto main thread: {}", e);
+        error!(
+            "Failed to marshal tray badge update onto main thread: {}",
+            e
+        );
     }
 }

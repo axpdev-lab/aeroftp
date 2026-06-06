@@ -104,7 +104,10 @@ mod tests {
         assert_eq!(parse_retry_after_seconds("-5"), None);
         assert_eq!(parse_retry_after_seconds("abc"), None);
         assert_eq!(parse_retry_after_seconds("12.5"), None);
-        assert_eq!(parse_retry_after_seconds("Wed, 21 Oct 2015 07:28:00 GMT"), None);
+        assert_eq!(
+            parse_retry_after_seconds("Wed, 21 Oct 2015 07:28:00 GMT"),
+            None
+        );
     }
 
     #[test]

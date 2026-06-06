@@ -1008,79 +1008,80 @@ impl B2Provider {
             max_parallel: streams,
         };
 
-        let write_one_range = move |start_off: u64,
-                                    end_off: u64,
-                                    temp_path: PathBuf,
-                                    aggregate: Arc<std::sync::atomic::AtomicU64>,
-                                    cancel: tokio_util::sync::CancellationToken| {
-            let pool = pool.clone();
-            let remote = remote_owned.clone();
-            async move {
-                use std::sync::atomic::Ordering;
-                use tokio::io::{AsyncSeekExt, AsyncWriteExt};
+        let write_one_range =
+            move |start_off: u64,
+                  end_off: u64,
+                  temp_path: PathBuf,
+                  aggregate: Arc<std::sync::atomic::AtomicU64>,
+                  cancel: tokio_util::sync::CancellationToken| {
+                let pool = pool.clone();
+                let remote = remote_owned.clone();
+                async move {
+                    use std::sync::atomic::Ordering;
+                    use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
-                let mut worker = {
-                    let mut guard = pool.lock().await;
-                    guard.pop_front().ok_or_else(|| {
-                        ProviderError::TransferFailed(
-                            "b2 multi-thread: worker pool exhausted (internal invariant)"
-                                .to_string(),
-                        )
-                    })?
-                };
+                    let mut worker = {
+                        let mut guard = pool.lock().await;
+                        guard.pop_front().ok_or_else(|| {
+                            ProviderError::TransferFailed(
+                                "b2 multi-thread: worker pool exhausted (internal invariant)"
+                                    .to_string(),
+                            )
+                        })?
+                    };
 
-                let window_len = end_off - start_off + 1;
-                let mut file = tokio::fs::OpenOptions::new()
-                    .write(true)
-                    .open(&temp_path)
-                    .await
-                    .map_err(ProviderError::IoError)?;
-                file.seek(std::io::SeekFrom::Start(start_off))
-                    .await
-                    .map_err(ProviderError::IoError)?;
-
-                let mut written = 0u64;
-                while written < window_len {
-                    if cancel.is_cancelled() {
-                        return Err(ProviderError::TransferFailed(
-                            "Transfer cancelled by user".to_string(),
-                        ));
-                    }
-                    let sub_len = (window_len - written).min(MULTI_THREAD_SUB_READ_SIZE);
-                    let data = worker
-                        .read_range(&remote, start_off + written, sub_len)
-                        .await
-                        .map_err(|e| {
-                            ProviderError::TransferFailed(format!(
-                                "b2 multi-thread: read_range at offset {} failed: {}",
-                                start_off + written,
-                                e
-                            ))
-                        })?;
-                    if data.is_empty() {
-                        return Err(ProviderError::TransferFailed(format!(
-                            "b2 multi-thread: short read at offset {} ({} of {} bytes)",
-                            start_off + written,
-                            written,
-                            window_len
-                        )));
-                    }
-                    file.write_all(&data)
+                    let window_len = end_off - start_off + 1;
+                    let mut file = tokio::fs::OpenOptions::new()
+                        .write(true)
+                        .open(&temp_path)
                         .await
                         .map_err(ProviderError::IoError)?;
-                    written += data.len() as u64;
-                    aggregate.fetch_add(data.len() as u64, Ordering::Relaxed);
+                    file.seek(std::io::SeekFrom::Start(start_off))
+                        .await
+                        .map_err(ProviderError::IoError)?;
+
+                    let mut written = 0u64;
+                    while written < window_len {
+                        if cancel.is_cancelled() {
+                            return Err(ProviderError::TransferFailed(
+                                "Transfer cancelled by user".to_string(),
+                            ));
+                        }
+                        let sub_len = (window_len - written).min(MULTI_THREAD_SUB_READ_SIZE);
+                        let data = worker
+                            .read_range(&remote, start_off + written, sub_len)
+                            .await
+                            .map_err(|e| {
+                                ProviderError::TransferFailed(format!(
+                                    "b2 multi-thread: read_range at offset {} failed: {}",
+                                    start_off + written,
+                                    e
+                                ))
+                            })?;
+                        if data.is_empty() {
+                            return Err(ProviderError::TransferFailed(format!(
+                                "b2 multi-thread: short read at offset {} ({} of {} bytes)",
+                                start_off + written,
+                                written,
+                                window_len
+                            )));
+                        }
+                        file.write_all(&data)
+                            .await
+                            .map_err(ProviderError::IoError)?;
+                        written += data.len() as u64;
+                        aggregate.fetch_add(data.len() as u64, Ordering::Relaxed);
+                    }
+                    file.flush().await.map_err(ProviderError::IoError)?;
+                    if written != window_len {
+                        return Err(ProviderError::TransferFailed(format!(
+                            "b2 multi-thread: window [{}, {}] wrote {} bytes, expected {}",
+                            start_off, end_off, written, window_len
+                        )));
+                    }
+                    Ok(ConcurrentRangeOutcome::Completed)
                 }
-                file.flush().await.map_err(ProviderError::IoError)?;
-                if written != window_len {
-                    return Err(ProviderError::TransferFailed(format!(
-                        "b2 multi-thread: window [{}, {}] wrote {} bytes, expected {}",
-                        start_off, end_off, written, window_len
-                    )));
-                }
-                Ok(ConcurrentRangeOutcome::Completed)
-            }
-        };
+            };
 
         let outcome = run_concurrent_range_download(
             cfg,
@@ -2866,7 +2867,11 @@ impl StorageProvider for B2Provider {
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(map_b2_status(status, &body, "b2_download_file_by_name (range)"));
+            return Err(map_b2_status(
+                status,
+                &body,
+                "b2_download_file_by_name (range)",
+            ));
         }
         let bytes = resp
             .bytes()

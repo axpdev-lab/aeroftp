@@ -111,7 +111,12 @@ async fn box_error_from_response(
         .and_then(|v| v.to_str().ok())
         .map(String::from);
     let text = response.text().await.unwrap_or_default();
-    let mut msg = format!("{} {}: {}", context_prefix, status, sanitize_api_error(&text));
+    let mut msg = format!(
+        "{} {}: {}",
+        context_prefix,
+        status,
+        sanitize_api_error(&text)
+    );
     if let Some(tail) = box_retry_marker_tail(status.as_u16(), retry_header.as_deref()) {
         msg.push_str(&tail);
     }
@@ -1255,10 +1260,7 @@ impl BoxProvider {
             .as_ref()
             .and_then(|e| e.commit.clone())
             .unwrap_or_else(|| {
-                format!(
-                    "{}/files/upload_sessions/{}/commit",
-                    UPLOAD_BASE, parsed.id
-                )
+                format!("{}/files/upload_sessions/{}/commit", UPLOAD_BASE, parsed.id)
             });
 
         Ok(BoxMultipartMeta {
@@ -2795,9 +2797,7 @@ impl StorageProvider for BoxProvider {
             .await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
         let part_field = part_resp.get("part").ok_or_else(|| {
-            ProviderError::ParseError(
-                "Box upload_part response missing `part` field".to_string(),
-            )
+            ProviderError::ParseError("Box upload_part response missing `part` field".to_string())
         })?;
         let part_id = part_field
             .get("part_id")
@@ -2814,8 +2814,7 @@ impl StorageProvider for BoxProvider {
         };
         Ok(UploadedPart {
             part_number,
-            etag: serde_json::to_string(&receipt)
-                .expect("BoxPartReceipt always serialises"),
+            etag: serde_json::to_string(&receipt).expect("BoxPartReceipt always serialises"),
         })
     }
 
@@ -2928,10 +2927,8 @@ impl StorageProvider for BoxProvider {
         // ever silently fails.
         if let Ok(token) = self.get_token().await {
             if let Ok(header) = Self::bearer_header(&token) {
-                let abort_url = format!(
-                    "{}/files/upload_sessions/{}",
-                    UPLOAD_BASE, meta.session_id
-                );
+                let abort_url =
+                    format!("{}/files/upload_sessions/{}", UPLOAD_BASE, meta.session_id);
                 let _ = self
                     .client
                     .delete(&abort_url)

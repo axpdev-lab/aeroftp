@@ -529,10 +529,7 @@ impl WebDavProvider {
                         }
                         "resourcetype" if in_response => in_resourcetype = true,
                         "collection" if in_response && in_resourcetype => is_collection = true,
-                        "getcontentlength"
-                        | "getlastmodified"
-                        | "getcontenttype"
-                        | "getetag"
+                        "getcontentlength" | "getlastmodified" | "getcontenttype" | "getetag"
                             if in_response =>
                         {
                             current_tag = Some(local);
@@ -742,12 +739,11 @@ impl WebDavProvider {
         // which relies on the major-version-pinned UA for honest
         // device tracking.
         let host_lower = self.config.url.to_ascii_lowercase();
-        let user_agent_override: Option<&'static str> =
-            if host_lower.contains("filelu.com") {
-                Some("rclone/v1.74.0")
-            } else {
-                None
-            };
+        let user_agent_override: Option<&'static str> = if host_lower.contains("filelu.com") {
+            Some("rclone/v1.74.0")
+        } else {
+            None
+        };
 
         for attempt in 1..=MAX_ATTEMPTS {
             let mut req = self.request(method.clone(), path);
@@ -986,11 +982,7 @@ impl WebDavProvider {
     /// alphabetical order of their filenames, so the part number must be
     /// zero-padded to a fixed width — we use 20 digits (matching the
     /// upstream reference clients) so a u64 part count cannot overflow it.
-    fn nextcloud_chunked_chunk_url(
-        &self,
-        transfer_id: &str,
-        chunk_index: u32,
-    ) -> Option<String> {
+    fn nextcloud_chunked_chunk_url(&self, transfer_id: &str, chunk_index: u32) -> Option<String> {
         let folder = self.nextcloud_chunked_folder_url(transfer_id)?;
         Some(format!(
             "{}{}",
@@ -3731,9 +3723,7 @@ impl StorageProvider for WebDavProvider {
         let assemble_url = self
             .nextcloud_chunked_assemble_url(&payload.transfer_id)
             .ok_or_else(|| {
-                ProviderError::Other(
-                    "Failed to build Nextcloud .file assemble URL".to_string(),
-                )
+                ProviderError::Other("Failed to build Nextcloud .file assemble URL".to_string())
             })?;
         let destination_url = self
             .nextcloud_chunked_destination_url(&handle.remote_path)
@@ -3807,10 +3797,7 @@ impl StorageProvider for WebDavProvider {
             return Ok(());
         };
 
-        let result = self
-            .request_url(Method::DELETE, &folder_url)
-            .send()
-            .await;
+        let result = self.request_url(Method::DELETE, &folder_url).send().await;
         match result {
             Ok(response) => {
                 let status = response.status();
@@ -4556,12 +4543,14 @@ mod tests {
         assert!(p.is_nextcloud_for_dav());
 
         // server_root auto-detected via well-known path is enough.
-        let mut p = WebDavProvider::new(test_config("https://cloud.example.com")).expect("provider");
+        let mut p =
+            WebDavProvider::new(test_config("https://cloud.example.com")).expect("provider");
         p.server_root = Some("/remote.php/dav/files/alice/".to_string());
         assert!(p.is_nextcloud_for_dav());
 
         // Vanilla WebDAV stays out.
-        let p = WebDavProvider::new(test_config("https://dav.example.com/webdav/")).expect("provider");
+        let p =
+            WebDavProvider::new(test_config("https://dav.example.com/webdav/")).expect("provider");
         assert!(!p.is_nextcloud_for_dav());
     }
 
@@ -4571,7 +4560,8 @@ mod tests {
     fn nextcloud_userid_prefers_server_root_over_username() {
         // server_root carries the canonical id (federated LDAP DN alias
         // case: login username != storage id).
-        let mut p = WebDavProvider::new(test_config("https://cloud.example.com")).expect("provider");
+        let mut p =
+            WebDavProvider::new(test_config("https://cloud.example.com")).expect("provider");
         p.server_root = Some("/remote.php/dav/files/canonical-id/".to_string());
         // `test_config` sets username = "user"
         assert_eq!(p.nextcloud_userid(), Some("canonical-id".to_string()));
@@ -4619,7 +4609,8 @@ mod tests {
     /// regardless of the per-user `/files/<userid>/` server_root.
     #[test]
     fn nextcloud_chunked_url_layout_lives_under_uploads_root() {
-        let mut p = WebDavProvider::new(test_config("https://cloud.example.com")).expect("provider");
+        let mut p =
+            WebDavProvider::new(test_config("https://cloud.example.com")).expect("provider");
         p.server_root = Some("/remote.php/dav/files/alice/".to_string());
 
         let folder = p
@@ -4678,9 +4669,7 @@ mod tests {
         // Empty transfer_id
         assert!(NextcloudMultipartHandle::decode("webdav-chunked-v2||alice|10").is_err());
         // Trailing garbage
-        assert!(
-            NextcloudMultipartHandle::decode("webdav-chunked-v2|tx|alice|10|extra").is_err()
-        );
+        assert!(NextcloudMultipartHandle::decode("webdav-chunked-v2|tx|alice|10|extra").is_err());
         // Non-numeric total_size
         assert!(NextcloudMultipartHandle::decode("webdav-chunked-v2|tx|alice|big").is_err());
     }
@@ -4689,7 +4678,8 @@ mod tests {
     /// network call, and reject vanilla WebDAV with NotSupported.
     #[tokio::test]
     async fn nextcloud_multipart_methods_require_connection_and_nextcloud_gating() {
-        let mut p = WebDavProvider::new(test_config("https://cloud.example.com")).expect("provider");
+        let mut p =
+            WebDavProvider::new(test_config("https://cloud.example.com")).expect("provider");
         // Not connected: every method bails with NotConnected.
         let r = p.begin_multipart_upload("/x.bin", 100, None, None).await;
         assert!(matches!(r, Err(ProviderError::NotConnected)));
@@ -4839,8 +4829,7 @@ mod tests {
                 </d:response>
             </d:multistatus>"#;
 
-        let entry =
-            WebDavProvider::extract_single_file_entry(xml, "/AbCd/my%20file.txt").unwrap();
+        let entry = WebDavProvider::extract_single_file_entry(xml, "/AbCd/my%20file.txt").unwrap();
         assert_eq!(entry.name, "my file.txt");
         assert_eq!(entry.path, "/my file.txt");
     }

@@ -98,15 +98,11 @@ fn dropbox_retry_marker_tail(
     let hint = serde_json::from_str::<serde_json::Value>(body)
         .ok()
         .and_then(|json| super::retry_after::parse_retry_after_dropbox_value(&json))
-        .or_else(|| {
-            retry_header
-                .and_then(super::retry_after::parse_retry_after_seconds)
-        })?;
+        .or_else(|| retry_header.and_then(super::retry_after::parse_retry_after_seconds))?;
     Some(crate::transfer_dag::adaptive::embed_retry_after_marker(
         hint.as_secs(),
     ))
 }
-
 
 /// Dropbox file metadata
 #[derive(Debug, Deserialize)]
@@ -2447,7 +2443,10 @@ mod tests {
     #[test]
     fn dropbox_is_rate_limited_rejects_non_throttle() {
         assert!(!dropbox_is_rate_limited(500, ""));
-        assert!(!dropbox_is_rate_limited(409, r#"{"error":{".tag":"path/conflict"}}"#));
+        assert!(!dropbox_is_rate_limited(
+            409,
+            r#"{"error":{".tag":"path/conflict"}}"#
+        ));
         assert!(!dropbox_is_rate_limited(200, "any"));
     }
 
