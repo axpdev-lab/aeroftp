@@ -287,25 +287,17 @@ pub fn update_tray_badge(app: &AppHandle, state: TrayBadgeState) {
 
     info!("Updating tray badge: {:?}", state);
 
-    let tray = match app.tray_by_id("main") {
-        Some(t) => t,
-        None => {
-            warn!("Tray icon 'main' not found, cannot update badge");
-            return;
-        }
-    };
-
-    // Generate icon: either with badge overlay or plain base icon
-    let icon_result = if let Some(badge_color) = state.badge_color() {
+    // Generate the icon RGBA up front. This is pure CPU work (image decode +
+    // badge overlay) with no GTK involvement, so it is safe on any thread.
+    let icon_data: Option<(Vec<u8>, u32, u32)> = if let Some(badge_color) = state.badge_color() {
         generate_badge_icon(BASE_ICON_BYTES, badge_color, state)
-            .map(|(rgba_bytes, width, height)| Image::new_owned(rgba_bytes, width, height))
     } else {
         // Default state: decode base icon directly to RGBA
         match image::load_from_memory(BASE_ICON_BYTES) {
             Ok(img) => {
                 let rgba = img.to_rgba8();
                 let (width, height) = rgba.dimensions();
-                Some(Image::new_owned(rgba.into_raw(), width, height))
+                Some((rgba.into_raw(), width, height))
             }
             Err(e) => {
                 error!("Failed to decode base icon: {}", e);
@@ -314,24 +306,46 @@ pub fn update_tray_badge(app: &AppHandle, state: TrayBadgeState) {
         }
     };
 
-    match icon_result {
-        Some(icon) => {
-            if let Err(e) = tray.set_icon(Some(icon)) {
-                error!("Failed to set tray icon: {}", e);
+    let Some((rgba_bytes, width, height)) = icon_data else {
+        error!("Failed to generate tray icon for state {:?}", state);
+        return;
+    };
+
+    // The actual tray mutations (`tray_by_id`, `set_icon`, `set_tooltip`) touch
+    // GTK / the StatusNotifierItem over GDBus on Linux. They MUST run on the GTK
+    // main thread. This function is called from background workers (e.g.
+    // `background_sync_worker`, which runs on a tokio worker thread); calling the
+    // mutations directly from there races the GLib main loop and corrupts the
+    // GLib heap, which later aborts a GDBus worker with
+    // "malloc(): unaligned fastbin chunk detected" (notably on suspend/resume).
+    // Marshal every mutation onto the main thread to keep GLib single-threaded.
+    let app_handle = app.clone();
+    let marshal = app.run_on_main_thread(move || {
+        let tray = match app_handle.tray_by_id("main") {
+            Some(t) => t,
+            None => {
+                warn!("Tray icon 'main' not found, cannot update badge");
                 return;
             }
-        }
-        None => {
-            error!("Failed to generate tray icon for state {:?}", state);
+        };
+
+        let icon = Image::new_owned(rgba_bytes, width, height);
+        if let Err(e) = tray.set_icon(Some(icon)) {
+            error!("Failed to set tray icon: {}", e);
             return;
         }
+
+        if let Err(e) = tray.set_tooltip(Some(state.tooltip())) {
+            warn!("Failed to set tray tooltip: {}", e);
+        }
+
+        // Only record the applied state once the mutation actually ran on the
+        // main thread, so a failed marshal does not skip the next update.
+        CURRENT_TRAY_STATE.store(state as u8, Ordering::SeqCst);
+        info!("Tray badge updated to {:?}", state);
+    });
+
+    if let Err(e) = marshal {
+        error!("Failed to marshal tray badge update onto main thread: {}", e);
     }
-
-    if let Err(e) = tray.set_tooltip(Some(state.tooltip())) {
-        warn!("Failed to set tray tooltip: {}", e);
-    }
-
-    CURRENT_TRAY_STATE.store(state as u8, Ordering::SeqCst);
-
-    info!("Tray badge updated to {:?}", state);
 }
