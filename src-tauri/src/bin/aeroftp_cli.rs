@@ -616,7 +616,12 @@ struct Cli {
     /// AIMD pacing window before `--drive-pacer-min-sleep` is applied.
     /// `0` preserves the controller default. Ignored for non-Drive
     /// providers.
-    #[arg(long, global = true, env = "AEROFTP_DRIVE_PACER_BURST", default_value_t = 0)]
+    #[arg(
+        long,
+        global = true,
+        env = "AEROFTP_DRIVE_PACER_BURST",
+        default_value_t = 0
+    )]
     drive_pacer_burst: usize,
 
     /// KE-B2.2: Minimum delay between Google Drive AIMD API pacing
@@ -770,27 +775,23 @@ impl OrderBy {
                 Ordering::Equal => name_of(a).cmp(name_of(b)),
                 other => other,
             }),
-            OrderBy::ModtimeAsc => items.sort_by(|a, b| {
-                match (mtime_of(a), mtime_of(b)) {
-                    (Some(ta), Some(tb)) => match ta.cmp(&tb) {
-                        Ordering::Equal => name_of(a).cmp(name_of(b)),
-                        other => other,
-                    },
-                    (Some(_), None) => Ordering::Less,
-                    (None, Some(_)) => Ordering::Greater,
-                    (None, None) => name_of(a).cmp(name_of(b)),
-                }
+            OrderBy::ModtimeAsc => items.sort_by(|a, b| match (mtime_of(a), mtime_of(b)) {
+                (Some(ta), Some(tb)) => match ta.cmp(&tb) {
+                    Ordering::Equal => name_of(a).cmp(name_of(b)),
+                    other => other,
+                },
+                (Some(_), None) => Ordering::Less,
+                (None, Some(_)) => Ordering::Greater,
+                (None, None) => name_of(a).cmp(name_of(b)),
             }),
-            OrderBy::ModtimeDesc => items.sort_by(|a, b| {
-                match (mtime_of(a), mtime_of(b)) {
-                    (Some(ta), Some(tb)) => match tb.cmp(&ta) {
-                        Ordering::Equal => name_of(a).cmp(name_of(b)),
-                        other => other,
-                    },
-                    (Some(_), None) => Ordering::Less,
-                    (None, Some(_)) => Ordering::Greater,
-                    (None, None) => name_of(a).cmp(name_of(b)),
-                }
+            OrderBy::ModtimeDesc => items.sort_by(|a, b| match (mtime_of(a), mtime_of(b)) {
+                (Some(ta), Some(tb)) => match tb.cmp(&ta) {
+                    Ordering::Equal => name_of(a).cmp(name_of(b)),
+                    other => other,
+                },
+                (Some(_), None) => Ordering::Less,
+                (None, Some(_)) => Ordering::Greater,
+                (None, None) => name_of(a).cmp(name_of(b)),
             }),
         }
     }
@@ -893,9 +894,7 @@ async fn apply_remote_access(
 ) {
     use ftp_client_gui_lib::providers::opendrive::OpenDriveProvider;
 
-    let opendrive = provider
-        .as_any_mut()
-        .downcast_mut::<OpenDriveProvider>();
+    let opendrive = provider.as_any_mut().downcast_mut::<OpenDriveProvider>();
 
     let Some(od) = opendrive else {
         // Not an access-modelling provider. Only speak up if the user
@@ -910,7 +909,8 @@ async fn apply_remote_access(
 
     let level = requested.unwrap_or(CliAccessLevel::Private);
     let result = if is_dir {
-        od.set_folder_access(remote_path, level.to_opendrive()).await
+        od.set_folder_access(remote_path, level.to_opendrive())
+            .await
     } else {
         od.set_file_access(remote_path, level.to_opendrive()).await
     };
@@ -923,7 +923,12 @@ async fn apply_remote_access(
                 } else {
                     " by default (use --access public to opt out)"
                 };
-                eprintln!("OpenDrive: set {} access on {}{}", level.label(), remote_path, how);
+                eprintln!(
+                    "OpenDrive: set {} access on {}{}",
+                    level.label(),
+                    remote_path,
+                    how
+                );
             }
         }
         Err(e) => {
@@ -4423,6 +4428,9 @@ fn first_command_index(args: &[String]) -> Option<usize> {
                 | "--two-factor"
                 | "--profile"
                 | "-P"
+                | "--user"
+                | "--user-passphrase"
+                | "--passphrase-file"
                 | "--master-password"
                 | "--limit-rate"
                 | "--bwlimit"
@@ -4442,6 +4450,31 @@ fn first_command_index(args: &[String]) -> Option<usize> {
                 | "--chunk-size"
                 | "--buffer-size"
                 | "--dump"
+                | "--multi-thread-streams"
+                | "--multi-thread-cutoff"
+                | "--default-time"
+                | "--transfer-engine"
+                | "--order-by"
+                | "--tpslimit"
+                | "--tpslimit-burst"
+                | "--checkers"
+                | "--sftp-concurrency"
+                | "--s3-upload-concurrency"
+                | "--s3-acl"
+                | "--s3-storage-class"
+                | "--onedrive-list-chunk"
+                | "--onedrive-link-scope"
+                | "--azure-upload-concurrency"
+                | "--azure-access-tier"
+                | "--drive-pacer-burst"
+                | "--drive-pacer-min-sleep"
+                | "--aimd-hint"
+                | "--aimd-min-window"
+                | "--aimd-max-window"
+                | "--aimd-step-window"
+                | "--aimd-config"
+                | "--files-from"
+                | "--files-from-raw"
         );
 
         idx += 1;
@@ -4480,7 +4513,34 @@ fn expand_aliases(args: &[String], config: &CliConfigFile) -> Result<Vec<String>
     Err("Alias expansion exceeded maximum depth (8)".to_string())
 }
 
+fn should_skip_cli_config(args: &[String]) -> bool {
+    if args.len() <= 1 {
+        return true;
+    }
+    if args
+        .iter()
+        .skip(1)
+        .any(|arg| matches!(arg.as_str(), "--help" | "-h" | "--version" | "-V" | "help"))
+    {
+        return true;
+    }
+
+    let Some(cmd_idx) = first_command_index(args) else {
+        return true;
+    };
+    matches!(
+        args[cmd_idx].as_str(),
+        // Metadata/discovery commands must work in read-only/headless
+        // environments where the vault data root cannot be created. They do
+        // not need aliases or user defaults to answer their own contract.
+        "agent-info" | "agent-bootstrap" | "catalog" | "completions" | "profiles"
+    )
+}
+
 fn prepare_cli_args(args: Vec<String>) -> Result<Vec<String>, String> {
+    if should_skip_cli_config(&args) {
+        return Ok(args);
+    }
     let config = load_cli_config()?;
     let with_defaults = apply_config_defaults(&args, &config);
     expand_aliases(&with_defaults, &config)
@@ -5296,8 +5356,8 @@ fn apply_azure_runtime_knobs(provider: &mut Box<dyn StorageProvider>, cli: &Cli)
 fn apply_google_drive_runtime_knobs(provider: &mut Box<dyn StorageProvider>, cli: &Cli) {
     let Some(gd) = provider
         .as_any_mut()
-        .downcast_mut::<ftp_client_gui_lib::providers::google_drive::GoogleDriveProvider>()
-    else {
+        .downcast_mut::<ftp_client_gui_lib::providers::google_drive::GoogleDriveProvider>(
+    ) else {
         return;
     };
     let mut applied: Vec<String> = Vec::new();
@@ -5883,7 +5943,13 @@ fn parse_duration_strict(s: &str) -> Result<std::time::Duration, String> {
 
 fn build_aimd_hints(
     cli: &Cli,
-) -> Result<HashMap<ftp_client_gui_lib::providers::ProviderType, ftp_client_gui_lib::transfer_dag::AimdHint>, String> {
+) -> Result<
+    HashMap<
+        ftp_client_gui_lib::providers::ProviderType,
+        ftp_client_gui_lib::transfer_dag::AimdHint,
+    >,
+    String,
+> {
     use ftp_client_gui_lib::providers::ProviderType;
     use ftp_client_gui_lib::transfer_dag::AimdHint;
 
@@ -5969,7 +6035,13 @@ impl From<AimdTomlClassWindow> for ftp_client_gui_lib::transfer_dag::AimdClassWi
 /// `<XDG_CONFIG_HOME>/aeroftp/aimd.toml` (or `~/.config/aeroftp/aimd.toml`),
 /// or `None` when neither environment variable resolves.
 fn default_aimd_config_path() -> Option<PathBuf> {
-    ftp_client_gui_lib::portable::aeroftp_data_root().map(|d| d.join("aimd.toml"))
+    if ftp_client_gui_lib::portable::is_portable() {
+        return ftp_client_gui_lib::portable::aeroftp_data_root().map(|d| d.join("aimd.toml"));
+    }
+    let leaf = ftp_client_gui_lib::portable::aeroftp_data_leaf_for_debug(cfg!(debug_assertions));
+    dirs::config_dir()
+        .or_else(dirs::home_dir)
+        .map(|base| base.join(leaf).join("aimd.toml"))
 }
 
 /// Load per-class AIMD window overrides from a TOML file. Returns
@@ -5984,16 +6056,39 @@ fn load_aimd_overrides_from_file(
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(err) => return Err(format!("could not read {}: {}", path.display(), err)),
     };
-    let parsed: AimdTomlFile = toml::from_str(&raw)
+    parse_aimd_overrides_toml(path, &raw).map(Some)
+}
+
+fn load_default_aimd_overrides_from_file(
+    path: &Path,
+) -> Result<Option<ftp_client_gui_lib::transfer_dag::AimdClassOverrides>, String> {
+    let raw = match std::fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(err)
+            if matches!(
+                err.kind(),
+                std::io::ErrorKind::NotFound | std::io::ErrorKind::PermissionDenied
+            ) =>
+        {
+            return Ok(None)
+        }
+        Err(err) => return Err(format!("could not read {}: {}", path.display(), err)),
+    };
+    parse_aimd_overrides_toml(path, &raw).map(Some)
+}
+
+fn parse_aimd_overrides_toml(
+    path: &Path,
+    raw: &str,
+) -> Result<ftp_client_gui_lib::transfer_dag::AimdClassOverrides, String> {
+    let parsed: AimdTomlFile = toml::from_str(raw)
         .map_err(|err| format!("could not parse {}: {}", path.display(), err))?;
-    Ok(Some(
-        ftp_client_gui_lib::transfer_dag::AimdClassOverrides {
-            file: parsed.aimd.file.into(),
-            chunk: parsed.aimd.chunk.into(),
-            http: parsed.aimd.http.into(),
-            api: parsed.aimd.api.into(),
-        },
-    ))
+    Ok(ftp_client_gui_lib::transfer_dag::AimdClassOverrides {
+        file: parsed.aimd.file.into(),
+        chunk: parsed.aimd.chunk.into(),
+        http: parsed.aimd.http.into(),
+        api: parsed.aimd.api.into(),
+    })
 }
 
 /// Compose the broadcast CLI overrides on top of the per-class TOML file
@@ -6030,7 +6125,9 @@ fn build_aimd_runtime_config(
         Some(explicit) => load_aimd_overrides_from_file(explicit)?
             .ok_or_else(|| format!("AIMD config file not found: {}", explicit.display()))?,
         None => match default_aimd_config_path() {
-            Some(default_path) => load_aimd_overrides_from_file(&default_path)?.unwrap_or_default(),
+            Some(default_path) => {
+                load_default_aimd_overrides_from_file(&default_path)?.unwrap_or_default()
+            }
             None => ftp_client_gui_lib::transfer_dag::AimdClassOverrides::default(),
         },
     };
@@ -7413,10 +7510,7 @@ fn ensure_active_user_unlocked(
             "Failed to unlock account '{}': wrong passphrase",
             target.name
         )),
-        Err(e) => Err(format!(
-            "Failed to unlock account '{}': {}",
-            target.name, e
-        )),
+        Err(e) => Err(format!("Failed to unlock account '{}': {}", target.name, e)),
     }
 }
 
@@ -7498,7 +7592,8 @@ fn save_active_user_profiles(
             // anyway. Same R3-safety reasoning as the success path.
             if !writing_to_active {
                 return Err(
-                    "User partition unavailable; --user override cannot fall back to legacy blob".to_string(),
+                    "User partition unavailable; --user override cannot fall back to legacy blob"
+                        .to_string(),
                 );
             }
             let serialized = serde_json::to_string(profiles)
@@ -9580,7 +9675,11 @@ fn render_profiles_text(
 /// the user can read the renumbered remainder before issuing the next
 /// command. `l`/`t` reuse the running binary so the listing/tree output
 /// stays bit-for-bit identical to the standalone command.
-fn interactive_profiles_loop(cli: &Cli, store: &CredentialStore, profiles: Vec<serde_json::Value>) -> i32 {
+fn interactive_profiles_loop(
+    cli: &Cli,
+    store: &CredentialStore,
+    profiles: Vec<serde_json::Value>,
+) -> i32 {
     use std::io::{self, BufRead, Write};
 
     let mut current = profiles;
@@ -9643,8 +9742,12 @@ fn interactive_profiles_loop(cli: &Cli, store: &CredentialStore, profiles: Vec<s
             eprintln!("  s <selector>    save-as-new in a different mode of the same provider group (issue #215)");
             eprintln!("  v <selector>    convert profile to a different mode, REPLACES the original (issue #215)");
             eprintln!("  # <sel> <N>     move a profile to index N (renumber, clamped to count, persisted)");
-            eprintln!("  u [N|name]      switch active user (lists accounts when bare); reloads profiles");
-            eprintln!("  tui / nav       raw-mode arrow-key navigator: pick a profile + action visually");
+            eprintln!(
+                "  u [N|name]      switch active user (lists accounts when bare); reloads profiles"
+            );
+            eprintln!(
+                "  tui / nav       raw-mode arrow-key navigator: pick a profile + action visually"
+            );
             eprintln!("  Nl  Nt  Nd      legacy single-target compact form (e.g. '1l', 'l1')");
             eprintln!("  0/q             quit");
             eprintln!();
@@ -9706,7 +9809,10 @@ fn interactive_profiles_loop(cli: &Cli, store: &CredentialStore, profiles: Vec<s
             let target_1based = match target_raw.parse::<usize>() {
                 Ok(n) if n >= 1 => n,
                 _ => {
-                    eprintln!("Target index must be a positive number (1..={}).", current.len());
+                    eprintln!(
+                        "Target index must be a positive number (1..={}).",
+                        current.len()
+                    );
                     continue;
                 }
             };
@@ -9718,11 +9824,21 @@ fn interactive_profiles_loop(cli: &Cli, store: &CredentialStore, profiles: Vec<s
             let stored_ids: Vec<String> = load_active_user_profiles(cli, store)
                 .unwrap_or_default()
                 .iter()
-                .map(|p| p.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string())
+                .map(|p| {
+                    p.get("id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string()
+                })
                 .collect();
             let current_ids: Vec<String> = current
                 .iter()
-                .map(|p| p.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string())
+                .map(|p| {
+                    p.get("id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string()
+                })
                 .collect();
             if stored_ids != current_ids {
                 eprintln!(
@@ -10394,7 +10510,11 @@ fn interactive_profiles_loop(cli: &Cli, store: &CredentialStore, profiles: Vec<s
                         // Refresh in-memory snapshot from the active user's
                         // partition (already unlocked by the caller). Mutex
                         // is global, so this is a cheap reload.
-                        if let Ok(updated) = ftp_client_gui_lib::user_partitions::cli_list_active_server_profiles(store) {
+                        if let Ok(updated) =
+                            ftp_client_gui_lib::user_partitions::cli_list_active_server_profiles(
+                                store,
+                            )
+                        {
                             current = updated;
                         }
                         eprintln!(
@@ -10574,12 +10694,12 @@ fn profiles_tui_pick(profiles: &[serde_json::Value]) -> std::io::Result<Profiles
                         }
                         KeyCode::PageUp => selected = selected.saturating_sub(10),
                         KeyCode::Enter | KeyCode::Char('l') => {
-                            outcome =
-                                ProfilesTuiOutcome::Command(format!("l {}", selected + 1));
+                            outcome = ProfilesTuiOutcome::Command(format!("l {}", selected + 1));
                             break;
                         }
                         KeyCode::Char(c) if matches!(c, 't' | 'f' | 'c' | 'r' | 'e' | 'd') => {
-                            outcome = ProfilesTuiOutcome::Command(format!("{} {}", c, selected + 1));
+                            outcome =
+                                ProfilesTuiOutcome::Command(format!("{} {}", c, selected + 1));
                             break;
                         }
                         _ => {}
@@ -11536,7 +11656,11 @@ fn cmd_profile_relocate_user(
                     }
                 );
             } else {
-                let past = if remove_from_source { "Moved" } else { "Copied" };
+                let past = if remove_from_source {
+                    "Moved"
+                } else {
+                    "Copied"
+                };
                 println!(
                     "{} '{}' from '{}' to '{}' (id={})",
                     past,
@@ -19214,7 +19338,8 @@ async fn cmd_put(
     let resolved_remote = resolve_cli_remote_path(&initial_path, &effective_remote);
     let remote_path = resolved_remote.as_str();
 
-    if let Some(code) = reject_restricted_target(provider.as_mut(), remote_path, "put", format).await
+    if let Some(code) =
+        reject_restricted_target(provider.as_mut(), remote_path, "put", format).await
     {
         return code;
     }
@@ -23266,7 +23391,11 @@ fn cmd_catalog(
                 rows.push((c, m));
             }
         }
-        rows.sort_by(|a, b| a.0.company.cmp(&b.0.company).then(a.1.label.cmp(&b.1.label)));
+        rows.sort_by(|a, b| {
+            a.0.company
+                .cmp(&b.0.company)
+                .then(a.1.label.cmp(&b.1.label))
+        });
 
         match format {
             OutputFormat::Json => {
@@ -28410,9 +28539,17 @@ async fn cmd_sync(
                      listing would classify intact files as orphans and delete them. \
                      Re-run without --delete or restore full connectivity.",
                     remote_scan_errors,
-                    if remote_scan_truncated { ", truncated" } else { "" },
+                    if remote_scan_truncated {
+                        ", truncated"
+                    } else {
+                        ""
+                    },
                     local_scan_errors,
-                    if local_scan_truncated { ", truncated" } else { "" },
+                    if local_scan_truncated {
+                        ", truncated"
+                    } else {
+                        ""
+                    },
                 ),
                 4,
             );
@@ -30387,8 +30524,7 @@ mod fuse_mount {
             let attr_timeout = knobs.attr_timeout.unwrap_or(preset_attr);
             let dir_cache_time = knobs.dir_cache_time.unwrap_or(preset_dir);
             let read_chunk_size = knobs.read_chunk_size.unwrap_or(READ_CHUNK).max(1);
-            let cache_poll_interval =
-                knobs.cache_poll_interval.unwrap_or(Duration::from_secs(60));
+            let cache_poll_interval = knobs.cache_poll_interval.unwrap_or(Duration::from_secs(60));
 
             Self {
                 rt,
@@ -30618,24 +30754,14 @@ mod fuse_mount {
         /// T-DEBT-13c: under fuser 0.17 the capability lives on the
         /// typed `InitFlags` bitflag and the callback returns
         /// `io::Result<()>` instead of the legacy `Result<(), c_int>`.
-        fn init(
-            &mut self,
-            _req: &Request,
-            config: &mut KernelConfig,
-        ) -> std::io::Result<()> {
+        fn init(&mut self, _req: &Request, config: &mut KernelConfig) -> std::io::Result<()> {
             if self.writeback_cache {
                 let _ = config.add_capabilities(fuser::InitFlags::FUSE_WRITEBACK_CACHE);
             }
             Ok(())
         }
 
-        fn getattr(
-            &self,
-            _req: &Request,
-            ino: INodeNo,
-            _fh: Option<FileHandle>,
-            reply: ReplyAttr,
-        ) {
+        fn getattr(&self, _req: &Request, ino: INodeNo, _fh: Option<FileHandle>, reply: ReplyAttr) {
             let ino: u64 = ino.0;
             // KE-C2: `reply.attr` honours `--attr-timeout` when set.
             let ttl = self.attr_timeout;
@@ -30903,7 +31029,13 @@ mod fuse_mount {
             );
             self.invalidate_dir(parent);
 
-            reply.created(&ttl, &attr, Generation(0), FileHandle(0), FopenFlags::empty());
+            reply.created(
+                &ttl,
+                &attr,
+                Generation(0),
+                FileHandle(0),
+                FopenFlags::empty(),
+            );
         }
 
         fn write(
@@ -31654,8 +31786,8 @@ async fn cmd_mount_windows(
 // ── Daemon + Jobs ────────────────────────────────────────────────
 
 fn daemon_config_dir() -> PathBuf {
-    let dir = ftp_client_gui_lib::portable::aeroftp_data_root()
-        .unwrap_or_else(|| PathBuf::from("."));
+    let dir =
+        ftp_client_gui_lib::portable::aeroftp_data_root().unwrap_or_else(|| PathBuf::from("."));
     let _ = std::fs::create_dir_all(&dir);
     #[cfg(unix)]
     {
@@ -34700,7 +34832,16 @@ async fn cmd_cryptcheck(
             let local_bytes = match tokio::fs::read(&local_full).await {
                 Ok(b) => b,
                 Err(_) => {
-                    record_error(&ec, &ds, rel, "local_read_error", Some(local_file.size), Some(remote_file.size), is_text).await;
+                    record_error(
+                        &ec,
+                        &ds,
+                        rel,
+                        "local_read_error",
+                        Some(local_file.size),
+                        Some(remote_file.size),
+                        is_text,
+                    )
+                    .await;
                     drop(permit);
                     return;
                 }
@@ -34718,20 +34859,47 @@ async fn cmd_cryptcheck(
             let mut p = match ProviderFactory::create(&c) {
                 Ok(p) => p,
                 Err(_) => {
-                    record_error(&ec, &ds, rel, "connect_error", Some(local_bytes.len() as u64), Some(remote_file.size), is_text).await;
+                    record_error(
+                        &ec,
+                        &ds,
+                        rel,
+                        "connect_error",
+                        Some(local_bytes.len() as u64),
+                        Some(remote_file.size),
+                        is_text,
+                    )
+                    .await;
                     drop(permit);
                     return;
                 }
             };
             if p.connect().await.is_err() {
-                record_error(&ec, &ds, rel, "connect_error", Some(local_bytes.len() as u64), Some(remote_file.size), is_text).await;
+                record_error(
+                    &ec,
+                    &ds,
+                    rel,
+                    "connect_error",
+                    Some(local_bytes.len() as u64),
+                    Some(remote_file.size),
+                    is_text,
+                )
+                .await;
                 drop(permit);
                 return;
             }
             let remote_bytes = match p.download_to_bytes(&remote_full).await {
                 Ok(b) => b,
                 Err(_) => {
-                    record_error(&ec, &ds, rel, "remote_download_error", Some(local_bytes.len() as u64), Some(remote_file.size), is_text).await;
+                    record_error(
+                        &ec,
+                        &ds,
+                        rel,
+                        "remote_download_error",
+                        Some(local_bytes.len() as u64),
+                        Some(remote_file.size),
+                        is_text,
+                    )
+                    .await;
                     drop(permit);
                     return;
                 }
@@ -34740,13 +34908,25 @@ async fn cmd_cryptcheck(
                 ftp_client_gui_lib::rclone_crypt::decrypt_and_hash::<md5::Md5>(&remote_bytes, &dk)
                     .map(|(h, _)| format!("{:x}", h))
             } else {
-                ftp_client_gui_lib::rclone_crypt::decrypt_and_hash::<sha2::Sha256>(&remote_bytes, &dk)
-                    .map(|(h, _)| format!("{:x}", h))
+                ftp_client_gui_lib::rclone_crypt::decrypt_and_hash::<sha2::Sha256>(
+                    &remote_bytes,
+                    &dk,
+                )
+                .map(|(h, _)| format!("{:x}", h))
             };
             let remote_hash = match decrypted {
                 Ok(h) => h,
                 Err(_) => {
-                    record_error(&ec, &ds, rel, "decrypt_error", Some(local_bytes.len() as u64), Some(remote_file.size), is_text).await;
+                    record_error(
+                        &ec,
+                        &ds,
+                        rel,
+                        "decrypt_error",
+                        Some(local_bytes.len() as u64),
+                        Some(remote_file.size),
+                        is_text,
+                    )
+                    .await;
                     drop(permit);
                     return;
                 }
@@ -41441,22 +41621,24 @@ async fn main() {
             // this arm with exit code 5 (usage error) on any parse
             // failure so the command never invokes FUSE with garbage.
             let mount_knobs_result: Result<MountKnobs, String> = (|| {
-                let parse_dur = |label: &str, raw: &Option<String>| -> Result<Option<Duration>, String> {
-                    match raw {
-                        None => Ok(None),
-                        Some(s) => parse_duration_strict(s)
-                            .map(Some)
-                            .map_err(|e| format!("invalid --{}: {}", label, e)),
-                    }
-                };
-                let parse_size = |label: &str, raw: &Option<String>| -> Result<Option<u64>, String> {
-                    match raw {
-                        None => Ok(None),
-                        Some(s) => parse_size_filter(s)
-                            .map(Some)
-                            .map_err(|e| format!("invalid --{}: {}", label, e)),
-                    }
-                };
+                let parse_dur =
+                    |label: &str, raw: &Option<String>| -> Result<Option<Duration>, String> {
+                        match raw {
+                            None => Ok(None),
+                            Some(s) => parse_duration_strict(s)
+                                .map(Some)
+                                .map_err(|e| format!("invalid --{}: {}", label, e)),
+                        }
+                    };
+                let parse_size =
+                    |label: &str, raw: &Option<String>| -> Result<Option<u64>, String> {
+                        match raw {
+                            None => Ok(None),
+                            Some(s) => parse_size_filter(s)
+                                .map(Some)
+                                .map_err(|e| format!("invalid --{}: {}", label, e)),
+                        }
+                    };
                 Ok(MountKnobs {
                     cache_poll_interval: parse_dur("cache-poll-interval", cache_poll_interval)?,
                     attr_timeout: parse_dur("attr-timeout", attr_timeout)?,
@@ -42921,6 +43103,52 @@ mod tests {
     use ftp_client_gui_lib::profile_loader::insert_profile_option;
     use serde_json::json;
 
+    fn argv(parts: &[&str]) -> Vec<String> {
+        std::iter::once("aeroftp-cli".to_string())
+            .chain(parts.iter().map(|part| part.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn config_is_skipped_for_help_version_and_metadata_commands() {
+        assert!(should_skip_cli_config(&argv(&["--help"])));
+        assert!(should_skip_cli_config(&argv(&["ls", "--help"])));
+        assert!(should_skip_cli_config(&argv(&["--version"])));
+        assert!(should_skip_cli_config(&argv(&["agent-info", "--json"])));
+        assert!(should_skip_cli_config(&argv(&[
+            "--user",
+            "alice",
+            "agent-info"
+        ])));
+        assert!(should_skip_cli_config(&argv(&["catalog", "--json"])));
+        assert!(should_skip_cli_config(&argv(&["profiles", "--json"])));
+        assert!(!should_skip_cli_config(&argv(&["ls", "/"])));
+    }
+
+    #[test]
+    fn first_command_index_skips_global_options_with_values() {
+        let args = argv(&[
+            "--user",
+            "alice",
+            "--files-from",
+            "list.txt",
+            "--transfer-engine",
+            "dag",
+            "agent-info",
+            "--json",
+        ]);
+        assert_eq!(first_command_index(&args), Some(7));
+
+        let args = argv(&[
+            "--profile=prod",
+            "--aimd-config",
+            "aimd.toml",
+            "profiles",
+            "--json",
+        ]);
+        assert_eq!(first_command_index(&args), Some(4));
+    }
+
     #[test]
     fn stdio_daemon_command_classification() {
         // Regression for the "Ctrl+C broadcast trap": the MCP / orchestrate
@@ -43932,9 +44160,18 @@ mod tests {
 
     #[test]
     fn test_mount_knob_durations_accept_rclone_style_units() {
-        assert_eq!(parse_duration_strict("30s").unwrap(), Duration::from_secs(30));
-        assert_eq!(parse_duration_strict("5m").unwrap(), Duration::from_secs(300));
-        assert_eq!(parse_duration_strict("1h").unwrap(), Duration::from_secs(3600));
+        assert_eq!(
+            parse_duration_strict("30s").unwrap(),
+            Duration::from_secs(30)
+        );
+        assert_eq!(
+            parse_duration_strict("5m").unwrap(),
+            Duration::from_secs(300)
+        );
+        assert_eq!(
+            parse_duration_strict("1h").unwrap(),
+            Duration::from_secs(3600)
+        );
         assert_eq!(
             parse_duration_strict("500ms").unwrap(),
             Duration::from_millis(500)
@@ -44086,7 +44323,6 @@ mod tests {
             "a malformed file must surface a parse error to the operator"
         );
     }
-
 
     // ── sanitize_filename tests ───────────────────────────────────────
 
@@ -44960,8 +45196,7 @@ mod tests {
         .to_string();
         std::fs::write(&path, &body).unwrap();
 
-        let plan =
-            load_sync_plan_from_reconcile(path.to_str().unwrap(), "download", true).unwrap();
+        let plan = load_sync_plan_from_reconcile(path.to_str().unwrap(), "download", true).unwrap();
         assert_eq!(plan.to_delete_local, vec!["orphan.txt"]);
     }
 
@@ -45722,41 +45957,51 @@ mod tests {
     #[test]
     fn order_by_none_preserves_input_order() {
         let mut items = entries();
-        OrderBy::None.sort_in_place(
-            &mut items,
-            |t| t.0,
-            |t| t.1,
-            |t| t.2,
+        OrderBy::None.sort_in_place(&mut items, |t| t.0, |t| t.1, |t| t.2);
+        assert_eq!(
+            items.iter().map(|t| t.0).collect::<Vec<_>>(),
+            vec!["c.txt", "a.txt", "b.txt"]
         );
-        assert_eq!(items.iter().map(|t| t.0).collect::<Vec<_>>(), vec!["c.txt", "a.txt", "b.txt"]);
     }
 
     #[test]
     fn order_by_name_sorts_ascending() {
         let mut items = entries();
         OrderBy::Name.sort_in_place(&mut items, |t| t.0, |t| t.1, |t| t.2);
-        assert_eq!(items.iter().map(|t| t.0).collect::<Vec<_>>(), vec!["a.txt", "b.txt", "c.txt"]);
+        assert_eq!(
+            items.iter().map(|t| t.0).collect::<Vec<_>>(),
+            vec!["a.txt", "b.txt", "c.txt"]
+        );
     }
 
     #[test]
     fn order_by_name_desc_sorts_descending() {
         let mut items = entries();
         OrderBy::NameDesc.sort_in_place(&mut items, |t| t.0, |t| t.1, |t| t.2);
-        assert_eq!(items.iter().map(|t| t.0).collect::<Vec<_>>(), vec!["c.txt", "b.txt", "a.txt"]);
+        assert_eq!(
+            items.iter().map(|t| t.0).collect::<Vec<_>>(),
+            vec!["c.txt", "b.txt", "a.txt"]
+        );
     }
 
     #[test]
     fn order_by_size_asc_smallest_first() {
         let mut items = entries();
         OrderBy::SizeAsc.sort_in_place(&mut items, |t| t.0, |t| t.1, |t| t.2);
-        assert_eq!(items.iter().map(|t| t.1).collect::<Vec<_>>(), vec![10, 20, 30]);
+        assert_eq!(
+            items.iter().map(|t| t.1).collect::<Vec<_>>(),
+            vec![10, 20, 30]
+        );
     }
 
     #[test]
     fn order_by_size_desc_largest_first() {
         let mut items = entries();
         OrderBy::SizeDesc.sort_in_place(&mut items, |t| t.0, |t| t.1, |t| t.2);
-        assert_eq!(items.iter().map(|t| t.1).collect::<Vec<_>>(), vec![30, 20, 10]);
+        assert_eq!(
+            items.iter().map(|t| t.1).collect::<Vec<_>>(),
+            vec![30, 20, 10]
+        );
     }
 
     #[test]
@@ -45777,14 +46022,20 @@ mod tests {
     fn order_by_modtime_asc_oldest_first() {
         let mut items = entries();
         OrderBy::ModtimeAsc.sort_in_place(&mut items, |t| t.0, |t| t.1, |t| t.2);
-        assert_eq!(items.iter().map(|t| t.2.unwrap()).collect::<Vec<_>>(), vec![100, 200, 300]);
+        assert_eq!(
+            items.iter().map(|t| t.2.unwrap()).collect::<Vec<_>>(),
+            vec![100, 200, 300]
+        );
     }
 
     #[test]
     fn order_by_modtime_desc_newest_first() {
         let mut items = entries();
         OrderBy::ModtimeDesc.sort_in_place(&mut items, |t| t.0, |t| t.1, |t| t.2);
-        assert_eq!(items.iter().map(|t| t.2.unwrap()).collect::<Vec<_>>(), vec![300, 200, 100]);
+        assert_eq!(
+            items.iter().map(|t| t.2.unwrap()).collect::<Vec<_>>(),
+            vec![300, 200, 100]
+        );
     }
 
     #[test]
