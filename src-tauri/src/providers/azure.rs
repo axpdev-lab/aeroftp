@@ -136,11 +136,7 @@ fn azure_is_rate_limited(status: u16, body: &str) -> bool {
 /// when the response was rate-limited and a usable `Retry-After` header
 /// was present. Returns `None` when not a throttle signal or the hint is
 /// missing/unparseable. Pure-fn for test coverage.
-fn azure_retry_marker_tail(
-    status: u16,
-    body: &str,
-    retry_header: Option<&str>,
-) -> Option<String> {
+fn azure_retry_marker_tail(status: u16, body: &str, retry_header: Option<&str>) -> Option<String> {
     if !azure_is_rate_limited(status, body) {
         return None;
     }

@@ -1972,13 +1972,13 @@ mod tests {
 
         // A non-`server` required field is still enforced even on GUI.
         let def2 = make_def(&["server", "operation"], Surfaces::all());
-        let err2 = validate_required_fields_for_surface(
-            &def2,
-            &json!({"server": "x"}),
-            Surfaces::GUI,
-        )
-        .unwrap_err();
-        assert!(err2.contains("missing required field: operation"), "got: {err2}");
+        let err2 =
+            validate_required_fields_for_surface(&def2, &json!({"server": "x"}), Surfaces::GUI)
+                .unwrap_err();
+        assert!(
+            err2.contains("missing required field: operation"),
+            "got: {err2}"
+        );
     }
 
     #[test]

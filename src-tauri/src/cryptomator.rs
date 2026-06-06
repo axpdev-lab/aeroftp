@@ -358,8 +358,8 @@ fn verify_vault_jwt_signature(
     let header_bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
         .decode(parts[0])
         .map_err(|e| format!("JWT header decode: {}", e))?;
-    let header: serde_json::Value = serde_json::from_slice(&header_bytes)
-        .map_err(|e| format!("Invalid JWT header: {}", e))?;
+    let header: serde_json::Value =
+        serde_json::from_slice(&header_bytes).map_err(|e| format!("Invalid JWT header: {}", e))?;
     if header.get("alg").and_then(|v| v.as_str()) != Some("HS256") {
         return Err("Unsupported vault.cryptomator JWT algorithm (expected HS256)".to_string());
     }

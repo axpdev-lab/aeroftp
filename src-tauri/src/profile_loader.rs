@@ -378,7 +378,10 @@ mod tests {
             extra.get("role_arn").map(String::as_str),
             Some("arn:aws:iam::123456789012:role/Demo")
         );
-        assert_eq!(extra.get("role_external_id").map(String::as_str), Some("ext-42"));
+        assert_eq!(
+            extra.get("role_external_id").map(String::as_str),
+            Some("ext-42")
+        );
         assert_eq!(
             extra.get("role_session_name").map(String::as_str),
             Some("team-sync")

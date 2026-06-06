@@ -402,7 +402,11 @@ mod tests {
             "/var/folders/xy/aerovault_remote_abc.aerovault"
         ));
         // Real, reopenable local vaults must still be recorded.
-        assert!(!is_ephemeral_temp_vault("/home/user/Documents/work.aerovault"));
-        assert!(!is_ephemeral_temp_vault("/tmp/my_aerovault_remote.aerovault"));
+        assert!(!is_ephemeral_temp_vault(
+            "/home/user/Documents/work.aerovault"
+        ));
+        assert!(!is_ephemeral_temp_vault(
+            "/tmp/my_aerovault_remote.aerovault"
+        ));
     }
 }

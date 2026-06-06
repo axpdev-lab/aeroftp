@@ -2423,7 +2423,10 @@ mod tests {
         // creates `<target>.aerotmp` and never touches the target.
         let writer = StreamingAtomicWriter::new(&target).await.unwrap();
         let temp = writer.temp_path().to_path_buf();
-        assert!(temp.exists(), "writer must create the deterministic .aerotmp");
+        assert!(
+            temp.exists(),
+            "writer must create the deterministic .aerotmp"
+        );
 
         // Without the fix the orphan blocks the classic fallback's open.
         let blocked = tokio::fs::OpenOptions::new()

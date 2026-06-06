@@ -276,8 +276,12 @@ type ActiveProviderArc = Arc<tokio::sync::Mutex<Option<Box<dyn StorageProvider>>
 /// * `Temp` holds a vault-resolved provider for a named server, mirroring the
 ///   CLI/MCP named-server path.
 pub enum TauriRemoteBackend {
-    Active { app: AppHandle },
-    Temp { provider: tokio::sync::Mutex<Box<dyn StorageProvider>> },
+    Active {
+        app: AppHandle,
+    },
+    Temp {
+        provider: tokio::sync::Mutex<Box<dyn StorageProvider>>,
+    },
 }
 
 const MAX_AI_DOWNLOAD_SIZE: u64 = 50 * 1024 * 1024;
@@ -338,9 +342,12 @@ impl RemoteBackend for TauriRemoteBackend {
                     })
                     .collect())
             }
-            TauriRemoteBackend::Temp { provider } => {
-                provider.lock().await.list(path).await.map_err(|e| e.to_string())
-            }
+            TauriRemoteBackend::Temp { provider } => provider
+                .lock()
+                .await
+                .list(path)
+                .await
+                .map_err(|e| e.to_string()),
         }
     }
 
@@ -352,9 +359,12 @@ impl RemoteBackend for TauriRemoteBackend {
                 }
                 Err("stat not supported on FTP fallback".to_string())
             }
-            TauriRemoteBackend::Temp { provider } => {
-                provider.lock().await.stat(path).await.map_err(|e| e.to_string())
-            }
+            TauriRemoteBackend::Temp { provider } => provider
+                .lock()
+                .await
+                .stat(path)
+                .await
+                .map_err(|e| e.to_string()),
         }
     }
 
@@ -457,9 +467,12 @@ impl RemoteBackend for TauriRemoteBackend {
                 let mut mgr = app_state.ftp_manager.lock().await;
                 mgr.remove(path).await.map_err(|e| e.to_string())
             }
-            TauriRemoteBackend::Temp { provider } => {
-                provider.lock().await.delete(path).await.map_err(|e| e.to_string())
-            }
+            TauriRemoteBackend::Temp { provider } => provider
+                .lock()
+                .await
+                .delete(path)
+                .await
+                .map_err(|e| e.to_string()),
         }
     }
 
@@ -473,9 +486,12 @@ impl RemoteBackend for TauriRemoteBackend {
                 let mut mgr = app_state.ftp_manager.lock().await;
                 mgr.mkdir(path).await.map_err(|e| e.to_string())
             }
-            TauriRemoteBackend::Temp { provider } => {
-                provider.lock().await.mkdir(path).await.map_err(|e| e.to_string())
-            }
+            TauriRemoteBackend::Temp { provider } => provider
+                .lock()
+                .await
+                .mkdir(path)
+                .await
+                .map_err(|e| e.to_string()),
         }
     }
 

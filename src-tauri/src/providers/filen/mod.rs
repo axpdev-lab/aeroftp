@@ -2844,7 +2844,10 @@ mod tests {
     #[test]
     fn filen_runner_part_size_clamps_and_never_returns_zero() {
         assert_eq!(filen_runner_part_size(1024), 1024);
-        assert_eq!(filen_runner_part_size(FILEN_CHUNK_SIZE as u64), FILEN_CHUNK_SIZE as u64);
+        assert_eq!(
+            filen_runner_part_size(FILEN_CHUNK_SIZE as u64),
+            FILEN_CHUNK_SIZE as u64
+        );
         assert_eq!(
             filen_runner_part_size(50 * 1024 * 1024 * 1024),
             FILEN_CHUNK_SIZE as u64

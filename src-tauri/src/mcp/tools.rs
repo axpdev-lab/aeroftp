@@ -1975,8 +1975,9 @@ mod tests {
         // MCP-02: an error that reflects a bearer token / API key (whether from a
         // provider response or echoed user input) must be redacted before it lands
         // in the model-facing tool result.
-        let (payload, is_error) =
-            super::err("Invalid direction 'Bearer sk-abcdefghijklmnopqrstuvwxyz123456'".to_string());
+        let (payload, is_error) = super::err(
+            "Invalid direction 'Bearer sk-abcdefghijklmnopqrstuvwxyz123456'".to_string(),
+        );
         assert!(is_error);
         let scalar = payload.get("error").and_then(|v| v.as_str()).unwrap();
         assert!(

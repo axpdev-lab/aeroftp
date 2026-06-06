@@ -1817,8 +1817,7 @@ mod tests {
             "chunk must grow past the hint when clamped"
         );
         // The invariant that prevents tail loss: parts * chunk >= file_size.
-        let covered =
-            built.profile.upload_parts as u64 * built.profile.preferred_chunk_size;
+        let covered = built.profile.upload_parts as u64 * built.profile.preferred_chunk_size;
         assert!(
             covered >= file_size,
             "parts ({}) * chunk ({}) = {} must cover file_size {}",
@@ -1875,12 +1874,12 @@ mod tests {
             multipart_threshold: 200 * 1024 * 1024,
             ..TransferCapabilities::default()
         };
-        let built = TransferDagBuilder::shaped_file(
-            TransferDirection::Upload,
-            &caps,
-            100 * 1024 * 1024,
+        let built =
+            TransferDagBuilder::shaped_file(TransferDirection::Upload, &caps, 100 * 1024 * 1024);
+        assert_eq!(
+            built.profile.upload_parts, 1,
+            "below threshold => single PUT"
         );
-        assert_eq!(built.profile.upload_parts, 1, "below threshold => single PUT");
         assert_eq!(built.transfer.len(), 1);
         assert_eq!(
             built.dag.nodes()[built.transfer[0]].kind,
@@ -1898,11 +1897,8 @@ mod tests {
             ..TransferCapabilities::default()
         };
         // 256 MiB >= 200 MiB threshold: fans out into ceil(256/16) = 16 parts.
-        let built = TransferDagBuilder::shaped_file(
-            TransferDirection::Upload,
-            &caps,
-            256 * 1024 * 1024,
-        );
+        let built =
+            TransferDagBuilder::shaped_file(TransferDirection::Upload, &caps, 256 * 1024 * 1024);
         assert_eq!(built.profile.upload_parts, 16);
         assert_eq!(built.transfer.len(), 16);
     }
@@ -1918,11 +1914,8 @@ mod tests {
             multipart_threshold: 0,
             ..TransferCapabilities::default()
         };
-        let built = TransferDagBuilder::shaped_file(
-            TransferDirection::Upload,
-            &caps,
-            24 * 1024 * 1024,
-        );
+        let built =
+            TransferDagBuilder::shaped_file(TransferDirection::Upload, &caps, 24 * 1024 * 1024);
         assert_eq!(built.profile.upload_parts, 3);
     }
 

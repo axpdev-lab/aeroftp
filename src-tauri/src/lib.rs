@@ -29,10 +29,10 @@ pub mod aerovault_v2;
 pub mod aerovault_v3;
 pub mod agent_memory_db;
 pub mod ai;
-pub mod app_events;
 pub mod ai_core;
 pub mod ai_stream;
 mod ai_tools;
+pub mod app_events;
 mod archive_browse;
 pub mod aws_credentials_import;
 pub mod bridge_commands;
@@ -7833,8 +7833,7 @@ async fn compress_tar(
 
     // Create the archive based on format (atomic temp; renamed on success).
     let temp = ArchiveTempFile::new(&output_path);
-    let file =
-        File::create(temp.path()).map_err(|e| format!("Failed to create archive: {}", e))?;
+    let file = File::create(temp.path()).map_err(|e| format!("Failed to create archive: {}", e))?;
 
     match format.as_str() {
         "tar" => {
@@ -8747,7 +8746,10 @@ fn log_window_diagnostics(window: &tauri::WebviewWindow, ctx: &str) {
         info!("[diag #290] {ctx}: outer_position=({}, {})", pos.x, pos.y);
     }
     if let Ok(size) = window.inner_size() {
-        info!("[diag #290] {ctx}: inner_size={}x{}", size.width, size.height);
+        info!(
+            "[diag #290] {ctx}: inner_size={}x{}",
+            size.width, size.height
+        );
     }
     match window.current_monitor() {
         Ok(Some(mon)) => {

@@ -442,15 +442,12 @@ impl PCloudProvider {
             .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         match Self::check_response(&resp) {
-            Ok(()) => resp
-                .metadata
-                .and_then(|m| m.folderid)
-                .ok_or_else(|| {
-                    ProviderError::Other(format!(
-                        "pCloud listfolder for '{}' returned no folderid",
-                        normalised
-                    ))
-                }),
+            Ok(()) => resp.metadata.and_then(|m| m.folderid).ok_or_else(|| {
+                ProviderError::Other(format!(
+                    "pCloud listfolder for '{}' returned no folderid",
+                    normalised
+                ))
+            }),
             Err(ProviderError::NotFound(_)) => {
                 // Create the missing parent and re-resolve.
                 let create_url = format!(
@@ -1937,7 +1934,12 @@ impl StorageProvider for PCloudProvider {
             meta.uploadid
         );
         if let Ok(auth) = self.auth_header().await {
-            let _ = self.client.get(&url).header("Authorization", &auth).send().await;
+            let _ = self
+                .client
+                .get(&url)
+                .header("Authorization", &auth)
+                .send()
+                .await;
         }
         Ok(())
     }

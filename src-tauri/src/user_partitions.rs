@@ -1222,7 +1222,8 @@ pub fn relocate_server_profile(
     }
 
     // 3. Resolve the target DEK with its own passphrase, never via the session.
-    let target_dek = resolve_user_dek_scoped(conn, &root_secret, target_user_id, target_passphrase)?;
+    let target_dek =
+        resolve_user_dek_scoped(conn, &root_secret, target_user_id, target_passphrase)?;
 
     // 4. Dedup against the target on the stable identity (username-based when
     //    available, so a fresh id never masks an existing same-account server).
@@ -1800,7 +1801,9 @@ pub fn rekey_transport_deks(
             let salt16: [u8; 16] = salt
                 .try_into()
                 .map_err(|_| "INVALID_TRANSPORT_SALT_SIZE".to_string())?;
-            transport_key = Some(user_crypto::derive_wrapping_key(password, &salt16, &params)?);
+            transport_key = Some(user_crypto::derive_wrapping_key(
+                password, &salt16, &params,
+            )?);
         }
         let tk = transport_key.as_ref().expect("transport key derived above");
         let dek = match user_crypto::unwrap_dek(tk, blob) {
@@ -3572,13 +3575,7 @@ mod tests {
             .expect("seed source profile");
 
         let report = relocate_server_profile(
-            &mut conn,
-            &root,
-            default.id,
-            bob.id,
-            "srv_src",
-            "srv_new",
-            None,
+            &mut conn, &root, default.id, bob.id, "srv_src", "srv_new", None,
             /*remove_from_source=*/ false,
         )
         .expect("copy");
@@ -3612,13 +3609,7 @@ mod tests {
             .expect("seed source profile");
 
         let report = relocate_server_profile(
-            &mut conn,
-            &root,
-            default.id,
-            bob.id,
-            "srv_src",
-            "srv_new",
-            None,
+            &mut conn, &root, default.id, bob.id, "srv_src", "srv_new", None,
             /*remove_from_source=*/ true,
         )
         .expect("move");
@@ -3626,7 +3617,10 @@ mod tests {
         assert!(!report.already_present);
 
         let source = list_server_profiles_for(&conn, &root, default.id).expect("source list");
-        assert!(source.is_empty(), "source profile must be gone after a move");
+        assert!(
+            source.is_empty(),
+            "source profile must be gone after a move"
+        );
         let target = list_server_profiles_for(&conn, &root, bob.id).expect("target list");
         assert_eq!(target.len(), 1);
         assert_eq!(target[0]["id"], "srv_new");
@@ -3685,8 +3679,7 @@ mod tests {
         let mut conn = migrated_conn(0);
         let root = test_root();
         let default = get_active_user(&conn).expect("active").expect("default");
-        replace_active_server_profiles(&mut conn, &root, &[sftp_profile("srv_src")])
-            .expect("seed");
+        replace_active_server_profiles(&mut conn, &root, &[sftp_profile("srv_src")]).expect("seed");
         let err = relocate_server_profile(
             &mut conn, &root, default.id, default.id, "srv_src", "srv_new", None, false,
         )
@@ -3728,7 +3721,14 @@ mod tests {
         let bob = create_passphrase_less_user(&mut conn, &root, "Bob", Some("B"), Some("#6366f1"))
             .expect("create bob");
         let err = relocate_server_profile(
-            &mut conn, &root, default.id, bob.id, "does_not_exist", "srv_new", None, false,
+            &mut conn,
+            &root,
+            default.id,
+            bob.id,
+            "does_not_exist",
+            "srv_new",
+            None,
+            false,
         )
         .expect_err("missing profile");
         assert!(err.starts_with("PROFILE_NOT_FOUND"));

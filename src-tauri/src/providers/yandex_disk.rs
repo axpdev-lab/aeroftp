@@ -1792,9 +1792,7 @@ impl StorageProvider for YandexDiskProvider {
         let offset = (part_number as u64 - 1) * meta.part;
         let end = offset
             .checked_add(data.len() as u64)
-            .ok_or_else(|| {
-                ProviderError::Other("Yandex Disk part offset overflow".to_string())
-            })?;
+            .ok_or_else(|| ProviderError::Other("Yandex Disk part offset overflow".to_string()))?;
         if end > meta.total {
             return Err(ProviderError::Other(format!(
                 "Yandex Disk part {} exceeds declared total: offset {} + len {} > total {}",
@@ -2056,8 +2054,7 @@ mod tests {
     #[test]
     fn yandex_multipart_meta_roundtrip_preserves_fields() {
         let meta = YandexMultipartMeta {
-            href:
-                "https://uploader321.disk.yandex.net/upload-target/foo?signature=xyz".to_string(),
+            href: "https://uploader321.disk.yandex.net/upload-target/foo?signature=xyz".to_string(),
             encoded_path: "disk%3A%2Ffoo%2Fbar.bin".to_string(),
             total: 1_073_741_824,
             part: 8 * 1024 * 1024,

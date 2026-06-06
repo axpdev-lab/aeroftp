@@ -184,7 +184,12 @@ async fn drive_error_from_response(
         .and_then(|v| v.to_str().ok())
         .map(String::from);
     let text = response.text().await.unwrap_or_default();
-    let mut msg = format!("{} {}: {}", context_prefix, status, sanitize_api_error(&text));
+    let mut msg = format!(
+        "{} {}: {}",
+        context_prefix,
+        status,
+        sanitize_api_error(&text)
+    );
     if let Some(tail) = drive_retry_marker_tail(status.as_u16(), &text, retry_header.as_deref()) {
         msg.push_str(&tail);
     }
@@ -3142,7 +3147,10 @@ mod tests {
     fn drive_retry_marker_tail_returns_none_when_not_rate_limited() {
         // 500 with Retry-After is NOT a throttle signal for Drive: we treat
         // generic 5xx as non-congestion, so no marker even if header present.
-        assert_eq!(drive_retry_marker_tail(500, "server error", Some("30")), None);
+        assert_eq!(
+            drive_retry_marker_tail(500, "server error", Some("30")),
+            None
+        );
     }
 
     #[test]

@@ -20,9 +20,9 @@ use std::collections::HashMap;
 use tracing::{info, warn};
 
 use super::{
-    sanitize_api_error, DrimeCloudConfig, FileVersion, MultipartHandle, ProviderError, ProviderType,
-    RemoteEntry, ShareLinkCapabilities, ShareLinkInfo, ShareLinkOptions, ShareLinkResult,
-    StorageInfo, StorageProvider, UploadedPart,
+    sanitize_api_error, DrimeCloudConfig, FileVersion, MultipartHandle, ProviderError,
+    ProviderType, RemoteEntry, ShareLinkCapabilities, ShareLinkInfo, ShareLinkOptions,
+    ShareLinkResult, StorageInfo, StorageProvider, UploadedPart,
 };
 
 const API_BASE: &str = "https://app.drime.cloud/api/v1";
@@ -2167,8 +2167,7 @@ impl StorageProvider for DrimeCloudProvider {
             "workspaceId": 0,
         });
         if !parent_id.is_empty() {
-            create_json["parentId"] =
-                serde_json::json!(parent_id.parse::<i64>().unwrap_or(0));
+            create_json["parentId"] = serde_json::json!(parent_id.parse::<i64>().unwrap_or(0));
         }
 
         let resp = self
@@ -2179,7 +2178,9 @@ impl StorageProvider for DrimeCloudProvider {
             .body(create_json.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Multipart create failed: {}", e)))?;
+            .map_err(|e| {
+                ProviderError::ConnectionFailed(format!("Multipart create failed: {}", e))
+            })?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -2191,9 +2192,10 @@ impl StorageProvider for DrimeCloudProvider {
             )));
         }
 
-        let create_resp: DrimeMultipartCreateResponse = resp.json().await.map_err(|e| {
-            ProviderError::ParseError(format!("Parse multipart create: {}", e))
-        })?;
+        let create_resp: DrimeMultipartCreateResponse = resp
+            .json()
+            .await
+            .map_err(|e| ProviderError::ParseError(format!("Parse multipart create: {}", e)))?;
         let key = create_resp
             .key
             .ok_or_else(|| ProviderError::ServerError("Drime: missing key".into()))?;
@@ -2230,9 +2232,10 @@ impl StorageProvider for DrimeCloudProvider {
                 sanitize_api_error(&body)
             )));
         }
-        let sign_resp: DrimeSignPartUrlsResponse = resp.json().await.map_err(|e| {
-            ProviderError::ParseError(format!("Parse sign URLs: {}", e))
-        })?;
+        let sign_resp: DrimeSignPartUrlsResponse = resp
+            .json()
+            .await
+            .map_err(|e| ProviderError::ParseError(format!("Parse sign URLs: {}", e)))?;
         let urls = sign_resp.urls.unwrap_or_default();
         if (urls.len() as u32) != total_parts {
             return Err(ProviderError::ServerError(format!(
@@ -2298,18 +2301,12 @@ impl StorageProvider for DrimeCloudProvider {
             })?
             .to_string();
 
-        let resp = self
-            .client
-            .put(&url)
-            .body(data)
-            .send()
-            .await
-            .map_err(|e| {
-                ProviderError::ConnectionFailed(format!(
-                    "Drime upload part {} failed: {}",
-                    part_number, e
-                ))
-            })?;
+        let resp = self.client.put(&url).body(data).send().await.map_err(|e| {
+            ProviderError::ConnectionFailed(format!(
+                "Drime upload part {} failed: {}",
+                part_number, e
+            ))
+        })?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -2404,8 +2401,7 @@ impl StorageProvider for DrimeCloudProvider {
             "workspaceId": 0,
         });
         if !meta.parent_id.is_empty() {
-            entry_body["parentId"] =
-                serde_json::json!(meta.parent_id.parse::<i64>().unwrap_or(0));
+            entry_body["parentId"] = serde_json::json!(meta.parent_id.parse::<i64>().unwrap_or(0));
         }
         let resp = self
             .client

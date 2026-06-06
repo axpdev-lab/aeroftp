@@ -857,9 +857,9 @@ impl JottacloudProvider {
                         for attr in e.attributes().flatten() {
                             if attr.key.as_ref() == b"name" {
                                 name = crate::restricted_chars::decode_leaf(
-                                        ProviderType::Jottacloud,
-                                        &super::xml_text::attr_value(&attr),
-                                    );
+                                    ProviderType::Jottacloud,
+                                    &super::xml_text::attr_value(&attr),
+                                );
                             }
                             if attr.key.as_ref() == b"deleted" {
                                 is_deleted = true;
@@ -1937,9 +1937,9 @@ impl JottacloudProvider {
                         for attr in e.attributes().flatten() {
                             if attr.key.as_ref() == b"name" {
                                 name = crate::restricted_chars::decode_leaf(
-                                        ProviderType::Jottacloud,
-                                        &super::xml_text::attr_value(&attr),
-                                    );
+                                    ProviderType::Jottacloud,
+                                    &super::xml_text::attr_value(&attr),
+                                );
                             }
                         }
                         if !name.is_empty() {

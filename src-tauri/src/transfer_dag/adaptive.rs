@@ -624,7 +624,10 @@ impl AimdController {
         let hint = self.provider_hint()?;
         let min_sleep = hint.min_sleep?;
         let burst = hint.burst.unwrap_or(1);
-        let mut pacer = self.api_pacer.lock().expect("aimd api pacer mutex poisoned");
+        let mut pacer = self
+            .api_pacer
+            .lock()
+            .expect("aimd api pacer mutex poisoned");
         Some(pacer.reserve_delay(now, burst, min_sleep))
     }
 
@@ -679,11 +682,7 @@ impl AimdController {
     /// stall the whole transfer). Operators see clamped values in debug
     /// logs; the underlying call site (Google Drive / Dropbox / OneDrive
     /// / Box parse helpers) should still log the raw hint when it diverges.
-    pub fn on_congestion_with_hint(
-        &self,
-        class: AdaptiveClass,
-        cooldown_hint: Option<Duration>,
-    ) {
+    pub fn on_congestion_with_hint(&self, class: AdaptiveClass, cooldown_hint: Option<Duration>) {
         // KE-D1: when the operator has explicitly disabled AIMD the
         // controller must not halve or arm a cooldown. The window stays at
         // the honest ceiling for the full run and congestion feedback is
@@ -1187,8 +1186,7 @@ mod tests {
         let until_lo = ctrl_lo.cooldown_until(AdaptiveClass::File).unwrap();
         let elapsed_lo = until_lo.saturating_duration_since(before_lo);
         assert!(
-            elapsed_lo >= Duration::from_millis(900)
-                && elapsed_lo <= Duration::from_millis(1100),
+            elapsed_lo >= Duration::from_millis(900) && elapsed_lo <= Duration::from_millis(1100),
             "expected ~1s (lower clamp), got {:?}",
             elapsed_lo
         );
@@ -1230,14 +1228,8 @@ mod tests {
             disabled: false,
             class_overrides: AimdClassOverrides::default(),
         };
-        let ctrl = AimdController::new_for_provider(
-            8,
-            1,
-            1,
-            1,
-            Some(ProviderType::GoogleDrive),
-            cfg,
-        );
+        let ctrl =
+            AimdController::new_for_provider(8, 1, 1, 1, Some(ProviderType::GoogleDrive), cfg);
         let before = Instant::now();
         ctrl.on_congestion_with_hint(AdaptiveClass::Api, None);
         let until = ctrl

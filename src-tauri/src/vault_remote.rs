@@ -135,8 +135,8 @@ fn validate_managed_temp_vault_path(path: &Path) -> Result<PathBuf, String> {
         return Err("Not an AeroFTP-managed temporary vault file".into());
     }
 
-    let meta = std::fs::symlink_metadata(path)
-        .map_err(|_| "Local vault file not found".to_string())?;
+    let meta =
+        std::fs::symlink_metadata(path).map_err(|_| "Local vault file not found".to_string())?;
     if meta.file_type().is_symlink() {
         return Err("Refusing to operate on a symlinked vault file".into());
     }

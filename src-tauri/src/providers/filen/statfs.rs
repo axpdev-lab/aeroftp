@@ -261,7 +261,10 @@ mod tests {
     #[test]
     fn parses_json_bytes() {
         let out = r#"{"used": 1610612736, "max": 10737418240}"#;
-        assert_eq!(parse_filen_statfs(out), Some((1_610_612_736, 10_737_418_240)));
+        assert_eq!(
+            parse_filen_statfs(out),
+            Some((1_610_612_736, 10_737_418_240))
+        );
     }
 
     #[test]

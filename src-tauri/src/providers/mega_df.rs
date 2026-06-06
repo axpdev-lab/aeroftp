@@ -360,10 +360,11 @@ Total size taken up by file versions:     31457280
 
     #[test]
     fn mega_webdav_already_served_is_ok() {
-        assert!(
-            classify_mega_webdav_result(false, "/: already being served at http://127.0.0.1:4443/")
-                .is_ok()
-        );
+        assert!(classify_mega_webdav_result(
+            false,
+            "/: already being served at http://127.0.0.1:4443/"
+        )
+        .is_ok());
     }
 
     #[test]
