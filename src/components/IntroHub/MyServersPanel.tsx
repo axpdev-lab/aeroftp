@@ -14,7 +14,6 @@ import type { ContextMenuItem } from '../ContextMenu';
 import { secureGetWithFallback, secureStoreAndClean } from '../../utils/secureStorage';
 import { loadSavedServerProfiles, storeSavedServerProfiles } from '../../utils/serverProfileStore';
 import { getProviderById } from '../../providers';
-import { providerCountry } from '../providerCatalog';
 import { logger } from '../../utils/logger';
 import { ServerHealthCheck } from '../ServerHealthCheck';
 import { SpeedTestDialog } from '../SpeedTestDialog';
@@ -283,7 +282,6 @@ export function MyServersPanel({
         const stored = localStorage.getItem('aeroftp_myservers_filter');
         return (stored as MyServersFilterBy) || 'all';
     });
-    const [countryFilter, setCountryFilter] = useState<string>('');
     const [viewMode, setViewMode] = useState<MyServersViewMode>(() => {
         const stored = localStorage.getItem(VIEW_MODE_KEY);
         return (stored === 'list' ? 'list' : 'grid') as MyServersViewMode;
@@ -673,25 +671,8 @@ export function MyServersPanel({
                 result = result.filter(s => chip.matchFn(s.protocol || 'ftp', s.providerId));
             }
         }
-        if (countryFilter) {
-            result = result.filter(s => providerCountry(s.providerId) === countryFilter);
-        }
         return result;
-    }, [servers, searchQuery, activeFilter, countryFilter, favorites, serverSearchTexts]);
-
-    // Distinct HQ countries present among saved servers, with counts. Powers the
-    // country filter dropdown; servers with no catalog match (generic / self-hosted)
-    // carry no country and only show under "All".
-    const countryOptions = useMemo(() => {
-        const counts = new Map<string, number>();
-        for (const s of servers) {
-            const c = providerCountry(s.providerId);
-            if (c) counts.set(c, (counts.get(c) ?? 0) + 1);
-        }
-        return [...counts.entries()]
-            .map(([code, count]) => ({ code, count }))
-            .sort((a, b) => a.code.localeCompare(b.code));
-    }, [servers]);
+    }, [servers, searchQuery, activeFilter, favorites, serverSearchTexts]);
 
     const { insertStartIdx, insertEndIdx } = useMemo(() => {
         if (filteredServers.length === 0) {
@@ -785,7 +766,7 @@ export function MyServersPanel({
     const chipCounts = useMemo(() => {
         const counts: Record<MyServersFilterBy, number> = {
             all: servers.length,
-            ftp: 0, s3: 0, webdav: 0, cloud: 0, media: 0, dev: 0, 'local-bridge': 0, paid: 0, favorites: 0,
+            ftp: 0, s3: 0, webdav: 0, cloud: 0, media: 0, dev: 0, 'local-bridge': 0, favorites: 0,
         };
         for (const s of servers) {
             const p = s.protocol || 'ftp';
@@ -1052,13 +1033,12 @@ export function MyServersPanel({
             if (tag === 'input' || tag === 'textarea' || target?.isContentEditable) return;
             if (renamingId) return;
             if (deleteTarget || healthCheckTarget !== false || speedTestTarget !== false) return;
-            const hasNarrowing = searchQuery !== '' || activeFilter !== 'all' || countryFilter !== '';
+            const hasNarrowing = searchQuery !== '' || activeFilter !== 'all';
             const hasCrossProfileSelection = crossProfileSelection.length > 0;
             if (!hasNarrowing && !hasCrossProfileSelection) return;
             e.preventDefault();
             if (hasCrossProfileSelection) setCrossProfileSelection([]);
             if (searchQuery) setSearchQuery('');
-            if (countryFilter) setCountryFilter('');
             if (activeFilter !== 'all') {
                 setActiveFilter('all');
                 localStorage.setItem('aeroftp_myservers_filter', 'all');
@@ -1066,7 +1046,7 @@ export function MyServersPanel({
         };
         window.addEventListener('keydown', onKeyDown);
         return () => window.removeEventListener('keydown', onKeyDown);
-    }, [searchQuery, activeFilter, countryFilter, crossProfileSelection.length, renamingId, deleteTarget, healthCheckTarget, speedTestTarget]);
+    }, [searchQuery, activeFilter, crossProfileSelection.length, renamingId, deleteTarget, healthCheckTarget, speedTestTarget]);
 
     const confirmDelete = useCallback(() => {
         if (!deleteTarget) return;
@@ -1171,9 +1151,6 @@ export function MyServersPanel({
                 onSearchChange={setSearchQuery}
                 activeFilter={activeFilter}
                 onFilterChange={(f: MyServersFilterBy) => { setActiveFilter(f); localStorage.setItem('aeroftp_myservers_filter', f); }}
-                countryFilter={countryFilter}
-                onCountryChange={setCountryFilter}
-                countryOptions={countryOptions}
                 viewMode={viewMode}
                 onViewModeChange={setViewMode}
                 credentialsMasked={credentialsMasked}
