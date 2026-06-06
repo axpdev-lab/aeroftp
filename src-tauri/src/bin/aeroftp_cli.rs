@@ -9863,7 +9863,7 @@ fn interactive_profiles_loop(
             match save_active_user_profiles(cli, store, &current) {
                 Ok(()) => {
                     eprintln!("Moved '{}' to #{}.", name, dst + 1);
-                    print_profiles_summary_with_tombstones(&current, &[]);
+                    print_profiles_summary_with_reorder(&current, src, dst);
                 }
                 Err(e) => {
                     current = snapshot;
@@ -10966,6 +10966,224 @@ fn print_profiles_summary_with_tombstones(
         } else {
             eprintln!("{}", line);
         }
+    }
+}
+
+/// Reprint the profile table after a `#` reorder, showing the move visually
+/// instead of leaving the user to play "spot the differences" (Discussion
+/// #270, EhudKirsh). The moved profile appears twice: a red, struck-through
+/// ghost at its old slot and a live row at its new slot, joined by a left
+/// gutter arrow. Every row whose index shifted shows `old -> new` with the old
+/// number struck through. `src`/`dst` are the zero-based source and (clamped)
+/// destination positions; `live` is the post-move list. Caller guarantees
+/// `src != dst`.
+fn print_profiles_summary_with_reorder(live: &[serde_json::Value], src: usize, dst: usize) {
+    let color_on = use_color();
+    let red = |s: &str| {
+        if color_on {
+            format!("\x1b[31m{}\x1b[0m", s)
+        } else {
+            s.to_string()
+        }
+    };
+    let strikethrough = |s: &str| {
+        if color_on {
+            format!("\x1b[9m{}\x1b[29m", s)
+        } else {
+            s.to_string()
+        }
+    };
+
+    // Analytic old -> new index map: the list changed only by removing the
+    // profile at `src` and reinserting it at `dst`, so we can compute each
+    // old position's new position without matching ids.
+    let down = src < dst;
+    let new_index_of = |old: usize| -> usize {
+        if old == src {
+            dst
+        } else if down && old > src && old <= dst {
+            old - 1
+        } else if !down && old >= dst && old < src {
+            old + 1
+        } else {
+            old
+        }
+    };
+
+    // One display row. `profile_ci` indexes into `live` (the post-move list).
+    struct Row {
+        idx_plain: String,    // index cell without ANSI, used for width
+        idx_rendered: String, // index cell with ANSI applied
+        profile_ci: usize,
+        old_index: Option<usize>, // 1-based, for finding splice/arrow anchors
+        ghost: bool,              // struck old-slot copy of the moved profile
+        live_row: bool,           // the moved profile at its new slot
+    }
+
+    // Walk the OLD order. The moved profile becomes a ghost here; its live
+    // copy is spliced in afterwards at the destination slot.
+    let mut rows: Vec<Row> = Vec::with_capacity(live.len() + 1);
+    for old in 0..live.len() {
+        let new = new_index_of(old);
+        if old == src {
+            // Ghost: show the old index, struck through.
+            let plain = (old + 1).to_string();
+            rows.push(Row {
+                idx_rendered: red(&strikethrough(&plain)),
+                idx_plain: plain,
+                profile_ci: dst, // moved profile now sits at dst in `live`
+                old_index: Some(old + 1),
+                ghost: true,
+                live_row: false,
+            });
+        } else if new != old {
+            // Shifted: old struck, new beside it.
+            let (plain, rendered) = if color_on {
+                (
+                    format!("{}{}", old + 1, new + 1),
+                    format!("{}{}", red(&strikethrough(&(old + 1).to_string())), new + 1),
+                )
+            } else {
+                let s = format!("{}>{}", old + 1, new + 1);
+                (s.clone(), s)
+            };
+            rows.push(Row {
+                idx_plain: plain,
+                idx_rendered: rendered,
+                profile_ci: new,
+                old_index: Some(old + 1),
+                ghost: false,
+                live_row: false,
+            });
+        } else {
+            let plain = (new + 1).to_string();
+            rows.push(Row {
+                idx_rendered: plain.clone(),
+                idx_plain: plain,
+                profile_ci: new,
+                old_index: Some(old + 1),
+                ghost: false,
+                live_row: false,
+            });
+        }
+    }
+
+    // Splice the live (new-slot) copy of the moved profile. Anchor on the row
+    // whose OLD index is the destination: after it when moving down, before it
+    // when moving up. That keeps the live indices reading 1..N in order.
+    let anchor = rows
+        .iter()
+        .position(|r| r.old_index == Some(dst + 1))
+        .unwrap_or(rows.len().saturating_sub(1));
+    let live_pos = if down { anchor + 1 } else { anchor };
+    let live_plain = (dst + 1).to_string();
+    rows.insert(
+        live_pos,
+        Row {
+            idx_rendered: live_plain.clone(),
+            idx_plain: live_plain,
+            profile_ci: dst,
+            old_index: None,
+            ghost: false,
+            live_row: true,
+        },
+    );
+
+    // Left-gutter arrow connecting the ghost (old slot) to the live row (new
+    // slot). The arrowhead points at the live row.
+    let ghost_pos = rows.iter().position(|r| r.ghost).unwrap_or(0);
+    let live_row_pos = rows.iter().position(|r| r.live_row).unwrap_or(0);
+    let arrow_top = ghost_pos.min(live_row_pos);
+    let arrow_bot = ghost_pos.max(live_row_pos);
+    let gutter = |i: usize, is_live: bool| -> String {
+        let bar = if i == arrow_top {
+            '\u{250c}' // top corner
+        } else if i == arrow_bot {
+            '\u{2514}' // bottom corner
+        } else if i > arrow_top && i < arrow_bot {
+            '\u{2502}' // vertical
+        } else {
+            ' '
+        };
+        let head = if is_live {
+            '>'
+        } else if i == arrow_top || i == arrow_bot {
+            '\u{2500}' // dash on the non-live endpoint
+        } else {
+            ' '
+        };
+        format!("{}{}", bar, head)
+    };
+
+    // Column widths over every referenced profile.
+    let name_w = rows
+        .iter()
+        .map(|r| {
+            live[r.profile_ci]
+                .get("name")
+                .and_then(|v| v.as_str())
+                .map(|s| s.chars().count())
+                .unwrap_or(0)
+        })
+        .max()
+        .unwrap_or(4)
+        .clamp(4, 28);
+    let badge_w = rows
+        .iter()
+        .map(|r| badge_display_label(&live[r.profile_ci]).chars().count())
+        .max()
+        .unwrap_or(4)
+        .clamp(4, 12);
+    let host_w = rows
+        .iter()
+        .map(|r| host_subtitle(&live[r.profile_ci]).chars().count())
+        .max()
+        .unwrap_or(4)
+        .clamp(4, 28);
+    let idx_w = rows
+        .iter()
+        .map(|r| r.idx_plain.chars().count())
+        .max()
+        .unwrap_or(2)
+        .max(2);
+
+    eprintln!();
+    eprintln!(
+        "   {:>idx$}  {:<nw$}  {:<bw$}  {:<hw$}",
+        "#",
+        "Name",
+        "Badges",
+        "Host",
+        idx = idx_w,
+        nw = name_w,
+        bw = badge_w,
+        hw = host_w,
+    );
+    let total_w = idx_w + 2 + name_w + 2 + badge_w + 2 + host_w;
+    eprintln!("   {}", "\u{2500}".repeat(total_w));
+    for (i, r) in rows.iter().enumerate() {
+        let p = &live[r.profile_ci];
+        let name = truncate_cell(p.get("name").and_then(|v| v.as_str()).unwrap_or(""), name_w);
+        let badge = truncate_cell(&badge_display_label(p), badge_w);
+        let host = truncate_cell(&host_subtitle(p), host_w);
+        // Right-align the index cell honouring its ANSI-free display width.
+        let pad = idx_w.saturating_sub(r.idx_plain.chars().count());
+        let idx_cell = format!("{}{}", " ".repeat(pad), r.idx_rendered);
+        let body = format!(
+            "{:<nw$}  {:<bw$}  {:<hw$}",
+            name,
+            badge,
+            host,
+            nw = name_w,
+            bw = badge_w,
+            hw = host_w,
+        );
+        let body = if r.ghost {
+            red(&strikethrough(&body))
+        } else {
+            body
+        };
+        eprintln!("{} {}  {}", gutter(i, r.live_row), idx_cell, body);
     }
 }
 
