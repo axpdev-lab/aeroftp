@@ -437,24 +437,22 @@ export function DiscoverPanel({ onSelectProvider }: DiscoverPanelProps) {
                             <ListIcon size={12} />
                         </button>
                     </div>
-                    {/* Health-check on/off toggle: a small switch (blue dot when
-                        on, grey when off), independent of the manual Check button. */}
+                    {/* Health-check on/off: an icon-only toggle. The Activity icon
+                        is lit (blue) when on, dimmed when off. Independent of the
+                        manual Check button. */}
                     <button
                         onClick={() => setHealthEnabled(!healthEnabled)}
                         role="switch"
                         aria-checked={healthEnabled}
                         title={t('introHub.healthCheck')}
                         aria-label={t('introHub.healthCheck')}
-                        className="flex items-center gap-1.5 mr-1 text-gray-400 dark:text-gray-500"
+                        className={`flex items-center mr-1 p-1 rounded-md transition-colors ${
+                            healthEnabled
+                                ? 'text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30'
+                                : 'text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700/50'
+                        }`}
                     >
-                        <Activity size={11} className={healthEnabled ? 'text-blue-500' : ''} />
-                        <span className={`relative inline-flex h-3.5 w-6 items-center rounded-full transition-colors ${
-                            healthEnabled ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'
-                        }`}>
-                            <span className={`inline-block h-2.5 w-2.5 rounded-full bg-white shadow transition-transform ${
-                                healthEnabled ? 'translate-x-3' : 'translate-x-0.5'
-                            }`} />
-                        </span>
+                        <Activity size={14} />
                     </button>
                     <button
                         onClick={handleManualCheck}
