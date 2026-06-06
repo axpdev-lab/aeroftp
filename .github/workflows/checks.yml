@@ -1,0 +1,67 @@
+name: Checks
+
+# Lightweight, fast-feedback gate that runs on every PR and push without the
+# heavy Tauri build/release matrix in build.yml. Covers the gaps that let
+# formatting drift and dependency advisories slip in unnoticed.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Weekly RustSec advisory scan (Mon 06:00 UTC) so a freshly published
+    # advisory surfaces even without a code change landing.
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Format, audit & unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Rust (with rustfmt)
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: stable
+          components: rustfmt
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Rust formatting (cargo fmt --check)
+        working-directory: ./src-tauri
+        run: cargo fmt --all -- --check
+
+      - name: Frontend unit tests (vitest)
+        run: npm run test:unit
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Rust dependency audit (cargo audit)
+        working-directory: ./src-tauri
+        # Non-blocking on PRs: a newly published advisory on a transitive
+        # dependency must not red-wall an unrelated PR. On push to main and on
+        # the weekly schedule the step is authoritative and fails the job.
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
+        run: cargo audit
