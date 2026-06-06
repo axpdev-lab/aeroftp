@@ -9743,7 +9743,7 @@ fn interactive_profiles_loop(
             eprintln!("  v <selector>    convert profile to a different mode, REPLACES the original (issue #215)");
             eprintln!("  # <sel> <N>     move a profile to index N (renumber, clamped to count, persisted)");
             eprintln!(
-                "  u [N|name]      switch active user (lists accounts when bare); reloads profiles"
+                "  u [N|name]      switch active user (lists accounts when bare); reloads profiles (compact 'u3'/'3u' also work)"
             );
             eprintln!(
                 "  tui / nav       raw-mode arrow-key navigator: pick a profile + action visually"
@@ -9878,7 +9878,26 @@ fn interactive_profiles_loop(
         // numeric selector is the 1-based position in the printed list (what
         // the user sees), not the database id. After a switch the profile
         // table reloads to show the new user's profiles.
-        if lower == "u" || lower.starts_with("u ") {
+        //
+        // The compact forms `u3` / `3u` (no space) are accepted too, so the
+        // `u` action is as forgiving as the legacy `1l`/`l1` tokens the other
+        // actions support (discussion #270). The attached `uName` form also
+        // works; names with spaces still need the spaced `u <name>` form.
+        let user_switch_selector: Option<String> = if lower == "u" {
+            Some(String::new())
+        } else if lower.starts_with('u') {
+            // spaced `u <sel>` or attached `u<sel>` (`u3`, `uName`)
+            Some(raw[1..].trim().to_string())
+        } else if lower.len() > 1
+            && lower.ends_with('u')
+            && lower[..lower.len() - 1].bytes().all(|b| b.is_ascii_digit())
+        {
+            // reversed compact `<digits>u` (e.g. `3u`)
+            Some(raw[..raw.len() - 1].to_string())
+        } else {
+            None
+        };
+        if let Some(inline) = user_switch_selector {
             let users = match user_partitions::cli_list_users(store) {
                 Ok(u) => u,
                 Err(e) => {
@@ -9890,7 +9909,6 @@ fn interactive_profiles_loop(
                 eprintln!("Only one user account exists; nothing to switch to.");
                 continue;
             }
-            let inline = raw[1..].trim().to_string();
             let selector = if inline.is_empty() {
                 eprintln!("\nUsers:");
                 for (i, u) in users.iter().enumerate() {
