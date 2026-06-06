@@ -3250,7 +3250,8 @@
             "description": "AeroFTP napotkalo nieoczekiwany blad. Mozesz sprobowac odzyskac dane lub przeladowac aplikacje.",
             "reload": "Przeladuj",
             "title": "Cos poszlo nie tak",
-            "tryRecover": "Sprobuj odzyskac"
+            "tryRecover": "Sprobuj odzyskac",
+            "restrictedChar": "Tej nazwy nie można użyć w {provider}: zawiera {char}, którego serwer nie dopuszcza."
         },
         "permissions": {
             "apply": "Zastosuj",
@@ -4152,7 +4153,9 @@
                 "cloud": "Chmura",
                 "favorites": "Ulubione",
                 "dev": "Dev",
-                "media": "Media"
+                "media": "Media",
+                "localBridge": "Mostek lokalny",
+                "paid": "Płatny"
             },
             "noServers": "Brak zapisanych serwerów",
             "noServersHint": "Zacznij od szybkiego połączenia lub przeglądaj katalog usług.",

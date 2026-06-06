@@ -1725,7 +1725,8 @@
             "description": "AeroFTP encountered an unexpected error. You can try to recover or reload the application.",
             "reload": "Reload",
             "title": "Something went wrong",
-            "tryRecover": "Try to recover"
+            "tryRecover": "Try to recover",
+            "restrictedChar": "This name can't be used on {provider}: it contains {char}, which the server does not allow."
         },
         "healthCheck": {
             "title": "Server Health Check",
@@ -4289,7 +4290,9 @@
                 "cloud": "Cloud",
                 "media": "Media",
                 "dev": "Dev",
-                "favorites": "Favorites"
+                "favorites": "Favorites",
+                "localBridge": "Local bridge",
+                "paid": "Paid"
             },
             "confirmDeleteServer": "Delete server \"{name}\"? This removes saved credentials and cannot be undone.",
             "noServers": "No saved servers",

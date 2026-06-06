@@ -695,12 +695,18 @@ impl OpenDriveProvider {
             return Ok("0".to_string());
         }
 
+        // Resolve against the ENCODED path: names a user could not otherwise
+        // store are kept on the provider in their reversible encoded form, so
+        // the path we look up must match what is stored. `normalize_path` stays
+        // in the user's original form internally; encoding happens only here, at
+        // the wire. (Decoding happens in the `*_to_entry` helpers.)
+        let encoded = crate::restricted_chars::encode_path(ProviderType::OpenDrive, &normalized);
         let response: FolderIdByPathResponse = self
             .post_form(
                 "folder/idbypath.json",
                 &[
                     ("session_id", self.session_id.clone()),
-                    ("path", normalized),
+                    ("path", encoded),
                 ],
             )
             .await?;
@@ -713,11 +719,13 @@ impl OpenDriveProvider {
 
     async fn file_id_by_path(&self, path: &str) -> Result<FileIdByPathResponse, ProviderError> {
         let normalized = normalize_path(path)?;
+        // See `folder_id_by_path`: look the file up by its stored encoded path.
+        let encoded = crate::restricted_chars::encode_path(ProviderType::OpenDrive, &normalized);
         self.post_form(
             "file/idbypath.json",
             &[
                 ("session_id", self.session_id.clone()),
-                ("path", normalized),
+                ("path", encoded),
             ],
         )
         .await
@@ -765,10 +773,14 @@ impl OpenDriveProvider {
         let folder_id = self.folder_id_by_path(&parent_path).await?;
         let response = self.list_folder_response(&folder_id).await?;
 
+        // The listing returns names in their stored ENCODED form, so match
+        // against the encoded leaf rather than the user's original spelling.
+        let encoded_name =
+            crate::restricted_chars::encode_leaf(ProviderType::OpenDrive, &file_name);
         response
             .files
             .into_iter()
-            .find(|file| file.name.as_deref() == Some(file_name.as_str()))
+            .find(|file| file.name.as_deref() == Some(encoded_name.as_str()))
             .ok_or(ProviderError::NotFound(normalized))
     }
 
@@ -821,7 +833,9 @@ impl OpenDriveProvider {
     }
 
     fn folder_to_entry(&self, folder: OpenDriveFolder, parent: &str) -> RemoteEntry {
-        let name = folder.name.unwrap_or_else(|| "Unnamed Folder".to_string());
+        let raw_name = folder.name.unwrap_or_else(|| "Unnamed Folder".to_string());
+        // Decode the stored name back to the user's original spelling.
+        let name = crate::restricted_chars::decode_leaf(ProviderType::OpenDrive, &raw_name);
         let path = if parent == "/" {
             format!("/{}", name)
         } else {
@@ -853,7 +867,8 @@ impl OpenDriveProvider {
     }
 
     fn file_to_entry(&self, file: OpenDriveFile, parent: &str) -> RemoteEntry {
-        let name = file.name.unwrap_or_else(|| "Unnamed File".to_string());
+        let raw_name = file.name.unwrap_or_else(|| "Unnamed File".to_string());
+        let name = crate::restricted_chars::decode_leaf(ProviderType::OpenDrive, &raw_name);
         let path = if parent == "/" {
             format!("/{}", name)
         } else {
@@ -1040,7 +1055,8 @@ impl OpenDriveProvider {
     }
 
     fn trash_folder_to_entry(&self, folder: OpenDriveTrashFolder) -> RemoteEntry {
-        let name = folder.name.unwrap_or_else(|| "Unnamed Folder".to_string());
+        let raw_name = folder.name.unwrap_or_else(|| "Unnamed Folder".to_string());
+        let name = crate::restricted_chars::decode_leaf(ProviderType::OpenDrive, &raw_name);
         let mut entry = RemoteEntry::directory(name.clone(), format!("/Trash/{}", name));
         entry.modified = parse_timestamp_to_iso(folder.date_trashed.as_ref())
             .or_else(|| parse_timestamp_to_iso(folder.date_modified.as_ref()));
@@ -1065,7 +1081,8 @@ impl OpenDriveProvider {
     }
 
     fn trash_file_to_entry(&self, file: OpenDriveTrashFile) -> RemoteEntry {
-        let name = file.name.unwrap_or_else(|| "Unnamed File".to_string());
+        let raw_name = file.name.unwrap_or_else(|| "Unnamed File".to_string());
+        let name = crate::restricted_chars::decode_leaf(ProviderType::OpenDrive, &raw_name);
         let mut entry = RemoteEntry::file(
             name.clone(),
             format!("/Trash/{}", name),
@@ -1546,6 +1563,8 @@ impl StorageProvider for OpenDriveProvider {
         if file_name.is_empty() {
             return Err(ProviderError::InvalidPath("Missing file name".into()));
         }
+        // Store the new leaf under its reversible encoded form.
+        let file_name = crate::restricted_chars::encode_leaf(ProviderType::OpenDrive, &file_name);
 
         let folder_id = self
             .with_reauth(|this| {
@@ -1690,6 +1709,8 @@ impl StorageProvider for OpenDriveProvider {
         if folder_name.is_empty() {
             return Err(ProviderError::InvalidPath("Missing folder name".into()));
         }
+        let folder_name =
+            crate::restricted_chars::encode_leaf(ProviderType::OpenDrive, &folder_name);
 
         self.with_reauth(|this| {
             let parent_path = parent_path.clone();
@@ -1801,6 +1822,8 @@ impl StorageProvider for OpenDriveProvider {
         if to_name.is_empty() {
             return Err(ProviderError::InvalidPath("Missing target name".into()));
         }
+        // The new leaf is stored encoded (used for folder/file rename + move).
+        let to_name = crate::restricted_chars::encode_leaf(ProviderType::OpenDrive, &to_name);
 
         // Folder rename/move path
         let folder_result = self
@@ -2161,6 +2184,7 @@ impl StorageProvider for OpenDriveProvider {
         if file_name.is_empty() {
             return Err(ProviderError::InvalidPath("Missing file name".into()));
         }
+        let file_name = crate::restricted_chars::encode_leaf(ProviderType::OpenDrive, &file_name);
 
         let folder_id = self
             .with_reauth(|this| {

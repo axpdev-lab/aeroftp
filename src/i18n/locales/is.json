@@ -3250,7 +3250,8 @@
             "description": "AeroFTP lenti í óvæntri villu. Þú getur reynt að endurheimta eða endurhlaða forritinu.",
             "reload": "Endurhlaða",
             "title": "Eitthvað fór úrskeiðis",
-            "tryRecover": "Reyna að endurheimta"
+            "tryRecover": "Reyna að endurheimta",
+            "restrictedChar": "Ekki er hægt að nota þetta nafn á {provider}: það inniheldur {char}, sem þjónninn leyfir ekki."
         },
         "permissions": {
             "apply": "Beita",
@@ -4171,7 +4172,9 @@
                 "cloud": "Ský",
                 "favorites": "Eftirlæti",
                 "dev": "Dev",
-                "media": "Miðlar"
+                "media": "Miðlar",
+                "localBridge": "Staðbundin brú",
+                "paid": "Gjaldskylt"
             },
             "noServers": "Engir vistaðir þjónar",
             "noServersHint": "Byrjaðu með flýtitengingu eða skoðaðu þjónustuskráninguna.",

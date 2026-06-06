@@ -3250,7 +3250,8 @@
             "description": "AeroFTP narazilo na neocakavanu chybu. Mozete sa pokusit o obnovu alebo znova nacitat aplikaciu.",
             "reload": "Znova nacitat",
             "title": "Nieco sa pokazilo",
-            "tryRecover": "Pokusit sa o obnovu"
+            "tryRecover": "Pokusit sa o obnovu",
+            "restrictedChar": "Tento názov nie je možné použiť na {provider}: obsahuje {char}, ktorý server nepovoľuje."
         },
         "permissions": {
             "apply": "Aplikovat",
@@ -4152,7 +4153,9 @@
                 "cloud": "Cloud",
                 "favorites": "Obľúbené",
                 "dev": "Dev",
-                "media": "Médiá"
+                "media": "Médiá",
+                "localBridge": "Lokálny most",
+                "paid": "Platené"
             },
             "noServers": "Žiadne uložené servery",
             "noServersHint": "Začnite rýchlym pripojením alebo preskúmajte katalóg služieb.",

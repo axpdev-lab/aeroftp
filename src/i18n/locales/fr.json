@@ -3250,7 +3250,8 @@
             "description": "AeroFTP a rencontré une erreur inattendue. Vous pouvez essayer de récupérer ou recharger l'application.",
             "reload": "Recharger",
             "title": "Une erreur est survenue",
-            "tryRecover": "Essayer de récupérer"
+            "tryRecover": "Essayer de récupérer",
+            "restrictedChar": "Ce nom ne peut pas être utilisé sur {provider} : il contient {char}, que le serveur n'autorise pas."
         },
         "permissions": {
             "apply": "Appliquer",
@@ -4152,7 +4153,9 @@
                 "cloud": "Cloud",
                 "favorites": "Favoris",
                 "dev": "Dev",
-                "media": "Médias"
+                "media": "Médias",
+                "localBridge": "Pont local",
+                "paid": "Payant"
             },
             "noServers": "Aucun serveur enregistré",
             "noServersHint": "Commencez par une connexion rapide ou explorez le catalogue de services.",

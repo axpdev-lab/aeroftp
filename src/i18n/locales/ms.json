@@ -3250,7 +3250,8 @@
             "description": "AeroFTP mengalami ralat yang tidak dijangka. Anda boleh cuba memulihkan atau memuat semula aplikasi.",
             "reload": "Muat Semula",
             "title": "Sesuatu tidak kena",
-            "tryRecover": "Cuba pulihkan"
+            "tryRecover": "Cuba pulihkan",
+            "restrictedChar": "Nama ini tidak boleh digunakan pada {provider}: ia mengandungi {char}, yang tidak dibenarkan oleh pelayan."
         },
         "permissions": {
             "apply": "Terapkan",
@@ -4152,7 +4153,9 @@
                 "cloud": "Awan",
                 "favorites": "Kegemaran",
                 "dev": "Dev",
-                "media": "Media"
+                "media": "Media",
+                "localBridge": "Jambatan tempatan",
+                "paid": "Berbayar"
             },
             "noServers": "Tiada pelayan yang disimpan",
             "noServersHint": "Mulakan dengan sambungan pantas atau terokai katalog perkhidmatan.",

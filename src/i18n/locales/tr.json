@@ -3250,7 +3250,8 @@
             "description": "AeroFTP beklenmeyen bir hatayla karşılaştı. Kurtarmayı deneyebilir veya uygulamayı yeniden yükleyebilirsiniz.",
             "reload": "Yeniden Yükle",
             "title": "Bir sorun oluştu",
-            "tryRecover": "Kurtarmayı dene"
+            "tryRecover": "Kurtarmayı dene",
+            "restrictedChar": "Bu ad {provider} üzerinde kullanılamaz: sunucunun izin vermediği {char} karakterini içeriyor."
         },
         "permissions": {
             "apply": "Uygula",
@@ -4152,7 +4153,9 @@
                 "cloud": "Cloud",
                 "favorites": "Favoriler",
                 "dev": "Dev",
-                "media": "Medya"
+                "media": "Medya",
+                "localBridge": "Yerel köprü",
+                "paid": "Ücretli"
             },
             "noServers": "Kayıtlı sunucu yok",
             "noServersHint": "Hızlı bağlantı ile başlayın veya hizmet kataloğunu keşfedin.",

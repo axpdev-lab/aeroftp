@@ -3250,7 +3250,8 @@
             "description": "AeroFTP gặp lỗi không mong muốn. Bạn có thể thử khôi phục hoặc tải lại ứng dụng.",
             "reload": "Tải lại",
             "title": "Đã xảy ra lỗi",
-            "tryRecover": "Thử khôi phục"
+            "tryRecover": "Thử khôi phục",
+            "restrictedChar": "Không thể dùng tên này trên {provider}: tên chứa {char}, ký tự mà máy chủ không cho phép."
         },
         "permissions": {
             "apply": "Áp dụng",
@@ -4152,7 +4153,9 @@
                 "cloud": "Cloud",
                 "favorites": "Yêu thích",
                 "dev": "Dev",
-                "media": "Phương tiện"
+                "media": "Phương tiện",
+                "localBridge": "Cầu nối cục bộ",
+                "paid": "Trả phí"
             },
             "noServers": "Không có máy chủ đã lưu",
             "noServersHint": "Bắt đầu với kết nối nhanh hoặc khám phá danh mục dịch vụ.",

@@ -3250,7 +3250,8 @@
             "description": "AeroFTP-k ustekabeko errore bat aurkitu du. Berreskuratzen saia zaitezke edo aplikazioa birkargatu.",
             "reload": "Birkargatu",
             "title": "Zerbaitek huts egin du",
-            "tryRecover": "Saiatu berreskuratzen"
+            "tryRecover": "Saiatu berreskuratzen",
+            "restrictedChar": "Izen hau ezin da erabili {provider}-(e)n: {char} dauka, eta zerbitzariak ez du onartzen."
         },
         "permissions": {
             "apply": "Aplikatu",
@@ -4171,7 +4172,9 @@
                 "cloud": "Cloud",
                 "favorites": "Gogokoak",
                 "dev": "Dev",
-                "media": "Multimedia"
+                "media": "Multimedia",
+                "localBridge": "Tokiko zubia",
+                "paid": "Ordainpekoa"
             },
             "noServers": "Ez dago gordetako zerbitzaririk",
             "noServersHint": "Hasi konexio azkar batekin edo arakatu zerbitzu katalogoa.",

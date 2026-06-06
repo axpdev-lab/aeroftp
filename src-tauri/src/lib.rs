@@ -127,6 +127,7 @@ pub mod rclone_crypt;
 pub mod rclone_filter;
 pub mod rclone_import;
 pub mod restic_import;
+pub mod restricted_chars;
 mod session_commands;
 mod session_manager;
 #[cfg(all(not(target_os = "macos"), feature = "local-stt"))]

@@ -301,6 +301,7 @@ impl MultiProviderState {
         let session = sessions.get_mut(&sid).ok_or(ProviderError::NotConnected)?;
 
         session.info.last_activity = std::time::Instant::now();
+        crate::restricted_chars::validate_path(session.provider.provider_type(), path)?;
         session.provider.mkdir(path).await
     }
 
@@ -328,6 +329,7 @@ impl MultiProviderState {
         let session = sessions.get_mut(&sid).ok_or(ProviderError::NotConnected)?;
 
         session.info.last_activity = std::time::Instant::now();
+        crate::restricted_chars::validate_path(session.provider.provider_type(), to)?;
         session.provider.rename(from, to).await
     }
 
@@ -364,6 +366,7 @@ impl MultiProviderState {
         let session = sessions.get_mut(&sid).ok_or(ProviderError::NotConnected)?;
 
         session.info.last_activity = std::time::Instant::now();
+        crate::restricted_chars::validate_path(session.provider.provider_type(), remote_path)?;
         // No progress callback for now - can be added later
         session.provider.upload(local_path, remote_path, None).await
     }

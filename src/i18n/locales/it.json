@@ -3497,7 +3497,8 @@
             "title": "Qualcosa è andato storto",
             "description": "AeroFTP ha riscontrato un errore imprevisto. Puoi provare a recuperare o ricaricare l'applicazione.",
             "tryRecover": "Prova a recuperare",
-            "reload": "Ricarica"
+            "reload": "Ricarica",
+            "restrictedChar": "Questo nome non può essere usato su {provider}: contiene {char}, che il server non consente."
         },
         "preview": {
             "audio": {
@@ -4303,7 +4304,9 @@
                 "cloud": "Cloud",
                 "favorites": "Preferiti",
                 "dev": "Dev",
-                "media": "Media"
+                "media": "Media",
+                "localBridge": "Bridge locale",
+                "paid": "A pagamento"
             },
             "noServers": "Nessun server salvato",
             "noServersHint": "Inizia con una connessione rapida o esplora il catalogo dei servizi.",

@@ -4520,7 +4520,9 @@ fn provider_error_to_exit_code(err: &ProviderError) -> i32 {
         ProviderError::NotFound(_) => 2,
         ProviderError::PermissionDenied(_) => 3,
         ProviderError::TransferFailed(_) | ProviderError::Cancelled => 4,
-        ProviderError::InvalidConfig(_) | ProviderError::InvalidPath(_) => 5,
+        ProviderError::InvalidConfig(_)
+        | ProviderError::InvalidPath(_)
+        | ProviderError::RestrictedChar { .. } => 5,
         ProviderError::AuthenticationFailed(_) => 6,
         ProviderError::NotSupported(_) => 7,
         ProviderError::Timeout => 8,
@@ -4529,6 +4531,30 @@ fn provider_error_to_exit_code(err: &ProviderError) -> i32 {
         ProviderError::IoError(_) => 11,
         ProviderError::Unknown(_) | ProviderError::Other(_) => 99,
     }
+}
+
+/// Reject a target file/folder name containing a character the active
+/// provider's backend forbids, BEFORE the operation reaches the API. This is
+/// the CLI counterpart of the GUI chokepoints in `provider_commands.rs`: the
+/// CLI has its own command path and would otherwise let the raw name hit the
+/// provider, producing a silent or opaque server failure (discussion #272).
+/// On rejection it prints the clear error, disconnects, and returns the exit
+/// code (RestrictedChar maps to 5); returns `None` when the name is allowed.
+async fn reject_restricted_target(
+    provider: &mut dyn ftp_client_gui_lib::providers::StorageProvider,
+    path: &str,
+    op: &str,
+    format: OutputFormat,
+) -> Option<i32> {
+    if let Err(e) =
+        ftp_client_gui_lib::restricted_chars::validate_path(provider.provider_type(), path)
+    {
+        let code = provider_error_to_exit_code(&e);
+        print_error(format, &format!("{} failed: {}", op, e), code);
+        let _ = provider.disconnect().await;
+        return Some(code);
+    }
+    None
 }
 
 fn is_valid_sync_direction(direction: &str) -> bool {
@@ -19188,6 +19214,11 @@ async fn cmd_put(
     let resolved_remote = resolve_cli_remote_path(&initial_path, &effective_remote);
     let remote_path = resolved_remote.as_str();
 
+    if let Some(code) = reject_restricted_target(provider.as_mut(), remote_path, "put", format).await
+    {
+        return code;
+    }
+
     // --immutable / --no-clobber: skip upload if remote file already exists
     if no_clobber || cli.immutable {
         match provider.stat(remote_path).await {
@@ -19573,6 +19604,19 @@ async fn cmd_put_recursive(
         .map(|(local, remote, size)| (local, resolve_cli_remote_path(&initial_path, &remote), size))
         .collect();
 
+    // Pre-flight: reject the whole batch up front if any target dir or file name
+    // contains a character this provider's backend forbids, before creating or
+    // uploading anything (mirrors the single-file `put` guard).
+    let ptype = provider.provider_type();
+    for target in dirs.iter().chain(files.iter().map(|(_, remote, _)| remote)) {
+        if let Err(e) = ftp_client_gui_lib::restricted_chars::validate_path(ptype, target) {
+            let code = provider_error_to_exit_code(&e);
+            print_error(format, &format!("put failed: {}", e), code);
+            let _ = provider.disconnect().await;
+            return code;
+        }
+    }
+
     for dir in &dirs {
         let _ = provider.mkdir(dir).await;
     }
@@ -19740,6 +19784,10 @@ async fn cmd_mkdir(
     };
 
     let path = &resolve_cli_remote_path(&initial_path, path);
+
+    if let Some(code) = reject_restricted_target(provider.as_mut(), path, "mkdir", format).await {
+        return code;
+    }
 
     // Track whether the leaf path was already a directory before this
     // call. Idempotent mkdir -p reports `already_existed: true` for an
@@ -19992,6 +20040,9 @@ async fn cmd_mv(url: &str, from: &str, to: &str, cli: &Cli, format: OutputFormat
 
     let from = &resolve_cli_remote_path(&initial_path, from);
     let to = &resolve_cli_remote_path(&initial_path, to);
+    if let Some(code) = reject_restricted_target(provider.as_mut(), to, "mv", format).await {
+        return code;
+    }
     match provider.rename(from, to).await {
         Ok(()) => {
             match format {
@@ -20028,6 +20079,9 @@ async fn cmd_cp(url: &str, from: &str, to: &str, cli: &Cli, format: OutputFormat
 
     let from = &resolve_cli_remote_path(&initial_path, from);
     let to = &resolve_cli_remote_path(&initial_path, to);
+    if let Some(code) = reject_restricted_target(provider.as_mut(), to, "cp", format).await {
+        return code;
+    }
 
     // Goes through `server_side_copy_with_fallback` so the CLI exits 0
     // even when the provider does not advertise server-side copy or
@@ -32999,6 +33053,7 @@ async fn cmd_put_glob(
         Ok(v) => v,
         Err(code) => return code,
     };
+    let glob_provider_type = probe_provider.provider_type();
     let _ = probe_provider.disconnect().await;
     let remote_base = resolve_cli_remote_path(&initial_path, raw_remote_base);
     let remote_base = remote_base.as_str();
@@ -33090,6 +33145,18 @@ async fn cmd_put_glob(
             (local_path, remote_path, size)
         })
         .collect();
+
+    // Pre-flight: reject the batch if any matched file's target name contains a
+    // character this provider's backend forbids (mirrors single-file `put`).
+    for (_, remote_path, _) in &files {
+        if let Err(e) =
+            ftp_client_gui_lib::restricted_chars::validate_path(glob_provider_type, remote_path)
+        {
+            let code = provider_error_to_exit_code(&e);
+            print_error(format, &format!("put failed: {}", e), code);
+            return code;
+        }
+    }
 
     let mut uploaded: u32 = 0;
     let mut errors: Vec<String> = Vec::new();
@@ -34121,6 +34188,9 @@ async fn cmd_touch(
         Err(code) => return code,
     };
     let path = &resolve_cli_remote_path(&initial_path, path);
+    if let Some(code) = reject_restricted_target(provider.as_mut(), path, "touch", format).await {
+        return code;
+    }
     // Check if file exists
     match provider.stat(path).await {
         Ok(_) => {

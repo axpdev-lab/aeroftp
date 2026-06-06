@@ -3250,7 +3250,8 @@
             "description": "AeroFTP opplevde en uventet feil. Du kan prøve å gjenopprette eller laste applikasjonen på nytt.",
             "reload": "Last på nytt",
             "title": "Noe gikk galt",
-            "tryRecover": "Prøv å gjenopprette"
+            "tryRecover": "Prøv å gjenopprette",
+            "restrictedChar": "Dette navnet kan ikke brukes på {provider}: det inneholder {char}, som serveren ikke tillater."
         },
         "permissions": {
             "apply": "Bruk",
@@ -4171,7 +4172,9 @@
                 "cloud": "Sky",
                 "favorites": "Favoritter",
                 "dev": "Dev",
-                "media": "Medier"
+                "media": "Medier",
+                "localBridge": "Lokal bro",
+                "paid": "Betalt"
             },
             "noServers": "Ingen lagrede servere",
             "noServersHint": "Start med en hurtigtilkobling eller utforsk tjenestekatalogen.",

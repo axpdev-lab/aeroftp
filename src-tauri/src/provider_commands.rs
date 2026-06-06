@@ -2855,6 +2855,11 @@ pub async fn provider_upload_file(
         .as_mut()
         .ok_or("Not connected to any provider")?;
 
+    // Reject upload targets with characters this provider's backend forbids
+    // before any transfer work starts (delta / DAG / GitHub branches below).
+    crate::restricted_chars::validate_path(provider.provider_type(), &remote_path)
+        .map_err(|e| e.to_string())?;
+
     let filename = std::path::Path::new(&local_path)
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
@@ -3109,6 +3114,10 @@ pub async fn provider_mkdir(
 
     info!("Creating directory: {}", path);
 
+    // Reject folder names with characters this provider's backend forbids.
+    crate::restricted_chars::validate_path(provider.provider_type(), &path)
+        .map_err(|e| e.to_string())?;
+
     if provider.provider_type() == ProviderType::GitHub {
         let github = provider
             .as_any_mut()
@@ -3262,6 +3271,12 @@ pub async fn provider_rename(
         .ok_or("Not connected to any provider")?;
 
     info!("Renaming: {} -> {}", from, to);
+
+    // Reject names with characters this provider's backend forbids before the
+    // rename hits the API, so the user sees a clear message instead of a silent
+    // or opaque failure (discussion #272).
+    crate::restricted_chars::validate_path(provider.provider_type(), &to)
+        .map_err(|e| e.to_string())?;
 
     provider
         .rename(&from, &to)

@@ -1634,6 +1634,20 @@ pub enum ProviderError {
     #[error("Connection lost: {0}")]
     ConnectionLost(String),
 
+    /// The target file/folder name contains a character the provider's storage
+    /// backend forbids (sourced from rclone's restricted-character tables, see
+    /// `restricted_chars.rs`). Caught at the shared command/transfer chokepoints
+    /// BEFORE the name reaches the provider API, turning a silent rename/upload
+    /// failure (discussion #272) into a clear, actionable message. `ch_display`
+    /// is pre-rendered for humans (printable char quoted, control char as
+    /// `U+00NN`); `provider` is the human label keying the table. The wording is
+    /// stable so the GUI can detect and localize it (`errors.restrictedChar`).
+    #[error("Restricted character {ch_display} is not allowed by {provider}")]
+    RestrictedChar {
+        ch_display: String,
+        provider: String,
+    },
+
     #[error("Unknown error: {0}")]
     Unknown(String),
 

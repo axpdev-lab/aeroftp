@@ -3,6 +3,8 @@
  * Used by the redesigned intro page (Tab Hub layout).
  */
 
+import { isLocalBridgeProvider, isPaidProvider } from '../components/providerCatalog';
+
 export interface ServiceCatalogCategory {
     id: CatalogCategoryId;
     labelKey: string;
@@ -28,6 +30,8 @@ export type MyServersFilterBy =
     | 'cloud'
     | 'media'
     | 'dev'
+    | 'local-bridge'
+    | 'paid'
     | 'favorites';
 
 /** Filter chip definition for My Servers toolbar */
@@ -57,5 +61,7 @@ export const FILTER_CHIPS: FilterChip[] = [
     { id: 'cloud', labelKey: 'introHub.filter.cloud', matchFn: (p, pid) => !['ftp', 'ftps', 'sftp', 'webdav', 's3', 'azure', ...DEV_PROTOCOLS, ...MEDIA_PROTOCOLS].includes(p) && !isDevService(p, pid) && !isMediaService(p) },
     { id: 'media', labelKey: 'introHub.filter.media', matchFn: (p) => isMediaService(p) },
     { id: 'dev', labelKey: 'introHub.filter.dev', matchFn: (p, pid) => isDevService(p, pid) },
+    { id: 'local-bridge', labelKey: 'introHub.filter.localBridge', matchFn: (_p, pid) => isLocalBridgeProvider(pid) },
+    { id: 'paid', labelKey: 'introHub.filter.paid', matchFn: (_p, pid) => isPaidProvider(pid) },
     { id: 'favorites', labelKey: 'introHub.filter.favorites', matchFn: () => true }, // Filtered by isFavorite in MyServersPanel
 ];

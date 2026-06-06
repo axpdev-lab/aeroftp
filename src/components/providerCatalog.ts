@@ -241,9 +241,9 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
     { company: 'Tab.digital', logoId: 'tabdigital', countryCode: 'IN', freeStorageGb: null,
       freeNote: 'managed Nextcloud',
       protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'tabdigital', category: 'webdav', paid: true }] },
-    { company: 'PixelUnion', logoId: 'pixelunion', countryCode: 'EU', freeStorageGb: null,
+    { company: 'PixelUnion', logoId: 'pixelunion', countryCode: 'EU', freeStorageGb: 16,
       freeNote: 'managed Immich', healthCheckUrl: 'https://pixelunion.eu',
-      protocols: [{ label: 'API', protocol: 'immich', providerId: 'pixelunion', category: 'media-services', paid: true }] },
+      protocols: [{ label: 'API', protocol: 'immich', providerId: 'pixelunion', category: 'media-services' }] },
     { company: 'MinIO', logoId: 'minio', countryCode: '', freeStorageGb: null,
       freeNote: 'self-hosted',
       protocols: [{ label: 'S3', protocol: 's3', providerId: 'minio', category: 'object-storage' }] },
@@ -461,4 +461,56 @@ for (const company of PROVIDER_CATALOG) {
 /** Look up a catalog company by its logo id (with alias normalization). */
 export function findCatalogByLogo(logoId: string): CatalogCompany | undefined {
     return catalogByLogo.get(logoId) ?? catalogByLogo.get(LOGO_ALIASES[logoId] ?? '');
+}
+
+/**
+ * providerId -> { company, ref } index. Lets callers that key by a saved
+ * profile's providerId reach the connection-method metadata (paid flag, bridge
+ * note) directly, without scanning PROVIDER_CATALOG per lookup. First match
+ * wins, mirroring `catalogByLogo`.
+ */
+const catalogByProviderId = new Map<string, { company: CatalogCompany; ref: CatalogProtocolRef }>();
+for (const company of PROVIDER_CATALOG) {
+    for (const ref of company.protocols) {
+        if (ref.providerId && !catalogByProviderId.has(ref.providerId)) {
+            catalogByProviderId.set(ref.providerId, { company, ref });
+        }
+    }
+}
+
+/** Look up a catalog company + the matching connection method by providerId. */
+export function findCatalogByProviderId(
+    providerId: string,
+): { company: CatalogCompany; ref: CatalogProtocolRef } | undefined {
+    return catalogByProviderId.get(providerId);
+}
+
+/**
+ * True when the providerId is a credit-card-gated (paid) connection method,
+ * e.g. MEGA S4 or pCloud WebDAV. Mirrors the `*` paid marker in the providers
+ * table. Unknown, self-hosted or generic protocols are not paid.
+ */
+export function isPaidProvider(providerId?: string): boolean {
+    return !!(providerId && catalogByProviderId.get(providerId)?.ref.paid);
+}
+
+/**
+ * True when the providerId is a local/desktop bridge: a connection that goes
+ * through a locally-run daemon (e.g. MEGAcmd WebDAV, or the Filen desktop S3 /
+ * WebDAV bridges). Detected via the `note` marker in the SSOT.
+ */
+export function isLocalBridgeProvider(providerId?: string): boolean {
+    if (!providerId) return false;
+    const note = catalogByProviderId.get(providerId)?.ref.note ?? '';
+    return /bridge/i.test(note);
+}
+
+/**
+ * HQ country (ISO 3166-1 alpha-2, or 'EU' for pan-European) of the company
+ * behind a providerId, or undefined when the providerId is unknown / generic /
+ * self-hosted. Drives the My Servers country filter.
+ */
+export function providerCountry(providerId?: string): string | undefined {
+    if (!providerId) return undefined;
+    return catalogByProviderId.get(providerId)?.company.countryCode || undefined;
 }

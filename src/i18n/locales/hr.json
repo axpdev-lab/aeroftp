@@ -3250,7 +3250,8 @@
             "description": "AeroFTP je naišao na neočekivanu grešku. Možete pokušati oporavak ili ponovno učitati aplikaciju.",
             "reload": "Ponovno učitaj",
             "title": "Nešto je pošlo po krivu",
-            "tryRecover": "Pokušaj oporavak"
+            "tryRecover": "Pokušaj oporavak",
+            "restrictedChar": "Ovaj naziv nije moguće koristiti na {provider}: sadrži {char}, što poslužitelj ne dopušta."
         },
         "permissions": {
             "apply": "Primijeni",
@@ -4152,7 +4153,9 @@
                 "cloud": "Oblak",
                 "favorites": "Favoriti",
                 "dev": "Dev",
-                "media": "Mediji"
+                "media": "Mediji",
+                "localBridge": "Lokalni most",
+                "paid": "Plaćeno"
             },
             "noServers": "Nema spremljenih poslužitelja",
             "noServersHint": "Započnite s brzim povezivanjem ili pregledajte katalog usluga.",

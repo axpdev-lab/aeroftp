@@ -3250,7 +3250,8 @@
             "description": "AeroFTP atopou un erro inesperado. Podes intentar recuperar ou recargar a aplicación.",
             "reload": "Recargar",
             "title": "Algo saíu mal",
-            "tryRecover": "Intentar recuperar"
+            "tryRecover": "Intentar recuperar",
+            "restrictedChar": "Este nome non se pode usar en {provider}: contén {char}, que o servidor non permite."
         },
         "permissions": {
             "apply": "Aplicar",
@@ -4171,7 +4172,9 @@
                 "cloud": "Cloud",
                 "favorites": "Favoritos",
                 "dev": "Dev",
-                "media": "Multimedia"
+                "media": "Multimedia",
+                "localBridge": "Ponte local",
+                "paid": "De pago"
             },
             "noServers": "Non hai servidores gardados",
             "noServersHint": "Comece cunha conexión rápida ou explore o catálogo de servizos.",

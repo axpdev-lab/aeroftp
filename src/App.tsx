@@ -170,6 +170,7 @@ import { filterSurvivingBatchEntries } from './components/transferQueueActions';
 import { useCircuitBreaker } from './hooks/useCircuitBreaker';
 import { RECONNECT_ERROR_KINDS, getErrorKindI18nKey } from './utils/transferErrorClassifier';
 import { normalizeMegaOptions } from './utils/providerConnectionMeta';
+import { localizeRestrictedCharError } from './utils/restrictedCharError';
 import { CustomTitlebar } from './components/CustomTitlebar';
 import { ExportImportDialog } from './components/ExportImportDialog';
 import { WindowResizeEdges } from './components/WindowResizeEdges';
@@ -9442,7 +9443,7 @@ interface UpdateVerificationInfo {
           notify.success(t('toast.renamed'), newName);
         } catch (error) {
           humanLog.logError('RENAME', { oldname: currentName, newname: newName, isRemote }, logId);
-          notify.error(t('toast.renameFail'), String(error));
+          notify.error(t('toast.renameFail'), localizeRestrictedCharError(error, t) ?? String(error));
         }
       }
     });
@@ -9696,7 +9697,10 @@ interface UpdateVerificationInfo {
           notify.success(t('toast.folderCreated'), name);
         } catch (error) {
           humanLog.logError('MKDIR', { foldername: name, isRemote }, logId);
-          notify.error(t('toast.folderCreateFailed', { error: String(error) }));
+          notify.error(
+            localizeRestrictedCharError(error, t) ??
+              t('toast.folderCreateFailed', { error: String(error) }),
+          );
         }
       }
     });

@@ -3250,7 +3250,8 @@
             "description": "AeroFTP hat einen unerwarteten Fehler festgestellt. Sie können versuchen, die Anwendung wiederherzustellen oder neu zu laden.",
             "reload": "Neu laden",
             "title": "Etwas ist schiefgelaufen",
-            "tryRecover": "Wiederherstellung versuchen"
+            "tryRecover": "Wiederherstellung versuchen",
+            "restrictedChar": "Dieser Name kann auf {provider} nicht verwendet werden: Er enthält {char}, was der Server nicht zulässt."
         },
         "permissions": {
             "apply": "Anwenden",
@@ -4152,7 +4153,9 @@
                 "cloud": "Cloud",
                 "favorites": "Favoriten",
                 "dev": "Dev",
-                "media": "Medien"
+                "media": "Medien",
+                "localBridge": "Lokale Brücke",
+                "paid": "Kostenpflichtig"
             },
             "noServers": "Keine gespeicherten Server",
             "noServersHint": "Starten Sie mit einer Schnellverbindung oder erkunden Sie den Dienstkatalog.",

@@ -3250,7 +3250,8 @@
             "description": "AeroFTP 遇到意外错误。您可以尝试恢复或重新加载应用程序。",
             "reload": "重新加载",
             "title": "出了点问题",
-            "tryRecover": "尝试恢复"
+            "tryRecover": "尝试恢复",
+            "restrictedChar": "此名称无法在 {provider} 上使用：它包含服务器不允许的 {char}。"
         },
         "permissions": {
             "apply": "应用",
@@ -4152,7 +4153,9 @@
                 "cloud": "Cloud",
                 "favorites": "收藏",
                 "dev": "Dev",
-                "media": "媒体"
+                "media": "媒体",
+                "localBridge": "本地桥接",
+                "paid": "付费"
             },
             "noServers": "没有保存的服务器",
             "noServersHint": "从快速连接开始或浏览服务目录。",

@@ -505,9 +505,16 @@ impl JottacloudProvider {
         if clean.is_empty() {
             format!("{}/{}/{}/{}", JFS_BASE, user, device, mount)
         } else {
+            // Reversible restricted-character encoding goes BEFORE URL
+            // percent-encoding on the way out (decoding happens after the name
+            // is read back from the response XML). Names a user could not
+            // otherwise store on Jottacloud round-trip via the encoded form.
             let encoded_path: String = clean
                 .split('/')
-                .map(|s| urlencoding::encode(s).into_owned())
+                .map(|s| {
+                    let enc = crate::restricted_chars::encode_leaf(ProviderType::Jottacloud, s);
+                    urlencoding::encode(&enc).into_owned()
+                })
                 .collect::<Vec<_>>()
                 .join("/");
             format!(
@@ -629,6 +636,8 @@ impl JottacloudProvider {
                     if tag == "mountPoint" {
                         for attr in e.attributes().flatten() {
                             if attr.key.as_ref() == b"name" {
+                                // Account-level mountpoint name: an identifier,
+                                // not a user filename, so it is NOT decoded.
                                 let name = super::xml_text::attr_value(&attr);
                                 if !name.is_empty() {
                                     names.push(name);
@@ -776,7 +785,10 @@ impl JottacloudProvider {
                             let mut is_deleted = false;
                             for attr in e.attributes().flatten() {
                                 if attr.key.as_ref() == b"name" {
-                                    name = super::xml_text::attr_value(&attr);
+                                    name = crate::restricted_chars::decode_leaf(
+                                        ProviderType::Jottacloud,
+                                        &super::xml_text::attr_value(&attr),
+                                    );
                                 }
                                 if attr.key.as_ref() == b"deleted" {
                                     is_deleted = true;
@@ -816,7 +828,10 @@ impl JottacloudProvider {
                             current_deleted = false;
                             for attr in e.attributes().flatten() {
                                 if attr.key.as_ref() == b"name" {
-                                    current_name = super::xml_text::attr_value(&attr);
+                                    current_name = crate::restricted_chars::decode_leaf(
+                                        ProviderType::Jottacloud,
+                                        &super::xml_text::attr_value(&attr),
+                                    );
                                 }
                             }
                         }
@@ -841,7 +856,10 @@ impl JottacloudProvider {
                         let mut is_deleted = false;
                         for attr in e.attributes().flatten() {
                             if attr.key.as_ref() == b"name" {
-                                name = super::xml_text::attr_value(&attr);
+                                name = crate::restricted_chars::decode_leaf(
+                                        ProviderType::Jottacloud,
+                                        &super::xml_text::attr_value(&attr),
+                                    );
                             }
                             if attr.key.as_ref() == b"deleted" {
                                 is_deleted = true;
@@ -1327,10 +1345,13 @@ impl StorageProvider for JottacloudProvider {
         // Direct upload to up.jottacloud.com (rclone-compatible method)
         // POST https://up.jottacloud.com/jfs/{user}/{device}/{mountpoint}/{path}
         let clean = resolved.trim_start_matches('/');
-        // URL-encode each path segment to handle special characters
+        // Restricted-character encoding BEFORE URL percent-encoding (see jfs_url).
         let encoded_path: String = clean
             .split('/')
-            .map(|s| urlencoding::encode(s).into_owned())
+            .map(|s| {
+                let enc = crate::restricted_chars::encode_leaf(ProviderType::Jottacloud, s);
+                urlencoding::encode(&enc).into_owned()
+            })
             .collect::<Vec<_>>()
             .join("/");
         let upload_url = format!(
@@ -1448,13 +1469,17 @@ impl StorageProvider for JottacloudProvider {
         let resolved_from = self.resolve_path(from);
         let resolved_to = self.resolve_path(to);
 
-        // Use move operation for rename
+        // Use move operation for rename. Encode the destination path segments
+        // (not the account identifiers) before building the move target.
+        let encoded_to_path: String = resolved_to
+            .trim_start_matches('/')
+            .split('/')
+            .map(|s| crate::restricted_chars::encode_leaf(ProviderType::Jottacloud, s))
+            .collect::<Vec<_>>()
+            .join("/");
         let to_jfs = format!(
             "/{}/{}/{}/{}",
-            self.username,
-            self.config.device,
-            self.config.mountpoint,
-            resolved_to.trim_start_matches('/')
+            self.username, self.config.device, self.config.mountpoint, encoded_to_path
         );
         let url = format!(
             "{}?mv={}",
@@ -1671,7 +1696,10 @@ impl JottacloudProvider {
         } else {
             let encoded_path: String = clean
                 .split('/')
-                .map(|s| urlencoding::encode(s).into_owned())
+                .map(|s| {
+                    let enc = crate::restricted_chars::encode_leaf(ProviderType::Jottacloud, s);
+                    urlencoding::encode(&enc).into_owned()
+                })
                 .collect::<Vec<_>>()
                 .join("/");
             format!("{}/{}/Trash/{}", JFS_BASE, user, encoded_path)
@@ -1851,7 +1879,10 @@ impl JottacloudProvider {
                             let mut name = String::new();
                             for attr in e.attributes().flatten() {
                                 if attr.key.as_ref() == b"name" {
-                                    name = super::xml_text::attr_value(&attr);
+                                    name = crate::restricted_chars::decode_leaf(
+                                        ProviderType::Jottacloud,
+                                        &super::xml_text::attr_value(&attr),
+                                    );
                                 }
                             }
                             if !name.is_empty() {
@@ -1880,7 +1911,10 @@ impl JottacloudProvider {
                             current_state.clear();
                             for attr in e.attributes().flatten() {
                                 if attr.key.as_ref() == b"name" {
-                                    current_name = super::xml_text::attr_value(&attr);
+                                    current_name = crate::restricted_chars::decode_leaf(
+                                        ProviderType::Jottacloud,
+                                        &super::xml_text::attr_value(&attr),
+                                    );
                                 }
                             }
                         }
@@ -1902,7 +1936,10 @@ impl JottacloudProvider {
                         let mut name = String::new();
                         for attr in e.attributes().flatten() {
                             if attr.key.as_ref() == b"name" {
-                                name = super::xml_text::attr_value(&attr);
+                                name = crate::restricted_chars::decode_leaf(
+                                        ProviderType::Jottacloud,
+                                        &super::xml_text::attr_value(&attr),
+                                    );
                             }
                         }
                         if !name.is_empty() {
@@ -2062,9 +2099,13 @@ mod tests {
             p.jfs_url("/folder/cool#1.txt"),
             format!("{}/user123/Jotta/Archive/folder/cool%231.txt", JFS_BASE)
         );
+        // `%` IS in Jottacloud's restricted table, so it is first reversibly
+        // encoded to fullwidth `％` (U+FF05) and only then URL percent-encoded
+        // (UTF-8 of U+FF05 = EF BC 85). `+`, `#`, `&`, ` ` above are NOT in the
+        // table, so they are only URL-encoded.
         assert_eq!(
             p.jfs_url("/folder/100%.txt"),
-            format!("{}/user123/Jotta/Archive/folder/100%25.txt", JFS_BASE)
+            format!("{}/user123/Jotta/Archive/folder/100%EF%BC%85.txt", JFS_BASE)
         );
         // Slash separators must NOT be encoded; only segment contents.
         assert_eq!(

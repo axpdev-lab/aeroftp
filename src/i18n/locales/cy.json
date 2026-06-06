@@ -3250,7 +3250,8 @@
             "description": "Daeth AeroFTP ar draws gwall annisgwyl. Gallwch geisio adfer neu ail-lwytho'r rhaglen.",
             "reload": "Ail-lwytho",
             "title": "Aeth rhywbeth o'i le",
-            "tryRecover": "Ceisio adfer"
+            "tryRecover": "Ceisio adfer",
+            "restrictedChar": "Ni ellir defnyddio'r enw hwn ar {provider}: mae'n cynnwys {char}, nad yw'r gweinydd yn ei ganiatáu."
         },
         "permissions": {
             "apply": "Cymhwyso",
@@ -4171,7 +4172,9 @@
                 "cloud": "Cloud",
                 "favorites": "Ffefrynnau",
                 "dev": "Dev",
-                "media": "Cyfryngau"
+                "media": "Cyfryngau",
+                "localBridge": "Pont lleol",
+                "paid": "Taledig"
             },
             "noServers": "Dim gweinyddion wedi'u cadw",
             "noServersHint": "Dechreuwch gyda chysylltiad cyflym neu archwiliwch y catalog gwasanaethau.",

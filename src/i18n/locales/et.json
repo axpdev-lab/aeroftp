@@ -3250,7 +3250,8 @@
             "description": "AeroFTP-s tekkis ootamatu viga. Võid proovida taastada või rakenduse uuesti laadida.",
             "reload": "Laadi uuesti",
             "title": "Midagi läks valesti",
-            "tryRecover": "Proovi taastada"
+            "tryRecover": "Proovi taastada",
+            "restrictedChar": "Seda nime ei saa kasutada teenuses {provider}: see sisaldab {char}, mida server ei luba."
         },
         "permissions": {
             "apply": "Rakenda",
@@ -4152,7 +4153,9 @@
                 "cloud": "Cloud",
                 "favorites": "Lemmikud",
                 "dev": "Dev",
-                "media": "Meedia"
+                "media": "Meedia",
+                "localBridge": "Kohalik sild",
+                "paid": "Tasuline"
             },
             "noServers": "Salvestatud serverid puuduvad",
             "noServersHint": "Alustage kiirühendusega või sirvige teenuste kataloogi.",
