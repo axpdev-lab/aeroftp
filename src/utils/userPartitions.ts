@@ -281,6 +281,53 @@ export const needsAccountLockScreen = (
     return true;
 };
 
+// Boot-time decision for the multi-user lock screen, extracted from App.tsx so
+// it can be unit-tested in isolation (discussion #270). Given the user list,
+// the backend unlock status, and the saved default account, it returns what the
+// boot flow should do:
+//   - 'ready'         : enter the app directly, no picker
+//   - 'picker'        : show the AccountLockScreen
+//   - 'unlockDefault' : silently unlock `userId` (password-free default) then enter
+//
+// Why the `isUnlocked` branch matters: the backend's user_unlock_status reports a
+// persisted password-free *active* user as already unlocked. After a restart the
+// default account therefore arrives here as already-unlocked, and without the
+// explicit `ready` branch the `!isUnlocked` guard would be false and the picker
+// would reappear on every launch (the bug Ehud reported on #270).
+export type BootAccountAction =
+    | { kind: 'ready' }
+    | { kind: 'picker' }
+    | { kind: 'unlockDefault'; userId: number };
+
+export const decideBootAccountAction = (
+    users: { id: number; hasPassphrase: boolean }[],
+    status: { isUnlocked: boolean; unlockedUserId?: number | null },
+    defaultAccountId: number | null,
+): BootAccountAction => {
+    if (users.length === 0) return { kind: 'ready' };
+    const singleUserNeedsUnlock =
+        users.length === 1 && users[0].hasPassphrase && !status.isUnlocked;
+    const finalNeeded = users.length > 1 || singleUserNeedsUnlock;
+    if (finalNeeded && defaultAccountId != null) {
+        const target = users.find((u) => u.id === defaultAccountId);
+        // Only password-free accounts skip the picker; a protected account
+        // always shows its prompt so authentication is never bypassed.
+        if (target && !target.hasPassphrase) {
+            // Already on the default account (the backend reports a persisted
+            // password-free active user as unlocked): enter directly.
+            if (status.isUnlocked && status.unlockedUserId === target.id) {
+                return { kind: 'ready' };
+            }
+            // Otherwise honor the default on boot: either nobody is unlocked
+            // yet, or a *different* account was the last active one (e.g. the
+            // star was set on an account other than the current one). The
+            // default wins, so switch to it rather than showing the picker.
+            return { kind: 'unlockDefault', userId: target.id };
+        }
+    }
+    return finalNeeded ? { kind: 'picker' } : { kind: 'ready' };
+};
+
 // Dispatched when the user explicitly asks to return to the AccountLockScreen
 // (e.g. from the titlebar UserDropdown "Lock" action). App.tsx listens for this
 // and re-arms `accountLockState='needed'` so the L2 picker re-appears with the

@@ -233,6 +233,7 @@ import { LockScreen } from './components/LockScreen';
 import { AccountLockScreen } from './components/AccountLockScreen';
 import {
     ACCOUNT_LOCK_SCREEN_REQUESTED_EVENT,
+    decideBootAccountAction,
     getUnlockStatus,
     initUserPartitions,
     listUsers,
@@ -1420,29 +1421,27 @@ const App: React.FC = () => {
         // its refresh and renders the avatar now that MU IPC is available.
         window.dispatchEvent(new CustomEvent(PROFILES_CHANGED_EVENT));
         if (users.length === 0) { setAccountLockState('ready'); return; }
-        const singleUserNeedsUnlock = users.length === 1 && users[0].hasPassphrase && !status.isUnlocked;
-        const finalNeeded = users.length > 1 || singleUserNeedsUnlock;
-        // Default-account fast path (discussion #270): when a default account is
-        // set and it has no passphrase, auto-open it and bypass the picker.
-        // Accounts with a passphrase always show the prompt, so authentication
-        // is never skipped. An explicit "switch account" still forces the picker.
-        if (finalNeeded && !status.isUnlocked) {
-          const defaultId = readDefaultAccountId();
-          const target = defaultId != null ? users.find(u => u.id === defaultId) : undefined;
-          if (target && !target.hasPassphrase) {
-            try {
-              await unlockUser(target.id, null);
-              if (cancelled) return;
-              window.dispatchEvent(new CustomEvent(PROFILES_CHANGED_EVENT));
-              setAccountLockState('ready');
-              return;
-            } catch (err) {
-              console.warn('[mu] default-account auto-unlock failed:', err);
-              // fall through to the picker
-            }
+        // Default-account fast path (discussion #270): decideBootAccountAction
+        // (in userPartitions) decides whether to enter directly, show the picker,
+        // or silently unlock a password-free default account. Keeping the policy
+        // in a pure helper lets it be unit-tested; see its doc comment for why
+        // the already-unlocked case must be handled explicitly.
+        const action = decideBootAccountAction(users, status, readDefaultAccountId());
+        if (action.kind === 'unlockDefault') {
+          try {
+            await unlockUser(action.userId, null);
+            if (cancelled) return;
+            window.dispatchEvent(new CustomEvent(PROFILES_CHANGED_EVENT));
+            setAccountLockState('ready');
+            return;
+          } catch (err) {
+            console.warn('[mu] default-account auto-unlock failed:', err);
+            // fall through to the picker
+            setAccountLockState('needed');
+            return;
           }
         }
-        setAccountLockState(finalNeeded ? 'needed' : 'ready');
+        setAccountLockState(action.kind === 'picker' ? 'needed' : 'ready');
       } catch (err) {
         // user_partitions unavailable (e.g. STORE_NOT_READY race): proceed
         // without the picker so the app remains usable.

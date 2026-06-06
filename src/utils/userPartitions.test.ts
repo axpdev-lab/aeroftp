@@ -9,6 +9,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     clearUsersListCache,
+    decideBootAccountAction,
     needsAccountLockScreen,
     readUsersListCache,
     writeUsersListCache,
@@ -66,6 +67,62 @@ describe('needsAccountLockScreen', () => {
             { hasPassphrase: false },
             { hasPassphrase: true },
         ])).toBe(true);
+    });
+});
+
+describe('decideBootAccountAction (#270)', () => {
+    const A = { id: 1, hasPassphrase: false };
+    const B = { id: 2, hasPassphrase: false };
+    const locked = (isUnlocked: boolean, unlockedUserId: number | null = null) =>
+        ({ isUnlocked, unlockedUserId });
+
+    it('enters directly when there are no users', () => {
+        expect(decideBootAccountAction([], locked(false), null)).toEqual({ kind: 'ready' });
+    });
+
+    it('enters directly for R1 (single passphrase-less user, no default)', () => {
+        expect(decideBootAccountAction([A], locked(false), null)).toEqual({ kind: 'ready' });
+    });
+
+    it('shows the picker for multiple users with no default set', () => {
+        expect(decideBootAccountAction([A, B], locked(false), null)).toEqual({ kind: 'picker' });
+    });
+
+    it('silently unlocks a password-free default on a fresh (locked) boot', () => {
+        expect(decideBootAccountAction([A, B], locked(false), A.id))
+            .toEqual({ kind: 'unlockDefault', userId: A.id });
+    });
+
+    // The regression Ehud reported: after a tray Quit + relaunch the backend
+    // reports the persisted password-free default as already unlocked, so the
+    // `!isUnlocked` path never runs. Must still enter directly, not the picker.
+    it('enters directly when the default is already the unlocked active user', () => {
+        expect(decideBootAccountAction([A, B], locked(true, A.id), A.id))
+            .toEqual({ kind: 'ready' });
+    });
+
+    it('never skips a passphrase-protected default (always shows the picker)', () => {
+        const protectedB = { id: 2, hasPassphrase: true };
+        expect(decideBootAccountAction([A, protectedB], locked(false), protectedB.id))
+            .toEqual({ kind: 'picker' });
+    });
+
+    it('shows the picker when the default id no longer matches any user', () => {
+        expect(decideBootAccountAction([A, B], locked(false), 999)).toEqual({ kind: 'picker' });
+    });
+
+    it('switches to the default when a different account is the active one', () => {
+        // The star was set on A while B was the last active account (the backend
+        // reports B as the unlocked password-free user after restart). The
+        // default must win on boot, so switch to A rather than showing the picker.
+        expect(decideBootAccountAction([A, B], locked(true, B.id), A.id))
+            .toEqual({ kind: 'unlockDefault', userId: A.id });
+    });
+
+    it('prompts a single protected user that is still locked', () => {
+        const protectedA = { id: 1, hasPassphrase: true };
+        expect(decideBootAccountAction([protectedA], locked(false), null))
+            .toEqual({ kind: 'picker' });
     });
 });
 
