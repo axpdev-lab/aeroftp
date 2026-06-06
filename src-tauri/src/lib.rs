@@ -8888,8 +8888,9 @@ async fn app_ready(app: AppHandle, start_minimized: Option<bool>) {
         let _ = main_window.remove_menu();
         let _ = main_window
             .restore_state(StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED);
-        // Heal a poisoned 0x0 size restored from earlier broken builds (#290)
-        // before the window is shown, so it never flashes at zero size.
+        // Heal a poisoned 0x0 size restored from a saved state (#290) before the
+        // window is shown, so it never flashes at zero size on that path.
+        log_window_diagnostics(&main_window, "app_ready pre-show");
         heal_restored_window_size(&main_window);
         if start_minimized {
             info!("Main window kept hidden (autostart minimized)");
@@ -8898,6 +8899,25 @@ async fn app_ready(app: AppHandle, start_minimized: Option<bool>) {
             let _ = main_window.set_focus();
             info!("Main window shown");
             log_window_diagnostics(&main_window, "app_ready post-show");
+            // macOS 26 Tahoe: the window can collapse to a 0x0 content frame at
+            // show() time even with a valid built size and no saved state at all
+            // (#290, confirmed: fresh config and forced `maximized:true` both
+            // still report inner_size=0x0). The documented WebKit workaround is
+            // to re-assert the size once the window is actually on screen, so we
+            // heal again post-show and re-check on a short delay because the
+            // collapse can land a frame or two after present. The timestamped
+            // diagnostics pinpoint exactly when (if) it goes degenerate.
+            heal_restored_window_size(&main_window);
+            let w = main_window.clone();
+            tauri::async_runtime::spawn(async move {
+                for (delay_ms, ctx) in
+                    [(300u64, "app_ready +300ms"), (1200u64, "app_ready +1200ms")]
+                {
+                    tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                    log_window_diagnostics(&w, ctx);
+                    heal_restored_window_size(&w);
+                }
+            });
         }
     }
 
