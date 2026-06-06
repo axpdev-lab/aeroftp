@@ -3250,7 +3250,8 @@
             "description": "AeroFTP heeft een onverwachte fout ondervonden. U kunt proberen te herstellen of de applicatie opnieuw te laden.",
             "reload": "Herladen",
             "title": "Er is iets misgegaan",
-            "tryRecover": "Probeer te herstellen"
+            "tryRecover": "Probeer te herstellen",
+            "restrictedChar": "Deze naam kan niet worden gebruikt op {provider}: hij bevat {char}, wat de server niet toestaat."
         },
         "permissions": {
             "apply": "Toepassen",
@@ -4152,7 +4153,9 @@
                 "cloud": "Cloud",
                 "favorites": "Favorieten",
                 "dev": "Dev",
-                "media": "Media"
+                "media": "Media",
+                "localBridge": "Lokale brug",
+                "paid": "Betaald"
             },
             "noServers": "Geen opgeslagen servers",
             "noServersHint": "Begin met een snelle verbinding of verken de servicecatalogus.",

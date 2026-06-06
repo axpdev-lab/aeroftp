@@ -3250,7 +3250,8 @@
             "description": "AeroFTP mengalami kesalahan tak terduga. Anda dapat mencoba memulihkan atau memuat ulang aplikasi.",
             "reload": "Muat Ulang",
             "title": "Terjadi kesalahan",
-            "tryRecover": "Coba pulihkan"
+            "tryRecover": "Coba pulihkan",
+            "restrictedChar": "Nama ini tidak dapat digunakan di {provider}: berisi {char}, yang tidak diizinkan oleh server."
         },
         "permissions": {
             "apply": "Terapkan",
@@ -4152,7 +4153,9 @@
                 "cloud": "Cloud",
                 "favorites": "Favorit",
                 "dev": "Dev",
-                "media": "Media"
+                "media": "Media",
+                "localBridge": "Jembatan lokal",
+                "paid": "Berbayar"
             },
             "noServers": "Tidak ada server tersimpan",
             "noServersHint": "Mulai dengan sambungan cepat atau jelajahi katalog layanan.",

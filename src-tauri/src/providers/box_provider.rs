@@ -412,10 +412,15 @@ impl BoxProvider {
                 .await
                 .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
+            // Box returns names in their stored ENCODED form (a name a user
+            // could not otherwise create round-trips via reversible encoding),
+            // so match the encoded leaf. The `id_cache` and error text keep the
+            // user's original spelling.
+            let encoded_part = crate::restricted_chars::encode_leaf(ProviderType::Box, part);
             let found = items
                 .entries
                 .iter()
-                .find(|item| item.name == part && item.item_type == "folder");
+                .find(|item| item.name == encoded_part && item.item_type == "folder");
 
             match found {
                 Some(folder) => {
@@ -462,10 +467,11 @@ impl BoxProvider {
             .await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
+        let encoded_name = crate::restricted_chars::encode_leaf(ProviderType::Box, file_name);
         items
             .entries
             .iter()
-            .find(|item| item.name == file_name)
+            .find(|item| item.name == encoded_name)
             .map(|item| item.id.clone())
             .ok_or_else(|| ProviderError::NotFound(format!("File not found: {}", file_name)))
     }
@@ -514,10 +520,11 @@ impl BoxProvider {
             .await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
+        let encoded_name = crate::restricted_chars::encode_leaf(ProviderType::Box, item_name);
         items
             .entries
             .iter()
-            .find(|item| item.name == item_name)
+            .find(|item| item.name == encoded_name)
             .map(|item| (item.id.clone(), item.item_type.clone()))
             .ok_or_else(|| ProviderError::NotFound(format!("Item not found: {}", item_name)))
     }
@@ -565,9 +572,10 @@ impl BoxProvider {
                     metadata.insert("trashed_at".to_string(), t.clone());
                 }
 
+                let name = crate::restricted_chars::decode_leaf(ProviderType::Box, &item.name);
                 all_entries.push(RemoteEntry {
-                    name: item.name.clone(),
-                    path: format!("/Trash/{}", item.name),
+                    path: format!("/Trash/{}", name),
+                    name,
                     is_dir: item.item_type == "folder",
                     size: item.size.unwrap_or(0),
                     modified: item.modified_at.clone(),
@@ -1175,6 +1183,8 @@ impl BoxProvider {
             _ => ("/", normalized.trim_start_matches('/')),
         };
         let parent_id = self.resolve_folder_id(parent_path).await?;
+        // Store the new leaf under its reversible encoded form.
+        let file_name = crate::restricted_chars::encode_leaf(ProviderType::Box, file_name);
 
         let session_body = serde_json::json!({
             "file_name": file_name,
@@ -1523,10 +1533,15 @@ impl StorageProvider for BoxProvider {
             .into_iter()
             .map(|item| {
                 let is_dir = item.item_type == "folder";
+                // Decode the stored name to the user's original spelling, and
+                // build the path from it so it (and the `id_cache` key below,
+                // which `resolve_folder_id` looks up in original form) stay
+                // consistent with the rest of the provider.
+                let name = crate::restricted_chars::decode_leaf(ProviderType::Box, &item.name);
                 let entry_path = if base_path == "/" {
-                    format!("/{}", item.name)
+                    format!("/{}", name)
                 } else {
-                    format!("{}/{}", base_path, item.name)
+                    format!("{}/{}", base_path, name)
                 };
                 let is_watermarked = item
                     .watermark_info
@@ -1535,7 +1550,7 @@ impl StorageProvider for BoxProvider {
                     .unwrap_or(false);
 
                 RemoteEntry {
-                    name: item.name,
+                    name,
                     path: entry_path,
                     is_dir,
                     size: item.size.unwrap_or(0),
@@ -1722,6 +1737,9 @@ impl StorageProvider for BoxProvider {
             Some(pos) if pos > 0 => (&normalized[..pos], &normalized[pos + 1..]),
             _ => ("/", normalized.trim_start_matches('/')),
         };
+        // Store the new leaf under its reversible encoded form (used by both the
+        // chunked-session and the small-file multipart code paths below).
+        let file_name = crate::restricted_chars::encode_leaf(ProviderType::Box, file_name);
 
         let parent_id = self.resolve_folder_id(parent_path).await?;
         let total_size = tokio::fs::metadata(local_path)
@@ -1873,6 +1891,7 @@ impl StorageProvider for BoxProvider {
             Some(pos) if pos > 0 => (&normalized[..pos], &normalized[pos + 1..]),
             _ => ("/", normalized.trim_start_matches('/')),
         };
+        let folder_name = crate::restricted_chars::encode_leaf(ProviderType::Box, folder_name);
 
         let parent_id = self.resolve_folder_id(parent_path).await?;
         let token = self.get_token().await?;
@@ -1989,6 +2008,8 @@ impl StorageProvider for BoxProvider {
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| to.to_string());
+        // Store the new leaf encoded (used by both the file and folder branches).
+        let new_name = crate::restricted_chars::encode_leaf(ProviderType::Box, &new_name);
 
         // Resolve destination parent folder ID for cross-folder moves
         let from_parent = std::path::Path::new(from)
@@ -2079,7 +2100,7 @@ impl StorageProvider for BoxProvider {
                 metadata.insert("sha1".to_string(), s.to_ascii_lowercase());
             }
             return Ok(RemoteEntry {
-                name: item.name,
+                name: crate::restricted_chars::decode_leaf(ProviderType::Box, &item.name),
                 path: Self::normalize_path(path),
                 is_dir: false,
                 size: item.size.unwrap_or(0),
@@ -2114,7 +2135,7 @@ impl StorageProvider for BoxProvider {
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         Ok(RemoteEntry {
-            name: item.name,
+            name: crate::restricted_chars::decode_leaf(ProviderType::Box, &item.name),
             path: Self::normalize_path(path),
             is_dir: true,
             size: 0,
@@ -2339,6 +2360,8 @@ impl StorageProvider for BoxProvider {
             Some(pos) if pos > 0 => (&to_normalized[..pos], &to_normalized[pos + 1..]),
             _ => ("/", to_normalized.trim_start_matches('/')),
         };
+        // Store the copy's new leaf encoded (used by file and folder branches).
+        let to_name = crate::restricted_chars::encode_leaf(ProviderType::Box, to_name);
         let to_parent_id = self.resolve_folder_id(to_parent).await?;
 
         // Try file copy first
@@ -2580,10 +2603,15 @@ impl StorageProvider for BoxProvider {
         Ok(results
             .entries
             .into_iter()
-            .filter(|item| super::matches_find_pattern(&item.name, pattern))
-            .map(|item| {
-                RemoteEntry {
-                    name: item.name,
+            .filter_map(|item| {
+                // Match the user's pattern against the DECODED name (the stored
+                // name is encoded), and surface the decoded name to the user.
+                let name = crate::restricted_chars::decode_leaf(ProviderType::Box, &item.name);
+                if !super::matches_find_pattern(&name, pattern) {
+                    return None;
+                }
+                Some(RemoteEntry {
+                    name,
                     path: String::new(), // Box search doesn't return full path
                     is_dir: item.item_type == "folder",
                     size: item.size.unwrap_or(0),
@@ -2599,7 +2627,7 @@ impl StorageProvider for BoxProvider {
                         m.insert("id".to_string(), item.id);
                         m
                     },
-                }
+                })
             })
             .collect())
     }

@@ -6,6 +6,7 @@ import { listen } from '@tauri-apps/api/event';
 import { guardedUnlisten } from './useTauriListener';
 import { TransferEvent, TransferProgress } from '../types';
 import { dispatchTransferToast } from '../components/Transfer/TransferToastContainer';
+import { localizeRestrictedCharError } from '../utils/restrictedCharError';
 import type { TransferToastLane, TransferToastState } from '../components/Transfer';
 import type { ActivityLogContextValue } from './useActivityLog';
 import type { useHumanizedLog } from './useHumanizedLog';
@@ -498,7 +499,9 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
 
         const trackedQueue = findTrackedEntry(transferIdToQueueId.current, data.transfer_id, data.path, data.filename);
         if (trackedQueue) {
-          transferQueue.failTransfer(trackedQueue.value, data.message || 'Transfer failed');
+          const failMessage =
+            localizeRestrictedCharError(data.message, t) ?? (data.message || 'Transfer failed');
+          transferQueue.failTransfer(trackedQueue.value, failMessage);
           transferIdToQueueId.current.delete(trackedQueue.key);
         }
         transferIdToQueueId.current.delete(data.transfer_id);

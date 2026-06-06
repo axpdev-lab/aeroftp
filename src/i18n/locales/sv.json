@@ -3250,7 +3250,8 @@
             "description": "AeroFTP stotte pa ett ovantat fel. Du kan forsoka aterhamma eller ladda om programmet.",
             "reload": "Ladda om",
             "title": "Nagot gick fel",
-            "tryRecover": "Forsok aterhamma"
+            "tryRecover": "Forsok aterhamma",
+            "restrictedChar": "Det här namnet kan inte användas på {provider}: det innehåller {char}, som servern inte tillåter."
         },
         "permissions": {
             "apply": "Tillamppa",
@@ -4152,7 +4153,9 @@
                 "cloud": "Moln",
                 "favorites": "Favoriter",
                 "dev": "Dev",
-                "media": "Media"
+                "media": "Media",
+                "localBridge": "Lokal brygga",
+                "paid": "Betald"
             },
             "noServers": "Inga sparade servrar",
             "noServersHint": "Börja med en snabbanslutning eller utforska tjänstekatalogen.",

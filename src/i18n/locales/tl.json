@@ -3250,7 +3250,8 @@
             "description": "Nakatagpo ang AeroFTP ng hindi inaasahang error. Maaari mong subukang mag-recover o i-reload ang application.",
             "reload": "I-reload",
             "title": "May nangyaring mali",
-            "tryRecover": "Subukang mag-recover"
+            "tryRecover": "Subukang mag-recover",
+            "restrictedChar": "Hindi magagamit ang pangalang ito sa {provider}: naglalaman ito ng {char}, na hindi pinapayagan ng server."
         },
         "permissions": {
             "apply": "Ilapat",
@@ -4171,7 +4172,9 @@
                 "cloud": "Cloud",
                 "favorites": "Mga Paborito",
                 "dev": "Dev",
-                "media": "Media"
+                "media": "Media",
+                "localBridge": "Lokal na tulay",
+                "paid": "Bayad"
             },
             "noServers": "Walang naka-save na mga server",
             "noServersHint": "Magsimula sa mabilis na koneksyon o tuklasin ang katalogo ng serbisyo.",

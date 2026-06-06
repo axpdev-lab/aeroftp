@@ -3250,7 +3250,8 @@
             "description": "Az AeroFTP váratlan hibát észlelt. Megpróbálhatja a helyreállítást, vagy újratöltheti az alkalmazást.",
             "reload": "Újratöltés",
             "title": "Hiba történt",
-            "tryRecover": "Helyreállítás megpróbálása"
+            "tryRecover": "Helyreállítás megpróbálása",
+            "restrictedChar": "Ez a név nem használható itt: {provider}: tartalmazza ezt: {char}, amelyet a kiszolgáló nem engedélyez."
         },
         "permissions": {
             "apply": "Alkalmazás",
@@ -4152,7 +4153,9 @@
                 "cloud": "Felhő",
                 "favorites": "Kedvencek",
                 "dev": "Dev",
-                "media": "Média"
+                "media": "Média",
+                "localBridge": "Helyi híd",
+                "paid": "Fizetős"
             },
             "noServers": "Nincsenek mentett szerverek",
             "noServersHint": "Kezdjen egy gyors csatlakozással, vagy böngéssze a szolgáltatáskatalógust.",

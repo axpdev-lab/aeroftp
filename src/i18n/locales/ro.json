@@ -3250,7 +3250,8 @@
             "description": "AeroFTP a intampinat o eroare neasteptata. Poti incerca sa recuperezi sau sa reincarci aplicatia.",
             "reload": "Reincarca",
             "title": "Ceva nu a mers bine",
-            "tryRecover": "Incearca recuperarea"
+            "tryRecover": "Incearca recuperarea",
+            "restrictedChar": "Acest nume nu poate fi utilizat pe {provider}: conține {char}, pe care serverul nu îl permite."
         },
         "permissions": {
             "apply": "Aplica",
@@ -4152,7 +4153,9 @@
                 "cloud": "Cloud",
                 "favorites": "Favorite",
                 "dev": "Dev",
-                "media": "Media"
+                "media": "Media",
+                "localBridge": "Punte locală",
+                "paid": "Plătit"
             },
             "noServers": "Niciun server salvat",
             "noServersHint": "Începe cu o conectare rapidă sau explorează catalogul de servicii.",

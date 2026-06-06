@@ -1048,6 +1048,11 @@ impl ProviderUploadExecutor {
     ) -> Result<(), String> {
         let remote_path = entry.remote_path.clone();
         let local_path = entry.local_path.clone();
+        // Reject names with characters this provider's backend forbids before
+        // the per-file upload (covers folder uploads and engine/CLI transfers).
+        // Surfaces as a clear per-file error instead of a silent backend failure.
+        crate::restricted_chars::validate_path(provider.provider_type(), &remote_path)
+            .map_err(|e| e.to_string())?;
         let commit_message = self.commit_message.clone();
         let size_secs = file_size / 50_000;
         let eff_timeout = self

@@ -3250,7 +3250,8 @@
             "description": "AeroFTP kohtasi odottamattoman virheen. Voit yrittää palautusta tai ladata sovelluksen uudelleen.",
             "reload": "Lataa uudelleen",
             "title": "Jotain meni pieleen",
-            "tryRecover": "Yritä palautusta"
+            "tryRecover": "Yritä palautusta",
+            "restrictedChar": "Tätä nimeä ei voi käyttää palvelussa {provider}: se sisältää merkin {char}, jota palvelin ei salli."
         },
         "permissions": {
             "apply": "Käytä",
@@ -4152,7 +4153,9 @@
                 "cloud": "Cloud",
                 "favorites": "Suosikit",
                 "dev": "Dev",
-                "media": "Media"
+                "media": "Media",
+                "localBridge": "Paikallinen silta",
+                "paid": "Maksullinen"
             },
             "noServers": "Ei tallennettuja palvelimia",
             "noServersHint": "Aloita pikayhteydellä tai selaa palveluluetteloa.",

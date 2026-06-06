@@ -215,7 +215,7 @@ AeroFTP organizes integrations on three tiers, so what you see in the catalog is
 | OpenDrive | US | 5 GB | API, WebDAV |
 | Oracle Cloud | US | 20 GB (always-free) | S3 |
 | pCloud | CH | 10 GB | OAuth, WebDAV* |
-| PixelUnion | EU | managed Immich | API* |
+| PixelUnion | EU | 16 GB (managed Immich) | API |
 | Seafile | - | self-hosted | WebDAV |
 | SourceForge | US | OSS hosting | SFTP |
 | Storj | US | 25 GB (decentralized) | S3 |

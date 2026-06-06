@@ -3250,7 +3250,8 @@
             "description": "AeroFTP saskārās ar neparedzētu kļūdu. Varat mēģināt atkopt vai pārlādēt lietotni.",
             "reload": "Pārlādēt",
             "title": "Kaut kas nogāja greizi",
-            "tryRecover": "Mēģināt atkopt"
+            "tryRecover": "Mēģināt atkopt",
+            "restrictedChar": "Šo nosaukumu nevar izmantot pakalpojumā {provider}: tas satur {char}, ko serveris neatļauj."
         },
         "permissions": {
             "apply": "Lietot",
@@ -4152,7 +4153,9 @@
                 "cloud": "Mākoņi",
                 "favorites": "Izlase",
                 "dev": "Dev",
-                "media": "Multivide"
+                "media": "Multivide",
+                "localBridge": "Lokāls tilts",
+                "paid": "Maksas"
             },
             "noServers": "Nav saglabātu serveru",
             "noServersHint": "Sāciet ar ātro savienojumu vai pārlūkojiet pakalpojumu katalogu.",

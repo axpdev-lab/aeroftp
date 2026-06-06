@@ -3250,7 +3250,8 @@
             "description": "AeroFTP je naletel na nepričakovano napako. Poskusite obnoviti ali znova naložiti aplikacijo.",
             "reload": "Znova naloži",
             "title": "Nekaj je šlo narobe",
-            "tryRecover": "Poskusi obnoviti"
+            "tryRecover": "Poskusi obnoviti",
+            "restrictedChar": "Tega imena ni mogoče uporabiti v {provider}: vsebuje {char}, ki ga strežnik ne dovoli."
         },
         "permissions": {
             "apply": "Uporabi",
@@ -4152,7 +4153,9 @@
                 "cloud": "Oblak",
                 "favorites": "Priljubljeni",
                 "dev": "Dev",
-                "media": "Mediji"
+                "media": "Mediji",
+                "localBridge": "Lokalni most",
+                "paid": "Plačljivo"
             },
             "noServers": "Ni shranjenih strežnikov",
             "noServersHint": "Začnite s hitro povezavo ali raziskušite katalog storitev.",

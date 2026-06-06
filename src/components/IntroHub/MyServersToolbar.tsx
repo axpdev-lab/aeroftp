@@ -1,15 +1,26 @@
 import * as React from 'react';
-import { Search, X, LayoutGrid, List, Eye, EyeOff, Activity, Star, ArrowRightLeft, Gauge, AtSign, Rows3, Rows2, HardDrive } from 'lucide-react';
+import { Search, X, LayoutGrid, List, Eye, EyeOff, Activity, Star, ArrowRightLeft, Gauge, AtSign, Rows3, Rows2, HardDrive, CreditCard } from 'lucide-react';
 import { ImportExportIcon } from '../icons/ImportExportIcon';
 import { useTranslation } from '../../i18n';
 import { MyServersViewMode, MyServersFilterBy, FILTER_CHIPS } from '../../types/catalog';
 import type { MyServersDensity } from '../../hooks/useMyServersDensity';
+
+/** ISO 3166-1 alpha-2 (or 'EU') -> regional-indicator flag emoji. */
+function countryFlagEmoji(code: string): string {
+    if (!/^[A-Za-z]{2}$/.test(code)) return '';
+    return String.fromCodePoint(...[...code.toUpperCase()].map(c => 0x1F1E6 + c.charCodeAt(0) - 65));
+}
 
 interface MyServersToolbarProps {
     searchQuery: string;
     onSearchChange: (query: string) => void;
     activeFilter: MyServersFilterBy;
     onFilterChange: (filter: MyServersFilterBy) => void;
+    /** HQ-country filter ('' = all countries). Combines with the chip filter. */
+    countryFilter: string;
+    onCountryChange: (code: string) => void;
+    /** Distinct HQ countries present among saved servers, with counts. */
+    countryOptions: { code: string; count: number }[];
     viewMode: MyServersViewMode;
     onViewModeChange: (mode: MyServersViewMode) => void;
     credentialsMasked: boolean;
@@ -39,6 +50,9 @@ export function MyServersToolbar({
     onSearchChange,
     activeFilter,
     onFilterChange,
+    countryFilter,
+    onCountryChange,
+    countryOptions,
     viewMode,
     onViewModeChange,
     credentialsMasked,
@@ -105,6 +119,8 @@ export function MyServersToolbar({
                         }`}
                     >
                         {chip.id === 'favorites' && <Star size={10} />}
+                        {chip.id === 'local-bridge' && <HardDrive size={10} />}
+                        {chip.id === 'paid' && <CreditCard size={10} />}
                         <span>{t(chip.labelKey)}</span>
                         <span className={`text-[10px] tabular-nums px-1 py-0.5 rounded-full ${
                             activeFilter === chip.id ? 'bg-blue-200/50 dark:bg-blue-800/40 text-blue-500 dark:text-blue-300' : 'bg-gray-200/50 dark:bg-gray-600/40 text-gray-400 dark:text-gray-500'
@@ -112,6 +128,26 @@ export function MyServersToolbar({
                     </button>
                 );
             })}
+
+            {/* Country filter: a select rather than a chip, since the country
+                dimension has many values. Only rendered when at least one saved
+                server resolves to a known HQ country. Combines with the chips. */}
+            {countryOptions.length > 0 && (
+                <select
+                    value={countryFilter}
+                    onChange={(e) => onCountryChange(e.target.value)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap cursor-pointer transition-colors focus:outline-none ${
+                        countryFilter
+                            ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700'
+                            : 'bg-gray-100 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400 border border-transparent hover:bg-gray-200 dark:hover:bg-gray-700'
+                    }`}
+                >
+                    <option value="">{`🌍 ${t('introHub.filter.all')}`}</option>
+                    {countryOptions.map(({ code, count }) => (
+                        <option key={code} value={code}>{`${countryFlagEmoji(code)} ${code} (${count})`}</option>
+                    ))}
+                </select>
+            )}
 
             {/* View mode toggle: show only the inactive view as a single
                 "switch to" button. Two buttons (active highlighted + inactive)

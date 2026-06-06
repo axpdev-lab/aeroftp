@@ -3250,7 +3250,8 @@
             "description": "AeroFTP aptiko netikėtą klaidą. Galite pabandyti atkurti arba perkrauti programą.",
             "reload": "Perkrauti",
             "title": "Kažkas nepavyko",
-            "tryRecover": "Bandyti atkurti"
+            "tryRecover": "Bandyti atkurti",
+            "restrictedChar": "Šio pavadinimo negalima naudoti „{provider}“: jame yra {char}, kurio serveris neleidžia."
         },
         "permissions": {
             "apply": "Taikyti",
@@ -4152,7 +4153,9 @@
                 "cloud": "Debesis",
                 "favorites": "Mėgstami",
                 "dev": "Dev",
-                "media": "Medija"
+                "media": "Medija",
+                "localBridge": "Vietinis tiltas",
+                "paid": "Mokama"
             },
             "noServers": "Nėra išsaugotų serverių",
             "noServersHint": "Pradėkite su greitu prisijungimu arba naršykite paslaugų katalogą.",

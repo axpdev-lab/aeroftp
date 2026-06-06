@@ -991,7 +991,7 @@
     "company": "PixelUnion",
     "logoId": "pixelunion",
     "country": "EU",
-    "freeGb": null,
+    "freeGb": 16,
     "freeNote": "managed Immich",
     "regions": [
       "EU"
@@ -1001,7 +1001,7 @@
         "label": "API",
         "protocol": "immich",
         "providerId": "pixelunion",
-        "paid": true,
+        "paid": false,
         "category": "media-services",
         "note": null
       }

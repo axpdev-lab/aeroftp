@@ -250,23 +250,35 @@ impl DropboxProvider {
         Ok(())
     }
 
-    /// Normalize path for Dropbox API (empty string = root, paths start with /)
+    /// Normalize path for Dropbox API (empty string = root, paths start with /).
+    ///
+    /// This is the single chokepoint through which every outgoing remote path
+    /// passes, so it is also where we apply the reversible restricted-character
+    /// encoding (Box/Dropbox/Jottacloud/OpenDrive store names a provider's API
+    /// would otherwise reject). Internal `current_path` stays in the user's
+    /// original form; only the string actually sent to the API is encoded here,
+    /// and [`Self::to_remote_entry`] decodes names on the way back.
     fn normalize_path(&self, path: &str) -> String {
         let path = path.trim_matches('/');
-        if path.is_empty() {
+        let normalized = if path.is_empty() {
             "".to_string()
         } else {
             format!("/{}", path)
-        }
+        };
+        crate::restricted_chars::encode_path(ProviderType::Dropbox, &normalized)
     }
 
     /// Convert Dropbox metadata to RemoteEntry
     fn to_remote_entry(&self, meta: &DropboxMetadata) -> RemoteEntry {
         let is_dir = meta.tag == "folder";
-        let path = meta
+        // Decode the encoded forms stored on the provider back to the user's
+        // original name/path for display (inverse of `normalize_path`).
+        let name = crate::restricted_chars::decode_leaf(ProviderType::Dropbox, &meta.name);
+        let raw_path = meta
             .path_display
             .clone()
             .unwrap_or_else(|| meta.path_lower.clone().unwrap_or_default());
+        let path = crate::restricted_chars::decode_path(ProviderType::Dropbox, &raw_path);
 
         let mut metadata = HashMap::new();
         if let Some(ref rev) = meta.rev {
@@ -279,7 +291,7 @@ impl DropboxProvider {
         }
 
         RemoteEntry {
-            name: meta.name.clone(),
+            name,
             path,
             is_dir,
             size: meta.size,

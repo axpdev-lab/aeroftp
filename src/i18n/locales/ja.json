@@ -3215,7 +3215,8 @@
             "description": "AeroFTP で予期しないエラーが発生しました。復旧を試みるか、アプリケーションを再読み込みしてください。",
             "reload": "再読み込み",
             "title": "問題が発生しました",
-            "tryRecover": "復旧を試みる"
+            "tryRecover": "復旧を試みる",
+            "restrictedChar": "この名前は {provider} では使用できません。サーバーが許可していない {char} が含まれています。"
         },
         "permissions": {
             "apply": "適用",
@@ -4152,7 +4153,9 @@
                 "cloud": "クラウド",
                 "favorites": "お気に入り",
                 "dev": "Dev",
-                "media": "メディア"
+                "media": "メディア",
+                "localBridge": "ローカルブリッジ",
+                "paid": "有料"
             },
             "noServers": "保存済みサーバーはありません",
             "noServersHint": "クイック接続で始めるか、サービスカタログを探索してください。",

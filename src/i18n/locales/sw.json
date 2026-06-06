@@ -3250,7 +3250,8 @@
             "description": "AeroFTP imekutana na hitilafu isiyotarajiwa. Unaweza kujaribu kurejesha au kupakia upya programu.",
             "reload": "Pakia upya",
             "title": "Kuna kitu kimeenda vibaya",
-            "tryRecover": "Jaribu kurejesha"
+            "tryRecover": "Jaribu kurejesha",
+            "restrictedChar": "Jina hili haliwezi kutumika kwenye {provider}: lina {char}, ambayo seva hairuhusu."
         },
         "permissions": {
             "apply": "Tekeleza",
@@ -4152,7 +4153,9 @@
                 "cloud": "Wingu",
                 "favorites": "Vipendwa",
                 "dev": "Dev",
-                "media": "Media"
+                "media": "Media",
+                "localBridge": "Daraja la ndani",
+                "paid": "Inalipiwa"
             },
             "noServers": "Hakuna seva zilizohifadhiwa",
             "noServersHint": "Anza na unganisho wa haraka au chunguza katalogi ya huduma.",
