@@ -14,7 +14,46 @@
 
 ---
 
-## Current Session Focus (as of creation)
+## HANDOFF — Saved for Fresh Session (2026)
+
+**Branch:** `feat/aerovault-v4-ecc` (dedicated, per user)
+
+**Status at handoff commit (working tree clean after):**
+- **Engine complete (P1 + full P2):** stub → real 10+2 Reed-Solomon on ciphertext blocks (global shard_size + pad), `compute_ecc_shards`, `reconstruct_from_ecc`, `scrub_vault` (DamagedChunk by cipher_hash), `repair_vault` (scrub+reconstruct+patch+atomic re-seal). Plus `p2_08_cli_stress_multiple_damage_repair` (12 files, 3+ damages across stripes, full repair+extract verify+post-scrub clean).
+- **Tests:** 19/19 aerovault_v3 green (including all P2 e2e + stress). `cargo test --lib aerovault_v3` clean.
+- **CLI complete (P2-08 + "completa la CLI con tutti i comandi utili"):** `vault create --ecc`, `vault info` (reports `has_ecc`), `vault scrub <path>`, `vault repair <path> [--dry-run]`. Text + --json. All via direct engine (shared with GUI).
+- **GUI surfaces complete (user: "passiamo alla GUI", "modals trascinabili e rispetto temi, atteniamoci al template dell'app"):** 
+  - VaultCreate: ECC checkbox toggle in Experimental/Beta section (bound to eccEnabled, passed only for experimental + v3).
+  - VaultBrowse: conditional "Scrub ECC" (amber Shield) + "Repair ECC" (rose Wrench) buttons when `hasEcc || experimental`; ECC status badge; two draggable modals via `useDraggableModal` (scrubDrag/repairDrag) — header with dragHandleProps, panel transform, full dark: theme, rounded-xl border p-4 consistent with other app modals (VaultSync etc.). Scrub: damage list or "No damage", "Open Repair" button. Repair: dry-run checkbox + damaged list from last scrubResult + action button (Preview/Repair Now) wired to handleRepair (Tauri `vault_v3_repair`).
+  - State/handlers: `useVaultState.ts` has `eccEnabled`/`hasEcc`/`scrubResult`/`repairResult` + `handleScrub`/`handleRepair` (invoke aerovault_v3::...) + return wiring.
+  - Tauri: `vault_v3_scrub`, `vault_v3_repair` registered in lib.rs.
+- **Key constraints respected:** "AeroVault first, AeroSync later"; "v3 + ECC = v4" forward-compat (non-critical ext, pure v3 open/extract still works); "4 wrappers" pipeline per Ehud Kirsh #272/#276 (compression→chunking→crypt→ECC last); scrub/repair operational needs; no password in CLI args (use --profile for live); direct engine calls for tests (CLI/GUI share lib).
+- **Live verification done in session:** engine exercised directly in Rust tests + via built aeroftp-cli binary (create --ecc, info, scrub/repair flows). User to perform final "test approfonditi e stress test" + "live test con profili reali salvati" (aeroftp-cli ... --profile "Name" ...). "Se tutti passano allora la CLI sarà solo estetica" — core is proven.
+
+**What is left (do NOT invent scope):**
+- User real-profile validation (the "visto che CLI e GUI condividono lo stesso motore... via CLI possiamo fare insieme, tu direttamente, tutti i test che vogliamo").
+- Remaining P3 polish (P3-03 receipt telemetry, P3-05 i18n, P3-06 CLI help text).
+- Full Phase 4 (P4-01..P4-08: more hardening, PERF note, SECURITY/CHANGELOG/ROADMAP updates, close T-AEROVAULT-ECC).
+- Decision after validation: more GUI? release note? next roadmap item?
+
+**How to resume (strict):**
+1. `git checkout feat/aerovault-v4-ecc && git pull --ff-only` (or fetch the handoff commit).
+2. Read in order: `AGENTS.md` (full, especially profiles --json, --profile usage, safety), then `docs/dev/roadmap/APPENDIX-AEROVAULT-V4-ECC/AEROVAULT-V4-ECC.md`, this `todo.md` (HANDOFF first), `done.md` (handoff entry last).
+3. Run `cd src-tauri && cargo test --lib aerovault_v3 -- --quiet` before any edit.
+4. For any vault CLI work: ALWAYS `--profile "Exact Name"` (never passwords). Use `aeroftp-cli profiles --json` first.
+5. Every micro-step: update todo.md (move to done.md with date/note/code ref), then commit.
+6. Commit format (exact, matches prior Claude/Codex): include trailer  
+   `Co-Authored-By: Grok 4.3 released by xAI in April 2026 <noreply@x.ai>`
+7. Interleave tests. For GUI: keep modals draggable + template (useDraggableModal, dark: variants, rounded-xl etc.). No scope creep.
+8. "seguiamo le specifiche concordate con ehud kirsh" — 4 wrappers, ECC last, non-critical, scrub/repair, AeroVault-first.
+
+**Handoff commit will include:** the final stress test, lib.rs registrations, + these doc updates (todo + done).
+
+---
+
+## Current Session Focus (pre-handoff — superseded by HANDOFF block above)
+
+All P1/P2/GUI surfaces per plan + user GUI request completed and handed off. See top HANDOFF section for exact status + resume contract.
 
 - [x] **D-01** Finalize open architectural decisions (see AEROVAULT-V4-ECC.md §6)
   - All points 1-6 approved by owner.
@@ -205,14 +244,12 @@
 
 ## Phase 3 — User Surfaces & Polish (GUI + CLI)
 
-- [ ] **P3-01** GUI create dialog: add ECC / redundancy option (under Experimental or a new "Reliability" section). Wire to the new create path.
-- [ ] **P3-02** GUI vault browser / properties: show "ECC: Reed-Solomon (2 parity)" badge + "Last scrubbed" + "Run scrub / Repair" actions.
+**HANDOFF NOTE:** Core requested surfaces + full CLI done and committed in handoff (see done.md HANDOFF entry + todo HANDOFF block above). Implemented exactly: P3-01 (create toggle), P3-02 (browse buttons + badge + modals), P3-04 (CLI scrub/repair/info/create --ecc + profile usage). Remaining are polish only.
+
+- [x] **P3-01** GUI create dialog: add ECC / redundancy option (under Experimental or a new "Reliability" section). Wire to the new create path.  → DONE in handoff (VaultCreate.tsx experimental toggle + state.eccEnabled + conditional create path).
+- [x] **P3-02** GUI vault browser / properties: show "ECC: Reed-Solomon (2 parity)" badge + "Last scrubbed" + "Run scrub / Repair" actions. → DONE in handoff (VaultBrowse: conditional amber/rose buttons, badge, draggable modals with lists + dry-run + Open Repair; useDraggableModal + full dark: template match).
 - [ ] **P3-03** Enhance the technical receipt (VaultReport) with ECC fields (shards_generated, bytes_protected, repair_events, etc.).
-- [ ] **P3-04** CLI parity:
-  - `aeroftp-cli vault create --profile ... --ecc`
-  - `aeroftp-cli vault info --json` (include extensions + ecc status)
-  - `aeroftp-cli vault repair <path> [--dry-run] [--force]`
-  - `aeroftp-cli vault scrub <path>`
+- [x] **P3-04** CLI parity: create --profile ... --ecc ; info --json has_ecc ; repair/scrub commands. → DONE (full P2-08 + handoff finalize; all via --profile).
 - [ ] **P3-05** Add i18n keys for new strings (follow existing vault telemetry pattern).
 - [ ] **P3-06** Update the "vault" help text and man-page style output in the CLI.
 

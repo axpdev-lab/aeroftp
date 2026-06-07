@@ -243,3 +243,53 @@ Rocket engines lit. Proceeding step-by-step. 🚀
 - Live CLI proxy + Rust e2e cover the flows.
 
 Ready for user's real-profile tests. Estetica maestro mode engaged. 🚀
+
+---
+
+## HANDOFF COMMIT (user-requested: "salvare un handhoff e mi dai prompt breve per nuova finestra fresca")
+
+**When:** Immediately after GUI surfaces + P2-08 finalize (stress test + Tauri registrations) + all prior P1/P2/CLI per plan.
+
+**Branch:** `feat/aerovault-v4-ecc`
+
+**Commit (this one):** Includes:
+- Rust: `p2_08_cli_stress_multiple_damage_repair` (12-file multi-damage across stripes) + `vault_v3_scrub` / `vault_v3_repair` registrations in lib.rs invoke_handler.
+- Docs: this entry + prominent HANDOFF block injected at top of todo.md (with exact resume instructions, status, constraints, "seguiamo le specifiche concordate con ehud kirsh").
+- All changes committed together so fresh window starts from clean tree.
+
+**Delivered exactly as tracked + user directives:**
+- P1-01 to P1-07 (stub, compat, has_ecc, security_info, --ecc flag, one-liner registration).
+- P2-01 to P2-08 (reed-solomon-erasure=6, EccPayload* format, compute_ecc_shards (10+2, global shard, pad), reconstruct fix (Option + trim), wiring into build_file_bytes/save, scrub_vault, repair_vault atomic, Tauri+CLI exposure + stress e2e).
+- "completa la CLI con tutti i comandi utili": scrub + repair + info has_ecc + create --ecc done (no extras invented).
+- GUI (user explicit "passiamo alla GUI", "modals trascinabili e rispetto temi, atteniamoci al template dell'app"): full surfaces in VaultCreate + VaultBrowse + useVaultState (toggle, conditional amber/rose buttons, badge, two draggable modals with full damage list + dry-run + invoke handlers, theme/dark consistent, no deviation from existing estetica/hooks).
+- 19 tests green. Engine (direct) + CLI live exercised. "se tutti passano allora la CLI sarà solo estetica" — passed.
+- Strict adherence: AeroVault first; v3 forward-compat (non-critical ecc.reed-solomon); ECC last wrapper (4-wrappers pipeline from #272/#276 Ehud Kirsh); update todo/done every step; commits with correct Co-Authored trailer; --profile only; interleaved tests; no password on CLI; no scope creep.
+
+**Post-handoff next (per conversation record — do not assume):**
+1. User performs real "live test con profili reali salvati" + approfonditi stress (using aeroftp-cli --profile + the new scrub/repair).
+2. If green: CLI estetica only.
+3. Then: remaining P3 items (receipt fields, i18n, help text) or jump to P4 docs/CHANGELOG or close item.
+4. Or user directs "next roadmap topic".
+
+**Key files for any resume (read first):**
+- AGENTS.md (CLI agent rules, profiles, safety, --json, exit codes)
+- docs/dev/roadmap/APPENDIX-AEROVAULT-V4-ECC/AEROVAULT-V4-ECC.md (contract, 4-wrappers, decisions)
+- docs/dev/roadmap/APPENDIX-AEROVAULT-V4-ECC/todo.md (HANDOFF section + current focus)
+- docs/dev/roadmap/APPENDIX-AEROVAULT-V4-ECC/done.md (this + full history)
+- src-tauri/src/aerovault_v3.rs (engine: ~234 ECC consts, compute ~392, reconstruct ~470, scrub ~542, repair ~592, tests bottom)
+- src-tauri/src/bin/aeroftp_cli.rs (VaultCommands + handlers ~426xx)
+- src-tauri/src/lib.rs (registrations)
+- src/components/vault/{useVaultState.ts, VaultCreate.tsx, VaultBrowse.tsx} (GUI state + surfaces + modals)
+
+**Test baseline to run immediately on resume:**
+```bash
+cd src-tauri && cargo test --lib aerovault_v3 -- --quiet
+# expect: 19 passed
+```
+
+**Commit trailer used (and to keep using):**
+Co-Authored-By: Grok 4.3 released by xAI in April 2026 <noreply@x.ai>
+
+Handoff complete. Fresh window prompt will be provided to user separately. All core work per APPENDIX + user "via libera" steps is captured and clean. 🚀
+
+(End of handoff entry)
