@@ -1723,6 +1723,7 @@ fn build_file_bytes(
     master_key: &[u8; KEY_SIZE],
     manifest: &VaultManifestV3,
     extensions: &[ExtensionEntryV3],
+    extension_payloads: &[u8],  // content of the payload area; entries' offset/len are relative to this
     data: &[u8],
 ) -> Result<Vec<u8>, String> {
     let encrypted_manifest = encrypt_manifest(master_key, manifest)?;
@@ -1736,17 +1737,18 @@ fn build_file_bytes(
     header.extension_dir_offset = header.manifest_offset + header.manifest_len;
     header.extension_dir_len = extension_dir.len() as u64;
     header.extension_payload_offset = header.extension_dir_offset + header.extension_dir_len;
-    header.extension_payload_len = 0;
+    header.extension_payload_len = extension_payloads.len() as u64;
     header.header_mac = [0u8; MAC_SIZE];
     header.header_mac = header.compute_mac(mac_key)?;
 
     let mut out = Vec::with_capacity(
-        HEADER_SIZE + data.len() + encrypted_manifest.len() + extension_dir.len(),
+        HEADER_SIZE + data.len() + encrypted_manifest.len() + extension_dir.len() + extension_payloads.len(),
     );
     out.extend_from_slice(&header.to_bytes());
     out.extend_from_slice(data);
     out.extend_from_slice(&encrypted_manifest);
     out.extend_from_slice(&extension_dir);
+    out.extend_from_slice(extension_payloads);
     Ok(out)
 }
 
@@ -1783,12 +1785,22 @@ fn create_empty_vault(path: &Path, password: &str, level: i32, with_ecc: bool) -
     };
 
     let manifest = empty_manifest(level);
-    let extensions = if with_ecc {
+    let mut extensions = if with_ecc {
         vec![ecc_stub_extension()]
     } else {
         vec![]
     };
-    let bytes = build_file_bytes(header, &mac_key, &master_key, &manifest, &extensions, &[])?;
+    let ext_payloads = if with_ecc {
+        let p = compute_ecc_shards(&[], &[]);
+        if let Some(e) = extensions.first_mut() {
+            e.offset = 0;
+            e.length = p.len() as u64;
+        }
+        p
+    } else {
+        vec![]
+    };
+    let bytes = build_file_bytes(header, &mac_key, &master_key, &manifest, &extensions, &ext_payloads, &[])?;
     master_key.zeroize();
     mac_key.zeroize();
     atomic_write(path, &bytes)
@@ -1948,12 +1960,47 @@ fn validate_ranges(header: &VaultHeaderV3, file_len: u64) -> Result<(), String> 
 
 fn save_open_vault(vault: &OpenVaultV3) -> Result<(), String> {
     assert_vault_generation_current(vault)?;
+
+    let mut extensions = vault.extensions.clone();
+    let mut ext_payloads = vec![];
+
+    // P2-05: if ECC extension is present, recompute the shards on the current data
+    // and update the entry + payload. Recompute on every seal (cost is acceptable
+    // for the ECC use case; most vaults won't have it enabled).
+    if let Some(ecc_idx) = extensions.iter().position(|e| e.extension_id == ECC_EXTENSION_ID) {
+        // Collect on-disk blocks in the order they appear in the data section
+        // (sorted by data_offset). Each full block is [u64 len][ciphertext of that len].
+        let mut chunk_records: Vec<_> = vault.manifest.chunks.values().cloned().collect();
+        chunk_records.sort_by_key(|r| r.data_offset);
+
+        let blocks: Vec<&[u8]> = chunk_records.iter().map(|rec| {
+            let start = rec.data_offset as usize;
+            let full_len = 8 + rec.block_len as usize;
+            if start + full_len <= vault.data.len() {
+                &vault.data[start..start + full_len]
+            } else {
+                &[] as &[u8]
+            }
+        }).collect();
+
+        let hashes: Vec<String> = chunk_records.iter().map(|r| r.cipher_hash.clone()).collect();
+
+        let payload = compute_ecc_shards(&blocks, &hashes);
+
+        let entry = &mut extensions[ecc_idx];
+        entry.offset = 0;
+        entry.length = payload.len() as u64;
+
+        ext_payloads = payload;
+    }
+
     let bytes = build_file_bytes(
         vault.header.clone(),
         &vault.mac_key,
         &vault.master_key,
         &vault.manifest,
-        &vault.extensions,
+        &extensions,
+        &ext_payloads,
         &vault.data,
     )?;
     atomic_write(&vault.path, &bytes)

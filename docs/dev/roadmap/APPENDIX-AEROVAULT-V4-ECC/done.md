@@ -207,7 +207,14 @@ All per plan, step-by-step with tests. Ready for Phase 2 (RS crate).
 - Test with simulated single-block corruption + successful repair passes.
 - Interleaved tests green.
 
-All per plan. Next natural: P2-05 (wire into save/seal) or scrub/repair primitives.
+**P2-05 completed**:
+- Wired `compute_ecc_shards` into the seal path (`save_open_vault`) and `build_file_bytes`.
+- On every save for ECC-enabled vaults, parities are recomputed from current on-disk blocks and stored in the extension payload area.
+- Initial support in create path too.
+- Recompute cost noted (fine for the feature; only happens for --ecc vaults).
+- All prior P2 tests continue to pass.
+
+Phase 2 core (compute + reconstruct + wiring) done. Ready for higher-level scrub/repair or full integration tests.
 
 Rocket engines lit. Proceeding step-by-step.
 

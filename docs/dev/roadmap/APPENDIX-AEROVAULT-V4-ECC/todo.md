@@ -166,8 +166,12 @@
   - Added `p2_04_reconstruct_from_ecc_basic` test with corruption + recovery (passes).
   - Interleaved full cargo test.
 
-- [ ] **P2-05** Wire the encode path into `save_open_vault` / `build_file_bytes` when the vault was opened/created with ECC enabled
-  - Recompute on every seal (document the cost)
+- [x] **P2-05** Wire the encode path into `save_open_vault` / `build_file_bytes` when the vault was opened/created with ECC enabled [DONE]
+  - Updated build_file_bytes to accept & extension_payloads and append it after dir, setting payload_len.
+  - In save_open_vault: if ECC entry present, collect blocks in data_offset order, call compute_ecc_shards, update the entry offset/len (0-based in payload), pass the computed payload.
+  - Also wired initial (empty) payload in create_empty_vault for with_ecc.
+  - Recompute cost documented in comment (acceptable for ECC-enabled vaults).
+  - Tests for P2-02/03/04 still pass; full wiring enables --ecc vaults to carry real parities on save.
 
 - [ ] **P2-06** Add `scrub` primitive: walk the manifest, for each chunk verify its cipher_hash against the bytes at the recorded location in the data section. Return list of damaged `ChunkRecordV3` + byte ranges
 
