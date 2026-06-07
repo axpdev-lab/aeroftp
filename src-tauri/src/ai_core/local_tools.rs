@@ -1609,8 +1609,17 @@ pub async fn local_tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolEr
 #[cfg(test)]
 mod tests {
     use super::resolve_local_path;
+    use std::sync::Mutex;
+
+    // resolve_local_path reads the process-global HOME/USERPROFILE env vars and
+    // several tests mutate them. cargo runs tests in parallel threads within a
+    // single process, so without serialization one test clearing HOME races
+    // another that expects it set (surfaced as a flaky tilde-expansion failure).
+    // Every env-mutating test takes this lock so they never overlap.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn with_home<T>(home: &str, f: impl FnOnce() -> T) -> T {
+        let _env = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let prev = std::env::var("HOME").ok();
         std::env::set_var("HOME", home);
         let out = f();
@@ -1680,6 +1689,7 @@ mod tests {
     fn tilde_without_home_falls_back_to_base() {
         // If $HOME is unset and $USERPROFILE is unset, `~` is treated as a
         // regular relative path and joined with base.
+        let _env = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let prev_home = std::env::var("HOME").ok();
         let prev_userprofile = std::env::var("USERPROFILE").ok();
         std::env::remove_var("HOME");
