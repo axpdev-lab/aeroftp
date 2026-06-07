@@ -3155,6 +3155,64 @@ mod tests {
         assert!(std::fs::read(&out2).unwrap().starts_with(b"hello repair world two"));
     }
 
+    #[test]
+    fn p2_08_cli_stress_multiple_damage_repair() {
+        // Stress test: ECC vault with 12 files, corrupt 4 blocks (across stripes), repair, verify all.
+        let dir = tempfile::tempdir().unwrap();
+        let vault_path = dir.path().join("stress-repair.aerovault");
+
+        create_empty_vault(&vault_path, "stress-pw-1234", DEFAULT_ZSTD_LEVEL, true).unwrap();
+        let mut vault = open_vault(&vault_path, "stress-pw-1234").unwrap();
+
+        let mut sources = vec![];
+        for i in 0..12 {
+            let p = dir.path().join(format!("s{i:02}.txt"));
+            let content = format!("stress file {} with some padding data to make blocks decent size", i).repeat(3);
+            std::fs::write(&p, content.as_bytes()).unwrap();
+            append_file_at(&mut vault, &p, &format!("s{i:02}.txt")).unwrap();
+            sources.push((p, format!("s{i:02}.txt")));
+        }
+        save_open_vault(&vault).unwrap();
+
+        // Re-open, get some chunk offsets to corrupt (spread across stripes to be repairable with 10+2)
+        let mut vault2 = open_vault(&vault_path, "stress-pw-1234").unwrap();
+        let mut recs: Vec<_> = vault2.manifest.chunks.values().cloned().collect();
+        recs.sort_by_key(|r| r.data_offset);
+
+        let to_corrupt = vec![2, 5, 11]; // spread: 3 in first stripe of 10 (repairable), 1 in second
+        for &idx in &to_corrupt {
+            if idx < recs.len() {
+                let rec = &recs[idx];
+                let pos = rec.data_offset as usize + 8 + 2;
+                if pos < vault2.data.len() {
+                    vault2.data[pos] ^= 0xAA;
+                }
+            }
+        }
+
+        // Scrub sees multiple
+        let damaged = scrub_vault(&vault2);
+        assert!(damaged.len() >= 3);
+
+        // Repair
+        let fixed = repair_vault(&mut vault2, false).expect("repair");
+        assert!(fixed >= 3);
+
+        // Post-scrub clean
+        let after = scrub_vault(&vault2);
+        assert!(after.is_empty());
+
+        // Verify a few extracts
+        for &idx in &[0, 3, 11] {
+            if idx < sources.len() {
+                let (p, name) = &sources[idx];
+                let out = dir.path().join(format!("verif_{}.txt", idx));
+                extract_entry(&vault2, name, &out).unwrap();
+                assert_eq!(std::fs::read(&out).unwrap(), std::fs::read(p).unwrap());
+            }
+        }
+    }
+
     /// P1-06: First compatibility test - a "v4-stub" vault (created with ECC extension)
     /// must still be fully readable using the pure v3 open/extract paths
     /// (simulating an older v3-only reader or binary).
