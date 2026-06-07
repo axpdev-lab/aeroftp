@@ -200,7 +200,14 @@ All per plan, step-by-step with tests. Ready for Phase 2 (RS crate).
 - Smoke test passes.
 - Interleaved with `cargo test`.
 
-All per plan, step-by-step with tests. Ready for P2-04 (reconstruction) and wiring into seal path.
+**P2-04 completed**:
+- Implemented `reconstruct_from_ecc`.
+- Correctly recovers damaged data blocks given the ECC payload and list of bad indices.
+- Handles the crate's Option-based reconstruction and partial stripes.
+- Test with simulated single-block corruption + successful repair passes.
+- Interleaved tests green.
+
+All per plan. Next natural: P2-05 (wire into save/seal) or scrub/repair primitives.
 
 Rocket engines lit. Proceeding step-by-step.
 
