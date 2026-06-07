@@ -3595,27 +3595,45 @@ interface UpdateVerificationInfo {
   });
 
   // 2.4 Post-Restart Confirmation
+  const postUpdateMarkerChecked = useRef(false);
   useEffect(() => {
+    // Run at most once per session: this effect's deps (t/toast/activityLog) can
+    // change identity on re-render, and we must not re-show the toast for the
+    // same marker.
+    if (postUpdateMarkerChecked.current) return;
+    postUpdateMarkerChecked.current = true;
+
     const checkPostUpdateMarker = async () => {
       try {
         const markerJson = await invoke<string | null>('read_update_marker');
-        if (markerJson) {
-           const data = JSON.parse(markerJson);
-           // Show green success toast (5s): current version IS the updated version after restart
-           const currentVersion = await getVersion().catch(() => '');
-           toast.addToast('success',
-             t('ui.updateSuccess'),
-             `AeroFTP v${currentVersion}`,
-             5000
-           );
+        if (!markerJson) return;
 
-           activityLog.log('INFO',
-               `Post-restart check: Update completed via .${data.install_format}${data.verified ? ' (Verified)' : ''}`,
-               'success'
-           );
+        // Always consume the marker first, before any early return, so a marker
+        // that fails the freshness check below can never re-fire on a later
+        // restart (the previous order left the toast firing "ogni tanto" when
+        // the clear lost a race or silently failed).
+        await invoke('clear_update_marker').catch(() => {});
 
-           await invoke('clear_update_marker');
-        }
+        const data = JSON.parse(markerJson);
+
+        // Only confirm a genuine post-restart: a real update relaunches within
+        // seconds, so a marker older than 10 minutes is stale (interrupted
+        // install, failed prior clear) and must not surface a success toast.
+        const ts = data.timestamp ? Date.parse(data.timestamp) : NaN;
+        if (Number.isNaN(ts) || Date.now() - ts > 10 * 60 * 1000) return;
+
+        // Show green success toast (5s): current version IS the updated version after restart
+        const currentVersion = await getVersion().catch(() => '');
+        toast.addToast('success',
+          t('ui.updateSuccess'),
+          `AeroFTP v${currentVersion}`,
+          5000
+        );
+
+        activityLog.log('INFO',
+            `Post-restart check: Update completed via .${data.install_format}${data.verified ? ' (Verified)' : ''}`,
+            'success'
+        );
       } catch (err) {
         console.error('Failed to read update marker', err);
       }

@@ -380,7 +380,11 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         const stillScanning = data.message?.includes('dirs queued') && !data.message?.includes('0 dirs queued');
         streamingScanActive.current = !!stillScanning;
         // Notify ScanningToast
-        const scanOp = data.direction === 'remote' ? 'delete' as const
+        // Folder deletes use two backend conventions: 'delete' (generic provider
+        // delete, provider_commands.rs) and 'remote' (recursive FTP delete, lib.rs).
+        // Both must map to the delete operation or the ScanningToast would read
+        // "Downloading" while actually scanning a folder for deletion.
+        const scanOp = data.direction === 'delete' || data.direction === 'remote' ? 'delete' as const
           : data.direction === 'upload' ? 'upload' as const
           : 'download' as const;
         optRef.current.onScanningUpdate?.({
