@@ -274,7 +274,9 @@
             "profileConverted": "Profilis konvertuotas",
             "profileDuplicated": "Profilis dubliuotas",
             "convertUndone": "Profilis atkurtas",
-            "undo": "Anuliuoti"
+            "undo": "Anuliuoti",
+            "unstableTitle": "Eksperimentinis tiekėjas",
+            "unstableBody": "{provider} dar nėra stabilus ir paslauga gali būti nepasiekiama. Ryšys gali nepavykti ne dėl jūsų kaltės."
         },
         "browser": {
             "remote": "Nuotolinis",
@@ -4272,7 +4274,7 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Pasiekiamumo tikrinimas",
-            "storageVersioning": "[NEEDS TRANSLATION] File versions: {size}"
+            "storageVersioning": "Failų versijos: {size}"
         },
         "gitlab": {
             "projectPath": "Projekto kelias",

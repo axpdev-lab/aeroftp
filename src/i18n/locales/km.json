@@ -274,7 +274,9 @@
             "profileConverted": "ប្រវត្តិរូបបានបំលែង",
             "profileDuplicated": "ប្រវត្តិរូបបានចម្លង",
             "convertUndone": "ប្រវត្តិរូបបានស្ដារ",
-            "undo": "មិនធ្វើវិញ"
+            "undo": "មិនធ្វើវិញ",
+            "unstableTitle": "អ្នកផ្តល់សេវាសាកល្បង",
+            "unstableBody": "{provider} មិនទាន់មានស្ថិរភាពនៅឡើយទេ ហើយសេវាកម្មអាចមិនអាចប្រើបាន។ ការតភ្ជាប់អាចបរាជ័យដោយមិនមែនជាកំហុសរបស់អ្នក។"
         },
         "browser": {
             "remote": "ពីចម្ងាយ",
@@ -4291,7 +4293,7 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "ការពិនិត្យសុខភាព",
-            "storageVersioning": "[NEEDS TRANSLATION] File versions: {size}"
+            "storageVersioning": "កំណែឯកសារ៖ {size}"
         },
         "gitlab": {
             "projectPath": "ផ្លូវគម្រោង",

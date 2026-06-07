@@ -274,7 +274,9 @@
             "profileConverted": "Profils pārvērsts",
             "profileDuplicated": "Profils dublēts",
             "convertUndone": "Profils atjaunots",
-            "undo": "Atsaukt"
+            "undo": "Atsaukt",
+            "unstableTitle": "Eksperimentāls pakalpojumu sniedzējs",
+            "unstableBody": "{provider} vēl nav stabils, un pakalpojums var nebūt pieejams. Savienojums var neizdoties ne jūsu vainas dēļ."
         },
         "browser": {
             "remote": "Attālināts",
@@ -4272,7 +4274,7 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Pieejamības pārbaude",
-            "storageVersioning": "[NEEDS TRANSLATION] File versions: {size}"
+            "storageVersioning": "Failu versijas: {size}"
         },
         "gitlab": {
             "projectPath": "Projekta ceļš",

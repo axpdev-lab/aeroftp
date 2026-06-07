@@ -274,7 +274,9 @@
             "profileConverted": "프로필이 변환되었습니다",
             "profileDuplicated": "프로필이 복제되었습니다",
             "convertUndone": "프로필이 복원되었습니다",
-            "undo": "실행 취소"
+            "undo": "실행 취소",
+            "unstableTitle": "실험적 제공업체",
+            "unstableBody": "{provider}은(는) 아직 안정적이지 않으며 서비스를 사용할 수 없을 수 있습니다. 사용자의 잘못이 아니어도 연결이 실패할 수 있습니다."
         },
         "browser": {
             "remote": "원격",
@@ -4272,7 +4274,7 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "상태 확인",
-            "storageVersioning": "[NEEDS TRANSLATION] File versions: {size}"
+            "storageVersioning": "파일 버전: {size}"
         },
         "gitlab": {
             "projectPath": "프로젝트 경로",

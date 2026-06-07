@@ -343,7 +343,9 @@
             "profileConverted": "Profilo convertito",
             "profileDuplicated": "Profilo duplicato",
             "convertUndone": "Profilo ripristinato",
-            "undo": "Annulla"
+            "undo": "Annulla",
+            "unstableTitle": "Provider sperimentale",
+            "unstableBody": "{provider} non è ancora stabile e il servizio potrebbe non essere disponibile. La connessione può fallire senza alcuna colpa da parte tua."
         },
         "twoFactor": {
             "title": "Autenticazione a due fattori richiesta",

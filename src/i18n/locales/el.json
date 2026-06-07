@@ -274,7 +274,9 @@
             "profileConverted": "Το προφίλ μετατράπηκε",
             "profileDuplicated": "Το προφίλ αντιγράφηκε",
             "convertUndone": "Το προφίλ αποκαταστάθηκε",
-            "undo": "Αναίρεση"
+            "undo": "Αναίρεση",
+            "unstableTitle": "Πειραματικός πάροχος",
+            "unstableBody": "Το {provider} δεν είναι ακόμη σταθερό και η υπηρεσία ενδέχεται να μην είναι διαθέσιμη. Η σύνδεση μπορεί να αποτύχει χωρίς δικό σας φταίξιμο."
         },
         "browser": {
             "remote": "Απομακρυσμένο",
@@ -4272,7 +4274,7 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Έλεγχος διαθεσιμότητας",
-            "storageVersioning": "[NEEDS TRANSLATION] File versions: {size}"
+            "storageVersioning": "Εκδόσεις αρχείου: {size}"
         },
         "gitlab": {
             "projectPath": "Διαδρομή Έργου",

@@ -274,7 +274,9 @@
             "profileConverted": "Profil convertit",
             "profileDuplicated": "Profil duplicat",
             "convertUndone": "Profil restaurat",
-            "undo": "Anulează"
+            "undo": "Anulează",
+            "unstableTitle": "Furnizor experimental",
+            "unstableBody": "{provider} nu este încă stabil, iar serviciul ar putea fi indisponibil. Conexiunea poate eșua fără să fie vina ta."
         },
         "browser": {
             "remote": "La distanță",
@@ -4272,7 +4274,7 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Verificarea disponibilității",
-            "storageVersioning": "[NEEDS TRANSLATION] File versions: {size}"
+            "storageVersioning": "Versiuni fișier: {size}"
         },
         "gitlab": {
             "projectPath": "Calea proiectului",

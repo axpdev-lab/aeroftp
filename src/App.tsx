@@ -171,6 +171,7 @@ import { useCircuitBreaker } from './hooks/useCircuitBreaker';
 import { RECONNECT_ERROR_KINDS, getErrorKindI18nKey } from './utils/transferErrorClassifier';
 import { normalizeMegaOptions } from './utils/providerConnectionMeta';
 import { localizeRestrictedCharError } from './utils/restrictedCharError';
+import { migrateFilenApiKeysToVault } from './utils/filenApiKeyMigration';
 import { CustomTitlebar } from './components/CustomTitlebar';
 import { ExportImportDialog } from './components/ExportImportDialog';
 import { WindowResizeEdges } from './components/WindowResizeEdges';
@@ -1484,21 +1485,11 @@ const App: React.FC = () => {
     (async () => {
       try {
         const profiles = await loadSavedServerProfiles();
-        let changed = false;
-        const migrated = await Promise.all(profiles.map(async (p) => {
-          const key = p.options?.filen_api_key;
-          if (!key) return p;
-          try {
-            await invoke('store_credential', { account: `filen_api_key_${p.id}`, password: key });
-          } catch (e) {
-            logger.warn('[#230] Filen API key vault migration failed for profile', p.id, e);
-            return p; // leave the key in place and retry on the next launch
-          }
-          changed = true;
-          const restOptions = { ...(p.options || {}) };
-          delete restOptions.filen_api_key;
-          return { ...p, options: restOptions, hasStoredFilenApiKey: true };
-        }));
+        const { migrated, changed } = await migrateFilenApiKeysToVault(
+          profiles,
+          (account, key) => invoke('store_credential', { account, password: key }) as Promise<void>,
+          (id, e) => logger.warn('[#230] Filen API key vault migration failed for profile', id, e),
+        );
         if (cancelled) return;
         if (changed) {
           await storeSavedServerProfiles(migrated).catch(() => { });

@@ -274,7 +274,9 @@
             "profileConverted": "Profil pretvoren",
             "profileDuplicated": "Profil dupliciran",
             "convertUndone": "Profil vraćen",
-            "undo": "Poništi"
+            "undo": "Poništi",
+            "unstableTitle": "Eksperimentalni pružatelj",
+            "unstableBody": "{provider} još nije stabilan i usluga možda nije dostupna. Povezivanje može propasti bez vaše krivnje."
         },
         "browser": {
             "remote": "Udaljeno",
@@ -4272,7 +4274,7 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Provjera dostupnosti",
-            "storageVersioning": "[NEEDS TRANSLATION] File versions: {size}"
+            "storageVersioning": "Verzije datoteka: {size}"
         },
         "gitlab": {
             "projectPath": "Putanja projekta",

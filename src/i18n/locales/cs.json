@@ -274,7 +274,9 @@
             "profileConverted": "Profil převeden",
             "profileDuplicated": "Profil duplikován",
             "convertUndone": "Profil obnoven",
-            "undo": "Zpět"
+            "undo": "Zpět",
+            "unstableTitle": "Experimentální poskytovatel",
+            "unstableBody": "{provider} zatím není stabilní a služba může být nedostupná. Připojení může selhat bez vašeho zavinění."
         },
         "browser": {
             "remote": "Vzdálený",
@@ -4272,7 +4274,7 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Kontrola dostupnosti",
-            "storageVersioning": "[NEEDS TRANSLATION] File versions: {size}"
+            "storageVersioning": "Verze souborů: {size}"
         },
         "gitlab": {
             "projectPath": "Cesta k projektu",

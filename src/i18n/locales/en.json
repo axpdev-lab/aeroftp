@@ -1284,6 +1284,8 @@
             "filenApiKeyHelp": "Paste the API key from your Filen CLI profile to skip the 2FA code on every reconnect. The account password is still required: it decrypts your files end-to-end.",
             "twoFactorCode": "6-digit TOTP (optional, not saved)",
             "twoFactorOptional": "6-digit code (optional)",
+            "unstableTitle": "Experimental provider",
+            "unstableBody": "{provider} is not stable yet and the service may be unavailable. Connections can fail through no fault of your own.",
             "username": "Username",
             "usernamePlaceholder": "your-username"
         },

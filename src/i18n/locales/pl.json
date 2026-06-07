@@ -274,7 +274,9 @@
             "profileConverted": "Profil przekonwertowany",
             "profileDuplicated": "Profil zduplikowany",
             "convertUndone": "Profil przywrócony",
-            "undo": "Cofnij"
+            "undo": "Cofnij",
+            "unstableTitle": "Dostawca eksperymentalny",
+            "unstableBody": "{provider} nie jest jeszcze stabilny, a usługa może być niedostępna. Połączenie może się nie powieść nie z Twojej winy."
         },
         "browser": {
             "remote": "Zdalny",
@@ -4272,7 +4274,7 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Sprawdzanie dostępności",
-            "storageVersioning": "[NEEDS TRANSLATION] File versions: {size}"
+            "storageVersioning": "Wersje plików: {size}"
         },
         "gitlab": {
             "projectPath": "Sciezka projektu",

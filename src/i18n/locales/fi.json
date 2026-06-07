@@ -274,7 +274,9 @@
             "profileConverted": "Profiili muunnettu",
             "profileDuplicated": "Profiili monistettu",
             "convertUndone": "Profiili palautettu",
-            "undo": "Kumoa"
+            "undo": "Kumoa",
+            "unstableTitle": "Kokeellinen palveluntarjoaja",
+            "unstableBody": "{provider} ei ole vielä vakaa, ja palvelu voi olla poissa käytöstä. Yhteys voi epäonnistua ilman sinun syytäsi."
         },
         "browser": {
             "remote": "Etä",
@@ -4272,7 +4274,7 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Saatavuuden tarkistus",
-            "storageVersioning": "[NEEDS TRANSLATION] File versions: {size}"
+            "storageVersioning": "Tiedostoversiot: {size}"
         },
         "gitlab": {
             "projectPath": "Projektipolku",

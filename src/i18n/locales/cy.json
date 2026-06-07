@@ -274,7 +274,9 @@
             "profileConverted": "Wedi trosi'r proffil",
             "profileDuplicated": "Wedi dyblygu'r proffil",
             "convertUndone": "Wedi adfer y proffil",
-            "undo": "Dadwneud"
+            "undo": "Dadwneud",
+            "unstableTitle": "Darparwr arbrofol",
+            "unstableBody": "Nid yw {provider} yn sefydlog eto a gall y gwasanaeth fod yn anhygyrch. Gall y cysylltiad fethu heb fai arnoch chi."
         },
         "browser": {
             "remote": "Pell",
@@ -4291,7 +4293,7 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Gwiriad iechyd",
-            "storageVersioning": "[NEEDS TRANSLATION] File versions: {size}"
+            "storageVersioning": "Fersiynau ffeil: {size}"
         },
         "gitlab": {
             "projectPath": "Llwybr y prosiect",

@@ -274,7 +274,9 @@
             "profileConverted": "Profil konvertálva",
             "profileDuplicated": "Profil megkettőzve",
             "convertUndone": "Profil visszaállítva",
-            "undo": "Visszavonás"
+            "undo": "Visszavonás",
+            "unstableTitle": "Kísérleti szolgáltató",
+            "unstableBody": "A(z) {provider} még nem stabil, és a szolgáltatás elérhetetlen lehet. A kapcsolat a te hibádon kívül is meghiúsulhat."
         },
         "browser": {
             "remote": "Távoli",
@@ -4272,7 +4274,7 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Elérhetőség-ellenőrzés",
-            "storageVersioning": "[NEEDS TRANSLATION] File versions: {size}"
+            "storageVersioning": "Fájlverziók: {size}"
         },
         "gitlab": {
             "projectPath": "Projekt utvonal",

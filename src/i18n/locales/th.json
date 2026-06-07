@@ -274,7 +274,9 @@
             "profileConverted": "แปลงโปรไฟล์แล้ว",
             "profileDuplicated": "ทำซ้ำโปรไฟล์แล้ว",
             "convertUndone": "กู้คืนโปรไฟล์แล้ว",
-            "undo": "เลิกทำ"
+            "undo": "เลิกทำ",
+            "unstableTitle": "ผู้ให้บริการแบบทดลอง",
+            "unstableBody": "{provider} ยังไม่เสถียรและบริการอาจไม่พร้อมใช้งาน การเชื่อมต่ออาจล้มเหลวโดยไม่ใช่ความผิดของคุณ"
         },
         "browser": {
             "remote": "ระยะไกล",
@@ -4272,7 +4274,7 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "การตรวจสอบสถานะ",
-            "storageVersioning": "[NEEDS TRANSLATION] File versions: {size}"
+            "storageVersioning": "เวอร์ชันไฟล์: {size}"
         },
         "gitlab": {
             "projectPath": "เส้นทางโปรเจกต์",

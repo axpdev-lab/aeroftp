@@ -274,7 +274,9 @@
             "profileConverted": "Profiil teisendatud",
             "profileDuplicated": "Profiil dubleeritud",
             "convertUndone": "Profiil taastatud",
-            "undo": "Võta tagasi"
+            "undo": "Võta tagasi",
+            "unstableTitle": "Eksperimentaalne teenusepakkuja",
+            "unstableBody": "{provider} ei ole veel stabiilne ja teenus võib olla kättesaamatu. Ühendus võib ebaõnnestuda ilma teie süüta."
         },
         "browser": {
             "remote": "Kaugserver",
@@ -4272,7 +4274,7 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Saadavuse kontroll",
-            "storageVersioning": "[NEEDS TRANSLATION] File versions: {size}"
+            "storageVersioning": "Faili versioonid: {size}"
         },
         "gitlab": {
             "projectPath": "Projekti tee",

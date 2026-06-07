@@ -274,7 +274,9 @@
             "profileConverted": "Vistun umbreytt",
             "profileDuplicated": "Vistun afrituð",
             "convertUndone": "Vistun endurheimt",
-            "undo": "Afturkalla"
+            "undo": "Afturkalla",
+            "unstableTitle": "Tilraunaþjónustuaðili",
+            "unstableBody": "{provider} er ekki enn stöðugur og þjónustan gæti verið ótiltæk. Tengingin getur mistekist án þess að það sé þér að kenna."
         },
         "browser": {
             "remote": "Fjartengdur",
@@ -4291,7 +4293,7 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Aðgengisathugun",
-            "storageVersioning": "[NEEDS TRANSLATION] File versions: {size}"
+            "storageVersioning": "Skráarútgáfur: {size}"
         },
         "gitlab": {
             "projectPath": "Verkefnisslóð",

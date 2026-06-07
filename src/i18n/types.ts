@@ -104,6 +104,8 @@ export interface TranslationKeys {
         editServer: string;
         serverName: string;
         initialPath: string;
+        unstableTitle: string;
+        unstableBody: string;
     };
 
     // File browser
