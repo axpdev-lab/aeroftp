@@ -42824,9 +42824,30 @@ async fn main() {
                             Err(e) => Err(e),
                         },
                         "v2" => aerovault_v2::vault_v2_open(path.clone(), pw).await,
-                        _ => aerovault_v3::vault_v3_open(path.clone(), pw)
-                            .await
-                            .and_then(|i| serde_json::to_value(&i).map_err(|e| e.to_string())),
+                        _ => {
+                            let open_res = aerovault_v3::vault_v3_open(path.clone(), pw).await;
+                            match open_res {
+                                Ok(info) => {
+                                    // Micro-step: surface ECC status using the new lightweight helper.
+                                    // This is P1-05 integration: has_ecc is password-less (header + ext dir only).
+                                    let has_ecc = aerovault_v3::vault_v3_has_ecc(path.clone())
+                                        .await
+                                        .unwrap_or(false);
+                                    let base_val = serde_json::to_value(&info)
+                                        .map_err(|e| e.to_string());
+                                    match base_val {
+                                        Ok(mut v) => {
+                                            if let Some(obj) = v.as_object_mut() {
+                                                obj.insert("has_ecc".to_string(), serde_json::json!(has_ecc));
+                                            }
+                                            Ok(v)
+                                        }
+                                        Err(e) => Err(e),
+                                    }
+                                }
+                                Err(e) => Err(e),
+                            }
+                        }
                     };
                     match res {
                         Ok(info) => {

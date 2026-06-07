@@ -83,13 +83,15 @@
     - `cargo check --bin aeroftp-cli` clean.
   - This completes the immediate CLI wiring follow-up for P1-01.
 
-**NEXT STEP (per piano - Phase 1)**: P1-04 + P1-05 combined start
-- Enhance visibility of ECC status.
-- Add `has_ecc_extension` / `vault_v3_has_ecc` helper (password-less where possible by reading header + extension dir only).
-- Update `vault_v3_security_info` and related reporting to advertise ECC when present on a vault.
-- Make it usable by CLI `vault info` etc.
-- CODE: src-tauri/src/aerovault_v3.rs + later CLI integration.
-- Status: IN PROGRESS (this session)
+**NEXT STEP (per piano - Phase 1)**: P1-04 + P1-05 (micro-step complete)
+- Implemented `vault_v3_has_ecc` (password-light).
+- Registered as Tauri command.
+- Wired into CLI `VaultCommands::Info`: for v3, calls has_ecc and injects `"has_ecc": bool` into the JSON output of `aeroftp-cli vault info`.
+- Safe error handling for serialization.
+- `cargo check --bin aeroftp-cli` clean.
+- Interleaved test: full v3 suite + CLI check.
+- Status: micro-step DONE with test.
+- Next: enhance `vault_v3_security_info` to better advertise ECC, add more tests (e.g. CLI roundtrip test for info with ECC), or prepare live binary test + commit this increment with correct trailer.
 
 - [ ] **P1-02** Add the ability to create a vault that emits the `ecc.reed-solomon` extension entry (with empty/length-0 payload initially)
   - New or extended creation path: `vault_v3_create(..., with_ecc: bool)` or a small `EccConfig` struct

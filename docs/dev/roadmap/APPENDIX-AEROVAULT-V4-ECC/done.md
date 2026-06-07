@@ -144,11 +144,14 @@ git checkout -b feat/aerovault-v4-ecc
 
 Appendix docs (AEROVAULT-V4-ECC.md + this file) now cite #272 as primary source for the feature and terminology. Our current approach (non-critical extension, "ECC wrapper", `--ecc`, stub in v3 engine, recovery before decrypt) is already aligned with the discussion.
 
-Next per plan: P1-04 + P1-05 (enhance ECC visibility + has_ecc helper) — started in this step.
-- CLI wiring for `--ecc` on create completed and checked.
-- Full suite still green.
-- Appendix tracking updated.
-- Local commit will include Co-authored-by trailer for Grok.
+Next per plan: P1-04 + P1-05 (enhance ECC visibility + has_ecc helper) — advanced.
+- `vault_v3_has_ecc` helper implemented (lightweight, no password required).
+- Tauri command registered.
+- Previous local commit amended for correct trailer format (Co-Authored-By: ... <email> matching Claude/Codex style).
+- New micro-step: wired `has_ecc` into CLI `vault info` (JSON now includes "has_ecc" for v3 vaults).
+- `cargo check --bin aeroftp-cli` + v3 tests green.
+- This micro-step done with test interleaving.
+- Ready for commit of this increment + next (e.g. security_info enhancement or live build test).
 
 Rocket engines lit. Proceeding step-by-step.
 
