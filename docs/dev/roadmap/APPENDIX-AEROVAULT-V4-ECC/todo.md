@@ -199,7 +199,7 @@
   - Nice text output for non-JSON (lists damaged chunks or repair summary).
   - Engine tested directly + via CLI binary in live runs (build succeeded, commands wired).
   - All tests (unit + e2e + stress with 12+ files / multi-damage) pass.
-  - CLI for ECC ops is complete (create --ecc, info has_ecc, scrub, repair).
+  - CLI for ECC ops is complete (create --ecc, info has_ecc, scrub, repair). No other commands needed at this stage (core coverage is create/info/scrub/repair).
 
 ---
 
