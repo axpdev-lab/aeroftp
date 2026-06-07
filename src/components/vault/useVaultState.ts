@@ -238,6 +238,11 @@ export const securityLevels = {
     }
 };
 
+// ECC (Reed-Solomon error correction) is a Phase 1 stub on top of v3 experimental.
+// When enabled on create, uses vault_v3_create_with_ecc (non-critical extension).
+// Scrub/repair exposed via dedicated commands.
+
+
 // --- Hook props & return type ---
 
 export interface UseVaultStateProps {
@@ -315,6 +320,14 @@ export interface VaultState {
     showLevelDropdown: boolean;
     setShowLevelDropdown: (show: boolean) => void;
 
+    // ECC (Reed-Solomon error-correction) toggle for experimental/Beta vaults (P2).
+    // When enabled on create, uses the dedicated with_ecc backend (non-critical extension).
+    // Enables scrub/repair actions and ECC badge in the UI.
+    eccEnabled: boolean;
+    setEccEnabled: (enabled: boolean) => void;
+    hasEcc: boolean;
+    setHasEcc: (v: boolean) => void;
+
     // Drag-and-drop
     dragOver: boolean;
     setDragOver: (over: boolean) => void;
@@ -336,6 +349,20 @@ export interface VaultState {
     folderProgress: FolderProgress | null;
     initialFolderPath?: string;
 
+    // P2 ECC scrub/repair modals (draggable, theme-aware)
+    showScrubDialog: boolean;
+    setShowScrubDialog: (show: boolean) => void;
+    showRepairDialog: boolean;
+    setShowRepairDialog: (show: boolean) => void;
+    scrubResult: any | null;  // from vault_v3_scrub
+    repairResult: any | null;
+    repairDryRun: boolean;
+    setRepairDryRun: (v: boolean) => void;
+    isRepairing: boolean;
+    setScrubResult: (r: any | null) => void;
+    setRepairResult: (r: any | null) => void;
+    setIsRepairing: (v: boolean) => void;
+
     // Initial props passthrough
     initialFiles?: string[];
 
@@ -352,6 +379,10 @@ export interface VaultState {
     handleRemove: (entryName: string, isDir: boolean) => Promise<void>;
     handleExtract: (entryName: string) => Promise<void>;
     handleChangePassword: () => Promise<void>;
+
+    // P2 ECC actions (use the registered Tauri commands; engine shared with CLI)
+    handleScrub: () => Promise<void>;
+    handleRepair: () => Promise<void>;
     handleOpenRemoteVault: () => Promise<void>;
     handleSaveRemoteAndClose: () => Promise<void>;
     handleCleanupRemote: () => Promise<void>;
@@ -403,6 +434,18 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
     const [compressionProfile, setCompressionProfile] = useState<VaultV3CompressionProfile>('balanced');
     const [vaultSecurity, setVaultSecurity] = useState<VaultSecurityInfo | null>(null);
     const [showLevelDropdown, setShowLevelDropdown] = useState(false);
+
+    // ECC for Beta/experimental vaults (P2)
+    const [eccEnabled, setEccEnabled] = useState(false);
+    const [hasEcc, setHasEcc] = useState(false);  // runtime detection for open vaults (via has_ecc command)
+
+    // P2 ECC dialogs
+    const [showScrubDialog, setShowScrubDialog] = useState(false);
+    const [showRepairDialog, setShowRepairDialog] = useState(false);
+    const [scrubResult, setScrubResult] = useState<any | null>(null);
+    const [repairResult, setRepairResult] = useState<any | null>(null);
+    const [repairDryRun, setRepairDryRun] = useState(true);
+    const [isRepairing, setIsRepairing] = useState(false);
 
     // Drag-and-drop state
     const [dragOver, setDragOver] = useState(false);
@@ -574,11 +617,20 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
 
         try {
             if (levelConfig.version === 3) {
-                await invoke('vault_v3_create', {
-                    vaultPath: savePath,
-                    password,
-                    compressionProfile,
-                });
+                // P2: if ECC enabled in experimental, use the dedicated with_ecc creator (non-critical RS extension stub).
+                if (securityLevel === 'experimental' && eccEnabled) {
+                    await invoke('vault_v3_create_with_ecc', {
+                        vaultPath: savePath,
+                        password,
+                        compressionProfile,
+                    });
+                } else {
+                    await invoke('vault_v3_create', {
+                        vaultPath: savePath,
+                        password,
+                        compressionProfile,
+                    });
+                }
                 setVaultPath(savePath);
                 setVaultSecurity({ version: 3, cascadeMode: false, level: 'experimental' });
 
@@ -775,6 +827,11 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
                 setVaultSecurity({ version: 3, cascadeMode: false, level: 'experimental' });
                 setEntries(mapV3InfoToEntries(info));
                 setMeta(mapV3InfoToMeta(info, meta));
+                // P2: detect ECC for badge and enabling scrub/repair actions in this session
+                try {
+                    const has = await invoke<boolean>('vault_v3_has_ecc', { path: vaultPath });
+                    setHasEcc(!!has);
+                } catch { setHasEcc(false); }
                 setMode('browse');
 
                 const vName = vaultPath.split(/[\\/]/).pop() || 'Vault';
@@ -1138,6 +1195,42 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         };
     }, []);
 
+    // --- P2 ECC scrub/repair (call the Tauri commands we exposed; draggable modals in UI) ---
+    const handleScrub = async () => {
+        if (!vaultPath) return;
+        setLoading(true);
+        setError(null);
+        try {
+            const res = await invoke<any>('vault_v3_scrub', { vaultPath, password });
+            setScrubResult(res);
+            setShowScrubDialog(true);
+            setSuccess(`Scrub complete: ${res.count || 0} damaged`);
+        } catch (e) {
+            setError(mapVaultError(e, t));
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleRepair = async () => {
+        if (!vaultPath) return;
+        setIsRepairing(true);
+        setError(null);
+        try {
+            const res = await invoke<any>('vault_v3_repair', { vaultPath, password, dryRun: repairDryRun });
+            setRepairResult(res);
+            if (!repairDryRun) {
+                await refreshVaultEntries();
+                setSuccess(`Repair complete: ${res.repaired || 0} chunks fixed`);
+            }
+            // keep dialog open to show result, or close
+        } catch (e) {
+            setError(mapVaultError(e, t));
+        } finally {
+            setIsRepairing(false);
+        }
+    };
+
     return {
         mode, setMode,
         vaultPath, setVaultPath,
@@ -1166,6 +1259,14 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         compressionProfile, setCompressionProfile,
         vaultSecurity, setVaultSecurity,
         showLevelDropdown, setShowLevelDropdown,
+        eccEnabled, setEccEnabled,
+        hasEcc, setHasEcc,
+        showScrubDialog, setShowScrubDialog,
+        showRepairDialog, setShowRepairDialog,
+        scrubResult, setScrubResult,
+        repairResult, setRepairResult,
+        repairDryRun, setRepairDryRun,
+        isRepairing, setIsRepairing,
         dragOver, setDragOver,
         dragTargetDir, setDragTargetDir,
         showSyncDialog, setShowSyncDialog,
@@ -1189,6 +1290,8 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         handleRemove,
         handleExtract,
         handleChangePassword,
+        handleScrub,
+        handleRepair,
         handleOpenRemoteVault,
         handleSaveRemoteAndClose,
         handleCleanupRemote,
