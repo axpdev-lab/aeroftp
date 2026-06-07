@@ -1,0 +1,165 @@
+# AeroVault v4 ECC — Completed Work (done.md)
+
+> Historical record. Items are moved here from `todo.md` with date, session context, and outcome / commit-ish note.  
+> This file exists so future sessions can resume without re-deriving the same understanding.
+
+---
+
+## Session: Decisions Approval + Naming Review from Discussion #276 (current)
+
+**Approvals from user (point-by-point on the 7 open decisions):**
+- 1. Module strategy → ok approvo (keep inside aerovault_v3.rs for now)
+- 2. RS crate → ok approvo
+- 3. critical flag → ok corretto (always false)
+- 4. "ecc" in wrappers manifest → ok approvo
+- 5. Password for repair → ok chiaro (required)
+- 6. Performance on seal → ok concordo (recompute on seal)
+- 7. Naming → discussed below (see dedicated update in AEROVAULT-V4-ECC.md)
+
+**Key input for naming (7)**: User pointed to https://github.com/axpdev-lab/aeroftp/discussions/276 ("AeroVault Wrapper-Stack and Cryptography: Design Conversation").
+
+**Analysis of #276 (fetched content)**:
+- The thread (with heavy Ehud Kirsh contribution) treats the layers as **first-class wrappers**.
+- Explicit pipeline (diagram + text): `compression -> chunking -> crypt -> ECC`.
+- Language used: "Each box is a **first-class wrapper**", "Error-correction position", "ECC runs **last** in the pipeline", "ECC algorithm follow-ups now that the v3 pipeline slot is exercised end-to-end".
+- ECC is positioned as the fourth wrapper, on-storage, after crypt (to protect stored bytes while preserving confidentiality).
+- Already consistent with our existing code phrases ("extension directory for ECC", `ecc.reed-solomon` in the spec example).
+- The thread is the canonical design anchor for the wrapper stack (checkpoint of decisions from the big Community Roadmap thread).
+
+**Refined naming decision recorded in AEROVAULT-V4-ECC.md §7**:
+- Technical / spec / receipt: "ECC wrapper" or "error-correction wrapper".
+- CLI flag: `--ecc`.
+- User-facing: "ECC wrapper (Reed-Solomon)" with reference to the pipeline.
+- This keeps full continuity with the agreed model in #276.
+
+All other decisions approved. We can now close D-01.
+
+**Next**: Update todo/done, then (after final naming sign-off) start Phase 1 stub implementation.
+
+**Date**: 2026 (start of dedicated work on `feat/aerovault-v4-ecc`)
+
+**Branch created**:
+```bash
+git checkout -b feat/aerovault-v4-ecc
+```
+(Confirmed with `git branch --show-current`.)
+
+**Appendix structure created**:
+- `docs/dev/roadmap/APPENDIX-AEROVAULT-V4-ECC/`
+  - `AEROVAULT-V4-ECC.md` (main design + executive plan + contract)
+  - `todo.md` (live tasks, P0/P1/P2/P3 tagged, code pointers)
+  - `done.md` (this file)
+
+### Completed Items (moved from initial todo)
+
+- [x] **Branch + working folder**
+  - Dedicated feature branch following project convention (`feat/...`).
+  - APPENDIX folder under `docs/dev/roadmap/` per the established pattern (see `APPENDIX-MULTI-USER/`).
+
+- [x] **Spec contract capture**
+  - Read `docs/AEROVAULT-V3-SPEC.md` (multiple passes: header layout, §6 Extension Directory with the exact `ecc.reed-solomon` JSON example, §9 Backward Compatibility rules, file layout diagram).
+  - Verbatim quotes and implications recorded in the design doc.
+  - Key sentence preserved: *"v3 + ECC = v4"* and the critical/non-critical rule.
+
+- [x] **Full code audit of v3 foundation (the "we already have this" analysis)**
+  - `VaultHeaderV3` already contains all four extension offset/len fields and serializes/deserializes them.
+  - `ExtensionEntryV3` struct is a 1:1 match for the spec example.
+  - `open_vault`: reads extension dir, deserializes, rejects only on `critical: true`.
+  - `build_file_bytes` + `save_open_vault`: correctly places dir after manifest, sets payload_len=0, includes it in the atomic output.
+  - `is_vault_v3`: magic + format byte == 3 (still works for future v4 files if we keep the byte at 3).
+  - `vault_v3_security_info()` already mentions "extension directory for ECC" and the compatibility note.
+  - **cipher_hash** computation (in `append_chunk`) and verification (before any AEAD decrypt in extract) is exactly the hook described in the test comment.
+
+- [x] **Write / seal path mapping (complete)**
+  - `append_chunk` → compress → encrypt_with_aad → `blake3::hash(encrypted)` as cipher_hash → append len + ciphertext to flat `data` → insert `ChunkRecordV3`.
+  - `append_sources_batched`, `append_file_at`, small-file packing.
+  - `compact_live_chunks` on deletes.
+  - `save_open_vault` → `build_file_bytes` (re-encrypt manifest every time) → atomic tempfile + fsync + parent dir sync.
+  - This flow must be the attachment point for ECC recompute on every seal.
+
+- [x] **Damage / test harness discovery**
+  - Existing helpers: `flip_byte_in_file`, `truncate_vault`.
+  - Existing tests already exercise cipher_hash mismatch path and expect the exact error message.
+  - Small-file batching, dedup, directory ops, password change, pack tests all present.
+
+- [x] **Dispatch surfaces identified (high level)**
+  - Tauri: `lib.rs` — `is_vault_v3` guard + version dispatch (3 vs 2), then long list of `aerovault_v3::vault_v3_*` functions registered as commands.
+  - CLI: `bin/aeroftp_cli.rs` — direct calls to `aerovault_v3::vault_v3_create`, `vault_v3_add_files`, `vault_v3_open`, `vault_v3_extract_entry` (and the vault subcommand parser).
+  - Detailed call-site inventory moved to open task **P0-01**.
+
+- [x] **Crypto / dependency context**
+  - Current relevant crates visible in Cargo.toml slice: `blake3` (keyed + regular), `aes-gcm-siv`, `aes-kw`, `hmac`, `sha2`, `rand` (0.8 with 0.10 alias), `secrecy`, `hex`, `serde_json`.
+  - Historical pattern for new deps (RSA removal, jsonwebtoken switch to aws-lc-rs, audit.toml entries) is well documented in CHANGELOG and security evidence files. Any RS crate addition will follow the same rigor.
+
+- [x] **Design doc populated**
+  - Full "Current State — What v3 Already Gave Us".
+  - Recommended architecture (separate `aerovault_v4.rs` module preferred).
+  - 5-phase piano esecutivo.
+  - Risk register.
+  - Explicit "How to Resume This Work in Future Sessions" section.
+  - Open decisions list (the 7 questions that must be answered before heavy coding).
+
+- [x] **todo.md + done.md** created with the agreed format (status tags, CODE: / SPEC: pointers, phase numbers, move-to-done discipline).
+
+### Key Insights Captured (for future readers)
+
+1. We are **not** inventing the extension mechanism — it was deliberately left as `[]` + reserved header fields + critical flag by the v3/Ehud design.
+2. The `cipher_hash` being computed on the **ciphertext** and checked **before** decrypt is the load-bearing hook for any scrub/repair.
+3. Because `save_open_vault` always rewrites the whole file (header + data + manifest + extensions), ECC can be recomputed on every seal without changing the surrounding atomic-write contract.
+4. The hardest constraint is **"a pure v3 reader must still be able to open a v4+ECC file and extract data"** (as long as the extension is non-critical). This rules out many tempting shortcuts.
+
+### Tests Baseline at End of Session
+- The v3 test suite was not run in this initial design pass (will be first action of next coding session).
+- Recommendation for anyone resuming: `cargo test --lib aerovault_v3 -- --nocapture` (or the specific damage/roundtrip tests) before any edit.
+
+---
+
+## Later Sessions (append here when moving items)
+
+**2026 (this session)** — D-01 closed with user approvals (1-6 full, 7 with reference to discussion #276 for wrapper-stack terminology consistency).
+- All decisions recorded in AEROVAULT-V4-ECC.md.
+- Baseline tests confirmed green (10/10 aerovault_v3).
+- CLI + lib.rs call-site inventory completed (see previous session notes).
+- Naming refined to treat ECC as "first-class wrapper" per #276 language ("ECC", "error-correction wrapper", pipeline position last after crypt).
+
+**P1-01 Start completed (core engine + CLI wiring)**:
+- Implemented stub support for emitting + roundtripping the non-critical `ecc.reed-solomon` extension.
+- New `vault_v3_create_with_ecc` Tauri command.
+- Explicit handling + dedicated unit test proving v3 compatibility.
+- 11/11 aerovault_v3 tests green.
+- Changes isolated to `src-tauri/src/aerovault_v3.rs` on `feat/aerovault-v4-ecc`.
+
+**CLI wiring step (next per plan)**:
+- Added `--ecc` flag to `VaultCommands::Create` (with doc referencing T-AEROVAULT-ECC and the APPENDIX).
+- Handler logic: when creating v3 and `--ecc` is set, dispatch to `vault_v3_create_with_ecc`.
+- `cargo check --bin aeroftp-cli` succeeded cleanly.
+- This allows `aeroftp-cli vault create --ecc ...` (and with --vault-version v3).
+
+**Important context added (user request)**: Full review of the canonical discussion https://github.com/axpdev-lab/aeroftp/discussions/272 (the permanent [ROADMAP] Wrappers/Overlays thread). This is where `T-AEROVAULT-ECC` was formally proposed by Ehud Kirsh and codified. Key terminology and constraints from there:
+- Preferred terms: "Error correction layer", "error-correction", "ECC" (as the name of the 4th first-class wrapper).
+- Pipeline: compression → chunking → crypt → **error-correction / ECC**.
+- "4 wrappers" framing.
+- Forward-compat explicitly called out ("v3 + ECC = v4", v3 not blocked, ECC in v4 track).
+- Operational needs (scrub/repair) and UX profiles already anticipated.
+
+Appendix docs (AEROVAULT-V4-ECC.md + this file) now cite #272 as primary source for the feature and terminology. Our current approach (non-critical extension, "ECC wrapper", `--ecc`, stub in v3 engine, recovery before decrypt) is already aligned with the discussion.
+
+Next per plan: P1-04 + P1-05 (enhance ECC visibility + has_ecc helper) — started in this step.
+- CLI wiring for `--ecc` on create completed and checked.
+- Full suite still green.
+- Appendix tracking updated.
+- Local commit will include Co-authored-by trailer for Grok.
+
+Rocket engines lit. Proceeding step-by-step.
+
+Rocket engines lit — proceeding step-by-step with tests interleaved. The AeroFTP symbol (rocket) is noted, fitting the "accendi i motori del razzo" perfectly.  🚀
+
+---
+
+**End of initial design session.**
+
+Next expected action when resuming:
+1. `git checkout feat/aerovault-v4-ecc`
+2. Re-read `AEROVAULT-V4-ECC.md` (especially §6 open decisions) + this done.md + the current `todo.md`.
+3. Run the v3 test suite to obtain green baseline.
+4. Tackle the next P0 item (most likely the CLI call-site inventory or the crate evaluation).

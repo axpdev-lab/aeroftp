@@ -15279,6 +15279,7 @@ pub fn run() {
             aerovault_v3::vault_v3_change_password,
             aerovault_v3::vault_v3_add_directory,
             aerovault_v3::vault_v3_security_info,
+            aerovault_v3::vault_v3_has_ecc,
             // Remote Vault: open .aerovault on remote servers
             vault_remote::vault_v2_download_remote,
             vault_remote::vault_v2_upload_remote,

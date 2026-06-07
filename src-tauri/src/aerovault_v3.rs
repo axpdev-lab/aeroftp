@@ -66,6 +66,14 @@ const HKDF_CHUNK_ID: &[u8] = b"AeroVault v3 keyed BLAKE3 chunk ids";
 const MANIFEST_AAD: &[u8] = b"AeroVault v3 manifest";
 const BLOCK_AAD_PREFIX: &[u8] = b"AeroVault v3 block";
 
+/// Extension ID for the v4 ECC (Reed-Solomon) layer.
+/// This is emitted as a non-critical extension (critical=false) so that
+/// pure v3 readers can still open and extract from v4+ECC vaults
+/// (per the forward-compat contract in AEROVAULT-V3-SPEC.md and discussion #276).
+const ECC_EXTENSION_ID: &str = "ecc.reed-solomon";
+const ECC_ALGORITHM_ID: &str = "reed-solomon";
+const ECC_ALGORITHM_VERSION: u32 = 1;
+
 #[derive(Debug, Clone)]
 struct VaultHeaderV3 {
     flags: u8,
@@ -477,6 +485,20 @@ fn empty_manifest(level: i32) -> VaultManifestV3 {
         wrappers: default_wrappers(level),
         entries: Vec::new(),
         chunks: BTreeMap::new(),
+    }
+}
+
+/// Returns the stub ExtensionEntry for the ECC layer (length 0 payload for Phase 1 stub).
+/// The actual payload (Reed-Solomon shards) will be written in Phase 2.
+/// Marked non-critical so v3 readers can still extract.
+fn ecc_stub_extension() -> ExtensionEntryV3 {
+    ExtensionEntryV3 {
+        extension_id: ECC_EXTENSION_ID.to_string(),
+        algorithm_id: ECC_ALGORITHM_ID.to_string(),
+        algorithm_version: ECC_ALGORITHM_VERSION,
+        critical: false,
+        offset: 0, // will be overwritten by build_file_bytes when placed after manifest
+        length: 0,
     }
 }
 
@@ -1412,7 +1434,7 @@ fn build_file_bytes(
     Ok(out)
 }
 
-fn create_empty_vault(path: &Path, password: &str, level: i32) -> Result<(), String> {
+fn create_empty_vault(path: &Path, password: &str, level: i32, with_ecc: bool) -> Result<(), String> {
     if password.len() < MIN_PASSWORD_LEN {
         return Err("Password must be at least 8 characters".to_string());
     }
@@ -1445,7 +1467,12 @@ fn create_empty_vault(path: &Path, password: &str, level: i32) -> Result<(), Str
     };
 
     let manifest = empty_manifest(level);
-    let bytes = build_file_bytes(header, &mac_key, &master_key, &manifest, &[], &[])?;
+    let extensions = if with_ecc {
+        vec![ecc_stub_extension()]
+    } else {
+        vec![]
+    };
+    let bytes = build_file_bytes(header, &mac_key, &master_key, &manifest, &extensions, &[])?;
     master_key.zeroize();
     mac_key.zeroize();
     atomic_write(path, &bytes)
@@ -1542,7 +1569,14 @@ fn open_vault(path: impl Into<PathBuf>, password: &str) -> Result<OpenVaultV3, S
     )?;
     let extensions: Vec<ExtensionEntryV3> = serde_json::from_slice(&extension_json)
         .map_err(|e| format!("Extension directory parse: {e}"))?;
+
+    let mut _has_ecc = false;
     for ext in &extensions {
+        if ext.extension_id == ECC_EXTENSION_ID {
+            _has_ecc = true;
+            // For Phase 1 stub the payload length is 0.
+            // In Phase 2+ we will validate/load the RS shards here when present.
+        }
         if ext.critical {
             return Err(format!(
                 "Unsupported critical AeroVault v3 extension: {}",
@@ -1550,6 +1584,8 @@ fn open_vault(path: impl Into<PathBuf>, password: &str) -> Result<OpenVaultV3, S
             ));
         }
     }
+    // `has_ecc` is recorded for future use (scrub/repair paths, info surfaces).
+    // The extensions vec is already stored in OpenVaultV3 for round-tripping.
 
     Ok(OpenVaultV3 {
         path,
@@ -1819,7 +1855,29 @@ pub async fn vault_v3_create(
         Some("balanced") | None | Some("") => DEFAULT_ZSTD_LEVEL,
         Some(other) => return Err(format!("Unknown AeroVault v3 compression profile: {other}")),
     };
-    create_empty_vault(Path::new(&vault_path), &password, level)?;
+    create_empty_vault(Path::new(&vault_path), &password, level, false)?;
+    Ok(vault_path)
+}
+
+/// Create a new AeroVault v3 container **with the ECC (error-correction) extension stub**.
+/// This is the Phase 1 entry point for v4+ECC work (stub only: the extension directory
+/// entry is present with length=0; real Reed-Solomon shards are added in Phase 2).
+///
+/// The extension is emitted as non-critical so that existing v3 readers can still
+/// open the vault and extract data (per AEROVAULT-V3-SPEC.md + discussion #276).
+#[tauri::command]
+pub async fn vault_v3_create_with_ecc(
+    vault_path: String,
+    password: String,
+    profile: Option<String>,
+) -> Result<String, String> {
+    let level = match profile.as_deref() {
+        Some("fast") => 3,
+        Some("archive") => 19,
+        Some("balanced") | None | Some("") => DEFAULT_ZSTD_LEVEL,
+        Some(other) => return Err(format!("Unknown AeroVault v3 compression profile: {other}")),
+    };
+    create_empty_vault(Path::new(&vault_path), &password, level, true)?;
     Ok(vault_path)
 }
 
@@ -1840,6 +1898,44 @@ pub async fn is_vault_v3(path: String) -> Result<bool, String> {
         return Ok(false);
     }
     Ok(&buf[..10] == MAGIC && buf[10] == VERSION)
+}
+
+/// Lightweight check for the presence of the ECC (error-correction) extension.
+/// Does **not** require the vault password: it only reads the header and the
+/// plaintext extension directory. This is safe for `vault info` / pre-flight
+/// use cases and matches the "has_ecc_extension" need from the plan (P1-05).
+///
+/// Returns true if a non-critical (or any) "ecc.reed-solomon" entry is present
+/// in the extension directory.
+#[tauri::command]
+pub async fn vault_v3_has_ecc(path: String) -> Result<bool, String> {
+    let mut file = std::fs::File::open(&path)
+        .map_err(|e| format!("Open vault for ECC check: {e}"))?;
+
+    let mut header_bytes = [0u8; HEADER_SIZE];
+    file.read_exact(&mut header_bytes)
+        .map_err(|e| format!("Read header for ECC check: {e}"))?;
+
+    let header = VaultHeaderV3::from_bytes(&header_bytes)?;
+
+    if header.extension_dir_len == 0 {
+        return Ok(false);
+    }
+
+    let extension_json = read_capped(
+        &mut file,
+        header.extension_dir_offset,
+        header.extension_dir_len,
+        MAX_EXTENSION_DIR_SIZE,
+        "extension directory (has_ecc)",
+    )?;
+
+    let extensions: Vec<ExtensionEntryV3> = serde_json::from_slice(&extension_json)
+        .map_err(|e| format!("Extension directory parse (has_ecc): {e}"))?;
+
+    Ok(extensions
+        .iter()
+        .any(|e| e.extension_id == ECC_EXTENSION_ID))
 }
 
 #[tauri::command]
@@ -2171,7 +2267,8 @@ pub async fn vault_v3_security_info() -> serde_json::Value {
             "balanced": 9,
             "archive": 19
         },
-        "compatibility": "v4 is expected to read v3 directly; v3 skips unknown non-critical extensions"
+        "compatibility": "v4 is expected to read v3 directly; v3 skips unknown non-critical extensions",
+        "ecc_support": "stub (Phase 1): vault_v3_create_with_ecc emits non-critical 'ecc.reed-solomon' entry; real RS shards in Phase 2"
     })
 }
 
@@ -2206,6 +2303,7 @@ mod tests {
             &vault_path,
             "correct horse battery staple",
             DEFAULT_ZSTD_LEVEL,
+            false,
         )
         .unwrap();
         let mut vault = open_vault(&vault_path, "correct horse battery staple").unwrap();
@@ -2223,6 +2321,56 @@ mod tests {
         assert_eq!(std::fs::read(&out).unwrap(), std::fs::read(&a).unwrap());
     }
 
+    /// P1-01: ECC stub creation + roundtrip + v3 compatibility.
+    /// Creates a vault with the non-critical "ecc.reed-solomon" extension entry
+    /// (payload length 0 for stub phase), performs add + extract, re-opens,
+    /// and verifies the extension is present and non-critical.
+    /// Also asserts that is_vault_v3 (magic-based) still returns true.
+    #[test]
+    fn v3_ecc_stub_roundtrip_and_v3_compatibility() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault_path = dir.path().join("ecc-stub.aerovault");
+        let payload = dir.path().join("payload.bin");
+        std::fs::write(&payload, b"hello from ECC stub phase").unwrap();
+
+        // Create with ECC stub (Phase 1)
+        create_empty_vault(&vault_path, "ecc-test-pw", DEFAULT_ZSTD_LEVEL, true).unwrap();
+
+        // Add a file (exercises seal path that must preserve the extension dir)
+        let mut vault = open_vault(&vault_path, "ecc-test-pw").unwrap();
+        append_file_at(&mut vault, &payload, "data/payload.bin").unwrap();
+        save_open_vault(&vault).unwrap();
+
+        // Re-open and inspect extensions (proves roundtrip of the dir)
+        let reopened = open_vault(&vault_path, "ecc-test-pw").unwrap();
+        let ecc_ext = reopened
+            .extensions
+            .iter()
+            .find(|e| e.extension_id == ECC_EXTENSION_ID);
+        assert!(ecc_ext.is_some(), "ecc extension should be present after roundtrip");
+        let ecc_ext = ecc_ext.unwrap();
+        assert_eq!(ecc_ext.critical, false, "ECC extension must be non-critical for v3 compat");
+        assert_eq!(ecc_ext.algorithm_id, ECC_ALGORITHM_ID);
+        assert_eq!(ecc_ext.algorithm_version, ECC_ALGORITHM_VERSION);
+
+        // Extract must succeed (pure v3 reader path compatibility)
+        let out = dir.path().join("restored.bin");
+        extract_entry(&reopened, "data/payload.bin", &out).unwrap();
+        assert_eq!(std::fs::read(&out).unwrap(), b"hello from ECC stub phase");
+
+        // is_vault_v3 (the fast magic path used by dispatch / old v3 binaries) must still say yes.
+        // We check the magic directly here (same logic as is_vault_v3) to avoid needing an async runtime in the test.
+        let mut f = std::fs::File::open(&vault_path).unwrap();
+        let mut magic = [0u8; 11];
+        f.read_exact(&mut magic).unwrap();
+        let is_v3_magic = &magic[..10] == MAGIC && magic[10] == VERSION;
+        assert!(is_v3_magic, "vault with ECC stub extension must still be recognized as v3 by magic (for pure v3 reader compat)");
+
+        // The extension dir itself survived (we can check via header on re-open)
+        // Re-open header has non-zero extension_dir_len
+        assert!(reopened.header.extension_dir_len > 0, "extension directory must be present on disk");
+    }
+
     #[test]
     fn v3_directory_ops_and_password_rotation() {
         let dir = tempfile::tempdir().unwrap();
@@ -2232,7 +2380,7 @@ mod tests {
         std::fs::write(source.join("docs/nested/readme.txt"), b"nested").unwrap();
 
         let vault_path = dir.path().join("dir-test.aerovault");
-        create_empty_vault(&vault_path, "old-password", DEFAULT_ZSTD_LEVEL).unwrap();
+        create_empty_vault(&vault_path, "old-password", DEFAULT_ZSTD_LEVEL, false).unwrap();
 
         let mut vault = open_vault(&vault_path, "old-password").unwrap();
         create_directory_in_manifest(&mut vault.manifest, "empty").unwrap();
@@ -2276,6 +2424,7 @@ mod tests {
             &vault_path,
             "correct horse battery staple",
             DEFAULT_ZSTD_LEVEL,
+            false,
         )
         .unwrap();
 
@@ -2300,7 +2449,7 @@ mod tests {
         }
 
         let vault_path = dir.path().join("pack.aerovault");
-        create_empty_vault(&vault_path, "pack-password", DEFAULT_ZSTD_LEVEL).unwrap();
+        create_empty_vault(&vault_path, "pack-password", DEFAULT_ZSTD_LEVEL, false).unwrap();
 
         let mut vault = open_vault(&vault_path, "pack-password").unwrap();
         append_sources_batched(&mut vault, &sources).unwrap();
@@ -2356,7 +2505,7 @@ mod tests {
         }
 
         let vault_path = dir.path().join("multi.aerovault");
-        create_empty_vault(&vault_path, "multi-password", DEFAULT_ZSTD_LEVEL).unwrap();
+        create_empty_vault(&vault_path, "multi-password", DEFAULT_ZSTD_LEVEL, false).unwrap();
         let mut vault = open_vault(&vault_path, "multi-password").unwrap();
         append_sources_batched(&mut vault, &sources).unwrap();
         save_open_vault(&vault).unwrap();
@@ -2401,7 +2550,7 @@ mod tests {
         }
 
         let vault_path = dir.path().join("shared.aerovault");
-        create_empty_vault(&vault_path, "shared-password", DEFAULT_ZSTD_LEVEL).unwrap();
+        create_empty_vault(&vault_path, "shared-password", DEFAULT_ZSTD_LEVEL, false).unwrap();
         let mut vault = open_vault(&vault_path, "shared-password").unwrap();
         append_sources_batched(&mut vault, &sources).unwrap();
         // All ten tiny files share one physical pack chunk.
@@ -2455,7 +2604,7 @@ mod tests {
             .collect();
         std::fs::write(&src, &body).unwrap();
         let vault_path = dir.join(name);
-        create_empty_vault(&vault_path, password, DEFAULT_ZSTD_LEVEL).unwrap();
+        create_empty_vault(&vault_path, password, DEFAULT_ZSTD_LEVEL, false).unwrap();
         let mut v = open_vault(&vault_path, password).unwrap();
         append_file_at(&mut v, &src, "payload.bin").unwrap();
         save_open_vault(&v).unwrap();
@@ -2507,7 +2656,7 @@ mod tests {
 
         // archive profile (level 19) widens CDC bounds.
         let archive_path = dir.path().join("archive.aerovault");
-        create_empty_vault(&archive_path, "bounds-pw", 19).unwrap();
+        create_empty_vault(&archive_path, "bounds-pw", 19, false).unwrap();
         let mut av = open_vault(&archive_path, "bounds-pw").unwrap();
         let b = manifest_cdc_bounds(&av.manifest).unwrap();
         assert_eq!(b.avg, 4 * 1024 * 1024, "archive must widen CDC avg");
@@ -2516,7 +2665,7 @@ mod tests {
 
         // balanced profile keeps the const bounds.
         let bal_path = dir.path().join("balanced.aerovault");
-        create_empty_vault(&bal_path, "bounds-pw", DEFAULT_ZSTD_LEVEL).unwrap();
+        create_empty_vault(&bal_path, "bounds-pw", DEFAULT_ZSTD_LEVEL, false).unwrap();
         let mut bv = open_vault(&bal_path, "bounds-pw").unwrap();
         assert_eq!(manifest_cdc_bounds(&bv.manifest).unwrap().avg, CDC_AVG);
         append_file_at(&mut bv, &src, "big.bin").unwrap();
