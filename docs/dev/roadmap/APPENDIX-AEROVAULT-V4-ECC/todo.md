@@ -101,11 +101,19 @@
 - [ ] **P1-03** Ensure round-tripping: create with ECC stub → open (v3 path) → add files → save → re-open still has the extension dir entry
   - The header extension_payload_len must stay correct (currently always 0 in v3 path)
 
-- [ ] **P1-04** Update `vault_v3_security_info()` (and the internal `algorithm_chain` / report) to advertise the ECC layer when present
-  - Add a top-level `"ecc": { "enabled": true, "algorithm": "reed-solomon", "version": 1, "critical": false }` or similar when the extension is present
+- [x] **P1-04** Update `vault_v3_security_info()` (and the internal `algorithm_chain` / report) to advertise the ECC layer when present [DONE]
+  - Signature changed to `path: Option<String>`.
+  - When path provided, injects `"ecc": { "enabled": bool, "algorithm": "reed-solomon", "version": 1, "critical": false }` using the has_ecc helper.
+  - Enhanced static fields + compatibility note.
+  - Added passing unit test `v3_security_info_advertises_ecc_when_present`.
+  - Interleaved cargo test + check green.
+  - (P1-05 helper was prerequisite and already wired into info.)
 
-- [ ] **P1-05** Add a small "has_ecc_extension" helper (or richer `VaultVersionInfo`) usable by both GUI and CLI without fully opening the vault
-  - Useful for "My Vaults" list, CLI `vault info --json`, etc.
+- [x] **P1-05** Add a small "has_ecc_extension" helper (or richer `VaultVersionInfo`) usable by both GUI and CLI without fully opening the vault [DONE]
+  - `vault_v3_has_ecc(path)` implemented (lightweight, password-less via header+ext dir).
+  - Registered as Tauri command.
+  - Wired into CLI vault info (adds "has_ecc").
+  - Used by P1-04 security_info.
 
 - [ ] **P1-06** Write the first compatibility test: "v4-stub vault is still readable by the pure v3 open path and extract succeeds"
 

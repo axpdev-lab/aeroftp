@@ -2250,8 +2250,8 @@ pub async fn vault_v3_extract_entry(
 }
 
 #[tauri::command]
-pub async fn vault_v3_security_info() -> serde_json::Value {
-    serde_json::json!({
+pub async fn vault_v3_security_info(path: Option<String>) -> serde_json::Value {
+    let mut info = serde_json::json!({
         "version": "3.0-draft",
         "pipeline": [
             "small-file-batching",
@@ -2260,7 +2260,7 @@ pub async fn vault_v3_security_info() -> serde_json::Value {
             "zstd per chunk",
             "AES-256-GCM-SIV",
             "BLAKE3-256 cipher block hashes",
-            "extension directory for ECC"
+            "extension directory for ECC (reed-solomon)"
         ],
         "compression_profiles": {
             "fast": 3,
@@ -2268,8 +2268,26 @@ pub async fn vault_v3_security_info() -> serde_json::Value {
             "archive": 19
         },
         "compatibility": "v4 is expected to read v3 directly; v3 skips unknown non-critical extensions",
-        "ecc_support": "stub (Phase 1): vault_v3_create_with_ecc emits non-critical 'ecc.reed-solomon' entry; real RS shards in Phase 2"
-    })
+        "ecc_support": "stub (Phase 1): vault_v3_create_with_ecc emits non-critical 'ecc.reed-solomon' entry; real RS shards in Phase 2. See T-AEROVAULT-ECC (#272)"
+    });
+
+    if let Some(p) = path {
+        if let Ok(has_ecc) = vault_v3_has_ecc(p).await {
+            if let Some(obj) = info.as_object_mut() {
+                obj.insert(
+                    "ecc".to_string(),
+                    serde_json::json!({
+                        "enabled": has_ecc,
+                        "algorithm": "reed-solomon",
+                        "version": 1,
+                        "critical": false
+                    }),
+                );
+            }
+        }
+    }
+
+    info
 }
 
 #[cfg(test)]
@@ -2369,6 +2387,33 @@ mod tests {
         // The extension dir itself survived (we can check via header on re-open)
         // Re-open header has non-zero extension_dir_len
         assert!(reopened.header.extension_dir_len > 0, "extension directory must be present on disk");
+    }
+
+    #[test]
+    fn v3_security_info_advertises_ecc_when_present() {
+        // P1-04 test: security_info with path should report the ecc object when the stub extension is present.
+        let dir = tempfile::tempdir().unwrap();
+        let vault_path = dir.path().join("sec-info-test.aerovault");
+
+        create_empty_vault(&vault_path, "sec-pw-1234", DEFAULT_ZSTD_LEVEL, true).unwrap();
+
+        let info = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(vault_v3_security_info(Some(
+                vault_path.to_string_lossy().to_string(),
+            )));
+
+        let ecc = info.get("ecc").expect("ecc field should be present when path given");
+        assert_eq!(ecc["enabled"], true);
+        assert_eq!(ecc["algorithm"], "reed-solomon");
+        assert_eq!(ecc["version"], 1);
+        assert_eq!(ecc["critical"], false);
+
+        // Also check general fields still there
+        assert!(info.get("pipeline").is_some());
+        assert!(info.get("ecc_support").is_some());
     }
 
     #[test]
