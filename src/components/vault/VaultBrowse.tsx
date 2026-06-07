@@ -2,11 +2,12 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
-import { Plus, Trash2, Download, Key, FolderPlus, Eye, EyeOff, Loader2, File, Folder, Zap, ChevronRight, ArrowLeft, ArrowUpDown, Check } from 'lucide-react';
+import { Plus, Trash2, Download, Key, FolderPlus, Eye, EyeOff, Loader2, File, Folder, Zap, ChevronRight, ArrowLeft, ArrowUpDown, Check, Shield, Wrench } from 'lucide-react';
 import { VaultIcon } from '../icons/VaultIcon';
 import VaultSyncDialog from '../VaultSyncDialog';
 import { useTranslation } from '../../i18n';
 import { VaultState, securityLevels, IconProvider } from './useVaultState';
+import { useDraggableModal } from '../../hooks/useDraggableModal';
 import { PasswordStrengthBar } from './PasswordStrengthBar';
 import { formatSize } from '../../utils/formatters';
 
@@ -17,6 +18,8 @@ interface VaultBrowseProps {
 
 export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider }) => {
     const t = useTranslation();
+    const scrubDrag = useDraggableModal();
+    const repairDrag = useDraggableModal();
 
     const currentLevelConfig = state.vaultSecurity ? securityLevels[state.vaultSecurity.level] : null;
     const LevelIcon = currentLevelConfig?.icon || VaultIcon;
@@ -64,6 +67,28 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                         <ArrowUpDown size={14} /> {t('vaultSync.title') || 'Sync'}
                     </button>
                 )}
+
+                {/* P2 ECC actions: only for experimental / hasEcc vaults. Use the shared engine commands. */}
+                {(state.vaultSecurity?.level === 'experimental' || state.hasEcc) && (
+                    <>
+                        <button
+                            onClick={state.handleScrub}
+                            disabled={state.loading}
+                            className="flex items-center gap-1 px-2 py-1 text-xs bg-amber-700 hover:bg-amber-600 text-white rounded"
+                            title="Scrub ECC vault for damage (verify cipher hashes)"
+                        >
+                            <Shield size={14} /> Scrub ECC
+                        </button>
+                        <button
+                            onClick={() => { state.setRepairDryRun(true); state.setShowRepairDialog(true); }}
+                            disabled={state.loading}
+                            className="flex items-center gap-1 px-2 py-1 text-xs bg-rose-700 hover:bg-rose-600 text-white rounded"
+                            title="Repair using Reed-Solomon parity (dry-run preview available)"
+                        >
+                            <Wrench size={14} /> Repair ECC
+                        </button>
+                    </>
+                )}
                 {/* Remote vault: Save & Close */}
                 {state.remoteLocalPath && (
                     <button
@@ -82,6 +107,10 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                             <span className="flex items-center gap-0.5">
                                 <Zap size={10} /> {t('vault.cascade')}
                             </span>
+                        )}
+                        {/* P2: ECC badge (theme-aware, appears for hasEcc or enabled at create) */}
+                        {(state.hasEcc || state.eccEnabled) && (
+                            <span className="ml-1 px-1 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30">ECC</span>
                         )}
                     </div>
                 )}
@@ -284,6 +313,87 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                     onClose={() => state.setShowSyncDialog(false)}
                     onSynced={state.refreshVaultEntries}
                 />
+            )}
+
+            {/* P2: Draggable Scrub modal (theme-aware, follows app modal template + useDraggableModal) */}
+            {state.showScrubDialog && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40" onClick={() => state.setShowScrubDialog(false)}>
+                    <div
+                        {...scrubDrag.panelProps}
+                        className="w-[min(92vw,560px)] rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-2xl overflow-hidden"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div {...scrubDrag.dragHandleProps} className="px-4 py-2.5 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between cursor-move bg-gray-50 dark:bg-gray-800/60">
+                            <div className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
+                                <Shield size={16} className="text-amber-500" /> ECC Scrub Result
+                            </div>
+                            <button onClick={() => state.setShowScrubDialog(false)} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700">✕</button>
+                        </div>
+                        <div className="p-4 text-sm max-h-[60vh] overflow-auto">
+                            {!state.scrubResult || (state.scrubResult.count ?? 0) === 0 ? (
+                                <div className="text-emerald-600 dark:text-emerald-400">No damage detected. All cipher hashes match the stored blocks.</div>
+                            ) : (
+                                <div>
+                                    <div className="mb-2 text-amber-600 dark:text-amber-400 font-medium">{state.scrubResult.count} damaged chunk(s) found:</div>
+                                    <ul className="space-y-1 text-xs">
+                                        {(state.scrubResult.damaged || []).map((d: any, i: number) => (
+                                            <li key={i} className="p-2 rounded bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+                                                {d.id} — offset {d.on_disk_start} (len {d.on_disk_len})
+                                            </li>
+                                        ))}
+                                    </ul>
+                                    <div className="mt-3 text-[11px] text-gray-500 dark:text-gray-400">Use Repair ECC to attempt recovery from stored Reed-Solomon parity (if available).</div>
+                                </div>
+                            )}
+                        </div>
+                        <div className="p-3 border-t border-gray-200 dark:border-gray-700 flex justify-end">
+                            <button onClick={() => state.setShowScrubDialog(false)} className="px-3 py-1 text-sm rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Close</button>
+                            <button onClick={() => { state.setShowScrubDialog(false); state.setShowRepairDialog(true); }} className="ml-2 px-3 py-1 text-sm rounded bg-rose-600 text-white hover:bg-rose-500">Open Repair</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* P2: Draggable Repair modal (respects themes, draggable header via hook, template consistent with other app modals) */}
+            {state.showRepairDialog && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40" onClick={() => state.setShowRepairDialog(false)}>
+                    <div
+                        {...repairDrag.panelProps}
+                        className="w-[min(92vw,620px)] rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-2xl overflow-hidden"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div {...repairDrag.dragHandleProps} className="px-4 py-2.5 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between cursor-move bg-gray-50 dark:bg-gray-800/60">
+                            <div className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
+                                <Wrench size={16} className="text-rose-500" /> ECC Repair
+                            </div>
+                            <button onClick={() => state.setShowRepairDialog(false)} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700">✕</button>
+                        </div>
+                        <div className="p-4 text-sm">
+                            <div className="flex items-center gap-2 mb-3">
+                                <input type="checkbox" checked={state.repairDryRun} onChange={e => state.setRepairDryRun(e.target.checked)} className="accent-rose-600" />
+                                <span>Dry-run (preview only, no writes)</span>
+                            </div>
+
+                            {state.repairResult ? (
+                                <div className="p-3 rounded bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+                                    {state.repairResult.dry_run ? 'Dry-run: ' : ''}Repaired {state.repairResult.repaired || 0} chunk(s).
+                                </div>
+                            ) : (
+                                <div className="text-gray-500 dark:text-gray-400 text-xs">Run scrub first to see damaged list. Repair will use the Reed-Solomon parity stored in the vault (if the damage is within redundancy).</div>
+                            )}
+                        </div>
+                        <div className="p-3 border-t border-gray-200 dark:border-gray-700 flex gap-2 justify-end">
+                            <button onClick={() => state.setShowRepairDialog(false)} className="px-3 py-1 text-sm rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Close</button>
+                            <button
+                                onClick={state.handleRepair}
+                                disabled={state.isRepairing || state.loading}
+                                className="px-3 py-1 text-sm rounded bg-rose-600 text-white hover:bg-rose-500 disabled:opacity-50"
+                            >
+                                {state.isRepairing ? 'Repairing...' : (state.repairDryRun ? 'Preview Repair' : 'Repair Now')}
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </>
     );
