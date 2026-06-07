@@ -2680,6 +2680,12 @@ enum VaultCommands {
         /// v2 only: enable the ChaCha20-Poly1305 cascade (paranoid) mode
         #[arg(long)]
         cascade: bool,
+        /// Enable the ECC (error-correction / Reed-Solomon) stub layer.
+        /// v3+ only. This is the Phase 1 stub (non-critical extension entry with
+        /// zero-length payload). Real RS shards come in the v4 track.
+        /// See T-AEROVAULT-ECC in discussions/272 and the APPENDIX.
+        #[arg(long)]
+        ecc: bool,
     },
     /// Add files to a vault. v3 batches sub-threshold files into shared
     /// packs before chunking; v2/v1 add each file as its own entry.
@@ -42636,6 +42642,7 @@ async fn main() {
                     profile,
                     vault_version,
                     cascade,
+                    ecc,
                 } => 'create: {
                     let pw = resolve_pw(password);
                     // v3 rejects < 8 internally; v1/v2 had no minimum, so a
@@ -42658,8 +42665,19 @@ async fn main() {
                             aerovault_v2::vault_v2_create(path.clone(), pw, None, *cascade).await
                         }
                         _ => {
-                            aerovault_v3::vault_v3_create(path.clone(), pw, Some(profile.clone()))
+                            if *ecc {
+                                // P1-01: stub ECC path (non-critical extension).
+                                // Full RS in Phase 2 / v4 track per T-AEROVAULT-ECC (#272).
+                                aerovault_v3::vault_v3_create_with_ecc(
+                                    path.clone(),
+                                    pw,
+                                    Some(profile.clone()),
+                                )
                                 .await
+                            } else {
+                                aerovault_v3::vault_v3_create(path.clone(), pw, Some(profile.clone()))
+                                    .await
+                            }
                         }
                     };
                     match res {
