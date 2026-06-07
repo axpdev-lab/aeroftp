@@ -927,8 +927,6 @@ export function MyServersPanel({
                     proto = presetProto;
                 }
             }
-            const isProviderProtocol = ['s3', 'webdav', 'sftp', 'mega', 'filelu', 'koofr', 'yandexdisk', 'github', 'gitlab', 'opendrive', 'internxt', 'filen', 'drime', 'jottacloud', 'kdrive', 'swift', 'backblaze'].includes(proto);
-            const defaultPort = proto === 'sftp' ? 22 : proto === 'ftps' ? 990 : 21;
             const serverString = server.host;
 
             await onConnect({
@@ -943,22 +941,30 @@ export function MyServersPanel({
                 savedServerId: server.id,
             }, server.initialPath, server.localInitialPath);
 
+            // Best-effort Filen auth-version badge enrichment, detached on purpose.
+            // filen_get_auth_version takes the provider lock, so it queues behind the
+            // initial remote listing; awaiting it here would keep the connect spinner
+            // alive (and block reconnection via the `connectingId` guard) for the whole
+            // wait, and leave it spinning if the user disconnects mid-fetch. Firing it
+            // detached lets the connect finally{} clear the spinner immediately. (#270)
             if (proto === 'filen') {
-                try {
-                    const authVersion = await invoke<number | null>('filen_get_auth_version');
-                    if (typeof authVersion === 'number') {
-                        const updatedWithAuth = await mergeSavedServerProfile(server.id, latest => ({
-                            ...latest,
-                            options: {
-                                ...(latest.options || {}),
-                                filen_auth_version: authVersion,
-                            },
-                        }));
-                        setServers(updatedWithAuth);
+                void (async () => {
+                    try {
+                        const authVersion = await invoke<number | null>('filen_get_auth_version');
+                        if (typeof authVersion === 'number') {
+                            const updatedWithAuth = await mergeSavedServerProfile(server.id, latest => ({
+                                ...latest,
+                                options: {
+                                    ...(latest.options || {}),
+                                    filen_auth_version: authVersion,
+                                },
+                            }));
+                            setServers(updatedWithAuth);
+                        }
+                    } catch {
+                        // best-effort badge enrichment only
                     }
-                } catch {
-                    // best-effort badge enrichment only
-                }
+                })();
             }
         } catch (e) {
             logger.error('Connection failed', e);
@@ -970,7 +976,7 @@ export function MyServersPanel({
     const handleDuplicate = useCallback((server: ServerProfile) => {
         const dup: ServerProfile = {
             ...server,
-            id: `srv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            id: `srv_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
             name: `${server.name} (copy)`,
             lastConnected: undefined,
         };
