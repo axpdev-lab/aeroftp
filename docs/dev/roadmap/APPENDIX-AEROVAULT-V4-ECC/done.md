@@ -293,3 +293,59 @@ Co-Authored-By: Grok 4.3 released by xAI in April 2026 <noreply@x.ai>
 Handoff complete. Fresh window prompt will be provided to user separately. All core work per APPENDIX + user "via libera" steps is captured and clean. 🚀
 
 (End of handoff entry)
+
+---
+
+## Session: Independent review + hardening (Claude Opus) — 2026-06-08
+
+Branch `feat/aerovault-v4-ecc`, on top of the P1+P2+GUI handoff. Owner asked for a
+careful audit of Grok's planned and delivered work, then to apply the fixes.
+
+### Verified working (live, not just claimed)
+- `cargo test --lib aerovault_v3`: all green (20 tests after the new regression below).
+- Built `aeroftp-cli` and ran the full real cycle on actual files:
+  - `vault create --ecc` → `info` shows `has_ecc: true` (and `false` for a plain vault).
+  - inject a byte flip inside a ciphertext block → `scrub` detects it; `extract` fails
+    pre-decrypt (`Cipher block hash mismatch`).
+  - `repair --dry-run` then `repair` → reconstructs; `scrub` clean; `extract` → SHA-256
+    identical to the original. Real Reed-Solomon recovery confirmed end to end.
+  - magic stays `AEROVAULT3` + format byte 3 → pure-v3 forward-compat intact.
+
+### Bugs found and FIXED in this session
+1. **CLAUDE-AV-ECC-01 (safety, data-loss grade) — repair trusted unverified RS output.**
+   `repair_vault` wrote reconstructed blocks and re-sealed (recomputing parity over them)
+   WITHOUT checking the result against the authenticated `cipher_hash`. Proven live: with
+   a corrupted parity shard, repair reported "Successfully repaired 1 chunks" while writing
+   wrong bytes AND overwriting the good parity — destroying the redundancy needed to recover.
+   Fix: verify every reconstructed block's BLAKE3 against its manifest `cipher_hash`; persist
+   only when ALL damaged blocks verify (conservative all-or-nothing); otherwise leave the
+   vault byte-for-byte untouched. New regression test
+   `p2_repair_refuses_unverifiable_reconstruction_when_parity_is_corrupt`.
+2. **repair had no write lock.** Other mutating ops take `acquire_vault_write_lock`; repair
+   re-seals too. Added the lock (skipped for `--dry-run`, which is read-only).
+3. **scrub "0 chunks checked" was misleading** (`count` was the *damaged* count). Added a
+   real `checked` field (total chunks) and the CLI now prints it.
+4. **repair CLI message now honest:** reports damaged vs repaired
+   ("Could not repair N … (vault left untouched)" / "Successfully repaired N").
+5. **Finalized P2-08 Tauri registration** (`vault_v3_scrub` / `vault_v3_repair`) that was
+   still uncommitted, plus the uncommitted stress test and `Cargo.lock` (reed-solomon-erasure
+   + transitive deps).
+6. **Visibility warning fixed:** the ECC primitives were `pub` over the private `OpenVaultV3`;
+   reduced to module-private (no external callers).
+
+### KNOWN LIMITATION — parity overhead (open P2 design item, NOT a bug)
+`compute_ecc_shards` uses a single global `shard_size` = the largest on-disk block, pads every
+stripe to 10 data shards, and stores 2 full-size parity shards per stripe. With CDC bounds
+(min 256 KiB, avg 1 MiB) real vaults have few, large chunks, so the parity overhead is far
+above the nominal 20%. Measured live: a 300 KB single-chunk vault produced ~600 KB of parity
+(≈200% overhead; 902 KB total file). Needs a better shard strategy (per-stripe sizing, or
+splitting large chunks into sub-shards) before this is shippable for archive use. Tracked as
+P2-09 in todo.md.
+
+### Note for the owner to verify (not code)
+The appendix cites discussions #272/#276, issue #162 and contributor "Ehud Kirsh" with quoted
+language. These are local design docs (`docs/dev/` is gitignored), but `done.md`/`todo.md` are
+tracked on the branch — confirm those references are real before any of this reaches public
+GitHub.
+
+**Test baseline now:** `cargo test --lib aerovault_v3` → 20 passed.

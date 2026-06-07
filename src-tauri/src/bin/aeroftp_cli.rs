@@ -42999,7 +42999,7 @@ async fn main() {
                                     OutputFormat::Text => {
                                         if let Some(damaged) = report.get("damaged").and_then(|v| v.as_array()) {
                                             if damaged.is_empty() {
-                                                println!("No damage detected ({} chunks checked)", report.get("count").unwrap_or(&serde_json::json!(0)));
+                                                println!("No damage detected ({} chunks checked)", report.get("checked").and_then(|v| v.as_u64()).unwrap_or(0));
                                             } else {
                                                 println!("Damage detected in {} chunks:", damaged.len());
                                                 for d in damaged {
@@ -43041,13 +43041,18 @@ async fn main() {
                                     OutputFormat::Json => print_json(&report),
                                     OutputFormat::Text => {
                                         let repaired = report.get("repaired").and_then(|v| v.as_u64()).unwrap_or(0);
+                                        let damaged = report.get("damaged").and_then(|v| v.as_u64()).unwrap_or(0);
                                         let is_dry = report.get("dry_run").and_then(|v| v.as_bool()).unwrap_or(false);
                                         if is_dry {
-                                            println!("Dry-run: would repair {} chunks", repaired);
+                                            println!("Dry-run: would repair {} of {} damaged chunk(s)", repaired, damaged);
+                                        } else if damaged == 0 {
+                                            println!("No damage detected; nothing to repair");
                                         } else if repaired == 0 {
-                                            println!("No repair needed (or no ECC coverage)");
+                                            println!("Could not repair {} damaged chunk(s): insufficient or invalid ECC (vault left untouched)", damaged);
+                                        } else if repaired < damaged {
+                                            println!("Repaired {} of {} damaged chunk(s); {} still unrecoverable", repaired, damaged, damaged - repaired);
                                         } else {
-                                            println!("Successfully repaired {} chunks", repaired);
+                                            println!("Successfully repaired {} chunk(s)", repaired);
                                         }
                                     }
                                 }

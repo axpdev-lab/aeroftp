@@ -357,7 +357,7 @@ impl EccPayload {
 /// 
 /// The resulting payload can be placed in the extension and an entry added to
 /// the extension directory with the appropriate offset/length.
-pub fn compute_ecc_shards(
+fn compute_ecc_shards(
     data_blocks: &[&[u8]],
     _cipher_hashes: &[String], // not yet used in payload, but part of signature
 ) -> Vec<u8> {
@@ -448,7 +448,7 @@ pub fn compute_ecc_shards(
 /// 
 /// Returns the number of blocks that were successfully reconstructed.
 /// Damaged blocks that could be recovered are overwritten in `data_blocks`.
-pub fn reconstruct_from_ecc(
+fn reconstruct_from_ecc(
     data_blocks: &mut [Vec<u8>],
     bad_indices: &[usize],
     ecc_payload_bytes: &[u8],
@@ -539,7 +539,7 @@ pub struct DamagedChunk {
     pub on_disk_len: u64,
 }
 
-pub fn scrub_vault(vault: &OpenVaultV3) -> Vec<DamagedChunk> {
+fn scrub_vault(vault: &OpenVaultV3) -> Vec<DamagedChunk> {
     let mut damaged = vec![];
 
     // Collect and sort chunks by their physical order in the data section.
@@ -589,7 +589,7 @@ pub fn scrub_vault(vault: &OpenVaultV3) -> Vec<DamagedChunk> {
     damaged
 }
 
-pub fn repair_vault(vault: &mut OpenVaultV3, dry_run: bool) -> Result<usize, String> {
+fn repair_vault(vault: &mut OpenVaultV3, dry_run: bool) -> Result<usize, String> {
     let damaged = scrub_vault(vault);
     if damaged.is_empty() {
         return Ok(0);
@@ -634,23 +634,49 @@ pub fn repair_vault(vault: &mut OpenVaultV3, dry_run: bool) -> Result<usize, Str
             ordered.iter().position(|(id, _)| id == &d.record.id)
         }).collect();
 
-        repaired_count = reconstruct_from_ecc(&mut blocks, &bad_indices, &ecc_b)?;
+        let _ = reconstruct_from_ecc(&mut blocks, &bad_indices, &ecc_b)?;
 
-        if repaired_count > 0 && !dry_run {
-            let mut new_data = vec![];
-            let mut new_chunks = BTreeMap::new();
-            for (i, (id, mut rec)) in ordered.into_iter().enumerate() {
-                rec.data_offset = new_data.len() as u64;
-                if blocks[i].len() >= 8 {
-                    rec.block_len = u64::from_le_bytes(blocks[i][0..8].try_into().unwrap());
-                }
-                new_data.extend_from_slice(&blocks[i]);
-                new_chunks.insert(id, rec);
+        // Safety gate (CLAUDE-AV-ECC-01): RS reconstruction is only correct when
+        // the surviving data shards AND the parity shards were themselves intact.
+        // The parity lives in the extension payload, which scrub does not cover, so
+        // a rotted parity shard (or more erasures than parity in a stripe) silently
+        // yields wrong bytes. Verify every reconstructed block against its
+        // authenticated manifest cipher_hash before trusting it, and only persist
+        // when ALL damaged blocks verify: persisting a wrong reconstruction would
+        // recompute parity over the garbage on the next seal, destroying the very
+        // redundancy needed to recover. Conservative all-or-nothing matches the
+        // repair safety contract ("never overwrite without hash verification").
+        let all_verified = bad_indices.iter().all(|&i| {
+            let blk = &blocks[i];
+            if blk.len() < 8 {
+                return false;
             }
-            vault.data = new_data;
-            vault.manifest.chunks = new_chunks;
-            save_open_vault(vault)?;
+            let body = u64::from_le_bytes(blk[0..8].try_into().unwrap()) as usize;
+            blk.len() == 8 + body
+                && body as u64 == ordered[i].1.block_len
+                && blake3::hash(&blk[8..8 + body]).to_hex().to_string() == ordered[i].1.cipher_hash
+        });
+
+        if all_verified {
+            repaired_count = bad_indices.len();
+            if !dry_run {
+                let mut new_data = vec![];
+                let mut new_chunks = BTreeMap::new();
+                for (i, (id, mut rec)) in ordered.into_iter().enumerate() {
+                    rec.data_offset = new_data.len() as u64;
+                    if blocks[i].len() >= 8 {
+                        rec.block_len = u64::from_le_bytes(blocks[i][0..8].try_into().unwrap());
+                    }
+                    new_data.extend_from_slice(&blocks[i]);
+                    new_chunks.insert(id, rec);
+                }
+                vault.data = new_data;
+                vault.manifest.chunks = new_chunks;
+                save_open_vault(vault)?;
+            }
         }
+        // else: reconstruction could not be verified -> leave the vault
+        // byte-for-byte untouched (repaired_count stays 0) so no redundancy is lost.
     }
 
     Ok(repaired_count)
@@ -2434,6 +2460,7 @@ pub async fn vault_v3_has_ecc(path: String) -> Result<bool, String> {
 #[tauri::command]
 pub async fn vault_v3_scrub(vault_path: String, password: String) -> Result<serde_json::Value, String> {
     let vault = open_vault(vault_path, &password)?;
+    let checked = vault.manifest.chunks.len();
     let damaged = scrub_vault(&vault);
     let list: Vec<_> = damaged.into_iter().map(|d| serde_json::json!({
         "id": d.record.id,
@@ -2443,16 +2470,27 @@ pub async fn vault_v3_scrub(vault_path: String, password: String) -> Result<serd
     })).collect();
     Ok(serde_json::json!({
         "damaged": list,
-        "count": list.len()
+        "count": list.len(),
+        "checked": checked
     }))
 }
 
 #[tauri::command]
 pub async fn vault_v3_repair(vault_path: String, password: String, dry_run: bool) -> Result<serde_json::Value, String> {
-    let mut vault = open_vault(vault_path, &password)?;
+    // A real repair mutates and atomically re-seals the vault, so take the same
+    // write lock the other mutating ops use to keep a concurrent add/delete from
+    // racing the rewrite. Dry-run is read-only and needs no lock.
+    let _lock = if dry_run {
+        None
+    } else {
+        Some(acquire_vault_write_lock(Path::new(&vault_path))?)
+    };
+    let mut vault = open_vault(&vault_path, &password)?;
+    let damaged = scrub_vault(&vault).len();
     let repaired = repair_vault(&mut vault, dry_run)?;
     Ok(serde_json::json!({
         "repaired": repaired,
+        "damaged": damaged,
         "dry_run": dry_run
     }))
 }
@@ -3211,6 +3249,82 @@ mod tests {
                 assert_eq!(std::fs::read(&out).unwrap(), std::fs::read(p).unwrap());
             }
         }
+    }
+
+    /// Safety regression (CLAUDE-AV-ECC-01): when the parity itself is corrupt,
+    /// RS reconstruction produces wrong bytes. repair must NOT report success and
+    /// must NOT persist anything (which would also recompute parity over the
+    /// garbage and destroy the redundancy). The vault must stay byte-for-byte
+    /// untouched and the damage must remain detectable.
+    #[test]
+    fn p2_repair_refuses_unverifiable_reconstruction_when_parity_is_corrupt() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault_path = dir.path().join("bad-parity.aerovault");
+        let f = dir.path().join("f.bin");
+        // Incompressible data so the chunk + parity are substantial.
+        let data: Vec<u8> = (0..300_000u32)
+            .map(|i| (i.wrapping_mul(2_654_435_761).rotate_left(7) >> 11) as u8)
+            .collect();
+        std::fs::write(&f, &data).unwrap();
+
+        create_empty_vault(&vault_path, "bad-parity-pw", DEFAULT_ZSTD_LEVEL, true).unwrap();
+        let mut vault = open_vault(&vault_path, "bad-parity-pw").unwrap();
+        append_file_at(&mut vault, &f, "f.bin").unwrap();
+        save_open_vault(&vault).unwrap();
+
+        // Corrupt the first parity shard's DATA (not the payload header/stripe
+        // table). With a single erasure RS uses the lowest-index parity shard, so
+        // damaging parity shard 0 forces a wrong (but well-formed) reconstruction.
+        // Layout: [32B EccPayloadHeader][num_stripes*10B stripe table][parity...].
+        {
+            let raw = std::fs::read(&vault_path).unwrap();
+            let ext_payload_offset =
+                u64::from_le_bytes(raw[176..184].try_into().unwrap()) as usize;
+            // 32B header + (1 stripe * 10B) table => parity shard 0 starts at +42.
+            let pos = ext_payload_offset + 42 + 100;
+            let mut fh = std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(&vault_path)
+                .unwrap();
+            // Flip a swath to be sure the used parity shard is corrupted.
+            for k in 0..256u64 {
+                let p = (pos as u64) + k;
+                fh.seek(SeekFrom::Start(p)).unwrap();
+                let mut b = [0u8; 1];
+                fh.read_exact(&mut b).unwrap();
+                fh.seek(SeekFrom::Start(p)).unwrap();
+                fh.write_all(&[b[0] ^ 0xAA]).unwrap();
+            }
+        }
+
+        // Snapshot the file, then open and corrupt the first data block in memory
+        // so scrub flags it (the parity is what makes reconstruction wrong).
+        let before = std::fs::read(&vault_path).unwrap();
+        let mut vault2 = open_vault(&vault_path, "bad-parity-pw").unwrap();
+        let first_off = {
+            let mut recs: Vec<_> = vault2.manifest.chunks.values().cloned().collect();
+            recs.sort_by_key(|r| r.data_offset);
+            recs[0].data_offset as usize
+        };
+        vault2.data[first_off + 8 + 5] ^= 0xFF;
+
+        assert!(
+            !scrub_vault(&vault2).is_empty(),
+            "scrub must detect the corrupted block"
+        );
+
+        let repaired = repair_vault(&mut vault2, false).expect("repair call should not error");
+        assert_eq!(
+            repaired, 0,
+            "repair must not claim success when the reconstruction cannot be verified"
+        );
+
+        let after = std::fs::read(&vault_path).unwrap();
+        assert_eq!(
+            before, after,
+            "repair must leave the vault untouched when it cannot verify the fix"
+        );
     }
 
     /// P1-06: First compatibility test - a "v4-stub" vault (created with ECC extension)

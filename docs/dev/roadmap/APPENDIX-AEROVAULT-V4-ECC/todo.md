@@ -240,6 +240,27 @@ All P1/P2/GUI surfaces per plan + user GUI request completed and handed off. See
   - All tests (unit + e2e + stress with 12+ files / multi-damage) pass.
   - CLI for ECC ops is complete (create --ecc, info has_ecc, scrub, repair). No other commands needed at this stage (core coverage is create/info/scrub/repair).
 
+- [x] **P2-HARD** Repair safety + reporting hardening (Claude Opus review, 2026-06-08) [DONE]
+  - `repair_vault` now verifies every reconstructed block against its `cipher_hash` and
+    only persists when ALL damaged blocks verify (else leaves the vault untouched). This
+    closes CLAUDE-AV-ECC-01: previously a corrupt parity shard made repair report success
+    while writing wrong data and destroying the parity (proven live). New regression test
+    `p2_repair_refuses_unverifiable_reconstruction_when_parity_is_corrupt`.
+  - `vault_v3_repair` takes the vault write lock (skipped for --dry-run).
+  - scrub JSON now has a real `checked` count; CLI scrub/repair messages are honest.
+  - ECC primitives made module-private (silenced the private-type-in-public-fn warning).
+  - Baseline: `cargo test --lib aerovault_v3` → 20 passed.
+
+- [ ] **P2-09** [DESIGN] Fix the ECC parity overhead before shipping
+  - `compute_ecc_shards` uses one global `shard_size` = largest on-disk block and pads each
+    stripe to 10 data shards, storing 2 full-size parity shards per stripe. With CDC bounds
+    (min 256 KiB / avg 1 MiB) real vaults have few large chunks, so overhead is FAR above the
+    nominal 20%. Measured: 300 KB single-chunk vault → ~600 KB parity (≈200%, 902 KB file).
+  - Options: per-stripe shard_size (max within the stripe), or split large chunks into N
+    sub-shards so RS(N, parity) gives parity/N overhead. Changes the on-disk payload format
+    (bump `ECC_PAYLOAD_VERSION`); still pre-release so no migration needed.
+  - BLOCKS: marking ECC as production-ready / any release note claiming efficient redundancy.
+
 ---
 
 ## Phase 3 — User Surfaces & Polish (GUI + CLI)
