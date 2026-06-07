@@ -193,7 +193,14 @@ All per plan, step-by-step with tests. Ready for Phase 2 (RS crate).
 - Roundtrip test `p2_02_ecc_payload_format_roundtrip` added and passing.
 - Format documented in source comments.
 
-All per plan, step-by-step with tests. Ready for P2-03 (compute_ecc_shards using the RS crate).
+**P2-03 completed**:
+- Implemented `compute_ecc_shards`.
+- Uses the RS crate to produce parity for stripes of on-disk blocks.
+- Returns ready-to-store payload bytes.
+- Smoke test passes.
+- Interleaved with `cargo test`.
+
+All per plan, step-by-step with tests. Ready for P2-04 (reconstruction) and wiring into seal path.
 
 Rocket engines lit. Proceeding step-by-step.
 

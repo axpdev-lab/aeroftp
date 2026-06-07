@@ -23,6 +23,8 @@ use std::path::{Path, PathBuf};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
+use reed_solomon_erasure::ReedSolomon;
+
 const MAGIC: &[u8; 10] = b"AEROVAULT3";
 const VERSION: u8 = 3;
 const HEADER_SIZE: usize = 1024;
@@ -338,6 +340,103 @@ impl EccPayload {
 
         Ok(EccPayload { header, stripes, parity_data })
     }
+}
+
+/// P2-03: Compute the ECC payload bytes from the list of on-disk ciphertext blocks.
+/// 
+/// `data_blocks`: the raw stored form of each chunk in the data section order
+///                (i.e. [u64 little-endian length][ciphertext bytes...]).
+///                These are exactly the bytes that have a corresponding `cipher_hash`
+///                in the manifest.
+/// `cipher_hashes`: the list of cipher hashes (one per block), for future use
+///                  (e.g. to embed a Merkle root or verification in the payload).
+/// 
+/// Returns the serialized bytes to store in the extension payload area for the
+/// "ecc.reed-solomon" entry. Uses fixed parameters for now (10 data + 2 parity
+/// shards per stripe, global shard_size = max block size).
+/// 
+/// The resulting payload can be placed in the extension and an entry added to
+/// the extension directory with the appropriate offset/length.
+pub fn compute_ecc_shards(
+    data_blocks: &[&[u8]],
+    _cipher_hashes: &[String], // not yet used in payload, but part of signature
+) -> Vec<u8> {
+    if data_blocks.is_empty() {
+        return vec![];
+    }
+
+    let data_shards = 10u16;
+    let parity_shards = 2u16;
+
+    // Global shard size = max on-disk block size (including u64 len prefix).
+    // All shards in the RS encoding are padded to this size.
+    let shard_size = data_blocks
+        .iter()
+        .map(|b| b.len())
+        .max()
+        .unwrap_or(0) as u32;
+
+    if shard_size == 0 {
+        return vec![];
+    }
+
+    let mut stripes: Vec<EccStripeHeader> = vec![];
+    let mut parity_concat: Vec<u8> = vec![];
+
+    let mut chunk_idx: u64 = 0;
+
+    for stripe_start in (0..data_blocks.len()).step_by(data_shards as usize) {
+        let stripe_end = std::cmp::min(stripe_start + data_shards as usize, data_blocks.len());
+        let num_in_this_stripe = (stripe_end - stripe_start) as u16;
+
+        // Prepare shards for RS: first `data_shards` slots (pad shorter ones),
+        // extra slots for parity (will be filled by encode).
+        let mut rs_shards: Vec<Vec<u8>> =
+            vec![vec![0u8; shard_size as usize]; (data_shards + parity_shards) as usize];
+
+        for (local, &block) in data_blocks[stripe_start..stripe_end].iter().enumerate() {
+            let mut padded = block.to_vec();
+            padded.resize(shard_size as usize, 0);
+            rs_shards[local] = padded;
+        }
+
+        // Partial last stripe: the remaining slots stay zero (treated as zero data)
+        let rs = ReedSolomon::<reed_solomon_erasure::galois_8::Field>::new(
+            data_shards as usize,
+            parity_shards as usize,
+        )
+        .expect("invalid ReedSolomon parameters");
+
+        rs.encode(&mut rs_shards).expect("RS encode failed");
+
+        // Collect only the parity shards (after the data slots)
+        for p in 0..parity_shards as usize {
+            let parity_shard = &rs_shards[data_shards as usize + p];
+            parity_concat.extend_from_slice(parity_shard);
+        }
+
+        stripes.push(EccStripeHeader {
+            first_chunk_index: chunk_idx,
+            num_data_chunks: num_in_this_stripe,
+        });
+
+        chunk_idx += num_in_this_stripe as u64;
+    }
+
+    let header = EccPayloadHeader {
+        data_shards,
+        parity_shards,
+        shard_size,
+        num_stripes: stripes.len() as u32,
+    };
+
+    let payload = EccPayload {
+        header,
+        stripes,
+        parity_data: parity_concat,
+    };
+
+    payload.to_bytes()
 }
 
 #[derive(Debug, Serialize)]
@@ -2583,6 +2682,31 @@ mod tests {
         assert_eq!(decoded.stripes[2].num_data_chunks, 5);
         assert_eq!(decoded.parity_data.len(), parity_len);
         assert!(decoded.parity_data.iter().all(|&b| b == 0xAB));
+    }
+
+    #[test]
+    fn p2_03_compute_ecc_shards_basic() {
+        // P2-03: smoke test that compute_ecc_shards produces a well-formed payload.
+        let block1: Vec<u8> = vec![0u8; 100]; // will be [len][data] but here we simulate full on-disk
+        let block2: Vec<u8> = vec![1u8; 200];
+
+        // For the test we pass the raw "on-disk" form (in real use it includes the u64 len prefix)
+        let data_blocks: Vec<&[u8]> = vec![&block1, &block2];
+        let hashes = vec!["hash1".to_string(), "hash2".to_string()];
+
+        let payload_bytes = compute_ecc_shards(&data_blocks, &hashes);
+
+        assert!(!payload_bytes.is_empty());
+
+        // Should be parsable with our P2-02 format
+        let parsed = EccPayload::from_bytes(&payload_bytes).expect("payload should parse");
+
+        assert_eq!(parsed.header.data_shards, 10);
+        assert_eq!(parsed.header.parity_shards, 2);
+        // shard_size should be at least the largest block
+        assert!(parsed.header.shard_size >= 200);
+        assert_eq!(parsed.stripes.len(), 1); // only 2 blocks < 10
+        assert_eq!(parsed.stripes[0].num_data_chunks, 2);
     }
 
     /// P1-06: First compatibility test - a "v4-stub" vault (created with ECC extension)
