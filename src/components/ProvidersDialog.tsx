@@ -162,7 +162,7 @@ const ALL_PROVIDERS: ProviderFeatures[] = [
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'versioning'],
     advanced: ['storageClass', 'objectTagging', 'sse', 'checksum'] },
   { name: 'Backblaze B2', logoId: 'backblaze',
-    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search'],
+    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'versioning'],
     advanced: [] },
   { name: 'Cloudflare R2', logoId: 'cloudflare-r2',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search'],

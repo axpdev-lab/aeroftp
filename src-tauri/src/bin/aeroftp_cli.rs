@@ -70,8 +70,8 @@ use ftp_client_gui_lib::profile_loader::{
     S3_PATH_STYLE_SOURCE_META_KEY, S3_PROVIDER_ID_META_KEY, S3_REGION_SOURCE_META_KEY,
 };
 use ftp_client_gui_lib::providers::{
-    ProviderConfig, ProviderError, ProviderFactory, ProviderType, RemoteEntry, ShareLinkOptions,
-    StorageProvider, MAX_DOWNLOAD_TO_BYTES,
+    FileVersion, ProviderConfig, ProviderError, ProviderFactory, ProviderType, RemoteEntry,
+    ShareLinkOptions, StorageProvider, MAX_DOWNLOAD_TO_BYTES,
 };
 use ftp_client_gui_lib::user_partitions;
 use ftp_client_gui_lib::util::shutdown_signal;
@@ -2494,6 +2494,16 @@ enum Commands {
         #[command(subcommand)]
         command: JobCommands,
     },
+    /// List, download, or restore previous versions of a file
+    ///
+    /// Only providers that expose versioning answer (e.g. Filen, Dropbox,
+    /// Google Drive, OneDrive, pCloud, kDrive). Use `versions list` to get a
+    /// version id, then `versions get` to download it or `versions restore`
+    /// to make it current.
+    Versions {
+        #[command(subcommand)]
+        command: VersionCommands,
+    },
     /// Encrypted overlay - zero-knowledge storage on any provider
     Crypt {
         #[command(subcommand)]
@@ -3395,6 +3405,46 @@ enum JobCommands {
 }
 
 #[derive(Subcommand)]
+enum VersionCommands {
+    /// List previous versions of a file (newest first)
+    List {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_", hide_default_value = true)]
+        url: String,
+        /// Remote file path
+        #[arg(default_value = "")]
+        path: String,
+    },
+    /// Download a specific previous version of a file
+    Get {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_", hide_default_value = true)]
+        url: String,
+        /// Remote file path
+        #[arg(default_value = "")]
+        path: String,
+        /// Version id (from `versions list`)
+        #[arg(default_value = "")]
+        version_id: String,
+        /// Local destination path
+        #[arg(default_value = "")]
+        local: String,
+    },
+    /// Restore a file to a specific previous version
+    Restore {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_", hide_default_value = true)]
+        url: String,
+        /// Remote file path
+        #[arg(default_value = "")]
+        path: String,
+        /// Version id (from `versions list`)
+        #[arg(default_value = "")]
+        version_id: String,
+    },
+}
+
+#[derive(Subcommand)]
 enum CryptCommands {
     /// Initialize an encrypted overlay on a remote directory
     Init {
@@ -3732,6 +3782,11 @@ struct CliStorageResult {
     /// there is no cap at all, keeping the JSON shape back-compatible.
     #[serde(skip_serializing_if = "Option::is_none")]
     total_source: Option<&'static str>,
+    /// Bytes held by retained file versions, when the provider reports it
+    /// (MEGAcmd `mega-df`). Omitted otherwise so the JSON shape stays
+    /// back-compatible for providers that do not expose it.
+    #[serde(rename = "versioningBytes", skip_serializing_if = "Option::is_none")]
+    versioning_bytes: Option<u64>,
 }
 
 #[derive(Serialize)]
@@ -20805,6 +20860,235 @@ async fn cmd_edit(
     }
 }
 
+/// Shared "provider has no versioning" path for the three `versions`
+/// subcommands: print the error once and return the NotSupported exit code
+/// (computed a single time, not rebuilt per call site).
+fn versions_unsupported(format: OutputFormat) -> i32 {
+    let code = provider_error_to_exit_code(&ProviderError::NotSupported("versions".to_string()));
+    print_error(
+        format,
+        "This provider does not expose file versioning",
+        code,
+    );
+    code
+}
+
+/// Render a file's version list (newest first) as text or JSON.
+fn print_versions(versions: &[FileVersion], path: &str, format: OutputFormat) {
+    match format {
+        OutputFormat::Json => {
+            #[derive(Serialize)]
+            struct VersionsResult<'a> {
+                status: &'static str,
+                path: &'a str,
+                count: usize,
+                versions: &'a [FileVersion],
+            }
+            print_json(&VersionsResult {
+                status: "ok",
+                path,
+                count: versions.len(),
+                versions,
+            });
+        }
+        OutputFormat::Text => {
+            if versions.is_empty() {
+                println!("No previous versions for {}", path);
+                return;
+            }
+            println!("{} version(s) of {} (newest first):", versions.len(), path);
+            for (i, v) in versions.iter().enumerate() {
+                let modified = v.modified.as_deref().unwrap_or("-");
+                let by = v
+                    .modified_by
+                    .as_deref()
+                    .map(|m| format!("  by {}", m))
+                    .unwrap_or_default();
+                println!(
+                    "  {:>3}. {}  {:>10}  {}{}",
+                    i + 1,
+                    v.id,
+                    format_size(v.size),
+                    modified,
+                    by
+                );
+            }
+        }
+    }
+}
+
+/// `versions list`: list previous versions of a remote file.
+async fn cmd_versions_list(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32 {
+    if path.trim().is_empty() {
+        print_error(format, "Missing remote file path for 'versions list'", 5);
+        return 5;
+    }
+    let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    if !provider.supports_versions() {
+        let _ = provider.disconnect().await;
+        return versions_unsupported(format);
+    }
+    let path = resolve_cli_remote_path(&initial_path, path);
+    let code = match provider.list_versions(&path).await {
+        Ok(versions) => {
+            print_versions(&versions, &path, format);
+            0
+        }
+        Err(e) => {
+            print_error(
+                format,
+                &format!("versions list failed: {}", e),
+                provider_error_to_exit_code(&e),
+            );
+            provider_error_to_exit_code(&e)
+        }
+    };
+    let _ = provider.disconnect().await;
+    code
+}
+
+/// `versions get`: download a specific previous version to a local path.
+async fn cmd_versions_get(
+    url: &str,
+    path: &str,
+    version_id: &str,
+    local: &str,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    if path.trim().is_empty() {
+        print_error(format, "Missing remote file path for 'versions get'", 5);
+        return 5;
+    }
+    if version_id.trim().is_empty() {
+        print_error(
+            format,
+            "Missing version id for 'versions get' (run 'versions list' first)",
+            5,
+        );
+        return 5;
+    }
+    if local.trim().is_empty() {
+        print_error(
+            format,
+            "Missing local destination path for 'versions get'",
+            5,
+        );
+        return 5;
+    }
+    let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    if !provider.supports_versions() {
+        let _ = provider.disconnect().await;
+        return versions_unsupported(format);
+    }
+    let rpath = resolve_cli_remote_path(&initial_path, path);
+    // Mirror `get`: when the local destination is a directory (trailing slash
+    // or an existing dir), write into it under the remote file's basename
+    // instead of trying to create a file at the directory path (which fails).
+    let local_owned;
+    let local_dest = if local.ends_with('/') || std::path::Path::new(local).is_dir() {
+        let filename = rpath.rsplit('/').next().unwrap_or("download");
+        local_owned = format!(
+            "{}{}{}",
+            local,
+            if local.ends_with('/') { "" } else { "/" },
+            filename
+        );
+        local_owned.as_str()
+    } else {
+        local
+    };
+    let code = match provider
+        .download_version(&rpath, version_id, local_dest)
+        .await
+    {
+        Ok(()) => {
+            let msg = format!(
+                "Downloaded version {} of {} to {}",
+                version_id, rpath, local_dest
+            );
+            match format {
+                OutputFormat::Json => print_json(&CliOk {
+                    status: "ok",
+                    message: msg,
+                }),
+                OutputFormat::Text => println!("{}", msg),
+            }
+            0
+        }
+        Err(e) => {
+            print_error(
+                format,
+                &format!("versions get failed: {}", e),
+                provider_error_to_exit_code(&e),
+            );
+            provider_error_to_exit_code(&e)
+        }
+    };
+    let _ = provider.disconnect().await;
+    code
+}
+
+/// `versions restore`: make a specific previous version the current file.
+async fn cmd_versions_restore(
+    url: &str,
+    path: &str,
+    version_id: &str,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    if path.trim().is_empty() {
+        print_error(format, "Missing remote file path for 'versions restore'", 5);
+        return 5;
+    }
+    if version_id.trim().is_empty() {
+        print_error(
+            format,
+            "Missing version id for 'versions restore' (run 'versions list' first)",
+            5,
+        );
+        return 5;
+    }
+    let (mut provider, initial_path) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    if !provider.supports_versions() {
+        let _ = provider.disconnect().await;
+        return versions_unsupported(format);
+    }
+    let rpath = resolve_cli_remote_path(&initial_path, path);
+    let code = match provider.restore_version(&rpath, version_id).await {
+        Ok(()) => {
+            let msg = format!("Restored {} to version {}", rpath, version_id);
+            match format {
+                OutputFormat::Json => print_json(&CliOk {
+                    status: "ok",
+                    message: msg,
+                }),
+                OutputFormat::Text => println!("{}", msg),
+            }
+            0
+        }
+        Err(e) => {
+            print_error(
+                format,
+                &format!("versions restore failed: {}", e),
+                provider_error_to_exit_code(&e),
+            );
+            provider_error_to_exit_code(&e)
+        }
+    };
+    let _ = provider.disconnect().await;
+    code
+}
+
 async fn cmd_cat(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32 {
     const MAX_CAT_SIZE: u64 = 256 * 1024 * 1024; // 256 MB
 
@@ -24501,6 +24785,12 @@ async fn cmd_df(url: &str, scan: bool, full: bool, cli: &Cli, format: OutputForm
                         println!("  Used:  {}", format_size(info.used));
                         println!("  Total: unmetered (set a manual cap in the profile to show %)");
                     }
+                    // Bytes held by retained file versions (MEGAcmd), when the
+                    // provider reports it. Mirrors the GUI quota bar's versioning
+                    // segment so the CLI surfaces the same figure.
+                    if let Some(vb) = info.versioning_bytes {
+                        println!("  Versions: {}", format_size(vb));
+                    }
                 }
                 OutputFormat::Json => {
                     print_json(&CliStorageResult {
@@ -24510,6 +24800,7 @@ async fn cmd_df(url: &str, scan: bool, full: bool, cli: &Cli, format: OutputForm
                         free: eff_free,
                         used_percent: pct,
                         total_source,
+                        versioning_bytes: info.versioning_bytes,
                     });
                 }
             }
@@ -25206,6 +25497,9 @@ async fn cmd_about(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
                     eprintln!("Used:      {}", format_size(info.used));
                     eprintln!("Total:     unmetered (no quota cap reported)");
                 }
+                if let Some(vb) = info.versioning_bytes {
+                    eprintln!("Versions:  {}", format_size(vb));
+                }
             }
         }
         OutputFormat::Json => {
@@ -25224,6 +25518,9 @@ async fn cmd_about(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
                 } else {
                     0.0
                 });
+                if let Some(vb) = info.versioning_bytes {
+                    result["versioningBytes"] = serde_json::json!(vb);
+                }
             }
             print_json(&apply_top_level_json_field_filter(result, cli, &["status"]));
         }
@@ -42817,6 +43114,46 @@ async fn main() {
         ),
         Commands::AgentInfo { redact_identifiers } => cmd_agent_info(&cli, *redact_identifiers),
         Commands::AgentConnect { profile } => cmd_agent_connect(&cli, profile).await,
+        Commands::Versions { command } => match command {
+            VersionCommands::List { url, path } => {
+                let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                    ("_", url.as_str())
+                } else {
+                    (url.as_str(), path.as_str())
+                };
+                cmd_versions_list(u, p, &cli, format).await
+            }
+            VersionCommands::Get {
+                url,
+                path,
+                version_id,
+                local,
+            } => {
+                let (u, p, v, l) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                    ("_", url.as_str(), path.as_str(), version_id.as_str())
+                } else {
+                    (
+                        url.as_str(),
+                        path.as_str(),
+                        version_id.as_str(),
+                        local.as_str(),
+                    )
+                };
+                cmd_versions_get(u, p, v, l, &cli, format).await
+            }
+            VersionCommands::Restore {
+                url,
+                path,
+                version_id,
+            } => {
+                let (u, p, v) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                    ("_", url.as_str(), path.as_str())
+                } else {
+                    (url.as_str(), path.as_str(), version_id.as_str())
+                };
+                cmd_versions_restore(u, p, v, &cli, format).await
+            }
+        },
         Commands::Crypt { command } => {
             let resolve_crypt_password = |p: &Option<String>| -> Option<String> {
                 if let Some(pw) = p {
