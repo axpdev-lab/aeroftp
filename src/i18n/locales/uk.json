@@ -274,7 +274,9 @@
             "profileConverted": "Профіль перетворено",
             "profileDuplicated": "Профіль дубльовано",
             "convertUndone": "Профіль відновлено",
-            "undo": "Скасувати"
+            "undo": "Скасувати",
+            "unstableTitle": "Експериментальний провайдер",
+            "unstableBody": "{provider} ще не стабільний, і служба може бути недоступною. З'єднання може не вдатися не з вашої вини."
         },
         "browser": {
             "remote": "Віддалений",
@@ -4272,7 +4274,7 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Перевірка доступності",
-            "storageVersioning": "[NEEDS TRANSLATION] File versions: {size}"
+            "storageVersioning": "Версії файлу: {size}"
         },
         "gitlab": {
             "projectPath": "Шлях до проєкту",

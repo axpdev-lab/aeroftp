@@ -274,7 +274,9 @@
             "profileConverted": "Wasifu umebadilishwa",
             "profileDuplicated": "Wasifu umenakiliwa",
             "convertUndone": "Wasifu umerejeshwa",
-            "undo": "Tendua"
+            "undo": "Tendua",
+            "unstableTitle": "Mtoa huduma wa majaribio",
+            "unstableBody": "{provider} bado si thabiti na huduma huenda isipatikane. Muunganisho unaweza kushindwa bila kosa lako."
         },
         "browser": {
             "remote": "Mbali",
@@ -4272,7 +4274,7 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Ukaguzi wa afya",
-            "storageVersioning": "[NEEDS TRANSLATION] File versions: {size}"
+            "storageVersioning": "Matoleo ya faili: {size}"
         },
         "gitlab": {
             "projectPath": "Njia ya mradi",

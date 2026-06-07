@@ -274,7 +274,9 @@
             "profileConverted": "Profil konvertert",
             "profileDuplicated": "Profil duplisert",
             "convertUndone": "Profil gjenopprettet",
-            "undo": "Angre"
+            "undo": "Angre",
+            "unstableTitle": "Eksperimentell leverandør",
+            "unstableBody": "{provider} er ikke stabil ennå, og tjenesten kan være utilgjengelig. Tilkoblingen kan mislykkes uten at det er din feil."
         },
         "browser": {
             "remote": "Ekstern",
@@ -4291,7 +4293,7 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Tilgjengelighetssjekk",
-            "storageVersioning": "[NEEDS TRANSLATION] File versions: {size}"
+            "storageVersioning": "Filversjoner: {size}"
         },
         "gitlab": {
             "projectPath": "Prosjektsti",

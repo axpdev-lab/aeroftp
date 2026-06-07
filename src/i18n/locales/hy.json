@@ -274,7 +274,9 @@
             "profileConverted": "Պրոֆիլը փոխարկվել է",
             "profileDuplicated": "Պրոֆիլը կրկնօրինակվել է",
             "convertUndone": "Պրոֆիլը վերականգնվել է",
-            "undo": "Հետարկել"
+            "undo": "Հետարկել",
+            "unstableTitle": "Փորձարկային մատակարար",
+            "unstableBody": "{provider}-ը դեռ կայուն չէ, և ծառայությունը կարող է անհասանելի լինել։ Միացումը կարող է ձախողվել ոչ ձեր մեղքով։"
         },
         "browser": {
             "remote": "Հեռավոր",
@@ -4272,7 +4274,7 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Հասանելիության ստուգում",
-            "storageVersioning": "[NEEDS TRANSLATION] File versions: {size}"
+            "storageVersioning": "Ֆայլի տարբերակներ՝ {size}"
         },
         "gitlab": {
             "projectPath": "Նախագծի ուղի",

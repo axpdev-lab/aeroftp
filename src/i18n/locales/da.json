@@ -274,7 +274,9 @@
             "profileConverted": "Profil konverteret",
             "profileDuplicated": "Profil duplikeret",
             "convertUndone": "Profil gendannet",
-            "undo": "Fortryd"
+            "undo": "Fortryd",
+            "unstableTitle": "Eksperimentel udbyder",
+            "unstableBody": "{provider} er endnu ikke stabil, og tjenesten er muligvis utilgængelig. Forbindelsen kan mislykkes, uden at det er din skyld."
         },
         "browser": {
             "remote": "Ekstern",
@@ -4272,7 +4274,7 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Tilgængelighedstjek",
-            "storageVersioning": "[NEEDS TRANSLATION] File versions: {size}"
+            "storageVersioning": "Filversioner: {size}"
         },
         "gitlab": {
             "projectPath": "Projektsti",

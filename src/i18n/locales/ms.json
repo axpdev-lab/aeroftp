@@ -274,7 +274,9 @@
             "profileConverted": "Profil ditukar",
             "profileDuplicated": "Profil diduplikasi",
             "convertUndone": "Profil dipulihkan",
-            "undo": "Buat asal"
+            "undo": "Buat asal",
+            "unstableTitle": "Penyedia eksperimen",
+            "unstableBody": "{provider} belum stabil dan perkhidmatan mungkin tidak tersedia. Sambungan boleh gagal bukan kerana kesalahan anda."
         },
         "browser": {
             "remote": "Jauh",
@@ -4272,7 +4274,7 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Pemeriksaan kesihatan",
-            "storageVersioning": "[NEEDS TRANSLATION] File versions: {size}"
+            "storageVersioning": "Versi fail: {size}"
         },
         "gitlab": {
             "projectPath": "Laluan Projek",

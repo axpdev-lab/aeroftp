@@ -274,7 +274,9 @@
             "profileConverted": "प्रोफ़ाइल बदल दिया गया",
             "profileDuplicated": "प्रोफ़ाइल नकल किया गया",
             "convertUndone": "प्रोफ़ाइल पुनर्स्थापित",
-            "undo": "पूर्ववत्"
+            "undo": "पूर्ववत्",
+            "unstableTitle": "प्रायोगिक प्रदाता",
+            "unstableBody": "{provider} अभी स्थिर नहीं है और हो सकता है कि सेवा उपलब्ध न हो। कनेक्शन आपकी किसी गलती के बिना भी विफल हो सकता है।"
         },
         "browser": {
             "remote": "दूरस्थ",
@@ -4272,7 +4274,7 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "उपलब्धता जाँच",
-            "storageVersioning": "[NEEDS TRANSLATION] File versions: {size}"
+            "storageVersioning": "फ़ाइल संस्करण: {size}"
         },
         "gitlab": {
             "projectPath": "प्रोजेक्ट पथ",

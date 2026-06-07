@@ -274,7 +274,9 @@
             "profileConverted": "Na-convert ang profile",
             "profileDuplicated": "Na-duplicate ang profile",
             "convertUndone": "Na-restore ang profile",
-            "undo": "I-undo"
+            "undo": "I-undo",
+            "unstableTitle": "Eksperimental na provider",
+            "unstableBody": "Hindi pa stable ang {provider} at maaaring hindi available ang serbisyo. Maaaring mabigo ang koneksyon nang hindi mo kasalanan."
         },
         "browser": {
             "remote": "Remote",
@@ -4291,7 +4293,7 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Health check",
-            "storageVersioning": "[NEEDS TRANSLATION] File versions: {size}"
+            "storageVersioning": "Mga bersyon ng file: {size}"
         },
         "gitlab": {
             "projectPath": "Path ng Project",

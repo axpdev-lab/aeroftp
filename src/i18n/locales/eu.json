@@ -274,7 +274,9 @@
             "profileConverted": "Profila bihurtuta",
             "profileDuplicated": "Profila bikoiztuta",
             "convertUndone": "Profila berreskuratuta",
-            "undo": "Desegin"
+            "undo": "Desegin",
+            "unstableTitle": "Hornitzaile esperimentala",
+            "unstableBody": "{provider} oraindik ez da egonkorra eta zerbitzua eskuragarri ez egotea gerta daiteke. Konexioak huts egin dezake zure errurik gabe."
         },
         "browser": {
             "remote": "Urrunekoa",
@@ -4291,7 +4293,7 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Erabilgarritasun-egiaztapena",
-            "storageVersioning": "[NEEDS TRANSLATION] File versions: {size}"
+            "storageVersioning": "Fitxategi-bertsioak: {size}"
         },
         "gitlab": {
             "projectPath": "Proiektuaren bidea",

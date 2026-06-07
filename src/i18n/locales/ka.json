@@ -274,7 +274,9 @@
             "profileConverted": "პროფილი გადაყვანილია",
             "profileDuplicated": "პროფილი დუბლირებულია",
             "convertUndone": "პროფილი აღდგენილია",
-            "undo": "გაუქმება"
+            "undo": "გაუქმება",
+            "unstableTitle": "ექსპერიმენტული პროვაიდერი",
+            "unstableBody": "{provider} ჯერ არ არის სტაბილური და სერვისი შესაძლოა მიუწვდომელი იყოს. კავშირი შესაძლოა ვერ დამყარდეს თქვენი ბრალის გარეშე."
         },
         "browser": {
             "remote": "დისტანციური",
@@ -4272,7 +4274,7 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "ხელმისაწვდომობის შემოწმება",
-            "storageVersioning": "[NEEDS TRANSLATION] File versions: {size}"
+            "storageVersioning": "ფაილის ვერსიები: {size}"
         },
         "gitlab": {
             "projectPath": "პროექტის გზა",

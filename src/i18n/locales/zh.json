@@ -274,7 +274,9 @@
             "profileConverted": "配置已转换",
             "profileDuplicated": "配置已复制",
             "convertUndone": "配置已恢复",
-            "undo": "撤销"
+            "undo": "撤销",
+            "unstableTitle": "实验性服务商",
+            "unstableBody": "{provider} 尚不稳定，服务可能不可用。连接可能会失败，这并非您的过错。"
         },
         "browser": {
             "remote": "远程",
@@ -4272,7 +4274,7 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "健康检查",
-            "storageVersioning": "[NEEDS TRANSLATION] File versions: {size}"
+            "storageVersioning": "文件版本：{size}"
         },
         "gitlab": {
             "projectPath": "项目路径",

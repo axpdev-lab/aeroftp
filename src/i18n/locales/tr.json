@@ -274,7 +274,9 @@
             "profileConverted": "Profil dönüştürüldü",
             "profileDuplicated": "Profil çoğaltıldı",
             "convertUndone": "Profil geri yüklendi",
-            "undo": "Geri al"
+            "undo": "Geri al",
+            "unstableTitle": "Deneysel sağlayıcı",
+            "unstableBody": "{provider} henüz kararlı değil ve hizmet kullanılamayabilir. Bağlantı, sizin bir hatanız olmadan başarısız olabilir."
         },
         "browser": {
             "remote": "Uzak",
@@ -4272,7 +4274,7 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Sağlık kontrolü",
-            "storageVersioning": "[NEEDS TRANSLATION] File versions: {size}"
+            "storageVersioning": "Dosya sürümleri: {size}"
         },
         "gitlab": {
             "projectPath": "Proje Yolu",

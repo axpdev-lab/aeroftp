@@ -274,7 +274,9 @@
             "profileConverted": "প্রোফাইল রূপান্তরিত হয়েছে",
             "profileDuplicated": "প্রোফাইল ডুপ্লিকেট করা হয়েছে",
             "convertUndone": "প্রোফাইল পুনরুদ্ধার করা হয়েছে",
-            "undo": "পূর্বাবস্থা"
+            "undo": "পূর্বাবস্থা",
+            "unstableTitle": "পরীক্ষামূলক প্রদানকারী",
+            "unstableBody": "{provider} এখনও স্থিতিশীল নয় এবং পরিষেবাটি অনুপলব্ধ থাকতে পারে। আপনার কোনো দোষ ছাড়াই সংযোগ ব্যর্থ হতে পারে।"
         },
         "browser": {
             "remote": "রিমোট",
@@ -4272,7 +4274,7 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "হেলথ চেক",
-            "storageVersioning": "[NEEDS TRANSLATION] File versions: {size}"
+            "storageVersioning": "ফাইল সংস্করণ: {size}"
         },
         "gitlab": {
             "projectPath": "প্রকল্পের পাথ",

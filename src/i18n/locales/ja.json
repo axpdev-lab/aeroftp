@@ -274,7 +274,9 @@
             "profileConverted": "プロファイルが変換されました",
             "profileDuplicated": "プロファイルが複製されました",
             "convertUndone": "プロファイルが復元されました",
-            "undo": "元に戻す"
+            "undo": "元に戻す",
+            "unstableTitle": "実験的なプロバイダー",
+            "unstableBody": "{provider} はまだ安定しておらず、サービスを利用できない場合があります。お客様に問題がなくても接続に失敗することがあります。"
         },
         "browser": {
             "remote": "リモート",
@@ -4272,7 +4274,7 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "ヘルスチェック",
-            "storageVersioning": "[NEEDS TRANSLATION] File versions: {size}"
+            "storageVersioning": "ファイルのバージョン: {size}"
         },
         "gitlab": {
             "projectPath": "プロジェクトパス",

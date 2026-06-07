@@ -274,7 +274,9 @@
             "profileConverted": "Perfil convertido",
             "profileDuplicated": "Perfil duplicado",
             "convertUndone": "Perfil restaurado",
-            "undo": "Deshacer"
+            "undo": "Deshacer",
+            "unstableTitle": "Proveedor experimental",
+            "unstableBody": "{provider} aún no es estable y es posible que el servicio no esté disponible. La conexión puede fallar sin que sea culpa tuya."
         },
         "browser": {
             "remote": "Remoto",
@@ -4272,7 +4274,7 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Comprobación de disponibilidad",
-            "storageVersioning": "[NEEDS TRANSLATION] File versions: {size}"
+            "storageVersioning": "Versiones de archivo: {size}"
         },
         "gitlab": {
             "projectPath": "Ruta del proyecto",

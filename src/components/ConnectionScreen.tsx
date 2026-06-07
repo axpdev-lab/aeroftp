@@ -17,6 +17,7 @@ import { SavedServers } from './SavedServers';
 import { ExportImportDialog } from './ExportImportDialog';
 import { useTranslation } from '../i18n';
 import { ProtocolSelector, ProtocolFields, getDefaultPort } from './ProtocolSelector';
+import { UnstableProviderNotice } from './UnstableProviderNotice';
 import { ProviderModeTabs } from './ProviderModeTabs';
 import { TotpLivePreview } from './TotpLivePreview';
 import { findActiveMode, findActiveModeGroup, resolveModeHeader } from './providerModeGroups';
@@ -526,6 +527,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const megaMode = getMegaConnectionMode(connectionParams.options);
     const isMegaCmdMode = megaMode === 'megacmd';
     const activeProviderId = connectionParams.providerId || selectedProviderId || undefined;
+    // Resolve the provider currently targeted by the form so we can warn when
+    // it is flagged stable:false. The dev-only protocol grid hides these, but
+    // the Add Service list view leaks them into production (#308); swift with no
+    // explicit providerId means Blomp, mirroring the save/connect fallbacks below.
+    const formProvider = selectedProvider
+        || (activeProviderId ? getProviderById(activeProviderId) : null)
+        || (protocol === 'swift' ? getProviderById('blomp') : null);
 
     // Protocol selector open state (to hide form when selector is open)
     const [isProtocolSelectorOpen, setIsProtocolSelectorOpen] = useState(false);
@@ -2485,6 +2493,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                             </div>
                         ) : (
                             <>
+                                {/* Unstable provider disclaimer (#308): warn before the
+                                    accessible form when the target is flagged stable:false. */}
+                                <UnstableProviderNotice provider={formProvider} />
+
                                 {/* Selected Provider Header (for S3/WebDAV) */}
                                 {selectedProvider && !formOnly && (
                                     <div className="flex items-center justify-between p-3 bg-gray-100 dark:bg-gray-700/50 border border-gray-100 dark:border-gray-700/50 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] rounded-lg mb-3">

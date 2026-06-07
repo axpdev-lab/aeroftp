@@ -274,7 +274,9 @@
             "profileConverted": "Profiel geconverteerd",
             "profileDuplicated": "Profiel gedupliceerd",
             "convertUndone": "Profiel hersteld",
-            "undo": "Ongedaan maken"
+            "undo": "Ongedaan maken",
+            "unstableTitle": "Experimentele provider",
+            "unstableBody": "{provider} is nog niet stabiel en de service is mogelijk niet beschikbaar. De verbinding kan mislukken zonder dat het uw schuld is."
         },
         "browser": {
             "remote": "Extern",
@@ -4272,7 +4274,7 @@
                 "customAzure": "Azure Blob"
             },
             "healthCheck": "Beschikbaarheidscontrole",
-            "storageVersioning": "[NEEDS TRANSLATION] File versions: {size}"
+            "storageVersioning": "Bestandsversies: {size}"
         },
         "gitlab": {
             "projectPath": "Projectpad",
