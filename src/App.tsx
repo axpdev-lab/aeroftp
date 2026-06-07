@@ -1472,6 +1472,48 @@ const App: React.FC = () => {
     }
   }, []);
 
+  // Issue #230: one-time migration of any Filen CLI API key that earlier builds
+  // persisted inside the saved-profile options. Move each key into the secure
+  // vault (keyed filen_api_key_<id>) and strip it from the stored profile so the
+  // long-lived secret no longer lands in localStorage / the profile store. The
+  // "done" flag is only set once every key was relocated, so a transient vault
+  // failure retries on the next launch instead of stranding a secret.
+  useEffect(() => {
+    if (localStorage.getItem('aeroftp_filen_apikey_vault_migrated')) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const profiles = await loadSavedServerProfiles();
+        let changed = false;
+        const migrated = await Promise.all(profiles.map(async (p) => {
+          const key = p.options?.filen_api_key;
+          if (!key) return p;
+          try {
+            await invoke('store_credential', { account: `filen_api_key_${p.id}`, password: key });
+          } catch (e) {
+            logger.warn('[#230] Filen API key vault migration failed for profile', p.id, e);
+            return p; // leave the key in place and retry on the next launch
+          }
+          changed = true;
+          const restOptions = { ...(p.options || {}) };
+          delete restOptions.filen_api_key;
+          return { ...p, options: restOptions, hasStoredFilenApiKey: true };
+        }));
+        if (cancelled) return;
+        if (changed) {
+          await storeSavedServerProfiles(migrated).catch(() => { });
+          setServersRefreshKey(k => k + 1);
+        }
+        if (migrated.every((p) => !p.options?.filen_api_key)) {
+          localStorage.setItem('aeroftp_filen_apikey_vault_migrated', 'true');
+        }
+      } catch (e) {
+        logger.warn('[#230] Filen API key vault migration error', e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   // Listen for app background pattern changes from Settings
   useEffect(() => {
     const handleBackgroundChange = (e: CustomEvent<string>) => {
@@ -4460,6 +4502,20 @@ interface UpdateVerificationInfo {
     }
 
     const protocol = effectiveParams.protocol;
+
+    // Issue #230: the Filen CLI API key lives in the secure vault, not in the
+    // saved profile options. When connecting from a saved profile the options
+    // no longer carry it, so load it from the vault keyed by the profile id.
+    // A key typed live into the connection form is still present in options and
+    // takes precedence (covers connect-without-saving).
+    let filenApiKey = effectiveParams.options?.filen_api_key || null;
+    if (protocol === 'filen' && !filenApiKey && effectiveParams.savedServerId) {
+      try {
+        const storedFilenKey = await invoke<string>('get_credential', { account: `filen_api_key_${effectiveParams.savedServerId}` });
+        if (storedFilenKey) filenApiKey = storedFilenKey;
+      } catch { /* no stored Filen API key for this profile */ }
+    }
+
     const providerParams = {
       protocol,
       provider_id: effectiveParams.providerId || null,
@@ -4496,7 +4552,7 @@ interface UpdateVerificationInfo {
       verify_cert: effectiveParams.options?.verifyCert !== undefined ? effectiveParams.options.verifyCert : true,
       two_factor_code: effectiveParams.options?.two_factor_code || null,
       totp_secret: effectiveParams.options?.totp_secret || null,
-      filen_api_key: effectiveParams.options?.filen_api_key || null,
+      filen_api_key: filenApiKey,
       github_auth_mode: effectiveParams.options?.githubAuthMode || null,
       github_app_id: effectiveParams.options?.githubAppId || null,
       github_installation_id: effectiveParams.options?.githubInstallationId || null,
@@ -5836,6 +5892,16 @@ interface UpdateVerificationInfo {
         console.warn('Failed to load cloud server credential from keyring:', e);
       }
 
+      // Issue #230: the Filen CLI API key is stored in the vault, not in the
+      // profile options. Load it the same way the password is loaded above.
+      let cloudFilenApiKey = cloudServer.options?.filen_api_key || null;
+      if (protocol === 'filen' && !cloudFilenApiKey) {
+        try {
+          const storedFilenKey = await invoke<string>('get_credential', { account: `filen_api_key_${cloudServer.id}` });
+          if (storedFilenKey) cloudFilenApiKey = storedFilenKey;
+        } catch { /* no stored Filen API key for this profile */ }
+      }
+
       // Helper: connect to cloud server using the correct protocol
       const connectToCloudServer = async (): Promise<void> => {
         if (isProvider) {
@@ -5858,7 +5924,7 @@ interface UpdateVerificationInfo {
             verify_cert: cloudServer.options?.verifyCert !== undefined ? cloudServer.options.verifyCert : true,
             two_factor_code: cloudServer.options?.two_factor_code || null,
             totp_secret: cloudServer.options?.totp_secret || null,
-            filen_api_key: cloudServer.options?.filen_api_key || null,
+            filen_api_key: cloudFilenApiKey,
           };
           await runConnect('provider_connect', providerParams);
         } else {

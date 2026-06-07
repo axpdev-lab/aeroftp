@@ -325,7 +325,7 @@ export interface ProviderOptions {
   // Filen-specific
   two_factor_code?: string; // Optional single-use TOTP 2FA code (NOT persisted)
   totp_secret?: string;     // Optional persisted base32 TOTP secret. When set, the backend derives the 6-digit code on every connect via totp_helper. Used by Filen and MEGA.
-  filen_api_key?: string;   // Optional Filen CLI API key. When set, the backend authenticates with it and skips the /v3/login call (and therefore the 2FA TOTP window). The password is still required for E2E decryption.
+  filen_api_key?: string;   // Optional Filen CLI API key. When set, the backend authenticates with it and skips the /v3/login call (and therefore the 2FA TOTP window). The password is still required for E2E decryption. SECURITY (issue #230): this is a long-lived secret and is NEVER persisted on the saved profile; on save it is moved to the secure vault under filen_api_key_<profileId> and ServerProfile.hasStoredFilenApiKey is set. It only appears here transiently while the connection form is open.
   filen_auth_version?: number; // Last observed Filen authVersion (v1/v2/v3)
 
   // kDrive-specific
@@ -474,6 +474,7 @@ export interface ServerProfile {
   username: string;
   password?: string; // DEPRECATED: migrated to secure credential store
   hasStoredCredential?: boolean; // true if password stored in OS keyring/vault
+  hasStoredFilenApiKey?: boolean; // true if a Filen CLI API key is stored in the vault under filen_api_key_<id> (issue #230); the key itself is never persisted in options
   protocol?: ProviderType; // Default: 'ftp'
   initialPath?: string; // Initial remote directory to navigate after connection
   localInitialPath?: string; // Initial local directory for this project/server

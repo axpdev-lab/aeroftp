@@ -11,7 +11,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { readFile } from '@tauri-apps/plugin-fs';
 import { FolderOpen, HardDrive, ChevronRight, ChevronDown, Save, Copy, Cloud, Check, Settings, Clock, Folder, X, Lock, ArrowLeft, Eye, EyeOff, ExternalLink, Shield, ShieldCheck, KeyRound, Loader2, Image, Info, Pencil, Link2, ArrowRightLeft } from 'lucide-react';
-import { ConnectionParams, ProviderType, isOAuthProvider, isAeroCloudProvider, isFourSharedProvider, isNativeApiProtocol, providerServesQuota, ServerProfile } from '../types';
+import { ConnectionParams, ProviderType, ProviderOptions, isOAuthProvider, isAeroCloudProvider, isFourSharedProvider, isNativeApiProtocol, providerServesQuota, ServerProfile } from '../types';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { SavedServers } from './SavedServers';
 import { ExportImportDialog } from './ExportImportDialog';
@@ -699,6 +699,27 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         }
     };
 
+    // Issue #230: the Filen CLI API key is a long-lived secret, so it must live
+    // in the secure vault (exactly like passwords), never inside the saved
+    // profile's options (which get serialised to localStorage / the profile
+    // store). Strip it from `options`, persist it under filen_api_key_<id>, and
+    // return whether a key is now stored so the caller can set the profile flag.
+    // `hadStored` preserves an existing vault key when the form field is left
+    // blank on edit, mirroring how a blank password keeps the stored credential.
+    const stashFilenApiKey = async (
+        profileId: string,
+        options: ProviderOptions,
+        hadStored?: boolean,
+    ): Promise<boolean> => {
+        if (!('filen_api_key' in options)) return !!hadStored;
+        const key = options.filen_api_key;
+        delete options.filen_api_key;
+        if (key && key.trim()) {
+            return tryStoreCredential(`filen_api_key_${profileId}`, key);
+        }
+        return !!hadStored;
+    };
+
     // Issue #215: Detect when the operator has switched to a different
     // mode of the SAME provider group while editing a saved profile (e.g.
     // Koofr WebDAV -> Koofr Native API, FileLu API -> FileLu S3). When
@@ -851,7 +872,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
         if (editingProfileId) {
             const credentialStored = await tryStoreCredential(`server_${editingProfileId}`, connectionParams.password);
-            const editedName = connectionName || existingServers.find((s) => s.id === editingProfileId)?.name || normalizedParams.server || protocol;
+            const prevProfile = existingServers.find((s) => s.id === editingProfileId);
+            const filenKeyStored = await stashFilenApiKey(editingProfileId, optionsToSave, prevProfile?.hasStoredFilenApiKey);
+            const editedName = connectionName || prevProfile?.name || normalizedParams.server || protocol;
             const duplicate = findDuplicateProfile(
                 existingServers,
                 editedName,
@@ -891,6 +914,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         port: normalizedParams.port || getDefaultPort(protocol),
                         username: normalizedParams.username,
                         hasStoredCredential: credentialStored || (s.hasStoredCredential && !connectionParams.password),
+                        hasStoredFilenApiKey: filenKeyStored,
                         protocol: protocol as ProviderType,
                         options: optionsToSave,
                         initialPath: quickConnectDirs.remoteDir,
@@ -914,8 +938,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 );
             }
         } else if (saveConnection) {
-            const newId = `srv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            const newId = `srv_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
             const credentialStored = await tryStoreCredential(`server_${newId}`, connectionParams.password);
+            const filenKeyStored = await stashFilenApiKey(newId, optionsToSave);
             const newName = connectionName || normalizedParams.server || protocol;
             const duplicate = findDuplicateProfile(
                 existingServers,
@@ -954,6 +979,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 port: normalizedParams.port || getDefaultPort(protocol),
                 username: normalizedParams.username,
                 hasStoredCredential: credentialStored,
+                hasStoredFilenApiKey: filenKeyStored,
                 protocol: protocol as ProviderType,
                 initialPath: quickConnectDirs.remoteDir,
                 localInitialPath: quickConnectDirs.localDir,
@@ -1130,8 +1156,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             delete optionsToSave.roleMfaTokenCode;
         }
 
-        const newId = `srv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const newId = `srv_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
         const credentialStored = await tryStoreCredential(`server_${newId}`, connectionParams.password);
+        const filenKeyStored = await stashFilenApiKey(newId, optionsToSave);
         // Carry-over from the original profile when present: visual color
         // tag + favicon (sort position is handled by the insert index
         // below). Custom icon URL is already in component state via
@@ -1143,6 +1170,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             port: normalizedParams.port || getDefaultPort(protocol),
             username: normalizedParams.username,
             hasStoredCredential: credentialStored,
+            hasStoredFilenApiKey: filenKeyStored,
             protocol: protocol as ProviderType,
             initialPath: quickConnectDirs.remoteDir,
             localInitialPath: quickConnectDirs.localDir,
@@ -1233,8 +1261,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
         const finalName = (connectionName || originalServer.name).trim() || originalServer.name;
 
-        const newId = `srv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const newId = `srv_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
         const credentialStored = await tryStoreCredential(`server_${newId}`, connectionParams.password);
+        const filenKeyStored = await stashFilenApiKey(newId, optionsToSave);
         const newServer: ServerProfile = {
             id: newId,
             name: finalName,
@@ -1242,6 +1271,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             port: normalizedParams.port || getDefaultPort(protocol),
             username: normalizedParams.username,
             hasStoredCredential: credentialStored,
+            hasStoredFilenApiKey: filenKeyStored,
             protocol: protocol as ProviderType,
             initialPath: quickConnectDirs.remoteDir,
             localInitialPath: quickConnectDirs.localDir,
