@@ -439,6 +439,93 @@ pub fn compute_ecc_shards(
     payload.to_bytes()
 }
 
+/// P2-04: Reconstruct damaged on-disk blocks using the ECC payload.
+/// 
+/// `data_blocks`: mutable list of the on-disk blocks in order (the same
+///                order as manifest.chunks).
+/// `bad_indices`: indices of blocks that failed their `cipher_hash` check.
+/// `ecc_payload_bytes`: the bytes stored in the ECC extension payload.
+/// 
+/// Returns the number of blocks that were successfully reconstructed.
+/// Damaged blocks that could be recovered are overwritten in `data_blocks`.
+pub fn reconstruct_from_ecc(
+    data_blocks: &mut [Vec<u8>],
+    bad_indices: &[usize],
+    ecc_payload_bytes: &[u8],
+) -> Result<usize, String> {
+    if bad_indices.is_empty() || ecc_payload_bytes.is_empty() {
+        return Ok(0);
+    }
+
+    let payload = EccPayload::from_bytes(ecc_payload_bytes)?;
+
+    let data_shards = payload.header.data_shards as usize;
+    let parity_shards = payload.header.parity_shards as usize;
+    let shard_size = payload.header.shard_size as usize;
+
+    let rs = ReedSolomon::<reed_solomon_erasure::galois_8::Field>::new(data_shards, parity_shards)
+        .map_err(|e| format!("RS create for reconstruct: {:?}", e))?;
+
+    let mut reconstructed = 0usize;
+    let mut parity_cursor = 0usize;
+
+    for stripe in &payload.stripes {
+        let first = stripe.first_chunk_index as usize;
+        let num_data = stripe.num_data_chunks as usize;
+
+        // Use Option<Vec<u8>> form for reconstruction (standard for this crate)
+        let mut opt_shards: Vec<Option<Vec<u8>>> = vec![None; data_shards + parity_shards];
+
+        for local in 0..data_shards {
+            if local < num_data {
+                let g = first + local;
+                if g < data_blocks.len() && !bad_indices.contains(&g) {
+                    let mut p = data_blocks[g].clone();
+                    p.resize(shard_size, 0);
+                    opt_shards[local] = Some(p);
+                }
+                // else: real data slot that is bad or missing -> leave None (erasure to reconstruct)
+            } else {
+                // virtual padding data slot beyond this stripe's real data: it was zero during encode
+                opt_shards[local] = Some(vec![0u8; shard_size]);
+            }
+        }
+
+        // Fill parities from payload
+        for p in 0..parity_shards {
+            let start = parity_cursor + p * shard_size;
+            if start + shard_size <= payload.parity_data.len() {
+                opt_shards[data_shards + p] = Some(payload.parity_data[start..start + shard_size].to_vec());
+            }
+        }
+        parity_cursor += parity_shards * shard_size;
+
+        // Reconstruct (crate detects Nones as missing)
+        if rs.reconstruct(&mut opt_shards).is_err() {
+            continue;
+        }
+
+        // Write back only the ones we tried to repair
+        for local in 0..num_data {
+            let g = first + local;
+            if g < data_blocks.len() && bad_indices.contains(&g) {
+                if let Some(repaired) = &opt_shards[local] {
+                    if repaired.len() >= 8 {
+                        let orig_len = u64::from_le_bytes(repaired[0..8].try_into().unwrap()) as usize;
+                        let exact_len = 8 + orig_len;
+                        if exact_len <= repaired.len() {
+                            data_blocks[g] = repaired[..exact_len].to_vec();
+                            reconstructed += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(reconstructed)
+}
+
 #[derive(Debug, Serialize)]
 pub struct VaultV3Info {
     pub version: u8,
@@ -2707,6 +2794,39 @@ mod tests {
         assert!(parsed.header.shard_size >= 200);
         assert_eq!(parsed.stripes.len(), 1); // only 2 blocks < 10
         assert_eq!(parsed.stripes[0].num_data_chunks, 2);
+    }
+
+    #[test]
+    fn p2_04_reconstruct_from_ecc_basic() {
+        // P2-04: simulate damage + reconstruction
+        let orig1: Vec<u8> = (0u8..100).collect();   // will become [len][data]
+        let orig2: Vec<u8> = (0u8..150).map(|x| 100 + x).collect();  // safe u8 values
+
+        // Simulate full on-disk blocks (in real life the len prefix is the size of the ciphertext)
+        let make_on_disk = |data: &[u8]| -> Vec<u8> {
+            let mut b = (data.len() as u64).to_le_bytes().to_vec();
+            b.extend_from_slice(data);
+            b
+        };
+
+        let mut blocks = vec![make_on_disk(&orig1), make_on_disk(&orig2)];
+        let hashes = vec!["h1".into(), "h2".into()];
+
+        let payload = compute_ecc_shards(&blocks.iter().map(|v| v.as_slice()).collect::<Vec<_>>(), &hashes);
+
+        // Corrupt the second block
+        if blocks.len() > 1 {
+            blocks[1][10] ^= 0xFF;
+        }
+
+        let repaired = reconstruct_from_ecc(&mut blocks, &[1], &payload).expect("reconstruct");
+
+        assert_eq!(repaired, 1);
+
+        // The second block should be back to original on-disk form
+        let restored = &blocks[1];
+        let len = u64::from_le_bytes(restored[0..8].try_into().unwrap()) as usize;
+        assert_eq!(&restored[8..8+len], &orig2);
     }
 
     /// P1-06: First compatibility test - a "v4-stub" vault (created with ECC extension)

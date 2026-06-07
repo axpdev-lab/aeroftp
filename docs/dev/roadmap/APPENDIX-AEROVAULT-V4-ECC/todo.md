@@ -159,7 +159,12 @@
   - Returns serialized EccPayload (P2-02 format).
   - Added smoke test `p2_03_compute_ecc_shards_basic` (passes).
 
-- [ ] **P2-04** Implement the inverse: given a payload + a list of damaged ranges (identified by failed cipher_hash checks), attempt reconstruction of the damaged ciphertext bytes
+- [x] **P2-04** Implement the inverse: given a payload + a list of damaged ranges (identified by failed cipher_hash checks), attempt reconstruction of the damaged ciphertext bytes [DONE]
+  - Implemented `reconstruct_from_ecc(data_blocks, bad_indices, ecc_payload_bytes)`.
+  - Uses Option form + rs.reconstruct, correctly handles partial stripes by providing known-zero virtual data slots.
+  - Repairs in place, trims using the embedded length prefix.
+  - Added `p2_04_reconstruct_from_ecc_basic` test with corruption + recovery (passes).
+  - Interleaved full cargo test.
 
 - [ ] **P2-05** Wire the encode path into `save_open_vault` / `build_file_bytes` when the vault was opened/created with ECC enabled
   - Recompute on every seal (document the cost)
