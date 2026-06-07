@@ -71,6 +71,7 @@ pub const CLI_SUBCOMMANDS: &[&str] = &[
     "agent-connect",
     "daemon",
     "jobs",
+    "versions",
     "crypt",
     "rclone-crypt",
     "audit",
