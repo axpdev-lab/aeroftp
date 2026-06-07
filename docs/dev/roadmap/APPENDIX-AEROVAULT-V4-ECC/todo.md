@@ -152,8 +152,12 @@
   - Added roundtrip unit test `p2_02_ecc_payload_format_roundtrip` (passes).
   - Format documented in code comments.
 
-- [ ] **P2-03** Implement `compute_ecc_shards(data_blocks: &[&[u8]], cipher_hashes: &[String], config) -> Vec<u8>` (the payload bytes)
+- [x] **P2-03** Implement `compute_ecc_shards(data_blocks: &[&[u8]], cipher_hashes: &[String], config) -> Vec<u8>` (the payload bytes) [DONE]
   - The input "blocks" are the on-disk ciphertext blocks (the things that have a preceding u64 len and a recorded cipher_hash)
+  - Implemented `compute_ecc_shards` using reed-solomon-erasure (galois_8).
+  - Hardcoded 10+2 for now, global shard_size = max block len, padding, stripe handling (including partial last stripe).
+  - Returns serialized EccPayload (P2-02 format).
+  - Added smoke test `p2_03_compute_ecc_shards_basic` (passes).
 
 - [ ] **P2-04** Implement the inverse: given a payload + a list of damaged ranges (identified by failed cipher_hash checks), attempt reconstruction of the damaged ciphertext bytes
 
