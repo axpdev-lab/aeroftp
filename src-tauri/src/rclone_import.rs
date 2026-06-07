@@ -1431,10 +1431,13 @@ pub fn export_rclone(
                 output.push_str("type = swift\n");
                 output.push_str(&format!("user = {}\n", server.username));
                 if let Some(pw) = password {
-                    output.push_str(&format!(
-                        "key = {}\n",
-                        obscure_password(pw).unwrap_or_default()
-                    ));
+                    // Swift `key` is the API key / OS_PASSWORD. rclone's swift
+                    // backend does NOT mark this field as `IsPassword: true`, so
+                    // it is used verbatim and must be emitted plain (same
+                    // reasoning as S3 secret_access_key and Azure key). Emitting
+                    // an obscured value makes rclone send the obscured string as
+                    // the password, which fails authentication.
+                    output.push_str(&format!("key = {}\n", pw));
                 }
                 if let Some(opts) = options {
                     if let Some(endpoint) = opts.get("endpoint").and_then(|v| v.as_str()) {
@@ -1981,6 +1984,55 @@ user = t
             r
         });
         assert_eq!(result.servers.len(), 1, "alias must not become a server");
+    }
+
+    #[test]
+    fn test_export_rclone_swift_key_is_plaintext() {
+        // Bug (2026-06-07): swift `key` was emitted obscured, but rclone's
+        // swift backend does NOT mark `key` as `IsPassword: true`, so it uses
+        // the value verbatim. An obscured key was sent as the literal password
+        // and authentication failed (HTTP 401). It must be emitted plain, like
+        // S3 `secret_access_key` and Azure `key`. Verified against
+        // `rclone config providers` (swift.key IsPassword = false).
+        let servers = vec![RcloneExportServer {
+            name: "blomp".to_string(),
+            host: "authenticate.blomp.com".to_string(),
+            port: 443,
+            username: "user@example.com".to_string(),
+            protocol: Some("swift".to_string()),
+            options: Some(serde_json::json!({
+                "endpoint": "https://authenticate.blomp.com",
+                "tenant": "storage"
+            })),
+            provider_id: Some("blomp".to_string()),
+        }];
+        let mut passwords = HashMap::new();
+        passwords.insert("blomp".to_string(), "148%BlomPass".to_string());
+
+        let tmp = std::env::temp_dir().join("aeroftp-test-export-swift.conf");
+        export_rclone(&servers, &passwords, &tmp).expect("should export");
+        let conf = std::fs::read_to_string(&tmp).expect("read conf");
+        std::fs::remove_file(&tmp).ok();
+
+        assert!(
+            conf.contains("key = 148%BlomPass"),
+            "swift key must be emitted plain, not obscured:\n{conf}"
+        );
+        // Round-trips back to the same plaintext on import.
+        let p = std::env::temp_dir().join("aeroftp-test-export-swift2.conf");
+        export_rclone(&servers, &passwords, &p).unwrap();
+        let result = import_rclone(&p).unwrap();
+        std::fs::remove_file(&p).ok();
+        let swift = result
+            .servers
+            .iter()
+            .find(|s| s.protocol.as_deref() == Some("swift"))
+            .expect("swift server present");
+        assert_eq!(
+            swift.credential.as_deref(),
+            Some("148%BlomPass"),
+            "swift key must round-trip as plaintext"
+        );
     }
 
     #[test]
