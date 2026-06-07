@@ -2730,6 +2730,23 @@ enum VaultCommands {
         #[arg(long = "vault-version", short = 'V', default_value = "auto")]
         vault_version: String,
     },
+    /// Scrub an ECC-enabled vault for damage (verifies cipher hashes)
+    Scrub {
+        /// Path to the .aerovault file
+        path: String,
+        #[arg(long, short = 'p')]
+        password: Option<String>,
+    },
+    /// Repair a damaged ECC-enabled vault using stored parity
+    Repair {
+        /// Path to the .aerovault file
+        path: String,
+        #[arg(long, short = 'p')]
+        password: Option<String>,
+        /// Preview only, do not write repairs
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -42960,6 +42977,85 @@ async fn main() {
                                     print_error(format, &e, 2);
                                     2
                                 }
+                            }
+                        }
+                    }
+                }
+                VaultCommands::Scrub { path, password } => {
+                    let pw = resolve_pw(password);
+                    let ver = if path.trim().is_empty() {
+                        "v3".to_string()
+                    } else {
+                        detect_vault_version(&path).await
+                    };
+                    if ver != "v3" {
+                        print_error(format, "Scrub is only supported for v3+ ECC vaults", 7);
+                        7
+                    } else {
+                        match aerovault_v3::vault_v3_scrub(path.clone(), pw).await {
+                            Ok(report) => {
+                                match format {
+                                    OutputFormat::Json => print_json(&report),
+                                    OutputFormat::Text => {
+                                        if let Some(damaged) = report.get("damaged").and_then(|v| v.as_array()) {
+                                            if damaged.is_empty() {
+                                                println!("No damage detected ({} chunks checked)", report.get("count").unwrap_or(&serde_json::json!(0)));
+                                            } else {
+                                                println!("Damage detected in {} chunks:", damaged.len());
+                                                for d in damaged {
+                                                    if let (Some(id), Some(start), Some(len)) = (
+                                                        d.get("id").and_then(|x| x.as_str()),
+                                                        d.get("on_disk_start").and_then(|x| x.as_u64()),
+                                                        d.get("on_disk_len").and_then(|x| x.as_u64()),
+                                                    ) {
+                                                        println!("  - {} at offset {} ({} bytes)", id, start, len);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                0
+                            }
+                            Err(e) => {
+                                print_error(format, &e, 1);
+                                1
+                            }
+                        }
+                    }
+                }
+                VaultCommands::Repair { path, password, dry_run } => {
+                    let pw = resolve_pw(password);
+                    let ver = if path.trim().is_empty() {
+                        "v3".to_string()
+                    } else {
+                        detect_vault_version(&path).await
+                    };
+                    if ver != "v3" {
+                        print_error(format, "Repair is only supported for v3+ ECC vaults", 7);
+                        7
+                    } else {
+                        match aerovault_v3::vault_v3_repair(path.clone(), pw, *dry_run).await {
+                            Ok(report) => {
+                                match format {
+                                    OutputFormat::Json => print_json(&report),
+                                    OutputFormat::Text => {
+                                        let repaired = report.get("repaired").and_then(|v| v.as_u64()).unwrap_or(0);
+                                        let is_dry = report.get("dry_run").and_then(|v| v.as_bool()).unwrap_or(false);
+                                        if is_dry {
+                                            println!("Dry-run: would repair {} chunks", repaired);
+                                        } else if repaired == 0 {
+                                            println!("No repair needed (or no ECC coverage)");
+                                        } else {
+                                            println!("Successfully repaired {} chunks", repaired);
+                                        }
+                                    }
+                                }
+                                0
+                            }
+                            Err(e) => {
+                                print_error(format, &e, 1);
+                                1
                             }
                         }
                     }

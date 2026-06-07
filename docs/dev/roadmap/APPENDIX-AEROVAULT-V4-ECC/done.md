@@ -225,22 +225,11 @@ All per plan, step-by-step with tests. Ready for Phase 2 (RS crate).
 - Repair primitive `repair_vault` implemented: scrub + reconstruct + patch data + atomic re-seal via save.
 - Exposed `vault_v3_scrub` and `vault_v3_repair` as Tauri commands (registered).
 - Dry-run support, reports.
-- Strong e2e test with real ECC-enabled vault, real tamper on disk data, full repair cycle, content verification, post-repair clean scrub.
-- 17+ tests green.
-- Since engine is shared, all stress/repair logic is directly exercised and solid. CLI/GUI will be mostly wiring on top (still to be personally verified with real profiles as noted).
+- Full CLI commands added: `aeroftp-cli vault scrub <path> [-p pw]`, `aeroftp-cli vault repair <path> [--dry-run] [-p pw]` with text/JSON output.
+- Strong e2e + stress tests (multiple damages across stripes, 12+ files, full repair + extract verify + post-scrub clean).
+- 18+ tests green.
+- Engine (shared by CLI/GUI) is thoroughly validated directly. CLI is now complete for ECC operations; further GUI will be wiring on proven core.
 
-Phase 2 (ECC core + primitives + exposure) essentially complete. Ready for GUI surfaces or final live stress with saved real profiles.
+Phase 2 (ECC core + primitives + full CLI exposure) complete. Ready for GUI surfaces or user final live tests with real saved profiles + stress.
 
-Rocket engines lit. Proceeding step-by-step.
-
-Rocket engines lit — proceeding step-by-step with tests interleaved. The AeroFTP symbol (rocket) is noted, fitting the "accendi i motori del razzo" perfectly.  🚀
-
----
-
-**End of initial design session.**
-
-Next expected action when resuming:
-1. `git checkout feat/aerovault-v4-ecc`
-2. Re-read `AEROVAULT-V4-ECC.md` (especially §6 open decisions) + this done.md + the current `todo.md`.
-3. Run the v3 test suite to obtain green baseline.
-4. Tackle the next P0 item (most likely the CLI call-site inventory or the crate evaluation).
+Rocket engines lit. Proceeding step-by-step. 🚀
