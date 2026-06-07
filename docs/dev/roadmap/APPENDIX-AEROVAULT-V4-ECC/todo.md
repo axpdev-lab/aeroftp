@@ -122,8 +122,12 @@
   - Test passes (interleaved).
   - Followed by live CLI test: built binary, created with --ecc, verified `info --json` shows "has_ecc": true/false correctly, add+extract succeeded on stub vault.
 
-- [ ] **P1-07** (stretch) Make the CLI `vault create` accept a new flag `--ecc` (or `--redundancy ecc`) and pass it through to the create function
-  - CODE: the vault subcommand parser + the call site at ~42661
+- [x] **P1-07** (stretch) Make the CLI `vault create` accept a new flag `--ecc` (or `--redundancy ecc`) and pass it through to the create function [DONE]
+  - Flag `--ecc` added to VaultCommands::Create with detailed doc (references #272 and APPENDIX).
+  - Logic in Create handler (call site ~42668): if ecc && v3, dispatches to vault_v3_create_with_ecc.
+  - Polish: warning if --ecc used with non-v3 version; updated Create help text.
+  - Fully wired and verified in live tests.
+  - CODE: vault subcommand parser + handler.
 
 ---
 
