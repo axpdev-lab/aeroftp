@@ -173,7 +173,12 @@
   - Recompute cost documented in comment (acceptable for ECC-enabled vaults).
   - Tests for P2-02/03/04 still pass; full wiring enables --ecc vaults to carry real parities on save.
 
-- [ ] **P2-06** Add `scrub` primitive: walk the manifest, for each chunk verify its cipher_hash against the bytes at the recorded location in the data section. Return list of damaged `ChunkRecordV3` + byte ranges
+- [x] **P2-06** Add `scrub` primitive: walk the manifest, for each chunk verify its cipher_hash against the bytes at the recorded location in the data section. Return list of damaged `ChunkRecordV3` + byte ranges [DONE]
+  - Added `scrub_vault(vault: &OpenVaultV3) -> Vec<DamagedChunk>`
+  - DamagedChunk contains the record + on_disk_start/len (full unit including u64 prefix).
+  - Walks chunks sorted by data_offset, verifies cipher_hash on the ciphertext portion.
+  - Handles truncated blocks.
+  - Added test `p2_06_scrub_detects_tampered_block` (passes, detects the corruption and reports correct range).
 
 - [ ] **P2-07** Add `repair` primitive that:
   1. Runs scrub

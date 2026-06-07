@@ -214,7 +214,14 @@ All per plan, step-by-step with tests. Ready for Phase 2 (RS crate).
 - Recompute cost noted (fine for the feature; only happens for --ecc vaults).
 - All prior P2 tests continue to pass.
 
-Phase 2 core (compute + reconstruct + wiring) done. Ready for higher-level scrub/repair or full integration tests.
+**P2-06 completed**:
+- Added `scrub_vault` primitive + `DamagedChunk` struct.
+- Verifies every chunk's cipher_hash against the stored ciphertext.
+- Returns list with records and exact on-disk byte ranges.
+- Test with intentional tamper passes and reports correct range.
+- Interleaved with broader module tests (green).
+
+All per plan. Next: P2-07 (repair primitive) or integration into CLI `scrub` command.
 
 Rocket engines lit. Proceeding step-by-step.
 

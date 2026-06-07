@@ -526,6 +526,69 @@ pub fn reconstruct_from_ecc(
     Ok(reconstructed)
 }
 
+/// P2-06: Scrub primitive.
+/// Walks the chunks in data section order, verifies each cipher_hash against the
+/// stored ciphertext block. Returns list of damaged chunks with their full on-disk
+/// byte range (starting at the u64 length prefix).
+#[derive(Debug, Clone)]
+pub struct DamagedChunk {
+    pub record: ChunkRecordV3,
+    /// Start offset in the vault file's data section (includes the u64 prefix).
+    pub on_disk_start: u64,
+    /// Full length of the stored unit (8 + cipher len).
+    pub on_disk_len: u64,
+}
+
+pub fn scrub_vault(vault: &OpenVaultV3) -> Vec<DamagedChunk> {
+    let mut damaged = vec![];
+
+    // Collect and sort chunks by their physical order in the data section.
+    let mut chunks: Vec<_> = vault.manifest.chunks.values().cloned().collect();
+    chunks.sort_by_key(|c| c.data_offset);
+
+    for rec in chunks {
+        let start = rec.data_offset as usize;
+        if start + 8 > vault.data.len() {
+            // Truncated block - definitely damaged
+            damaged.push(DamagedChunk {
+                record: rec.clone(),
+                on_disk_start: rec.data_offset,
+                on_disk_len: 8,
+            });
+            continue;
+        }
+
+        let stored_len = u64::from_le_bytes(
+            vault.data[start..start + 8].try_into().expect("slice"),
+        ) as usize;
+
+        let block_start = start + 8;
+        let block_end = block_start + stored_len;
+
+        if block_end > vault.data.len() || stored_len != rec.block_len as usize {
+            damaged.push(DamagedChunk {
+                record: rec.clone(),
+                on_disk_start: rec.data_offset,
+                on_disk_len: (8 + stored_len) as u64,
+            });
+            continue;
+        }
+
+        let cipher_block = &vault.data[block_start..block_end];
+        let actual_hash = blake3::hash(cipher_block).to_hex().to_string();
+
+        if actual_hash != rec.cipher_hash {
+            damaged.push(DamagedChunk {
+                record: rec.clone(),
+                on_disk_start: rec.data_offset,
+                on_disk_len: (8 + stored_len) as u64,
+            });
+        }
+    }
+
+    damaged
+}
+
 #[derive(Debug, Serialize)]
 pub struct VaultV3Info {
     pub version: u8,
@@ -2874,6 +2937,51 @@ mod tests {
         let restored = &blocks[1];
         let len = u64::from_le_bytes(restored[0..8].try_into().unwrap()) as usize;
         assert_eq!(&restored[8..8+len], &orig2);
+    }
+
+    #[test]
+    fn p2_06_scrub_detects_tampered_block() {
+        // P2-06: create a small vault, tamper one cipher block in the data section,
+        // run scrub, should report exactly one damaged chunk with correct range.
+        let dir = tempfile::tempdir().unwrap();
+        let vault_path = dir.path().join("scrub-test.aerovault");
+
+        create_empty_vault(&vault_path, "scrub-pw-1234", DEFAULT_ZSTD_LEVEL, false).unwrap();
+        let mut vault = open_vault(&vault_path, "scrub-pw-1234").unwrap();
+
+        // Directly inject a fake chunk block for testing scrub
+        let encrypted = vec![0u8; 32];
+        let cipher_hash = blake3::hash(&encrypted).to_hex().to_string();
+        let block: Vec<u8> = {
+            let mut b = (encrypted.len() as u64).to_le_bytes().to_vec();
+            b.extend_from_slice(&encrypted);
+            b
+        };
+        let data_offset = vault.data.len() as u64;
+        vault.data.extend_from_slice(&block);
+        vault.manifest.chunks.insert(
+            "fakeid".to_string(),
+            ChunkRecordV3 {
+                id: "fakeid".to_string(),
+                block_index: 0,
+                data_offset,
+                block_len: encrypted.len() as u64,
+                plaintext_len: 16,
+                compressed_len: 16,
+                cipher_hash: cipher_hash.clone(),
+            },
+        );
+
+        // Tamper inside the cipher part (after the u64 prefix)
+        let tamper_pos = data_offset as usize + 8 + 5;
+        if tamper_pos < vault.data.len() {
+            vault.data[tamper_pos] ^= 0xFF;
+        }
+
+        let damaged = scrub_vault(&vault);
+        assert_eq!(damaged.len(), 1);
+        assert_eq!(damaged[0].record.id, "fakeid");
+        assert_eq!(damaged[0].on_disk_len, 8 + 32);
     }
 
     /// P1-06: First compatibility test - a "v4-stub" vault (created with ECC extension)
