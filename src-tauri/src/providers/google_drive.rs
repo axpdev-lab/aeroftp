@@ -2259,6 +2259,7 @@ impl StorageProvider for GoogleDriveProvider {
             used,
             total,
             free: total.saturating_sub(used),
+            versioning_bytes: None,
         })
     }
 

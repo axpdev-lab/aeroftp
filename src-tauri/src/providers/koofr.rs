@@ -1374,6 +1374,7 @@ impl StorageProvider for KoofrProvider {
             total,
             used,
             free: total.saturating_sub(used),
+            versioning_bytes: None,
         })
     }
 

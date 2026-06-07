@@ -2021,6 +2021,7 @@ impl StorageProvider for FileLuProvider {
             used,
             free,
             total: used + free,
+            versioning_bytes: None,
         })
     }
 

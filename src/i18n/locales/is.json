@@ -4290,7 +4290,8 @@
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
             },
-            "healthCheck": "Aðgengisathugun"
+            "healthCheck": "Aðgengisathugun",
+            "storageVersioning": "[NEEDS TRANSLATION] File versions: {size}"
         },
         "gitlab": {
             "projectPath": "Verkefnisslóð",

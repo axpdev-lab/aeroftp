@@ -61,7 +61,11 @@ pub(crate) fn is_megacmd_webdav_provider_id(provider_id: Option<&str>) -> bool {
 }
 
 /// Query MEGAcmd account quota by spawning `mega-df`.
-pub async fn mega_df_query() -> Result<(u64, u64), ProviderError> {
+///
+/// Returns `(used, total, versioning_bytes)`. `versioning_bytes` is the bytes
+/// consumed by retained file versions ("Total size taken up by file versions"
+/// in `mega-df` output), or `None` when the line is absent.
+pub async fn mega_df_query() -> Result<(u64, u64, Option<u64>), ProviderError> {
     let resolved_cmd = resolve_mega_cmd("mega-df");
     let mut cmd = Command::new(&resolved_cmd);
     #[cfg(windows)]
@@ -185,9 +189,10 @@ pub async fn ensure_megacmd_webdav_bridge() -> Result<(), ProviderError> {
     classify_mega_webdav_result(output.status.success(), &combined)
 }
 
-pub(crate) fn parse_mega_df_output(output: &str) -> Result<(u64, u64), ProviderError> {
+pub(crate) fn parse_mega_df_output(output: &str) -> Result<(u64, u64, Option<u64>), ProviderError> {
     let mut used = None;
     let mut total = None;
+    let mut versioning = None;
 
     for raw_line in output.lines() {
         let line = raw_line.trim();
@@ -202,6 +207,14 @@ pub(crate) fn parse_mega_df_output(output: &str) -> Result<(u64, u64), ProviderE
 
         let numbers = integer_tokens(rest);
         if numbers.is_empty() {
+            continue;
+        }
+
+        // "Total size taken up by file versions: N" reports the bytes held by
+        // retained versions. It contains "total" but is neither the used nor
+        // the capacity row, so match it first and skip the used/total checks.
+        if label.contains("file versions") || label.contains("file version") {
+            versioning = Some(number_before_bytes(rest).unwrap_or(numbers[0]));
             continue;
         }
 
@@ -249,7 +262,7 @@ pub(crate) fn parse_mega_df_output(output: &str) -> Result<(u64, u64), ProviderE
         ))
     })?;
 
-    Ok((used, total))
+    Ok((used, total, versioning))
 }
 
 fn number_before_bytes(text: &str) -> Option<u64> {
@@ -296,7 +309,7 @@ TOTAL STORAGE: 21474836480 bytes (20.0 GB)
 ";
         assert_eq!(
             parse_mega_df_output(output).unwrap(),
-            (5_368_709_120, 21_474_836_480)
+            (5_368_709_120, 21_474_836_480, None)
         );
     }
 
@@ -305,7 +318,7 @@ TOTAL STORAGE: 21474836480 bytes (20.0 GB)
         let output = "Total: 5368709120 of 21474836480 bytes used";
         assert_eq!(
             parse_mega_df_output(output).unwrap(),
-            (5_368_709_120, 21_474_836_480)
+            (5_368_709_120, 21_474_836_480, None)
         );
     }
 
@@ -322,7 +335,28 @@ Total size taken up by file versions:     31457280
 ";
         assert_eq!(
             parse_mega_df_output(output).unwrap(),
-            (848_257_285, 3_303_903_592_448)
+            (848_257_285, 3_303_903_592_448, Some(31_457_280))
+        );
+    }
+
+    #[test]
+    fn versioning_bytes_is_none_when_line_absent() {
+        let output = "\
+USED STORAGE: 5368709120 bytes (5.0 GB)
+TOTAL STORAGE: 21474836480 bytes (20.0 GB)
+";
+        assert_eq!(parse_mega_df_output(output).unwrap().2, None);
+    }
+
+    #[test]
+    fn parses_versioning_bytes_with_bytes_suffix() {
+        let output = "\
+USED STORAGE:            848257285                   0.03% of 3303903592448
+Total size taken up by file versions:     31457280 bytes (30.0 MB)
+";
+        assert_eq!(
+            parse_mega_df_output(output).unwrap(),
+            (848_257_285, 3_303_903_592_448, Some(31_457_280))
         );
     }
 

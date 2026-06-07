@@ -3115,7 +3115,12 @@ impl StorageProvider for ZohoWorkdriveProvider {
         }
         let free = total.saturating_sub(used);
 
-        Ok(StorageInfo { used, total, free })
+        Ok(StorageInfo {
+            used,
+            total,
+            free,
+            versioning_bytes: None,
+        })
     }
 
     fn supports_find(&self) -> bool {

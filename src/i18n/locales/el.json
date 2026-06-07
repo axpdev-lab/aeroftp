@@ -4271,7 +4271,8 @@
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
             },
-            "healthCheck": "Έλεγχος διαθεσιμότητας"
+            "healthCheck": "Έλεγχος διαθεσιμότητας",
+            "storageVersioning": "[NEEDS TRANSLATION] File versions: {size}"
         },
         "gitlab": {
             "projectPath": "Διαδρομή Έργου",

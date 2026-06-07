@@ -259,6 +259,37 @@ struct GenericResponse {
     message: Option<String>,
 }
 
+/// Response for POST /v3/file/versions (F-FEAT-02).
+#[derive(Debug, Deserialize)]
+struct FileVersionsResponse {
+    status: bool,
+    message: Option<String>,
+    data: Option<FileVersionsData>,
+}
+
+#[derive(Debug, Deserialize)]
+struct FileVersionsData {
+    #[serde(default)]
+    versions: Vec<FilenFileVersion>,
+}
+
+/// One entry from the file-versions list. Each version is a self-contained
+/// encrypted blob: its `metadata` carries that version's own per-file key, so
+/// an old version can be downloaded independently of the current file.
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct FilenFileVersion {
+    uuid: String,
+    region: String,
+    bucket: String,
+    chunks: u32,
+    metadata: String, // encrypted JSON: {name, size, mime, key, lastModified}
+    timestamp: u64,   // seconds (matches folder/file top-level timestamps)
+    version: u32,
+    #[serde(default)]
+    rm: String,
+}
+
 /// Filen link status response
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
@@ -805,6 +836,70 @@ impl FilenProvider {
         }
 
         Ok(current_uuid)
+    }
+
+    /// Resolve a file path to its current Filen file uuid by listing the parent
+    /// directory and matching the file name. As a side effect this re-populates
+    /// the backend-only file-key cache for the directory (via `list`), which the
+    /// download path relies on.
+    async fn resolve_file_uuid(&mut self, path: &str) -> Result<String, ProviderError> {
+        let normalized = Self::normalize_path(path);
+        let (parent_path, file_name) = match normalized.rfind('/') {
+            Some(pos) if pos > 0 => (
+                normalized[..pos].to_string(),
+                normalized[pos + 1..].to_string(),
+            ),
+            _ => (
+                "/".to_string(),
+                normalized.trim_start_matches('/').to_string(),
+            ),
+        };
+        let entries = self.list(&parent_path).await?;
+        let file_entry = entries
+            .iter()
+            .find(|e| !e.is_dir && e.name == file_name)
+            .ok_or_else(|| ProviderError::NotFound(format!("File not found: {}", file_name)))?;
+        file_entry
+            .metadata
+            .get("uuid")
+            .cloned()
+            .ok_or_else(|| ProviderError::Other("No UUID for file".to_string()))
+    }
+
+    /// Fetch the raw version list for a file uuid (POST /v3/file/versions).
+    /// Verified against filen-sdk-ts `api/v3/file/versions` (POST, body `{uuid}`).
+    async fn fetch_file_versions(
+        &self,
+        file_uuid: &str,
+    ) -> Result<Vec<FilenFileVersion>, ProviderError> {
+        let request = self
+            .client
+            .post(format!("{}/v3/file/versions", GATEWAY))
+            .header(
+                "Authorization",
+                HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
+                    .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
+            )
+            .json(&serde_json::json!({ "uuid": file_uuid }))
+            .build()
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        let resp: FileVersionsResponse = self
+            .send_retry(request)
+            .await?
+            .json()
+            .await
+            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+        if !resp.status {
+            return Err(ProviderError::ServerError(
+                resp.message
+                    .unwrap_or_else(|| "Failed to list file versions".to_string()),
+            ));
+        }
+        let mut versions = resp.data.map(|d| d.versions).unwrap_or_default();
+        // Newest first: the version record timestamp is the canonical creation
+        // time and gives a stable order regardless of API response ordering.
+        versions.sort_by_key(|v| std::cmp::Reverse(v.timestamp));
+        Ok(versions)
     }
 }
 
@@ -2040,6 +2135,7 @@ impl StorageProvider for FilenProvider {
                 total,
                 used,
                 free: total.saturating_sub(used),
+                versioning_bytes: None,
             });
         }
 
@@ -2068,6 +2164,7 @@ impl StorageProvider for FilenProvider {
             total: data.max_storage,
             used: data.storage_used,
             free: data.max_storage.saturating_sub(data.storage_used),
+            versioning_bytes: None,
         })
     }
 
@@ -2288,9 +2385,138 @@ impl StorageProvider for FilenProvider {
     // use: GET v3/trash (list trash items), POST v3/file/restore / v3/dir/restore (restore),
     // POST v3/file/delete/permanent / v3/dir/delete/permanent (permanent delete).
 
-    // TODO (F-FEAT-02): Filen supports file versioning. Use GET v3/file/versions to list
-    // previous versions, POST v3/file/version/restore to restore a specific version.
-    // Each version has a uuid, size, and timestamp.
+    // F-FEAT-02: Filen file versioning. Versioning is server-side and always on
+    // for Filen accounts; AeroFTP only needs the four generic trait methods. The
+    // FileVersionsDialog frontend and provider_* commands are protocol-agnostic.
+    fn supports_versions(&self) -> bool {
+        true
+    }
+
+    async fn list_versions(
+        &mut self,
+        path: &str,
+    ) -> Result<Vec<super::FileVersion>, ProviderError> {
+        let file_uuid = self.resolve_file_uuid(path).await?;
+        let versions = self.fetch_file_versions(&file_uuid).await?;
+
+        let mut out = Vec::with_capacity(versions.len());
+        for v in versions {
+            // Each version's own metadata carries its size + content mtime,
+            // encrypted under the master key like any file's metadata.
+            let (size, content_modified) = match self.decrypt_metadata(&v.metadata) {
+                Some(meta_str) => match serde_json::from_str::<FileMetadata>(&meta_str) {
+                    Ok(meta) => {
+                        let modified = meta.last_modified.and_then(|ts| {
+                            chrono::DateTime::from_timestamp(ts as i64 / 1000, 0)
+                                .map(|dt| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string())
+                        });
+                        (meta.size, modified)
+                    }
+                    Err(_) => (0, None),
+                },
+                None => (0, None),
+            };
+            // Prefer the content mtime; fall back to the version record's own
+            // creation timestamp (seconds) when metadata carried none.
+            let modified = content_modified.or_else(|| {
+                chrono::DateTime::from_timestamp(v.timestamp as i64, 0)
+                    .map(|dt| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string())
+            });
+            out.push(super::FileVersion {
+                id: v.uuid,
+                modified,
+                size,
+                modified_by: None,
+            });
+        }
+        Ok(out)
+    }
+
+    async fn download_version(
+        &mut self,
+        path: &str,
+        version_id: &str,
+        local_path: &str,
+    ) -> Result<(), ProviderError> {
+        let file_uuid = self.resolve_file_uuid(path).await?;
+        let version = self
+            .fetch_file_versions(&file_uuid)
+            .await?
+            .into_iter()
+            .find(|v| v.uuid == version_id)
+            .ok_or_else(|| ProviderError::NotFound(format!("Version not found: {}", version_id)))?;
+
+        // The version's per-file key lives inside its own encrypted metadata.
+        let meta_str = self.decrypt_metadata(&version.metadata).ok_or_else(|| {
+            ProviderError::Other("Failed to decrypt version metadata".to_string())
+        })?;
+        let meta: FileMetadata = serde_json::from_str(&meta_str)
+            .map_err(|e| ProviderError::ParseError(format!("Version metadata parse: {}", e)))?;
+        let file_key = meta.key;
+
+        let mut atomic = super::atomic_write::AtomicFile::new(local_path)
+            .await
+            .map_err(ProviderError::IoError)?;
+
+        // A zero-chunk version is an empty file: commit the empty atomic file.
+        for chunk_idx in 0..version.chunks {
+            let download_url = format!(
+                "https://egest.filen.io/{}/{}/{}/{}",
+                version.region, version.bucket, version.uuid, chunk_idx
+            );
+            let encrypted = download_filen_chunk(
+                &self.client,
+                &download_url,
+                chunk_idx,
+                FILEN_DOWNLOAD_CHUNK_RETRIES,
+            )
+            .await
+            .map_err(|e| {
+                ProviderError::TransferFailed(format!(
+                    "Download version chunk {}/{} failed after {} retries: {}",
+                    chunk_idx, version.chunks, FILEN_DOWNLOAD_CHUNK_RETRIES, e
+                ))
+            })?;
+            let decrypted = Self::decrypt_file_content(&encrypted, &file_key)?;
+            atomic
+                .write_all(&decrypted)
+                .await
+                .map_err(ProviderError::IoError)?;
+        }
+
+        atomic.commit().await.map_err(ProviderError::IoError)?;
+        Ok(())
+    }
+
+    async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
+        let current_uuid = self.resolve_file_uuid(path).await?;
+        // POST /v3/file/version/restore { uuid: <version>, current: <live file> }
+        // (filen-sdk-ts api/v3/file/version/restore).
+        let request = self
+            .client
+            .post(format!("{}/v3/file/version/restore", GATEWAY))
+            .header(
+                "Authorization",
+                HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
+                    .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
+            )
+            .json(&serde_json::json!({ "uuid": version_id, "current": current_uuid }))
+            .build()
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        let resp: GenericResponse = self
+            .send_retry(request)
+            .await?
+            .json()
+            .await
+            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+        if !resp.status {
+            return Err(ProviderError::ServerError(
+                resp.message
+                    .unwrap_or_else(|| "Failed to restore file version".to_string()),
+            ));
+        }
+        Ok(())
+    }
 
     fn supports_find(&self) -> bool {
         true

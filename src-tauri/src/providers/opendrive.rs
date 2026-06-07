@@ -2072,6 +2072,7 @@ impl StorageProvider for OpenDriveProvider {
             used,
             total,
             free: total.saturating_sub(used),
+            versioning_bytes: None,
         })
     }
 

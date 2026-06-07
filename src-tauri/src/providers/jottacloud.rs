@@ -1592,7 +1592,12 @@ impl StorageProvider for JottacloudProvider {
         let total = customer.quota.max(0) as u64;
         let free = total.saturating_sub(used);
 
-        Ok(StorageInfo { used, total, free })
+        Ok(StorageInfo {
+            used,
+            total,
+            free,
+            versioning_bytes: None,
+        })
     }
 
     async fn create_share_link(

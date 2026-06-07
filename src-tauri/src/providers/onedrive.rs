@@ -1831,6 +1831,7 @@ impl StorageProvider for OneDriveProvider {
             free: quota
                 .remaining
                 .unwrap_or_else(|| total.saturating_sub(used)),
+            versioning_bytes: None,
         })
     }
 

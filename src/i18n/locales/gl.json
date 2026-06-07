@@ -4290,7 +4290,8 @@
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
             },
-            "healthCheck": "Comprobación de dispoñibilidade"
+            "healthCheck": "Comprobación de dispoñibilidade",
+            "storageVersioning": "[NEEDS TRANSLATION] File versions: {size}"
         },
         "gitlab": {
             "projectPath": "Ruta do proxecto",

@@ -502,6 +502,10 @@ export interface ServerProfile {
     // Number of files counted by the last explicit scan (item 4b). Shown
     // next to the byte figure so the user can sanity-check the result.
     fileCount?: number;
+    // Bytes consumed by retained file versions, when the provider reports it
+    // (MEGAcmd `mega-df`). Drawn as a distinct segment on the usage bar
+    // (#270 c.17207733). Undefined when unknown/unsupported.
+    versioningBytes?: number;
   };
   // Aggregate compression telemetry from the last AeroVault op run against
   // this profile (Ehud #162). Feeds the optional, default-hidden "Saved"

@@ -1751,6 +1751,7 @@ impl StorageProvider for DrimeCloudProvider {
             used,
             total: used + available,
             free: available,
+            versioning_bytes: None,
         })
     }
 

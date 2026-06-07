@@ -1511,6 +1511,7 @@ impl StorageProvider for FourSharedProvider {
             used: user.used_space.unwrap_or(0) as u64,
             total: user.total_space.unwrap_or(0) as u64,
             free: user.free_space.unwrap_or(0) as u64,
+            versioning_bytes: None,
         })
     }
 

@@ -2324,6 +2324,7 @@ impl StorageProvider for InternxtProvider {
             used,
             total,
             free: total.saturating_sub(used),
+            versioning_bytes: None,
         })
     }
 

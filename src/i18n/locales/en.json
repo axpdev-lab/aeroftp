@@ -4303,6 +4303,7 @@
             "addFavorite": "Add to favorites",
             "removeFavorite": "Remove from favorites",
             "storageUsedOf": "{used} used of {total}",
+            "storageVersioning": "File versions: {size}",
             "storageQuotaUnavailable": "Connect once to load storage quota",
             "densityCompact": "Compact rows",
             "densityComfortable": "Comfortable rows",

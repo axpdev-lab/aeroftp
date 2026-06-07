@@ -1864,7 +1864,12 @@ impl StorageProvider for SftpProvider {
         let free = stat.blocks_avail * stat.fragment_size;
         let used = total.saturating_sub(free);
 
-        Ok(super::StorageInfo { used, total, free })
+        Ok(super::StorageInfo {
+            used,
+            total,
+            free,
+            versioning_bytes: None,
+        })
     }
 
     async fn set_speed_limit(

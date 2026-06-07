@@ -1260,6 +1260,7 @@ impl StorageProvider for SwiftProvider {
             used,
             total,
             free: total.saturating_sub(used),
+            versioning_bytes: None,
         })
     }
 

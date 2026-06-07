@@ -1166,7 +1166,12 @@ impl StorageProvider for CloudinaryProvider {
             })
             .unwrap_or(0);
         let free = total.saturating_sub(used);
-        Ok(StorageInfo { used, total, free })
+        Ok(StorageInfo {
+            used,
+            total,
+            free,
+            versioning_bytes: None,
+        })
     }
 
     fn supports_thumbnails(&self) -> bool {
