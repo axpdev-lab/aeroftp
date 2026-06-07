@@ -153,7 +153,20 @@ Next per plan: P1-04 + P1-05 (enhance ECC visibility + has_ecc helper) — advan
 - Matches the plan item: "advertise the ECC layer when present".
 - Added + passing unit test `v3_security_info_advertises_ecc_when_present`.
 - Interleaved full test runs green.
-- Will be included in next local commit with correct Co-Authored-By trailer.
+
+- P1-06 completed: Added dedicated compatibility test `v3_stub_ecc_vault_readable_by_pure_v3_open_and_extract`.
+- Proves v4-stub (ECC extension) vaults remain fully readable/extractable via pure v3 internal paths (`open_vault`, `extract_entry`).
+- Test passes cleanly.
+- Interleaved with cargo test.
+
+- Live CLI test executed successfully:
+  - `cargo build --bin aeroftp-cli`
+  - Created vault with --ecc and without.
+  - `vault info --json` correctly reports "has_ecc": true / false.
+  - Add file + extract on ECC-stub vault worked end-to-end (data roundtripped).
+  - Confirmed the pure v3 code paths in the built binary handle stub-ECC vaults transparently.
+
+All per plan, step-by-step with tests. Ready for next (P2 or polish).
 
 Rocket engines lit. Proceeding step-by-step.
 

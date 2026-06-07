@@ -2416,6 +2416,35 @@ mod tests {
         assert!(info.get("ecc_support").is_some());
     }
 
+    /// P1-06: First compatibility test - a "v4-stub" vault (created with ECC extension)
+    /// must still be fully readable using the pure v3 open/extract paths
+    /// (simulating an older v3-only reader or binary).
+    #[test]
+    fn v3_stub_ecc_vault_readable_by_pure_v3_open_and_extract() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault_path = dir.path().join("compat-stub.aerovault");
+        let payload = dir.path().join("payload.bin");
+        std::fs::write(&payload, b"P1-06 compatibility payload for stub ECC vault").unwrap();
+
+        // Create using the ECC stub path (what will be "v4" in future)
+        create_empty_vault(&vault_path, "compat-pw-1234", DEFAULT_ZSTD_LEVEL, true).unwrap();
+
+        // Use pure v3 open path (internal open_vault, as old reader would)
+        let mut vault = open_vault(&vault_path, "compat-pw-1234").unwrap();
+        append_file_at(&mut vault, &payload, "data/compat.bin").unwrap();
+        save_open_vault(&vault).unwrap();
+
+        // Re-open with pure v3 path and extract
+        let reopened = open_vault(&vault_path, "compat-pw-1234").unwrap();
+        let out = dir.path().join("extracted.bin");
+        extract_entry(&reopened, "data/compat.bin", &out).unwrap();
+
+        assert_eq!(
+            std::fs::read(&out).unwrap(),
+            b"P1-06 compatibility payload for stub ECC vault"
+        );
+    }
+
     #[test]
     fn v3_directory_ops_and_password_rotation() {
         let dir = tempfile::tempdir().unwrap();
