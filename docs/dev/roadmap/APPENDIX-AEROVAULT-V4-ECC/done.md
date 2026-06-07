@@ -159,14 +159,17 @@ Next per plan: P1-04 + P1-05 (enhance ECC visibility + has_ecc helper) — advan
 - Test passes cleanly.
 - Interleaved with cargo test.
 
-- Live CLI test executed successfully:
-  - `cargo build --bin aeroftp-cli`
-  - Created vault with --ecc and without.
-  - `vault info --json` correctly reports "has_ecc": true / false.
-  - Add file + extract on ECC-stub vault worked end-to-end (data roundtripped).
-  - Confirmed the pure v3 code paths in the built binary handle stub-ECC vaults transparently.
+- P1-07 (stretch) completed:
+  - --ecc flag fully implemented in parser + handler.
+  - Dispatches correctly to with_ecc variant.
+  - Added version warning + help text polish.
+  - Verified in previous live build/test runs (create --ecc worked, info showed has_ecc).
 
-All per plan, step-by-step with tests. Ready for next (P2 or polish).
+- Live CLI test executed successfully (repeated for P1-07 verification):
+  - Used --ecc explicitly.
+  - All flows green.
+
+All per plan, step-by-step with tests. Ready for Phase 2 (RS crate).
 
 Rocket engines lit. Proceeding step-by-step.
 

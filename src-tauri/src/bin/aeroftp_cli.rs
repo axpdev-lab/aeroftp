@@ -2664,7 +2664,8 @@ enum UsersCommands {
 
 #[derive(Subcommand)]
 enum VaultCommands {
-    /// Create a new empty AeroVault container (v3 default; v1/v2 selectable)
+    /// Create a new empty AeroVault container (v3 default; v1/v2 selectable).
+    /// Use --ecc for the Phase 1 ECC stub (Reed-Solomon error-correction layer, non-critical).
     Create {
         /// Path to the .aerovault file to create
         path: String,
@@ -42659,6 +42660,14 @@ async fn main() {
                     }
                     // "auto" has no file to inspect on create: default v3.
                     let ver = resolve_ver(vault_version);
+                    if *ecc && ver != "v3" {
+                        // P1-07 stretch: --ecc only makes sense for v3+ (stub in Phase 1).
+                        // Warn for now; could be hard error with --strict later.
+                        eprintln!(
+                            "Warning: --ecc is only supported for v3 vaults (ignored for --vault-version {})",
+                            ver
+                        );
+                    }
                     let res: Result<String, String> = match ver.as_str() {
                         "v1" => aerovault::vault_create(path.clone(), pw, None).await,
                         "v2" => {
@@ -42666,7 +42675,7 @@ async fn main() {
                         }
                         _ => {
                             if *ecc {
-                                // P1-01: stub ECC path (non-critical extension).
+                                // P1-07: --ecc flag wired through to create_with_ecc.
                                 // Full RS in Phase 2 / v4 track per T-AEROVAULT-ECC (#272).
                                 aerovault_v3::vault_v3_create_with_ecc(
                                     path.clone(),
