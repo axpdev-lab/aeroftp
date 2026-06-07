@@ -185,6 +185,16 @@ All per plan, step-by-step with tests + live verification. Phase 2 engines lit. 
 
 All per plan, step-by-step with tests. Ready for Phase 2 (RS crate).
 
+**P2-02 completed**:
+- Defined the on-disk ECC extension payload format.
+- `EccPayloadHeader`, `EccStripeHeader`, `EccPayload` with binary to_bytes/from_bytes.
+- Stripe-based layout (header + stripe table + concatenated parity data).
+- Simple, self-describing, suitable for append (new stripes) and full rewrite on seal.
+- Roundtrip test `p2_02_ecc_payload_format_roundtrip` added and passing.
+- Format documented in source comments.
+
+All per plan, step-by-step with tests. Ready for P2-03 (compute_ecc_shards using the RS crate).
+
 Rocket engines lit. Proceeding step-by-step.
 
 Rocket engines lit — proceeding step-by-step with tests interleaved. The AeroFTP symbol (rocket) is noted, fitting the "accendi i motori del razzo" perfectly.  🚀
