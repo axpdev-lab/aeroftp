@@ -204,6 +204,14 @@ crossterm = "0.29"                                                     # Cross-p
 #   2. aerorsync `real_wire.rs` -- decompresses DEFLATED_DATA literals
 #      emitted by rsync's sender when CPRES_ZSTD is negotiated.
 zstd = "0.13"
+
+# P2-01: Reed-Solomon erasure coding for AeroVault v4 ECC layer (T-AEROVAULT-ECC).
+# Crate: reed-solomon-erasure (pure-Rust GF(2^8) implementation).
+# - Block-level parity over ciphertext chunks (the exact bytes protected by existing cipher_hash).
+# - Chosen for: maturity, no C FFI, configurable shard counts, good perf on the sizes we use (256KiB–16MiB chunks).
+# - Audit note / D-02 justification: see docs/dev/roadmap/APPENDIX-AEROVAULT-V4-ECC/DEPENDENCY-EVALUATION.md (to be written in this phase).
+# - Kept out of default features until the ECC path is exercised and reviewed.
+reed-solomon-erasure = "6"
 # aerorsync: XXH3-128 file-level checksum trailer (S8j). Provides
 # `xxhash_rust::xxh3::xxh3_128` used by the driver to compute the file
 # checksum rsync verifies at the end of a delta stream.

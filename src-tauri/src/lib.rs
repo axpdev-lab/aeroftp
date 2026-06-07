@@ -15265,6 +15265,7 @@ pub fn run() {
             aerovault_v2::vault_v2_add_directory,
             // AeroVault v3 draft wrapper-stack backend
             aerovault_v3::vault_v3_create,
+            aerovault_v3::vault_v3_create_with_ecc,
             aerovault_v3::vault_v3_open,
             aerovault_v3::is_vault_v3,
             aerovault_v3::vault_v3_add_files,

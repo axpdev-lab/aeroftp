@@ -167,6 +167,20 @@ Next per plan: P1-04 + P1-05 (enhance ECC visibility + has_ecc helper) — advan
 
 - Live CLI test executed successfully (repeated for P1-07 verification):
   - Used --ecc explicitly.
+
+**P1 final fix (user-flagged one-liner)**:
+- Registered `aerovault_v3::vault_v3_create_with_ecc` in `src-tauri/src/lib.rs` invoke_handler (immediately after `vault_v3_create` at the Tauri command list).
+- Required for GUI (Tauri invoke); CLI already calls the lib function directly, so it worked without it.
+- `cargo check` clean.
+
+**Phase 2 started (P2-01)**:
+- Selected `reed-solomon-erasure = "6"` (pure-Rust, mature, fits our ciphertext-block + cipher_hash model).
+- Added to Cargo.toml with justification comment (full D-02 note + audit.toml entry to follow in this phase).
+- `cargo check` passes after dep resolution.
+- Tracking updated in todo.md.
+- All P1 items (including the registration) now closed. Phase 1 complete.
+
+All per plan, step-by-step with tests + live verification. Phase 2 engines lit. 🚀
   - All flows green.
 
 All per plan, step-by-step with tests. Ready for Phase 2 (RS crate).

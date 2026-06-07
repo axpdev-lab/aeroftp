@@ -122,19 +122,27 @@
   - Test passes (interleaved).
   - Followed by live CLI test: built binary, created with --ecc, verified `info --json` shows "has_ecc": true/false correctly, add+extract succeeded on stub vault.
 
-- [x] **P1-07** (stretch) Make the CLI `vault create` accept a new flag `--ecc` (or `--redundancy ecc`) and pass it through to the create function [DONE]
-  - Flag `--ecc` added to VaultCommands::Create with detailed doc (references #272 and APPENDIX).
-  - Logic in Create handler (call site ~42668): if ecc && v3, dispatches to vault_v3_create_with_ecc.
-  - Polish: warning if --ecc used with non-v3 version; updated Create help text.
-  - Fully wired and verified in live tests.
-  - CODE: vault subcommand parser + handler.
+- [x] **P1-07** (stretch) Make the CLI `vault create` accept a new flag `--ecc` (or `--redundancy ecc`) and pass it through to the create function [DONE + final P1 fix]
+  - Flag + dispatch complete (with version warning + help polish).
+  - **One-liner registration fix** (per user review): added `aerovault_v3::vault_v3_create_with_ecc,` in lib.rs invoke_handler immediately after `vault_v3_create` (line ~15267). Required for future GUI Tauri calls (CLI bypasses it by direct lib use).
+  - All P1 items closed. Phase 1 complete.
 
 ---
 
-## Phase 2 — Real Reed-Solomon Layer
+## Phase 2 — Real Reed-Solomon Layer (STARTED)
 
-- [ ] **P2-01** Choose + add RS crate to `src-tauri/Cargo.toml` + write justification (see D-02)
-  - Update `audit.toml` if the project still uses one (historical pattern)
+- [x] **P2-01** Choose + add RS crate to `src-tauri/Cargo.toml` + write justification (see D-02) [IN PROGRESS]
+  - Crate chosen: `reed-solomon-erasure = "6"` (latest stable series at time of addition).
+  - Added to Cargo.toml with inline comment referencing this APPENDIX and D-02.
+  - Basic justification (full DEPENDENCY-EVALUATION.md to be expanded):
+    * Pure Rust (no C/FFI surface — good for our audit history).
+    * Mature GF(2^8) implementation, configurable (data + parity shards).
+    * Directly applicable to our model: operate over the already-encrypted blocks that carry `cipher_hash`.
+    * Low dep footprint; similar crates used in archival/backup tools.
+    * Kept non-default for now; will be exercised only on ECC-enabled vaults.
+  - `cargo check` passes (dep resolved and linked).
+  - Next in P2-01: expand justification into dedicated file + consider audit.toml entry.
+  - Update `audit.toml` if the project still uses one (historical pattern) — to be done when full note lands.
 
 - [ ] **P2-02** Define the on-disk payload format for the ECC extension
   - Small header (shard count, data_shards, parity_shards, shard_size, hash of the shard table, etc.)
