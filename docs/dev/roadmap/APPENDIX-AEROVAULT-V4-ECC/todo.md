@@ -195,8 +195,11 @@
   - Registered in lib.rs.
   - Return simple JSON reports (count + list or repaired count).
   - Support dry_run for repair.
-  - CLI wiring is thin (user will do), but engine is fully tested directly (shared with GUI).
-  - All tests (unit + e2e + stress via the repair test) pass.
+  - Full CLI support added: `aeroftp-cli vault scrub <path> [-p pw]`, `aeroftp-cli vault repair <path> [--dry-run] [-p pw]`
+  - Nice text output for non-JSON (lists damaged chunks or repair summary).
+  - Engine tested directly + via CLI binary in live runs (build succeeded, commands wired).
+  - All tests (unit + e2e + stress with 12+ files / multi-damage) pass.
+  - CLI for ECC ops is complete (create --ecc, info has_ecc, scrub, repair).
 
 ---
 
