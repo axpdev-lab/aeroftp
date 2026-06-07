@@ -324,6 +324,26 @@ aeroftp-cli agent -p xai -m "Compute SHA-256 of /var/www/app.js" -y --json
 - Path validation blocks traversal, null bytes, and sensitive paths (`~/.ssh/`, vault files)
 - The agent cannot read the vault database directly - path validator blocks it
 
+### Strict mode (recommended for unattended runs)
+
+Pass `--strict` (or set `AEROFTP_STRICT=1`) to make any safety-relaxing flag a
+hard error (exit 5) instead of a silent downgrade. This is the safest posture
+for agent-generated or CI commands: a command that smuggles in a relaxation
+flag fails loudly rather than proceeding. Refused under strict mode:
+
+| Flag | What it would relax |
+|------|---------------------|
+| `--insecure` | TLS certificate verification |
+| `--trust-host-key` | SSH host-key (TOFU) verification |
+| `--aimd-disable` | Backpressure controller (can hammer the backend) |
+| `--drive-acknowledge-abuse` | Downloads files Google flagged as abusive |
+| `--drive-cross-account-copy` | Cross-account / Shared-Drive copies |
+| `--azure-archive-tier-delete` | Deletes archived blobs before overwrite |
+| `--auto-approve medium`/`high`/`all`, `-y`/`--yes` | Auto-approval above the read-only `safe` tier |
+
+Performance knobs (`--limit-rate`, concurrency, AIMD window sizing) and
+safety-adding flags (`--immutable`) are unaffected.
+
 ### Native MCP Server
 
 External MCP clients can now connect directly through AeroFTP without wrapping CLI text output:

@@ -698,6 +698,23 @@ struct Cli {
     #[arg(long, global = true, env = "AEROFTP_AIMD_CONFIG", value_name = "PATH")]
     aimd_config: Option<PathBuf>,
 
+    /// Refuse safety-relaxing flags (also via AEROFTP_STRICT=1).
+    ///
+    /// Hardens unattended / agent automation: any flag that disables a
+    /// safety check (TLS or SSH host-key verification, the abuse /
+    /// cross-account / archive-tier acknowledgements, AIMD backpressure)
+    /// or auto-approves write/destructive agent tools becomes a hard
+    /// error (exit 5) instead of silently relaxing safety. A generated
+    /// command that smuggles in `--insecure` or `--auto-approve all`
+    /// then fails loudly rather than proceeding.
+    ///
+    // NOTE: AEROFTP_STRICT is read manually (see `aeroftp_strict_env`) rather
+    // than via clap's `env=`, because clap parses a flag's env value as a
+    // strict bool (`true`/`false`) and would reject the documented
+    // `AEROFTP_STRICT=1` form with a hard parse error.
+    #[arg(long, global = true, help_heading = "Safety options")]
+    strict: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -4624,6 +4641,72 @@ fn print_error(format: OutputFormat, msg: &str, code: i32) {
             );
         }
     }
+}
+
+/// Truthy test for the `AEROFTP_STRICT` env toggle. Accepts the common
+/// spellings (`1`, `true`, `yes`, `on`, case-insensitive, surrounding
+/// whitespace tolerated) so the documented `AEROFTP_STRICT=1` works; unset,
+/// empty, `0`, `false`, `no`, `off`, or anything else is treated as off.
+/// Split out as a pure function so it can be unit-tested without touching the
+/// process environment.
+fn strict_env_truthy(val: Option<&str>) -> bool {
+    matches!(
+        val.map(|v| v.trim().to_ascii_lowercase()).as_deref(),
+        Some("1" | "true" | "yes" | "on")
+    )
+}
+
+/// Whether `AEROFTP_STRICT` requests strict mode from the environment.
+fn aeroftp_strict_env() -> bool {
+    strict_env_truthy(std::env::var("AEROFTP_STRICT").ok().as_deref())
+}
+
+/// Strict-mode guard (security-audit rec: `--strict` / `AEROFTP_STRICT=1`).
+///
+/// Returns the list of *safety-relaxing* flags present on this invocation.
+/// These are flags that turn OFF a control the threat model relies on:
+/// certificate / host-key verification, the explicit abuse / cross-account /
+/// archive-tier acknowledgements, the AIMD backpressure controller, and agent
+/// auto-approval above the read-only `safe` tier. Performance-only knobs
+/// (`--limit-rate`, concurrency, AIMD window sizing) and controls that *add*
+/// safety (`--immutable`) are deliberately NOT listed: strict mode hardens, it
+/// does not second-guess tuning. An empty result means the run is clean.
+fn strict_mode_violations(cli: &Cli) -> Vec<&'static str> {
+    let mut bad = Vec::new();
+    if cli.insecure {
+        bad.push("--insecure (skips TLS certificate verification)");
+    }
+    if cli.trust_host_key {
+        bad.push("--trust-host-key (skips SSH host-key TOFU verification)");
+    }
+    if cli.drive_acknowledge_abuse {
+        bad.push("--drive-acknowledge-abuse (downloads files Google flagged as abusive)");
+    }
+    if cli.drive_cross_account_copy {
+        bad.push("--drive-cross-account-copy (allows cross-account / Shared-Drive copies)");
+    }
+    if cli.azure_archive_tier_delete {
+        bad.push("--azure-archive-tier-delete (deletes archived blobs before overwrite)");
+    }
+    if cli.aimd_disable {
+        bad.push("--aimd-disable (disables backpressure; can hammer the backend)");
+    }
+    // Agent approval gate: anything above the read-only `safe` tier
+    // auto-approves write/destructive tools, which is exactly the gate the
+    // threat model leans on outside Extreme mode.
+    if let Commands::Agent {
+        auto_approve, yes, ..
+    } = &cli.command
+    {
+        if *yes {
+            bad.push("--yes / -y (auto-approves every agent tool call)");
+        }
+        let level = auto_approve.trim().to_ascii_lowercase();
+        if !matches!(level.as_str(), "" | "none" | "safe" | "low") {
+            bad.push("--auto-approve above 'safe' (auto-approves write/destructive agent tools)");
+        }
+    }
+    bad
 }
 
 fn provider_error_to_exit_code(err: &ProviderError) -> i32 {
@@ -41393,6 +41476,24 @@ async fn main() {
         JSON_MODE.store(true, Ordering::Relaxed);
     }
 
+    // Strict-mode gate: refuse safety-relaxing flags before anything connects
+    // or unlocks the vault. Fails closed (exit 5, invalid usage) so an
+    // unattended/agent run can never silently downgrade its own safety.
+    if cli.strict || aeroftp_strict_env() {
+        let violations = strict_mode_violations(&cli);
+        if !violations.is_empty() {
+            let detail = violations.join("\n  - ");
+            print_error(
+                format,
+                &format!(
+                    "strict mode (--strict / AEROFTP_STRICT) refuses these safety-relaxing flags:\n  - {detail}\nRemove the flag(s), or drop --strict to run without the safety gate.",
+                ),
+                5,
+            );
+            std::process::exit(5);
+        }
+    }
+
     if let Err(error) = init_aimd_runtime_hints(&cli) {
         eprintln!("Error: {}", error);
         std::process::exit(5);
@@ -44086,6 +44187,7 @@ mod tests {
             immutable: false,
             no_check_dest: false,
             max_depth: None,
+            strict: false,
             command: Commands::Profiles {
                 _ignored: Vec::new(),
                 sort: None,
@@ -44095,6 +44197,114 @@ mod tests {
                 interactive: false,
             },
         }
+    }
+
+    fn agent_cli(auto_approve: &str, yes: bool) -> Cli {
+        Cli {
+            command: Commands::Agent {
+                message: None,
+                provider: None,
+                model: None,
+                connect: None,
+                auto_approve: auto_approve.to_string(),
+                max_steps: 10,
+                orchestrate: false,
+                mcp: false,
+                stdin: false,
+                yes,
+                plan_only: false,
+                cost_limit: None,
+                system: None,
+            },
+            ..test_cli()
+        }
+    }
+
+    #[test]
+    fn strict_env_truthy_accepts_documented_spellings() {
+        for v in ["1", "true", "TRUE", "  yes  ", "on", "On"] {
+            assert!(strict_env_truthy(Some(v)), "{v:?} should enable strict");
+        }
+        for v in ["0", "false", "no", "off", "", "  ", "enabled"] {
+            assert!(
+                !strict_env_truthy(Some(v)),
+                "{v:?} should not enable strict"
+            );
+        }
+        assert!(!strict_env_truthy(None), "unset should not enable strict");
+    }
+
+    #[test]
+    fn strict_clean_run_has_no_violations() {
+        assert!(strict_mode_violations(&test_cli()).is_empty());
+    }
+
+    #[test]
+    fn strict_flags_each_individual_relaxation() {
+        let cases: &[fn(&mut Cli)] = &[
+            |c| c.insecure = true,
+            |c| c.trust_host_key = true,
+            |c| c.drive_acknowledge_abuse = true,
+            |c| c.drive_cross_account_copy = true,
+            |c| c.azure_archive_tier_delete = true,
+            |c| c.aimd_disable = true,
+        ];
+        for apply in cases {
+            let mut cli = test_cli();
+            apply(&mut cli);
+            assert_eq!(
+                strict_mode_violations(&cli).len(),
+                1,
+                "expected exactly one violation for a single relaxation flag"
+            );
+        }
+    }
+
+    #[test]
+    fn strict_collects_multiple_violations() {
+        let mut cli = test_cli();
+        cli.insecure = true;
+        cli.trust_host_key = true;
+        cli.aimd_disable = true;
+        assert_eq!(strict_mode_violations(&cli).len(), 3);
+    }
+
+    #[test]
+    fn strict_ignores_safety_adding_and_perf_knobs() {
+        // --immutable adds safety; concurrency / rate are tuning, not safety.
+        let mut cli = test_cli();
+        cli.immutable = true;
+        cli.limit_rate = Some("1M".to_string());
+        cli.sftp_concurrency = 32;
+        cli.aimd_min_window = Some(8);
+        assert!(strict_mode_violations(&cli).is_empty());
+    }
+
+    #[test]
+    fn strict_agent_safe_tier_is_allowed() {
+        assert!(strict_mode_violations(&agent_cli("safe", false)).is_empty());
+        assert!(strict_mode_violations(&agent_cli("none", false)).is_empty());
+        // case-insensitive + surrounding whitespace tolerated
+        assert!(strict_mode_violations(&agent_cli("  SAFE  ", false)).is_empty());
+    }
+
+    #[test]
+    fn strict_agent_elevated_approval_is_refused() {
+        for level in ["medium", "high", "all", "MEDIUM"] {
+            assert_eq!(
+                strict_mode_violations(&agent_cli(level, false)).len(),
+                1,
+                "auto-approve '{level}' should be refused in strict mode"
+            );
+        }
+    }
+
+    #[test]
+    fn strict_agent_yes_flag_is_refused() {
+        // --yes alone violates even when auto-approve stays at the safe default.
+        assert_eq!(strict_mode_violations(&agent_cli("safe", true)).len(), 1);
+        // --yes plus an elevated tier counts both.
+        assert_eq!(strict_mode_violations(&agent_cli("all", true)).len(), 2);
     }
 
     #[test]

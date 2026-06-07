@@ -81,6 +81,7 @@ AeroAgent (68 tools) operates under backend-enforced security controls:
 - **Credential isolation**: AI models never receive raw credentials; the backend authenticates internally
 - **Shell denylist**: 35 regex patterns block dangerous commands
 - **Path validation**: Null bytes, traversal, and system paths blocked at the backend level
+- **Strict mode**: `--strict` (or `AEROFTP_STRICT=1`) makes any safety-relaxing CLI flag a hard error (exit 5), so unattended and agent-generated commands fail closed instead of silently downgrading TLS/host-key verification or auto-approving destructive tools
 
 For the complete AI security model with grant properties, tool classification, and agent modes, see [AI Security](https://docs.aeroftp.app/security/ai-security).
 
@@ -91,6 +92,7 @@ All release artifacts are signed with Sigstore Cosign via GitHub Actions OIDC ke
 - **Client-side verification**: The app verifies `.sigstore.json` bundles against the CI workflow identity before installing updates
 - **Linux hardening**: The privileged update helper re-verifies SHA-256 before executing `dpkg`/`rpm`
 - **Plugin registry**: Remote installation disabled until cryptographic registry authentication is implemented (fail-closed)
+- **Build gates**: pushes to `main` and release tags run `cargo clippy --all-targets -- -D warnings` and `cargo audit` as hard CI gates; release artifacts are signed and published only after the lint, audit, and test jobs pass
 
 ### Continuous Monitoring
 
