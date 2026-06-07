@@ -98,10 +98,20 @@ function StorageUsageBar({
     const { tone, pct } = getStorageTone(used, total, thresholds);
     const pctClamped = pct === null ? 0 : Math.max(0, Math.min(100, pct));
     const pctLabel = pct === null ? '-' : pct >= 10 ? `${Math.round(pct)}` : `${Math.round(pct * 10) / 10}`;
+    // Bytes held by retained file versions (MEGAcmd), drawn as a distinct
+    // purple segment so the user can see versions are a slice of the used
+    // total (#270 c.17207733). Only when the provider reported it (> 0).
+    const versioning = quota?.versioningBytes && quota.versioningBytes > 0 ? quota.versioningBytes : 0;
+    const versioningPct = versioning > 0 && total > 0
+        ? Math.max(0, Math.min(100, (versioning / total) * 100))
+        : 0;
+    const versioningTitle = versioning > 0
+        ? `\n${t('introHub.storageVersioning', { size: formatBytes(versioning) })}`
+        : '';
     return (
         <div
             className="leading-tight"
-            title={`${t('introHub.storageUsedOf', { used: formatBytes(used), total: formatBytes(total) })}${filesSuffix}`}
+            title={`${t('introHub.storageUsedOf', { used: formatBytes(used), total: formatBytes(total) })}${filesSuffix}${versioningTitle}`}
         >
             <div className="flex items-center justify-between text-[10px] text-gray-500 dark:text-gray-400 tabular-nums">
                 <span className="truncate">{formatBytes(used)} / {formatBytes(total)}</span>
@@ -113,6 +123,18 @@ function StorageUsageBar({
                     style={{ width: `${pctClamped}%` }}
                 />
             </div>
+            {versioning > 0 && (
+                <div
+                    className="h-0.5 mt-0.5 rounded-full bg-gray-200/60 dark:bg-gray-700/60 overflow-hidden"
+                    title={t('introHub.storageVersioning', { size: formatBytes(versioning) })}
+                    aria-label={t('introHub.storageVersioning', { size: formatBytes(versioning) })}
+                >
+                    <div
+                        className="h-full bg-fuchsia-500/70 transition-all"
+                        style={{ width: `${Math.max(versioningPct, 2)}%` }}
+                    />
+                </div>
+            )}
         </div>
     );
 }

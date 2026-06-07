@@ -1090,6 +1090,7 @@ impl WebDavProvider {
             used,
             total,
             free: total.saturating_sub(used),
+            versioning_bytes: None,
         })
     }
 
@@ -1184,6 +1185,7 @@ impl WebDavProvider {
             used,
             total,
             free: total.saturating_sub(used),
+            versioning_bytes: None,
         })
     }
 
@@ -3313,11 +3315,12 @@ impl StorageProvider for WebDavProvider {
         }
 
         if super::mega_df::is_megacmd_webdav_provider_id(self.config.provider_id.as_deref()) {
-            let (used, total) = super::mega_df::mega_df_query().await?;
+            let (used, total, versioning_bytes) = super::mega_df::mega_df_query().await?;
             return Ok(super::StorageInfo {
                 used,
                 total,
                 free: total.saturating_sub(used),
+                versioning_bytes,
             });
         }
 
@@ -3392,7 +3395,12 @@ impl StorageProvider for WebDavProvider {
             None => (0u64, 0u64),
         };
 
-        Ok(super::StorageInfo { used, total, free })
+        Ok(super::StorageInfo {
+            used,
+            total,
+            free,
+            versioning_bytes: None,
+        })
     }
 
     fn supports_locking(&self) -> bool {

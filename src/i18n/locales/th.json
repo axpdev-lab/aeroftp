@@ -4271,7 +4271,8 @@
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
             },
-            "healthCheck": "การตรวจสอบสถานะ"
+            "healthCheck": "การตรวจสอบสถานะ",
+            "storageVersioning": "[NEEDS TRANSLATION] File versions: {size}"
         },
         "gitlab": {
             "projectPath": "เส้นทางโปรเจกต์",

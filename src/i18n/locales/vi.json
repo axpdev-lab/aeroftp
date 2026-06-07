@@ -4271,7 +4271,8 @@
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
             },
-            "healthCheck": "Kiểm tra tình trạng"
+            "healthCheck": "Kiểm tra tình trạng",
+            "storageVersioning": "[NEEDS TRANSLATION] File versions: {size}"
         },
         "gitlab": {
             "projectPath": "Duong dan du an",

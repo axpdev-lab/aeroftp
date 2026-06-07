@@ -1812,6 +1812,7 @@ impl StorageProvider for MegaNativeProvider {
             used: quota.cstrg,
             total: quota.mstrg,
             free: quota.mstrg.saturating_sub(quota.cstrg),
+            versioning_bytes: None,
         })
     }
 

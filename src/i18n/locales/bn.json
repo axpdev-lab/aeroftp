@@ -4271,7 +4271,8 @@
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
             },
-            "healthCheck": "হেলথ চেক"
+            "healthCheck": "হেলথ চেক",
+            "storageVersioning": "[NEEDS TRANSLATION] File versions: {size}"
         },
         "gitlab": {
             "projectPath": "প্রকল্পের পাথ",

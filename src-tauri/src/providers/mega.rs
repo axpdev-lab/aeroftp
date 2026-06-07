@@ -982,12 +982,13 @@ impl StorageProvider for MegaCmdProvider {
     }
 
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
-        let (used, total) = super::mega_df::mega_df_query().await?;
+        let (used, total, versioning_bytes) = super::mega_df::mega_df_query().await?;
 
         Ok(StorageInfo {
             used,
             total,
             free: total.saturating_sub(used),
+            versioning_bytes,
         })
     }
 

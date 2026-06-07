@@ -4127,6 +4127,7 @@ pub async fn mega_df_query(profile_id: String) -> Result<(u64, u64), String> {
     let _ = profile_id;
     crate::providers::mega_df::mega_df_query()
         .await
+        .map(|(used, total, _versioning)| (used, total))
         .map_err(|e| format!("Failed to query mega-df: {}", e))
 }
 

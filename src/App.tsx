@@ -2451,6 +2451,7 @@ interface UpdateVerificationInfo {
       usedSource?: 'api' | 'scan';
       used_at?: string;
       fileCount?: number;
+      versioningBytes?: number;
     },
   ) => {
     if (!profileId) return;
@@ -2490,6 +2491,10 @@ interface UpdateVerificationInfo {
             usedSource: keepScanUsed ? 'scan' : (quota.usedSource ?? prev?.usedSource),
             used_at: keepScanUsed ? prev.used_at : (quota.used_at ?? prev?.used_at),
             fileCount: keepScanUsed ? prev.fileCount : (quota.fileCount ?? prev?.fileCount),
+            // Versioning bytes only ever come from the API quota read; a
+            // recursive scan does not measure them, so preserve the prior
+            // value rather than clobbering it with undefined on a scan merge.
+            versioningBytes: quota.versioningBytes ?? prev?.versioningBytes,
           },
         };
       });
@@ -2620,7 +2625,7 @@ interface UpdateVerificationInfo {
 
     if (protocol && supportsStorageQuota(protocol as ProviderType)) {
       try {
-        const info = await invoke<{ used: number; total: number; free: number }>('provider_storage_info');
+        const info = await invoke<{ used: number; total: number; free: number; versioningBytes?: number }>('provider_storage_info');
         // Resolve the target profile against the LIVE connection (never
         // the stale global savedServerId) so the API figure and the
         // manual-cap override come from the RIGHT profile, not another
@@ -2686,7 +2691,7 @@ interface UpdateVerificationInfo {
         if (version === quotaVersionRef.current) {
           setStorageQuota({ used: eff.used, total: eff.total, free: info.free });
         }
-        void persistQuotaToProfile(profileId, { used: info.used, total: info.total, usedSource: 'api' });
+        void persistQuotaToProfile(profileId, { used: info.used, total: info.total, usedSource: 'api', versioningBytes: info.versioningBytes });
         const autoScan = !!(prof?.options?.autoScanUsedOnConnect || opts?.autoScanUsedOnConnect);
         const hasScanBaseline = !!prof?.lastQuota && (prof.lastQuota.usedSource === 'scan' || prof.lastQuota.used > 0);
         const scanEligibleProtocol =

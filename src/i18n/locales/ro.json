@@ -4271,7 +4271,8 @@
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
             },
-            "healthCheck": "Verificarea disponibilității"
+            "healthCheck": "Verificarea disponibilității",
+            "storageVersioning": "[NEEDS TRANSLATION] File versions: {size}"
         },
         "gitlab": {
             "projectPath": "Calea proiectului",

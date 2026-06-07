@@ -2406,6 +2406,7 @@ impl StorageProvider for B2Provider {
             used,
             total: 0,
             free: 0,
+            versioning_bytes: None,
         })
     }
 

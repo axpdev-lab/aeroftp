@@ -1718,6 +1718,15 @@ pub struct StorageInfo {
     pub total: u64,
     /// Bytes free
     pub free: u64,
+    /// Bytes consumed by retained file versions, when the provider reports it
+    /// (e.g. MEGAcmd `mega-df`). `None` when unknown/unsupported. Serialized as
+    /// `versioningBytes` for the frontend quota bar.
+    #[serde(
+        default,
+        rename = "versioningBytes",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub versioning_bytes: Option<u64>,
 }
 
 /// File version metadata (for versioned providers like Google Drive, Dropbox, OneDrive)

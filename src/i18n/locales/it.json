@@ -4422,7 +4422,8 @@
                 "colPct": "%",
                 "totalRow": "Totale",
                 "noData": "Ancora nessun dato per protocollo - connetti almeno un server."
-            }
+            },
+            "storageVersioning": "Versioni file: {size}"
         },
         "gitlab": {
             "projectPath": "Percorso progetto",

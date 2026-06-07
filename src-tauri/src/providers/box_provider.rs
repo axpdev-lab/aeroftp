@@ -2211,6 +2211,7 @@ impl StorageProvider for BoxProvider {
             total: user.space_amount,
             used: user.space_used,
             free: user.space_amount.saturating_sub(user.space_used),
+            versioning_bytes: None,
         })
     }
 

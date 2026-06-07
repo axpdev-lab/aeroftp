@@ -1416,6 +1416,7 @@ impl StorageProvider for DropboxProvider {
             used: usage.used,
             total: usage.allocation.allocated,
             free: usage.allocation.allocated.saturating_sub(usage.used),
+            versioning_bytes: None,
         })
     }
 

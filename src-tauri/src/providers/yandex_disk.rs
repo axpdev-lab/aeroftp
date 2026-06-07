@@ -1609,6 +1609,7 @@ impl StorageProvider for YandexDiskProvider {
             used: info.used_space,
             total: info.total_space,
             free: info.total_space.saturating_sub(info.used_space),
+            versioning_bytes: None,
         })
     }
 

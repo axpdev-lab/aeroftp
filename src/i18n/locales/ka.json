@@ -4271,7 +4271,8 @@
                 "customWebdav": "WebDAV",
                 "customAzure": "Azure Blob"
             },
-            "healthCheck": "ხელმისაწვდომობის შემოწმება"
+            "healthCheck": "ხელმისაწვდომობის შემოწმება",
+            "storageVersioning": "[NEEDS TRANSLATION] File versions: {size}"
         },
         "gitlab": {
             "projectPath": "პროექტის გზა",
