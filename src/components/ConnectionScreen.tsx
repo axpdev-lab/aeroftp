@@ -27,6 +27,7 @@ import { IconPickerDialog } from './IconPickerDialog';
 import { getProviderById, resolveS3Endpoint, ProviderConfig } from '../providers';
 import { getMegaConnectionMode, normalizeMegaOptions } from '../utils/providerConnectionMeta';
 import { loadSavedServerProfiles, storeSavedServerProfiles } from '../utils/serverProfileStore';
+import { carryFavoriteServer } from '../utils/favoriteServers';
 import { getStorageDedupKey } from '../utils/storageDedup';
 import { formatBytes, parseHumanSize } from '../utils/formatters';
 import { useActivityLog } from '../hooks/useActivityLog';
@@ -1179,6 +1180,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             customIconUrl: customIconForSave,
             color: originalServer?.color,
             faviconUrl: faviconForSave || originalServer?.faviconUrl,
+            // Carry the cached storage quota across a mode switch (issue #215):
+            // every mode of a provider group points at the same account/storage,
+            // so the usage + capacity stats stay valid until the next refresh.
+            lastQuota: originalServer?.lastQuota,
         };
 
         // Issue #215: when the user switched mode in edit, insert
@@ -1194,6 +1199,12 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             newServers.push(newServer);
         }
         await storeSavedServerProfiles(newServers).catch(() => { });
+        // On a mode switch the copy is the same account, so carry the ⭐
+        // favourite flag onto it too (issue #215). Keep the original starred as
+        // well (removeOld=false): a duplicate leaves both rows in the list.
+        if (modeChanged && originalServer) {
+            await carryFavoriteServer(originalServer.id, newId, false);
+        }
         setSavedServersUpdate(Date.now());
 
         // Reset form
@@ -1280,12 +1291,18 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             customIconUrl: customIconForSave || originalServer.customIconUrl,
             color: originalServer.color,
             faviconUrl: faviconForSave || originalServer.faviconUrl,
+            // Carry the cached storage quota: a convert stays on the same
+            // account/storage, so usage + capacity remain valid (issue #215).
+            lastQuota: originalServer.lastQuota,
         };
 
         // Replace in slot: remove original, insert new at the same index
         const newServers = [...existingServers];
         newServers.splice(originalIdx, 1, newServer);
         await storeSavedServerProfiles(newServers).catch(() => { });
+        // Move the ⭐ favourite flag from the deleted original to the new
+        // profile (issue #215): convert replaces in place, so remove the old id.
+        await carryFavoriteServer(originalServer.id, newId, true);
         setSavedServersUpdate(Date.now());
 
         // 10s Undo toast (via window event so we don't need to plumb a
@@ -1301,6 +1318,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     label: t('connection.undo'),
                     onClick: async () => {
                         await storeSavedServerProfiles(snapshotServers).catch(() => { });
+                        // Reverse the favourite move so the restored original
+                        // keeps its ⭐ and the discarded new id doesn't dangle.
+                        await carryFavoriteServer(newId, originalServer.id, true);
                         setSavedServersUpdate(Date.now());
                         window.dispatchEvent(new CustomEvent('aeroftp-toast', {
                             detail: {

@@ -28,9 +28,8 @@ import { useMyServersDensity } from '../../hooks/useMyServersDensity';
 import { useMyServersColumns } from '../../hooks/useMyServersColumns';
 import { PROVIDER_HEALTH_URLS } from './discoverData';
 import { mergeSavedServerProfile } from '../../utils/serverProfileStore';
+import { FAVORITES_STORAGE_KEY, FAVORITES_VAULT_KEY } from '../../utils/favoriteServers';
 
-const FAVORITES_STORAGE_KEY = 'aeroftp-favorite-servers';
-const FAVORITES_VAULT_KEY = 'favorite_servers';
 const VIEW_MODE_KEY = 'aeroftp-intro-view-mode';
 const HEALTH_SCAN_CHUNK_SIZE = 12;
 const HEALTH_SCAN_CHUNK_DELAY_MS = 180;

@@ -12066,8 +12066,9 @@ fn scrub_options_for_mode(opts: &mut serde_json::Map<String, serde_json::Value>)
 
 /// Inner core for `profile-duplicate-mode` and `profile-convert-mode`.
 /// Reads the source profile, validates the target mode belongs to the same
-/// group, materializes the new profile (with the source's name/color/path
-/// carried over), and persists it. Returns (source_id, new_id, source_name,
+/// group, materializes the new profile (with the source's name/color/path,
+/// cached storage quota, and ⭐ favourite flag carried over), and persists it.
+/// Returns (source_id, new_id, source_name,
 /// target_mode_label) on success. When `replace_in_slot` is true, the
 /// source is removed and the new profile takes its index; otherwise the
 /// new profile is inserted immediately after the source.
@@ -12193,7 +12194,9 @@ fn duplicate_or_convert_mode_in_vault(
             map.insert("username".into(), serde_json::Value::String(u.to_string()));
         }
         map.remove("lastConnected");
-        map.remove("lastQuota");
+        // Keep `lastQuota`: every mode of a provider group points at the same
+        // account/storage, so the cached usage + capacity stay valid until the
+        // next refresh (issue #215).
         // Scrub mode-specific options so the new profile starts clean.
         let opts_entry = map
             .entry("options")
@@ -12230,6 +12233,28 @@ fn duplicate_or_convert_mode_in_vault(
     // effort; ignore errors.
     if replace_in_slot && !source_id.is_empty() {
         let _ = store.delete(&format!("server_{}", source_id));
+    }
+
+    // Carry the ⭐ favourite flag onto the new profile so switching a profile's
+    // protocol doesn't silently lose it (issue #215). On convert the source id
+    // is replaced; on duplicate the new id is added alongside. Best-effort: a
+    // missing or malformed favourites set leaves it untouched.
+    if !source_id.is_empty() {
+        if let Ok(fav_raw) = store.get("config_favorite_servers") {
+            if let Ok(mut ids) = serde_json::from_str::<Vec<String>>(&fav_raw) {
+                if ids.iter().any(|id| id == &source_id) {
+                    if replace_in_slot {
+                        ids.retain(|id| id != &source_id);
+                    }
+                    if !ids.iter().any(|id| id == &new_id) {
+                        ids.push(new_id.clone());
+                    }
+                    if let Ok(payload) = serde_json::to_string(&ids) {
+                        let _ = store.store("config_favorite_servers", &payload);
+                    }
+                }
+            }
+        }
     }
 
     Ok((source_id, new_id, source_name, mode_label.to_string()))
