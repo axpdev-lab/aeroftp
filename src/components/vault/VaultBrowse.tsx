@@ -374,12 +374,25 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                                 <span>Dry-run (preview only, no writes)</span>
                             </div>
 
+                            {/* Show damaged list from last scrub if available, to make it useful before repair */}
+                            {state.scrubResult && state.scrubResult.damaged && state.scrubResult.damaged.length > 0 && (
+                                <div className="mb-3">
+                                    <div className="text-amber-600 dark:text-amber-400 font-medium mb-1 text-xs">Damaged chunks (from last scrub):</div>
+                                    <ul className="text-xs max-h-24 overflow-auto border border-gray-200 dark:border-gray-700 rounded p-2 bg-gray-50 dark:bg-gray-800">
+                                        {state.scrubResult.damaged.map((d: any, i: number) => (
+                                            <li key={i}>{d.id} @ {d.on_disk_start} ({d.on_disk_len}B)</li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+
                             {state.repairResult ? (
                                 <div className="p-3 rounded bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
                                     {state.repairResult.dry_run ? 'Dry-run: ' : ''}Repaired {state.repairResult.repaired || 0} chunk(s).
+                                    {state.repairResult.dry_run && ' (no changes written)'}
                                 </div>
                             ) : (
-                                <div className="text-gray-500 dark:text-gray-400 text-xs">Run scrub first to see damaged list. Repair will use the Reed-Solomon parity stored in the vault (if the damage is within redundancy).</div>
+                                <div className="text-gray-500 dark:text-gray-400 text-xs">Run scrub first (or use the list above) to preview damages. Repair will attempt recovery using stored Reed-Solomon parity (if within redundancy).</div>
                             )}
                         </div>
                         <div className="p-3 border-t border-gray-200 dark:border-gray-700 flex gap-2 justify-end">
