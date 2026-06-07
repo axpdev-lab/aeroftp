@@ -115,7 +115,12 @@
   - Wired into CLI vault info (adds "has_ecc").
   - Used by P1-04 security_info.
 
-- [ ] **P1-06** Write the first compatibility test: "v4-stub vault is still readable by the pure v3 open path and extract succeeds"
+- [x] **P1-06** Write the first compatibility test: "v4-stub vault is still readable by the pure v3 open path and extract succeeds" [DONE + LIVE]
+  - Added `v3_stub_ecc_vault_readable_by_pure_v3_open_and_extract`.
+  - Creates stub ECC vault, uses pure internal v3 `open_vault` + `extract_entry` paths.
+  - Verifies full roundtrip and extract success.
+  - Test passes (interleaved).
+  - Followed by live CLI test: built binary, created with --ecc, verified `info --json` shows "has_ecc": true/false correctly, add+extract succeeded on stub vault.
 
 - [ ] **P1-07** (stretch) Make the CLI `vault create` accept a new flag `--ecc` (or `--redundancy ecc`) and pass it through to the create function
   - CODE: the vault subcommand parser + the call site at ~42661
