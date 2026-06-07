@@ -148,10 +148,12 @@ Next per plan: P1-04 + P1-05 (enhance ECC visibility + has_ecc helper) — advan
 - `vault_v3_has_ecc` helper implemented (lightweight, no password required).
 - Tauri command registered.
 - Previous local commit amended for correct trailer format (Co-Authored-By: ... <email> matching Claude/Codex style).
-- New micro-step: wired `has_ecc` into CLI `vault info` (JSON now includes "has_ecc" for v3 vaults).
-- `cargo check --bin aeroftp-cli` + v3 tests green.
-- This micro-step done with test interleaving.
-- Ready for commit of this increment + next (e.g. security_info enhancement or live build test).
+- P1-04 completed: `vault_v3_security_info(path: Option<String>)` now reports per-vault ECC status using the helper when path is given.
+- Enhanced JSON with "ecc" object (enabled, algorithm, version, critical) + updated general fields.
+- Matches the plan item: "advertise the ECC layer when present".
+- Added + passing unit test `v3_security_info_advertises_ecc_when_present`.
+- Interleaved full test runs green.
+- Will be included in next local commit with correct Co-Authored-By trailer.
 
 Rocket engines lit. Proceeding step-by-step.
 
