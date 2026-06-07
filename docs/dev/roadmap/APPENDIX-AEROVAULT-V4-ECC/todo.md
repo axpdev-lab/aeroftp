@@ -144,10 +144,13 @@
   - Next in P2-01: expand justification into dedicated file + consider audit.toml entry.
   - Update `audit.toml` if the project still uses one (historical pattern) — to be done when full note lands.
 
-- [ ] **P2-02** Define the on-disk payload format for the ECC extension
-  - Small header (shard count, data_shards, parity_shards, shard_size, hash of the shard table, etc.)
-  - Then the raw shards (or striped)
-  - Keep it simple and append-only friendly
+- [x] **P2-02** Define the on-disk payload format for the ECC extension [DONE]
+  - Small header (shard count, data_shards, parity_shards, shard_size, etc.)
+  - Stripe table + concatenated parity data.
+  - Simple, self-describing, append-friendly (new stripes can be added; full rewrite on seal is acceptable).
+  - Rust types: `EccPayloadHeader`, `EccStripeHeader`, `EccPayload` with `to_bytes`/`from_bytes`.
+  - Added roundtrip unit test `p2_02_ecc_payload_format_roundtrip` (passes).
+  - Format documented in code comments.
 
 - [ ] **P2-03** Implement `compute_ecc_shards(data_blocks: &[&[u8]], cipher_hashes: &[String], config) -> Vec<u8>` (the payload bytes)
   - The input "blocks" are the on-disk ciphertext blocks (the things that have a preceding u64 len and a recorded cipher_hash)

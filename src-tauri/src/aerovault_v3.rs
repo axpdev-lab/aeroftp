@@ -210,6 +210,136 @@ struct ExtensionEntryV3 {
     length: u64,
 }
 
+/// P2-02: On-disk payload format for the "ecc.reed-solomon" extension.
+///
+/// The data pointed to by the extension entry (at extension_payload_offset + offset in the entry)
+/// has this layout. Designed to be simple, self-describing, and append-only friendly
+/// (new stripes can be appended when more data is added; on seal we usually rewrite the whole payload anyway).
+///
+/// Layout:
+///   [EccPayloadHeader]               (fixed 32 bytes for v1)
+///   [StripeTable: num_stripes * StripeHeader]
+///   [ParityData: for each stripe, parity_shards * shard_size bytes]
+///
+/// All multi-byte fields are little-endian.
+///
+/// The "data" being protected are the on-disk ciphertext blocks (u64 len prefix + encrypted data).
+/// Each stripe groups `data_shards` consecutive such blocks (padded to shard_size if needed for the RS lib).
+/// The parity shards are stored here; the original data shards live in the main data section.
+///
+/// A future reader can use the cipher_hash in the manifest to identify which blocks are damaged
+/// and which stripe they belong to, then use the parity data to reconstruct.
+const ECC_PAYLOAD_MAGIC: &[u8; 4] = b"AVEC";
+const ECC_PAYLOAD_VERSION: u16 = 1;
+
+#[derive(Debug, Clone, Copy)]
+struct EccPayloadHeader {
+    data_shards: u16,
+    parity_shards: u16,
+    shard_size: u32,      // bytes per shard (all shards in all stripes use this size; data is padded)
+    num_stripes: u32,
+    // reserved for future: total protected bytes, flags, etc.
+}
+
+#[derive(Debug, Clone, Copy)]
+struct EccStripeHeader {
+    first_chunk_index: u64,  // index in the manifest.chunks (the order they appear in data section)
+    num_data_chunks: u16,    // should == data_shards, but allows last stripe to be partial
+}
+
+impl EccPayloadHeader {
+    fn to_bytes(&self) -> [u8; 32] {
+        let mut buf = [0u8; 32];
+        buf[0..4].copy_from_slice(ECC_PAYLOAD_MAGIC);
+        buf[4..6].copy_from_slice(&ECC_PAYLOAD_VERSION.to_le_bytes());
+        buf[6..8].copy_from_slice(&self.data_shards.to_le_bytes());
+        buf[8..10].copy_from_slice(&self.parity_shards.to_le_bytes());
+        buf[10..14].copy_from_slice(&self.shard_size.to_le_bytes());
+        buf[14..18].copy_from_slice(&self.num_stripes.to_le_bytes());
+        // bytes 18..32 reserved (zero)
+        buf
+    }
+
+    fn from_bytes(data: &[u8]) -> Result<Self, String> {
+        if data.len() < 32 {
+            return Err("EccPayloadHeader too short".to_string());
+        }
+        if &data[0..4] != ECC_PAYLOAD_MAGIC {
+            return Err("bad ECC payload magic".to_string());
+        }
+        let version = u16::from_le_bytes(data[4..6].try_into().unwrap());
+        if version != ECC_PAYLOAD_VERSION {
+            return Err(format!("unsupported ECC payload version {}", version));
+        }
+        Ok(EccPayloadHeader {
+            data_shards: u16::from_le_bytes(data[6..8].try_into().unwrap()),
+            parity_shards: u16::from_le_bytes(data[8..10].try_into().unwrap()),
+            shard_size: u32::from_le_bytes(data[10..14].try_into().unwrap()),
+            num_stripes: u32::from_le_bytes(data[14..18].try_into().unwrap()),
+        })
+    }
+}
+
+/// Full on-disk representation of one ECC extension payload (for the "ecc.reed-solomon" entry).
+/// This is what gets written into the extension payload area when ECC is enabled.
+#[derive(Debug, Clone)]
+struct EccPayload {
+    header: EccPayloadHeader,
+    stripes: Vec<EccStripeHeader>,
+    /// Concatenated parity data. Length must be exactly:
+    /// num_stripes * parity_shards * shard_size
+    parity_data: Vec<u8>,
+}
+
+impl EccPayload {
+    fn to_bytes(&self) -> Vec<u8> {
+        let mut out = Vec::with_capacity(32 + self.stripes.len() * 10 + self.parity_data.len());
+        out.extend_from_slice(&self.header.to_bytes());
+
+        for s in &self.stripes {
+            out.extend_from_slice(&s.first_chunk_index.to_le_bytes());
+            out.extend_from_slice(&s.num_data_chunks.to_le_bytes());
+        }
+
+        out.extend_from_slice(&self.parity_data);
+        out
+    }
+
+    fn from_bytes(data: &[u8]) -> Result<Self, String> {
+        if data.len() < 32 {
+            return Err("EccPayload too short for header".to_string());
+        }
+        let header = EccPayloadHeader::from_bytes(&data[0..32])?;
+
+        let stripe_table_size = header.num_stripes as usize * 10; // 8 + 2
+        if data.len() < 32 + stripe_table_size {
+            return Err("EccPayload too short for stripe table".to_string());
+        }
+
+        let mut stripes = Vec::with_capacity(header.num_stripes as usize);
+        let mut off = 32;
+        for _ in 0..header.num_stripes {
+            let first = u64::from_le_bytes(data[off..off+8].try_into().unwrap());
+            let num = u16::from_le_bytes(data[off+8..off+10].try_into().unwrap());
+            stripes.push(EccStripeHeader { first_chunk_index: first, num_data_chunks: num });
+            off += 10;
+        }
+
+        let parity_len = data.len() - off;
+        let expected_parity = header.num_stripes as usize * header.parity_shards as usize * header.shard_size as usize;
+        if parity_len != expected_parity {
+            return Err(format!(
+                "EccPayload parity data length mismatch: got {}, expected {}",
+                parity_len, expected_parity
+            ));
+        }
+
+        let parity_data = data[off..].to_vec();
+
+        Ok(EccPayload { header, stripes, parity_data })
+    }
+}
+
 #[derive(Debug, Serialize)]
 pub struct VaultV3Info {
     pub version: u8,
@@ -2414,6 +2544,45 @@ mod tests {
         // Also check general fields still there
         assert!(info.get("pipeline").is_some());
         assert!(info.get("ecc_support").is_some());
+    }
+
+    #[test]
+    fn p2_02_ecc_payload_format_roundtrip() {
+        // P2-02: verify the defined on-disk format can be serialized and deserialized losslessly.
+        let header = EccPayloadHeader {
+            data_shards: 10,
+            parity_shards: 2,
+            shard_size: 4096,
+            num_stripes: 3,
+        };
+
+        let stripes = vec![
+            EccStripeHeader { first_chunk_index: 0, num_data_chunks: 10 },
+            EccStripeHeader { first_chunk_index: 10, num_data_chunks: 10 },
+            EccStripeHeader { first_chunk_index: 20, num_data_chunks: 5 },
+        ];
+
+        // Fake parity data (in real use this will be the RS output)
+        let parity_len = 3 * 2 * 4096;
+        let parity_data = vec![0xABu8; parity_len];
+
+        let payload = EccPayload {
+            header,
+            stripes,
+            parity_data,
+        };
+
+        let bytes = payload.to_bytes();
+        let decoded = EccPayload::from_bytes(&bytes).expect("roundtrip failed");
+
+        assert_eq!(decoded.header.data_shards, 10);
+        assert_eq!(decoded.header.parity_shards, 2);
+        assert_eq!(decoded.header.shard_size, 4096);
+        assert_eq!(decoded.header.num_stripes, 3);
+        assert_eq!(decoded.stripes.len(), 3);
+        assert_eq!(decoded.stripes[2].num_data_chunks, 5);
+        assert_eq!(decoded.parity_data.len(), parity_len);
+        assert!(decoded.parity_data.iter().all(|&b| b == 0xAB));
     }
 
     /// P1-06: First compatibility test - a "v4-stub" vault (created with ECC extension)
