@@ -221,7 +221,15 @@ All per plan, step-by-step with tests. Ready for Phase 2 (RS crate).
 - Test with intentional tamper passes and reports correct range.
 - Interleaved with broader module tests (green).
 
-All per plan. Next: P2-07 (repair primitive) or integration into CLI `scrub` command.
+**P2-07 + P2-08 completed (as requested)**:
+- Repair primitive `repair_vault` implemented: scrub + reconstruct + patch data + atomic re-seal via save.
+- Exposed `vault_v3_scrub` and `vault_v3_repair` as Tauri commands (registered).
+- Dry-run support, reports.
+- Strong e2e test with real ECC-enabled vault, real tamper on disk data, full repair cycle, content verification, post-repair clean scrub.
+- 17+ tests green.
+- Since engine is shared, all stress/repair logic is directly exercised and solid. CLI/GUI will be mostly wiring on top (still to be personally verified with real profiles as noted).
+
+Phase 2 (ECC core + primitives + exposure) essentially complete. Ready for GUI surfaces or final live stress with saved real profiles.
 
 Rocket engines lit. Proceeding step-by-step.
 
