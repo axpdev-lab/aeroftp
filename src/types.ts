@@ -457,7 +457,7 @@ export interface TransferEvent {
     | "delete_dir_complete";
   transfer_id: string;
   filename: string;
-  direction: "download" | "upload" | "local" | "remote" | "cross-profile";
+  direction: "download" | "upload" | "local" | "remote" | "cross-profile" | "delete";
   message?: string;
   progress?: TransferProgress;
   path?: string; // Full path for context (file or folder)
