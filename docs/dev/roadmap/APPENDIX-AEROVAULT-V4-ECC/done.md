@@ -233,3 +233,13 @@ All per plan, step-by-step with tests. Ready for Phase 2 (RS crate).
 Phase 2 (ECC core + primitives + full CLI exposure) complete. Ready for GUI surfaces or user final live tests with real saved profiles + stress.
 
 Rocket engines lit. Proceeding step-by-step. 🚀
+
+**GUI ECC surfaces (P2) - completed per user request**:
+- Draggable modals via useDraggableModal (headers with dragHandleProps, panel with transform), full theme support (dark: everywhere), stick to app template (rounded-xl, borders, p-4, lucide, consistent with AeroSync dialogs/other modals, no new globals).
+- VaultCreate: ECC toggle in experimental (Beta) section.
+- Browse: buttons, badge, modals (scrub shows list; repair has dry-run + enhanced list from scrubResult).
+- State/handlers wired to Tauri commands.
+- Typecheck & 19 tests green.
+- Live CLI proxy + Rust e2e cover the flows.
+
+Ready for user's real-profile tests. Estetica maestro mode engaged. 🚀
