@@ -2785,8 +2785,7 @@
                 "activity": "AeroVault {op}: {files} tiedosto(a), muoto v{fmt}",
                 "eccShards": "ECC-lohkot",
                 "eccProtected": "ECC-suojattu",
-                "eccOverhead": "ECC-lisätila",
-                "eccRepairs": "ECC-korjaukset"
+                "eccOverhead": "ECC-lisätila"
             },
             "scrubEcc": "Tarkista ECC",
             "repairEcc": "Korjaa ECC",
@@ -2807,11 +2806,9 @@
             "scrubComplete": "Tarkistus valmis: {checked} tarkistettu, {damaged} vaurioitunut",
             "repairNoDamage": "Korjaus valmis: ei vaurioita, holvia ei muutettu",
             "repairUntouched": "Korjaus: holvia ei muutettu ({damaged} vaurioitunut, riittämätön redundanssi)",
-            "repairPartial": "Korjaus valmis: korjattu {repaired}/{damaged} (holvia ei muutettu palautuskelvottomien osalta)",
             "repairSuccess": "Korjaus valmis: korjattu onnistuneesti {repaired} osaa",
             "noDamageNothing": "Ei vaurioita; ei korjattavaa.",
             "couldNotRepairAny": "Mitään {damaged} osasta ei voitu korjata (holvia ei muutettu).",
-            "repairedOfDamaged": "Korjattu {repaired}/{damaged} vaurioitunutta osaa (holvia ei muutettu palautuskelvottomien osalta).",
             "successfullyRepaired": "Korjattu onnistuneesti {repaired} osaa."
         },
         "cryptomator": {

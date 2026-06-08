@@ -2785,8 +2785,7 @@
                 "activity": "AeroVault {op}: {files} berkas, format v{fmt}",
                 "eccShards": "Shard ECC",
                 "eccProtected": "Terlindungi ECC",
-                "eccOverhead": "Overhead ECC",
-                "eccRepairs": "Perbaikan ECC"
+                "eccOverhead": "Overhead ECC"
             },
             "scrubEcc": "Pindai ECC",
             "repairEcc": "Perbaiki ECC",
@@ -2807,11 +2806,9 @@
             "scrubComplete": "Pindai selesai: {checked} diperiksa, {damaged} rusak",
             "repairNoDamage": "Perbaikan selesai: tidak ada kerusakan, vault tidak diubah",
             "repairUntouched": "Perbaikan: vault dibiarkan tidak diubah ({damaged} rusak, redundansi tidak mencukupi)",
-            "repairPartial": "Perbaikan selesai: memperbaiki {repaired} dari {damaged} (vault dibiarkan tidak diubah untuk yang tidak dapat dipulihkan)",
             "repairSuccess": "Perbaikan selesai: berhasil memperbaiki {repaired} chunk",
             "noDamageNothing": "Tidak ada kerusakan; tidak ada yang perlu diperbaiki.",
             "couldNotRepairAny": "Tidak dapat memperbaiki satu pun dari {damaged} (vault dibiarkan tidak diubah).",
-            "repairedOfDamaged": "Memperbaiki {repaired} dari {damaged} chunk yang rusak (vault dibiarkan tidak diubah untuk yang tidak dapat dipulihkan).",
             "successfullyRepaired": "Berhasil memperbaiki {repaired} chunk."
         },
         "cryptomator": {

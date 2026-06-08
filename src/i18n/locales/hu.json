@@ -2785,8 +2785,7 @@
                 "activity": "AeroVault {op}: {files} fájl, formátum v{fmt}",
                 "eccShards": "ECC töredékek",
                 "eccProtected": "ECC-védett",
-                "eccOverhead": "ECC többletterhelés",
-                "eccRepairs": "ECC javítások"
+                "eccOverhead": "ECC többletterhelés"
             },
             "scrubEcc": "ECC ellenőrzése",
             "repairEcc": "ECC javítása",
@@ -2807,11 +2806,9 @@
             "scrubComplete": "Ellenőrzés kész: {checked} ellenőrizve, {damaged} sérült",
             "repairNoDamage": "Javítás kész: nincs sérülés, a széf érintetlen",
             "repairUntouched": "Javítás: a széf érintetlen maradt ({damaged} sérült, elégtelen redundancia)",
-            "repairPartial": "Javítás kész: {repaired} / {damaged} javítva (a helyreállíthatatlanok miatt a széf érintetlen maradt)",
             "repairSuccess": "Javítás kész: {repaired} darab sikeresen javítva",
             "noDamageNothing": "Nincs sérülés; nincs mit javítani.",
             "couldNotRepairAny": "A(z) {damaged} sérültből egyik sem volt javítható (a széf érintetlen maradt).",
-            "repairedOfDamaged": "{repaired} / {damaged} sérült darab javítva (a helyreállíthatatlanok miatt a széf érintetlen maradt).",
             "successfullyRepaired": "{repaired} darab sikeresen javítva."
         },
         "cryptomator": {

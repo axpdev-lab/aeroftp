@@ -2988,8 +2988,7 @@
                 "activity": "AeroVault {op}: {files} file, formato v{fmt}",
                 "eccShards": "Frammenti ECC",
                 "eccProtected": "Protetto da ECC",
-                "eccOverhead": "Overhead ECC",
-                "eccRepairs": "Riparazioni ECC"
+                "eccOverhead": "Overhead ECC"
             },
             "scrubEcc": "Scansiona ECC",
             "repairEcc": "Ripara ECC",
@@ -3010,11 +3009,9 @@
             "scrubComplete": "Scansione completata: {checked} verificati, {damaged} danneggiati",
             "repairNoDamage": "Riparazione completata: nessun danno, vault intatto",
             "repairUntouched": "Riparazione: vault lasciato intatto ({damaged} danneggiati, ridondanza insufficiente)",
-            "repairPartial": "Riparazione completata: riparati {repaired} di {damaged} (vault lasciato intatto per i non recuperabili)",
             "repairSuccess": "Riparazione completata: riparati con successo {repaired} chunk",
             "noDamageNothing": "Nessun danno; niente da riparare.",
             "couldNotRepairAny": "Impossibile riparare alcuno dei {damaged} (vault lasciato intatto).",
-            "repairedOfDamaged": "Riparati {repaired} di {damaged} chunk danneggiati (vault lasciato intatto per i non recuperabili).",
             "successfullyRepaired": "Riparati con successo {repaired} chunk."
         },
         "aerocrypt": {

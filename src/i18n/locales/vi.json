@@ -2785,8 +2785,7 @@
                 "activity": "AeroVault {op}: {files} tệp, định dạng v{fmt}",
                 "eccShards": "Phân mảnh ECC",
                 "eccProtected": "Được bảo vệ ECC",
-                "eccOverhead": "Phụ phí ECC",
-                "eccRepairs": "Số lần sửa ECC"
+                "eccOverhead": "Phụ phí ECC"
             },
             "scrubEcc": "Quét ECC",
             "repairEcc": "Sửa ECC",
@@ -2807,11 +2806,9 @@
             "scrubComplete": "Đã quét xong: {checked} đã kiểm tra, {damaged} hư hỏng",
             "repairNoDamage": "Đã sửa xong: không có hư hỏng, không thay đổi kho lưu trữ",
             "repairUntouched": "Sửa chữa: giữ nguyên kho lưu trữ ({damaged} hư hỏng, không đủ dự phòng)",
-            "repairPartial": "Đã sửa xong: đã sửa {repaired} trong số {damaged} (giữ nguyên kho lưu trữ đối với phần không thể khôi phục)",
             "repairSuccess": "Đã sửa xong: đã sửa thành công {repaired} chunk",
             "noDamageNothing": "Không có hư hỏng; không có gì để sửa.",
             "couldNotRepairAny": "Không thể sửa bất kỳ chunk nào trong số {damaged} (giữ nguyên kho lưu trữ).",
-            "repairedOfDamaged": "Đã sửa {repaired} trong số {damaged} chunk hư hỏng (giữ nguyên kho lưu trữ đối với phần không thể khôi phục).",
             "successfullyRepaired": "Đã sửa thành công {repaired} chunk."
         },
         "cryptomator": {

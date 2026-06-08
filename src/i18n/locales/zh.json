@@ -2785,8 +2785,7 @@
                 "activity": "AeroVault {op}：{files} 个文件，格式 v{fmt}",
                 "eccShards": "ECC 分片",
                 "eccProtected": "受 ECC 保护",
-                "eccOverhead": "ECC 开销",
-                "eccRepairs": "ECC 修复"
+                "eccOverhead": "ECC 开销"
             },
             "scrubEcc": "ECC 校验扫描",
             "repairEcc": "ECC 修复",
@@ -2807,11 +2806,9 @@
             "scrubComplete": "扫描完成：已检查 {checked} 个，损坏 {damaged} 个",
             "repairNoDamage": "修复完成：无损坏，保管库未改动",
             "repairUntouched": "修复：保管库未改动（{damaged} 个损坏，冗余不足）",
-            "repairPartial": "修复完成：已修复 {damaged} 个中的 {repaired} 个（无法恢复的部分保管库未改动）",
             "repairSuccess": "修复完成：已成功修复 {repaired} 个数据块",
             "noDamageNothing": "无损坏；无需修复。",
             "couldNotRepairAny": "{damaged} 个均无法修复（保管库未改动）。",
-            "repairedOfDamaged": "已修复 {damaged} 个损坏数据块中的 {repaired} 个（无法恢复的部分保管库未改动）。",
             "successfullyRepaired": "已成功修复 {repaired} 个数据块。"
         },
         "cryptomator": {

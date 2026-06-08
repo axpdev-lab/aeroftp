@@ -2785,8 +2785,7 @@
                 "activity": "AeroVault {op}: {files} datoteka, format v{fmt}",
                 "eccShards": "ECC dijelovi",
                 "eccProtected": "Zaštićeno ECC-om",
-                "eccOverhead": "ECC dodatni prostor",
-                "eccRepairs": "ECC popravci"
+                "eccOverhead": "ECC dodatni prostor"
             },
             "scrubEcc": "Provjeri ECC",
             "repairEcc": "Popravi ECC",
@@ -2807,11 +2806,9 @@
             "scrubComplete": "Provjera dovršena: {checked} provjereno, {damaged} oštećeno",
             "repairNoDamage": "Popravak dovršen: nema oštećenja, vault nije promijenjen",
             "repairUntouched": "Popravak: vault je ostao nepromijenjen ({damaged} oštećeno, nedovoljna redundancija)",
-            "repairPartial": "Popravak dovršen: popravljeno {repaired} od {damaged} (vault ostao nepromijenjen za neoporavljivo)",
             "repairSuccess": "Popravak dovršen: uspješno popravljeno {repaired} dijelova",
             "noDamageNothing": "Nema oštećenja; ništa za popraviti.",
             "couldNotRepairAny": "Nije moguće popraviti nijedan od {damaged} (vault ostao nepromijenjen).",
-            "repairedOfDamaged": "Popravljeno {repaired} od {damaged} oštećenih dijelova (vault ostao nepromijenjen za neoporavljivo).",
             "successfullyRepaired": "Uspješno popravljeno {repaired} dijelova."
         },
         "cryptomator": {

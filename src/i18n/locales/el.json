@@ -2785,8 +2785,7 @@
                 "activity": "AeroVault {op}: {files} αρχείο(α), μορφή v{fmt}",
                 "eccShards": "Τμήματα ECC",
                 "eccProtected": "Προστασία ECC",
-                "eccOverhead": "Επιβάρυνση ECC",
-                "eccRepairs": "Επιδιορθώσεις ECC"
+                "eccOverhead": "Επιβάρυνση ECC"
             },
             "scrubEcc": "Έλεγχος ECC",
             "repairEcc": "Επιδιόρθωση ECC",
@@ -2807,11 +2806,9 @@
             "scrubComplete": "Ο έλεγχος ολοκληρώθηκε: {checked} ελέγχθηκαν, {damaged} κατεστραμμένα",
             "repairNoDamage": "Η επιδιόρθωση ολοκληρώθηκε: καμία ζημιά, το vault παρέμεινε ανέπαφο",
             "repairUntouched": "Επιδιόρθωση: το vault παρέμεινε ανέπαφο ({damaged} κατεστραμμένα, ανεπαρκής πλεονασματικότητα)",
-            "repairPartial": "Η επιδιόρθωση ολοκληρώθηκε: επιδιορθώθηκαν {repaired} από {damaged} (το vault παρέμεινε ανέπαφο για τα μη ανακτήσιμα)",
             "repairSuccess": "Η επιδιόρθωση ολοκληρώθηκε: επιδιορθώθηκαν επιτυχώς {repaired} τμήμα(τα)",
             "noDamageNothing": "Καμία ζημιά· δεν υπάρχει τίποτα για επιδιόρθωση.",
             "couldNotRepairAny": "Δεν ήταν δυνατή η επιδιόρθωση κανενός από τα {damaged} (το vault παρέμεινε ανέπαφο).",
-            "repairedOfDamaged": "Επιδιορθώθηκαν {repaired} από {damaged} κατεστραμμένα τμήματα (το vault παρέμεινε ανέπαφο για τα μη ανακτήσιμα).",
             "successfullyRepaired": "Επιδιορθώθηκαν επιτυχώς {repaired} τμήμα(τα)."
         },
         "cryptomator": {

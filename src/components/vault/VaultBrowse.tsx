@@ -395,7 +395,7 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                                         const prefix = dry ? 'Dry-run: ' : '';
                                         if (d === 0) return `${prefix}${t('vault.noDamageNothing')}`;
                                         if (r === 0) return `${prefix}${t('vault.couldNotRepairAny', { damaged: String(d) })}`;
-                                        if (r < d) return `${prefix}${t('vault.repairedOfDamaged', { repaired: String(r), damaged: String(d) })}`;
+                                        // all-or-nothing engine: r > 0 implies r === d (all verified + persisted)
                                         return `${prefix}${t('vault.successfullyRepaired', { repaired: String(r) })}`;
                                     })()}
                                     {state.repairResult.dry_run && ' (no changes written)'}

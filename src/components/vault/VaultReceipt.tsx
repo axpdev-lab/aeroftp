@@ -42,9 +42,6 @@ function buildReceiptText(r: VaultReport): string {
     if (r.ecc_shards_generated != null || r.ecc_bytes_protected != null || r.ecc_overhead_pct != null) {
         lines.push(`ecc: shards=${r.ecc_shards_generated ?? '-'} protected=${r.ecc_bytes_protected ?? '-'} overhead=${r.ecc_overhead_pct != null ? r.ecc_overhead_pct.toFixed(1)+'%' : '-'}`);
     }
-    if (r.ecc_repair_events != null && r.ecc_repair_events > 0) {
-        lines.push(`ecc_repair_events=${r.ecc_repair_events}`);
-    }
     lines.push('steps:');
     r.steps.forEach(s => lines.push(`  ${s}`));
     lines.push('');
@@ -135,9 +132,6 @@ export function VaultReceipt({ report, t, onClose }: VaultReceiptProps): React.R
                         )}
                         {report.ecc_overhead_pct != null && (
                             <Metric label={t('vault.receipt.eccOverhead') || 'ECC overhead'} value={`${report.ecc_overhead_pct.toFixed(1)}%`} />
-                        )}
-                        {report.ecc_repair_events != null && report.ecc_repair_events > 0 && (
-                            <Metric label={t('vault.receipt.eccRepairs') || 'ECC repairs'} value={String(report.ecc_repair_events)} />
                         )}
                     </div>
 

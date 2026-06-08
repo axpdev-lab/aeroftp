@@ -2785,8 +2785,7 @@
                 "activity": "AeroVault {op}: {files} ficheiro(s), formato v{fmt}",
                 "eccShards": "Fragmentos ECC",
                 "eccProtected": "Protexido por ECC",
-                "eccOverhead": "Sobrecarga de ECC",
-                "eccRepairs": "Reparacións ECC"
+                "eccOverhead": "Sobrecarga de ECC"
             },
             "scrubEcc": "Verificar ECC",
             "repairEcc": "Reparar ECC",
@@ -2807,11 +2806,9 @@
             "scrubComplete": "Verificación completada: {checked} verificados, {damaged} danados",
             "repairNoDamage": "Reparación completada: sen danos, o cofre non foi modificado",
             "repairUntouched": "Reparación: o cofre non foi modificado ({damaged} danados, redundancia insuficiente)",
-            "repairPartial": "Reparación completada: reparáronse {repaired} de {damaged} (o cofre non foi modificado para os irrecuperables)",
             "repairSuccess": "Reparación completada: reparáronse correctamente {repaired} fragmento(s)",
             "noDamageNothing": "Sen danos; nada que reparar.",
             "couldNotRepairAny": "Non se puido reparar ningún de {damaged} (o cofre non foi modificado).",
-            "repairedOfDamaged": "Reparáronse {repaired} de {damaged} fragmento(s) danado(s) (o cofre non foi modificado para os irrecuperables).",
             "successfullyRepaired": "Reparáronse correctamente {repaired} fragmento(s)."
         },
         "cryptomator": {

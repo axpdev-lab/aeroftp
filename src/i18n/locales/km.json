@@ -2785,8 +2785,7 @@
                 "activity": "AeroVault {op}: {files} ឯកសារ ទ្រង់ទ្រាយ v{fmt}",
                 "eccShards": "បំណែក ECC",
                 "eccProtected": "ការពារដោយ ECC",
-                "eccOverhead": "ផ្ទុកបន្ថែម ECC",
-                "eccRepairs": "ការជួសជុល ECC"
+                "eccOverhead": "ផ្ទុកបន្ថែម ECC"
             },
             "scrubEcc": "ត្រួតពិនិត្យ ECC",
             "repairEcc": "ជួសជុល ECC",
@@ -2807,11 +2806,9 @@
             "scrubComplete": "ការត្រួតពិនិត្យបានបញ្ចប់៖ បានពិនិត្យ {checked} ខូច {damaged}",
             "repairNoDamage": "ការជួសជុលបានបញ្ចប់៖ គ្មានការខូចខាត ឃ្លាំងមិនត្រូវបានប៉ះពាល់",
             "repairUntouched": "ការជួសជុល៖ ឃ្លាំងមិនត្រូវបានប៉ះពាល់ ({damaged} ខូច ដែនការពារមិនគ្រប់គ្រាន់)",
-            "repairPartial": "ការជួសជុលបានបញ្ចប់៖ បានជួសជុល {repaired} ក្នុងចំណោម {damaged} (ឃ្លាំងមិនត្រូវបានប៉ះពាល់សម្រាប់អ្វីដែលស្ដារមិនបាន)",
             "repairSuccess": "ការជួសជុលបានបញ្ចប់៖ បានជួសជុលបំណែក {repaired} ដោយជោគជ័យ",
             "noDamageNothing": "គ្មានការខូចខាត គ្មានអ្វីត្រូវជួសជុលទេ។",
             "couldNotRepairAny": "មិនអាចជួសជុលណាមួយក្នុងចំណោម {damaged} បានទេ (ឃ្លាំងមិនត្រូវបានប៉ះពាល់)។",
-            "repairedOfDamaged": "បានជួសជុល {repaired} ក្នុងចំណោមបំណែកខូច {damaged} (ឃ្លាំងមិនត្រូវបានប៉ះពាល់សម្រាប់អ្វីដែលស្ដារមិនបាន)។",
             "successfullyRepaired": "បានជួសជុលបំណែក {repaired} ដោយជោគជ័យ។"
         },
         "cryptomator": {

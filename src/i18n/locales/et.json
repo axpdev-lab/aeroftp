@@ -2785,8 +2785,7 @@
                 "activity": "AeroVault {op}: {files} fail(i), vorming v{fmt}",
                 "eccShards": "ECC-killud",
                 "eccProtected": "ECC-kaitstud",
-                "eccOverhead": "ECC lisakoormus",
-                "eccRepairs": "ECC-parandused"
+                "eccOverhead": "ECC lisakoormus"
             },
             "scrubEcc": "Kontrolli ECC-d",
             "repairEcc": "Paranda ECC",
@@ -2807,11 +2806,9 @@
             "scrubComplete": "Kontroll lõpetatud: {checked} kontrollitud, {damaged} kahjustatud",
             "repairNoDamage": "Parandamine lõpetatud: kahjustusi pole, hoidlat ei muudetud",
             "repairUntouched": "Parandamine: hoidlat ei muudetud ({damaged} kahjustatud, ebapiisav ülearusus)",
-            "repairPartial": "Parandamine lõpetatud: parandatud {repaired} / {damaged} (taastamatud jäeti hoidlas muutmata)",
             "repairSuccess": "Parandamine lõpetatud: edukalt parandatud {repaired} tükki",
             "noDamageNothing": "Kahjustusi pole; pole midagi parandada.",
             "couldNotRepairAny": "Ühtegi {damaged} tükist ei õnnestunud parandada (hoidlat ei muudetud).",
-            "repairedOfDamaged": "Parandatud {repaired} / {damaged} kahjustatud tükist (taastamatud jäeti hoidlas muutmata).",
             "successfullyRepaired": "Edukalt parandatud {repaired} tükki."
         },
         "cryptomator": {

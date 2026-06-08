@@ -2785,8 +2785,7 @@
                 "activity": "AeroVault {op}: {files} ფაილი, ფორმატი v{fmt}",
                 "eccShards": "ECC ფრაგმენტები",
                 "eccProtected": "ECC-ით დაცული",
-                "eccOverhead": "ECC დანამატი",
-                "eccRepairs": "ECC აღდგენები"
+                "eccOverhead": "ECC დანამატი"
             },
             "scrubEcc": "ECC-ის შემოწმება",
             "repairEcc": "ECC-ის აღდგენა",
@@ -2807,11 +2806,9 @@
             "scrubComplete": "შემოწმება დასრულდა: {checked} შემოწმდა, {damaged} დაზიანებული",
             "repairNoDamage": "აღდგენა დასრულდა: დაზიანება არ არის, საცავი უცვლელია",
             "repairUntouched": "აღდგენა: საცავი უცვლელი დარჩა ({damaged} დაზიანებული, არასაკმარისი ჭარბვა)",
-            "repairPartial": "აღდგენა დასრულდა: აღდგა {repaired} {damaged}-დან (აღუდგენელისთვის საცავი უცვლელი დარჩა)",
             "repairSuccess": "აღდგენა დასრულდა: წარმატებით აღდგა {repaired} ფრაგმენტი",
             "noDamageNothing": "დაზიანება არ არის; აღსადგენი არაფერია.",
             "couldNotRepairAny": "{damaged}-დან ვერცერთი აღდგა (საცავი უცვლელი დარჩა).",
-            "repairedOfDamaged": "აღდგა {repaired} {damaged} დაზიანებული ფრაგმენტიდან (აღუდგენელისთვის საცავი უცვლელი დარჩა).",
             "successfullyRepaired": "წარმატებით აღდგა {repaired} ფრაგმენტი."
         },
         "cryptomator": {

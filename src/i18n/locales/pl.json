@@ -2785,8 +2785,7 @@
                 "activity": "AeroVault {op}: {files} plik(ów), format v{fmt}",
                 "eccShards": "Fragmenty ECC",
                 "eccProtected": "Chronione przez ECC",
-                "eccOverhead": "Narzut ECC",
-                "eccRepairs": "Naprawy ECC"
+                "eccOverhead": "Narzut ECC"
             },
             "scrubEcc": "Skanuj ECC",
             "repairEcc": "Napraw ECC",
@@ -2807,11 +2806,9 @@
             "scrubComplete": "Skanowanie zakończone: sprawdzono {checked}, uszkodzonych {damaged}",
             "repairNoDamage": "Naprawa zakończona: brak uszkodzeń, sejf nietknięty",
             "repairUntouched": "Naprawa: sejf pozostawiono nietknięty ({damaged} uszkodzonych, niewystarczająca redundancja)",
-            "repairPartial": "Naprawa zakończona: naprawiono {repaired} z {damaged} (sejf pozostawiono nietknięty dla danych nieodzyskiwalnych)",
             "repairSuccess": "Naprawa zakończona: pomyślnie naprawiono {repaired} fragment(ów)",
             "noDamageNothing": "Brak uszkodzeń; nic do naprawienia.",
             "couldNotRepairAny": "Nie udało się naprawić żadnego z {damaged} (sejf pozostawiono nietknięty).",
-            "repairedOfDamaged": "Naprawiono {repaired} z {damaged} uszkodzonych fragmentów (sejf pozostawiono nietknięty dla danych nieodzyskiwalnych).",
             "successfullyRepaired": "Pomyślnie naprawiono {repaired} fragment(ów)."
         },
         "cryptomator": {

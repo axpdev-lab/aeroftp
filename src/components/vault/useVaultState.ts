@@ -127,7 +127,6 @@ export interface VaultReport {
     ecc_shards_generated?: number;
     ecc_bytes_protected?: number;
     ecc_overhead_pct?: number;
-    ecc_repair_events?: number;
 }
 
 interface VaultV3Info {
@@ -1236,9 +1235,9 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
                     setSuccess(t('vault.repairNoDamage'));
                 } else if (repaired === 0) {
                     setSuccess(t('vault.repairUntouched', { damaged: String(damaged) }));
-                } else if (repaired < damaged) {
-                    setSuccess(t('vault.repairPartial', { repaired: String(repaired), damaged: String(damaged) }));
                 } else {
+                    // Engine is all-or-nothing: a non-zero repaired count means every
+                    // damaged block verified and was persisted (repaired === damaged).
                     setSuccess(t('vault.repairSuccess', { repaired: String(repaired) }));
                 }
             }

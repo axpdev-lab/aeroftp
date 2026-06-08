@@ -2785,8 +2785,7 @@
                 "activity": "AeroVault {op}: {files} fil(er), format v{fmt}",
                 "eccShards": "ECC-shards",
                 "eccProtected": "ECC-skyddad",
-                "eccOverhead": "ECC-omkostnad",
-                "eccRepairs": "ECC-reparationer"
+                "eccOverhead": "ECC-omkostnad"
             },
             "scrubEcc": "Skrubba ECC",
             "repairEcc": "Reparera ECC",
@@ -2807,11 +2806,9 @@
             "scrubComplete": "Skrubbning klar: {checked} kontrollerade, {damaged} skadade",
             "repairNoDamage": "Reparation klar: inga skador, valvet orört",
             "repairUntouched": "Reparation: valvet lämnades orört ({damaged} skadade, otillräcklig redundans)",
-            "repairPartial": "Reparation klar: reparerade {repaired} av {damaged} (valvet lämnades orört för oåterställbara)",
             "repairSuccess": "Reparation klar: reparerade {repaired} segment",
             "noDamageNothing": "Inga skador; inget att reparera.",
             "couldNotRepairAny": "Kunde inte reparera något av {damaged} (valvet lämnades orört).",
-            "repairedOfDamaged": "Reparerade {repaired} av {damaged} skadade segment (valvet lämnades orört för oåterställbara).",
             "successfullyRepaired": "Reparerade {repaired} segment."
         },
         "cryptomator": {

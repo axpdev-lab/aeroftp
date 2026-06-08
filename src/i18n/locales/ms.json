@@ -2785,8 +2785,7 @@
                 "activity": "AeroVault {op}: {files} fail, format v{fmt}",
                 "eccShards": "Serpihan ECC",
                 "eccProtected": "Dilindungi ECC",
-                "eccOverhead": "Overhed ECC",
-                "eccRepairs": "Pembaikan ECC"
+                "eccOverhead": "Overhed ECC"
             },
             "scrubEcc": "Imbas ECC",
             "repairEcc": "Baiki ECC",
@@ -2807,11 +2806,9 @@
             "scrubComplete": "Imbasan selesai: {checked} diperiksa, {damaged} rosak",
             "repairNoDamage": "Pembaikan selesai: tiada kerosakan, peti kebal tidak diubah",
             "repairUntouched": "Pembaikan: peti kebal dibiarkan tidak diubah ({damaged} rosak, lebihan tidak mencukupi)",
-            "repairPartial": "Pembaikan selesai: {repaired} daripada {damaged} dibaiki (peti kebal dibiarkan tidak diubah bagi yang tidak dapat dipulihkan)",
             "repairSuccess": "Pembaikan selesai: berjaya membaiki {repaired} ketulan",
             "noDamageNothing": "Tiada kerosakan; tiada apa-apa untuk dibaiki.",
             "couldNotRepairAny": "Tidak dapat membaiki mana-mana daripada {damaged} (peti kebal dibiarkan tidak diubah).",
-            "repairedOfDamaged": "Membaiki {repaired} daripada {damaged} ketulan rosak (peti kebal dibiarkan tidak diubah bagi yang tidak dapat dipulihkan).",
             "successfullyRepaired": "Berjaya membaiki {repaired} ketulan."
         },
         "cryptomator": {

@@ -2785,8 +2785,7 @@
                 "activity": "AeroVault {op}: {files} датотека(и), формат v{fmt}",
                 "eccShards": "ECC фрагменти",
                 "eccProtected": "ECC заштитено",
-                "eccOverhead": "ECC надмерок",
-                "eccRepairs": "ECC поправки"
+                "eccOverhead": "ECC надмерок"
             },
             "scrubEcc": "Скенирај ECC",
             "repairEcc": "Поправи ECC",
@@ -2807,11 +2806,9 @@
             "scrubComplete": "Скенирањето е завршено: {checked} проверени, {damaged} оштетени",
             "repairNoDamage": "Поправката е завршена: нема оштетување, сефот е недопрен",
             "repairUntouched": "Поправка: сефот остана недопрен ({damaged} оштетени, недоволна редундантност)",
-            "repairPartial": "Поправката е завршена: поправени {repaired} од {damaged} (сефот остана недопрен за неповратливите)",
             "repairSuccess": "Поправката е завршена: успешно поправени {repaired} дел(ови)",
             "noDamageNothing": "Нема оштетување; нема што да се поправа.",
             "couldNotRepairAny": "Не може да се поправи ниту еден од {damaged} (сефот остана недопрен).",
-            "repairedOfDamaged": "Поправени {repaired} од {damaged} оштетен(и) дел(ови) (сефот остана недопрен за неповратливите).",
             "successfullyRepaired": "Успешно поправени {repaired} дел(ови)."
         },
         "cryptomator": {

@@ -63,16 +63,12 @@ pub struct VaultReport {
     // remain unchanged. "shards generated" = total data+parity shards in the v2 grid;
     // "bytes protected" = concatenated live block stream length (incl u64 prefixes);
     // overhead % measured on the actual serialized ECC payload bytes (header+cksums+parity).
-    // repair_events: reserved for future accumulation across repair ops (currently 0/None
-    // for receipt; scrub/repair return their own per-call counts).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ecc_shards_generated: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ecc_bytes_protected: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ecc_overhead_pct: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ecc_repair_events: Option<u64>,
 }
 
 impl VaultReport {
@@ -101,7 +97,6 @@ impl VaultReport {
             ecc_shards_generated: None,
             ecc_bytes_protected: None,
             ecc_overhead_pct: None,
-            ecc_repair_events: None,
         }
     }
 
@@ -178,12 +173,6 @@ impl VaultReport {
         self.ecc_shards_generated = Some(shards_generated);
         self.ecc_bytes_protected = Some(bytes_protected);
         self.ecc_overhead_pct = Some(overhead_pct);
-        // repair_events left for explicit note_repair or future accumulation
-    }
-
-    /// P3-03: increment repair events counter (for receipt contexts that go through report).
-    pub fn note_ecc_repair_event(&mut self) {
-        self.ecc_repair_events = Some(self.ecc_repair_events.unwrap_or(0) + 1);
     }
 
     /// Plain-text rendering for CLI stderr / a downloadable `.txt` receipt.
@@ -233,11 +222,6 @@ impl VaultReport {
                 "ecc: shards_generated={} bytes_protected={} overhead_pct={:.1}\n",
                 sh, bp, ov
             ));
-        }
-        if let Some(re) = self.ecc_repair_events {
-            if re > 0 {
-                out.push_str(&format!("ecc_repair_events={}\n", re));
-            }
         }
         out.push_str(&format!("\n{}\n", self.attribution));
         out

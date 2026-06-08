@@ -2785,8 +2785,7 @@
                 "activity": "AeroVault {op}: {files} dosya, biçim v{fmt}",
                 "eccShards": "ECC parçaları",
                 "eccProtected": "ECC korumalı",
-                "eccOverhead": "ECC ek yükü",
-                "eccRepairs": "ECC onarımları"
+                "eccOverhead": "ECC ek yükü"
             },
             "scrubEcc": "ECC denetimi",
             "repairEcc": "ECC onar",
@@ -2807,11 +2806,9 @@
             "scrubComplete": "Denetim tamamlandı: {checked} denetlendi, {damaged} hasarlı",
             "repairNoDamage": "Onarım tamamlandı: hasar yok, kasaya dokunulmadı",
             "repairUntouched": "Onarım: kasaya dokunulmadı ({damaged} hasarlı, yetersiz yedeklilik)",
-            "repairPartial": "Onarım tamamlandı: {damaged} hasarlının {repaired} tanesi onarıldı (kurtarılamayanlar için kasaya dokunulmadı)",
             "repairSuccess": "Onarım tamamlandı: {repaired} parça başarıyla onarıldı",
             "noDamageNothing": "Hasar yok; onarılacak bir şey yok.",
             "couldNotRepairAny": "{damaged} hasarlının hiçbiri onarılamadı (kasaya dokunulmadı).",
-            "repairedOfDamaged": "{damaged} hasarlı parçanın {repaired} tanesi onarıldı (kurtarılamayanlar için kasaya dokunulmadı).",
             "successfullyRepaired": "{repaired} parça başarıyla onarıldı."
         },
         "cryptomator": {

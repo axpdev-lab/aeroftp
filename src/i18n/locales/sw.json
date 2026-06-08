@@ -2785,8 +2785,7 @@
                 "activity": "AeroVault {op}: {files} faili, umbizo v{fmt}",
                 "eccShards": "Vipande vya ECC",
                 "eccProtected": "Imelindwa kwa ECC",
-                "eccOverhead": "Gharama ya ziada ya ECC",
-                "eccRepairs": "Marekebisho ya ECC"
+                "eccOverhead": "Gharama ya ziada ya ECC"
             },
             "scrubEcc": "Kagua ECC",
             "repairEcc": "Rekebisha ECC",
@@ -2807,11 +2806,9 @@
             "scrubComplete": "Ukaguzi umekamilika: {checked} zilizokaguliwa, {damaged} zilizoharibika",
             "repairNoDamage": "Marekebisho yamekamilika: hakuna uharibifu, vault haijaguswa",
             "repairUntouched": "Marekebisho: vault imeachwa bila kuguswa ({damaged} zilizoharibika, nakala za ziada hazitoshi)",
-            "repairPartial": "Marekebisho yamekamilika: zimerekebishwa {repaired} kati ya {damaged} (vault imeachwa bila kuguswa kwa zisizoweza kurejeshwa)",
             "repairSuccess": "Marekebisho yamekamilika: zimerekebishwa kwa mafanikio vipande {repaired}",
             "noDamageNothing": "Hakuna uharibifu; hakuna cha kurekebisha.",
             "couldNotRepairAny": "Haikuweza kurekebisha hata kimoja kati ya {damaged} (vault imeachwa bila kuguswa).",
-            "repairedOfDamaged": "Zimerekebishwa {repaired} kati ya vipande {damaged} vilivyoharibika (vault imeachwa bila kuguswa kwa zisizoweza kurejeshwa).",
             "successfullyRepaired": "Vipande {repaired} vimerekebishwa kwa mafanikio."
         },
         "cryptomator": {

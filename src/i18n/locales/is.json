@@ -2785,8 +2785,7 @@
                 "activity": "AeroVault {op}: {files} skrá/skrár, snið v{fmt}",
                 "eccShards": "ECC-brot",
                 "eccProtected": "ECC-varið",
-                "eccOverhead": "ECC-aukaálag",
-                "eccRepairs": "ECC-viðgerðir"
+                "eccOverhead": "ECC-aukaálag"
             },
             "scrubEcc": "Skanna ECC",
             "repairEcc": "Gera við ECC",
@@ -2807,11 +2806,9 @@
             "scrubComplete": "Skönnun lokið: {checked} athugaðir, {damaged} skemmdir",
             "repairNoDamage": "Viðgerð lokið: engar skemmdir, hvelfingin óbreytt",
             "repairUntouched": "Viðgerð: hvelfingin skilin eftir óbreytt ({damaged} skemmdir, ófullnægjandi offramboð)",
-            "repairPartial": "Viðgerð lokið: gert við {repaired} af {damaged} (hvelfingin skilin eftir óbreytt fyrir óendurheimtanlegt)",
             "repairSuccess": "Viðgerð lokið: tókst að gera við {repaired} kjarna",
             "noDamageNothing": "Engar skemmdir; ekkert að gera við.",
             "couldNotRepairAny": "Tókst ekki að gera við neinn af {damaged} (hvelfingin skilin eftir óbreytt).",
-            "repairedOfDamaged": "Gert við {repaired} af {damaged} skemmdum kjörnum (hvelfingin skilin eftir óbreytt fyrir óendurheimtanlegt).",
             "successfullyRepaired": "Tókst að gera við {repaired} kjarna."
         },
         "cryptomator": {

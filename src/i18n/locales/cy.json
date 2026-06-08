@@ -2785,8 +2785,7 @@
                 "activity": "AeroVault {op}: {files} ffeil, fformat v{fmt}",
                 "eccShards": "Cregynnau ECC",
                 "eccProtected": "Gwarchodir gan ECC",
-                "eccOverhead": "Gorbenion ECC",
-                "eccRepairs": "Atgyweiriadau ECC"
+                "eccOverhead": "Gorbenion ECC"
             },
             "scrubEcc": "Sganio ECC",
             "repairEcc": "Atgyweirio ECC",
@@ -2807,11 +2806,9 @@
             "scrubComplete": "Sgan wedi'i gwblhau: {checked} wedi'u gwirio, {damaged} wedi'u difrodi",
             "repairNoDamage": "Atgyweirio wedi'i gwblhau: dim difrod, ni chyffyrddwyd â'r gell",
             "repairUntouched": "Atgyweirio: ni chyffyrddwyd â'r gell ({damaged} wedi'u difrodi, dancosrwydd annigonol)",
-            "repairPartial": "Atgyweirio wedi'i gwblhau: atgyweiriwyd {repaired} o {damaged} (ni chyffyrddwyd â'r gell ar gyfer rhai na ellir eu hadfer)",
             "repairSuccess": "Atgyweirio wedi'i gwblhau: atgyweiriwyd {repaired} talp/talpiau yn llwyddiannus",
             "noDamageNothing": "Dim difrod; dim i'w atgyweirio.",
             "couldNotRepairAny": "Methwyd ag atgyweirio unrhyw un o {damaged} (ni chyffyrddwyd â'r gell).",
-            "repairedOfDamaged": "Atgyweiriwyd {repaired} o {damaged} talp/talpiau wedi'u difrodi (ni chyffyrddwyd â'r gell ar gyfer rhai na ellir eu hadfer).",
             "successfullyRepaired": "Atgyweiriwyd {repaired} talp/talpiau yn llwyddiannus."
         },
         "cryptomator": {

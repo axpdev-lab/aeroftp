@@ -2785,8 +2785,7 @@
                 "activity": "AeroVault {op}: {files} archivo(s), formato v{fmt}",
                 "eccShards": "Fragmentos ECC",
                 "eccProtected": "Protegido con ECC",
-                "eccOverhead": "Sobrecarga de ECC",
-                "eccRepairs": "Reparaciones de ECC"
+                "eccOverhead": "Sobrecarga de ECC"
             },
             "scrubEcc": "Analizar ECC",
             "repairEcc": "Reparar ECC",
@@ -2807,11 +2806,9 @@
             "scrubComplete": "Análisis completado: {checked} comprobados, {damaged} dañados",
             "repairNoDamage": "Reparación completada: sin daños, contenedor sin cambios",
             "repairUntouched": "Reparación: el contenedor se dejó sin cambios ({damaged} dañados, redundancia insuficiente)",
-            "repairPartial": "Reparación completada: se repararon {repaired} de {damaged} (el contenedor se dejó sin cambios para los irrecuperables)",
             "repairSuccess": "Reparación completada: se repararon correctamente {repaired} fragmento(s)",
             "noDamageNothing": "Sin daños; no hay nada que reparar.",
             "couldNotRepairAny": "No se pudo reparar ninguno de los {damaged} (el contenedor se dejó sin cambios).",
-            "repairedOfDamaged": "Se repararon {repaired} de {damaged} fragmento(s) dañado(s) (el contenedor se dejó sin cambios para los irrecuperables).",
             "successfullyRepaired": "Se repararon correctamente {repaired} fragmento(s)."
         },
         "cryptomator": {

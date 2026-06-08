@@ -2778,8 +2778,7 @@
                 "activity": "AeroVault {op}: {files} ֆայլ, ձևաչափ v{fmt}",
                 "eccShards": "ECC բեկորներ",
                 "eccProtected": "ECC-ով պաշտպանված",
-                "eccOverhead": "ECC ծախս",
-                "eccRepairs": "ECC վերականգնումներ"
+                "eccOverhead": "ECC ծախս"
             },
             "scrubEcc": "Ստուգել ECC",
             "repairEcc": "Վերականգնել ECC",
@@ -2800,11 +2799,9 @@
             "scrubComplete": "Ստուգումն ավարտված է՝ {checked} ստուգված, {damaged} վնասված",
             "repairNoDamage": "Վերականգնումն ավարտված է՝ վնասներ չկան, պահոցը մնաց անփոփոխ",
             "repairUntouched": "Վերականգնում՝ պահոցը մնաց անփոփոխ ({damaged} վնասված, անբավարար ավելորդություն)",
-            "repairPartial": "Վերականգնումն ավարտված է՝ վերականգնվեց {repaired}-ը {damaged}-ից (չվերականգնվողների համար պահոցը մնաց անփոփոխ)",
             "repairSuccess": "Վերականգնումն ավարտված է՝ հաջողությամբ վերականգնվեց {repaired} կտոր",
             "noDamageNothing": "Վնասներ չկան, վերականգնելու բան չկա։",
             "couldNotRepairAny": "Հնարավոր չեղավ վերականգնել {damaged}-ից ոչ մեկը (պահոցը մնաց անփոփոխ)։",
-            "repairedOfDamaged": "Վերականգնվեց {repaired}-ը {damaged} վնասված կտորից (չվերականգնվողների համար պահոցը մնաց անփոփոխ)։",
             "successfullyRepaired": "Հաջողությամբ վերականգնվեց {repaired} կտոր։"
         },
         "cryptomator": {

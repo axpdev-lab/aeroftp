@@ -2785,8 +2785,7 @@
                 "activity": "AeroVault {op}: {files} bestand(en), formaat v{fmt}",
                 "eccShards": "ECC-shards",
                 "eccProtected": "ECC-beschermd",
-                "eccOverhead": "ECC-overhead",
-                "eccRepairs": "ECC-reparaties"
+                "eccOverhead": "ECC-overhead"
             },
             "scrubEcc": "ECC scrubben",
             "repairEcc": "ECC repareren",
@@ -2807,11 +2806,9 @@
             "scrubComplete": "Scrub voltooid: {checked} gecontroleerd, {damaged} beschadigd",
             "repairNoDamage": "Reparatie voltooid: geen schade, kluis ongewijzigd",
             "repairUntouched": "Reparatie: kluis ongewijzigd gelaten ({damaged} beschadigd, onvoldoende redundantie)",
-            "repairPartial": "Reparatie voltooid: {repaired} van {damaged} hersteld (kluis ongewijzigd voor onherstelbare)",
             "repairSuccess": "Reparatie voltooid: {repaired} chunk(s) succesvol hersteld",
             "noDamageNothing": "Geen schade; niets te repareren.",
             "couldNotRepairAny": "Kon geen van de {damaged} repareren (kluis ongewijzigd gelaten).",
-            "repairedOfDamaged": "{repaired} van {damaged} beschadigde chunk(s) hersteld (kluis ongewijzigd voor onherstelbare).",
             "successfullyRepaired": "{repaired} chunk(s) succesvol hersteld."
         },
         "cryptomator": {

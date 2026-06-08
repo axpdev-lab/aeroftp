@@ -2785,8 +2785,7 @@
                 "activity": "AeroVault {op}: {files} फ़ाइल, प्रारूप v{fmt}",
                 "eccShards": "ECC शार्ड",
                 "eccProtected": "ECC संरक्षित",
-                "eccOverhead": "ECC ओवरहेड",
-                "eccRepairs": "ECC मरम्मत"
+                "eccOverhead": "ECC ओवरहेड"
             },
             "scrubEcc": "ECC स्क्रब करें",
             "repairEcc": "ECC मरम्मत करें",
@@ -2807,11 +2806,9 @@
             "scrubComplete": "स्क्रब पूर्ण: {checked} जाँचे गए, {damaged} क्षतिग्रस्त",
             "repairNoDamage": "मरम्मत पूर्ण: कोई क्षति नहीं, वॉल्ट अपरिवर्तित",
             "repairUntouched": "मरम्मत: वॉल्ट अपरिवर्तित रखा गया ({damaged} क्षतिग्रस्त, अपर्याप्त रिडंडेंसी)",
-            "repairPartial": "मरम्मत पूर्ण: {damaged} में से {repaired} की मरम्मत की गई (अपुनर्प्राप्य के लिए वॉल्ट अपरिवर्तित रखा गया)",
             "repairSuccess": "मरम्मत पूर्ण: {repaired} चंक की सफलतापूर्वक मरम्मत की गई",
             "noDamageNothing": "कोई क्षति नहीं; मरम्मत के लिए कुछ नहीं।",
             "couldNotRepairAny": "{damaged} में से किसी की भी मरम्मत नहीं की जा सकी (वॉल्ट अपरिवर्तित रखा गया)।",
-            "repairedOfDamaged": "{damaged} क्षतिग्रस्त चंक में से {repaired} की मरम्मत की गई (अपुनर्प्राप्य के लिए वॉल्ट अपरिवर्तित रखा गया)।",
             "successfullyRepaired": "{repaired} चंक की सफलतापूर्वक मरम्मत की गई।"
         },
         "cryptomator": {

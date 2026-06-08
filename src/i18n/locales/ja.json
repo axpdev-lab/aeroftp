@@ -2750,8 +2750,7 @@
                 "activity": "AeroVault {op}: {files} ファイル、形式 v{fmt}",
                 "eccShards": "ECC シャード",
                 "eccProtected": "ECC 保護済み",
-                "eccOverhead": "ECC オーバーヘッド",
-                "eccRepairs": "ECC 修復"
+                "eccOverhead": "ECC オーバーヘッド"
             },
             "scrubEcc": "ECC スクラブ",
             "repairEcc": "ECC 修復",
@@ -2772,11 +2771,9 @@
             "scrubComplete": "スクラブ完了: {checked} 件検査、{damaged} 件破損",
             "repairNoDamage": "修復完了: 破損なし、ボールトは変更されていません",
             "repairUntouched": "修復: ボールトは変更されませんでした（{damaged} 件破損、冗長性が不足）",
-            "repairPartial": "修復完了: {damaged} 件中 {repaired} 件を修復（復元不能な部分はボールトを変更せず）",
             "repairSuccess": "修復完了: {repaired} 件のチャンクを正常に修復しました",
             "noDamageNothing": "破損はありません。修復するものはありません。",
             "couldNotRepairAny": "{damaged} 件のいずれも修復できませんでした（ボールトは変更されていません）。",
-            "repairedOfDamaged": "破損チャンク {damaged} 件中 {repaired} 件を修復しました（復元不能な部分はボールトを変更せず）。",
             "successfullyRepaired": "{repaired} 件のチャンクを正常に修復しました。"
         },
         "cryptomator": {
