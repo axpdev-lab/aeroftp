@@ -3403,6 +3403,40 @@ impl StorageProvider for WebDavProvider {
         })
     }
 
+    // File versioning for the local MEGAcmd WebDAV bridge (#270). Plain WebDAV
+    // has no version API, but when the preset is the MEGAcmd bridge we shell out
+    // to the same `mega-*` CLI that backs the quota bar: `mega-ls --versions` to
+    // list, `mega-get "<path>#<epoch>"` to fetch a version, and download+re-put
+    // to restore. Non-MEGA WebDAV servers keep the trait default (NotSupported).
+    async fn list_versions(
+        &mut self,
+        path: &str,
+    ) -> Result<Vec<super::FileVersion>, ProviderError> {
+        if super::mega_df::is_megacmd_webdav_provider_id(self.config.provider_id.as_deref()) {
+            return super::mega_df::mega_list_versions(path).await;
+        }
+        Err(ProviderError::NotSupported("list_versions".to_string()))
+    }
+
+    async fn download_version(
+        &mut self,
+        path: &str,
+        version_id: &str,
+        local_path: &str,
+    ) -> Result<(), ProviderError> {
+        if super::mega_df::is_megacmd_webdav_provider_id(self.config.provider_id.as_deref()) {
+            return super::mega_df::mega_download_version(path, version_id, local_path).await;
+        }
+        Err(ProviderError::NotSupported("download_version".to_string()))
+    }
+
+    async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
+        if super::mega_df::is_megacmd_webdav_provider_id(self.config.provider_id.as_deref()) {
+            return super::mega_df::mega_restore_version(path, version_id).await;
+        }
+        Err(ProviderError::NotSupported("restore_version".to_string()))
+    }
+
     fn supports_locking(&self) -> bool {
         true
     }
