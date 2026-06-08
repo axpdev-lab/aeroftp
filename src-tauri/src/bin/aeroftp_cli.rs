@@ -11270,7 +11270,11 @@ fn print_profiles_summary_with_reorder(live: &[serde_json::Value], src: usize, d
     // (vs a bare `>`) is Ehud's #270 polish: `└─>` reads better than `└>`.
     let gutter = |i: usize, is_live: bool| -> String {
         if i == arrow_top || i == arrow_bot {
-            let corner = if i == arrow_top { '\u{250c}' } else { '\u{2514}' };
+            let corner = if i == arrow_top {
+                '\u{250c}'
+            } else {
+                '\u{2514}'
+            };
             let head = if is_live { '>' } else { '\u{2500}' };
             format!("{}\u{2500}{}", corner, head)
         } else if i > arrow_top && i < arrow_bot {
@@ -11348,11 +11352,7 @@ fn print_profiles_summary_with_reorder(live: &[serde_json::Value], src: usize, d
         );
         // The moved profile is relocated, not deleted: strike its old-slot copy
         // through without red so it does not read as a tombstone. #270.
-        let body = if r.ghost {
-            strikethrough(&body)
-        } else {
-            body
-        };
+        let body = if r.ghost { strikethrough(&body) } else { body };
         eprintln!("{} {}  {}", gutter(i, r.live_row), idx_cell, body);
     }
 }
