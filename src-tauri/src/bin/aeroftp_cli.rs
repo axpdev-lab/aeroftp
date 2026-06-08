@@ -90,6 +90,9 @@ use tempfile::NamedTempFile;
 use tokio::sync::Mutex as AsyncMutex;
 use zeroize::Zeroize;
 
+#[path = "../cli_tui/mod.rs"]
+mod cli_tui;
+
 // ── CLI Argument Parsing ───────────────────────────────────────────
 
 /// Canonical list of URL schemes accepted by `connect`, `ls`, `get`, etc.
@@ -2138,6 +2141,8 @@ enum Commands {
         #[arg(long)]
         protocols: bool,
     },
+    /// Open the interactive terminal UI
+    Tui,
     /// List saved server profiles from the encrypted vault
     ///
     /// Mirrors the My Servers Table view in the GUI: the same column visibility
@@ -10716,36 +10721,22 @@ enum ProfilesTuiOutcome {
 /// one place. Mirrors the ncdu TUI's crossterm/ratatui setup and always restores
 /// the terminal, even on error.
 fn profiles_tui_pick(profiles: &[serde_json::Value]) -> std::io::Result<ProfilesTuiOutcome> {
-    use crossterm::{
-        event::{self, Event, KeyCode, KeyEventKind},
-        terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-        ExecutableCommand,
-    };
+    use crossterm::event::{self, Event, KeyCode, KeyEventKind};
     use ratatui::{
-        backend::CrosstermBackend,
         layout::{Constraint, Layout},
         style::{Color, Modifier, Style},
         text::{Line, Span},
         widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
-        Terminal,
     };
 
     if profiles.is_empty() {
         return Ok(ProfilesTuiOutcome::Quit);
     }
 
-    let mut stdout = std::io::stdout();
-    enable_raw_mode()?;
-    stdout.execute(EnterAlternateScreen)?;
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
-
     let mut selected: usize = 0;
     let mut outcome = ProfilesTuiOutcome::Quit;
 
-    // Run the event loop in a closure so the terminal is restored unconditionally
-    // afterwards, even if a draw/read call returns an error.
-    let loop_result: std::io::Result<()> = (|| {
+    cli_tui::with_terminal(|terminal| {
         loop {
             terminal.draw(|frame| {
                 let area = frame.area();
@@ -10864,12 +10855,8 @@ fn profiles_tui_pick(profiles: &[serde_json::Value]) -> std::io::Result<Profiles
             }
         }
         Ok(())
-    })();
+    })?;
 
-    let _ = disable_raw_mode();
-    let _ = terminal.backend_mut().execute(LeaveAlternateScreen);
-    let _ = terminal.show_cursor();
-    loop_result?;
     Ok(outcome)
 }
 
@@ -30744,201 +30731,188 @@ fn ncdu_format_bar(ratio: f64, width: usize) -> String {
 
 /// Run the interactive TUI.
 fn ncdu_run_tui(root: NcduEntry) -> std::io::Result<()> {
-    use crossterm::{
-        event::{self, Event, KeyCode, KeyEventKind},
-        terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-        ExecutableCommand,
-    };
+    use crossterm::event::{self, Event, KeyCode, KeyEventKind};
     use ratatui::{
-        backend::CrosstermBackend,
         layout::{Constraint, Layout},
         style::{Color, Modifier, Style},
         text::{Line, Span},
         widgets::{Block, Borders, Paragraph},
-        Terminal,
     };
-
-    let mut stdout = std::io::stdout();
-    enable_raw_mode()?;
-    stdout.execute(EnterAlternateScreen)?;
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
 
     let mut state = NcduState::new(root);
 
-    loop {
-        terminal.draw(|frame| {
-            let area = frame.area();
+    cli_tui::with_terminal(|terminal| {
+        loop {
+            terminal.draw(|frame| {
+                let area = frame.area();
 
-            // Header (2 lines) + body
-            let chunks = Layout::vertical([
-                Constraint::Length(2),
-                Constraint::Min(1),
-                Constraint::Length(1),
-            ])
-            .split(area);
+                // Header (2 lines) + body
+                let chunks = Layout::vertical([
+                    Constraint::Length(2),
+                    Constraint::Min(1),
+                    Constraint::Length(1),
+                ])
+                .split(area);
 
-            // Header
-            let header_text = format!(
-                " ncdu - {} ({})  [{} items]",
-                state.current.path,
-                format_size(state.current.agg_size),
-                state.current.children.len()
-            );
-            let header = Paragraph::new(Line::from(vec![Span::styled(
-                header_text,
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
-            )]));
-            frame.render_widget(header, chunks[0]);
-
-            // File list
-            let list_area = chunks[1];
-            let visible_count = list_area.height as usize;
-            let children = &state.current.children;
-
-            // Scroll offset
-            let scroll = if state.selected >= visible_count {
-                state.selected - visible_count + 1
-            } else {
-                0
-            };
-
-            let parent_size = state.current.agg_size.max(1) as f64;
-            let bar_width = 20usize;
-            let mut lines: Vec<Line> = Vec::with_capacity(visible_count);
-
-            // ".." entry for going back
-            let back_selected = state.selected == 0 && !state.path_stack.is_empty();
-            if scroll == 0 && !state.path_stack.is_empty() {
-                let style = if back_selected {
+                // Header
+                let header_text = format!(
+                    " ncdu - {} ({})  [{} items]",
+                    state.current.path,
+                    format_size(state.current.agg_size),
+                    state.current.children.len()
+                );
+                let header = Paragraph::new(Line::from(vec![Span::styled(
+                    header_text,
                     Style::default()
-                        .bg(Color::DarkGray)
-                        .fg(Color::White)
-                        .add_modifier(Modifier::BOLD)
-                } else {
-                    Style::default().fg(Color::Blue)
-                };
-                lines.push(Line::from(vec![Span::styled(
-                    "          /..                          ",
-                    style,
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
                 )]));
-            }
+                frame.render_widget(header, chunks[0]);
 
-            let offset = if state.path_stack.is_empty() { 0 } else { 1 };
+                // File list
+                let list_area = chunks[1];
+                let visible_count = list_area.height as usize;
+                let children = &state.current.children;
 
-            for (i, child) in children.iter().enumerate() {
-                let display_idx = i + offset;
-                if display_idx < scroll || lines.len() >= visible_count {
-                    continue;
+                // Scroll offset
+                let scroll = if state.selected >= visible_count {
+                    state.selected - visible_count + 1
+                } else {
+                    0
+                };
+
+                let parent_size = state.current.agg_size.max(1) as f64;
+                let bar_width = 20usize;
+                let mut lines: Vec<Line> = Vec::with_capacity(visible_count);
+
+                // ".." entry for going back
+                let back_selected = state.selected == 0 && !state.path_stack.is_empty();
+                if scroll == 0 && !state.path_stack.is_empty() {
+                    let style = if back_selected {
+                        Style::default()
+                            .bg(Color::DarkGray)
+                            .fg(Color::White)
+                            .add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(Color::Blue)
+                    };
+                    lines.push(Line::from(vec![Span::styled(
+                        "          /..                          ",
+                        style,
+                    )]));
                 }
-                let is_selected = display_idx == state.selected;
-                let ratio = child.agg_size as f64 / parent_size;
-                let pct = (ratio * 100.0).min(100.0);
-                let bar = ncdu_format_bar(ratio, bar_width);
 
-                let size_str = format!("{:>9}", format_size(child.agg_size));
-                let pct_str = format!("{:5.1}%", pct);
-                let name_str = if child.is_dir {
-                    format!("/{}", child.name)
-                } else {
-                    child.name.clone()
-                };
+                let offset = if state.path_stack.is_empty() { 0 } else { 1 };
 
-                let style = if is_selected {
-                    Style::default()
-                        .bg(Color::DarkGray)
-                        .fg(Color::White)
-                        .add_modifier(Modifier::BOLD)
-                } else if child.is_dir {
-                    Style::default().fg(Color::Blue)
-                } else {
-                    Style::default()
-                };
+                for (i, child) in children.iter().enumerate() {
+                    let display_idx = i + offset;
+                    if display_idx < scroll || lines.len() >= visible_count {
+                        continue;
+                    }
+                    let is_selected = display_idx == state.selected;
+                    let ratio = child.agg_size as f64 / parent_size;
+                    let pct = (ratio * 100.0).min(100.0);
+                    let bar = ncdu_format_bar(ratio, bar_width);
 
-                let bar_style = if is_selected {
-                    Style::default().bg(Color::DarkGray).fg(Color::Green)
-                } else {
-                    Style::default().fg(Color::Green)
-                };
+                    let size_str = format!("{:>9}", format_size(child.agg_size));
+                    let pct_str = format!("{:5.1}%", pct);
+                    let name_str = if child.is_dir {
+                        format!("/{}", child.name)
+                    } else {
+                        child.name.clone()
+                    };
 
-                lines.push(Line::from(vec![
-                    Span::styled(size_str, style),
-                    Span::raw(" "),
-                    Span::styled(bar, bar_style),
-                    Span::raw(" "),
-                    Span::styled(pct_str, style),
-                    Span::raw(" "),
-                    Span::styled(name_str, style),
-                ]));
-            }
+                    let style = if is_selected {
+                        Style::default()
+                            .bg(Color::DarkGray)
+                            .fg(Color::White)
+                            .add_modifier(Modifier::BOLD)
+                    } else if child.is_dir {
+                        Style::default().fg(Color::Blue)
+                    } else {
+                        Style::default()
+                    };
 
-            let list_widget = Paragraph::new(lines).block(Block::default().borders(Borders::NONE));
-            frame.render_widget(list_widget, list_area);
+                    let bar_style = if is_selected {
+                        Style::default().bg(Color::DarkGray).fg(Color::Green)
+                    } else {
+                        Style::default().fg(Color::Green)
+                    };
 
-            // Footer
-            let footer = Paragraph::new(Line::from(vec![Span::styled(
-                " q:quit  Enter:open  Backspace/Left:back  j/k or Up/Down:navigate  d:delete info",
-                Style::default().fg(Color::DarkGray),
-            )]));
-            frame.render_widget(footer, chunks[2]);
-        })?;
-
-        // Handle input
-        if event::poll(std::time::Duration::from_millis(100))? {
-            if let Event::Key(key) = event::read()? {
-                if key.kind != KeyEventKind::Press {
-                    continue;
+                    lines.push(Line::from(vec![
+                        Span::styled(size_str, style),
+                        Span::raw(" "),
+                        Span::styled(bar, bar_style),
+                        Span::raw(" "),
+                        Span::styled(pct_str, style),
+                        Span::raw(" "),
+                        Span::styled(name_str, style),
+                    ]));
                 }
-                let max_idx =
-                    state.current.children.len() + if state.path_stack.is_empty() { 0 } else { 1 };
-                match key.code {
-                    KeyCode::Char('q') | KeyCode::Esc => break,
-                    KeyCode::Down | KeyCode::Char('j') if state.selected + 1 < max_idx => {
-                        state.selected += 1;
+
+                let list_widget =
+                    Paragraph::new(lines).block(Block::default().borders(Borders::NONE));
+                frame.render_widget(list_widget, list_area);
+
+                // Footer
+                let footer = Paragraph::new(Line::from(vec![Span::styled(
+                    " q:quit  Enter:open  Backspace/Left:back  j/k or Up/Down:navigate  d:delete info",
+                    Style::default().fg(Color::DarkGray),
+                )]));
+                frame.render_widget(footer, chunks[2]);
+            })?;
+
+            // Handle input
+            if event::poll(std::time::Duration::from_millis(100))? {
+                if let Event::Key(key) = event::read()? {
+                    if key.kind != KeyEventKind::Press {
+                        continue;
                     }
-                    KeyCode::Up | KeyCode::Char('k') if state.selected > 0 => {
-                        state.selected -= 1;
-                    }
-                    KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => {
-                        // If on ".." entry, go back
-                        if !state.path_stack.is_empty() && state.selected == 0 {
-                            state.go_back();
-                        } else {
-                            // Adjust for ".." offset
-                            let adj = if state.path_stack.is_empty() { 0 } else { 1 };
-                            if state.selected >= adj {
-                                state.selected -= adj;
-                                state.enter_selected();
-                                state.selected += if state.path_stack.is_empty() { 0 } else { 1 };
+                    let max_idx = state.current.children.len()
+                        + if state.path_stack.is_empty() { 0 } else { 1 };
+                    match key.code {
+                        KeyCode::Char('q') | KeyCode::Esc => break,
+                        KeyCode::Down | KeyCode::Char('j') if state.selected + 1 < max_idx => {
+                            state.selected += 1;
+                        }
+                        KeyCode::Up | KeyCode::Char('k') if state.selected > 0 => {
+                            state.selected -= 1;
+                        }
+                        KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => {
+                            // If on ".." entry, go back
+                            if !state.path_stack.is_empty() && state.selected == 0 {
+                                state.go_back();
+                            } else {
+                                // Adjust for ".." offset
+                                let adj = if state.path_stack.is_empty() { 0 } else { 1 };
+                                if state.selected >= adj {
+                                    state.selected -= adj;
+                                    state.enter_selected();
+                                    state.selected +=
+                                        if state.path_stack.is_empty() { 0 } else { 1 };
+                                }
                             }
                         }
+                        KeyCode::Backspace | KeyCode::Left | KeyCode::Char('h') => {
+                            state.go_back();
+                        }
+                        KeyCode::Home => state.selected = 0,
+                        KeyCode::End if max_idx > 0 => {
+                            state.selected = max_idx - 1;
+                        }
+                        KeyCode::PageDown => {
+                            state.selected = (state.selected + 20).min(max_idx.saturating_sub(1));
+                        }
+                        KeyCode::PageUp => {
+                            state.selected = state.selected.saturating_sub(20);
+                        }
+                        _ => {}
                     }
-                    KeyCode::Backspace | KeyCode::Left | KeyCode::Char('h') => {
-                        state.go_back();
-                    }
-                    KeyCode::Home => state.selected = 0,
-                    KeyCode::End if max_idx > 0 => {
-                        state.selected = max_idx - 1;
-                    }
-                    KeyCode::PageDown => {
-                        state.selected = (state.selected + 20).min(max_idx.saturating_sub(1));
-                    }
-                    KeyCode::PageUp => {
-                        state.selected = state.selected.saturating_sub(20);
-                    }
-                    _ => {}
                 }
             }
         }
-    }
-
-    // Cleanup
-    disable_raw_mode()?;
-    terminal.backend_mut().execute(LeaveAlternateScreen)?;
-    terminal.show_cursor()?;
-    Ok(())
+        Ok(())
+    })
 }
 
 async fn cmd_ncdu(
@@ -43074,6 +43048,33 @@ async fn main() {
             paid,
             protocols,
         } => cmd_catalog(query, category.as_deref(), *free, *paid, *protocols, format),
+        Commands::Tui => {
+            if matches!(format, OutputFormat::Json) {
+                print_error(format, "TUI requires text output; remove --json", 5);
+                5
+            } else {
+                match cli_tui::run_tui() {
+                    Ok(cli_tui::TuiIntent::Quit) => 0,
+                    Ok(cli_tui::TuiIntent::ProfilesInteractive) => list_vault_profiles(
+                        &cli,
+                        format,
+                        ProfilesViewOverrides {
+                            interactive: true,
+                            ..ProfilesViewOverrides::default()
+                        },
+                    ),
+                    Err(err) => {
+                        let code = if err.kind() == std::io::ErrorKind::Unsupported {
+                            5
+                        } else {
+                            99
+                        };
+                        print_error(format, &format!("TUI error: {}", err), code);
+                        code
+                    }
+                }
+            }
+        }
         Commands::Profiles {
             _ignored: _,
             sort,
