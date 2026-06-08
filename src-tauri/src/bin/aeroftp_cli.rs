@@ -3063,6 +3063,39 @@ enum KeystoreCommands {
         #[arg(long)]
         json: bool,
     },
+    /// Health check of the credential vault: reports the key mode and whether
+    /// the vault can be opened right now. Detects a lost or overwritten keyring
+    /// entry (zero-password vault that no longer unlocks). Read-only; exits 0
+    /// when healthy, 1 when the vault cannot be opened.
+    Status {
+        /// Output a JSON summary on stdout
+        #[arg(long)]
+        json: bool,
+    },
+    /// Recover a credential vault that can no longer be unlocked (e.g. its
+    /// system-keyring entry was lost or overwritten). Snapshots and resets
+    /// `vault.db` + `vault.key`, re-initialises a fresh vault, then imports the
+    /// given `.aeroftp-keystore` backup. The pre-reset state is preserved in a
+    /// timestamped snapshot under the config directory (reversible).
+    Repair {
+        /// Backup `.aeroftp-keystore` to restore from
+        #[arg(long, short = 'i')]
+        input: String,
+        /// Decryption password (same resolution order as `import`)
+        #[arg(long)]
+        password: Option<String>,
+        #[arg(long = "password-stdin")]
+        password_stdin: bool,
+        /// Override the destination config directory
+        #[arg(long = "config-dir")]
+        config_dir: Option<String>,
+        /// Skip the destructive-action confirmation prompt
+        #[arg(long, short = 'y')]
+        yes: bool,
+        /// Output a JSON summary on stdout
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -23019,6 +23052,141 @@ fn cmd_keystore_info(input: &str, json: bool, format: OutputFormat) -> i32 {
         );
     }
     0
+}
+
+/// `keystore status`: read-only health probe of the credential vault. Reports
+/// the key mode and whether the vault opens right now. Exits 0 if healthy, 1 if
+/// the vault cannot be opened (e.g. lost/overwritten keyring entry).
+fn cmd_keystore_status(json: bool, format: OutputFormat) -> i32 {
+    let h = ftp_client_gui_lib::credential_store::CredentialStore::health();
+    if json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "mode": h.mode,
+                "vault_db_present": h.vault_db_present,
+                "unlockable": h.unlockable,
+                "detail": h.detail,
+            })
+        );
+    } else if matches!(format, OutputFormat::Text) {
+        eprintln!("Vault key mode:  {}", h.mode);
+        eprintln!(
+            "vault.db:        {}",
+            if h.vault_db_present {
+                "present"
+            } else {
+                "absent"
+            }
+        );
+        eprintln!(
+            "Unlockable now:  {}",
+            if h.unlockable { "yes" } else { "no" }
+        );
+        eprintln!("{}", h.detail);
+    }
+    if h.unlockable {
+        0
+    } else {
+        1
+    }
+}
+
+/// `keystore repair`: recover a vault that can no longer be unlocked. Snapshots
+/// and resets `vault.db` + `vault.key`, re-initialises a fresh vault, then
+/// imports the given backup. Destructive (asks for confirmation unless `-y`),
+/// but the pre-reset state is preserved in a timestamped snapshot.
+#[allow(clippy::too_many_arguments)]
+async fn cmd_keystore_repair(
+    cli: &Cli,
+    input: &str,
+    cli_password: &Option<String>,
+    password_stdin: bool,
+    config_dir_override: &Option<String>,
+    yes: bool,
+    json: bool,
+    format: OutputFormat,
+) -> i32 {
+    use ftp_client_gui_lib::credential_store::CredentialStore;
+
+    if !std::path::Path::new(input).is_file() {
+        print_error(format, &format!("Backup file not found: {input}"), 2);
+        return 2;
+    }
+
+    // Destructive-action confirmation (skipped with -y or in JSON mode).
+    if !yes && !json {
+        eprintln!(
+            "This RESETS the credential vault (vault.db + vault.key) and restores from:\n  {input}"
+        );
+        eprintln!("A timestamped snapshot of the current vault is saved first (reversible).");
+        eprint!("Continue? [y/N] ");
+        use std::io::Write as _;
+        let _ = std::io::stderr().flush();
+        let mut line = String::new();
+        if std::io::stdin().read_line(&mut line).is_err()
+            || !matches!(line.trim(), "y" | "Y" | "yes" | "YES")
+        {
+            eprintln!("Aborted.");
+            return 5;
+        }
+    }
+
+    // Snapshot + reset the live vault so init() performs a clean first-run.
+    let label = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs().to_string())
+        .unwrap_or_else(|_| "repair".to_string());
+    let snapshot = match CredentialStore::reset_with_snapshot(&label) {
+        Ok(p) => p,
+        Err(e) => {
+            print_error(format, &format!("vault reset failed: {e}"), 11);
+            return 11;
+        }
+    };
+    if !json {
+        eprintln!("Pre-reset snapshot saved: {}", snapshot.display());
+    }
+
+    // Re-initialise a fresh, internally-consistent vault (open_vault -> init()).
+    if let Err(e) = open_vault(cli) {
+        print_error(
+            format,
+            &format!(
+                "re-init failed after reset (snapshot preserved at {}): {e}",
+                snapshot.display()
+            ),
+            6,
+        );
+        return 6;
+    }
+
+    // Restore the backup into the fresh vault. Overwrite merge: the vault is
+    // empty, so this is a full restore.
+    let rc = cmd_keystore_import(
+        cli,
+        input,
+        cli_password,
+        password_stdin,
+        KeystoreMergeArg::Overwrite,
+        false,
+        false,
+        false,
+        false,
+        config_dir_override,
+        json,
+        format,
+    )
+    .await;
+
+    if rc == 0 && !json {
+        eprintln!(
+            "Vault repaired. If the backup restored SQLite databases, restart AeroFTP. \
+             The previous vault is preserved at {}.",
+            snapshot.display()
+        );
+    }
+    rc
 }
 
 // =====================================================================
@@ -43925,6 +44093,27 @@ async fn main() {
                 .await
             }
             KeystoreCommands::Info { input, json } => cmd_keystore_info(input, *json, format),
+            KeystoreCommands::Status { json } => cmd_keystore_status(*json, format),
+            KeystoreCommands::Repair {
+                input,
+                password,
+                password_stdin,
+                config_dir,
+                yes,
+                json,
+            } => {
+                cmd_keystore_repair(
+                    &cli,
+                    input,
+                    password,
+                    *password_stdin,
+                    config_dir,
+                    *yes,
+                    *json,
+                    format,
+                )
+                .await
+            }
         },
         Commands::Transfer {
             source_profile,
