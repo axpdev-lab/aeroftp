@@ -333,7 +333,7 @@ careful audit of Grok's planned and delivered work, then to apply the fixes.
 6. **Visibility warning fixed:** the ECC primitives were `pub` over the private `OpenVaultV3`;
    reduced to module-private (no external callers).
 
-### KNOWN LIMITATION — parity overhead (open P2 design item, NOT a bug)
+### KNOWN LIMITATION — parity overhead (open P2 design item, NOT a bug) [RESOLVED in P2-09, see session below]
 `compute_ecc_shards` uses a single global `shard_size` = the largest on-disk block, pads every
 stripe to 10 data shards, and stores 2 full-size parity shards per stripe. With CDC bounds
 (min 256 KiB, avg 1 MiB) real vaults have few, large chunks, so the parity overhead is far
@@ -349,3 +349,69 @@ tracked on the branch — confirm those references are real before any of this r
 GitHub.
 
 **Test baseline now:** `cargo test --lib aerovault_v3` → 20 passed.
+
+---
+
+## Session: P2-09 ECC overhead fix (v2 fixed-grid format) — 2026-06-08
+
+Owner directive: "passiamo alla GUI" then redirected to "P2-09", with
+"troviamo le soluzioni piu solide altrimenti usciranno problemi". Decision taken via
+question: fixed shard grid + RS groups, target ~20% overhead with P=2 (tolerate 2-shard
+damage). Implemented the most robust variant after analysis.
+
+### Problem (the shipping blocker)
+v1 ECC mapped one ciphertext block to one RS shard and sized every shard to the largest
+block. CDC produces few large chunks, so under-filled stripes still stored two full-size
+parity shards: a 300 KB single-chunk vault produced ~600 KB parity (~200%, 902 KB file).
+
+### Solution (ECC payload v2, `ECC_PAYLOAD_VERSION = 2`, pre-release so no migration)
+- Protect the CONCATENATED live-block stream D (length L) with a fixed shard grid, not
+  one-block-one-shard. `S = clamp(ceil(L/K), ECC_MIN_SHARD=4 KiB, ECC_MAX_SHARD=1 MiB)`,
+  K = ECC_DATA_SHARDS = 10, P = ECC_PARITY_SHARDS = 2. Overhead is ~P/K (20%) regardless of
+  chunk count/size (small vault = one full group of 10; large vault = many full groups at
+  capped granularity).
+- KEY robustness insight (this is the "solid solution" the owner asked for): the per-block
+  cipher_hash is too coarse to localize damage on a sub-block grid (a few rotted bytes in a
+  big chunk would mark the whole chunk, erasing every shard it spans -> irrecoverable even at
+  20%). So the v2 payload stores a 16-byte truncated-BLAKE3 checksum PER SHARD (data and
+  parity). `reconstruct_from_ecc` marks any checksum-mismatching shard as an RS erasure ->
+  localized rot in a large chunk erases only the affected shard(s), AND a rotted parity shard
+  is detected and routed around (RS uses the surviving parity). reed-solomon-erasure does
+  erasure-only decoding, so this checksum-driven erasure localization is what makes it work.
+- Correctness is still guaranteed end-to-end by the all-or-nothing safety gate in
+  `repair_vault`: every reconstructed block is re-verified against its authenticated manifest
+  cipher_hash; the vault is persisted only if ALL damaged blocks verify, else left untouched.
+- Latent bug fixed: repair built truncated blocks as `vec![]`, which would misalign the grid;
+  now builds fixed-length (8 + block_len) zero-padded buffers so D always matches the payload.
+- Signatures cleaned: `reconstruct_from_ecc(blocks, payload)` (dropped bad_indices),
+  `compute_ecc_shards(blocks)` (dropped unused cipher-hashes). Call sites updated
+  (save_open_vault, create_empty_vault, repair_vault). `DamagedChunk` made module-private
+  (cleared the private-interface warning).
+
+### Format (v2 on-disk layout, little-endian)
+`[EccPayloadHeader 32B][data-shard checksums: num_data_shards*16][parity checksums:
+num_groups*P*16][parity data: num_groups*P*S]`, with num_data_shards = ceil(L/S),
+num_groups = ceil(num_data_shards/K). `EccStripeHeader` / stripe table removed.
+
+### Tests: `cargo test --lib aerovault_v3` -> 22 passed
+- Rewrote p2_02 (v2 roundtrip + truncation rejected), p2_03 (v2 compute), p2_04 (reconstruct
+  via checksum, no bad-index list).
+- Added `p2_09_ecc_overhead_is_bounded_for_single_chunk_vault` (overhead < 30% on real
+  incompressible data; ~20% in practice).
+- Replaced the old corrupt-parity refuse test with two: `p2_repair_recovers_despite_corrupt
+  _parity_shard` (1 data + 1 parity erasure = P, recovers AND heals) and
+  `p2_repair_refuses_when_damage_exceeds_redundancy` (3 erasures > P, refuses + untouched).
+- Test helper `ecc_test_blob` uses splitmix64 so data is genuinely incompressible (the first
+  attempt used a low-entropy pattern that zstd crushed to ~525 B, which masked the real case).
+
+### Live CLI proof (real `aeroftp-cli`, env password, incompressible 300 KB)
+- pure ECC overhead 60366 bytes = 20.1% of data (vault 362425 vs no-ecc 302059; v1 was 902 KB).
+- create --ecc -> info has_ecc:true -> scrub clean -> corrupt 32 B @ offset 5000 -> scrub
+  detects 1 chunk -> repair --dry-run ("would repair 1 of 1") -> repair ("Successfully
+  repaired 1 chunk") -> scrub clean -> extract -> SHA-256 identical to original.
+
+### Status
+ECC is now efficient enough to ship (P2-09 unblocked). Remaining work is Phase 3 surfaces +
+polish (GUI re-alignment with the hardened + v2 engine, receipt ECC fields, i18n, CLI help)
+then Phase 4 docs/CHANGELOG/close T-AEROVAULT-ECC. Handed off to a fresh tab for Phase 3
+(see HANDOFF 2 at the top of todo.md). Not committed (awaiting owner approval).
