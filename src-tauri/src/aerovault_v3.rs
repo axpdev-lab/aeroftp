@@ -280,7 +280,7 @@ struct EccPayloadHeader {
 }
 
 impl EccPayloadHeader {
-    fn to_bytes(&self) -> [u8; 32] {
+    fn to_bytes(self) -> [u8; 32] {
         let mut buf = [0u8; 32];
         buf[0..4].copy_from_slice(ECC_PAYLOAD_MAGIC);
         buf[4..6].copy_from_slice(&ECC_PAYLOAD_VERSION.to_le_bytes());
@@ -321,8 +321,8 @@ fn ecc_geometry(h: &EccPayloadHeader) -> (usize, usize) {
     let k = h.data_shards as usize;
     let s = h.shard_size as usize;
     let l = h.total_data_len as usize;
-    let num_data_shards = (l + s - 1) / s;
-    let num_groups = (num_data_shards + k - 1) / k;
+    let num_data_shards = l.div_ceil(s);
+    let num_groups = num_data_shards.div_ceil(k);
     (num_data_shards, num_groups)
 }
 
@@ -427,10 +427,10 @@ fn compute_ecc_shards(data_blocks: &[&[u8]]) -> (Vec<u8>, u64, u64, f64) {
     let p = ECC_PARITY_SHARDS;
     // S = ceil(L/K) clamped: a small vault becomes one full group (overhead == P/K);
     // a large vault becomes many full groups at capped shard granularity.
-    let s = ((l + k - 1) / k).clamp(ECC_MIN_SHARD, ECC_MAX_SHARD);
+    let s = l.div_ceil(k).clamp(ECC_MIN_SHARD, ECC_MAX_SHARD);
 
-    let num_data_shards = (l + s - 1) / s;
-    let num_groups = (num_data_shards + k - 1) / k;
+    let num_data_shards = l.div_ceil(s);
+    let num_groups = num_data_shards.div_ceil(k);
     let total_shards = (num_data_shards + num_groups * p) as u64;
 
     // Bytes of data shard `idx` (zero-padded past the end of D).
@@ -459,10 +459,10 @@ fn compute_ecc_shards(data_blocks: &[&[u8]]) -> (Vec<u8>, u64, u64, f64) {
         // K data slots + P parity slots. Slots past num_data_shards stay zero
         // (virtual padding); parity slots are filled by encode.
         let mut shards: Vec<Vec<u8>> = vec![vec![0u8; s]; k + p];
-        for local in 0..k {
+        for (local, shard) in shards.iter_mut().take(k).enumerate() {
             let gi = g * k + local;
             if gi < num_data_shards {
-                shards[local] = shard_at(gi);
+                *shard = shard_at(gi);
             }
         }
         rs.encode(&mut shards).expect("RS encode failed");
@@ -558,17 +558,17 @@ fn reconstruct_from_ecc(blocks: &mut [Vec<u8>], ecc_payload_bytes: &[u8]) -> Res
         let mut opt: Vec<Option<Vec<u8>>> = vec![None; k + p];
         let mut erased_data = 0usize;
 
-        for local in 0..k {
+        for (local, slot) in opt.iter_mut().take(k).enumerate() {
             let gi = g * k + local;
             if gi < num_data_shards {
                 let sh = shard_at(&d, gi);
                 if ecc_shard_checksum(&sh) == payload.data_checksums[gi] {
-                    opt[local] = Some(sh); // shard intact
+                    *slot = Some(sh); // shard intact
                 } else {
                     erased_data += 1; // damaged -> RS erasure
                 }
             } else {
-                opt[local] = Some(vec![0u8; s]); // virtual zero-pad slot
+                *slot = Some(vec![0u8; s]); // virtual zero-pad slot
             }
         }
 
@@ -591,12 +591,12 @@ fn reconstruct_from_ecc(blocks: &mut [Vec<u8>], ecc_payload_bytes: &[u8]) -> Res
             continue; // more erasures than parity can cover; leave group untouched
         }
 
-        for local in 0..k {
+        for (local, slot) in opt.iter().take(k).enumerate() {
             let gi = g * k + local;
             if gi >= num_data_shards {
                 continue;
             }
-            if let Some(sh) = &opt[local] {
+            if let Some(sh) = slot {
                 let start = gi * s;
                 let end = (start + s).min(l);
                 if d[start..end] != sh[..end - start] {
@@ -3079,8 +3079,8 @@ mod tests {
             "ecc extension should be present after roundtrip"
         );
         let ecc_ext = ecc_ext.unwrap();
-        assert_eq!(
-            ecc_ext.critical, false,
+        assert!(
+            !ecc_ext.critical,
             "ECC extension must be non-critical for v3 compat"
         );
         assert_eq!(ecc_ext.algorithm_id, ECC_ALGORITHM_ID);

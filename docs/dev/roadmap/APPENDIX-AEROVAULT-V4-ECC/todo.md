@@ -350,7 +350,7 @@ All P1/P2/GUI surfaces per plan + user GUI request completed and handed off. See
   → DONE in Phase 4 pass.
 - [x] **P4-07** Add entry to CHANGELOG.md under the next version (with credit to Ehud + this appendix). → DONE (Unreleased section with full summary + Ehud attribution).
 - [x] **P4-08** Close the T-AEROVAULT-ECC item (update any tracking in issue #162 if accessible). → DONE (appendix todo marks Phase3 complete + P4 docs; CHANGELOG/ROADMAP/SPEC/Security/CLI-GUIDE all note close; T- item considered closed per user directive "chiudi T-AEROVAULT-ECC").
-- [ ] **P4-01..05** (tests/hardening/perf/security-delta): left for follow-up if needed (engine already 22 green + live stress + P2-HARD audit items). No new breakage introduced.
+- [~] **P4-01..05** (tests/hardening/perf/security-delta): engine already 22 green + live stress + P2-HARD. Hardening/security-delta advanced 2026-06-08 (Claude): `cargo clippy --all-targets -- -D warnings` now clean (12 ECC warnings fixed); `cargo audit` green with justified ignores for RUSTSEC-2024-0384 (`instant`, transitive via reed-solomon-erasure) + RUSTSEC-2026-0173 (`proc-macro-error2`, sigstore path); dependency evaluation written (docs/security-evidence/REED-SOLOMON-ERASURE-EVALUATION-2026-06.md). Remaining P4 perf note optional. No breakage.
 
 **Phase 3 + 4 docs pass complete.** All surfaces, polish, docs, CHANGELOG per contract. 22 tests green. No commit/push (await approval). Go as far as code + credits allowed — closed in beauty. 🚀
 

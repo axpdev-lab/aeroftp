@@ -2785,8 +2785,7 @@
                 "activity": "AeroVault {op}: {files} fil(er), format v{fmt}",
                 "eccShards": "ECC-shards",
                 "eccProtected": "ECC-beskyttet",
-                "eccOverhead": "ECC-overhead",
-                "eccRepairs": "ECC-reparationer"
+                "eccOverhead": "ECC-overhead"
             },
             "scrubEcc": "Scan ECC",
             "repairEcc": "Reparer ECC",
@@ -2807,11 +2806,9 @@
             "scrubComplete": "Scanning fuldført: {checked} kontrolleret, {damaged} beskadiget",
             "repairNoDamage": "Reparation fuldført: ingen skader, vault uændret",
             "repairUntouched": "Reparation: vault forblev uændret ({damaged} beskadiget, utilstrækkelig redundans)",
-            "repairPartial": "Reparation fuldført: reparerede {repaired} af {damaged} (vault forblev uændret for ugendannelige)",
             "repairSuccess": "Reparation fuldført: reparerede {repaired} chunk(s) korrekt",
             "noDamageNothing": "Ingen skader; intet at reparere.",
             "couldNotRepairAny": "Kunne ikke reparere nogen af {damaged} (vault forblev uændret).",
-            "repairedOfDamaged": "Reparerede {repaired} af {damaged} beskadigede chunk(s) (vault forblev uændret for ugendannelige).",
             "successfullyRepaired": "Reparerede {repaired} chunk(s) korrekt."
         },
         "cryptomator": {

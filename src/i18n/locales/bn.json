@@ -2785,8 +2785,7 @@
                 "activity": "AeroVault {op}: {files} ফাইল, ফরম্যাট v{fmt}",
                 "eccShards": "ECC শার্ড",
                 "eccProtected": "ECC সুরক্ষিত",
-                "eccOverhead": "ECC ওভারহেড",
-                "eccRepairs": "ECC মেরামত"
+                "eccOverhead": "ECC ওভারহেড"
             },
             "scrubEcc": "ECC স্ক্রাব করুন",
             "repairEcc": "ECC মেরামত করুন",
@@ -2807,11 +2806,9 @@
             "scrubComplete": "স্ক্রাব সম্পন্ন: {checked}টি পরীক্ষিত, {damaged}টি ক্ষতিগ্রস্ত",
             "repairNoDamage": "মেরামত সম্পন্ন: কোনো ক্ষতি নেই, ভল্ট অপরিবর্তিত",
             "repairUntouched": "মেরামত: ভল্ট অপরিবর্তিত রাখা হয়েছে ({damaged}টি ক্ষতিগ্রস্ত, অপর্যাপ্ত রিডানডেন্সি)",
-            "repairPartial": "মেরামত সম্পন্ন: {damaged}টির মধ্যে {repaired}টি মেরামত হয়েছে (পুনরুদ্ধার-অযোগ্যগুলির জন্য ভল্ট অপরিবর্তিত রাখা হয়েছে)",
             "repairSuccess": "মেরামত সম্পন্ন: সফলভাবে {repaired}টি চাঙ্ক মেরামত হয়েছে",
             "noDamageNothing": "কোনো ক্ষতি নেই; মেরামত করার কিছু নেই।",
             "couldNotRepairAny": "{damaged}টির কোনোটিই মেরামত করা যায়নি (ভল্ট অপরিবর্তিত রাখা হয়েছে)।",
-            "repairedOfDamaged": "{damaged}টি ক্ষতিগ্রস্ত চাঙ্কের মধ্যে {repaired}টি মেরামত হয়েছে (পুনরুদ্ধার-অযোগ্যগুলির জন্য ভল্ট অপরিবর্তিত রাখা হয়েছে)।",
             "successfullyRepaired": "সফলভাবে {repaired}টি চাঙ্ক মেরামত হয়েছে।"
         },
         "cryptomator": {

@@ -2785,8 +2785,7 @@
                 "activity": "AeroVault {op}: {files} fil(er), format v{fmt}",
                 "eccShards": "ECC-shards",
                 "eccProtected": "ECC-beskyttet",
-                "eccOverhead": "ECC-overhead",
-                "eccRepairs": "ECC-reparasjoner"
+                "eccOverhead": "ECC-overhead"
             },
             "scrubEcc": "Skann ECC",
             "repairEcc": "Reparer ECC",
@@ -2807,11 +2806,9 @@
             "scrubComplete": "Skanning fullført: {checked} kontrollert, {damaged} skadet",
             "repairNoDamage": "Reparasjon fullført: ingen skade, hvelvet er uendret",
             "repairUntouched": "Reparasjon: hvelvet er uendret ({damaged} skadet, utilstrekkelig redundans)",
-            "repairPartial": "Reparasjon fullført: reparerte {repaired} av {damaged} (hvelvet er uendret for det som ikke kan gjenopprettes)",
             "repairSuccess": "Reparasjon fullført: reparerte {repaired} del(er)",
             "noDamageNothing": "Ingen skade; ingenting å reparere.",
             "couldNotRepairAny": "Kunne ikke reparere noen av {damaged} (hvelvet er uendret).",
-            "repairedOfDamaged": "Reparerte {repaired} av {damaged} skadede del(er) (hvelvet er uendret for det som ikke kan gjenopprettes).",
             "successfullyRepaired": "Reparerte {repaired} del(er)."
         },
         "cryptomator": {

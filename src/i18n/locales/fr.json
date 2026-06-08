@@ -2785,8 +2785,7 @@
                 "activity": "AeroVault {op} : {files} fichier(s), format v{fmt}",
                 "eccShards": "Fragments ECC",
                 "eccProtected": "Protégé par ECC",
-                "eccOverhead": "Surcoût ECC",
-                "eccRepairs": "Réparations ECC"
+                "eccOverhead": "Surcoût ECC"
             },
             "scrubEcc": "Vérifier l'ECC",
             "repairEcc": "Réparer l'ECC",
@@ -2807,11 +2806,9 @@
             "scrubComplete": "Vérification terminée : {checked} vérifiés, {damaged} endommagés",
             "repairNoDamage": "Réparation terminée : aucun dommage, coffre inchangé",
             "repairUntouched": "Réparation : coffre laissé inchangé ({damaged} endommagés, redondance insuffisante)",
-            "repairPartial": "Réparation terminée : {repaired} sur {damaged} réparés (coffre laissé inchangé pour les irrécupérables)",
             "repairSuccess": "Réparation terminée : {repaired} segment(s) réparé(s) avec succès",
             "noDamageNothing": "Aucun dommage ; rien à réparer.",
             "couldNotRepairAny": "Impossible de réparer le moindre des {damaged} (coffre laissé inchangé).",
-            "repairedOfDamaged": "{repaired} sur {damaged} segment(s) endommagé(s) réparé(s) (coffre laissé inchangé pour les irrécupérables).",
             "successfullyRepaired": "{repaired} segment(s) réparé(s) avec succès."
         },
         "cryptomator": {

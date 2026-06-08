@@ -2785,8 +2785,7 @@
                 "activity": "AeroVault {op}: {files} файл(а), формат v{fmt}",
                 "eccShards": "ECC шардове",
                 "eccProtected": "Защитено с ECC",
-                "eccOverhead": "ECC натоварване",
-                "eccRepairs": "ECC поправки"
+                "eccOverhead": "ECC натоварване"
             },
             "scrubEcc": "Проверка на ECC",
             "repairEcc": "Поправка на ECC",
@@ -2807,11 +2806,9 @@
             "scrubComplete": "Проверката завърши: {checked} проверени, {damaged} повредени",
             "repairNoDamage": "Поправката завърши: няма повреди, трезорът остана непроменен",
             "repairUntouched": "Поправка: трезорът остана непроменен ({damaged} повредени, недостатъчно резервиране)",
-            "repairPartial": "Поправката завърши: поправени {repaired} от {damaged} (трезорът остана непроменен за невъзстановимите)",
             "repairSuccess": "Поправката завърши: успешно поправени {repaired} парче(та)",
             "noDamageNothing": "Няма повреди; няма какво да се поправя.",
             "couldNotRepairAny": "Не може да се поправи нито едно от {damaged} (трезорът остана непроменен).",
-            "repairedOfDamaged": "Поправени {repaired} от {damaged} повредени парче(та) (трезорът остана непроменен за невъзстановимите).",
             "successfullyRepaired": "Успешно поправени {repaired} парче(та)."
         },
         "cryptomator": {

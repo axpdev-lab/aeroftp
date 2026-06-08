@@ -3937,8 +3937,7 @@
                 "activity": "AeroVault {op}: {files} file(s), format v{fmt}",
                 "eccShards": "ECC shards",
                 "eccProtected": "ECC protected",
-                "eccOverhead": "ECC overhead",
-                "eccRepairs": "ECC repairs"
+                "eccOverhead": "ECC overhead"
             },
             "scrubEcc": "Scrub ECC",
             "repairEcc": "Repair ECC",
@@ -3959,11 +3958,9 @@
             "scrubComplete": "Scrub complete: {checked} checked, {damaged} damaged",
             "repairNoDamage": "Repair complete: no damage, vault untouched",
             "repairUntouched": "Repair: vault left untouched ({damaged} damaged, insufficient redundancy)",
-            "repairPartial": "Repair complete: repaired {repaired} of {damaged} (vault left untouched for unrecoverable)",
             "repairSuccess": "Repair complete: successfully repaired {repaired} chunk(s)",
             "noDamageNothing": "No damage; nothing to repair.",
             "couldNotRepairAny": "Could not repair any of {damaged} (vault left untouched).",
-            "repairedOfDamaged": "Repaired {repaired} of {damaged} damaged chunk(s) (vault left untouched for unrecoverable).",
             "successfullyRepaired": "Successfully repaired {repaired} chunk(s)."
         },
         "vaultSync": {

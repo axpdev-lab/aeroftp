@@ -43008,7 +43008,7 @@ async fn main() {
                     let ver = if path.trim().is_empty() {
                         "v3".to_string()
                     } else {
-                        detect_vault_version(&path).await
+                        detect_vault_version(path).await
                     };
                     if ver != "v3" {
                         print_error(format, "Scrub is only supported for v3+ ECC vaults", 7);
@@ -43071,7 +43071,7 @@ async fn main() {
                     let ver = if path.trim().is_empty() {
                         "v3".to_string()
                     } else {
-                        detect_vault_version(&path).await
+                        detect_vault_version(path).await
                     };
                     if ver != "v3" {
                         print_error(format, "Repair is only supported for v3+ ECC vaults", 7);

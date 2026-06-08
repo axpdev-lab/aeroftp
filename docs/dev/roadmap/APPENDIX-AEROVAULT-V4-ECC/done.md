@@ -504,3 +504,50 @@ All per user rules: update md every micro, 22 tests baseline, keep template, no 
 - src/components/vault/VaultBrowse.tsx
 
 Date: 2026 (Phase 3 kickoff on feat/aerovault-v4-ecc)
+
+---
+
+## Session: Claude review + i18n + clippy/audit cleanup — 2026-06-08
+
+Owner asked to review/fix/commit Grok's Phase 3/4 work, then to close the
+remaining loose ends and leave the branch clean. Two commits.
+
+**Commit 1 (40b3138d) - review + i18n + fmt:**
+- Engine/surface logic verified sound. Found two release blockers the surfaces
+  work introduced and fixed them:
+  - i18n: the 29 new ECC strings were en-only; `i18n:validate` failed with 46
+    missing-key errors and non-EN locales would show raw keys. Translated all 29
+    into the 46 non-English locales (per-language agents + placeholder-parity
+    verify; 1334 checks, 0 fallbacks). `i18n:validate` -> 46/46 clean.
+  - fmt: the branch was not `cargo fmt` clean (577 lines across the 3 ECC files,
+    accumulated over the ECC commits). Ran `cargo fmt`; `cargo fmt --check` clean.
+
+**Commit 2 (this) - loose ends + clippy + audit:**
+- repair_events telemetry removed: the setter was never called and the receipt
+  field could never populate (repair returns JSON, not a VaultReport). Dropped
+  the field/setter/render + TS field + receipt card + `vault.receipt.eccRepairs`
+  i18n key (all 47 locales). Honest surfaces only.
+- Dead "partial repair" UI branches removed: the engine is strictly
+  all-or-nothing (`repaired` is 0 or == damaged), so `repairPartial` /
+  `repairedOfDamaged` were unreachable and their text was self-contradictory.
+  Removed the branches (success path now covers repaired>0, with a comment on the
+  all-or-nothing contract) + the two i18n keys (all 47 locales).
+- Dependency rigor for the new ECC crate (`reed-solomon-erasure 6.0.0`):
+  - It pulls `instant 0.1.13` (RUSTSEC-2024-0384, unmaintained) transitively via
+    `parking_lot 0.11.2`; the crate pins `parking_lot ^0.11.2` so it can't be
+    bumped to drop `instant` without forking. Added a justified `cargo audit`
+    ignore + wrote `docs/security-evidence/REED-SOLOMON-ERASURE-EVALUATION-2026-06.md`.
+  - Also ignored the freshly-published RUSTSEC-2026-0173 (`proc-macro-error2`,
+    build-time, sigstore/oci path, unrelated to ECC) so `cargo audit` is green.
+- clippy: the branch failed CI's `cargo clippy --all-targets -- -D warnings`
+  (12 warnings from the ECC code: `to_bytes(&self)` on a Copy type, manual
+  `div_ceil`, range-loop indexing, `assert_eq!(_, false)`, needless borrows in
+  the CLI). All 12 fixed; clippy `-D warnings` now clean.
+
+**All gates green (local):** `cargo test --lib aerovault_v3` 22/22; clippy
+`-D warnings` clean; `cargo fmt --check` clean; `cargo audit` clean (2 justified
+ignores); `tsc --noEmit` clean; vitest 253/253; `i18n:validate` 46/46 clean.
+
+Branch `feat/aerovault-v4-ecc` is clean and CI-ready. Not pushed / no PR yet
+(awaiting owner). Trailer: Co-Authored-By: Grok 4.3 (Build 4.3, xAI) <noreply@x.ai>
+(per owner) + Ehud Kirsh + Claude Opus 4.8 (1M context).

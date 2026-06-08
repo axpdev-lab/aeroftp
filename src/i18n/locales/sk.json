@@ -2785,8 +2785,7 @@
                 "activity": "AeroVault {op}: {files} súbor(ov), formát v{fmt}",
                 "eccShards": "Fragmenty ECC",
                 "eccProtected": "Chránené pomocou ECC",
-                "eccOverhead": "Réžia ECC",
-                "eccRepairs": "Opravy ECC"
+                "eccOverhead": "Réžia ECC"
             },
             "scrubEcc": "Prehľadať ECC",
             "repairEcc": "Opraviť ECC",
@@ -2807,11 +2806,9 @@
             "scrubComplete": "Prehľadanie dokončené: {checked} skontrolovaných, {damaged} poškodených",
             "repairNoDamage": "Oprava dokončená: žiadne poškodenie, trezor zostal nedotknutý",
             "repairUntouched": "Oprava: trezor zostal nedotknutý ({damaged} poškodených, nedostatočná redundancia)",
-            "repairPartial": "Oprava dokončená: opravených {repaired} z {damaged} (trezor zostal nedotknutý pre neopraviteľné)",
             "repairSuccess": "Oprava dokončená: úspešne opravené {repaired} časti",
             "noDamageNothing": "Žiadne poškodenie; nie je čo opravovať.",
             "couldNotRepairAny": "Nepodarilo sa opraviť ani jednu z {damaged} (trezor zostal nedotknutý).",
-            "repairedOfDamaged": "Opravených {repaired} z {damaged} poškodených častí (trezor zostal nedotknutý pre neopraviteľné).",
             "successfullyRepaired": "Úspešne opravené {repaired} časti."
         },
         "cryptomator": {

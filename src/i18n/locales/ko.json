@@ -2785,8 +2785,7 @@
                 "activity": "AeroVault {op}: {files}개 파일, 형식 v{fmt}",
                 "eccShards": "ECC 샤드",
                 "eccProtected": "ECC 보호됨",
-                "eccOverhead": "ECC 오버헤드",
-                "eccRepairs": "ECC 복구"
+                "eccOverhead": "ECC 오버헤드"
             },
             "scrubEcc": "ECC 검사",
             "repairEcc": "ECC 복구",
@@ -2807,11 +2806,9 @@
             "scrubComplete": "검사 완료: {checked}개 검사, {damaged}개 손상",
             "repairNoDamage": "복구 완료: 손상 없음, 볼트 변경 없음",
             "repairUntouched": "복구: 볼트 변경 없음({damaged}개 손상, 중복성 부족)",
-            "repairPartial": "복구 완료: {damaged}개 중 {repaired}개 복구됨(복구 불가 항목은 볼트 변경 없음)",
             "repairSuccess": "복구 완료: {repaired}개 청크 복구 성공",
             "noDamageNothing": "손상 없음, 복구할 항목 없음.",
             "couldNotRepairAny": "{damaged}개 중 어느 것도 복구할 수 없습니다(볼트 변경 없음).",
-            "repairedOfDamaged": "손상된 청크 {damaged}개 중 {repaired}개 복구됨(복구 불가 항목은 볼트 변경 없음).",
             "successfullyRepaired": "{repaired}개 청크 복구 성공."
         },
         "cryptomator": {

@@ -2785,8 +2785,7 @@
                 "activity": "AeroVault {op}: {files} файл(ов), формат v{fmt}",
                 "eccShards": "Сегменты ECC",
                 "eccProtected": "Защита ECC",
-                "eccOverhead": "Накладные расходы ECC",
-                "eccRepairs": "Восстановления ECC"
+                "eccOverhead": "Накладные расходы ECC"
             },
             "scrubEcc": "Проверить ECC",
             "repairEcc": "Восстановить ECC",
@@ -2807,11 +2806,9 @@
             "scrubComplete": "Проверка завершена: проверено {checked}, повреждено {damaged}",
             "repairNoDamage": "Восстановление завершено: повреждений нет, хранилище не изменено",
             "repairUntouched": "Восстановление: хранилище не изменено (повреждено {damaged}, недостаточно избыточности)",
-            "repairPartial": "Восстановление завершено: восстановлено {repaired} из {damaged} (хранилище не изменено для невосстановимых)",
             "repairSuccess": "Восстановление завершено: успешно восстановлено фрагментов: {repaired}",
             "noDamageNothing": "Повреждений нет; восстанавливать нечего.",
             "couldNotRepairAny": "Не удалось восстановить ни один из {damaged} (хранилище не изменено).",
-            "repairedOfDamaged": "Восстановлено {repaired} из {damaged} повреждённых фрагментов (хранилище не изменено для невосстановимых).",
             "successfullyRepaired": "Успешно восстановлено фрагментов: {repaired}."
         },
         "cryptomator": {
