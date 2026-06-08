@@ -1,0 +1,31 @@
+[package]
+name = "aeroftp-peer-l0"
+version = "0.0.1-spike"
+edition = "2021"
+rust-version = "1.85.0"
+publish = false
+description = "AeroFTP Peer L0 spike — isolated iroh transport experiment (T-PEER)"
+license = "GPL-3.0-or-later"
+
+[[bin]]
+name = "peer-l0-dial"
+path = "src/main.rs"
+
+[dependencies]
+# The whole point of this tiny isolated crate: we can pull recent iroh without
+# fighting the russh =0.60.3 aead pin that lives in the main aeroftp crate.
+# Pinned versions that (hopefully) build on rust 1.85 without pulling in
+# broken ed25519-dalek / pkcs8 combinations that some 0.9x iroh releases expose.
+iroh = "0.92"
+iroh-blobs = "0.94"
+blake3 = "1"
+tokio = { version = "1", features = ["full"] }
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+clap = { version = "4", features = ["derive"] }
+
+[dev-dependencies]
+tempfile = "3"
