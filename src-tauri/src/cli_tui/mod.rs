@@ -7,15 +7,15 @@ use crossterm::{
 };
 use ratatui::{
     backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout},
-    style::{Modifier, Style},
+    layout::{Constraint, Direction, Layout, Rect},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
     Terminal,
 };
 
 use self::{
-    app::{AppState, TUI_MENU_ITEMS},
+    app::{AppState, TuiActionIntent, TuiFocus, TUI_ACTION_ITEMS},
     event::key_to_action,
     theme::TuiTheme,
 };
@@ -26,11 +26,11 @@ pub mod panes;
 pub mod theme;
 pub mod worker;
 
-pub use app::TuiIntent;
+pub use app::{TuiContext, TuiIntent, TuiProfile, TuiProfileAction, TuiUser};
 
 pub type CliTuiTerminal = Terminal<CrosstermBackend<io::Stdout>>;
 
-pub fn run_tui() -> io::Result<TuiIntent> {
+pub fn run_tui(context: TuiContext) -> io::Result<TuiIntent> {
     if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
         return Err(io::Error::new(
             io::ErrorKind::Unsupported,
@@ -38,7 +38,7 @@ pub fn run_tui() -> io::Result<TuiIntent> {
         ));
     }
 
-    let mut app = AppState::new();
+    let mut app = AppState::new(context);
     let theme = TuiTheme::default();
 
     with_terminal(|terminal| {
@@ -70,7 +70,7 @@ fn render_dashboard(frame: &mut ratatui::Frame<'_>, app: &AppState, theme: TuiTh
     let area = frame.area();
     let rows = Layout::vertical([
         Constraint::Length(3),
-        Constraint::Min(8),
+        Constraint::Min(12),
         Constraint::Length(3),
     ])
     .split(area);
@@ -85,7 +85,7 @@ fn render_dashboard(frame: &mut ratatui::Frame<'_>, app: &AppState, theme: TuiTh
             Span::styled("Phase 1", theme.muted_style()),
         ]),
         Line::from(Span::styled(
-            "Picker-pattern front-end: intent is routed back through CLI handlers.",
+            "User -> profile -> action. The selected intent exits raw mode and runs through CLI handlers.",
             theme.muted_style(),
         )),
     ]);
@@ -98,17 +98,147 @@ fn render_dashboard(frame: &mut ratatui::Frame<'_>, app: &AppState, theme: TuiTh
     };
     let body = Layout::new(
         body_direction,
-        [Constraint::Percentage(40), Constraint::Percentage(60)],
+        [
+            Constraint::Percentage(28),
+            Constraint::Percentage(34),
+            Constraint::Percentage(38),
+        ],
     )
     .split(rows[1]);
 
-    let items: Vec<ListItem> = TUI_MENU_ITEMS
+    render_users(frame, body[0], app, theme);
+    render_profiles(frame, body[1], app, theme);
+    render_actions(frame, body[2], app, theme);
+
+    let footer = Paragraph::new(vec![
+        Line::from(vec![
+            Span::styled(" Up/Down", theme.accent_style()),
+            Span::raw(" move   "),
+            Span::styled("Left/Right/Tab", theme.accent_style()),
+            Span::raw(" pane   "),
+            Span::styled("Enter", theme.accent_style()),
+            Span::raw(" run   "),
+            Span::styled("q/Esc", theme.accent_style()),
+            Span::raw(" quit"),
+        ]),
+        Line::from(Span::styled(app.status.as_str(), theme.muted_style())),
+    ]);
+    frame.render_widget(footer, rows[2]);
+}
+
+fn render_users(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, theme: TuiTheme) {
+    let items: Vec<ListItem> = app
+        .context
+        .users
+        .iter()
+        .map(|user| {
+            let lock = if user.is_locked { "locked" } else { "open" };
+            let active = if user.is_active { " active" } else { "" };
+            let admin = if user.is_admin { " admin" } else { "" };
+            ListItem::new(Line::from(vec![
+                Span::styled(format!("#{} ", user.id), theme.muted_style()),
+                Span::styled(&user.name, Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw("  "),
+                Span::styled(lock, lock_style(user.is_locked, theme)),
+                Span::styled(active, theme.muted_style()),
+                Span::styled(admin, theme.muted_style()),
+                Span::styled(
+                    format!("  {} profile(s)", user.profile_count),
+                    theme.muted_style(),
+                ),
+            ]))
+        })
+        .collect();
+    let title = if matches!(app.focus, TuiFocus::Users) {
+        " Users * "
+    } else {
+        " Users "
+    };
+    let mut state = ListState::default();
+    if !items.is_empty() {
+        state.select(Some(app.selected_user));
+    }
+    let list = List::new(items)
+        .block(Block::default().borders(Borders::ALL).title(title))
+        .highlight_style(selection_style(app.focus, TuiFocus::Users, theme))
+        .highlight_symbol("> ");
+    frame.render_stateful_widget(list, area, &mut state);
+}
+
+fn render_profiles(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, theme: TuiTheme) {
+    let user = app.selected_user();
+    let items: Vec<ListItem> = user
+        .map(|user| {
+            if user.is_locked {
+                vec![ListItem::new(Line::from(vec![
+                    Span::styled("Locked user", Style::default().fg(theme.planned)),
+                    Span::raw("  "),
+                    Span::styled("Enter unlocks via CLI prompt", theme.muted_style()),
+                ]))]
+            } else if user.profiles.is_empty() {
+                vec![ListItem::new(Line::from(Span::styled(
+                    "No profiles for this user",
+                    theme.muted_style(),
+                )))]
+            } else {
+                user.profiles
+                    .iter()
+                    .map(|profile| {
+                        let fav = if profile.favorite { "*" } else { " " };
+                        ListItem::new(Line::from(vec![
+                            Span::styled(format!("{:>2}.", profile.selector), theme.muted_style()),
+                            Span::raw(fav),
+                            Span::styled(
+                                &profile.name,
+                                Style::default().add_modifier(Modifier::BOLD),
+                            ),
+                            Span::styled(
+                                format!("  {}", profile.protocol),
+                                Style::default().fg(theme.accent),
+                            ),
+                            Span::styled(format!("  {}", profile.host), theme.muted_style()),
+                        ]))
+                    })
+                    .collect()
+            }
+        })
+        .unwrap_or_else(|| {
+            vec![ListItem::new(Line::from(Span::styled(
+                "No user selected",
+                theme.muted_style(),
+            )))]
+        });
+
+    let title = if matches!(app.focus, TuiFocus::Profiles) {
+        " Profiles * "
+    } else {
+        " Profiles "
+    };
+    let mut state = ListState::default();
+    if user
+        .map(|u| !u.is_locked && !u.profiles.is_empty())
+        .unwrap_or(false)
+    {
+        state.select(Some(app.selected_profile));
+    }
+    let list = List::new(items)
+        .block(Block::default().borders(Borders::ALL).title(title))
+        .highlight_style(selection_style(app.focus, TuiFocus::Profiles, theme))
+        .highlight_symbol("> ");
+    frame.render_stateful_widget(list, area, &mut state);
+}
+
+fn render_actions(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, theme: TuiTheme) {
+    let chunks = Layout::vertical([Constraint::Min(7), Constraint::Length(8)]).split(area);
+
+    let items: Vec<ListItem> = TUI_ACTION_ITEMS
         .iter()
         .map(|item| {
-            let phase_style = if item.intent.is_some() {
-                Style::default().fg(theme.ready)
-            } else {
-                Style::default().fg(theme.planned)
+            let phase_style = match item.intent {
+                TuiActionIntent::ProfilesInteractive | TuiActionIntent::Profile(_) => {
+                    Style::default().fg(theme.ready)
+                }
+                TuiActionIntent::Planned => Style::default().fg(theme.planned),
             };
             ListItem::new(Line::from(vec![
                 Span::styled(item.title, Style::default().add_modifier(Modifier::BOLD)),
@@ -118,27 +248,44 @@ fn render_dashboard(frame: &mut ratatui::Frame<'_>, app: &AppState, theme: TuiTh
         })
         .collect();
     let mut list_state = ListState::default();
-    list_state.select(Some(app.selected));
+    list_state.select(Some(app.selected_action));
+    let title = if matches!(app.focus, TuiFocus::Actions) {
+        " Actions * "
+    } else {
+        " Actions "
+    };
     let list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title(" Actions "))
-        .highlight_style(
-            Style::default()
-                .bg(theme.selection)
-                .fg(ratatui::style::Color::White)
-                .add_modifier(Modifier::BOLD),
-        )
+        .block(Block::default().borders(Borders::ALL).title(title))
+        .highlight_style(selection_style(app.focus, TuiFocus::Actions, theme))
         .highlight_symbol("> ");
-    frame.render_stateful_widget(list, body[0], &mut list_state);
+    frame.render_stateful_widget(list, chunks[0], &mut list_state);
 
-    let selected = app.selected_item();
+    let selected = app.selected_action();
+    let user_name = app
+        .selected_user()
+        .map(|user| user.name.as_str())
+        .unwrap_or("-");
+    let profile = app.selected_profile();
+    let profile_name = profile.map(|p| p.name.as_str()).unwrap_or("-");
+    let profile_path = profile.map(|p| p.initial_path.as_str()).unwrap_or("-");
     let details = Paragraph::new(vec![
         Line::from(Span::styled(
             selected.title,
             theme.accent_style().add_modifier(Modifier::BOLD),
         )),
-        Line::from(""),
         Line::from(selected.description),
-        Line::from(""),
+        Line::from(vec![
+            Span::styled("User:    ", theme.muted_style()),
+            Span::raw(user_name),
+        ]),
+        Line::from(vec![
+            Span::styled("Profile: ", theme.muted_style()),
+            Span::raw(profile_name),
+        ]),
+        Line::from(vec![
+            Span::styled("Path:    ", theme.muted_style()),
+            Span::raw(profile_path),
+        ]),
         Line::from(vec![
             Span::styled("Command: ", theme.muted_style()),
             Span::raw(selected.command),
@@ -147,25 +294,33 @@ fn render_dashboard(frame: &mut ratatui::Frame<'_>, app: &AppState, theme: TuiTh
             Span::styled("Status:  ", theme.muted_style()),
             Span::raw(selected.phase),
         ]),
-        Line::from(""),
         Line::from(Span::styled(app.pane_summary(), theme.muted_style())),
     ])
     .block(Block::default().borders(Borders::ALL).title(" Intent "))
     .wrap(Wrap { trim: true });
-    frame.render_widget(details, body[1]);
+    frame.render_widget(details, chunks[1]);
+}
 
-    let footer = Paragraph::new(vec![
-        Line::from(vec![
-            Span::styled(" Up/Down", theme.accent_style()),
-            Span::raw(" move   "),
-            Span::styled("Enter", theme.accent_style()),
-            Span::raw(" activate ready action   "),
-            Span::styled("q/Esc", theme.accent_style()),
-            Span::raw(" quit"),
-        ]),
-        Line::from(Span::styled(app.status.as_str(), theme.muted_style())),
-    ]);
-    frame.render_widget(footer, rows[2]);
+fn selection_style(focus: TuiFocus, pane: TuiFocus, theme: TuiTheme) -> Style {
+    if focus == pane {
+        Style::default()
+            .bg(theme.selection)
+            .fg(Color::White)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default()
+            .bg(Color::DarkGray)
+            .fg(Color::White)
+            .add_modifier(Modifier::BOLD)
+    }
+}
+
+fn lock_style(locked: bool, theme: TuiTheme) -> Style {
+    if locked {
+        Style::default().fg(theme.planned)
+    } else {
+        Style::default().fg(theme.ready)
+    }
 }
 
 /// Run a ratatui surface in raw-mode alternate-screen mode.

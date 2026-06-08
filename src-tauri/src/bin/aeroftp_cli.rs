@@ -9238,6 +9238,163 @@ fn list_vault_profiles(cli: &Cli, format: OutputFormat, overrides: ProfilesViewO
     0
 }
 
+fn build_tui_context(cli: &Cli, store: &CredentialStore) -> Result<cli_tui::TuiContext, String> {
+    let users = user_partitions::cli_list_users(store)?;
+    let stats = user_partitions::cli_storage_stats(store).unwrap_or_default();
+    let stats_by_user: HashMap<i64, usize> = stats
+        .into_iter()
+        .map(|stat| (stat.user_id, stat.profile_count.max(0) as usize))
+        .collect();
+    let favorites = load_favorite_server_ids(store);
+
+    let users = users
+        .into_iter()
+        .map(|user| {
+            let profiles_result =
+                user_partitions::cli_list_server_profiles_for_user(store, user.id);
+            let (is_locked, profiles) = match profiles_result {
+                Ok(profiles) => (false, profiles),
+                Err(err) if err == "USER_LOCKED" => (true, Vec::new()),
+                Err(err) => return Err(err),
+            };
+            let visible_profiles: Vec<cli_tui::TuiProfile> = profiles
+                .iter()
+                .enumerate()
+                .map(|(idx, profile)| {
+                    let id = profile.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                    cli_tui::TuiProfile {
+                        selector: (idx + 1).to_string(),
+                        name: profile
+                            .get("name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("unnamed")
+                            .to_string(),
+                        protocol: profile
+                            .get("protocol")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("ftp")
+                            .to_string(),
+                        host: host_subtitle(profile),
+                        initial_path: profile
+                            .get("initialPath")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("/")
+                            .to_string(),
+                        favorite: !id.is_empty() && favorites.contains(id),
+                    }
+                })
+                .collect();
+            let profile_count = stats_by_user
+                .get(&user.id)
+                .copied()
+                .unwrap_or(visible_profiles.len());
+            Ok(cli_tui::TuiUser {
+                id: user.id,
+                name: user.name,
+                is_active: user.is_active,
+                is_locked,
+                is_admin: user.is_admin,
+                profile_count,
+                profiles: visible_profiles,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+
+    let initial_user = if let Some(user_name) = cli.user.as_deref() {
+        users
+            .iter()
+            .position(|user| user.name.eq_ignore_ascii_case(user_name))
+            .unwrap_or_else(|| {
+                users
+                    .iter()
+                    .position(|user| user.is_active)
+                    .unwrap_or_default()
+            })
+    } else {
+        users
+            .iter()
+            .position(|user| user.is_active)
+            .unwrap_or_default()
+    };
+
+    Ok(cli_tui::TuiContext {
+        users,
+        initial_user,
+    })
+}
+
+async fn cmd_tui(cli: &mut Cli, format: OutputFormat) -> i32 {
+    if matches!(format, OutputFormat::Json) {
+        print_error(format, "TUI requires text output; remove --json", 5);
+        return 5;
+    }
+    if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
+        print_error(format, "TUI requires an interactive terminal", 5);
+        return 5;
+    }
+
+    let store = match open_vault(cli) {
+        Ok(store) => store,
+        Err(err) => {
+            print_error(format, &err, 5);
+            return 5;
+        }
+    };
+    let context = match build_tui_context(cli, &store) {
+        Ok(context) => context,
+        Err(err) => {
+            print_error(format, &format!("Failed to load TUI context: {}", err), 5);
+            return 5;
+        }
+    };
+
+    match cli_tui::run_tui(context) {
+        Ok(cli_tui::TuiIntent::Quit) => 0,
+        Ok(cli_tui::TuiIntent::ProfilesInteractive { user_name }) => {
+            cli.user = Some(user_name);
+            cli.profile = None;
+            list_vault_profiles(
+                cli,
+                format,
+                ProfilesViewOverrides {
+                    interactive: true,
+                    ..ProfilesViewOverrides::default()
+                },
+            )
+        }
+        Ok(cli_tui::TuiIntent::ProfileAction {
+            user_name,
+            profile_selector,
+            action,
+        }) => {
+            cli.user = Some(user_name);
+            cli.profile = Some(profile_selector);
+            match action {
+                cli_tui::TuiProfileAction::ListRoot => {
+                    cmd_ls(
+                        "_", "/", true, "name", false, false, None, false, false, cli, format,
+                    )
+                    .await
+                }
+                cli_tui::TuiProfileAction::Tree => cmd_tree("_", "/", 2, cli, format).await,
+                cli_tui::TuiProfileAction::Quota => cmd_df("_", false, false, cli, format).await,
+                cli_tui::TuiProfileAction::DiskUsage => {
+                    cmd_ncdu("_", "/", 50, None, cli, format).await
+                }
+            }
+        }
+        Err(err) => {
+            let code = if err.kind() == std::io::ErrorKind::Unsupported {
+                5
+            } else {
+                99
+            };
+            print_error(format, &format!("TUI error: {}", err), code);
+            code
+        }
+    }
+}
+
 /// Build `ProfileView` borrows from the in-memory profile JSON. The lifetime
 /// is tied to the input vector: the caller keeps it alive for as long as the
 /// views are needed.
@@ -41440,7 +41597,7 @@ async fn main() {
         }
     };
 
-    let cli = Cli::parse_from(args);
+    let mut cli = Cli::parse_from(args);
     let format = cli.output_format();
 
     // Stash JSON-mode globally so banner-emitting helpers far down
@@ -41541,6 +41698,11 @@ async fn main() {
     }
 
     maybe_check_for_updates(&cli).await;
+
+    if matches!(&cli.command, Commands::Tui) {
+        let exit_code = cmd_tui(&mut cli, format).await;
+        std::process::exit(exit_code);
+    }
 
     let exit_code = match &cli.command {
         Commands::Connect { url } => cmd_connect(url, &cli, format).await,
@@ -43048,33 +43210,7 @@ async fn main() {
             paid,
             protocols,
         } => cmd_catalog(query, category.as_deref(), *free, *paid, *protocols, format),
-        Commands::Tui => {
-            if matches!(format, OutputFormat::Json) {
-                print_error(format, "TUI requires text output; remove --json", 5);
-                5
-            } else {
-                match cli_tui::run_tui() {
-                    Ok(cli_tui::TuiIntent::Quit) => 0,
-                    Ok(cli_tui::TuiIntent::ProfilesInteractive) => list_vault_profiles(
-                        &cli,
-                        format,
-                        ProfilesViewOverrides {
-                            interactive: true,
-                            ..ProfilesViewOverrides::default()
-                        },
-                    ),
-                    Err(err) => {
-                        let code = if err.kind() == std::io::ErrorKind::Unsupported {
-                            5
-                        } else {
-                            99
-                        };
-                        print_error(format, &format!("TUI error: {}", err), code);
-                        code
-                    }
-                }
-            }
-        }
+        Commands::Tui => unreachable!("TUI is handled before the regular dispatcher"),
         Commands::Profiles {
             _ignored: _,
             sort,
