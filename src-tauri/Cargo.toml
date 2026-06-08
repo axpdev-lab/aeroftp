@@ -209,7 +209,7 @@ zstd = "0.13"
 # Crate: reed-solomon-erasure (pure-Rust GF(2^8) implementation).
 # - Block-level parity over ciphertext chunks (the exact bytes protected by existing cipher_hash).
 # - Chosen for: maturity, no C FFI, configurable shard counts, good perf on the sizes we use (256KiB–16MiB chunks).
-# - Audit note / D-02 justification: see docs/dev/roadmap/APPENDIX-AEROVAULT-V4-ECC/DEPENDENCY-EVALUATION.md (to be written in this phase).
+# - Audit note / D-02 justification: see docs/security-evidence/REED-SOLOMON-ERASURE-EVALUATION-2026-06.md.
 # - Kept out of default features until the ECC path is exercised and reviewed.
 reed-solomon-erasure = "6"
 # aerorsync: XXH3-128 file-level checksum trailer (S8j). Provides
