@@ -11149,6 +11149,15 @@ fn print_profiles_summary_with_reorder(live: &[serde_json::Value], src: usize, d
             s.to_string()
         }
     };
+    // New/changed index numbers read as "added" in a diff, so paint them green
+    // (the struck old number stays red). #270, EhudKirsh.
+    let green = |s: &str| {
+        if color_on {
+            format!("\x1b[32m{}\x1b[0m", s)
+        } else {
+            s.to_string()
+        }
+    };
 
     // Analytic old -> new index map: the list changed only by removing the
     // profile at `src` and reinserting it at `dst`, so we can compute each
@@ -11197,7 +11206,11 @@ fn print_profiles_summary_with_reorder(live: &[serde_json::Value], src: usize, d
             let (plain, rendered) = if color_on {
                 (
                     format!("{}{}", old + 1, new + 1),
-                    format!("{}{}", red(&strikethrough(&(old + 1).to_string())), new + 1),
+                    format!(
+                        "{}{}",
+                        red(&strikethrough(&(old + 1).to_string())),
+                        green(&(new + 1).to_string()),
+                    ),
                 )
             } else {
                 let s = format!("{}>{}", old + 1, new + 1);
@@ -11236,7 +11249,7 @@ fn print_profiles_summary_with_reorder(live: &[serde_json::Value], src: usize, d
     rows.insert(
         live_pos,
         Row {
-            idx_rendered: live_plain.clone(),
+            idx_rendered: green(&live_plain),
             idx_plain: live_plain,
             profile_ci: dst,
             old_index: None,
@@ -11251,24 +11264,20 @@ fn print_profiles_summary_with_reorder(live: &[serde_json::Value], src: usize, d
     let live_row_pos = rows.iter().position(|r| r.live_row).unwrap_or(0);
     let arrow_top = ghost_pos.min(live_row_pos);
     let arrow_bot = ghost_pos.max(live_row_pos);
+    // Three-cell left gutter: a corner/vertical bar, a connector dash, and the
+    // arrowhead. The arrowhead (`>`) lands only on the live (destination) row;
+    // the ghost endpoint closes the bracket with a second dash. The extra dash
+    // (vs a bare `>`) is Ehud's #270 polish: `└─>` reads better than `└>`.
     let gutter = |i: usize, is_live: bool| -> String {
-        let bar = if i == arrow_top {
-            '\u{250c}' // top corner
-        } else if i == arrow_bot {
-            '\u{2514}' // bottom corner
+        if i == arrow_top || i == arrow_bot {
+            let corner = if i == arrow_top { '\u{250c}' } else { '\u{2514}' };
+            let head = if is_live { '>' } else { '\u{2500}' };
+            format!("{}\u{2500}{}", corner, head)
         } else if i > arrow_top && i < arrow_bot {
-            '\u{2502}' // vertical
+            format!("{}  ", '\u{2502}') // vertical bar + two spaces
         } else {
-            ' '
-        };
-        let head = if is_live {
-            '>'
-        } else if i == arrow_top || i == arrow_bot {
-            '\u{2500}' // dash on the non-live endpoint
-        } else {
-            ' '
-        };
-        format!("{}{}", bar, head)
+            "   ".to_string() // three spaces: no arrow on this row
+        }
     };
 
     // Column widths over every referenced profile.
@@ -11303,9 +11312,11 @@ fn print_profiles_summary_with_reorder(live: &[serde_json::Value], src: usize, d
         .unwrap_or(2)
         .max(2);
 
+    // Four-space lead-in matches the three-cell gutter plus its trailing space;
+    // the `#` is left-aligned so it sits over the left-aligned index column.
     eprintln!();
     eprintln!(
-        "   {:>idx$}  {:<nw$}  {:<bw$}  {:<hw$}",
+        "    {:<idx$}  {:<nw$}  {:<bw$}  {:<hw$}",
         "#",
         "Name",
         "Badges",
@@ -11316,15 +11327,16 @@ fn print_profiles_summary_with_reorder(live: &[serde_json::Value], src: usize, d
         hw = host_w,
     );
     let total_w = idx_w + 2 + name_w + 2 + badge_w + 2 + host_w;
-    eprintln!("   {}", "\u{2500}".repeat(total_w));
+    eprintln!("    {}", "\u{2500}".repeat(total_w));
     for (i, r) in rows.iter().enumerate() {
         let p = &live[r.profile_ci];
         let name = truncate_cell(p.get("name").and_then(|v| v.as_str()).unwrap_or(""), name_w);
         let badge = truncate_cell(&badge_display_label(p), badge_w);
         let host = truncate_cell(&host_subtitle(p), host_w);
-        // Right-align the index cell honouring its ANSI-free display width.
+        // Left-align the index cell (honouring its ANSI-free display width) so
+        // every struck old number shares a column with the others. #270.
         let pad = idx_w.saturating_sub(r.idx_plain.chars().count());
-        let idx_cell = format!("{}{}", " ".repeat(pad), r.idx_rendered);
+        let idx_cell = format!("{}{}", r.idx_rendered, " ".repeat(pad));
         let body = format!(
             "{:<nw$}  {:<bw$}  {:<hw$}",
             name,
@@ -11334,8 +11346,10 @@ fn print_profiles_summary_with_reorder(live: &[serde_json::Value], src: usize, d
             bw = badge_w,
             hw = host_w,
         );
+        // The moved profile is relocated, not deleted: strike its old-slot copy
+        // through without red so it does not read as a tombstone. #270.
         let body = if r.ghost {
-            red(&strikethrough(&body))
+            strikethrough(&body)
         } else {
             body
         };
