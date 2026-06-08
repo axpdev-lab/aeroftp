@@ -1047,6 +1047,29 @@ small-file batching, Gear-CDC chunking, keyed BLAKE3-128 chunk ids
 (dedup), per-chunk zstd, AES-256-GCM-SIV, BLAKE3-256 cipher-block hashes;
 the `archive` compression profile widens the CDC bounds for a better
 ratio at the cost of finer-grained dedup. Password resolves from
+
+### ECC (v4 track) — Reed-Solomon error-correction
+
+v4 = v3 + non-critical "ecc.reed-solomon" (ECC last wrapper). Opt-in at create:
+
+```bash
+# Create v3 + ECC (real RS shards on every seal; ~20% overhead, v2 grid)
+AEROFTP_VAULT_PASSWORD=secret aeroftp-cli vault create ecc.aerovault --ecc
+
+# Info advertises it
+aeroftp-cli vault info ecc.aerovault --json   # has_ecc: true, ecc: {enabled,algorithm:"reed-solomon",...}
+
+# Scrub (returns checked + damaged list)
+aeroftp-cli vault scrub ecc.aerovault
+
+# Repair (honest: "repaired R of D" or "vault left untouched"; --dry-run preview)
+aeroftp-cli vault repair ecc.aerovault --dry-run
+aeroftp-cli vault repair ecc.aerovault
+```
+
+See `aeroftp-cli vault --help`, the APPENDIX-AEROVAULT-V4-ECC, AEROVAULT-V3-SPEC §11, and AGENTS.md (use direct paths for vault; --profile for remote servers). Receipts (`--receipt` or GUI) now include ecc_* fields when present (P3-03). All via the shared engine (22 tests, live verified 20.1% overhead + full corrupt→repair→extract SHA-256 match). 
+
+(Closes T-AEROVAULT-ECC.)
 `--password` / `-p`, `AEROFTP_VAULT_PASSWORD`, or a TTY prompt. `vault
 add --receipt <path>` writes a machine-readable JSON receipt and prints a
 human-readable summary to stderr (stdout stays clean JSON for piping).

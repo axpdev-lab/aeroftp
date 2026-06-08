@@ -123,6 +123,11 @@ export interface VaultReport {
     ms_total: number;
     steps: string[];
     attribution: string;
+    // P3-03 ECC telemetry (populated on seal for ECC vaults; optional for compat)
+    ecc_shards_generated?: number;
+    ecc_bytes_protected?: number;
+    ecc_overhead_pct?: number;
+    ecc_repair_events?: number;
 }
 
 interface VaultV3Info {
@@ -1196,6 +1201,8 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
     }, []);
 
     // --- P2 ECC scrub/repair (call the Tauri commands we exposed; draggable modals in UI) ---
+    // Re-aligned to hardened engine (P2-HARD + P2-09 v2): scrub {damaged, count, checked},
+    // repair {repaired, damaged, dry_run}. Honest msgs + checked count surfaced.
     const handleScrub = async () => {
         if (!vaultPath) return;
         setLoading(true);
@@ -1204,7 +1211,9 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
             const res = await invoke<any>('vault_v3_scrub', { vaultPath, password });
             setScrubResult(res);
             setShowScrubDialog(true);
-            setSuccess(`Scrub complete: ${res.count || 0} damaged`);
+            const checked = res.checked ?? res.count ?? 0;
+            const damaged = res.count ?? (res.damaged ? res.damaged.length : 0);
+            setSuccess(t('vault.scrubComplete', { checked: String(checked), damaged: String(damaged) }));
         } catch (e) {
             setError(mapVaultError(e, t));
         } finally {
@@ -1221,9 +1230,19 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
             setRepairResult(res);
             if (!repairDryRun) {
                 await refreshVaultEntries();
-                setSuccess(`Repair complete: ${res.repaired || 0} chunks fixed`);
+                const repaired = res.repaired ?? 0;
+                const damaged = res.damaged ?? 0;
+                if (damaged === 0) {
+                    setSuccess(t('vault.repairNoDamage'));
+                } else if (repaired === 0) {
+                    setSuccess(t('vault.repairUntouched', { damaged: String(damaged) }));
+                } else if (repaired < damaged) {
+                    setSuccess(t('vault.repairPartial', { repaired: String(repaired), damaged: String(damaged) }));
+                } else {
+                    setSuccess(t('vault.repairSuccess', { repaired: String(repaired) }));
+                }
             }
-            // keep dialog open to show result, or close
+            // keep dialog open to show result (modal renders honest summary from repairResult)
         } catch (e) {
             setError(mapVaultError(e, t));
         } finally {

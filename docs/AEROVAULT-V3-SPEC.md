@@ -196,3 +196,19 @@ Compatibility rules:
 ## 10. AeroVault v2 Spec Correction
 
 The v2 wire format stores the HMAC-SHA512 at bytes `448..512` and computes it over all 512 header bytes with that MAC field zeroed. Earlier prose in the v2 spec described the MAC as if it lived at `128..192`; that was documentation drift, not the implementation contract.
+
+## 11. v4 Evolution Note (T-AEROVAULT-ECC, shipped)
+
+v4 = v3 + non-critical "ecc.reed-solomon" extension (always critical=false). The extension carries a v2 Reed-Solomon payload (AVEC magic, version=2, K=10/P=2 fixed grid over the concatenated live-block stream, per-shard 16-byte truncated BLAKE3 for erasure localization, parity data). 
+
+- Overhead target: ~P/K = 20% (clamped shard size; proven on real incompressible data).
+- Damage model: per-shard cksums (not just per-block cipher_hash) so rot inside a large CDC chunk only erases the affected shards; a bad parity shard is detected and routed around.
+- Repair contract (all-or-nothing): reconstruct, re-verify *every* repaired block against its manifest cipher_hash; persist the re-sealed vault only if *all* verify, else leave the file byte-for-byte untouched.
+- scrub/repair exposed in GUI (draggable modals, template-faithful) and CLI (`vault scrub`, `vault repair [--dry-run]`).
+- Receipt/VaultReport carries ecc_* fields (shards_generated, bytes_protected, overhead_pct, repair_events) for ops on ECC vaults.
+- Forward-compat: pure v3 open/extract path ignores the non-critical ext and still works (magic stays AEROVAULT3 / format=3).
+- Pipeline position: ECC is the *fourth* first-class wrapper, after crypt (see #276 wrapper-stack discussion).
+
+Implementation, tests (22), live proof, surfaces (P3), docs and close tracked in `docs/dev/roadmap/APPENDIX-AEROVAULT-V4-ECC/`. "v3 + ECC = v4".
+
+See also: CHANGELOG (Unreleased), SECURITY.md (formats table), CLI-GUIDE (vault subcommand), ROADMAP.

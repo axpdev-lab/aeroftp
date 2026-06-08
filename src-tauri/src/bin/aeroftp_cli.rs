@@ -2557,13 +2557,18 @@ enum Commands {
     },
     /// AeroVault encrypted container operations (.aerovault), all formats
     ///
-    /// Calls the exact backend the GUI invokes through Tauri commands.
-    /// v3 (default) is the wrapper-stack format; v2 is the
-    /// AES-256-GCM-SIV format; v1 is the legacy WinZip-AES container.
-    /// For an existing file the version is auto-detected from its
-    /// header, so `info`/`add`/`extract` work without `--vault-version`.
-    /// A working CLI round-trip proves the format and packing paths are
-    /// sound and only frontend wiring remains for the GUI.
+    /// Calls the exact backend the GUI invokes through Tauri commands (shared lib).
+    /// v3 (default) is the wrapper-stack format (compression→chunk→crypt→ECC-last);
+    /// v2 is the AES-256-GCM-SIV format; v1 is the legacy WinZip-AES container.
+    /// For an existing file the version is auto-detected from its header, so
+    /// `info`/`add`/`extract` work without `--vault-version`.
+    /// ECC (Reed-Solomon 10+2, v2 fixed-grid payload) is opt-in via `create --ecc`
+    /// (non-critical extension: pure v3 readers still open+extract). Real  ~20%
+    /// overhead (proven on incompressible data), per-shard BLAKE3 cksums for
+    /// localized damage, all-or-nothing repair gate (re-verify every cipher_hash;
+    /// untouched on failure).
+    /// Scrub/repair are read-mostly / safe-by-default; use --json for agents.
+    /// See docs/dev/roadmap/APPENDIX-AEROVAULT-V4-ECC/ and T-AEROVAULT-ECC (#272, Ehud Kirsh).
     Vault {
         #[command(subcommand)]
         command: VaultCommands,
@@ -2665,7 +2670,10 @@ enum UsersCommands {
 #[derive(Subcommand)]
 enum VaultCommands {
     /// Create a new empty AeroVault container (v3 default; v1/v2 selectable).
-    /// Use --ecc for the Phase 1 ECC stub (Reed-Solomon error-correction layer, non-critical).
+    /// Use --ecc for Reed-Solomon ECC (error-correction wrapper, last in 4-wrappers
+    /// pipeline per #276). Non-critical extension: v3 readers still work.
+    /// v2 payload (P2-09): fixed grid, ~20% real overhead independent of chunking,
+    /// per-shard cksums + all-or-nothing repair gate.
     Create {
         /// Path to the .aerovault file to create
         path: String,
@@ -2681,10 +2689,9 @@ enum VaultCommands {
         /// v2 only: enable the ChaCha20-Poly1305 cascade (paranoid) mode
         #[arg(long)]
         cascade: bool,
-        /// Enable the ECC (error-correction / Reed-Solomon) stub layer.
-        /// v3+ only. This is the Phase 1 stub (non-critical extension entry with
-        /// zero-length payload). Real RS shards come in the v4 track.
-        /// See T-AEROVAULT-ECC in discussions/272 and the APPENDIX.
+        /// Enable ECC (Reed-Solomon 10+2). v3+ only. Emits non-critical
+        /// "ecc.reed-solomon" extension; real shards + scrub/repair on seal.
+        /// See AEROVAULT-V4-ECC appendix for format, overhead proof, safety.
         #[arg(long)]
         ecc: bool,
     },
@@ -2730,14 +2737,22 @@ enum VaultCommands {
         #[arg(long = "vault-version", short = 'V', default_value = "auto")]
         vault_version: String,
     },
-    /// Scrub an ECC-enabled vault for damage (verifies cipher hashes)
+    /// Scrub an ECC-enabled vault for damage (verifies every live block's cipher_hash).
+    /// Returns {damaged: [...], count: N, checked: M} (M = total chunks walked).
+    /// Text mode prints "No damage detected (K chunks checked)" or the list.
+    /// Safe, read-only. Use --json for agents. See also `repair`.
     Scrub {
         /// Path to the .aerovault file
         path: String,
         #[arg(long, short = 'p')]
         password: Option<String>,
     },
-    /// Repair a damaged ECC-enabled vault using stored parity
+    /// Repair a damaged ECC-enabled vault using stored Reed-Solomon parity (v2 grid).
+    /// Per-shard cksums localize erasures (incl. bad parity shards); RS reconstructs;
+    /// every reconstructed block is re-verified against its manifest cipher_hash.
+    /// Persist ONLY if ALL verify (all-or-nothing); else vault byte-for-byte untouched.
+    /// Returns {repaired, damaged, dry_run}. Honest text: "repaired X of Y", "vault left untouched", etc.
+    /// --dry-run: preview only. Requires ECC (create --ecc).
     Repair {
         /// Path to the .aerovault file
         path: String,
@@ -42701,8 +42716,12 @@ async fn main() {
                                 )
                                 .await
                             } else {
-                                aerovault_v3::vault_v3_create(path.clone(), pw, Some(profile.clone()))
-                                    .await
+                                aerovault_v3::vault_v3_create(
+                                    path.clone(),
+                                    pw,
+                                    Some(profile.clone()),
+                                )
+                                .await
                             }
                         }
                     };
@@ -42859,12 +42878,15 @@ async fn main() {
                                     let has_ecc = aerovault_v3::vault_v3_has_ecc(path.clone())
                                         .await
                                         .unwrap_or(false);
-                                    let base_val = serde_json::to_value(&info)
-                                        .map_err(|e| e.to_string());
+                                    let base_val =
+                                        serde_json::to_value(&info).map_err(|e| e.to_string());
                                     match base_val {
                                         Ok(mut v) => {
                                             if let Some(obj) = v.as_object_mut() {
-                                                obj.insert("has_ecc".to_string(), serde_json::json!(has_ecc));
+                                                obj.insert(
+                                                    "has_ecc".to_string(),
+                                                    serde_json::json!(has_ecc),
+                                                );
                                             }
                                             Ok(v)
                                         }
@@ -42997,18 +43019,34 @@ async fn main() {
                                 match format {
                                     OutputFormat::Json => print_json(&report),
                                     OutputFormat::Text => {
-                                        if let Some(damaged) = report.get("damaged").and_then(|v| v.as_array()) {
+                                        if let Some(damaged) =
+                                            report.get("damaged").and_then(|v| v.as_array())
+                                        {
                                             if damaged.is_empty() {
-                                                println!("No damage detected ({} chunks checked)", report.get("checked").and_then(|v| v.as_u64()).unwrap_or(0));
+                                                println!(
+                                                    "No damage detected ({} chunks checked)",
+                                                    report
+                                                        .get("checked")
+                                                        .and_then(|v| v.as_u64())
+                                                        .unwrap_or(0)
+                                                );
                                             } else {
-                                                println!("Damage detected in {} chunks:", damaged.len());
+                                                println!(
+                                                    "Damage detected in {} chunks:",
+                                                    damaged.len()
+                                                );
                                                 for d in damaged {
                                                     if let (Some(id), Some(start), Some(len)) = (
                                                         d.get("id").and_then(|x| x.as_str()),
-                                                        d.get("on_disk_start").and_then(|x| x.as_u64()),
-                                                        d.get("on_disk_len").and_then(|x| x.as_u64()),
+                                                        d.get("on_disk_start")
+                                                            .and_then(|x| x.as_u64()),
+                                                        d.get("on_disk_len")
+                                                            .and_then(|x| x.as_u64()),
                                                     ) {
-                                                        println!("  - {} at offset {} ({} bytes)", id, start, len);
+                                                        println!(
+                                                            "  - {} at offset {} ({} bytes)",
+                                                            id, start, len
+                                                        );
                                                     }
                                                 }
                                             }
@@ -43024,7 +43062,11 @@ async fn main() {
                         }
                     }
                 }
-                VaultCommands::Repair { path, password, dry_run } => {
+                VaultCommands::Repair {
+                    path,
+                    password,
+                    dry_run,
+                } => {
                     let pw = resolve_pw(password);
                     let ver = if path.trim().is_empty() {
                         "v3".to_string()
@@ -43040,11 +43082,23 @@ async fn main() {
                                 match format {
                                     OutputFormat::Json => print_json(&report),
                                     OutputFormat::Text => {
-                                        let repaired = report.get("repaired").and_then(|v| v.as_u64()).unwrap_or(0);
-                                        let damaged = report.get("damaged").and_then(|v| v.as_u64()).unwrap_or(0);
-                                        let is_dry = report.get("dry_run").and_then(|v| v.as_bool()).unwrap_or(false);
+                                        let repaired = report
+                                            .get("repaired")
+                                            .and_then(|v| v.as_u64())
+                                            .unwrap_or(0);
+                                        let damaged = report
+                                            .get("damaged")
+                                            .and_then(|v| v.as_u64())
+                                            .unwrap_or(0);
+                                        let is_dry = report
+                                            .get("dry_run")
+                                            .and_then(|v| v.as_bool())
+                                            .unwrap_or(false);
                                         if is_dry {
-                                            println!("Dry-run: would repair {} of {} damaged chunk(s)", repaired, damaged);
+                                            println!(
+                                                "Dry-run: would repair {} of {} damaged chunk(s)",
+                                                repaired, damaged
+                                            );
                                         } else if damaged == 0 {
                                             println!("No damage detected; nothing to repair");
                                         } else if repaired == 0 {

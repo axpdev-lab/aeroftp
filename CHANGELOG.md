@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### AeroVault v4 ECC (T-AEROVAULT-ECC) — Reed-Solomon error-correction wrapper, Phase 3+4 close
+
+Full engine (P1 stub + P2 real 10+2 RS on ciphertext with v2 fixed-grid ~20% overhead, per-shard cksums, all-or-nothing repair gate) + surfaces + docs. "v3 + ECC = v4" forward-compat (non-critical extension); ECC runs **last** in the 4-wrappers pipeline (compression → chunking → crypt → ECC) per Ehud Kirsh #272/#276 design.
+
+#### Added
+- Real Reed-Solomon (reed-solomon-erasure 6) on the concatenated live-block stream (P2-09 v2 payload: AVEC magic + version 2, fixed S grid K=10/P=2, clamped 4KiB-1MiB, 16B per-shard BLAKE3 cksum for erasures incl. parity). Overhead proven ~20.1% on 300KB incompressible single-chunk vault (was ~200% v1). 
+- `compute_ecc_shards` / `reconstruct_from_ecc`, `scrub_vault`, `repair_vault` (scrub+RS+re-verify all cipher_hash or untouched+rollback).
+- Tauri: `vault_v3_scrub`, `vault_v3_repair` (+ dry-run).
+- CLI: `aeroftp-cli vault create --ecc`, `vault info` (has_ecc + ecc object), `vault scrub <path>`, `vault repair <path> [--dry-run]`. Text + --json, honest reports ("X checked", "repaired R of D", "vault left untouched").
+- GUI: VaultCreate ECC toggle (experimental), VaultBrowse conditional amber "Scrub ECC"/rose "Repair ECC" (hasEcc || experimental), draggable modals (useDraggableModal, full dark:/rounded-xl/app template), success msgs + honest summaries.
+- P3-03: VaultReport + receipt (GUI mini-terminal + export .txt/.json) now include `ecc_shards_generated`, `ecc_bytes_protected`, `ecc_overhead_pct`, `ecc_repair_events` (populated on every ECC seal).
+- P3-05: i18n keys for all new ECC UI strings (handlers, modals, buttons, hints, results); wired via t() (en.json + fallbacks).
+- P3-06: CLI vault help/man-page polished (top-level + Create/Scrub/Repair docs) with v2 grid, 20%, safety gate, returns, 4-wrappers/ECC-last, appendix refs.
+- P2-HARD: repair safety (re-verify every block vs cipher_hash before persist; write lock; scrub checked count; honest CLI msgs); 22 tests incl. p2_repair_recovers_despite_corrupt_parity_shard, p2_repair_refuses_when_damage_exceeds_redundancy, p2_09_overhead_bounded, stress multi-damage.
+
+#### Changed
+- aerovault_v3 engine: ECC payload bumped to v2 (pre-release, no migration); DamagedChunk module-private; reconstruct sig cleaned; save/rebuild paths updated.
+- Receipt surfaces (VaultReceipt, telemetry render) + CLI receipt paths now surface ECC telemetry when present.
+- GUI modals remain 100% template-faithful (no creep).
+
+#### Fixed / Hardened
+- CLAUDE-AV-ECC-01 (repair trusted unverified RS) closed by all-or-nothing gate + regression tests.
+- v1 one-block-one-shard overhead explosion fixed by v2 grid (P2-09).
+- Latent repair truncation misalignment fixed (fixed-len zero-pad buffers).
+
+#### Docs / Close
+- APPENDIX-AEROVAULT-V4-ECC/ (todo/done + design) kept in sync every micro-step.
+- Phase 4: ROADMAP/SECURITY/SPEC/CLI-GUIDE notes + this CHANGELOG entry (credit Ehud Kirsh + T-AEROVAULT-ECC).
+- T-AEROVAULT-ECC item closed.
+
+All via shared lib (GUI+CLI+tests), --profile for remote (vault local direct), Co-Authored trailers, 22/22 `cargo test --lib aerovault_v3` baseline+interleaved, AGENTS.md followed.
+
+(@Grok 4.3 + prior handoff work; design anchor Ehud Kirsh discussions #272/#276, issue #162)
+
 ## [4.0.4] - 2026-06-07
 
 ### Reversible Restricted-Filename Encoding, CLI Polish and Stability

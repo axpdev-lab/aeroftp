@@ -75,17 +75,17 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                             onClick={state.handleScrub}
                             disabled={state.loading}
                             className="flex items-center gap-1 px-2 py-1 text-xs bg-amber-700 hover:bg-amber-600 text-white rounded"
-                            title="Scrub ECC vault for damage (verify cipher hashes)"
+                            title={t('vault.scrubEcc') + ' (verify cipher hashes)'}
                         >
-                            <Shield size={14} /> Scrub ECC
+                            <Shield size={14} /> {t('vault.scrubEcc')}
                         </button>
                         <button
                             onClick={() => { state.setRepairDryRun(true); state.setShowRepairDialog(true); }}
                             disabled={state.loading}
                             className="flex items-center gap-1 px-2 py-1 text-xs bg-rose-700 hover:bg-rose-600 text-white rounded"
-                            title="Repair using Reed-Solomon parity (dry-run preview available)"
+                            title={t('vault.repairEcc') + ' (dry-run preview available)'}
                         >
-                            <Wrench size={14} /> Repair ECC
+                            <Wrench size={14} /> {t('vault.repairEcc')}
                         </button>
                     </>
                 )}
@@ -325,16 +325,16 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                     >
                         <div {...scrubDrag.dragHandleProps} className="px-4 py-2.5 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between cursor-move bg-gray-50 dark:bg-gray-800/60">
                             <div className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
-                                <Shield size={16} className="text-amber-500" /> ECC Scrub Result
+                                <Shield size={16} className="text-amber-500" /> {t('vault.eccScrubResult')}
                             </div>
                             <button onClick={() => state.setShowScrubDialog(false)} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700">✕</button>
                         </div>
                         <div className="p-4 text-sm max-h-[60vh] overflow-auto">
                             {!state.scrubResult || (state.scrubResult.count ?? 0) === 0 ? (
-                                <div className="text-emerald-600 dark:text-emerald-400">No damage detected. All cipher hashes match the stored blocks.</div>
+                                <div className="text-emerald-600 dark:text-emerald-400">{t('vault.noDamageDetected')} {t('vault.checkedParen', { count: String(state.scrubResult?.checked ?? state.scrubResult?.count ?? 0) })}</div>
                             ) : (
                                 <div>
-                                    <div className="mb-2 text-amber-600 dark:text-amber-400 font-medium">{state.scrubResult.count} damaged chunk(s) found:</div>
+                                    <div className="mb-2 text-amber-600 dark:text-amber-400 font-medium">{t('vault.damagedChunksFound', { count: String(state.scrubResult.count), checked: String(state.scrubResult.checked ?? '?') })}</div>
                                     <ul className="space-y-1 text-xs">
                                         {(state.scrubResult.damaged || []).map((d: any, i: number) => (
                                             <li key={i} className="p-2 rounded bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
@@ -342,13 +342,13 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                                             </li>
                                         ))}
                                     </ul>
-                                    <div className="mt-3 text-[11px] text-gray-500 dark:text-gray-400">Use Repair ECC to attempt recovery from stored Reed-Solomon parity (if available).</div>
+                                    <div className="mt-3 text-[11px] text-gray-500 dark:text-gray-400">{t('vault.useRepairHint')}</div>
                                 </div>
                             )}
                         </div>
                         <div className="p-3 border-t border-gray-200 dark:border-gray-700 flex justify-end">
-                            <button onClick={() => state.setShowScrubDialog(false)} className="px-3 py-1 text-sm rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Close</button>
-                            <button onClick={() => { state.setShowScrubDialog(false); state.setShowRepairDialog(true); }} className="ml-2 px-3 py-1 text-sm rounded bg-rose-600 text-white hover:bg-rose-500">Open Repair</button>
+                            <button onClick={() => state.setShowScrubDialog(false)} className="px-3 py-1 text-sm rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">{t('vault.close')}</button>
+                            <button onClick={() => { state.setShowScrubDialog(false); state.setShowRepairDialog(true); }} className="ml-2 px-3 py-1 text-sm rounded bg-rose-600 text-white hover:bg-rose-500">{t('vault.openRepair')}</button>
                         </div>
                     </div>
                 </div>
@@ -364,20 +364,20 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                     >
                         <div {...repairDrag.dragHandleProps} className="px-4 py-2.5 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between cursor-move bg-gray-50 dark:bg-gray-800/60">
                             <div className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
-                                <Wrench size={16} className="text-rose-500" /> ECC Repair
+                                <Wrench size={16} className="text-rose-500" /> {t('vault.eccRepair')}
                             </div>
                             <button onClick={() => state.setShowRepairDialog(false)} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700">✕</button>
                         </div>
                         <div className="p-4 text-sm">
                             <div className="flex items-center gap-2 mb-3">
                                 <input type="checkbox" checked={state.repairDryRun} onChange={e => state.setRepairDryRun(e.target.checked)} className="accent-rose-600" />
-                                <span>Dry-run (preview only, no writes)</span>
+                                <span>{t('vault.dryRunLabel')}</span>
                             </div>
 
                             {/* Show damaged list from last scrub if available, to make it useful before repair */}
                             {state.scrubResult && state.scrubResult.damaged && state.scrubResult.damaged.length > 0 && (
                                 <div className="mb-3">
-                                    <div className="text-amber-600 dark:text-amber-400 font-medium mb-1 text-xs">Damaged chunks (from last scrub):</div>
+                                    <div className="text-amber-600 dark:text-amber-400 font-medium mb-1 text-xs">{t('vault.damagedFromLastScrub')}</div>
                                     <ul className="text-xs max-h-24 overflow-auto border border-gray-200 dark:border-gray-700 rounded p-2 bg-gray-50 dark:bg-gray-800">
                                         {state.scrubResult.damaged.map((d: any, i: number) => (
                                             <li key={i}>{d.id} @ {d.on_disk_start} ({d.on_disk_len}B)</li>
@@ -388,21 +388,30 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
 
                             {state.repairResult ? (
                                 <div className="p-3 rounded bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
-                                    {state.repairResult.dry_run ? 'Dry-run: ' : ''}Repaired {state.repairResult.repaired || 0} chunk(s).
+                                    {(() => {
+                                        const r = state.repairResult.repaired ?? 0;
+                                        const d = state.repairResult.damaged ?? 0;
+                                        const dry = state.repairResult.dry_run;
+                                        const prefix = dry ? 'Dry-run: ' : '';
+                                        if (d === 0) return `${prefix}${t('vault.noDamageNothing')}`;
+                                        if (r === 0) return `${prefix}${t('vault.couldNotRepairAny', { damaged: String(d) })}`;
+                                        if (r < d) return `${prefix}${t('vault.repairedOfDamaged', { repaired: String(r), damaged: String(d) })}`;
+                                        return `${prefix}${t('vault.successfullyRepaired', { repaired: String(r) })}`;
+                                    })()}
                                     {state.repairResult.dry_run && ' (no changes written)'}
                                 </div>
                             ) : (
-                                <div className="text-gray-500 dark:text-gray-400 text-xs">Run scrub first (or use the list above) to preview damages. Repair will attempt recovery using stored Reed-Solomon parity (if within redundancy).</div>
+                                <div className="text-gray-500 dark:text-gray-400 text-xs">{t('vault.runScrubHint')}</div>
                             )}
                         </div>
                         <div className="p-3 border-t border-gray-200 dark:border-gray-700 flex gap-2 justify-end">
-                            <button onClick={() => state.setShowRepairDialog(false)} className="px-3 py-1 text-sm rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Close</button>
+                            <button onClick={() => state.setShowRepairDialog(false)} className="px-3 py-1 text-sm rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">{t('vault.close')}</button>
                             <button
                                 onClick={state.handleRepair}
                                 disabled={state.isRepairing || state.loading}
                                 className="px-3 py-1 text-sm rounded bg-rose-600 text-white hover:bg-rose-500 disabled:opacity-50"
                             >
-                                {state.isRepairing ? 'Repairing...' : (state.repairDryRun ? 'Preview Repair' : 'Repair Now')}
+                                {state.isRepairing ? t('vault.repairing') : (state.repairDryRun ? t('vault.previewRepair') : t('vault.repairNow'))}
                             </button>
                         </div>
                     </div>

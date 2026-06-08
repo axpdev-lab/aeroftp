@@ -389,7 +389,12 @@ impl EccPayload {
         let parity_checksums = read_cksums(num_parity, &mut off);
         let parity_data = data[off..].to_vec();
 
-        Ok(EccPayload { header, data_checksums, parity_checksums, parity_data })
+        Ok(EccPayload {
+            header,
+            data_checksums,
+            parity_checksums,
+            parity_data,
+        })
     }
 }
 
@@ -401,14 +406,17 @@ impl EccPayload {
 ///                exactly the bytes that have a corresponding `cipher_hash` in the
 ///                manifest.
 ///
-/// Returns the serialized payload bytes to store in the extension payload area for
-/// the "ecc.reed-solomon" entry (empty vec when there is no data). See the format
-/// doc above EccPayloadHeader for the on-disk layout and the overhead rationale.
-fn compute_ecc_shards(data_blocks: &[&[u8]]) -> Vec<u8> {
+/// Returns (serialized_payload, shards_generated, bytes_protected, overhead_pct).
+/// shards_generated = total (data+parity) shards in the v2 grid for this seal.
+/// bytes_protected = L (sum of live block on-disk sizes).
+/// overhead_pct uses the *actual* serialized ECC payload size (hdr+cksums+parity data)
+/// vs protected (matches live p2_09 measurements ~20.1%).
+/// Empty input -> (vec![], 0, 0, 0.0). See format doc and P3-03.
+fn compute_ecc_shards(data_blocks: &[&[u8]]) -> (Vec<u8>, u64, u64, f64) {
     // Concatenate the live blocks into the logical stream D of length L.
     let l: usize = data_blocks.iter().map(|b| b.len()).sum();
     if l == 0 {
-        return vec![];
+        return (vec![], 0, 0, 0.0);
     }
     let mut d = Vec::with_capacity(l);
     for b in data_blocks {
@@ -423,6 +431,7 @@ fn compute_ecc_shards(data_blocks: &[&[u8]]) -> Vec<u8> {
 
     let num_data_shards = (l + s - 1) / s;
     let num_groups = (num_data_shards + k - 1) / k;
+    let total_shards = (num_data_shards + num_groups * p) as u64;
 
     // Bytes of data shard `idx` (zero-padded past the end of D).
     let shard_at = |idx: usize| -> Vec<u8> {
@@ -471,7 +480,20 @@ fn compute_ecc_shards(data_blocks: &[&[u8]]) -> Vec<u8> {
         total_data_len: l as u64,
     };
 
-    EccPayload { header, data_checksums, parity_checksums, parity_data }.to_bytes()
+    let payload = EccPayload {
+        header,
+        data_checksums,
+        parity_checksums,
+        parity_data,
+    }
+    .to_bytes();
+    let protected = l as u64;
+    let overhead = if protected > 0 {
+        (payload.len() as f64 / protected as f64) * 100.0
+    } else {
+        0.0
+    };
+    (payload, total_shards, protected, overhead)
 }
 
 /// P2-09: Reconstruct damaged bytes in the live-block stream using the v2 ECC payload.
@@ -489,10 +511,7 @@ fn compute_ecc_shards(data_blocks: &[&[u8]]) -> Vec<u8> {
 /// re-verify every repaired block against its authenticated cipher_hash before
 /// persisting (all-or-nothing safety gate). A grid misalignment (stream length
 /// mismatch) is rejected up front so good data can never be silently overwritten.
-fn reconstruct_from_ecc(
-    blocks: &mut [Vec<u8>],
-    ecc_payload_bytes: &[u8],
-) -> Result<usize, String> {
+fn reconstruct_from_ecc(blocks: &mut [Vec<u8>], ecc_payload_bytes: &[u8]) -> Result<usize, String> {
     if ecc_payload_bytes.is_empty() {
         return Ok(0);
     }
@@ -636,9 +655,8 @@ fn scrub_vault(vault: &OpenVaultV3) -> Vec<DamagedChunk> {
             continue;
         }
 
-        let stored_len = u64::from_le_bytes(
-            vault.data[start..start + 8].try_into().expect("slice"),
-        ) as usize;
+        let stored_len =
+            u64::from_le_bytes(vault.data[start..start + 8].try_into().expect("slice")) as usize;
 
         let block_start = start + 8;
         let block_end = block_start + stored_len;
@@ -673,14 +691,20 @@ fn repair_vault(vault: &mut OpenVaultV3, dry_run: bool) -> Result<usize, String>
         return Ok(0);
     }
 
-    let ecc_entry = vault.extensions.iter().find(|e| e.extension_id == ECC_EXTENSION_ID).cloned();
+    let ecc_entry = vault
+        .extensions
+        .iter()
+        .find(|e| e.extension_id == ECC_EXTENSION_ID)
+        .cloned();
     let ecc_bytes = if let Some(entry) = &ecc_entry {
         if entry.length > 0 {
             let mut f = File::open(&vault.path).map_err(|e| format!("open for repair: {e}"))?;
             let abs = vault.header.extension_payload_offset + entry.offset;
-            f.seek(SeekFrom::Start(abs)).map_err(|e| format!("seek for repair: {e}"))?;
+            f.seek(SeekFrom::Start(abs))
+                .map_err(|e| format!("seek for repair: {e}"))?;
             let mut b = vec![0u8; entry.length as usize];
-            f.read_exact(&mut b).map_err(|e| format!("read ecc payload: {e}"))?;
+            f.read_exact(&mut b)
+                .map_err(|e| format!("read ecc payload: {e}"))?;
             Some(b)
         } else {
             None
@@ -692,30 +716,36 @@ fn repair_vault(vault: &mut OpenVaultV3, dry_run: bool) -> Result<usize, String>
     let mut repaired_count = 0;
 
     if let Some(ecc_b) = ecc_bytes {
-        let mut ordered: Vec<(String, ChunkRecordV3)> = vault.manifest.chunks
+        let mut ordered: Vec<(String, ChunkRecordV3)> = vault
+            .manifest
+            .chunks
             .iter()
             .map(|(id, r)| (id.clone(), r.clone()))
             .collect();
         ordered.sort_by_key(|(_, r)| r.data_offset);
 
-        let mut blocks: Vec<Vec<u8>> = ordered.iter().map(|(_, rec)| {
-            let start = rec.data_offset as usize;
-            let full = 8 + rec.block_len as usize;
-            // Always a fixed-length (8 + block_len) buffer so the concatenated stream
-            // length matches what the ECC parity was computed over, even when the block
-            // is truncated on disk: the missing tail is zero-padded here, flagged as
-            // damaged by its shard checksum, then reconstructed.
-            let mut buf = vec![0u8; full];
-            if start < vault.data.len() {
-                let avail = (vault.data.len() - start).min(full);
-                buf[..avail].copy_from_slice(&vault.data[start..start + avail]);
-            }
-            buf
-        }).collect();
+        let mut blocks: Vec<Vec<u8>> = ordered
+            .iter()
+            .map(|(_, rec)| {
+                let start = rec.data_offset as usize;
+                let full = 8 + rec.block_len as usize;
+                // Always a fixed-length (8 + block_len) buffer so the concatenated stream
+                // length matches what the ECC parity was computed over, even when the block
+                // is truncated on disk: the missing tail is zero-padded here, flagged as
+                // damaged by its shard checksum, then reconstructed.
+                let mut buf = vec![0u8; full];
+                if start < vault.data.len() {
+                    let avail = (vault.data.len() - start).min(full);
+                    buf[..avail].copy_from_slice(&vault.data[start..start + avail]);
+                }
+                buf
+            })
+            .collect();
 
-        let bad_indices: Vec<usize> = damaged.iter().filter_map(|d| {
-            ordered.iter().position(|(id, _)| id == &d.record.id)
-        }).collect();
+        let bad_indices: Vec<usize> = damaged
+            .iter()
+            .filter_map(|d| ordered.iter().position(|(id, _)| id == &d.record.id))
+            .collect();
 
         let _ = reconstruct_from_ecc(&mut blocks, &ecc_b)?;
 
@@ -1962,7 +1992,7 @@ fn build_file_bytes(
     master_key: &[u8; KEY_SIZE],
     manifest: &VaultManifestV3,
     extensions: &[ExtensionEntryV3],
-    extension_payloads: &[u8],  // content of the payload area; entries' offset/len are relative to this
+    extension_payloads: &[u8], // content of the payload area; entries' offset/len are relative to this
     data: &[u8],
 ) -> Result<Vec<u8>, String> {
     let encrypted_manifest = encrypt_manifest(master_key, manifest)?;
@@ -1981,7 +2011,11 @@ fn build_file_bytes(
     header.header_mac = header.compute_mac(mac_key)?;
 
     let mut out = Vec::with_capacity(
-        HEADER_SIZE + data.len() + encrypted_manifest.len() + extension_dir.len() + extension_payloads.len(),
+        HEADER_SIZE
+            + data.len()
+            + encrypted_manifest.len()
+            + extension_dir.len()
+            + extension_payloads.len(),
     );
     out.extend_from_slice(&header.to_bytes());
     out.extend_from_slice(data);
@@ -1991,7 +2025,12 @@ fn build_file_bytes(
     Ok(out)
 }
 
-fn create_empty_vault(path: &Path, password: &str, level: i32, with_ecc: bool) -> Result<(), String> {
+fn create_empty_vault(
+    path: &Path,
+    password: &str,
+    level: i32,
+    with_ecc: bool,
+) -> Result<(), String> {
     if password.len() < MIN_PASSWORD_LEN {
         return Err("Password must be at least 8 characters".to_string());
     }
@@ -2030,7 +2069,7 @@ fn create_empty_vault(path: &Path, password: &str, level: i32, with_ecc: bool) -
         vec![]
     };
     let ext_payloads = if with_ecc {
-        let p = compute_ecc_shards(&[]);
+        let (p, _shards, _prot, _ov) = compute_ecc_shards(&[]);
         if let Some(e) = extensions.first_mut() {
             e.offset = 0;
             e.length = p.len() as u64;
@@ -2039,7 +2078,15 @@ fn create_empty_vault(path: &Path, password: &str, level: i32, with_ecc: bool) -
     } else {
         vec![]
     };
-    let bytes = build_file_bytes(header, &mac_key, &master_key, &manifest, &extensions, &ext_payloads, &[])?;
+    let bytes = build_file_bytes(
+        header,
+        &mac_key,
+        &master_key,
+        &manifest,
+        &extensions,
+        &ext_payloads,
+        &[],
+    )?;
     master_key.zeroize();
     mac_key.zeroize();
     atomic_write(path, &bytes)
@@ -2197,7 +2244,7 @@ fn validate_ranges(header: &VaultHeaderV3, file_len: u64) -> Result<(), String> 
     Ok(())
 }
 
-fn save_open_vault(vault: &OpenVaultV3) -> Result<(), String> {
+fn save_open_vault(vault: &mut OpenVaultV3) -> Result<(), String> {
     assert_vault_generation_current(vault)?;
 
     let mut extensions = vault.extensions.clone();
@@ -2206,29 +2253,41 @@ fn save_open_vault(vault: &OpenVaultV3) -> Result<(), String> {
     // P2-05: if ECC extension is present, recompute the shards on the current data
     // and update the entry + payload. Recompute on every seal (cost is acceptable
     // for the ECC use case; most vaults won't have it enabled).
-    if let Some(ecc_idx) = extensions.iter().position(|e| e.extension_id == ECC_EXTENSION_ID) {
+    if let Some(ecc_idx) = extensions
+        .iter()
+        .position(|e| e.extension_id == ECC_EXTENSION_ID)
+    {
         // Collect on-disk blocks in the order they appear in the data section
         // (sorted by data_offset). Each full block is [u64 len][ciphertext of that len].
         let mut chunk_records: Vec<_> = vault.manifest.chunks.values().cloned().collect();
         chunk_records.sort_by_key(|r| r.data_offset);
 
-        let blocks: Vec<&[u8]> = chunk_records.iter().map(|rec| {
-            let start = rec.data_offset as usize;
-            let full_len = 8 + rec.block_len as usize;
-            if start + full_len <= vault.data.len() {
-                &vault.data[start..start + full_len]
-            } else {
-                &[] as &[u8]
-            }
-        }).collect();
+        let blocks: Vec<&[u8]> = chunk_records
+            .iter()
+            .map(|rec| {
+                let start = rec.data_offset as usize;
+                let full_len = 8 + rec.block_len as usize;
+                if start + full_len <= vault.data.len() {
+                    &vault.data[start..start + full_len]
+                } else {
+                    &[] as &[u8]
+                }
+            })
+            .collect();
 
-        let payload = compute_ecc_shards(&blocks);
+        let (payload, shards, protected, overhead) = compute_ecc_shards(&blocks);
 
         let entry = &mut extensions[ecc_idx];
         entry.offset = 0;
         entry.length = payload.len() as u64;
 
         ext_payloads = payload;
+
+        // P3-03: surface ECC telemetry in the op report (when the caller set one, e.g. add_files).
+        // This captures shards/bytes/overhead for receipts even if report op is "add_files" etc.
+        if shards > 0 || protected > 0 {
+            vault.report.set_ecc_protection(shards, protected, overhead);
+        }
     }
 
     let bytes = build_file_bytes(
@@ -2509,8 +2568,8 @@ pub async fn is_vault_v3(path: String) -> Result<bool, String> {
 /// in the extension directory.
 #[tauri::command]
 pub async fn vault_v3_has_ecc(path: String) -> Result<bool, String> {
-    let mut file = std::fs::File::open(&path)
-        .map_err(|e| format!("Open vault for ECC check: {e}"))?;
+    let mut file =
+        std::fs::File::open(&path).map_err(|e| format!("Open vault for ECC check: {e}"))?;
 
     let mut header_bytes = [0u8; HEADER_SIZE];
     file.read_exact(&mut header_bytes)
@@ -2539,16 +2598,24 @@ pub async fn vault_v3_has_ecc(path: String) -> Result<bool, String> {
 }
 
 #[tauri::command]
-pub async fn vault_v3_scrub(vault_path: String, password: String) -> Result<serde_json::Value, String> {
+pub async fn vault_v3_scrub(
+    vault_path: String,
+    password: String,
+) -> Result<serde_json::Value, String> {
     let vault = open_vault(vault_path, &password)?;
     let checked = vault.manifest.chunks.len();
     let damaged = scrub_vault(&vault);
-    let list: Vec<_> = damaged.into_iter().map(|d| serde_json::json!({
-        "id": d.record.id,
-        "on_disk_start": d.on_disk_start,
-        "on_disk_len": d.on_disk_len,
-        "cipher_hash": d.record.cipher_hash,
-    })).collect();
+    let list: Vec<_> = damaged
+        .into_iter()
+        .map(|d| {
+            serde_json::json!({
+                "id": d.record.id,
+                "on_disk_start": d.on_disk_start,
+                "on_disk_len": d.on_disk_len,
+                "cipher_hash": d.record.cipher_hash,
+            })
+        })
+        .collect();
     Ok(serde_json::json!({
         "damaged": list,
         "count": list.len(),
@@ -2557,7 +2624,11 @@ pub async fn vault_v3_scrub(vault_path: String, password: String) -> Result<serd
 }
 
 #[tauri::command]
-pub async fn vault_v3_repair(vault_path: String, password: String, dry_run: bool) -> Result<serde_json::Value, String> {
+pub async fn vault_v3_repair(
+    vault_path: String,
+    password: String,
+    dry_run: bool,
+) -> Result<serde_json::Value, String> {
     // A real repair mutates and atomically re-seals the vault, so take the same
     // write lock the other mutating ops use to keep a concurrent add/delete from
     // racing the rewrite. Dry-run is read-only and needs no lock.
@@ -2607,7 +2678,7 @@ pub async fn vault_v3_add_files(
         .set_algorithms(algorithm_chain(&vault.manifest));
     append_sources_batched(&mut vault, &sources)?;
     vault.report.step("seal: rebuild manifest + atomic write");
-    save_open_vault(&vault)?;
+    save_open_vault(&mut vault)?;
     vault.report.finish(started.elapsed().as_millis() as u64);
     let (np, dh, ratio) = (
         vault.report.new_physical_chunks,
@@ -2642,7 +2713,7 @@ pub async fn vault_v3_add_files_to_dir(
     }
     let added = sources.len();
     append_sources_batched(&mut vault, &sources)?;
-    save_open_vault(&vault)?;
+    save_open_vault(&mut vault)?;
     Ok(serde_json::json!({
         "added": added,
         "total": vault.manifest.entries.len()
@@ -2658,7 +2729,7 @@ pub async fn vault_v3_create_directory(
     let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
     let mut vault = open_vault(&vault_path, &password)?;
     let created = create_directory_in_manifest(&mut vault.manifest, &dir_name)?;
-    save_open_vault(&vault)?;
+    save_open_vault(&mut vault)?;
     Ok(serde_json::json!({
         "created": created,
         "dir": normalize_vault_relative_path(&dir_name)?
@@ -2674,7 +2745,7 @@ pub async fn vault_v3_delete_entry(
     let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
     let mut vault = open_vault(&vault_path, &password)?;
     delete_entries_from_manifest(&mut vault, std::slice::from_ref(&entry_name), false)?;
-    save_open_vault(&vault)?;
+    save_open_vault(&mut vault)?;
     Ok(serde_json::json!({
         "deleted": normalize_vault_relative_path(&entry_name)?,
         "remaining": vault.manifest.entries.len()
@@ -2691,7 +2762,7 @@ pub async fn vault_v3_delete_entries(
     let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
     let mut vault = open_vault(&vault_path, &password)?;
     let removed = delete_entries_from_manifest(&mut vault, &entry_names, recursive)?;
-    save_open_vault(&vault)?;
+    save_open_vault(&mut vault)?;
     Ok(serde_json::json!({
         "removed": removed,
         "remaining": vault.manifest.entries.len()
@@ -2708,7 +2779,7 @@ pub async fn vault_v3_move_entry(
     let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
     let mut vault = open_vault(&vault_path, &password)?;
     move_entry_in_manifest(&mut vault, &from, &to)?;
-    save_open_vault(&vault)?;
+    save_open_vault(&mut vault)?;
     Ok(serde_json::json!({
         "moved": true,
         "from": normalize_vault_relative_path(&from)?,
@@ -2733,7 +2804,7 @@ pub async fn vault_v3_rename_entry(
     let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
     let mut vault = open_vault(&vault_path, &password)?;
     move_entry_in_manifest(&mut vault, &current_name, &destination)?;
-    save_open_vault(&vault)?;
+    save_open_vault(&mut vault)?;
     Ok(serde_json::json!({
         "renamed": true,
         "from": current_name,
@@ -2751,7 +2822,7 @@ pub async fn vault_v3_copy_entry(
     let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
     let mut vault = open_vault(&vault_path, &password)?;
     copy_entry_in_manifest(&mut vault, &from, &to)?;
-    save_open_vault(&vault)?;
+    save_open_vault(&mut vault)?;
     Ok(serde_json::json!({
         "copied": true,
         "from": normalize_vault_relative_path(&from)?,
@@ -2768,7 +2839,7 @@ pub async fn vault_v3_change_password(
     let _lock = acquire_vault_write_lock(Path::new(&vault_path))?;
     let mut vault = open_vault(&vault_path, &old_password)?;
     change_password_in_place(&mut vault, &new_password)?;
-    save_open_vault(&vault)?;
+    save_open_vault(&mut vault)?;
     Ok("Password changed successfully".to_string())
 }
 
@@ -2867,7 +2938,7 @@ pub async fn vault_v3_add_directory(
         }),
     );
 
-    save_open_vault(&vault)?;
+    save_open_vault(&mut vault)?;
     Ok(serde_json::json!({
         "added_files": added_files,
         "added_dirs": added_dirs,
@@ -2965,7 +3036,7 @@ mod tests {
         let mut vault = open_vault(&vault_path, "correct horse battery staple").unwrap();
         append_file_at(&mut vault, &a, "a.txt").unwrap();
         append_file_at(&mut vault, &b, "b.txt").unwrap();
-        save_open_vault(&vault).unwrap();
+        save_open_vault(&mut vault).unwrap();
 
         let reopened = open_vault(&vault_path, "correct horse battery staple").unwrap();
         let info = info_from_manifest(&reopened.manifest);
@@ -2995,7 +3066,7 @@ mod tests {
         // Add a file (exercises seal path that must preserve the extension dir)
         let mut vault = open_vault(&vault_path, "ecc-test-pw").unwrap();
         append_file_at(&mut vault, &payload, "data/payload.bin").unwrap();
-        save_open_vault(&vault).unwrap();
+        save_open_vault(&mut vault).unwrap();
 
         // Re-open and inspect extensions (proves roundtrip of the dir)
         let reopened = open_vault(&vault_path, "ecc-test-pw").unwrap();
@@ -3003,9 +3074,15 @@ mod tests {
             .extensions
             .iter()
             .find(|e| e.extension_id == ECC_EXTENSION_ID);
-        assert!(ecc_ext.is_some(), "ecc extension should be present after roundtrip");
+        assert!(
+            ecc_ext.is_some(),
+            "ecc extension should be present after roundtrip"
+        );
         let ecc_ext = ecc_ext.unwrap();
-        assert_eq!(ecc_ext.critical, false, "ECC extension must be non-critical for v3 compat");
+        assert_eq!(
+            ecc_ext.critical, false,
+            "ECC extension must be non-critical for v3 compat"
+        );
         assert_eq!(ecc_ext.algorithm_id, ECC_ALGORITHM_ID);
         assert_eq!(ecc_ext.algorithm_version, ECC_ALGORITHM_VERSION);
 
@@ -3024,7 +3101,10 @@ mod tests {
 
         // The extension dir itself survived (we can check via header on re-open)
         // Re-open header has non-zero extension_dir_len
-        assert!(reopened.header.extension_dir_len > 0, "extension directory must be present on disk");
+        assert!(
+            reopened.header.extension_dir_len > 0,
+            "extension directory must be present on disk"
+        );
     }
 
     #[test]
@@ -3043,7 +3123,9 @@ mod tests {
                 vault_path.to_string_lossy().to_string(),
             )));
 
-        let ecc = info.get("ecc").expect("ecc field should be present when path given");
+        let ecc = info
+            .get("ecc")
+            .expect("ecc field should be present when path given");
         assert_eq!(ecc["enabled"], true);
         assert_eq!(ecc["algorithm"], "reed-solomon");
         assert_eq!(ecc["version"], 1);
@@ -3071,10 +3153,12 @@ mod tests {
         assert_eq!(num_groups, 3);
         let num_parity = num_groups * header.parity_shards as usize;
 
-        let data_checksums: Vec<[u8; ECC_SHARD_CKSUM_LEN]> =
-            (0..num_data_shards).map(|i| [i as u8; ECC_SHARD_CKSUM_LEN]).collect();
-        let parity_checksums: Vec<[u8; ECC_SHARD_CKSUM_LEN]> =
-            (0..num_parity).map(|i| [(200 + i) as u8; ECC_SHARD_CKSUM_LEN]).collect();
+        let data_checksums: Vec<[u8; ECC_SHARD_CKSUM_LEN]> = (0..num_data_shards)
+            .map(|i| [i as u8; ECC_SHARD_CKSUM_LEN])
+            .collect();
+        let parity_checksums: Vec<[u8; ECC_SHARD_CKSUM_LEN]> = (0..num_parity)
+            .map(|i| [(200 + i) as u8; ECC_SHARD_CKSUM_LEN])
+            .collect();
         let parity_data = vec![0xABu8; num_parity * s];
 
         let payload = EccPayload {
@@ -3107,7 +3191,7 @@ mod tests {
         let block2: Vec<u8> = vec![1u8; 200];
         let data_blocks: Vec<&[u8]> = vec![&block1, &block2];
 
-        let payload_bytes = compute_ecc_shards(&data_blocks);
+        let (payload_bytes, _sh, _pr, _ov) = compute_ecc_shards(&data_blocks);
         assert!(!payload_bytes.is_empty());
 
         let parsed = EccPayload::from_bytes(&payload_bytes).expect("payload should parse");
@@ -3139,7 +3223,7 @@ mod tests {
 
         let mut blocks = vec![make_on_disk(&orig1), make_on_disk(&orig2)];
         let payload =
-            compute_ecc_shards(&blocks.iter().map(|v| v.as_slice()).collect::<Vec<_>>());
+            compute_ecc_shards(&blocks.iter().map(|v| v.as_slice()).collect::<Vec<_>>()).0;
 
         // Corrupt the second block; its shard checksum will mismatch -> RS erasure.
         blocks[1][10] ^= 0xFF;
@@ -3206,14 +3290,18 @@ mod tests {
         let f1 = dir.path().join("f1.txt");
         std::fs::write(&f1, b"hello repair world one").unwrap();
         let f2 = dir.path().join("f2.txt");
-        std::fs::write(&f2, b"hello repair world two with more data to have a decent block").unwrap();
+        std::fs::write(
+            &f2,
+            b"hello repair world two with more data to have a decent block",
+        )
+        .unwrap();
 
         // Create with ECC and add files (triggers seal with ECC)
         create_empty_vault(&vault_path, "repair-pw-1234", DEFAULT_ZSTD_LEVEL, true).unwrap();
         let mut vault = open_vault(&vault_path, "repair-pw-1234").unwrap();
         append_file_at(&mut vault, &f1, "f1.txt").unwrap();
         append_file_at(&mut vault, &f2, "f2.txt").unwrap();
-        save_open_vault(&vault).unwrap();
+        save_open_vault(&mut vault).unwrap();
 
         // Identify the second file's data block, then exercise the real bad-hash path
         // by corrupting its cipher bytes in memory on a freshly re-opened vault.
@@ -3224,7 +3312,12 @@ mod tests {
         let mut vault2 = open_vault(&vault_path, "repair-pw-1234").unwrap();
 
         // Corrupt in-memory the second block's cipher part
-        if let Some(rec) = vault2.manifest.chunks.values().find(|r| r.data_offset == recs[1].data_offset) {
+        if let Some(rec) = vault2
+            .manifest
+            .chunks
+            .values()
+            .find(|r| r.data_offset == recs[1].data_offset)
+        {
             let s = rec.data_offset as usize + 8 + 3;
             if s < vault2.data.len() {
                 vault2.data[s] ^= 0xFF;
@@ -3250,7 +3343,9 @@ mod tests {
 
         let out2 = dir.path().join("out2.txt");
         extract_entry(&vault2, "f2.txt", &out2).unwrap();
-        assert!(std::fs::read(&out2).unwrap().starts_with(b"hello repair world two"));
+        assert!(std::fs::read(&out2)
+            .unwrap()
+            .starts_with(b"hello repair world two"));
     }
 
     #[test]
@@ -3265,12 +3360,16 @@ mod tests {
         let mut sources = vec![];
         for i in 0..12 {
             let p = dir.path().join(format!("s{i:02}.txt"));
-            let content = format!("stress file {} with some padding data to make blocks decent size", i).repeat(3);
+            let content = format!(
+                "stress file {} with some padding data to make blocks decent size",
+                i
+            )
+            .repeat(3);
             std::fs::write(&p, content.as_bytes()).unwrap();
             append_file_at(&mut vault, &p, &format!("s{i:02}.txt")).unwrap();
             sources.push((p, format!("s{i:02}.txt")));
         }
-        save_open_vault(&vault).unwrap();
+        save_open_vault(&mut vault).unwrap();
 
         // Re-open, corrupt a few chunk blocks. These tiny blocks share one shard, so
         // any of them mismatching erases that single shard, which RS(10,2) recovers.
@@ -3344,7 +3443,7 @@ mod tests {
         create_empty_vault(&vault_path, "recover-pw", DEFAULT_ZSTD_LEVEL, true).unwrap();
         let mut vault = open_vault(&vault_path, "recover-pw").unwrap();
         append_file_at(&mut vault, &f, "f.bin").unwrap();
-        save_open_vault(&vault).unwrap();
+        save_open_vault(&mut vault).unwrap();
 
         // Corrupt the bytes of parity shard 0 on disk (its stored checksum will no
         // longer match -> reconstruct erases it and uses parity shard 1 instead).
@@ -3354,8 +3453,7 @@ mod tests {
         let mut raw = std::fs::read(&vault_path).unwrap();
         let payload_abs = u64::from_le_bytes(raw[176..184].try_into().unwrap()) as usize;
         let payload_len = u64::from_le_bytes(raw[184..192].try_into().unwrap()) as usize;
-        let payload =
-            EccPayload::from_bytes(&raw[payload_abs..payload_abs + payload_len]).unwrap();
+        let payload = EccPayload::from_bytes(&raw[payload_abs..payload_abs + payload_len]).unwrap();
         let (nds, ng) = ecc_geometry(&payload.header);
         let p = payload.header.parity_shards as usize;
         let parity0_abs = payload_abs + 32 + (nds + ng * p) * ECC_SHARD_CKSUM_LEN;
@@ -3372,11 +3470,20 @@ mod tests {
             recs[0].data_offset as usize
         };
         vault2.data[first_off + 8 + 5] ^= 0xFF;
-        assert!(!scrub_vault(&vault2).is_empty(), "scrub must see the damage");
+        assert!(
+            !scrub_vault(&vault2).is_empty(),
+            "scrub must see the damage"
+        );
 
         let repaired = repair_vault(&mut vault2, false).expect("repair");
-        assert!(repaired > 0, "must recover despite the corrupt parity shard");
-        assert!(scrub_vault(&vault2).is_empty(), "vault must be clean after repair");
+        assert!(
+            repaired > 0,
+            "must recover despite the corrupt parity shard"
+        );
+        assert!(
+            scrub_vault(&vault2).is_empty(),
+            "vault must be clean after repair"
+        );
 
         // Content verifies AND the parity was re-sealed correctly (re-open + scrub).
         let out = dir.path().join("out.bin");
@@ -3401,7 +3508,7 @@ mod tests {
         create_empty_vault(&vault_path, "over-pw-1234", DEFAULT_ZSTD_LEVEL, true).unwrap();
         let mut vault = open_vault(&vault_path, "over-pw-1234").unwrap();
         append_file_at(&mut vault, &f, "f.bin").unwrap();
-        save_open_vault(&vault).unwrap();
+        save_open_vault(&mut vault).unwrap();
 
         let before = std::fs::read(&vault_path).unwrap();
         let mut vault2 = open_vault(&vault_path, "over-pw-1234").unwrap();
@@ -3414,13 +3521,19 @@ mod tests {
                 vault2.data[pos] ^= 0xFF;
             }
         }
-        assert!(!scrub_vault(&vault2).is_empty(), "scrub must detect the damage");
+        assert!(
+            !scrub_vault(&vault2).is_empty(),
+            "scrub must detect the damage"
+        );
 
         let repaired = repair_vault(&mut vault2, false).expect("repair call should not error");
         assert_eq!(repaired, 0, "repair must not claim an unverifiable success");
 
         let after = std::fs::read(&vault_path).unwrap();
-        assert_eq!(before, after, "repair must leave the vault untouched when it cannot fix it");
+        assert_eq!(
+            before, after,
+            "repair must leave the vault untouched when it cannot fix it"
+        );
     }
 
     /// P2-09 regression: the v1 format produced ~200% parity for a small single-chunk
@@ -3437,7 +3550,7 @@ mod tests {
         create_empty_vault(&vault_path, "ovh-pw-1234", DEFAULT_ZSTD_LEVEL, true).unwrap();
         let mut vault = open_vault(&vault_path, "ovh-pw-1234").unwrap();
         append_file_at(&mut vault, &f, "blob.bin").unwrap();
-        save_open_vault(&vault).unwrap();
+        save_open_vault(&mut vault).unwrap();
 
         // save_open_vault updates only a local extensions clone, so read the persisted
         // ECC payload length from the on-disk header (extension_payload_len @184) rather
@@ -3476,7 +3589,7 @@ mod tests {
         // Use pure v3 open path (internal open_vault, as old reader would)
         let mut vault = open_vault(&vault_path, "compat-pw-1234").unwrap();
         append_file_at(&mut vault, &payload, "data/compat.bin").unwrap();
-        save_open_vault(&vault).unwrap();
+        save_open_vault(&mut vault).unwrap();
 
         // Re-open with pure v3 path and extract
         let reopened = open_vault(&vault_path, "compat-pw-1234").unwrap();
@@ -3513,7 +3626,7 @@ mod tests {
         move_entry_in_manifest(&mut vault, "docs-copy", "docs-archived").unwrap();
         delete_entries_from_manifest(&mut vault, &["docs-archived".to_string()], true).unwrap();
         change_password_in_place(&mut vault, "new-password").unwrap();
-        save_open_vault(&vault).unwrap();
+        save_open_vault(&mut vault).unwrap();
 
         assert!(open_vault(&vault_path, "old-password").is_err());
         let reopened = open_vault(&vault_path, "new-password").unwrap();
@@ -3571,7 +3684,7 @@ mod tests {
 
         let mut vault = open_vault(&vault_path, "pack-password").unwrap();
         append_sources_batched(&mut vault, &sources).unwrap();
-        save_open_vault(&vault).unwrap();
+        save_open_vault(&mut vault).unwrap();
 
         let reopened = open_vault(&vault_path, "pack-password").unwrap();
         let info = info_from_manifest(&reopened.manifest);
@@ -3626,7 +3739,7 @@ mod tests {
         create_empty_vault(&vault_path, "multi-password", DEFAULT_ZSTD_LEVEL, false).unwrap();
         let mut vault = open_vault(&vault_path, "multi-password").unwrap();
         append_sources_batched(&mut vault, &sources).unwrap();
-        save_open_vault(&vault).unwrap();
+        save_open_vault(&mut vault).unwrap();
 
         let reopened = open_vault(&vault_path, "multi-password").unwrap();
         assert!(
@@ -3674,7 +3787,7 @@ mod tests {
         // All ten tiny files share one physical pack chunk.
         assert!(vault.manifest.chunks.len() < 10);
         delete_entries_from_manifest(&mut vault, &["s3.txt".to_string()], false).unwrap();
-        save_open_vault(&vault).unwrap();
+        save_open_vault(&mut vault).unwrap();
 
         let reopened = open_vault(&vault_path, "shared-password").unwrap();
         assert!(entry_kind(&reopened.manifest, "s3.txt").is_none());
@@ -3725,7 +3838,7 @@ mod tests {
         create_empty_vault(&vault_path, password, DEFAULT_ZSTD_LEVEL, false).unwrap();
         let mut v = open_vault(&vault_path, password).unwrap();
         append_file_at(&mut v, &src, "payload.bin").unwrap();
-        save_open_vault(&v).unwrap();
+        save_open_vault(&mut v).unwrap();
         vault_path
     }
 
@@ -3779,7 +3892,7 @@ mod tests {
         let b = manifest_cdc_bounds(&av.manifest).unwrap();
         assert_eq!(b.avg, 4 * 1024 * 1024, "archive must widen CDC avg");
         append_file_at(&mut av, &src, "big.bin").unwrap();
-        save_open_vault(&av).unwrap();
+        save_open_vault(&mut av).unwrap();
 
         // balanced profile keeps the const bounds.
         let bal_path = dir.path().join("balanced.aerovault");
@@ -3787,7 +3900,7 @@ mod tests {
         let mut bv = open_vault(&bal_path, "bounds-pw").unwrap();
         assert_eq!(manifest_cdc_bounds(&bv.manifest).unwrap().avg, CDC_AVG);
         append_file_at(&mut bv, &src, "big.bin").unwrap();
-        save_open_vault(&bv).unwrap();
+        save_open_vault(&mut bv).unwrap();
 
         // Wider bounds => fewer, larger chunks for the same 6 MiB input.
         let archive_chunks = open_vault(&archive_path, "bounds-pw")
