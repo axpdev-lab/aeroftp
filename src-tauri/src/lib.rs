@@ -14074,6 +14074,19 @@ pub fn run() {
     #[cfg(target_os = "linux")]
     {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+
+        // Pin a stable GTK program name so the window's WM_CLASS is always
+        // "aeroftp", regardless of which path launched the binary. GNOME maps a
+        // window to its .desktop entry (and thus its icon) by matching WM_CLASS
+        // against `StartupWMClass=aeroftp` in AeroFTP.desktop. A normal launch
+        // goes through `Exec=/usr/bin/aeroftp` (WM_CLASS "aeroftp" -> match), but
+        // the post-update restart from tauri-plugin-updater relaunches
+        // `current_exe()` = /usr/lib/aeroftp/aeroftp.bin, whose default WM_CLASS
+        // "aeroftp.bin" does NOT match -> GNOME falls back to a generic icon.
+        // Setting prgname here (before any GTK/WebKit init) makes WM_CLASS
+        // deterministic and fixes the generic-icon-after-update bug.
+        gtk::glib::set_prgname(Some("aeroftp"));
+        gtk::glib::set_application_name("AeroFTP");
     }
 
     // Serve frontend via real HTTP server to fix WebKitGTK rendering issues.
