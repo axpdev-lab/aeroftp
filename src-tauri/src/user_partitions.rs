@@ -2028,18 +2028,28 @@ pub fn read_credential_with_fallback(
 // writers always write the vault first, then best-effort mirror the secret into
 // the active (GUI) or scoped (CLI `--user`) user's partition. No vault entry is
 // ever removed here (that is MUV-6). The mirror is confined to in-scope keys by
-// `muv3_credential_type`, so the generic `store_credential` / `delete_credential`
-// Tauri commands keep routing oauth/ai/github to the vault only (MUV-4/5). The
+// `muv3_credential_type` (`server_*`, and `ai_apikey_*` once MUV-5 lands), so the
+// generic `store_credential` / `delete_credential` Tauri commands mirror those by
+// prefix while OAuth and GitHub tokens are mirrored by their own type-explicit
+// call-sites (MUV-4/5) and never by prefix. The
 // partition DB is opened without an AppHandle (`open_or_init_cli`), which
 // resolves to the same file as the GUI (see `cli_db_path` / `db_path`), so a
 // shared reader in factory/agent/ai_tools sees exactly what the GUI wrote.
 
-/// Scope classifier for MUV-3: `Some(credential_type)` only for the keys this
-/// slice owns (`server_*`); every other namespace is `None` and stays vault-only
-/// until MUV-4 (oauth/jottacloud) and MUV-5 (ai_apikey/github).
+/// Prefix scope classifier: `Some(credential_type)` for the keys whose namespace
+/// is unambiguous enough that the generic `store_credential`/`delete_credential`
+/// Tauri commands can mirror them by prefix alone. `server_*` (MUV-3) and
+/// `ai_apikey_*` (MUV-5) qualify: an AI key is always `ai_apikey_<provider>` with
+/// no `_client_id`-style sibling, so prefix matching never misfires. Everything
+/// else is `None`: OAuth tokens (`oauth_<p>_<id>` vs `oauth_<p>_client_id`) and
+/// the GitHub tokens are mirrored by call-sites that pass the type explicitly
+/// (MUV-4/5), and the machine-global `github_pem_*` / `github_app_credentials`
+/// stay vault-only on purpose (MUV-0).
 fn muv3_credential_type(credential_id: &str) -> Option<&'static str> {
     if credential_id.starts_with("server_") {
         Some("server")
+    } else if credential_id.starts_with("ai_apikey_") {
+        Some("ai_apikey")
     } else {
         None
     }
@@ -2614,6 +2624,16 @@ pub struct TransportRekeyReport {
 /// `root_key` is THIS machine's local wrapping key (the export runs on the
 /// source machine where the partitions are readable). `password` is the
 /// backup password; the transport key is `Argon2id(password, salt)`.
+///
+/// MUV-5 / R-MUV-3: this same transported DEK makes the per-user secrets
+/// portable, not just the profile metadata. The `user_credentials` rows ride
+/// along inside the bundled `user_partitions.db` and are encrypted under the
+/// user's DEK (`set_user_credential_with_dek` -> `encrypt_blob(dek, ...)`), the
+/// exact key this sidecar carries. Once [`rekey_transport_deks`] re-wraps the
+/// DEK to the destination's local `root_key`, the credential rows decrypt with
+/// no per-row change. No secret-specific wrapping is needed: the DEK is the
+/// single confidentiality boundary for both profiles and secrets. (Covered by
+/// `user_credentials_row_is_portable_via_transport_dek`.)
 ///
 /// Returns `Ok(None)` when there is no passphrase-less user to make portable
 /// (so the caller omits the section entirely and old readers stay happy).
@@ -3298,6 +3318,65 @@ pub fn cli_replace_server_profiles_for_user(
     let result = replace_server_profiles_for(&mut conn, &root_key, user_id, profiles);
     root_key.zeroize();
     result
+}
+
+/// MUV-5: resolve the active user's server profiles for the MCP subprocess.
+///
+/// The MCP server runs headless and must scope to the persisted active user
+/// instead of the legacy single-user `config_server_profiles` blob. A
+/// device-wrapped active user resolves with no prompt; a passphrase-protected
+/// active user is unlocked transiently from `AEROFTP_USER_PASSPHRASE` (the same
+/// env the CLI honours), priming the process session so the subsequent
+/// `resolve_active_credential` reads of `server_<id>` decrypt as well.
+///
+/// Falls back to the dual-maintained legacy blob only when the partition cannot
+/// serve the active user: no active user, a locked passphrase account with no
+/// usable env passphrase, or a partition error (downgrade). The fallback keeps
+/// MCP working during the rollout; MUV-6 drops it once the vault is purged.
+pub fn mcp_list_active_server_profiles(store: &CredentialStore) -> Result<Vec<Value>, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let active = match get_active_user(&conn)? {
+        Some(user) => user,
+        None => return read_legacy_server_profiles_blob(store),
+    };
+
+    // Unlock a passphrase-protected active user transiently from the env so the
+    // session DEK is primed for both this profile read and later credential
+    // reads. Best-effort: a wrong/absent passphrase just leaves the account
+    // locked and the legacy fallback below answers.
+    if active.has_passphrase && session_user_id() != Some(active.id) {
+        if let Ok(passphrase) = std::env::var("AEROFTP_USER_PASSPHRASE") {
+            if !passphrase.is_empty() {
+                let mut root_key = store.derive_user_partition_wrapping_key();
+                let _ = unlock_user_transient(&conn, &root_key, active.id, Some(&passphrase));
+                root_key.zeroize();
+            }
+        }
+    }
+
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let result = list_active_server_profiles(&conn, &root_key);
+    root_key.zeroize();
+    match result {
+        Ok(profiles) => Ok(profiles),
+        // Locked passphrase account (no usable env passphrase) or no active
+        // user: the partition cannot serve, so the dual-written legacy blob does.
+        Err(e) if e == "USER_LOCKED" || e == "NO_ACTIVE_USER" => {
+            read_legacy_server_profiles_blob(store)
+        }
+        Err(e) => Err(e),
+    }
+}
+
+/// Read and parse the legacy single-user `config_server_profiles` vault blob.
+/// The MUV-5 rollout fallback for [`mcp_list_active_server_profiles`]; removed
+/// with the rest of the legacy reads at MUV-6.
+fn read_legacy_server_profiles_blob(store: &CredentialStore) -> Result<Vec<Value>, String> {
+    let raw = store
+        .get("config_server_profiles")
+        .map_err(|e| format!("Failed to read profiles: {e}"))?;
+    serde_json::from_str(&raw).map_err(|e| format!("Failed to parse profiles: {e}"))
 }
 
 /// CLI bridge: read one secret from a user's partition (MUV-1). MUV-3 will wire
@@ -5935,15 +6014,23 @@ mod tests {
     // --- MUV-3: server_* reader/writer cutover ----------------------------
 
     #[test]
-    fn muv3_credential_type_classifies_only_server_keys() {
-        // The dual-write mirror is confined to `server_*`; oauth/ai/github stay
-        // vault-only in this slice (MUV-4/5).
+    fn muv3_credential_type_classifies_server_and_ai_apikey_keys() {
+        // The prefix-mirrored namespaces: `server_*` (MUV-3) and `ai_apikey_*`
+        // (MUV-5, unambiguous so prefix matching is safe).
         assert_eq!(muv3_credential_type("server_42"), Some("server"));
         assert_eq!(muv3_credential_type("server_"), Some("server"));
+        assert_eq!(
+            muv3_credential_type("ai_apikey_anthropic"),
+            Some("ai_apikey")
+        );
+        assert_eq!(muv3_credential_type("ai_apikey_openai"), Some("ai_apikey"));
+        // OAuth/Jottacloud/GitHub stay out of the prefix classifier: they are
+        // mirrored by type-explicit call-sites, and `config_server_profiles` is
+        // never a secret.
         assert_eq!(muv3_credential_type("oauth_dropbox_42"), None);
         assert_eq!(muv3_credential_type("jottacloud_refresh_42"), None);
-        assert_eq!(muv3_credential_type("ai_apikey_anthropic"), None);
         assert_eq!(muv3_credential_type("github_pat"), None);
+        assert_eq!(muv3_credential_type("github_oauth_token"), None);
         assert_eq!(muv3_credential_type("config_server_profiles"), None);
     }
 
@@ -6105,5 +6192,172 @@ mod tests {
         assert!(ids
             .iter()
             .any(|(k, t)| k == "jottacloud_refresh_42" && t == "jottacloud_refresh"));
+    }
+
+    // --- MUV-5: ai_apikey + github cutover, transport portability ---------
+
+    #[test]
+    fn ai_apikey_mirrors_into_the_active_user_and_isolates_per_user() {
+        // ai_apikey is in the prefix classifier, so the generic dual-write
+        // mirrors it into the active user's partition and never into another's.
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn)
+            .expect("active read")
+            .expect("default active");
+        let alice = create_passphrase_less_user(&mut conn, &root, "alice", None, None)
+            .expect("create alice");
+
+        // Mirror into the active (default) user via the type derived from the
+        // classifier (mirrors what store_active_credential_dual does in prod).
+        let ctype = muv3_credential_type("ai_apikey_openai").expect("ai key is classified");
+        set_user_credential_for(
+            &conn,
+            &root,
+            default.id,
+            "ai_apikey_openai",
+            ctype,
+            "sk-openai",
+        )
+        .expect("store ai key");
+
+        // Round-trip on the owner; absent for another user (R3 on write).
+        assert_eq!(
+            get_user_credential_for(&conn, &root, default.id, "ai_apikey_openai")
+                .expect("read default")
+                .expect("present")
+                .as_str(),
+            "sk-openai"
+        );
+        assert!(
+            get_user_credential_for(&conn, &root, alice.id, "ai_apikey_openai")
+                .expect("read alice")
+                .is_none()
+        );
+        // Listed under its own type.
+        let ids = list_user_credential_ids_for(&conn, default.id).expect("list");
+        assert!(ids
+            .iter()
+            .any(|(k, t)| k == "ai_apikey_openai" && t == "ai_apikey"));
+    }
+
+    #[test]
+    fn github_tokens_round_trip_typed_and_isolated() {
+        // GitHub tokens are out of the prefix classifier (so they never touch
+        // the machine-global github_pem_*), but the type-explicit writers store
+        // them per-user under a "github" type.
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn)
+            .expect("active read")
+            .expect("default active");
+        let alice = create_passphrase_less_user(&mut conn, &root, "alice", None, None)
+            .expect("create alice");
+
+        assert_eq!(muv3_credential_type("github_pat"), None);
+        assert_eq!(muv3_credential_type("github_oauth_token"), None);
+
+        set_user_credential_for(&conn, &root, default.id, "github_pat", "github", "ghp_x")
+            .expect("store pat");
+        set_user_credential_for(
+            &conn,
+            &root,
+            default.id,
+            "github_oauth_token",
+            "github",
+            "gho_y",
+        )
+        .expect("store oauth token");
+
+        assert_eq!(
+            get_user_credential_for(&conn, &root, default.id, "github_pat")
+                .expect("read pat")
+                .expect("present")
+                .as_str(),
+            "ghp_x"
+        );
+        // Not leaked into another user.
+        assert!(
+            get_user_credential_for(&conn, &root, alice.id, "github_pat")
+                .expect("read alice")
+                .is_none()
+        );
+        let ids = list_user_credential_ids_for(&conn, default.id).expect("list");
+        assert!(ids.iter().any(|(k, t)| k == "github_pat" && t == "github"));
+        assert!(ids
+            .iter()
+            .any(|(k, t)| k == "github_oauth_token" && t == "github"));
+    }
+
+    #[test]
+    fn user_credentials_row_is_portable_via_transport_dek() {
+        // R-MUV-3: a per-user secret is encrypted under the user's DEK, the same
+        // DEK the F-012 transport sidecar carries. After re-keying the DEK to a
+        // different machine's local root_key, the credential row decrypts with
+        // no per-row change. This is what makes a Full export's user_credentials
+        // portable cross-machine without secret-specific wrapping.
+        let _guard = test_lock();
+        let conn = migrated_conn(0);
+        let root_a = test_root();
+        let root_b = [0x5au8; 32]; // another machine's local root_key
+
+        let default = get_active_user(&conn)
+            .expect("active read")
+            .expect("default active");
+
+        // Seed a device-wrapped secret on machine A.
+        set_user_credential_for(
+            &conn,
+            &root_a,
+            default.id,
+            "server_42",
+            "server",
+            "top-secret",
+        )
+        .expect("seed secret");
+        assert_eq!(
+            get_user_credential_for(&conn, &root_a, default.id, "server_42")
+                .expect("read on A")
+                .expect("present")
+                .as_str(),
+            "top-secret"
+        );
+
+        // Export the transport DEK under the backup password.
+        let transport = export_transport_deks(&conn, &root_a, "backup password 123")
+            .expect("export transport")
+            .expect("a passphrase-less user exists");
+        assert!(transport.wrapped_deks.contains_key(&default.id));
+
+        // Blind-overwrite import on machine B: same rows, different local root.
+        // Before re-keying, B cannot decrypt the secret.
+        assert!(
+            get_user_credential_for(&conn, &root_b, default.id, "server_42").is_err(),
+            "secret must be unreadable under the wrong root_key before rekey"
+        );
+
+        // Re-key the DEK to machine B's local root_key.
+        let report = rekey_transport_deks(
+            &conn,
+            &root_b,
+            "backup password 123",
+            &transport.salt,
+            &transport.kdf_params,
+            &transport.wrapped_deks,
+        )
+        .expect("rekey");
+        assert_eq!(report.rekeyed, 1);
+        assert_eq!(report.unreadable, 0);
+
+        // Machine B now decrypts the same secret (DEK unchanged, only rewrapped).
+        assert_eq!(
+            get_user_credential_for(&conn, &root_b, default.id, "server_42")
+                .expect("read on B")
+                .expect("present")
+                .as_str(),
+            "top-secret"
+        );
     }
 }

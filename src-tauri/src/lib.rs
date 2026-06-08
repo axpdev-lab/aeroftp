@@ -13341,9 +13341,11 @@ async fn get_credential_store_status(
 async fn store_credential(account: String, password: String) -> Result<(), String> {
     let store = credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "STORE_NOT_READY".to_string())?;
-    // MUV-3: dual-write. The vault is written for every key (source of truth +
-    // fallback); `server_*` keys are also mirrored into the active user's
-    // partition. oauth/ai/github keys stay vault-only here (MUV-4/5).
+    // Dual-write. The vault is written for every key (source of truth +
+    // fallback); `server_*` (MUV-3) and `ai_apikey_*` (MUV-5) keys are also
+    // mirrored into the active user's partition by the prefix classifier. OAuth
+    // and GitHub tokens stay vault-only on this generic path: they are mirrored
+    // by their own type-explicit call-sites (MUV-4/5).
     user_partitions::store_active_credential_dual(&store, &account, &password)
         .map_err(|e| format!("Failed to store credential: {}", e))
 }
@@ -13361,8 +13363,9 @@ async fn get_credential(account: String) -> Result<String, String> {
 async fn delete_credential(account: String) -> Result<(), String> {
     let store = credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "STORE_NOT_READY".to_string())?;
-    // MUV-3: dual-delete. Removes from the vault and, for `server_*`, best-effort
-    // from the active user's partition. Not a mass purge (that is MUV-6).
+    // Dual-delete. Removes from the vault and, for the prefix-classified keys
+    // (`server_*`, `ai_apikey_*`), best-effort from the active user's partition.
+    // Not a mass purge (that is MUV-6).
     user_partitions::delete_active_credential_dual(&store, &account)
         .map_err(|e| format!("Failed to delete credential: {}", e))
 }

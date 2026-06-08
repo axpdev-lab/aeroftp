@@ -13234,10 +13234,12 @@ fn list_ai_models(cli: &Cli, format: OutputFormat) -> i32 {
                         continue;
                     }
 
-                    // Check if API key exists for this provider
+                    // Check if API key exists for this provider. MUV-5: AI keys
+                    // are per-user now, so resolve through the scoped user's
+                    // partition (falling back to the dual-written vault).
                     let vault_key = format!("ai_apikey_{}", id);
-                    let has_vault_key = store
-                        .get(&vault_key)
+                    let ai_key_uid = scoped_credential_user_id(cli, &store);
+                    let has_vault_key = read_server_cred(&store, ai_key_uid, &vault_key)
                         .map(|v| !v.is_empty())
                         .unwrap_or(false);
                     let env_name = env_var_for(ptype);
@@ -38455,10 +38457,13 @@ fn resolve_vault_ai_provider(
             .sort_by_key(|(ptype, _, _, _)| priority.iter().position(|p| p == ptype).unwrap_or(99));
     }
 
-    // Find first candidate with a valid API key in vault
+    // Find first candidate with a valid API key. MUV-5: AI keys are per-user;
+    // this context has no `Cli`, so resolve against the persistent active user's
+    // partition (falling back to the dual-written vault).
+    let ai_key_uid = active_credential_user_id(store);
     for (ptype, id, url, _) in &candidates {
         let vault_key = format!("ai_apikey_{}", id);
-        if let Ok(key) = store.get(&vault_key) {
+        if let Some(key) = read_server_cred(store, ai_key_uid, &vault_key) {
             if !key.is_empty() {
                 eprintln!("Using AI provider '{}' from AeroFTP vault.", ptype);
                 return Some((ptype.clone(), key, url.clone()));
