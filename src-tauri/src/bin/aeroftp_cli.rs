@@ -11127,12 +11127,14 @@ fn print_profiles_summary_with_tombstones(
 
 /// Reprint the profile table after a `#` reorder, showing the move visually
 /// instead of leaving the user to play "spot the differences" (Discussion
-/// #270, EhudKirsh). The moved profile appears twice: a red, struck-through
-/// ghost at its old slot and a live row at its new slot, joined by a left
-/// gutter arrow. Every row whose index shifted shows `old -> new` with the old
-/// number struck through. `src`/`dst` are the zero-based source and (clamped)
-/// destination positions; `live` is the post-move list. Caller guarantees
-/// `src != dst`.
+/// #270, EhudKirsh). The index splits into two sub-columns: struck OLD indices
+/// on the left and the resulting CURRENT indices on the right, so reading the
+/// right column top to bottom yields the final 1..N numbering. The moved
+/// profile appears twice: a struck ghost at its old slot (whose left arrow
+/// merges into the strikethrough) and a live row at its new slot, joined by a
+/// left gutter arrow whose head points at the live row. `src`/`dst` are the
+/// zero-based source and (clamped) destination positions; `live` is the
+/// post-move list. Caller guarantees `src != dst`.
 fn print_profiles_summary_with_reorder(live: &[serde_json::Value], src: usize, dst: usize) {
     let color_on = use_color();
     let red = |s: &str| {
@@ -11176,9 +11178,13 @@ fn print_profiles_summary_with_reorder(live: &[serde_json::Value], src: usize, d
     };
 
     // One display row. `profile_ci` indexes into `live` (the post-move list).
+    // `old_num` is the struck source index (ghost + shifted rows); `new_num` is
+    // the resulting index (every row except the ghost). `new_changed` marks the
+    // rows whose new index reads as "added" and is painted green (shifted/live).
     struct Row {
-        idx_plain: String,    // index cell without ANSI, used for width
-        idx_rendered: String, // index cell with ANSI applied
+        old_num: Option<String>,
+        new_num: Option<String>,
+        new_changed: bool,
         profile_ci: usize,
         old_index: Option<usize>, // 1-based, for finding splice/arrow anchors
         ghost: bool,              // struck old-slot copy of the moved profile
@@ -11191,44 +11197,33 @@ fn print_profiles_summary_with_reorder(live: &[serde_json::Value], src: usize, d
     for old in 0..live.len() {
         let new = new_index_of(old);
         if old == src {
-            // Ghost: show the old index, struck through.
-            let plain = (old + 1).to_string();
+            // Ghost: only the struck old index, in the OLD sub-column.
             rows.push(Row {
-                idx_rendered: red(&strikethrough(&plain)),
-                idx_plain: plain,
+                old_num: Some((old + 1).to_string()),
+                new_num: None,
+                new_changed: false,
                 profile_ci: dst, // moved profile now sits at dst in `live`
                 old_index: Some(old + 1),
                 ghost: true,
                 live_row: false,
             });
         } else if new != old {
-            // Shifted: old struck, new beside it.
-            let (plain, rendered) = if color_on {
-                (
-                    format!("{}{}", old + 1, new + 1),
-                    format!(
-                        "{}{}",
-                        red(&strikethrough(&(old + 1).to_string())),
-                        green(&(new + 1).to_string()),
-                    ),
-                )
-            } else {
-                let s = format!("{}>{}", old + 1, new + 1);
-                (s.clone(), s)
-            };
+            // Shifted: struck old on the left, green new on the right.
             rows.push(Row {
-                idx_plain: plain,
-                idx_rendered: rendered,
+                old_num: Some((old + 1).to_string()),
+                new_num: Some((new + 1).to_string()),
+                new_changed: true,
                 profile_ci: new,
                 old_index: Some(old + 1),
                 ghost: false,
                 live_row: false,
             });
         } else {
-            let plain = (new + 1).to_string();
+            // Unchanged: a single index, in the NEW sub-column.
             rows.push(Row {
-                idx_rendered: plain.clone(),
-                idx_plain: plain,
+                old_num: None,
+                new_num: Some((new + 1).to_string()),
+                new_changed: false,
                 profile_ci: new,
                 old_index: Some(old + 1),
                 ghost: false,
@@ -11245,12 +11240,12 @@ fn print_profiles_summary_with_reorder(live: &[serde_json::Value], src: usize, d
         .position(|r| r.old_index == Some(dst + 1))
         .unwrap_or(rows.len().saturating_sub(1));
     let live_pos = if down { anchor + 1 } else { anchor };
-    let live_plain = (dst + 1).to_string();
     rows.insert(
         live_pos,
         Row {
-            idx_rendered: green(&live_plain),
-            idx_plain: live_plain,
+            old_num: None,
+            new_num: Some((dst + 1).to_string()),
+            new_changed: true,
             profile_ci: dst,
             old_index: None,
             ghost: false,
@@ -11309,38 +11304,61 @@ fn print_profiles_summary_with_reorder(live: &[serde_json::Value], src: usize, d
         .max()
         .unwrap_or(4)
         .clamp(4, 28);
-    let idx_w = rows
+    // The index splits into an OLD sub-column (struck source indices) and a NEW
+    // sub-column (resulting indices), each sized to its widest number.
+    let old_w = rows
         .iter()
-        .map(|r| r.idx_plain.chars().count())
+        .filter_map(|r| r.old_num.as_ref().map(|s| s.chars().count()))
         .max()
-        .unwrap_or(2)
-        .max(2);
+        .unwrap_or(1)
+        .max(1);
+    let new_w = rows
+        .iter()
+        .filter_map(|r| r.new_num.as_ref().map(|s| s.chars().count()))
+        .max()
+        .unwrap_or(1)
+        .max(1);
 
-    // Four-space lead-in matches the three-cell gutter plus its trailing space;
-    // the `#` is left-aligned so it sits over the left-aligned index column.
+    // Lead-in: three-cell gutter + one connector cell (4 chars), then the OLD
+    // sub-column (blank in the header) and the `#` sitting over the NEW column.
     eprintln!();
     eprintln!(
-        "    {:<idx$}  {:<nw$}  {:<bw$}  {:<hw$}",
+        "    {}{:>nw$}  {:<name$}  {:<bw$}  {:<hw$}",
+        " ".repeat(old_w),
         "#",
         "Name",
         "Badges",
         "Host",
-        idx = idx_w,
-        nw = name_w,
+        nw = new_w,
+        name = name_w,
         bw = badge_w,
         hw = host_w,
     );
-    let total_w = idx_w + 2 + name_w + 2 + badge_w + 2 + host_w;
+    let total_w = old_w + new_w + 2 + name_w + 2 + badge_w + 2 + host_w;
     eprintln!("    {}", "\u{2500}".repeat(total_w));
     for (i, r) in rows.iter().enumerate() {
         let p = &live[r.profile_ci];
         let name = truncate_cell(p.get("name").and_then(|v| v.as_str()).unwrap_or(""), name_w);
         let badge = truncate_cell(&badge_display_label(p), badge_w);
         let host = truncate_cell(&host_subtitle(p), host_w);
-        // Left-align the index cell (honouring its ANSI-free display width) so
-        // every struck old number shares a column with the others. #270.
-        let pad = idx_w.saturating_sub(r.idx_plain.chars().count());
-        let idx_cell = format!("{}{}", r.idx_rendered, " ".repeat(pad));
+        let g = gutter(i, r.live_row);
+        // On the ghost the connector cell is a dash so the arrow flows straight
+        // into the struck row; every other row gets a plain space.
+        let sep = if r.ghost { '\u{2500}' } else { ' ' };
+        // OLD sub-column: red, struck source index, right-aligned. On the ghost
+        // the left padding is dashes so the merged arrow reaches the number.
+        let old_field = match &r.old_num {
+            Some(num) => {
+                let pad = old_w.saturating_sub(num.chars().count());
+                let fill = if r.ghost {
+                    "\u{2500}".repeat(pad)
+                } else {
+                    " ".repeat(pad)
+                };
+                format!("{}{}", fill, red(&strikethrough(num)))
+            }
+            None => " ".repeat(old_w),
+        };
         let body = format!(
             "{:<nw$}  {:<bw$}  {:<hw$}",
             name,
@@ -11350,10 +11368,28 @@ fn print_profiles_summary_with_reorder(live: &[serde_json::Value], src: usize, d
             bw = badge_w,
             hw = host_w,
         );
-        // The moved profile is relocated, not deleted: strike its old-slot copy
-        // through without red so it does not read as a tombstone. #270.
-        let body = if r.ghost { strikethrough(&body) } else { body };
-        eprintln!("{} {}  {}", gutter(i, r.live_row), idx_cell, body);
+        if r.ghost {
+            // The moved profile is relocated, not deleted: continue the line as
+            // a plain (white) strikethrough across the empty NEW column and the
+            // body, so it reads as one struck row, not a tombstone. #270.
+            let tail = strikethrough(&format!("{}  {}", " ".repeat(new_w), body));
+            eprintln!("{}{}{}{}", g, sep, old_field, tail);
+        } else {
+            // NEW sub-column: the resulting index, green when it changed.
+            let new_field = match &r.new_num {
+                Some(num) => {
+                    let pad = new_w.saturating_sub(num.chars().count());
+                    let cell = if r.new_changed {
+                        green(num)
+                    } else {
+                        num.clone()
+                    };
+                    format!("{}{}", " ".repeat(pad), cell)
+                }
+                None => " ".repeat(new_w),
+            };
+            eprintln!("{}{}{}{}  {}", g, sep, old_field, new_field, body);
+        }
     }
 }
 
