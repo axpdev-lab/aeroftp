@@ -12,7 +12,7 @@ use crate::storage_dedup::{dedup_key, ProfileView};
 use crate::user_crypto::{self, SecretKey};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
-use secrecy::zeroize::Zeroize;
+use secrecy::zeroize::{Zeroize, Zeroizing};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -21,7 +21,7 @@ use std::sync::Mutex;
 use tauri::AppHandle;
 
 const DB_FILENAME: &str = "user_partitions.db";
-const SCHEMA_VERSION: &str = "3";
+const SCHEMA_VERSION: &str = "4";
 const LEGACY_PROFILES_KEY: &str = "__legacy_server_profiles";
 const LEGACY_SETTINGS_KEY: &str = "__legacy_settings";
 const ACTIVE_USER_KEY: &str = "active_user_id";
@@ -260,6 +260,20 @@ pub fn init_db_schema(conn: &Connection) -> Result<(), String> {
              updated_at      INTEGER NOT NULL,
              PRIMARY KEY(user_id, scope)
          );
+
+         CREATE TABLE IF NOT EXISTS user_credentials (
+             user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+             credential_id   TEXT NOT NULL,
+             credential_type TEXT NOT NULL,
+             encrypted_blob  BLOB NOT NULL,
+             nonce           BLOB NOT NULL,
+             aead_alg        TEXT NOT NULL DEFAULT 'aes-256-gcm',
+             updated_at      INTEGER NOT NULL,
+             PRIMARY KEY(user_id, credential_id)
+         );
+
+         CREATE INDEX IF NOT EXISTS idx_user_credentials_type
+             ON user_credentials(user_id, credential_type);
 
          CREATE TABLE IF NOT EXISTS global_state (
              key             TEXT PRIMARY KEY,
@@ -713,34 +727,13 @@ fn get_optional_store_entry(
 
 pub fn init_or_migrate(app: &AppHandle) -> Result<MigrationReport, String> {
     let mut conn = open_or_init(app)?;
-    if matches!(
-        current_schema_version(&conn)?.as_deref(),
-        Some(SCHEMA_VERSION)
-    ) {
-        return Ok(MigrationReport {
-            schema_version: SCHEMA_VERSION.to_string(),
-            created_default_user: false,
-            migrated_profiles: 0,
-            migrated_settings_scopes: 0,
-            already_migrated: true,
-        });
-    }
-
-    // v2 -> v3: the schema CREATE TABLE already adds is_admin on fresh
-    // installs; existing v2 databases need a column add and a one-shot
-    // seed that promotes the lowest-id user (the legacy default) to
-    // admin so a returning operator keeps full control over the new
-    // account-management surface.
-    let stored_version = current_schema_version(&conn)?;
-    if stored_version.as_deref() == Some("2") {
-        upgrade_v2_to_v3(&mut conn)?;
-        return Ok(MigrationReport {
-            schema_version: SCHEMA_VERSION.to_string(),
-            created_default_user: false,
-            migrated_profiles: 0,
-            migrated_settings_scopes: 0,
-            already_migrated: true,
-        });
+    // Apply any pending in-place schema upgrades in cascade:
+    //   v2 -> v3 (is_admin column + admin seed),
+    //   v3 -> v4 (user_credentials table).
+    // A v2 database visits both steps in one startup. `Ok(true)` means the
+    // schema is current and there is nothing legacy to migrate.
+    if apply_pending_upgrades(&mut conn)? {
+        return Ok(already_migrated_report());
     }
 
     // Multi-User is a first-class surface and does not require Master Password.
@@ -814,10 +807,77 @@ fn upgrade_v2_to_v3(conn: &mut Connection) -> Result<(), String> {
         [],
     )
     .map_err(|e| format!("Seed first user as admin: {e}"))?;
-    upsert_global_state(&tx, SCHEMA_VERSION_KEY, SCHEMA_VERSION, now_ms())?;
+    // Land exactly on "3"; the cascade in `apply_pending_upgrades` then runs
+    // v3 -> v4. Using the literal (not SCHEMA_VERSION) keeps the step bounded
+    // so chaining from an older database visits every intermediate version.
+    upsert_global_state(&tx, SCHEMA_VERSION_KEY, "3", now_ms())?;
     tx.commit()
         .map_err(|e| format!("Commit v2->v3 upgrade: {e}"))?;
     Ok(())
+}
+
+/// v3 -> v4: add the `user_credentials` table (per-user encrypted secrets under
+/// the user DEK). The table create is idempotent (`IF NOT EXISTS`) and a fresh
+/// install already gets it from [`init_db_schema`]; this upgrade exists so an
+/// existing v3 database gains the table and lands on schema "4". No data is
+/// moved here: migrating the legacy `vault.db` secrets is MUV-2.
+fn upgrade_v3_to_v4(conn: &mut Connection) -> Result<(), String> {
+    let tx = conn
+        .transaction()
+        .map_err(|e| format!("Start v3->v4 upgrade: {e}"))?;
+    tx.execute_batch(
+        "CREATE TABLE IF NOT EXISTS user_credentials (
+             user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+             credential_id   TEXT NOT NULL,
+             credential_type TEXT NOT NULL,
+             encrypted_blob  BLOB NOT NULL,
+             nonce           BLOB NOT NULL,
+             aead_alg        TEXT NOT NULL DEFAULT 'aes-256-gcm',
+             updated_at      INTEGER NOT NULL,
+             PRIMARY KEY(user_id, credential_id)
+         );
+         CREATE INDEX IF NOT EXISTS idx_user_credentials_type
+             ON user_credentials(user_id, credential_type);",
+    )
+    .map_err(|e| format!("Create user_credentials table: {e}"))?;
+    upsert_global_state(&tx, SCHEMA_VERSION_KEY, "4", now_ms())?;
+    tx.commit()
+        .map_err(|e| format!("Commit v3->v4 upgrade: {e}"))?;
+    Ok(())
+}
+
+fn already_migrated_report() -> MigrationReport {
+    MigrationReport {
+        schema_version: SCHEMA_VERSION.to_string(),
+        created_default_user: false,
+        migrated_profiles: 0,
+        migrated_settings_scopes: 0,
+        already_migrated: true,
+    }
+}
+
+/// Apply pending schema upgrades in cascade on an already-open connection.
+///
+/// Returns `Ok(true)` when the schema is now current (`SCHEMA_VERSION`) and no
+/// legacy-payload migration is required; `Ok(false)` when the database predates
+/// the user-partitions schema (version `None`/`"1"`) and the caller must run
+/// [`migrate_legacy_payloads`]. The cascade is written sequentially (not
+/// mutually exclusive) so a v2 database visits v3 then v4 in a single startup.
+fn apply_pending_upgrades(conn: &mut Connection) -> Result<bool, String> {
+    if matches!(
+        current_schema_version(conn)?.as_deref(),
+        Some(SCHEMA_VERSION)
+    ) {
+        return Ok(true);
+    }
+    if current_schema_version(conn)?.as_deref() == Some("2") {
+        upgrade_v2_to_v3(conn)?;
+    }
+    if current_schema_version(conn)?.as_deref() == Some("3") {
+        upgrade_v3_to_v4(conn)?;
+        return Ok(true);
+    }
+    Ok(false)
 }
 
 pub fn list_users(conn: &Connection) -> Result<Vec<UserMetadata>, String> {
@@ -1377,6 +1437,174 @@ pub fn delete_active_user_setting(conn: &Connection, scope: &str) -> Result<(), 
 pub fn list_active_user_setting_scopes(conn: &Connection) -> Result<Vec<String>, String> {
     let user_id = active_user_id(conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
     list_user_setting_scopes_for(conn, user_id)
+}
+
+// --- MUV-1: per-user credentials (raw secrets under the user DEK) -----------
+//
+// Companion of `user_settings`, but for raw secrets (server passwords, OAuth
+// token blobs, API keys, PEM). Secrets are updated one at a time (an OAuth
+// refresh rewrites a single key), so the storage model is upsert-per-key with a
+// composite primary key `(user_id, credential_id)`, NOT the delete-all + insert
+// pattern used for `server_profiles`. The secret is encrypted with the user's
+// DEK exactly like a profile blob; only the active user (or a primed session
+// for a passphrase account) can read or write its own credentials. MUV-1 builds
+// the store only: no existing caller is rewired and nothing is migrated yet
+// (that is MUV-2..6).
+
+/// Upsert one secret into a user's partition, encrypted with their DEK.
+///
+/// `secret` is treated as opaque bytes (it may be raw, e.g. a password, or
+/// JSON, e.g. an OAuth token blob). The row is keyed by
+/// `(user_id, credential_id)`; a second call with the same id overwrites the
+/// previous value. Requires the user's DEK: a passphrase account must already
+/// be unlocked in the session, otherwise this returns `USER_LOCKED`.
+pub fn set_user_credential_for(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+) -> Result<(), String> {
+    if credential_id.is_empty() {
+        return Err("CREDENTIAL_ID_REQUIRED".to_string());
+    }
+    if credential_type.is_empty() {
+        return Err("CREDENTIAL_TYPE_REQUIRED".to_string());
+    }
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    with_user_dek(conn, &root_secret, user_id, |user_id, dek| {
+        let (encrypted_blob, nonce) = user_crypto::encrypt_blob(dek, secret.as_bytes())?;
+        conn.execute(
+            "INSERT INTO user_credentials(
+                 user_id, credential_id, credential_type, encrypted_blob, nonce,
+                 aead_alg, updated_at
+             )
+             VALUES (?1, ?2, ?3, ?4, ?5, 'aes-256-gcm', ?6)
+             ON CONFLICT(user_id, credential_id) DO UPDATE SET
+                 credential_type = excluded.credential_type,
+                 encrypted_blob  = excluded.encrypted_blob,
+                 nonce           = excluded.nonce,
+                 aead_alg        = excluded.aead_alg,
+                 updated_at      = excluded.updated_at",
+            params![
+                user_id,
+                credential_id,
+                credential_type,
+                encrypted_blob,
+                nonce.to_vec(),
+                now_ms()
+            ],
+        )
+        .map_err(|e| format!("Upsert user credential: {e}"))?;
+        Ok(())
+    })
+}
+
+/// Read one secret from a user's partition, decrypted with their DEK.
+///
+/// Returns `Ok(None)` when no row exists. The decrypted secret is wrapped in
+/// `Zeroizing<String>` so it is scrubbed from memory on drop, matching
+/// `CredentialStore::get_secret`. Requires the user's DEK (see
+/// [`set_user_credential_for`]).
+pub fn get_user_credential_for(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    credential_id: &str,
+) -> Result<Option<Zeroizing<String>>, String> {
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    with_user_dek(conn, &root_secret, user_id, |user_id, dek| {
+        let row: Option<(Vec<u8>, Vec<u8>)> = conn
+            .query_row(
+                "SELECT encrypted_blob, nonce FROM user_credentials
+                 WHERE user_id = ?1 AND credential_id = ?2",
+                params![user_id, credential_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(|e| format!("Read user credential: {e}"))?;
+        match row {
+            None => Ok(None),
+            Some((blob, nonce)) => {
+                let plaintext = user_crypto::decrypt_blob(dek, &nonce, &blob)?;
+                let secret = String::from_utf8(plaintext.to_vec())
+                    .map_err(|_| "CREDENTIAL_NOT_UTF8".to_string())?;
+                Ok(Some(Zeroizing::new(secret)))
+            }
+        }
+    })
+}
+
+/// Delete one secret from a user's partition. No DEK is required: a row is
+/// removed by its `(user_id, credential_id)` key without decrypting anything.
+pub fn delete_user_credential_for(
+    conn: &Connection,
+    user_id: i64,
+    credential_id: &str,
+) -> Result<(), String> {
+    conn.execute(
+        "DELETE FROM user_credentials WHERE user_id = ?1 AND credential_id = ?2",
+        params![user_id, credential_id],
+    )
+    .map_err(|e| format!("Delete user credential: {e}"))?;
+    Ok(())
+}
+
+/// List the `(credential_id, credential_type)` pairs stored for a user, without
+/// decrypting any secret. Used by MUV-2 (migration bookkeeping) and the tests.
+pub fn list_user_credential_ids_for(
+    conn: &Connection,
+    user_id: i64,
+) -> Result<Vec<(String, String)>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT credential_id, credential_type FROM user_credentials
+             WHERE user_id = ?1 ORDER BY credential_id ASC",
+        )
+        .map_err(|e| format!("Prepare list user credentials: {e}"))?;
+    let rows = stmt
+        .query_map(params![user_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(|e| format!("Query list user credentials: {e}"))?;
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(|e| format!("Read user credential ids: {e}"))
+}
+
+/// Active-user wrapper for [`set_user_credential_for`].
+pub fn set_active_user_credential(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+) -> Result<(), String> {
+    let user_id = active_user_id(conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    set_user_credential_for(
+        conn,
+        root_key,
+        user_id,
+        credential_id,
+        credential_type,
+        secret,
+    )
+}
+
+/// Active-user wrapper for [`get_user_credential_for`].
+pub fn get_active_user_credential(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    credential_id: &str,
+) -> Result<Option<Zeroizing<String>>, String> {
+    let user_id = active_user_id(conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    get_user_credential_for(conn, root_key, user_id, credential_id)
+}
+
+/// Active-user wrapper for [`delete_user_credential_for`].
+pub fn delete_active_user_credential(conn: &Connection, credential_id: &str) -> Result<(), String> {
+    let user_id = active_user_id(conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    delete_user_credential_for(conn, user_id, credential_id)
 }
 
 /// MU-7: list other users that already store a profile with the SAME dedup
@@ -2179,6 +2407,12 @@ pub fn debug_state(app: &AppHandle) -> Result<PartitionDebugState, String> {
 
 pub fn init_or_migrate_cli(store: &CredentialStore) -> Result<MigrationReport, String> {
     let mut conn = open_or_init_cli()?;
+    // Same cascade as the GUI path (`init_or_migrate`): bring an existing
+    // database forward (v2 -> v3 -> v4) before falling through to the
+    // legacy-payload migration that a v1/fresh database needs.
+    if apply_pending_upgrades(&mut conn)? {
+        return Ok(already_migrated_report());
+    }
     let profiles = store.get("config_server_profiles").ok();
     let settings = store
         .get("config_app_settings")
@@ -2375,6 +2609,56 @@ pub fn cli_replace_server_profiles_for_user(
     let result = replace_server_profiles_for(&mut conn, &root_key, user_id, profiles);
     root_key.zeroize();
     result
+}
+
+/// CLI bridge: read one secret from a user's partition (MUV-1). MUV-3 will wire
+/// the CLI's credential resolution onto this; for now it is the binary the
+/// later cutover slices call. Same locking semantics as the profile readers.
+pub fn cli_get_user_credential(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+) -> Result<Option<Zeroizing<String>>, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let result = get_user_credential_for(&conn, &root_key, user_id, credential_id);
+    root_key.zeroize();
+    result
+}
+
+/// CLI bridge: upsert one secret into a user's partition (MUV-1).
+pub fn cli_set_user_credential(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+) -> Result<(), String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let result = set_user_credential_for(
+        &conn,
+        &root_key,
+        user_id,
+        credential_id,
+        credential_type,
+        secret,
+    );
+    root_key.zeroize();
+    result
+}
+
+/// CLI bridge: delete one secret from a user's partition (MUV-1).
+pub fn cli_delete_user_credential(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+) -> Result<(), String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    delete_user_credential_for(&conn, user_id, credential_id)
 }
 
 /// CLI bridge for the cross-user `profile-copy` / `profile-move` commands (N4).
@@ -2718,6 +3002,55 @@ pub async fn user_partitions_list_active_setting_scopes(
         .into_iter()
         .filter(|s| !s.starts_with("__"))
         .collect())
+}
+
+/// MUV-1: read one secret from the active user's encrypted partition. Returns
+/// JSON null when the credential does not exist. Errors with `USER_LOCKED` when
+/// the active user is a passphrase account that has not been unlocked. The
+/// secret crosses the IPC boundary as a plain string for the GUI to consume,
+/// the same way profile blobs already do; in-process it stays zeroize-on-drop.
+#[tauri::command]
+pub async fn user_partitions_get_user_credential(
+    app: AppHandle,
+    credential_id: String,
+) -> Result<Option<String>, String> {
+    init_or_migrate(&app)?;
+    let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let conn = open_or_init(&app)?;
+    let result = get_active_user_credential(&conn, &root_key, &credential_id);
+    root_key.zeroize();
+    Ok(result?.map(|secret| secret.to_string()))
+}
+
+/// MUV-1: upsert one secret into the active user's encrypted partition.
+#[tauri::command]
+pub async fn user_partitions_set_user_credential(
+    app: AppHandle,
+    credential_id: String,
+    credential_type: String,
+    mut secret: String,
+) -> Result<(), String> {
+    init_or_migrate(&app)?;
+    let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let conn = open_or_init(&app)?;
+    let result =
+        set_active_user_credential(&conn, &root_key, &credential_id, &credential_type, &secret);
+    root_key.zeroize();
+    secret.zeroize();
+    result
+}
+
+/// MUV-1: delete one secret from the active user's encrypted partition.
+#[tauri::command]
+pub async fn user_partitions_delete_user_credential(
+    app: AppHandle,
+    credential_id: String,
+) -> Result<(), String> {
+    init_or_migrate(&app)?;
+    let conn = open_or_init(&app)?;
+    delete_active_user_credential(&conn, &credential_id)
 }
 
 /// MU-7: ask "is this profile already saved by another user account?". Used
@@ -4363,8 +4696,10 @@ mod tests {
             })
             .expect("admin id");
         assert_eq!(admin_id, 1);
+        // upgrade_v2_to_v3 lands exactly on "3"; the v3 -> v4 step is a
+        // separate stage in the cascade (`apply_pending_upgrades`).
         let version = current_schema_version(&conn).expect("version");
-        assert_eq!(version.as_deref(), Some(SCHEMA_VERSION));
+        assert_eq!(version.as_deref(), Some("3"));
 
         // Idempotent: rerun must not crash and must not flip admin off.
         upgrade_v2_to_v3(&mut conn).expect("idempotent rerun");
@@ -4374,5 +4709,271 @@ mod tests {
             })
             .expect("admin still");
         assert_eq!(still_admin, 1);
+    }
+
+    // --- MUV-1: user_credentials ------------------------------------------
+
+    #[test]
+    fn credential_round_trip_device_wrapped() {
+        let _guard = test_lock();
+        let conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn)
+            .expect("active read")
+            .expect("default active");
+
+        set_user_credential_for(&conn, &root, default.id, "server_1", "server", "pw")
+            .expect("set credential");
+        let got = get_user_credential_for(&conn, &root, default.id, "server_1")
+            .expect("get credential")
+            .expect("credential present");
+        assert_eq!(got.as_str(), "pw");
+
+        // Missing credential reads back as None, not an error.
+        assert!(get_user_credential_for(&conn, &root, default.id, "absent")
+            .expect("get absent")
+            .is_none());
+    }
+
+    #[test]
+    fn credential_round_trip_passphrase_requires_session() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let bob = create_user(
+            &mut conn,
+            &root,
+            "Bob",
+            Some("B"),
+            Some("#6366f1"),
+            Some("correct horse battery staple"),
+        )
+        .expect("create locked user");
+        assert!(bob.has_passphrase);
+
+        // No session yet: a passphrase account is locked.
+        let locked = set_user_credential_for(&conn, &root, bob.id, "server_2", "server", "secret")
+            .expect_err("locked write");
+        assert_eq!(locked, "USER_LOCKED");
+
+        // Unlock primes the DEK session; set/get now succeed.
+        unlock_user(&conn, &root, bob.id, Some("correct horse battery staple")).expect("unlock");
+        set_user_credential_for(&conn, &root, bob.id, "server_2", "server", "secret")
+            .expect("set after unlock");
+        let got = get_user_credential_for(&conn, &root, bob.id, "server_2")
+            .expect("get after unlock")
+            .expect("present");
+        assert_eq!(got.as_str(), "secret");
+
+        // Dropping the session re-locks the partition.
+        clear_user_session();
+        let relocked =
+            get_user_credential_for(&conn, &root, bob.id, "server_2").expect_err("relocked read");
+        assert_eq!(relocked, "USER_LOCKED");
+    }
+
+    #[test]
+    fn credential_isolation_across_users() {
+        // R3 for secrets: a credential set by user A is invisible to user B
+        // because the primary key includes user_id.
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let user_a = get_active_user(&conn)
+            .expect("active read")
+            .expect("default active");
+        let user_b =
+            create_passphrase_less_user(&mut conn, &root, "userb", Some("B"), Some("#10b981"))
+                .expect("create userb");
+
+        set_user_credential_for(&conn, &root, user_a.id, "server_1", "server", "a-secret")
+            .expect("set on A");
+        assert!(get_user_credential_for(&conn, &root, user_b.id, "server_1")
+            .expect("read on B")
+            .is_none());
+        // A still reads its own.
+        assert_eq!(
+            get_user_credential_for(&conn, &root, user_a.id, "server_1")
+                .expect("read on A")
+                .expect("present")
+                .as_str(),
+            "a-secret"
+        );
+    }
+
+    #[test]
+    fn credential_upsert_keeps_single_row() {
+        let _guard = test_lock();
+        let conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn)
+            .expect("active read")
+            .expect("default active");
+
+        set_user_credential_for(&conn, &root, default.id, "oauth_dropbox_1", "oauth", "v1")
+            .expect("first write");
+        set_user_credential_for(&conn, &root, default.id, "oauth_dropbox_1", "oauth", "v2")
+            .expect("second write");
+
+        let got = get_user_credential_for(&conn, &root, default.id, "oauth_dropbox_1")
+            .expect("get")
+            .expect("present");
+        assert_eq!(got.as_str(), "v2");
+
+        let ids = list_user_credential_ids_for(&conn, default.id).expect("list ids");
+        assert_eq!(
+            ids,
+            vec![("oauth_dropbox_1".to_string(), "oauth".to_string())]
+        );
+    }
+
+    #[test]
+    fn credential_cascade_on_user_delete() {
+        // R9 for secrets: deleting a user removes its credentials (FK cascade).
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let userb =
+            create_passphrase_less_user(&mut conn, &root, "userb", Some("B"), Some("#10b981"))
+                .expect("create userb");
+
+        set_user_credential_for(&conn, &root, userb.id, "server_9", "server", "doomed")
+            .expect("set credential");
+        assert_eq!(
+            list_user_credential_ids_for(&conn, userb.id)
+                .expect("list before")
+                .len(),
+            1
+        );
+
+        delete_user(&mut conn, userb.id).expect("delete user");
+        assert!(list_user_credential_ids_for(&conn, userb.id)
+            .expect("list after")
+            .is_empty());
+    }
+
+    #[test]
+    fn upgrade_v3_to_v4_creates_user_credentials_idempotently() {
+        let _guard = test_lock();
+        // Build a v3-shaped database: the v2 schema plus the is_admin column,
+        // and crucially WITHOUT user_credentials, so the upgrade has to create
+        // it (not init_db_schema).
+        let mut conn = Connection::open_in_memory().expect("memory db");
+        conn.execute_batch(
+            "PRAGMA foreign_keys = ON;
+             CREATE TABLE users (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 name TEXT NOT NULL,
+                 name_canonical TEXT NOT NULL UNIQUE,
+                 wrapped_dek BLOB NOT NULL,
+                 dek_verifier BLOB NOT NULL,
+                 sort_order INTEGER NOT NULL DEFAULT 0,
+                 created_at INTEGER NOT NULL,
+                 updated_at INTEGER NOT NULL,
+                 is_admin INTEGER NOT NULL DEFAULT 0
+             );
+             CREATE TABLE global_state (
+                 key TEXT PRIMARY KEY,
+                 value TEXT NOT NULL,
+                 updated_at INTEGER NOT NULL
+             );",
+        )
+        .expect("v3 schema");
+        let now = now_ms();
+        conn.execute(
+            "INSERT INTO global_state(key, value, updated_at) VALUES (?1, '3', ?2)",
+            params![SCHEMA_VERSION_KEY, now],
+        )
+        .expect("seed schema v3");
+
+        upgrade_v3_to_v4(&mut conn).expect("upgrade v3->v4");
+
+        let table_exists: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master
+                 WHERE type='table' AND name='user_credentials')",
+                [],
+                |row| row.get(0),
+            )
+            .expect("check table");
+        assert!(table_exists);
+        assert_eq!(
+            current_schema_version(&conn).expect("version").as_deref(),
+            Some("4")
+        );
+
+        // Rerun is a no-op, no error.
+        upgrade_v3_to_v4(&mut conn).expect("idempotent rerun");
+        assert_eq!(
+            current_schema_version(&conn).expect("version").as_deref(),
+            Some("4")
+        );
+    }
+
+    #[test]
+    fn apply_pending_upgrades_chains_v2_to_v4() {
+        let _guard = test_lock();
+        // A v2 database (no is_admin, no user_credentials) must reach v4 in a
+        // single startup: v2 -> v3 -> v4.
+        let mut conn = Connection::open_in_memory().expect("memory db");
+        conn.execute_batch(
+            "PRAGMA foreign_keys = ON;
+             CREATE TABLE users (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 name TEXT NOT NULL,
+                 name_canonical TEXT NOT NULL UNIQUE,
+                 wrapped_dek BLOB NOT NULL,
+                 dek_verifier BLOB NOT NULL,
+                 sort_order INTEGER NOT NULL DEFAULT 0,
+                 created_at INTEGER NOT NULL,
+                 updated_at INTEGER NOT NULL
+             );
+             CREATE TABLE global_state (
+                 key TEXT PRIMARY KEY,
+                 value TEXT NOT NULL,
+                 updated_at INTEGER NOT NULL
+             );",
+        )
+        .expect("v2 schema");
+        let now = now_ms();
+        conn.execute(
+            "INSERT INTO users(name, name_canonical, wrapped_dek, dek_verifier, created_at, updated_at)
+             VALUES ('default', 'default', X'00', X'00', ?1, ?1)",
+            params![now],
+        )
+        .expect("seed default");
+        conn.execute(
+            "INSERT INTO global_state(key, value, updated_at) VALUES (?1, '2', ?2)",
+            params![SCHEMA_VERSION_KEY, now],
+        )
+        .expect("seed schema v2");
+
+        let current = apply_pending_upgrades(&mut conn).expect("apply upgrades");
+        assert!(current, "v2 must chain to current schema");
+        assert_eq!(
+            current_schema_version(&conn).expect("version").as_deref(),
+            Some("4")
+        );
+
+        // Both intermediate effects landed: is_admin seed (v3) and the
+        // user_credentials table (v4).
+        let admin_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM users WHERE is_admin = 1", [], |row| {
+                row.get(0)
+            })
+            .expect("admin count");
+        assert_eq!(admin_count, 1);
+        let table_exists: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master
+                 WHERE type='table' AND name='user_credentials')",
+                [],
+                |row| row.get(0),
+            )
+            .expect("check table");
+        assert!(table_exists);
+
+        // Idempotent: a second pass is a clean no-op.
+        assert!(apply_pending_upgrades(&mut conn).expect("rerun"));
     }
 }
