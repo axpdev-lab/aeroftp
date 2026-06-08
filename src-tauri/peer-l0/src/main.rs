@@ -245,7 +245,43 @@ fn print_campaign_summary(samples: &[ConnectivitySample]) {
         }
     }
 
-    println!("\nTip: use --note with rich network description for better post-analysis grouping.");
+    // B: Keyword grouping from network_note (useful for real campaign analysis)
+    let mut by_keyword: HashMap<String, usize> = HashMap::new();
+    let keywords = ["CGNAT", "mobile", "home", "office", "hotel", "VPN", "Starlink", "4G", "5G", "double NAT", "residential"];
+    for s in samples {
+        if let Some(note) = &s.network_note {
+            let note_lower = note.to_lowercase();
+            for kw in &keywords {
+                if note_lower.contains(&kw.to_lowercase()) {
+                    *by_keyword.entry(kw.to_string()).or_default() += 1;
+                }
+            }
+        }
+    }
+    if !by_keyword.is_empty() {
+        println!("\nBy network keyword (from --note):");
+        let mut kws: Vec<_> = by_keyword.into_iter().collect();
+        kws.sort_by_key(|(_, c)| std::cmp::Reverse(*c));
+        for (kw, count) in kws {
+            println!("  {}: {}", kw, count);
+        }
+    }
+
+    // Simple CSV block for easy export / further analysis in spreadsheet
+    println!("\n--- CSV (copy-paste friendly) ---");
+    println!("success,connect_ms,total_ms,path,note");
+    for s in samples {
+        let note = s.network_note.as_deref().unwrap_or("").replace(',', ";");
+        println!("{},{},{},{},{}", 
+            if s.success { "1" } else { "0" },
+            s.connect_duration_ms,
+            s.total_duration_ms,
+            s.path,
+            note
+        );
+    }
+
+    println!("\nTip: use --note with rich network description (include CGNAT, mobile, home, etc.) for better post-analysis grouping.");
 }
 
 /// Core of one listen transfer. Returns one ConnectivitySample.
@@ -361,8 +397,12 @@ async fn run_one_listen(
         path,
         note.clone(),
     );
+    // Enhanced diagnostics for real data collection.
+    // Note: in iroh 0.92 used here, rich path info (direct vs relayed, hole-punch success details)
+    // is not directly exposed without additional features. We capture what we can and rely on
+    // the human-provided --note for network conditions.
     sample.diagnostics = Some(format!(
-        "remote_node={remote_node_str} local_node={local_node_str}"
+        "remote_node={remote_node_str} local_node={local_node_str}; connection=quic; path_info_limited_in_this_iroh_version"
     ));
     sample
 }
@@ -555,8 +595,9 @@ async fn run_dial(node_str: &str, blob_size: usize, note: Option<String>, secret
         note,
     );
 
+    // Enhanced diagnostics for real data collection (same limitation note as listen side).
     sample.diagnostics = Some(format!(
-        "local_node={local_node_str} remote_node={remote_node_str} connect_time_ms={connect_duration}"
+        "local_node={local_node_str} remote_node={remote_node_str} connect_time_ms={connect_duration}; connection=quic; path_info_limited_in_this_iroh_version"
     ));
 
     sample
