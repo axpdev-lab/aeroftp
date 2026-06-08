@@ -107,33 +107,68 @@ impl PeerBlobOffer {
 
 /// ConnectivitySample lives here in the spike so the binary can serialize it
 /// without depending on the main crate.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+///
+/// This is the main artifact for the L0 Go/No-Go gate.
+/// We collect many of these across real hostile networks (CGNAT, mobile, office, etc.)
+/// to answer the central question: does dial-by-NodeID + hole-punch work reliably enough?
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
 pub struct ConnectivitySample {
     pub success: bool,
-    pub used_relay: bool,
-    pub duration_ms: u64,
+
+    /// Best-effort classification of the path used.
+    /// For now this is often "unknown" because iroh 0.92 connection path inspection
+    /// is limited. We improve this as much as possible in the harness.
+    pub path: String, // "direct", "relayed", "holepunch", "unknown"
+
+    /// Total wall time from start of the operation until success or final failure.
+    pub total_duration_ms: u64,
+
+    /// Time spent just to establish the authenticated connection (dial or accept).
+    pub connect_duration_ms: u64,
+
+    /// Time spent on the actual (encrypted) data transfer after connection was ready.
+    pub transfer_duration_ms: u64,
+
     pub error: Option<String>,
+
+    /// Free-text note provided by the human running the test.
+    /// This is extremely valuable for the gate analysis (e.g. "home behind CGNAT + IPv4 only", "mobile hotspot behind carrier-grade NAT", "two laptops same LAN").
     pub network_note: Option<String>,
+
+    /// Optional extra diagnostic info (e.g. remote addresses seen, iroh stats snapshot).
+    pub diagnostics: Option<String>,
 }
 
 impl ConnectivitySample {
-    pub fn success(duration_ms: u64, used_relay: bool, note: Option<String>) -> Self {
+    pub fn success(
+        total_ms: u64,
+        connect_ms: u64,
+        transfer_ms: u64,
+        path: impl Into<String>,
+        note: Option<String>,
+    ) -> Self {
         Self {
             success: true,
-            used_relay,
-            duration_ms,
+            path: path.into(),
+            total_duration_ms: total_ms,
+            connect_duration_ms: connect_ms,
+            transfer_duration_ms: transfer_ms,
             error: None,
             network_note: note,
+            diagnostics: None,
         }
     }
 
     pub fn failure(err: impl ToString, note: Option<String>) -> Self {
         Self {
             success: false,
-            used_relay: false,
-            duration_ms: 0,
+            path: "failure".to_string(),
+            total_duration_ms: 0,
+            connect_duration_ms: 0,
+            transfer_duration_ms: 0,
             error: Some(err.to_string()),
             network_note: note,
+            diagnostics: None,
         }
     }
 }

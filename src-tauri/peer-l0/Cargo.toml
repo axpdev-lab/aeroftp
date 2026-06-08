@@ -27,5 +27,14 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 clap = { version = "4", features = ["derive"] }
 
+# Encryption for L0 "vault-encrypted" blob (stand-in until full integration with main user_crypto).
+# These are isolated to this spike crate.
+aes-gcm = "0.10"
+hkdf = "0.12"
+sha2 = "0.10"
+rand = "0.8"
+base64 = "0.22"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+
 [dev-dependencies]
 tempfile = "3"

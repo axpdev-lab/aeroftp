@@ -2,13 +2,15 @@
 //! The real integration (once deps are resolved in the main tree) will
 //! live under src-tauri/src/peer/.
 
+pub mod crypto;
 pub mod endpoint;
 pub mod protocol;
 
+pub use crypto::{decode_secret, derive_session_key, encode_secret, encrypt_blob, generate_pairing_secret, decrypt_blob, PAIRING_SECRET_LEN};
 pub use endpoint::{PeerBlobOffer, PeerEndpoint, PeerEndpointConfig};
-pub use protocol::{recv_blob, recv_offer, send_blob, send_offer};
+pub use protocol::{recv_blob, recv_encrypted_blob, recv_offer, send_blob, send_encrypted_blob, send_offer};
 
-pub use crate::endpoint::ConnectivitySample; // re-export the one from endpoint for simplicity in spike
+pub use crate::endpoint::ConnectivitySample;
 
 // Re-export the ALPN constant so the binary and future tests can share it.
 pub const PEER_L0_ALPN: &[u8] = b"/aeroftp/peer/l0";
