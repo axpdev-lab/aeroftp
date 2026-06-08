@@ -73,6 +73,10 @@ const BLOCK_AAD_PREFIX: &[u8] = b"AeroVault v3 block";
 /// pure v3 readers can still open and extract from v4+ECC vaults
 /// (per the forward-compat contract in AEROVAULT-V3-SPEC.md and discussion #276).
 const ECC_EXTENSION_ID: &str = "ecc.reed-solomon";
+// GAP-4: parity over the encrypted manifest itself (the "locator" that scrub needs).
+// Stored as a second non-critical extension so a corrupted manifest can be rebuilt
+// before any per-block cipher_hash is read. v3 readers skip it like any non-critical.
+const ECC_META_EXTENSION_ID: &str = "ecc-metadata.reed-solomon";
 const ECC_ALGORITHM_ID: &str = "reed-solomon";
 const ECC_ALGORITHM_VERSION: u32 = 1;
 
@@ -688,6 +692,15 @@ fn scrub_vault(vault: &OpenVaultV3) -> Vec<DamagedChunk> {
 fn repair_vault(vault: &mut OpenVaultV3, dry_run: bool) -> Result<usize, String> {
     let damaged = scrub_vault(vault);
     if damaged.is_empty() {
+        // GAP-4: no damaged data blocks, but if open had to rebuild a corrupted
+        // manifest from the metadata parity, persist the healed locator. The seal
+        // re-encrypts the (correct, in-memory) manifest and regenerates both parities.
+        if vault.manifest_repaired_on_open {
+            if !dry_run {
+                save_open_vault(vault)?;
+            }
+            return Ok(1);
+        }
         return Ok(0);
     }
 
@@ -833,6 +846,10 @@ struct OpenVaultV3 {
     /// Behind-the-scenes technical telemetry accumulated by the current
     /// operation (compression / encryption / chunking / dedup). Not persisted.
     report: VaultReport,
+    /// GAP-4: set when open_vault had to rebuild a corrupted encrypted manifest
+    /// from the metadata parity. Repair persists the healed manifest even when no
+    /// data block is damaged. Not persisted (recomputed per open).
+    manifest_repaired_on_open: bool,
 }
 
 impl Drop for OpenVaultV3 {
@@ -1996,8 +2013,38 @@ fn build_file_bytes(
     data: &[u8],
 ) -> Result<Vec<u8>, String> {
     let encrypted_manifest = encrypt_manifest(master_key, manifest)?;
+
+    // GAP-4: when Error Correction is enabled (the data-block parity extension is
+    // present), also protect the locator. The per-block cipher_hash that scrub reads
+    // lives inside the encrypted manifest, so a corrupted manifest would leave scrub
+    // with no map to repair from. Compute a fixed-rate Reed-Solomon parity over the
+    // encrypted manifest bytes (reusing the v2 grid, manifest treated as one block)
+    // and store it as a second non-critical extension, rebuilt on every seal. It is
+    // located via the MAC-verified header (whose offsets survive a manifest hit), so
+    // repair can rebuild the manifest before reading any cipher_hash.
+    let mut extensions: Vec<ExtensionEntryV3> = extensions
+        .iter()
+        .filter(|e| e.extension_id != ECC_META_EXTENSION_ID)
+        .cloned()
+        .collect();
+    let mut extension_payloads = extension_payloads.to_vec();
+    if extensions
+        .iter()
+        .any(|e| e.extension_id == ECC_EXTENSION_ID)
+    {
+        let (meta_payload, _shards, _prot, _ov) = compute_ecc_shards(&[&encrypted_manifest]);
+        extensions.push(ExtensionEntryV3 {
+            extension_id: ECC_META_EXTENSION_ID.to_string(),
+            algorithm_id: ECC_ALGORITHM_ID.to_string(),
+            algorithm_version: ECC_ALGORITHM_VERSION,
+            critical: false,
+            offset: extension_payloads.len() as u64,
+            length: meta_payload.len() as u64,
+        });
+        extension_payloads.extend_from_slice(&meta_payload);
+    }
     let extension_dir =
-        serde_json::to_vec(extensions).map_err(|e| format!("Extension serialize: {e}"))?;
+        serde_json::to_vec(&extensions).map_err(|e| format!("Extension serialize: {e}"))?;
 
     header.data_offset = DATA_OFFSET;
     header.data_len = data.len() as u64;
@@ -2021,7 +2068,7 @@ fn build_file_bytes(
     out.extend_from_slice(data);
     out.extend_from_slice(&encrypted_manifest);
     out.extend_from_slice(&extension_dir);
-    out.extend_from_slice(extension_payloads);
+    out.extend_from_slice(&extension_payloads);
     Ok(out)
 }
 
@@ -2117,6 +2164,67 @@ fn validate_supported_wrappers(w: &WrapperManifest) -> Result<(), String> {
     Ok(())
 }
 
+/// GAP-4: try to rebuild a corrupted encrypted manifest from the metadata-parity
+/// extension. The extension directory and payload are located via the MAC-verified
+/// header, whose offsets survive a manifest-region hit. Returns the reconstructed
+/// encrypted-manifest bytes when a metadata extension is present, or `None` when
+/// there is none (the caller then keeps the original decrypt error). Correctness is
+/// not asserted here: the caller re-runs `decrypt_manifest`, whose AEAD authentication
+/// is the proof that the reconstruction is right.
+fn reconstruct_encrypted_manifest(
+    file: &mut std::fs::File,
+    header: &VaultHeaderV3,
+    file_len: u64,
+) -> Result<Option<Vec<u8>>, String> {
+    let ext_json = read_capped(
+        file,
+        header.extension_dir_offset,
+        header.extension_dir_len,
+        MAX_EXTENSION_DIR_SIZE,
+        "extension directory",
+    )?;
+    let extensions: Vec<ExtensionEntryV3> = match serde_json::from_slice(&ext_json) {
+        Ok(v) => v,
+        Err(_) => return Ok(None),
+    };
+    let meta = match extensions
+        .iter()
+        .find(|e| e.extension_id == ECC_META_EXTENSION_ID)
+    {
+        Some(m) if m.length > 0 => m,
+        _ => return Ok(None),
+    };
+    let payload_abs = header
+        .extension_payload_offset
+        .checked_add(meta.offset)
+        .ok_or("metadata parity offset overflows")?;
+    let end = payload_abs
+        .checked_add(meta.length)
+        .ok_or("metadata parity range overflows")?;
+    if end > file_len {
+        return Err("metadata parity range exceeds file size".to_string());
+    }
+    // Manifest parity is at most ~20% over the manifest plus a per-shard checksum
+    // table; bound it generously by the manifest cap.
+    let meta_payload = read_capped(
+        file,
+        payload_abs,
+        meta.length,
+        2 * MAX_MANIFEST_SIZE,
+        "metadata parity",
+    )?;
+    let corrupt = read_capped(
+        file,
+        header.manifest_offset,
+        header.manifest_len,
+        MAX_MANIFEST_SIZE,
+        "manifest",
+    )?;
+    let mut blocks = vec![corrupt];
+    reconstruct_from_ecc(&mut blocks, &meta_payload)?;
+    Ok(blocks.into_iter().next())
+}
+
 fn open_vault(path: impl Into<PathBuf>, password: &str) -> Result<OpenVaultV3, String> {
     let path = path.into();
     let mut file = std::fs::File::open(&path).map_err(|e| format!("Open vault: {e}"))?;
@@ -2164,7 +2272,22 @@ fn open_vault(path: impl Into<PathBuf>, password: &str) -> Result<OpenVaultV3, S
         MAX_MANIFEST_SIZE,
         "manifest",
     )?;
-    let manifest = decrypt_manifest(&master_key, &encrypted_manifest)?;
+    let (manifest, manifest_repaired_on_open) =
+        match decrypt_manifest(&master_key, &encrypted_manifest) {
+            Ok(m) => (m, false),
+            Err(orig) => {
+                // GAP-4: the manifest region may be corrupted (bit-rot, bad sector).
+                // If the metadata-parity extension is present, rebuild the encrypted
+                // manifest from it and retry. A successful AEAD decrypt on the rebuilt
+                // bytes is the correctness proof; otherwise keep the original error.
+                match reconstruct_encrypted_manifest(&mut file, &header, file_len)? {
+                    Some(rebuilt) if rebuilt != encrypted_manifest => {
+                        (decrypt_manifest(&master_key, &rebuilt)?, true)
+                    }
+                    _ => return Err(orig),
+                }
+            }
+        };
     if manifest.format != VERSION {
         return Err(format!(
             "Unsupported AeroVault manifest version: {}",
@@ -2201,6 +2324,13 @@ fn open_vault(path: impl Into<PathBuf>, password: &str) -> Result<OpenVaultV3, S
     // `has_ecc` is recorded for future use (scrub/repair paths, info surfaces).
     // The extensions vec is already stored in OpenVaultV3 for round-tripping.
 
+    // Do not round-trip the GAP-4 metadata-parity extension; build_file_bytes is its
+    // sole author and recomputes it on every seal from the freshly encrypted manifest.
+    let extensions: Vec<ExtensionEntryV3> = extensions
+        .into_iter()
+        .filter(|e| e.extension_id != ECC_META_EXTENSION_ID)
+        .collect();
+
     Ok(OpenVaultV3 {
         path,
         opened_file_len: file_len,
@@ -2212,6 +2342,7 @@ fn open_vault(path: impl Into<PathBuf>, password: &str) -> Result<OpenVaultV3, S
         extensions,
         data,
         report: VaultReport::new("open", VERSION),
+        manifest_repaired_on_open,
     })
 }
 
@@ -3349,6 +3480,87 @@ mod tests {
     }
 
     #[test]
+    fn gap4_corrupted_manifest_rebuilt_from_metadata_parity() {
+        // GAP-4: the per-block cipher_hash scrub needs lives inside the encrypted
+        // manifest. A corrupted manifest must be rebuildable from the metadata parity
+        // (located via the MAC-verified header) so the vault still opens and repairs.
+        let dir = tempfile::tempdir().unwrap();
+        let vault_path = dir.path().join("gap4.aerovault");
+        let f1 = dir.path().join("f1.txt");
+        let payload = b"gap4 manifest locator protection: corrupt the manifest, rebuild it";
+        std::fs::write(&f1, payload).unwrap();
+
+        create_empty_vault(&vault_path, "gap4-pw-12345", DEFAULT_ZSTD_LEVEL, true).unwrap();
+        {
+            let mut vault = open_vault(&vault_path, "gap4-pw-12345").unwrap();
+            append_file_at(&mut vault, &f1, "f1.txt").unwrap();
+            save_open_vault(&mut vault).unwrap();
+        }
+
+        // Offsets of the manifest region (read from a clean open), then flip one byte
+        // inside it on disk: a single bit change breaks AES-256-GCM-SIV authentication.
+        let (m_off, m_len) = {
+            let vault = open_vault(&vault_path, "gap4-pw-12345").unwrap();
+            (
+                vault.header.manifest_offset as usize,
+                vault.header.manifest_len as usize,
+            )
+        };
+        assert!(m_len > 0);
+        let mut bytes = std::fs::read(&vault_path).unwrap();
+        bytes[m_off + m_len / 2] ^= 0xFF;
+        std::fs::write(&vault_path, &bytes).unwrap();
+
+        // Open must now succeed by rebuilding the manifest from the metadata parity.
+        let mut vault = open_vault(&vault_path, "gap4-pw-12345")
+            .expect("open should rebuild the corrupted manifest from the metadata parity");
+        assert!(vault.manifest_repaired_on_open);
+
+        // The data block was untouched, so the content extracts intact.
+        let out = dir.path().join("out.txt");
+        extract_entry(&vault, "f1.txt", &out).unwrap();
+        assert_eq!(std::fs::read(&out).unwrap(), payload);
+
+        // Repair persists the healed manifest even with no damaged data block.
+        let repaired = repair_vault(&mut vault, false).expect("repair persists healed manifest");
+        assert_eq!(repaired, 1);
+
+        // Re-open: the on-disk manifest is healed, no reconstruction needed this time.
+        let vault2 = open_vault(&vault_path, "gap4-pw-12345").unwrap();
+        assert!(!vault2.manifest_repaired_on_open);
+    }
+
+    #[test]
+    fn gap4_no_metadata_parity_means_corrupt_manifest_is_fatal() {
+        // Control: a vault WITHOUT Error Correction has no metadata parity, so the
+        // same manifest corruption is fatal. This proves the rebuild above is what
+        // saves the ECC vault, not some other tolerance in the open path.
+        let dir = tempfile::tempdir().unwrap();
+        let vault_path = dir.path().join("gap4-neg.aerovault");
+        let f1 = dir.path().join("f1.txt");
+        std::fs::write(&f1, b"no parity here, corruption is fatal").unwrap();
+
+        create_empty_vault(&vault_path, "gap4-pw-12345", DEFAULT_ZSTD_LEVEL, false).unwrap();
+        {
+            let mut vault = open_vault(&vault_path, "gap4-pw-12345").unwrap();
+            append_file_at(&mut vault, &f1, "f1.txt").unwrap();
+            save_open_vault(&mut vault).unwrap();
+        }
+        let (m_off, m_len) = {
+            let vault = open_vault(&vault_path, "gap4-pw-12345").unwrap();
+            (
+                vault.header.manifest_offset as usize,
+                vault.header.manifest_len as usize,
+            )
+        };
+        let mut bytes = std::fs::read(&vault_path).unwrap();
+        bytes[m_off + m_len / 2] ^= 0xFF;
+        std::fs::write(&vault_path, &bytes).unwrap();
+
+        assert!(open_vault(&vault_path, "gap4-pw-12345").is_err());
+    }
+
+    #[test]
     fn p2_08_cli_stress_multiple_damage_repair() {
         // Stress test: ECC vault with 12 files, corrupt 4 blocks (across stripes), repair, verify all.
         let dir = tempfile::tempdir().unwrap();
@@ -3452,8 +3664,20 @@ mod tests {
         // (extension_payload_offset @176, extension_payload_len @184).
         let mut raw = std::fs::read(&vault_path).unwrap();
         let payload_abs = u64::from_le_bytes(raw[176..184].try_into().unwrap()) as usize;
-        let payload_len = u64::from_le_bytes(raw[184..192].try_into().unwrap()) as usize;
-        let payload = EccPayload::from_bytes(&raw[payload_abs..payload_abs + payload_len]).unwrap();
+        // The extension payload region now holds both the data-block parity (entry at
+        // offset 0) and the GAP-4 manifest parity; read the data-block parity's exact
+        // slice via its extension-directory entry, not the whole region.
+        let ext_dir_abs = u64::from_le_bytes(raw[160..168].try_into().unwrap()) as usize;
+        let ext_dir_len = u64::from_le_bytes(raw[168..176].try_into().unwrap()) as usize;
+        let exts: Vec<ExtensionEntryV3> =
+            serde_json::from_slice(&raw[ext_dir_abs..ext_dir_abs + ext_dir_len]).unwrap();
+        let data_parity_len = exts
+            .iter()
+            .find(|e| e.extension_id == ECC_EXTENSION_ID)
+            .expect("data ECC extension present")
+            .length as usize;
+        let payload =
+            EccPayload::from_bytes(&raw[payload_abs..payload_abs + data_parity_len]).unwrap();
         let (nds, ng) = ecc_geometry(&payload.header);
         let p = payload.header.parity_shards as usize;
         let parity0_abs = payload_abs + 32 + (nds + ng * p) * ECC_SHARD_CKSUM_LEN;
