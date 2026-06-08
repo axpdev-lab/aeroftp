@@ -4745,7 +4745,8 @@
             "errCurrentRequired": "Nåværende kontopassord er påkrevd.",
             "errNewRequired": "Nytt kontopassord er påkrevd.",
             "confirmRemovePassword": "Fjerne kontopassordet for \"{name}\"?",
-            "confirmDelete": "Slette kontoen \"{name}\"?\n\nKrypterte data som skal fjernes: {profiles} profiler, {settings} innstillingsområder."
+            "confirmDelete": "Slette kontoen \"{name}\"?\n\nKrypterte data som skal fjernes: {profiles} profiler, {settings} innstillingsområder.",
+            "passwordChoiceNote": "Det er valgfritt å angi et kontopassord. Det hindrer andre som bruker denne enheten i å åpne kontoen din; de lagrede dataene dine forblir kryptert uansett. Hopp over dette hvis du er den eneste brukeren, eller hvis du stoler på alle som bruker denne enheten."
         }
     }
 }

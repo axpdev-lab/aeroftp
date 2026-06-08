@@ -4726,7 +4726,8 @@
             "errCurrentRequired": "Pašreizējā konta parole ir obligāta.",
             "errNewRequired": "Jaunā konta parole ir obligāta.",
             "confirmRemovePassword": "Noņemt konta paroli kontam \"{name}\"?",
-            "confirmDelete": "Dzēst kontu \"{name}\"?\n\nNoņemamie šifrētie dati: {profiles} profili, {settings} iestatījumu jomas."
+            "confirmDelete": "Dzēst kontu \"{name}\"?\n\nNoņemamie šifrētie dati: {profiles} profili, {settings} iestatījumu jomas.",
+            "passwordChoiceNote": "Konta paroles iestatīšana nav obligāta. Tā neļauj citiem cilvēkiem, kuri izmanto šo ierīci, atvērt jūsu kontu; jūsu saglabātie dati abos gadījumos paliek šifrēti. Izlaidiet to, ja esat vienīgais lietotājs vai ja uzticaties visiem, kas izmanto šo ierīci."
         }
     }
 }

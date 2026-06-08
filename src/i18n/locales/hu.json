@@ -4726,7 +4726,8 @@
             "errCurrentRequired": "A fiók jelenlegi jelszava kötelező.",
             "errNewRequired": "A fiók új jelszava kötelező.",
             "confirmRemovePassword": "Eltávolítja a fiók jelszavát ehhez: \"{name}\"?",
-            "confirmDelete": "Törli a(z) \"{name}\" fiókot?\n\nEltávolítandó titkosított adatok: {profiles} profil, {settings} beállítási hatókör."
+            "confirmDelete": "Törli a(z) \"{name}\" fiókot?\n\nEltávolítandó titkosított adatok: {profiles} profil, {settings} beállítási hatókör.",
+            "passwordChoiceNote": "A fiókjelszó beállítása nem kötelező. Megakadályozza, hogy mások, akik ezt az eszközt használják, megnyissák a fiókodat; a mentett adataid mindkét esetben titkosítva maradnak. Hagyd ki, ha egyedül használod, vagy ha megbízol mindenkiben, aki ezt az eszközt használja."
         }
     }
 }

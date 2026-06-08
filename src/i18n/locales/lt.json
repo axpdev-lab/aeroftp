@@ -4726,7 +4726,8 @@
             "errCurrentRequired": "Reikalingas dabartinis paskyros slaptažodis.",
             "errNewRequired": "Reikalingas naujas paskyros slaptažodis.",
             "confirmRemovePassword": "Pašalinti paskyros „{name}“ slaptažodį?",
-            "confirmDelete": "Ištrinti paskyrą „{name}“?\n\nPašalinami užšifruoti duomenys: {profiles} profiliai, {settings} nustatymų sritys."
+            "confirmDelete": "Ištrinti paskyrą „{name}“?\n\nPašalinami užšifruoti duomenys: {profiles} profiliai, {settings} nustatymų sritys.",
+            "passwordChoiceNote": "Paskyros slaptažodžio nustatymas yra neprivalomas. Jis neleidžia kitiems šį įrenginį naudojantiems žmonėms atidaryti jūsų paskyros; jūsų išsaugoti duomenys bet kuriuo atveju lieka užšifruoti. Praleiskite tai, jei esate vienintelis naudotojas arba jei pasitikite visais, kurie naudoja šį įrenginį."
         }
     }
 }

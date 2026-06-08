@@ -4726,7 +4726,8 @@
             "errCurrentRequired": "Das aktuelle Kontopasswort ist erforderlich.",
             "errNewRequired": "Das neue Kontopasswort ist erforderlich.",
             "confirmRemovePassword": "Das Kontopasswort für \"{name}\" entfernen?",
-            "confirmDelete": "Konto \"{name}\" löschen?\n\nZu entfernende verschlüsselte Daten: {profiles} Profile, {settings} Einstellungsbereiche."
+            "confirmDelete": "Konto \"{name}\" löschen?\n\nZu entfernende verschlüsselte Daten: {profiles} Profile, {settings} Einstellungsbereiche.",
+            "passwordChoiceNote": "Das Festlegen eines Kontopassworts ist optional. Es verhindert, dass andere Personen, die dieses Gerät nutzen, Ihr Konto öffnen; Ihre gespeicherten Daten bleiben in beiden Fällen verschlüsselt. Überspringen Sie es, wenn Sie der einzige Nutzer sind oder allen vertrauen, die dieses Gerät verwenden."
         }
     }
 }

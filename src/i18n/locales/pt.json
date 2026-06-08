@@ -4726,7 +4726,8 @@
             "errCurrentRequired": "A palavra-passe atual da conta é obrigatória.",
             "errNewRequired": "A nova palavra-passe da conta é obrigatória.",
             "confirmRemovePassword": "Remover a palavra-passe da conta de \"{name}\"?",
-            "confirmDelete": "Eliminar a conta \"{name}\"?\n\nDados encriptados a remover: {profiles} perfis, {settings} âmbitos de definições."
+            "confirmDelete": "Eliminar a conta \"{name}\"?\n\nDados encriptados a remover: {profiles} perfis, {settings} âmbitos de definições.",
+            "passwordChoiceNote": "Definir uma palavra-passe da conta é opcional. Impede que outras pessoas que usam este dispositivo abram a sua conta; os seus dados guardados permanecem encriptados de qualquer forma. Ignore este passo se for o único utilizador aqui, ou se confiar em todos os que usam este dispositivo."
         }
     }
 }

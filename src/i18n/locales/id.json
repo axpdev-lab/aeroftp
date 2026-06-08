@@ -4726,7 +4726,8 @@
             "errCurrentRequired": "Kata sandi akun saat ini wajib diisi.",
             "errNewRequired": "Kata sandi akun baru wajib diisi.",
             "confirmRemovePassword": "Hapus kata sandi akun untuk \"{name}\"?",
-            "confirmDelete": "Hapus akun \"{name}\"?\n\nData terenkripsi yang akan dihapus: {profiles} profil, {settings} cakupan pengaturan."
+            "confirmDelete": "Hapus akun \"{name}\"?\n\nData terenkripsi yang akan dihapus: {profiles} profil, {settings} cakupan pengaturan.",
+            "passwordChoiceNote": "Mengatur kata sandi akun bersifat opsional. Ini mencegah orang lain yang menggunakan perangkat ini membuka akun Anda; data tersimpan Anda tetap terenkripsi dalam kedua kasus. Lewati saja jika Anda satu-satunya pengguna, atau jika Anda memercayai semua orang yang menggunakan perangkat ini."
         }
     }
 }

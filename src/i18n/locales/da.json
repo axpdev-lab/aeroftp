@@ -4726,7 +4726,8 @@
             "errCurrentRequired": "Den nuværende kontoadgangskode er påkrævet.",
             "errNewRequired": "Den nye kontoadgangskode er påkrævet.",
             "confirmRemovePassword": "Fjern kontoadgangskoden for \"{name}\"?",
-            "confirmDelete": "Slet kontoen \"{name}\"?\n\nKrypterede data, der skal fjernes: {profiles} profiler, {settings} indstillingsområder."
+            "confirmDelete": "Slet kontoen \"{name}\"?\n\nKrypterede data, der skal fjernes: {profiles} profiler, {settings} indstillingsområder.",
+            "passwordChoiceNote": "Det er valgfrit at angive en adgangskode til kontoen. Den forhindrer andre, der bruger denne enhed, i at åbne din konto; dine gemte data forbliver krypterede under alle omstændigheder. Spring det over, hvis du er den eneste her, eller hvis du har tillid til alle, der bruger denne enhed."
         }
     }
 }

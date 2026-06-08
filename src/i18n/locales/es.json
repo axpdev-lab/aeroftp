@@ -4726,7 +4726,8 @@
             "errCurrentRequired": "La contraseña actual de la cuenta es obligatoria.",
             "errNewRequired": "La nueva contraseña de la cuenta es obligatoria.",
             "confirmRemovePassword": "¿Quitar la contraseña de la cuenta de \"{name}\"?",
-            "confirmDelete": "¿Eliminar la cuenta \"{name}\"?\n\nDatos cifrados que se eliminarán: {profiles} perfiles, {settings} ámbitos de ajustes."
+            "confirmDelete": "¿Eliminar la cuenta \"{name}\"?\n\nDatos cifrados que se eliminarán: {profiles} perfiles, {settings} ámbitos de ajustes.",
+            "passwordChoiceNote": "Establecer una contraseña de cuenta es opcional. Evita que otras personas que usan este dispositivo abran tu cuenta; tus datos guardados permanecen cifrados de todos modos. Omítelo si eres el único que lo usa, o si confías en todos los que usan este dispositivo."
         }
     }
 }

@@ -4726,7 +4726,8 @@
             "errCurrentRequired": "Aktuální heslo účtu je povinné.",
             "errNewRequired": "Nové heslo účtu je povinné.",
             "confirmRemovePassword": "Odebrat heslo účtu pro \"{name}\"?",
-            "confirmDelete": "Odstranit účet \"{name}\"?\n\nŠifrovaná data k odstranění: {profiles} profilů, {settings} oblastí nastavení."
+            "confirmDelete": "Odstranit účet \"{name}\"?\n\nŠifrovaná data k odstranění: {profiles} profilů, {settings} oblastí nastavení.",
+            "passwordChoiceNote": "Nastavení hesla účtu je volitelné. Zabrání ostatním lidem, kteří používají toto zařízení, otevřít váš účet; vaše uložená data zůstávají tak jako tak zašifrovaná. Přeskočte to, pokud jste jediný, kdo zařízení používá, nebo pokud důvěřujete všem, kdo toto zařízení používají."
         }
     }
 }

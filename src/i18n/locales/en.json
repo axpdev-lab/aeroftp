@@ -1898,6 +1898,7 @@
             "avatar": "Avatar",
             "add": "Add",
             "accountPasswordOptional": "Account password (optional)",
+            "passwordChoiceNote": "Setting an account password is optional. It stops other people who use this device from opening your account; your saved data stays encrypted either way. Skip it if you are the only one here, or you trust everyone who uses this device.",
             "noRecovery": "No recovery",
             "noRecoveryTitle": "Account password cannot be recovered.",
             "noRecoveryBody": "If you forget this password, the account's saved servers, settings, and history are permanently inaccessible. Store the password somewhere safe before continuing.",

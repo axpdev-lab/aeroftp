@@ -4745,7 +4745,8 @@
             "errCurrentRequired": "O contrasinal actual da conta é obrigatorio.",
             "errNewRequired": "O novo contrasinal da conta é obrigatorio.",
             "confirmRemovePassword": "Eliminar o contrasinal da conta para \"{name}\"?",
-            "confirmDelete": "Eliminar a conta \"{name}\"?\n\nDatos cifrados que eliminar: {profiles} perfís, {settings} ámbitos de configuración."
+            "confirmDelete": "Eliminar a conta \"{name}\"?\n\nDatos cifrados que eliminar: {profiles} perfís, {settings} ámbitos de configuración.",
+            "passwordChoiceNote": "Establecer un contrasinal da conta é opcional. Evita que outras persoas que usan este dispositivo abran a túa conta; os teus datos gardados seguen cifrados en calquera caso. Omíteo se es o único que o usa, ou se confías en todos os que usan este dispositivo."
         }
     }
 }

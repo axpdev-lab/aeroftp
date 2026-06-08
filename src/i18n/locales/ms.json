@@ -4726,7 +4726,8 @@
             "errCurrentRequired": "Kata laluan akaun semasa diperlukan.",
             "errNewRequired": "Kata laluan akaun baharu diperlukan.",
             "confirmRemovePassword": "Buang kata laluan akaun untuk \"{name}\"?",
-            "confirmDelete": "Padam akaun \"{name}\"?\n\nMuatan disulitkan untuk dibuang: {profiles} profil, {settings} skop tetapan."
+            "confirmDelete": "Padam akaun \"{name}\"?\n\nMuatan disulitkan untuk dibuang: {profiles} profil, {settings} skop tetapan.",
+            "passwordChoiceNote": "Menetapkan kata laluan akaun adalah pilihan. Ia menghalang orang lain yang menggunakan peranti ini daripada membuka akaun anda; data tersimpan anda kekal disulitkan dalam kedua-dua keadaan. Langkau langkah ini jika anda satu-satunya pengguna, atau jika anda mempercayai semua orang yang menggunakan peranti ini."
         }
     }
 }

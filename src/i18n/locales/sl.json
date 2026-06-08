@@ -4726,7 +4726,8 @@
             "errCurrentRequired": "Trenutno geslo računa je obvezno.",
             "errNewRequired": "Novo geslo računa je obvezno.",
             "confirmRemovePassword": "Odstranim geslo računa za \"{name}\"?",
-            "confirmDelete": "Izbrišem račun \"{name}\"?\n\nŠifrirane vsebine za odstranitev: {profiles} profilov, {settings} obsegov nastavitev."
+            "confirmDelete": "Izbrišem račun \"{name}\"?\n\nŠifrirane vsebine za odstranitev: {profiles} profilov, {settings} obsegov nastavitev.",
+            "passwordChoiceNote": "Nastavitev gesla za račun je izbirna. Drugim ljudem, ki uporabljajo to napravo, prepreči, da bi odprli vaš račun; vaši shranjeni podatki ostanejo v vsakem primeru šifrirani. Ta korak preskočite, če ste edini uporabnik tukaj ali če zaupate vsem, ki uporabljajo to napravo."
         }
     }
 }

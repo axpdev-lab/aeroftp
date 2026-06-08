@@ -4726,7 +4726,8 @@
             "errCurrentRequired": "Nuvarande kontolösenord krävs.",
             "errNewRequired": "Nytt kontolösenord krävs.",
             "confirmRemovePassword": "Ta bort kontolösenordet för \"{name}\"?",
-            "confirmDelete": "Ta bort kontot \"{name}\"?\n\nKrypterade data att ta bort: {profiles} profiler, {settings} inställningsområden."
+            "confirmDelete": "Ta bort kontot \"{name}\"?\n\nKrypterade data att ta bort: {profiles} profiler, {settings} inställningsområden.",
+            "passwordChoiceNote": "Att ange ett kontolösenord är valfritt. Det hindrar andra som använder den här enheten från att öppna ditt konto; dina sparade data förblir krypterade oavsett. Hoppa över det här steget om du är den enda här eller om du litar på alla som använder den här enheten."
         }
     }
 }

@@ -4726,7 +4726,8 @@
             "errCurrentRequired": "Nenosiri la sasa la akaunti linahitajika.",
             "errNewRequired": "Nenosiri jipya la akaunti linahitajika.",
             "confirmRemovePassword": "Ondoa nenosiri la akaunti kwa \"{name}\"?",
-            "confirmDelete": "Futa akaunti \"{name}\"?\n\nData zilizosimbwa za kuondoa: wasifu {profiles}, mipangilio {settings}."
+            "confirmDelete": "Futa akaunti \"{name}\"?\n\nData zilizosimbwa za kuondoa: wasifu {profiles}, mipangilio {settings}.",
+            "passwordChoiceNote": "Kuweka nenosiri la akaunti ni hiari. Linazuia watu wengine wanaotumia kifaa hiki kufungua akaunti yako; data uliyohifadhi inabaki imesimbwa kwa njia fiche vyovyote vile. Ruka hatua hii ikiwa wewe ndiye mtumiaji pekee hapa, au ikiwa unawaamini wote wanaotumia kifaa hiki."
         }
     }
 }

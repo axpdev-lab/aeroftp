@@ -4745,7 +4745,8 @@
             "errCurrentRequired": "La contrasenya actual del compte és obligatòria.",
             "errNewRequired": "La nova contrasenya del compte és obligatòria.",
             "confirmRemovePassword": "Voleu eliminar la contrasenya del compte de \"{name}\"?",
-            "confirmDelete": "Voleu eliminar el compte \"{name}\"?\n\nDades xifrades a eliminar: {profiles} perfils, {settings} àmbits de configuració."
+            "confirmDelete": "Voleu eliminar el compte \"{name}\"?\n\nDades xifrades a eliminar: {profiles} perfils, {settings} àmbits de configuració.",
+            "passwordChoiceNote": "Establir una contrasenya del compte és opcional. Evita que altres persones que utilitzen aquest dispositiu obrin el vostre compte; les vostres dades desades es mantenen xifrades en qualsevol cas. Ometeu-ho si sou l'única persona que l'utilitza, o si confieu en tothom qui utilitza aquest dispositiu."
         }
     }
 }

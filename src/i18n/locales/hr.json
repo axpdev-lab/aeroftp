@@ -4726,7 +4726,8 @@
             "errCurrentRequired": "Trenutna lozinka računa je obavezna.",
             "errNewRequired": "Nova lozinka računa je obavezna.",
             "confirmRemovePassword": "Ukloniti lozinku računa za \"{name}\"?",
-            "confirmDelete": "Izbrisati račun \"{name}\"?\n\nŠifrirani podaci za uklanjanje: {profiles} profila, {settings} opsega postavki."
+            "confirmDelete": "Izbrisati račun \"{name}\"?\n\nŠifrirani podaci za uklanjanje: {profiles} profila, {settings} opsega postavki.",
+            "passwordChoiceNote": "Postavljanje lozinke za račun nije obavezno. Sprječava druge osobe koje koriste ovaj uređaj da otvore vaš račun; vaši spremljeni podaci u svakom slučaju ostaju šifrirani. Preskočite ovo ako ste jedini korisnik ili ako vjerujete svima koji koriste ovaj uređaj."
         }
     }
 }

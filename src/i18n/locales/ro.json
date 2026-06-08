@@ -4726,7 +4726,8 @@
             "errCurrentRequired": "Parola actuală a contului este obligatorie.",
             "errNewRequired": "Parola nouă a contului este obligatorie.",
             "confirmRemovePassword": "Elimini parola contului pentru „{name}”?",
-            "confirmDelete": "Ștergi contul „{name}”?\n\nDate criptate de eliminat: {profiles} profiluri, {settings} domenii de setări."
+            "confirmDelete": "Ștergi contul „{name}”?\n\nDate criptate de eliminat: {profiles} profiluri, {settings} domenii de setări.",
+            "passwordChoiceNote": "Setarea unei parole de cont este opțională. Împiedică alte persoane care folosesc acest dispozitiv să îți deschidă contul; datele tale salvate rămân criptate oricum. Sari peste acest pas dacă ești singurul utilizator aici sau dacă ai încredere în toți cei care folosesc acest dispozitiv."
         }
     }
 }

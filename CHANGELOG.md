@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Per-Account Privacy and Manage Users Localization
+
+#### Added
+- **Per-account password (optional)**: when more than one person uses AeroFTP on the same device, you can give an account its own password so others cannot open it from the account switcher. Your saved servers and keys are always encrypted; an account password additionally isolates that account from the other local accounts on this device. It stays entirely optional, and the zero-password default is unchanged. Manage Users now explains this choice inline.
+
+#### Changed
+- **Manage Users panel fully localized**: every label, button, confirmation and the avatar editor in the Manage Users panel are now translated across all 47 locales (previously English-only).
+
 ## [4.0.4] - 2026-06-07
 
 ### Reversible Restricted-Filename Encoding, CLI Polish and Stability

@@ -8,6 +8,7 @@ import {
     Eye,
     EyeOff,
     GripVertical,
+    Info,
     KeyRound,
     Loader2,
     Lock,
@@ -495,6 +496,10 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                     {t('manageUsers.noRecovery')}
                                 </div>
                             </div>
+                            <p className="mt-2 flex items-start gap-2 text-[11px] leading-snug text-gray-500 dark:text-gray-400">
+                                <Info size={13} className="mt-0.5 flex-shrink-0" />
+                                <span>{t('manageUsers.passwordChoiceNote')}</span>
+                            </p>
                             <div className="mt-2 max-w-md">
                                 <PasswordStrengthBar password={newPassphrase} />
                             </div>
@@ -779,6 +784,12 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                                     <X size={15} />
                                                 </button>
                                             </div>
+                                            {!user.hasPassphrase && (
+                                                <p className="sm:col-span-3 flex items-start gap-2 text-[11px] leading-snug text-gray-500 dark:text-gray-400">
+                                                    <Info size={13} className="mt-0.5 flex-shrink-0" />
+                                                    <span>{t('manageUsers.passwordChoiceNote')}</span>
+                                                </p>
+                                            )}
                                             <div className="sm:col-span-3 max-w-md">
                                                 <PasswordStrengthBar password={passphraseForm.newPassphrase} />
                                             </div>
