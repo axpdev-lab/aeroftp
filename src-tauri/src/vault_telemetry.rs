@@ -56,6 +56,23 @@ pub struct VaultReport {
     /// Academic attribution of the wrapper-stack model (see
     /// [`WRAPPER_MODEL_ATTRIBUTION`]). Always present in the receipt/export.
     pub attribution: String,
+
+    // P3-03: ECC (error-correction wrapper, last in 4-wrappers pipeline) telemetry.
+    // Populated for v3+ ECC-enabled vaults on seal (create/add paths that trigger
+    // compute_ecc_shards in save_open_vault). Optional so v1/v2 and non-ECC v3
+    // remain unchanged. "shards generated" = total data+parity shards in the v2 grid;
+    // "bytes protected" = concatenated live block stream length (incl u64 prefixes);
+    // overhead % measured on the actual serialized ECC payload bytes (header+cksums+parity).
+    // repair_events: reserved for future accumulation across repair ops (currently 0/None
+    // for receipt; scrub/repair return their own per-call counts).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ecc_shards_generated: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ecc_bytes_protected: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ecc_overhead_pct: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ecc_repair_events: Option<u64>,
 }
 
 impl VaultReport {
@@ -81,6 +98,10 @@ impl VaultReport {
             ms_total: 0,
             steps: Vec::new(),
             attribution: WRAPPER_MODEL_ATTRIBUTION.to_string(),
+            ecc_shards_generated: None,
+            ecc_bytes_protected: None,
+            ecc_overhead_pct: None,
+            ecc_repair_events: None,
         }
     }
 
@@ -145,6 +166,26 @@ impl VaultReport {
         };
     }
 
+    /// P3-03: record ECC protection stats (called from v3 seal path when ECC ext present).
+    /// shards: total data+parity shards in the v2 fixed grid; protected: L (live block stream bytes);
+    /// overhead: actual serialized ECC payload / protected * 100 (includes headers/cksums, ~20% nominal).
+    pub fn set_ecc_protection(
+        &mut self,
+        shards_generated: u64,
+        bytes_protected: u64,
+        overhead_pct: f64,
+    ) {
+        self.ecc_shards_generated = Some(shards_generated);
+        self.ecc_bytes_protected = Some(bytes_protected);
+        self.ecc_overhead_pct = Some(overhead_pct);
+        // repair_events left for explicit note_repair or future accumulation
+    }
+
+    /// P3-03: increment repair events counter (for receipt contexts that go through report).
+    pub fn note_ecc_repair_event(&mut self) {
+        self.ecc_repair_events = Some(self.ecc_repair_events.unwrap_or(0) + 1);
+    }
+
     /// Plain-text rendering for CLI stderr / a downloadable `.txt` receipt.
     pub fn render_text(&self) -> String {
         let mut out = String::new();
@@ -182,6 +223,21 @@ impl VaultReport {
         out.push_str("steps:\n");
         for s in &self.steps {
             out.push_str(&format!("  {s}\n"));
+        }
+        if let (Some(sh), Some(bp), Some(ov)) = (
+            self.ecc_shards_generated,
+            self.ecc_bytes_protected,
+            self.ecc_overhead_pct,
+        ) {
+            out.push_str(&format!(
+                "ecc: shards_generated={} bytes_protected={} overhead_pct={:.1}\n",
+                sh, bp, ov
+            ));
+        }
+        if let Some(re) = self.ecc_repair_events {
+            if re > 0 {
+                out.push_str(&format!("ecc_repair_events={}\n", re));
+            }
         }
         out.push_str(&format!("\n{}\n", self.attribution));
         out

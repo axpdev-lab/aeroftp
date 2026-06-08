@@ -39,6 +39,12 @@ function buildReceiptText(r: VaultReport): string {
     lines.push(`files=${r.files} (packed=${r.packed_files}, packs=${r.packs}) chunks: logical=${r.logical_chunks} new=${r.new_physical_chunks} dedup=${r.dedup_hits}`);
     lines.push(`bytes: plaintext=${r.plaintext_bytes} compressed=${r.compressed_bytes} encrypted=${r.encrypted_bytes} ratio=${r.compression_ratio_pct.toFixed(1)}%`);
     lines.push(`elapsed: ${r.ms_total} ms`);
+    if (r.ecc_shards_generated != null || r.ecc_bytes_protected != null || r.ecc_overhead_pct != null) {
+        lines.push(`ecc: shards=${r.ecc_shards_generated ?? '-'} protected=${r.ecc_bytes_protected ?? '-'} overhead=${r.ecc_overhead_pct != null ? r.ecc_overhead_pct.toFixed(1)+'%' : '-'}`);
+    }
+    if (r.ecc_repair_events != null && r.ecc_repair_events > 0) {
+        lines.push(`ecc_repair_events=${r.ecc_repair_events}`);
+    }
     lines.push('steps:');
     r.steps.forEach(s => lines.push(`  ${s}`));
     lines.push('');
@@ -120,6 +126,19 @@ export function VaultReceipt({ report, t, onClose }: VaultReceiptProps): React.R
                         <Metric label={t('vault.receipt.plaintext')} value={fmtBytes(report.plaintext_bytes)} />
                         <Metric label={t('vault.receipt.encrypted')} value={fmtBytes(report.encrypted_bytes)} />
                         <Metric label={t('vault.receipt.ratio')} value={report.compressed_bytes > 0 ? `${report.compression_ratio_pct.toFixed(1)}%` : '-'} />
+                        {/* P3-03: ECC fields (only when present for ECC-enabled v3+ vaults) */}
+                        {report.ecc_shards_generated != null && (
+                            <Metric label={t('vault.receipt.eccShards') || 'ECC shards'} value={String(report.ecc_shards_generated)} />
+                        )}
+                        {report.ecc_bytes_protected != null && (
+                            <Metric label={t('vault.receipt.eccProtected') || 'ECC protected'} value={fmtBytes(report.ecc_bytes_protected)} />
+                        )}
+                        {report.ecc_overhead_pct != null && (
+                            <Metric label={t('vault.receipt.eccOverhead') || 'ECC overhead'} value={`${report.ecc_overhead_pct.toFixed(1)}%`} />
+                        )}
+                        {report.ecc_repair_events != null && report.ecc_repair_events > 0 && (
+                            <Metric label={t('vault.receipt.eccRepairs') || 'ECC repairs'} value={String(report.ecc_repair_events)} />
+                        )}
                     </div>
 
                     <div>
