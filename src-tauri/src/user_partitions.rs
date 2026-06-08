@@ -6360,4 +6360,275 @@ mod tests {
             "top-secret"
         );
     }
+
+    /// Headless end-to-end validation of the MUV-1..5 release surface against a
+    /// REAL on-disk `CredentialStore` (master mode, no keyring) and a REAL
+    /// `user_partitions.db`, isolated under a throwaway `XDG_CONFIG_HOME`.
+    ///
+    /// Unlike the other tests in this module (closure-backed engine + a fixed
+    /// `test_root`), this drives the production store-backed path:
+    /// `init_or_migrate_cli` -> `migrate_credentials_eager_all` /
+    /// `migrate_credentials_for_user`, the `resolve`/`read_credential_with_fallback`
+    /// readers, `mcp_list_active_server_profiles`, and the transport DEK
+    /// round-trip. It covers DoD #1/#4 with real output for R-MUV-1, R-MUV-3,
+    /// R-MUV-5 and R-MUV-8.
+    ///
+    /// `#[ignore]` because it mutates process-global state (`XDG_CONFIG_HOME`,
+    /// the `VAULT_CACHE`/`USER_SESSION` statics) and so must run ALONE:
+    ///   cargo test --lib user_partitions::tests::muv_release_e2e_validation \
+    ///       -- --ignored --nocapture --test-threads=1
+    #[test]
+    #[ignore = "headless MUV e2e; run alone with --ignored --test-threads=1 --nocapture"]
+    fn muv_release_e2e_validation() {
+        use crate::credential_store::CredentialStore;
+
+        fn count_prefix(conn: &Connection, uid: i64, prefix: &str) -> usize {
+            list_user_credential_ids_for(conn, uid)
+                .expect("list credential ids")
+                .into_iter()
+                .filter(|(id, _)| id.starts_with(prefix))
+                .count()
+        }
+
+        let _guard = test_lock();
+
+        // --- Isolation: a throwaway data root, master-mode vault (no keyring) --
+        let prev_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let prev_pp = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        std::env::set_var("XDG_CONFIG_HOME", tmp.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+
+        CredentialStore::bootstrap_master_password("muv-validation-pass")
+            .expect("bootstrap master vault");
+        CredentialStore::unlock_with_master("muv-validation-pass", None).expect("unlock master");
+        let store = CredentialStore::from_cache().expect("store cached");
+
+        // Schema v4 + the legacy `default` admin user.
+        init_or_migrate_cli(&store).expect("init_or_migrate_cli");
+        let mut conn = open_or_init_cli().expect("open partition db");
+        let root_key = store.derive_user_partition_wrapping_key();
+
+        // --- Build the pre-migration state: 3 users x 10 profiles = 30 --------
+        let alice = create_user(&mut conn, &root_key, "Alice", None, None, None).expect("alice");
+        let bob = create_user(&mut conn, &root_key, "Bob", None, None, None).expect("bob");
+        let carol = create_user(
+            &mut conn,
+            &root_key,
+            "Carol",
+            None,
+            None,
+            Some("carol-pass"),
+        )
+        .expect("carol");
+        assert!(!alice.has_passphrase && !bob.has_passphrase && carol.has_passphrase);
+
+        let make_profiles = |prefix: &str| -> Vec<serde_json::Value> {
+            (1..=10)
+                .map(|i| {
+                    json!({
+                        "id": format!("{prefix}{i}"),
+                        "name": format!("{prefix}-{i}"),
+                        "protocol": "ftp",
+                        "host": format!("{prefix}{i}.example.test"),
+                        "port": 21,
+                        "username": "tester"
+                    })
+                })
+                .collect()
+        };
+        replace_server_profiles_for(&mut conn, &root_key, alice.id, &make_profiles("a"))
+            .expect("alice profiles");
+        replace_server_profiles_for(&mut conn, &root_key, bob.id, &make_profiles("b"))
+            .expect("bob profiles");
+        // Carol is passphrase-protected: prime her session to seed, then re-lock.
+        unlock_user(&conn, &root_key, carol.id, Some("carol-pass")).expect("unlock carol to seed");
+        replace_server_profiles_for(&mut conn, &root_key, carol.id, &make_profiles("c"))
+            .expect("carol profiles");
+
+        // Legacy vault secrets (vault-only, the pre-MUV state).
+        for prefix in ["a", "b", "c"] {
+            for i in 1..=10 {
+                store
+                    .store(
+                        &format!("server_{prefix}{i}"),
+                        &format!("secret-{prefix}{i}"),
+                    )
+                    .expect("seed server secret");
+            }
+        }
+        // An orphan secret (profile deleted but secret left behind) + globals.
+        store
+            .store("server_orphan99", "orphan-secret")
+            .expect("orphan");
+        store
+            .store("ai_apikey_openai", "sk-test-key")
+            .expect("ai key");
+        store
+            .store("github_pat", "ghp_testpat")
+            .expect("github pat");
+
+        // Reset the idempotency gate + session to simulate a fresh upgrade boot.
+        conn.execute(
+            "DELETE FROM global_state WHERE key LIKE 'creds_migrated_%'",
+            [],
+        )
+        .expect("clear markers");
+        clear_user_session();
+
+        let admin_id = list_users(&conn)
+            .expect("list users")
+            .into_iter()
+            .filter(|u| u.is_admin)
+            .map(|u| u.id)
+            .min()
+            .expect("an admin exists");
+
+        // --- R-MUV-1: eager migration of device-wrapped users -----------------
+        let migrated = migrate_credentials_eager_all(&conn, &store, &root_key).expect("eager");
+        println!("[R-MUV-1] eager migrated {migrated} rows (alice+bob server_* + admin globals)");
+
+        assert_eq!(
+            count_prefix(&conn, alice.id, "server_"),
+            10,
+            "alice has 10 server_*"
+        );
+        assert_eq!(
+            count_prefix(&conn, bob.id, "server_"),
+            10,
+            "bob has 10 server_*"
+        );
+        assert_eq!(
+            count_prefix(&conn, carol.id, "server_"),
+            0,
+            "carol (locked passphrase) deferred, not eager-migrated"
+        );
+        // Value round-trips under the user DEK.
+        assert_eq!(
+            get_user_credential_for(&conn, &root_key, alice.id, "server_a1")
+                .expect("read alice")
+                .expect("present")
+                .as_str(),
+            "secret-a1"
+        );
+        // Isolation (R3): alice's partition never holds bob's secret.
+        assert!(
+            get_user_credential_for(&conn, &root_key, alice.id, "server_b1")
+                .expect("read cross")
+                .is_none(),
+            "no cross-user leak in user_credentials"
+        );
+        // Globals went to the lowest-id admin only.
+        assert!(
+            get_user_credential_for(&conn, &root_key, admin_id, "ai_apikey_openai")
+                .expect("admin ai key")
+                .is_some(),
+            "ai key owned by admin"
+        );
+        assert!(
+            get_user_credential_for(&conn, &root_key, alice.id, "ai_apikey_openai")
+                .expect("alice ai key")
+                .is_none(),
+            "ai key NOT duplicated to non-owner"
+        );
+        // Orphan: readable via the vault fallback, but never in any partition.
+        assert_eq!(
+            read_credential_with_fallback(&conn, &store, &root_key, alice.id, "server_orphan99")
+                .expect("orphan fallback")
+                .expect("present")
+                .as_str(),
+            "orphan-secret"
+        );
+        assert_eq!(
+            count_prefix(&conn, alice.id, "server_orphan"),
+            0,
+            "orphan stays in vault"
+        );
+        println!("[R-MUV-1] OK: 30 profiles separated per-user, isolation + orphan-fallback hold");
+
+        // --- R-MUV-8: idempotent re-run (kill/restart safety) -----------------
+        let again = migrate_credentials_eager_all(&conn, &store, &root_key).expect("re-run");
+        assert_eq!(again, 0, "second eager pass is a no-op");
+        assert_eq!(
+            count_prefix(&conn, alice.id, "server_"),
+            10,
+            "no duplication on re-run"
+        );
+        println!("[R-MUV-8] OK: re-run migrated 0 rows, counts stable (idempotent)");
+
+        // --- Lazy migration for the passphrase user at unlock -----------------
+        unlock_user(&conn, &root_key, carol.id, Some("carol-pass")).expect("unlock carol");
+        let lazy = migrate_credentials_for_user(&conn, &store, &root_key, carol.id).expect("lazy");
+        assert_eq!(
+            count_prefix(&conn, carol.id, "server_"),
+            10,
+            "carol migrated lazily"
+        );
+        println!("[lazy] OK: carol migrated {lazy} rows at first unlock");
+
+        // --- R-MUV-5: MCP profile resolution per active user ------------------
+        set_active_user(&conn, alice.id).expect("active=alice"); // clears session
+        let p_alice = mcp_list_active_server_profiles(&store).expect("mcp alice");
+        assert_eq!(p_alice.len(), 10, "MCP auto-resolves a device-wrapped user");
+
+        set_active_user(&conn, carol.id).expect("active=carol"); // clears session, carol locked
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        let p_carol_noenv = mcp_list_active_server_profiles(&store);
+        assert!(
+            p_carol_noenv.is_err(),
+            "locked passphrase user without env fails clean (no silent leak)"
+        );
+        std::env::set_var("AEROFTP_USER_PASSPHRASE", "carol-pass");
+        let p_carol = mcp_list_active_server_profiles(&store).expect("mcp carol via env");
+        assert_eq!(
+            p_carol.len(),
+            10,
+            "MCP transient-unlocks a passphrase user via env"
+        );
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        println!("[R-MUV-5] OK: device-wrapped auto; passphrase via AEROFTP_USER_PASSPHRASE; clean fail without");
+
+        // --- R-MUV-3: transport DEK round-trip (store-backed) -----------------
+        let export = export_transport_deks(&conn, &root_key, "transport-pw-12345")
+            .expect("export")
+            .expect("transport section present");
+        let root_b = [0x42u8; 32]; // a different machine's local root key
+        let report = rekey_transport_deks(
+            &conn,
+            &root_b,
+            "transport-pw-12345",
+            &export.salt,
+            &export.kdf_params,
+            &export.wrapped_deks,
+        )
+        .expect("rekey");
+        assert!(report.rekeyed >= 1, "at least bob's DEK was rekeyed");
+        assert_eq!(
+            get_user_credential_for(&conn, &root_b, bob.id, "server_b1")
+                .expect("machine B read")
+                .expect("present")
+                .as_str(),
+            "secret-b1",
+            "secret decrypts on the second machine after rekey"
+        );
+        assert!(
+            get_user_credential_for(&conn, &root_key, bob.id, "server_b1").is_err(),
+            "the original machine root key no longer unwraps after rekey"
+        );
+        println!(
+            "[R-MUV-3] OK: rekeyed {} DEK(s); secrets portable cross-machine",
+            report.rekeyed
+        );
+
+        println!("[MUV e2e] ALL SCENARIOS PASSED");
+
+        // Restore env (best-effort; the tempdir auto-cleans on drop).
+        match prev_xdg {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        if let Some(v) = prev_pp {
+            std::env::set_var("AEROFTP_USER_PASSPHRASE", v);
+        }
+    }
 }
