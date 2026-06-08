@@ -304,7 +304,7 @@ async fn run_one_listen(
     let path = "unknown".to_string();
 
     let remote_node_str = conn.remote_node_id().map(|id| id.to_string()).unwrap_or_default();
-    let remote_fp = if remote_node_str.len() > 12 { &remote_node_str[..12] } else { &remote_node_str };
+    let _remote_fp = if remote_node_str.len() > 12 { &remote_node_str[..12] } else { &remote_node_str };
 
     let offer = match recv_offer(&conn).await {
         Ok(o) => o,
@@ -315,10 +315,10 @@ async fn run_one_listen(
     };
 
     let remote_node_str2 = conn.remote_node_id().map(|id| id.to_string()).unwrap_or_else(|_| "unknown".to_string());
-    let remote_fp = if remote_node_str2.len() > 12 { &remote_node_str2[..12] } else { &remote_node_str2 };
+    let _remote_fp = if remote_node_str2.len() > 12 { &remote_node_str2[..12] } else { &remote_node_str2 };
 
     println!("\n--- Incoming peer offer ---");
-    println!("From NodeID: {} (fingerprint: {})", remote_node_str, remote_fp);
+    println!("From NodeID: {} (fingerprint: {})", remote_node_str, remote_node_str2);
     println!("Hash: {}", offer.hash);
     println!("Size: {} bytes", offer.size);
     println!("Name hint: {}", offer.name_hint);
@@ -371,7 +371,7 @@ async fn run_one_listen(
     if let Ok(_) = std::fs::write(&file_path, &received) {
         let meta = serde_json::json!({
             "sender_node": remote_node_str,
-            "sender_fingerprint": remote_fp,
+            "sender_fingerprint": remote_node_str2,
             "received_at": ts,
             "original_name_hint": offer.name_hint,
             "note": offer.note,
