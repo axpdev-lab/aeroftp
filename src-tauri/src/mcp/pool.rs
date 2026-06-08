@@ -404,9 +404,18 @@ fn create_provider_from_vault(
     // JSON object with {username, password, access_token, ...}. The S3 bucket
     // and provider-specific options live in the profile's `options` field, not
     // in the credential blob.
-    let raw_cred = store
-        .get(&format!("server_{}", profile_id))
-        .unwrap_or_default();
+    // MUV-3: per-user store (active user) with fallback to the legacy vault.
+    // MCP runs against the active user (status quo); full user-aware MCP is
+    // MUV-5. A passphrase account unlocked via AEROFTP_USER_PASSPHRASE resolves
+    // its own row; otherwise the dual-written vault copy still answers.
+    let raw_cred = crate::user_partitions::resolve_active_credential(
+        &store,
+        &format!("server_{}", profile_id),
+    )
+    .ok()
+    .flatten()
+    .map(|s| s.to_string())
+    .unwrap_or_default();
 
     let (resolved_username, password) =
         if let Ok(cred_val) = serde_json::from_str::<serde_json::Value>(&raw_cred) {

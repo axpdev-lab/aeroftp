@@ -1347,6 +1347,61 @@ pub fn relocate_server_profile(
     })
 }
 
+/// MUV-3 cross-user credential relocation: the partition profile row is already
+/// moved by [`relocate_server_profile`]; this carries the matching `server_<id>`
+/// secret. The vault stays the source of truth (copy onto the new id, drop the
+/// orphan on a Move), and the secret is mirrored onto the TARGET user's
+/// partition under its own scoped DEK (resolved with `target_passphrase`, never
+/// the source session). Best-effort on the partition mirror: a locked/uncovered
+/// target falls back to the dual-written vault. Caller must invoke this while
+/// `root_key` / `target_passphrase` are still live (before zeroize).
+fn relocate_server_credential_dual(
+    conn: &Connection,
+    store: &CredentialStore,
+    root_key: &[u8; 32],
+    source_user_id: i64,
+    relocation: &ProfileRelocation,
+    target_passphrase: Option<&str>,
+) {
+    let source_key = format!("server_{}", relocation.source_profile_id);
+    let new_key = format!("server_{}", relocation.new_profile_id);
+
+    // Copy onto the new id only when a fresh target row was inserted; a dedup
+    // no-op leaves the target's existing secret untouched.
+    if !relocation.already_present {
+        if let Ok(Some(secret)) =
+            read_credential_with_fallback(conn, store, root_key, source_user_id, &source_key)
+        {
+            // Vault stays in sync (source of truth + fallback + downgrade safe).
+            let _ = store.store(&new_key, &secret);
+            // Mirror onto the target partition under its scoped DEK.
+            let root_secret = user_crypto::secret_key_from_bytes(root_key);
+            if let Ok(target_dek) = resolve_user_dek_scoped(
+                conn,
+                &root_secret,
+                relocation.target_user_id,
+                target_passphrase,
+            ) {
+                let _ = set_user_credential_with_dek(
+                    conn,
+                    relocation.target_user_id,
+                    &target_dek,
+                    &new_key,
+                    "server",
+                    &secret,
+                );
+            }
+        }
+    }
+
+    // Move/Cut: the source profile row is gone, so its orphaned secret is
+    // removed from both the vault and the source partition.
+    if relocation.moved {
+        let _ = store.delete(&source_key);
+        let _ = delete_user_credential_for(conn, source_user_id, &source_key);
+    }
+}
+
 /// Read a single user_settings scope for the given user, decrypted as JSON.
 /// Returns `Ok(None)` when no row exists. Internal/encryption scope names that
 /// are reserved (start with `__`) are filtered out at the CLI/Tauri boundary,
@@ -1495,31 +1550,46 @@ pub fn set_user_credential_for(
     }
     let root_secret = user_crypto::secret_key_from_bytes(root_key);
     with_user_dek(conn, &root_secret, user_id, |user_id, dek| {
-        let (encrypted_blob, nonce) = user_crypto::encrypt_blob(dek, secret.as_bytes())?;
-        conn.execute(
-            "INSERT INTO user_credentials(
-                 user_id, credential_id, credential_type, encrypted_blob, nonce,
-                 aead_alg, updated_at
-             )
-             VALUES (?1, ?2, ?3, ?4, ?5, 'aes-256-gcm', ?6)
-             ON CONFLICT(user_id, credential_id) DO UPDATE SET
-                 credential_type = excluded.credential_type,
-                 encrypted_blob  = excluded.encrypted_blob,
-                 nonce           = excluded.nonce,
-                 aead_alg        = excluded.aead_alg,
-                 updated_at      = excluded.updated_at",
-            params![
-                user_id,
-                credential_id,
-                credential_type,
-                encrypted_blob,
-                nonce.to_vec(),
-                now_ms()
-            ],
-        )
-        .map_err(|e| format!("Upsert user credential: {e}"))?;
-        Ok(())
+        set_user_credential_with_dek(conn, user_id, dek, credential_id, credential_type, secret)
     })
+}
+
+/// Upsert one credential row with an already-resolved DEK. Lets callers that
+/// resolved the DEK out-of-session (e.g. a cross-user relocation that unwrapped
+/// the target via its passphrase, MUV-3) write a credential without going back
+/// through the session-based [`with_user_dek`].
+fn set_user_credential_with_dek(
+    conn: &Connection,
+    user_id: i64,
+    dek: &SecretKey,
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+) -> Result<(), String> {
+    let (encrypted_blob, nonce) = user_crypto::encrypt_blob(dek, secret.as_bytes())?;
+    conn.execute(
+        "INSERT INTO user_credentials(
+             user_id, credential_id, credential_type, encrypted_blob, nonce,
+             aead_alg, updated_at
+         )
+         VALUES (?1, ?2, ?3, ?4, ?5, 'aes-256-gcm', ?6)
+         ON CONFLICT(user_id, credential_id) DO UPDATE SET
+             credential_type = excluded.credential_type,
+             encrypted_blob  = excluded.encrypted_blob,
+             nonce           = excluded.nonce,
+             aead_alg        = excluded.aead_alg,
+             updated_at      = excluded.updated_at",
+        params![
+            user_id,
+            credential_id,
+            credential_type,
+            encrypted_blob,
+            nonce.to_vec(),
+            now_ms()
+        ],
+    )
+    .map_err(|e| format!("Upsert user credential: {e}"))?;
+    Ok(())
 }
 
 /// Read one secret from a user's partition, decrypted with their DEK.
@@ -1947,6 +2017,173 @@ pub fn read_credential_with_fallback(
 ) -> Result<Option<Zeroizing<String>>, String> {
     let read_secret = |key: &str| get_optional_secret(store, key);
     read_credential_with_fallback_inner(conn, root_key, user_id, credential_id, &read_secret)
+}
+
+// --- MUV-3: live cutover of `server_*` reader/writer call-sites -------------
+//
+// MUV-3 points the real `server_*` credential resolution at the per-user store
+// while keeping the legacy vault as source of truth + fallback during the
+// rollout (dual-write). Readers prefer the partition row and fall back to the
+// vault (a not-yet-migrated key or a locked passphrase account still resolves);
+// writers always write the vault first, then best-effort mirror the secret into
+// the active (GUI) or scoped (CLI `--user`) user's partition. No vault entry is
+// ever removed here (that is MUV-6). The mirror is confined to in-scope keys by
+// `muv3_credential_type`, so the generic `store_credential` / `delete_credential`
+// Tauri commands keep routing oauth/ai/github to the vault only (MUV-4/5). The
+// partition DB is opened without an AppHandle (`open_or_init_cli`), which
+// resolves to the same file as the GUI (see `cli_db_path` / `db_path`), so a
+// shared reader in factory/agent/ai_tools sees exactly what the GUI wrote.
+
+/// Scope classifier for MUV-3: `Some(credential_type)` only for the keys this
+/// slice owns (`server_*`); every other namespace is `None` and stays vault-only
+/// until MUV-4 (oauth/jottacloud) and MUV-5 (ai_apikey/github).
+fn muv3_credential_type(credential_id: &str) -> Option<&'static str> {
+    if credential_id.starts_with("server_") {
+        Some("server")
+    } else {
+        None
+    }
+}
+
+/// Active user id resolved quietly without an AppHandle. Returns `None` on any
+/// error (DB unopenable, no active user): callers use it only to decide whether
+/// a best-effort mirror is possible, never to gate the authoritative vault write.
+fn active_user_id_quiet() -> Option<i64> {
+    let conn = open_or_init_cli().ok()?;
+    active_user_id(&conn).ok().flatten()
+}
+
+/// Best-effort mirror of one secret into `user_id`'s partition. Confined to
+/// in-scope keys, swallows `USER_LOCKED` (a locked passphrase account keeps only
+/// the vault copy; the MUV-2 lazy pass mirrors it at the next unlock) and any
+/// store/DB error: the vault copy written by the caller is authoritative, so a
+/// failed mirror must never fail the user's save. Zero-password safe (a
+/// device-wrapped account mirrors via the keyring-derived root_key, no prompt).
+fn mirror_credential_for_user_best_effort(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+    secret: &str,
+) {
+    let Some(credential_type) = muv3_credential_type(credential_id) else {
+        return;
+    };
+    let Ok(conn) = open_or_init_cli() else {
+        return;
+    };
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let _ = set_user_credential_for(
+        &conn,
+        &root_key,
+        user_id,
+        credential_id,
+        credential_type,
+        secret,
+    );
+    root_key.zeroize();
+}
+
+/// Best-effort removal of one in-scope secret from `user_id`'s partition. No DEK
+/// is needed (DELETE by key); errors are swallowed because the vault delete is
+/// the part that matters during the dual-write rollout. This is the partition
+/// half of an explicit user delete, never a mass purge (that is MUV-6).
+fn unmirror_credential_for_user_best_effort(user_id: i64, credential_id: &str) {
+    if muv3_credential_type(credential_id).is_none() {
+        return;
+    }
+    if let Ok(conn) = open_or_init_cli() {
+        let _ = delete_user_credential_for(&conn, user_id, credential_id);
+    }
+}
+
+/// Active-user reader (GUI + shared modules: factory/agent/ai_tools/mcp/AI core).
+/// Resolves `credential_id` for the active user from the per-user store, falling
+/// back to the legacy vault when the row is absent or the account is locked.
+/// With no active user (pre-MU / fresh install) it reads the vault only.
+pub fn resolve_active_credential(
+    store: &CredentialStore,
+    credential_id: &str,
+) -> Result<Option<Zeroizing<String>>, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    match active_user_id(&conn)? {
+        None => get_optional_secret(store, credential_id),
+        Some(user_id) => {
+            let mut root_key = store.derive_user_partition_wrapping_key();
+            let result =
+                read_credential_with_fallback(&conn, store, &root_key, user_id, credential_id);
+            root_key.zeroize();
+            result
+        }
+    }
+}
+
+/// Active-user dual writer (GUI): write the vault first, then mirror in-scope
+/// keys into the active user's partition. Out-of-scope keys (oauth/ai/github)
+/// land in the vault only, which is the correct MUV-3 behaviour for the generic
+/// `store_credential` command.
+pub fn store_active_credential_dual(
+    store: &CredentialStore,
+    credential_id: &str,
+    secret: &str,
+) -> Result<(), String> {
+    store
+        .store(credential_id, secret)
+        .map_err(|e| format!("Store credential in vault: {e}"))?;
+    if muv3_credential_type(credential_id).is_some() {
+        if let Some(user_id) = active_user_id_quiet() {
+            mirror_credential_for_user_best_effort(store, user_id, credential_id, secret);
+        }
+    }
+    Ok(())
+}
+
+/// Explicit-user dual writer (CLI `--user`): same as
+/// [`store_active_credential_dual`] but mirrors into `user_id`'s partition. The
+/// caller resolves `user_id` from `ensure_active_user_unlocked` so the secret is
+/// scoped to the invocation's `--user`, not the persisted active user.
+pub fn store_credential_for_user_dual(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+    secret: &str,
+) -> Result<(), String> {
+    store
+        .store(credential_id, secret)
+        .map_err(|e| format!("Store credential in vault: {e}"))?;
+    mirror_credential_for_user_best_effort(store, user_id, credential_id, secret);
+    Ok(())
+}
+
+/// Active-user dual delete (GUI): delete from the vault and best-effort from the
+/// active user's partition. Part of an explicit user delete, never a purge.
+pub fn delete_active_credential_dual(
+    store: &CredentialStore,
+    credential_id: &str,
+) -> Result<(), String> {
+    store
+        .delete(credential_id)
+        .map_err(|e| format!("Delete credential from vault: {e}"))?;
+    if muv3_credential_type(credential_id).is_some() {
+        if let Some(user_id) = active_user_id_quiet() {
+            unmirror_credential_for_user_best_effort(user_id, credential_id);
+        }
+    }
+    Ok(())
+}
+
+/// Explicit-user dual delete (CLI `--user`): vault delete + best-effort removal
+/// from `user_id`'s partition.
+pub fn delete_credential_for_user_dual(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+) -> Result<(), String> {
+    store
+        .delete(credential_id)
+        .map_err(|e| format!("Delete credential from vault: {e}"))?;
+    unmirror_credential_for_user_best_effort(user_id, credential_id);
+    Ok(())
 }
 
 /// MU-7: list other users that already store a profile with the SAME dedup
@@ -3075,6 +3312,32 @@ pub fn cli_relocate_server_profile(
     result
 }
 
+/// CLI bridge (MUV-3) for the credential half of a cross-user relocation: copies
+/// the `server_<id>` secret onto the new id (vault + the target user's partition
+/// under its scoped DEK) and, on a Move, drops the orphaned source secret from
+/// both stores. Call after [`cli_relocate_server_profile`] with the same
+/// `target_passphrase` still live.
+pub fn cli_relocate_server_credential_dual(
+    store: &CredentialStore,
+    source_user_id: i64,
+    relocation: &ProfileRelocation,
+    target_passphrase: Option<&str>,
+) -> Result<(), String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    relocate_server_credential_dual(
+        &conn,
+        store,
+        &root_key,
+        source_user_id,
+        relocation,
+        target_passphrase,
+    );
+    root_key.zeroize();
+    Ok(())
+}
+
 /// Resolve a target user by name (CLI `--user` flag). Returns the user metadata
 /// or `Err("USER_NOT_FOUND: <name>")` if the canonical lookup fails.
 pub fn cli_find_user_by_name(store: &CredentialStore, name: &str) -> Result<UserMetadata, String> {
@@ -3299,25 +3562,28 @@ pub async fn user_partitions_relocate_server_profile(
         target_passphrase.as_deref(),
         move_profile,
     );
+    // MUV-3: relocate the per-profile `server_<id>` secret while the root_key and
+    // the target passphrase are still live. The vault stays in sync and the
+    // secret is mirrored onto the target user's partition under its scoped DEK.
+    let outcome = match result {
+        Ok(relocation) => {
+            relocate_server_credential_dual(
+                &conn,
+                &store,
+                &root_key,
+                source_user_id,
+                &relocation,
+                target_passphrase.as_deref(),
+            );
+            Ok(relocation)
+        }
+        Err(e) => Err(e),
+    };
     root_key.zeroize();
     if let Some(passphrase) = target_passphrase.as_mut() {
         passphrase.zeroize();
     }
-    let relocation = result?;
-
-    // Credentials live in the OS keyring (`server_<id>`), outside the partition
-    // DB. Copy the source secret onto the new id when a fresh row was inserted;
-    // a no-op dedup leaves the existing target secret untouched.
-    if !relocation.already_present {
-        if let Ok(secret) = store.get(&format!("server_{}", relocation.source_profile_id)) {
-            let _ = store.store(&format!("server_{}", relocation.new_profile_id), &secret);
-        }
-    }
-    // Move/Cut: the source row is gone, so its now-orphaned secret is removed.
-    if relocation.moved {
-        let _ = store.delete(&format!("server_{}", relocation.source_profile_id));
-    }
-    Ok(relocation)
+    outcome
 }
 
 /// Generic per-user setting access (MU-4 foundation). Settings are keyed by
@@ -5577,6 +5843,126 @@ mod tests {
                 .expect("present")
                 .as_str(),
             "vault-bob"
+        );
+    }
+
+    // --- MUV-3: server_* reader/writer cutover ----------------------------
+
+    #[test]
+    fn muv3_credential_type_classifies_only_server_keys() {
+        // The dual-write mirror is confined to `server_*`; oauth/ai/github stay
+        // vault-only in this slice (MUV-4/5).
+        assert_eq!(muv3_credential_type("server_42"), Some("server"));
+        assert_eq!(muv3_credential_type("server_"), Some("server"));
+        assert_eq!(muv3_credential_type("oauth_dropbox_42"), None);
+        assert_eq!(muv3_credential_type("jottacloud_refresh_42"), None);
+        assert_eq!(muv3_credential_type("ai_apikey_anthropic"), None);
+        assert_eq!(muv3_credential_type("github_pat"), None);
+        assert_eq!(muv3_credential_type("config_server_profiles"), None);
+    }
+
+    #[test]
+    fn dek_based_insert_writes_to_target_user_only() {
+        // set_user_credential_with_dek (the relocation write path) lands the
+        // secret in the supplied user's partition and nowhere else (R3 on write).
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let root_secret = user_crypto::secret_key_from_bytes(&root);
+        let user_a = get_active_user(&conn)
+            .expect("active read")
+            .expect("default active");
+        let user_b = create_passphrase_less_user(&mut conn, &root, "userb", None, None)
+            .expect("create userb");
+
+        let dek_b =
+            resolve_user_dek_scoped(&conn, &root_secret, user_b.id, None).expect("resolve B dek");
+        set_user_credential_with_dek(&conn, user_b.id, &dek_b, "server_x", "server", "b-secret")
+            .expect("dek insert");
+
+        // B reads its own; A sees nothing under the same key.
+        assert_eq!(
+            get_user_credential_for(&conn, &root, user_b.id, "server_x")
+                .expect("read B")
+                .expect("present")
+                .as_str(),
+            "b-secret"
+        );
+        assert!(get_user_credential_for(&conn, &root, user_a.id, "server_x")
+            .expect("read A")
+            .is_none());
+    }
+
+    #[test]
+    fn relocate_credential_to_locked_passphrase_target_via_scoped_dek() {
+        // The cross-user relocation must be able to write the secret onto a
+        // passphrase-protected target that has NO active session, using the
+        // target's scoped DEK (unwrapped with its passphrase), without leaking
+        // into the active (source) partition.
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let root_secret = user_crypto::secret_key_from_bytes(&root);
+        let source = get_active_user(&conn)
+            .expect("active read")
+            .expect("default active"); // device-wrapped, active
+        let target = create_user(&mut conn, &root, "Target", None, None, Some("targetpass1"))
+            .expect("create target");
+        assert!(target.has_passphrase);
+
+        set_user_credential_for(
+            &conn,
+            &root,
+            source.id,
+            "server_src",
+            "server",
+            "src-secret",
+        )
+        .expect("set source secret");
+
+        // Relocation write: scoped DEK for the locked target, no session.
+        clear_user_session();
+        let target_dek =
+            resolve_user_dek_scoped(&conn, &root_secret, target.id, Some("targetpass1"))
+                .expect("resolve target dek");
+        set_user_credential_with_dek(
+            &conn,
+            target.id,
+            &target_dek,
+            "server_new",
+            "server",
+            "src-secret",
+        )
+        .expect("mirror onto target");
+
+        // Without a session the target row is locked; after unlock it decrypts.
+        assert_eq!(
+            get_user_credential_for(&conn, &root, target.id, "server_new").expect_err("locked"),
+            "USER_LOCKED"
+        );
+        unlock_user(&conn, &root, target.id, Some("targetpass1")).expect("unlock target");
+        assert_eq!(
+            get_user_credential_for(&conn, &root, target.id, "server_new")
+                .expect("read target")
+                .expect("present")
+                .as_str(),
+            "src-secret"
+        );
+        clear_user_session();
+
+        // The active (source) partition keeps its own secret and never received
+        // the relocated id.
+        assert_eq!(
+            get_user_credential_for(&conn, &root, source.id, "server_src")
+                .expect("read source")
+                .expect("present")
+                .as_str(),
+            "src-secret"
+        );
+        assert!(
+            get_user_credential_for(&conn, &root, source.id, "server_new")
+                .expect("read source new")
+                .is_none()
         );
     }
 }

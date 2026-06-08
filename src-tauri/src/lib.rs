@@ -13184,9 +13184,14 @@ async fn save_server_credentials(
         "password": password,
     });
 
-    store
-        .store(&format!("server_{}", profile_name), &value.to_string())
-        .map_err(|e| format!("Failed to save credentials: {}", e))?;
+    // MUV-3: dual-write the per-profile credential blob (vault + active user's
+    // partition).
+    user_partitions::store_active_credential_dual(
+        &store,
+        &format!("server_{}", profile_name),
+        &value.to_string(),
+    )
+    .map_err(|e| format!("Failed to save credentials: {}", e))?;
 
     info!("Saved credentials for profile: {}", profile_name);
     Ok(())
@@ -13336,8 +13341,10 @@ async fn get_credential_store_status(
 async fn store_credential(account: String, password: String) -> Result<(), String> {
     let store = credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "STORE_NOT_READY".to_string())?;
-    store
-        .store(&account, &password)
+    // MUV-3: dual-write. The vault is written for every key (source of truth +
+    // fallback); `server_*` keys are also mirrored into the active user's
+    // partition. oauth/ai/github keys stay vault-only here (MUV-4/5).
+    user_partitions::store_active_credential_dual(&store, &account, &password)
         .map_err(|e| format!("Failed to store credential: {}", e))
 }
 
@@ -13354,8 +13361,9 @@ async fn get_credential(account: String) -> Result<String, String> {
 async fn delete_credential(account: String) -> Result<(), String> {
     let store = credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "STORE_NOT_READY".to_string())?;
-    store
-        .delete(&account)
+    // MUV-3: dual-delete. Removes from the vault and, for `server_*`, best-effort
+    // from the active user's partition. Not a mass purge (that is MUV-6).
+    user_partitions::delete_active_credential_dual(&store, &account)
         .map_err(|e| format!("Failed to delete credential: {}", e))
 }
 
@@ -13608,8 +13616,13 @@ async fn export_server_profiles(
         match credential_store::CredentialStore::from_cache() {
             Some(store) => {
                 for server in &mut servers {
-                    if let Ok(cred) = store.get(&format!("server_{}", server.id)) {
-                        server.credential = Some(cred);
+                    // MUV-3: export the active user's per-user credential, with
+                    // fallback to the legacy vault.
+                    if let Ok(Some(cred)) = user_partitions::resolve_active_credential(
+                        &store,
+                        &format!("server_{}", server.id),
+                    ) {
+                        server.credential = Some(cred.to_string());
                     }
                     // Issue #214: bundle OAuth / Jotta tokens alongside the
                     // per-profile password so an import on a fresh device
@@ -13650,7 +13663,13 @@ async fn import_server_profiles(
         Some(store) => {
             for server in &servers {
                 if let Some(ref cred) = server.credential {
-                    if let Err(e) = store.store(&format!("server_{}", server.id), cred) {
+                    // MUV-3: dual-write the imported credential (vault + active
+                    // user's partition).
+                    if let Err(e) = user_partitions::store_active_credential_dual(
+                        &store,
+                        &format!("server_{}", server.id),
+                        cred,
+                    ) {
                         cred_errors.push(format!("{}: {}", server.id, e));
                     }
                 }
