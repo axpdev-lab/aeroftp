@@ -7733,6 +7733,31 @@ fn dual_store_server_cred_checked(
     }
 }
 
+/// Dual-write with an EXPLICIT credential type (vault + the user's partition
+/// when `uid` is known), returning the authoritative vault error. For
+/// non-`server_` keys (OAuth tokens, Jottacloud refresh) the prefix classifier
+/// does not apply, so the type is supplied by the caller (MUV-4).
+fn dual_store_typed_cred_checked(
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    uid: Option<i64>,
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+) -> Result<(), String> {
+    match uid {
+        Some(uid) => ftp_client_gui_lib::user_partitions::store_credential_for_user_typed_dual(
+            store,
+            uid,
+            credential_id,
+            credential_type,
+            secret,
+        ),
+        None => store
+            .store(credential_id, secret)
+            .map_err(|e| e.to_string()),
+    }
+}
+
 /// Best-effort dual-write (ignores the result). Use at sites where a missing
 /// credential is acceptable (cloning, optional restore).
 fn dual_store_server_cred(
@@ -21733,17 +21758,28 @@ async fn apply_rclone_import_to_vault(
         };
         if let Some(ref oauth_json) = secrets.oauth {
             if let Some(slug) = cli_oauth_vault_slug_for_protocol(protocol) {
-                store
-                    .store(&format!("oauth_{}_{}", slug, profile_id), oauth_json)
-                    .map_err(|e| format!("vault write failed for oauth {}: {}", profile_id, e))?;
+                // MUV-4: dual-write into vault + the scoped user's partition.
+                dual_store_typed_cred_checked(
+                    &store,
+                    scoped_uid,
+                    &format!("oauth_{}_{}", slug, profile_id),
+                    "oauth",
+                    oauth_json,
+                )
+                .map_err(|e| format!("vault write failed for oauth {}: {}", profile_id, e))?;
                 oauth_tokens_stored += 1;
             }
         }
         if let Some(ref jotta_json) = secrets.jotta_refresh {
             if protocol == "jottacloud" {
-                store
-                    .store(&format!("jottacloud_refresh_{}", profile_id), jotta_json)
-                    .map_err(|e| format!("vault write failed for jotta {}: {}", profile_id, e))?;
+                dual_store_typed_cred_checked(
+                    &store,
+                    scoped_uid,
+                    &format!("jottacloud_refresh_{}", profile_id),
+                    "jottacloud_refresh",
+                    jotta_json,
+                )
+                .map_err(|e| format!("vault write failed for jotta {}: {}", profile_id, e))?;
                 jotta_refresh_stored += 1;
             }
         }

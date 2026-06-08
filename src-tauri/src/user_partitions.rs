@@ -2068,6 +2068,21 @@ fn mirror_credential_for_user_best_effort(
     let Some(credential_type) = muv3_credential_type(credential_id) else {
         return;
     };
+    mirror_credential_for_user_typed(store, user_id, credential_id, credential_type, secret);
+}
+
+/// Best-effort mirror with an EXPLICIT credential type. Used by call-sites that
+/// already know the type (OAuth tokens, Jottacloud refresh) and therefore
+/// bypass the prefix classifier, which cannot reliably tell `oauth_<p>_<id>`
+/// (a per-user token) from `oauth_<p>_client_id` (machine/app config). Same
+/// best-effort + zero-password semantics as the classifier-gated variant.
+fn mirror_credential_for_user_typed(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+) {
     let Ok(conn) = open_or_init_cli() else {
         return;
     };
@@ -2091,6 +2106,13 @@ fn unmirror_credential_for_user_best_effort(user_id: i64, credential_id: &str) {
     if muv3_credential_type(credential_id).is_none() {
         return;
     }
+    unmirror_credential_for_user_best_effort_any(user_id, credential_id);
+}
+
+/// Like [`unmirror_credential_for_user_best_effort`] but without the prefix
+/// classifier gate. For explicitly-typed call-sites (OAuth/Jottacloud, MUV-4)
+/// that already know the key is in scope.
+fn unmirror_credential_for_user_best_effort_any(user_id: i64, credential_id: &str) {
     if let Ok(conn) = open_or_init_cli() {
         let _ = delete_user_credential_for(&conn, user_id, credential_id);
     }
@@ -2183,6 +2205,70 @@ pub fn delete_credential_for_user_dual(
         .delete(credential_id)
         .map_err(|e| format!("Delete credential from vault: {e}"))?;
     unmirror_credential_for_user_best_effort(user_id, credential_id);
+    Ok(())
+}
+
+// --- MUV-4: OAuth / Jottacloud token cutover (explicit-type dual-write) ------
+//
+// OAuth tokens (`oauth_<provider>_<id>`) and Jottacloud refresh tokens
+// (`jottacloud_refresh_<id>`) rewrite themselves on refresh, so the same
+// dual-write + reader-fallback net as MUV-3 applies, with one twist: the
+// call-sites know the credential type, so they pass it explicitly instead of
+// relying on the `server_`-only prefix classifier. Readers use the shared
+// `resolve_active_credential` (partition first, vault fallback). The vault stays
+// source of truth + fallback during the rollout; no entry is removed (MUV-6).
+
+/// Best-effort mirror of an explicitly-typed secret into the active user's
+/// partition. For call-sites with bespoke vault-write logic (OAuth runtime,
+/// Jottacloud persist) that have already written the vault and only need the
+/// partition mirror. No active user / locked / error -> no-op.
+pub fn mirror_active_credential(
+    store: &CredentialStore,
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+) {
+    if let Some(user_id) = active_user_id_quiet() {
+        mirror_credential_for_user_typed(store, user_id, credential_id, credential_type, secret);
+    }
+}
+
+/// Best-effort removal of one secret from the active user's partition. The
+/// partition half of an explicit token delete (OAuth/Jottacloud logout).
+pub fn unmirror_active_credential(credential_id: &str) {
+    if let Some(user_id) = active_user_id_quiet() {
+        unmirror_credential_for_user_best_effort_any(user_id, credential_id);
+    }
+}
+
+/// Explicitly-typed dual writer (active user): vault first, then mirror into the
+/// active user's partition. For import/bridge sites without bespoke vault logic.
+pub fn store_active_credential_typed_dual(
+    store: &CredentialStore,
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+) -> Result<(), String> {
+    store
+        .store(credential_id, secret)
+        .map_err(|e| format!("Store credential in vault: {e}"))?;
+    mirror_active_credential(store, credential_id, credential_type, secret);
+    Ok(())
+}
+
+/// Explicitly-typed dual writer (CLI `--user`): vault first, then mirror into
+/// `user_id`'s partition.
+pub fn store_credential_for_user_typed_dual(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+    credential_type: &str,
+    secret: &str,
+) -> Result<(), String> {
+    store
+        .store(credential_id, secret)
+        .map_err(|e| format!("Store credential in vault: {e}"))?;
+    mirror_credential_for_user_typed(store, user_id, credential_id, credential_type, secret);
     Ok(())
 }
 
@@ -5964,5 +6050,60 @@ mod tests {
                 .expect("read source new")
                 .is_none()
         );
+    }
+
+    // --- MUV-4: OAuth / Jottacloud token cutover --------------------------
+
+    #[test]
+    fn oauth_and_jotta_tokens_use_explicit_type_outside_the_classifier() {
+        let _guard = test_lock();
+        let conn = migrated_conn(0);
+        let root = test_root();
+        let default = get_active_user(&conn)
+            .expect("active read")
+            .expect("default active");
+
+        // The prefix classifier stays `server_`-only on purpose: it cannot tell a
+        // per-user token (`oauth_<p>_<id>`) from machine/app config
+        // (`oauth_<p>_client_id`), so the generic store_credential command never
+        // mirrors OAuth keys. MUV-4 call-sites pass the type explicitly instead.
+        assert_eq!(muv3_credential_type("oauth_dropbox_42"), None);
+        assert_eq!(muv3_credential_type("jottacloud_refresh_42"), None);
+        assert_eq!(muv3_credential_type("oauth_google_client_id"), None);
+
+        // An explicit-type write round-trips and is listed under its own type.
+        set_user_credential_for(
+            &conn,
+            &root,
+            default.id,
+            "oauth_dropbox_42",
+            "oauth",
+            "{\"access\":\"a\"}",
+        )
+        .expect("store oauth");
+        set_user_credential_for(
+            &conn,
+            &root,
+            default.id,
+            "jottacloud_refresh_42",
+            "jottacloud_refresh",
+            "{\"refresh_token\":\"r\"}",
+        )
+        .expect("store jotta");
+
+        assert_eq!(
+            get_user_credential_for(&conn, &root, default.id, "oauth_dropbox_42")
+                .expect("read oauth")
+                .expect("present")
+                .as_str(),
+            "{\"access\":\"a\"}"
+        );
+        let ids = list_user_credential_ids_for(&conn, default.id).expect("list");
+        assert!(ids
+            .iter()
+            .any(|(k, t)| k == "oauth_dropbox_42" && t == "oauth"));
+        assert!(ids
+            .iter()
+            .any(|(k, t)| k == "jottacloud_refresh_42" && t == "jottacloud_refresh"));
     }
 }

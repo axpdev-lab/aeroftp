@@ -13572,10 +13572,12 @@ fn collect_provider_secrets_for_server(
     let mut out = profile_export::ProviderSecrets::default();
     let protocol = server.protocol.as_deref().unwrap_or("").to_lowercase();
 
+    // MUV-4: read the per-profile token from the active user's partition (vault
+    // fallback inside resolve), then the legacy singleton key from the vault.
     if let Some(slug) = oauth_vault_slug_for_protocol(&protocol) {
         let per_profile = format!("oauth_{}_{}", slug, server.id);
-        if let Ok(value) = store.get(&per_profile) {
-            out.oauth = Some(value);
+        if let Ok(Some(value)) = user_partitions::resolve_active_credential(store, &per_profile) {
+            out.oauth = Some(value.to_string());
         } else {
             // Legacy singleton key path: only honoured when nothing has been
             // migrated yet for this provider on this device.
@@ -13588,8 +13590,8 @@ fn collect_provider_secrets_for_server(
 
     if protocol == "jottacloud" {
         let per_profile = format!("jottacloud_refresh_{}", server.id);
-        if let Ok(value) = store.get(&per_profile) {
-            out.jotta_refresh = Some(value);
+        if let Ok(Some(value)) = user_partitions::resolve_active_credential(store, &per_profile) {
+            out.jotta_refresh = Some(value.to_string());
         } else if let Ok(value) = store.get("jottacloud_refresh") {
             out.jotta_refresh = Some(value);
         }
@@ -13696,7 +13698,10 @@ async fn import_server_profiles(
                 if let Some(ref oauth_json) = secrets.oauth {
                     if let Some(slug) = oauth_vault_slug_for_protocol(protocol) {
                         let key = format!("oauth_{}_{}", slug, profile_id);
-                        if let Err(e) = store.store(&key, oauth_json) {
+                        // MUV-4: dual-write into vault + active user's partition.
+                        if let Err(e) = user_partitions::store_active_credential_typed_dual(
+                            &store, &key, "oauth", oauth_json,
+                        ) {
                             cred_errors.push(format!("{} oauth: {}", profile_id, e));
                         }
                     }
@@ -13704,7 +13709,12 @@ async fn import_server_profiles(
                 if let Some(ref jotta_json) = secrets.jotta_refresh {
                     if protocol == "jottacloud" {
                         let key = format!("jottacloud_refresh_{}", profile_id);
-                        if let Err(e) = store.store(&key, jotta_json) {
+                        if let Err(e) = user_partitions::store_active_credential_typed_dual(
+                            &store,
+                            &key,
+                            "jottacloud_refresh",
+                            jotta_json,
+                        ) {
                             cred_errors.push(format!("{} jotta: {}", profile_id, e));
                         }
                     }

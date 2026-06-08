@@ -258,16 +258,25 @@ fn store_rclone_provider_secrets(result: &rclone_import::RcloneImportResult) {
         };
         if let Some(ref oauth_json) = secrets.oauth {
             if let Some(slug) = crate::oauth_vault_slug_for_protocol(protocol) {
-                if let Err(e) = store.store(&format!("oauth_{}_{}", slug, profile_id), oauth_json) {
+                // MUV-4: dual-write into vault + active user's partition.
+                if let Err(e) = crate::user_partitions::store_active_credential_typed_dual(
+                    &store,
+                    &format!("oauth_{}_{}", slug, profile_id),
+                    "oauth",
+                    oauth_json,
+                ) {
                     log::warn!("rclone bridge: oauth token store failed for {profile_id}: {e}");
                 }
             }
         }
         if let Some(ref jotta_json) = secrets.jotta_refresh {
             if protocol == "jottacloud" {
-                if let Err(e) =
-                    store.store(&format!("jottacloud_refresh_{}", profile_id), jotta_json)
-                {
+                if let Err(e) = crate::user_partitions::store_active_credential_typed_dual(
+                    &store,
+                    &format!("jottacloud_refresh_{}", profile_id),
+                    "jottacloud_refresh",
+                    jotta_json,
+                ) {
                     log::warn!("rclone bridge: jotta token store failed for {profile_id}: {e}");
                 }
             }
