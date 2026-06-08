@@ -212,41 +212,71 @@ struct ExtensionEntryV3 {
     length: u64,
 }
 
-/// P2-02: On-disk payload format for the "ecc.reed-solomon" extension.
+/// P2-09: On-disk payload format (v2) for the "ecc.reed-solomon" extension.
 ///
-/// The data pointed to by the extension entry (at extension_payload_offset + offset in the entry)
-/// has this layout. Designed to be simple, self-describing, and append-only friendly
-/// (new stripes can be appended when more data is added; on seal we usually rewrite the whole payload anyway).
+/// v1 mapped one ciphertext block to one Reed-Solomon shard and sized every shard
+/// to the largest block. With content-defined chunking (min 256 KiB, avg 1 MiB) real
+/// vaults have few, large chunks, so under-filled stripes still stored two full-size
+/// parity shards: a 300 KB single-chunk vault produced ~600 KB of parity (≈200%).
 ///
-/// Layout:
-///   [EccPayloadHeader]               (fixed 32 bytes for v1)
-///   [StripeTable: num_stripes * StripeHeader]
-///   [ParityData: for each stripe, parity_shards * shard_size bytes]
+/// v2 protects the *concatenated* live-block stream with a fixed shard grid:
+///   - Concatenate the on-disk blocks ([u64 len][ciphertext]) in data-section order
+///     into one logical stream D of length L.
+///   - Cut D into a regular grid of `shard_size` (S) data shards; S is chosen so a
+///     small vault is exactly one full RS group (overhead == P/K) and a large vault
+///     is many full groups (capped granularity). Overhead is ~P/K regardless of how
+///     many / how large the chunks are.
+///   - Each group of K data shards gets P parity shards via RS(K, P).
 ///
-/// All multi-byte fields are little-endian.
+/// Damage localization no longer relies on the per-block cipher_hash (too coarse: a
+/// few rotted bytes in a large chunk would mark the whole chunk, erasing every shard
+/// it spans). Instead the payload stores a truncated-BLAKE3 checksum per shard (data
+/// and parity). On repair, any shard whose checksum mismatches is treated as an RS
+/// erasure, so localized rot inside a large chunk erases only the affected shard(s),
+/// and a rotted parity shard is detected and routed around. Correctness is still
+/// guaranteed end-to-end by re-verifying every repaired block against its
+/// authenticated manifest cipher_hash (the all-or-nothing safety gate in repair_vault).
 ///
-/// The "data" being protected are the on-disk ciphertext blocks (u64 len prefix + encrypted data).
-/// Each stripe groups `data_shards` consecutive such blocks (padded to shard_size if needed for the RS lib).
-/// The parity shards are stored here; the original data shards live in the main data section.
+/// Layout (all multi-byte fields little-endian):
+///   [EccPayloadHeader: 32 bytes]
+///   [data-shard checksums:   num_data_shards * ECC_SHARD_CKSUM_LEN]
+///   [parity-shard checksums: num_groups * P  * ECC_SHARD_CKSUM_LEN]
+///   [parity data:            num_groups * P  * S]
+/// where num_data_shards = ceil(L/S) and num_groups = ceil(num_data_shards/K).
 ///
-/// A future reader can use the cipher_hash in the manifest to identify which blocks are damaged
-/// and which stripe they belong to, then use the parity data to reconstruct.
+/// The format is pre-release; bumping ECC_PAYLOAD_VERSION needs no migration.
 const ECC_PAYLOAD_MAGIC: &[u8; 4] = b"AVEC";
-const ECC_PAYLOAD_VERSION: u16 = 1;
+const ECC_PAYLOAD_VERSION: u16 = 2;
 
-#[derive(Debug, Clone, Copy)]
-struct EccPayloadHeader {
-    data_shards: u16,
-    parity_shards: u16,
-    shard_size: u32,      // bytes per shard (all shards in all stripes use this size; data is padded)
-    num_stripes: u32,
-    // reserved for future: total protected bytes, flags, etc.
+/// Reed-Solomon group geometry. K data + P parity per group => P/K == 20% overhead,
+/// tolerating up to P erased shards (data or parity) per group.
+const ECC_DATA_SHARDS: usize = 10;
+const ECC_PARITY_SHARDS: usize = 2;
+/// Shard-size grid bounds. For small vaults S = ceil(L/K) yields a single full group
+/// (exactly P/K overhead); ECC_MIN_SHARD keeps micro-vault shards sane and
+/// ECC_MAX_SHARD bounds shard granularity (and per-shard recovery cost) for large
+/// vaults, which then span multiple full groups.
+const ECC_MIN_SHARD: usize = 4096;
+const ECC_MAX_SHARD: usize = 1 << 20; // 1 MiB
+/// Truncated BLAKE3 length stored per shard for erasure localization. 128 bits makes
+/// an accidental-rot collision (~2^-128) irrelevant; this is a rot detector, not a
+/// security primitive (block integrity remains the manifest cipher_hash).
+const ECC_SHARD_CKSUM_LEN: usize = 16;
+
+/// 16-byte rot-detection checksum for one shard.
+fn ecc_shard_checksum(shard: &[u8]) -> [u8; ECC_SHARD_CKSUM_LEN] {
+    let h = blake3::hash(shard);
+    let mut out = [0u8; ECC_SHARD_CKSUM_LEN];
+    out.copy_from_slice(&h.as_bytes()[..ECC_SHARD_CKSUM_LEN]);
+    out
 }
 
 #[derive(Debug, Clone, Copy)]
-struct EccStripeHeader {
-    first_chunk_index: u64,  // index in the manifest.chunks (the order they appear in data section)
-    num_data_chunks: u16,    // should == data_shards, but allows last stripe to be partial
+struct EccPayloadHeader {
+    data_shards: u16,    // K per group
+    parity_shards: u16,  // P per group
+    shard_size: u32,     // S (bytes per shard; data is zero-padded to this)
+    total_data_len: u64, // L (length of the concatenated live-block stream)
 }
 
 impl EccPayloadHeader {
@@ -257,8 +287,8 @@ impl EccPayloadHeader {
         buf[6..8].copy_from_slice(&self.data_shards.to_le_bytes());
         buf[8..10].copy_from_slice(&self.parity_shards.to_le_bytes());
         buf[10..14].copy_from_slice(&self.shard_size.to_le_bytes());
-        buf[14..18].copy_from_slice(&self.num_stripes.to_le_bytes());
-        // bytes 18..32 reserved (zero)
+        buf[14..22].copy_from_slice(&self.total_data_len.to_le_bytes());
+        // bytes 22..32 reserved (zero)
         buf
     }
 
@@ -273,270 +303,318 @@ impl EccPayloadHeader {
         if version != ECC_PAYLOAD_VERSION {
             return Err(format!("unsupported ECC payload version {}", version));
         }
-        Ok(EccPayloadHeader {
+        let h = EccPayloadHeader {
             data_shards: u16::from_le_bytes(data[6..8].try_into().unwrap()),
             parity_shards: u16::from_le_bytes(data[8..10].try_into().unwrap()),
             shard_size: u32::from_le_bytes(data[10..14].try_into().unwrap()),
-            num_stripes: u32::from_le_bytes(data[14..18].try_into().unwrap()),
-        })
+            total_data_len: u64::from_le_bytes(data[14..22].try_into().unwrap()),
+        };
+        if h.data_shards == 0 || h.shard_size == 0 {
+            return Err("invalid ECC payload header (zero shard geometry)".to_string());
+        }
+        Ok(h)
     }
 }
 
-/// Full on-disk representation of one ECC extension payload (for the "ecc.reed-solomon" entry).
-/// This is what gets written into the extension payload area when ECC is enabled.
+/// (num_data_shards, num_groups) derived from a header.
+fn ecc_geometry(h: &EccPayloadHeader) -> (usize, usize) {
+    let k = h.data_shards as usize;
+    let s = h.shard_size as usize;
+    let l = h.total_data_len as usize;
+    let num_data_shards = (l + s - 1) / s;
+    let num_groups = (num_data_shards + k - 1) / k;
+    (num_data_shards, num_groups)
+}
+
+/// Full in-memory representation of one ECC extension payload (v2). This is what
+/// gets written into the extension payload area when ECC is enabled.
 #[derive(Debug, Clone)]
 struct EccPayload {
     header: EccPayloadHeader,
-    stripes: Vec<EccStripeHeader>,
-    /// Concatenated parity data. Length must be exactly:
-    /// num_stripes * parity_shards * shard_size
+    /// One checksum per data shard, indexed 0..num_data_shards (grid order).
+    data_checksums: Vec<[u8; ECC_SHARD_CKSUM_LEN]>,
+    /// One checksum per parity shard, indexed group-major: group g, parity p lives
+    /// at g*P + p. Length == num_groups * P.
+    parity_checksums: Vec<[u8; ECC_SHARD_CKSUM_LEN]>,
+    /// Concatenated parity data, group-major. Length == num_groups * P * S.
     parity_data: Vec<u8>,
 }
 
 impl EccPayload {
     fn to_bytes(&self) -> Vec<u8> {
-        let mut out = Vec::with_capacity(32 + self.stripes.len() * 10 + self.parity_data.len());
+        let cksum_bytes =
+            (self.data_checksums.len() + self.parity_checksums.len()) * ECC_SHARD_CKSUM_LEN;
+        let mut out = Vec::with_capacity(32 + cksum_bytes + self.parity_data.len());
         out.extend_from_slice(&self.header.to_bytes());
-
-        for s in &self.stripes {
-            out.extend_from_slice(&s.first_chunk_index.to_le_bytes());
-            out.extend_from_slice(&s.num_data_chunks.to_le_bytes());
+        for c in &self.data_checksums {
+            out.extend_from_slice(c);
         }
-
+        for c in &self.parity_checksums {
+            out.extend_from_slice(c);
+        }
         out.extend_from_slice(&self.parity_data);
         out
     }
 
     fn from_bytes(data: &[u8]) -> Result<Self, String> {
-        if data.len() < 32 {
-            return Err("EccPayload too short for header".to_string());
-        }
-        let header = EccPayloadHeader::from_bytes(&data[0..32])?;
+        let header = EccPayloadHeader::from_bytes(data)?;
+        let (num_data_shards, num_groups) = ecc_geometry(&header);
+        let p = header.parity_shards as usize;
+        let s = header.shard_size as usize;
 
-        let stripe_table_size = header.num_stripes as usize * 10; // 8 + 2
-        if data.len() < 32 + stripe_table_size {
-            return Err("EccPayload too short for stripe table".to_string());
-        }
-
-        let mut stripes = Vec::with_capacity(header.num_stripes as usize);
-        let mut off = 32;
-        for _ in 0..header.num_stripes {
-            let first = u64::from_le_bytes(data[off..off+8].try_into().unwrap());
-            let num = u16::from_le_bytes(data[off+8..off+10].try_into().unwrap());
-            stripes.push(EccStripeHeader { first_chunk_index: first, num_data_chunks: num });
-            off += 10;
-        }
-
-        let parity_len = data.len() - off;
-        let expected_parity = header.num_stripes as usize * header.parity_shards as usize * header.shard_size as usize;
-        if parity_len != expected_parity {
+        let num_parity = num_groups * p;
+        let cksum_table = (num_data_shards + num_parity) * ECC_SHARD_CKSUM_LEN;
+        let parity_len = num_parity * s;
+        let expected = 32 + cksum_table + parity_len;
+        if data.len() != expected {
             return Err(format!(
-                "EccPayload parity data length mismatch: got {}, expected {}",
-                parity_len, expected_parity
+                "EccPayload length mismatch: got {}, expected {}",
+                data.len(),
+                expected
             ));
         }
 
+        let mut off = 32;
+        let read_cksums = |count: usize, off: &mut usize| {
+            let mut v = Vec::with_capacity(count);
+            for _ in 0..count {
+                let mut c = [0u8; ECC_SHARD_CKSUM_LEN];
+                c.copy_from_slice(&data[*off..*off + ECC_SHARD_CKSUM_LEN]);
+                v.push(c);
+                *off += ECC_SHARD_CKSUM_LEN;
+            }
+            v
+        };
+        let data_checksums = read_cksums(num_data_shards, &mut off);
+        let parity_checksums = read_cksums(num_parity, &mut off);
         let parity_data = data[off..].to_vec();
 
-        Ok(EccPayload { header, stripes, parity_data })
+        Ok(EccPayload { header, data_checksums, parity_checksums, parity_data })
     }
 }
 
-/// P2-03: Compute the ECC payload bytes from the list of on-disk ciphertext blocks.
-/// 
-/// `data_blocks`: the raw stored form of each chunk in the data section order
-///                (i.e. [u64 little-endian length][ciphertext bytes...]).
-///                These are exactly the bytes that have a corresponding `cipher_hash`
-///                in the manifest.
-/// `cipher_hashes`: the list of cipher hashes (one per block), for future use
-///                  (e.g. to embed a Merkle root or verification in the payload).
-/// 
-/// Returns the serialized bytes to store in the extension payload area for the
-/// "ecc.reed-solomon" entry. Uses fixed parameters for now (10 data + 2 parity
-/// shards per stripe, global shard_size = max block size).
-/// 
-/// The resulting payload can be placed in the extension and an entry added to
-/// the extension directory with the appropriate offset/length.
-fn compute_ecc_shards(
-    data_blocks: &[&[u8]],
-    _cipher_hashes: &[String], // not yet used in payload, but part of signature
-) -> Vec<u8> {
-    if data_blocks.is_empty() {
+/// P2-09: Compute the ECC payload (v2 fixed-grid format) for the concatenated
+/// live-block stream.
+///
+/// `data_blocks`: the on-disk stored form of each live chunk in data-section order
+///                (i.e. [u64 little-endian length][ciphertext bytes...]). These are
+///                exactly the bytes that have a corresponding `cipher_hash` in the
+///                manifest.
+///
+/// Returns the serialized payload bytes to store in the extension payload area for
+/// the "ecc.reed-solomon" entry (empty vec when there is no data). See the format
+/// doc above EccPayloadHeader for the on-disk layout and the overhead rationale.
+fn compute_ecc_shards(data_blocks: &[&[u8]]) -> Vec<u8> {
+    // Concatenate the live blocks into the logical stream D of length L.
+    let l: usize = data_blocks.iter().map(|b| b.len()).sum();
+    if l == 0 {
         return vec![];
     }
-
-    let data_shards = 10u16;
-    let parity_shards = 2u16;
-
-    // Global shard size = max on-disk block size (including u64 len prefix).
-    // All shards in the RS encoding are padded to this size.
-    let shard_size = data_blocks
-        .iter()
-        .map(|b| b.len())
-        .max()
-        .unwrap_or(0) as u32;
-
-    if shard_size == 0 {
-        return vec![];
+    let mut d = Vec::with_capacity(l);
+    for b in data_blocks {
+        d.extend_from_slice(b);
     }
 
-    let mut stripes: Vec<EccStripeHeader> = vec![];
-    let mut parity_concat: Vec<u8> = vec![];
+    let k = ECC_DATA_SHARDS;
+    let p = ECC_PARITY_SHARDS;
+    // S = ceil(L/K) clamped: a small vault becomes one full group (overhead == P/K);
+    // a large vault becomes many full groups at capped shard granularity.
+    let s = ((l + k - 1) / k).clamp(ECC_MIN_SHARD, ECC_MAX_SHARD);
 
-    let mut chunk_idx: u64 = 0;
+    let num_data_shards = (l + s - 1) / s;
+    let num_groups = (num_data_shards + k - 1) / k;
 
-    for stripe_start in (0..data_blocks.len()).step_by(data_shards as usize) {
-        let stripe_end = std::cmp::min(stripe_start + data_shards as usize, data_blocks.len());
-        let num_in_this_stripe = (stripe_end - stripe_start) as u16;
-
-        // Prepare shards for RS: first `data_shards` slots (pad shorter ones),
-        // extra slots for parity (will be filled by encode).
-        let mut rs_shards: Vec<Vec<u8>> =
-            vec![vec![0u8; shard_size as usize]; (data_shards + parity_shards) as usize];
-
-        for (local, &block) in data_blocks[stripe_start..stripe_end].iter().enumerate() {
-            let mut padded = block.to_vec();
-            padded.resize(shard_size as usize, 0);
-            rs_shards[local] = padded;
+    // Bytes of data shard `idx` (zero-padded past the end of D).
+    let shard_at = |idx: usize| -> Vec<u8> {
+        let start = idx * s;
+        let end = (start + s).min(l);
+        let mut v = vec![0u8; s];
+        if start < end {
+            v[..end - start].copy_from_slice(&d[start..end]);
         }
+        v
+    };
 
-        // Partial last stripe: the remaining slots stay zero (treated as zero data)
-        let rs = ReedSolomon::<reed_solomon_erasure::galois_8::Field>::new(
-            data_shards as usize,
-            parity_shards as usize,
-        )
+    let mut data_checksums = Vec::with_capacity(num_data_shards);
+    for i in 0..num_data_shards {
+        data_checksums.push(ecc_shard_checksum(&shard_at(i)));
+    }
+
+    let rs = ReedSolomon::<reed_solomon_erasure::galois_8::Field>::new(k, p)
         .expect("invalid ReedSolomon parameters");
 
-        rs.encode(&mut rs_shards).expect("RS encode failed");
+    let mut parity_data = Vec::with_capacity(num_groups * p * s);
+    let mut parity_checksums = Vec::with_capacity(num_groups * p);
 
-        // Collect only the parity shards (after the data slots)
-        for p in 0..parity_shards as usize {
-            let parity_shard = &rs_shards[data_shards as usize + p];
-            parity_concat.extend_from_slice(parity_shard);
+    for g in 0..num_groups {
+        // K data slots + P parity slots. Slots past num_data_shards stay zero
+        // (virtual padding); parity slots are filled by encode.
+        let mut shards: Vec<Vec<u8>> = vec![vec![0u8; s]; k + p];
+        for local in 0..k {
+            let gi = g * k + local;
+            if gi < num_data_shards {
+                shards[local] = shard_at(gi);
+            }
         }
-
-        stripes.push(EccStripeHeader {
-            first_chunk_index: chunk_idx,
-            num_data_chunks: num_in_this_stripe,
-        });
-
-        chunk_idx += num_in_this_stripe as u64;
+        rs.encode(&mut shards).expect("RS encode failed");
+        for pp in 0..p {
+            let par = &shards[k + pp];
+            parity_checksums.push(ecc_shard_checksum(par));
+            parity_data.extend_from_slice(par);
+        }
     }
 
     let header = EccPayloadHeader {
-        data_shards,
-        parity_shards,
-        shard_size,
-        num_stripes: stripes.len() as u32,
+        data_shards: k as u16,
+        parity_shards: p as u16,
+        shard_size: s as u32,
+        total_data_len: l as u64,
     };
 
-    let payload = EccPayload {
-        header,
-        stripes,
-        parity_data: parity_concat,
-    };
-
-    payload.to_bytes()
+    EccPayload { header, data_checksums, parity_checksums, parity_data }.to_bytes()
 }
 
-/// P2-04: Reconstruct damaged on-disk blocks using the ECC payload.
-/// 
-/// `data_blocks`: mutable list of the on-disk blocks in order (the same
-///                order as manifest.chunks).
-/// `bad_indices`: indices of blocks that failed their `cipher_hash` check.
+/// P2-09: Reconstruct damaged bytes in the live-block stream using the v2 ECC payload.
+///
+/// `blocks`: the on-disk blocks ([u64 len][ciphertext]) in data-section order, each
+///           EXACTLY `8 + block_len` bytes (the caller zero-pads truncated blocks) so
+///           the concatenation length matches the payload's recorded stream length.
 /// `ecc_payload_bytes`: the bytes stored in the ECC extension payload.
-/// 
-/// Returns the number of blocks that were successfully reconstructed.
-/// Damaged blocks that could be recovered are overwritten in `data_blocks`.
+///
+/// Damaged shards are located by per-shard checksum mismatch (data and parity), then
+/// RS-reconstructed per group; recovered bytes are written back into `blocks` in place.
+/// Returns the number of data shards successfully reconstructed.
+///
+/// A successful return does NOT imply correctness: the caller (repair_vault) must
+/// re-verify every repaired block against its authenticated cipher_hash before
+/// persisting (all-or-nothing safety gate). A grid misalignment (stream length
+/// mismatch) is rejected up front so good data can never be silently overwritten.
 fn reconstruct_from_ecc(
-    data_blocks: &mut [Vec<u8>],
-    bad_indices: &[usize],
+    blocks: &mut [Vec<u8>],
     ecc_payload_bytes: &[u8],
 ) -> Result<usize, String> {
-    if bad_indices.is_empty() || ecc_payload_bytes.is_empty() {
+    if ecc_payload_bytes.is_empty() {
         return Ok(0);
     }
-
     let payload = EccPayload::from_bytes(ecc_payload_bytes)?;
+    let k = payload.header.data_shards as usize;
+    let p = payload.header.parity_shards as usize;
+    let s = payload.header.shard_size as usize;
+    let l = payload.header.total_data_len as usize;
 
-    let data_shards = payload.header.data_shards as usize;
-    let parity_shards = payload.header.parity_shards as usize;
-    let shard_size = payload.header.shard_size as usize;
+    // The block stream must match the stream the parity was computed over, otherwise
+    // the shard grid would be misaligned and reconstruction could corrupt good data.
+    let total: usize = blocks.iter().map(|b| b.len()).sum();
+    if total != l {
+        return Err(format!(
+            "ECC reconstruct: block stream length {} != payload stream length {}",
+            total, l
+        ));
+    }
 
-    let rs = ReedSolomon::<reed_solomon_erasure::galois_8::Field>::new(data_shards, parity_shards)
+    let mut d = Vec::with_capacity(l);
+    for b in blocks.iter() {
+        d.extend_from_slice(b);
+    }
+
+    let (num_data_shards, num_groups) = ecc_geometry(&payload.header);
+
+    let shard_at = |d: &[u8], idx: usize| -> Vec<u8> {
+        let start = idx * s;
+        let end = (start + s).min(l);
+        let mut v = vec![0u8; s];
+        if start < end {
+            v[..end - start].copy_from_slice(&d[start..end]);
+        }
+        v
+    };
+
+    let rs = ReedSolomon::<reed_solomon_erasure::galois_8::Field>::new(k, p)
         .map_err(|e| format!("RS create for reconstruct: {:?}", e))?;
 
-    let mut reconstructed = 0usize;
-    let mut parity_cursor = 0usize;
+    let mut recovered = 0usize;
+    let mut changed = false;
 
-    for stripe in &payload.stripes {
-        let first = stripe.first_chunk_index as usize;
-        let num_data = stripe.num_data_chunks as usize;
+    for g in 0..num_groups {
+        let mut opt: Vec<Option<Vec<u8>>> = vec![None; k + p];
+        let mut erased_data = 0usize;
 
-        // Use Option<Vec<u8>> form for reconstruction (standard for this crate)
-        let mut opt_shards: Vec<Option<Vec<u8>>> = vec![None; data_shards + parity_shards];
-
-        for local in 0..data_shards {
-            if local < num_data {
-                let g = first + local;
-                if g < data_blocks.len() && !bad_indices.contains(&g) {
-                    let mut p = data_blocks[g].clone();
-                    p.resize(shard_size, 0);
-                    opt_shards[local] = Some(p);
+        for local in 0..k {
+            let gi = g * k + local;
+            if gi < num_data_shards {
+                let sh = shard_at(&d, gi);
+                if ecc_shard_checksum(&sh) == payload.data_checksums[gi] {
+                    opt[local] = Some(sh); // shard intact
+                } else {
+                    erased_data += 1; // damaged -> RS erasure
                 }
-                // else: real data slot that is bad or missing -> leave None (erasure to reconstruct)
             } else {
-                // virtual padding data slot beyond this stripe's real data: it was zero during encode
-                opt_shards[local] = Some(vec![0u8; shard_size]);
+                opt[local] = Some(vec![0u8; s]); // virtual zero-pad slot
             }
         }
 
-        // Fill parities from payload
-        for p in 0..parity_shards {
-            let start = parity_cursor + p * shard_size;
-            if start + shard_size <= payload.parity_data.len() {
-                opt_shards[data_shards + p] = Some(payload.parity_data[start..start + shard_size].to_vec());
+        for pp in 0..p {
+            let pidx = g * p + pp;
+            let start = pidx * s;
+            if start + s <= payload.parity_data.len() {
+                let par = payload.parity_data[start..start + s].to_vec();
+                if ecc_shard_checksum(&par) == payload.parity_checksums[pidx] {
+                    opt[k + pp] = Some(par); // parity intact
+                }
+                // else: rotted parity -> leave None so RS routes around it
             }
         }
-        parity_cursor += parity_shards * shard_size;
 
-        // Reconstruct (crate detects Nones as missing)
-        if rs.reconstruct(&mut opt_shards).is_err() {
-            continue;
+        if erased_data == 0 {
+            continue; // nothing damaged in this group
+        }
+        if rs.reconstruct(&mut opt).is_err() {
+            continue; // more erasures than parity can cover; leave group untouched
         }
 
-        // Write back only the ones we tried to repair
-        for local in 0..num_data {
-            let g = first + local;
-            if g < data_blocks.len() && bad_indices.contains(&g) {
-                if let Some(repaired) = &opt_shards[local] {
-                    if repaired.len() >= 8 {
-                        let orig_len = u64::from_le_bytes(repaired[0..8].try_into().unwrap()) as usize;
-                        let exact_len = 8 + orig_len;
-                        if exact_len <= repaired.len() {
-                            data_blocks[g] = repaired[..exact_len].to_vec();
-                            reconstructed += 1;
-                        }
-                    }
+        for local in 0..k {
+            let gi = g * k + local;
+            if gi >= num_data_shards {
+                continue;
+            }
+            if let Some(sh) = &opt[local] {
+                let start = gi * s;
+                let end = (start + s).min(l);
+                if d[start..end] != sh[..end - start] {
+                    d[start..end].copy_from_slice(&sh[..end - start]);
+                    changed = true;
                 }
             }
+        }
+        recovered += erased_data;
+    }
+
+    if changed {
+        // Re-slice the recovered stream back into the fixed-length blocks.
+        let mut pos = 0usize;
+        for b in blocks.iter_mut() {
+            let len = b.len();
+            b.copy_from_slice(&d[pos..pos + len]);
+            pos += len;
         }
     }
 
-    Ok(reconstructed)
+    Ok(recovered)
 }
 
 /// P2-06: Scrub primitive.
 /// Walks the chunks in data section order, verifies each cipher_hash against the
 /// stored ciphertext block. Returns list of damaged chunks with their full on-disk
 /// byte range (starting at the u64 length prefix).
+// Module-private: only scrub_vault/repair_vault and the vault_v3_scrub command (all
+// in this module) consume it, so it need not be `pub` over the private ChunkRecordV3.
 #[derive(Debug, Clone)]
-pub struct DamagedChunk {
-    pub record: ChunkRecordV3,
+struct DamagedChunk {
+    record: ChunkRecordV3,
     /// Start offset in the vault file's data section (includes the u64 prefix).
-    pub on_disk_start: u64,
+    on_disk_start: u64,
     /// Full length of the stored unit (8 + cipher len).
-    pub on_disk_len: u64,
+    on_disk_len: u64,
 }
 
 fn scrub_vault(vault: &OpenVaultV3) -> Vec<DamagedChunk> {
@@ -621,20 +699,25 @@ fn repair_vault(vault: &mut OpenVaultV3, dry_run: bool) -> Result<usize, String>
         ordered.sort_by_key(|(_, r)| r.data_offset);
 
         let mut blocks: Vec<Vec<u8>> = ordered.iter().map(|(_, rec)| {
-            let s = rec.data_offset as usize;
-            let l = 8 + rec.block_len as usize;
-            if s + l <= vault.data.len() {
-                vault.data[s..s + l].to_vec()
-            } else {
-                vec![]
+            let start = rec.data_offset as usize;
+            let full = 8 + rec.block_len as usize;
+            // Always a fixed-length (8 + block_len) buffer so the concatenated stream
+            // length matches what the ECC parity was computed over, even when the block
+            // is truncated on disk: the missing tail is zero-padded here, flagged as
+            // damaged by its shard checksum, then reconstructed.
+            let mut buf = vec![0u8; full];
+            if start < vault.data.len() {
+                let avail = (vault.data.len() - start).min(full);
+                buf[..avail].copy_from_slice(&vault.data[start..start + avail]);
             }
+            buf
         }).collect();
 
         let bad_indices: Vec<usize> = damaged.iter().filter_map(|d| {
             ordered.iter().position(|(id, _)| id == &d.record.id)
         }).collect();
 
-        let _ = reconstruct_from_ecc(&mut blocks, &bad_indices, &ecc_b)?;
+        let _ = reconstruct_from_ecc(&mut blocks, &ecc_b)?;
 
         // Safety gate (CLAUDE-AV-ECC-01): RS reconstruction is only correct when
         // the surviving data shards AND the parity shards were themselves intact.
@@ -1947,7 +2030,7 @@ fn create_empty_vault(path: &Path, password: &str, level: i32, with_ecc: bool) -
         vec![]
     };
     let ext_payloads = if with_ecc {
-        let p = compute_ecc_shards(&[], &[]);
+        let p = compute_ecc_shards(&[]);
         if let Some(e) = extensions.first_mut() {
             e.offset = 0;
             e.length = p.len() as u64;
@@ -2139,9 +2222,7 @@ fn save_open_vault(vault: &OpenVaultV3) -> Result<(), String> {
             }
         }).collect();
 
-        let hashes: Vec<String> = chunk_records.iter().map(|r| r.cipher_hash.clone()).collect();
-
-        let payload = compute_ecc_shards(&blocks, &hashes);
+        let payload = compute_ecc_shards(&blocks);
 
         let entry = &mut extensions[ecc_idx];
         entry.offset = 0;
@@ -2975,28 +3056,32 @@ mod tests {
 
     #[test]
     fn p2_02_ecc_payload_format_roundtrip() {
-        // P2-02: verify the defined on-disk format can be serialized and deserialized losslessly.
+        // P2-09 (v2): the fixed-grid payload (header + per-shard checksum table +
+        // parity) must serialize and deserialize losslessly.
+        let s = 4096usize;
+        let l = s * 25; // 25 data shards => 3 groups of 10 (last group partial)
         let header = EccPayloadHeader {
             data_shards: 10,
             parity_shards: 2,
-            shard_size: 4096,
-            num_stripes: 3,
+            shard_size: s as u32,
+            total_data_len: l as u64,
         };
+        let (num_data_shards, num_groups) = ecc_geometry(&header);
+        assert_eq!(num_data_shards, 25);
+        assert_eq!(num_groups, 3);
+        let num_parity = num_groups * header.parity_shards as usize;
 
-        let stripes = vec![
-            EccStripeHeader { first_chunk_index: 0, num_data_chunks: 10 },
-            EccStripeHeader { first_chunk_index: 10, num_data_chunks: 10 },
-            EccStripeHeader { first_chunk_index: 20, num_data_chunks: 5 },
-        ];
-
-        // Fake parity data (in real use this will be the RS output)
-        let parity_len = 3 * 2 * 4096;
-        let parity_data = vec![0xABu8; parity_len];
+        let data_checksums: Vec<[u8; ECC_SHARD_CKSUM_LEN]> =
+            (0..num_data_shards).map(|i| [i as u8; ECC_SHARD_CKSUM_LEN]).collect();
+        let parity_checksums: Vec<[u8; ECC_SHARD_CKSUM_LEN]> =
+            (0..num_parity).map(|i| [(200 + i) as u8; ECC_SHARD_CKSUM_LEN]).collect();
+        let parity_data = vec![0xABu8; num_parity * s];
 
         let payload = EccPayload {
             header,
-            stripes,
-            parity_data,
+            data_checksums: data_checksums.clone(),
+            parity_checksums: parity_checksums.clone(),
+            parity_data: parity_data.clone(),
         };
 
         let bytes = payload.to_bytes();
@@ -3004,46 +3089,48 @@ mod tests {
 
         assert_eq!(decoded.header.data_shards, 10);
         assert_eq!(decoded.header.parity_shards, 2);
-        assert_eq!(decoded.header.shard_size, 4096);
-        assert_eq!(decoded.header.num_stripes, 3);
-        assert_eq!(decoded.stripes.len(), 3);
-        assert_eq!(decoded.stripes[2].num_data_chunks, 5);
-        assert_eq!(decoded.parity_data.len(), parity_len);
-        assert!(decoded.parity_data.iter().all(|&b| b == 0xAB));
+        assert_eq!(decoded.header.shard_size, s as u32);
+        assert_eq!(decoded.header.total_data_len, l as u64);
+        assert_eq!(decoded.data_checksums, data_checksums);
+        assert_eq!(decoded.parity_checksums, parity_checksums);
+        assert_eq!(decoded.parity_data, parity_data);
+
+        // A truncated / length-mismatched payload must be rejected, not misparsed.
+        assert!(EccPayload::from_bytes(&bytes[..bytes.len() - 1]).is_err());
     }
 
     #[test]
     fn p2_03_compute_ecc_shards_basic() {
-        // P2-03: smoke test that compute_ecc_shards produces a well-formed payload.
-        let block1: Vec<u8> = vec![0u8; 100]; // will be [len][data] but here we simulate full on-disk
+        // P2-09: compute_ecc_shards produces a well-formed v2 payload over the
+        // concatenated block stream.
+        let block1: Vec<u8> = vec![0u8; 100];
         let block2: Vec<u8> = vec![1u8; 200];
-
-        // For the test we pass the raw "on-disk" form (in real use it includes the u64 len prefix)
         let data_blocks: Vec<&[u8]> = vec![&block1, &block2];
-        let hashes = vec!["hash1".to_string(), "hash2".to_string()];
 
-        let payload_bytes = compute_ecc_shards(&data_blocks, &hashes);
-
+        let payload_bytes = compute_ecc_shards(&data_blocks);
         assert!(!payload_bytes.is_empty());
 
-        // Should be parsable with our P2-02 format
         let parsed = EccPayload::from_bytes(&payload_bytes).expect("payload should parse");
-
-        assert_eq!(parsed.header.data_shards, 10);
-        assert_eq!(parsed.header.parity_shards, 2);
-        // shard_size should be at least the largest block
-        assert!(parsed.header.shard_size >= 200);
-        assert_eq!(parsed.stripes.len(), 1); // only 2 blocks < 10
-        assert_eq!(parsed.stripes[0].num_data_chunks, 2);
+        assert_eq!(parsed.header.data_shards, ECC_DATA_SHARDS as u16);
+        assert_eq!(parsed.header.parity_shards, ECC_PARITY_SHARDS as u16);
+        assert_eq!(parsed.header.total_data_len, 300);
+        // L=300 < ECC_MIN_SHARD => S clamps to the floor => one data shard, one group.
+        assert_eq!(parsed.header.shard_size as usize, ECC_MIN_SHARD);
+        let (num_data_shards, num_groups) = ecc_geometry(&parsed.header);
+        assert_eq!(num_data_shards, 1);
+        assert_eq!(num_groups, 1);
+        assert_eq!(parsed.data_checksums.len(), 1);
+        assert_eq!(parsed.parity_checksums.len(), ECC_PARITY_SHARDS);
+        assert_eq!(parsed.parity_data.len(), ECC_PARITY_SHARDS * ECC_MIN_SHARD);
     }
 
     #[test]
     fn p2_04_reconstruct_from_ecc_basic() {
-        // P2-04: simulate damage + reconstruction
-        let orig1: Vec<u8> = (0u8..100).collect();   // will become [len][data]
-        let orig2: Vec<u8> = (0u8..150).map(|x| 100 + x).collect();  // safe u8 values
+        // P2-09: damage one block, reconstruct it via the v2 ECC payload (the shard
+        // checksum localizes the erasure; no externally supplied bad-index list).
+        let orig1: Vec<u8> = (0u8..100).collect();
+        let orig2: Vec<u8> = (0u8..150).map(|x| 100 + x).collect();
 
-        // Simulate full on-disk blocks (in real life the len prefix is the size of the ciphertext)
         let make_on_disk = |data: &[u8]| -> Vec<u8> {
             let mut b = (data.len() as u64).to_le_bytes().to_vec();
             b.extend_from_slice(data);
@@ -3051,23 +3138,19 @@ mod tests {
         };
 
         let mut blocks = vec![make_on_disk(&orig1), make_on_disk(&orig2)];
-        let hashes = vec!["h1".into(), "h2".into()];
+        let payload =
+            compute_ecc_shards(&blocks.iter().map(|v| v.as_slice()).collect::<Vec<_>>());
 
-        let payload = compute_ecc_shards(&blocks.iter().map(|v| v.as_slice()).collect::<Vec<_>>(), &hashes);
+        // Corrupt the second block; its shard checksum will mismatch -> RS erasure.
+        blocks[1][10] ^= 0xFF;
 
-        // Corrupt the second block
-        if blocks.len() > 1 {
-            blocks[1][10] ^= 0xFF;
-        }
+        let recovered = reconstruct_from_ecc(&mut blocks, &payload).expect("reconstruct");
+        assert!(recovered >= 1);
 
-        let repaired = reconstruct_from_ecc(&mut blocks, &[1], &payload).expect("reconstruct");
-
-        assert_eq!(repaired, 1);
-
-        // The second block should be back to original on-disk form
+        // The second block is restored to its original on-disk form.
         let restored = &blocks[1];
         let len = u64::from_le_bytes(restored[0..8].try_into().unwrap()) as usize;
-        assert_eq!(&restored[8..8+len], &orig2);
+        assert_eq!(&restored[8..8 + len], &orig2[..]);
     }
 
     #[test]
@@ -3132,35 +3215,12 @@ mod tests {
         append_file_at(&mut vault, &f2, "f2.txt").unwrap();
         save_open_vault(&vault).unwrap();
 
-        // Get a chunk offset to corrupt (the second file's data block)
+        // Identify the second file's data block, then exercise the real bad-hash path
+        // by corrupting its cipher bytes in memory on a freshly re-opened vault.
         let mut recs: Vec<_> = vault.manifest.chunks.values().cloned().collect();
         recs.sort_by_key(|r| r.data_offset);
         assert!(recs.len() >= 2);
-        let target_rec = &recs[1];
-        let corrupt_offset = target_rec.data_offset as usize + 8 + 3; // inside the cipher data
-        if corrupt_offset < vault.data.len() {
-            // tamper the on-disk file too for realism
-            let mut f = std::fs::OpenOptions::new().write(true).open(&vault_path).unwrap();
-            f.seek(SeekFrom::Start(corrupt_offset as u64)).unwrap();
-            let mut buf = [0u8; 1];
-            // read current
-            // simpler: just flip in the in-memory for the test, but to simulate real corruption we flip on disk and reload
-        }
 
-        // Flip on the actual file at the data section
-        {
-            let mut f = std::fs::OpenOptions::new().read(true).write(true).open(&vault_path).unwrap();
-            // the data section starts after header + manifest + dir etc, but easier: since we know the record data_offset is relative to the data section start in the file? 
-            // data_offset in records is relative to the 'data' field, which starts after header+manifest+dir in the file.
-            // To corrupt the file, we need the absolute offset in the .aerovault file.
-            // For simplicity in test, corrupt the in-memory after reload, but to make it "real", we'll corrupt the in-memory data and call repair logic.
-            // Better real: corrupt the file using absolute.
-            // The data section absolute offset is header.extension or from header.
-            // To keep test simple and effective, we'll corrupt the in-memory after open, call repair_vault (which will see the bad hash), repair, save.
-            // This still exercises the full logic.
-        }
-
-        // Re-open to have clean state
         let mut vault2 = open_vault(&vault_path, "repair-pw-1234").unwrap();
 
         // Corrupt in-memory the second block's cipher part
@@ -3212,12 +3272,13 @@ mod tests {
         }
         save_open_vault(&vault).unwrap();
 
-        // Re-open, get some chunk offsets to corrupt (spread across stripes to be repairable with 10+2)
+        // Re-open, corrupt a few chunk blocks. These tiny blocks share one shard, so
+        // any of them mismatching erases that single shard, which RS(10,2) recovers.
         let mut vault2 = open_vault(&vault_path, "stress-pw-1234").unwrap();
         let mut recs: Vec<_> = vault2.manifest.chunks.values().cloned().collect();
         recs.sort_by_key(|r| r.data_offset);
 
-        let to_corrupt = vec![2, 5, 11]; // spread: 3 in first stripe of 10 (repairable), 1 in second
+        let to_corrupt = vec![2, 5, 11]; // three distinct blocks (all share one shard)
         for &idx in &to_corrupt {
             if idx < recs.len() {
                 let rec = &recs[idx];
@@ -3251,79 +3312,151 @@ mod tests {
         }
     }
 
-    /// Safety regression (CLAUDE-AV-ECC-01): when the parity itself is corrupt,
-    /// RS reconstruction produces wrong bytes. repair must NOT report success and
-    /// must NOT persist anything (which would also recompute parity over the
-    /// garbage and destroy the redundancy). The vault must stay byte-for-byte
-    /// untouched and the damage must remain detectable.
+    /// Helper: ~`n` bytes of high-entropy (splitmix64-derived) data so zstd cannot
+    /// compress it and the vault stays a realistically-sized ciphertext stream that
+    /// spans many shards (a low-entropy pattern would compress to a tiny single shard
+    /// and defeat the overhead / multi-shard-damage tests).
+    fn ecc_test_blob(n: u32) -> Vec<u8> {
+        (0..n)
+            .map(|i| {
+                let mut z = (i as u64).wrapping_add(0x9E3779B97F4A7C15);
+                z = (z ^ (z >> 30)).wrapping_mul(0xBF58476D1CE4E5B9);
+                z = (z ^ (z >> 27)).wrapping_mul(0x94D049BB133111EB);
+                (z ^ (z >> 31)) as u8
+            })
+            .collect()
+    }
+
+    /// P2-09 robustness: with per-shard checksums a rotted PARITY shard is detected
+    /// and treated as an erasure, so RS routes around it. A single damaged data shard
+    /// plus one corrupt parity shard is 2 erasures (== P), which must still recover
+    /// correctly and heal the vault. This is strictly better than the v1 behaviour,
+    /// where a corrupt parity silently produced wrong bytes that only the cipher_hash
+    /// gate could catch (CLAUDE-AV-ECC-01).
     #[test]
-    fn p2_repair_refuses_unverifiable_reconstruction_when_parity_is_corrupt() {
+    fn p2_repair_recovers_despite_corrupt_parity_shard() {
         let dir = tempfile::tempdir().unwrap();
-        let vault_path = dir.path().join("bad-parity.aerovault");
+        let vault_path = dir.path().join("recover-bad-parity.aerovault");
         let f = dir.path().join("f.bin");
-        // Incompressible data so the chunk + parity are substantial.
-        let data: Vec<u8> = (0..300_000u32)
-            .map(|i| (i.wrapping_mul(2_654_435_761).rotate_left(7) >> 11) as u8)
-            .collect();
+        let data = ecc_test_blob(300_000);
         std::fs::write(&f, &data).unwrap();
 
-        create_empty_vault(&vault_path, "bad-parity-pw", DEFAULT_ZSTD_LEVEL, true).unwrap();
-        let mut vault = open_vault(&vault_path, "bad-parity-pw").unwrap();
+        create_empty_vault(&vault_path, "recover-pw", DEFAULT_ZSTD_LEVEL, true).unwrap();
+        let mut vault = open_vault(&vault_path, "recover-pw").unwrap();
         append_file_at(&mut vault, &f, "f.bin").unwrap();
         save_open_vault(&vault).unwrap();
 
-        // Corrupt the first parity shard's DATA (not the payload header/stripe
-        // table). With a single erasure RS uses the lowest-index parity shard, so
-        // damaging parity shard 0 forces a wrong (but well-formed) reconstruction.
-        // Layout: [32B EccPayloadHeader][num_stripes*10B stripe table][parity...].
-        {
-            let raw = std::fs::read(&vault_path).unwrap();
-            let ext_payload_offset =
-                u64::from_le_bytes(raw[176..184].try_into().unwrap()) as usize;
-            // 32B header + (1 stripe * 10B) table => parity shard 0 starts at +42.
-            let pos = ext_payload_offset + 42 + 100;
-            let mut fh = std::fs::OpenOptions::new()
-                .read(true)
-                .write(true)
-                .open(&vault_path)
-                .unwrap();
-            // Flip a swath to be sure the used parity shard is corrupted.
-            for k in 0..256u64 {
-                let p = (pos as u64) + k;
-                fh.seek(SeekFrom::Start(p)).unwrap();
-                let mut b = [0u8; 1];
-                fh.read_exact(&mut b).unwrap();
-                fh.seek(SeekFrom::Start(p)).unwrap();
-                fh.write_all(&[b[0] ^ 0xAA]).unwrap();
-            }
+        // Corrupt the bytes of parity shard 0 on disk (its stored checksum will no
+        // longer match -> reconstruct erases it and uses parity shard 1 instead).
+        // save_open_vault takes &OpenVaultV3 and updates only a local extensions clone,
+        // so the persisted payload location is read straight from the on-disk header
+        // (extension_payload_offset @176, extension_payload_len @184).
+        let mut raw = std::fs::read(&vault_path).unwrap();
+        let payload_abs = u64::from_le_bytes(raw[176..184].try_into().unwrap()) as usize;
+        let payload_len = u64::from_le_bytes(raw[184..192].try_into().unwrap()) as usize;
+        let payload =
+            EccPayload::from_bytes(&raw[payload_abs..payload_abs + payload_len]).unwrap();
+        let (nds, ng) = ecc_geometry(&payload.header);
+        let p = payload.header.parity_shards as usize;
+        let parity0_abs = payload_abs + 32 + (nds + ng * p) * ECC_SHARD_CKSUM_LEN;
+        for i in 0..64usize {
+            raw[parity0_abs + i] ^= 0xAA;
         }
+        std::fs::write(&vault_path, &raw).unwrap();
 
-        // Snapshot the file, then open and corrupt the first data block in memory
-        // so scrub flags it (the parity is what makes reconstruction wrong).
-        let before = std::fs::read(&vault_path).unwrap();
-        let mut vault2 = open_vault(&vault_path, "bad-parity-pw").unwrap();
+        // Open and damage exactly one data shard in memory.
+        let mut vault2 = open_vault(&vault_path, "recover-pw").unwrap();
         let first_off = {
             let mut recs: Vec<_> = vault2.manifest.chunks.values().cloned().collect();
             recs.sort_by_key(|r| r.data_offset);
             recs[0].data_offset as usize
         };
         vault2.data[first_off + 8 + 5] ^= 0xFF;
+        assert!(!scrub_vault(&vault2).is_empty(), "scrub must see the damage");
 
-        assert!(
-            !scrub_vault(&vault2).is_empty(),
-            "scrub must detect the corrupted block"
-        );
+        let repaired = repair_vault(&mut vault2, false).expect("repair");
+        assert!(repaired > 0, "must recover despite the corrupt parity shard");
+        assert!(scrub_vault(&vault2).is_empty(), "vault must be clean after repair");
+
+        // Content verifies AND the parity was re-sealed correctly (re-open + scrub).
+        let out = dir.path().join("out.bin");
+        extract_entry(&vault2, "f.bin", &out).unwrap();
+        assert_eq!(std::fs::read(&out).unwrap(), data);
+        let reopened = open_vault(&vault_path, "recover-pw").unwrap();
+        assert!(scrub_vault(&reopened).is_empty());
+    }
+
+    /// P2-09 safety gate (CLAUDE-AV-ECC-01): when damage exceeds the per-group parity
+    /// budget (here 3 erasures with P=2) reconstruction cannot succeed. repair must
+    /// NOT claim success and must leave the vault byte-for-byte untouched (persisting
+    /// unverifiable bytes would recompute parity over garbage and destroy redundancy).
+    #[test]
+    fn p2_repair_refuses_when_damage_exceeds_redundancy() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault_path = dir.path().join("over-budget.aerovault");
+        let f = dir.path().join("f.bin");
+        let data = ecc_test_blob(300_000);
+        std::fs::write(&f, &data).unwrap();
+
+        create_empty_vault(&vault_path, "over-pw-1234", DEFAULT_ZSTD_LEVEL, true).unwrap();
+        let mut vault = open_vault(&vault_path, "over-pw-1234").unwrap();
+        append_file_at(&mut vault, &f, "f.bin").unwrap();
+        save_open_vault(&vault).unwrap();
+
+        let before = std::fs::read(&vault_path).unwrap();
+        let mut vault2 = open_vault(&vault_path, "over-pw-1234").unwrap();
+
+        // Damage three widely-separated regions: with S ~= L/10 these fall in three
+        // distinct data shards of the single RS group, i.e. 3 erasures > P=2.
+        let n = vault2.data.len();
+        for pos in [13usize, n / 2, n - 100] {
+            if pos < n {
+                vault2.data[pos] ^= 0xFF;
+            }
+        }
+        assert!(!scrub_vault(&vault2).is_empty(), "scrub must detect the damage");
 
         let repaired = repair_vault(&mut vault2, false).expect("repair call should not error");
-        assert_eq!(
-            repaired, 0,
-            "repair must not claim success when the reconstruction cannot be verified"
-        );
+        assert_eq!(repaired, 0, "repair must not claim an unverifiable success");
 
         let after = std::fs::read(&vault_path).unwrap();
-        assert_eq!(
-            before, after,
-            "repair must leave the vault untouched when it cannot verify the fix"
+        assert_eq!(before, after, "repair must leave the vault untouched when it cannot fix it");
+    }
+
+    /// P2-09 regression: the v1 format produced ~200% parity for a small single-chunk
+    /// vault (300 KB -> ~600 KB parity). The v2 fixed-grid format must keep the stored
+    /// ECC payload near the nominal P/K (20%).
+    #[test]
+    fn p2_09_ecc_overhead_is_bounded_for_single_chunk_vault() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault_path = dir.path().join("overhead.aerovault");
+        let f = dir.path().join("blob.bin");
+        let data = ecc_test_blob(300_000);
+        std::fs::write(&f, &data).unwrap();
+
+        create_empty_vault(&vault_path, "ovh-pw-1234", DEFAULT_ZSTD_LEVEL, true).unwrap();
+        let mut vault = open_vault(&vault_path, "ovh-pw-1234").unwrap();
+        append_file_at(&mut vault, &f, "blob.bin").unwrap();
+        save_open_vault(&vault).unwrap();
+
+        // save_open_vault updates only a local extensions clone, so read the persisted
+        // ECC payload length from the on-disk header (extension_payload_len @184) rather
+        // than the stale in-memory entry.
+        let raw = std::fs::read(&vault_path).unwrap();
+        let ecc_payload = u64::from_le_bytes(raw[184..192].try_into().unwrap()) as f64;
+        let protected: f64 = vault
+            .manifest
+            .chunks
+            .values()
+            .map(|c| 8.0 + c.block_len as f64)
+            .sum();
+
+        assert!(
+            ecc_payload < protected * 0.30,
+            "ECC overhead too high: {} payload bytes for {} protected bytes ({:.0}%)",
+            ecc_payload,
+            protected,
+            ecc_payload / protected * 100.0
         );
     }
 

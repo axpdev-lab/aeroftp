@@ -14,6 +14,61 @@
 
 ---
 
+## HANDOFF 2 - P2-09 done, Phase 3 next (2026-06-08)
+
+**P2-09 (ECC parity overhead) is FIXED. The shipping blocker is cleared.**
+
+Engine changes (`src-tauri/src/aerovault_v3.rs`):
+- ECC payload format bumped v1 -> v2 (`ECC_PAYLOAD_VERSION = 2`). Pre-release, no migration.
+- New model: protect the CONCATENATED live-block stream with a fixed shard grid instead of
+  one-block-one-shard. `compute_ecc_shards` picks `S = clamp(ceil(L/K), 4 KiB, 1 MiB)` with
+  K=10 data + P=2 parity per RS group, so overhead is ~P/K (20%) regardless of how many or
+  how large the chunks are. Constants: ECC_DATA_SHARDS / ECC_PARITY_SHARDS / ECC_MIN_SHARD /
+  ECC_MAX_SHARD / ECC_SHARD_CKSUM_LEN.
+- Damage localization no longer relies on the per-block cipher_hash alone (too coarse: a few
+  rotted bytes in a big chunk would erase every shard it spans). The v2 payload stores a
+  16-byte truncated-BLAKE3 checksum PER SHARD (data and parity). `reconstruct_from_ecc` marks
+  any shard whose checksum mismatches as an RS erasure, so localized rot in a large chunk
+  erases only the affected shard(s), and a rotted PARITY shard is detected and routed around
+  (RS uses the other parity). Correctness is still gated end-to-end by re-verifying every
+  repaired block against its authenticated cipher_hash (all-or-nothing persist).
+- Latent bug fixed: repair built truncated blocks as `vec![]`, misaligning the stream. Now
+  builds fixed-length (8 + block_len) zero-padded buffers so the grid always aligns.
+- Signatures: `reconstruct_from_ecc` dropped `bad_indices` (erasures found via checksums);
+  `compute_ecc_shards` dropped the unused cipher-hashes arg. Call sites updated
+  (save_open_vault, create_empty_vault, repair_vault). `DamagedChunk` made module-private.
+
+Tests: `cargo test --lib aerovault_v3` -> **22 passed**. New/updated: p2_02/03/04 (v2 format),
+`p2_09_ecc_overhead_is_bounded_for_single_chunk_vault`,
+`p2_repair_recovers_despite_corrupt_parity_shard`,
+`p2_repair_refuses_when_damage_exceeds_redundancy`.
+
+Live CLI proof (real `aeroftp-cli`, incompressible 300 KB single-chunk vault):
+- pure ECC overhead 60366 bytes = **20.1% of data** (was ~200% / 902 KB file under v1).
+- create --ecc -> info has_ecc:true -> scrub clean -> corrupt 32 B -> scrub detects ->
+  repair --dry-run -> repair -> scrub clean -> extract SHA-256 IDENTICAL.
+
+**Phase 3 = the focus for the next tab (surfaces + polish on a now-solid engine):**
+- GUI re-alignment with the hardened + v2 engine (the GUI predates both):
+  `src/components/vault/useVaultState.ts` `handleScrub`/`handleRepair` (~L1199-1232) should
+  surface the scrub `checked` count and the HONEST repair report (`damaged` vs `repaired`,
+  show "vault left untouched" when repaired < damaged). `vault_v3_scrub` now returns
+  `{damaged, count, checked}`; `vault_v3_repair` returns `{repaired, damaged, dry_run}`.
+  `VaultBrowse.tsx` renders the draggable scrub/repair modals (keep template: useDraggableModal,
+  dark: variants, rounded-xl).
+- P3-03 receipt/VaultReport ECC fields (shards generated, bytes protected, overhead %, repair events).
+- P3-05 i18n keys for the new ECC strings (currently hardcoded English in the handlers).
+- P3-06 CLI vault help / man-page polish.
+Then Phase 4 docs (ROADMAP / SECURITY / AEROVAULT-V3-SPEC v4 note / CLI-GUIDE), CHANGELOG,
+close T-AEROVAULT-ECC.
+
+Resume contract unchanged: read AGENTS.md + this folder; `cargo test --lib aerovault_v3`
+(expect 22) before edits; --profile only for live vault CLI; commit trailer
+`Co-Authored-By: Grok 4.3 released by xAI in April 2026 <noreply@x.ai>`; keep GUI modals
+draggable + app template; no scope creep; 4-wrappers / ECC-last / AeroVault-first.
+
+---
+
 ## HANDOFF — Saved for Fresh Session (2026)
 
 **Branch:** `feat/aerovault-v4-ecc` (dedicated, per user)
@@ -251,15 +306,20 @@ All P1/P2/GUI surfaces per plan + user GUI request completed and handed off. See
   - ECC primitives made module-private (silenced the private-type-in-public-fn warning).
   - Baseline: `cargo test --lib aerovault_v3` → 20 passed.
 
-- [ ] **P2-09** [DESIGN] Fix the ECC parity overhead before shipping
-  - `compute_ecc_shards` uses one global `shard_size` = largest on-disk block and pads each
-    stripe to 10 data shards, storing 2 full-size parity shards per stripe. With CDC bounds
-    (min 256 KiB / avg 1 MiB) real vaults have few large chunks, so overhead is FAR above the
-    nominal 20%. Measured: 300 KB single-chunk vault → ~600 KB parity (≈200%, 902 KB file).
-  - Options: per-stripe shard_size (max within the stripe), or split large chunks into N
-    sub-shards so RS(N, parity) gives parity/N overhead. Changes the on-disk payload format
-    (bump `ECC_PAYLOAD_VERSION`); still pre-release so no migration needed.
-  - BLOCKS: marking ECC as production-ready / any release note claiming efficient redundancy.
+- [x] **P2-09** [DESIGN] Fix the ECC parity overhead before shipping [DONE 2026-06-08]
+  - Root cause was one-block-one-shard + global shard_size: few large CDC chunks meant
+    under-filled stripes paying two full-size parity shards (300 KB single-chunk -> ~200%).
+  - Fix: ECC payload v2 (`ECC_PAYLOAD_VERSION = 2`). Protect the concatenated live-block
+    stream with a fixed shard grid: `S = clamp(ceil(L/K), 4 KiB, 1 MiB)`, K=10 data + P=2
+    parity per RS group -> overhead ~P/K (20%) independent of chunk count/size.
+  - Damage localized by a 16-byte per-shard checksum (data + parity) stored in the payload,
+    so localized rot in a large chunk erases only the affected shard(s) and a rotted parity
+    shard is detected and routed around. Per-block cipher_hash all-or-nothing gate retained.
+  - Latent truncation bug fixed (repair built `vec![]` for truncated blocks -> misaligned
+    stream; now fixed-length zero-padded buffers).
+  - Proven: 22/22 unit tests + live CLI (incompressible 300 KB -> pure ECC overhead 60366 B
+    = 20.1%, was ~200%; full corrupt -> repair -> extract SHA-256 identical).
+  - UNBLOCKS: ECC is now efficient enough to ship. See HANDOFF 2 at top.
 
 ---
 
