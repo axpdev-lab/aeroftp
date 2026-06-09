@@ -2829,7 +2829,13 @@
             "noDamageNothing": "Pažeidimų nėra; nėra ką taisyti.",
             "couldNotRepairAny": "Nepavyko pataisyti nė vieno iš {damaged} (saugykla palikta nepaliesta).",
             "successfullyRepaired": "Sėkmingai pataisyta {repaired} fragmentų.",
-            "detachedHeaderProtectedNote": "Atkūrimo failas taip pat apsaugo saugyklos antraštę ir manifesto lokatorių, todėl net sugadintą antraštę galima atkurti."
+            "detachedHeaderProtectedNote": "Atkūrimo failas taip pat apsaugo saugyklos antraštę ir manifesto lokatorių, todėl net sugadintą antraštę galima atkurti.",
+            "recoveryLevel": "Atkūrimo lygis (saugyklos sąnaudos)",
+            "recoveryLevelLow": "Žemas",
+            "recoveryLevelMedium": "Vidutinis",
+            "recoveryLevelQuartile": "Kvartilis",
+            "recoveryLevelHigh": "Aukštas",
+            "recoveryLevelHint": "Didesnės sąnaudos atkuria daugiau pažeidimų, bet padidina atkūrimo duomenis. QR stilius: Žemas ~7%, Vidutinis ~15%, Kvartilis ~25%, Aukštas ~30%."
         },
         "cryptomator": {
             "title": "Cryptomator saugykla",

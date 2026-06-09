@@ -2829,7 +2829,13 @@
             "noDamageNothing": "Bojājumu nav; nav ko labot.",
             "couldNotRepairAny": "Neizdevās izlabot nevienu no {damaged} (glabātava atstāta nemainīta).",
             "successfullyRepaired": "Veiksmīgi izlaboti {repaired} fragmenti.",
-            "detachedHeaderProtectedNote": "Atkopšanas fails aizsargā arī glabātavas galveni un manifesta lokatoru, tāpēc pat bojātu galveni var atjaunot."
+            "detachedHeaderProtectedNote": "Atkopšanas fails aizsargā arī glabātavas galveni un manifesta lokatoru, tāpēc pat bojātu galveni var atjaunot.",
+            "recoveryLevel": "Atkopšanas līmenis (krātuves papildizmaksas)",
+            "recoveryLevelLow": "Zems",
+            "recoveryLevelMedium": "Vidējs",
+            "recoveryLevelQuartile": "Kvartile",
+            "recoveryLevelHigh": "Augsts",
+            "recoveryLevelHint": "Lielākas papildizmaksas atjauno vairāk bojājumu, bet palielina atkopšanas datus. QR stils: Zems ~7%, Vidējs ~15%, Kvartile ~25%, Augsts ~30%."
         },
         "cryptomator": {
             "title": "Cryptomator glabātuve",

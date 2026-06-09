@@ -257,6 +257,21 @@ header that binds it to one vault.
   is reported (`parity_source`).
 - Default path: `secret.aerovault` -> `secret.aerovault.rec`.
 
-Implementation, tests (37), live proof, surfaces (P3), docs and close tracked in `docs/dev/roadmap/APPENDIX-AEROVAULT-V4-ECC/`. "v3 + Error Correction = v4".
+### 11.2 Overhead level (QR-style, #276)
+
+The overhead is user-selectable as a target storage-overhead percentage, mapped to a
+Reed-Solomon (K data, P parity) group by `error_correction_grid(pct)` (overhead is
+P/K). Named QR-style levels: Low ~7% (K=14, P=1), Medium ~15% (K=13, P=2), Quartile
+~25% (K=8, P=2), High ~30% (K=7, P=2). The default 20% (K=10, P=2) reproduces the
+original fixed grid, so vaults created before this knob keep their exact geometry.
+The chosen percentage is recorded on the manifest (`error_correction_pct`, absent =
+default) and drives both embedded re-seals and detached `export-parity`; the grid is
+also stored in the AVEC payload header, so reconstruction reads K/P back regardless of
+the level a vault was created with. Surfaced in AeroVault create (named buttons +
+slider + numeric input) and the CLI (`vault create --recovery-level low|medium|
+quartile|high|<N>`). AeroSync has no Error Correction integration yet, so its % UI
+lands with the AeroSync EC slice.
+
+Implementation, tests, live proof, surfaces (P3), docs and close tracked in `docs/dev/roadmap/APPENDIX-AEROVAULT-V4-ECC/`. "v3 + Error Correction = v4".
 
 See also: CHANGELOG (Unreleased), SECURITY.md (formats table), CLI-GUIDE (vault subcommand), ROADMAP.

@@ -2829,7 +2829,13 @@
             "noDamageNothing": "Walang pinsala; walang aayusin.",
             "couldNotRepairAny": "Hindi naayos ang alinman sa {damaged} (hindi ginalaw ang vault).",
             "successfullyRepaired": "Matagumpay na naayos ang {repaired} (na) chunk.",
-            "detachedHeaderProtectedNote": "Pinoprotektahan din ng recovery file ang header ng vault at ang manifest locator, kaya kahit nasirang header ay maaaring muling itayo."
+            "detachedHeaderProtectedNote": "Pinoprotektahan din ng recovery file ang header ng vault at ang manifest locator, kaya kahit nasirang header ay maaaring muling itayo.",
+            "recoveryLevel": "Antas ng pagbawi (storage overhead)",
+            "recoveryLevelLow": "Mababa",
+            "recoveryLevelMedium": "Katamtaman",
+            "recoveryLevelQuartile": "Quartile",
+            "recoveryLevelHigh": "Mataas",
+            "recoveryLevelHint": "Mas mataas na overhead ay nakakabawi ng mas maraming pinsala ngunit lumalaki ang recovery data. Estilong QR: Mababa ~7%, Katamtaman ~15%, Quartile ~25%, Mataas ~30%."
         },
         "cryptomator": {
             "title": "Cryptomator Vault",

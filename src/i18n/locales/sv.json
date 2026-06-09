@@ -2829,7 +2829,13 @@
             "noDamageNothing": "Inga skador; inget att reparera.",
             "couldNotRepairAny": "Kunde inte reparera något av {damaged} (valvet lämnades orört).",
             "successfullyRepaired": "Reparerade {repaired} segment.",
-            "detachedHeaderProtectedNote": "Återställningsfilen skyddar även valvets header och manifestlokaliseraren, så att även en skadad header kan byggas upp igen."
+            "detachedHeaderProtectedNote": "Återställningsfilen skyddar även valvets header och manifestlokaliseraren, så att även en skadad header kan byggas upp igen.",
+            "recoveryLevel": "Återställningsnivå (lagringsomkostnad)",
+            "recoveryLevelLow": "Låg",
+            "recoveryLevelMedium": "Medel",
+            "recoveryLevelQuartile": "Kvartil",
+            "recoveryLevelHigh": "Hög",
+            "recoveryLevelHint": "Högre omkostnad återställer mer skada men ökar återställningsdata. QR-stil: Låg ~7%, Medel ~15%, Kvartil ~25%, Hög ~30%."
         },
         "cryptomator": {
             "title": "Cryptomator-valv",

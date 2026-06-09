@@ -2829,7 +2829,13 @@
             "noDamageNothing": "Kalterik ez; ez dago zer konpondurik.",
             "couldNotRepairAny": "Ezin izan da {damaged}(e)tik bat ere konpondu (kutxa gotorra ukitu gabe utzi da).",
             "successfullyRepaired": "{repaired} zati behar bezala konponduta.",
-            "detachedHeaderProtectedNote": "Berreskuratze fitxategiak vault-aren goiburua eta manifestuaren kokatzailea ere babesten ditu, beraz, hondatutako goiburua ere berreraiki daiteke."
+            "detachedHeaderProtectedNote": "Berreskuratze fitxategiak vault-aren goiburua eta manifestuaren kokatzailea ere babesten ditu, beraz, hondatutako goiburua ere berreraiki daiteke.",
+            "recoveryLevel": "Berreskuratze maila (biltegiratze gainkostua)",
+            "recoveryLevelLow": "Baxua",
+            "recoveryLevelMedium": "Ertaina",
+            "recoveryLevelQuartile": "Kuartila",
+            "recoveryLevelHigh": "Altua",
+            "recoveryLevelHint": "Gainkostu handiagoak kalte gehiago berreskuratzen du baina berreskuratze datuak handitzen ditu. QR estiloa: Baxua ~7%, Ertaina ~15%, Kuartila ~25%, Altua ~30%."
         },
         "cryptomator": {
             "title": "Cryptomator Ganga",

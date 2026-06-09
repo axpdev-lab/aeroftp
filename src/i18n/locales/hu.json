@@ -2829,7 +2829,13 @@
             "noDamageNothing": "Nincs sérülés; nincs mit javítani.",
             "couldNotRepairAny": "A(z) {damaged} sérültből egyik sem volt javítható (a széf érintetlen maradt).",
             "successfullyRepaired": "{repaired} darab sikeresen javítva.",
-            "detachedHeaderProtectedNote": "A helyreállítási fájl a széf fejlécét és a manifeszt-lokátort is védi, így még a sérült fejléc is újraépíthető."
+            "detachedHeaderProtectedNote": "A helyreállítási fájl a széf fejlécét és a manifeszt-lokátort is védi, így még a sérült fejléc is újraépíthető.",
+            "recoveryLevel": "Helyreállítási szint (tárolási többlet)",
+            "recoveryLevelLow": "Alacsony",
+            "recoveryLevelMedium": "Közepes",
+            "recoveryLevelQuartile": "Kvartilis",
+            "recoveryLevelHigh": "Magas",
+            "recoveryLevelHint": "A nagyobb többlet több kárt állít helyre, de növeli a helyreállítási adatokat. QR-stílus: Alacsony ~7%, Közepes ~15%, Kvartilis ~25%, Magas ~30%."
         },
         "cryptomator": {
             "title": "Cryptomator tároló",

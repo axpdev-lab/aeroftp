@@ -2829,7 +2829,13 @@
             "noDamageNothing": "დაზიანება არ არის; აღსადგენი არაფერია.",
             "couldNotRepairAny": "{damaged}-დან ვერცერთი აღდგა (საცავი უცვლელი დარჩა).",
             "successfullyRepaired": "წარმატებით აღდგა {repaired} ფრაგმენტი.",
-            "detachedHeaderProtectedNote": "აღდგენის ფაილი იცავს ასევე საცავის სათაურს და მანიფესტის ლოკატორს, ასე რომ დაზიანებული სათაურიც კი შეიძლება აღდგეს."
+            "detachedHeaderProtectedNote": "აღდგენის ფაილი იცავს ასევე საცავის სათაურს და მანიფესტის ლოკატორს, ასე რომ დაზიანებული სათაურიც კი შეიძლება აღდგეს.",
+            "recoveryLevel": "აღდგენის დონე (საცავის დანამატი)",
+            "recoveryLevelLow": "დაბალი",
+            "recoveryLevelMedium": "საშუალო",
+            "recoveryLevelQuartile": "კვარტილი",
+            "recoveryLevelHigh": "მაღალი",
+            "recoveryLevelHint": "მეტი დანამატი მეტ დაზიანებას აღადგენს, მაგრამ ზრდის აღდგენის მონაცემებს. QR სტილი: დაბალი ~7%, საშუალო ~15%, კვარტილი ~25%, მაღალი ~30%."
         },
         "cryptomator": {
             "title": "Cryptomator საცავი",

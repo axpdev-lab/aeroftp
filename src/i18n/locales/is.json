@@ -2829,7 +2829,13 @@
             "noDamageNothing": "Engar skemmdir; ekkert að gera við.",
             "couldNotRepairAny": "Tókst ekki að gera við neinn af {damaged} (hvelfingin skilin eftir óbreytt).",
             "successfullyRepaired": "Tókst að gera við {repaired} kjarna.",
-            "detachedHeaderProtectedNote": "Endurheimtarskráin verndar einnig hvelfingarhausinn og staðsetjara skráarlistans, svo jafnvel skemmdan haus má endurbyggja."
+            "detachedHeaderProtectedNote": "Endurheimtarskráin verndar einnig hvelfingarhausinn og staðsetjara skráarlistans, svo jafnvel skemmdan haus má endurbyggja.",
+            "recoveryLevel": "Endurheimtarstig (geymsluálag)",
+            "recoveryLevelLow": "Lágt",
+            "recoveryLevelMedium": "Miðlungs",
+            "recoveryLevelQuartile": "Fjórðungsmark",
+            "recoveryLevelHigh": "Hátt",
+            "recoveryLevelHint": "Meira álag endurheimtir meiri skemmdir en stækkar endurheimtargögnin. QR-stíll: Lágt ~7%, Miðlungs ~15%, Fjórðungsmark ~25%, Hátt ~30%."
         },
         "cryptomator": {
             "title": "Cryptomator Hvelfing",

@@ -337,6 +337,9 @@ export interface VaultState {
     // Where parity lives when created with Error Correction (embedded/detached/both).
     recoveryPlacement: RecoveryPlacement;
     setRecoveryPlacement: (p: RecoveryPlacement) => void;
+    // QR-style Error Correction overhead level (#276), as a target overhead percentage.
+    errorCorrectionPct: number;
+    setErrorCorrectionPct: (p: number) => void;
     // Detected detached `.aerovault.rec` sidecar for the open vault.
     hasDetachedRecovery: boolean;
     // The detached sidecar also carries header (+ manifest locator) parity, so the
@@ -459,6 +462,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
     const [errorCorrectionEnabled, setErrorCorrectionEnabled] = useState(false);
     const [hasErrorCorrection, setHasErrorCorrection] = useState(false);  // runtime detection for open vaults (via has_error_correction command)
     const [recoveryPlacement, setRecoveryPlacement] = useState<RecoveryPlacement>('embedded');
+    const [errorCorrectionPct, setErrorCorrectionPct] = useState<number>(20);  // QR-style overhead level (#276); 20% == K=10/P=2
     const [hasDetachedRecovery, setHasDetachedRecovery] = useState(false);  // detached .aerovault.rec sidecar present
     const [hasDetachedHeaderRecovery, setHasDetachedHeaderRecovery] = useState(false);  // sidecar carries header (+ manifest) parity
     const [isExportingParity, setIsExportingParity] = useState(false);
@@ -649,6 +653,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
                         password,
                         profile: compressionProfile,
                         placement: recoveryPlacement,
+                        errorCorrectionPct: Math.min(50, Math.max(5, Math.round(errorCorrectionPct))),
                     });
                 } else {
                     await invoke('vault_v3_create', {
@@ -1343,6 +1348,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         errorCorrectionEnabled, setErrorCorrectionEnabled,
         hasErrorCorrection, setHasErrorCorrection,
         recoveryPlacement, setRecoveryPlacement,
+        errorCorrectionPct, setErrorCorrectionPct,
         hasDetachedRecovery,
         hasDetachedHeaderRecovery,
         exportParity, stripParity,

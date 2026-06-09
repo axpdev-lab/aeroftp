@@ -2829,7 +2829,13 @@
             "noDamageNothing": "Ingen skade; ingenting å reparere.",
             "couldNotRepairAny": "Kunne ikke reparere noen av {damaged} (hvelvet er uendret).",
             "successfullyRepaired": "Reparerte {repaired} del(er).",
-            "detachedHeaderProtectedNote": "Gjenopprettingsfilen beskytter også vault-headeren og manifest-lokatoren, så selv en skadet header kan bygges opp igjen."
+            "detachedHeaderProtectedNote": "Gjenopprettingsfilen beskytter også vault-headeren og manifest-lokatoren, så selv en skadet header kan bygges opp igjen.",
+            "recoveryLevel": "Gjenopprettingsnivå (lageroverhead)",
+            "recoveryLevelLow": "Lav",
+            "recoveryLevelMedium": "Middels",
+            "recoveryLevelQuartile": "Kvartil",
+            "recoveryLevelHigh": "Høy",
+            "recoveryLevelHint": "Høyere overhead gjenoppretter mer skade, men øker gjenopprettingsdataene. QR-stil: Lav ~7%, Middels ~15%, Kvartil ~25%, Høy ~30%."
         },
         "cryptomator": {
             "title": "Cryptomator-hvelv",

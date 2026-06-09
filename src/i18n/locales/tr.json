@@ -2829,7 +2829,13 @@
             "noDamageNothing": "Hasar yok; onarılacak bir şey yok.",
             "couldNotRepairAny": "{damaged} hasarlının hiçbiri onarılamadı (kasaya dokunulmadı).",
             "successfullyRepaired": "{repaired} parça başarıyla onarıldı.",
-            "detachedHeaderProtectedNote": "Kurtarma dosyası kasa başlığını ve manifesto bulucusunu da korur, böylece hasarlı bir başlık bile yeniden oluşturulabilir."
+            "detachedHeaderProtectedNote": "Kurtarma dosyası kasa başlığını ve manifesto bulucusunu da korur, böylece hasarlı bir başlık bile yeniden oluşturulabilir.",
+            "recoveryLevel": "Kurtarma seviyesi (depolama yükü)",
+            "recoveryLevelLow": "Düşük",
+            "recoveryLevelMedium": "Orta",
+            "recoveryLevelQuartile": "Çeyrek",
+            "recoveryLevelHigh": "Yüksek",
+            "recoveryLevelHint": "Daha yüksek yük daha fazla hasarı kurtarır ancak kurtarma verisini büyütür. QR tarzı: Düşük ~7%, Orta ~15%, Çeyrek ~25%, Yüksek ~30%."
         },
         "cryptomator": {
             "title": "Cryptomator Kasası",

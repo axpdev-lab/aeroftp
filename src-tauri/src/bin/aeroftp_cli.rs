@@ -2701,6 +2701,12 @@ enum VaultCommands {
         /// or both. Detached/both let you add parity later with `export-parity`.
         #[arg(long = "recovery-placement", default_value = "embedded")]
         recovery_placement: String,
+        /// QR-style Error Correction overhead level (requires --error-correction), as a
+        /// target storage-overhead percentage (#276). Named levels: low (~7%), medium
+        /// (~15%), quartile (~25%), high (~30%); or a number 5-50. Default 20% keeps the
+        /// original K=10/P=2 grid.
+        #[arg(long = "recovery-level", default_value = "20")]
+        recovery_level: String,
     },
     /// Add files to a vault. v3 batches sub-threshold files into shared
     /// packs before chunking; v2/v1 add each file as its own entry.
@@ -42721,8 +42727,18 @@ async fn main() {
                     cascade,
                     error_correction,
                     recovery_placement,
+                    recovery_level,
                 } => 'create: {
                     let pw = resolve_pw(password);
+                    // Map the QR-style overhead level (named or numeric) to a percentage.
+                    let recovery_pct: u32 =
+                        match recovery_level.trim().to_ascii_lowercase().as_str() {
+                            "low" => 7,
+                            "medium" | "med" => 15,
+                            "quartile" => 25,
+                            "high" => 30,
+                            other => other.trim_end_matches('%').parse::<u32>().unwrap_or(20),
+                        };
                     // v3 rejects < 8 internally; v1/v2 had no minimum, so a
                     // non-interactive run with no password silently created
                     // an effectively unprotected container. Enforce the same
@@ -42759,6 +42775,7 @@ async fn main() {
                                     pw,
                                     Some(profile.clone()),
                                     Some(recovery_placement.clone()),
+                                    Some(recovery_pct),
                                 )
                                 .await
                             } else {
@@ -42783,6 +42800,7 @@ async fn main() {
                                     "status": "ok", "created": p, "version": ver,
                                     "error_correction": *error_correction && ver == "v3",
                                     "recovery_placement": placement_label,
+                                    "recovery_overhead_pct": if *error_correction && ver == "v3" { Some(recovery_pct) } else { None },
                                 })),
                                 OutputFormat::Text => match placement_label {
                                     Some(pl) => {

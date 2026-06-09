@@ -2829,7 +2829,13 @@
             "noDamageNothing": "Ei vaurioita; ei korjattavaa.",
             "couldNotRepairAny": "Mitään {damaged} osasta ei voitu korjata (holvia ei muutettu).",
             "successfullyRepaired": "Korjattu onnistuneesti {repaired} osaa.",
-            "detachedHeaderProtectedNote": "Palautustiedosto suojaa myös holvin otsikkoa ja manifestin paikanninta, joten jopa vaurioitunut otsikko voidaan rakentaa uudelleen."
+            "detachedHeaderProtectedNote": "Palautustiedosto suojaa myös holvin otsikkoa ja manifestin paikanninta, joten jopa vaurioitunut otsikko voidaan rakentaa uudelleen.",
+            "recoveryLevel": "Palautustaso (tallennuksen lisäkuorma)",
+            "recoveryLevelLow": "Matala",
+            "recoveryLevelMedium": "Keskitaso",
+            "recoveryLevelQuartile": "Kvartiili",
+            "recoveryLevelHigh": "Korkea",
+            "recoveryLevelHint": "Suurempi lisäkuorma palauttaa enemmän vaurioita mutta kasvattaa palautustietoja. QR-tyyli: Matala ~7%, Keskitaso ~15%, Kvartiili ~25%, Korkea ~30%."
         },
         "cryptomator": {
             "title": "Cryptomator-holvi",

@@ -2829,7 +2829,13 @@
             "noDamageNothing": "无损坏；无需修复。",
             "couldNotRepairAny": "{damaged} 个均无法修复（保管库未改动）。",
             "successfullyRepaired": "已成功修复 {repaired} 个数据块。",
-            "detachedHeaderProtectedNote": "恢复文件还会保护保险库头部和清单定位器，因此即使头部损坏也能重建。"
+            "detachedHeaderProtectedNote": "恢复文件还会保护保险库头部和清单定位器，因此即使头部损坏也能重建。",
+            "recoveryLevel": "恢复级别（存储开销）",
+            "recoveryLevelLow": "低",
+            "recoveryLevelMedium": "中",
+            "recoveryLevelQuartile": "四分位",
+            "recoveryLevelHigh": "高",
+            "recoveryLevelHint": "开销越高可恢复的损坏越多，但恢复数据也越大。QR 风格：低 ~7%、中 ~15%、四分位 ~25%、高 ~30%。"
         },
         "cryptomator": {
             "title": "Cryptomator 保险库",

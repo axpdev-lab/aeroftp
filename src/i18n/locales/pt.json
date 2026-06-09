@@ -2829,7 +2829,13 @@
             "noDamageNothing": "Sem danos; nada a reparar.",
             "couldNotRepairAny": "Não foi possível reparar nenhum de {damaged} (cofre deixado inalterado).",
             "successfullyRepaired": "{repaired} bloco(s) reparado(s) com êxito.",
-            "detachedHeaderProtectedNote": "O ficheiro de recuperação também protege o cabeçalho do vault e o localizador do manifesto, por isso mesmo um cabeçalho danificado pode ser reconstruído."
+            "detachedHeaderProtectedNote": "O ficheiro de recuperação também protege o cabeçalho do vault e o localizador do manifesto, por isso mesmo um cabeçalho danificado pode ser reconstruído.",
+            "recoveryLevel": "Nível de recuperação (sobrecarga de armazenamento)",
+            "recoveryLevelLow": "Baixo",
+            "recoveryLevelMedium": "Médio",
+            "recoveryLevelQuartile": "Quartil",
+            "recoveryLevelHigh": "Alto",
+            "recoveryLevelHint": "Maior sobrecarga recupera mais danos mas aumenta os dados de recuperação. Estilo QR: Baixo ~7%, Médio ~15%, Quartil ~25%, Alto ~30%."
         },
         "cryptomator": {
             "title": "Cofre Cryptomator",

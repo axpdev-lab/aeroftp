@@ -2829,7 +2829,13 @@
             "noDamageNothing": "Aucun dommage ; rien à réparer.",
             "couldNotRepairAny": "Impossible de réparer le moindre des {damaged} (coffre laissé inchangé).",
             "successfullyRepaired": "{repaired} segment(s) réparé(s) avec succès.",
-            "detachedHeaderProtectedNote": "Le fichier de récupération protège aussi l'en-tête du coffre et le localisateur du manifeste, donc même un en-tête endommagé peut être reconstruit."
+            "detachedHeaderProtectedNote": "Le fichier de récupération protège aussi l'en-tête du coffre et le localisateur du manifeste, donc même un en-tête endommagé peut être reconstruit.",
+            "recoveryLevel": "Niveau de récupération (surcout de stockage)",
+            "recoveryLevelLow": "Faible",
+            "recoveryLevelMedium": "Moyen",
+            "recoveryLevelQuartile": "Quartile",
+            "recoveryLevelHigh": "Élevé",
+            "recoveryLevelHint": "Un surcout plus élevé récupère plus de dégats mais augmente les données de récupération. Style QR: Faible ~7%, Moyen ~15%, Quartile ~25%, Élevé ~30%."
         },
         "cryptomator": {
             "title": "Coffre-fort Cryptomator",

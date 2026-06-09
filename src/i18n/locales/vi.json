@@ -2829,7 +2829,13 @@
             "noDamageNothing": "Không có hư hỏng; không có gì để sửa.",
             "couldNotRepairAny": "Không thể sửa bất kỳ chunk nào trong số {damaged} (giữ nguyên kho lưu trữ).",
             "successfullyRepaired": "Đã sửa thành công {repaired} chunk.",
-            "detachedHeaderProtectedNote": "Tệp khôi phục cũng bảo vệ tiêu đề của vault và bộ định vị manifest, nên ngay cả tiêu đề bị hỏng cũng có thể được dựng lại."
+            "detachedHeaderProtectedNote": "Tệp khôi phục cũng bảo vệ tiêu đề của vault và bộ định vị manifest, nên ngay cả tiêu đề bị hỏng cũng có thể được dựng lại.",
+            "recoveryLevel": "Mức khôi phục (chi phí lưu trữ)",
+            "recoveryLevelLow": "Thấp",
+            "recoveryLevelMedium": "Trung bình",
+            "recoveryLevelQuartile": "Tứ phân vị",
+            "recoveryLevelHigh": "Cao",
+            "recoveryLevelHint": "Chi phí cao hơn khôi phục nhiều hư hỏng hơn nhưng làm tăng dữ liệu khôi phục. Kiểu QR: Thấp ~7%, Trung bình ~15%, Tứ phân vị ~25%, Cao ~30%."
         },
         "cryptomator": {
             "title": "Kho Cryptomator",

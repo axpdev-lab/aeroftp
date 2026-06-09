@@ -2829,7 +2829,13 @@
             "noDamageNothing": "Kahjustusi pole; pole midagi parandada.",
             "couldNotRepairAny": "Ühtegi {damaged} tükist ei õnnestunud parandada (hoidlat ei muudetud).",
             "successfullyRepaired": "Edukalt parandatud {repaired} tükki.",
-            "detachedHeaderProtectedNote": "Taastefail kaitseb ka hoidla päist ja manifesti lokaatorit, nii et isegi kahjustatud päise saab taastada."
+            "detachedHeaderProtectedNote": "Taastefail kaitseb ka hoidla päist ja manifesti lokaatorit, nii et isegi kahjustatud päise saab taastada.",
+            "recoveryLevel": "Taastetase (salvestusruumi lisakulu)",
+            "recoveryLevelLow": "Madal",
+            "recoveryLevelMedium": "Keskmine",
+            "recoveryLevelQuartile": "Kvartiil",
+            "recoveryLevelHigh": "Kõrge",
+            "recoveryLevelHint": "Suurem lisakulu taastab rohkem kahjustusi, kuid suurendab taasteandmeid. QR-stiil: Madal ~7%, Keskmine ~15%, Kvartiil ~25%, Kõrge ~30%."
         },
         "cryptomator": {
             "title": "Cryptomator hoidla",

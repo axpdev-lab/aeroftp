@@ -204,6 +204,13 @@ struct VaultManifestV3 {
     wrappers: WrapperManifest,
     entries: Vec<ManifestEntryV3>,
     chunks: BTreeMap<String, ChunkRecordV3>,
+    /// QR-style Error Correction overhead level (#276), as a target storage-overhead
+    /// percentage. Drives the Reed-Solomon (K, P) grid for both embedded re-seals and
+    /// detached `export-parity`. Absent in pre-knob vaults and in vaults without Error
+    /// Correction; readers then fall back to `ERROR_CORRECTION_DEFAULT_PCT` (the
+    /// original fixed K=10/P=2 grid), keeping every existing vault byte-compatible.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    error_correction_pct: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -266,6 +273,36 @@ const ERROR_CORRECTION_MAX_SHARD: usize = 1 << 20; // 1 MiB
 /// an accidental-rot collision (~2^-128) irrelevant; this is a rot detector, not a
 /// security primitive (block integrity remains the manifest cipher_hash).
 const ERROR_CORRECTION_SHARD_CKSUM_LEN: usize = 16;
+
+/// QR-style overhead levels (#276). The user picks a target storage-overhead
+/// percentage; the grid below maps it to a Reed-Solomon (K, P). The default 20%
+/// reproduces the original fixed K=10/P=2 grid, so vaults created before this knob
+/// (no recorded percentage) keep their exact geometry.
+const ERROR_CORRECTION_DEFAULT_PCT: u32 = 20;
+const ERROR_CORRECTION_MIN_PCT: u32 = 5;
+const ERROR_CORRECTION_MAX_PCT: u32 = 50;
+
+/// Map a target storage-overhead percentage to a Reed-Solomon (K data, P parity)
+/// group. Overhead is P/K; we fix P (one parity shard for the lowest band, two above
+/// it for two-shard erasure tolerance) then choose the K closest to the target ratio.
+/// `pct` is clamped to [MIN, MAX]. 20% -> (10, 2); ~7% -> (~14, 1); ~30% -> (~7, 2).
+fn error_correction_grid(pct: u32) -> (usize, usize) {
+    let pct = pct.clamp(ERROR_CORRECTION_MIN_PCT, ERROR_CORRECTION_MAX_PCT);
+    let p: u32 = if pct < 10 { 1 } else { 2 };
+    // K = round(P*100 / pct), at least 2 so every group keeps real data slots.
+    let k = (((p * 100) + pct / 2) / pct).max(2);
+    (k as usize, p as usize)
+}
+
+/// The (K, P) grid a vault should use, from its recorded overhead percentage (or the
+/// default for vaults created before the percentage knob existed).
+fn manifest_error_correction_grid(manifest: &VaultManifestV3) -> (usize, usize) {
+    error_correction_grid(
+        manifest
+            .error_correction_pct
+            .unwrap_or(ERROR_CORRECTION_DEFAULT_PCT),
+    )
+}
 
 /// 16-byte rot-detection checksum for one shard.
 fn error_correction_shard_checksum(shard: &[u8]) -> [u8; ERROR_CORRECTION_SHARD_CKSUM_LEN] {
@@ -740,11 +777,11 @@ fn resolve_parity_source(
 /// Compute the AVEC parity for a single fixed metadata region (the 1024-byte header
 /// or the on-disk encrypted manifest), treating it as one block exactly like the
 /// embedded GAP-4 metadata extension does. An empty region yields an empty payload.
-fn compute_metadata_parity(region: &[u8]) -> Vec<u8> {
+fn compute_metadata_parity(region: &[u8], k: usize, p: usize) -> Vec<u8> {
     if region.is_empty() {
         return Vec::new();
     }
-    let (payload, _shards, _prot, _ov) = compute_error_correction_shards(&[region]);
+    let (payload, _shards, _prot, _ov) = compute_error_correction_shards_grid(&[region], k, p);
     payload
 }
 
@@ -788,16 +825,20 @@ fn export_parity(
     // race the read and produce a sidecar bound to a half-written data section.
     let _lock = acquire_vault_write_lock(vault_path)?;
     let vault = open_vault(vault_path, password)?;
+    // QR-style overhead level (#276): the grid recorded on the vault drives every
+    // parity section so a detached sidecar matches the user's chosen overhead.
+    let (k, p) = manifest_error_correction_grid(&vault.manifest);
     let blocks = collect_live_block_refs(&vault);
-    let (payload, shards, protected, overhead) = compute_error_correction_shards(&blocks);
+    let (payload, shards, protected, overhead) =
+        compute_error_correction_shards_grid(&blocks, k, p);
     // GAP-4 metadata bundle: protect the two regions the detached container cannot
     // self-locate once damaged. The header parity is computed over the authoritative
     // in-memory header (`to_bytes()` round-trips a clean header byte-for-byte, and
     // heals one that open had to rebuild); the manifest parity is over the exact
     // on-disk encrypted bytes (a re-encrypt would use a fresh nonce and not match).
-    let header_parity = compute_metadata_parity(&vault.header.to_bytes());
+    let header_parity = compute_metadata_parity(&vault.header.to_bytes(), k, p);
     let manifest_raw = read_manifest_raw(vault_path, &vault.header)?;
-    let manifest_parity = compute_metadata_parity(&manifest_raw);
+    let manifest_parity = compute_metadata_parity(&manifest_raw, k, p);
     let rec = RecoveryFile::new(&vault.header.salt, payload, manifest_parity, header_parity);
     let bytes = rec.to_bytes();
     let out = out_path
@@ -872,6 +913,22 @@ fn strip_parity(
 /// vs protected (matches live p2_09 measurements ~20.1%).
 /// Empty input -> (vec![], 0, 0, 0.0). See format doc and P3-03.
 fn compute_error_correction_shards(data_blocks: &[&[u8]]) -> (Vec<u8>, u64, u64, f64) {
+    compute_error_correction_shards_grid(
+        data_blocks,
+        ERROR_CORRECTION_DATA_SHARDS,
+        ERROR_CORRECTION_PARITY_SHARDS,
+    )
+}
+
+/// As `compute_error_correction_shards`, with an explicit (K data, P parity) group so
+/// the QR-style overhead level (#276) is honored. The grid is recorded in the AVEC
+/// payload header, so reconstruction reads K/P back from the payload regardless of the
+/// level the vault was created with.
+fn compute_error_correction_shards_grid(
+    data_blocks: &[&[u8]],
+    k: usize,
+    p: usize,
+) -> (Vec<u8>, u64, u64, f64) {
     // Concatenate the live blocks into the logical stream D of length L.
     let l: usize = data_blocks.iter().map(|b| b.len()).sum();
     if l == 0 {
@@ -881,9 +938,6 @@ fn compute_error_correction_shards(data_blocks: &[&[u8]]) -> (Vec<u8>, u64, u64,
     for b in data_blocks {
         d.extend_from_slice(b);
     }
-
-    let k = ERROR_CORRECTION_DATA_SHARDS;
-    let p = ERROR_CORRECTION_PARITY_SHARDS;
     // S = ceil(L/K) clamped: a small vault becomes one full group (overhead == P/K);
     // a large vault becomes many full groups at capped shard granularity.
     let s = l
@@ -1547,6 +1601,7 @@ fn empty_manifest(level: i32) -> VaultManifestV3 {
         wrappers: default_wrappers(level),
         entries: Vec::new(),
         chunks: BTreeMap::new(),
+        error_correction_pct: None,
     }
 }
 
@@ -2492,8 +2547,9 @@ fn build_file_bytes(
         .iter()
         .any(|e| e.extension_id == ERROR_CORRECTION_EXTENSION_ID)
     {
+        let (k, p) = manifest_error_correction_grid(manifest);
         let (meta_payload, _shards, _prot, _ov) =
-            compute_error_correction_shards(&[&encrypted_manifest]);
+            compute_error_correction_shards_grid(&[&encrypted_manifest], k, p);
         extensions.push(ExtensionEntryV3 {
             extension_id: ERROR_CORRECTION_META_EXTENSION_ID.to_string(),
             algorithm_id: ERROR_CORRECTION_ALGORITHM_ID.to_string(),
@@ -2538,6 +2594,7 @@ fn create_empty_vault(
     password: &str,
     level: i32,
     error_correction: Option<RecoveryPlacement>,
+    error_correction_pct: u32,
 ) -> Result<(), String> {
     if password.len() < MIN_PASSWORD_LEN {
         return Err("Password must be at least 8 characters".to_string());
@@ -2570,7 +2627,13 @@ fn create_empty_vault(
         header_mac: [0u8; MAC_SIZE],
     };
 
-    let manifest = empty_manifest(level);
+    let mut manifest = empty_manifest(level);
+    // Record the QR-style overhead level so every later seal / export uses the same
+    // grid (#276). Only meaningful when Error Correction is enabled.
+    if error_correction.is_some() {
+        manifest.error_correction_pct =
+            Some(error_correction_pct.clamp(ERROR_CORRECTION_MIN_PCT, ERROR_CORRECTION_MAX_PCT));
+    }
     // Embed the extension only when the placement keeps an in-container copy.
     let embed = error_correction.is_some_and(|p| p.embeds());
     let mut extensions = if embed {
@@ -3009,7 +3072,9 @@ fn save_open_vault(vault: &mut OpenVaultV3) -> Result<(), String> {
             })
             .collect();
 
-        let (payload, shards, protected, overhead) = compute_error_correction_shards(&blocks);
+        let (k, p) = manifest_error_correction_grid(&vault.manifest);
+        let (payload, shards, protected, overhead) =
+            compute_error_correction_shards_grid(&blocks, k, p);
 
         let entry = &mut extensions[error_correction_idx];
         entry.offset = 0;
@@ -3250,7 +3315,13 @@ pub async fn vault_v3_create(
         Some("balanced") | None | Some("") => DEFAULT_ZSTD_LEVEL,
         Some(other) => return Err(format!("Unknown AeroVault v3 compression profile: {other}")),
     };
-    create_empty_vault(Path::new(&vault_path), &password, level, None)?;
+    create_empty_vault(
+        Path::new(&vault_path),
+        &password,
+        level,
+        None,
+        ERROR_CORRECTION_DEFAULT_PCT,
+    )?;
     Ok(vault_path)
 }
 
@@ -3267,6 +3338,7 @@ pub async fn vault_v3_create_with_error_correction(
     password: String,
     profile: Option<String>,
     placement: Option<String>,
+    error_correction_pct: Option<u32>,
 ) -> Result<String, String> {
     let level = match profile.as_deref() {
         Some("fast") => 3,
@@ -3278,7 +3350,15 @@ pub async fn vault_v3_create_with_error_correction(
         None | Some("") => RecoveryPlacement::Embedded,
         Some(p) => RecoveryPlacement::parse(p)?,
     };
-    create_empty_vault(Path::new(&vault_path), &password, level, Some(placement))?;
+    // QR-style overhead level (#276): default 20% reproduces the original K=10/P=2 grid.
+    let pct = error_correction_pct.unwrap_or(ERROR_CORRECTION_DEFAULT_PCT);
+    create_empty_vault(
+        Path::new(&vault_path),
+        &password,
+        level,
+        Some(placement),
+        pct,
+    )?;
     Ok(vault_path)
 }
 
@@ -3942,6 +4022,7 @@ mod tests {
             "detached-pw-1234",
             DEFAULT_ZSTD_LEVEL,
             Some(RecoveryPlacement::Detached),
+            ERROR_CORRECTION_DEFAULT_PCT,
         )
         .unwrap();
         let sidecar = default_sidecar_path(&vault_path);
@@ -4030,6 +4111,7 @@ mod tests {
             "header-pw-1234",
             DEFAULT_ZSTD_LEVEL,
             Some(RecoveryPlacement::Detached),
+            ERROR_CORRECTION_DEFAULT_PCT,
         )
         .unwrap();
         let mut vault = open_vault(&vault_path, "header-pw-1234").unwrap();
@@ -4083,6 +4165,7 @@ mod tests {
             "manifest-pw-1234",
             DEFAULT_ZSTD_LEVEL,
             Some(RecoveryPlacement::Detached),
+            ERROR_CORRECTION_DEFAULT_PCT,
         )
         .unwrap();
         let mut vault = open_vault(&vault_path, "manifest-pw-1234").unwrap();
@@ -4106,6 +4189,68 @@ mod tests {
     }
 
     #[test]
+    fn error_correction_grid_maps_percentages() {
+        // Default 20% reproduces the original fixed K=10/P=2 grid.
+        assert_eq!(error_correction_grid(20), (10, 2));
+        // QR-style named levels.
+        assert_eq!(error_correction_grid(7), (14, 1)); // round(100/7)
+        assert_eq!(error_correction_grid(15), (13, 2)); // round(200/15)
+        assert_eq!(error_correction_grid(25), (8, 2));
+        assert_eq!(error_correction_grid(30), (7, 2)); // round(200/30)
+                                                       // Out-of-range values clamp to [MIN, MAX].
+        assert_eq!(
+            error_correction_grid(1),
+            error_correction_grid(ERROR_CORRECTION_MIN_PCT)
+        );
+        assert_eq!(
+            error_correction_grid(99),
+            error_correction_grid(ERROR_CORRECTION_MAX_PCT)
+        );
+    }
+
+    #[test]
+    fn error_correction_level_persists_and_lowers_overhead() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault_path = dir.path().join("lvl.aerovault");
+        let f1 = dir.path().join("l1.bin");
+        // High-entropy (incompressible) body so the on-disk block stream is large
+        // enough that the chosen grid, not the min-shard floor, drives the overhead.
+        let mut body = Vec::with_capacity(300_000);
+        let mut block = *blake3::hash(b"ec-level-test-seed").as_bytes();
+        while body.len() < 300_000 {
+            body.extend_from_slice(&block);
+            block = *blake3::hash(&block).as_bytes();
+        }
+        body.truncate(300_000);
+        std::fs::write(&f1, &body).unwrap();
+
+        // Low overhead level (~7%).
+        create_empty_vault(
+            &vault_path,
+            "level-pw-1234",
+            DEFAULT_ZSTD_LEVEL,
+            Some(RecoveryPlacement::Detached),
+            7,
+        )
+        .unwrap();
+        let mut vault = open_vault(&vault_path, "level-pw-1234").unwrap();
+        assert_eq!(vault.manifest.error_correction_pct, Some(7));
+        append_file_at(&mut vault, &f1, "l1.bin").unwrap();
+        save_open_vault(&mut vault).unwrap();
+        // The chosen level survives a re-seal (it lives in the manifest).
+        let reopened = open_vault(&vault_path, "level-pw-1234").unwrap();
+        assert_eq!(reopened.manifest.error_correction_pct, Some(7));
+
+        let res = export_parity(&vault_path, "level-pw-1234", None).unwrap();
+        // ~7% is well under the default 20% grid.
+        assert!(
+            res.overhead_pct < 12.0,
+            "low level overhead {} should be < 12%",
+            res.overhead_pct
+        );
+    }
+
+    #[test]
     fn strip_parity_refuses_without_sidecar_then_succeeds() {
         let dir = tempfile::tempdir().unwrap();
         let vault_path = dir.path().join("strip.aerovault");
@@ -4117,6 +4262,7 @@ mod tests {
             "strip-pw-1234",
             DEFAULT_ZSTD_LEVEL,
             Some(RecoveryPlacement::Embedded),
+            ERROR_CORRECTION_DEFAULT_PCT,
         )
         .unwrap();
         let mut vault = open_vault(&vault_path, "strip-pw-1234").unwrap();
@@ -4157,6 +4303,7 @@ mod tests {
             "host-pw-12345",
             DEFAULT_ZSTD_LEVEL,
             Some(RecoveryPlacement::Embedded),
+            ERROR_CORRECTION_DEFAULT_PCT,
         )
         .unwrap();
         let v = open_vault(&vault_path, "host-pw-12345").unwrap();
@@ -4201,6 +4348,7 @@ mod tests {
             "correct horse battery staple",
             DEFAULT_ZSTD_LEVEL,
             None,
+            ERROR_CORRECTION_DEFAULT_PCT,
         )
         .unwrap();
         let mut vault = open_vault(&vault_path, "correct horse battery staple").unwrap();
@@ -4236,6 +4384,7 @@ mod tests {
             "error_correction-test-pw",
             DEFAULT_ZSTD_LEVEL,
             Some(RecoveryPlacement::Embedded),
+            ERROR_CORRECTION_DEFAULT_PCT,
         )
         .unwrap();
 
@@ -4303,6 +4452,7 @@ mod tests {
             "sec-pw-1234",
             DEFAULT_ZSTD_LEVEL,
             Some(RecoveryPlacement::Embedded),
+            ERROR_CORRECTION_DEFAULT_PCT,
         )
         .unwrap();
 
@@ -4454,7 +4604,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let vault_path = dir.path().join("scrub-test.aerovault");
 
-        create_empty_vault(&vault_path, "scrub-pw-1234", DEFAULT_ZSTD_LEVEL, None).unwrap();
+        create_empty_vault(
+            &vault_path,
+            "scrub-pw-1234",
+            DEFAULT_ZSTD_LEVEL,
+            None,
+            ERROR_CORRECTION_DEFAULT_PCT,
+        )
+        .unwrap();
         let mut vault = open_vault(&vault_path, "scrub-pw-1234").unwrap();
 
         // Directly inject a fake chunk block for testing scrub
@@ -4512,6 +4669,7 @@ mod tests {
             "repair-pw-1234",
             DEFAULT_ZSTD_LEVEL,
             Some(RecoveryPlacement::Embedded),
+            ERROR_CORRECTION_DEFAULT_PCT,
         )
         .unwrap();
         let mut vault = open_vault(&vault_path, "repair-pw-1234").unwrap();
@@ -4581,6 +4739,7 @@ mod tests {
             "gap4-pw-12345",
             DEFAULT_ZSTD_LEVEL,
             Some(RecoveryPlacement::Embedded),
+            ERROR_CORRECTION_DEFAULT_PCT,
         )
         .unwrap();
         {
@@ -4633,7 +4792,14 @@ mod tests {
         let f1 = dir.path().join("f1.txt");
         std::fs::write(&f1, b"no parity here, corruption is fatal").unwrap();
 
-        create_empty_vault(&vault_path, "gap4-pw-12345", DEFAULT_ZSTD_LEVEL, None).unwrap();
+        create_empty_vault(
+            &vault_path,
+            "gap4-pw-12345",
+            DEFAULT_ZSTD_LEVEL,
+            None,
+            ERROR_CORRECTION_DEFAULT_PCT,
+        )
+        .unwrap();
         {
             let mut vault = open_vault(&vault_path, "gap4-pw-12345").unwrap();
             append_file_at(&mut vault, &f1, "f1.txt").unwrap();
@@ -4664,6 +4830,7 @@ mod tests {
             "stress-pw-1234",
             DEFAULT_ZSTD_LEVEL,
             Some(RecoveryPlacement::Embedded),
+            ERROR_CORRECTION_DEFAULT_PCT,
         )
         .unwrap();
         let mut vault = open_vault(&vault_path, "stress-pw-1234").unwrap();
@@ -4756,6 +4923,7 @@ mod tests {
             "recover-pw",
             DEFAULT_ZSTD_LEVEL,
             Some(RecoveryPlacement::Embedded),
+            ERROR_CORRECTION_DEFAULT_PCT,
         )
         .unwrap();
         let mut vault = open_vault(&vault_path, "recover-pw").unwrap();
@@ -4840,6 +5008,7 @@ mod tests {
             "over-pw-1234",
             DEFAULT_ZSTD_LEVEL,
             Some(RecoveryPlacement::Embedded),
+            ERROR_CORRECTION_DEFAULT_PCT,
         )
         .unwrap();
         let mut vault = open_vault(&vault_path, "over-pw-1234").unwrap();
@@ -4889,6 +5058,7 @@ mod tests {
             "ovh-pw-1234",
             DEFAULT_ZSTD_LEVEL,
             Some(RecoveryPlacement::Embedded),
+            ERROR_CORRECTION_DEFAULT_PCT,
         )
         .unwrap();
         let mut vault = open_vault(&vault_path, "ovh-pw-1234").unwrap();
@@ -4936,6 +5106,7 @@ mod tests {
             "compat-pw-1234",
             DEFAULT_ZSTD_LEVEL,
             Some(RecoveryPlacement::Embedded),
+            ERROR_CORRECTION_DEFAULT_PCT,
         )
         .unwrap();
 
@@ -4964,7 +5135,14 @@ mod tests {
         std::fs::write(source.join("docs/nested/readme.txt"), b"nested").unwrap();
 
         let vault_path = dir.path().join("dir-test.aerovault");
-        create_empty_vault(&vault_path, "old-password", DEFAULT_ZSTD_LEVEL, None).unwrap();
+        create_empty_vault(
+            &vault_path,
+            "old-password",
+            DEFAULT_ZSTD_LEVEL,
+            None,
+            ERROR_CORRECTION_DEFAULT_PCT,
+        )
+        .unwrap();
 
         let mut vault = open_vault(&vault_path, "old-password").unwrap();
         create_directory_in_manifest(&mut vault.manifest, "empty").unwrap();
@@ -5009,6 +5187,7 @@ mod tests {
             "correct horse battery staple",
             DEFAULT_ZSTD_LEVEL,
             None,
+            ERROR_CORRECTION_DEFAULT_PCT,
         )
         .unwrap();
 
@@ -5033,7 +5212,14 @@ mod tests {
         }
 
         let vault_path = dir.path().join("pack.aerovault");
-        create_empty_vault(&vault_path, "pack-password", DEFAULT_ZSTD_LEVEL, None).unwrap();
+        create_empty_vault(
+            &vault_path,
+            "pack-password",
+            DEFAULT_ZSTD_LEVEL,
+            None,
+            ERROR_CORRECTION_DEFAULT_PCT,
+        )
+        .unwrap();
 
         let mut vault = open_vault(&vault_path, "pack-password").unwrap();
         append_sources_batched(&mut vault, &sources).unwrap();
@@ -5089,7 +5275,14 @@ mod tests {
         }
 
         let vault_path = dir.path().join("multi.aerovault");
-        create_empty_vault(&vault_path, "multi-password", DEFAULT_ZSTD_LEVEL, None).unwrap();
+        create_empty_vault(
+            &vault_path,
+            "multi-password",
+            DEFAULT_ZSTD_LEVEL,
+            None,
+            ERROR_CORRECTION_DEFAULT_PCT,
+        )
+        .unwrap();
         let mut vault = open_vault(&vault_path, "multi-password").unwrap();
         append_sources_batched(&mut vault, &sources).unwrap();
         save_open_vault(&mut vault).unwrap();
@@ -5134,7 +5327,14 @@ mod tests {
         }
 
         let vault_path = dir.path().join("shared.aerovault");
-        create_empty_vault(&vault_path, "shared-password", DEFAULT_ZSTD_LEVEL, None).unwrap();
+        create_empty_vault(
+            &vault_path,
+            "shared-password",
+            DEFAULT_ZSTD_LEVEL,
+            None,
+            ERROR_CORRECTION_DEFAULT_PCT,
+        )
+        .unwrap();
         let mut vault = open_vault(&vault_path, "shared-password").unwrap();
         append_sources_batched(&mut vault, &sources).unwrap();
         // All ten tiny files share one physical pack chunk.
@@ -5188,7 +5388,14 @@ mod tests {
             .collect();
         std::fs::write(&src, &body).unwrap();
         let vault_path = dir.join(name);
-        create_empty_vault(&vault_path, password, DEFAULT_ZSTD_LEVEL, None).unwrap();
+        create_empty_vault(
+            &vault_path,
+            password,
+            DEFAULT_ZSTD_LEVEL,
+            None,
+            ERROR_CORRECTION_DEFAULT_PCT,
+        )
+        .unwrap();
         let mut v = open_vault(&vault_path, password).unwrap();
         append_file_at(&mut v, &src, "payload.bin").unwrap();
         save_open_vault(&mut v).unwrap();
@@ -5240,7 +5447,14 @@ mod tests {
 
         // archive profile (level 19) widens CDC bounds.
         let archive_path = dir.path().join("archive.aerovault");
-        create_empty_vault(&archive_path, "bounds-pw", 19, None).unwrap();
+        create_empty_vault(
+            &archive_path,
+            "bounds-pw",
+            19,
+            None,
+            ERROR_CORRECTION_DEFAULT_PCT,
+        )
+        .unwrap();
         let mut av = open_vault(&archive_path, "bounds-pw").unwrap();
         let b = manifest_cdc_bounds(&av.manifest).unwrap();
         assert_eq!(b.avg, 4 * 1024 * 1024, "archive must widen CDC avg");
@@ -5249,7 +5463,14 @@ mod tests {
 
         // balanced profile keeps the const bounds.
         let bal_path = dir.path().join("balanced.aerovault");
-        create_empty_vault(&bal_path, "bounds-pw", DEFAULT_ZSTD_LEVEL, None).unwrap();
+        create_empty_vault(
+            &bal_path,
+            "bounds-pw",
+            DEFAULT_ZSTD_LEVEL,
+            None,
+            ERROR_CORRECTION_DEFAULT_PCT,
+        )
+        .unwrap();
         let mut bv = open_vault(&bal_path, "bounds-pw").unwrap();
         assert_eq!(manifest_cdc_bounds(&bv.manifest).unwrap().avg, CDC_AVG);
         append_file_at(&mut bv, &src, "big.bin").unwrap();

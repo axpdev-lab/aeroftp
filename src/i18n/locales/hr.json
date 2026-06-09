@@ -2829,7 +2829,13 @@
             "noDamageNothing": "Nema oštećenja; ništa za popraviti.",
             "couldNotRepairAny": "Nije moguće popraviti nijedan od {damaged} (vault ostao nepromijenjen).",
             "successfullyRepaired": "Uspješno popravljeno {repaired} dijelova.",
-            "detachedHeaderProtectedNote": "Datoteka za oporavak štiti i zaglavlje trezora i lokator manifesta, pa se čak i oštećeno zaglavlje može obnoviti."
+            "detachedHeaderProtectedNote": "Datoteka za oporavak štiti i zaglavlje trezora i lokator manifesta, pa se čak i oštećeno zaglavlje može obnoviti.",
+            "recoveryLevel": "Razina oporavka (dodatni prostor)",
+            "recoveryLevelLow": "Niska",
+            "recoveryLevelMedium": "Srednja",
+            "recoveryLevelQuartile": "Kvartil",
+            "recoveryLevelHigh": "Visoka",
+            "recoveryLevelHint": "Veci dodatni prostor oporavlja vise ostecenja, ali povecava podatke za oporavak. Stil QR: Niska ~7%, Srednja ~15%, Kvartil ~25%, Visoka ~30%."
         },
         "cryptomator": {
             "title": "Cryptomator Trezor",

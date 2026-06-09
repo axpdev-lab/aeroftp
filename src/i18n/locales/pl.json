@@ -2829,7 +2829,13 @@
             "noDamageNothing": "Brak uszkodzeń; nic do naprawienia.",
             "couldNotRepairAny": "Nie udało się naprawić żadnego z {damaged} (sejf pozostawiono nietknięty).",
             "successfullyRepaired": "Pomyślnie naprawiono {repaired} fragment(ów).",
-            "detachedHeaderProtectedNote": "Plik odzyskiwania chroni także nagłówek sejfu i lokalizator manifestu, dzięki czemu nawet uszkodzony nagłówek można odtworzyć."
+            "detachedHeaderProtectedNote": "Plik odzyskiwania chroni także nagłówek sejfu i lokalizator manifestu, dzięki czemu nawet uszkodzony nagłówek można odtworzyć.",
+            "recoveryLevel": "Poziom odzyskiwania (narzut pamięci)",
+            "recoveryLevelLow": "Niski",
+            "recoveryLevelMedium": "Średni",
+            "recoveryLevelQuartile": "Kwartyl",
+            "recoveryLevelHigh": "Wysoki",
+            "recoveryLevelHint": "Większy narzut odzyskuje więcej uszkodzeń, ale zwiększa dane odzyskiwania. Styl QR: Niski ~7%, Średni ~15%, Kwartyl ~25%, Wysoki ~30%."
         },
         "cryptomator": {
             "title": "Magazyn Cryptomator",

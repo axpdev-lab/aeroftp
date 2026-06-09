@@ -2829,7 +2829,13 @@
             "noDamageNothing": "Tidak ada kerusakan; tidak ada yang perlu diperbaiki.",
             "couldNotRepairAny": "Tidak dapat memperbaiki satu pun dari {damaged} (vault dibiarkan tidak diubah).",
             "successfullyRepaired": "Berhasil memperbaiki {repaired} chunk.",
-            "detachedHeaderProtectedNote": "Berkas pemulihan juga melindungi header vault dan pelokasi manifes, sehingga header yang rusak pun dapat dibangun ulang."
+            "detachedHeaderProtectedNote": "Berkas pemulihan juga melindungi header vault dan pelokasi manifes, sehingga header yang rusak pun dapat dibangun ulang.",
+            "recoveryLevel": "Tingkat pemulihan (overhead penyimpanan)",
+            "recoveryLevelLow": "Rendah",
+            "recoveryLevelMedium": "Sedang",
+            "recoveryLevelQuartile": "Kuartil",
+            "recoveryLevelHigh": "Tinggi",
+            "recoveryLevelHint": "Overhead lebih tinggi memulihkan lebih banyak kerusakan tetapi memperbesar data pemulihan. Gaya QR: Rendah ~7%, Sedang ~15%, Kuartil ~25%, Tinggi ~30%."
         },
         "cryptomator": {
             "title": "Vault Cryptomator",

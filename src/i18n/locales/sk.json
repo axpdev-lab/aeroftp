@@ -2829,7 +2829,13 @@
             "noDamageNothing": "Žiadne poškodenie; nie je čo opravovať.",
             "couldNotRepairAny": "Nepodarilo sa opraviť ani jednu z {damaged} (trezor zostal nedotknutý).",
             "successfullyRepaired": "Úspešne opravené {repaired} časti.",
-            "detachedHeaderProtectedNote": "Súbor obnovy chráni aj hlavičku trezoru a lokátor manifestu, takže aj poškodenú hlavičku možno obnoviť."
+            "detachedHeaderProtectedNote": "Súbor obnovy chráni aj hlavičku trezoru a lokátor manifestu, takže aj poškodenú hlavičku možno obnoviť.",
+            "recoveryLevel": "Úroveň obnovy (réžia úložiska)",
+            "recoveryLevelLow": "Nízka",
+            "recoveryLevelMedium": "Stredná",
+            "recoveryLevelQuartile": "Kvartil",
+            "recoveryLevelHigh": "Vysoká",
+            "recoveryLevelHint": "Vyššia réžia obnoví viac poškodení, ale zväčší údaje obnovy. Štýl QR: Nízka ~7%, Stredná ~15%, Kvartil ~25%, Vysoká ~30%."
         },
         "cryptomator": {
             "title": "Trezor Cryptomator",

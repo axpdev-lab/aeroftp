@@ -2829,7 +2829,13 @@
             "noDamageNothing": "Hakuna uharibifu; hakuna cha kurekebisha.",
             "couldNotRepairAny": "Haikuweza kurekebisha hata kimoja kati ya {damaged} (vault imeachwa bila kuguswa).",
             "successfullyRepaired": "Vipande {repaired} vimerekebishwa kwa mafanikio.",
-            "detachedHeaderProtectedNote": "Faili la urejeshaji pia hulinda kichwa cha vault na kionyeshi cha manifesti, hivyo hata kichwa kilichoharibika kinaweza kujengwa upya."
+            "detachedHeaderProtectedNote": "Faili la urejeshaji pia hulinda kichwa cha vault na kionyeshi cha manifesti, hivyo hata kichwa kilichoharibika kinaweza kujengwa upya.",
+            "recoveryLevel": "Kiwango cha urejeshaji (gharama ya hifadhi)",
+            "recoveryLevelLow": "Chini",
+            "recoveryLevelMedium": "Wastani",
+            "recoveryLevelQuartile": "Robo",
+            "recoveryLevelHigh": "Juu",
+            "recoveryLevelHint": "Gharama kubwa zaidi hurejesha uharibifu zaidi lakini huongeza data ya urejeshaji. Mtindo wa QR: Chini ~7%, Wastani ~15%, Robo ~25%, Juu ~30%."
         },
         "cryptomator": {
             "title": "Hazina ya Cryptomator",

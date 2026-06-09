@@ -2829,7 +2829,13 @@
             "noDamageNothing": "គ្មានការខូចខាត គ្មានអ្វីត្រូវជួសជុលទេ។",
             "couldNotRepairAny": "មិនអាចជួសជុលណាមួយក្នុងចំណោម {damaged} បានទេ (ឃ្លាំងមិនត្រូវបានប៉ះពាល់)។",
             "successfullyRepaired": "បានជួសជុលបំណែក {repaired} ដោយជោគជ័យ។",
-            "detachedHeaderProtectedNote": "ឯកសារសង្គ្រោះក៏ការពារក្បាលនៃ vault និងកម្មវិធីកំណត់ទីតាំង manifest ដែរ ដូច្នេះសូម្បីតែក្បាលដែលខូចក៏អាចស្ថាបនាឡើងវិញបាន។"
+            "detachedHeaderProtectedNote": "ឯកសារសង្គ្រោះក៏ការពារក្បាលនៃ vault និងកម្មវិធីកំណត់ទីតាំង manifest ដែរ ដូច្នេះសូម្បីតែក្បាលដែលខូចក៏អាចស្ថាបនាឡើងវិញបាន។",
+            "recoveryLevel": "កម្រិតសង្គ្រោះ (ការចំណាយផ្ទុក)",
+            "recoveryLevelLow": "ទាប",
+            "recoveryLevelMedium": "មធ្យម",
+            "recoveryLevelQuartile": "ភាគបួន",
+            "recoveryLevelHigh": "ខ្ពស់",
+            "recoveryLevelHint": "ការចំណាយខ្ពស់ស្តារការខូចបានច្រើនជាង ប៉ុន្តែបង្កើនទិន្នន័យសង្គ្រោះ។ រចនាប័ទ្ម QR: ទាប ~7%, មធ្យម ~15%, ភាគបួន ~25%, ខ្ពស់ ~30%។"
         },
         "cryptomator": {
             "title": "វ៉ាល់ Cryptomator",

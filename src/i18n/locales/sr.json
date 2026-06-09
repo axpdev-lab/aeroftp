@@ -2829,7 +2829,13 @@
             "noDamageNothing": "Nema oštećenja; nema šta da se popravi.",
             "couldNotRepairAny": "Nije moguće popraviti nijedan od {damaged} (sef ostavljen netaknut).",
             "successfullyRepaired": "Uspešno popravljeno {repaired} deo(ova).",
-            "detachedHeaderProtectedNote": "Датотека за опоравак штити и заглавље трезора и локатор манифеста, па се чак и оштећено заглавље може обновити."
+            "detachedHeaderProtectedNote": "Датотека за опоравак штити и заглавље трезора и локатор манифеста, па се чак и оштећено заглавље може обновити.",
+            "recoveryLevel": "Ниво опоравка (додатни простор)",
+            "recoveryLevelLow": "Низак",
+            "recoveryLevelMedium": "Средњи",
+            "recoveryLevelQuartile": "Квартил",
+            "recoveryLevelHigh": "Висок",
+            "recoveryLevelHint": "Већи додатни простор опоравља више оштећења, али повећава податке за опоравак. Стил QR: Низак ~7%, Средњи ~15%, Квартил ~25%, Висок ~30%."
         },
         "cryptomator": {
             "title": "Cryptomator trezor",

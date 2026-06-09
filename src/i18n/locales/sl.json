@@ -2829,7 +2829,13 @@
             "noDamageNothing": "Ni poškodb; ni kaj popraviti.",
             "couldNotRepairAny": "Ni bilo mogoče popraviti nobenega od {damaged} (trezor ostal nespremenjen).",
             "successfullyRepaired": "Uspešno popravljenih {repaired} delov.",
-            "detachedHeaderProtectedNote": "Datoteka za obnovitev ščiti tudi glavo trezorja in lokator manifesta, zato je mogoče obnoviti tudi poškodovano glavo."
+            "detachedHeaderProtectedNote": "Datoteka za obnovitev ščiti tudi glavo trezorja in lokator manifesta, zato je mogoče obnoviti tudi poškodovano glavo.",
+            "recoveryLevel": "Raven obnovitve (dodatni prostor)",
+            "recoveryLevelLow": "Nizka",
+            "recoveryLevelMedium": "Srednja",
+            "recoveryLevelQuartile": "Kvartil",
+            "recoveryLevelHigh": "Visoka",
+            "recoveryLevelHint": "Večji dodatni prostor obnovi več poškodb, a poveča obnovitvene podatke. Slog QR: Nizka ~7%, Srednja ~15%, Kvartil ~25%, Visoka ~30%."
         },
         "cryptomator": {
             "title": "Trezor Cryptomator",

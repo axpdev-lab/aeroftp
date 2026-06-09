@@ -2829,7 +2829,13 @@
             "noDamageNothing": "Dim difrod; dim i'w atgyweirio.",
             "couldNotRepairAny": "Methwyd ag atgyweirio unrhyw un o {damaged} (ni chyffyrddwyd â'r gell).",
             "successfullyRepaired": "Atgyweiriwyd {repaired} talp/talpiau yn llwyddiannus.",
-            "detachedHeaderProtectedNote": "Mae'r ffeil adfer hefyd yn diogelu pennyn y gladdgell a lleolydd y maniffest, felly gellir ailadeiladu hyd yn oed pennyn sydd wedi'i niweidio."
+            "detachedHeaderProtectedNote": "Mae'r ffeil adfer hefyd yn diogelu pennyn y gladdgell a lleolydd y maniffest, felly gellir ailadeiladu hyd yn oed pennyn sydd wedi'i niweidio.",
+            "recoveryLevel": "Lefel adfer (gorbenion storfa)",
+            "recoveryLevelLow": "Isel",
+            "recoveryLevelMedium": "Canolig",
+            "recoveryLevelQuartile": "Cwartel",
+            "recoveryLevelHigh": "Uchel",
+            "recoveryLevelHint": "Mae gorbenion uwch yn adfer mwy o ddifrod ond yn cynyddu'r data adfer. Arddull QR: Isel ~7%, Canolig ~15%, Cwartel ~25%, Uchel ~30%."
         },
         "cryptomator": {
             "title": "Coffor Cryptomator",

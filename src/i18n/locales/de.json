@@ -2829,7 +2829,13 @@
             "noDamageNothing": "Keine Schäden; nichts zu reparieren.",
             "couldNotRepairAny": "Keiner von {damaged} konnte repariert werden (Vault unverändert gelassen).",
             "successfullyRepaired": "{repaired} Chunk(s) erfolgreich repariert.",
-            "detachedHeaderProtectedNote": "Die Wiederherstellungsdatei schützt auch den Vault-Header und den Manifest-Locator, sodass selbst ein beschädigter Header wiederhergestellt werden kann."
+            "detachedHeaderProtectedNote": "Die Wiederherstellungsdatei schützt auch den Vault-Header und den Manifest-Locator, sodass selbst ein beschädigter Header wiederhergestellt werden kann.",
+            "recoveryLevel": "Wiederherstellungsstufe (Speicher-Overhead)",
+            "recoveryLevelLow": "Niedrig",
+            "recoveryLevelMedium": "Mittel",
+            "recoveryLevelQuartile": "Quartil",
+            "recoveryLevelHigh": "Hoch",
+            "recoveryLevelHint": "Höherer Overhead stellt mehr Schaden wieder her, vergrößert aber die Wiederherstellungsdaten. QR-Stil: Niedrig ~7%, Mittel ~15%, Quartil ~25%, Hoch ~30%."
         },
         "cryptomator": {
             "title": "Cryptomator-Tresor",

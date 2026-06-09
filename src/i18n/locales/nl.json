@@ -2829,7 +2829,13 @@
             "noDamageNothing": "Geen schade; niets te repareren.",
             "couldNotRepairAny": "Kon geen van de {damaged} repareren (kluis ongewijzigd gelaten).",
             "successfullyRepaired": "{repaired} chunk(s) succesvol hersteld.",
-            "detachedHeaderProtectedNote": "Het herstelbestand beschermt ook de vault-header en de manifest-locator, zodat zelfs een beschadigde header kan worden herbouwd."
+            "detachedHeaderProtectedNote": "Het herstelbestand beschermt ook de vault-header en de manifest-locator, zodat zelfs een beschadigde header kan worden herbouwd.",
+            "recoveryLevel": "Herstelniveau (opslagoverhead)",
+            "recoveryLevelLow": "Laag",
+            "recoveryLevelMedium": "Gemiddeld",
+            "recoveryLevelQuartile": "Kwartiel",
+            "recoveryLevelHigh": "Hoog",
+            "recoveryLevelHint": "Hogere overhead herstelt meer schade maar vergroot de herstelgegevens. QR-stijl: Laag ~7%, Gemiddeld ~15%, Kwartiel ~25%, Hoog ~30%."
         },
         "cryptomator": {
             "title": "Cryptomator-kluis",

@@ -1082,6 +1082,11 @@ payload's own per-shard checksums.
 # Create with a detached sidecar instead of embedded parity
 AEROFTP_VAULT_PASSWORD=secret aeroftp-cli vault create myvault.aerovault --ec --recovery-placement detached
 
+# Pick the QR-style overhead level (#276): named low|medium|quartile|high, or a number 5-50.
+# Overhead is P/K; low ~7%, medium ~15%, quartile ~25%, high ~30%; default 20% (K=10/P=2).
+AEROFTP_VAULT_PASSWORD=secret aeroftp-cli vault create myvault.aerovault --ec --recovery-level low
+AEROFTP_VAULT_PASSWORD=secret aeroftp-cli vault create myvault.aerovault --ec --recovery-level 12
+
 # Add parity later to a vault created without it (reads the container, never rewrites it)
 AEROFTP_VAULT_PASSWORD=secret aeroftp-cli vault export-parity myvault.aerovault            # -> myvault.aerovault.rec
 AEROFTP_VAULT_PASSWORD=secret aeroftp-cli vault export-parity myvault.aerovault -o out.rec # custom path

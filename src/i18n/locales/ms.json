@@ -2829,7 +2829,13 @@
             "noDamageNothing": "Tiada kerosakan; tiada apa-apa untuk dibaiki.",
             "couldNotRepairAny": "Tidak dapat membaiki mana-mana daripada {damaged} (peti kebal dibiarkan tidak diubah).",
             "successfullyRepaired": "Berjaya membaiki {repaired} ketulan.",
-            "detachedHeaderProtectedNote": "Fail pemulihan turut melindungi pengepala bilik kebal dan pelokasi manifes, jadi pengepala yang rosak pun boleh dibina semula."
+            "detachedHeaderProtectedNote": "Fail pemulihan turut melindungi pengepala bilik kebal dan pelokasi manifes, jadi pengepala yang rosak pun boleh dibina semula.",
+            "recoveryLevel": "Tahap pemulihan (overhed storan)",
+            "recoveryLevelLow": "Rendah",
+            "recoveryLevelMedium": "Sederhana",
+            "recoveryLevelQuartile": "Kuartil",
+            "recoveryLevelHigh": "Tinggi",
+            "recoveryLevelHint": "Overhed lebih tinggi memulihkan lebih banyak kerosakan tetapi membesarkan data pemulihan. Gaya QR: Rendah ~7%, Sederhana ~15%, Kuartil ~25%, Tinggi ~30%."
         },
         "cryptomator": {
             "title": "Peti Besi Cryptomator",

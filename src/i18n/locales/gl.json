@@ -2829,7 +2829,13 @@
             "noDamageNothing": "Sen danos; nada que reparar.",
             "couldNotRepairAny": "Non se puido reparar ningún de {damaged} (o cofre non foi modificado).",
             "successfullyRepaired": "Reparáronse correctamente {repaired} fragmento(s).",
-            "detachedHeaderProtectedNote": "O ficheiro de recuperación tamén protexe a cabeceira do vault e o localizador do manifesto, polo que incluso unha cabeceira danada pode reconstruírse."
+            "detachedHeaderProtectedNote": "O ficheiro de recuperación tamén protexe a cabeceira do vault e o localizador do manifesto, polo que incluso unha cabeceira danada pode reconstruírse.",
+            "recoveryLevel": "Nivel de recuperación (sobrecarga de almacenamento)",
+            "recoveryLevelLow": "Baixo",
+            "recoveryLevelMedium": "Medio",
+            "recoveryLevelQuartile": "Cuartil",
+            "recoveryLevelHigh": "Alto",
+            "recoveryLevelHint": "Unha sobrecarga maior recupera mais danos pero aumenta os datos de recuperación. Estilo QR: Baixo ~7%, Medio ~15%, Cuartil ~25%, Alto ~30%."
         },
         "cryptomator": {
             "title": "Bóveda Cryptomator",

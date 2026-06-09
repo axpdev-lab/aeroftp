@@ -2829,7 +2829,13 @@
             "noDamageNothing": "Nicio deteriorare; nimic de reparat.",
             "couldNotRepairAny": "Nu s-a putut repara niciuna din {damaged} (seiful a rămas neatins).",
             "successfullyRepaired": "Reparate cu succes {repaired} bucată/bucăți.",
-            "detachedHeaderProtectedNote": "Fișierul de recuperare protejează și antetul vault-ului și localizatorul manifestului, astfel încât chiar și un antet deteriorat poate fi reconstruit."
+            "detachedHeaderProtectedNote": "Fișierul de recuperare protejează și antetul vault-ului și localizatorul manifestului, astfel încât chiar și un antet deteriorat poate fi reconstruit.",
+            "recoveryLevel": "Nivel de recuperare (suprasarcină de stocare)",
+            "recoveryLevelLow": "Scăzut",
+            "recoveryLevelMedium": "Mediu",
+            "recoveryLevelQuartile": "Cuartilă",
+            "recoveryLevelHigh": "Ridicat",
+            "recoveryLevelHint": "O suprasarcină mai mare recuperează mai multe daune, dar mărește datele de recuperare. Stil QR: Scăzut ~7%, Mediu ~15%, Cuartilă ~25%, Ridicat ~30%."
         },
         "cryptomator": {
             "title": "Seif Cryptomator",
