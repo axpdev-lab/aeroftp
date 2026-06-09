@@ -123,10 +123,10 @@ export interface VaultReport {
     ms_total: number;
     steps: string[];
     attribution: string;
-    // P3-03 ECC telemetry (populated on seal for ECC vaults; optional for compat)
-    ecc_shards_generated?: number;
-    ecc_bytes_protected?: number;
-    ecc_overhead_pct?: number;
+    // P3-03 Error Correction telemetry (populated on seal for Error Correction vaults; optional for compat)
+    error_correction_shards_generated?: number;
+    error_correction_bytes_protected?: number;
+    error_correction_overhead_pct?: number;
 }
 
 interface VaultV3Info {
@@ -242,8 +242,8 @@ export const securityLevels = {
     }
 };
 
-// ECC (Reed-Solomon error correction) is a Phase 1 stub on top of v3 experimental.
-// When enabled on create, uses vault_v3_create_with_ecc (non-critical extension).
+// Error Correction (Reed-Solomon error correction) is a Phase 1 stub on top of v3 experimental.
+// When enabled on create, uses vault_v3_create_with_error_correction (non-critical extension).
 // Scrub/repair exposed via dedicated commands.
 
 
@@ -324,13 +324,13 @@ export interface VaultState {
     showLevelDropdown: boolean;
     setShowLevelDropdown: (show: boolean) => void;
 
-    // ECC (Reed-Solomon error-correction) toggle for experimental/Beta vaults (P2).
-    // When enabled on create, uses the dedicated with_ecc backend (non-critical extension).
-    // Enables scrub/repair actions and ECC badge in the UI.
-    eccEnabled: boolean;
-    setEccEnabled: (enabled: boolean) => void;
-    hasEcc: boolean;
-    setHasEcc: (v: boolean) => void;
+    // Error Correction (Reed-Solomon error-correction) toggle for experimental/Beta vaults (P2).
+    // When enabled on create, uses the dedicated with_error_correction backend (non-critical extension).
+    // Enables scrub/repair actions and Error Correction badge in the UI.
+    errorCorrectionEnabled: boolean;
+    setErrorCorrectionEnabled: (enabled: boolean) => void;
+    hasErrorCorrection: boolean;
+    setHasErrorCorrection: (v: boolean) => void;
 
     // Drag-and-drop
     dragOver: boolean;
@@ -353,7 +353,7 @@ export interface VaultState {
     folderProgress: FolderProgress | null;
     initialFolderPath?: string;
 
-    // P2 ECC scrub/repair modals (draggable, theme-aware)
+    // P2 Error Correction scrub/repair modals (draggable, theme-aware)
     showScrubDialog: boolean;
     setShowScrubDialog: (show: boolean) => void;
     showRepairDialog: boolean;
@@ -384,7 +384,7 @@ export interface VaultState {
     handleExtract: (entryName: string) => Promise<void>;
     handleChangePassword: () => Promise<void>;
 
-    // P2 ECC actions (use the registered Tauri commands; engine shared with CLI)
+    // P2 Error Correction actions (use the registered Tauri commands; engine shared with CLI)
     handleScrub: () => Promise<void>;
     handleRepair: () => Promise<void>;
     handleOpenRemoteVault: () => Promise<void>;
@@ -439,11 +439,11 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
     const [vaultSecurity, setVaultSecurity] = useState<VaultSecurityInfo | null>(null);
     const [showLevelDropdown, setShowLevelDropdown] = useState(false);
 
-    // ECC for Beta/experimental vaults (P2)
-    const [eccEnabled, setEccEnabled] = useState(false);
-    const [hasEcc, setHasEcc] = useState(false);  // runtime detection for open vaults (via has_ecc command)
+    // Error Correction for Beta/experimental vaults (P2)
+    const [errorCorrectionEnabled, setErrorCorrectionEnabled] = useState(false);
+    const [hasErrorCorrection, setHasErrorCorrection] = useState(false);  // runtime detection for open vaults (via has_error_correction command)
 
-    // P2 ECC dialogs
+    // P2 Error Correction dialogs
     const [showScrubDialog, setShowScrubDialog] = useState(false);
     const [showRepairDialog, setShowRepairDialog] = useState(false);
     const [scrubResult, setScrubResult] = useState<any | null>(null);
@@ -621,9 +621,9 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
 
         try {
             if (levelConfig.version === 3) {
-                // P2: if ECC enabled in experimental, use the dedicated with_ecc creator (non-critical RS extension stub).
-                if (securityLevel === 'experimental' && eccEnabled) {
-                    await invoke('vault_v3_create_with_ecc', {
+                // P2: if Error Correction enabled in experimental, use the dedicated with_ecc creator (non-critical RS extension stub).
+                if (securityLevel === 'experimental' && errorCorrectionEnabled) {
+                    await invoke('vault_v3_create_with_error_correction', {
                         vaultPath: savePath,
                         password,
                         compressionProfile,
@@ -831,11 +831,11 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
                 setVaultSecurity({ version: 3, cascadeMode: false, level: 'experimental' });
                 setEntries(mapV3InfoToEntries(info));
                 setMeta(mapV3InfoToMeta(info, meta));
-                // P2: detect ECC for badge and enabling scrub/repair actions in this session
+                // P2: detect Error Correction for badge and enabling scrub/repair actions in this session
                 try {
-                    const has = await invoke<boolean>('vault_v3_has_ecc', { path: vaultPath });
-                    setHasEcc(!!has);
-                } catch { setHasEcc(false); }
+                    const has = await invoke<boolean>('vault_v3_has_error_correction', { path: vaultPath });
+                    setHasErrorCorrection(!!has);
+                } catch { setHasErrorCorrection(false); }
                 setMode('browse');
 
                 const vName = vaultPath.split(/[\\/]/).pop() || 'Vault';
@@ -1199,7 +1199,7 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         };
     }, []);
 
-    // --- P2 ECC scrub/repair (call the Tauri commands we exposed; draggable modals in UI) ---
+    // --- P2 Error Correction scrub/repair (call the Tauri commands we exposed; draggable modals in UI) ---
     // Re-aligned to hardened engine (P2-HARD + P2-09 v2): scrub {damaged, count, checked},
     // repair {repaired, damaged, dry_run}. Honest msgs + checked count surfaced.
     const handleScrub = async () => {
@@ -1277,8 +1277,8 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         compressionProfile, setCompressionProfile,
         vaultSecurity, setVaultSecurity,
         showLevelDropdown, setShowLevelDropdown,
-        eccEnabled, setEccEnabled,
-        hasEcc, setHasEcc,
+        errorCorrectionEnabled, setErrorCorrectionEnabled,
+        hasErrorCorrection, setHasErrorCorrection,
         showScrubDialog, setShowScrubDialog,
         showRepairDialog, setShowRepairDialog,
         scrubResult, setScrubResult,

@@ -130,7 +130,7 @@ A format that lives for years across many releases must be able to swap an
 algorithm without breaking older artifacts. Every wrapper layer carries an
 explicit `algorithm_id` and `algorithm_version` in the frame header. A reader
 dispatches on those fields instead of hard-coding primitives, so a future build
-can introduce a better compressor or a new ECC scheme and still read every old
+can introduce a better compressor or a new Error Correction scheme and still read every old
 vault.
 
 The AeroVault v3 defaults are:
@@ -233,7 +233,7 @@ sweet spot).
 
 Error correction is the fourth wrapper. It is structurally different from the
 other three: compression, chunking and encryption transform the data;
-error correction adds parity *alongside* it, so `v3 + ECC = v4` and a v3
+error correction adds parity *alongside* it, so `v3 + Error Correction = v4` and a v3
 reader simply skips the parity it does not understand.
 
 It sits as the outermost layer, over the cipher blocks. It repairs damage
@@ -250,7 +250,7 @@ and the operational `scrub` / `repair` surface are tracked as
 
 - **AeroVault v3 (Beta, opt-in):** packing, chunking, per-chunk zstd,
   per-chunk AES-256-GCM-SIV, BLAKE3 chunk id and cipher hash, the extension
-  slot reserved for v4 ECC. The format stays Beta and is not the default tier
+  slot reserved for v4 Error Correction. The format stays Beta and is not the default tier
   until it has had a public spec review pass.
 - **AeroSync:** the streaming surface inherits the wrappers progressively;
   chunk-first ordering is non-negotiable there because the whole product

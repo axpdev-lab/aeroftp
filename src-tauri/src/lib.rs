@@ -15265,7 +15265,7 @@ pub fn run() {
             aerovault_v2::vault_v2_add_directory,
             // AeroVault v3 draft wrapper-stack backend
             aerovault_v3::vault_v3_create,
-            aerovault_v3::vault_v3_create_with_ecc,
+            aerovault_v3::vault_v3_create_with_error_correction,
             aerovault_v3::vault_v3_open,
             aerovault_v3::is_vault_v3,
             aerovault_v3::vault_v3_add_files,
@@ -15280,7 +15280,7 @@ pub fn run() {
             aerovault_v3::vault_v3_change_password,
             aerovault_v3::vault_v3_add_directory,
             aerovault_v3::vault_v3_security_info,
-            aerovault_v3::vault_v3_has_ecc,
+            aerovault_v3::vault_v3_has_error_correction,
             aerovault_v3::vault_v3_scrub,
             aerovault_v3::vault_v3_repair,
             // Remote Vault: open .aerovault on remote servers

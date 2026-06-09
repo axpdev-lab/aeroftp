@@ -2,7 +2,7 @@
 //!
 //! v3 is the wrapper-stack format: content-defined chunks, keyed BLAKE3
 //! chunk identifiers, zstd-per-chunk compression, AES-256-GCM-SIV content
-//! encryption, and an extension directory reserved for v4 ECC.
+//! encryption, and an extension directory reserved for v4 Error Correction.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
@@ -68,17 +68,17 @@ const HKDF_CHUNK_ID: &[u8] = b"AeroVault v3 keyed BLAKE3 chunk ids";
 const MANIFEST_AAD: &[u8] = b"AeroVault v3 manifest";
 const BLOCK_AAD_PREFIX: &[u8] = b"AeroVault v3 block";
 
-/// Extension ID for the v4 ECC (Reed-Solomon) layer.
+/// Extension ID for the v4 Error Correction (Reed-Solomon) layer.
 /// This is emitted as a non-critical extension (critical=false) so that
-/// pure v3 readers can still open and extract from v4+ECC vaults
+/// pure v3 readers can still open and extract from v4+Error Correction vaults
 /// (per the forward-compat contract in AEROVAULT-V3-SPEC.md and discussion #276).
-const ECC_EXTENSION_ID: &str = "ecc.reed-solomon";
+const ERROR_CORRECTION_EXTENSION_ID: &str = "error-correction.reed-solomon";
 // GAP-4: parity over the encrypted manifest itself (the "locator" that scrub needs).
 // Stored as a second non-critical extension so a corrupted manifest can be rebuilt
 // before any per-block cipher_hash is read. v3 readers skip it like any non-critical.
-const ECC_META_EXTENSION_ID: &str = "ecc-metadata.reed-solomon";
-const ECC_ALGORITHM_ID: &str = "reed-solomon";
-const ECC_ALGORITHM_VERSION: u32 = 1;
+const ERROR_CORRECTION_META_EXTENSION_ID: &str = "error-correction-metadata.reed-solomon";
+const ERROR_CORRECTION_ALGORITHM_ID: &str = "reed-solomon";
+const ERROR_CORRECTION_ALGORITHM_VERSION: u32 = 1;
 
 #[derive(Debug, Clone)]
 struct VaultHeaderV3 {
@@ -216,7 +216,7 @@ struct ExtensionEntryV3 {
     length: u64,
 }
 
-/// P2-09: On-disk payload format (v2) for the "ecc.reed-solomon" extension.
+/// P2-09: On-disk payload format (v2) for the "error-correction.reed-solomon" extension.
 ///
 /// v1 mapped one ciphertext block to one Reed-Solomon shard and sized every shard
 /// to the largest block. With content-defined chunking (min 256 KiB, avg 1 MiB) real
@@ -243,35 +243,35 @@ struct ExtensionEntryV3 {
 ///
 /// Layout (all multi-byte fields little-endian):
 ///   [EccPayloadHeader: 32 bytes]
-///   [data-shard checksums:   num_data_shards * ECC_SHARD_CKSUM_LEN]
-///   [parity-shard checksums: num_groups * P  * ECC_SHARD_CKSUM_LEN]
+///   [data-shard checksums:   num_data_shards * ERROR_CORRECTION_SHARD_CKSUM_LEN]
+///   [parity-shard checksums: num_groups * P  * ERROR_CORRECTION_SHARD_CKSUM_LEN]
 ///   [parity data:            num_groups * P  * S]
 /// where num_data_shards = ceil(L/S) and num_groups = ceil(num_data_shards/K).
 ///
-/// The format is pre-release; bumping ECC_PAYLOAD_VERSION needs no migration.
-const ECC_PAYLOAD_MAGIC: &[u8; 4] = b"AVEC";
-const ECC_PAYLOAD_VERSION: u16 = 2;
+/// The format is pre-release; bumping ERROR_CORRECTION_PAYLOAD_VERSION needs no migration.
+const ERROR_CORRECTION_PAYLOAD_MAGIC: &[u8; 4] = b"AVEC";
+const ERROR_CORRECTION_PAYLOAD_VERSION: u16 = 2;
 
 /// Reed-Solomon group geometry. K data + P parity per group => P/K == 20% overhead,
 /// tolerating up to P erased shards (data or parity) per group.
-const ECC_DATA_SHARDS: usize = 10;
-const ECC_PARITY_SHARDS: usize = 2;
+const ERROR_CORRECTION_DATA_SHARDS: usize = 10;
+const ERROR_CORRECTION_PARITY_SHARDS: usize = 2;
 /// Shard-size grid bounds. For small vaults S = ceil(L/K) yields a single full group
-/// (exactly P/K overhead); ECC_MIN_SHARD keeps micro-vault shards sane and
-/// ECC_MAX_SHARD bounds shard granularity (and per-shard recovery cost) for large
+/// (exactly P/K overhead); ERROR_CORRECTION_MIN_SHARD keeps micro-vault shards sane and
+/// ERROR_CORRECTION_MAX_SHARD bounds shard granularity (and per-shard recovery cost) for large
 /// vaults, which then span multiple full groups.
-const ECC_MIN_SHARD: usize = 4096;
-const ECC_MAX_SHARD: usize = 1 << 20; // 1 MiB
+const ERROR_CORRECTION_MIN_SHARD: usize = 4096;
+const ERROR_CORRECTION_MAX_SHARD: usize = 1 << 20; // 1 MiB
 /// Truncated BLAKE3 length stored per shard for erasure localization. 128 bits makes
 /// an accidental-rot collision (~2^-128) irrelevant; this is a rot detector, not a
 /// security primitive (block integrity remains the manifest cipher_hash).
-const ECC_SHARD_CKSUM_LEN: usize = 16;
+const ERROR_CORRECTION_SHARD_CKSUM_LEN: usize = 16;
 
 /// 16-byte rot-detection checksum for one shard.
-fn ecc_shard_checksum(shard: &[u8]) -> [u8; ECC_SHARD_CKSUM_LEN] {
+fn error_correction_shard_checksum(shard: &[u8]) -> [u8; ERROR_CORRECTION_SHARD_CKSUM_LEN] {
     let h = blake3::hash(shard);
-    let mut out = [0u8; ECC_SHARD_CKSUM_LEN];
-    out.copy_from_slice(&h.as_bytes()[..ECC_SHARD_CKSUM_LEN]);
+    let mut out = [0u8; ERROR_CORRECTION_SHARD_CKSUM_LEN];
+    out.copy_from_slice(&h.as_bytes()[..ERROR_CORRECTION_SHARD_CKSUM_LEN]);
     out
 }
 
@@ -286,8 +286,8 @@ struct EccPayloadHeader {
 impl EccPayloadHeader {
     fn to_bytes(self) -> [u8; 32] {
         let mut buf = [0u8; 32];
-        buf[0..4].copy_from_slice(ECC_PAYLOAD_MAGIC);
-        buf[4..6].copy_from_slice(&ECC_PAYLOAD_VERSION.to_le_bytes());
+        buf[0..4].copy_from_slice(ERROR_CORRECTION_PAYLOAD_MAGIC);
+        buf[4..6].copy_from_slice(&ERROR_CORRECTION_PAYLOAD_VERSION.to_le_bytes());
         buf[6..8].copy_from_slice(&self.data_shards.to_le_bytes());
         buf[8..10].copy_from_slice(&self.parity_shards.to_le_bytes());
         buf[10..14].copy_from_slice(&self.shard_size.to_le_bytes());
@@ -300,12 +300,15 @@ impl EccPayloadHeader {
         if data.len() < 32 {
             return Err("EccPayloadHeader too short".to_string());
         }
-        if &data[0..4] != ECC_PAYLOAD_MAGIC {
-            return Err("bad ECC payload magic".to_string());
+        if &data[0..4] != ERROR_CORRECTION_PAYLOAD_MAGIC {
+            return Err("bad Error Correction payload magic".to_string());
         }
         let version = u16::from_le_bytes(data[4..6].try_into().unwrap());
-        if version != ECC_PAYLOAD_VERSION {
-            return Err(format!("unsupported ECC payload version {}", version));
+        if version != ERROR_CORRECTION_PAYLOAD_VERSION {
+            return Err(format!(
+                "unsupported Error Correction payload version {}",
+                version
+            ));
         }
         let h = EccPayloadHeader {
             data_shards: u16::from_le_bytes(data[6..8].try_into().unwrap()),
@@ -314,14 +317,16 @@ impl EccPayloadHeader {
             total_data_len: u64::from_le_bytes(data[14..22].try_into().unwrap()),
         };
         if h.data_shards == 0 || h.shard_size == 0 {
-            return Err("invalid ECC payload header (zero shard geometry)".to_string());
+            return Err(
+                "invalid Error Correction payload header (zero shard geometry)".to_string(),
+            );
         }
         Ok(h)
     }
 }
 
 /// (num_data_shards, num_groups) derived from a header.
-fn ecc_geometry(h: &EccPayloadHeader) -> (usize, usize) {
+fn error_correction_geometry(h: &EccPayloadHeader) -> (usize, usize) {
     let k = h.data_shards as usize;
     let s = h.shard_size as usize;
     let l = h.total_data_len as usize;
@@ -330,24 +335,24 @@ fn ecc_geometry(h: &EccPayloadHeader) -> (usize, usize) {
     (num_data_shards, num_groups)
 }
 
-/// Full in-memory representation of one ECC extension payload (v2). This is what
-/// gets written into the extension payload area when ECC is enabled.
+/// Full in-memory representation of one Error Correction extension payload (v2). This is what
+/// gets written into the extension payload area when Error Correction is enabled.
 #[derive(Debug, Clone)]
 struct EccPayload {
     header: EccPayloadHeader,
     /// One checksum per data shard, indexed 0..num_data_shards (grid order).
-    data_checksums: Vec<[u8; ECC_SHARD_CKSUM_LEN]>,
+    data_checksums: Vec<[u8; ERROR_CORRECTION_SHARD_CKSUM_LEN]>,
     /// One checksum per parity shard, indexed group-major: group g, parity p lives
     /// at g*P + p. Length == num_groups * P.
-    parity_checksums: Vec<[u8; ECC_SHARD_CKSUM_LEN]>,
+    parity_checksums: Vec<[u8; ERROR_CORRECTION_SHARD_CKSUM_LEN]>,
     /// Concatenated parity data, group-major. Length == num_groups * P * S.
     parity_data: Vec<u8>,
 }
 
 impl EccPayload {
     fn to_bytes(&self) -> Vec<u8> {
-        let cksum_bytes =
-            (self.data_checksums.len() + self.parity_checksums.len()) * ECC_SHARD_CKSUM_LEN;
+        let cksum_bytes = (self.data_checksums.len() + self.parity_checksums.len())
+            * ERROR_CORRECTION_SHARD_CKSUM_LEN;
         let mut out = Vec::with_capacity(32 + cksum_bytes + self.parity_data.len());
         out.extend_from_slice(&self.header.to_bytes());
         for c in &self.data_checksums {
@@ -362,12 +367,12 @@ impl EccPayload {
 
     fn from_bytes(data: &[u8]) -> Result<Self, String> {
         let header = EccPayloadHeader::from_bytes(data)?;
-        let (num_data_shards, num_groups) = ecc_geometry(&header);
+        let (num_data_shards, num_groups) = error_correction_geometry(&header);
         let p = header.parity_shards as usize;
         let s = header.shard_size as usize;
 
         let num_parity = num_groups * p;
-        let cksum_table = (num_data_shards + num_parity) * ECC_SHARD_CKSUM_LEN;
+        let cksum_table = (num_data_shards + num_parity) * ERROR_CORRECTION_SHARD_CKSUM_LEN;
         let parity_len = num_parity * s;
         let expected = 32 + cksum_table + parity_len;
         if data.len() != expected {
@@ -382,10 +387,10 @@ impl EccPayload {
         let read_cksums = |count: usize, off: &mut usize| {
             let mut v = Vec::with_capacity(count);
             for _ in 0..count {
-                let mut c = [0u8; ECC_SHARD_CKSUM_LEN];
-                c.copy_from_slice(&data[*off..*off + ECC_SHARD_CKSUM_LEN]);
+                let mut c = [0u8; ERROR_CORRECTION_SHARD_CKSUM_LEN];
+                c.copy_from_slice(&data[*off..*off + ERROR_CORRECTION_SHARD_CKSUM_LEN]);
                 v.push(c);
-                *off += ECC_SHARD_CKSUM_LEN;
+                *off += ERROR_CORRECTION_SHARD_CKSUM_LEN;
             }
             v
         };
@@ -402,7 +407,7 @@ impl EccPayload {
     }
 }
 
-/// P2-09: Compute the ECC payload (v2 fixed-grid format) for the concatenated
+/// P2-09: Compute the Error Correction payload (v2 fixed-grid format) for the concatenated
 /// live-block stream.
 ///
 /// `data_blocks`: the on-disk stored form of each live chunk in data-section order
@@ -413,10 +418,10 @@ impl EccPayload {
 /// Returns (serialized_payload, shards_generated, bytes_protected, overhead_pct).
 /// shards_generated = total (data+parity) shards in the v2 grid for this seal.
 /// bytes_protected = L (sum of live block on-disk sizes).
-/// overhead_pct uses the *actual* serialized ECC payload size (hdr+cksums+parity data)
+/// overhead_pct uses the *actual* serialized Error Correction payload size (hdr+cksums+parity data)
 /// vs protected (matches live p2_09 measurements ~20.1%).
 /// Empty input -> (vec![], 0, 0, 0.0). See format doc and P3-03.
-fn compute_ecc_shards(data_blocks: &[&[u8]]) -> (Vec<u8>, u64, u64, f64) {
+fn compute_error_correction_shards(data_blocks: &[&[u8]]) -> (Vec<u8>, u64, u64, f64) {
     // Concatenate the live blocks into the logical stream D of length L.
     let l: usize = data_blocks.iter().map(|b| b.len()).sum();
     if l == 0 {
@@ -427,11 +432,13 @@ fn compute_ecc_shards(data_blocks: &[&[u8]]) -> (Vec<u8>, u64, u64, f64) {
         d.extend_from_slice(b);
     }
 
-    let k = ECC_DATA_SHARDS;
-    let p = ECC_PARITY_SHARDS;
+    let k = ERROR_CORRECTION_DATA_SHARDS;
+    let p = ERROR_CORRECTION_PARITY_SHARDS;
     // S = ceil(L/K) clamped: a small vault becomes one full group (overhead == P/K);
     // a large vault becomes many full groups at capped shard granularity.
-    let s = l.div_ceil(k).clamp(ECC_MIN_SHARD, ECC_MAX_SHARD);
+    let s = l
+        .div_ceil(k)
+        .clamp(ERROR_CORRECTION_MIN_SHARD, ERROR_CORRECTION_MAX_SHARD);
 
     let num_data_shards = l.div_ceil(s);
     let num_groups = num_data_shards.div_ceil(k);
@@ -450,7 +457,7 @@ fn compute_ecc_shards(data_blocks: &[&[u8]]) -> (Vec<u8>, u64, u64, f64) {
 
     let mut data_checksums = Vec::with_capacity(num_data_shards);
     for i in 0..num_data_shards {
-        data_checksums.push(ecc_shard_checksum(&shard_at(i)));
+        data_checksums.push(error_correction_shard_checksum(&shard_at(i)));
     }
 
     let rs = ReedSolomon::<reed_solomon_erasure::galois_8::Field>::new(k, p)
@@ -472,7 +479,7 @@ fn compute_ecc_shards(data_blocks: &[&[u8]]) -> (Vec<u8>, u64, u64, f64) {
         rs.encode(&mut shards).expect("RS encode failed");
         for pp in 0..p {
             let par = &shards[k + pp];
-            parity_checksums.push(ecc_shard_checksum(par));
+            parity_checksums.push(error_correction_shard_checksum(par));
             parity_data.extend_from_slice(par);
         }
     }
@@ -500,12 +507,12 @@ fn compute_ecc_shards(data_blocks: &[&[u8]]) -> (Vec<u8>, u64, u64, f64) {
     (payload, total_shards, protected, overhead)
 }
 
-/// P2-09: Reconstruct damaged bytes in the live-block stream using the v2 ECC payload.
+/// P2-09: Reconstruct damaged bytes in the live-block stream using the v2 Error Correction payload.
 ///
 /// `blocks`: the on-disk blocks ([u64 len][ciphertext]) in data-section order, each
 ///           EXACTLY `8 + block_len` bytes (the caller zero-pads truncated blocks) so
 ///           the concatenation length matches the payload's recorded stream length.
-/// `ecc_payload_bytes`: the bytes stored in the ECC extension payload.
+/// `error_correction_payload_bytes`: the bytes stored in the Error Correction extension payload.
 ///
 /// Damaged shards are located by per-shard checksum mismatch (data and parity), then
 /// RS-reconstructed per group; recovered bytes are written back into `blocks` in place.
@@ -515,11 +522,14 @@ fn compute_ecc_shards(data_blocks: &[&[u8]]) -> (Vec<u8>, u64, u64, f64) {
 /// re-verify every repaired block against its authenticated cipher_hash before
 /// persisting (all-or-nothing safety gate). A grid misalignment (stream length
 /// mismatch) is rejected up front so good data can never be silently overwritten.
-fn reconstruct_from_ecc(blocks: &mut [Vec<u8>], ecc_payload_bytes: &[u8]) -> Result<usize, String> {
-    if ecc_payload_bytes.is_empty() {
+fn reconstruct_from_error_correction(
+    blocks: &mut [Vec<u8>],
+    error_correction_payload_bytes: &[u8],
+) -> Result<usize, String> {
+    if error_correction_payload_bytes.is_empty() {
         return Ok(0);
     }
-    let payload = EccPayload::from_bytes(ecc_payload_bytes)?;
+    let payload = EccPayload::from_bytes(error_correction_payload_bytes)?;
     let k = payload.header.data_shards as usize;
     let p = payload.header.parity_shards as usize;
     let s = payload.header.shard_size as usize;
@@ -530,7 +540,7 @@ fn reconstruct_from_ecc(blocks: &mut [Vec<u8>], ecc_payload_bytes: &[u8]) -> Res
     let total: usize = blocks.iter().map(|b| b.len()).sum();
     if total != l {
         return Err(format!(
-            "ECC reconstruct: block stream length {} != payload stream length {}",
+            "Error Correction reconstruct: block stream length {} != payload stream length {}",
             total, l
         ));
     }
@@ -540,7 +550,7 @@ fn reconstruct_from_ecc(blocks: &mut [Vec<u8>], ecc_payload_bytes: &[u8]) -> Res
         d.extend_from_slice(b);
     }
 
-    let (num_data_shards, num_groups) = ecc_geometry(&payload.header);
+    let (num_data_shards, num_groups) = error_correction_geometry(&payload.header);
 
     let shard_at = |d: &[u8], idx: usize| -> Vec<u8> {
         let start = idx * s;
@@ -566,7 +576,7 @@ fn reconstruct_from_ecc(blocks: &mut [Vec<u8>], ecc_payload_bytes: &[u8]) -> Res
             let gi = g * k + local;
             if gi < num_data_shards {
                 let sh = shard_at(&d, gi);
-                if ecc_shard_checksum(&sh) == payload.data_checksums[gi] {
+                if error_correction_shard_checksum(&sh) == payload.data_checksums[gi] {
                     *slot = Some(sh); // shard intact
                 } else {
                     erased_data += 1; // damaged -> RS erasure
@@ -581,7 +591,7 @@ fn reconstruct_from_ecc(blocks: &mut [Vec<u8>], ecc_payload_bytes: &[u8]) -> Res
             let start = pidx * s;
             if start + s <= payload.parity_data.len() {
                 let par = payload.parity_data[start..start + s].to_vec();
-                if ecc_shard_checksum(&par) == payload.parity_checksums[pidx] {
+                if error_correction_shard_checksum(&par) == payload.parity_checksums[pidx] {
                     opt[k + pp] = Some(par); // parity intact
                 }
                 // else: rotted parity -> leave None so RS routes around it
@@ -704,12 +714,12 @@ fn repair_vault(vault: &mut OpenVaultV3, dry_run: bool) -> Result<usize, String>
         return Ok(0);
     }
 
-    let ecc_entry = vault
+    let error_correction_entry = vault
         .extensions
         .iter()
-        .find(|e| e.extension_id == ECC_EXTENSION_ID)
+        .find(|e| e.extension_id == ERROR_CORRECTION_EXTENSION_ID)
         .cloned();
-    let ecc_bytes = if let Some(entry) = &ecc_entry {
+    let error_correction_bytes = if let Some(entry) = &error_correction_entry {
         if entry.length > 0 {
             let mut f = File::open(&vault.path).map_err(|e| format!("open for repair: {e}"))?;
             let abs = vault.header.extension_payload_offset + entry.offset;
@@ -717,7 +727,7 @@ fn repair_vault(vault: &mut OpenVaultV3, dry_run: bool) -> Result<usize, String>
                 .map_err(|e| format!("seek for repair: {e}"))?;
             let mut b = vec![0u8; entry.length as usize];
             f.read_exact(&mut b)
-                .map_err(|e| format!("read ecc payload: {e}"))?;
+                .map_err(|e| format!("read error_correction payload: {e}"))?;
             Some(b)
         } else {
             None
@@ -728,7 +738,7 @@ fn repair_vault(vault: &mut OpenVaultV3, dry_run: bool) -> Result<usize, String>
 
     let mut repaired_count = 0;
 
-    if let Some(ecc_b) = ecc_bytes {
+    if let Some(error_correction_b) = error_correction_bytes {
         let mut ordered: Vec<(String, ChunkRecordV3)> = vault
             .manifest
             .chunks
@@ -743,7 +753,7 @@ fn repair_vault(vault: &mut OpenVaultV3, dry_run: bool) -> Result<usize, String>
                 let start = rec.data_offset as usize;
                 let full = 8 + rec.block_len as usize;
                 // Always a fixed-length (8 + block_len) buffer so the concatenated stream
-                // length matches what the ECC parity was computed over, even when the block
+                // length matches what the Error Correction parity was computed over, even when the block
                 // is truncated on disk: the missing tail is zero-padded here, flagged as
                 // damaged by its shard checksum, then reconstructed.
                 let mut buf = vec![0u8; full];
@@ -760,7 +770,7 @@ fn repair_vault(vault: &mut OpenVaultV3, dry_run: bool) -> Result<usize, String>
             .filter_map(|d| ordered.iter().position(|(id, _)| id == &d.record.id))
             .collect();
 
-        let _ = reconstruct_from_ecc(&mut blocks, &ecc_b)?;
+        let _ = reconstruct_from_error_correction(&mut blocks, &error_correction_b)?;
 
         // Safety gate (CLAUDE-AV-ECC-01): RS reconstruction is only correct when
         // the surviving data shards AND the parity shards were themselves intact.
@@ -1090,14 +1100,14 @@ fn empty_manifest(level: i32) -> VaultManifestV3 {
     }
 }
 
-/// Returns the stub ExtensionEntry for the ECC layer (length 0 payload for Phase 1 stub).
+/// Returns the stub ExtensionEntry for the Error Correction layer (length 0 payload for Phase 1 stub).
 /// The actual payload (Reed-Solomon shards) will be written in Phase 2.
 /// Marked non-critical so v3 readers can still extract.
-fn ecc_stub_extension() -> ExtensionEntryV3 {
+fn error_correction_stub_extension() -> ExtensionEntryV3 {
     ExtensionEntryV3 {
-        extension_id: ECC_EXTENSION_ID.to_string(),
-        algorithm_id: ECC_ALGORITHM_ID.to_string(),
-        algorithm_version: ECC_ALGORITHM_VERSION,
+        extension_id: ERROR_CORRECTION_EXTENSION_ID.to_string(),
+        algorithm_id: ERROR_CORRECTION_ALGORITHM_ID.to_string(),
+        algorithm_version: ERROR_CORRECTION_ALGORITHM_VERSION,
         critical: false,
         offset: 0, // will be overwritten by build_file_bytes when placed after manifest
         length: 0,
@@ -2024,19 +2034,20 @@ fn build_file_bytes(
     // repair can rebuild the manifest before reading any cipher_hash.
     let mut extensions: Vec<ExtensionEntryV3> = extensions
         .iter()
-        .filter(|e| e.extension_id != ECC_META_EXTENSION_ID)
+        .filter(|e| e.extension_id != ERROR_CORRECTION_META_EXTENSION_ID)
         .cloned()
         .collect();
     let mut extension_payloads = extension_payloads.to_vec();
     if extensions
         .iter()
-        .any(|e| e.extension_id == ECC_EXTENSION_ID)
+        .any(|e| e.extension_id == ERROR_CORRECTION_EXTENSION_ID)
     {
-        let (meta_payload, _shards, _prot, _ov) = compute_ecc_shards(&[&encrypted_manifest]);
+        let (meta_payload, _shards, _prot, _ov) =
+            compute_error_correction_shards(&[&encrypted_manifest]);
         extensions.push(ExtensionEntryV3 {
-            extension_id: ECC_META_EXTENSION_ID.to_string(),
-            algorithm_id: ECC_ALGORITHM_ID.to_string(),
-            algorithm_version: ECC_ALGORITHM_VERSION,
+            extension_id: ERROR_CORRECTION_META_EXTENSION_ID.to_string(),
+            algorithm_id: ERROR_CORRECTION_ALGORITHM_ID.to_string(),
+            algorithm_version: ERROR_CORRECTION_ALGORITHM_VERSION,
             critical: false,
             offset: extension_payloads.len() as u64,
             length: meta_payload.len() as u64,
@@ -2076,7 +2087,7 @@ fn create_empty_vault(
     path: &Path,
     password: &str,
     level: i32,
-    with_ecc: bool,
+    with_error_correction: bool,
 ) -> Result<(), String> {
     if password.len() < MIN_PASSWORD_LEN {
         return Err("Password must be at least 8 characters".to_string());
@@ -2110,13 +2121,13 @@ fn create_empty_vault(
     };
 
     let manifest = empty_manifest(level);
-    let mut extensions = if with_ecc {
-        vec![ecc_stub_extension()]
+    let mut extensions = if with_error_correction {
+        vec![error_correction_stub_extension()]
     } else {
         vec![]
     };
-    let ext_payloads = if with_ecc {
-        let (p, _shards, _prot, _ov) = compute_ecc_shards(&[]);
+    let ext_payloads = if with_error_correction {
+        let (p, _shards, _prot, _ov) = compute_error_correction_shards(&[]);
         if let Some(e) = extensions.first_mut() {
             e.offset = 0;
             e.length = p.len() as u64;
@@ -2189,7 +2200,7 @@ fn reconstruct_encrypted_manifest(
     };
     let meta = match extensions
         .iter()
-        .find(|e| e.extension_id == ECC_META_EXTENSION_ID)
+        .find(|e| e.extension_id == ERROR_CORRECTION_META_EXTENSION_ID)
     {
         Some(m) if m.length > 0 => m,
         _ => return Ok(None),
@@ -2221,7 +2232,7 @@ fn reconstruct_encrypted_manifest(
         "manifest",
     )?;
     let mut blocks = vec![corrupt];
-    reconstruct_from_ecc(&mut blocks, &meta_payload)?;
+    reconstruct_from_error_correction(&mut blocks, &meta_payload)?;
     Ok(blocks.into_iter().next())
 }
 
@@ -2307,10 +2318,10 @@ fn open_vault(path: impl Into<PathBuf>, password: &str) -> Result<OpenVaultV3, S
     let extensions: Vec<ExtensionEntryV3> = serde_json::from_slice(&extension_json)
         .map_err(|e| format!("Extension directory parse: {e}"))?;
 
-    let mut _has_ecc = false;
+    let mut _has_error_correction = false;
     for ext in &extensions {
-        if ext.extension_id == ECC_EXTENSION_ID {
-            _has_ecc = true;
+        if ext.extension_id == ERROR_CORRECTION_EXTENSION_ID {
+            _has_error_correction = true;
             // For Phase 1 stub the payload length is 0.
             // In Phase 2+ we will validate/load the RS shards here when present.
         }
@@ -2321,14 +2332,14 @@ fn open_vault(path: impl Into<PathBuf>, password: &str) -> Result<OpenVaultV3, S
             ));
         }
     }
-    // `has_ecc` is recorded for future use (scrub/repair paths, info surfaces).
+    // `has_error_correction` is recorded for future use (scrub/repair paths, info surfaces).
     // The extensions vec is already stored in OpenVaultV3 for round-tripping.
 
     // Do not round-trip the GAP-4 metadata-parity extension; build_file_bytes is its
     // sole author and recomputes it on every seal from the freshly encrypted manifest.
     let extensions: Vec<ExtensionEntryV3> = extensions
         .into_iter()
-        .filter(|e| e.extension_id != ECC_META_EXTENSION_ID)
+        .filter(|e| e.extension_id != ERROR_CORRECTION_META_EXTENSION_ID)
         .collect();
 
     Ok(OpenVaultV3 {
@@ -2381,12 +2392,12 @@ fn save_open_vault(vault: &mut OpenVaultV3) -> Result<(), String> {
     let mut extensions = vault.extensions.clone();
     let mut ext_payloads = vec![];
 
-    // P2-05: if ECC extension is present, recompute the shards on the current data
+    // P2-05: if Error Correction extension is present, recompute the shards on the current data
     // and update the entry + payload. Recompute on every seal (cost is acceptable
-    // for the ECC use case; most vaults won't have it enabled).
-    if let Some(ecc_idx) = extensions
+    // for the Error Correction use case; most vaults won't have it enabled).
+    if let Some(error_correction_idx) = extensions
         .iter()
-        .position(|e| e.extension_id == ECC_EXTENSION_ID)
+        .position(|e| e.extension_id == ERROR_CORRECTION_EXTENSION_ID)
     {
         // Collect on-disk blocks in the order they appear in the data section
         // (sorted by data_offset). Each full block is [u64 len][ciphertext of that len].
@@ -2406,18 +2417,20 @@ fn save_open_vault(vault: &mut OpenVaultV3) -> Result<(), String> {
             })
             .collect();
 
-        let (payload, shards, protected, overhead) = compute_ecc_shards(&blocks);
+        let (payload, shards, protected, overhead) = compute_error_correction_shards(&blocks);
 
-        let entry = &mut extensions[ecc_idx];
+        let entry = &mut extensions[error_correction_idx];
         entry.offset = 0;
         entry.length = payload.len() as u64;
 
         ext_payloads = payload;
 
-        // P3-03: surface ECC telemetry in the op report (when the caller set one, e.g. add_files).
+        // P3-03: surface Error Correction telemetry in the op report (when the caller set one, e.g. add_files).
         // This captures shards/bytes/overhead for receipts even if report op is "add_files" etc.
         if shards > 0 || protected > 0 {
-            vault.report.set_ecc_protection(shards, protected, overhead);
+            vault
+                .report
+                .set_error_correction_protection(shards, protected, overhead);
         }
     }
 
@@ -2649,14 +2662,14 @@ pub async fn vault_v3_create(
     Ok(vault_path)
 }
 
-/// Create a new AeroVault v3 container **with the ECC (error-correction) extension stub**.
-/// This is the Phase 1 entry point for v4+ECC work (stub only: the extension directory
+/// Create a new AeroVault v3 container **with the Error Correction (error-correction) extension stub**.
+/// This is the Phase 1 entry point for v4+Error Correction work (stub only: the extension directory
 /// entry is present with length=0; real Reed-Solomon shards are added in Phase 2).
 ///
 /// The extension is emitted as non-critical so that existing v3 readers can still
 /// open the vault and extract data (per AEROVAULT-V3-SPEC.md + discussion #276).
 #[tauri::command]
-pub async fn vault_v3_create_with_ecc(
+pub async fn vault_v3_create_with_error_correction(
     vault_path: String,
     password: String,
     profile: Option<String>,
@@ -2690,21 +2703,21 @@ pub async fn is_vault_v3(path: String) -> Result<bool, String> {
     Ok(&buf[..10] == MAGIC && buf[10] == VERSION)
 }
 
-/// Lightweight check for the presence of the ECC (error-correction) extension.
+/// Lightweight check for the presence of the Error Correction (error-correction) extension.
 /// Does **not** require the vault password: it only reads the header and the
 /// plaintext extension directory. This is safe for `vault info` / pre-flight
-/// use cases and matches the "has_ecc_extension" need from the plan (P1-05).
+/// use cases and matches the "has_error_correction_extension" need from the plan (P1-05).
 ///
-/// Returns true if a non-critical (or any) "ecc.reed-solomon" entry is present
+/// Returns true if a non-critical (or any) "error-correction.reed-solomon" entry is present
 /// in the extension directory.
 #[tauri::command]
-pub async fn vault_v3_has_ecc(path: String) -> Result<bool, String> {
-    let mut file =
-        std::fs::File::open(&path).map_err(|e| format!("Open vault for ECC check: {e}"))?;
+pub async fn vault_v3_has_error_correction(path: String) -> Result<bool, String> {
+    let mut file = std::fs::File::open(&path)
+        .map_err(|e| format!("Open vault for Error Correction check: {e}"))?;
 
     let mut header_bytes = [0u8; HEADER_SIZE];
     file.read_exact(&mut header_bytes)
-        .map_err(|e| format!("Read header for ECC check: {e}"))?;
+        .map_err(|e| format!("Read header for Error Correction check: {e}"))?;
 
     let header = VaultHeaderV3::from_bytes(&header_bytes)?;
 
@@ -2717,15 +2730,15 @@ pub async fn vault_v3_has_ecc(path: String) -> Result<bool, String> {
         header.extension_dir_offset,
         header.extension_dir_len,
         MAX_EXTENSION_DIR_SIZE,
-        "extension directory (has_ecc)",
+        "extension directory (has_error_correction)",
     )?;
 
     let extensions: Vec<ExtensionEntryV3> = serde_json::from_slice(&extension_json)
-        .map_err(|e| format!("Extension directory parse (has_ecc): {e}"))?;
+        .map_err(|e| format!("Extension directory parse (has_error_correction): {e}"))?;
 
     Ok(extensions
         .iter()
-        .any(|e| e.extension_id == ECC_EXTENSION_ID))
+        .any(|e| e.extension_id == ERROR_CORRECTION_EXTENSION_ID))
 }
 
 #[tauri::command]
@@ -3100,7 +3113,7 @@ pub async fn vault_v3_security_info(path: Option<String>) -> serde_json::Value {
             "zstd per chunk",
             "AES-256-GCM-SIV",
             "BLAKE3-256 cipher block hashes",
-            "extension directory for ECC (reed-solomon)"
+            "extension directory for Error Correction (reed-solomon)"
         ],
         "compression_profiles": {
             "fast": 3,
@@ -3108,16 +3121,16 @@ pub async fn vault_v3_security_info(path: Option<String>) -> serde_json::Value {
             "archive": 19
         },
         "compatibility": "v4 is expected to read v3 directly; v3 skips unknown non-critical extensions",
-        "ecc_support": "stub (Phase 1): vault_v3_create_with_ecc emits non-critical 'ecc.reed-solomon' entry; real RS shards in Phase 2. See T-AEROVAULT-ECC (#272)"
+        "error_correction_support": "stub (Phase 1): vault_v3_create_with_error_correction emits non-critical 'error-correction.reed-solomon' entry; real RS shards in Phase 2. See T-AEROVAULT-ECC (#272)"
     });
 
     if let Some(p) = path {
-        if let Ok(has_ecc) = vault_v3_has_ecc(p).await {
+        if let Ok(has_error_correction) = vault_v3_has_error_correction(p).await {
             if let Some(obj) = info.as_object_mut() {
                 obj.insert(
-                    "ecc".to_string(),
+                    "error_correction".to_string(),
                     serde_json::json!({
-                        "enabled": has_ecc,
+                        "enabled": has_error_correction,
                         "algorithm": "reed-solomon",
                         "version": 1,
                         "critical": false
@@ -3179,48 +3192,63 @@ mod tests {
         assert_eq!(std::fs::read(&out).unwrap(), std::fs::read(&a).unwrap());
     }
 
-    /// P1-01: ECC stub creation + roundtrip + v3 compatibility.
-    /// Creates a vault with the non-critical "ecc.reed-solomon" extension entry
+    /// P1-01: Error Correction stub creation + roundtrip + v3 compatibility.
+    /// Creates a vault with the non-critical "error-correction.reed-solomon" extension entry
     /// (payload length 0 for stub phase), performs add + extract, re-opens,
     /// and verifies the extension is present and non-critical.
     /// Also asserts that is_vault_v3 (magic-based) still returns true.
     #[test]
-    fn v3_ecc_stub_roundtrip_and_v3_compatibility() {
+    fn v3_error_correction_stub_roundtrip_and_v3_compatibility() {
         let dir = tempfile::tempdir().unwrap();
-        let vault_path = dir.path().join("ecc-stub.aerovault");
+        let vault_path = dir.path().join("error_correction-stub.aerovault");
         let payload = dir.path().join("payload.bin");
-        std::fs::write(&payload, b"hello from ECC stub phase").unwrap();
+        std::fs::write(&payload, b"hello from Error Correction stub phase").unwrap();
 
-        // Create with ECC stub (Phase 1)
-        create_empty_vault(&vault_path, "ecc-test-pw", DEFAULT_ZSTD_LEVEL, true).unwrap();
+        // Create with Error Correction stub (Phase 1)
+        create_empty_vault(
+            &vault_path,
+            "error_correction-test-pw",
+            DEFAULT_ZSTD_LEVEL,
+            true,
+        )
+        .unwrap();
 
         // Add a file (exercises seal path that must preserve the extension dir)
-        let mut vault = open_vault(&vault_path, "ecc-test-pw").unwrap();
+        let mut vault = open_vault(&vault_path, "error_correction-test-pw").unwrap();
         append_file_at(&mut vault, &payload, "data/payload.bin").unwrap();
         save_open_vault(&mut vault).unwrap();
 
         // Re-open and inspect extensions (proves roundtrip of the dir)
-        let reopened = open_vault(&vault_path, "ecc-test-pw").unwrap();
-        let ecc_ext = reopened
+        let reopened = open_vault(&vault_path, "error_correction-test-pw").unwrap();
+        let error_correction_ext = reopened
             .extensions
             .iter()
-            .find(|e| e.extension_id == ECC_EXTENSION_ID);
+            .find(|e| e.extension_id == ERROR_CORRECTION_EXTENSION_ID);
         assert!(
-            ecc_ext.is_some(),
-            "ecc extension should be present after roundtrip"
+            error_correction_ext.is_some(),
+            "error_correction extension should be present after roundtrip"
         );
-        let ecc_ext = ecc_ext.unwrap();
+        let error_correction_ext = error_correction_ext.unwrap();
         assert!(
-            !ecc_ext.critical,
-            "ECC extension must be non-critical for v3 compat"
+            !error_correction_ext.critical,
+            "Error Correction extension must be non-critical for v3 compat"
         );
-        assert_eq!(ecc_ext.algorithm_id, ECC_ALGORITHM_ID);
-        assert_eq!(ecc_ext.algorithm_version, ECC_ALGORITHM_VERSION);
+        assert_eq!(
+            error_correction_ext.algorithm_id,
+            ERROR_CORRECTION_ALGORITHM_ID
+        );
+        assert_eq!(
+            error_correction_ext.algorithm_version,
+            ERROR_CORRECTION_ALGORITHM_VERSION
+        );
 
         // Extract must succeed (pure v3 reader path compatibility)
         let out = dir.path().join("restored.bin");
         extract_entry(&reopened, "data/payload.bin", &out).unwrap();
-        assert_eq!(std::fs::read(&out).unwrap(), b"hello from ECC stub phase");
+        assert_eq!(
+            std::fs::read(&out).unwrap(),
+            b"hello from Error Correction stub phase"
+        );
 
         // is_vault_v3 (the fast magic path used by dispatch / old v3 binaries) must still say yes.
         // We check the magic directly here (same logic as is_vault_v3) to avoid needing an async runtime in the test.
@@ -3228,7 +3256,7 @@ mod tests {
         let mut magic = [0u8; 11];
         f.read_exact(&mut magic).unwrap();
         let is_v3_magic = &magic[..10] == MAGIC && magic[10] == VERSION;
-        assert!(is_v3_magic, "vault with ECC stub extension must still be recognized as v3 by magic (for pure v3 reader compat)");
+        assert!(is_v3_magic, "vault with Error Correction stub extension must still be recognized as v3 by magic (for pure v3 reader compat)");
 
         // The extension dir itself survived (we can check via header on re-open)
         // Re-open header has non-zero extension_dir_len
@@ -3239,8 +3267,8 @@ mod tests {
     }
 
     #[test]
-    fn v3_security_info_advertises_ecc_when_present() {
-        // P1-04 test: security_info with path should report the ecc object when the stub extension is present.
+    fn v3_security_info_advertises_error_correction_when_present() {
+        // P1-04 test: security_info with path should report the error_correction object when the stub extension is present.
         let dir = tempfile::tempdir().unwrap();
         let vault_path = dir.path().join("sec-info-test.aerovault");
 
@@ -3254,21 +3282,21 @@ mod tests {
                 vault_path.to_string_lossy().to_string(),
             )));
 
-        let ecc = info
-            .get("ecc")
-            .expect("ecc field should be present when path given");
-        assert_eq!(ecc["enabled"], true);
-        assert_eq!(ecc["algorithm"], "reed-solomon");
-        assert_eq!(ecc["version"], 1);
-        assert_eq!(ecc["critical"], false);
+        let error_correction = info
+            .get("error_correction")
+            .expect("error_correction field should be present when path given");
+        assert_eq!(error_correction["enabled"], true);
+        assert_eq!(error_correction["algorithm"], "reed-solomon");
+        assert_eq!(error_correction["version"], 1);
+        assert_eq!(error_correction["critical"], false);
 
         // Also check general fields still there
         assert!(info.get("pipeline").is_some());
-        assert!(info.get("ecc_support").is_some());
+        assert!(info.get("error_correction_support").is_some());
     }
 
     #[test]
-    fn p2_02_ecc_payload_format_roundtrip() {
+    fn p2_02_error_correction_payload_format_roundtrip() {
         // P2-09 (v2): the fixed-grid payload (header + per-shard checksum table +
         // parity) must serialize and deserialize losslessly.
         let s = 4096usize;
@@ -3279,16 +3307,16 @@ mod tests {
             shard_size: s as u32,
             total_data_len: l as u64,
         };
-        let (num_data_shards, num_groups) = ecc_geometry(&header);
+        let (num_data_shards, num_groups) = error_correction_geometry(&header);
         assert_eq!(num_data_shards, 25);
         assert_eq!(num_groups, 3);
         let num_parity = num_groups * header.parity_shards as usize;
 
-        let data_checksums: Vec<[u8; ECC_SHARD_CKSUM_LEN]> = (0..num_data_shards)
-            .map(|i| [i as u8; ECC_SHARD_CKSUM_LEN])
+        let data_checksums: Vec<[u8; ERROR_CORRECTION_SHARD_CKSUM_LEN]> = (0..num_data_shards)
+            .map(|i| [i as u8; ERROR_CORRECTION_SHARD_CKSUM_LEN])
             .collect();
-        let parity_checksums: Vec<[u8; ECC_SHARD_CKSUM_LEN]> = (0..num_parity)
-            .map(|i| [(200 + i) as u8; ECC_SHARD_CKSUM_LEN])
+        let parity_checksums: Vec<[u8; ERROR_CORRECTION_SHARD_CKSUM_LEN]> = (0..num_parity)
+            .map(|i| [(200 + i) as u8; ERROR_CORRECTION_SHARD_CKSUM_LEN])
             .collect();
         let parity_data = vec![0xABu8; num_parity * s];
 
@@ -3315,33 +3343,48 @@ mod tests {
     }
 
     #[test]
-    fn p2_03_compute_ecc_shards_basic() {
-        // P2-09: compute_ecc_shards produces a well-formed v2 payload over the
+    fn p2_03_compute_error_correction_shards_basic() {
+        // P2-09: compute_error_correction_shards produces a well-formed v2 payload over the
         // concatenated block stream.
         let block1: Vec<u8> = vec![0u8; 100];
         let block2: Vec<u8> = vec![1u8; 200];
         let data_blocks: Vec<&[u8]> = vec![&block1, &block2];
 
-        let (payload_bytes, _sh, _pr, _ov) = compute_ecc_shards(&data_blocks);
+        let (payload_bytes, _sh, _pr, _ov) = compute_error_correction_shards(&data_blocks);
         assert!(!payload_bytes.is_empty());
 
         let parsed = EccPayload::from_bytes(&payload_bytes).expect("payload should parse");
-        assert_eq!(parsed.header.data_shards, ECC_DATA_SHARDS as u16);
-        assert_eq!(parsed.header.parity_shards, ECC_PARITY_SHARDS as u16);
+        assert_eq!(
+            parsed.header.data_shards,
+            ERROR_CORRECTION_DATA_SHARDS as u16
+        );
+        assert_eq!(
+            parsed.header.parity_shards,
+            ERROR_CORRECTION_PARITY_SHARDS as u16
+        );
         assert_eq!(parsed.header.total_data_len, 300);
-        // L=300 < ECC_MIN_SHARD => S clamps to the floor => one data shard, one group.
-        assert_eq!(parsed.header.shard_size as usize, ECC_MIN_SHARD);
-        let (num_data_shards, num_groups) = ecc_geometry(&parsed.header);
+        // L=300 < ERROR_CORRECTION_MIN_SHARD => S clamps to the floor => one data shard, one group.
+        assert_eq!(
+            parsed.header.shard_size as usize,
+            ERROR_CORRECTION_MIN_SHARD
+        );
+        let (num_data_shards, num_groups) = error_correction_geometry(&parsed.header);
         assert_eq!(num_data_shards, 1);
         assert_eq!(num_groups, 1);
         assert_eq!(parsed.data_checksums.len(), 1);
-        assert_eq!(parsed.parity_checksums.len(), ECC_PARITY_SHARDS);
-        assert_eq!(parsed.parity_data.len(), ECC_PARITY_SHARDS * ECC_MIN_SHARD);
+        assert_eq!(
+            parsed.parity_checksums.len(),
+            ERROR_CORRECTION_PARITY_SHARDS
+        );
+        assert_eq!(
+            parsed.parity_data.len(),
+            ERROR_CORRECTION_PARITY_SHARDS * ERROR_CORRECTION_MIN_SHARD
+        );
     }
 
     #[test]
-    fn p2_04_reconstruct_from_ecc_basic() {
-        // P2-09: damage one block, reconstruct it via the v2 ECC payload (the shard
+    fn p2_04_reconstruct_from_error_correction_basic() {
+        // P2-09: damage one block, reconstruct it via the v2 Error Correction payload (the shard
         // checksum localizes the erasure; no externally supplied bad-index list).
         let orig1: Vec<u8> = (0u8..100).collect();
         let orig2: Vec<u8> = (0u8..150).map(|x| 100 + x).collect();
@@ -3353,13 +3396,16 @@ mod tests {
         };
 
         let mut blocks = vec![make_on_disk(&orig1), make_on_disk(&orig2)];
-        let payload =
-            compute_ecc_shards(&blocks.iter().map(|v| v.as_slice()).collect::<Vec<_>>()).0;
+        let payload = compute_error_correction_shards(
+            &blocks.iter().map(|v| v.as_slice()).collect::<Vec<_>>(),
+        )
+        .0;
 
         // Corrupt the second block; its shard checksum will mismatch -> RS erasure.
         blocks[1][10] ^= 0xFF;
 
-        let recovered = reconstruct_from_ecc(&mut blocks, &payload).expect("reconstruct");
+        let recovered =
+            reconstruct_from_error_correction(&mut blocks, &payload).expect("reconstruct");
         assert!(recovered >= 1);
 
         // The second block is restored to its original on-disk form.
@@ -3415,7 +3461,7 @@ mod tests {
 
     #[test]
     fn p2_07_repair_end_to_end() {
-        // P2-07: full cycle with real ECC vault + corruption + repair via primitive.
+        // P2-07: full cycle with real Error Correction vault + corruption + repair via primitive.
         let dir = tempfile::tempdir().unwrap();
         let vault_path = dir.path().join("repair-e2e.aerovault");
         let f1 = dir.path().join("f1.txt");
@@ -3427,7 +3473,7 @@ mod tests {
         )
         .unwrap();
 
-        // Create with ECC and add files (triggers seal with ECC)
+        // Create with Error Correction and add files (triggers seal with Error Correction)
         create_empty_vault(&vault_path, "repair-pw-1234", DEFAULT_ZSTD_LEVEL, true).unwrap();
         let mut vault = open_vault(&vault_path, "repair-pw-1234").unwrap();
         append_file_at(&mut vault, &f1, "f1.txt").unwrap();
@@ -3534,7 +3580,7 @@ mod tests {
     fn gap4_no_metadata_parity_means_corrupt_manifest_is_fatal() {
         // Control: a vault WITHOUT Error Correction has no metadata parity, so the
         // same manifest corruption is fatal. This proves the rebuild above is what
-        // saves the ECC vault, not some other tolerance in the open path.
+        // saves the Error Correction vault, not some other tolerance in the open path.
         let dir = tempfile::tempdir().unwrap();
         let vault_path = dir.path().join("gap4-neg.aerovault");
         let f1 = dir.path().join("f1.txt");
@@ -3562,7 +3608,7 @@ mod tests {
 
     #[test]
     fn p2_08_cli_stress_multiple_damage_repair() {
-        // Stress test: ECC vault with 12 files, corrupt 4 blocks (across stripes), repair, verify all.
+        // Stress test: Error Correction vault with 12 files, corrupt 4 blocks (across stripes), repair, verify all.
         let dir = tempfile::tempdir().unwrap();
         let vault_path = dir.path().join("stress-repair.aerovault");
 
@@ -3627,7 +3673,7 @@ mod tests {
     /// compress it and the vault stays a realistically-sized ciphertext stream that
     /// spans many shards (a low-entropy pattern would compress to a tiny single shard
     /// and defeat the overhead / multi-shard-damage tests).
-    fn ecc_test_blob(n: u32) -> Vec<u8> {
+    fn error_correction_test_blob(n: u32) -> Vec<u8> {
         (0..n)
             .map(|i| {
                 let mut z = (i as u64).wrapping_add(0x9E3779B97F4A7C15);
@@ -3649,7 +3695,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let vault_path = dir.path().join("recover-bad-parity.aerovault");
         let f = dir.path().join("f.bin");
-        let data = ecc_test_blob(300_000);
+        let data = error_correction_test_blob(300_000);
         std::fs::write(&f, &data).unwrap();
 
         create_empty_vault(&vault_path, "recover-pw", DEFAULT_ZSTD_LEVEL, true).unwrap();
@@ -3673,14 +3719,14 @@ mod tests {
             serde_json::from_slice(&raw[ext_dir_abs..ext_dir_abs + ext_dir_len]).unwrap();
         let data_parity_len = exts
             .iter()
-            .find(|e| e.extension_id == ECC_EXTENSION_ID)
-            .expect("data ECC extension present")
+            .find(|e| e.extension_id == ERROR_CORRECTION_EXTENSION_ID)
+            .expect("data Error Correction extension present")
             .length as usize;
         let payload =
             EccPayload::from_bytes(&raw[payload_abs..payload_abs + data_parity_len]).unwrap();
-        let (nds, ng) = ecc_geometry(&payload.header);
+        let (nds, ng) = error_correction_geometry(&payload.header);
         let p = payload.header.parity_shards as usize;
-        let parity0_abs = payload_abs + 32 + (nds + ng * p) * ECC_SHARD_CKSUM_LEN;
+        let parity0_abs = payload_abs + 32 + (nds + ng * p) * ERROR_CORRECTION_SHARD_CKSUM_LEN;
         for i in 0..64usize {
             raw[parity0_abs + i] ^= 0xAA;
         }
@@ -3726,7 +3772,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let vault_path = dir.path().join("over-budget.aerovault");
         let f = dir.path().join("f.bin");
-        let data = ecc_test_blob(300_000);
+        let data = error_correction_test_blob(300_000);
         std::fs::write(&f, &data).unwrap();
 
         create_empty_vault(&vault_path, "over-pw-1234", DEFAULT_ZSTD_LEVEL, true).unwrap();
@@ -3762,13 +3808,13 @@ mod tests {
 
     /// P2-09 regression: the v1 format produced ~200% parity for a small single-chunk
     /// vault (300 KB -> ~600 KB parity). The v2 fixed-grid format must keep the stored
-    /// ECC payload near the nominal P/K (20%).
+    /// Error Correction payload near the nominal P/K (20%).
     #[test]
-    fn p2_09_ecc_overhead_is_bounded_for_single_chunk_vault() {
+    fn p2_09_error_correction_overhead_is_bounded_for_single_chunk_vault() {
         let dir = tempfile::tempdir().unwrap();
         let vault_path = dir.path().join("overhead.aerovault");
         let f = dir.path().join("blob.bin");
-        let data = ecc_test_blob(300_000);
+        let data = error_correction_test_blob(300_000);
         std::fs::write(&f, &data).unwrap();
 
         create_empty_vault(&vault_path, "ovh-pw-1234", DEFAULT_ZSTD_LEVEL, true).unwrap();
@@ -3777,10 +3823,10 @@ mod tests {
         save_open_vault(&mut vault).unwrap();
 
         // save_open_vault updates only a local extensions clone, so read the persisted
-        // ECC payload length from the on-disk header (extension_payload_len @184) rather
+        // Error Correction payload length from the on-disk header (extension_payload_len @184) rather
         // than the stale in-memory entry.
         let raw = std::fs::read(&vault_path).unwrap();
-        let ecc_payload = u64::from_le_bytes(raw[184..192].try_into().unwrap()) as f64;
+        let error_correction_payload = u64::from_le_bytes(raw[184..192].try_into().unwrap()) as f64;
         let protected: f64 = vault
             .manifest
             .chunks
@@ -3789,25 +3835,29 @@ mod tests {
             .sum();
 
         assert!(
-            ecc_payload < protected * 0.30,
-            "ECC overhead too high: {} payload bytes for {} protected bytes ({:.0}%)",
-            ecc_payload,
+            error_correction_payload < protected * 0.30,
+            "Error Correction overhead too high: {} payload bytes for {} protected bytes ({:.0}%)",
+            error_correction_payload,
             protected,
-            ecc_payload / protected * 100.0
+            error_correction_payload / protected * 100.0
         );
     }
 
-    /// P1-06: First compatibility test - a "v4-stub" vault (created with ECC extension)
+    /// P1-06: First compatibility test - a "v4-stub" vault (created with Error Correction extension)
     /// must still be fully readable using the pure v3 open/extract paths
     /// (simulating an older v3-only reader or binary).
     #[test]
-    fn v3_stub_ecc_vault_readable_by_pure_v3_open_and_extract() {
+    fn v3_stub_error_correction_vault_readable_by_pure_v3_open_and_extract() {
         let dir = tempfile::tempdir().unwrap();
         let vault_path = dir.path().join("compat-stub.aerovault");
         let payload = dir.path().join("payload.bin");
-        std::fs::write(&payload, b"P1-06 compatibility payload for stub ECC vault").unwrap();
+        std::fs::write(
+            &payload,
+            b"P1-06 compatibility payload for stub Error Correction vault",
+        )
+        .unwrap();
 
-        // Create using the ECC stub path (what will be "v4" in future)
+        // Create using the Error Correction stub path (what will be "v4" in future)
         create_empty_vault(&vault_path, "compat-pw-1234", DEFAULT_ZSTD_LEVEL, true).unwrap();
 
         // Use pure v3 open path (internal open_vault, as old reader would)
@@ -3822,7 +3872,7 @@ mod tests {
 
         assert_eq!(
             std::fs::read(&out).unwrap(),
-            b"P1-06 compatibility payload for stub ECC vault"
+            b"P1-06 compatibility payload for stub Error Correction vault"
         );
     }
 
@@ -4030,7 +4080,7 @@ mod tests {
     }
 
     // --- GAP-3: corruption-injection harness ---------------------------------
-    // Reusable scaffolding for the v4 ECC scrub work: deterministic ways to
+    // Reusable scaffolding for the v4 Error Correction scrub work: deterministic ways to
     // damage a sealed vault so integrity / recovery paths can be tested.
 
     /// Flip one bit at an absolute byte offset inside a sealed vault file.
@@ -4079,7 +4129,7 @@ mod tests {
         let out = dir.path().join("out.bin");
         let err = extract_entry(&v, "payload.bin", &out).unwrap_err();
         // cipher_hash mismatch is caught BEFORE AEAD decrypt: this is the
-        // exact hook the v4 ECC scrub will hang off.
+        // exact hook the v4 Error Correction scrub will hang off.
         assert!(
             err.contains("Cipher block hash mismatch")
                 || err.contains("Chunk length metadata mismatch"),

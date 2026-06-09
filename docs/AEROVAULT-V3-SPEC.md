@@ -13,7 +13,7 @@
 
 AeroVault v3 is the first wrapper-stack vault format. It keeps the single-file `.aerovault` portability of v2 while adding compressed, content-addressed chunks and a forward-compatible extension directory for future recovery data.
 
-The v3 design is intentionally shaped so that AeroVault v4 can be "v3 plus ECC", not a second incompatible archive format.
+The v3 design is intentionally shaped so that AeroVault v4 can be "v3 plus Error Correction", not a second incompatible archive format.
 
 ## 2. Wrapper Pipeline
 
@@ -27,7 +27,7 @@ plaintext files
   -> zstd compress each chunk/frame
   -> AES-256-GCM-SIV encrypt each compressed chunk
   -> manifest + block table
-  -> optional extension blocks (ECC in v4)
+  -> optional extension blocks (Error Correction in v4)
 ```
 
 The ordering is deliberate:
@@ -36,7 +36,7 @@ The ordering is deliberate:
 - chunking precedes compression so deduplication, resume, and future AeroSync range semantics stay chunk-aligned;
 - compression is per chunk/frame so a reader can decompress one logical block without inflating the whole archive;
 - encryption is last among v3 data-transforming wrappers;
-- ECC is not part of v3, but the container has the extension slot v4 will use.
+- Error Correction is not part of v3, but the container has the extension slot v4 will use.
 
 ## 3. Wrapper And Algorithm IDs
 
@@ -139,7 +139,7 @@ The extension directory is a UTF-8 JSON array. v3 writers emit `[]`.
 ```json
 [
   {
-    "extension_id": "ecc.reed-solomon",
+    "extension_id": "error-correction.reed-solomon",
     "algorithm_id": "reed-solomon",
     "algorithm_version": 1,
     "critical": false,
@@ -149,7 +149,7 @@ The extension directory is a UTF-8 JSON array. v3 writers emit `[]`.
 ]
 ```
 
-Unknown non-critical extensions are skipped. Unknown critical extensions make the vault unsupported. This is the v3/v4 compatibility contract: v4 ECC is expected to be a non-critical extension for data extraction and a critical extension only for workflows that promise repair guarantees.
+Unknown non-critical extensions are skipped. Unknown critical extensions make the vault unsupported. This is the v3/v4 compatibility contract: v4 Error Correction is expected to be a non-critical extension for data extraction and a critical extension only for workflows that promise repair guarantees.
 
 ## 7. Manifest
 
@@ -180,7 +180,7 @@ The manifest is AES-256-GCM-SIV encrypted. Its plaintext is JSON:
 v3 deliberately separates two hashes:
 
 - `chunk_id`: keyed BLAKE3, truncated to 128 bits, over plaintext chunk bytes. It is used for content addressing and deduplication and is stored only inside the encrypted manifest.
-- `cipher_hash`: full BLAKE3-256 over the encrypted block. It is used by scrub/ECC workflows to identify damaged stored bytes before decryption.
+- `cipher_hash`: full BLAKE3-256 over the encrypted block. It is used by scrub/Error Correction workflows to identify damaged stored bytes before decryption.
 
 The chunk-id key is derived from the vault master key by HKDF. Chunk IDs are not raw public hashes of user content.
 
@@ -199,16 +199,16 @@ The v2 wire format stores the HMAC-SHA512 at bytes `448..512` and computes it ov
 
 ## 11. v4 Evolution Note (T-AEROVAULT-ECC, shipped)
 
-v4 = v3 + non-critical "ecc.reed-solomon" extension (always critical=false). The extension carries a v2 Reed-Solomon payload (AVEC magic, version=2, K=10/P=2 fixed grid over the concatenated live-block stream, per-shard 16-byte truncated BLAKE3 for erasure localization, parity data). 
+v4 = v3 + non-critical "error-correction.reed-solomon" extension (always critical=false). The extension carries a v2 Reed-Solomon payload (AVEC magic, version=2, K=10/P=2 fixed grid over the concatenated live-block stream, per-shard 16-byte truncated BLAKE3 for erasure localization, parity data). 
 
 - Overhead target: ~P/K = 20% (clamped shard size; proven on real incompressible data).
 - Damage model: per-shard cksums (not just per-block cipher_hash) so rot inside a large CDC chunk only erases the affected shards; a bad parity shard is detected and routed around.
 - Repair contract (all-or-nothing): reconstruct, re-verify *every* repaired block against its manifest cipher_hash; persist the re-sealed vault only if *all* verify, else leave the file byte-for-byte untouched.
 - scrub/repair exposed in GUI (draggable modals, template-faithful) and CLI (`vault scrub`, `vault repair [--dry-run]`).
-- Receipt/VaultReport carries ecc_* fields (shards_generated, bytes_protected, overhead_pct, repair_events) for ops on ECC vaults.
+- Receipt/VaultReport carries error_correction_* fields (shards_generated, bytes_protected, overhead_pct, repair_events) for ops on Error Correction vaults.
 - Forward-compat: pure v3 open/extract path ignores the non-critical ext and still works (magic stays AEROVAULT3 / format=3).
-- Pipeline position: ECC is the *fourth* first-class wrapper, after crypt (see #276 wrapper-stack discussion).
+- Pipeline position: Error Correction is the *fourth* first-class wrapper, after crypt (see #276 wrapper-stack discussion).
 
-Implementation, tests (22), live proof, surfaces (P3), docs and close tracked in `docs/dev/roadmap/APPENDIX-AEROVAULT-V4-ECC/`. "v3 + ECC = v4".
+Implementation, tests (22), live proof, surfaces (P3), docs and close tracked in `docs/dev/roadmap/APPENDIX-AEROVAULT-V4-ECC/`. "v3 + Error Correction = v4".
 
 See also: CHANGELOG (Unreleased), SECURITY.md (formats table), CLI-GUIDE (vault subcommand), ROADMAP.

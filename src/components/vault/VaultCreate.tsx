@@ -132,23 +132,23 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
                         })}
                     </div>
 
-                    {/* P2 ECC (Reed-Solomon) toggle for experimental v3 vaults.
-                        Uses dedicated backend create_with_ecc (non-critical extension).
+                    {/* P2 Error Correction (Reed-Solomon) toggle for experimental v3 vaults.
+                        Uses dedicated backend create_with_error_correction (non-critical extension).
                         Enables scrub/repair actions and badge in the vault UI. */}
                     <div className="mt-2 flex items-center gap-2">
                         <input
                             type="checkbox"
                             id="ecc-enabled"
-                            checked={state.eccEnabled}
-                            onChange={e => state.setEccEnabled(e.target.checked)}
+                            checked={state.errorCorrectionEnabled}
+                            onChange={e => state.setErrorCorrectionEnabled(e.target.checked)}
                             className="accent-amber-600"
                         />
                         <label htmlFor="ecc-enabled" className="text-sm text-gray-500 dark:text-gray-400 cursor-pointer">
-                            Enable Reed-Solomon ECC (error-correction, Phase 1 stub)
+                            Enable Reed-Solomon Error Correction (error-correction, Phase 1 stub)
                             <span className="ml-1 text-[10px] px-1 py-0.5 bg-amber-500/20 text-amber-300 rounded">Beta</span>
                         </label>
                     </div>
-                    {state.eccEnabled && (
+                    {state.errorCorrectionEnabled && (
                         <div className="text-[11px] text-amber-600 dark:text-amber-400 pl-6">
                             Adds redundancy for bit-rot recovery on encrypted chunks. Non-critical (v3 readers can still open). Recompute on every seal.
                         </div>

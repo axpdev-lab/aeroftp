@@ -39,8 +39,8 @@ function buildReceiptText(r: VaultReport): string {
     lines.push(`files=${r.files} (packed=${r.packed_files}, packs=${r.packs}) chunks: logical=${r.logical_chunks} new=${r.new_physical_chunks} dedup=${r.dedup_hits}`);
     lines.push(`bytes: plaintext=${r.plaintext_bytes} compressed=${r.compressed_bytes} encrypted=${r.encrypted_bytes} ratio=${r.compression_ratio_pct.toFixed(1)}%`);
     lines.push(`elapsed: ${r.ms_total} ms`);
-    if (r.ecc_shards_generated != null || r.ecc_bytes_protected != null || r.ecc_overhead_pct != null) {
-        lines.push(`ecc: shards=${r.ecc_shards_generated ?? '-'} protected=${r.ecc_bytes_protected ?? '-'} overhead=${r.ecc_overhead_pct != null ? r.ecc_overhead_pct.toFixed(1)+'%' : '-'}`);
+    if (r.error_correction_shards_generated != null || r.error_correction_bytes_protected != null || r.error_correction_overhead_pct != null) {
+        lines.push(`ecc: shards=${r.error_correction_shards_generated ?? '-'} protected=${r.error_correction_bytes_protected ?? '-'} overhead=${r.error_correction_overhead_pct != null ? r.error_correction_overhead_pct.toFixed(1)+'%' : '-'}`);
     }
     lines.push('steps:');
     r.steps.forEach(s => lines.push(`  ${s}`));
@@ -123,15 +123,15 @@ export function VaultReceipt({ report, t, onClose }: VaultReceiptProps): React.R
                         <Metric label={t('vault.receipt.plaintext')} value={fmtBytes(report.plaintext_bytes)} />
                         <Metric label={t('vault.receipt.encrypted')} value={fmtBytes(report.encrypted_bytes)} />
                         <Metric label={t('vault.receipt.ratio')} value={report.compressed_bytes > 0 ? `${report.compression_ratio_pct.toFixed(1)}%` : '-'} />
-                        {/* P3-03: ECC fields (only when present for ECC-enabled v3+ vaults) */}
-                        {report.ecc_shards_generated != null && (
-                            <Metric label={t('vault.receipt.eccShards') || 'ECC shards'} value={String(report.ecc_shards_generated)} />
+                        {/* P3-03: Error Correction fields (only when present for Error Correction-enabled v3+ vaults) */}
+                        {report.error_correction_shards_generated != null && (
+                            <Metric label={t('vault.receipt.errorCorrectionShards') || 'Error Correction shards'} value={String(report.error_correction_shards_generated)} />
                         )}
-                        {report.ecc_bytes_protected != null && (
-                            <Metric label={t('vault.receipt.eccProtected') || 'ECC protected'} value={fmtBytes(report.ecc_bytes_protected)} />
+                        {report.error_correction_bytes_protected != null && (
+                            <Metric label={t('vault.receipt.errorCorrectionProtected') || 'Error Correction protected'} value={fmtBytes(report.error_correction_bytes_protected)} />
                         )}
-                        {report.ecc_overhead_pct != null && (
-                            <Metric label={t('vault.receipt.eccOverhead') || 'ECC overhead'} value={`${report.ecc_overhead_pct.toFixed(1)}%`} />
+                        {report.error_correction_overhead_pct != null && (
+                            <Metric label={t('vault.receipt.errorCorrectionOverhead') || 'Error Correction overhead'} value={`${report.error_correction_overhead_pct.toFixed(1)}%`} />
                         )}
                     </div>
 

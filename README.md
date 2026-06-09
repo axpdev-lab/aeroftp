@@ -429,13 +429,13 @@ A draft container format that ships alongside v2 and is opt-in via the Beta tier
 | **Compression** | zstd, per chunk | Three profiles: fast (`-3`), balanced (`-9`), archive (`-19`) |
 | **Content encryption** | AES-256-GCM-SIV (RFC 8452) | 96-bit random nonce per chunk + per-chunk AAD bound to block index and chunk id |
 | **Chunk addressing** | BLAKE3 keyed, 128-bit | Content-addressed chunk id, also the dedup key |
-| **Cipher integrity** | BLAKE3-256 | Pre-decryption check on cipher blocks; load-bearing for the future v4 ECC layer |
+| **Cipher integrity** | BLAKE3-256 | Pre-decryption check on cipher blocks; load-bearing for the future v4 Error Correction layer |
 | **Key derivation** | Argon2id | 128 MiB / t=4 / p=4, identical to v2; derives two independent KEKs via HKDF (encryption + MAC) |
 | **Key wrapping** | AES-256-KW (RFC 3394) | Two independent random 256-bit working keys, one per KEK |
 | **Header integrity** | HMAC-SHA512 | 1024-byte header, MAC verified before any key unwrap |
-| **Extension area** | Reserved | Extension directory + payload region for the future v4 ECC layer; v3 readers skip non-critical unknown entries, reject critical unknown entries |
+| **Extension area** | Reserved | Extension directory + payload region for the future v4 Error Correction layer; v3 readers skip non-critical unknown entries, reject critical unknown entries |
 
-The wire layout, the wrapper IDs, and the forward-compat contract (`v3 + ECC = v4`, the v3 vault is byte-equivalent to "v4 with ECC turned off") are pinned in the [AeroVault v3 Specification (draft)](docs/AEROVAULT-V3-SPEC.md). Tracked in [issue #162](https://github.com/axpdev-lab/aeroftp/issues/162) section 4 / T-AEROVAULT-ECC. The v4 ECC layer (Reed-Solomon / Parchive blocks for single-bit-rot recovery on the encrypted chunks) is on the roadmap but not in v3.8.0.
+The wire layout, the wrapper IDs, and the forward-compat contract (`v3 + Error Correction = v4`, the v3 vault is byte-equivalent to "v4 with Error Correction turned off") are pinned in the [AeroVault v3 Specification (draft)](docs/AEROVAULT-V3-SPEC.md). Tracked in [issue #162](https://github.com/axpdev-lab/aeroftp/issues/162) section 4 / T-AEROVAULT-ECC. The v4 Error Correction layer (Reed-Solomon / Parchive blocks for single-bit-rot recovery on the encrypted chunks) is on the roadmap but not in v3.8.0.
 
 **Additional encryption features**:
 - **Overlay session model (v3.7.0)**: open an `.aerovault` once, then route every list/upload/download/rename through the encrypted overlay transparently. The provider sees only opaque vault chunks; the UI shows plaintext entries and folders. A status badge in the header marks when the overlay is active.

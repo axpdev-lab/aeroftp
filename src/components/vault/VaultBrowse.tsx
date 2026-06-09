@@ -68,24 +68,24 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                     </button>
                 )}
 
-                {/* P2 ECC actions: only for experimental / hasEcc vaults. Use the shared engine commands. */}
-                {(state.vaultSecurity?.level === 'experimental' || state.hasEcc) && (
+                {/* P2 Error Correction actions: only for experimental / hasErrorCorrection vaults. Use the shared engine commands. */}
+                {(state.vaultSecurity?.level === 'experimental' || state.hasErrorCorrection) && (
                     <>
                         <button
                             onClick={state.handleScrub}
                             disabled={state.loading}
                             className="flex items-center gap-1 px-2 py-1 text-xs bg-amber-700 hover:bg-amber-600 text-white rounded"
-                            title={t('vault.scrubEcc') + ' (verify cipher hashes)'}
+                            title={t('vault.scrubErrorCorrection') + ' (verify cipher hashes)'}
                         >
-                            <Shield size={14} /> {t('vault.scrubEcc')}
+                            <Shield size={14} /> {t('vault.scrubErrorCorrection')}
                         </button>
                         <button
                             onClick={() => { state.setRepairDryRun(true); state.setShowRepairDialog(true); }}
                             disabled={state.loading}
                             className="flex items-center gap-1 px-2 py-1 text-xs bg-rose-700 hover:bg-rose-600 text-white rounded"
-                            title={t('vault.repairEcc') + ' (dry-run preview available)'}
+                            title={t('vault.repairErrorCorrection') + ' (dry-run preview available)'}
                         >
-                            <Wrench size={14} /> {t('vault.repairEcc')}
+                            <Wrench size={14} /> {t('vault.repairErrorCorrection')}
                         </button>
                     </>
                 )}
@@ -108,9 +108,9 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                                 <Zap size={10} /> {t('vault.cascade')}
                             </span>
                         )}
-                        {/* P2: ECC badge (theme-aware, appears for hasEcc or enabled at create) */}
-                        {(state.hasEcc || state.eccEnabled) && (
-                            <span className="ml-1 px-1 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30">ECC</span>
+                        {/* P2: Error Correction badge (theme-aware, appears for hasErrorCorrection or enabled at create) */}
+                        {(state.hasErrorCorrection || state.errorCorrectionEnabled) && (
+                            <span className="ml-1 px-1 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30">Error Correction</span>
                         )}
                     </div>
                 )}
@@ -325,7 +325,7 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                     >
                         <div {...scrubDrag.dragHandleProps} className="px-4 py-2.5 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between cursor-move bg-gray-50 dark:bg-gray-800/60">
                             <div className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
-                                <Shield size={16} className="text-amber-500" /> {t('vault.eccScrubResult')}
+                                <Shield size={16} className="text-amber-500" /> {t('vault.errorCorrectionScrubResult')}
                             </div>
                             <button onClick={() => state.setShowScrubDialog(false)} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700">✕</button>
                         </div>
@@ -364,7 +364,7 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                     >
                         <div {...repairDrag.dragHandleProps} className="px-4 py-2.5 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between cursor-move bg-gray-50 dark:bg-gray-800/60">
                             <div className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
-                                <Wrench size={16} className="text-rose-500" /> {t('vault.eccRepair')}
+                                <Wrench size={16} className="text-rose-500" /> {t('vault.errorCorrectionRepair')}
                             </div>
                             <button onClick={() => state.setShowRepairDialog(false)} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700">✕</button>
                         </div>

@@ -1,6 +1,6 @@
-# Dependency Evaluation: reed-solomon-erasure (AeroVault v4 ECC) — 2026-06-08
+# Dependency Evaluation: reed-solomon-erasure (AeroVault v4 Error Correction): 2026-06-08
 
-> Scope: the `reed-solomon-erasure` crate added for the AeroVault v4 ECC
+> Scope: the `reed-solomon-erasure` crate added for the AeroVault v4 Error Correction
 > (error-correction) wrapper on branch `feat/aerovault-v4-ecc`.
 > Purpose: document why the dependency was chosen, its audit posture, and the
 > one transitive advisory it introduces (RUSTSEC-2024-0384, `instant`).
@@ -17,11 +17,11 @@
 | Version | `6.0.0` (latest stable 6.x) |
 | Manifest | `src-tauri/Cargo.toml` |
 | Checksum | `7263373d500d4d4f505d43a2a662d475a894aa94503a1ee28e9188b5f3960d4f` |
-| Used by | `src-tauri/src/aerovault_v3.rs` (`compute_ecc_shards`, `reconstruct_from_ecc`) |
-| Reachable from | ECC-enabled vaults only (`create --ecc`); inert for v1/v2 and non-ECC v3 |
+| Used by | `src-tauri/src/aerovault_v3.rs` (`compute_error_correction_shards`, `reconstruct_from_ecc`) |
+| Reachable from | Error-Correction vaults only (`create --error-correction`); inert for v1/v2 and v3 without Error Correction |
 
-The ECC wrapper is the fourth wrapper in the AeroVault pipeline
-(`compression -> chunking -> crypt -> ECC`), per discussions #272/#276. It
+The Error Correction wrapper is the fourth wrapper in the AeroVault pipeline
+(`compression -> chunking -> crypt -> Error Correction`), per discussions #272/#276. It
 protects the concatenated live-block stream of an encrypted vault with a fixed
 Reed-Solomon 10+2 grid (~20% overhead). `reed-solomon-erasure` was selected
 because:
@@ -29,7 +29,7 @@ because:
 - Pure Rust, no C/FFI surface (consistent with the project's audit history of
   removing FFI/RSA exposure).
 - Mature GF(2^8) implementation with explicit data/parity shard configuration
-  and erasure-only reconstruction, which is exactly the model the ECC layer
+  and erasure-only reconstruction, which is exactly the model the Error Correction layer
   needs (checksum-driven erasure localization over already-encrypted blocks).
 - Low direct footprint; widely used in archival/backup tooling.
 
@@ -51,7 +51,7 @@ dropped `instant`, but the `^0.11.2` requirement cannot resolve to 0.12, so the
 advisory is **not locally fixable** without forking the crate (verified:
 `cargo update -p parking_lot --precise 0.12.4` fails the version requirement).
 
-### RUSTSEC-2024-0384 (`instant` unmaintained) — accepted, ignored with rationale
+### RUSTSEC-2024-0384 (`instant` unmaintained): accepted, ignored with rationale
 
 - `instant` is a monotonic-clock shim, superseded by `web-time`. The only code
   path with any concern is wasm-specific.
@@ -60,7 +60,7 @@ advisory is **not locally fixable** without forking the crate (verified:
   never built.
 - parking_lot uses it only for internal lock-elapsed bookkeeping, reached
   exclusively from `reed-solomon-erasure`'s in-memory parity compute/reconstruct
-  on ECC-enabled vaults. No untrusted input, no parsing, and no cryptographic
+  on Error-Correction vaults. No untrusted input, no parsing, and no cryptographic
   decision flows through `instant`.
 - Decision: ignore `RUSTSEC-2024-0384` in `src-tauri/.cargo/audit.toml` with the
   justification above, consistent with the project's policy of ignoring
@@ -72,10 +72,10 @@ at the time of writing.
 
 ## 3. Exposure analysis
 
-- ECC code runs only on vaults created with `--ecc`. A user who never enables
-  ECC never executes any `reed-solomon-erasure` code.
+- Error Correction code runs only on vaults created with `--error-correction`. A user who never enables
+  Error Correction never executes any `reed-solomon-erasure` code.
 - Inputs to the RS layer are the vault's own already-encrypted blocks and the
-  ECC payload, both produced locally; there is no network or attacker-controlled
+  Error Correction payload, both produced locally; there is no network or attacker-controlled
   input to the parity math.
 - Repair correctness is gated end-to-end by re-verifying every reconstructed
   block against its authenticated `cipher_hash` (all-or-nothing persist), so a
@@ -84,7 +84,7 @@ at the time of writing.
 ## 4. Exit path / future work
 
 - Preferred: migrate to a maintained RS crate (`reed-solomon-simd` or
-  `reed-solomon-novelpoly`) once the ECC API is stable, which would also drop the
+  `reed-solomon-novelpoly`) once the Error Correction API is stable, which would also drop the
   old parking_lot/`instant` chain.
 - Or: adopt a newer `reed-solomon-erasure` release if upstream bumps
   `parking_lot` to >= 0.12.
@@ -103,5 +103,5 @@ at the time of writing.
 > Note: this evaluation also covers the unrelated `RUSTSEC-2026-0173`
 > (`proc-macro-error2`, build-time, sigstore/oci path) that was freshly
 > published on 2026-06-07 and surfaced in the same `cargo audit` run; it is
-> ignored with its own rationale in `audit.toml` and is not part of the ECC
+> ignored with its own rationale in `audit.toml` and is not part of the Error Correction
 > dependency set.

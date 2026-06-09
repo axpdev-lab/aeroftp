@@ -2558,11 +2558,11 @@ enum Commands {
     /// AeroVault encrypted container operations (.aerovault), all formats
     ///
     /// Calls the exact backend the GUI invokes through Tauri commands (shared lib).
-    /// v3 (default) is the wrapper-stack format (compression→chunk→crypt→ECC-last);
+    /// v3 (default) is the wrapper-stack format (compression→chunk→crypt→Error Correction last);
     /// v2 is the AES-256-GCM-SIV format; v1 is the legacy WinZip-AES container.
     /// For an existing file the version is auto-detected from its header, so
     /// `info`/`add`/`extract` work without `--vault-version`.
-    /// ECC (Reed-Solomon 10+2, v2 fixed-grid payload) is opt-in via `create --ecc`
+    /// Error Correction (Reed-Solomon 10+2, v2 fixed-grid payload) is opt-in via `create --error-correction`
     /// (non-critical extension: pure v3 readers still open+extract). Real  ~20%
     /// overhead (proven on incompressible data), per-shard BLAKE3 cksums for
     /// localized damage, all-or-nothing repair gate (re-verify every cipher_hash;
@@ -2670,7 +2670,7 @@ enum UsersCommands {
 #[derive(Subcommand)]
 enum VaultCommands {
     /// Create a new empty AeroVault container (v3 default; v1/v2 selectable).
-    /// Use --ecc for Reed-Solomon ECC (error-correction wrapper, last in 4-wrappers
+    /// Use --error-correction for Reed-Solomon Error Correction (error-correction wrapper, last in 4-wrappers
     /// pipeline per #276). Non-critical extension: v3 readers still work.
     /// v2 payload (P2-09): fixed grid, ~20% real overhead independent of chunking,
     /// per-shard cksums + all-or-nothing repair gate.
@@ -2689,11 +2689,12 @@ enum VaultCommands {
         /// v2 only: enable the ChaCha20-Poly1305 cascade (paranoid) mode
         #[arg(long)]
         cascade: bool,
-        /// Enable ECC (Reed-Solomon 10+2). v3+ only. Emits non-critical
-        /// "ecc.reed-solomon" extension; real shards + scrub/repair on seal.
+        /// Enable Error Correction (Reed-Solomon 10+2). v3+ only. Emits non-critical
+        /// "error-correction.reed-solomon" extension; real shards + scrub/repair on seal.
         /// See AEROVAULT-V4-ECC appendix for format, overhead proof, safety.
-        #[arg(long)]
-        ecc: bool,
+        /// Confirmed flag spelling with Ehud Kirsh (#276): --error-correction + --ec.
+        #[arg(long, visible_alias = "ec")]
+        error_correction: bool,
     },
     /// Add files to a vault. v3 batches sub-threshold files into shared
     /// packs before chunking; v2/v1 add each file as its own entry.
@@ -2737,7 +2738,7 @@ enum VaultCommands {
         #[arg(long = "vault-version", short = 'V', default_value = "auto")]
         vault_version: String,
     },
-    /// Scrub an ECC-enabled vault for damage (verifies every live block's cipher_hash).
+    /// Scrub an Error Correction enabled vault for damage (verifies every live block's cipher_hash).
     /// Returns {damaged: [...], count: N, checked: M} (M = total chunks walked).
     /// Text mode prints "No damage detected (K chunks checked)" or the list.
     /// Safe, read-only. Use --json for agents. See also `repair`.
@@ -2747,12 +2748,12 @@ enum VaultCommands {
         #[arg(long, short = 'p')]
         password: Option<String>,
     },
-    /// Repair a damaged ECC-enabled vault using stored Reed-Solomon parity (v2 grid).
+    /// Repair a damaged Error Correction enabled vault using stored Reed-Solomon parity (v2 grid).
     /// Per-shard cksums localize erasures (incl. bad parity shards); RS reconstructs;
     /// every reconstructed block is re-verified against its manifest cipher_hash.
     /// Persist ONLY if ALL verify (all-or-nothing); else vault byte-for-byte untouched.
     /// Returns {repaired, damaged, dry_run}. Honest text: "repaired X of Y", "vault left untouched", etc.
-    /// --dry-run: preview only. Requires ECC (create --ecc).
+    /// --dry-run: preview only. Requires Error Correction (create --error-correction).
     Repair {
         /// Path to the .aerovault file
         path: String,
@@ -42675,7 +42676,7 @@ async fn main() {
                     profile,
                     vault_version,
                     cascade,
-                    ecc,
+                    error_correction,
                 } => 'create: {
                     let pw = resolve_pw(password);
                     // v3 rejects < 8 internally; v1/v2 had no minimum, so a
@@ -42692,11 +42693,11 @@ async fn main() {
                     }
                     // "auto" has no file to inspect on create: default v3.
                     let ver = resolve_ver(vault_version);
-                    if *ecc && ver != "v3" {
-                        // P1-07 stretch: --ecc only makes sense for v3+ (stub in Phase 1).
+                    if *error_correction && ver != "v3" {
+                        // P1-07 stretch: --error-correction only makes sense for v3+ (stub in Phase 1).
                         // Warn for now; could be hard error with --strict later.
                         eprintln!(
-                            "Warning: --ecc is only supported for v3 vaults (ignored for --vault-version {})",
+                            "Warning: --error-correction is only supported for v3 vaults (ignored for --vault-version {})",
                             ver
                         );
                     }
@@ -42706,10 +42707,10 @@ async fn main() {
                             aerovault_v2::vault_v2_create(path.clone(), pw, None, *cascade).await
                         }
                         _ => {
-                            if *ecc {
-                                // P1-07: --ecc flag wired through to create_with_ecc.
+                            if *error_correction {
+                                // P1-07: --error-correction flag wired through to create_with_error_correction.
                                 // Full RS in Phase 2 / v4 track per T-AEROVAULT-ECC (#272).
-                                aerovault_v3::vault_v3_create_with_ecc(
+                                aerovault_v3::vault_v3_create_with_error_correction(
                                     path.clone(),
                                     pw,
                                     Some(profile.clone()),
@@ -42873,19 +42874,20 @@ async fn main() {
                             let open_res = aerovault_v3::vault_v3_open(path.clone(), pw).await;
                             match open_res {
                                 Ok(info) => {
-                                    // Micro-step: surface ECC status using the new lightweight helper.
-                                    // This is P1-05 integration: has_ecc is password-less (header + ext dir only).
-                                    let has_ecc = aerovault_v3::vault_v3_has_ecc(path.clone())
-                                        .await
-                                        .unwrap_or(false);
+                                    // Micro-step: surface Error Correction status using the new lightweight helper.
+                                    // This is P1-05 integration: has_error_correction is password-less (header + ext dir only).
+                                    let has_error_correction =
+                                        aerovault_v3::vault_v3_has_error_correction(path.clone())
+                                            .await
+                                            .unwrap_or(false);
                                     let base_val =
                                         serde_json::to_value(&info).map_err(|e| e.to_string());
                                     match base_val {
                                         Ok(mut v) => {
                                             if let Some(obj) = v.as_object_mut() {
                                                 obj.insert(
-                                                    "has_ecc".to_string(),
-                                                    serde_json::json!(has_ecc),
+                                                    "has_error_correction".to_string(),
+                                                    serde_json::json!(has_error_correction),
                                                 );
                                             }
                                             Ok(v)
@@ -43011,7 +43013,11 @@ async fn main() {
                         detect_vault_version(path).await
                     };
                     if ver != "v3" {
-                        print_error(format, "Scrub is only supported for v3+ ECC vaults", 7);
+                        print_error(
+                            format,
+                            "Scrub is only supported for v3+ Error Correction vaults",
+                            7,
+                        );
                         7
                     } else {
                         match aerovault_v3::vault_v3_scrub(path.clone(), pw).await {
@@ -43074,7 +43080,11 @@ async fn main() {
                         detect_vault_version(path).await
                     };
                     if ver != "v3" {
-                        print_error(format, "Repair is only supported for v3+ ECC vaults", 7);
+                        print_error(
+                            format,
+                            "Repair is only supported for v3+ Error Correction vaults",
+                            7,
+                        );
                         7
                     } else {
                         match aerovault_v3::vault_v3_repair(path.clone(), pw, *dry_run).await {
@@ -43102,7 +43112,7 @@ async fn main() {
                                         } else if damaged == 0 {
                                             println!("No damage detected; nothing to repair");
                                         } else if repaired == 0 {
-                                            println!("Could not repair {} damaged chunk(s): insufficient or invalid ECC (vault left untouched)", damaged);
+                                            println!("Could not repair {} damaged chunk(s): insufficient or invalid Error Correction (vault left untouched)", damaged);
                                         } else if repaired < damaged {
                                             println!("Repaired {} of {} damaged chunk(s); {} still unrecoverable", repaired, damaged, damaged - repaired);
                                         } else {
