@@ -6076,6 +6076,47 @@ mod tests {
             .is_none());
     }
 
+    #[test]
+    fn oauth_token_refresh_updates_partition_and_reader_resolves_with_vault_fallback() {
+        // R-MUV-4 coverage (Dropbox-style OAuth refresh cutover): an
+        // `oauth_<provider>_<id>` token is mirrored into the active user's
+        // partition via the typed write path, a refresh overwrites it in place
+        // (upsert), and the reader resolves the refreshed value from the
+        // partition. A token that was never mirrored still resolves via the
+        // legacy vault fallback. Mirrors the live R-MUV-4 GUI test (which needs an
+        // interactive Dropbox OAuth refresh) at the engine level.
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let user = create_passphrase_less_user(&mut conn, &root, "oauthuser", None, None)
+            .expect("create user");
+
+        // Initial token, then a refresh that rewrites it in place.
+        set_user_credential_for(&conn, &root, user.id, "oauth_dropbox_42", "oauth", "token-v1")
+            .expect("seed oauth");
+        set_user_credential_for(&conn, &root, user.id, "oauth_dropbox_42", "oauth", "token-v2")
+            .expect("refresh oauth");
+
+        let (_keys, read) = fake_vault(&[("oauth_dropbox_99", "vault-token")]);
+
+        // Refreshed value resolves from the partition (not the older vault copy).
+        assert_eq!(
+            read_credential_with_fallback_inner(&conn, &root, user.id, "oauth_dropbox_42", &read)
+                .expect("read refreshed")
+                .expect("present")
+                .as_str(),
+            "token-v2"
+        );
+        // A never-mirrored OAuth token resolves via the vault fallback.
+        assert_eq!(
+            read_credential_with_fallback_inner(&conn, &root, user.id, "oauth_dropbox_99", &read)
+                .expect("read vault-only oauth")
+                .expect("present")
+                .as_str(),
+            "vault-token"
+        );
+    }
+
     // --- MUV-3: server_* reader/writer cutover ----------------------------
 
     #[test]
