@@ -3,6 +3,7 @@ use crate::cli_tui::{
     panes::{
         browser::BrowserPaneState, profiles::ProfilesPaneState, transfers::TransfersPaneState,
     },
+    session::TuiSessionState,
     worker::WorkerEvent,
 };
 
@@ -54,6 +55,7 @@ pub struct AppState {
     pub browser: BrowserPaneState,
     pub profiles: ProfilesPaneState,
     pub transfers: TransfersPaneState,
+    pub session: TuiSessionState,
     pub worker: WorkerEvent,
     intent: Option<TuiIntent>,
 }
@@ -74,6 +76,7 @@ impl AppState {
             browser: BrowserPaneState::default(),
             profiles: ProfilesPaneState::default(),
             transfers: TransfersPaneState::default(),
+            session: TuiSessionState::default(),
             worker: WorkerEvent::Idle,
             intent: None,
         };
@@ -102,11 +105,12 @@ impl AppState {
 
     pub fn pane_summary(&self) -> String {
         format!(
-            "focus:{} browser:{} profiles:{} transfers:{} worker:{}",
+            "focus:{} browser:{} profiles:{} transfers:{} session:{} worker:{}",
             self.focus.label(),
             self.browser.selected,
             self.profiles.selected,
             self.transfers.selected,
+            self.session.label(),
             self.worker.label()
         )
     }
@@ -267,6 +271,18 @@ impl AppState {
         self.browser.selected = self.selected_user;
         self.profiles.selected = self.selected_profile;
         self.transfers.selected = self.selected_action;
+        self.session = self
+            .selected_user()
+            .and_then(|user| {
+                if user.is_locked {
+                    None
+                } else {
+                    user.profiles
+                        .get(self.selected_profile)
+                        .map(|profile| TuiSessionState::planned_from_selection(user, profile))
+                }
+            })
+            .unwrap_or_default();
     }
 }
 
@@ -385,6 +401,7 @@ impl Default for AppState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cli_tui::session::TuiSessionPhase;
 
     fn sample_context() -> TuiContext {
         TuiContext {
@@ -499,5 +516,60 @@ mod tests {
             assert_eq!(app.take_intent(), None);
             assert!(app.status.contains("is planned for"));
         }
+    }
+
+    #[test]
+    fn session_preview_tracks_selected_profile_without_connecting() {
+        let mut context = sample_context();
+        context.users[0].profiles.push(TuiProfile {
+            selector: "2".to_string(),
+            name: "Archive".to_string(),
+            protocol: "s3".to_string(),
+            host: "s3.example.com".to_string(),
+            initial_path: "bucket/backups/".to_string(),
+            favorite: false,
+        });
+        let mut app = AppState::new(context);
+
+        app.focus = TuiFocus::Profiles;
+        app.apply_action(TuiAction::MoveDown);
+
+        assert_eq!(app.session.cwd, "/bucket/backups");
+        assert_eq!(
+            app.session.identity.as_ref().map(|identity| (
+                identity.user_name.as_str(),
+                identity.profile_selector.as_str(),
+                identity.profile_name.as_str(),
+                identity.protocol.as_str(),
+            )),
+            Some(("default", "2", "Archive", "s3"))
+        );
+        assert_eq!(app.session.phase, TuiSessionPhase::Disconnected);
+    }
+
+    #[test]
+    fn locked_user_has_no_planned_session() {
+        let context = TuiContext {
+            users: vec![TuiUser {
+                id: 1,
+                name: "locked".to_string(),
+                is_active: false,
+                is_locked: true,
+                is_admin: false,
+                profile_count: 1,
+                profiles: vec![TuiProfile {
+                    selector: "1".to_string(),
+                    name: "Hidden".to_string(),
+                    protocol: "sftp".to_string(),
+                    host: "example.com".to_string(),
+                    initial_path: "/".to_string(),
+                    favorite: false,
+                }],
+            }],
+            initial_user: 0,
+        };
+        let app = AppState::new(context);
+
+        assert_eq!(app.session, TuiSessionState::default());
     }
 }

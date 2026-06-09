@@ -23,6 +23,7 @@ use self::{
 pub mod app;
 pub mod event;
 pub mod panes;
+pub mod session;
 pub mod theme;
 pub mod worker;
 
