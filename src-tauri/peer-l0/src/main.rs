@@ -17,7 +17,7 @@ use iroh::NodeId;
 use iroh_blobs::Hash;
 use std::io::{self, Write};
 use std::path::PathBuf;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use tracing::info;
 
 use aeroftp_peer_l0::{
@@ -47,6 +47,13 @@ struct Cli {
     /// once MU-VAULT lands.
     #[arg(long)]
     secret: Option<String>,
+
+    /// Comma-separated list of relay URLs to use with RelayMode::Custom.
+    /// If omitted or empty, the research default (Staging) is used.
+    /// Example: --custom-relay-urls "https://my-relay.example.com:443,https://backup:443"
+    /// This allows easy testing with a self-hosted relay without code changes.
+    #[arg(long, value_delimiter = ',')]
+    custom_relay_urls: Option<Vec<String>>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -97,9 +104,15 @@ async fn main() -> Result<()> {
     // Support env var for secret — extremely convenient when scripting many cross-network measurements.
     let effective_secret = cli.secret.or_else(|| std::env::var("AEROFTP_PEER_SECRET").ok());
 
+    let cfg = aeroftp_peer_l0::endpoint::PeerEndpointConfig {
+        bind_addr: None,
+        secret_key_path: None,
+        custom_relay_urls: cli.custom_relay_urls,
+    };
+
     match cli.mode {
         Mode::Listen { port, count } => {
-            let samples = run_listen_multi(port, cli.note.clone(), effective_secret, count).await;
+            let samples = run_listen_multi(port, cli.note.clone(), effective_secret, count, cfg.clone()).await;
 
             // For campaign use: if --report is given with listen --count, write all samples as JSON array.
             if let Some(path) = cli.report {
@@ -116,7 +129,7 @@ async fn main() -> Result<()> {
             return Ok(());
         }
         Mode::Dial { node, size } => {
-            let sample = run_dial(&node, size, cli.note.clone(), effective_secret).await;
+            let sample = run_dial(&node, size, cli.note.clone(), effective_secret, cfg).await;
 
             // Always print a one-line summary (easy for log collection).
             if sample.success {
@@ -414,17 +427,12 @@ async fn run_listen_multi(
     note: Option<String>,
     secret_opt: Option<String>,
     count: u32,
+    mut cfg: aeroftp_peer_l0::endpoint::PeerEndpointConfig,
 ) -> Vec<ConnectivitySample> {
-    let ep = match aeroftp_peer_l0::endpoint::PeerEndpoint::new(
-        aeroftp_peer_l0::endpoint::PeerEndpointConfig {
-            bind_addr: if port == 0 {
-                None
-            } else {
-                Some(([0, 0, 0, 0], port).into())
-            },
-            secret_key_path: None,
-        },
-    )
+    if port != 0 {
+        cfg.bind_addr = Some(([0, 0, 0, 0], port).into());
+    }
+    let ep = match aeroftp_peer_l0::endpoint::PeerEndpoint::new(cfg)
     .await
     {
         Ok(e) => e,
@@ -496,7 +504,7 @@ async fn run_listen_multi(
     samples
 }
 
-async fn run_dial(node_str: &str, blob_size: usize, note: Option<String>, secret_opt: Option<String>) -> ConnectivitySample {
+async fn run_dial(node_str: &str, blob_size: usize, note: Option<String>, secret_opt: Option<String>, cfg: aeroftp_peer_l0::endpoint::PeerEndpointConfig) -> ConnectivitySample {
     let total_start = Instant::now();
 
     let remote: NodeId = match node_str.parse() {
@@ -517,9 +525,7 @@ async fn run_dial(node_str: &str, blob_size: usize, note: Option<String>, secret
         }
     };
 
-    let ep = match aeroftp_peer_l0::endpoint::PeerEndpoint::new(
-        aeroftp_peer_l0::endpoint::PeerEndpointConfig::default(),
-    )
+    let ep = match aeroftp_peer_l0::endpoint::PeerEndpoint::new(cfg)
     .await
     {
         Ok(e) => e,
@@ -575,15 +581,17 @@ async fn run_dial(node_str: &str, blob_size: usize, note: Option<String>, secret
     let xfer_duration = xfer_start.elapsed().as_millis() as u64;
 
     println!(
-        "Encrypted blob sent ({} bytes plaintext, {} bytes ciphertext, hash {}).",
+        "Encrypted blob sent and acknowledged by receiver ({} bytes plaintext, {} bytes ciphertext, hash {}).",
         data.len(),
         ciphertext.len(),
         hash
     );
-    println!("Waiting for close...");
 
-    tokio::time::sleep(Duration::from_millis(200)).await;
-    let _ = conn.close(0u32.into(), b"l0-sent");
+    // send_encrypted_blob only returns Ok after the receiver ACKed a successful
+    // decrypt + BLAKE3 verify, so the transfer is genuinely complete. Close cleanly;
+    // the old fixed 200ms-then-close truncated the stream over relayed paths and
+    // caused the L0 RUN#1 "connection lost" failures.
+    let _ = conn.close(0u32.into(), b"l0-ok");
 
     let total_duration = total_start.elapsed().as_millis() as u64;
 

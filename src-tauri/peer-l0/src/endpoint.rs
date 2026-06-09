@@ -12,6 +12,11 @@ use tracing::{debug, info};
 pub struct PeerEndpointConfig {
     pub bind_addr: Option<SocketAddr>,
     pub secret_key_path: Option<std::path::PathBuf>,
+    /// Optional list of relay URLs to use with `RelayMode::Custom`.
+    /// - If `None` or empty: use `RelayMode::Staging` (current research default that works).
+    /// - If non-empty: build a custom RelayMap and use `RelayMode::Custom`.
+    /// This makes it easy to switch to a self-hosted relay without code changes.
+    pub custom_relay_urls: Option<Vec<String>>,
 }
 
 pub struct PeerEndpoint {
@@ -21,7 +26,44 @@ pub struct PeerEndpoint {
 
 impl PeerEndpoint {
     pub async fn new(cfg: PeerEndpointConfig) -> Result<Self> {
-        let builder = Endpoint::builder();
+        // L0 fix (Linux 2): a bare `connect(NodeId, alpn)` relies ENTIRELY on a
+        // discovery service to resolve the peer's relay URL + direct addresses.
+        // The default `Endpoint::builder()` adds NO discovery, so dial-by-NodeID
+        // failed instantly ("iroh connect ... failed", 0 ms) even on localhost.
+        // `discovery_n0()` publishes our node record to (and resolves peers from)
+        // the n0 DNS/pkarr service — this is what makes dial-by-NodeID work across
+        // real hostile networks (home ↔ 5G) and on the loopback smoke test.
+        // DIAG (Linux 2): iroh 0.92's default PRODUCTION relays
+        // (use1-1/euc1-1/aps1-1.relay.n0.iroh.iroh.link) reject the TLS handshake
+        // from here ("tlsv1 alert internal error"); TCP/443 is open and DNS
+        // resolves, but the server aborts TLS — so peers get no relay home and the
+        // hole-punch rendezvous never happens, failing connect() even on loopback.
+        // The STAGING relays (staging-*.relay.iroh.network) still serve TLS fine,
+        // so force RelayMode::Staging to confirm the relay is the blocker.
+        // L0 fix (Linux 2): the accept side must advertise the ALPN it speaks, or
+        // every incoming connection is rejected during the handshake ("incoming
+        // failed to accept" on the listener, "connect ... failed" on the dialer).
+        // The builder never set `.alpns(...)`, so the server's protocol list was
+        // empty and ALPN negotiation always failed. Register PEER_L0_ALPN here.
+        //
+        // Relay strategy (work started 2026-06-09):
+        // We keep hard-coded `RelayMode::Staging` for the research spike because
+        // iroh 0.92 production relays reject the TLS handshake in the current
+        // rust 1.85 + dependency set. Staging relays work reliably.
+        //
+        // A `custom_relay_urls: Option<Vec<String>>` field was added to
+        // PeerEndpointConfig (and exposed via --custom-relay-urls on the CLI)
+        // so that a self-hosted relay or any working alternative can be selected
+        // by configuration only, without touching source code.
+        //
+        // Decision for the duration of the spike (documented below): continue
+        // using Staging for all data collection runs. Self-host/Custom is now
+        // opt-in for targeted experiments (e.g. to answer whether the relay
+        // choice affects hole-punch rates for the L0 gate).
+        let builder = Endpoint::builder()
+            .alpns(vec![crate::PEER_L0_ALPN.to_vec()])
+            .relay_mode(iroh::RelayMode::Staging)
+            .discovery_n0();
 
         // Older iroh 0.9x API on our rust-version uses bind_addr_v4 / bind_addr_v6
         // or simply lets the builder pick. For the spike we keep it simple.
