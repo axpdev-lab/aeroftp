@@ -142,6 +142,13 @@ enum Mode {
         /// initial (Stage 4 one-shot behavior).
         #[arg(long, default_value_t = 0)]
         watch_secs: u64,
+
+        /// Optional persistent store directory (FsStore + Docs::persistent). If present the replicate
+        /// side can resume a previously synced drive from local disk (even with publisher offline).
+        /// Requires --out. Stage 9 is one-shot reconstruct resume only (--watch-secs + --store rejected).
+        /// Mirrors the publish --store added in Stage 8.
+        #[arg(long)]
+        store: Option<String>,
     },
 }
 
@@ -228,14 +235,14 @@ async fn main() -> Result<()> {
             run_docs_publish(key, dir, republish_after, republish_count, store, docs_cfg, secret_bytes).await?;
             return Ok(());
         }
-        Mode::DocsReplicate { ticket, out, watch_secs } => {
+        Mode::DocsReplicate { ticket, out, watch_secs, store } => {
             let docs_cfg = aeroftp_peer_l0::endpoint::PeerEndpointConfig {
                 bind_addr: None,
                 secret_key_path: None,
                 custom_relay_urls: cli.custom_relay_urls.clone(),
             };
             let secret_bytes = effective_secret.as_deref().map(decode_secret).transpose()?;
-            run_docs_replicate(ticket, out, watch_secs, docs_cfg, secret_bytes).await?;
+            run_docs_replicate(ticket, out, watch_secs, store, docs_cfg, secret_bytes).await?;
             return Ok(());
         }
     }
@@ -1096,27 +1103,14 @@ async fn wait_entry_hash(doc: &iroh_docs::api::Doc, key: &[u8], attempts: u32) -
     None
 }
 
-/// Fetch a blob by hash, retrying while the content download completes (same race as the 9f5a5c18 fix).
-async fn fetch_blob_retry(
-    blobs: &iroh_blobs::store::mem::MemStore,
-    hash: iroh_blobs::Hash,
-    attempts: u32,
-) -> Option<bytes::Bytes> {
-    for _ in 0..attempts {
-        if let Ok(b) = blobs.blobs().get_bytes(hash).await {
-            return Some(b);
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(180)).await;
-    }
-    None
-}
-
 /// L1 Stage 5: docs-replicate with optional drive + live watch (--out + --watch-secs).
 /// If --out absent: single-entry compat.
 /// If --out present + no watch: Stage-4 one-shot (initial reconstruct + exit).
 /// If --watch-secs > 0: after initial, use import_and_subscribe + LiveEvent loop; on manifest version
 /// increase, re-converge (re-pull manifest + all files in it).
-async fn run_docs_replicate(ticket_str: String, out: Option<String>, watch_secs: u64, cfg: aeroftp_peer_l0::endpoint::PeerEndpointConfig, secret_bytes: Option<Vec<u8>>) -> Result<()> {
+/// Stage 9: --store <dir> makes replicate side persistent (FsStore + Docs::persistent + current-ns.txt +
+/// api.open for resume). --store requires --out; --store + --watch-secs rejected (one-shot resume only).
+async fn run_docs_replicate(ticket_str: String, out: Option<String>, watch_secs: u64, store: Option<String>, cfg: aeroftp_peer_l0::endpoint::PeerEndpointConfig, secret_bytes: Option<Vec<u8>>) -> Result<()> {
     use bytes::Bytes;
     use futures_lite::stream::StreamExt;
     use iroh::protocol::Router;
@@ -1131,22 +1125,125 @@ async fn run_docs_replicate(ticket_str: String, out: Option<String>, watch_secs:
     println!("=== AERO FTP PEER L1 DOCS REPLICATE (bare, no E2EE) ===");
     println!("Importing ticket and syncing...");
 
-    let blobs = iroh_blobs::store::mem::MemStore::default();
-    let gossip = Gossip::builder().spawn(endpoint.clone());
-    let docs = Docs::memory()
-        .spawn(endpoint.clone(), (*blobs).clone(), gossip.clone())
-        .await?;
+    // Stage 9: support --store for persistent replicate (resume from disk, publisher may be dead).
+    // When --store absent: EXACT original mem behavior and prints (no regression for single-entry,
+    // Stage-4 one-shot, or Stage-5 live watch). Guards + persistent setup modeled on publish --store.
+    if store.is_some() && out.is_none() {
+        anyhow::bail!("--store requires --out (persistent resume is drive mode)");
+    }
+    if store.is_some() && watch_secs > 0 {
+        anyhow::bail!("--store + --watch-secs not supported in Stage 9 (one-shot reconstruct resume only)");
+    }
 
-    let _router = Router::builder(endpoint.clone())
-        .accept(iroh_blobs::ALPN, BlobsProtocol::new(&blobs, endpoint.clone(), None))
-        .accept(iroh_gossip::ALPN, gossip)
-        .accept(iroh_docs::ALPN, docs.clone())
-        .spawn();
+    enum ContentStore {
+        Mem(iroh_blobs::store::mem::MemStore),
+        Fs(iroh_blobs::store::fs::FsStore),
+    }
+    impl ContentStore {
+        async fn get_bytes(&self, h: iroh_blobs::Hash) -> anyhow::Result<bytes::Bytes> {
+            match self {
+                ContentStore::Mem(m) => m.blobs().get_bytes(h).await.map_err(|e| anyhow::anyhow!("{e}")),
+                ContentStore::Fs(f) => f.blobs().get_bytes(h).await.map_err(|e| anyhow::anyhow!("{e}")),
+            }
+        }
+        async fn fetch_retry(&self, h: iroh_blobs::Hash, attempts: u32) -> Option<bytes::Bytes> {
+            for _ in 0..attempts {
+                if let Ok(b) = self.get_bytes(h).await {
+                    return Some(b);
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(180)).await;
+            }
+            None
+        }
+        /// Persist downloaded blobs durably before the process exits. Blobs synced over the network
+        /// (manifest + file ciphertexts, incl. the big content blob) land on disk asynchronously; the
+        /// redb bookkeeping that marks them complete is buffered. Without flushing it, a later reopen
+        /// (offline resume) sees the data files but get_bytes returns Io(NotFound). sync_db + wait_idle
+        /// (the latter documented for exactly this: "the store has written all data to disk") make the
+        /// persistent replicate store durable + queryable across a restart. No-op for the mem path.
+        async fn flush(&self) {
+            if let ContentStore::Fs(f) = self {
+                let _ = f.sync_db().await;
+                let _ = f.wait_idle().await;
+            }
+        }
+    }
 
-    // Stage 5: use import_and_subscribe to get the LiveEvent stream for live convergence.
-    let (doc, mut events) = docs.api().import_and_subscribe(ticket).await?;
+    let mut events = None;
+    let (doc, blobs, _router, _reopened) = if let Some(store_dir) = &store {
+        std::fs::create_dir_all(store_dir).context("create_dir_all for rep store")?;
+        let store_path = std::path::Path::new(store_dir);
+        // Docs::persistent spawn failed with ENOENT on "docs" subdir in initial test runs even though
+        // FsStore::load created its "blobs" sibling. Explicitly ensure the docs subdir (pub side
+        // apparently creates it internally or via different timing; replicate path needs it upfront).
+        std::fs::create_dir_all(store_path.join("docs")).context("ensure docs subdir for Docs::persistent")?;
+        let blobs_fs = iroh_blobs::store::fs::FsStore::load(store_path.join("blobs"))
+            .await
+            .context("FsStore::load (replicate --store)")?;
+        let gossip = Gossip::builder().spawn(endpoint.clone());
+        let docs_p = Docs::persistent(store_path.join("docs"))
+            .spawn(endpoint.clone(), (*blobs_fs).clone(), gossip.clone())
+            .await
+            .context("Docs::persistent().spawn for rep --store")?;
+        let router = Router::builder(endpoint.clone())
+            .accept(iroh_blobs::ALPN, BlobsProtocol::new(&blobs_fs, endpoint.clone(), None))
+            .accept(iroh_gossip::ALPN, gossip)
+            .accept(iroh_docs::ALPN, docs_p.clone())
+            .spawn();
+        let api = docs_p.api();
+        let _ = api.author_default().await.context("author_default on persistent rep docs")?;
+        let ns_file = store_path.join("current-ns.txt");
+        let mut reopened = false;
+        let the_doc = if ns_file.exists() {
+            if let Ok(ns_str) = std::fs::read_to_string(&ns_file) {
+                if let Ok(ns_id) = ns_str.trim().parse::<iroh_docs::NamespaceId>() {
+                    if let Ok(Some(d)) = api.open(ns_id).await {
+                        reopened = true;
+                        d
+                    } else {
+                        // Stale ns file or store inconsistency; fall back (will rewrite ns file below if import succeeds)
+                        let (d, evs) = api.import_and_subscribe(ticket.clone()).await.context("import_and_subscribe fallback (ns file present but open failed)")?;
+                        events = Some(evs);
+                        std::fs::write(&ns_file, d.id().to_string()).context("write ns_file fallback")?;
+                        d
+                    }
+                } else {
+                    anyhow::bail!("invalid NamespaceId in {}/current-ns.txt", store_dir);
+                }
+            } else {
+                anyhow::bail!("failed to read {}/current-ns.txt", store_dir);
+            }
+        } else {
+            let (d, evs) = api.import_and_subscribe(ticket.clone()).await.context("import_and_subscribe (first sync into persistent rep store)")?;
+            events = Some(evs);
+            std::fs::write(&ns_file, d.id().to_string()).context("write current-ns.txt after first import")?;
+            d
+        };
+        let ns = the_doc.id();
+        println!("PERSISTENT REPLICATE: store={} ns={} (reopened={})", store_dir, ns, reopened);
+        (the_doc, ContentStore::Fs(blobs_fs), router, reopened)
+    } else {
+        // === ORIGINAL IN-MEMORY PATH (unchanged for --store absent) ===
+        let blobs = iroh_blobs::store::mem::MemStore::default();
+        let gossip = Gossip::builder().spawn(endpoint.clone());
+        let docs = Docs::memory()
+            .spawn(endpoint.clone(), (*blobs).clone(), gossip.clone())
+            .await?;
+
+        let _router = Router::builder(endpoint.clone())
+            .accept(iroh_blobs::ALPN, BlobsProtocol::new(&blobs, endpoint.clone(), None))
+            .accept(iroh_gossip::ALPN, gossip)
+            .accept(iroh_docs::ALPN, docs.clone())
+            .spawn();
+
+        // Stage 5: use import_and_subscribe to get the LiveEvent stream for live convergence.
+        let (doc, evs) = docs.api().import_and_subscribe(ticket).await?;
+        let ns = doc.id();
+        println!("Imported + opened doc: NamespaceId={}", ns);
+        events = Some(evs);
+        (doc, ContentStore::Mem(blobs), _router, false)
+    };
     let ns = doc.id();
-    println!("Imported + opened doc: NamespaceId={}", ns);
 
     let secret = secret_bytes.context("docs-replicate requires --secret (16-byte pairing secret for L1 drive E2EE)")?;
     let drive_key = derive_drive_key(&secret, &ns.to_string());
@@ -1175,10 +1272,10 @@ async fn run_docs_replicate(ticket_str: String, out: Option<String>, watch_secs:
         let mut m_fetched: Option<Bytes> = None;
         let mut last_err: Option<anyhow::Error> = None;
         for attempt in 0..100 {
-            match blobs.blobs().get_bytes(manifest_hash).await {
+            match blobs.get_bytes(manifest_hash).await {
                 Ok(b) => { m_fetched = Some(b); break; }
                 Err(e) => {
-                    last_err = Some(e.into());
+                    last_err = Some(e);
                     if attempt % 10 == 0 {
                         println!("(waiting for manifest content blob, attempt {})", attempt);
                     }
@@ -1242,7 +1339,7 @@ async fn run_docs_replicate(ticket_str: String, out: Option<String>, watch_secs:
             // Fetch blob with retry (async download race)
             let mut f_fetched: Option<Bytes> = None;
             for attempt in 0..100 {
-                match blobs.blobs().get_bytes(ch).await {
+                match blobs.get_bytes(ch).await {
                     Ok(b) => { f_fetched = Some(b); break; }
                     Err(_) => {
                         if attempt % 10 == 0 {
@@ -1297,6 +1394,11 @@ async fn run_docs_replicate(ticket_str: String, out: Option<String>, watch_secs:
 
         println!("DRIVE REPLICATED: {}/{} files, all plaintext BLAKE3 verified, total_bytes={}", ok, k, total_bytes);
 
+        // Stage 9: with --store, flush the downloaded blobs to disk so a later reopen (offline resume)
+        // can serve them. No-op for the in-memory path. (watch + --store is rejected, so this is the
+        // one-shot persistent path; flushing here is correct before we fall through / return.)
+        blobs.flush().await;
+
         // --- LIVE CONVERGENCE (Stage 6 differential + deletions) ---
         if watch_secs > 0 {
             use std::time::Instant;
@@ -1304,6 +1406,9 @@ async fn run_docs_replicate(ticket_str: String, out: Option<String>, watch_secs:
             let deadline = Instant::now() + std::time::Duration::from_secs(watch_secs);
             println!("(watching {}s for live updates...)", watch_secs);
 
+            // events is only Some for the !--store path (we bailed on --store + watch_secs).
+            // This keeps the original live watch behavior byte-identical when --store is absent.
+            let mut events = events.context("live watch only supported without --store in Stage 9 (one-shot resume path)")?;
             loop {
                 let rem = deadline.saturating_duration_since(Instant::now());
                 if rem.is_zero() { break; }
@@ -1325,7 +1430,7 @@ async fn run_docs_replicate(ticket_str: String, out: Option<String>, watch_secs:
                                 Some(h) => h,
                                 None => continue,
                             };
-                            let mblob = match fetch_blob_retry(&blobs, manifest_hash, 60).await {
+                            let mblob = match blobs.fetch_retry(manifest_hash, 60).await {
                                 Some(b) => b,
                                 None => { eprintln!("converge: manifest blob not available yet"); continue; }
                             };
@@ -1375,7 +1480,7 @@ async fn run_docs_replicate(ticket_str: String, out: Option<String>, watch_secs:
                                     Some(h) => h,
                                     None => { eprintln!("converge: entry {rkey} not found"); continue; }
                                 };
-                                let fblob = match fetch_blob_retry(&blobs, fch, 60).await {
+                                let fblob = match blobs.fetch_retry(fch, 60).await {
                                     Some(b) => b,
                                     None => { eprintln!("converge: blob for {rkey} not available"); continue; }
                                 };
@@ -1446,10 +1551,10 @@ async fn run_docs_replicate(ticket_str: String, out: Option<String>, watch_secs:
         let mut fetched: Option<Bytes> = None;
         let mut last_err: Option<anyhow::Error> = None;
         for attempt in 0..100 {
-            match blobs.blobs().get_bytes(content_hash).await {
+            match blobs.get_bytes(content_hash).await {
                 Ok(b) => { fetched = Some(b); break; }
                 Err(e) => {
-                    last_err = Some(e.into());
+                    last_err = Some(e);
                     if attempt % 10 == 0 {
                         println!("(waiting for content blob download to complete, attempt {})", attempt);
                     }
