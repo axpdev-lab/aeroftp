@@ -16,7 +16,7 @@ use clap::{Parser, Subcommand};
 use iroh::NodeId;
 use iroh_blobs::Hash;
 use std::io::{self, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use tracing::info;
 
@@ -91,19 +91,33 @@ enum Mode {
         inputs: Vec<PathBuf>,
     },
 
-    /// L1 docs-publish (Node A): create namespace + ONE signed entry + its *encrypted* blob, print DocTicket, stay running.
-    /// E2EE layered on the drive key (from --secret + NamespaceId). Requires --secret.
+    /// L1 docs-publish (Node A): create namespace + ONE signed entry + its *encrypted* blob (or a whole drive dir),
+    /// print DocTicket, stay running. E2EE layered on the drive key. Requires --secret.
     DocsPublish {
         /// Entry key (path-like). Default chosen to match the task's "hello.txt" example.
+        /// Used only when --dir is absent (single-entry backward compat mode).
         #[arg(long, default_value = "hello.txt")]
         key: String,
+
+        /// Optional directory root to publish as a multi-file drive (recurses, builds signed+encrypted manifest
+        /// under __drive_manifest__.json). If present, ignores the single `key` and walks regular files only
+        /// (skips symlinks). Relative keys use '/' separators. Sorted for determinism.
+        #[arg(long)]
+        dir: Option<String>,
     },
 
-    /// L1 docs-replicate (Node B): given ticket from publish, import+sync, read the entry,
-    /// fetch the ciphertext blob, decrypt with --secret + ns, verify plaintext + author sig.
+    /// L1 docs-replicate (Node B): given ticket from publish, import+sync, read the entry (or whole drive via manifest),
+    /// fetch ciphertext blobs, decrypt with --secret + ns, verify plaintext BLAKE3s against manifest (if drive mode),
+    /// write reconstructed files under --out. Single-entry mode preserved when --out absent.
     DocsReplicate {
         /// DocTicket string exactly as printed by the publish side (contains Namespace + addrs).
         ticket: String,
+
+        /// Optional output directory to reconstruct a multi-file drive into (creates subdirs as needed).
+        /// The manifest itself is NOT written as a file under --out (it is the drive index).
+        /// If absent, falls back to single-entry hello.txt behavior (backward compat).
+        #[arg(long)]
+        out: Option<String>,
     },
 }
 
@@ -180,24 +194,24 @@ async fn main() -> Result<()> {
             print_campaign_summary(&all_samples);
             return Ok(());
         }
-        Mode::DocsPublish { key } => {
+        Mode::DocsPublish { key, dir } => {
             let docs_cfg = aeroftp_peer_l0::endpoint::PeerEndpointConfig {
                 bind_addr: None,
                 secret_key_path: None,
                 custom_relay_urls: cli.custom_relay_urls.clone(),
             };
             let secret_bytes = effective_secret.as_deref().map(decode_secret).transpose()?;
-            run_docs_publish(key, docs_cfg, secret_bytes).await?;
+            run_docs_publish(key, dir, docs_cfg, secret_bytes).await?;
             return Ok(());
         }
-        Mode::DocsReplicate { ticket } => {
+        Mode::DocsReplicate { ticket, out } => {
             let docs_cfg = aeroftp_peer_l0::endpoint::PeerEndpointConfig {
                 bind_addr: None,
                 secret_key_path: None,
                 custom_relay_urls: cli.custom_relay_urls.clone(),
             };
             let secret_bytes = effective_secret.as_deref().map(decode_secret).transpose()?;
-            run_docs_replicate(ticket, docs_cfg, secret_bytes).await?;
+            run_docs_replicate(ticket, out, docs_cfg, secret_bytes).await?;
             return Ok(());
         }
     }
@@ -729,11 +743,11 @@ async fn run_dial(node_str: &str, blob_size: usize, note: Option<String>, secret
     sample
 }
 
-/// L1 Stage 3: docs-publish side with E2EE (layered AES-GCM over the drive key derived from
-/// the pairing secret + NamespaceId). The *value* bytes passed to set_bytes (and thus the
-/// iroh-blobs content) are now nonce||ciphertext; the entry still carries the BLAKE3 of that
-/// ciphertext. Plaintext is never exposed to the docs/iroh layer.
-async fn run_docs_publish(key: String, cfg: aeroftp_peer_l0::endpoint::PeerEndpointConfig, secret_bytes: Option<Vec<u8>>) -> Result<()> {
+/// L1 Stage 4: docs-publish with optional drive mode (--dir).
+/// If --dir absent: exact single-entry E2EE behavior (backward compat with gate at 9f5a5c18).
+/// If --dir present: walk regular files (skip symlinks), encrypt each with fresh nonce under drive_key,
+/// record plaintext_blake3, write manifest under reserved key __drive_manifest__.json (also encrypted).
+async fn run_docs_publish(key: String, dir: Option<String>, cfg: aeroftp_peer_l0::endpoint::PeerEndpointConfig, secret_bytes: Option<Vec<u8>>) -> Result<()> {
     use bytes::Bytes;
     use iroh::protocol::Router;
     use iroh_blobs::BlobsProtocol;
@@ -774,25 +788,87 @@ async fn run_docs_publish(key: String, cfg: aeroftp_peer_l0::endpoint::PeerEndpo
     println!("AuthorId: {}", author);
     println!("NamespaceId: {}", ns);
 
-    // Write ONE entry, E2EE-layered.
-    // The plaintext content is encrypted with a drive key derived from the pairing secret + ns.
-    // We store nonce||ciphertext as the "content bytes" under the key; iroh-docs/iroh-blobs
-    // only ever see the ciphertext (RBSR works on the encrypted value + its hash).
     let secret = secret_bytes.context("docs-publish requires --secret (16-byte pairing secret for L1 drive E2EE)")?;
     let drive_key = derive_drive_key(&secret, &ns.to_string());
 
-    let content_str = format!("hi from L1 {}", chrono::Utc::now().to_rfc3339());
-    let content: Vec<u8> = content_str.into_bytes();
+    if let Some(dir_path) = dir {
+        // === DRIVE MODE (Stage 4) ===
+        let src = Path::new(&dir_path);
+        if !src.is_dir() {
+            anyhow::bail!("--dir {} is not a directory", dir_path);
+        }
 
-    let (nonce, ct) = encrypt_blob(&drive_key, &content)?;
-    let mut blob = nonce.clone();
-    blob.extend_from_slice(&ct);
+        let mut files: Vec<(String, PathBuf)> = vec![];
+        fn collect_files(dir: &Path, base: &Path, out: &mut Vec<(String, PathBuf)>) -> Result<()> {
+            for entry in std::fs::read_dir(dir)? {
+                let entry = entry?;
+                let p = entry.path();
+                if p.is_symlink() {
+                    continue; // task: skip symlinks
+                }
+                if p.is_dir() {
+                    collect_files(&p, base, out)?;
+                } else if p.is_file() {
+                    let rel = p.strip_prefix(base)
+                        .unwrap()
+                        .to_str()
+                        .unwrap()
+                        .replace('\\', "/");
+                    out.push((rel, p));
+                }
+            }
+            Ok(())
+        }
+        collect_files(src, src, &mut files)?;
+        files.sort_by(|a, b| a.0.cmp(&b.0));
 
-    // key: String moved into Bytes...
-    let written_hash = doc.set_bytes(author, Bytes::from(key.clone()), Bytes::from(blob.clone())).await?;
+        let mut manifest_files: Vec<serde_json::Value> = vec![];
+        let mut total_pt: u64 = 0;
 
-    println!("Wrote entry: key={} content_hash={} size={}", key, written_hash, blob.len());
-    println!("stored ciphertext blob len={} (nonce {}B + ct) (E2EE; plaintext never leaves this process; entry signed by author)", blob.len(), nonce.len());
+        for (rel_key, path) in &files {
+            let pt = std::fs::read(path)?;
+            let (nonce, ct) = encrypt_blob(&drive_key, &pt)?;
+            let mut blob = nonce.clone();
+            blob.extend_from_slice(&ct);
+            let content_hash = doc.set_bytes(author, Bytes::from(rel_key.clone()), Bytes::from(blob)).await?;
+            let pt_blake3 = blake3::hash(&pt).to_hex().to_string();
+            println!("wrote key={} pt_len={} ct_len={} content_hash={}", rel_key, pt.len(), ct.len(), content_hash);
+            manifest_files.push(serde_json::json!({
+                "key": rel_key,
+                "plaintext_len": pt.len(),
+                "plaintext_blake3": pt_blake3
+            }));
+            total_pt += pt.len() as u64;
+        }
+
+        // Build + encrypt manifest (fresh nonce)
+        let manifest = serde_json::json!({
+            "drive_version": 1,
+            "created": chrono::Utc::now().to_rfc3339(),
+            "file_count": files.len(),
+            "files": manifest_files
+        });
+        let manifest_bytes = serde_json::to_vec(&manifest)?;
+        let (m_nonce, m_ct) = encrypt_blob(&drive_key, &manifest_bytes)?;
+        let mut m_blob = m_nonce.clone();
+        m_blob.extend_from_slice(&m_ct);
+        doc.set_bytes(author, Bytes::from("__drive_manifest__.json"), Bytes::from(m_blob)).await?;
+
+        println!("DRIVE PUBLISHED: {} files + manifest, ns={}, total_plaintext_bytes={}", files.len(), ns, total_pt);
+    } else {
+        // === SINGLE ENTRY MODE (exact backward compat with gate at 9f5a5c18) ===
+        let content_str = format!("hi from L1 {}", chrono::Utc::now().to_rfc3339());
+        let content: Vec<u8> = content_str.into_bytes();
+
+        let (nonce, ct) = encrypt_blob(&drive_key, &content)?;
+        let mut blob = nonce.clone();
+        blob.extend_from_slice(&ct);
+
+        let written_hash = doc.set_bytes(author, Bytes::from(key.clone()), Bytes::from(blob.clone())).await?;
+
+        println!("Wrote entry: key={} content_hash={} size={}", key, written_hash, blob.len());
+        println!("stored ciphertext blob len={} (nonce {}B + ct) (E2EE; plaintext never leaves this process; entry signed by author)", blob.len(), nonce.len());
+    }
 
     // Produce a ticket that tells the other side the NamespaceId + where to find us.
     // Read mode is sufficient for replication (the other side only pulls).
@@ -810,10 +886,12 @@ async fn run_docs_publish(key: String, cfg: aeroftp_peer_l0::endpoint::PeerEndpo
     Ok(())
 }
 
-/// L1 Stage 3: docs-replicate side with E2EE.
-/// Imports the ticket, runs replication, fetches the (ciphertext) blob for the entry,
-/// derives the drive key from --secret + doc.id(), decrypts, and verifies the plaintext.
-async fn run_docs_replicate(ticket_str: String, cfg: aeroftp_peer_l0::endpoint::PeerEndpointConfig, secret_bytes: Option<Vec<u8>>) -> Result<()> {
+/// L1 Stage 4: docs-replicate with optional drive reconstruction (--out).
+/// If --out absent: exact single-entry "hello.txt" behavior + get_bytes retry (gate compat).
+/// If --out present: first pull+decrypt __drive_manifest__.json (using same get_bytes retry),
+/// then for every listed file: wait entry, get_bytes (retry), decrypt, verify plaintext_blake3,
+/// mkdir -p parents, write plaintext. Do not write the manifest file itself under --out.
+async fn run_docs_replicate(ticket_str: String, out: Option<String>, cfg: aeroftp_peer_l0::endpoint::PeerEndpointConfig, secret_bytes: Option<Vec<u8>>) -> Result<()> {
     use bytes::Bytes;
     use futures_lite::stream::StreamExt;
     use iroh::protocol::Router;
@@ -845,89 +923,213 @@ async fn run_docs_replicate(ticket_str: String, cfg: aeroftp_peer_l0::endpoint::
     let ns = doc.id();
     println!("Imported + opened doc: NamespaceId={}", ns);
 
-    // Read the entry we expect (key="hello.txt" by default from publish).
-    // Replication (RBSR + blob xfer) is async even on localhost; retry a few times.
-    let key = "hello.txt";
-    let mut entry = None;
-    for attempt in 0..20 {
-        let q = iroh_docs::store::Query::key_exact(key.as_bytes());
-        let mut stream = Box::pin(doc.get_many(q).await?);
-        if let Some(res) = stream.next().await {
-            entry = Some(res.context("entry stream item error")?);
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-        if attempt % 5 == 0 {
-            println!("(waiting for replicated entry, attempt {})", attempt);
-        }
-    }
-    let entry = entry.context("no entries returned after sync (timeout)")?;
-
-    let entry_author = entry.author();
-    let entry_key = String::from_utf8_lossy(entry.key()).to_string();
-    let content_hash = entry.content_hash();
-    let content_size = entry.content_len();
-
-    println!("R1: received entry key={} author={} hash={} size={}", entry_key, entry_author, content_hash, content_size);
-
-    // Fetch the *ciphertext* blob (the value stored under the entry is nonce||ct, not plaintext).
-    // The entry (RBSR metadata) syncs first; the CONTENT blob is downloaded asynchronously by the
-    // docs live engine (default DownloadPolicy = EverythingExcept([])). On loopback the download wins
-    // the race before we read; over a real relay/cross-net path it is still in flight when the entry
-    // appears, so a single get_bytes reads a partial blob and fails bao verification with
-    // LeafHashMismatch(0). Retry until the download completes (same pattern as the entry wait above).
-    let mut fetched: Option<Bytes> = None;
-    let mut last_err: Option<anyhow::Error> = None;
-    for attempt in 0..100 {
-        match blobs.blobs().get_bytes(content_hash).await {
-            Ok(b) => {
-                fetched = Some(b);
-                break;
-            }
-            Err(e) => {
-                last_err = Some(e.into());
-                if attempt % 10 == 0 {
-                    println!("(waiting for content blob download to complete, attempt {})", attempt);
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-            }
-        }
-    }
-    let fetched: Bytes = fetched
-        .with_context(|| format!(
-            "blob content not available after docs replication (timeout; last error: {:?})",
-            last_err
-        ))?;
-
-    // E3: show raw bytes are ciphertext (not the readable "hi from L1...").
-    let raw_preview: String = fetched.iter().take(16).map(|b| format!("{:02x}", b)).collect();
-    println!("E3: raw fetched blob (first 16 bytes hex): {} (should not start with '68 69 20 66 72 6f 6d' = 'hi from')", raw_preview);
-
-    // Derive drive key and decrypt (this is the E2EE layer; iroh-docs only saw ciphertext).
     let secret = secret_bytes.context("docs-replicate requires --secret (16-byte pairing secret for L1 drive E2EE)")?;
     let drive_key = derive_drive_key(&secret, &ns.to_string());
+    let n = 12; // AES-GCM nonce
 
-    let n = 12; // AES-GCM nonce length (see encrypt_blob in crypto.rs)
-    if fetched.len() < n {
-        anyhow::bail!("fetched blob too short to contain nonce");
+    if let Some(out_dir) = out {
+        // === DRIVE MODE ===
+        let out_path = Path::new(&out_dir);
+        std::fs::create_dir_all(out_path)?;
+
+        // 1. Wait for + fetch + decrypt manifest (reuse the async-blob retry pattern)
+        let manifest_key = b"__drive_manifest__.json";
+        let mut manifest_entry = None;
+        for _attempt in 0..30 {
+            let q = iroh_docs::store::Query::key_exact(manifest_key);
+            let mut stream = Box::pin(doc.get_many(q).await?);
+            if let Some(res) = stream.next().await {
+                manifest_entry = Some(res.context("manifest entry error")?);
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        }
+        let manifest_entry = manifest_entry.context("drive manifest entry not found (timeout)")?;
+        let manifest_hash = manifest_entry.content_hash();
+
+        let mut m_fetched: Option<Bytes> = None;
+        let mut last_err: Option<anyhow::Error> = None;
+        for attempt in 0..100 {
+            match blobs.blobs().get_bytes(manifest_hash).await {
+                Ok(b) => { m_fetched = Some(b); break; }
+                Err(e) => {
+                    last_err = Some(e.into());
+                    if attempt % 10 == 0 {
+                        println!("(waiting for manifest content blob, attempt {})", attempt);
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                }
+            }
+        }
+        let m_fetched: Bytes = m_fetched.with_context(|| format!(
+            "manifest blob not available (timeout; last err: {:?})", last_err
+        ))?;
+
+        if m_fetched.len() < n {
+            anyhow::bail!("manifest blob too short");
+        }
+        let (m_nonce, m_ct) = m_fetched.split_at(n);
+        let manifest_pt = decrypt_blob(&drive_key, m_nonce, m_ct)
+            .context("failed to decrypt manifest (wrong secret?)")?;
+        let manifest: serde_json::Value = serde_json::from_slice(&manifest_pt)
+            .context("invalid manifest JSON")?;
+
+        let files = manifest["files"].as_array().cloned().unwrap_or_default();
+        let k = files.len();
+        println!("Manifest: {} files, drive_version={}", k, manifest["drive_version"]);
+
+        let mut ok = 0usize;
+        let mut total_bytes: u64 = 0;
+
+        for f in files {
+            let rel_key = f["key"].as_str().unwrap_or("").to_string();
+            let expected_pt_len = f["plaintext_len"].as_u64().unwrap_or(0);
+            let expected_blake3 = f["plaintext_blake3"].as_str().unwrap_or("").to_string();
+
+            // Wait for this file's entry
+            let mut file_entry = None;
+            for _attempt in 0..30 {
+                let q = iroh_docs::store::Query::key_exact(rel_key.as_bytes());
+                let mut stream = Box::pin(doc.get_many(q).await?);
+                if let Some(res) = stream.next().await {
+                    file_entry = Some(res.context("file entry error")?);
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+            }
+            let file_entry = match file_entry {
+                Some(e) => e,
+                None => {
+                    println!("FAIL {} (entry not found)", rel_key);
+                    continue;
+                }
+            };
+            let ch = file_entry.content_hash();
+
+            // Fetch blob with retry (async download race)
+            let mut f_fetched: Option<Bytes> = None;
+            for attempt in 0..100 {
+                match blobs.blobs().get_bytes(ch).await {
+                    Ok(b) => { f_fetched = Some(b); break; }
+                    Err(_) => {
+                        if attempt % 10 == 0 {
+                            println!("(waiting for content blob of {}, attempt {})", rel_key, attempt);
+                        }
+                        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                    }
+                }
+            }
+            let f_fetched = match f_fetched {
+                Some(b) => b,
+                None => {
+                    println!("FAIL {} (blob not available)", rel_key);
+                    continue;
+                }
+            };
+
+            if f_fetched.len() < n {
+                println!("FAIL {} (blob too short)", rel_key);
+                continue;
+            }
+            let (f_nonce, f_ct) = f_fetched.split_at(n);
+            let pt = match decrypt_blob(&drive_key, f_nonce, f_ct) {
+                Ok(p) => p,
+                Err(e) => {
+                    println!("FAIL {} (decrypt error: {})", rel_key, e);
+                    continue;
+                }
+            };
+
+            let got_blake3 = blake3::hash(&pt).to_hex().to_string();
+            if got_blake3 != expected_blake3 {
+                println!("FAIL {} (BLAKE3 mismatch: got {} expected {})", rel_key, got_blake3, expected_blake3);
+                continue;
+            }
+            if pt.len() as u64 != expected_pt_len {
+                println!("FAIL {} (len mismatch)", rel_key);
+                continue;
+            }
+
+            // Write to out/<rel_key>
+            let target = out_path.join(&rel_key);
+            if let Some(parent) = target.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            std::fs::write(&target, &pt)?;
+            println!("OK {} (pt_len={}, blake3 verified)", rel_key, pt.len());
+            ok += 1;
+            total_bytes += pt.len() as u64;
+        }
+
+        println!("DRIVE REPLICATED: {}/{} files, all plaintext BLAKE3 verified, total_bytes={}", ok, k, total_bytes);
+    } else {
+        // === SINGLE ENTRY MODE (exact backward compat) ===
+        let key = "hello.txt";
+        let mut entry = None;
+        for attempt in 0..20 {
+            let q = iroh_docs::store::Query::key_exact(key.as_bytes());
+            let mut stream = Box::pin(doc.get_many(q).await?);
+            if let Some(res) = stream.next().await {
+                entry = Some(res.context("entry stream item error")?);
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            if attempt % 5 == 0 {
+                println!("(waiting for replicated entry, attempt {})", attempt);
+            }
+        }
+        let entry = entry.context("no entries returned after sync (timeout)")?;
+
+        let entry_author = entry.author();
+        let entry_key = String::from_utf8_lossy(entry.key()).to_string();
+        let content_hash = entry.content_hash();
+        let content_size = entry.content_len();
+
+        println!("R1: received entry key={} author={} hash={} size={}", entry_key, entry_author, content_hash, content_size);
+
+        // Fetch with the async blob retry (from 9f5a5c18 gate fix)
+        let mut fetched: Option<Bytes> = None;
+        let mut last_err: Option<anyhow::Error> = None;
+        for attempt in 0..100 {
+            match blobs.blobs().get_bytes(content_hash).await {
+                Ok(b) => { fetched = Some(b); break; }
+                Err(e) => {
+                    last_err = Some(e.into());
+                    if attempt % 10 == 0 {
+                        println!("(waiting for content blob download to complete, attempt {})", attempt);
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                }
+            }
+        }
+        let fetched: Bytes = fetched.with_context(|| format!(
+            "blob content not available after docs replication (timeout; last error: {:?})", last_err
+        ))?;
+
+        let raw_preview: String = fetched.iter().take(16).map(|b| format!("{:02x}", b)).collect();
+        println!("E3: raw fetched blob (first 16 bytes hex): {} (should not start with '68 69 20 66 72 6f 6d' = 'hi from')", raw_preview);
+
+        // drive_key already computed above for both modes
+
+        if fetched.len() < n {
+            anyhow::bail!("fetched blob too short to contain nonce");
+        }
+        let (nonce, ct) = fetched.split_at(n);
+        let plaintext = decrypt_blob(&drive_key, nonce, ct)?;
+
+        println!("R2 (decrypted): plaintext len={} : {:?}", plaintext.len(), String::from_utf8_lossy(&plaintext));
+
+        let local_hash = iroh_blobs::Hash::new(&fetched);
+        println!("     local blake3 (of ct): {}", local_hash);
+        println!("     entry content_hash  : {}", content_hash);
+        if local_hash != content_hash {
+            anyhow::bail!("BLAKE3 mismatch after fetch (ct)");
+        }
+        println!("     BLAKE3 (ct) match: PASS");
+
+        println!("R3: entry author = {} (docs sync verifies the author signature; no error above means sig OK)", entry_author);
+
+        println!("\nL1 E2EE replication SUCCESS (entry + ciphertext blob replicated over the network; decrypted with drive key).");
     }
-    let (nonce, ct) = fetched.split_at(n);
-    let plaintext = decrypt_blob(&drive_key, nonce, ct)?;
-
-    println!("R2 (decrypted): plaintext len={} : {:?}", plaintext.len(), String::from_utf8_lossy(&plaintext));
-
-    // The blake3 in the entry is over the *ciphertext* we stored; keep the check for the blob integrity.
-    let local_hash = iroh_blobs::Hash::new(&fetched);
-    println!("     local blake3 (of ct): {}", local_hash);
-    println!("     entry content_hash  : {}", content_hash);
-    if local_hash != content_hash {
-        anyhow::bail!("BLAKE3 mismatch after fetch (ct)");
-    }
-    println!("     BLAKE3 (ct) match: PASS");
-
-    // R3 unchanged in spirit.
-    println!("R3: entry author = {} (docs sync verifies the author signature; no error above means sig OK)", entry_author);
-
-    println!("\nL1 E2EE replication SUCCESS (entry + ciphertext blob replicated over the network; decrypted with drive key).");
     Ok(())
 }
