@@ -665,7 +665,10 @@ pub fn migrate_legacy_payloads(
     // have completed the migration between our pre-transaction check above and our
     // acquiring the write lock here. Without this re-check the loser of the race
     // hit `UNIQUE constraint failed: users.name_canonical` on the default user.
-    if matches!(current_schema_version(&tx)?.as_deref(), Some(SCHEMA_VERSION)) {
+    if matches!(
+        current_schema_version(&tx)?.as_deref(),
+        Some(SCHEMA_VERSION)
+    ) {
         return Ok(MigrationReport {
             schema_version: SCHEMA_VERSION.to_string(),
             created_default_user: false,
@@ -6132,9 +6135,11 @@ mod tests {
         );
 
         // The partition genuinely has no row for it (it really was the fallback).
-        assert!(get_user_credential_for(&conn, &root, user.id, "server_vaultonly")
-            .expect("read partition")
-            .is_none());
+        assert!(
+            get_user_credential_for(&conn, &root, user.id, "server_vaultonly")
+                .expect("read partition")
+                .is_none()
+        );
     }
 
     #[test]
@@ -6153,10 +6158,24 @@ mod tests {
             .expect("create user");
 
         // Initial token, then a refresh that rewrites it in place.
-        set_user_credential_for(&conn, &root, user.id, "oauth_dropbox_42", "oauth", "token-v1")
-            .expect("seed oauth");
-        set_user_credential_for(&conn, &root, user.id, "oauth_dropbox_42", "oauth", "token-v2")
-            .expect("refresh oauth");
+        set_user_credential_for(
+            &conn,
+            &root,
+            user.id,
+            "oauth_dropbox_42",
+            "oauth",
+            "token-v1",
+        )
+        .expect("seed oauth");
+        set_user_credential_for(
+            &conn,
+            &root,
+            user.id,
+            "oauth_dropbox_42",
+            "oauth",
+            "token-v2",
+        )
+        .expect("refresh oauth");
 
         let (_keys, read) = fake_vault(&[("oauth_dropbox_99", "vault-token")]);
 

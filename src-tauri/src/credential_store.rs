@@ -1057,8 +1057,9 @@ impl CredentialStore {
                             vault_db_present,
                             unlockable: true,
                             needs_password: false,
-                            detail: "Master-password mode: AEROFTP_MASTER_PASSWORD unlocks vault.db."
-                                .into(),
+                            detail:
+                                "Master-password mode: AEROFTP_MASTER_PASSWORD unlocks vault.db."
+                                    .into(),
                         }
                     }
                     Err(_) => VaultHealth {
@@ -1066,9 +1067,10 @@ impl CredentialStore {
                         vault_db_present,
                         unlockable: false,
                         needs_password: true,
-                        detail: "Master-password mode: the supplied AEROFTP_MASTER_PASSWORD did NOT \
+                        detail:
+                            "Master-password mode: the supplied AEROFTP_MASTER_PASSWORD did NOT \
                                  unlock vault.db (wrong password)."
-                            .into(),
+                                .into(),
                     },
                 },
                 None => VaultHealth {
@@ -1076,9 +1078,10 @@ impl CredentialStore {
                     vault_db_present,
                     unlockable: false,
                     needs_password: true,
-                    detail: "Master-password mode: healthy but locked. Provide --master-password / \
+                    detail:
+                        "Master-password mode: healthy but locked. Provide --master-password / \
                              AEROFTP_MASTER_PASSWORD to unlock."
-                        .into(),
+                            .into(),
                 },
             },
             Ok(VaultKeyMode::LegacyAuto { .. }) => VaultHealth {
