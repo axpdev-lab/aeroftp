@@ -9969,10 +9969,46 @@ fn render_profiles_text(
 
     if overrides.interactive && std::io::stdin().is_terminal() && std::io::stderr().is_terminal() {
         let ordered: Vec<serde_json::Value> = sorted.into_iter().map(|(_, v)| v).collect();
-        return interactive_profiles_loop(cli, store, ordered);
+        return interactive_profiles_loop(cli, store, ordered, overrides);
     }
 
     0
+}
+
+/// Reconstruct the `profiles` view arguments (minus the interactive flag)
+/// from the active view overrides, so a refresh reprints the SAME view the
+/// user originally asked for (`--sort`, `--hide`, `--show`, `--breakdown`).
+fn profiles_view_args(ov: &ProfilesViewOverrides) -> Vec<String> {
+    let mut args = vec!["profiles".to_string()];
+    if let Some(s) = &ov.sort {
+        args.push(format!("--sort={}", s));
+    }
+    if let Some(h) = &ov.hide {
+        args.push(format!("--hide={}", h));
+    }
+    if let Some(s) = &ov.show {
+        args.push(format!("--show={}", s));
+    }
+    if ov.breakdown {
+        args.push("--breakdown".to_string());
+    }
+    args
+}
+
+/// Clear the screen (only when ANSI output is allowed) and reprint the
+/// profiles table by re-running the binary's own `profiles` view. Re-running
+/// re-reads the vault, so the table reflects any change made elsewhere since
+/// the loop started (discussion #266). Mirrors how `l`/`t` reuse the binary
+/// for bit-identical output.
+fn refresh_profiles_view(ov: &ProfilesViewOverrides) {
+    if use_color() {
+        // ESC[2J clears the screen, ESC[H homes the cursor.
+        eprint!("\x1b[2J\x1b[H");
+        let _ = std::io::Write::flush(&mut std::io::stderr());
+    }
+    let args = profiles_view_args(ov);
+    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let _ = run_self_subcommand(&refs);
 }
 
 /// rclone-config-style prompt loop on `aeroftp profiles -i`.
@@ -9988,6 +10024,7 @@ fn interactive_profiles_loop(
     cli: &Cli,
     store: &CredentialStore,
     profiles: Vec<serde_json::Value>,
+    overrides: &ProfilesViewOverrides,
 ) -> i32 {
     use std::io::{self, BufRead, Write};
 
@@ -10011,7 +10048,7 @@ fn interactive_profiles_loop(
             cmd
         } else {
             eprintln!(
-                "\nInteractive: l/t/d/f/c/r/e <N|name> [N|name ...]  ·  # <sel> <N> reorder  ·  u switch user  ·  tui arrow-key navigator  ·  legacy 1l/l1 still works  ·  0/q = quit"
+                "\nInteractive: l/t/d/f/c/r/e <N|name> [N|name ...]  ·  # <sel> <N> reorder  ·  u switch user  ·  tui arrow-key navigator  ·  refresh/. reload table  ·  legacy 1l/l1 still works  ·  0/q = quit"
             );
             eprint!("profiles> ");
             let _ = io::stderr().flush();
@@ -10058,11 +10095,23 @@ fn interactive_profiles_loop(
                 "  tui / nav       raw-mode arrow-key navigator: pick a profile + action visually"
             );
             eprintln!("  Nl  Nt  Nd      legacy single-target compact form (e.g. '1l', 'l1')");
+            eprintln!(
+                "  refresh / .     clear screen + reprint table (reloads from vault; 'clear' also works)"
+            );
             eprintln!("  0/q             quit");
             eprintln!();
             eprintln!("  Selectors are space-separated; use double quotes for names with spaces.");
             eprintln!("  Example: c \"My Cloud Drive\" 7 box     d 4 box 10 7 mega     f mybox");
             eprintln!("  Mode switch: s 3 (then prompts for mode label: api, webdav, s3, ftp)");
+            continue;
+        }
+
+        // F5-style refresh (discussion #266). Explicit opt-in only: a bare
+        // empty Enter deliberately does nothing, since wiping the terminal on
+        // an accidental keystroke is intrusive. Re-runs the same view, which
+        // re-reads the vault and picks up changes made in another session.
+        if lower == "refresh" || lower == "clear" || lower == "." {
+            refresh_profiles_view(overrides);
             continue;
         }
 
@@ -47326,5 +47375,42 @@ mod tests {
         assert_eq!(names[0], "with.txt");
         assert_eq!(names[1], "older.txt");
         assert_eq!(names[2], "no_mtime.txt");
+    }
+
+    #[test]
+    fn profiles_view_args_reconstructs_the_view_flags() {
+        // The `refresh` command (discussion #266) reprints the table by
+        // re-running `profiles` with the original view flags, never `-i`.
+
+        // No overrides -> bare `profiles`.
+        let plain = ProfilesViewOverrides {
+            sort: None,
+            hide: None,
+            show: None,
+            breakdown: false,
+            interactive: true,
+        };
+        assert_eq!(profiles_view_args(&plain), vec!["profiles".to_string()]);
+        // `interactive` must NOT leak into the refresh args.
+        assert!(!profiles_view_args(&plain).iter().any(|a| a == "-i"));
+
+        // Every view flag is reconstructed; interactive stays dropped.
+        let full = ProfilesViewOverrides {
+            sort: Some("used:desc".to_string()),
+            hide: Some("host".to_string()),
+            show: Some("name".to_string()),
+            breakdown: true,
+            interactive: true,
+        };
+        assert_eq!(
+            profiles_view_args(&full),
+            vec![
+                "profiles".to_string(),
+                "--sort=used:desc".to_string(),
+                "--hide=host".to_string(),
+                "--show=name".to_string(),
+                "--breakdown".to_string(),
+            ]
+        );
     }
 }
