@@ -142,6 +142,7 @@ impl AppState {
             TuiAction::MoveLeft => self.focus_prev(),
             TuiAction::MoveRight => self.focus_next(),
             TuiAction::Activate => self.activate(),
+            TuiAction::Parent => self.navigate_parent(),
             TuiAction::Noop => Vec::new(),
         };
         self.sync_pane_state();
@@ -149,6 +150,12 @@ impl AppState {
     }
 
     fn move_selection(&mut self, delta: isize) -> Vec<WorkerCommand> {
+        if matches!(self.focus, TuiFocus::Browser) {
+            self.browser.move_selection(delta);
+            self.status = self.contextual_status();
+            return Vec::new();
+        }
+
         let len = match self.focus {
             TuiFocus::Users => self.context.users.len(),
             TuiFocus::Profiles => self
@@ -156,6 +163,7 @@ impl AppState {
                 .map(|user| user.profiles.len())
                 .unwrap_or_default(),
             TuiFocus::Actions => TUI_ACTION_ITEMS.len(),
+            TuiFocus::Browser => unreachable!("browser selection is handled above"),
         };
         if len == 0 {
             return Vec::new();
@@ -164,6 +172,7 @@ impl AppState {
             TuiFocus::Users => &mut self.selected_user,
             TuiFocus::Profiles => &mut self.selected_profile,
             TuiFocus::Actions => &mut self.selected_action,
+            TuiFocus::Browser => unreachable!("browser selection is handled above"),
         };
         let next = (*target as isize + delta).clamp(0, len.saturating_sub(1) as isize);
         *target = next as usize;
@@ -178,17 +187,23 @@ impl AppState {
         self.focus = match self.focus {
             TuiFocus::Users => TuiFocus::Profiles,
             TuiFocus::Profiles => TuiFocus::Actions,
-            TuiFocus::Actions => TuiFocus::Users,
+            TuiFocus::Actions => TuiFocus::Browser,
+            TuiFocus::Browser => TuiFocus::Users,
         };
         self.status = self.contextual_status();
         Vec::new()
     }
 
     fn focus_prev(&mut self) -> Vec<WorkerCommand> {
+        if matches!(self.focus, TuiFocus::Browser) {
+            return self.navigate_parent();
+        }
+
         self.focus = match self.focus {
-            TuiFocus::Users => TuiFocus::Actions,
+            TuiFocus::Users => TuiFocus::Browser,
             TuiFocus::Profiles => TuiFocus::Users,
             TuiFocus::Actions => TuiFocus::Profiles,
+            TuiFocus::Browser => unreachable!("browser left navigation is handled above"),
         };
         self.status = self.contextual_status();
         Vec::new()
@@ -243,6 +258,8 @@ impl AppState {
                                 TuiSessionState::planned_from_selection(&user, &profile);
                             session.begin_connect();
                             self.session = session;
+                            self.browser.clear();
+                            self.focus = TuiFocus::Browser;
                             self.worker = WorkerEvent::Busy {
                                 operation: TuiWorkerOperation::Connect,
                                 identity: Some(identity.clone()),
@@ -277,7 +294,54 @@ impl AppState {
                     }
                 }
             }
+            TuiFocus::Browser => self.open_selected_browser_entry(),
         }
+    }
+
+    fn open_selected_browser_entry(&mut self) -> Vec<WorkerCommand> {
+        if let Some(path) = self.browser.selected_directory_path() {
+            self.worker = WorkerEvent::Busy {
+                operation: TuiWorkerOperation::List,
+                identity: self.session.identity.clone(),
+            };
+            self.status = format!("Listing {}.", path);
+            return vec![WorkerCommand::List { path }];
+        }
+
+        let Some(path) = self.browser.selected_file_path() else {
+            self.status = "No browser entry selected.".to_string();
+            return Vec::new();
+        };
+
+        self.browser.clear_preview();
+        self.worker = WorkerEvent::Busy {
+            operation: TuiWorkerOperation::Stat,
+            identity: self.session.identity.clone(),
+        };
+        self.status = format!("Loading metadata for {}.", path);
+        vec![WorkerCommand::Stat { path }]
+    }
+
+    fn navigate_parent(&mut self) -> Vec<WorkerCommand> {
+        if !matches!(self.focus, TuiFocus::Browser) {
+            return self.focus_prev();
+        }
+
+        let Some(path) = self.browser.parent_path() else {
+            self.status = if self.browser.summary.is_some() {
+                format!("Already at {}.", self.browser.path)
+            } else {
+                "No live listing loaded.".to_string()
+            };
+            return Vec::new();
+        };
+
+        self.worker = WorkerEvent::Busy {
+            operation: TuiWorkerOperation::List,
+            identity: self.session.identity.clone(),
+        };
+        self.status = format!("Listing parent {}.", path);
+        vec![WorkerCommand::List { path }]
     }
 
     pub fn apply_worker_event(&mut self, event: WorkerEvent) {
@@ -312,10 +376,19 @@ impl AppState {
                     path, result.summary.total, result.summary.dirs, result.summary.files
                 );
             }
+            WorkerEvent::StatReady { path, result, .. } => {
+                if self.browser.apply_stat_result(result.clone()) {
+                    self.status = format!("Loaded metadata for {}.", path);
+                } else {
+                    self.status = format!("Metadata ready for {}.", path);
+                }
+            }
             WorkerEvent::Failed {
                 operation, message, ..
             } => {
-                self.session.mark_failed(message.clone());
+                if *operation != TuiWorkerOperation::Stat {
+                    self.session.mark_failed(message.clone());
+                }
                 self.status = format!("{} failed: {}", operation.label(), message);
             }
             WorkerEvent::Cancelled { operation } => {
@@ -362,11 +435,27 @@ impl AppState {
                 let action = self.selected_action();
                 format!("Action '{}': {}", action.title, action.description)
             }
+            TuiFocus::Browser => self
+                .browser
+                .selected_entry()
+                .map(|entry| {
+                    if entry.is_dir {
+                        format!("Directory '{}' selected.", entry.name)
+                    } else {
+                        format!("File '{}' selected.", entry.name)
+                    }
+                })
+                .unwrap_or_else(|| {
+                    if self.browser.summary.is_some() {
+                        format!("{} is empty.", self.browser.path)
+                    } else {
+                        "No live listing loaded.".to_string()
+                    }
+                }),
         }
     }
 
     fn sync_pane_state(&mut self) {
-        self.browser.selected = self.selected_user;
         self.profiles.selected = self.selected_profile;
         self.transfers.selected = self.selected_action;
         let planned_session = self
@@ -381,6 +470,9 @@ impl AppState {
                 }
             })
             .unwrap_or_default();
+        if planned_session.identity != self.session.identity {
+            self.browser.clear();
+        }
         let same_identity =
             planned_session.identity.is_some() && planned_session.identity == self.session.identity;
         if self.live_worker_enabled
@@ -398,9 +490,9 @@ fn event_identity(event: &WorkerEvent) -> Option<&TuiSessionIdentity> {
         WorkerEvent::Busy { identity, .. } | WorkerEvent::Failed { identity, .. } => {
             identity.as_ref()
         }
-        WorkerEvent::SessionReady { identity, .. } | WorkerEvent::ListReady { identity, .. } => {
-            Some(identity)
-        }
+        WorkerEvent::SessionReady { identity, .. }
+        | WorkerEvent::ListReady { identity, .. }
+        | WorkerEvent::StatReady { identity, .. } => Some(identity),
         WorkerEvent::Idle | WorkerEvent::PathReady { .. } | WorkerEvent::Cancelled { .. } => None,
     }
 }
@@ -410,6 +502,7 @@ pub enum TuiFocus {
     Users,
     Profiles,
     Actions,
+    Browser,
 }
 
 impl TuiFocus {
@@ -418,6 +511,7 @@ impl TuiFocus {
             TuiFocus::Users => "users",
             TuiFocus::Profiles => "profiles",
             TuiFocus::Actions => "actions",
+            TuiFocus::Browser => "browser",
         }
     }
 }
@@ -544,6 +638,60 @@ mod tests {
         }
     }
 
+    fn sample_identity() -> TuiSessionIdentity {
+        TuiSessionIdentity {
+            user_name: "default".to_string(),
+            profile_selector: "1".to_string(),
+            profile_name: "Production".to_string(),
+            protocol: "sftp".to_string(),
+            host: "example.com".to_string(),
+        }
+    }
+
+    fn list_result(
+        entries: Vec<crate::cli_tui::worker::TuiListEntry>,
+    ) -> crate::cli_tui::worker::TuiListResult {
+        let dirs = entries.iter().filter(|entry| entry.is_dir).count();
+        let files = entries.len().saturating_sub(dirs);
+        let total_bytes = entries
+            .iter()
+            .filter(|entry| !entry.is_dir)
+            .map(|entry| entry.size)
+            .sum();
+        crate::cli_tui::worker::TuiListResult {
+            summary: crate::cli_tui::worker::TuiListSummary {
+                total: entries.len(),
+                files,
+                dirs,
+                total_bytes,
+                truncated: false,
+                total_before_limit: entries.len(),
+            },
+            entries,
+        }
+    }
+
+    fn stat_result(path: &str) -> crate::cli_tui::worker::TuiStatResult {
+        crate::cli_tui::worker::TuiStatResult {
+            name: path
+                .rsplit('/')
+                .next()
+                .filter(|name| !name.is_empty())
+                .unwrap_or(path)
+                .to_string(),
+            path: path.to_string(),
+            is_dir: false,
+            size: 42,
+            modified: Some("2026-06-09T10:00:00Z".to_string()),
+            permissions: Some("-rw-r--r--".to_string()),
+            owner: None,
+            group: None,
+            is_symlink: false,
+            link_target: None,
+            mime_type: Some("text/plain".to_string()),
+        }
+    }
+
     #[test]
     fn locked_user_activation_routes_to_existing_unlock_flow() {
         let context = TuiContext {
@@ -651,13 +799,7 @@ mod tests {
             commands,
             vec![
                 WorkerCommand::OpenSession {
-                    identity: TuiSessionIdentity {
-                        user_name: "default".to_string(),
-                        profile_selector: "1".to_string(),
-                        profile_name: "Production".to_string(),
-                        protocol: "sftp".to_string(),
-                        host: "example.com".to_string(),
-                    },
+                    identity: sample_identity(),
                     initial_cwd: "/".to_string(),
                 },
                 WorkerCommand::List {
@@ -666,6 +808,194 @@ mod tests {
             ]
         );
         assert_eq!(app.session.phase, TuiSessionPhase::Connecting);
+        assert_eq!(app.focus, TuiFocus::Browser);
+    }
+
+    #[test]
+    fn browser_enter_on_directory_emits_read_only_list_command() {
+        let mut app = AppState::new_live(sample_context());
+        app.focus = TuiFocus::Actions;
+        app.selected_action = 1;
+        app.apply_action(TuiAction::Activate);
+        app.apply_worker_event(WorkerEvent::ListReady {
+            identity: sample_identity(),
+            path: "/srv".to_string(),
+            result: list_result(vec![
+                crate::cli_tui::worker::TuiListEntry {
+                    name: "docs".to_string(),
+                    path: "/srv/docs".to_string(),
+                    is_dir: true,
+                    size: 0,
+                    modified: None,
+                },
+                crate::cli_tui::worker::TuiListEntry {
+                    name: "readme.txt".to_string(),
+                    path: "/srv/readme.txt".to_string(),
+                    is_dir: false,
+                    size: 42,
+                    modified: None,
+                },
+            ]),
+        });
+
+        let commands = app.apply_action(TuiAction::Activate);
+
+        assert_eq!(
+            commands,
+            vec![WorkerCommand::List {
+                path: "/srv/docs".to_string()
+            }]
+        );
+        assert!(matches!(
+            app.worker,
+            WorkerEvent::Busy {
+                operation: TuiWorkerOperation::List,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn browser_enter_on_file_emits_read_only_stat_command_and_applies_preview() {
+        let mut app = AppState::new_live(sample_context());
+        app.focus = TuiFocus::Actions;
+        app.selected_action = 1;
+        app.apply_action(TuiAction::Activate);
+        app.apply_worker_event(WorkerEvent::ListReady {
+            identity: sample_identity(),
+            path: "/srv".to_string(),
+            result: list_result(vec![
+                crate::cli_tui::worker::TuiListEntry {
+                    name: "docs".to_string(),
+                    path: "/srv/docs".to_string(),
+                    is_dir: true,
+                    size: 0,
+                    modified: None,
+                },
+                crate::cli_tui::worker::TuiListEntry {
+                    name: "readme.txt".to_string(),
+                    path: "/srv/readme.txt".to_string(),
+                    is_dir: false,
+                    size: 42,
+                    modified: None,
+                },
+            ]),
+        });
+        app.apply_action(TuiAction::MoveDown);
+
+        let commands = app.apply_action(TuiAction::Activate);
+
+        assert_eq!(
+            commands,
+            vec![WorkerCommand::Stat {
+                path: "/srv/readme.txt".to_string()
+            }]
+        );
+        assert!(matches!(
+            app.worker,
+            WorkerEvent::Busy {
+                operation: TuiWorkerOperation::Stat,
+                ..
+            }
+        ));
+
+        app.apply_worker_event(WorkerEvent::StatReady {
+            identity: sample_identity(),
+            path: "/srv/readme.txt".to_string(),
+            result: stat_result("/srv/readme.txt"),
+        });
+
+        assert_eq!(
+            app.browser.preview.as_ref().map(|preview| (
+                preview.path.as_str(),
+                preview.size,
+                preview.mime_type.as_deref(),
+            )),
+            Some(("/srv/readme.txt", 42, Some("text/plain")))
+        );
+    }
+
+    #[test]
+    fn stat_failure_keeps_the_live_session_connected() {
+        let mut app = AppState::new_live(sample_context());
+        app.apply_worker_event(WorkerEvent::ListReady {
+            identity: sample_identity(),
+            path: "/srv".to_string(),
+            result: list_result(Vec::new()),
+        });
+
+        app.apply_worker_event(WorkerEvent::Failed {
+            operation: TuiWorkerOperation::Stat,
+            identity: Some(sample_identity()),
+            message: "stat failed: /srv/missing.txt not found".to_string(),
+        });
+
+        assert_eq!(app.session.phase, TuiSessionPhase::Connected);
+        assert!(app.status.contains("stat failed"));
+    }
+
+    #[test]
+    fn browser_selection_moves_on_entries_without_touching_profile_selection() {
+        let mut app = AppState::new_live(sample_context());
+        app.focus = TuiFocus::Browser;
+        app.apply_worker_event(WorkerEvent::ListReady {
+            identity: sample_identity(),
+            path: "/srv".to_string(),
+            result: list_result(vec![
+                crate::cli_tui::worker::TuiListEntry {
+                    name: "docs".to_string(),
+                    path: "/srv/docs".to_string(),
+                    is_dir: true,
+                    size: 0,
+                    modified: None,
+                },
+                crate::cli_tui::worker::TuiListEntry {
+                    name: "media".to_string(),
+                    path: "/srv/media".to_string(),
+                    is_dir: true,
+                    size: 0,
+                    modified: None,
+                },
+            ]),
+        });
+
+        app.apply_action(TuiAction::MoveDown);
+
+        assert_eq!(app.browser.selected, 1);
+        assert_eq!(app.selected_profile, 0);
+    }
+
+    #[test]
+    fn browser_parent_navigation_lists_parent_and_stops_at_live_root() {
+        let mut app = AppState::new_live(sample_context());
+        app.focus = TuiFocus::Browser;
+        app.apply_worker_event(WorkerEvent::ListReady {
+            identity: sample_identity(),
+            path: "/srv".to_string(),
+            result: list_result(Vec::new()),
+        });
+        app.apply_worker_event(WorkerEvent::ListReady {
+            identity: sample_identity(),
+            path: "/srv/docs".to_string(),
+            result: list_result(Vec::new()),
+        });
+
+        let commands = app.apply_action(TuiAction::MoveLeft);
+
+        assert_eq!(
+            commands,
+            vec![WorkerCommand::List {
+                path: "/srv".to_string()
+            }]
+        );
+
+        app.apply_worker_event(WorkerEvent::ListReady {
+            identity: sample_identity(),
+            path: "/srv".to_string(),
+            result: list_result(Vec::new()),
+        });
+
+        assert!(app.apply_action(TuiAction::Parent).is_empty());
     }
 
     #[test]

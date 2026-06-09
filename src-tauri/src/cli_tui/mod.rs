@@ -139,7 +139,7 @@ fn render_dashboard(frame: &mut ratatui::Frame<'_>, app: &AppState, theme: TuiTh
             Span::styled(app.phase_label(), theme.muted_style()),
         ]),
         Line::from(Span::styled(
-            "User -> profile -> action. The selected intent exits raw mode and runs through CLI handlers.",
+            "User -> profile -> action -> browser. Live reads are queued through CLI handlers.",
             theme.muted_style(),
         )),
     ]);
@@ -153,9 +153,10 @@ fn render_dashboard(frame: &mut ratatui::Frame<'_>, app: &AppState, theme: TuiTh
     let body = Layout::new(
         body_direction,
         [
-            Constraint::Percentage(28),
-            Constraint::Percentage(34),
-            Constraint::Percentage(38),
+            Constraint::Percentage(21),
+            Constraint::Percentage(25),
+            Constraint::Percentage(24),
+            Constraint::Percentage(30),
         ],
     )
     .split(rows[1]);
@@ -163,6 +164,7 @@ fn render_dashboard(frame: &mut ratatui::Frame<'_>, app: &AppState, theme: TuiTh
     render_users(frame, body[0], app, theme);
     render_profiles(frame, body[1], app, theme);
     render_actions(frame, body[2], app, theme);
+    render_browser(frame, body[3], app, theme);
 
     let footer = Paragraph::new(vec![
         Line::from(vec![
@@ -171,7 +173,9 @@ fn render_dashboard(frame: &mut ratatui::Frame<'_>, app: &AppState, theme: TuiTh
             Span::styled("Left/Right/Tab", theme.accent_style()),
             Span::raw(" pane   "),
             Span::styled("Enter", theme.accent_style()),
-            Span::raw(" run   "),
+            Span::raw(" run/open   "),
+            Span::styled("Backspace/Left", theme.accent_style()),
+            Span::raw(" parent   "),
             Span::styled("q/Esc", theme.accent_style()),
             Span::raw(" quit"),
         ]),
@@ -358,15 +362,6 @@ fn render_actions(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, th
                 app.browser.path, summary.total, summary.dirs, summary.files
             )),
         ]));
-        for entry in app.browser.entries.iter().take(3) {
-            detail_lines.push(Line::from(vec![
-                Span::styled(
-                    if entry.is_dir { "dir  " } else { "file " },
-                    theme.muted_style(),
-                ),
-                Span::raw(format_browser_entry(entry)),
-            ]));
-        }
     }
     let details = Paragraph::new(detail_lines)
         .block(Block::default().borders(Borders::ALL).title(" Intent "))
@@ -374,11 +369,221 @@ fn render_actions(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, th
     frame.render_widget(details, chunks[1]);
 }
 
+fn render_browser(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, theme: TuiTheme) {
+    let chunks = Layout::vertical([Constraint::Min(5), Constraint::Length(6)]).split(area);
+    let title = browser_title(app);
+    let items: Vec<ListItem> = if app.browser.entries.is_empty() {
+        let message = if app.browser.summary.is_some() {
+            "(empty directory)"
+        } else {
+            "No listing loaded"
+        };
+        vec![ListItem::new(Line::from(Span::styled(
+            message,
+            theme.muted_style(),
+        )))]
+    } else {
+        app.browser
+            .entries
+            .iter()
+            .map(|entry| {
+                let kind = if entry.is_dir { "DIR " } else { "FILE" };
+                let kind_style = if entry.is_dir {
+                    theme.accent_style()
+                } else {
+                    theme.muted_style()
+                };
+                ListItem::new(Line::from(vec![
+                    Span::styled(kind, kind_style),
+                    Span::raw(" "),
+                    Span::styled(
+                        format_browser_entry(entry),
+                        if entry.is_dir {
+                            Style::default().add_modifier(Modifier::BOLD)
+                        } else {
+                            Style::default()
+                        },
+                    ),
+                    Span::styled(browser_entry_meta(entry), theme.muted_style()),
+                ]))
+            })
+            .collect()
+    };
+
+    let mut state = ListState::default();
+    if !app.browser.entries.is_empty() {
+        state.select(Some(app.browser.selected));
+    }
+    let list = List::new(items)
+        .block(Block::default().borders(Borders::ALL).title(title))
+        .highlight_style(selection_style(app.focus, TuiFocus::Browser, theme))
+        .highlight_symbol("> ");
+    frame.render_stateful_widget(list, chunks[0], &mut state);
+
+    let mut summary = match &app.browser.summary {
+        Some(summary) => {
+            let mut lines = vec![
+                Line::from(vec![
+                    Span::styled("Path:  ", theme.muted_style()),
+                    Span::raw(app.browser.path.as_str()),
+                ]),
+                Line::from(vec![
+                    Span::styled("Items: ", theme.muted_style()),
+                    Span::raw(format!(
+                        "{} total, {} dirs, {} files, {}",
+                        summary.total,
+                        summary.dirs,
+                        summary.files,
+                        format_browser_size(summary.total_bytes)
+                    )),
+                    Span::styled(
+                        if summary.truncated { " truncated" } else { "" },
+                        theme.muted_style(),
+                    ),
+                ]),
+            ];
+            if let Some(preview) = &app.browser.preview {
+                lines.extend(browser_preview_lines(preview, theme));
+            } else if let Some(entry) = app.browser.selected_entry() {
+                lines.push(Line::from(vec![
+                    Span::styled("Sel:   ", theme.muted_style()),
+                    Span::raw(format_browser_entry(entry)),
+                    Span::styled(
+                        if entry.is_dir {
+                            "  directory"
+                        } else {
+                            "  file"
+                        },
+                        theme.muted_style(),
+                    ),
+                ]));
+            }
+            lines
+        }
+        None => vec![
+            Line::from(vec![
+                Span::styled("Path:  ", theme.muted_style()),
+                Span::raw("-"),
+            ]),
+            Line::from(vec![
+                Span::styled("Items: ", theme.muted_style()),
+                Span::raw("-"),
+            ]),
+        ],
+    };
+    summary.truncate(4);
+    let details = Paragraph::new(summary)
+        .block(Block::default().borders(Borders::ALL).title(" Listing "))
+        .wrap(Wrap { trim: true });
+    frame.render_widget(details, chunks[1]);
+}
+
+fn browser_title(app: &AppState) -> String {
+    let prefix = if matches!(app.focus, TuiFocus::Browser) {
+        " Browser * "
+    } else {
+        " Browser "
+    };
+    if app.browser.path.is_empty() {
+        prefix.to_string()
+    } else {
+        format!("{}{} ", prefix, app.browser.path)
+    }
+}
+
 fn format_browser_entry(entry: &crate::cli_tui::panes::browser::BrowserEntry) -> String {
     if entry.is_dir {
         format!("{}/", entry.name)
     } else {
-        format!("{}  {} B", entry.name, entry.size)
+        entry.name.clone()
+    }
+}
+
+fn browser_entry_meta(entry: &crate::cli_tui::panes::browser::BrowserEntry) -> String {
+    if entry.is_dir {
+        return entry
+            .modified
+            .as_ref()
+            .map(|modified| format!("  {}", short_modified(modified)))
+            .unwrap_or_default();
+    }
+
+    let modified = entry
+        .modified
+        .as_ref()
+        .map(|modified| format!("  {}", short_modified(modified)))
+        .unwrap_or_default();
+    format!("  {}{}", format_browser_size(entry.size), modified)
+}
+
+fn browser_preview_lines(
+    preview: &crate::cli_tui::panes::browser::BrowserPreview,
+    theme: TuiTheme,
+) -> Vec<Line<'static>> {
+    let kind = if preview.is_dir { "directory" } else { "file" };
+    let mut lines = vec![
+        Line::from(vec![
+            Span::styled("Sel:   ", theme.muted_style()),
+            Span::raw(format!(
+                "{}  {}",
+                preview.name,
+                if preview.is_symlink { "symlink" } else { kind }
+            )),
+        ]),
+        Line::from(vec![
+            Span::styled("Size:  ", theme.muted_style()),
+            Span::raw(if preview.is_dir {
+                "-".to_string()
+            } else {
+                format!(
+                    "{} ({} bytes)",
+                    format_browser_size(preview.size),
+                    preview.size
+                )
+            }),
+        ]),
+    ];
+    if let Some(modified) = &preview.modified {
+        lines.push(Line::from(vec![
+            Span::styled("Mod:   ", theme.muted_style()),
+            Span::raw(short_modified(modified).to_string()),
+        ]));
+    }
+    if let Some(mime_type) = &preview.mime_type {
+        lines.push(Line::from(vec![
+            Span::styled("Mime:  ", theme.muted_style()),
+            Span::raw(mime_type.clone()),
+        ]));
+    }
+    if let Some(permissions) = &preview.permissions {
+        lines.push(Line::from(vec![
+            Span::styled("Perm:  ", theme.muted_style()),
+            Span::raw(permissions.clone()),
+        ]));
+    }
+    lines
+}
+
+fn short_modified(value: &str) -> &str {
+    value.get(..16).unwrap_or(value)
+}
+
+fn format_browser_size(bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = 1024 * KB;
+    const GB: u64 = 1024 * MB;
+    const TB: u64 = 1024 * GB;
+
+    if bytes >= TB {
+        format!("{:.1} TB", bytes as f64 / TB as f64)
+    } else if bytes >= GB {
+        format!("{:.1} GB", bytes as f64 / GB as f64)
+    } else if bytes >= MB {
+        format!("{:.1} MB", bytes as f64 / MB as f64)
+    } else if bytes >= KB {
+        format!("{:.1} KB", bytes as f64 / KB as f64)
+    } else {
+        format!("{} B", bytes)
     }
 }
 

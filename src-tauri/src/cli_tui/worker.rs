@@ -116,6 +116,11 @@ pub enum WorkerEvent {
         path: String,
         result: TuiListResult,
     },
+    StatReady {
+        identity: TuiSessionIdentity,
+        path: String,
+        result: TuiStatResult,
+    },
     Failed {
         operation: TuiWorkerOperation,
         identity: Option<TuiSessionIdentity>,
@@ -138,6 +143,7 @@ impl WorkerEvent {
             WorkerEvent::ListReady { path, result, .. } => {
                 format!("list ready {} ({} items)", path, result.summary.total)
             }
+            WorkerEvent::StatReady { path, .. } => format!("stat ready {}", path),
             WorkerEvent::Failed { operation, .. } => format!("{} failed", operation.label()),
             WorkerEvent::Cancelled { operation } => format!("{} cancelled", operation.label()),
         }
@@ -167,6 +173,21 @@ pub struct TuiListSummary {
     pub total_bytes: u64,
     pub truncated: bool,
     pub total_before_limit: usize,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct TuiStatResult {
+    pub name: String,
+    pub path: String,
+    pub is_dir: bool,
+    pub size: u64,
+    pub modified: Option<String>,
+    pub permissions: Option<String>,
+    pub owner: Option<String>,
+    pub group: Option<String>,
+    pub is_symlink: bool,
+    pub link_target: Option<String>,
+    pub mime_type: Option<String>,
 }
 
 #[cfg(test)]
@@ -270,6 +291,27 @@ mod tests {
             }
             .label(),
             "list ready / (0 items)"
+        );
+        assert_eq!(
+            WorkerEvent::StatReady {
+                identity: identity(),
+                path: "/file.txt".to_string(),
+                result: TuiStatResult {
+                    name: "file.txt".to_string(),
+                    path: "/file.txt".to_string(),
+                    is_dir: false,
+                    size: 42,
+                    modified: None,
+                    permissions: None,
+                    owner: None,
+                    group: None,
+                    is_symlink: false,
+                    link_target: None,
+                    mime_type: None,
+                },
+            }
+            .label(),
+            "stat ready /file.txt"
         );
     }
 }

@@ -5542,7 +5542,7 @@ fn print_profile_banner_once(name: &str, details: String, quiet: bool) {
 }
 
 async fn maybe_hydrate_ftp_stat_size(
-    provider: &mut Box<dyn StorageProvider>,
+    provider: &mut dyn StorageProvider,
     path: &str,
     entry: &mut RemoteEntry,
 ) {
@@ -9393,6 +9393,45 @@ async fn list_tui_session_via_cli_handler(
     Ok((path, result))
 }
 
+async fn stat_tui_session_via_cli_handler(
+    session: &mut cli_tui::session::TuiSession,
+    path: &str,
+) -> Result<(String, cli_tui::worker::TuiStatResult), String> {
+    let initial_path = session.initial_path().to_string();
+    let resolved_path = try_resolve_cli_remote_path_with_note(&initial_path, path, false)
+        .map_err(|err| err.to_string())?;
+    let provider = session.provider_mut();
+
+    match provider.stat(&resolved_path).await {
+        Ok(mut entry) => {
+            maybe_hydrate_ftp_stat_size(provider, &resolved_path, &mut entry).await;
+            let result_path = entry.path.clone();
+            let result = cli_tui::worker::TuiStatResult {
+                name: sanitize_filename(&entry.name),
+                path: entry.path,
+                is_dir: entry.is_dir,
+                size: entry.size,
+                modified: entry.modified,
+                permissions: entry.permissions,
+                owner: entry.owner,
+                group: entry.group,
+                is_symlink: entry.is_symlink,
+                link_target: entry.link_target,
+                mime_type: entry.mime_type,
+            };
+            Ok((result_path, result))
+        }
+        Err(err) => {
+            let exit = provider_error_to_exit_code(&err);
+            if exit == 2 {
+                Err(format!("stat failed: {} not found", resolved_path))
+            } else {
+                Err(format!("stat failed: {}", err))
+            }
+        }
+    }
+}
+
 async fn run_cli_tui_worker(
     cli: &mut Cli,
     format: OutputFormat,
@@ -9487,6 +9526,45 @@ async fn run_cli_tui_worker(
                     Err(message) => {
                         let _ = event_tx.send(WorkerEvent::Failed {
                             operation: TuiWorkerOperation::List,
+                            identity: active_identity,
+                            message,
+                        });
+                    }
+                }
+            }
+            WorkerCommand::Stat { path } => {
+                let active_identity = session
+                    .as_ref()
+                    .and_then(|session| session.state().identity.clone());
+                let _ = event_tx.send(WorkerEvent::Busy {
+                    operation: TuiWorkerOperation::Stat,
+                    identity: active_identity.clone(),
+                });
+
+                let Some(active_session) = session.as_mut() else {
+                    let _ = event_tx.send(WorkerEvent::Failed {
+                        operation: TuiWorkerOperation::Stat,
+                        identity: None,
+                        message: "no active TUI session".to_string(),
+                    });
+                    continue;
+                };
+                let active_identity =
+                    active_identity.or_else(|| active_session.state().identity.clone());
+
+                match stat_tui_session_via_cli_handler(active_session, &path).await {
+                    Ok((stat_path, result)) => {
+                        if let Some(identity) = active_identity {
+                            let _ = event_tx.send(WorkerEvent::StatReady {
+                                identity,
+                                path: stat_path,
+                                result,
+                            });
+                        }
+                    }
+                    Err(message) => {
+                        let _ = event_tx.send(WorkerEvent::Failed {
+                            operation: TuiWorkerOperation::Stat,
                             identity: active_identity,
                             message,
                         });
@@ -24804,7 +24882,7 @@ async fn cmd_stat(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32
     let path = &resolve_cli_remote_path(&initial_path, path);
     match provider.stat(path).await {
         Ok(mut entry) => {
-            maybe_hydrate_ftp_stat_size(&mut provider, path, &mut entry).await;
+            maybe_hydrate_ftp_stat_size(provider.as_mut(), path, &mut entry).await;
             match format {
                 OutputFormat::Text => {
                     println!("  Name:        {}", entry.name);

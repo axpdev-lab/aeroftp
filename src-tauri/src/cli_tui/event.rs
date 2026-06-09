@@ -8,6 +8,7 @@ pub enum TuiAction {
     MoveLeft,
     MoveRight,
     Activate,
+    Parent,
     Noop,
 }
 
@@ -19,6 +20,7 @@ pub fn key_to_action(key: KeyEvent) -> TuiAction {
         KeyCode::Left | KeyCode::Char('h') => TuiAction::MoveLeft,
         KeyCode::Right | KeyCode::Char('l') | KeyCode::Tab => TuiAction::MoveRight,
         KeyCode::Enter => TuiAction::Activate,
+        KeyCode::Backspace => TuiAction::Parent,
         _ => TuiAction::Noop,
     }
 }
