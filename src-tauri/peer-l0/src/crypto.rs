@@ -47,6 +47,17 @@ pub fn derive_session_key(secret: &[u8], local_node: &str, remote_node: &str) ->
     key
 }
 
+/// L1 drive key: HKDF over the pairing secret, domain-separated by the drive NamespaceId.
+/// Both publish and replicate know the NamespaceId (publish creates it; replicate gets it from the
+/// ticket via doc.id()), so both derive the SAME 32-byte key.
+pub fn derive_drive_key(secret: &[u8], namespace_id: &str) -> [u8; 32] {
+    let info = format!("aeroftp-peer-l1-drive|{}", namespace_id);
+    let hk = Hkdf::<Sha256>::new(None, secret);
+    let mut key = [0u8; 32];
+    let _ = hk.expand(info.as_bytes(), &mut key);
+    key
+}
+
 /// Generate a fresh random pairing secret (for the listen side to display).
 pub fn generate_pairing_secret() -> [u8; PAIRING_SECRET_LEN] {
     let mut secret = [0u8; PAIRING_SECRET_LEN];

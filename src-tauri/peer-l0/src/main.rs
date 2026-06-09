@@ -21,8 +21,9 @@ use std::time::{Duration, Instant};
 use tracing::info;
 
 use aeroftp_peer_l0::{
-    decode_secret, derive_session_key, encode_secret, generate_pairing_secret,
-    recv_encrypted_blob, recv_offer, send_encrypted_blob, send_offer, ConnectivitySample,
+    decode_secret, derive_drive_key, derive_session_key, encode_secret, encrypt_blob, decrypt_blob,
+    generate_pairing_secret, recv_encrypted_blob, recv_offer, send_encrypted_blob, send_offer,
+    ConnectivitySample,
 };
 
 #[derive(Parser, Debug)]
@@ -90,8 +91,8 @@ enum Mode {
         inputs: Vec<PathBuf>,
     },
 
-    /// L1 docs-publish (Node A): create namespace + ONE signed entry + its blob, print DocTicket, stay running.
-    /// Bare replication only (no E2EE yet). Mirrors L0 listen UX.
+    /// L1 docs-publish (Node A): create namespace + ONE signed entry + its *encrypted* blob, print DocTicket, stay running.
+    /// E2EE layered on the drive key (from --secret + NamespaceId). Requires --secret.
     DocsPublish {
         /// Entry key (path-like). Default chosen to match the task's "hello.txt" example.
         #[arg(long, default_value = "hello.txt")]
@@ -99,7 +100,7 @@ enum Mode {
     },
 
     /// L1 docs-replicate (Node B): given ticket from publish, import+sync, read the entry,
-    /// fetch+verify the content blob (bytes match + BLAKE3, author sig via docs sync).
+    /// fetch the ciphertext blob, decrypt with --secret + ns, verify plaintext + author sig.
     DocsReplicate {
         /// DocTicket string exactly as printed by the publish side (contains Namespace + addrs).
         ticket: String,
@@ -185,7 +186,8 @@ async fn main() -> Result<()> {
                 secret_key_path: None,
                 custom_relay_urls: cli.custom_relay_urls.clone(),
             };
-            run_docs_publish(key, docs_cfg).await?;
+            let secret_bytes = effective_secret.as_deref().map(decode_secret).transpose()?;
+            run_docs_publish(key, docs_cfg, secret_bytes).await?;
             return Ok(());
         }
         Mode::DocsReplicate { ticket } => {
@@ -194,7 +196,8 @@ async fn main() -> Result<()> {
                 secret_key_path: None,
                 custom_relay_urls: cli.custom_relay_urls.clone(),
             };
-            run_docs_replicate(ticket, docs_cfg).await?;
+            let secret_bytes = effective_secret.as_deref().map(decode_secret).transpose()?;
+            run_docs_replicate(ticket, docs_cfg, secret_bytes).await?;
             return Ok(());
         }
     }
@@ -726,13 +729,11 @@ async fn run_dial(node_str: &str, blob_size: usize, note: Option<String>, secret
     sample
 }
 
-/// L1 Stage 2: docs-publish side (bare signed drive replication, no E2EE).
-/// Sets up the full meta-protocol stack (blobs + gossip + docs) on a base endpoint
-/// that reuses L0's discovery_n0 + RelayMode config (via build_base_endpoint).
-/// Creates one author + one namespace (drive), writes a single entry whose *value* is
-/// the BLAKE3 hash of the content bytes (content lives in iroh-blobs), prints NodeId +
-/// NamespaceId + a DocTicket, then stays alive so the replicate side can dial+sync.
-async fn run_docs_publish(key: String, cfg: aeroftp_peer_l0::endpoint::PeerEndpointConfig) -> Result<()> {
+/// L1 Stage 3: docs-publish side with E2EE (layered AES-GCM over the drive key derived from
+/// the pairing secret + NamespaceId). The *value* bytes passed to set_bytes (and thus the
+/// iroh-blobs content) are now nonce||ciphertext; the entry still carries the BLAKE3 of that
+/// ciphertext. Plaintext is never exposed to the docs/iroh layer.
+async fn run_docs_publish(key: String, cfg: aeroftp_peer_l0::endpoint::PeerEndpointConfig, secret_bytes: Option<Vec<u8>>) -> Result<()> {
     use bytes::Bytes;
     use iroh::protocol::Router;
     use iroh_blobs::BlobsProtocol;
@@ -773,16 +774,25 @@ async fn run_docs_publish(key: String, cfg: aeroftp_peer_l0::endpoint::PeerEndpo
     println!("AuthorId: {}", author);
     println!("NamespaceId: {}", ns);
 
-    // Write ONE entry. The *value* stored in the doc entry is the content hash + meta;
-    // the actual bytes live in the blobs store under that hash (BLAKE3 verified).
+    // Write ONE entry, E2EE-layered.
+    // The plaintext content is encrypted with a drive key derived from the pairing secret + ns.
+    // We store nonce||ciphertext as the "content bytes" under the key; iroh-docs/iroh-blobs
+    // only ever see the ciphertext (RBSR works on the encrypted value + its hash).
+    let secret = secret_bytes.context("docs-publish requires --secret (16-byte pairing secret for L1 drive E2EE)")?;
+    let drive_key = derive_drive_key(&secret, &ns.to_string());
+
     let content_str = format!("hi from L1 {}", chrono::Utc::now().to_rfc3339());
     let content: Vec<u8> = content_str.into_bytes();
-    let content_bytes = Bytes::from(content.clone());
-    // key: String moved into Bytes (set_bytes wants Into<Bytes> that lives for the call; String satisfies).
-    let written_hash = doc.set_bytes(author, Bytes::from(key.clone()), content_bytes.clone()).await?;
 
-    println!("Wrote entry: key={} content_hash={} size={}", key, written_hash, content.len());
-    println!("(content bytes will be replicated via iroh-blobs; entry signed by author)");
+    let (nonce, ct) = encrypt_blob(&drive_key, &content)?;
+    let mut blob = nonce.clone();
+    blob.extend_from_slice(&ct);
+
+    // key: String moved into Bytes...
+    let written_hash = doc.set_bytes(author, Bytes::from(key.clone()), Bytes::from(blob.clone())).await?;
+
+    println!("Wrote entry: key={} content_hash={} size={}", key, written_hash, blob.len());
+    println!("stored ciphertext blob len={} (nonce {}B + ct) (E2EE; plaintext never leaves this process; entry signed by author)", blob.len(), nonce.len());
 
     // Produce a ticket that tells the other side the NamespaceId + where to find us.
     // Read mode is sufficient for replication (the other side only pulls).
@@ -800,13 +810,10 @@ async fn run_docs_publish(key: String, cfg: aeroftp_peer_l0::endpoint::PeerEndpo
     Ok(())
 }
 
-/// L1 Stage 2: docs-replicate side (bare signed drive replication, no E2EE).
-/// Imports the ticket (which gives Namespace + peer addrs), runs the docs replication
-/// (RBSR + blob fetch), then reads the entry, fetches its content blob, and verifies:
-///   R1: entry for the key was received
-///   R2: content bytes exactly match what was published + BLAKE3 hash matches
-///   R3: author id on the entry matches the one printed on publish (docs verifies sigs on sync)
-async fn run_docs_replicate(ticket_str: String, cfg: aeroftp_peer_l0::endpoint::PeerEndpointConfig) -> Result<()> {
+/// L1 Stage 3: docs-replicate side with E2EE.
+/// Imports the ticket, runs replication, fetches the (ciphertext) blob for the entry,
+/// derives the drive key from --secret + doc.id(), decrypts, and verifies the plaintext.
+async fn run_docs_replicate(ticket_str: String, cfg: aeroftp_peer_l0::endpoint::PeerEndpointConfig, secret_bytes: Option<Vec<u8>>) -> Result<()> {
     use bytes::Bytes;
     use futures_lite::stream::StreamExt;
     use iroh::protocol::Router;
@@ -863,29 +870,42 @@ async fn run_docs_replicate(ticket_str: String, cfg: aeroftp_peer_l0::endpoint::
 
     println!("R1: received entry key={} author={} hash={} size={}", entry_key, entry_author, content_hash, content_size);
 
-    // Fetch the actual content bytes via the blobs store (the docs entry only carries the hash+meta).
-    // The replication should have caused the blob to be fetched automatically.
+    // Fetch the *ciphertext* blob (the value stored under the entry is nonce||ct, not plaintext).
     let fetched: Bytes = blobs
         .blobs()
         .get_bytes(content_hash)
         .await
         .context("blob content not available after docs replication")?;
 
-    println!("R2: fetched blob bytes (len={}): {:?}", fetched.len(), String::from_utf8_lossy(&fetched));
+    // E3: show raw bytes are ciphertext (not the readable "hi from L1...").
+    let raw_preview: String = fetched.iter().take(16).map(|b| format!("{:02x}", b)).collect();
+    println!("E3: raw fetched blob (first 16 bytes hex): {} (should not start with '68 69 20 66 72 6f 6d' = 'hi from')", raw_preview);
 
-    // Compute local blake3 to double-check (iroh-blobs already verified on receive).
-    let local_hash = iroh_blobs::Hash::new(&fetched);
-    println!("     local blake3 recompute: {}", local_hash);
-    println!("     entry content_hash   : {}", content_hash);
-    if local_hash != content_hash {
-        anyhow::bail!("BLAKE3 mismatch after fetch");
+    // Derive drive key and decrypt (this is the E2EE layer; iroh-docs only saw ciphertext).
+    let secret = secret_bytes.context("docs-replicate requires --secret (16-byte pairing secret for L1 drive E2EE)")?;
+    let drive_key = derive_drive_key(&secret, &ns.to_string());
+
+    let n = 12; // AES-GCM nonce length (see encrypt_blob in crypto.rs)
+    if fetched.len() < n {
+        anyhow::bail!("fetched blob too short to contain nonce");
     }
-    println!("     BLAKE3 match: PASS");
+    let (nonce, ct) = fetched.split_at(n);
+    let plaintext = decrypt_blob(&drive_key, nonce, ct)?;
 
-    // R3: author surfaced; the fact that we got a signed entry with no protocol error
-    // and the content under the hash means the author signature was accepted by docs during RBSR.
+    println!("R2 (decrypted): plaintext len={} : {:?}", plaintext.len(), String::from_utf8_lossy(&plaintext));
+
+    // The blake3 in the entry is over the *ciphertext* we stored; keep the check for the blob integrity.
+    let local_hash = iroh_blobs::Hash::new(&fetched);
+    println!("     local blake3 (of ct): {}", local_hash);
+    println!("     entry content_hash  : {}", content_hash);
+    if local_hash != content_hash {
+        anyhow::bail!("BLAKE3 mismatch after fetch (ct)");
+    }
+    println!("     BLAKE3 (ct) match: PASS");
+
+    // R3 unchanged in spirit.
     println!("R3: entry author = {} (docs sync verifies the author signature; no error above means sig OK)", entry_author);
 
-    println!("\nL1 bare replication SUCCESS on localhost (entry + blob replicated + verified).");
+    println!("\nL1 E2EE replication SUCCESS on localhost (entry + ciphertext blob replicated; decrypted with drive key).");
     Ok(())
 }
