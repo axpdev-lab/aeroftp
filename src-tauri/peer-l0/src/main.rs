@@ -110,6 +110,11 @@ enum Mode {
         /// can converge live. Only meaningful with --dir.
         #[arg(long, default_value_t = 0)]
         republish_after: u64,
+
+        /// Number of republishes AFTER v1 (only with --dir + --republish-after). Default 1 keeps
+        /// Stage 5/6 behavior (v1 then one v2). Use e.g. 2 for v1->v2->v3.
+        #[arg(long, default_value_t = 1)]
+        republish_count: u64,
     },
 
     /// L1 docs-replicate (Node B): given ticket from publish, import+sync, read the entry (or whole drive via manifest),
@@ -207,14 +212,14 @@ async fn main() -> Result<()> {
             print_campaign_summary(&all_samples);
             return Ok(());
         }
-        Mode::DocsPublish { key, dir, republish_after } => {
+        Mode::DocsPublish { key, dir, republish_after, republish_count } => {
             let docs_cfg = aeroftp_peer_l0::endpoint::PeerEndpointConfig {
                 bind_addr: None,
                 secret_key_path: None,
                 custom_relay_urls: cli.custom_relay_urls.clone(),
             };
             let secret_bytes = effective_secret.as_deref().map(decode_secret).transpose()?;
-            run_docs_publish(key, dir, republish_after, docs_cfg, secret_bytes).await?;
+            run_docs_publish(key, dir, republish_after, republish_count, docs_cfg, secret_bytes).await?;
             return Ok(());
         }
         Mode::DocsReplicate { ticket, out, watch_secs } => {
@@ -887,12 +892,11 @@ async fn publish_drive_version(
     Ok((stats, new_state))
 }
 
-/// L1 Stage 5: docs-publish with optional drive mode + republish-after for versioning demo.
+/// L1 Stage 5/6/7: docs-publish with optional drive mode + republish-after + republish-count.
 /// If --dir absent: exact single-entry (compat).
-/// If --dir present: publish v1 (drive_version=1) and SHARE THE TICKET IMMEDIATELY so a watcher can
-/// join during v1. If --republish-after > 0: only THEN sleep and publish v2 (drive_version=2, LWW
-/// updates + any new files), which gossip delivers live to the already-joined watcher.
-async fn run_docs_publish(key: String, dir: Option<String>, republish_after: u64, cfg: aeroftp_peer_l0::endpoint::PeerEndpointConfig, secret_bytes: Option<Vec<u8>>) -> Result<()> {
+/// If --dir present: publish v1 then (if republish_after>0) loop republish_count times (v2, v3, ...),
+/// chaining drive_state for differential updates/deletes. Ticket shared immediately after v1.
+async fn run_docs_publish(key: String, dir: Option<String>, republish_after: u64, republish_count: u64, cfg: aeroftp_peer_l0::endpoint::PeerEndpointConfig, secret_bytes: Option<Vec<u8>>) -> Result<()> {
     use bytes::Bytes;
     use iroh::protocol::Router;
     use iroh_blobs::BlobsProtocol;
@@ -970,16 +974,23 @@ async fn run_docs_publish(key: String, dir: Option<String>, republish_after: u64
     println!("==================================================\n");
     println!("Publish side ready. Waiting for replicators (Ctrl-C to stop)...");
 
-    // Drive versioning demo: republish v2 only AFTER the ticket is out, so a joined watcher sees the
-    // live transition (gossip pushes the updated entries + the bumped manifest).
+    // Drive versioning (Stage 7 generalized): after ticket share, if republish_after > 0 then
+    // loop republish_count times (v2, v3, ...). Each iteration sleeps, re-walks src on disk (test
+    // harness mutates between), chains prev state for diff+del, prints per-version stats.
     if republish_after > 0 {
         if let Some(dir_path) = dir.as_deref() {
             let src = Path::new(dir_path);
-            println!("(republish-after {}s: sleeping before v2)", republish_after);
-            tokio::time::sleep(std::time::Duration::from_secs(republish_after)).await;
-            let prev = drive_state.as_ref();
-            let (s2, _state2) = publish_drive_version(&doc, author, &drive_key, src, 2, prev).await?;
-            println!("DRIVE REPUBLISHED: v2: {} updated, {} added, {} deleted, {} unchanged (file_count {} -> {})", s2.updated, s2.added, s2.deleted, s2.unchanged, v1_file_count, s2.file_count);
+            let mut prev_file_count = v1_file_count;
+            for v in 2..=(1 + republish_count) {
+                println!("(republish-after {}s: sleeping before v{})", republish_after, v);
+                tokio::time::sleep(std::time::Duration::from_secs(republish_after)).await;
+                let prev = drive_state.as_ref();
+                let (s, new_state) = publish_drive_version(&doc, author, &drive_key, src, v, prev).await?;
+                println!("DRIVE REPUBLISHED: v{}: {} updated, {} added, {} deleted, {} unchanged (file_count {} -> {})",
+                    v, s.updated, s.added, s.deleted, s.unchanged, prev_file_count, s.file_count);
+                prev_file_count = s.file_count;
+                drive_state = Some(new_state);
+            }
         }
     }
 
