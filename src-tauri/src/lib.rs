@@ -15281,8 +15281,11 @@ pub fn run() {
             aerovault_v3::vault_v3_add_directory,
             aerovault_v3::vault_v3_security_info,
             aerovault_v3::vault_v3_has_error_correction,
+            aerovault_v3::vault_v3_recovery_status,
             aerovault_v3::vault_v3_scrub,
             aerovault_v3::vault_v3_repair,
+            aerovault_v3::vault_v3_export_parity,
+            aerovault_v3::vault_v3_strip_parity,
             // Remote Vault: open .aerovault on remote servers
             vault_remote::vault_v2_download_remote,
             vault_remote::vault_v2_upload_remote,

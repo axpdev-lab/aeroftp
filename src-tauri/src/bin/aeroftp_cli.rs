@@ -2695,6 +2695,12 @@ enum VaultCommands {
         /// Confirmed flag spelling with Ehud Kirsh (#276): --error-correction + --ec.
         #[arg(long, visible_alias = "ec")]
         error_correction: bool,
+        /// Where the parity lives (requires --error-correction): embedded (default,
+        /// in-container, auto-refreshed on every seal), detached (a sibling
+        /// `.aerovault.rec` sidecar, container stays byte-identical to a plain vault),
+        /// or both. Detached/both let you add parity later with `export-parity`.
+        #[arg(long = "recovery-placement", default_value = "embedded")]
+        recovery_placement: String,
     },
     /// Add files to a vault. v3 batches sub-threshold files into shared
     /// packs before chunking; v2/v1 add each file as its own entry.
@@ -2747,6 +2753,11 @@ enum VaultCommands {
         path: String,
         #[arg(long, short = 'p')]
         password: Option<String>,
+        /// Detached recovery file to check against (`.aerovault.rec`). When omitted,
+        /// the resolver tries `<vault>.aerovault.rec` then the embedded extension.
+        /// Scrub reports the resolved parity source so you know what repair would use.
+        #[arg(long)]
+        parity: Option<String>,
     },
     /// Repair a damaged Error Correction enabled vault using stored Reed-Solomon parity (v2 grid).
     /// Per-shard cksums localize erasures (incl. bad parity shards); RS reconstructs;
@@ -2762,6 +2773,38 @@ enum VaultCommands {
         /// Preview only, do not write repairs
         #[arg(long)]
         dry_run: bool,
+        /// Detached recovery file to repair from (`.aerovault.rec`). When omitted,
+        /// the resolver tries `<vault>.aerovault.rec` then the embedded extension.
+        /// A named file whose binding id does not match the vault is rejected.
+        #[arg(long)]
+        parity: Option<String>,
+    },
+    /// Export a detached Error Correction recovery file (`.aerovault.rec`) for an
+    /// existing vault. The encrypted container is read but never rewritten, so this
+    /// is how you add parity to a vault created without it, or refresh a detached
+    /// sidecar after edits (par2 semantics: the recovery file tracks a fixed data set).
+    /// Default output is `<vault>.aerovault.rec`.
+    ExportParity {
+        /// Path to the .aerovault file
+        path: String,
+        #[arg(long, short = 'p')]
+        password: Option<String>,
+        /// Output path for the recovery file (default: `<vault>.aerovault.rec`)
+        #[arg(long, short = 'o')]
+        out: Option<String>,
+    },
+    /// Strip the embedded Error Correction extension from a vault (next seal drops
+    /// the in-container parity). Refuses unless a detached `.aerovault.rec` sidecar
+    /// already exists, so a vault is never left with zero recovery; pass --force to
+    /// drop recovery entirely.
+    StripParity {
+        /// Path to the .aerovault file
+        path: String,
+        #[arg(long, short = 'p')]
+        password: Option<String>,
+        /// Drop embedded parity even if no detached sidecar exists
+        #[arg(long)]
+        force: bool,
     },
 }
 
@@ -42677,6 +42720,7 @@ async fn main() {
                     vault_version,
                     cascade,
                     error_correction,
+                    recovery_placement,
                 } => 'create: {
                     let pw = resolve_pw(password);
                     // v3 rejects < 8 internally; v1/v2 had no minimum, so a
@@ -42709,11 +42753,12 @@ async fn main() {
                         _ => {
                             if *error_correction {
                                 // P1-07: --error-correction flag wired through to create_with_error_correction.
-                                // Full RS in Phase 2 / v4 track per T-AEROVAULT-ECC (#272).
+                                // --recovery-placement selects embedded/detached/both (#276 SIDECAR slice).
                                 aerovault_v3::vault_v3_create_with_error_correction(
                                     path.clone(),
                                     pw,
                                     Some(profile.clone()),
+                                    Some(recovery_placement.clone()),
                                 )
                                 .await
                             } else {
@@ -42726,15 +42771,27 @@ async fn main() {
                             }
                         }
                     };
+                    let placement_label = if *error_correction && ver == "v3" {
+                        Some(recovery_placement.as_str())
+                    } else {
+                        None
+                    };
                     match res {
                         Ok(p) => {
                             match format {
                                 OutputFormat::Json => print_json(&serde_json::json!({
-                                    "status": "ok", "created": p, "version": ver
+                                    "status": "ok", "created": p, "version": ver,
+                                    "error_correction": *error_correction && ver == "v3",
+                                    "recovery_placement": placement_label,
                                 })),
-                                OutputFormat::Text => {
-                                    println!("Created {ver} vault: {p}")
-                                }
+                                OutputFormat::Text => match placement_label {
+                                    Some(pl) => {
+                                        println!(
+                                            "Created {ver} vault: {p} (Error Correction: {pl})"
+                                        )
+                                    }
+                                    None => println!("Created {ver} vault: {p}"),
+                                },
                             }
                             0
                         }
@@ -43005,7 +43062,11 @@ async fn main() {
                         }
                     }
                 }
-                VaultCommands::Scrub { path, password } => {
+                VaultCommands::Scrub {
+                    path,
+                    password,
+                    parity,
+                } => {
                     let pw = resolve_pw(password);
                     let ver = if path.trim().is_empty() {
                         "v3".to_string()
@@ -43020,21 +43081,26 @@ async fn main() {
                         );
                         7
                     } else {
-                        match aerovault_v3::vault_v3_scrub(path.clone(), pw).await {
+                        match aerovault_v3::vault_v3_scrub(path.clone(), pw, parity.clone()).await {
                             Ok(report) => {
                                 match format {
                                     OutputFormat::Json => print_json(&report),
                                     OutputFormat::Text => {
+                                        let parity_source = report
+                                            .get("parity_source")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("none");
                                         if let Some(damaged) =
                                             report.get("damaged").and_then(|v| v.as_array())
                                         {
                                             if damaged.is_empty() {
                                                 println!(
-                                                    "No damage detected ({} chunks checked)",
+                                                    "No damage detected ({} chunks checked). Parity source: {}",
                                                     report
                                                         .get("checked")
                                                         .and_then(|v| v.as_u64())
-                                                        .unwrap_or(0)
+                                                        .unwrap_or(0),
+                                                    parity_source
                                                 );
                                             } else {
                                                 println!(
@@ -43072,6 +43138,7 @@ async fn main() {
                     path,
                     password,
                     dry_run,
+                    parity,
                 } => {
                     let pw = resolve_pw(password);
                     let ver = if path.trim().is_empty() {
@@ -43087,7 +43154,14 @@ async fn main() {
                         );
                         7
                     } else {
-                        match aerovault_v3::vault_v3_repair(path.clone(), pw, *dry_run).await {
+                        match aerovault_v3::vault_v3_repair(
+                            path.clone(),
+                            pw,
+                            *dry_run,
+                            parity.clone(),
+                        )
+                        .await
+                        {
                             Ok(report) => {
                                 match format {
                                     OutputFormat::Json => print_json(&report),
@@ -43104,19 +43178,126 @@ async fn main() {
                                             .get("dry_run")
                                             .and_then(|v| v.as_bool())
                                             .unwrap_or(false);
+                                        let parity_source = report
+                                            .get("parity_source")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("none");
                                         if is_dry {
                                             println!(
-                                                "Dry-run: would repair {} of {} damaged chunk(s)",
-                                                repaired, damaged
+                                                "Dry-run: would repair {} of {} damaged chunk(s) (parity source: {})",
+                                                repaired, damaged, parity_source
                                             );
                                         } else if damaged == 0 {
                                             println!("No damage detected; nothing to repair");
                                         } else if repaired == 0 {
                                             println!("Could not repair {} damaged chunk(s): insufficient or invalid Error Correction (vault left untouched)", damaged);
                                         } else if repaired < damaged {
-                                            println!("Repaired {} of {} damaged chunk(s); {} still unrecoverable", repaired, damaged, damaged - repaired);
+                                            println!("Repaired {} of {} damaged chunk(s) from {} parity; {} still unrecoverable", repaired, damaged, parity_source, damaged - repaired);
                                         } else {
-                                            println!("Successfully repaired {} chunk(s)", repaired);
+                                            println!(
+                                                "Successfully repaired {} chunk(s) from {} parity",
+                                                repaired, parity_source
+                                            );
+                                        }
+                                    }
+                                }
+                                0
+                            }
+                            Err(e) => {
+                                print_error(format, &e, 1);
+                                1
+                            }
+                        }
+                    }
+                }
+                VaultCommands::ExportParity {
+                    path,
+                    password,
+                    out,
+                } => {
+                    let pw = resolve_pw(password);
+                    let ver = if path.trim().is_empty() {
+                        "v3".to_string()
+                    } else {
+                        detect_vault_version(path).await
+                    };
+                    if ver != "v3" {
+                        print_error(format, "export-parity is only supported for v3+ vaults", 7);
+                        7
+                    } else {
+                        match aerovault_v3::vault_v3_export_parity(path.clone(), pw, out.clone())
+                            .await
+                        {
+                            Ok(report) => {
+                                match format {
+                                    OutputFormat::Json => print_json(&report),
+                                    OutputFormat::Text => {
+                                        let out_path = report
+                                            .get("path")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("");
+                                        let shards = report
+                                            .get("shards")
+                                            .and_then(|v| v.as_u64())
+                                            .unwrap_or(0);
+                                        let protected = report
+                                            .get("bytes_protected")
+                                            .and_then(|v| v.as_u64())
+                                            .unwrap_or(0);
+                                        let overhead = report
+                                            .get("overhead_pct")
+                                            .and_then(|v| v.as_f64())
+                                            .unwrap_or(0.0);
+                                        if protected == 0 {
+                                            println!(
+                                                "Wrote recovery file {} (vault is empty; re-run export-parity after adding files)",
+                                                out_path
+                                            );
+                                        } else {
+                                            println!(
+                                                "Wrote recovery file {} ({} shards, {} bytes protected, {:.1}% overhead)",
+                                                out_path, shards, protected, overhead
+                                            );
+                                        }
+                                    }
+                                }
+                                0
+                            }
+                            Err(e) => {
+                                print_error(format, &e, 1);
+                                1
+                            }
+                        }
+                    }
+                }
+                VaultCommands::StripParity {
+                    path,
+                    password,
+                    force,
+                } => {
+                    let pw = resolve_pw(password);
+                    let ver = if path.trim().is_empty() {
+                        "v3".to_string()
+                    } else {
+                        detect_vault_version(path).await
+                    };
+                    if ver != "v3" {
+                        print_error(format, "strip-parity is only supported for v3+ vaults", 7);
+                        7
+                    } else {
+                        match aerovault_v3::vault_v3_strip_parity(path.clone(), pw, *force).await {
+                            Ok(report) => {
+                                match format {
+                                    OutputFormat::Json => print_json(&report),
+                                    OutputFormat::Text => {
+                                        let sidecar_present = report
+                                            .get("sidecar_present")
+                                            .and_then(|v| v.as_bool())
+                                            .unwrap_or(false);
+                                        if sidecar_present {
+                                            println!("Stripped embedded parity; detached recovery file remains in place");
+                                        } else {
+                                            println!("Stripped embedded parity (--force): vault now has NO recovery data");
                                         }
                                     }
                                 }

@@ -1061,13 +1061,43 @@ AEROFTP_VAULT_PASSWORD=secret aeroftp-cli vault create myvault.aerovault --ec   
 # Info advertises it
 aeroftp-cli vault info myvault.aerovault --json   # has_error_correction: true, error_correction: {enabled,algorithm:"reed-solomon",...}
 
-# Scrub (returns checked + damaged list)
+# Scrub (returns checked + damaged list + the parity source repair would use)
 aeroftp-cli vault scrub myvault.aerovault
 
 # Repair (honest: "repaired R of D" or "vault left untouched"; --dry-run preview)
 aeroftp-cli vault repair myvault.aerovault --dry-run
 aeroftp-cli vault repair myvault.aerovault
 ```
+
+**Recovery placement (the SIDECAR slice, #276).** Parity can live inside the
+container (`embedded`, the default), in a sibling `.aerovault.rec` recovery file
+(`detached`), or `both`. Detached keeps the encrypted container byte-identical to
+a plain vault (so a remote storage/browse view stays stable) and lets you add or
+refresh parity *after* the fact, the concrete win over Kopia (which can only
+enable ECC at creation). par2-style: the recovery file carries a binding id to its
+vault, so a wrong file is refused early; staleness after edits is caught by the
+payload's own per-shard checksums.
+
+```bash
+# Create with a detached sidecar instead of embedded parity
+AEROFTP_VAULT_PASSWORD=secret aeroftp-cli vault create myvault.aerovault --ec --recovery-placement detached
+
+# Add parity later to a vault created without it (reads the container, never rewrites it)
+AEROFTP_VAULT_PASSWORD=secret aeroftp-cli vault export-parity myvault.aerovault            # -> myvault.aerovault.rec
+AEROFTP_VAULT_PASSWORD=secret aeroftp-cli vault export-parity myvault.aerovault -o out.rec # custom path
+
+# Repair from an explicit recovery file (binding id verified against the vault)
+aeroftp-cli vault repair myvault.aerovault --parity myvault.aerovault.rec
+aeroftp-cli vault scrub  myvault.aerovault --parity myvault.aerovault.rec   # reports parity_source
+
+# Drop the embedded copy once a sidecar exists (refused without one unless --force)
+AEROFTP_VAULT_PASSWORD=secret aeroftp-cli vault strip-parity myvault.aerovault
+```
+
+Repair resolves the parity source in priority order: explicit `--parity` ->
+`<vault>.aerovault.rec` sidecar -> embedded extension, and reports which it used
+(`parity_source` in `--json`). Detached parity tracks a fixed data set, so re-run
+`export-parity` after editing a detached/both vault.
 
 See `aeroftp-cli vault --help`, the APPENDIX-AEROVAULT-V4-ECC, AEROVAULT-V3-SPEC §11, and AGENTS.md (use direct paths for vault; --profile for remote servers). Receipts (`--receipt` or GUI) now include error_correction_* fields when present (P3-03). All via the shared engine (22 tests, live verified 20.1% overhead + full corrupt→repair→extract SHA-256 match). 
 

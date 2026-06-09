@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
-import { Plus, Trash2, Download, Key, FolderPlus, Eye, EyeOff, Loader2, File, Folder, Zap, ChevronRight, ArrowLeft, ArrowUpDown, Check, Shield, Wrench } from 'lucide-react';
+import { Plus, Trash2, Download, Key, FolderPlus, Eye, EyeOff, Loader2, File, Folder, Zap, ChevronRight, ArrowLeft, ArrowUpDown, Check, Shield, Wrench, FileDown, Scissors } from 'lucide-react';
 import { VaultIcon } from '../icons/VaultIcon';
 import VaultSyncDialog from '../VaultSyncDialog';
 import { useTranslation } from '../../i18n';
@@ -68,8 +68,9 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                     </button>
                 )}
 
-                {/* P2 Error Correction actions: only for experimental / hasErrorCorrection vaults. Use the shared engine commands. */}
-                {(state.vaultSecurity?.level === 'experimental' || state.hasErrorCorrection) && (
+                {/* P2 Error Correction actions: for experimental v3 vaults or any vault with
+                    embedded/detached recovery. Scrub/repair auto-resolve the parity source. */}
+                {(state.vaultSecurity?.level === 'experimental' || state.hasErrorCorrection || state.hasDetachedRecovery) && (
                     <>
                         <button
                             onClick={state.handleScrub}
@@ -87,6 +88,26 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                         >
                             <Wrench size={14} /> {t('vault.repairErrorCorrection')}
                         </button>
+                        {/* SIDECAR: export a detached .aerovault.rec (add/refresh parity without rewriting the container). */}
+                        <button
+                            onClick={state.exportParity}
+                            disabled={state.loading || state.isExportingParity}
+                            className="flex items-center gap-1 px-2 py-1 text-xs bg-emerald-700 hover:bg-emerald-600 text-white rounded"
+                            title={t('vault.exportParityHint')}
+                        >
+                            <FileDown size={14} /> {state.isExportingParity ? t('vault.exportingParity') : t('vault.exportParity')}
+                        </button>
+                        {/* Strip embedded parity (only meaningful when an in-container copy exists). */}
+                        {state.hasErrorCorrection && (
+                            <button
+                                onClick={() => state.stripParity(false)}
+                                disabled={state.loading || state.isStrippingParity}
+                                className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-600 hover:bg-gray-500 text-white rounded"
+                                title={t('vault.stripParityHint')}
+                            >
+                                <Scissors size={14} /> {state.isStrippingParity ? t('vault.strippingParity') : t('vault.stripParity')}
+                            </button>
+                        )}
                     </>
                 )}
                 {/* Remote vault: Save & Close */}
@@ -108,9 +129,17 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                                 <Zap size={10} /> {t('vault.cascade')}
                             </span>
                         )}
-                        {/* P2: Error Correction badge (theme-aware, appears for hasErrorCorrection or enabled at create) */}
-                        {(state.hasErrorCorrection || state.errorCorrectionEnabled) && (
-                            <span className="ml-1 px-1 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30">Error Correction</span>
+                        {/* P2: Error Correction badge (theme-aware). Distinguishes detached
+                            sidecar parity from embedded so the user knows the storage shape. */}
+                        {(state.hasErrorCorrection || state.hasDetachedRecovery || state.errorCorrectionEnabled) && (
+                            <span
+                                className="ml-1 px-1 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                                title={state.hasDetachedRecovery && !state.hasErrorCorrection ? t('vault.detachedStableStorageNote') : undefined}
+                            >
+                                {state.hasDetachedRecovery && !state.hasErrorCorrection
+                                    ? t('vault.errorCorrectionDetachedBadge')
+                                    : 'Error Correction'}
+                            </span>
                         )}
                     </div>
                 )}

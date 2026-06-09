@@ -149,8 +149,37 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
                         </label>
                     </div>
                     {state.errorCorrectionEnabled && (
-                        <div className="text-[11px] text-amber-600 dark:text-amber-400 pl-6">
-                            Adds redundancy for bit-rot recovery on encrypted chunks. Non-critical (v3 readers can still open). Recompute on every seal.
+                        <div className="pl-6 flex flex-col gap-2">
+                            <div className="text-[11px] text-amber-600 dark:text-amber-400">
+                                Adds redundancy for bit-rot recovery on encrypted chunks. Non-critical (v3 readers can still open).
+                            </div>
+                            <label className="text-[11px] text-gray-500 dark:text-gray-400">{t('vault.recoveryPlacement')}</label>
+                            <div className="grid grid-cols-3 gap-2">
+                                {([
+                                    { id: 'embedded', label: t('vault.placementEmbedded'), detail: t('vault.placementEmbeddedDesc') },
+                                    { id: 'detached', label: t('vault.placementDetached'), detail: t('vault.placementDetachedDesc') },
+                                    { id: 'both', label: t('vault.placementBoth'), detail: t('vault.placementBothDesc') },
+                                ] as const).map(p => {
+                                    const selected = state.recoveryPlacement === p.id;
+                                    return (
+                                        <button
+                                            key={p.id}
+                                            onClick={() => state.setRecoveryPlacement(p.id)}
+                                            className={`rounded border px-2 py-1.5 text-left ${selected
+                                                ? 'border-amber-500 bg-amber-500/10 text-amber-300'
+                                                : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800'}`}
+                                        >
+                                            <div className="text-[12px] font-medium">{p.label}</div>
+                                            <div className="text-[10px] text-gray-500 dark:text-gray-400">{p.detail}</div>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            {state.recoveryPlacement !== 'embedded' && (
+                                <div className="text-[11px] text-emerald-600 dark:text-emerald-400">
+                                    {t('vault.detachedStableStorageNote')}
+                                </div>
+                            )}
                         </div>
                     )}
                 </>

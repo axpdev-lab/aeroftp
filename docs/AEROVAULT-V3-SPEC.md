@@ -209,6 +209,41 @@ v4 = v3 + non-critical "error-correction.reed-solomon" extension (always critica
 - Forward-compat: pure v3 open/extract path ignores the non-critical ext and still works (magic stays AEROVAULT3 / format=3).
 - Pipeline position: Error Correction is the *fourth* first-class wrapper, after crypt (see #276 wrapper-stack discussion).
 
-Implementation, tests (22), live proof, surfaces (P3), docs and close tracked in `docs/dev/roadmap/APPENDIX-AEROVAULT-V4-ECC/`. "v3 + Error Correction = v4".
+### 11.1 Recovery placement: embedded vs detached (the `.aerovault.rec` sidecar)
+
+Parity can live in three places (`RecoveryPlacement`): `embedded` (the in-container
+extension above, recomputed on every seal), `detached` (a sibling recovery file,
+the container stays byte-identical to a plain vault), or `both`. The reconstruction
+engine is placement-agnostic (`reconstruct_from_error_correction` takes the parity
+bytes), so a detached file simply carries the same AVEC payload plus a framing
+header that binds it to one vault.
+
+`.aerovault.rec` format (v1, magic `AVREC1\0\0`):
+
+```
+[ magic            : 8  bytes ] = "AVREC1\0\0"
+[ vault_binding_id : 32 bytes ] = BLAKE3("aerovault-recovery-binding-v1" || vault.salt)
+[ payload_len      : u64 LE   ]
+[ payload          : payload_len bytes ] = the AVEC ErrorCorrectionPayload, verbatim
+[ file_checksum    : 32 bytes ] = BLAKE3 over magic..=payload
+```
+
+- **Binding** is par2's Recovery Set ID equivalent: derived from the vault's public
+  per-vault salt (stable across edits, regenerated only on a password change), it
+  refuses a recovery file from another vault early. Staleness after an edit is NOT
+  the binding's job; it is caught downstream by the payload's per-shard checksums.
+- **Self-integrity**: the trailing BLAKE3 detects corruption of the `.rec` file
+  before its parity is trusted.
+- **Add-later win**: `export-parity` writes/refreshes a sidecar for an existing
+  vault by reading the encrypted container without rewriting it (Kopia can only
+  enable ECC at repo creation). `strip-parity` drops the embedded copy, refusing
+  unless a sidecar exists (or `--force`) so a vault is never silently left with no
+  recovery.
+- **Source resolution** (scrub/repair): explicit `--parity` -> `<vault>.aerovault.rec`
+  -> embedded extension; the binding is verified before use and the chosen source
+  is reported (`parity_source`).
+- Default path: `secret.aerovault` -> `secret.aerovault.rec`.
+
+Implementation, tests (37), live proof, surfaces (P3), docs and close tracked in `docs/dev/roadmap/APPENDIX-AEROVAULT-V4-ECC/`. "v3 + Error Correction = v4".
 
 See also: CHANGELOG (Unreleased), SECURITY.md (formats table), CLI-GUIDE (vault subcommand), ROADMAP.

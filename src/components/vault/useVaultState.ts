@@ -10,6 +10,9 @@ import { ArchiveEntry, AeroVaultMeta } from '../../types';
 import { useTranslation } from '../../i18n';
 import { guardedUnlisten } from '../../hooks/useTauriListener';
 
+/** Where Error Correction parity lives relative to the vault container. */
+export type RecoveryPlacement = 'embedded' | 'detached' | 'both';
+
 // --- Error mapping ---
 
 /** Map raw Rust error messages to user-friendly i18n keys */
@@ -331,6 +334,16 @@ export interface VaultState {
     setErrorCorrectionEnabled: (enabled: boolean) => void;
     hasErrorCorrection: boolean;
     setHasErrorCorrection: (v: boolean) => void;
+    // Where parity lives when created with Error Correction (embedded/detached/both).
+    recoveryPlacement: RecoveryPlacement;
+    setRecoveryPlacement: (p: RecoveryPlacement) => void;
+    // Detected detached `.aerovault.rec` sidecar for the open vault.
+    hasDetachedRecovery: boolean;
+    // Export a detached recovery file; strip the embedded parity (sidecar-aware).
+    exportParity: () => Promise<void>;
+    stripParity: (force: boolean) => Promise<void>;
+    isExportingParity: boolean;
+    isStrippingParity: boolean;
 
     // Drag-and-drop
     dragOver: boolean;
@@ -442,6 +455,10 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
     // Error Correction for Beta/experimental vaults (P2)
     const [errorCorrectionEnabled, setErrorCorrectionEnabled] = useState(false);
     const [hasErrorCorrection, setHasErrorCorrection] = useState(false);  // runtime detection for open vaults (via has_error_correction command)
+    const [recoveryPlacement, setRecoveryPlacement] = useState<RecoveryPlacement>('embedded');
+    const [hasDetachedRecovery, setHasDetachedRecovery] = useState(false);  // detached .aerovault.rec sidecar present
+    const [isExportingParity, setIsExportingParity] = useState(false);
+    const [isStrippingParity, setIsStrippingParity] = useState(false);
 
     // P2 Error Correction dialogs
     const [showScrubDialog, setShowScrubDialog] = useState(false);
@@ -626,7 +643,8 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
                     await invoke('vault_v3_create_with_error_correction', {
                         vaultPath: savePath,
                         password,
-                        compressionProfile,
+                        profile: compressionProfile,
+                        placement: recoveryPlacement,
                     });
                 } else {
                     await invoke('vault_v3_create', {
@@ -831,11 +849,13 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
                 setVaultSecurity({ version: 3, cascadeMode: false, level: 'experimental' });
                 setEntries(mapV3InfoToEntries(info));
                 setMeta(mapV3InfoToMeta(info, meta));
-                // P2: detect Error Correction for badge and enabling scrub/repair actions in this session
+                // P2: detect Error Correction for badge and enabling scrub/repair actions in this session.
+                // recovery_status reports both the embedded extension and a detached .aerovault.rec sidecar.
                 try {
-                    const has = await invoke<boolean>('vault_v3_has_error_correction', { path: vaultPath });
-                    setHasErrorCorrection(!!has);
-                } catch { setHasErrorCorrection(false); }
+                    const status = await invoke<{ embedded: boolean; detached: boolean }>('vault_v3_recovery_status', { path: vaultPath });
+                    setHasErrorCorrection(!!status.embedded);
+                    setHasDetachedRecovery(!!status.detached);
+                } catch { setHasErrorCorrection(false); setHasDetachedRecovery(false); }
                 setMode('browse');
 
                 const vName = vaultPath.split(/[\\/]/).pop() || 'Vault';
@@ -1249,6 +1269,44 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         }
     };
 
+    // --- SIDECAR: detached recovery file (.aerovault.rec) ---
+    // Export writes/refreshes the sidecar from the current data; strip drops the
+    // embedded parity (refused unless a sidecar exists, mirroring the engine).
+    const exportParity = async () => {
+        if (!vaultPath) return;
+        setIsExportingParity(true);
+        setError(null);
+        try {
+            const res = await invoke<any>('vault_v3_export_parity', { vaultPath, password });
+            setHasDetachedRecovery(true);
+            const protectedBytes = res?.bytes_protected ?? 0;
+            if (protectedBytes === 0) {
+                setSuccess(t('vault.parityExportedEmpty'));
+            } else {
+                setSuccess(t('vault.parityExported', { bytes: String(protectedBytes) }));
+            }
+        } catch (e) {
+            setError(mapVaultError(e, t));
+        } finally {
+            setIsExportingParity(false);
+        }
+    };
+
+    const stripParity = async (force: boolean) => {
+        if (!vaultPath) return;
+        setIsStrippingParity(true);
+        setError(null);
+        try {
+            const res = await invoke<any>('vault_v3_strip_parity', { vaultPath, password, force });
+            setHasErrorCorrection(false);
+            setSuccess(res?.sidecar_present ? t('vault.parityStripped') : t('vault.parityStrippedNoRecovery'));
+        } catch (e) {
+            setError(mapVaultError(e, t));
+        } finally {
+            setIsStrippingParity(false);
+        }
+    };
+
     return {
         mode, setMode,
         vaultPath, setVaultPath,
@@ -1279,6 +1337,10 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
         showLevelDropdown, setShowLevelDropdown,
         errorCorrectionEnabled, setErrorCorrectionEnabled,
         hasErrorCorrection, setHasErrorCorrection,
+        recoveryPlacement, setRecoveryPlacement,
+        hasDetachedRecovery,
+        exportParity, stripParity,
+        isExportingParity, isStrippingParity,
         showScrubDialog, setShowScrubDialog,
         showRepairDialog, setShowRepairDialog,
         scrubResult, setScrubResult,

@@ -433,21 +433,86 @@ impl ErrorCorrectionPayload {
 // ---------------------------------------------------------------------------
 
 /// Magic for a detached recovery file. "AVREC" + version 1.
-// Detached placement API below is exercised by unit tests; the create/seal/CLI
-// wiring lands in the next SIDECAR slice (see detached-placement-design.md).
-#[allow(dead_code)]
 const RECOVERY_FILE_MAGIC: &[u8; 8] = b"AVREC1\0\0";
-/// The conventional extension for a detached recovery file.
-#[allow(dead_code)]
+/// The conventional compound extension for a detached recovery file. A vault
+/// `secret.aerovault` exports to `secret.aerovault.rec` (see `default_sidecar_path`).
 const RECOVERY_FILE_EXTENSION: &str = "aerovault.rec";
-#[allow(dead_code)]
 const RECOVERY_BINDING_LEN: usize = 32;
-#[allow(dead_code)]
 const RECOVERY_FILE_CHECKSUM_LEN: usize = 32;
+
+/// Where Error Correction parity lives relative to the vault container.
+///
+/// - `Embedded`: parity is a non-critical extension inside the `.aerovault` file,
+///   recomputed on every seal (auto-fresh, but it grows the container).
+/// - `Detached`: parity lives in a sibling `.aerovault.rec` sidecar; the container
+///   stays byte-identical to a non-Error-Correction vault (Ehud's "storage view stays
+///   stable" point on #276). The sidecar is regenerated on demand via `export-parity`
+///   (par2 semantics: edit the data, regenerate the recovery file).
+/// - `Both`: embed AND write the sidecar (detached-first, the order Ehud asked for).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RecoveryPlacement {
+    Embedded,
+    Detached,
+    Both,
+}
+
+impl RecoveryPlacement {
+    fn parse(s: &str) -> Result<Self, String> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "embedded" => Ok(Self::Embedded),
+            "detached" => Ok(Self::Detached),
+            "both" => Ok(Self::Both),
+            other => Err(format!(
+                "Unknown recovery placement: {other} (expected embedded|detached|both)"
+            )),
+        }
+    }
+
+    /// True when the placement keeps a copy of the parity inside the container.
+    fn embeds(self) -> bool {
+        matches!(self, Self::Embedded | Self::Both)
+    }
+
+    /// True when the placement writes a `.aerovault.rec` sidecar.
+    fn writes_sidecar(self) -> bool {
+        matches!(self, Self::Detached | Self::Both)
+    }
+}
+
+/// Which source `resolve_parity_source` ended up using, for honest reporting.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ParitySource {
+    Explicit,
+    Detached,
+    Embedded,
+    None,
+}
+
+impl ParitySource {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Explicit => "explicit",
+            Self::Detached => "detached",
+            Self::Embedded => "embedded",
+            Self::None => "none",
+        }
+    }
+}
+
+/// Default sidecar path for a vault: `secret.aerovault` -> `secret.aerovault.rec`.
+/// Vaults without the conventional `.aerovault` extension fall back to appending
+/// `.rec` so the exporter and the resolver always agree on one location.
+fn default_sidecar_path(vault_path: &Path) -> PathBuf {
+    let s = vault_path.to_string_lossy();
+    if let Some(stem) = s.strip_suffix(".aerovault") {
+        PathBuf::from(format!("{stem}.{RECOVERY_FILE_EXTENSION}"))
+    } else {
+        PathBuf::from(format!("{s}.rec"))
+    }
+}
 
 /// Domain-separated binding id for a vault, derived from its public salt.
 /// A detached recovery file stores this so a wrong file is refused early.
-#[allow(dead_code)]
 fn recovery_binding_id(salt: &[u8; SALT_SIZE]) -> [u8; RECOVERY_BINDING_LEN] {
     let mut h = blake3::Hasher::new();
     h.update(b"aerovault-recovery-binding-v1");
@@ -457,7 +522,6 @@ fn recovery_binding_id(salt: &[u8; SALT_SIZE]) -> [u8; RECOVERY_BINDING_LEN] {
 
 /// In-memory view of a detached `.aerovault.rec` file.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 struct RecoveryFile {
     vault_binding_id: [u8; RECOVERY_BINDING_LEN],
     /// Raw `ErrorCorrectionPayload` (AVEC) bytes, the same blob the embedded
@@ -465,7 +529,6 @@ struct RecoveryFile {
     payload: Vec<u8>,
 }
 
-#[allow(dead_code)]
 impl RecoveryFile {
     /// Build a recovery file bound to `salt`, carrying `payload` (AVEC bytes).
     fn new(salt: &[u8; SALT_SIZE], payload: Vec<u8>) -> Self {
@@ -531,6 +594,170 @@ impl RecoveryFile {
             Err("recovery file does not belong to this vault (binding id mismatch)".to_string())
         }
     }
+}
+
+/// Collect the live on-disk blocks in data-section order ([u64 len][ciphertext]),
+/// the exact stream the Error Correction parity is computed over. A block whose
+/// recorded range falls outside the data section contributes an empty slice, matching
+/// the seal path's handling of truncated blocks.
+fn collect_live_block_refs(vault: &OpenVaultV3) -> Vec<&[u8]> {
+    let mut ranges: Vec<(usize, usize)> = vault
+        .manifest
+        .chunks
+        .values()
+        .map(|rec| (rec.data_offset as usize, 8 + rec.block_len as usize))
+        .collect();
+    ranges.sort_by_key(|(off, _)| *off);
+    ranges
+        .into_iter()
+        .map(|(start, full_len)| {
+            if start + full_len <= vault.data.len() {
+                &vault.data[start..start + full_len]
+            } else {
+                &[] as &[u8]
+            }
+        })
+        .collect()
+}
+
+/// Read the embedded `ERROR_CORRECTION_EXTENSION_ID` payload from the vault file,
+/// if present and non-empty. The extension is located via the MAC-verified header.
+fn read_embedded_error_correction(vault: &OpenVaultV3) -> Result<Option<Vec<u8>>, String> {
+    let entry = match vault
+        .extensions
+        .iter()
+        .find(|e| e.extension_id == ERROR_CORRECTION_EXTENSION_ID)
+    {
+        Some(e) if e.length > 0 => e.clone(),
+        _ => return Ok(None),
+    };
+    let mut f = File::open(&vault.path).map_err(|e| format!("open for parity read: {e}"))?;
+    let abs = vault.header.extension_payload_offset + entry.offset;
+    f.seek(SeekFrom::Start(abs))
+        .map_err(|e| format!("seek for parity read: {e}"))?;
+    let mut b = vec![0u8; entry.length as usize];
+    f.read_exact(&mut b)
+        .map_err(|e| format!("read error_correction payload: {e}"))?;
+    Ok(Some(b))
+}
+
+/// Resolve the Error Correction parity bytes for a vault, in priority order:
+/// explicit `--parity` path -> detached `.aerovault.rec` sidecar -> embedded
+/// extension. The binding id of a detached/explicit file is verified before use
+/// so a wrong-vault recovery file is refused early (par2's Recovery Set ID idea).
+/// Returns the raw AVEC payload plus which source it came from, for honest reporting.
+fn resolve_parity_source(
+    vault: &OpenVaultV3,
+    explicit: Option<&Path>,
+) -> Result<(Vec<u8>, ParitySource), String> {
+    // 1. Explicit --parity wins; a bad or foreign file is a hard error because
+    //    the user named it on purpose.
+    if let Some(p) = explicit {
+        let bytes =
+            std::fs::read(p).map_err(|e| format!("read recovery file {}: {e}", p.display()))?;
+        let rec = RecoveryFile::from_bytes(&bytes)?;
+        rec.verify_binding(&vault.header.salt)?;
+        return Ok((rec.payload, ParitySource::Explicit));
+    }
+    // 2. Detached sidecar next to the vault.
+    let sidecar = default_sidecar_path(&vault.path);
+    if sidecar.exists() {
+        let bytes = std::fs::read(&sidecar)
+            .map_err(|e| format!("read recovery file {}: {e}", sidecar.display()))?;
+        let rec = RecoveryFile::from_bytes(&bytes)?;
+        rec.verify_binding(&vault.header.salt)?;
+        return Ok((rec.payload, ParitySource::Detached));
+    }
+    // 3. Embedded extension payload.
+    if let Some(bytes) = read_embedded_error_correction(vault)? {
+        return Ok((bytes, ParitySource::Embedded));
+    }
+    Err(
+        "No Error Correction parity available (no --parity, no .aerovault.rec sidecar, no embedded extension)"
+            .to_string(),
+    )
+}
+
+/// Outcome of `export_parity`, surfaced verbatim by the CLI/Tauri layers.
+struct ExportParityResult {
+    path: PathBuf,
+    shards: u64,
+    bytes_protected: u64,
+    overhead_pct: f64,
+    payload_len: u64,
+    file_len: u64,
+}
+
+/// Write a detached `.aerovault.rec` recovery file for an existing vault. This is
+/// the "add parity later" win over Kopia (which can only enable ECC at repo
+/// creation): the encrypted container is read but never rewritten. Defaults to
+/// `<vault>.aerovault.rec`; pass `out_path` to override.
+fn export_parity(
+    vault_path: &Path,
+    password: &str,
+    out_path: Option<&Path>,
+) -> Result<ExportParityResult, String> {
+    // Take the same write lock the mutating ops use so a concurrent add cannot
+    // race the read and produce a sidecar bound to a half-written data section.
+    let _lock = acquire_vault_write_lock(vault_path)?;
+    let vault = open_vault(vault_path, password)?;
+    let blocks = collect_live_block_refs(&vault);
+    let (payload, shards, protected, overhead) = compute_error_correction_shards(&blocks);
+    let rec = RecoveryFile::new(&vault.header.salt, payload);
+    let bytes = rec.to_bytes();
+    let out = out_path
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| default_sidecar_path(vault_path));
+    atomic_write(&out, &bytes)?;
+    Ok(ExportParityResult {
+        path: out,
+        shards,
+        bytes_protected: protected,
+        overhead_pct: overhead,
+        payload_len: rec.payload.len() as u64,
+        file_len: bytes.len() as u64,
+    })
+}
+
+/// Outcome of `strip_parity`.
+struct StripParityResult {
+    sidecar_present: bool,
+    sidecar_path: PathBuf,
+}
+
+/// Drop the embedded Error Correction extension on the next seal. Refuses unless a
+/// detached sidecar already exists or `force` is set, so a vault is never silently
+/// left with zero recovery.
+fn strip_parity(
+    vault_path: &Path,
+    password: &str,
+    force: bool,
+) -> Result<StripParityResult, String> {
+    let _lock = acquire_vault_write_lock(vault_path)?;
+    let mut vault = open_vault(vault_path, password)?;
+    let had_embedded = vault
+        .extensions
+        .iter()
+        .any(|e| e.extension_id == ERROR_CORRECTION_EXTENSION_ID);
+    if !had_embedded {
+        return Err("Vault has no embedded Error Correction parity to strip".to_string());
+    }
+    let sidecar = default_sidecar_path(vault_path);
+    let has_sidecar = sidecar.exists();
+    if !has_sidecar && !force {
+        return Err(
+            "Refusing to strip embedded parity: no detached recovery file exists. Run \"vault export-parity\" first, or pass --force to drop recovery entirely."
+                .to_string(),
+        );
+    }
+    vault
+        .extensions
+        .retain(|e| e.extension_id != ERROR_CORRECTION_EXTENSION_ID);
+    save_open_vault(&mut vault)?;
+    Ok(StripParityResult {
+        sidecar_present: has_sidecar,
+        sidecar_path: sidecar,
+    })
 }
 
 /// P2-09: Compute the Error Correction payload (v2 fixed-grid format) for the concatenated
@@ -825,7 +1052,11 @@ fn scrub_vault(vault: &OpenVaultV3) -> Vec<DamagedChunk> {
     damaged
 }
 
-fn repair_vault(vault: &mut OpenVaultV3, dry_run: bool) -> Result<usize, String> {
+fn repair_vault(
+    vault: &mut OpenVaultV3,
+    dry_run: bool,
+    parity: Option<&Path>,
+) -> Result<(usize, ParitySource), String> {
     let damaged = scrub_vault(vault);
     if damaged.is_empty() {
         // GAP-4: no damaged data blocks, but if open had to rebuild a corrupted
@@ -835,31 +1066,22 @@ fn repair_vault(vault: &mut OpenVaultV3, dry_run: bool) -> Result<usize, String>
             if !dry_run {
                 save_open_vault(vault)?;
             }
-            return Ok(1);
+            return Ok((1, ParitySource::None));
         }
-        return Ok(0);
+        return Ok((0, ParitySource::None));
     }
 
-    let error_correction_entry = vault
-        .extensions
-        .iter()
-        .find(|e| e.extension_id == ERROR_CORRECTION_EXTENSION_ID)
-        .cloned();
-    let error_correction_bytes = if let Some(entry) = &error_correction_entry {
-        if entry.length > 0 {
-            let mut f = File::open(&vault.path).map_err(|e| format!("open for repair: {e}"))?;
-            let abs = vault.header.extension_payload_offset + entry.offset;
-            f.seek(SeekFrom::Start(abs))
-                .map_err(|e| format!("seek for repair: {e}"))?;
-            let mut b = vec![0u8; entry.length as usize];
-            f.read_exact(&mut b)
-                .map_err(|e| format!("read error_correction payload: {e}"))?;
-            Some(b)
-        } else {
-            None
+    // Resolve parity in priority order (explicit -> detached sidecar -> embedded).
+    // An explicitly named source that fails is a hard error; a missing default
+    // source just means "nothing to repair from", leaving the vault untouched.
+    let (error_correction_bytes, source) = match resolve_parity_source(vault, parity) {
+        Ok((b, s)) => (Some(b), s),
+        Err(e) => {
+            if parity.is_some() {
+                return Err(e);
+            }
+            (None, ParitySource::None)
         }
-    } else {
-        None
     };
 
     let mut repaired_count = 0;
@@ -941,7 +1163,7 @@ fn repair_vault(vault: &mut OpenVaultV3, dry_run: bool) -> Result<usize, String>
         // byte-for-byte untouched (repaired_count stays 0) so no redundancy is lost.
     }
 
-    Ok(repaired_count)
+    Ok((repaired_count, source))
 }
 
 #[derive(Debug, Serialize)]
@@ -2213,7 +2435,7 @@ fn create_empty_vault(
     path: &Path,
     password: &str,
     level: i32,
-    with_error_correction: bool,
+    error_correction: Option<RecoveryPlacement>,
 ) -> Result<(), String> {
     if password.len() < MIN_PASSWORD_LEN {
         return Err("Password must be at least 8 characters".to_string());
@@ -2247,12 +2469,14 @@ fn create_empty_vault(
     };
 
     let manifest = empty_manifest(level);
-    let mut extensions = if with_error_correction {
+    // Embed the extension only when the placement keeps an in-container copy.
+    let embed = error_correction.is_some_and(|p| p.embeds());
+    let mut extensions = if embed {
         vec![error_correction_stub_extension()]
     } else {
         vec![]
     };
-    let ext_payloads = if with_error_correction {
+    let ext_payloads = if embed {
         let (p, _shards, _prot, _ov) = compute_error_correction_shards(&[]);
         if let Some(e) = extensions.first_mut() {
             e.offset = 0;
@@ -2273,7 +2497,17 @@ fn create_empty_vault(
     )?;
     master_key.zeroize();
     mac_key.zeroize();
-    atomic_write(path, &bytes)
+    atomic_write(path, &bytes)?;
+
+    // Detached/both placements seed the sidecar so the file exists from creation.
+    // An empty vault has an empty parity payload; re-run `export-parity` after
+    // adding files (par2 semantics: the recovery file tracks a fixed data set).
+    if error_correction.is_some_and(|p| p.writes_sidecar()) {
+        let (payload, _shards, _prot, _ov) = compute_error_correction_shards(&[]);
+        let rec = RecoveryFile::new(&salt, payload);
+        atomic_write(&default_sidecar_path(path), &rec.to_bytes())?;
+    }
+    Ok(())
 }
 
 /// Reject a manifest whose wrapper algorithms differ from the ones this build
@@ -2784,21 +3018,23 @@ pub async fn vault_v3_create(
         Some("balanced") | None | Some("") => DEFAULT_ZSTD_LEVEL,
         Some(other) => return Err(format!("Unknown AeroVault v3 compression profile: {other}")),
     };
-    create_empty_vault(Path::new(&vault_path), &password, level, false)?;
+    create_empty_vault(Path::new(&vault_path), &password, level, None)?;
     Ok(vault_path)
 }
 
-/// Create a new AeroVault v3 container **with the Error Correction (error-correction) extension stub**.
-/// This is the Phase 1 entry point for v4+Error Correction work (stub only: the extension directory
-/// entry is present with length=0; real Reed-Solomon shards are added in Phase 2).
+/// Create a new AeroVault v3 container **with Reed-Solomon Error Correction**.
 ///
-/// The extension is emitted as non-critical so that existing v3 readers can still
+/// `placement` selects where the parity lives: `embedded` (default; non-critical
+/// in-container extension, recomputed on every seal), `detached` (a sibling
+/// `.aerovault.rec` sidecar, container stays byte-identical to a plain vault), or
+/// `both`. The embedded extension is non-critical so existing v3 readers can still
 /// open the vault and extract data (per AEROVAULT-V3-SPEC.md + discussion #276).
 #[tauri::command]
 pub async fn vault_v3_create_with_error_correction(
     vault_path: String,
     password: String,
     profile: Option<String>,
+    placement: Option<String>,
 ) -> Result<String, String> {
     let level = match profile.as_deref() {
         Some("fast") => 3,
@@ -2806,8 +3042,67 @@ pub async fn vault_v3_create_with_error_correction(
         Some("balanced") | None | Some("") => DEFAULT_ZSTD_LEVEL,
         Some(other) => return Err(format!("Unknown AeroVault v3 compression profile: {other}")),
     };
-    create_empty_vault(Path::new(&vault_path), &password, level, true)?;
+    let placement = match placement.as_deref() {
+        None | Some("") => RecoveryPlacement::Embedded,
+        Some(p) => RecoveryPlacement::parse(p)?,
+    };
+    create_empty_vault(Path::new(&vault_path), &password, level, Some(placement))?;
     Ok(vault_path)
+}
+
+/// Export a detached `.aerovault.rec` recovery file for an existing vault. This is
+/// the "add Error Correction later" path: the encrypted container is read but never
+/// rewritten. Pass `out_path` to override the default `<vault>.aerovault.rec`.
+#[tauri::command]
+pub async fn vault_v3_export_parity(
+    vault_path: String,
+    password: String,
+    out_path: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let out = out_path.as_deref().map(Path::new);
+    let res = export_parity(Path::new(&vault_path), &password, out)?;
+    Ok(serde_json::json!({
+        "path": res.path.to_string_lossy(),
+        "shards": res.shards,
+        "bytes_protected": res.bytes_protected,
+        "overhead_pct": res.overhead_pct,
+        "payload_len": res.payload_len,
+        "file_len": res.file_len,
+    }))
+}
+
+/// Drop the embedded Error Correction extension from a vault on the next seal.
+/// Refuses unless a detached sidecar exists or `force` is set, so a vault is never
+/// silently left with zero recovery.
+#[tauri::command]
+pub async fn vault_v3_strip_parity(
+    vault_path: String,
+    password: String,
+    force: bool,
+) -> Result<serde_json::Value, String> {
+    let res = strip_parity(Path::new(&vault_path), &password, force)?;
+    Ok(serde_json::json!({
+        "stripped": true,
+        "sidecar_present": res.sidecar_present,
+        "sidecar_path": res.sidecar_path.to_string_lossy(),
+    }))
+}
+
+/// Report the Error Correction recovery surfaces available for a vault without the
+/// password: `embedded` (in-container extension present) and `detached` (a sibling
+/// `.aerovault.rec` sidecar exists). Used by the GUI to show the badge and enable
+/// scrub/repair when either source is present.
+#[tauri::command]
+pub async fn vault_v3_recovery_status(path: String) -> Result<serde_json::Value, String> {
+    let embedded = vault_v3_has_error_correction(path.clone())
+        .await
+        .unwrap_or(false);
+    let detached = default_sidecar_path(Path::new(&path)).exists();
+    Ok(serde_json::json!({
+        "embedded": embedded,
+        "detached": detached,
+        "any": embedded || detached,
+    }))
 }
 
 #[tauri::command]
@@ -2871,10 +3166,24 @@ pub async fn vault_v3_has_error_correction(path: String) -> Result<bool, String>
 pub async fn vault_v3_scrub(
     vault_path: String,
     password: String,
+    parity_path: Option<String>,
 ) -> Result<serde_json::Value, String> {
-    let vault = open_vault(vault_path, &password)?;
+    let vault = open_vault(&vault_path, &password)?;
     let checked = vault.manifest.chunks.len();
     let damaged = scrub_vault(&vault);
+    // Pre-flight: report which parity source a repair would draw from. An
+    // explicitly named source that fails is a hard error; an absent default
+    // source reports "none".
+    let explicit = parity_path.as_deref().map(Path::new);
+    let parity_source = match resolve_parity_source(&vault, explicit) {
+        Ok((_, s)) => s,
+        Err(e) => {
+            if explicit.is_some() {
+                return Err(e);
+            }
+            ParitySource::None
+        }
+    };
     let list: Vec<_> = damaged
         .into_iter()
         .map(|d| {
@@ -2889,7 +3198,8 @@ pub async fn vault_v3_scrub(
     Ok(serde_json::json!({
         "damaged": list,
         "count": list.len(),
-        "checked": checked
+        "checked": checked,
+        "parity_source": parity_source.as_str(),
     }))
 }
 
@@ -2898,6 +3208,7 @@ pub async fn vault_v3_repair(
     vault_path: String,
     password: String,
     dry_run: bool,
+    parity_path: Option<String>,
 ) -> Result<serde_json::Value, String> {
     // A real repair mutates and atomically re-seals the vault, so take the same
     // write lock the other mutating ops use to keep a concurrent add/delete from
@@ -2909,11 +3220,13 @@ pub async fn vault_v3_repair(
     };
     let mut vault = open_vault(&vault_path, &password)?;
     let damaged = scrub_vault(&vault).len();
-    let repaired = repair_vault(&mut vault, dry_run)?;
+    let explicit = parity_path.as_deref().map(Path::new);
+    let (repaired, source) = repair_vault(&mut vault, dry_run, explicit)?;
     Ok(serde_json::json!({
         "repaired": repaired,
         "damaged": damaged,
-        "dry_run": dry_run
+        "dry_run": dry_run,
+        "parity_source": source.as_str(),
     }))
 }
 
@@ -3336,6 +3649,162 @@ mod tests {
     }
 
     #[test]
+    fn recovery_placement_parses_and_reports() {
+        assert_eq!(
+            RecoveryPlacement::parse("embedded").unwrap(),
+            RecoveryPlacement::Embedded
+        );
+        assert_eq!(
+            RecoveryPlacement::parse(" Detached ").unwrap(),
+            RecoveryPlacement::Detached
+        );
+        assert_eq!(
+            RecoveryPlacement::parse("BOTH").unwrap(),
+            RecoveryPlacement::Both
+        );
+        assert!(RecoveryPlacement::parse("nope").is_err());
+        assert!(
+            RecoveryPlacement::Embedded.embeds() && !RecoveryPlacement::Embedded.writes_sidecar()
+        );
+        assert!(
+            !RecoveryPlacement::Detached.embeds() && RecoveryPlacement::Detached.writes_sidecar()
+        );
+        assert!(RecoveryPlacement::Both.embeds() && RecoveryPlacement::Both.writes_sidecar());
+    }
+
+    #[test]
+    fn default_sidecar_path_uses_aerovault_rec() {
+        assert_eq!(
+            default_sidecar_path(Path::new("/tmp/secret.aerovault")),
+            PathBuf::from("/tmp/secret.aerovault.rec")
+        );
+        // Non-conventional extension: append .rec so exporter and resolver agree.
+        assert_eq!(
+            default_sidecar_path(Path::new("/tmp/secret.vault")),
+            PathBuf::from("/tmp/secret.vault.rec")
+        );
+    }
+
+    #[test]
+    fn detached_export_and_repair_round_trip() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault_path = dir.path().join("detached.aerovault");
+        let f1 = dir.path().join("d1.txt");
+        std::fs::write(
+            &f1,
+            b"detached recovery payload, with enough bytes to form a real block",
+        )
+        .unwrap();
+
+        // Detached create: no embedded extension, but a sidecar is seeded.
+        create_empty_vault(
+            &vault_path,
+            "detached-pw-1234",
+            DEFAULT_ZSTD_LEVEL,
+            Some(RecoveryPlacement::Detached),
+        )
+        .unwrap();
+        let sidecar = default_sidecar_path(&vault_path);
+        assert!(sidecar.exists(), "create should seed the sidecar");
+        {
+            let v = open_vault(&vault_path, "detached-pw-1234").unwrap();
+            assert!(
+                !v.extensions
+                    .iter()
+                    .any(|e| e.extension_id == ERROR_CORRECTION_EXTENSION_ID),
+                "detached placement must not embed the extension"
+            );
+        }
+
+        // Add a file, then (re-)export parity over the now-populated data.
+        let mut vault = open_vault(&vault_path, "detached-pw-1234").unwrap();
+        append_file_at(&mut vault, &f1, "d1.txt").unwrap();
+        save_open_vault(&mut vault).unwrap();
+        let res = export_parity(&vault_path, "detached-pw-1234", None).unwrap();
+        assert!(res.shards > 0 && res.bytes_protected > 0);
+
+        // Damage a block on a fresh open; repair pulls from the detached sidecar.
+        let mut vault2 = open_vault(&vault_path, "detached-pw-1234").unwrap();
+        let off = vault2
+            .manifest
+            .chunks
+            .values()
+            .map(|r| r.data_offset)
+            .min()
+            .unwrap() as usize;
+        vault2.data[off + 8] ^= 0xFF;
+        assert!(!scrub_vault(&vault2).is_empty());
+        let (repaired, src) =
+            repair_vault(&mut vault2, false, None).expect("repair from detached sidecar");
+        assert!(repaired > 0);
+        assert_eq!(src, ParitySource::Detached);
+        assert!(scrub_vault(&vault2).is_empty());
+    }
+
+    #[test]
+    fn strip_parity_refuses_without_sidecar_then_succeeds() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault_path = dir.path().join("strip.aerovault");
+        let f1 = dir.path().join("s1.txt");
+        std::fs::write(&f1, b"strip test data block contents here, padded a bit").unwrap();
+
+        create_empty_vault(
+            &vault_path,
+            "strip-pw-1234",
+            DEFAULT_ZSTD_LEVEL,
+            Some(RecoveryPlacement::Embedded),
+        )
+        .unwrap();
+        let mut vault = open_vault(&vault_path, "strip-pw-1234").unwrap();
+        append_file_at(&mut vault, &f1, "s1.txt").unwrap();
+        save_open_vault(&mut vault).unwrap();
+
+        // No sidecar yet: stripping must refuse (would leave zero recovery).
+        assert!(strip_parity(&vault_path, "strip-pw-1234", false).is_err());
+
+        // Export a sidecar; resolve now prefers detached over the embedded copy.
+        export_parity(&vault_path, "strip-pw-1234", None).unwrap();
+        {
+            let v = open_vault(&vault_path, "strip-pw-1234").unwrap();
+            let (_b, src) = resolve_parity_source(&v, None).unwrap();
+            assert_eq!(src, ParitySource::Detached);
+        }
+
+        // With a sidecar present, strip succeeds and drops the embedded extension.
+        let r = strip_parity(&vault_path, "strip-pw-1234", false).unwrap();
+        assert!(r.sidecar_present);
+        let v = open_vault(&vault_path, "strip-pw-1234").unwrap();
+        assert!(
+            !v.extensions
+                .iter()
+                .any(|e| e.extension_id == ERROR_CORRECTION_EXTENSION_ID),
+            "strip must remove the embedded extension"
+        );
+        let (_b, src) = resolve_parity_source(&v, None).unwrap();
+        assert_eq!(src, ParitySource::Detached);
+    }
+
+    #[test]
+    fn resolve_parity_rejects_foreign_explicit_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault_path = dir.path().join("host.aerovault");
+        create_empty_vault(
+            &vault_path,
+            "host-pw-12345",
+            DEFAULT_ZSTD_LEVEL,
+            Some(RecoveryPlacement::Embedded),
+        )
+        .unwrap();
+        let v = open_vault(&vault_path, "host-pw-12345").unwrap();
+
+        // A recovery file bound to a different vault salt is refused early.
+        let foreign = RecoveryFile::new(&[42u8; SALT_SIZE], b"not-this-vault".to_vec());
+        let foreign_path = dir.path().join("foreign.aerovault.rec");
+        std::fs::write(&foreign_path, foreign.to_bytes()).unwrap();
+        assert!(resolve_parity_source(&v, Some(&foreign_path)).is_err());
+    }
+
+    #[test]
     fn cdc_ranges_cover_input() {
         let data = vec![7u8; CDC_MAX + 1234];
         let ranges = chunk_ranges_with(&data, &CdcBounds::defaults());
@@ -3362,7 +3831,7 @@ mod tests {
             &vault_path,
             "correct horse battery staple",
             DEFAULT_ZSTD_LEVEL,
-            false,
+            None,
         )
         .unwrap();
         let mut vault = open_vault(&vault_path, "correct horse battery staple").unwrap();
@@ -3397,7 +3866,7 @@ mod tests {
             &vault_path,
             "error_correction-test-pw",
             DEFAULT_ZSTD_LEVEL,
-            true,
+            Some(RecoveryPlacement::Embedded),
         )
         .unwrap();
 
@@ -3460,7 +3929,13 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let vault_path = dir.path().join("sec-info-test.aerovault");
 
-        create_empty_vault(&vault_path, "sec-pw-1234", DEFAULT_ZSTD_LEVEL, true).unwrap();
+        create_empty_vault(
+            &vault_path,
+            "sec-pw-1234",
+            DEFAULT_ZSTD_LEVEL,
+            Some(RecoveryPlacement::Embedded),
+        )
+        .unwrap();
 
         let info = tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -3610,7 +4085,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let vault_path = dir.path().join("scrub-test.aerovault");
 
-        create_empty_vault(&vault_path, "scrub-pw-1234", DEFAULT_ZSTD_LEVEL, false).unwrap();
+        create_empty_vault(&vault_path, "scrub-pw-1234", DEFAULT_ZSTD_LEVEL, None).unwrap();
         let mut vault = open_vault(&vault_path, "scrub-pw-1234").unwrap();
 
         // Directly inject a fake chunk block for testing scrub
@@ -3663,7 +4138,13 @@ mod tests {
         .unwrap();
 
         // Create with Error Correction and add files (triggers seal with Error Correction)
-        create_empty_vault(&vault_path, "repair-pw-1234", DEFAULT_ZSTD_LEVEL, true).unwrap();
+        create_empty_vault(
+            &vault_path,
+            "repair-pw-1234",
+            DEFAULT_ZSTD_LEVEL,
+            Some(RecoveryPlacement::Embedded),
+        )
+        .unwrap();
         let mut vault = open_vault(&vault_path, "repair-pw-1234").unwrap();
         append_file_at(&mut vault, &f1, "f1.txt").unwrap();
         append_file_at(&mut vault, &f2, "f2.txt").unwrap();
@@ -3695,7 +4176,8 @@ mod tests {
         assert!(!damaged_before.is_empty());
 
         // Repair (not dry)
-        let repaired = repair_vault(&mut vault2, false).expect("repair should succeed");
+        let (repaired, _src) =
+            repair_vault(&mut vault2, false, None).expect("repair should succeed");
         assert!(repaired > 0);
 
         // After repair + re-seal, scrub should be clean
@@ -3725,7 +4207,13 @@ mod tests {
         let payload = b"gap4 manifest locator protection: corrupt the manifest, rebuild it";
         std::fs::write(&f1, payload).unwrap();
 
-        create_empty_vault(&vault_path, "gap4-pw-12345", DEFAULT_ZSTD_LEVEL, true).unwrap();
+        create_empty_vault(
+            &vault_path,
+            "gap4-pw-12345",
+            DEFAULT_ZSTD_LEVEL,
+            Some(RecoveryPlacement::Embedded),
+        )
+        .unwrap();
         {
             let mut vault = open_vault(&vault_path, "gap4-pw-12345").unwrap();
             append_file_at(&mut vault, &f1, "f1.txt").unwrap();
@@ -3757,7 +4245,8 @@ mod tests {
         assert_eq!(std::fs::read(&out).unwrap(), payload);
 
         // Repair persists the healed manifest even with no damaged data block.
-        let repaired = repair_vault(&mut vault, false).expect("repair persists healed manifest");
+        let (repaired, _src) =
+            repair_vault(&mut vault, false, None).expect("repair persists healed manifest");
         assert_eq!(repaired, 1);
 
         // Re-open: the on-disk manifest is healed, no reconstruction needed this time.
@@ -3775,7 +4264,7 @@ mod tests {
         let f1 = dir.path().join("f1.txt");
         std::fs::write(&f1, b"no parity here, corruption is fatal").unwrap();
 
-        create_empty_vault(&vault_path, "gap4-pw-12345", DEFAULT_ZSTD_LEVEL, false).unwrap();
+        create_empty_vault(&vault_path, "gap4-pw-12345", DEFAULT_ZSTD_LEVEL, None).unwrap();
         {
             let mut vault = open_vault(&vault_path, "gap4-pw-12345").unwrap();
             append_file_at(&mut vault, &f1, "f1.txt").unwrap();
@@ -3801,7 +4290,13 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let vault_path = dir.path().join("stress-repair.aerovault");
 
-        create_empty_vault(&vault_path, "stress-pw-1234", DEFAULT_ZSTD_LEVEL, true).unwrap();
+        create_empty_vault(
+            &vault_path,
+            "stress-pw-1234",
+            DEFAULT_ZSTD_LEVEL,
+            Some(RecoveryPlacement::Embedded),
+        )
+        .unwrap();
         let mut vault = open_vault(&vault_path, "stress-pw-1234").unwrap();
 
         let mut sources = vec![];
@@ -3840,7 +4335,7 @@ mod tests {
         assert!(damaged.len() >= 3);
 
         // Repair
-        let fixed = repair_vault(&mut vault2, false).expect("repair");
+        let (fixed, _src) = repair_vault(&mut vault2, false, None).expect("repair");
         assert!(fixed >= 3);
 
         // Post-scrub clean
@@ -3887,7 +4382,13 @@ mod tests {
         let data = error_correction_test_blob(300_000);
         std::fs::write(&f, &data).unwrap();
 
-        create_empty_vault(&vault_path, "recover-pw", DEFAULT_ZSTD_LEVEL, true).unwrap();
+        create_empty_vault(
+            &vault_path,
+            "recover-pw",
+            DEFAULT_ZSTD_LEVEL,
+            Some(RecoveryPlacement::Embedded),
+        )
+        .unwrap();
         let mut vault = open_vault(&vault_path, "recover-pw").unwrap();
         append_file_at(&mut vault, &f, "f.bin").unwrap();
         save_open_vault(&mut vault).unwrap();
@@ -3935,7 +4436,7 @@ mod tests {
             "scrub must see the damage"
         );
 
-        let repaired = repair_vault(&mut vault2, false).expect("repair");
+        let (repaired, _src) = repair_vault(&mut vault2, false, None).expect("repair");
         assert!(
             repaired > 0,
             "must recover despite the corrupt parity shard"
@@ -3965,7 +4466,13 @@ mod tests {
         let data = error_correction_test_blob(300_000);
         std::fs::write(&f, &data).unwrap();
 
-        create_empty_vault(&vault_path, "over-pw-1234", DEFAULT_ZSTD_LEVEL, true).unwrap();
+        create_empty_vault(
+            &vault_path,
+            "over-pw-1234",
+            DEFAULT_ZSTD_LEVEL,
+            Some(RecoveryPlacement::Embedded),
+        )
+        .unwrap();
         let mut vault = open_vault(&vault_path, "over-pw-1234").unwrap();
         append_file_at(&mut vault, &f, "f.bin").unwrap();
         save_open_vault(&mut vault).unwrap();
@@ -3986,7 +4493,8 @@ mod tests {
             "scrub must detect the damage"
         );
 
-        let repaired = repair_vault(&mut vault2, false).expect("repair call should not error");
+        let (repaired, _src) =
+            repair_vault(&mut vault2, false, None).expect("repair call should not error");
         assert_eq!(repaired, 0, "repair must not claim an unverifiable success");
 
         let after = std::fs::read(&vault_path).unwrap();
@@ -4007,7 +4515,13 @@ mod tests {
         let data = error_correction_test_blob(300_000);
         std::fs::write(&f, &data).unwrap();
 
-        create_empty_vault(&vault_path, "ovh-pw-1234", DEFAULT_ZSTD_LEVEL, true).unwrap();
+        create_empty_vault(
+            &vault_path,
+            "ovh-pw-1234",
+            DEFAULT_ZSTD_LEVEL,
+            Some(RecoveryPlacement::Embedded),
+        )
+        .unwrap();
         let mut vault = open_vault(&vault_path, "ovh-pw-1234").unwrap();
         append_file_at(&mut vault, &f, "blob.bin").unwrap();
         save_open_vault(&mut vault).unwrap();
@@ -4048,7 +4562,13 @@ mod tests {
         .unwrap();
 
         // Create using the Error Correction stub path (what will be "v4" in future)
-        create_empty_vault(&vault_path, "compat-pw-1234", DEFAULT_ZSTD_LEVEL, true).unwrap();
+        create_empty_vault(
+            &vault_path,
+            "compat-pw-1234",
+            DEFAULT_ZSTD_LEVEL,
+            Some(RecoveryPlacement::Embedded),
+        )
+        .unwrap();
 
         // Use pure v3 open path (internal open_vault, as old reader would)
         let mut vault = open_vault(&vault_path, "compat-pw-1234").unwrap();
@@ -4075,7 +4595,7 @@ mod tests {
         std::fs::write(source.join("docs/nested/readme.txt"), b"nested").unwrap();
 
         let vault_path = dir.path().join("dir-test.aerovault");
-        create_empty_vault(&vault_path, "old-password", DEFAULT_ZSTD_LEVEL, false).unwrap();
+        create_empty_vault(&vault_path, "old-password", DEFAULT_ZSTD_LEVEL, None).unwrap();
 
         let mut vault = open_vault(&vault_path, "old-password").unwrap();
         create_directory_in_manifest(&mut vault.manifest, "empty").unwrap();
@@ -4119,7 +4639,7 @@ mod tests {
             &vault_path,
             "correct horse battery staple",
             DEFAULT_ZSTD_LEVEL,
-            false,
+            None,
         )
         .unwrap();
 
@@ -4144,7 +4664,7 @@ mod tests {
         }
 
         let vault_path = dir.path().join("pack.aerovault");
-        create_empty_vault(&vault_path, "pack-password", DEFAULT_ZSTD_LEVEL, false).unwrap();
+        create_empty_vault(&vault_path, "pack-password", DEFAULT_ZSTD_LEVEL, None).unwrap();
 
         let mut vault = open_vault(&vault_path, "pack-password").unwrap();
         append_sources_batched(&mut vault, &sources).unwrap();
@@ -4200,7 +4720,7 @@ mod tests {
         }
 
         let vault_path = dir.path().join("multi.aerovault");
-        create_empty_vault(&vault_path, "multi-password", DEFAULT_ZSTD_LEVEL, false).unwrap();
+        create_empty_vault(&vault_path, "multi-password", DEFAULT_ZSTD_LEVEL, None).unwrap();
         let mut vault = open_vault(&vault_path, "multi-password").unwrap();
         append_sources_batched(&mut vault, &sources).unwrap();
         save_open_vault(&mut vault).unwrap();
@@ -4245,7 +4765,7 @@ mod tests {
         }
 
         let vault_path = dir.path().join("shared.aerovault");
-        create_empty_vault(&vault_path, "shared-password", DEFAULT_ZSTD_LEVEL, false).unwrap();
+        create_empty_vault(&vault_path, "shared-password", DEFAULT_ZSTD_LEVEL, None).unwrap();
         let mut vault = open_vault(&vault_path, "shared-password").unwrap();
         append_sources_batched(&mut vault, &sources).unwrap();
         // All ten tiny files share one physical pack chunk.
@@ -4299,7 +4819,7 @@ mod tests {
             .collect();
         std::fs::write(&src, &body).unwrap();
         let vault_path = dir.join(name);
-        create_empty_vault(&vault_path, password, DEFAULT_ZSTD_LEVEL, false).unwrap();
+        create_empty_vault(&vault_path, password, DEFAULT_ZSTD_LEVEL, None).unwrap();
         let mut v = open_vault(&vault_path, password).unwrap();
         append_file_at(&mut v, &src, "payload.bin").unwrap();
         save_open_vault(&mut v).unwrap();
@@ -4351,7 +4871,7 @@ mod tests {
 
         // archive profile (level 19) widens CDC bounds.
         let archive_path = dir.path().join("archive.aerovault");
-        create_empty_vault(&archive_path, "bounds-pw", 19, false).unwrap();
+        create_empty_vault(&archive_path, "bounds-pw", 19, None).unwrap();
         let mut av = open_vault(&archive_path, "bounds-pw").unwrap();
         let b = manifest_cdc_bounds(&av.manifest).unwrap();
         assert_eq!(b.avg, 4 * 1024 * 1024, "archive must widen CDC avg");
@@ -4360,7 +4880,7 @@ mod tests {
 
         // balanced profile keeps the const bounds.
         let bal_path = dir.path().join("balanced.aerovault");
-        create_empty_vault(&bal_path, "bounds-pw", DEFAULT_ZSTD_LEVEL, false).unwrap();
+        create_empty_vault(&bal_path, "bounds-pw", DEFAULT_ZSTD_LEVEL, None).unwrap();
         let mut bv = open_vault(&bal_path, "bounds-pw").unwrap();
         assert_eq!(manifest_cdc_bounds(&bv.manifest).unwrap().avg, CDC_AVG);
         append_file_at(&mut bv, &src, "big.bin").unwrap();
