@@ -871,11 +871,33 @@ async fn run_docs_replicate(ticket_str: String, cfg: aeroftp_peer_l0::endpoint::
     println!("R1: received entry key={} author={} hash={} size={}", entry_key, entry_author, content_hash, content_size);
 
     // Fetch the *ciphertext* blob (the value stored under the entry is nonce||ct, not plaintext).
-    let fetched: Bytes = blobs
-        .blobs()
-        .get_bytes(content_hash)
-        .await
-        .context("blob content not available after docs replication")?;
+    // The entry (RBSR metadata) syncs first; the CONTENT blob is downloaded asynchronously by the
+    // docs live engine (default DownloadPolicy = EverythingExcept([])). On loopback the download wins
+    // the race before we read; over a real relay/cross-net path it is still in flight when the entry
+    // appears, so a single get_bytes reads a partial blob and fails bao verification with
+    // LeafHashMismatch(0). Retry until the download completes (same pattern as the entry wait above).
+    let mut fetched: Option<Bytes> = None;
+    let mut last_err: Option<anyhow::Error> = None;
+    for attempt in 0..100 {
+        match blobs.blobs().get_bytes(content_hash).await {
+            Ok(b) => {
+                fetched = Some(b);
+                break;
+            }
+            Err(e) => {
+                last_err = Some(e.into());
+                if attempt % 10 == 0 {
+                    println!("(waiting for content blob download to complete, attempt {})", attempt);
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            }
+        }
+    }
+    let fetched: Bytes = fetched
+        .with_context(|| format!(
+            "blob content not available after docs replication (timeout; last error: {:?})",
+            last_err
+        ))?;
 
     // E3: show raw bytes are ciphertext (not the readable "hi from L1...").
     let raw_preview: String = fetched.iter().take(16).map(|b| format!("{:02x}", b)).collect();
@@ -906,6 +928,6 @@ async fn run_docs_replicate(ticket_str: String, cfg: aeroftp_peer_l0::endpoint::
     // R3 unchanged in spirit.
     println!("R3: entry author = {} (docs sync verifies the author signature; no error above means sig OK)", entry_author);
 
-    println!("\nL1 E2EE replication SUCCESS on localhost (entry + ciphertext blob replicated; decrypted with drive key).");
+    println!("\nL1 E2EE replication SUCCESS (entry + ciphertext blob replicated over the network; decrypted with drive key).");
     Ok(())
 }
