@@ -395,6 +395,11 @@ pub struct VaultHealth {
     /// Whether the vault can actually be opened with the available key material
     /// right now (without prompting for a master password).
     pub unlockable: bool,
+    /// Whether the vault is healthy but locked behind a master password that was
+    /// not supplied (master mode without `AEROFTP_MASTER_PASSWORD`). This is a
+    /// distinct state from a genuinely broken/unopenable vault: it is not an
+    /// error, it just needs a password. `keystore status` maps it to exit code 2.
+    pub needs_password: bool,
     /// Human-readable explanation / next step.
     pub detail: String,
 }
@@ -1011,6 +1016,7 @@ impl CredentialStore {
                 mode: "absent".into(),
                 vault_db_present,
                 unlockable: false,
+                needs_password: false,
                 detail: "No vault.key: a fresh vault will be created on next start.".into(),
             };
         }
@@ -1023,6 +1029,7 @@ impl CredentialStore {
                         mode: "auto-keyring".into(),
                         vault_db_present,
                         unlockable: true,
+                        needs_password: false,
                         detail: "Keyring unlocks vault.db (zero-password mode is healthy).".into(),
                     }
                 }
@@ -1030,28 +1037,62 @@ impl CredentialStore {
                     mode: "auto-keyring".into(),
                     vault_db_present,
                     unlockable: false,
+                    needs_password: false,
                     detail: format!(
                         "Keyring does NOT unlock vault.db ({e}). The keyring entry was lost or \
                          overwritten. Recover with: keystore repair --input <backup>."
                     ),
                 },
             },
-            Ok(VaultKeyMode::Master { .. }) => VaultHealth {
-                mode: "master".into(),
-                vault_db_present,
-                unlockable: false,
-                detail: "Master-password mode: provide --master-password / AEROFTP_MASTER_PASSWORD to unlock.".into(),
+            // Master mode is healthy but locked. A static probe cannot open it, so
+            // rather than reporting it as broken (the old behaviour conflated
+            // "needs password" with "unopenable"), consult AEROFTP_MASTER_PASSWORD
+            // when present and actually verify it; otherwise flag needs_password.
+            Ok(VaultKeyMode::Master { .. }) => match Self::master_password_from_env() {
+                Some(pw) => match Self::verify_master(pw.as_str()) {
+                    Ok((_, mut key)) => {
+                        key.zeroize();
+                        VaultHealth {
+                            mode: "master".into(),
+                            vault_db_present,
+                            unlockable: true,
+                            needs_password: false,
+                            detail: "Master-password mode: AEROFTP_MASTER_PASSWORD unlocks vault.db."
+                                .into(),
+                        }
+                    }
+                    Err(_) => VaultHealth {
+                        mode: "master".into(),
+                        vault_db_present,
+                        unlockable: false,
+                        needs_password: true,
+                        detail: "Master-password mode: the supplied AEROFTP_MASTER_PASSWORD did NOT \
+                                 unlock vault.db (wrong password)."
+                            .into(),
+                    },
+                },
+                None => VaultHealth {
+                    mode: "master".into(),
+                    vault_db_present,
+                    unlockable: false,
+                    needs_password: true,
+                    detail: "Master-password mode: healthy but locked. Provide --master-password / \
+                             AEROFTP_MASTER_PASSWORD to unlock."
+                        .into(),
+                },
             },
             Ok(VaultKeyMode::LegacyAuto { .. }) => VaultHealth {
                 mode: "legacy-auto".into(),
                 vault_db_present,
                 unlockable: true,
+                needs_password: false,
                 detail: "Legacy cleartext key: migrates to keyring on next start.".into(),
             },
             Err(e) => VaultHealth {
                 mode: "unreadable".into(),
                 vault_db_present,
                 unlockable: false,
+                needs_password: false,
                 detail: format!("vault.key could not be read: {e}"),
             },
         }
