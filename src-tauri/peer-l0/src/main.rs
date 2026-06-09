@@ -47,6 +47,13 @@ struct Cli {
     /// once MU-VAULT lands.
     #[arg(long)]
     secret: Option<String>,
+
+    /// Comma-separated list of relay URLs to use with `RelayMode::Custom`
+    /// (e.g. a self-hosted relay). If omitted or empty, the research default
+    /// (Staging) is used. Both peers MUST use the SAME relay set to interoperate.
+    /// Example: --custom-relay-urls "https://my-relay.example:443,https://backup:443"
+    #[arg(long, value_delimiter = ',')]
+    custom_relay_urls: Option<Vec<String>>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -97,9 +104,17 @@ async fn main() -> Result<()> {
     // Support env var for secret — extremely convenient when scripting many cross-network measurements.
     let effective_secret = cli.secret.or_else(|| std::env::var("AEROFTP_PEER_SECRET").ok());
 
+    // Shared endpoint config: carries the optional custom-relay override (bind_addr is
+    // set per-mode for the listener). Built once and threaded into listen/dial.
+    let cfg = aeroftp_peer_l0::endpoint::PeerEndpointConfig {
+        bind_addr: None,
+        secret_key_path: None,
+        custom_relay_urls: cli.custom_relay_urls,
+    };
+
     match cli.mode {
         Mode::Listen { port, count } => {
-            let samples = run_listen_multi(port, cli.note.clone(), effective_secret, count).await;
+            let samples = run_listen_multi(port, cli.note.clone(), effective_secret, count, cfg).await;
 
             // For campaign use: if --report is given with listen --count, write all samples as JSON array.
             if let Some(path) = cli.report {
@@ -116,7 +131,7 @@ async fn main() -> Result<()> {
             return Ok(());
         }
         Mode::Dial { node, size } => {
-            let sample = run_dial(&node, size, cli.note.clone(), effective_secret).await;
+            let sample = run_dial(&node, size, cli.note.clone(), effective_secret, cfg).await;
 
             // Always print a one-line summary (easy for log collection).
             if sample.success {
@@ -301,7 +316,7 @@ async fn run_one_listen(
     };
     let connect_duration = connect_start.elapsed().as_millis() as u64;
 
-    let path = "unknown".to_string();
+    let mut path = "unknown".to_string();
 
     let remote_node_str = conn.remote_node_id().map(|id| id.to_string()).unwrap_or_default();
     let _remote_fp = if remote_node_str.len() > 12 { &remote_node_str[..12] } else { &remote_node_str };
@@ -350,6 +365,12 @@ async fn run_one_listen(
         }
     };
     let xfer_duration = xfer_start.elapsed().as_millis() as u64;
+
+    // Snapshot the path type (direct/mixed/relay) while the connection is still
+    // open, for the L0 gate's hole-punch-vs-relay accounting.
+    if let Ok(rid) = conn.remote_node_id() {
+        path = conn_type_label(ep, rid).await;
+    }
 
     println!("Received and decrypted {} bytes. BLAKE3 verified after decryption.", received.len());
 
@@ -402,29 +423,92 @@ async fn run_one_listen(
     // is not directly exposed without additional features. We capture what we can and rely on
     // the human-provided --note for network conditions.
     sample.diagnostics = Some(format!(
-        "remote_node={remote_node_str} local_node={local_node_str}; connection=quic; path_info_limited_in_this_iroh_version"
+        "remote_node={remote_node_str} local_node={local_node_str}; connection=quic; iroh_path={}",
+        sample.path
     ));
     sample
 }
 
+/// Best-effort classification of the iroh path actually in use to `node`
+/// (direct hole-punch vs relay-only vs mixed), snapshot right after a successful
+/// transfer. Recorded into the ConnectivitySample's `path` so the L0 gate can
+/// compute hole-punch-vs-relay rates — the "is a relay mandatory?" question (§8).
+///
+/// Phase 2 refinement (dialer conn-type): the watcher often starts as `None` (or
+/// "unknown") for the first few hundred ms after `connect()`. We now await the first
+/// non-None `ConnectionType` (bounded ~2000ms timeout) before falling back to a
+/// snapshot `get()`. This makes the *dialer* (call site ~625) report "direct"/"mixed"/"relay"
+/// instead of "unknown" on fast local connects. Listener side (which waited in accept)
+/// was already reliable; we call the same awaited helper from both for consistency.
+/// Keep the exact Debug-prefix mapping for Direct/Mixed/Relay/None.
+async fn conn_type_label(ep: &aeroftp_peer_l0::endpoint::PeerEndpoint, node: NodeId) -> String {
+    use iroh::Watcher;
 
+    let Some(mut w) = ep.raw().conn_type(node) else {
+        return "unknown".to_string();
+    };
+
+    // Fast path: if already non-None (typical for listener after accept, or warm dial), use it.
+    let initial = format!("{:?}", w.get());
+    if !initial.starts_with("None") {
+        return classify_conn_type_debug(&initial);
+    }
+
+    // Await first non-None ConnectionType. On sub-second connects the initial get() is still
+    // None because iroh has not yet classified (or updated the watcher). Bounded timeout
+    // prevents hanging the sample collection; on timeout we fall back to current get()
+    // (which may legitimately still be None/"unknown" or "none").
+    let timeout = Duration::from_millis(2000);
+    let fut = async {
+        loop {
+            match w.updated().await {
+                Ok(val) => {
+                    let s = format!("{:?}", val);
+                    if !s.starts_with("None") {
+                        return classify_conn_type_debug(&s);
+                    }
+                    // still None after this update; wait for the next one
+                }
+                Err(_) => break, // watcher disconnected; use whatever we have
+            }
+        }
+        classify_conn_type_debug(&format!("{:?}", w.get()))
+    };
+
+    match ::tokio::time::timeout(timeout, fut).await {
+        Ok(s) => s,
+        Err(_) => {
+            // timeout: honest fallback to latest snapshot (may be "none" or "unknown")
+            classify_conn_type_debug(&format!("{:?}", w.get()))
+        }
+    }
+}
+
+fn classify_conn_type_debug(s: &str) -> String {
+    if s.starts_with("Direct") {
+        "direct".to_string()
+    } else if s.starts_with("Mixed") {
+        "mixed".to_string()
+    } else if s.starts_with("Relay") {
+        "relay".to_string()
+    } else if s.starts_with("None") {
+        "none".to_string()
+    } else {
+        "unknown".to_string()
+    }
+}
 
 async fn run_listen_multi(
     port: u16,
     note: Option<String>,
     secret_opt: Option<String>,
     count: u32,
+    mut cfg: aeroftp_peer_l0::endpoint::PeerEndpointConfig,
 ) -> Vec<ConnectivitySample> {
-    let ep = match aeroftp_peer_l0::endpoint::PeerEndpoint::new(
-        aeroftp_peer_l0::endpoint::PeerEndpointConfig {
-            bind_addr: if port == 0 {
-                None
-            } else {
-                Some(([0, 0, 0, 0], port).into())
-            },
-            secret_key_path: None,
-        },
-    )
+    if port != 0 {
+        cfg.bind_addr = Some(([0, 0, 0, 0], port).into());
+    }
+    let ep = match aeroftp_peer_l0::endpoint::PeerEndpoint::new(cfg)
     .await
     {
         Ok(e) => e,
@@ -496,7 +580,7 @@ async fn run_listen_multi(
     samples
 }
 
-async fn run_dial(node_str: &str, blob_size: usize, note: Option<String>, secret_opt: Option<String>) -> ConnectivitySample {
+async fn run_dial(node_str: &str, blob_size: usize, note: Option<String>, secret_opt: Option<String>, cfg: aeroftp_peer_l0::endpoint::PeerEndpointConfig) -> ConnectivitySample {
     let total_start = Instant::now();
 
     let remote: NodeId = match node_str.parse() {
@@ -517,9 +601,7 @@ async fn run_dial(node_str: &str, blob_size: usize, note: Option<String>, secret
         }
     };
 
-    let ep = match aeroftp_peer_l0::endpoint::PeerEndpoint::new(
-        aeroftp_peer_l0::endpoint::PeerEndpointConfig::default(),
-    )
+    let ep = match aeroftp_peer_l0::endpoint::PeerEndpoint::new(cfg)
     .await
     {
         Ok(e) => e,
@@ -536,8 +618,7 @@ async fn run_dial(node_str: &str, blob_size: usize, note: Option<String>, secret
     };
     let connect_duration = connect_start.elapsed().as_millis() as u64;
 
-    // Best-effort path info for measurement.
-    let path = "unknown".to_string();
+    // Path type (direct/mixed/relay) is captured after the transfer succeeds below.
 
     // Build test data (this is the "plaintext" that will be vault-encrypted in real life).
     let data: Vec<u8> = (0..blob_size).map(|i| (i % 251) as u8).collect();
@@ -575,15 +656,21 @@ async fn run_dial(node_str: &str, blob_size: usize, note: Option<String>, secret
     let xfer_duration = xfer_start.elapsed().as_millis() as u64;
 
     println!(
-        "Encrypted blob sent ({} bytes plaintext, {} bytes ciphertext, hash {}).",
+        "Encrypted blob sent and acknowledged by receiver ({} bytes plaintext, {} bytes ciphertext, hash {}).",
         data.len(),
         ciphertext.len(),
         hash
     );
-    println!("Waiting for close...");
 
-    tokio::time::sleep(Duration::from_millis(200)).await;
-    let _ = conn.close(0u32.into(), b"l0-sent");
+    // Snapshot the path type (direct/mixed/relay) while the connection is still
+    // open, for the L0 gate's hole-punch-vs-relay accounting.
+    let path = conn_type_label(&ep, remote).await;
+
+    // send_encrypted_blob only returns Ok after the receiver ACKed a successful
+    // decrypt + BLAKE3 verify, so the transfer is genuinely complete. Close cleanly;
+    // the old fixed 200ms-then-close truncated the stream over relayed paths and
+    // caused the L0 RUN#1 "connection lost" failures.
+    let _ = conn.close(0u32.into(), b"l0-ok");
 
     let total_duration = total_start.elapsed().as_millis() as u64;
 
@@ -597,7 +684,8 @@ async fn run_dial(node_str: &str, blob_size: usize, note: Option<String>, secret
 
     // Enhanced diagnostics for real data collection (same limitation note as listen side).
     sample.diagnostics = Some(format!(
-        "local_node={local_node_str} remote_node={remote_node_str} connect_time_ms={connect_duration}; connection=quic; path_info_limited_in_this_iroh_version"
+        "local_node={local_node_str} remote_node={remote_node_str} connect_time_ms={connect_duration}; connection=quic; iroh_path={}",
+        sample.path
     ));
 
     sample

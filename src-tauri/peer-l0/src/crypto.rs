@@ -28,7 +28,18 @@ pub const PAIRING_SECRET_LEN: usize = 16;
 /// Derive a 32-byte AES key from a pairing secret + context.
 /// Context should include both NodeIDs and a version string to bind the key.
 pub fn derive_session_key(secret: &[u8], local_node: &str, remote_node: &str) -> [u8; 32] {
-    let info = format!("aeroftp-peer-l0-v1|{}|{}", local_node, remote_node);
+    // L0 fix (Linux 2): the session key MUST be identical on both peers, but each
+    // side calls this with its OWN NodeId as `local` and the peer's as `remote`
+    // (i.e. the two arguments are swapped between dial and listen). Binding them in
+    // call order produced two different keys and AES-GCM decryption failed on the
+    // receiver. Order the pair canonically (sorted) so both sides derive the same
+    // key regardless of who dialed.
+    let (first, second) = if local_node <= remote_node {
+        (local_node, remote_node)
+    } else {
+        (remote_node, local_node)
+    };
+    let info = format!("aeroftp-peer-l0-v1|{}|{}", first, second);
     let hk = Hkdf::<Sha256>::new(None, secret);
     let mut key = [0u8; 32];
     // We ignore the error in practice because 32 bytes is always ok for HKDF-SHA256.

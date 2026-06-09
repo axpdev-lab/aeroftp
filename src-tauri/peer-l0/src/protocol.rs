@@ -14,6 +14,15 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 const MAX_OFFER_BYTES: usize = 8 * 1024; // small
 const MAX_BLOB_FOR_GATE: u64 = 64 * 1024 * 1024; // 64 MiB safety cap for gate tests
 
+/// Application-level receipt ACK byte. The receiver writes it on the blob stream's
+/// return path ONLY after decrypt + BLAKE3 verify both pass; the sender waits for
+/// it before closing. This makes the sender's success a true end-to-end signal and
+/// fixes the L0 RUN#1 "connection lost" failures (the old fixed 200ms-then-close
+/// truncated the stream over a relayed path before the receiver had read it).
+const ACK_OK: u8 = 1;
+/// Bound on how long the sender waits for the receiver's ACK after sending.
+const ACK_TIMEOUT_SECS: u64 = 30;
+
 pub async fn send_offer(conn: &Connection, offer: &PeerBlobOffer) -> Result<()> {
     let (mut send, _recv) = conn.open_bi().await.context("open_bi for offer")?;
     let json = serde_json::to_vec(offer)?;
@@ -74,7 +83,7 @@ pub async fn recv_blob(conn: &Connection, offer: &PeerBlobOffer) -> Result<Vec<u
 /// Send an encrypted blob: first the 12-byte nonce, then the ciphertext.
 /// The offer (sent earlier) still advertises the *plaintext* hash and size.
 pub async fn send_encrypted_blob(conn: &Connection, nonce: &[u8], ciphertext: &[u8]) -> Result<()> {
-    let (mut send, _recv) = conn.open_bi().await.context("open_bi for encrypted blob")?;
+    let (mut send, mut recv) = conn.open_bi().await.context("open_bi for encrypted blob")?;
     if nonce.len() != 12 {
         bail!("nonce must be 12 bytes");
     }
@@ -83,6 +92,21 @@ pub async fn send_encrypted_blob(conn: &Connection, nonce: &[u8], ciphertext: &[
     send.write_u64(ciphertext.len() as u64).await?;
     send.write_all(ciphertext).await?;
     send.finish()?;
+
+    // Wait for the receiver's application-level ACK on the return path of this same
+    // bi stream. The receiver only sends it after a successful decrypt + BLAKE3
+    // verify, so reaching here means the blob really arrived intact. Bounded so a
+    // silent/dead peer can't hang the dialer forever.
+    let ack = tokio::time::timeout(
+        std::time::Duration::from_secs(ACK_TIMEOUT_SECS),
+        recv.read_u8(),
+    )
+    .await
+    .context("timed out waiting for receiver ACK")?
+    .context("failed to read receiver ACK (connection lost before receipt)")?;
+    if ack != ACK_OK {
+        bail!("receiver reported a non-OK ACK ({ack})");
+    }
     Ok(())
 }
 
@@ -96,7 +120,7 @@ pub async fn recv_encrypted_blob(
     if offer.size > MAX_BLOB_FOR_GATE {
         bail!("blob larger than L0 gate safety cap");
     }
-    let (_send, mut recv) = conn.accept_bi().await.context("accept_bi for encrypted blob data")?;
+    let (mut send, mut recv) = conn.accept_bi().await.context("accept_bi for encrypted blob data")?;
 
     let mut nonce = [0u8; 12];
     recv.read_exact(&mut nonce).await?;
@@ -118,6 +142,13 @@ pub async fn recv_encrypted_blob(
     if computed != offer.hash {
         bail!("BLAKE3 mismatch after decryption: got {}, expected {}", computed, offer.hash);
     }
+
+    // Receipt confirmed (decrypt + BLAKE3 verified): ACK the sender on the return
+    // path of this bi stream so it knows the blob really arrived and can close
+    // cleanly. On any failure above we return Err without ACKing, so the sender's
+    // wait fails and it correctly records the transfer as unsuccessful.
+    send.write_u8(ACK_OK).await.context("write receipt ACK")?;
+    send.finish().context("finish ACK stream")?;
 
     Ok(plaintext)
 }
