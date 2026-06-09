@@ -6011,6 +6011,71 @@ mod tests {
         );
     }
 
+    #[test]
+    fn reader_fallback_consults_vault_only_on_partition_miss_for_nondefault_user() {
+        // R-MUV-10 coverage: post-cutover, a non-default user is active and a
+        // server_* credential lives ONLY in the legacy vault (never mirrored into
+        // the partition). The reader must (a) return the vault value via fallback
+        // and (b) consult the vault ONLY on the partition miss, never when the
+        // per-user row is present. This pins down the partition-miss -> vault-
+        // fallback transition the live R-MUV-10 run could not observe directly
+        // (no explicit log line marked the fallback).
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let user = create_passphrase_less_user(&mut conn, &root, "cutover", None, None)
+            .expect("create user");
+
+        // Only `server_hit` is mirrored into the user's partition; the
+        // `server_vaultonly` key is never written there.
+        set_user_credential_for(&conn, &root, user.id, "server_hit", "server", "from-store")
+            .expect("seed store");
+
+        let vault_reads = std::cell::Cell::new(0u32);
+        let read = |key: &str| {
+            vault_reads.set(vault_reads.get() + 1);
+            Ok(match key {
+                "server_hit" => Some(Zeroizing::new("from-vault".to_string())),
+                "server_vaultonly" => Some(Zeroizing::new("vault-only".to_string())),
+                _ => None,
+            })
+        };
+
+        // Partition hit: the per-user row wins and the vault is NOT consulted.
+        assert_eq!(
+            read_credential_with_fallback_inner(&conn, &root, user.id, "server_hit", &read)
+                .expect("read hit")
+                .expect("present")
+                .as_str(),
+            "from-store"
+        );
+        assert_eq!(
+            vault_reads.get(),
+            0,
+            "vault must not be read on a partition hit"
+        );
+
+        // Partition miss: the vault-only credential resolves via fallback and the
+        // vault is read exactly once.
+        assert_eq!(
+            read_credential_with_fallback_inner(&conn, &root, user.id, "server_vaultonly", &read)
+                .expect("read vault-only")
+                .expect("present")
+                .as_str(),
+            "vault-only"
+        );
+        assert_eq!(
+            vault_reads.get(),
+            1,
+            "vault consulted exactly once on the partition miss"
+        );
+
+        // The partition genuinely has no row for it (it really was the fallback).
+        assert!(get_user_credential_for(&conn, &root, user.id, "server_vaultonly")
+            .expect("read partition")
+            .is_none());
+    }
+
     // --- MUV-3: server_* reader/writer cutover ----------------------------
 
     #[test]
