@@ -10,19 +10,22 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
+    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap},
     Terminal,
 };
 
 use self::{
     app::{AppState, TuiActionIntent, TuiFocus, TUI_ACTION_ITEMS},
-    event::key_to_action,
+    event::{key_to_action, key_to_overlay},
+    overlay::TuiOverlay,
+    panes::transfers::{TransferItem, TransferStatus},
     theme::TuiTheme,
-    worker::{TuiWorkerClient, WorkerEvent},
+    worker::{TuiWorkerClient, TuiWorkerOperation, WorkerCommand, WorkerEvent},
 };
 
 pub mod app;
 pub mod event;
+pub mod overlay;
 pub mod panes;
 pub mod session;
 pub mod theme;
@@ -71,22 +74,12 @@ fn run_tui_inner(context: TuiContext, worker: Option<TuiWorkerClient>) -> io::Re
                     if key.kind != KeyEventKind::Press {
                         continue;
                     }
-                    let commands = app.apply_action(key_to_action(key));
-                    if !commands.is_empty() {
-                        if let Some(worker) = worker.as_ref() {
-                            for command in commands {
-                                if worker.commands.send(command).is_err() {
-                                    app.apply_worker_event(WorkerEvent::Failed {
-                                        operation:
-                                            crate::cli_tui::worker::TuiWorkerOperation::Connect,
-                                        identity: None,
-                                        message: "worker channel closed".to_string(),
-                                    });
-                                    break;
-                                }
-                            }
-                        }
-                    }
+                    let commands = if app.overlay_active() {
+                        app.handle_overlay_key(key_to_overlay(key))
+                    } else {
+                        app.apply_action(key_to_action(key))
+                    };
+                    dispatch_commands(&mut app, &mut worker, commands);
                     if app.should_quit {
                         break;
                     }
@@ -99,23 +92,51 @@ fn run_tui_inner(context: TuiContext, worker: Option<TuiWorkerClient>) -> io::Re
 }
 
 fn drain_worker_events(app: &mut AppState, worker: &mut Option<TuiWorkerClient>) {
-    let Some(client) = worker.as_mut() else {
+    let mut follow_up = Vec::new();
+    {
+        let Some(client) = worker.as_mut() else {
+            return;
+        };
+
+        loop {
+            match client.events.try_recv() {
+                Ok(event) => follow_up.extend(app.apply_worker_event(event)),
+                Err(tokio::sync::mpsc::error::TryRecvError::Empty) => break,
+                Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
+                    app.apply_worker_event(WorkerEvent::Failed {
+                        operation: TuiWorkerOperation::Connect,
+                        identity: None,
+                        message: "worker stopped".to_string(),
+                    });
+                    *worker = None;
+                    break;
+                }
+            }
+        }
+    }
+    dispatch_commands(app, worker, follow_up);
+}
+
+/// Forward worker commands, degrading gracefully if the worker channel closed.
+fn dispatch_commands(
+    app: &mut AppState,
+    worker: &mut Option<TuiWorkerClient>,
+    commands: Vec<WorkerCommand>,
+) {
+    if commands.is_empty() {
+        return;
+    }
+    let Some(client) = worker.as_ref() else {
         return;
     };
-
-    loop {
-        match client.events.try_recv() {
-            Ok(event) => app.apply_worker_event(event),
-            Err(tokio::sync::mpsc::error::TryRecvError::Empty) => break,
-            Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
-                app.apply_worker_event(WorkerEvent::Failed {
-                    operation: crate::cli_tui::worker::TuiWorkerOperation::Connect,
-                    identity: None,
-                    message: "worker stopped".to_string(),
-                });
-                *worker = None;
-                break;
-            }
+    for command in commands {
+        if client.commands.send(command).is_err() {
+            app.apply_worker_event(WorkerEvent::Failed {
+                operation: TuiWorkerOperation::Connect,
+                identity: None,
+                message: "worker channel closed".to_string(),
+            });
+            break;
         }
     }
 }
@@ -145,6 +166,18 @@ fn render_dashboard(frame: &mut ratatui::Frame<'_>, app: &AppState, theme: TuiTh
     ]);
     frame.render_widget(header, rows[0]);
 
+    let show_transfers =
+        !app.transfers.items.is_empty() || matches!(app.focus, TuiFocus::Transfers);
+    let body_area = if show_transfers {
+        let strip_height = transfers_strip_height(app, rows[1].height);
+        let split =
+            Layout::vertical([Constraint::Min(6), Constraint::Length(strip_height)]).split(rows[1]);
+        render_transfers(frame, split[1], app, theme);
+        split[0]
+    } else {
+        rows[1]
+    };
+
     let body_direction = if area.width >= 96 {
         Direction::Horizontal
     } else {
@@ -159,7 +192,7 @@ fn render_dashboard(frame: &mut ratatui::Frame<'_>, app: &AppState, theme: TuiTh
             Constraint::Percentage(30),
         ],
     )
-    .split(rows[1]);
+    .split(body_area);
 
     render_users(frame, body[0], app, theme);
     render_profiles(frame, body[1], app, theme);
@@ -168,20 +201,39 @@ fn render_dashboard(frame: &mut ratatui::Frame<'_>, app: &AppState, theme: TuiTh
 
     let footer = Paragraph::new(vec![
         Line::from(vec![
-            Span::styled(" Up/Down", theme.accent_style()),
-            Span::raw(" move   "),
-            Span::styled("Left/Right/Tab", theme.accent_style()),
-            Span::raw(" pane   "),
-            Span::styled("Enter", theme.accent_style()),
-            Span::raw(" run/open   "),
-            Span::styled("Backspace/Left", theme.accent_style()),
-            Span::raw(" parent   "),
-            Span::styled("q/Esc", theme.accent_style()),
+            Span::styled(" Move", theme.accent_style()),
+            Span::raw(" Up/Down   "),
+            Span::styled("Pane", theme.accent_style()),
+            Span::raw(" Tab   "),
+            Span::styled("Open", theme.accent_style()),
+            Span::raw(" Enter   "),
+            Span::styled("n", theme.accent_style()),
+            Span::raw(" mkdir   "),
+            Span::styled("r", theme.accent_style()),
+            Span::raw(" rename   "),
+            Span::styled("d", theme.accent_style()),
+            Span::raw(" delete   "),
+            Span::styled("g/u", theme.accent_style()),
+            Span::raw(" get/put   "),
+            Span::styled("c", theme.accent_style()),
+            Span::raw(" cancel   "),
+            Span::styled("q", theme.accent_style()),
             Span::raw(" quit"),
         ]),
         Line::from(Span::styled(app.status.as_str(), theme.muted_style())),
     ]);
     frame.render_widget(footer, rows[2]);
+
+    render_overlay(frame, area, app, theme);
+}
+
+/// Height of the transfers strip, including borders, clamped so it never starves
+/// the dashboard panes above it on short terminals.
+fn transfers_strip_height(app: &AppState, available: u16) -> u16 {
+    let rows = app.transfers.items.len().clamp(1, 6) as u16;
+    let desired = rows + 2;
+    let ceiling = available.saturating_sub(8).max(3);
+    desired.min(ceiling)
 }
 
 fn render_users(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, theme: TuiTheme) {
@@ -476,6 +528,138 @@ fn render_browser(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, th
         .block(Block::default().borders(Borders::ALL).title(" Listing "))
         .wrap(Wrap { trim: true });
     frame.render_widget(details, chunks[1]);
+}
+
+fn render_transfers(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, theme: TuiTheme) {
+    let items: Vec<ListItem> = if app.transfers.items.is_empty() {
+        vec![ListItem::new(Line::from(Span::styled(
+            "No transfers yet. In Browser: g downloads the selected file, u uploads a local file.",
+            theme.muted_style(),
+        )))]
+    } else {
+        app.transfers
+            .items
+            .iter()
+            .map(|item| transfer_list_item(item, theme))
+            .collect()
+    };
+
+    let title = if matches!(app.focus, TuiFocus::Transfers) {
+        " Transfers * "
+    } else {
+        " Transfers "
+    };
+    let mut state = ListState::default();
+    if !app.transfers.items.is_empty() {
+        state.select(Some(app.transfers.selected));
+    }
+    let list = List::new(items)
+        .block(Block::default().borders(Borders::ALL).title(title))
+        .highlight_style(selection_style(app.focus, TuiFocus::Transfers, theme))
+        .highlight_symbol("> ");
+    frame.render_stateful_widget(list, area, &mut state);
+}
+
+fn transfer_list_item(item: &TransferItem, theme: TuiTheme) -> ListItem<'static> {
+    let bar = progress_bar(item.ratio(), 12);
+    let pct = (item.ratio() * 100.0).round() as u64;
+    let status_style = match item.status {
+        TransferStatus::Active => theme.accent_style(),
+        TransferStatus::Done => Style::default().fg(theme.ready),
+        TransferStatus::Failed(_) => Style::default().fg(theme.planned),
+    };
+    let detail = match &item.status {
+        TransferStatus::Failed(message) => format!("  {}", message),
+        _ => {
+            let total = if item.total > 0 {
+                format_browser_size(item.total)
+            } else {
+                "?".to_string()
+            };
+            format!("  {} / {}", format_browser_size(item.transferred), total)
+        }
+    };
+    ListItem::new(Line::from(vec![
+        Span::styled(
+            format!("{:<8} ", item.direction.label()),
+            theme.muted_style(),
+        ),
+        Span::styled(format!("{} {:>3}% ", bar, pct), status_style),
+        Span::styled(
+            item.name.clone(),
+            Style::default().add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(format!("  [{}]", item.status.label()), status_style),
+        Span::styled(detail, theme.muted_style()),
+    ]))
+}
+
+fn progress_bar(ratio: f64, width: usize) -> String {
+    let filled = ((ratio.clamp(0.0, 1.0)) * width as f64).round() as usize;
+    let filled = filled.min(width);
+    format!("[{}{}]", "#".repeat(filled), "-".repeat(width - filled))
+}
+
+fn render_overlay(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, theme: TuiTheme) {
+    match &app.overlay {
+        TuiOverlay::None => {}
+        TuiOverlay::Prompt(prompt) => {
+            let popup = centered_rect(60, 7, area);
+            frame.render_widget(Clear, popup);
+            let body = Paragraph::new(vec![
+                Line::from(Span::styled(prompt.hint.clone(), theme.muted_style())),
+                Line::from(""),
+                Line::from(vec![
+                    Span::styled("> ", theme.accent_style()),
+                    Span::styled(
+                        prompt.buffer.clone(),
+                        Style::default().add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled("_", theme.accent_style()),
+                ]),
+            ])
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(format!(" {} ", prompt.title)),
+            )
+            .wrap(Wrap { trim: false });
+            frame.render_widget(body, popup);
+        }
+        TuiOverlay::Confirm(confirm) => {
+            let popup = centered_rect(60, 7, area);
+            frame.render_widget(Clear, popup);
+            let body = Paragraph::new(vec![
+                Line::from(Span::styled(
+                    confirm.message.clone(),
+                    Style::default().add_modifier(Modifier::BOLD),
+                )),
+                Line::from(""),
+                Line::from(vec![
+                    Span::styled("y", theme.accent_style()),
+                    Span::raw(" confirm    "),
+                    Span::styled("n / Esc", theme.accent_style()),
+                    Span::raw(" cancel"),
+                ]),
+            ])
+            .block(Block::default().borders(Borders::ALL).title(" Confirm "))
+            .wrap(Wrap { trim: true });
+            frame.render_widget(body, popup);
+        }
+    }
+}
+
+fn centered_rect(percent_x: u16, height: u16, area: Rect) -> Rect {
+    let width = (area.width * percent_x / 100).max(20).min(area.width);
+    let height = height.min(area.height);
+    let x = area.x + area.width.saturating_sub(width) / 2;
+    let y = area.y + area.height.saturating_sub(height) / 2;
+    Rect {
+        x,
+        y,
+        width,
+        height,
+    }
 }
 
 fn browser_title(app: &AppState) -> String {

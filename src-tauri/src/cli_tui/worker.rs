@@ -25,7 +25,22 @@ pub fn worker_channels() -> (TuiWorkerClient, WorkerCommandReceiver, WorkerEvent
     )
 }
 
-#[allow(dead_code)]
+/// Direction of a queued transfer.
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum TransferDirection {
+    Download,
+    Upload,
+}
+
+impl TransferDirection {
+    pub fn label(self) -> &'static str {
+        match self {
+            TransferDirection::Download => "download",
+            TransferDirection::Upload => "upload",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum WorkerCommand {
     OpenSession {
@@ -49,11 +64,21 @@ pub enum WorkerCommand {
         from: String,
         to: String,
     },
+    Download {
+        id: u64,
+        remote_path: String,
+        local_path: String,
+    },
+    Upload {
+        id: u64,
+        local_path: String,
+        remote_path: String,
+    },
     Cancel,
 }
 
-#[allow(dead_code)]
 impl WorkerCommand {
+    #[allow(dead_code)]
     pub fn operation(&self) -> TuiWorkerOperation {
         match self {
             WorkerCommand::OpenSession { .. } => TuiWorkerOperation::Connect,
@@ -62,6 +87,9 @@ impl WorkerCommand {
             WorkerCommand::Mkdir { .. } => TuiWorkerOperation::Mkdir,
             WorkerCommand::Remove { .. } => TuiWorkerOperation::Remove,
             WorkerCommand::Rename { .. } => TuiWorkerOperation::Rename,
+            WorkerCommand::Download { .. } | WorkerCommand::Upload { .. } => {
+                TuiWorkerOperation::Transfer
+            }
             WorkerCommand::Cancel => TuiWorkerOperation::Cancel,
         }
     }
@@ -111,6 +139,19 @@ pub enum WorkerEvent {
         operation: TuiWorkerOperation,
         path: String,
     },
+    TransferProgress {
+        id: u64,
+        transferred: u64,
+        total: u64,
+    },
+    TransferDone {
+        id: u64,
+        message: String,
+    },
+    TransferFailed {
+        id: u64,
+        message: String,
+    },
     ListReady {
         identity: TuiSessionIdentity,
         path: String,
@@ -144,6 +185,13 @@ impl WorkerEvent {
                 format!("list ready {} ({} items)", path, result.summary.total)
             }
             WorkerEvent::StatReady { path, .. } => format!("stat ready {}", path),
+            WorkerEvent::TransferProgress {
+                id,
+                transferred,
+                total,
+            } => format!("transfer #{} {}/{}", id, transferred, total),
+            WorkerEvent::TransferDone { id, .. } => format!("transfer #{} done", id),
+            WorkerEvent::TransferFailed { id, .. } => format!("transfer #{} failed", id),
             WorkerEvent::Failed { operation, .. } => format!("{} failed", operation.label()),
             WorkerEvent::Cancelled { operation } => format!("{} cancelled", operation.label()),
         }

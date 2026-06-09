@@ -1,10 +1,11 @@
 use crate::cli_tui::{
-    event::TuiAction,
+    event::{OverlayKey, TuiAction},
+    overlay::{ConfirmKind, ConfirmState, PromptKind, PromptState, TuiOverlay},
     panes::{
         browser::BrowserPaneState, profiles::ProfilesPaneState, transfers::TransfersPaneState,
     },
     session::{TuiSessionIdentity, TuiSessionPhase, TuiSessionState},
-    worker::{TuiWorkerOperation, WorkerCommand, WorkerEvent},
+    worker::{TransferDirection, TuiWorkerOperation, WorkerCommand, WorkerEvent},
 };
 
 #[derive(Debug, Clone)]
@@ -55,6 +56,7 @@ pub struct AppState {
     pub browser: BrowserPaneState,
     pub profiles: ProfilesPaneState,
     pub transfers: TransfersPaneState,
+    pub overlay: TuiOverlay,
     pub session: TuiSessionState,
     pub worker: WorkerEvent,
     live_worker_enabled: bool,
@@ -77,6 +79,7 @@ impl AppState {
             browser: BrowserPaneState::default(),
             profiles: ProfilesPaneState::default(),
             transfers: TransfersPaneState::default(),
+            overlay: TuiOverlay::None,
             session: TuiSessionState::default(),
             worker: WorkerEvent::Idle,
             live_worker_enabled: false,
@@ -143,6 +146,12 @@ impl AppState {
             TuiAction::MoveRight => self.focus_next(),
             TuiAction::Activate => self.activate(),
             TuiAction::Parent => self.navigate_parent(),
+            TuiAction::NewDir => self.trigger_new_dir(),
+            TuiAction::Delete => self.trigger_delete(),
+            TuiAction::Rename => self.trigger_rename(),
+            TuiAction::Download => self.trigger_download(),
+            TuiAction::Upload => self.trigger_upload(),
+            TuiAction::CancelOp => self.cancel_operation(),
             TuiAction::Noop => Vec::new(),
         };
         self.sync_pane_state();
@@ -155,6 +164,11 @@ impl AppState {
             self.status = self.contextual_status();
             return Vec::new();
         }
+        if matches!(self.focus, TuiFocus::Transfers) {
+            self.transfers.move_selection(delta);
+            self.status = self.contextual_status();
+            return Vec::new();
+        }
 
         let len = match self.focus {
             TuiFocus::Users => self.context.users.len(),
@@ -163,7 +177,9 @@ impl AppState {
                 .map(|user| user.profiles.len())
                 .unwrap_or_default(),
             TuiFocus::Actions => TUI_ACTION_ITEMS.len(),
-            TuiFocus::Browser => unreachable!("browser selection is handled above"),
+            TuiFocus::Browser | TuiFocus::Transfers => {
+                unreachable!("list panes are handled above")
+            }
         };
         if len == 0 {
             return Vec::new();
@@ -172,7 +188,9 @@ impl AppState {
             TuiFocus::Users => &mut self.selected_user,
             TuiFocus::Profiles => &mut self.selected_profile,
             TuiFocus::Actions => &mut self.selected_action,
-            TuiFocus::Browser => unreachable!("browser selection is handled above"),
+            TuiFocus::Browser | TuiFocus::Transfers => {
+                unreachable!("list panes are handled above")
+            }
         };
         let next = (*target as isize + delta).clamp(0, len.saturating_sub(1) as isize);
         *target = next as usize;
@@ -188,7 +206,8 @@ impl AppState {
             TuiFocus::Users => TuiFocus::Profiles,
             TuiFocus::Profiles => TuiFocus::Actions,
             TuiFocus::Actions => TuiFocus::Browser,
-            TuiFocus::Browser => TuiFocus::Users,
+            TuiFocus::Browser => TuiFocus::Transfers,
+            TuiFocus::Transfers => TuiFocus::Users,
         };
         self.status = self.contextual_status();
         Vec::new()
@@ -200,9 +219,10 @@ impl AppState {
         }
 
         self.focus = match self.focus {
-            TuiFocus::Users => TuiFocus::Browser,
+            TuiFocus::Users => TuiFocus::Transfers,
             TuiFocus::Profiles => TuiFocus::Users,
             TuiFocus::Actions => TuiFocus::Profiles,
+            TuiFocus::Transfers => TuiFocus::Browser,
             TuiFocus::Browser => unreachable!("browser left navigation is handled above"),
         };
         self.status = self.contextual_status();
@@ -287,14 +307,18 @@ impl AppState {
                     }
                     TuiActionIntent::Planned => {
                         self.status = format!(
-                            "{} is planned for {}. Preview: {}",
-                            action.title, action.phase, action.command
+                            "{} - {} ({})",
+                            action.title, action.description, action.phase
                         );
                         Vec::new()
                     }
                 }
             }
             TuiFocus::Browser => self.open_selected_browser_entry(),
+            TuiFocus::Transfers => {
+                self.status = self.contextual_status();
+                Vec::new()
+            }
         }
     }
 
@@ -344,13 +368,352 @@ impl AppState {
         vec![WorkerCommand::List { path }]
     }
 
-    pub fn apply_worker_event(&mut self, event: WorkerEvent) {
+    /// Whether a live, connected session exists. Mutating actions and transfers
+    /// are gated on this so the TUI never tries to act without a provider.
+    fn is_live_connected(&self) -> bool {
+        self.live_worker_enabled && matches!(self.session.phase, TuiSessionPhase::Connected)
+    }
+
+    fn require_live_connection(&mut self) -> bool {
+        if self.is_live_connected() {
+            return true;
+        }
+        self.status =
+            "Connect first: run 'List root' on a profile to open a live session.".to_string();
+        false
+    }
+
+    fn trigger_new_dir(&mut self) -> Vec<WorkerCommand> {
+        if !matches!(self.focus, TuiFocus::Browser) {
+            self.status = "Switch to the Browser pane to create a folder.".to_string();
+            return Vec::new();
+        }
+        if !self.require_live_connection() {
+            return Vec::new();
+        }
+        let parent = self.browser.path.clone();
+        self.overlay = TuiOverlay::Prompt(PromptState::new(
+            PromptKind::Mkdir {
+                parent: parent.clone(),
+            },
+            format!("New folder in {}", display_dir(&parent)),
+            "type a name, Enter to create, Esc to cancel",
+            String::new(),
+        ));
+        self.status = "Creating a folder.".to_string();
+        Vec::new()
+    }
+
+    fn trigger_delete(&mut self) -> Vec<WorkerCommand> {
+        if matches!(self.focus, TuiFocus::Transfers) {
+            if self.transfers.remove_selected_if_finished() {
+                self.status = "Removed finished transfer from the queue.".to_string();
+            } else {
+                self.status = "Active transfers cannot be removed; cancel them first.".to_string();
+            }
+            return Vec::new();
+        }
+        if !matches!(self.focus, TuiFocus::Browser) {
+            self.status = "Switch to the Browser pane to delete an entry.".to_string();
+            return Vec::new();
+        }
+        if !self.require_live_connection() {
+            return Vec::new();
+        }
+        let Some(entry) = self.browser.selected_entry() else {
+            self.status = "No entry selected to delete.".to_string();
+            return Vec::new();
+        };
+        let is_dir = entry.is_dir;
+        let Some(path) = self.browser.selected_entry_path() else {
+            self.status = "No entry selected to delete.".to_string();
+            return Vec::new();
+        };
+        let message = if is_dir {
+            format!("Delete directory '{}' and all its contents?", path)
+        } else {
+            format!("Delete file '{}'?", path)
+        };
+        self.overlay = TuiOverlay::Confirm(ConfirmState {
+            kind: ConfirmKind::Delete {
+                path,
+                recursive: is_dir,
+            },
+            message,
+        });
+        self.status = "Confirm delete: y to proceed, n/Esc to cancel.".to_string();
+        Vec::new()
+    }
+
+    fn trigger_rename(&mut self) -> Vec<WorkerCommand> {
+        if !matches!(self.focus, TuiFocus::Browser) {
+            self.status = "Switch to the Browser pane to rename an entry.".to_string();
+            return Vec::new();
+        }
+        if !self.require_live_connection() {
+            return Vec::new();
+        }
+        let Some(entry) = self.browser.selected_entry().cloned() else {
+            self.status = "No entry selected to rename.".to_string();
+            return Vec::new();
+        };
+        let Some(from) = self.browser.selected_entry_path() else {
+            self.status = "No entry selected to rename.".to_string();
+            return Vec::new();
+        };
+        self.overlay = TuiOverlay::Prompt(PromptState::new(
+            PromptKind::Rename { from },
+            format!("Rename '{}'", entry.name),
+            "edit the name, Enter to apply, Esc to cancel",
+            entry.name.clone(),
+        ));
+        self.status = "Renaming an entry.".to_string();
+        Vec::new()
+    }
+
+    fn trigger_download(&mut self) -> Vec<WorkerCommand> {
+        if !matches!(self.focus, TuiFocus::Browser) {
+            self.status = "Switch to the Browser pane to download a file.".to_string();
+            return Vec::new();
+        }
+        if !self.require_live_connection() {
+            return Vec::new();
+        }
+        let Some(entry) = self.browser.selected_entry() else {
+            self.status = "No entry selected to download.".to_string();
+            return Vec::new();
+        };
+        if entry.is_dir {
+            self.status = "Directory downloads are not supported yet; pick a file.".to_string();
+            return Vec::new();
+        }
+        let name = entry.name.clone();
+        let Some(remote) = self.browser.selected_file_path() else {
+            self.status = "No file selected to download.".to_string();
+            return Vec::new();
+        };
+        self.overlay = TuiOverlay::Prompt(PromptState::new(
+            PromptKind::Download { remote },
+            format!("Download '{}'", name),
+            "local destination path, Enter to start, Esc to cancel",
+            format!("./{}", name),
+        ));
+        self.status = "Downloading a file.".to_string();
+        Vec::new()
+    }
+
+    fn trigger_upload(&mut self) -> Vec<WorkerCommand> {
+        if !matches!(self.focus, TuiFocus::Browser) {
+            self.status = "Switch to the Browser pane to upload into the directory.".to_string();
+            return Vec::new();
+        }
+        if !self.require_live_connection() {
+            return Vec::new();
+        }
+        let remote_dir = self.browser.path.clone();
+        self.overlay = TuiOverlay::Prompt(PromptState::new(
+            PromptKind::Upload {
+                remote_dir: remote_dir.clone(),
+            },
+            format!("Upload into {}", display_dir(&remote_dir)),
+            "local source file path, Enter to start, Esc to cancel",
+            String::new(),
+        ));
+        self.status = "Uploading a file.".to_string();
+        Vec::new()
+    }
+
+    fn cancel_operation(&mut self) -> Vec<WorkerCommand> {
+        if self.transfers.has_active() || matches!(self.worker, WorkerEvent::Busy { .. }) {
+            self.status = "Cancelling the current operation.".to_string();
+            return vec![WorkerCommand::Cancel];
+        }
+        self.status = "Nothing to cancel.".to_string();
+        Vec::new()
+    }
+
+    pub fn overlay_active(&self) -> bool {
+        self.overlay.is_active()
+    }
+
+    /// Route a key press to the active overlay. The caller (the input loop) only
+    /// invokes this while [`Self::overlay_active`] is true.
+    pub fn handle_overlay_key(&mut self, key: OverlayKey) -> Vec<WorkerCommand> {
+        let commands = match self.overlay {
+            TuiOverlay::None => Vec::new(),
+            TuiOverlay::Prompt(_) => self.handle_prompt_key(key),
+            TuiOverlay::Confirm(_) => self.handle_confirm_key(key),
+        };
+        self.sync_pane_state();
+        commands
+    }
+
+    fn handle_prompt_key(&mut self, key: OverlayKey) -> Vec<WorkerCommand> {
+        match key {
+            OverlayKey::Char(c) => {
+                if let TuiOverlay::Prompt(prompt) = &mut self.overlay {
+                    prompt.push_char(c);
+                }
+                Vec::new()
+            }
+            OverlayKey::Backspace => {
+                if let TuiOverlay::Prompt(prompt) = &mut self.overlay {
+                    prompt.backspace();
+                }
+                Vec::new()
+            }
+            OverlayKey::Submit => self.submit_prompt(),
+            OverlayKey::Cancel => self.cancel_overlay(),
+            OverlayKey::Noop => Vec::new(),
+        }
+    }
+
+    fn handle_confirm_key(&mut self, key: OverlayKey) -> Vec<WorkerCommand> {
+        match key {
+            OverlayKey::Char('y') | OverlayKey::Char('Y') | OverlayKey::Submit => {
+                self.confirm_overlay()
+            }
+            OverlayKey::Char('n') | OverlayKey::Char('N') | OverlayKey::Cancel => {
+                self.cancel_overlay()
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    fn cancel_overlay(&mut self) -> Vec<WorkerCommand> {
+        self.overlay = TuiOverlay::None;
+        self.status = "Cancelled.".to_string();
+        Vec::new()
+    }
+
+    fn submit_prompt(&mut self) -> Vec<WorkerCommand> {
+        let TuiOverlay::Prompt(prompt) = &self.overlay else {
+            return Vec::new();
+        };
+        let value = prompt.trimmed().to_string();
+        let kind = prompt.kind.clone();
+
+        match kind {
+            PromptKind::Mkdir { parent } => {
+                if !is_valid_segment(&value) {
+                    self.status = "Enter a folder name without '/' or '..'.".to_string();
+                    return Vec::new();
+                }
+                let path = join_remote(&parent, &value);
+                self.overlay = TuiOverlay::None;
+                self.begin_mutation(TuiWorkerOperation::Mkdir, format!("Creating {}.", path));
+                vec![WorkerCommand::Mkdir { path }]
+            }
+            PromptKind::Rename { from } => {
+                if !is_valid_segment(&value) {
+                    self.status = "Enter a new name without '/' or '..'.".to_string();
+                    return Vec::new();
+                }
+                let to = join_remote(&parent_remote(&from), &value);
+                if to == from {
+                    self.overlay = TuiOverlay::None;
+                    self.status = "Name unchanged.".to_string();
+                    return Vec::new();
+                }
+                self.overlay = TuiOverlay::None;
+                self.begin_mutation(TuiWorkerOperation::Rename, format!("Renaming to {}.", to));
+                vec![WorkerCommand::Rename { from, to }]
+            }
+            PromptKind::Download { remote } => {
+                if value.is_empty() {
+                    self.status = "Enter a local destination path.".to_string();
+                    return Vec::new();
+                }
+                let name = remote_basename(&remote);
+                let id = self.transfers.enqueue(
+                    TransferDirection::Download,
+                    name,
+                    remote.clone(),
+                    value.clone(),
+                );
+                self.overlay = TuiOverlay::None;
+                self.focus = TuiFocus::Transfers;
+                self.begin_mutation(
+                    TuiWorkerOperation::Transfer,
+                    format!("Downloading {} -> {}.", remote, value),
+                );
+                vec![WorkerCommand::Download {
+                    id,
+                    remote_path: remote,
+                    local_path: value,
+                }]
+            }
+            PromptKind::Upload { remote_dir } => {
+                if value.is_empty() {
+                    self.status = "Enter a local source file path.".to_string();
+                    return Vec::new();
+                }
+                let name = local_basename(&value);
+                if name.is_empty() {
+                    self.status = "Could not read a file name from that path.".to_string();
+                    return Vec::new();
+                }
+                let remote = join_remote(&remote_dir, &name);
+                let id = self.transfers.enqueue(
+                    TransferDirection::Upload,
+                    name,
+                    remote.clone(),
+                    value.clone(),
+                );
+                self.overlay = TuiOverlay::None;
+                self.focus = TuiFocus::Transfers;
+                self.begin_mutation(
+                    TuiWorkerOperation::Transfer,
+                    format!("Uploading {} -> {}.", value, remote),
+                );
+                vec![WorkerCommand::Upload {
+                    id,
+                    local_path: value,
+                    remote_path: remote,
+                }]
+            }
+        }
+    }
+
+    fn confirm_overlay(&mut self) -> Vec<WorkerCommand> {
+        let TuiOverlay::Confirm(confirm) = &self.overlay else {
+            return Vec::new();
+        };
+        let kind = confirm.kind.clone();
+        match kind {
+            ConfirmKind::Delete { path, recursive } => {
+                self.overlay = TuiOverlay::None;
+                self.begin_mutation(TuiWorkerOperation::Remove, format!("Deleting {}.", path));
+                vec![WorkerCommand::Remove { path, recursive }]
+            }
+        }
+    }
+
+    fn begin_mutation(&mut self, operation: TuiWorkerOperation, status: String) {
+        self.worker = WorkerEvent::Busy {
+            operation,
+            identity: self.session.identity.clone(),
+        };
+        self.status = status;
+    }
+
+    /// Path of the directory the browser currently shows, defaulting to root.
+    fn current_browser_dir(&self) -> String {
+        if self.browser.path.is_empty() {
+            "/".to_string()
+        } else {
+            self.browser.path.clone()
+        }
+    }
+
+    pub fn apply_worker_event(&mut self, event: WorkerEvent) -> Vec<WorkerCommand> {
         if let Some(identity) = event_identity(&event) {
             if self.session.identity.as_ref() != Some(identity) {
-                return;
+                return Vec::new();
             }
         }
 
+        let mut follow_up = Vec::new();
         match &event {
             WorkerEvent::Idle => {
                 self.status = "Worker idle.".to_string();
@@ -367,6 +730,18 @@ impl AppState {
             }
             WorkerEvent::PathReady { operation, path } => {
                 self.status = format!("{} ready at {}.", operation.label(), path);
+                // A successful mutation invalidates the current listing: refresh
+                // it so the new/renamed/removed entry is reflected immediately.
+                if matches!(
+                    operation,
+                    TuiWorkerOperation::Mkdir
+                        | TuiWorkerOperation::Remove
+                        | TuiWorkerOperation::Rename
+                ) {
+                    follow_up.push(WorkerCommand::List {
+                        path: self.current_browser_dir(),
+                    });
+                }
             }
             WorkerEvent::ListReady { path, result, .. } => {
                 self.session.mark_connected(path);
@@ -383,10 +758,41 @@ impl AppState {
                     self.status = format!("Metadata ready for {}.", path);
                 }
             }
+            WorkerEvent::TransferProgress {
+                id,
+                transferred,
+                total,
+            } => {
+                self.transfers.update_progress(*id, *transferred, *total);
+                self.status = format!("Transfer #{}: {} / {} bytes.", id, transferred, total);
+            }
+            WorkerEvent::TransferDone { id, message } => {
+                let was_upload = self.transfers.items.iter().any(|item| {
+                    item.id == *id && matches!(item.direction, TransferDirection::Upload)
+                });
+                self.transfers.mark_done(*id);
+                self.status = message.clone();
+                // An upload adds a file to the current remote directory; refresh
+                // so it appears. Downloads never change the remote listing.
+                if was_upload {
+                    follow_up.push(WorkerCommand::List {
+                        path: self.current_browser_dir(),
+                    });
+                }
+            }
+            WorkerEvent::TransferFailed { id, message } => {
+                self.transfers.mark_failed(*id, message.clone());
+                self.status = message.clone();
+            }
             WorkerEvent::Failed {
                 operation, message, ..
             } => {
-                if *operation != TuiWorkerOperation::Stat {
+                // Only connection-fatal operations tear the session down. A
+                // failed stat/mutation/transfer leaves the session usable.
+                if matches!(
+                    operation,
+                    TuiWorkerOperation::Connect | TuiWorkerOperation::List
+                ) {
                     self.session.mark_failed(message.clone());
                 }
                 self.status = format!("{} failed: {}", operation.label(), message);
@@ -397,6 +803,7 @@ impl AppState {
             }
         }
         self.worker = event;
+        follow_up
     }
 
     fn finish(&mut self, intent: TuiIntent) {
@@ -452,12 +859,27 @@ impl AppState {
                         "No live listing loaded.".to_string()
                     }
                 }),
+            TuiFocus::Transfers => self
+                .transfers
+                .selected_item()
+                .map(|item| {
+                    format!(
+                        "{} {} -> {} ({}).",
+                        item.direction.label(),
+                        item.remote_path,
+                        item.local_path,
+                        item.status.label()
+                    )
+                })
+                .unwrap_or_else(|| {
+                    "No transfers yet. From Browser: g downloads a file, u uploads into the directory."
+                        .to_string()
+                }),
         }
     }
 
     fn sync_pane_state(&mut self) {
         self.profiles.selected = self.selected_profile;
-        self.transfers.selected = self.selected_action;
         let planned_session = self
             .selected_user()
             .and_then(|user| {
@@ -493,8 +915,64 @@ fn event_identity(event: &WorkerEvent) -> Option<&TuiSessionIdentity> {
         WorkerEvent::SessionReady { identity, .. }
         | WorkerEvent::ListReady { identity, .. }
         | WorkerEvent::StatReady { identity, .. } => Some(identity),
-        WorkerEvent::Idle | WorkerEvent::PathReady { .. } | WorkerEvent::Cancelled { .. } => None,
+        WorkerEvent::Idle
+        | WorkerEvent::PathReady { .. }
+        | WorkerEvent::TransferProgress { .. }
+        | WorkerEvent::TransferDone { .. }
+        | WorkerEvent::TransferFailed { .. }
+        | WorkerEvent::Cancelled { .. } => None,
     }
+}
+
+fn is_valid_segment(value: &str) -> bool {
+    !value.is_empty()
+        && value != "."
+        && value != ".."
+        && !value.contains('/')
+        && !value.contains('\\')
+}
+
+fn display_dir(path: &str) -> &str {
+    if path.is_empty() {
+        "/"
+    } else {
+        path
+    }
+}
+
+fn join_remote(parent: &str, child: &str) -> String {
+    let parent = parent.trim_end_matches('/');
+    let child = child.trim_matches('/');
+    if parent.is_empty() {
+        format!("/{}", child)
+    } else {
+        format!("{}/{}", parent, child)
+    }
+}
+
+fn parent_remote(path: &str) -> String {
+    let trimmed = path.trim_end_matches('/');
+    match trimmed.rsplit_once('/') {
+        Some(("", _)) => "/".to_string(),
+        Some((parent, _)) => parent.to_string(),
+        None => "/".to_string(),
+    }
+}
+
+fn remote_basename(path: &str) -> String {
+    path.trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .unwrap_or(path)
+        .to_string()
+}
+
+fn local_basename(path: &str) -> String {
+    path.trim_end_matches(['/', '\\'])
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or(path)
+        .to_string()
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -503,6 +981,7 @@ pub enum TuiFocus {
     Profiles,
     Actions,
     Browser,
+    Transfers,
 }
 
 impl TuiFocus {
@@ -512,6 +991,7 @@ impl TuiFocus {
             TuiFocus::Profiles => "profiles",
             TuiFocus::Actions => "actions",
             TuiFocus::Browser => "browser",
+            TuiFocus::Transfers => "transfers",
         }
     }
 }
@@ -591,9 +1071,10 @@ pub const TUI_ACTION_ITEMS: &[TuiActionItem] = &[
     },
     TuiActionItem {
         title: "Transfers",
-        command: "aeroftp-cli get|put --profile N ...",
-        description: "Live transfer queue with ratatui gauges fed by worker progress events.",
-        phase: "P2/P3",
+        command: "g download / u upload (from the Browser)",
+        description:
+            "Download (g) and upload (u) from the Browser; progress shows in the Transfers pane.",
+        phase: "P2 live",
         intent: TuiActionIntent::Planned,
     },
     TuiActionItem {
@@ -766,11 +1247,8 @@ mod tests {
 
     #[test]
     fn planned_action_menu_items_do_not_exit_the_dashboard() {
-        for selected_action in 0..TUI_ACTION_ITEMS.len() {
-            if !matches!(
-                TUI_ACTION_ITEMS[selected_action].intent,
-                TuiActionIntent::Planned
-            ) {
+        for (selected_action, item) in TUI_ACTION_ITEMS.iter().enumerate() {
+            if !matches!(item.intent, TuiActionIntent::Planned) {
                 continue;
             }
 
@@ -781,7 +1259,7 @@ mod tests {
 
             assert!(!app.should_quit);
             assert_eq!(app.take_intent(), None);
-            assert!(app.status.contains("is planned for"));
+            assert!(app.status.contains(item.title));
         }
     }
 
@@ -1090,5 +1568,263 @@ mod tests {
         let app = AppState::new(context);
 
         assert_eq!(app.session, TuiSessionState::default());
+    }
+
+    /// A live app connected at `/srv` listing a directory (`docs/`) and a file
+    /// (`readme.txt`), focused on the Browser with `docs` selected.
+    fn connected_app_with_listing() -> AppState {
+        let mut app = AppState::new_live(sample_context());
+        app.focus = TuiFocus::Actions;
+        app.selected_action = 1;
+        app.apply_action(TuiAction::Activate);
+        app.apply_worker_event(WorkerEvent::ListReady {
+            identity: sample_identity(),
+            path: "/srv".to_string(),
+            result: list_result(vec![
+                crate::cli_tui::worker::TuiListEntry {
+                    name: "docs".to_string(),
+                    path: "/srv/docs".to_string(),
+                    is_dir: true,
+                    size: 0,
+                    modified: None,
+                },
+                crate::cli_tui::worker::TuiListEntry {
+                    name: "readme.txt".to_string(),
+                    path: "/srv/readme.txt".to_string(),
+                    is_dir: false,
+                    size: 42,
+                    modified: None,
+                },
+            ]),
+        });
+        assert_eq!(app.session.phase, TuiSessionPhase::Connected);
+        assert_eq!(app.focus, TuiFocus::Browser);
+        app
+    }
+
+    #[test]
+    fn mkdir_prompt_submit_emits_mkdir_under_the_current_directory() {
+        let mut app = connected_app_with_listing();
+
+        assert!(app.apply_action(TuiAction::NewDir).is_empty());
+        assert!(app.overlay_active());
+
+        for c in "newdir".chars() {
+            app.handle_overlay_key(OverlayKey::Char(c));
+        }
+        let commands = app.handle_overlay_key(OverlayKey::Submit);
+
+        assert_eq!(
+            commands,
+            vec![WorkerCommand::Mkdir {
+                path: "/srv/newdir".to_string()
+            }]
+        );
+        assert!(!app.overlay_active());
+    }
+
+    #[test]
+    fn mkdir_rejects_empty_or_separator_names_without_closing_the_prompt() {
+        let mut app = connected_app_with_listing();
+        app.apply_action(TuiAction::NewDir);
+
+        let commands = app.handle_overlay_key(OverlayKey::Submit);
+        assert!(commands.is_empty());
+        assert!(app.overlay_active());
+        assert!(app.status.contains("folder name"));
+    }
+
+    #[test]
+    fn delete_confirmation_emits_recursive_remove_for_a_directory() {
+        let mut app = connected_app_with_listing();
+
+        assert!(app.apply_action(TuiAction::Delete).is_empty());
+        assert!(app.overlay_active());
+
+        let commands = app.handle_overlay_key(OverlayKey::Char('y'));
+        assert_eq!(
+            commands,
+            vec![WorkerCommand::Remove {
+                path: "/srv/docs".to_string(),
+                recursive: true,
+            }]
+        );
+        assert!(!app.overlay_active());
+    }
+
+    #[test]
+    fn delete_cancel_leaves_the_remote_untouched() {
+        let mut app = connected_app_with_listing();
+        app.apply_action(TuiAction::Delete);
+
+        let commands = app.handle_overlay_key(OverlayKey::Char('n'));
+        assert!(commands.is_empty());
+        assert!(!app.overlay_active());
+    }
+
+    #[test]
+    fn rename_submit_targets_a_sibling_path() {
+        let mut app = connected_app_with_listing();
+        app.apply_action(TuiAction::MoveDown); // select readme.txt
+
+        app.apply_action(TuiAction::Rename);
+        app.handle_overlay_key(OverlayKey::Char('x'));
+        let commands = app.handle_overlay_key(OverlayKey::Submit);
+
+        assert_eq!(
+            commands,
+            vec![WorkerCommand::Rename {
+                from: "/srv/readme.txt".to_string(),
+                to: "/srv/readme.txtx".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn download_submit_enqueues_a_transfer_and_focuses_the_pane() {
+        let mut app = connected_app_with_listing();
+        app.apply_action(TuiAction::MoveDown); // select readme.txt
+
+        app.apply_action(TuiAction::Download);
+        let commands = app.handle_overlay_key(OverlayKey::Submit);
+
+        assert_eq!(
+            commands,
+            vec![WorkerCommand::Download {
+                id: 1,
+                remote_path: "/srv/readme.txt".to_string(),
+                local_path: "./readme.txt".to_string(),
+            }]
+        );
+        assert_eq!(app.focus, TuiFocus::Transfers);
+        assert_eq!(app.transfers.items.len(), 1);
+    }
+
+    #[test]
+    fn upload_submit_derives_the_remote_path_from_the_local_basename() {
+        let mut app = connected_app_with_listing();
+
+        app.apply_action(TuiAction::Upload);
+        for c in "/tmp/data.bin".chars() {
+            app.handle_overlay_key(OverlayKey::Char(c));
+        }
+        let commands = app.handle_overlay_key(OverlayKey::Submit);
+
+        assert_eq!(
+            commands,
+            vec![WorkerCommand::Upload {
+                id: 1,
+                local_path: "/tmp/data.bin".to_string(),
+                remote_path: "/srv/data.bin".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn mutations_are_blocked_until_a_live_session_is_connected() {
+        let mut app = AppState::new_live(sample_context());
+        app.focus = TuiFocus::Browser;
+
+        let commands = app.apply_action(TuiAction::NewDir);
+        assert!(commands.is_empty());
+        assert!(!app.overlay_active());
+        assert!(app.status.contains("Connect first"));
+    }
+
+    #[test]
+    fn successful_mutation_refreshes_the_current_listing() {
+        let mut app = connected_app_with_listing();
+
+        let commands = app.apply_worker_event(WorkerEvent::PathReady {
+            operation: TuiWorkerOperation::Mkdir,
+            path: "/srv/newdir".to_string(),
+        });
+
+        assert_eq!(
+            commands,
+            vec![WorkerCommand::List {
+                path: "/srv".to_string()
+            }]
+        );
+    }
+
+    #[test]
+    fn transfer_progress_and_completion_update_the_queue() {
+        let mut app = connected_app_with_listing();
+        app.apply_action(TuiAction::MoveDown);
+        app.apply_action(TuiAction::Download);
+        app.handle_overlay_key(OverlayKey::Submit);
+
+        app.apply_worker_event(WorkerEvent::TransferProgress {
+            id: 1,
+            transferred: 21,
+            total: 42,
+        });
+        assert_eq!(app.transfers.items[0].transferred, 21);
+        assert_eq!(app.transfers.items[0].total, 42);
+
+        let commands = app.apply_worker_event(WorkerEvent::TransferDone {
+            id: 1,
+            message: "Downloaded /srv/readme.txt -> ./readme.txt".to_string(),
+        });
+        // A download never changes the remote listing, so no refresh is queued.
+        assert!(commands.is_empty());
+        assert_eq!(
+            app.transfers.items[0].status,
+            crate::cli_tui::panes::transfers::TransferStatus::Done
+        );
+    }
+
+    #[test]
+    fn upload_completion_refreshes_the_listing() {
+        let mut app = connected_app_with_listing();
+        app.apply_action(TuiAction::Upload);
+        for c in "/tmp/data.bin".chars() {
+            app.handle_overlay_key(OverlayKey::Char(c));
+        }
+        app.handle_overlay_key(OverlayKey::Submit);
+
+        let commands = app.apply_worker_event(WorkerEvent::TransferDone {
+            id: 1,
+            message: "Uploaded /tmp/data.bin -> /srv/data.bin".to_string(),
+        });
+
+        assert_eq!(
+            commands,
+            vec![WorkerCommand::List {
+                path: "/srv".to_string()
+            }]
+        );
+    }
+
+    #[test]
+    fn cancel_requests_a_worker_cancel_while_a_transfer_is_active() {
+        let mut app = connected_app_with_listing();
+        app.apply_action(TuiAction::MoveDown);
+        app.apply_action(TuiAction::Download);
+        app.handle_overlay_key(OverlayKey::Submit);
+
+        let commands = app.apply_action(TuiAction::CancelOp);
+        assert_eq!(commands, vec![WorkerCommand::Cancel]);
+    }
+
+    #[test]
+    fn delete_in_the_transfers_pane_drops_only_finished_entries() {
+        let mut app = connected_app_with_listing();
+        app.apply_action(TuiAction::MoveDown);
+        app.apply_action(TuiAction::Download);
+        app.handle_overlay_key(OverlayKey::Submit);
+        assert_eq!(app.focus, TuiFocus::Transfers);
+
+        // Active transfer is protected from removal.
+        app.apply_action(TuiAction::Delete);
+        assert_eq!(app.transfers.items.len(), 1);
+
+        app.apply_worker_event(WorkerEvent::TransferDone {
+            id: 1,
+            message: "done".to_string(),
+        });
+        app.apply_action(TuiAction::Delete);
+        assert!(app.transfers.items.is_empty());
     }
 }

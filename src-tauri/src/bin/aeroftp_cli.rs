@@ -9432,6 +9432,118 @@ async fn stat_tui_session_via_cli_handler(
     }
 }
 
+async fn mkdir_tui_session_via_cli_handler(
+    session: &mut cli_tui::session::TuiSession,
+    path: &str,
+) -> Result<String, String> {
+    let initial_path = session.initial_path().to_string();
+    let resolved = try_resolve_cli_remote_path_with_note(&initial_path, path, false)
+        .map_err(|err| err.to_string())?;
+    let provider = session.provider_mut();
+    match provider.mkdir(&resolved).await {
+        // Idempotent like `cmd_mkdir`: an existing directory is not an error.
+        Ok(()) | Err(ProviderError::AlreadyExists(_)) => Ok(resolved),
+        Err(err) => Err(format!("mkdir failed: {}", err)),
+    }
+}
+
+async fn remove_tui_session_via_cli_handler(
+    session: &mut cli_tui::session::TuiSession,
+    path: &str,
+    recursive: bool,
+) -> Result<String, String> {
+    let initial_path = session.initial_path().to_string();
+    let resolved = try_resolve_cli_remote_path_with_note(&initial_path, path, false)
+        .map_err(|err| err.to_string())?;
+    // Mirror the CLI guard: never recursively wipe the remote root.
+    if recursive && resolved.trim_matches('/').is_empty() {
+        return Err("refusing to recursively delete the remote root".to_string());
+    }
+    let provider = session.provider_mut();
+    let result = if recursive {
+        provider.rmdir_recursive(&resolved).await
+    } else {
+        // Try file delete first, fall back to empty-directory removal.
+        match provider.delete(&resolved).await {
+            Ok(()) => Ok(()),
+            Err(_) => provider.rmdir(&resolved).await,
+        }
+    };
+    result
+        .map(|_| resolved)
+        .map_err(|err| format!("delete failed: {}", err))
+}
+
+async fn rename_tui_session_via_cli_handler(
+    session: &mut cli_tui::session::TuiSession,
+    from: &str,
+    to: &str,
+) -> Result<String, String> {
+    let initial_path = session.initial_path().to_string();
+    let resolved_from = try_resolve_cli_remote_path_with_note(&initial_path, from, false)
+        .map_err(|err| err.to_string())?;
+    let resolved_to = try_resolve_cli_remote_path_with_note(&initial_path, to, false)
+        .map_err(|err| err.to_string())?;
+    let provider = session.provider_mut();
+    provider
+        .rename(&resolved_from, &resolved_to)
+        .await
+        .map(|_| resolved_to)
+        .map_err(|err| format!("rename failed: {}", err))
+}
+
+async fn download_tui_session_via_cli_handler(
+    session: &mut cli_tui::session::TuiSession,
+    remote_path: &str,
+    local_path: &str,
+    id: u64,
+    event_tx: &cli_tui::worker::WorkerEventSender,
+) -> Result<(), String> {
+    let initial_path = session.initial_path().to_string();
+    let resolved = try_resolve_cli_remote_path_with_note(&initial_path, remote_path, false)
+        .map_err(|err| err.to_string())?;
+    let provider = session.provider_mut();
+    let tx = event_tx.clone();
+    let on_progress: Option<Box<dyn Fn(u64, u64) + Send>> =
+        Some(Box::new(move |transferred, total| {
+            let _ = tx.send(cli_tui::worker::WorkerEvent::TransferProgress {
+                id,
+                transferred,
+                total,
+            });
+        }));
+    provider
+        .download(&resolved, local_path, on_progress)
+        .await
+        .map_err(|err| format!("download failed: {}", err))
+}
+
+async fn upload_tui_session_via_cli_handler(
+    session: &mut cli_tui::session::TuiSession,
+    local_path: &str,
+    remote_path: &str,
+    id: u64,
+    event_tx: &cli_tui::worker::WorkerEventSender,
+) -> Result<(), String> {
+    let initial_path = session.initial_path().to_string();
+    let resolved = try_resolve_cli_remote_path_with_note(&initial_path, remote_path, false)
+        .map_err(|err| err.to_string())?;
+    let provider = session.provider_mut();
+    let tx = event_tx.clone();
+    let on_progress: Option<Box<dyn Fn(u64, u64) + Send>> =
+        Some(Box::new(move |transferred, total| {
+            let _ = tx.send(cli_tui::worker::WorkerEvent::TransferProgress {
+                id,
+                transferred,
+                total,
+            });
+        }));
+    provider
+        .upload(local_path, &resolved, on_progress)
+        .await
+        .map_err(|err| format!("upload failed: {}", err))
+}
+
 async fn run_cli_tui_worker(
     cli: &mut Cli,
     format: OutputFormat,
@@ -9571,19 +9683,186 @@ async fn run_cli_tui_worker(
                     }
                 }
             }
+            WorkerCommand::Mkdir { path } => {
+                let active_identity = session
+                    .as_ref()
+                    .and_then(|session| session.state().identity.clone());
+                let _ = event_tx.send(WorkerEvent::Busy {
+                    operation: TuiWorkerOperation::Mkdir,
+                    identity: active_identity.clone(),
+                });
+                let Some(active_session) = session.as_mut() else {
+                    let _ = event_tx.send(WorkerEvent::Failed {
+                        operation: TuiWorkerOperation::Mkdir,
+                        identity: None,
+                        message: "no active TUI session".to_string(),
+                    });
+                    continue;
+                };
+                match mkdir_tui_session_via_cli_handler(active_session, &path).await {
+                    Ok(resolved) => {
+                        let _ = event_tx.send(WorkerEvent::PathReady {
+                            operation: TuiWorkerOperation::Mkdir,
+                            path: resolved,
+                        });
+                    }
+                    Err(message) => {
+                        let _ = event_tx.send(WorkerEvent::Failed {
+                            operation: TuiWorkerOperation::Mkdir,
+                            identity: active_identity,
+                            message,
+                        });
+                    }
+                }
+            }
+            WorkerCommand::Remove { path, recursive } => {
+                let active_identity = session
+                    .as_ref()
+                    .and_then(|session| session.state().identity.clone());
+                let _ = event_tx.send(WorkerEvent::Busy {
+                    operation: TuiWorkerOperation::Remove,
+                    identity: active_identity.clone(),
+                });
+                let Some(active_session) = session.as_mut() else {
+                    let _ = event_tx.send(WorkerEvent::Failed {
+                        operation: TuiWorkerOperation::Remove,
+                        identity: None,
+                        message: "no active TUI session".to_string(),
+                    });
+                    continue;
+                };
+                match remove_tui_session_via_cli_handler(active_session, &path, recursive).await {
+                    Ok(resolved) => {
+                        let _ = event_tx.send(WorkerEvent::PathReady {
+                            operation: TuiWorkerOperation::Remove,
+                            path: resolved,
+                        });
+                    }
+                    Err(message) => {
+                        let _ = event_tx.send(WorkerEvent::Failed {
+                            operation: TuiWorkerOperation::Remove,
+                            identity: active_identity,
+                            message,
+                        });
+                    }
+                }
+            }
+            WorkerCommand::Rename { from, to } => {
+                let active_identity = session
+                    .as_ref()
+                    .and_then(|session| session.state().identity.clone());
+                let _ = event_tx.send(WorkerEvent::Busy {
+                    operation: TuiWorkerOperation::Rename,
+                    identity: active_identity.clone(),
+                });
+                let Some(active_session) = session.as_mut() else {
+                    let _ = event_tx.send(WorkerEvent::Failed {
+                        operation: TuiWorkerOperation::Rename,
+                        identity: None,
+                        message: "no active TUI session".to_string(),
+                    });
+                    continue;
+                };
+                match rename_tui_session_via_cli_handler(active_session, &from, &to).await {
+                    Ok(resolved) => {
+                        let _ = event_tx.send(WorkerEvent::PathReady {
+                            operation: TuiWorkerOperation::Rename,
+                            path: resolved,
+                        });
+                    }
+                    Err(message) => {
+                        let _ = event_tx.send(WorkerEvent::Failed {
+                            operation: TuiWorkerOperation::Rename,
+                            identity: active_identity,
+                            message,
+                        });
+                    }
+                }
+            }
+            WorkerCommand::Download {
+                id,
+                remote_path,
+                local_path,
+            } => {
+                let active_identity = session
+                    .as_ref()
+                    .and_then(|session| session.state().identity.clone());
+                let _ = event_tx.send(WorkerEvent::Busy {
+                    operation: TuiWorkerOperation::Transfer,
+                    identity: active_identity,
+                });
+                let Some(active_session) = session.as_mut() else {
+                    let _ = event_tx.send(WorkerEvent::TransferFailed {
+                        id,
+                        message: "no active TUI session".to_string(),
+                    });
+                    continue;
+                };
+                match download_tui_session_via_cli_handler(
+                    active_session,
+                    &remote_path,
+                    &local_path,
+                    id,
+                    &event_tx,
+                )
+                .await
+                {
+                    Ok(()) => {
+                        let _ = event_tx.send(WorkerEvent::TransferDone {
+                            id,
+                            message: format!("Downloaded {} -> {}", remote_path, local_path),
+                        });
+                    }
+                    Err(message) => {
+                        let _ = event_tx.send(WorkerEvent::TransferFailed { id, message });
+                    }
+                }
+            }
+            WorkerCommand::Upload {
+                id,
+                local_path,
+                remote_path,
+            } => {
+                let active_identity = session
+                    .as_ref()
+                    .and_then(|session| session.state().identity.clone());
+                let _ = event_tx.send(WorkerEvent::Busy {
+                    operation: TuiWorkerOperation::Transfer,
+                    identity: active_identity,
+                });
+                let Some(active_session) = session.as_mut() else {
+                    let _ = event_tx.send(WorkerEvent::TransferFailed {
+                        id,
+                        message: "no active TUI session".to_string(),
+                    });
+                    continue;
+                };
+                match upload_tui_session_via_cli_handler(
+                    active_session,
+                    &local_path,
+                    &remote_path,
+                    id,
+                    &event_tx,
+                )
+                .await
+                {
+                    Ok(()) => {
+                        let _ = event_tx.send(WorkerEvent::TransferDone {
+                            id,
+                            message: format!("Uploaded {} -> {}", local_path, remote_path),
+                        });
+                    }
+                    Err(message) => {
+                        let _ = event_tx.send(WorkerEvent::TransferFailed { id, message });
+                    }
+                }
+            }
             WorkerCommand::Cancel => {
                 if let Some(active_session) = session.as_ref() {
                     active_session.cancel();
                 }
                 let _ = event_tx.send(WorkerEvent::Cancelled {
                     operation: TuiWorkerOperation::Cancel,
-                });
-            }
-            other => {
-                let _ = event_tx.send(WorkerEvent::Failed {
-                    operation: other.operation(),
-                    identity: None,
-                    message: "operation is not wired in the read-only TUI worker yet".to_string(),
                 });
             }
         }
