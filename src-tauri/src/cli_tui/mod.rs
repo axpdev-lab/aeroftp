@@ -18,6 +18,7 @@ use self::{
     app::{AppState, TuiActionIntent, TuiFocus, TUI_ACTION_ITEMS},
     event::key_to_action,
     theme::TuiTheme,
+    worker::{TuiWorkerClient, WorkerEvent},
 };
 
 pub mod app;
@@ -31,7 +32,16 @@ pub use app::{TuiContext, TuiIntent, TuiProfile, TuiProfileAction, TuiUser};
 
 pub type CliTuiTerminal = Terminal<CrosstermBackend<io::Stdout>>;
 
+#[allow(dead_code)]
 pub fn run_tui(context: TuiContext) -> io::Result<TuiIntent> {
+    run_tui_inner(context, None)
+}
+
+pub fn run_tui_with_worker(context: TuiContext, worker: TuiWorkerClient) -> io::Result<TuiIntent> {
+    run_tui_inner(context, Some(worker))
+}
+
+fn run_tui_inner(context: TuiContext, worker: Option<TuiWorkerClient>) -> io::Result<TuiIntent> {
     if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
         return Err(io::Error::new(
             io::ErrorKind::Unsupported,
@@ -39,11 +49,17 @@ pub fn run_tui(context: TuiContext) -> io::Result<TuiIntent> {
         ));
     }
 
-    let mut app = AppState::new(context);
+    let mut app = if worker.is_some() {
+        AppState::new_live(context)
+    } else {
+        AppState::new(context)
+    };
+    let mut worker = worker;
     let theme = TuiTheme::default();
 
     with_terminal(|terminal| {
         loop {
+            drain_worker_events(&mut app, &mut worker);
             terminal.draw(|frame| render_dashboard(frame, &app, theme))?;
 
             if app.should_quit {
@@ -55,7 +71,22 @@ pub fn run_tui(context: TuiContext) -> io::Result<TuiIntent> {
                     if key.kind != KeyEventKind::Press {
                         continue;
                     }
-                    app.apply_action(key_to_action(key));
+                    let commands = app.apply_action(key_to_action(key));
+                    if !commands.is_empty() {
+                        if let Some(worker) = worker.as_ref() {
+                            for command in commands {
+                                if worker.commands.send(command).is_err() {
+                                    app.apply_worker_event(WorkerEvent::Failed {
+                                        operation:
+                                            crate::cli_tui::worker::TuiWorkerOperation::Connect,
+                                        identity: None,
+                                        message: "worker channel closed".to_string(),
+                                    });
+                                    break;
+                                }
+                            }
+                        }
+                    }
                     if app.should_quit {
                         break;
                     }
@@ -65,6 +96,28 @@ pub fn run_tui(context: TuiContext) -> io::Result<TuiIntent> {
 
         Ok(app.take_intent().unwrap_or(TuiIntent::Quit))
     })
+}
+
+fn drain_worker_events(app: &mut AppState, worker: &mut Option<TuiWorkerClient>) {
+    let Some(client) = worker.as_mut() else {
+        return;
+    };
+
+    loop {
+        match client.events.try_recv() {
+            Ok(event) => app.apply_worker_event(event),
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty) => break,
+            Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
+                app.apply_worker_event(WorkerEvent::Failed {
+                    operation: crate::cli_tui::worker::TuiWorkerOperation::Connect,
+                    identity: None,
+                    message: "worker stopped".to_string(),
+                });
+                *worker = None;
+                break;
+            }
+        }
+    }
 }
 
 fn render_dashboard(frame: &mut ratatui::Frame<'_>, app: &AppState, theme: TuiTheme) {
@@ -83,7 +136,7 @@ fn render_dashboard(frame: &mut ratatui::Frame<'_>, app: &AppState, theme: TuiTh
                 theme.accent_style().add_modifier(Modifier::BOLD),
             ),
             Span::raw("  "),
-            Span::styled("Phase 1", theme.muted_style()),
+            Span::styled(app.phase_label(), theme.muted_style()),
         ]),
         Line::from(Span::styled(
             "User -> profile -> action. The selected intent exits raw mode and runs through CLI handlers.",
@@ -269,7 +322,7 @@ fn render_actions(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, th
     let profile = app.selected_profile();
     let profile_name = profile.map(|p| p.name.as_str()).unwrap_or("-");
     let profile_path = profile.map(|p| p.initial_path.as_str()).unwrap_or("-");
-    let details = Paragraph::new(vec![
+    let mut detail_lines = vec![
         Line::from(Span::styled(
             selected.title,
             theme.accent_style().add_modifier(Modifier::BOLD),
@@ -296,10 +349,37 @@ fn render_actions(frame: &mut ratatui::Frame<'_>, area: Rect, app: &AppState, th
             Span::raw(selected.phase),
         ]),
         Line::from(Span::styled(app.pane_summary(), theme.muted_style())),
-    ])
-    .block(Block::default().borders(Borders::ALL).title(" Intent "))
-    .wrap(Wrap { trim: true });
+    ];
+    if let Some(summary) = &app.browser.summary {
+        detail_lines.push(Line::from(vec![
+            Span::styled("Listed:  ", theme.muted_style()),
+            Span::raw(format!(
+                "{} ({} items, {} dirs, {} files)",
+                app.browser.path, summary.total, summary.dirs, summary.files
+            )),
+        ]));
+        for entry in app.browser.entries.iter().take(3) {
+            detail_lines.push(Line::from(vec![
+                Span::styled(
+                    if entry.is_dir { "dir  " } else { "file " },
+                    theme.muted_style(),
+                ),
+                Span::raw(format_browser_entry(entry)),
+            ]));
+        }
+    }
+    let details = Paragraph::new(detail_lines)
+        .block(Block::default().borders(Borders::ALL).title(" Intent "))
+        .wrap(Wrap { trim: true });
     frame.render_widget(details, chunks[1]);
+}
+
+fn format_browser_entry(entry: &crate::cli_tui::panes::browser::BrowserEntry) -> String {
+    if entry.is_dir {
+        format!("{}/", entry.name)
+    } else {
+        format!("{}  {} B", entry.name, entry.size)
+    }
 }
 
 fn selection_style(focus: TuiFocus, pane: TuiFocus, theme: TuiTheme) -> Style {

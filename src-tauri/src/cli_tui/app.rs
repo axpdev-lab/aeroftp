@@ -3,8 +3,8 @@ use crate::cli_tui::{
     panes::{
         browser::BrowserPaneState, profiles::ProfilesPaneState, transfers::TransfersPaneState,
     },
-    session::TuiSessionState,
-    worker::WorkerEvent,
+    session::{TuiSessionIdentity, TuiSessionPhase, TuiSessionState},
+    worker::{TuiWorkerOperation, WorkerCommand, WorkerEvent},
 };
 
 #[derive(Debug, Clone)]
@@ -57,6 +57,7 @@ pub struct AppState {
     pub transfers: TransfersPaneState,
     pub session: TuiSessionState,
     pub worker: WorkerEvent,
+    live_worker_enabled: bool,
     intent: Option<TuiIntent>,
 }
 
@@ -78,9 +79,16 @@ impl AppState {
             transfers: TransfersPaneState::default(),
             session: TuiSessionState::default(),
             worker: WorkerEvent::Idle,
+            live_worker_enabled: false,
             intent: None,
         };
         state.sync_pane_state();
+        state
+    }
+
+    pub fn new_live(context: TuiContext) -> Self {
+        let mut state = Self::new(context);
+        state.live_worker_enabled = true;
         state
     }
 
@@ -99,6 +107,14 @@ impl AppState {
             .min(TUI_ACTION_ITEMS.len().saturating_sub(1))]
     }
 
+    pub fn phase_label(&self) -> &'static str {
+        if self.live_worker_enabled {
+            "Phase 2"
+        } else {
+            "Phase 1"
+        }
+    }
+
     pub fn take_intent(&mut self) -> Option<TuiIntent> {
         self.intent.take()
     }
@@ -115,20 +131,24 @@ impl AppState {
         )
     }
 
-    pub fn apply_action(&mut self, action: TuiAction) {
-        match action {
-            TuiAction::Quit => self.finish(TuiIntent::Quit),
+    pub fn apply_action(&mut self, action: TuiAction) -> Vec<WorkerCommand> {
+        let commands = match action {
+            TuiAction::Quit => {
+                self.finish(TuiIntent::Quit);
+                Vec::new()
+            }
             TuiAction::MoveDown => self.move_selection(1),
             TuiAction::MoveUp => self.move_selection(-1),
             TuiAction::MoveLeft => self.focus_prev(),
             TuiAction::MoveRight => self.focus_next(),
             TuiAction::Activate => self.activate(),
-            TuiAction::Noop => {}
-        }
+            TuiAction::Noop => Vec::new(),
+        };
         self.sync_pane_state();
+        commands
     }
 
-    fn move_selection(&mut self, delta: isize) {
+    fn move_selection(&mut self, delta: isize) -> Vec<WorkerCommand> {
         let len = match self.focus {
             TuiFocus::Users => self.context.users.len(),
             TuiFocus::Profiles => self
@@ -138,7 +158,7 @@ impl AppState {
             TuiFocus::Actions => TUI_ACTION_ITEMS.len(),
         };
         if len == 0 {
-            return;
+            return Vec::new();
         }
         let target = match self.focus {
             TuiFocus::Users => &mut self.selected_user,
@@ -151,43 +171,47 @@ impl AppState {
             self.selected_profile = 0;
         }
         self.status = self.contextual_status();
+        Vec::new()
     }
 
-    fn focus_next(&mut self) {
+    fn focus_next(&mut self) -> Vec<WorkerCommand> {
         self.focus = match self.focus {
             TuiFocus::Users => TuiFocus::Profiles,
             TuiFocus::Profiles => TuiFocus::Actions,
             TuiFocus::Actions => TuiFocus::Users,
         };
         self.status = self.contextual_status();
+        Vec::new()
     }
 
-    fn focus_prev(&mut self) {
+    fn focus_prev(&mut self) -> Vec<WorkerCommand> {
         self.focus = match self.focus {
             TuiFocus::Users => TuiFocus::Actions,
             TuiFocus::Profiles => TuiFocus::Users,
             TuiFocus::Actions => TuiFocus::Profiles,
         };
         self.status = self.contextual_status();
+        Vec::new()
     }
 
-    fn activate(&mut self) {
+    fn activate(&mut self) -> Vec<WorkerCommand> {
         let Some(user) = self.selected_user().cloned() else {
             self.status = "No users found in the local vault.".to_string();
-            return;
+            return Vec::new();
         };
 
         if user.is_locked {
             self.finish(TuiIntent::ProfilesInteractive {
                 user_name: user.name,
             });
-            return;
+            return Vec::new();
         }
 
         match self.focus {
             TuiFocus::Users => {
                 self.focus = TuiFocus::Profiles;
                 self.status = self.contextual_status();
+                Vec::new()
             }
             TuiFocus::Profiles => {
                 if self.selected_profile().is_some() {
@@ -196,6 +220,7 @@ impl AppState {
                 } else {
                     self.status = format!("User '{}' has no visible profiles.", user.name);
                 }
+                Vec::new()
             }
             TuiFocus::Actions => {
                 let action = self.selected_action();
@@ -204,28 +229,101 @@ impl AppState {
                         self.finish(TuiIntent::ProfilesInteractive {
                             user_name: user.name,
                         });
+                        Vec::new()
                     }
                     TuiActionIntent::Profile(action) => {
                         let Some(profile) = self.selected_profile().cloned() else {
                             self.status =
                                 "Select a profile before running profile actions.".to_string();
-                            return;
+                            return Vec::new();
                         };
+                        if self.live_worker_enabled && action == TuiProfileAction::ListRoot {
+                            let identity = TuiSessionIdentity::from_selection(&user, &profile);
+                            let mut session =
+                                TuiSessionState::planned_from_selection(&user, &profile);
+                            session.begin_connect();
+                            self.session = session;
+                            self.worker = WorkerEvent::Busy {
+                                operation: TuiWorkerOperation::Connect,
+                                identity: Some(identity.clone()),
+                            };
+                            self.status = format!(
+                                "Connecting to '{}' for a live read-only listing.",
+                                profile.name
+                            );
+                            return vec![
+                                WorkerCommand::OpenSession {
+                                    identity,
+                                    initial_cwd: profile.initial_path,
+                                },
+                                WorkerCommand::List {
+                                    path: "/".to_string(),
+                                },
+                            ];
+                        }
                         self.finish(TuiIntent::ProfileAction {
                             user_name: user.name,
                             profile_selector: profile.selector,
                             action,
                         });
+                        Vec::new()
                     }
                     TuiActionIntent::Planned => {
                         self.status = format!(
                             "{} is planned for {}. Preview: {}",
                             action.title, action.phase, action.command
                         );
+                        Vec::new()
                     }
                 }
             }
         }
+    }
+
+    pub fn apply_worker_event(&mut self, event: WorkerEvent) {
+        if let Some(identity) = event_identity(&event) {
+            if self.session.identity.as_ref() != Some(identity) {
+                return;
+            }
+        }
+
+        match &event {
+            WorkerEvent::Idle => {
+                self.status = "Worker idle.".to_string();
+            }
+            WorkerEvent::Busy { operation, .. } => {
+                if *operation == TuiWorkerOperation::Connect {
+                    self.session.begin_connect();
+                }
+                self.status = format!("{} in progress.", operation.label());
+            }
+            WorkerEvent::SessionReady { cwd, .. } => {
+                self.session.mark_connected(cwd);
+                self.status = format!("Session ready at {}.", cwd);
+            }
+            WorkerEvent::PathReady { operation, path } => {
+                self.status = format!("{} ready at {}.", operation.label(), path);
+            }
+            WorkerEvent::ListReady { path, result, .. } => {
+                self.session.mark_connected(path);
+                self.browser.apply_list_result(path.clone(), result.clone());
+                self.status = format!(
+                    "Listed {}: {} item(s), {} dir(s), {} file(s).",
+                    path, result.summary.total, result.summary.dirs, result.summary.files
+                );
+            }
+            WorkerEvent::Failed {
+                operation, message, ..
+            } => {
+                self.session.mark_failed(message.clone());
+                self.status = format!("{} failed: {}", operation.label(), message);
+            }
+            WorkerEvent::Cancelled { operation } => {
+                self.session.mark_cancelled();
+                self.status = format!("{} cancelled.", operation.label());
+            }
+        }
+        self.worker = event;
     }
 
     fn finish(&mut self, intent: TuiIntent) {
@@ -271,7 +369,7 @@ impl AppState {
         self.browser.selected = self.selected_user;
         self.profiles.selected = self.selected_profile;
         self.transfers.selected = self.selected_action;
-        self.session = self
+        let planned_session = self
             .selected_user()
             .and_then(|user| {
                 if user.is_locked {
@@ -283,6 +381,27 @@ impl AppState {
                 }
             })
             .unwrap_or_default();
+        let same_identity =
+            planned_session.identity.is_some() && planned_session.identity == self.session.identity;
+        if self.live_worker_enabled
+            && same_identity
+            && !matches!(self.session.phase, TuiSessionPhase::Disconnected)
+        {
+            return;
+        }
+        self.session = planned_session;
+    }
+}
+
+fn event_identity(event: &WorkerEvent) -> Option<&TuiSessionIdentity> {
+    match event {
+        WorkerEvent::Busy { identity, .. } | WorkerEvent::Failed { identity, .. } => {
+            identity.as_ref()
+        }
+        WorkerEvent::SessionReady { identity, .. } | WorkerEvent::ListReady { identity, .. } => {
+            Some(identity)
+        }
+        WorkerEvent::Idle | WorkerEvent::PathReady { .. } | WorkerEvent::Cancelled { .. } => None,
     }
 }
 
@@ -516,6 +635,76 @@ mod tests {
             assert_eq!(app.take_intent(), None);
             assert!(app.status.contains("is planned for"));
         }
+    }
+
+    #[test]
+    fn live_list_root_emits_worker_commands_without_exiting() {
+        let mut app = AppState::new_live(sample_context());
+        app.focus = TuiFocus::Actions;
+        app.selected_action = 1;
+
+        let commands = app.apply_action(TuiAction::Activate);
+
+        assert!(!app.should_quit);
+        assert_eq!(app.take_intent(), None);
+        assert_eq!(
+            commands,
+            vec![
+                WorkerCommand::OpenSession {
+                    identity: TuiSessionIdentity {
+                        user_name: "default".to_string(),
+                        profile_selector: "1".to_string(),
+                        profile_name: "Production".to_string(),
+                        protocol: "sftp".to_string(),
+                        host: "example.com".to_string(),
+                    },
+                    initial_cwd: "/".to_string(),
+                },
+                WorkerCommand::List {
+                    path: "/".to_string(),
+                },
+            ]
+        );
+        assert_eq!(app.session.phase, TuiSessionPhase::Connecting);
+    }
+
+    #[test]
+    fn live_worker_ignores_events_for_previous_profile_selection() {
+        let mut context = sample_context();
+        context.users[0].profiles.push(TuiProfile {
+            selector: "2".to_string(),
+            name: "Archive".to_string(),
+            protocol: "s3".to_string(),
+            host: "s3.example.com".to_string(),
+            initial_path: "/archive".to_string(),
+            favorite: false,
+        });
+        let mut app = AppState::new_live(context);
+        let stale_identity = app.session.identity.clone().unwrap();
+
+        app.focus = TuiFocus::Profiles;
+        app.apply_action(TuiAction::MoveDown);
+        assert_eq!(
+            app.session
+                .identity
+                .as_ref()
+                .map(|identity| identity.profile_selector.as_str()),
+            Some("2")
+        );
+
+        app.apply_worker_event(WorkerEvent::SessionReady {
+            identity: stale_identity,
+            cwd: "/".to_string(),
+        });
+
+        assert_eq!(app.session.phase, TuiSessionPhase::Disconnected);
+        assert_eq!(
+            app.session
+                .identity
+                .as_ref()
+                .map(|identity| identity.profile_selector.as_str()),
+            Some("2")
+        );
     }
 
     #[test]

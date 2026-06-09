@@ -1,4 +1,29 @@
 use crate::cli_tui::session::TuiSessionIdentity;
+use tokio::sync::mpsc;
+
+pub type WorkerCommandSender = mpsc::UnboundedSender<WorkerCommand>;
+pub type WorkerCommandReceiver = mpsc::UnboundedReceiver<WorkerCommand>;
+pub type WorkerEventSender = mpsc::UnboundedSender<WorkerEvent>;
+pub type WorkerEventReceiver = mpsc::UnboundedReceiver<WorkerEvent>;
+
+pub struct TuiWorkerClient {
+    pub commands: WorkerCommandSender,
+    pub events: WorkerEventReceiver,
+}
+
+pub fn worker_channels() -> (TuiWorkerClient, WorkerCommandReceiver, WorkerEventSender) {
+    let (command_tx, command_rx) = mpsc::unbounded_channel();
+    let (event_tx, event_rx) = mpsc::unbounded_channel();
+
+    (
+        TuiWorkerClient {
+            commands: command_tx,
+            events: event_rx,
+        },
+        command_rx,
+        event_tx,
+    )
+}
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -76,16 +101,24 @@ pub enum WorkerEvent {
     Idle,
     Busy {
         operation: TuiWorkerOperation,
+        identity: Option<TuiSessionIdentity>,
     },
     SessionReady {
+        identity: TuiSessionIdentity,
         cwd: String,
     },
     PathReady {
         operation: TuiWorkerOperation,
         path: String,
     },
+    ListReady {
+        identity: TuiSessionIdentity,
+        path: String,
+        result: TuiListResult,
+    },
     Failed {
         operation: TuiWorkerOperation,
+        identity: Option<TuiSessionIdentity>,
         message: String,
     },
     Cancelled {
@@ -97,15 +130,43 @@ impl WorkerEvent {
     pub fn label(&self) -> String {
         match self {
             WorkerEvent::Idle => "idle".to_string(),
-            WorkerEvent::Busy { operation } => format!("{} busy", operation.label()),
-            WorkerEvent::SessionReady { cwd } => format!("session ready {}", cwd),
+            WorkerEvent::Busy { operation, .. } => format!("{} busy", operation.label()),
+            WorkerEvent::SessionReady { cwd, .. } => format!("session ready {}", cwd),
             WorkerEvent::PathReady { operation, path } => {
                 format!("{} ready {}", operation.label(), path)
+            }
+            WorkerEvent::ListReady { path, result, .. } => {
+                format!("list ready {} ({} items)", path, result.summary.total)
             }
             WorkerEvent::Failed { operation, .. } => format!("{} failed", operation.label()),
             WorkerEvent::Cancelled { operation } => format!("{} cancelled", operation.label()),
         }
     }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct TuiListResult {
+    pub entries: Vec<TuiListEntry>,
+    pub summary: TuiListSummary,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct TuiListEntry {
+    pub name: String,
+    pub path: String,
+    pub is_dir: bool,
+    pub size: u64,
+    pub modified: Option<String>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct TuiListSummary {
+    pub total: usize,
+    pub files: usize,
+    pub dirs: usize,
+    pub total_bytes: u64,
+    pub truncated: bool,
+    pub total_before_limit: usize,
 }
 
 #[cfg(test)]
@@ -177,7 +238,8 @@ mod tests {
         assert_eq!(WorkerEvent::Idle.label(), "idle");
         assert_eq!(
             WorkerEvent::Busy {
-                operation: TuiWorkerOperation::List
+                operation: TuiWorkerOperation::List,
+                identity: Some(identity()),
             }
             .label(),
             "list busy"
@@ -189,6 +251,25 @@ mod tests {
             }
             .label(),
             "stat ready /file.txt"
+        );
+        assert_eq!(
+            WorkerEvent::ListReady {
+                identity: identity(),
+                path: "/".to_string(),
+                result: TuiListResult {
+                    entries: Vec::new(),
+                    summary: TuiListSummary {
+                        total: 0,
+                        files: 0,
+                        dirs: 0,
+                        total_bytes: 0,
+                        truncated: false,
+                        total_before_limit: 0,
+                    },
+                },
+            }
+            .label(),
+            "list ready / (0 items)"
         );
     }
 }

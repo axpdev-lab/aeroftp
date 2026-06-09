@@ -120,6 +120,7 @@ impl Default for TuiSessionState {
 pub struct TuiSession {
     provider: Box<dyn StorageProvider>,
     state: TuiSessionState,
+    initial_path: String,
     cancel_token: CancellationToken,
 }
 
@@ -130,15 +131,17 @@ impl TuiSession {
         identity: TuiSessionIdentity,
         initial_cwd: impl Into<String>,
     ) -> Self {
+        let initial_cwd = normalize_remote_cwd(&initial_cwd.into());
         let mut state = TuiSessionState {
             identity: Some(identity),
             cwd: "/".to_string(),
             phase: TuiSessionPhase::Disconnected,
         };
-        state.mark_connected(initial_cwd);
+        state.mark_connected(&initial_cwd);
         Self {
             provider,
             state,
+            initial_path: initial_cwd,
             cancel_token: CancellationToken::new(),
         }
     }
@@ -155,6 +158,10 @@ impl TuiSession {
         self.provider.as_mut()
     }
 
+    pub fn initial_path(&self) -> &str {
+        &self.initial_path
+    }
+
     pub fn cancel_token(&self) -> CancellationToken {
         self.cancel_token.clone()
     }
@@ -168,6 +175,7 @@ impl fmt::Debug for TuiSession {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("TuiSession")
             .field("state", &self.state)
+            .field("initial_path", &self.initial_path)
             .field("cancelled", &self.cancel_token.is_cancelled())
             .finish_non_exhaustive()
     }

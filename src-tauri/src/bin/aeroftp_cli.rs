@@ -9323,6 +9323,220 @@ fn build_tui_context(cli: &Cli, store: &CredentialStore) -> Result<cli_tui::TuiC
     })
 }
 
+async fn create_tui_session_via_cli_factory(
+    cli: &mut Cli,
+    format: OutputFormat,
+    identity: cli_tui::session::TuiSessionIdentity,
+) -> Result<cli_tui::session::TuiSession, String> {
+    let previous_user = cli.user.replace(identity.user_name.clone());
+    let previous_profile = cli.profile.replace(identity.profile_selector.clone());
+    let result = create_and_connect("_", cli, format).await;
+    cli.user = previous_user;
+    cli.profile = previous_profile;
+
+    result
+        .map(|(provider, initial_path)| {
+            cli_tui::session::TuiSession::new(provider, identity, initial_path)
+        })
+        .map_err(|code| format!("connect failed with exit code {}", code))
+}
+
+async fn list_tui_session_via_cli_handler(
+    cli: &Cli,
+    session: &mut cli_tui::session::TuiSession,
+    path: &str,
+) -> Result<(String, cli_tui::worker::TuiListResult), String> {
+    let initial_path = session.initial_path().to_string();
+    let list = collect_cli_list_entries(
+        session.provider_mut(),
+        &initial_path,
+        &CliListOptions {
+            path,
+            sort: "name",
+            reverse: false,
+            all: false,
+            limit: None,
+            files_only: false,
+            dirs_only: false,
+            emit_resolution_note: false,
+        },
+        cli,
+    )
+    .await
+    .map_err(|err| match err {
+        CliListError::RemotePath(err) => err.to_string(),
+        CliListError::Provider(err) => format!("ls failed: {}", err),
+    })?;
+
+    let path = list.effective_path;
+    let result = cli_tui::worker::TuiListResult {
+        entries: list
+            .entries
+            .into_iter()
+            .map(|entry| cli_tui::worker::TuiListEntry {
+                name: sanitize_filename(&entry.name),
+                path: entry.path,
+                is_dir: entry.is_dir,
+                size: entry.size,
+                modified: entry.modified,
+            })
+            .collect(),
+        summary: cli_tui::worker::TuiListSummary {
+            total: list.file_count + list.dir_count,
+            files: list.file_count,
+            dirs: list.dir_count,
+            total_bytes: list.total_bytes,
+            truncated: list.truncated,
+            total_before_limit: list.total_before_limit,
+        },
+    };
+    Ok((path, result))
+}
+
+async fn run_cli_tui_worker(
+    cli: &mut Cli,
+    format: OutputFormat,
+    mut command_rx: cli_tui::worker::WorkerCommandReceiver,
+    event_tx: cli_tui::worker::WorkerEventSender,
+) {
+    use cli_tui::worker::{TuiWorkerOperation, WorkerCommand, WorkerEvent};
+
+    let mut session: Option<cli_tui::session::TuiSession> = None;
+
+    while let Some(command) = command_rx.recv().await {
+        match command {
+            WorkerCommand::OpenSession { identity, .. } => {
+                let already_connected = session
+                    .as_ref()
+                    .and_then(|session| session.state().identity.as_ref())
+                    == Some(&identity);
+                if already_connected {
+                    if let Some(session) = session.as_ref() {
+                        let _ = event_tx.send(WorkerEvent::SessionReady {
+                            identity,
+                            cwd: session.state().cwd.clone(),
+                        });
+                    }
+                    continue;
+                }
+
+                let _ = event_tx.send(WorkerEvent::Busy {
+                    operation: TuiWorkerOperation::Connect,
+                    identity: Some(identity.clone()),
+                });
+
+                if let Some(mut old_session) = session.take() {
+                    let _ = old_session.provider_mut().disconnect().await;
+                }
+
+                let requested_identity = identity.clone();
+                match create_tui_session_via_cli_factory(cli, format, identity).await {
+                    Ok(new_session) => {
+                        let cwd = new_session.state().cwd.clone();
+                        let ready_identity = new_session
+                            .state()
+                            .identity
+                            .clone()
+                            .unwrap_or_else(|| requested_identity.clone());
+                        session = Some(new_session);
+                        let _ = event_tx.send(WorkerEvent::SessionReady {
+                            identity: ready_identity,
+                            cwd,
+                        });
+                    }
+                    Err(message) => {
+                        let _ = event_tx.send(WorkerEvent::Failed {
+                            operation: TuiWorkerOperation::Connect,
+                            identity: Some(requested_identity),
+                            message,
+                        });
+                    }
+                }
+            }
+            WorkerCommand::List { path } => {
+                let active_identity = session
+                    .as_ref()
+                    .and_then(|session| session.state().identity.clone());
+                let _ = event_tx.send(WorkerEvent::Busy {
+                    operation: TuiWorkerOperation::List,
+                    identity: active_identity.clone(),
+                });
+
+                let Some(active_session) = session.as_mut() else {
+                    let _ = event_tx.send(WorkerEvent::Failed {
+                        operation: TuiWorkerOperation::List,
+                        identity: None,
+                        message: "no active TUI session".to_string(),
+                    });
+                    continue;
+                };
+                let active_identity =
+                    active_identity.or_else(|| active_session.state().identity.clone());
+
+                match list_tui_session_via_cli_handler(cli, active_session, &path).await {
+                    Ok((listed_path, result)) => {
+                        active_session.state_mut().mark_connected(&listed_path);
+                        if let Some(identity) = active_identity {
+                            let _ = event_tx.send(WorkerEvent::ListReady {
+                                identity,
+                                path: listed_path,
+                                result,
+                            });
+                        }
+                    }
+                    Err(message) => {
+                        let _ = event_tx.send(WorkerEvent::Failed {
+                            operation: TuiWorkerOperation::List,
+                            identity: active_identity,
+                            message,
+                        });
+                    }
+                }
+            }
+            WorkerCommand::Cancel => {
+                if let Some(active_session) = session.as_ref() {
+                    active_session.cancel();
+                }
+                let _ = event_tx.send(WorkerEvent::Cancelled {
+                    operation: TuiWorkerOperation::Cancel,
+                });
+            }
+            other => {
+                let _ = event_tx.send(WorkerEvent::Failed {
+                    operation: other.operation(),
+                    identity: None,
+                    message: "operation is not wired in the read-only TUI worker yet".to_string(),
+                });
+            }
+        }
+    }
+
+    if let Some(mut active_session) = session {
+        let _ = active_session.provider_mut().disconnect().await;
+    }
+}
+
+fn run_tui_with_cli_worker(
+    context: cli_tui::TuiContext,
+    cli: &mut Cli,
+    format: OutputFormat,
+) -> std::io::Result<cli_tui::TuiIntent> {
+    let (worker_client, command_rx, event_tx) = cli_tui::worker::worker_channels();
+    let handle = tokio::runtime::Handle::current();
+
+    std::thread::scope(|scope| {
+        let worker_thread = scope.spawn(move || {
+            handle.block_on(run_cli_tui_worker(cli, format, command_rx, event_tx));
+        });
+
+        let result = cli_tui::run_tui_with_worker(context, worker_client);
+        if worker_thread.join().is_err() && result.is_ok() {
+            return Err(std::io::Error::other("TUI worker thread panicked"));
+        }
+        result
+    })
+}
+
 async fn cmd_tui(cli: &mut Cli, format: OutputFormat) -> i32 {
     if matches!(format, OutputFormat::Json) {
         print_error(format, "TUI requires text output; remove --json", 5);
@@ -9348,7 +9562,7 @@ async fn cmd_tui(cli: &mut Cli, format: OutputFormat) -> i32 {
         }
     };
 
-    match cli_tui::run_tui(context) {
+    match run_tui_with_cli_worker(context, cli, format) {
         Ok(cli_tui::TuiIntent::Quit) => 0,
         Ok(cli_tui::TuiIntent::ProfilesInteractive { user_name }) => {
             cli.user = Some(user_name);
@@ -15975,8 +16189,20 @@ fn try_resolve_cli_remote_path(
     initial_path: &str,
     user_path: &str,
 ) -> Result<String, RemotePathError> {
+    try_resolve_cli_remote_path_with_note(initial_path, user_path, true)
+}
+
+fn try_resolve_cli_remote_path_with_note(
+    initial_path: &str,
+    user_path: &str,
+    emit_resolution_note: bool,
+) -> Result<String, RemotePathError> {
     check_remote_path_safe(user_path)?;
-    Ok(resolve_cli_remote_path_unchecked(initial_path, user_path))
+    Ok(resolve_cli_remote_path_unchecked_with_note(
+        initial_path,
+        user_path,
+        emit_resolution_note,
+    ))
 }
 
 /// Reject a user-supplied remote path that must never be operated on verbatim:
@@ -16017,7 +16243,11 @@ fn resolve_cli_remote_path(initial_path: &str, user_path: &str) -> String {
     }
 }
 
-fn resolve_cli_remote_path_unchecked(initial_path: &str, user_path: &str) -> String {
+fn resolve_cli_remote_path_unchecked_with_note(
+    initial_path: &str,
+    user_path: &str,
+    emit_resolution_note: bool,
+) -> String {
     let base = initial_path.trim();
     // No meaningful initial_path: pass user_path through with minimal
     // rewriting:
@@ -16056,7 +16286,7 @@ fn resolve_cli_remote_path_unchecked(initial_path: &str, user_path: &str) -> Str
     // without polluting stdout (JSON / piping). F-003: stay silent in JSON mode
     // so a machine-readable run produces no informational chatter on either
     // stream, matching the profile banner and the "Next:" hints.
-    if resolved != user_path && !JSON_MODE.load(Ordering::Relaxed) {
+    if emit_resolution_note && resolved != user_path && !JSON_MODE.load(Ordering::Relaxed) {
         eprintln!(
             "Note: path '{}' resolved to '{}' (profile base: {})",
             user_path, resolved, base_normalized
@@ -18406,6 +18636,156 @@ async fn cmd_connect(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
     0
 }
 
+struct CliListOptions<'a> {
+    path: &'a str,
+    sort: &'a str,
+    reverse: bool,
+    all: bool,
+    limit: Option<usize>,
+    files_only: bool,
+    dirs_only: bool,
+    emit_resolution_note: bool,
+}
+
+struct CliListEntries {
+    effective_path: String,
+    entries: Vec<RemoteEntry>,
+    file_count: usize,
+    dir_count: usize,
+    total_bytes: u64,
+    truncated: bool,
+    total_before_limit: usize,
+}
+
+enum CliListError {
+    RemotePath(RemotePathError),
+    Provider(ProviderError),
+}
+
+impl From<ProviderError> for CliListError {
+    fn from(value: ProviderError) -> Self {
+        Self::Provider(value)
+    }
+}
+
+async fn collect_cli_list_entries(
+    provider: &mut dyn StorageProvider,
+    initial_path: &str,
+    options: &CliListOptions<'_>,
+    cli: &Cli,
+) -> Result<CliListEntries, CliListError> {
+    let resolved_path = try_resolve_cli_remote_path_with_note(
+        initial_path,
+        options.path,
+        options.emit_resolution_note,
+    )
+    .map_err(CliListError::RemotePath)?;
+    let effective_path = resolved_path;
+
+    let entries = match provider.list(&effective_path).await {
+        Ok(entries) => entries,
+        Err(err) => return Err(CliListError::Provider(err)),
+    };
+
+    // FTP/FTPS disambiguation: some servers reply to LIST/MLSD on a missing
+    // directory with an empty listing instead of a 550 error, which collapses
+    // a missing path into an indistinguishable "empty directory" (exit 0).
+    // When the listing is empty and the user supplied an explicit non-root
+    // path, run a follow-up stat to confirm. If the path does not exist,
+    // surface NotFound with the correct exit code.
+    if entries.is_empty()
+        && !options.path.is_empty()
+        && options.path != "/"
+        && options.path != "."
+        && matches!(
+            provider.provider_type(),
+            ProviderType::Ftp | ProviderType::Ftps
+        )
+    {
+        if let Err(ProviderError::NotFound(_)) = provider.stat(&effective_path).await {
+            return Err(CliListError::Provider(ProviderError::NotFound(
+                options.path.to_string(),
+            )));
+        }
+    }
+
+    // Filter hidden files
+    let mut entries: Vec<RemoteEntry> = if options.all {
+        entries
+    } else {
+        entries
+            .into_iter()
+            .filter(|entry| !entry.name.starts_with('.'))
+            .collect()
+    };
+
+    // Apply global filters (--include, --exclude, --min-size, --max-size, --min-age, --max-age)
+    if has_filters(cli) {
+        let filter = build_filter(cli);
+        entries.retain(|entry| {
+            if entry.is_dir {
+                return true;
+            }
+            filter(&entry.name, entry.size, None)
+        });
+    }
+
+    // Sort
+    match options.sort {
+        "size" => entries.sort_by_key(|entry| entry.size),
+        "date" => entries.sort_by(|a, b| a.modified.cmp(&b.modified)),
+        _ => entries.sort_by(|a, b| {
+            // Directories first, then alphabetical
+            match (a.is_dir, b.is_dir) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+            }
+        }),
+    }
+    if options.reverse {
+        entries.reverse();
+    }
+
+    // --files-only / --dirs-only filter (mutually exclusive at clap level).
+    if options.files_only {
+        entries.retain(|entry| !entry.is_dir);
+    } else if options.dirs_only {
+        entries.retain(|entry| entry.is_dir);
+    }
+
+    // --limit N: trim AFTER sort/filter so the cap is meaningful.
+    let total_before_limit = entries.len();
+    let truncated = if let Some(limit) = options.limit {
+        if entries.len() > limit {
+            entries.truncate(limit);
+            true
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+
+    let file_count = entries.iter().filter(|entry| !entry.is_dir).count();
+    let dir_count = entries.iter().filter(|entry| entry.is_dir).count();
+    let total_bytes: u64 = entries
+        .iter()
+        .filter(|entry| !entry.is_dir)
+        .map(|entry| entry.size)
+        .sum();
+
+    Ok(CliListEntries {
+        effective_path,
+        entries,
+        file_count,
+        dir_count,
+        total_bytes,
+        truncated,
+        total_before_limit,
+    })
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn cmd_ls(
     url: &str,
@@ -18425,121 +18805,49 @@ async fn cmd_ls(
         Err(code) => return code,
     };
 
-    let resolved_path = resolve_cli_remote_path(&initial_path, path);
-    let effective_path = &resolved_path;
-
-    let entries = match provider.list(effective_path).await {
-        Ok(e) => e,
-        Err(e) => {
+    let list = match collect_cli_list_entries(
+        provider.as_mut(),
+        &initial_path,
+        &CliListOptions {
+            path,
+            sort,
+            reverse,
+            all,
+            limit,
+            files_only,
+            dirs_only,
+            emit_resolution_note: true,
+        },
+        cli,
+    )
+    .await
+    {
+        Ok(list) => list,
+        Err(CliListError::RemotePath(err)) => {
+            print_error(format, &err.to_string(), 5);
+            let _ = provider.disconnect().await;
+            return 5;
+        }
+        Err(CliListError::Provider(err)) => {
             print_error(
                 format,
-                &format!("ls failed: {}", e),
-                provider_error_to_exit_code(&e),
+                &format!("ls failed: {}", err),
+                provider_error_to_exit_code(&err),
             );
             let _ = provider.disconnect().await;
-            return provider_error_to_exit_code(&e);
+            return provider_error_to_exit_code(&err);
         }
     };
-
-    // FTP/FTPS disambiguation: some servers reply to LIST/MLSD on a missing
-    // directory with an empty listing instead of a 550 error, which collapses
-    // a missing path into an indistinguishable "empty directory" (exit 0).
-    // When the listing is empty and the user supplied an explicit non-root
-    // path, run a follow-up stat to confirm. If the path does not exist,
-    // surface NotFound with the correct exit code.
-    if entries.is_empty()
-        && !path.is_empty()
-        && path != "/"
-        && path != "."
-        && matches!(
-            provider.provider_type(),
-            ProviderType::Ftp | ProviderType::Ftps
-        )
-    {
-        if let Err(ProviderError::NotFound(_)) = provider.stat(effective_path).await {
-            print_error(format, &format!("ls failed: Path not found: {}", path), 2);
-            let _ = provider.disconnect().await;
-            return 2;
-        }
-    }
-
-    // Filter hidden files
-    let mut entries: Vec<RemoteEntry> = if all {
-        entries
-    } else {
-        entries
-            .into_iter()
-            .filter(|e| !e.name.starts_with('.'))
-            .collect()
-    };
-
-    // Apply global filters (--include, --exclude, --min-size, --max-size, --min-age, --max-age)
-    if has_filters(cli) {
-        let filter = build_filter(cli);
-        entries.retain(|e| {
-            if e.is_dir {
-                return true;
-            } // Don't filter directories in ls
-            filter(&e.name, e.size, None)
-        });
-    }
-
-    // Sort
-    match sort {
-        "size" => entries.sort_by_key(|a| a.size),
-        "date" => entries.sort_by(|a, b| a.modified.cmp(&b.modified)),
-        _ => entries.sort_by(|a, b| {
-            // Directories first, then alphabetical
-            match (a.is_dir, b.is_dir) {
-                (true, false) => std::cmp::Ordering::Less,
-                (false, true) => std::cmp::Ordering::Greater,
-                _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-            }
-        }),
-    }
-    if reverse {
-        entries.reverse();
-    }
-
-    // --files-only / --dirs-only filter (mutually exclusive at clap
-    // level). Cuts client-side post-processing for agents iterating
-    // by type. Surfaced as a friction point by the agent audit
-    // (P12, Battery A).
-    if files_only {
-        entries.retain(|e| !e.is_dir);
-    } else if dirs_only {
-        entries.retain(|e| e.is_dir);
-    }
-
-    // --limit N: trim AFTER sort/filter so the cap is meaningful.
-    // Tracks pre-trim length so summary can report `truncated: true`
-    // (P11/P13, Battery A+B).
-    let total_before_limit = entries.len();
-    let truncated = if let Some(n) = limit {
-        if entries.len() > n {
-            entries.truncate(n);
-            true
-        } else {
-            false
-        }
-    } else {
-        false
-    };
-
-    // Summary (post-filter, post-limit)
-    let file_count = entries.iter().filter(|e| !e.is_dir).count();
-    let dir_count = entries.iter().filter(|e| e.is_dir).count();
-    let total_bytes: u64 = entries.iter().filter(|e| !e.is_dir).map(|e| e.size).sum();
 
     match format {
         OutputFormat::Text => {
-            if entries.is_empty() {
+            if list.entries.is_empty() {
                 if !cli.quiet {
                     println!("(empty directory)");
                 }
             } else if long {
                 // Long format: permissions  size  date  name
-                for e in &entries {
+                for e in &list.entries {
                     let perms = e.permissions.as_deref().unwrap_or(if e.is_dir {
                         "drwxr-xr-x"
                     } else {
@@ -18567,7 +18875,7 @@ async fn cmd_ls(
                 }
             } else {
                 // Short format: just names
-                for e in &entries {
+                for e in &list.entries {
                     let safe_name = sanitize_filename(&e.name);
                     if e.is_dir {
                         println!("{}/", safe_name);
@@ -18580,10 +18888,10 @@ async fn cmd_ls(
             if !cli.quiet {
                 eprintln!(
                     "\n{} items ({} directories, {} files) - {} total",
-                    entries.len(),
-                    dir_count,
-                    file_count,
-                    format_size(total_bytes)
+                    list.entries.len(),
+                    list.dir_count,
+                    list.file_count,
+                    format_size(list.total_bytes)
                 );
                 // No `Next:` hint after `ls`: a re-ls or generic find is never
                 // actionable for an agent. Hints stay on transformative
@@ -18591,23 +18899,24 @@ async fn cmd_ls(
             }
         }
         OutputFormat::Json => {
-            let entries_json: Vec<serde_json::Value> = entries
+            let entries_json: Vec<serde_json::Value> = list
+                .entries
                 .iter()
                 .map(|entry| remote_entry_to_filtered_json(entry, cli))
                 .collect();
             print_json(&serde_json::json!({
                 "status": "ok",
-                "path": effective_path,
+                "path": list.effective_path,
                 "entries": entries_json,
                 "summary": {
-                    "total": entries.len(),
-                    "files": file_count,
-                    "dirs": dir_count,
-                    "total_bytes": total_bytes,
-                    "truncated": truncated,
-                    "total_before_limit": total_before_limit,
+                    "total": list.entries.len(),
+                    "files": list.file_count,
+                    "dirs": list.dir_count,
+                    "total_bytes": list.total_bytes,
+                    "truncated": list.truncated,
+                    "total_before_limit": list.total_before_limit,
                 },
-                "suggested_next_command": suggest_ls_followup(cli, effective_path),
+                "suggested_next_command": suggest_ls_followup(cli, &list.effective_path),
             }));
         }
     }
