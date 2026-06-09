@@ -384,6 +384,21 @@ pub struct CredentialStore {
     vault_key: [u8; 32],
 }
 
+/// Read-only health snapshot of the credential vault, produced by
+/// [`CredentialStore::health`] for the `keystore status` CLI command.
+#[derive(Debug, Clone)]
+pub struct VaultHealth {
+    /// On-disk key mode: `auto-keyring` | `master` | `legacy-auto` | `absent` | `unreadable`.
+    pub mode: String,
+    /// Whether `vault.db` exists on disk.
+    pub vault_db_present: bool,
+    /// Whether the vault can actually be opened with the available key material
+    /// right now (without prompting for a master password).
+    pub unlockable: bool,
+    /// Human-readable explanation / next step.
+    pub detail: String,
+}
+
 /// GAP-E01: Zeroize vault key on drop to prevent key material lingering in memory
 impl Drop for CredentialStore {
     fn drop(&mut self) {
@@ -457,6 +472,24 @@ impl CredentialStore {
         let _ = std::fs::remove_file(lock_path);
     }
 
+    /// Read a master password supplied for headless/CLI operation via the
+    /// `AEROFTP_MASTER_PASSWORD` environment variable.
+    ///
+    /// SECURITY (keyring-clobber guard): the keyring account is a fixed,
+    /// OS-global string (`com.aeroftp.AeroFTP` / `vault-passphrase`) that is NOT
+    /// scoped to `XDG_CONFIG_HOME`. A fresh keyring-backed vault created under an
+    /// isolated/disposable config dir would therefore overwrite the real
+    /// keyring-backed vault's entry on the same machine, leaving the real vault
+    /// unopenable (its random passphrase lived only in the keyring). When this
+    /// env var is present on a FRESH vault, `init()` bootstraps in master mode
+    /// instead, so the keyring is never touched.
+    fn master_password_from_env() -> Option<Zeroizing<String>> {
+        match std::env::var("AEROFTP_MASTER_PASSWORD") {
+            Ok(v) if !v.is_empty() => Some(Zeroizing::new(v)),
+            _ => None,
+        }
+    }
+
     /// Initialize the credential store at app startup.
     /// Returns "OK" if vault is open, "MASTER_PASSWORD_REQUIRED" if locked.
     pub fn init() -> Result<String, CredentialError> {
@@ -464,8 +497,14 @@ impl CredentialStore {
             // VER-005: Acquire file lock to prevent concurrent CLI+GUI vault creation
             let lock_path = Self::acquire_init_lock()?;
             let init_result = if !VaultKeyFile::exists() {
-                // Double-check after acquiring lock (another process may have created it)
-                Self::first_run_init()
+                // Double-check after acquiring lock (another process may have created it).
+                // Keyring-clobber guard: when AEROFTP_MASTER_PASSWORD is set (headless
+                // / CLI / disposable vault), bootstrap in master mode so first_run_init's
+                // OS-global keyring write cannot overwrite a real vault's entry.
+                match Self::master_password_from_env() {
+                    Some(master) => Self::bootstrap_master_password(&master),
+                    None => Self::first_run_init(),
+                }
             } else {
                 Ok(())
             };
@@ -958,6 +997,96 @@ impl CredentialStore {
     /// Check if vault.key exists
     pub fn vault_exists() -> bool {
         VaultKeyFile::exists()
+    }
+
+    /// Read-only health probe of the credential vault, for `keystore status`.
+    /// Never mutates state and never prompts. Reports the on-disk key mode and
+    /// whether the vault can actually be opened with the available key material
+    /// (i.e. whether the keyring entry still matches `vault.db`).
+    pub fn health() -> VaultHealth {
+        let vault_db_present = Self::vault_path().map(|p| p.exists()).unwrap_or(false);
+
+        if !VaultKeyFile::exists() {
+            return VaultHealth {
+                mode: "absent".into(),
+                vault_db_present,
+                unlockable: false,
+                detail: "No vault.key: a fresh vault will be created on next start.".into(),
+            };
+        }
+
+        match VaultKeyFile::read().map(|kf| kf.mode) {
+            Ok(VaultKeyMode::AutoKeyring) => match Self::verify_auto_keyring() {
+                Ok((_, mut key)) => {
+                    key.zeroize();
+                    VaultHealth {
+                        mode: "auto-keyring".into(),
+                        vault_db_present,
+                        unlockable: true,
+                        detail: "Keyring unlocks vault.db (zero-password mode is healthy).".into(),
+                    }
+                }
+                Err(e) => VaultHealth {
+                    mode: "auto-keyring".into(),
+                    vault_db_present,
+                    unlockable: false,
+                    detail: format!(
+                        "Keyring does NOT unlock vault.db ({e}). The keyring entry was lost or \
+                         overwritten. Recover with: keystore repair --input <backup>."
+                    ),
+                },
+            },
+            Ok(VaultKeyMode::Master { .. }) => VaultHealth {
+                mode: "master".into(),
+                vault_db_present,
+                unlockable: false,
+                detail: "Master-password mode: provide --master-password / AEROFTP_MASTER_PASSWORD to unlock.".into(),
+            },
+            Ok(VaultKeyMode::LegacyAuto { .. }) => VaultHealth {
+                mode: "legacy-auto".into(),
+                vault_db_present,
+                unlockable: true,
+                detail: "Legacy cleartext key: migrates to keyring on next start.".into(),
+            },
+            Err(e) => VaultHealth {
+                mode: "unreadable".into(),
+                vault_db_present,
+                unlockable: false,
+                detail: format!("vault.key could not be read: {e}"),
+            },
+        }
+    }
+
+    /// Repair recovery: snapshot then remove `vault.db` + `vault.key` so the next
+    /// `init()` recreates a fresh, internally-consistent vault (and, in
+    /// zero-password mode, a fresh keyring entry). Used by `keystore repair` to
+    /// recover a vault whose keyring entry was lost or overwritten: the
+    /// intact-but-unopenable `vault.db` is preserved in the snapshot, and the
+    /// caller restores the data from a `.aeroftp-keystore` backup after re-init.
+    ///
+    /// Returns the snapshot directory. Does NOT delete the keyring entry: the
+    /// subsequent first-run init overwrites it with a fresh, matching one.
+    pub fn reset_with_snapshot(snapshot_label: &str) -> Result<PathBuf, CredentialError> {
+        let dir = config_dir()?;
+        let vault_db = dir.join(VAULT_FILENAME);
+        let vault_key = VaultKeyFile::path()?;
+        let snapshot_dir = dir.join(format!("repair-snapshot-{snapshot_label}"));
+        std::fs::create_dir_all(&snapshot_dir)?;
+        if vault_db.exists() {
+            std::fs::copy(&vault_db, snapshot_dir.join(VAULT_FILENAME))?;
+        }
+        if vault_key.exists() {
+            std::fs::copy(&vault_key, snapshot_dir.join(VAULTKEY_FILENAME))?;
+        }
+        // Remove the live files so init() performs a fresh first-run.
+        if vault_db.exists() {
+            std::fs::remove_file(&vault_db)?;
+        }
+        if vault_key.exists() {
+            std::fs::remove_file(&vault_key)?;
+        }
+        Self::clear_cache();
+        Ok(snapshot_dir)
     }
 
     // ---- CRUD Operations ----
