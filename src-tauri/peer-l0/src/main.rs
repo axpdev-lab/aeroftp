@@ -144,8 +144,8 @@ enum Mode {
         watch_secs: u64,
 
         /// Optional persistent store directory (FsStore + Docs::persistent). If present the replicate
-        /// side can resume a previously synced drive from local disk (even with publisher offline).
-        /// Requires --out. Stage 9 is one-shot reconstruct resume only (--watch-secs + --store rejected).
+        /// side can resume a previously synced drive from local disk (even with publisher offline) and
+        /// keep live-watching for subsequent versions (converge on manifest bumps). Requires --out.
         /// Mirrors the publish --store added in Stage 8.
         #[arg(long)]
         store: Option<String>,
@@ -1117,6 +1117,12 @@ async fn run_docs_replicate(ticket_str: String, out: Option<String>, watch_secs:
     use iroh_blobs::BlobsProtocol;
     use iroh_docs::protocol::Docs;
     use iroh_gossip::net::Gossip;
+    use std::pin::Pin;
+
+    /// Unified stream type so first-sync (import_and_subscribe) and resume (doc.subscribe after open)
+    /// can both be stored in the same Option for the watch loop. Boxing erases the distinct `impl Trait`
+    /// opaques returned by the two iroh APIs.
+    type EventStream = Pin<Box<dyn futures_lite::stream::Stream<Item = Result<iroh_docs::engine::LiveEvent, anyhow::Error>> + Send + Unpin + 'static>>;
 
     let ticket: iroh_docs::DocTicket = ticket_str.parse().context("failed to parse DocTicket")?;
 
@@ -1130,9 +1136,6 @@ async fn run_docs_replicate(ticket_str: String, out: Option<String>, watch_secs:
     // Stage-4 one-shot, or Stage-5 live watch). Guards + persistent setup modeled on publish --store.
     if store.is_some() && out.is_none() {
         anyhow::bail!("--store requires --out (persistent resume is drive mode)");
-    }
-    if store.is_some() && watch_secs > 0 {
-        anyhow::bail!("--store + --watch-secs not supported in Stage 9 (one-shot reconstruct resume only)");
     }
 
     enum ContentStore {
@@ -1169,7 +1172,8 @@ async fn run_docs_replicate(ticket_str: String, out: Option<String>, watch_secs:
         }
     }
 
-    let mut events = None;
+    #[allow(unused_assignments)]
+    let mut events: Option<EventStream> = None;
     let (doc, blobs, _router, _reopened) = if let Some(store_dir) = &store {
         std::fs::create_dir_all(store_dir).context("create_dir_all for rep store")?;
         let store_path = std::path::Path::new(store_dir);
@@ -1199,11 +1203,26 @@ async fn run_docs_replicate(ticket_str: String, out: Option<String>, watch_secs:
                 if let Ok(ns_id) = ns_str.trim().parse::<iroh_docs::NamespaceId>() {
                     if let Ok(Some(d)) = api.open(ns_id).await {
                         reopened = true;
+                        // Stage 10: after api.open (resume from disk), explicitly subscribe to get a
+                        // LiveEvent stream so the existing watch loop can catch future versions live.
+                        let sub = d.subscribe().await.context("subscribe on resumed persistent doc")?;
+                        events = Some(Box::pin(sub));
+                        // api.open opens only the LOCAL replica; unlike import_and_subscribe it does NOT
+                        // start syncing with any peer, so subscribe() alone never delivers remote updates
+                        // (verified: a resumed watcher missed a live v2 the publisher republished). For
+                        // the live-watch case, (re)establish sync with the ticket's node addrs so the
+                        // resumed replicator actually receives later versions. Skipped when watch_secs==0
+                        // (the Stage-9 offline one-shot resume must not require the publisher).
+                        if watch_secs > 0 {
+                            d.start_sync(ticket.nodes.clone())
+                                .await
+                                .context("start_sync on resumed persistent doc (live watch)")?;
+                        }
                         d
                     } else {
                         // Stale ns file or store inconsistency; fall back (will rewrite ns file below if import succeeds)
                         let (d, evs) = api.import_and_subscribe(ticket.clone()).await.context("import_and_subscribe fallback (ns file present but open failed)")?;
-                        events = Some(evs);
+                        events = Some(Box::pin(evs));
                         std::fs::write(&ns_file, d.id().to_string()).context("write ns_file fallback")?;
                         d
                     }
@@ -1215,7 +1234,7 @@ async fn run_docs_replicate(ticket_str: String, out: Option<String>, watch_secs:
             }
         } else {
             let (d, evs) = api.import_and_subscribe(ticket.clone()).await.context("import_and_subscribe (first sync into persistent rep store)")?;
-            events = Some(evs);
+            events = Some(Box::pin(evs));
             std::fs::write(&ns_file, d.id().to_string()).context("write current-ns.txt after first import")?;
             d
         };
@@ -1240,7 +1259,7 @@ async fn run_docs_replicate(ticket_str: String, out: Option<String>, watch_secs:
         let (doc, evs) = docs.api().import_and_subscribe(ticket).await?;
         let ns = doc.id();
         println!("Imported + opened doc: NamespaceId={}", ns);
-        events = Some(evs);
+        events = Some(Box::pin(evs));
         (doc, ContentStore::Mem(blobs), _router, false)
     };
     let ns = doc.id();
@@ -1406,7 +1425,8 @@ async fn run_docs_replicate(ticket_str: String, out: Option<String>, watch_secs:
             let deadline = Instant::now() + std::time::Duration::from_secs(watch_secs);
             println!("(watching {}s for live updates...)", watch_secs);
 
-            // events is only Some for the !--store path (we bailed on --store + watch_secs).
+            // events comes from either first-sync (import_and_subscribe) or resume (doc.subscribe after api.open).
+            // Store + watch is now supported (Stage 10); mem path is unchanged.
             // This keeps the original live watch behavior byte-identical when --store is absent.
             let mut events = events.context("live watch only supported without --store in Stage 9 (one-shot resume path)")?;
             loop {
@@ -1516,6 +1536,10 @@ async fn run_docs_replicate(ticket_str: String, out: Option<String>, watch_secs:
                             prev_files = new_state;
                             current_version = new_ver;
                             println!("DRIVE UPDATED: v{} -> v{}: {} written, {} deleted (file_count {} -> {})", old_ver, new_ver, written, deleted, old_file_count, new_k);
+                            // Stage 10: flush after each live-converged version so a restart of the
+                            // persistent replicator can resume at the latest version from disk (not
+                            // an earlier one). The initial flush after DRIVE REPLICATED (S9) is kept.
+                            blobs.flush().await;
                         }
                     }
                     Ok(Some(Err(_))) => {}
