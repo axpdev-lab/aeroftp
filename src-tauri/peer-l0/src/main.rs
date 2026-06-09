@@ -756,16 +756,31 @@ async fn run_dial(node_str: &str, blob_size: usize, note: Option<String>, secret
     sample
 }
 
+type DriveState = std::collections::HashMap<String, String>;
+
+struct DriveStats {
+    updated: usize,
+    added: usize,
+    deleted: usize,
+    unchanged: usize,
+    file_count: usize,
+    total_pt: u64,
+}
+
 /// Publish the current on-disk state of `src` as a specific drive_version: encrypt each regular file
 /// (fresh nonce) under `drive_key`, write it under its relative '/'-key, then write the signed +
-/// encrypted manifest under `__drive_manifest__.json`. Returns (file_count, total_plaintext_bytes).
+/// encrypted manifest under `__drive_manifest__.json`.
+/// When `prev` is Some, implements differential: skip unchanged (by plaintext_blake3), count added/updated/deleted/unchanged,
+/// issue doc.del for removed keys. Always materializes full current manifest for the version.
+/// Returns (stats, new_state) for chaining to next republish.
 async fn publish_drive_version(
     doc: &iroh_docs::api::Doc,
     author: iroh_docs::AuthorId,
     drive_key: &[u8; 32],
     src: &Path,
     version: u64,
-) -> Result<(usize, u64)> {
+    prev: Option<&DriveState>,
+) -> Result<(DriveStats, DriveState)> {
     use bytes::Bytes;
     if !src.is_dir() {
         anyhow::bail!("--dir {} is not a directory", src.display());
@@ -798,13 +813,43 @@ async fn publish_drive_version(
     let mut manifest_files: Vec<serde_json::Value> = vec![];
     let mut total_pt: u64 = 0;
 
+    let mut stats = DriveStats { updated: 0, added: 0, deleted: 0, unchanged: 0, file_count: files.len(), total_pt: 0 };
+    let mut new_state: DriveState = std::collections::HashMap::new();
+
     for (rel_key, path) in &files {
         let pt = std::fs::read(path)?;
+        let pt_blake3 = blake3::hash(&pt).to_hex().to_string();
+        new_state.insert(rel_key.clone(), pt_blake3.clone());
+
+        let is_unchanged = if let Some(p) = prev {
+            p.get(rel_key).map_or(false, |old| old == &pt_blake3)
+        } else {
+            false
+        };
+
+        if is_unchanged {
+            println!("skip unchanged key={}", rel_key);
+            stats.unchanged += 1;
+            manifest_files.push(serde_json::json!({
+                "key": rel_key,
+                "plaintext_len": pt.len(),
+                "plaintext_blake3": pt_blake3
+            }));
+            total_pt += pt.len() as u64;
+            continue;
+        }
+
+        // new or changed: fresh encrypt + set_bytes
         let (nonce, ct) = encrypt_blob(drive_key, &pt)?;
         let mut blob = nonce.clone();
         blob.extend_from_slice(&ct);
         let content_hash = doc.set_bytes(author, Bytes::from(rel_key.clone()), Bytes::from(blob)).await?;
-        let pt_blake3 = blake3::hash(&pt).to_hex().to_string();
+        let action = if prev.map_or(true, |p| !p.contains_key(rel_key)) { "added" } else { "updated" };
+        if action == "added" {
+            stats.added += 1;
+        } else {
+            stats.updated += 1;
+        }
         println!("wrote key={} pt_len={} ct_len={} content_hash={}", rel_key, pt.len(), ct.len(), content_hash);
         manifest_files.push(serde_json::json!({
             "key": rel_key,
@@ -813,6 +858,19 @@ async fn publish_drive_version(
         }));
         total_pt += pt.len() as u64;
     }
+
+    // Deletions (only when we have a prev snapshot): keys that existed before but are gone on disk now
+    if let Some(p) = prev {
+        for old_key in p.keys() {
+            if !new_state.contains_key(old_key) {
+                let _ = doc.del(author, Bytes::from(old_key.clone())).await;
+                println!("deleted key={}", old_key);
+                stats.deleted += 1;
+            }
+        }
+    }
+
+    stats.total_pt = total_pt;
 
     let manifest = serde_json::json!({
         "drive_version": version,
@@ -826,8 +884,7 @@ async fn publish_drive_version(
     m_blob.extend_from_slice(&m_ct);
     doc.set_bytes(author, Bytes::from("__drive_manifest__.json"), Bytes::from(m_blob)).await?;
 
-    // The caller prints the summary line (it has the NamespaceId for display).
-    Ok((files.len(), total_pt))
+    Ok((stats, new_state))
 }
 
 /// L1 Stage 5: docs-publish with optional drive mode + republish-after for versioning demo.
@@ -879,12 +936,16 @@ async fn run_docs_publish(key: String, dir: Option<String>, republish_after: u64
     let secret = secret_bytes.context("docs-publish requires --secret (16-byte pairing secret for L1 drive E2EE)")?;
     let drive_key = derive_drive_key(&secret, &ns.to_string());
 
+    let mut v1_file_count: usize = 0;
+    let mut drive_state: Option<DriveState> = None;
     if let Some(dir_path) = dir.as_deref() {
-        // === DRIVE MODE (Stage 5): publish v1 now; the v2 republish happens AFTER the ticket share
-        // below, so a watcher can join during v1 and observe the live transition. ===
+        // === DRIVE MODE (Stage 6 differential): publish v1 (prev=None -> all added); share ticket immediately
+        // so watcher can join during v1. v2 republish (after sleep) passes prev state for diff + del.
         let src = Path::new(dir_path);
-        let (k1, b1) = publish_drive_version(&doc, author, &drive_key, src, 1).await?;
-        println!("DRIVE PUBLISHED: {} files + manifest, ns={}, total_plaintext_bytes={}", k1, ns, b1);
+        let (s1, state1) = publish_drive_version(&doc, author, &drive_key, src, 1, None).await?;
+        println!("DRIVE PUBLISHED: {} files + manifest, ns={}, total_plaintext_bytes={}", s1.file_count, ns, s1.total_pt);
+        v1_file_count = s1.file_count;
+        drive_state = Some(state1);
     } else {
         // === SINGLE ENTRY MODE (exact backward compat with gate at 9f5a5c18) ===
         let content_str = format!("hi from L1 {}", chrono::Utc::now().to_rfc3339());
@@ -916,8 +977,9 @@ async fn run_docs_publish(key: String, dir: Option<String>, republish_after: u64
             let src = Path::new(dir_path);
             println!("(republish-after {}s: sleeping before v2)", republish_after);
             tokio::time::sleep(std::time::Duration::from_secs(republish_after)).await;
-            let (k2, b2) = publish_drive_version(&doc, author, &drive_key, src, 2).await?;
-            println!("DRIVE REPUBLISHED: v2, {} files, ns={}, total_plaintext_bytes={}", k2, ns, b2);
+            let prev = drive_state.as_ref();
+            let (s2, _state2) = publish_drive_version(&doc, author, &drive_key, src, 2, prev).await?;
+            println!("DRIVE REPUBLISHED: v2: {} updated, {} added, {} deleted, {} unchanged (file_count {} -> {})", s2.updated, s2.added, s2.deleted, s2.unchanged, v1_file_count, s2.file_count);
         }
     }
 
@@ -1059,6 +1121,10 @@ async fn run_docs_replicate(ticket_str: String, out: Option<String>, watch_secs:
         let mut ok = 0usize;
         let mut total_bytes: u64 = 0;
 
+        // Stage 6: track previous drive state (key -> plaintext_blake3) from the initial reconstruct.
+        // Used for skip-unchanged decisions and deletion detection on version bumps.
+        let mut prev_files: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+
         for f in files {
             let rel_key = f["key"].as_str().unwrap_or("").to_string();
             let expected_pt_len = f["plaintext_len"].as_u64().unwrap_or(0);
@@ -1135,13 +1201,14 @@ async fn run_docs_replicate(ticket_str: String, out: Option<String>, watch_secs:
             }
             std::fs::write(&target, &pt)?;
             println!("OK {} (pt_len={}, blake3 verified)", rel_key, pt.len());
+            prev_files.insert(rel_key.clone(), expected_blake3.clone());
             ok += 1;
             total_bytes += pt.len() as u64;
         }
 
         println!("DRIVE REPLICATED: {}/{} files, all plaintext BLAKE3 verified, total_bytes={}", ok, k, total_bytes);
 
-        // --- LIVE CONVERGENCE (Stage 5) ---
+        // --- LIVE CONVERGENCE (Stage 6 differential + deletions) ---
         if watch_secs > 0 {
             use std::time::Instant;
             use iroh_docs::engine::LiveEvent;
@@ -1161,8 +1228,10 @@ async fn run_docs_replicate(ticket_str: String, out: Option<String>, watch_secs:
                             _ => false,
                         };
                         if trigger {
-                            // Re-read the manifest; if its version advanced, re-converge every file it
-                            // lists. Errors are logged (not silently swallowed) and we keep watching.
+                            // Re-read the manifest (with retry helpers); if version advanced, apply diff:
+                            // - skip unchanged (same blake3 in prev_files AND file exists on disk)
+                            // - pull/decrypt/verify/write only for changed or added
+                            // - delete local files for keys present in prev but absent from new manifest
                             let manifest_hash = match wait_entry_hash(&doc, manifest_key, 20).await {
                                 Some(h) => h,
                                 None => continue,
@@ -1187,11 +1256,31 @@ async fn run_docs_replicate(ticket_str: String, out: Option<String>, watch_secs:
                             let old_ver = current_version;
                             let new_files = new_m["files"].as_array().cloned().unwrap_or_default();
                             let new_k = new_files.len();
-                            let mut pulled = 0usize;
+
+                            // Build new_state (key -> blake3) from the incoming manifest for fast lookup
+                            let mut new_state: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+                            for f in &new_files {
+                                let rkey = f["key"].as_str().unwrap_or("").to_string();
+                                let eblake = f["plaintext_blake3"].as_str().unwrap_or("").to_string();
+                                new_state.insert(rkey, eblake);
+                            }
+
+                            let old_file_count = prev_files.len();
+                            let mut written = 0usize;
+                            let mut deleted = 0usize;
+
+                            // Process new/current files: skip if unchanged+exists, else pull+write (changed/added/new)
                             for f in &new_files {
                                 let rkey = f["key"].as_str().unwrap_or("").to_string();
                                 let ept_len = f["plaintext_len"].as_u64().unwrap_or(0);
                                 let eblake = f["plaintext_blake3"].as_str().unwrap_or("").to_string();
+
+                                let is_unchanged = prev_files.get(&rkey).map_or(false, |h| h == &eblake);
+                                let target = out_path.join(&rkey);
+                                if is_unchanged && target.exists() {
+                                    println!("skip unchanged {}", rkey);
+                                    continue;
+                                }
 
                                 let fch = match wait_entry_hash(&doc, rkey.as_bytes(), 20).await {
                                     Some(h) => h,
@@ -1218,10 +1307,21 @@ async fn run_docs_replicate(ticket_str: String, out: Option<String>, watch_secs:
                                     std::fs::create_dir_all(parent)?;
                                 }
                                 std::fs::write(&target, &ptt)?;
-                                pulled += 1;
+                                written += 1;
                             }
+
+                            // Deletions: any key in prev_files that is absent from the new manifest -> rm local file
+                            for old_key in prev_files.keys() {
+                                if !new_state.contains_key(old_key) {
+                                    let target = out_path.join(old_key);
+                                    let _ = std::fs::remove_file(&target);
+                                    deleted += 1;
+                                }
+                            }
+
+                            prev_files = new_state;
                             current_version = new_ver;
-                            println!("DRIVE UPDATED: v{} -> v{}: wrote {} files (file_count {} -> {})", old_ver, new_ver, pulled, k, new_k);
+                            println!("DRIVE UPDATED: v{} -> v{}: {} written, {} deleted (file_count {} -> {})", old_ver, new_ver, written, deleted, old_file_count, new_k);
                         }
                     }
                     Ok(Some(Err(_))) => {}
