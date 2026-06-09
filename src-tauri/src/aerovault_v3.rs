@@ -242,7 +242,7 @@ struct ExtensionEntryV3 {
 /// authenticated manifest cipher_hash (the all-or-nothing safety gate in repair_vault).
 ///
 /// Layout (all multi-byte fields little-endian):
-///   [EccPayloadHeader: 32 bytes]
+///   [ErrorCorrectionPayloadHeader: 32 bytes]
 ///   [data-shard checksums:   num_data_shards * ERROR_CORRECTION_SHARD_CKSUM_LEN]
 ///   [parity-shard checksums: num_groups * P  * ERROR_CORRECTION_SHARD_CKSUM_LEN]
 ///   [parity data:            num_groups * P  * S]
@@ -276,14 +276,14 @@ fn error_correction_shard_checksum(shard: &[u8]) -> [u8; ERROR_CORRECTION_SHARD_
 }
 
 #[derive(Debug, Clone, Copy)]
-struct EccPayloadHeader {
+struct ErrorCorrectionPayloadHeader {
     data_shards: u16,    // K per group
     parity_shards: u16,  // P per group
     shard_size: u32,     // S (bytes per shard; data is zero-padded to this)
     total_data_len: u64, // L (length of the concatenated live-block stream)
 }
 
-impl EccPayloadHeader {
+impl ErrorCorrectionPayloadHeader {
     fn to_bytes(self) -> [u8; 32] {
         let mut buf = [0u8; 32];
         buf[0..4].copy_from_slice(ERROR_CORRECTION_PAYLOAD_MAGIC);
@@ -298,7 +298,7 @@ impl EccPayloadHeader {
 
     fn from_bytes(data: &[u8]) -> Result<Self, String> {
         if data.len() < 32 {
-            return Err("EccPayloadHeader too short".to_string());
+            return Err("ErrorCorrectionPayloadHeader too short".to_string());
         }
         if &data[0..4] != ERROR_CORRECTION_PAYLOAD_MAGIC {
             return Err("bad Error Correction payload magic".to_string());
@@ -310,7 +310,7 @@ impl EccPayloadHeader {
                 version
             ));
         }
-        let h = EccPayloadHeader {
+        let h = ErrorCorrectionPayloadHeader {
             data_shards: u16::from_le_bytes(data[6..8].try_into().unwrap()),
             parity_shards: u16::from_le_bytes(data[8..10].try_into().unwrap()),
             shard_size: u32::from_le_bytes(data[10..14].try_into().unwrap()),
@@ -326,7 +326,7 @@ impl EccPayloadHeader {
 }
 
 /// (num_data_shards, num_groups) derived from a header.
-fn error_correction_geometry(h: &EccPayloadHeader) -> (usize, usize) {
+fn error_correction_geometry(h: &ErrorCorrectionPayloadHeader) -> (usize, usize) {
     let k = h.data_shards as usize;
     let s = h.shard_size as usize;
     let l = h.total_data_len as usize;
@@ -338,8 +338,8 @@ fn error_correction_geometry(h: &EccPayloadHeader) -> (usize, usize) {
 /// Full in-memory representation of one Error Correction extension payload (v2). This is what
 /// gets written into the extension payload area when Error Correction is enabled.
 #[derive(Debug, Clone)]
-struct EccPayload {
-    header: EccPayloadHeader,
+struct ErrorCorrectionPayload {
+    header: ErrorCorrectionPayloadHeader,
     /// One checksum per data shard, indexed 0..num_data_shards (grid order).
     data_checksums: Vec<[u8; ERROR_CORRECTION_SHARD_CKSUM_LEN]>,
     /// One checksum per parity shard, indexed group-major: group g, parity p lives
@@ -349,7 +349,7 @@ struct EccPayload {
     parity_data: Vec<u8>,
 }
 
-impl EccPayload {
+impl ErrorCorrectionPayload {
     fn to_bytes(&self) -> Vec<u8> {
         let cksum_bytes = (self.data_checksums.len() + self.parity_checksums.len())
             * ERROR_CORRECTION_SHARD_CKSUM_LEN;
@@ -366,7 +366,7 @@ impl EccPayload {
     }
 
     fn from_bytes(data: &[u8]) -> Result<Self, String> {
-        let header = EccPayloadHeader::from_bytes(data)?;
+        let header = ErrorCorrectionPayloadHeader::from_bytes(data)?;
         let (num_data_shards, num_groups) = error_correction_geometry(&header);
         let p = header.parity_shards as usize;
         let s = header.shard_size as usize;
@@ -377,7 +377,7 @@ impl EccPayload {
         let expected = 32 + cksum_table + parity_len;
         if data.len() != expected {
             return Err(format!(
-                "EccPayload length mismatch: got {}, expected {}",
+                "ErrorCorrectionPayload length mismatch: got {}, expected {}",
                 data.len(),
                 expected
             ));
@@ -398,7 +398,7 @@ impl EccPayload {
         let parity_checksums = read_cksums(num_parity, &mut off);
         let parity_data = data[off..].to_vec();
 
-        Ok(EccPayload {
+        Ok(ErrorCorrectionPayload {
             header,
             data_checksums,
             parity_checksums,
@@ -484,14 +484,14 @@ fn compute_error_correction_shards(data_blocks: &[&[u8]]) -> (Vec<u8>, u64, u64,
         }
     }
 
-    let header = EccPayloadHeader {
+    let header = ErrorCorrectionPayloadHeader {
         data_shards: k as u16,
         parity_shards: p as u16,
         shard_size: s as u32,
         total_data_len: l as u64,
     };
 
-    let payload = EccPayload {
+    let payload = ErrorCorrectionPayload {
         header,
         data_checksums,
         parity_checksums,
@@ -529,7 +529,7 @@ fn reconstruct_from_error_correction(
     if error_correction_payload_bytes.is_empty() {
         return Ok(0);
     }
-    let payload = EccPayload::from_bytes(error_correction_payload_bytes)?;
+    let payload = ErrorCorrectionPayload::from_bytes(error_correction_payload_bytes)?;
     let k = payload.header.data_shards as usize;
     let p = payload.header.parity_shards as usize;
     let s = payload.header.shard_size as usize;
@@ -3301,7 +3301,7 @@ mod tests {
         // parity) must serialize and deserialize losslessly.
         let s = 4096usize;
         let l = s * 25; // 25 data shards => 3 groups of 10 (last group partial)
-        let header = EccPayloadHeader {
+        let header = ErrorCorrectionPayloadHeader {
             data_shards: 10,
             parity_shards: 2,
             shard_size: s as u32,
@@ -3320,7 +3320,7 @@ mod tests {
             .collect();
         let parity_data = vec![0xABu8; num_parity * s];
 
-        let payload = EccPayload {
+        let payload = ErrorCorrectionPayload {
             header,
             data_checksums: data_checksums.clone(),
             parity_checksums: parity_checksums.clone(),
@@ -3328,7 +3328,7 @@ mod tests {
         };
 
         let bytes = payload.to_bytes();
-        let decoded = EccPayload::from_bytes(&bytes).expect("roundtrip failed");
+        let decoded = ErrorCorrectionPayload::from_bytes(&bytes).expect("roundtrip failed");
 
         assert_eq!(decoded.header.data_shards, 10);
         assert_eq!(decoded.header.parity_shards, 2);
@@ -3339,7 +3339,7 @@ mod tests {
         assert_eq!(decoded.parity_data, parity_data);
 
         // A truncated / length-mismatched payload must be rejected, not misparsed.
-        assert!(EccPayload::from_bytes(&bytes[..bytes.len() - 1]).is_err());
+        assert!(ErrorCorrectionPayload::from_bytes(&bytes[..bytes.len() - 1]).is_err());
     }
 
     #[test]
@@ -3353,7 +3353,8 @@ mod tests {
         let (payload_bytes, _sh, _pr, _ov) = compute_error_correction_shards(&data_blocks);
         assert!(!payload_bytes.is_empty());
 
-        let parsed = EccPayload::from_bytes(&payload_bytes).expect("payload should parse");
+        let parsed =
+            ErrorCorrectionPayload::from_bytes(&payload_bytes).expect("payload should parse");
         assert_eq!(
             parsed.header.data_shards,
             ERROR_CORRECTION_DATA_SHARDS as u16
@@ -3723,7 +3724,8 @@ mod tests {
             .expect("data Error Correction extension present")
             .length as usize;
         let payload =
-            EccPayload::from_bytes(&raw[payload_abs..payload_abs + data_parity_len]).unwrap();
+            ErrorCorrectionPayload::from_bytes(&raw[payload_abs..payload_abs + data_parity_len])
+                .unwrap();
         let (nds, ng) = error_correction_geometry(&payload.header);
         let p = payload.header.parity_shards as usize;
         let parity0_abs = payload_abs + 32 + (nds + ng * p) * ERROR_CORRECTION_SHARD_CKSUM_LEN;
