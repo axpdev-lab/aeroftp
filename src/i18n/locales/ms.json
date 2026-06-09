@@ -3210,7 +3210,7 @@
             "website": "Laman web",
             "documentation": "Dokumentasi",
             "mcp": "MCP Server...",
-            "mountManager": "Pengurus Lekapan...",
+            "mountManager": "AeroMount...",
             "activityLog": "Log Aktiviti",
             "detailedCards": "Kad pelayan terperinci",
             "debugPanel": "Debug Panel",
@@ -4370,7 +4370,7 @@
             "alignRight": "Jajar kanan"
         },
         "mountManager": {
-            "title": "Pengurus Lekapan",
+            "title": "AeroMount",
             "subtitle": "Lekapkan pelayan yang disimpan sebagai pemacu tempatan. Lekapan menggunakan aeroftp-cli yang disertakan (FUSE pada Linux, jambatan WebDAV pada Windows).",
             "addMount": "Tambah Lekapan",
             "newMount": "Lekapan baru",

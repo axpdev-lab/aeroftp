@@ -3210,7 +3210,7 @@
             "website": "Hjemmeside",
             "documentation": "Dokumentation",
             "mcp": "MCP Server...",
-            "mountManager": "Mount-håndtering...",
+            "mountManager": "AeroMount...",
             "activityLog": "Aktivitetslog",
             "detailedCards": "Detaljerede serverkort",
             "debugPanel": "Debug Panel",
@@ -4370,7 +4370,7 @@
             "alignRight": "Højrejuster"
         },
         "mountManager": {
-            "title": "Mount-håndtering",
+            "title": "AeroMount",
             "subtitle": "Monter gemte servere som lokale drev. Mounts bruger den indbyggede aeroftp-cli (FUSE på Linux, WebDAV-bro på Windows).",
             "addMount": "Tilføj mount",
             "newMount": "Nyt mount",

@@ -3210,7 +3210,7 @@
             "website": "Vefsíða",
             "documentation": "Skjölun",
             "mcp": "MCP Server...",
-            "mountManager": "Tengingarstjóri...",
+            "mountManager": "AeroMount...",
             "activityLog": "Aðgerðaskrá",
             "detailedCards": "Ítarleg netþjónakort",
             "debugPanel": "Debug Panel",
@@ -4389,7 +4389,7 @@
             "alignRight": "Jafna til hægri"
         },
         "mountManager": {
-            "title": "Tengingarstjóri",
+            "title": "AeroMount",
             "subtitle": "Tengdu vistaða þjóna sem staðbundin drif. Tengingar nota innbyggða aeroftp-cli (FUSE á Linux, WebDAV brú á Windows).",
             "addMount": "Bæta við tengingu",
             "newMount": "Ný tenging",

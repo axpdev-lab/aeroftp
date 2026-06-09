@@ -3210,7 +3210,7 @@
             "website": "Site web",
             "documentation": "Documentatie",
             "mcp": "MCP Server...",
-            "mountManager": "Manager de montări...",
+            "mountManager": "AeroMount...",
             "activityLog": "Jurnal activitate",
             "detailedCards": "Carduri server detaliate",
             "debugPanel": "Debug Panel",
@@ -4370,7 +4370,7 @@
             "alignRight": "Aliniază la dreapta"
         },
         "mountManager": {
-            "title": "Manager de montări",
+            "title": "AeroMount",
             "subtitle": "Montează serverele salvate ca unități locale. Montările folosesc aeroftp-cli inclus (FUSE pe Linux, punte WebDAV pe Windows).",
             "addMount": "Adaugă montare",
             "newMount": "Montare nouă",

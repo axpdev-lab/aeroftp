@@ -3210,7 +3210,7 @@
             "website": "Nettsted",
             "documentation": "Dokumentasjon",
             "mcp": "MCP Server...",
-            "mountManager": "Monteringsbehandler...",
+            "mountManager": "AeroMount...",
             "activityLog": "Aktivitetslogg",
             "detailedCards": "Detaljerte serverkort",
             "debugPanel": "Debug Panel",
@@ -4389,7 +4389,7 @@
             "alignRight": "Høyrejuster"
         },
         "mountManager": {
-            "title": "Monteringsbehandler",
+            "title": "AeroMount",
             "subtitle": "Monter lagrede servere som lokale stasjoner. Monteringer bruker den medfølgende aeroftp-cli (FUSE på Linux, WebDAV-bro på Windows).",
             "addMount": "Legg til montering",
             "newMount": "Ny montering",

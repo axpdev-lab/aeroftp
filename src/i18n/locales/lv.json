@@ -3210,7 +3210,7 @@
             "website": "Tīmekļa vietne",
             "documentation": "Dokumentācija",
             "mcp": "MCP Server...",
-            "mountManager": "Montēšanas pārvaldnieks...",
+            "mountManager": "AeroMount...",
             "activityLog": "Aktivitāšu žurnāls",
             "detailedCards": "Detalizētas serveru kartes",
             "debugPanel": "Debug Panel",
@@ -4370,7 +4370,7 @@
             "alignRight": "Līdzināt pa labi"
         },
         "mountManager": {
-            "title": "Montēšanas pārvaldnieks",
+            "title": "AeroMount",
             "subtitle": "Montējiet saglabātos serverus kā lokālus diskus. Montāžas izmanto iebūvēto aeroftp-cli (FUSE operētājsistēmā Linux, WebDAV tilts operētājsistēmā Windows).",
             "addMount": "Pievienot montāžu",
             "newMount": "Jauna montāža",

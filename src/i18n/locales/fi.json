@@ -3210,7 +3210,7 @@
             "website": "Verkkosivusto",
             "documentation": "Dokumentaatio",
             "mcp": "MCP Server...",
-            "mountManager": "Liitäntöjen hallinta...",
+            "mountManager": "AeroMount...",
             "activityLog": "Tapahtumaloki",
             "detailedCards": "Yksityiskohtaiset palvelinkortit",
             "debugPanel": "Debug Panel",
@@ -4370,7 +4370,7 @@
             "alignRight": "Tasaa oikealle"
         },
         "mountManager": {
-            "title": "Liitäntöjen hallinta",
+            "title": "AeroMount",
             "subtitle": "Liitä tallennetut palvelimet paikallisiksi asemiksi. Liitännät käyttävät mukana toimitettua aeroftp-cli:tä (FUSE Linuxissa, WebDAV-silta Windowsissa).",
             "addMount": "Lisää liitäntä",
             "newMount": "Uusi liitäntä",

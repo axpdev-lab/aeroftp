@@ -3210,7 +3210,7 @@
             "website": "Webgunea",
             "documentation": "Dokumentazioa",
             "mcp": "MCP Server...",
-            "mountManager": "Muntaketa-kudeatzailea...",
+            "mountManager": "AeroMount...",
             "activityLog": "Jarduera erregistroa",
             "detailedCards": "Zerbitzari-txartel zehatzak",
             "debugPanel": "Debug Panel",
@@ -4389,7 +4389,7 @@
             "alignRight": "Lerrokatu eskuinera"
         },
         "mountManager": {
-            "title": "Muntaketa-kudeatzailea",
+            "title": "AeroMount",
             "subtitle": "Muntatu gordetako zerbitzariak unitate lokal gisa. Muntaketek aeroftp-cli barneratua erabiltzen dute (FUSE Linux-en, WebDAV zubia Windows-en).",
             "addMount": "Gehitu muntaketa",
             "newMount": "Muntaketa berria",

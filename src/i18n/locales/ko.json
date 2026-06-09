@@ -3210,7 +3210,7 @@
             "website": "웹사이트",
             "documentation": "문서",
             "mcp": "MCP Server...",
-            "mountManager": "마운트 관리자...",
+            "mountManager": "AeroMount...",
             "activityLog": "활동 로그",
             "detailedCards": "상세 서버 카드",
             "debugPanel": "Debug Panel",
@@ -4370,7 +4370,7 @@
             "alignRight": "오른쪽 정렬"
         },
         "mountManager": {
-            "title": "마운트 관리자",
+            "title": "AeroMount",
             "subtitle": "저장된 서버를 로컬 드라이브로 마운트합니다. 마운트는 내장 aeroftp-cli를 사용합니다 (Linux의 FUSE, Windows의 WebDAV 브리지).",
             "addMount": "마운트 추가",
             "newMount": "새 마운트",

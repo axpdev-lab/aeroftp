@@ -3210,7 +3210,7 @@
             "website": "Veebileht",
             "documentation": "Dokumentatsioon",
             "mcp": "MCP Server...",
-            "mountManager": "Ühenduste haldur...",
+            "mountManager": "AeroMount...",
             "activityLog": "Tegevuslogi",
             "detailedCards": "Üksikasjalikud serverikaardid",
             "debugPanel": "Debug Panel",
@@ -4370,7 +4370,7 @@
             "alignRight": "Joonda paremale"
         },
         "mountManager": {
-            "title": "Ühenduste haldur",
+            "title": "AeroMount",
             "subtitle": "Ühenda salvestatud serverid kohalike ketastena. Ühendused kasutavad kaasasolevat aeroftp-cli (FUSE Linuxis, WebDAV-sild Windowsis).",
             "addMount": "Lisa ühendus",
             "newMount": "Uus ühendus",

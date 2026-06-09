@@ -3210,7 +3210,7 @@
             "website": "वेबसाइट",
             "documentation": "दस्तावेज़",
             "mcp": "MCP Server...",
-            "mountManager": "माउंट प्रबंधक...",
+            "mountManager": "AeroMount...",
             "activityLog": "गतिविधि लॉग",
             "detailedCards": "विस्तृत सर्वर कार्ड",
             "debugPanel": "Debug Panel",
@@ -4370,7 +4370,7 @@
             "alignRight": "दाएं संरेखित करें"
         },
         "mountManager": {
-            "title": "माउंट प्रबंधक",
+            "title": "AeroMount",
             "subtitle": "सहेजे गए सर्वर को स्थानीय ड्राइव के रूप में माउंट करें। माउंट्स बंडल किए गए aeroftp-cli का उपयोग करते हैं (Linux पर FUSE, Windows पर WebDAV ब्रिज)।",
             "addMount": "माउंट जोड़ें",
             "newMount": "नया माउंट",

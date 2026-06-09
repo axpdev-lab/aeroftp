@@ -3210,7 +3210,7 @@
             "website": "Svetainė",
             "documentation": "Dokumentacija",
             "mcp": "MCP Server...",
-            "mountManager": "Prijungimo tvarkyklė...",
+            "mountManager": "AeroMount...",
             "activityLog": "Veiklos zurnalas",
             "detailedCards": "Išsamios serverių kortelės",
             "debugPanel": "Debug Panel",
@@ -4370,7 +4370,7 @@
             "alignRight": "Lygiuoti dešinėn"
         },
         "mountManager": {
-            "title": "Prijungimo tvarkyklė",
+            "title": "AeroMount",
             "subtitle": "Prijunkite išsaugotus serverius kaip vietinius diskus. Prijungimai naudoja įdiegtą aeroftp-cli (FUSE Linux sistemoje, WebDAV tiltas Windows sistemoje).",
             "addMount": "Pridėti prijungimą",
             "newMount": "Naujas prijungimas",

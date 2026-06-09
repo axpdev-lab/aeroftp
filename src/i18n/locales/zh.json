@@ -3210,7 +3210,7 @@
             "website": "网站",
             "documentation": "文档",
             "mcp": "MCP Server...",
-            "mountManager": "挂载管理器...",
+            "mountManager": "AeroMount...",
             "activityLog": "活动日志",
             "detailedCards": "详细服务器卡片",
             "debugPanel": "Debug Panel",
@@ -4370,7 +4370,7 @@
             "alignRight": "右对齐"
         },
         "mountManager": {
-            "title": "挂载管理器",
+            "title": "AeroMount",
             "subtitle": "将已保存的服务器挂载为本地驱动器。挂载使用内置的 aeroftp-cli（Linux 上为 FUSE，Windows 上为 WebDAV 桥接）。",
             "addMount": "添加挂载",
             "newMount": "新挂载",

@@ -3210,7 +3210,7 @@
             "website": "Weboldal",
             "documentation": "Dokumentáció",
             "mcp": "MCP Server...",
-            "mountManager": "Csatolási kezelő...",
+            "mountManager": "AeroMount...",
             "activityLog": "Tevékenységnapló",
             "detailedCards": "Részletes szerverkártyák",
             "debugPanel": "Debug Panel",
@@ -4370,7 +4370,7 @@
             "alignRight": "Jobbra igazítás"
         },
         "mountManager": {
-            "title": "Csatolási kezelő",
+            "title": "AeroMount",
             "subtitle": "Csatlakoztassa a mentett kiszolgálókat helyi meghajtókként. A csatolások a beépített aeroftp-cli-t használják (FUSE Linuxon, WebDAV híd Windowson).",
             "addMount": "Csatolás hozzáadása",
             "newMount": "Új csatolás",

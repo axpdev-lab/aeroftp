@@ -3210,7 +3210,7 @@
             "website": "Веб сајт",
             "documentation": "Документација",
             "mcp": "MCP Server...",
-            "mountManager": "Управљач монтирања...",
+            "mountManager": "AeroMount...",
             "activityLog": "Дневник активности",
             "detailedCards": "Детаљне картице сервера",
             "debugPanel": "Debug Panel",
@@ -4370,7 +4370,7 @@
             "alignRight": "Поравнај десно"
         },
         "mountManager": {
-            "title": "Управљач монтирања",
+            "title": "AeroMount",
             "subtitle": "Монтирајте сачуване сервере као локалне дискове. Монтирања користе уграђени aeroftp-cli (FUSE на Linux-у, WebDAV мост на Windows-у).",
             "addMount": "Додај монтирање",
             "newMount": "Ново монтирање",

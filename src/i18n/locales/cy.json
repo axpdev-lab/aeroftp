@@ -3210,7 +3210,7 @@
             "website": "Gwefan",
             "documentation": "Dogfennaeth",
             "mcp": "MCP Server...",
-            "mountManager": "Rheolwr Mowntio...",
+            "mountManager": "AeroMount...",
             "activityLog": "Log Gweithgaredd",
             "detailedCards": "Cardiau gweinydd manwl",
             "debugPanel": "Debug Panel",
@@ -4389,7 +4389,7 @@
             "alignRight": "Alinio i'r dde"
         },
         "mountManager": {
-            "title": "Rheolwr Mowntio",
+            "title": "AeroMount",
             "subtitle": "Mowntiwch weinyddion wedi'u cadw fel gyriannau lleol. Mae mowntiau'n defnyddio aeroftp-cli gynwysedig (FUSE ar Linux, pont WebDAV ar Windows).",
             "addMount": "Ychwanegu Mownt",
             "newMount": "Mownt newydd",

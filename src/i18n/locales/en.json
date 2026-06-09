@@ -2015,11 +2015,11 @@
             "website": "Website",
             "documentation": "Documentation",
             "mcp": "MCP Server...",
-            "mountManager": "Mount Manager...",
+            "mountManager": "AeroMount...",
             "aerosync": "AeroSync..."
         },
         "mountManager": {
-            "title": "Mount Manager",
+            "title": "AeroMount",
             "subtitle": "Mount saved servers as local drives. Mounts use the bundled aeroftp-cli (FUSE on Linux, WebDAV bridge on Windows).",
             "addMount": "Add Mount",
             "newMount": "New mount",

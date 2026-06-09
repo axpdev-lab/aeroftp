@@ -3210,7 +3210,7 @@
             "website": "Web stranica",
             "documentation": "Dokumentacija",
             "mcp": "MCP Server...",
-            "mountManager": "Upravitelj montiranja...",
+            "mountManager": "AeroMount...",
             "activityLog": "Dnevnik aktivnosti",
             "detailedCards": "Detaljne kartice poslužitelja",
             "debugPanel": "Debug Panel",
@@ -4370,7 +4370,7 @@
             "alignRight": "Poravnaj desno"
         },
         "mountManager": {
-            "title": "Upravitelj montiranja",
+            "title": "AeroMount",
             "subtitle": "Montirajte spremljene poslužitelje kao lokalne diskove. Montaže koriste ugrađeni aeroftp-cli (FUSE na Linuxu, WebDAV most na Windowsima).",
             "addMount": "Dodaj montažu",
             "newMount": "Nova montaža",

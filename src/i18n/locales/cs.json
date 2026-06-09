@@ -3210,7 +3210,7 @@
             "website": "Webové stránky",
             "documentation": "Dokumentace",
             "mcp": "MCP Server...",
-            "mountManager": "Správce připojení...",
+            "mountManager": "AeroMount...",
             "activityLog": "Protokol aktivit",
             "detailedCards": "Detailní karty serverů",
             "debugPanel": "Debug Panel",
@@ -4370,7 +4370,7 @@
             "alignRight": "Zarovnat doprava"
         },
         "mountManager": {
-            "title": "Správce připojení",
+            "title": "AeroMount",
             "subtitle": "Připojte uložené servery jako místní disky. Připojení využívají vestavěné aeroftp-cli (FUSE v Linuxu, most WebDAV ve Windows).",
             "addMount": "Přidat připojení",
             "newMount": "Nové připojení",

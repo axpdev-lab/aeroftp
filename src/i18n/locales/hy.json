@@ -3203,7 +3203,7 @@
             "website": "Կայքէջ",
             "documentation": "Փաստաթղթեր",
             "mcp": "MCP Server...",
-            "mountManager": "Միացման կառավարիչ...",
+            "mountManager": "AeroMount...",
             "activityLog": "Գործունեության մատյան",
             "detailedCards": "Մանրամասն սերվերի քարտեր",
             "debugPanel": "Debug Panel",
@@ -4370,7 +4370,7 @@
             "alignRight": "Հավասարեցնել աջ"
         },
         "mountManager": {
-            "title": "Միացման կառավարիչ",
+            "title": "AeroMount",
             "subtitle": "Միացրեք պահպանված սերվերները որպես տեղական սկավառակներ։ Միացումներն օգտագործում են ներկառուցված aeroftp-cli-ն (FUSE՝ Linux-ում, WebDAV կամուրջ՝ Windows-ում)։",
             "addMount": "Ավելացնել միացում",
             "newMount": "Նոր միացում",

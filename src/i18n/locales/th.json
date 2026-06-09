@@ -3210,7 +3210,7 @@
             "website": "เว็บไซต์",
             "documentation": "เอกสารประกอบ",
             "mcp": "MCP Server...",
-            "mountManager": "ตัวจัดการการเมาท์...",
+            "mountManager": "AeroMount...",
             "activityLog": "บันทึกกิจกรรม",
             "detailedCards": "การ์ดเซิร์ฟเวอร์แบบละเอียด",
             "debugPanel": "Debug Panel",
@@ -4370,7 +4370,7 @@
             "alignRight": "จัดชิดขวา"
         },
         "mountManager": {
-            "title": "ตัวจัดการการเมาท์",
+            "title": "AeroMount",
             "subtitle": "เมาท์เซิร์ฟเวอร์ที่บันทึกไว้เป็นไดรฟ์ภายในเครื่อง การเมาท์ใช้ aeroftp-cli ที่มาพร้อมกัน (FUSE บน Linux, WebDAV bridge บน Windows)",
             "addMount": "เพิ่มการเมาท์",
             "newMount": "การเมาท์ใหม่",

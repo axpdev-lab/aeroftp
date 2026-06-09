@@ -3210,7 +3210,7 @@
             "website": "ওয়েবসাইট",
             "documentation": "ডকুমেন্টেশন",
             "mcp": "MCP Server...",
-            "mountManager": "মাউন্ট ম্যানেজার...",
+            "mountManager": "AeroMount...",
             "activityLog": "অ্যাক্টিভিটি লগ",
             "detailedCards": "বিস্তারিত সার্ভার কার্ড",
             "debugPanel": "Debug Panel",
@@ -4370,7 +4370,7 @@
             "alignRight": "ডানদিকে সারিবদ্ধ করুন"
         },
         "mountManager": {
-            "title": "মাউন্ট ম্যানেজার",
+            "title": "AeroMount",
             "subtitle": "সংরক্ষিত সার্ভারগুলিকে স্থানীয় ড্রাইভ হিসাবে মাউন্ট করুন। মাউন্টগুলি বান্ডেলড aeroftp-cli ব্যবহার করে (Linux-এ FUSE, Windows-এ WebDAV ব্রিজ)।",
             "addMount": "মাউন্ট যোগ করুন",
             "newMount": "নতুন মাউন্ট",

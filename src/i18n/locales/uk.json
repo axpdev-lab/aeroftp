@@ -3210,7 +3210,7 @@
             "website": "Веб-сайт",
             "documentation": "Документація",
             "mcp": "MCP Server...",
-            "mountManager": "Менеджер монтування...",
+            "mountManager": "AeroMount...",
             "activityLog": "Журнал активності",
             "detailedCards": "Детальні картки серверів",
             "debugPanel": "Debug Panel",
@@ -4370,7 +4370,7 @@
             "alignRight": "Вирівняти праворуч"
         },
         "mountManager": {
-            "title": "Менеджер монтування",
+            "title": "AeroMount",
             "subtitle": "Монтуйте збережені сервери як локальні диски. Монтування використовує вбудований aeroftp-cli (FUSE на Linux, міст WebDAV на Windows).",
             "addMount": "Додати монтування",
             "newMount": "Нове монтування",

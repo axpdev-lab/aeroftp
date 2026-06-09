@@ -3210,7 +3210,7 @@
             "website": "Webbplats",
             "documentation": "Dokumentation",
             "mcp": "MCP Server...",
-            "mountManager": "Monteringshanterare...",
+            "mountManager": "AeroMount...",
             "activityLog": "Aktivitetslogg",
             "detailedCards": "Detaljerade serverkort",
             "debugPanel": "Debug Panel",
@@ -4370,7 +4370,7 @@
             "alignRight": "Högerjustera"
         },
         "mountManager": {
-            "title": "Monteringshanterare",
+            "title": "AeroMount",
             "subtitle": "Montera sparade servrar som lokala enheter. Monteringar använder den medföljande aeroftp-cli (FUSE på Linux, WebDAV-brygga på Windows).",
             "addMount": "Lägg till montering",
             "newMount": "Ny montering",

@@ -3210,7 +3210,7 @@
             "website": "Webseite",
             "documentation": "Dokumentation",
             "mcp": "MCP Server...",
-            "mountManager": "Mount-Manager...",
+            "mountManager": "AeroMount...",
             "activityLog": "Aktivitätsprotokoll",
             "detailedCards": "Detaillierte Serverkarten",
             "debugPanel": "Debug Panel",
@@ -4370,7 +4370,7 @@
             "alignRight": "Rechtsbündig"
         },
         "mountManager": {
-            "title": "Mount-Manager",
+            "title": "AeroMount",
             "subtitle": "Hängen Sie gespeicherte Server als lokale Laufwerke ein. Mounts verwenden das mitgelieferte aeroftp-cli (FUSE unter Linux, WebDAV-Bridge unter Windows).",
             "addMount": "Mount hinzufügen",
             "newMount": "Neuer Mount",

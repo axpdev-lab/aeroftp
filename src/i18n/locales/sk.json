@@ -3210,7 +3210,7 @@
             "website": "Webova stranka",
             "documentation": "Dokumentacia",
             "mcp": "MCP Server...",
-            "mountManager": "Správca pripojení...",
+            "mountManager": "AeroMount...",
             "activityLog": "Denník aktivít",
             "detailedCards": "Podrobné karty serverov",
             "debugPanel": "Debug Panel",
@@ -4370,7 +4370,7 @@
             "alignRight": "Zarovnať doprava"
         },
         "mountManager": {
-            "title": "Správca pripojení",
+            "title": "AeroMount",
             "subtitle": "Pripojte uložené servery ako lokálne disky. Pripojenia používajú vstavané aeroftp-cli (FUSE v systéme Linux, most WebDAV v systéme Windows).",
             "addMount": "Pridať pripojenie",
             "newMount": "Nové pripojenie",

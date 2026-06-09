@@ -3210,7 +3210,7 @@
             "website": "ვებსაიტი",
             "documentation": "დოკუმენტაცია",
             "mcp": "MCP Server...",
-            "mountManager": "მონტირების მენეჯერი...",
+            "mountManager": "AeroMount...",
             "activityLog": "აქტივობის ჟურნალი",
             "detailedCards": "დეტალური სერვერის ბარათები",
             "debugPanel": "Debug Panel",
@@ -4370,7 +4370,7 @@
             "alignRight": "მარჯვნივ სწორება"
         },
         "mountManager": {
-            "title": "მონტირების მენეჯერი",
+            "title": "AeroMount",
             "subtitle": "შეაერთეთ შენახული სერვერები როგორც ლოკალური დისკები. მონტაჟები იყენებს ჩაშენებულ aeroftp-cli-ს (FUSE Linux-ზე, WebDAV ხიდი Windows-ზე).",
             "addMount": "მონტაჟის დამატება",
             "newMount": "ახალი მონტაჟი",

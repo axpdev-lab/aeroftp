@@ -3210,7 +3210,7 @@
             "website": "Tovuti",
             "documentation": "Nyaraka",
             "mcp": "MCP Server...",
-            "mountManager": "Kidhibiti cha Kupachika...",
+            "mountManager": "AeroMount...",
             "activityLog": "Kumbukumbu ya Shughuli",
             "detailedCards": "Kadi za seva za kina",
             "debugPanel": "Debug Panel",
@@ -4370,7 +4370,7 @@
             "alignRight": "Pangilia kulia"
         },
         "mountManager": {
-            "title": "Kidhibiti cha Kupachika",
+            "title": "AeroMount",
             "subtitle": "Pachika seva zilizohifadhiwa kama hifadhi za ndani. Upachikaji unatumia aeroftp-cli iliyojengwa ndani (FUSE kwenye Linux, daraja la WebDAV kwenye Windows).",
             "addMount": "Ongeza upachikaji",
             "newMount": "Upachikaji mpya",

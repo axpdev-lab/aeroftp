@@ -3210,7 +3210,7 @@
             "website": "Website",
             "documentation": "Documentatie",
             "mcp": "MCP Server...",
-            "mountManager": "Koppelingsbeheer...",
+            "mountManager": "AeroMount...",
             "activityLog": "Activiteitenlog",
             "detailedCards": "Gedetailleerde serverkaarten",
             "debugPanel": "Debug Panel",
@@ -4370,7 +4370,7 @@
             "alignRight": "Rechts uitlijnen"
         },
         "mountManager": {
-            "title": "Koppelingsbeheer",
+            "title": "AeroMount",
             "subtitle": "Koppel opgeslagen servers als lokale schijven. Koppelingen gebruiken de meegeleverde aeroftp-cli (FUSE op Linux, WebDAV-brug op Windows).",
             "addMount": "Koppeling toevoegen",
             "newMount": "Nieuwe koppeling",

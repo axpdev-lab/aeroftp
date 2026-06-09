@@ -3210,7 +3210,7 @@
             "website": "Web sitesi",
             "documentation": "Belgelendirme",
             "mcp": "MCP Server...",
-            "mountManager": "Bağlama Yöneticisi...",
+            "mountManager": "AeroMount...",
             "activityLog": "Etkinlik Günlüğü",
             "detailedCards": "Ayrıntılı sunucu kartları",
             "debugPanel": "Debug Panel",
@@ -4370,7 +4370,7 @@
             "alignRight": "Sağa hizala"
         },
         "mountManager": {
-            "title": "Bağlama Yöneticisi",
+            "title": "AeroMount",
             "subtitle": "Kayıtlı sunucuları yerel sürücü olarak bağlayın. Bağlamalar, paketlenmiş aeroftp-cli'yi kullanır (Linux'ta FUSE, Windows'ta WebDAV köprüsü).",
             "addMount": "Bağlama Ekle",
             "newMount": "Yeni bağlama",

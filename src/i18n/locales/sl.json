@@ -3210,7 +3210,7 @@
             "website": "Spletna stran",
             "documentation": "Dokumentacija",
             "mcp": "MCP Server...",
-            "mountManager": "Upravitelj priklopov...",
+            "mountManager": "AeroMount...",
             "activityLog": "Dnevnik dejavnosti",
             "detailedCards": "Podrobne kartice strežnikov",
             "debugPanel": "Debug Panel",
@@ -4370,7 +4370,7 @@
             "alignRight": "Poravnaj desno"
         },
         "mountManager": {
-            "title": "Upravitelj priklopov",
+            "title": "AeroMount",
             "subtitle": "Priklopite shranjene strežnike kot lokalne pogone. Priklopi uporabljajo vgrajeni aeroftp-cli (FUSE na Linuxu, most WebDAV na Windowsu).",
             "addMount": "Dodaj priklop",
             "newMount": "Nov priklop",

@@ -3210,7 +3210,7 @@
             "website": "Lloc web",
             "documentation": "Documentació",
             "mcp": "MCP Server...",
-            "mountManager": "Gestor de muntatges...",
+            "mountManager": "AeroMount...",
             "activityLog": "Registre d'Activitat",
             "detailedCards": "Targetes de servidor detallades",
             "debugPanel": "Debug Panel",
@@ -4389,7 +4389,7 @@
             "alignRight": "Alinea a la dreta"
         },
         "mountManager": {
-            "title": "Gestor de muntatges",
+            "title": "AeroMount",
             "subtitle": "Munta servidors desats com a unitats locals. Els muntatges utilitzen aeroftp-cli inclòs (FUSE a Linux, pont WebDAV a Windows).",
             "addMount": "Afegeix muntatge",
             "newMount": "Nou muntatge",

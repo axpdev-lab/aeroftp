@@ -3457,13 +3457,13 @@
             "website": "Sito Web",
             "documentation": "Documentazione",
             "mcp": "MCP Server...",
-            "mountManager": "Gestione mount...",
+            "mountManager": "AeroMount...",
             "activityLog": "Registro attività",
             "debugPanel": "Debug Panel",
             "aerosync": "AeroSync..."
         },
         "mountManager": {
-            "title": "Gestione mount",
+            "title": "AeroMount",
             "subtitle": "Monta i server salvati come dischi locali. I mount usano aeroftp-cli incluso (FUSE su Linux, ponte WebDAV su Windows).",
             "addMount": "Aggiungi mount",
             "newMount": "Nuovo mount",

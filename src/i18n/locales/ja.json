@@ -3175,7 +3175,7 @@
             "website": "ウェブサイト",
             "documentation": "ドキュメント",
             "mcp": "MCP Server...",
-            "mountManager": "マウントマネージャー...",
+            "mountManager": "AeroMount...",
             "activityLog": "アクティビティログ",
             "detailedCards": "詳細なサーバーカード",
             "debugPanel": "Debug Panel",
@@ -4370,7 +4370,7 @@
             "alignRight": "右揃え"
         },
         "mountManager": {
-            "title": "マウントマネージャー",
+            "title": "AeroMount",
             "subtitle": "保存済みサーバーをローカルドライブとしてマウントします。マウントには同梱の aeroftp-cli を使用します（Linux では FUSE、Windows では WebDAV ブリッジ）。",
             "addMount": "マウントを追加",
             "newMount": "新しいマウント",

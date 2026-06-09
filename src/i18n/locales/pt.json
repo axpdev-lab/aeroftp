@@ -3210,7 +3210,7 @@
             "website": "Site",
             "documentation": "Documentacao",
             "mcp": "MCP Server...",
-            "mountManager": "Gerenciador de Montagens...",
+            "mountManager": "AeroMount...",
             "activityLog": "Log de Atividades",
             "detailedCards": "Cartões de servidor detalhados",
             "debugPanel": "Debug Panel",
@@ -4370,7 +4370,7 @@
             "alignRight": "Alinhar à direita"
         },
         "mountManager": {
-            "title": "Gerenciador de Montagens",
+            "title": "AeroMount",
             "subtitle": "Monte servidores salvos como unidades locais. As montagens usam o aeroftp-cli incluído (FUSE no Linux, ponte WebDAV no Windows).",
             "addMount": "Adicionar montagem",
             "newMount": "Nova montagem",

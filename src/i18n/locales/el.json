@@ -3210,7 +3210,7 @@
             "website": "Ιστότοπος",
             "documentation": "Τεκμηρίωση",
             "mcp": "MCP Server...",
-            "mountManager": "Διαχειριστής Προσαρτήσεων...",
+            "mountManager": "AeroMount...",
             "activityLog": "Αρχείο δραστηριότητας",
             "detailedCards": "Λεπτομερείς κάρτες διακομιστή",
             "debugPanel": "Debug Panel",
@@ -4370,7 +4370,7 @@
             "alignRight": "Στοίχιση δεξιά"
         },
         "mountManager": {
-            "title": "Διαχειριστής Προσαρτήσεων",
+            "title": "AeroMount",
             "subtitle": "Προσαρτήστε αποθηκευμένους διακομιστές ως τοπικούς δίσκους. Οι προσαρτήσεις χρησιμοποιούν το ενσωματωμένο aeroftp-cli (FUSE σε Linux, γέφυρα WebDAV σε Windows).",
             "addMount": "Προσθήκη προσάρτησης",
             "newMount": "Νέα προσάρτηση",

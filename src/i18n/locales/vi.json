@@ -3210,7 +3210,7 @@
             "website": "Trang web",
             "documentation": "Tài liệu",
             "mcp": "MCP Server...",
-            "mountManager": "Trình quản lý gắn kết...",
+            "mountManager": "AeroMount...",
             "activityLog": "Nhật ký hoạt động",
             "detailedCards": "Thẻ máy chủ chi tiết",
             "debugPanel": "Debug Panel",
@@ -4370,7 +4370,7 @@
             "alignRight": "Căn phải"
         },
         "mountManager": {
-            "title": "Trình quản lý gắn kết",
+            "title": "AeroMount",
             "subtitle": "Gắn máy chủ đã lưu dưới dạng ổ đĩa cục bộ. Việc gắn kết sử dụng aeroftp-cli đi kèm (FUSE trên Linux, cầu WebDAV trên Windows).",
             "addMount": "Thêm gắn kết",
             "newMount": "Gắn kết mới",

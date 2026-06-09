@@ -3210,7 +3210,7 @@
             "website": "Website",
             "documentation": "Dokumentasyon",
             "mcp": "MCP Server...",
-            "mountManager": "Tagapamahala ng Mount...",
+            "mountManager": "AeroMount...",
             "activityLog": "Log ng Aktibidad",
             "detailedCards": "Mga detalyadong card ng server",
             "debugPanel": "Debug Panel",
@@ -4389,7 +4389,7 @@
             "alignRight": "Ihanay sa kanan"
         },
         "mountManager": {
-            "title": "Tagapamahala ng Mount",
+            "title": "AeroMount",
             "subtitle": "I-mount ang mga naka-save na server bilang lokal na drive. Gumagamit ang mga mount ng built-in na aeroftp-cli (FUSE sa Linux, WebDAV bridge sa Windows).",
             "addMount": "Magdagdag ng Mount",
             "newMount": "Bagong mount",

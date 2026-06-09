@@ -3210,7 +3210,7 @@
             "website": "Sitio web",
             "documentation": "Documentacion",
             "mcp": "MCP Server...",
-            "mountManager": "Xestor de montaxes...",
+            "mountManager": "AeroMount...",
             "activityLog": "Rexistro de actividade",
             "detailedCards": "Tarxetas de servidor detalladas",
             "debugPanel": "Debug Panel",
@@ -4389,7 +4389,7 @@
             "alignRight": "Aliñar á dereita"
         },
         "mountManager": {
-            "title": "Xestor de montaxes",
+            "title": "AeroMount",
             "subtitle": "Monta servidores gardados como unidades locais. As montaxes usan aeroftp-cli incluído (FUSE en Linux, ponte WebDAV en Windows).",
             "addMount": "Engadir montaxe",
             "newMount": "Nova montaxe",

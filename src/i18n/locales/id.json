@@ -3210,7 +3210,7 @@
             "website": "Situs web",
             "documentation": "Dokumentasi",
             "mcp": "MCP Server...",
-            "mountManager": "Pengelola Mount...",
+            "mountManager": "AeroMount...",
             "activityLog": "Log Aktivitas",
             "detailedCards": "Kartu server terperinci",
             "debugPanel": "Debug Panel",
@@ -4370,7 +4370,7 @@
             "alignRight": "Rata kanan"
         },
         "mountManager": {
-            "title": "Pengelola Mount",
+            "title": "AeroMount",
             "subtitle": "Pasang server tersimpan sebagai drive lokal. Mount menggunakan aeroftp-cli bawaan (FUSE di Linux, jembatan WebDAV di Windows).",
             "addMount": "Tambah Mount",
             "newMount": "Mount baru",
