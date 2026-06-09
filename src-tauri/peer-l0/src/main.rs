@@ -115,6 +115,12 @@ enum Mode {
         /// Stage 5/6 behavior (v1 then one v2). Use e.g. 2 for v1->v2->v3.
         #[arg(long, default_value_t = 1)]
         republish_count: u64,
+
+        /// Optional persistent store directory. If present, use FsStore + Docs::persistent
+        /// (drive survives publisher restart). Only affects publish side for now.
+        /// Format: --store /path/to/store  (will use subdirs blobs/ and docs/)
+        #[arg(long)]
+        store: Option<String>,
     },
 
     /// L1 docs-replicate (Node B): given ticket from publish, import+sync, read the entry (or whole drive via manifest),
@@ -212,14 +218,14 @@ async fn main() -> Result<()> {
             print_campaign_summary(&all_samples);
             return Ok(());
         }
-        Mode::DocsPublish { key, dir, republish_after, republish_count } => {
+        Mode::DocsPublish { key, dir, republish_after, republish_count, store } => {
             let docs_cfg = aeroftp_peer_l0::endpoint::PeerEndpointConfig {
                 bind_addr: None,
                 secret_key_path: None,
                 custom_relay_urls: cli.custom_relay_urls.clone(),
             };
             let secret_bytes = effective_secret.as_deref().map(decode_secret).transpose()?;
-            run_docs_publish(key, dir, republish_after, republish_count, docs_cfg, secret_bytes).await?;
+            run_docs_publish(key, dir, republish_after, republish_count, store, docs_cfg, secret_bytes).await?;
             return Ok(());
         }
         Mode::DocsReplicate { ticket, out, watch_secs } => {
@@ -892,11 +898,11 @@ async fn publish_drive_version(
     Ok((stats, new_state))
 }
 
-/// L1 Stage 5/6/7: docs-publish with optional drive mode + republish-after + republish-count.
-/// If --dir absent: exact single-entry (compat).
-/// If --dir present: publish v1 then (if republish_after>0) loop republish_count times (v2, v3, ...),
-/// chaining drive_state for differential updates/deletes. Ticket shared immediately after v1.
-async fn run_docs_publish(key: String, dir: Option<String>, republish_after: u64, republish_count: u64, cfg: aeroftp_peer_l0::endpoint::PeerEndpointConfig, secret_bytes: Option<Vec<u8>>) -> Result<()> {
+/// L1 Stage 5/6/7/8: docs-publish with optional drive mode + republish-after + republish-count + store.
+/// If --store absent: EXACT current in-memory behavior (no regression for single-entry / Stage 4-7 drive).
+/// If --store <dir> present: use FsStore + Docs::persistent + author_default + list/open-or-create.
+/// Drive content (entries + blobs) survives publisher restart. Replicate side remains in-memory.
+async fn run_docs_publish(key: String, dir: Option<String>, republish_after: u64, republish_count: u64, store: Option<String>, cfg: aeroftp_peer_l0::endpoint::PeerEndpointConfig, secret_bytes: Option<Vec<u8>>) -> Result<()> {
     use bytes::Bytes;
     use iroh::protocol::Router;
     use iroh_blobs::BlobsProtocol;
@@ -911,58 +917,130 @@ async fn run_docs_publish(key: String, dir: Option<String>, republish_after: u64
     println!("NodeID: {}", node_id);
     println!("(this is the listener side; share the ticket below with the replicate side)");
 
-    // Verified setup from iroh-docs 0.92 crate docs + examples (see L1-DESIGN and task links).
-    // Note: scaffold in task used slightly different accept args; the real 0.92 surface
-    // requires wrapping the store in BlobsProtocol for the blobs ALPN (as shown in the
-    // official "getting started" example in the crate root docs).
-    let blobs = iroh_blobs::store::mem::MemStore::default();
-    let gossip = Gossip::builder().spawn(endpoint.clone());
-    let docs = Docs::memory()
-        .spawn(endpoint.clone(), (*blobs).clone(), gossip.clone())
-        .await?;
-
-    let router = Router::builder(endpoint.clone())
-        .accept(iroh_blobs::ALPN, BlobsProtocol::new(&blobs, endpoint.clone(), None))
-        .accept(iroh_gossip::ALPN, gossip)
-        .accept(iroh_docs::ALPN, docs.clone())
-        .spawn();
-
-    let api = docs.api();
-
-    // Create a fresh author (the signer) and a new document (the "drive" = namespace).
-    let author = api.author_create().await?;
-    let doc = api.create().await?;
-    let ns = doc.id();
-
-    println!("AuthorId: {}", author);
-    println!("NamespaceId: {}", ns);
-
     let secret = secret_bytes.context("docs-publish requires --secret (16-byte pairing secret for L1 drive E2EE)")?;
-    let drive_key = derive_drive_key(&secret, &ns.to_string());
 
     let mut v1_file_count: usize = 0;
     let mut drive_state: Option<DriveState> = None;
-    if let Some(dir_path) = dir.as_deref() {
-        // === DRIVE MODE (Stage 6 differential): publish v1 (prev=None -> all added); share ticket immediately
-        // so watcher can join during v1. v2 republish (after sleep) passes prev state for diff + del.
-        let src = Path::new(dir_path);
-        let (s1, state1) = publish_drive_version(&doc, author, &drive_key, src, 1, None).await?;
-        println!("DRIVE PUBLISHED: {} files + manifest, ns={}, total_plaintext_bytes={}", s1.file_count, ns, s1.total_pt);
-        v1_file_count = s1.file_count;
-        drive_state = Some(state1);
+
+    let doc: iroh_docs::api::Doc;
+    let author: iroh_docs::AuthorId;
+    let ns: iroh_docs::NamespaceId;
+    let drive_key: [u8; 32];
+    let router;
+
+    if let Some(store_dir) = store.as_deref() {
+        // === PERSISTENT MODE (Stage 8) ===
+        use std::path::Path;
+        let store_path = Path::new(store_dir);
+        std::fs::create_dir_all(store_path)?;
+        let blobs_path = store_path.join("blobs");
+        let docs_path = store_path.join("docs");
+        std::fs::create_dir_all(&blobs_path)?;
+        std::fs::create_dir_all(&docs_path)?;
+
+        let blobs = iroh_blobs::store::fs::FsStore::load(&blobs_path).await?;
+        let gossip = Gossip::builder().spawn(endpoint.clone());
+        let docs = Docs::persistent(docs_path)
+            .spawn(endpoint.clone(), (*blobs).clone(), gossip.clone())
+            .await?;
+
+        router = Router::builder(endpoint.clone())
+            .accept(iroh_blobs::ALPN, BlobsProtocol::new(&blobs, endpoint.clone(), None))
+            .accept(iroh_gossip::ALPN, gossip)
+            .accept(iroh_docs::ALPN, docs.clone())
+            .spawn();
+
+        let api = docs.api();
+        author = api.author_default().await?;
+
+        // Re-open existing namespace if present (survives restart), else create new.
+        // Remember the ns id in a "current-ns.txt" file in the store dir; reopen via api.open().
+        // Verified locally: the capability persists in the docs redb, so api.open(ns) reattaches
+        // the SAME namespace after a publisher restart (reopened=true).
+        let ns_file = store_path.join("current-ns.txt");
+        let mut reopened = false;
+        let mut the_doc = None;
+        if ns_file.exists() {
+            if let Ok(ns_str) = std::fs::read_to_string(&ns_file) {
+                if let Ok(ns_id) = ns_str.trim().parse::<iroh_docs::NamespaceId>() {
+                    if let Ok(Some(d)) = api.open(ns_id).await {
+                        the_doc = Some(d);
+                        reopened = true;
+                    }
+                }
+            }
+        }
+        if the_doc.is_none() {
+            let d = api.create().await?;
+            std::fs::write(&ns_file, d.id().to_string())?;
+            the_doc = Some(d);
+        }
+        let the_doc = the_doc.unwrap();
+        doc = the_doc;
+        ns = doc.id();
+        drive_key = derive_drive_key(&secret, &ns.to_string());
+
+        println!("PERSISTENT DRIVE: store={} ns={} (reopened={}) author={}", store_dir, ns, reopened, author);
+
+        if let Some(dir_path) = dir.as_deref() {
+            // publish (or diff on reopen) the dir into the persistent doc
+            let src = Path::new(dir_path);
+            let (s1, state1) = publish_drive_version(&doc, author, &drive_key, src, 1, None).await?;
+            println!("DRIVE PUBLISHED: {} files + manifest, ns={}, total_plaintext_bytes={}", s1.file_count, ns, s1.total_pt);
+            v1_file_count = s1.file_count;
+            drive_state = Some(state1);
+        }
+        // else: pure reopen, no --dir -> serve the existing drive straight from disk.
+        // Verified locally: a reopened ns serves the full drive (entries + blobs) to a fresh
+        // replicate after a publisher restart (DRIVE REPLICATED: N/N, BLAKE3 verified).
     } else {
-        // === SINGLE ENTRY MODE (exact backward compat with gate at 9f5a5c18) ===
-        let content_str = format!("hi from L1 {}", chrono::Utc::now().to_rfc3339());
-        let content: Vec<u8> = content_str.into_bytes();
+        // === ORIGINAL IN-MEMORY PATH (unchanged for --store absent) ===
+        let blobs = iroh_blobs::store::mem::MemStore::default();
+        let gossip = Gossip::builder().spawn(endpoint.clone());
+        let docs = Docs::memory()
+            .spawn(endpoint.clone(), (*blobs).clone(), gossip.clone())
+            .await?;
 
-        let (nonce, ct) = encrypt_blob(&drive_key, &content)?;
-        let mut blob = nonce.clone();
-        blob.extend_from_slice(&ct);
+        router = Router::builder(endpoint.clone())
+            .accept(iroh_blobs::ALPN, BlobsProtocol::new(&blobs, endpoint.clone(), None))
+            .accept(iroh_gossip::ALPN, gossip)
+            .accept(iroh_docs::ALPN, docs.clone())
+            .spawn();
 
-        let written_hash = doc.set_bytes(author, Bytes::from(key.clone()), Bytes::from(blob.clone())).await?;
+        let api = docs.api();
 
-        println!("Wrote entry: key={} content_hash={} size={}", key, written_hash, blob.len());
-        println!("stored ciphertext blob len={} (nonce {}B + ct) (E2EE; plaintext never leaves this process; entry signed by author)", blob.len(), nonce.len());
+        // Create a fresh author (the signer) and a new document (the "drive" = namespace).
+        author = api.author_create().await?;
+        let the_doc = api.create().await?;
+        doc = the_doc;
+        ns = doc.id();
+        drive_key = derive_drive_key(&secret, &ns.to_string());
+
+        println!("AuthorId: {}", author);
+        println!("NamespaceId: {}", ns);
+
+        if let Some(dir_path) = dir.as_deref() {
+            // === DRIVE MODE (Stage 6 differential): publish v1 (prev=None -> all added); share ticket immediately
+            // so watcher can join during v1. v2 republish (after sleep) passes prev state for diff + del.
+            let src = Path::new(dir_path);
+            let (s1, state1) = publish_drive_version(&doc, author, &drive_key, src, 1, None).await?;
+            println!("DRIVE PUBLISHED: {} files + manifest, ns={}, total_plaintext_bytes={}", s1.file_count, ns, s1.total_pt);
+            v1_file_count = s1.file_count;
+            drive_state = Some(state1);
+        } else {
+            // === SINGLE ENTRY MODE (exact backward compat with gate at 9f5a5c18) ===
+            let content_str = format!("hi from L1 {}", chrono::Utc::now().to_rfc3339());
+            let content: Vec<u8> = content_str.into_bytes();
+
+            let (nonce, ct) = encrypt_blob(&drive_key, &content)?;
+            let mut blob = nonce.clone();
+            blob.extend_from_slice(&ct);
+
+            let written_hash = doc.set_bytes(author, Bytes::from(key.clone()), Bytes::from(blob.clone())).await?;
+
+            println!("Wrote entry: key={} content_hash={} size={}", key, written_hash, blob.len());
+            println!("stored ciphertext blob len={} (nonce {}B + ct) (E2EE; plaintext never leaves this process; entry signed by author)", blob.len(), nonce.len());
+        }
     }
 
     // Produce a ticket that tells the other side the NamespaceId + where to find us. Read mode is
